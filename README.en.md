@@ -147,7 +147,7 @@ Life-Index/
 
 Simply speak to your Agent:
 
-> "March 5th, 2026, Beijing, sunny. I want to record why I started Life Index. It's not to build another Notion or Obsidian — it's to help ordinary people like me organize life fragments. I want to record the details of my fatherhood, that bittersweet feeling, like when my daughter imitated me smoking at age two..."
+> "March 5th, 2026, Chongqing, sunny. I want to record why I started Life Index. It's not to build another Notion or Obsidian — it's to help ordinary people like me organize life fragments. I want to record the details of my fatherhood, that bittersweet feeling, like when my daughter imitated me smoking at age two..."
 
 The Agent will:
 1. Generate a Markdown file with frontmatter
@@ -213,4 +213,5 @@ Apache License 2.0 — Your life data belongs to you. So does this code.
 
 > *"I both wish our family could stay forever in that time when she was 2 — and hope she grows up to experience an even more beautiful world. All in all, little bump, Dad misses you. This one's for you, Toto."*
 > 
+
 > *—— From the first Life Index entry, March 4, 2026, Lagos. Not a record of her growth. A record of my love.*
