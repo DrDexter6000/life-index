@@ -91,7 +91,7 @@ This one's for you, Toto.
 ```
 </details>
 
-This is Life Index's mission: **Preserving the details that will make you cry at 2 AM ten years from now.**
+This is Life Index's mission: **To remember exactly how that felt — forever beyond big tech's reach.**
 
 ---
 
@@ -215,3 +215,4 @@ Apache License 2.0 — Your life data belongs to you. So does this code.
 > 
 
 > *—— From the first Life Index entry, March 4, 2026, Lagos. Not a record of her growth. A record of my love.*
+
