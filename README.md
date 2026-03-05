@@ -2,7 +2,7 @@
 
 # Life Index | 人生索引  
 
-*Your life, indexed."
+*"Your life, indexed."*
 
 </div>
 
