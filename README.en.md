@@ -33,7 +33,7 @@ Everyone deserves such a life archive.
 > —— **Since when do only politicians and the wealthy get to hire writers for their memoirs?**          
 > —— **Would you like to leave the handbook of life wisdom to your kids, a collection of mistakes & lessons？**       
 
-**This is a digital asset for us common people.**
+This is a digital asset for us common people.
 
 ---
 
@@ -219,6 +219,7 @@ Apache License 2.0 — Your life data belongs to you. So does this code.
 > 
 
 > *—— From the first Life Index entry, March 4, 2026, Lagos. Not a record of her growth. A record of my love.*
+
 
 
 
