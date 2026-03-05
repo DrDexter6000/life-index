@@ -25,11 +25,13 @@ I didn't create this to show off my coding skills. I created it to build a **Per
 > I want to remember not just how she grew, but how I felt. The weight of her small body in my arms. The moment she ran to the balcony, opened my cigarette pack, and handed me one with her clumsy little hands — not knowing what it was, just imitating the one she loved most.    
 > And if possible, I hope to pass this **record of my whole life** down to her one day. Long after I'm gone, she can open it like a faded, yellowed book — recalling her father's love in every line, and perhaps finding a bit of his hard-won wisdom to guide her.
 
-**🎯 My belief is that ——**    
+**🎯 I believe that ——**    
+
+Everyone deserves such a life archive.
 
 > —— **Do you still remember what drove that decisive choice you made ten years ago?**    
 > —— **Since when do only politicians and the wealthy get to hire writers for their memoirs?**          
-> —— **Would you like to leave the handbook of life wisdom to your kids, a collection of mistakes & lessons**       
+> —— **Would you like to leave the handbook of life wisdom to your kids, a collection of mistakes & lessons？**       
 
 **This is a digital asset for us common people.**
 
@@ -217,6 +219,7 @@ Apache License 2.0 — Your life data belongs to you. So does this code.
 > 
 
 > *—— From the first Life Index entry, March 4, 2026, Lagos. Not a record of her growth. A record of my love.*
+
 
 
 
