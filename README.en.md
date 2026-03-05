@@ -1,8 +1,12 @@
 <div align="center">
 
-# Life Index | 人生索引
+# Life Index | 人生索引    
+
+*"Your life, indexed."*
 
 </div>
+
+<div align="center">
 
 <div align="center">
 
@@ -282,6 +286,7 @@ Apache License 2.0 — Your life data belongs to you. So does this code.
 > 
 
 > *—— From the first Life Index entry, March 4, 2026, Lagos. Not a record of her growth. A record of my love.*
+
 
 
 
