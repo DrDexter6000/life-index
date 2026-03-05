@@ -1,6 +1,6 @@
 # Life Index | 人生索引
 
-<div align="right">
+<div align="center">
 
 **English** | [简体中文](./README.md)
 
@@ -217,5 +217,6 @@ Apache License 2.0 — Your life data belongs to you. So does this code.
 > 
 
 > *—— From the first Life Index entry, March 4, 2026, Lagos. Not a record of her growth. A record of my love.*
+
 
 
