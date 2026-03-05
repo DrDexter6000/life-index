@@ -1,4 +1,10 @@
-# Life Index | 人生索引
+<div align="center">
+
+# Life Index | 人生索引  
+
+*Your life, indexed."
+
+</div>
 
 <div align="center">
 
