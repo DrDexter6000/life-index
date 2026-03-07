@@ -1,0 +1,104 @@
+# Life Index E2E 测试套件
+
+## 测试框架说明
+
+本目录包含 Life Index 的端到端（E2E）可靠性测试用例，采用**自然语言描述 + Agent 自主执行**的轻量方案。
+
+## 文件结构
+
+```
+tests/e2e/
+├── README.md                    # 本文件
+├── phase1-core-workflow.yaml    # Phase 1: 核心工作流覆盖
+├── phase2-search-retrieval.yaml # Phase 2: 搜索检索覆盖
+└── phase3-edge-cases.yaml       # Phase 3: 边界与异常
+```
+
+## 执行方式
+
+### Agent 执行指令
+
+当用户说"执行 E2E 测试"时，Agent 应按以下流程执行：
+
+1. **读取测试文件**
+   - 按顺序读取 `phase1-*.yaml`、`phase2-*.yaml`、`phase3-*.yaml`
+   - 解析 `test_cases` 列表
+
+2. **逐一执行测试用例**
+   - 按 `priority` 和 `id` 顺序执行
+   - 每个测试用例记录：
+     - 开始时间
+     - 各步骤耗时（parse, weather_query, write_journal 等）
+     - 实际结果
+     - 通过/失败状态
+     - 结束时间
+
+3. **生成测试报告**
+   - 输出到 `tests/reports/e2e-report-{timestamp}.md`
+   - 包含：
+     - 测试摘要（总数、通过数、失败数）
+     - 性能指标对比（实际 vs SLA）
+     - 失败用例详情
+
+4. **清理测试数据**（如 `cleanup_after_test: true`）
+   - 删除测试生成的日志文件
+   - 删除测试生成的附件
+   - 保留索引文件（可选）
+
+## 测试用例格式规范
+
+```yaml
+test_cases:
+  - id: "E2E-XX"           # 唯一标识
+    name: "测试名称"        # 人类可读名称
+    priority: "P1/P2"      # 优先级
+    description: "描述"     # 详细说明
+    input:                 # 输入数据
+      user_prompt: "..."
+      data: {...}
+    expected:              # 期望结果
+      success: true
+      ...
+    performance_sla:       # 性能指标
+      step_name: "< Xms"
+```
+
+## 性能指标说明
+
+| 指标 | 说明 | 典型值 |
+|------|------|--------|
+| parse | 语义解析时间 | < 500ms |
+| weather_query | 天气查询时间 | < 2s |
+| write_journal | 日志写入时间 | < 1s |
+| search_l1 | L1索引搜索 | < 10ms |
+| search_l2 | L2元数据搜索 | < 50ms |
+| search_l3 | L3全文搜索 | < 100ms |
+| total | 端到端总时间 | < 5s |
+
+## 报告模板
+
+测试报告应包含以下部分：
+
+```markdown
+# E2E 测试报告
+
+## 摘要
+- 测试时间: {timestamp}
+- 总用例数: {N}
+- 通过: {N} ✅
+- 失败: {N} ❌
+- 平均耗时: {X}s
+
+## Phase 1: 核心工作流
+| 用例 | 名称 | 状态 | 总耗时 | 备注 |
+|------|------|------|--------|------|
+| E2E-01 | ... | ✅ | 1.2s | - |
+
+## 性能对比
+| 指标 | SLA | 实际平均 | 达标率 |
+|------|-----|---------|--------|
+| parse | <500ms | 320ms | 100% |
+
+## 失败详情
+...
+```

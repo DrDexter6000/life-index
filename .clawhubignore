@@ -1,0 +1,85 @@
+# ============================================
+# Life Index Skill - ClawHub Ignore
+# 控制哪些文件不上传到 ClawHub 注册表
+# ============================================
+
+# ----- 敏感文件 -----
+.env
+.env.local
+.env.*
+secrets.yaml
+secrets.json
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ----- Python 编译缓存 -----
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# ----- 本地开发文件 -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ----- 测试文件 -----
+tests/
+test/
+*.test.py
+*_test.py
+
+# ----- 临时文件 -----
+tmp/
+temp/
+*.tmp
+*.log
+.cowork-temp/
+
+# ----- 运行时生成的数据（用户目录）-----
+# 这些数据存储在 ~/Documents/Life-Index/，不是 Skill 的一部分
+Journals/
+by-topic/
+attachments/
+*.db
+*.sqlite
+*.sqlite3
+vector_store/
+fts_index/
+
+# ----- 开发/维护专用工具（不发布）-----
+# 这些工具仅用于开发和数据维护，不随 Skill 发布
+tools/validate_data.py
+tools/rebuild_indices.py
+tools/check_metadata.py
+tools/migrate_legacy_logs.py
+tools/setup_yearly_abstract_task.ps1
+tools/update_yearly_abstract.bat
+tools/generate_yearly_abstract.py  # 已合并到 generate_abstract.py
+
+# ----- 归档文档 -----
+docs/archive/
+
+# ----- 文档（GitHub 已有，Skill 不需要重复）-----
+docs/
+CHANGELOG.md
+OPENCLAW_MIGRATION_PLAN.md
+
+# ----- 模型缓存（运行时下载）-----
+.cache/
+models/
+
+# ----- 其他 -----
+*.min.js
+*.min.css
+*.map
