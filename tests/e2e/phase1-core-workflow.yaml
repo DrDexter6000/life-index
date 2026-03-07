@@ -1,0 +1,145 @@
+# Life Index E2E 测试 - Phase 1: 核心工作流覆盖
+# 执行方式: Agent 读取本文件，按 test_cases 顺序逐一执行
+
+test_suite:
+  name: "Phase 1 - 核心工作流覆盖"
+  version: "1.0"
+  executor: "Agent"
+  cleanup_after_test: true  # 测试后删除生成的日志
+
+performance_metrics:
+  - step: "parse"           # 语义解析时间
+    description: "自然语言解析与元数据提取"
+  - step: "weather_query"   # 天气查询时间（如有）
+    description: "调用 query_weather.py"
+  - step: "write_journal"   # 日志写入时间
+    description: "调用 write_journal.py"
+  - step: "total"           # 总时间
+    description: "端到端总耗时"
+
+test_cases:
+  - id: "E2E-01"
+    name: "极速记录模式"
+    priority: "P1"
+    description: "用户仅提供 content，不提供 location/weather，验证允许元数据缺失"
+    input:
+      user_prompt: "记日志：今天测试极速记录模式，不关注地点和天气"
+      extract:
+        title: "测试极速记录"
+        content: "今天测试极速记录模式，不关注地点和天气"
+        topic: "test"
+    expected:
+      success: true
+      journal_created: true
+      location: null
+      weather: null
+      topic: "test"
+    performance_sla:
+      parse: "< 500ms"
+      write_journal: "< 1s"
+      total: "< 2s"
+
+  - id: "E2E-02"
+    name: "补全模式"
+    priority: "P1"
+    description: "先记录日志（缺失 location/weather），后使用 edit_journal.py 补充"
+    steps:
+      - step: 1
+        name: "初始记录"
+        action: "write_journal"
+        data:
+          date: "2026-03-06"
+          title: "测试补全模式"
+          content: "初始记录，待补充地点和天气"
+          topic: "test"
+        expected:
+          success: true
+          location: null
+          weather: null
+      - step: 2
+        name: "补充元数据"
+        action: "edit_journal"
+        use_last_created: true
+        operations:
+          - set_location: "Beijing, China"
+          - set_weather: "晴天"
+        expected:
+          success: true
+          final_location: "Beijing, China"
+          final_weather: "晴天"
+    performance_sla:
+      step1_write: "< 1s"
+      step2_edit: "< 1s"
+      total: "< 3s"
+
+  - id: "E2E-03"
+    name: "同一天多条日志"
+    priority: "P1"
+    description: "同一天记录多条日志，验证序列号递增（_001 → _002 → _003）"
+    steps:
+      - step: 1
+        name: "第一条日志"
+        action: "write_journal"
+        data:
+          date: "2026-03-06"
+          title: "第一条测试日志"
+          content: "这是今天的第一条日志"
+          topic: "test"
+      - step: 2
+        name: "第二条日志"
+        action: "write_journal"
+        data:
+          date: "2026-03-06"
+          title: "第二条测试日志"
+          content: "这是今天的第二条日志"
+          topic: "test"
+      - step: 3
+        name: "第三条日志"
+        action: "write_journal"
+        data:
+          date: "2026-03-06"
+          title: "第三条测试日志"
+          content: "这是今天的第三条日志"
+          topic: "test"
+    expected:
+      step1_file: "life-index_2026-03-06_001.md"
+      step2_file: "life-index_2026-03-06_002.md"
+      step3_file: "life-index_2026-03-06_003.md"
+    performance_sla:
+      each_write: "< 1s"
+      total: "< 5s"
+
+  - id: "E2E-04"
+    name: "附件重名处理"
+    priority: "P1"
+    description: "同一附件多次记录，验证自动重命名（_001, _002）"
+    prerequisite: "准备测试附件文件"
+    steps:
+      - step: 1
+        name: "第一次使用附件"
+        action: "write_journal"
+        data:
+          date: "2026-03-06"
+          title: "附件测试一"
+          content: "第一次使用相同附件"
+          topic: "test"
+          attachments:
+            - source_path: "C:/Users/17865/Downloads/full_circle_sketch.png"
+              description: "测试附件"
+      - step: 2
+        name: "第二次使用相同附件"
+        action: "write_journal"
+        data:
+          date: "2026-03-06"
+          title: "附件测试二"
+          content: "第二次使用相同附件"
+          topic: "test"
+          attachments:
+            - source_path: "C:/Users/17865/Downloads/full_circle_sketch.png"
+              description: "测试附件"
+    expected:
+      step1_attachment: "full_circle_sketch.png"
+      step2_attachment: "full_circle_sketch_001.png"  # 自动重命名
+    performance_sla:
+      each_write: "< 2s"  # 包含附件复制
+      total: "< 5s"

@@ -1,0 +1,104 @@
+# Life Index E2E 测试 - Phase 2: 搜索检索覆盖
+
+test_suite:
+  name: "Phase 2 - 搜索检索覆盖"
+  version: "1.0"
+  executor: "Agent"
+  cleanup_after_test: false  # 搜索测试不生成新数据，无需清理
+
+performance_metrics:
+  - step: "parse_query"      # 查询解析时间
+    description: "解析搜索意图和参数"
+  - step: "search_l1"        # L1 索引层搜索
+    description: "主题/项目/标签索引搜索"
+  - step: "search_l2"        # L2 元数据搜索
+    description: "元数据过滤"
+  - step: "search_l3"        # L3 全文搜索
+    description: "全文内容扫描"
+  - step: "total"
+    description: "端到端总耗时"
+
+test_cases:
+  - id: "E2E-05"
+    name: "L1 索引搜索 - 按主题"
+    priority: "P2"
+    description: "使用主题索引快速检索，验证 L1 层搜索"
+    input:
+      user_prompt: "帮我找 work 主题的日志"
+      query_params:
+        topic: "work"
+    expected:
+      success: true
+      results_count: ">= 1"
+      contains_titles:
+        - "回归 LobsterAI"
+    performance_sla:
+      search_l1: "< 10ms"
+      total: "< 500ms"
+
+  - id: "E2E-06"
+    name: "L2 元数据搜索 - 复合条件"
+    priority: "P2"
+    description: "按标签+日期范围复合查询，验证 L2 层过滤"
+    input:
+      user_prompt: "查找3月份关于开发经验的日志"
+      query_params:
+        tags: ["开发经验"]
+        date_from: "2026-03-01"
+        date_to: "2026-03-31"
+    expected:
+      success: true
+      results_count: ">= 1"
+      all_results_match_tags: ["开发经验"]
+    performance_sla:
+      search_l2: "< 50ms"
+      total: "< 1s"
+
+  - id: "E2E-07"
+    name: "L3 全文搜索 - 关键词匹配"
+    priority: "P2"
+    description: "全文搜索关键词，验证 L3 层内容扫描"
+    input:
+      user_prompt: "搜索提到 LobsterAI 的日志"
+      query_params:
+        keywords: "LobsterAI"
+        level: 3
+    expected:
+      success: true
+      results_count: ">= 1"
+      highlights_contain: "LobsterAI"
+    performance_sla:
+      search_l3: "< 100ms"
+      total: "< 1s"
+
+  - id: "E2E-08"
+    name: "搜索结果限制"
+    priority: "P2"
+    description: "验证 --limit 参数正确限制返回结果数量"
+    input:
+      query_params:
+        topic: "work"
+        limit: 1
+    expected:
+      success: true
+      results_count: "<= 1"
+    performance_sla:
+      total: "< 500ms"
+
+  - id: "E2E-09"
+    name: "复合搜索 - 多条件组合"
+    priority: "P2"
+    description: "项目+主题+关键词+日期范围组合查询"
+    input:
+      user_prompt: "查找 Life-Index 项目 work 主题关于 bug 的3月份日志"
+      query_params:
+        project: "Life-Index"
+        topic: "work"
+        keywords: "bug"
+        date_from: "2026-03-01"
+        date_to: "2026-03-31"
+    expected:
+      success: true
+      results_count: ">= 1"
+    performance_sla:
+      total: "< 1s"

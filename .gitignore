@@ -1,0 +1,72 @@
+# ============================================
+# Life Index - Git Ignore
+# ============================================
+
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+ENV/
+
+# ----- IDE -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ----- OS -----
+.DS_Store
+Thumbs.db
+
+# ----- 临时文件 -----
+.cowork-temp/
+tmp/
+temp/
+*.tmp
+*.log
+nul
+
+# ----- 测试输出 -----
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ----- 运行时数据（用户本地生成）-----
+# 注意：这些数据在 ~/Documents/Life-Index/，不在项目目录
+# 但以防万一，也加上
+Journals/
+by-topic/
+attachments/
+*.db
+*.sqlite
+*.sqlite3
+vector_store/
+fts_index/
+
+# ----- 开发专用工具（不上传 GitHub）-----
+# 这些工具仅开发使用，发布时排除
+tools/validate_data.py
+tools/rebuild_indices.py
+tools/check_metadata.py
+
+# ----- 归档文档 -----
+docs/archive/
+
+# ----- 敏感文件 -----
+.env
+.env.local
+.env.*
+secrets.yaml
+secrets.json
+credentials.json
+*.pem
+*.key
