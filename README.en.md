@@ -75,12 +75,6 @@ Transform scattered ideas, reading notes, conversation snippets, and fleeting em
 ### 【Index Engine】
 Retrieve past moments instantly through multi-dimensional tags (**time/topic/people/emotion**) + full-text search (FTS5) + semantic search (RAG). Verify whether your intuition back then was correct, analyze the specific decisions that led to a startup's failure, or answer that occasional question: **"What exactly was I thinking ten years ago?"**
 
-**Technical Implementation:**
-- **Full-Text Search (FTS5)**: High-performance keyword retrieval based on SQLite FTS5, supporting BM25 relevance ranking
-- **Semantic Search (RAG)**: Vector embedding-based semantic similarity search, supporting "find entries with similar moods"
-- **Three-Layer Retrieval Architecture**: L1 Index Layer → L2 Metadata Layer → L3 Content Layer, balancing speed and precision
-- **Hybrid Ranking**: Supports weighted hybrid ranking of FTS + semantic search (enabled via `--semantic` parameter)
-
 **Difference from PKM:** PKM indexes to find "related knowledge"; Life Index indexes to find "myself at that moment."
 
 **Difference from Agent Memory:** Agent memory retrieves to "pick up where we left off"; Life Index retrieves to "reunite with my past self."
