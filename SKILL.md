@@ -1,25 +1,16 @@
 ---
 name: life-index
-description: "个人日志管理系统 - 记录、检索、回顾生活点滴。当用户需要记录日记、搜索历史日志、查看月度/年度摘要时使用。"
+description: "个人日志管理系统。当用户说'/life-index'、'记日志'、'写日记'、'write journal'、'daily log'时立即使用。自动记录日期、天气、心情标签，支持搜索历史日志和生成月度摘要。"
 license: Apache-2.0
+user-invocable: true
+disable-model-invocation: false
 triggers:
-  command: "/life-index"
-  keywords:
-    - "记日志"
-    - "记录一下"
-    - "写日记"
-    - "记下来"
-    - "写一下今天"
-    - "查找日志"
-    - "搜索记录"
-    - "找一下"
-    - "修改日志"
-    - "补充日记"
-    - "更新记录"
-    - "生成摘要"
-    - "月度总结"
-    - "年度总结"
-    - "查看总结"
+  - "/life-index"
+  - "记日志"
+  - "写日记"
+  - "记录一下"
+  - "write journal"
+  - "daily log"
 ---
 
 # Triggers
