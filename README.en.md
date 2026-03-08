@@ -19,6 +19,10 @@
   <img src="https://img.shields.io/badge/Interaction-Natural_Language-ffe66d" alt="Natural Language">
 </p>
 
+<p align="center">
+  <img src="./assets/life_index_readme.png" alt="Your Digital Legacy" width="600">
+</p>
+
 > **Not a knowledge base. Not an Agent memory cache. A personal chronicle.**  
 > **Optimized not for knowledge retention, not for AI performance, but for retrieving life's fragments.**
 
@@ -354,4 +358,5 @@ Apache License 2.0 — Your life data belongs to you. So does this code.
 
 > *"I both wish our family could stay forever in that time when she was 2 — and hope she grows up to experience an even more beautiful world. All in all, little bump, Dad misses you. Toto, this project was built by Dad for you."*
 > 
+
 > *—— From the first Life Index entry, March 4, 2026, Lagos. Not a record of her growth. A record of my love for her.*
