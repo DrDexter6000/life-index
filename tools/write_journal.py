@@ -379,10 +379,16 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
 
         if proc.returncode == 0:
             output = json.loads(proc.stdout)
-            # 提取天气描述
+            # 提取天气描述（处理嵌套结构）
             if isinstance(output, dict):
-                if "weather" in output:
-                    return output["weather"]
+                weather_data = output.get("weather", {})
+                if isinstance(weather_data, dict):
+                    # 优先使用详细描述，回退到简化描述
+                    description = weather_data.get("description", "")
+                    simple = weather_data.get("simple", "")
+                    return description or simple or ""
+                elif isinstance(weather_data, str):
+                    return weather_data
                 elif "description" in output:
                     return output["description"]
         return ""
@@ -393,45 +399,55 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
 def normalize_location(location: str) -> str:
     """
     规范化地点名称，处理城市级别输入
-    例如："重庆" -> "重庆，中国"
+    例如："重庆" -> "Chongqing, China"（返回英文格式以便天气查询）
     """
     if not location:
-        return "重庆，中国"
+        return "Chongqing, China"
 
     location = location.strip()
 
-    # 如果已经包含国家信息，直接返回
-    if "，" in location or "," in location:
-        return location
-
-    # 常见城市默认国家映射
-    city_to_country = {
-        "重庆": "中国",
-        "北京": "中国",
-        "上海": "中国",
-        "广州": "中国",
-        "深圳": "中国",
-        "成都": "中国",
-        "杭州": "中国",
-        "武汉": "中国",
-        "西安": "中国",
-        "南京": "中国",
-        "lagos": "Nigeria",
-        "lagos": "Nigeria",
-        "beijing": "China",
-        "shanghai": "China",
-        "guangzhou": "China",
-        "shenzhen": "China",
+    # 中文城市名到英文的映射（用于天气查询）
+    chinese_to_english = {
+        "重庆": "Chongqing, China",
+        "北京": "Beijing, China",
+        "上海": "Shanghai, China",
+        "广州": "Guangzhou, China",
+        "深圳": "Shenzhen, China",
+        "成都": "Chengdu, China",
+        "杭州": "Hangzhou, China",
+        "武汉": "Wuhan, China",
+        "西安": "Xi'an, China",
+        "南京": "Nanjing, China",
+        "重庆，中国": "Chongqing, China",
+        "北京，中国": "Beijing, China",
+        "上海，中国": "Shanghai, China",
+        "广州，中国": "Guangzhou, China",
+        "深圳，中国": "Shenzhen, China",
+        "成都，中国": "Chengdu, China",
+        "杭州，中国": "Hangzhou, China",
+        "武汉，中国": "Wuhan, China",
+        "西安，中国": "Xi'an, China",
+        "南京，中国": "Nanjing, China",
     }
 
-    location_lower = location.lower()
-    if location_lower in city_to_country:
-        country = city_to_country[location_lower]
-        return f"{location}，{country}"
+    # 如果已经是中文城市名，直接返回英文格式
+    if location in chinese_to_english:
+        return chinese_to_english[location]
 
-    # 中文城市名（不带逗号）默认添加中国
-    if all('\u4e00' <= char <= '\u9fff' for char in location):
-        return f"{location}，中国"
+    # 如果包含逗号，检查是否是中文格式
+    if "，" in location:
+        city = location.split("，")[0].strip()
+        if city in chinese_to_english:
+            return chinese_to_english[city]
+        return location.replace("，", ", ")
+
+    # 如果已经是英文格式（包含逗号），直接返回
+    if "," in location:
+        return location
+
+    # 其他中文城市名（不在映射表中），默认添加 China
+    if any('\u4e00' <= char <= '\u9fff' for char in location):
+        return f"{location}, China"
 
     return location
 
@@ -481,11 +497,13 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         # 处理地点：如果未提供，使用默认值
         location = data.get("location", "").strip()
         if not location:
-            location = "重庆，中国"
+            location = "重庆，中国"  # 显示用中文
             result["location_used"] = location
+            # 天气查询用英文格式
+            location_for_weather = normalize_location("")
         else:
             # 规范化地点（处理城市级别输入）
-            location = normalize_location(location)
+            location_for_weather = normalize_location(location)
             result["location_used"] = location
 
         data["location"] = location
@@ -493,8 +511,8 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         # 处理天气：如果未提供，自动查询
         weather = data.get("weather", "").strip()
         if not weather:
-            # 尝试获取天气
-            queried_weather = query_weather_for_location(location, date_str)
+            # 尝试获取天气（使用英文格式的地点）
+            queried_weather = query_weather_for_location(location_for_weather, date_str)
             if queried_weather:
                 weather = queried_weather
                 result["weather_used"] = weather
