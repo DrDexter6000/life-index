@@ -19,6 +19,10 @@
   <img src="https://img.shields.io/badge/交互-自然语言-ffe66d" alt="自然语言">
 </p>
 
+<p align="center">
+  <img src="./assets/life_index_readme.png" alt="Your Digital Legacy" width="600">
+</p>
+
 > **不是知识库，不是 Agent 的记忆缓存，是人生档案。**  
 > **不为知识沉淀，不为 AI 性能优化，只为检索人生碎片。**
 
