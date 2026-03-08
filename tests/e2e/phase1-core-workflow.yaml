@@ -19,9 +19,9 @@ performance_metrics:
 
 test_cases:
   - id: "E2E-01"
-    name: "极速记录模式"
+    name: "极速记录模式 - 自动填充天气"
     priority: "P1"
-    description: "用户仅提供 content，不提供 location/weather，验证允许元数据缺失"
+    description: "用户仅提供 content，不提供 location/weather，验证工具自动填充默认值和查询天气"
     input:
       user_prompt: "记日志：今天测试极速记录模式，不关注地点和天气"
       extract:
@@ -31,13 +31,18 @@ test_cases:
     expected:
       success: true
       journal_created: true
-      location: null
-      weather: null
+      location: "重庆，中国"           # 自动填充默认值
+      location_auto_filled: true       # 标记为自动填充
+      weather: "(非空字符串)"          # 自动查询的天气
+      weather_auto_filled: true        # 标记为自动填充
       topic: "test"
+      needs_confirmation: true         # 需要用户确认
+      confirmation_message: "(包含地点和天气信息)"
     performance_sla:
       parse: "< 500ms"
+      weather_query: "< 3s"            # 天气查询时间
       write_journal: "< 1s"
-      total: "< 2s"
+      total: "< 5s"
 
   - id: "E2E-02"
     name: "补全模式"
@@ -143,3 +148,95 @@ test_cases:
     performance_sla:
       each_write: "< 2s"  # 包含附件复制
       total: "< 5s"
+
+  - id: "E2E-05"
+    name: "地点自动规范化"
+    priority: "P1"
+    description: "用户只提供城市名（如'北京'），验证工具自动推断国家并查询天气"
+    input:
+      user_prompt: "记日志：今天在北京开会，讨论项目进展"
+      extract:
+        title: "北京项目会议"
+        content: "今天在北京开会，讨论项目进展"
+        location: "北京"                    # 用户只提供城市名
+        topic: "work"
+    expected:
+      success: true
+      journal_created: true
+      location: "北京，中国"               # 自动规范化为"城市，国家"
+      location_auto_filled: true           # 标记为自动填充
+      weather: "(非空字符串)"              # 自动查询的天气
+      weather_auto_filled: true
+      needs_confirmation: true
+    performance_sla:
+      parse: "< 500ms"
+      weather_query: "< 3s"
+      write_journal: "< 1s"
+      total: "< 5s"
+
+  - id: "E2E-06"
+    name: "天气确认流程 - 用户修改地点"
+    priority: "P1"
+    description: "写入后用户确认地点/天气，只修改地点，验证自动重新查询天气"
+    steps:
+      - step: 1
+        name: "初始记录（默认地点）"
+        action: "write_journal"
+        data:
+          date: "2026-03-06"
+          title: "测试确认流程"
+          content: "初始记录，使用默认地点"
+          topic: "test"
+        expected:
+          success: true
+          location: "重庆，中国"             # 默认地点
+          weather: "(非空字符串)"            # 自动查询的天气
+          needs_confirmation: true           # 需要确认
+      - step: 2
+        name: "用户修改地点"
+        action: "edit_journal"
+        use_last_created: true
+        operations:
+          - set_location: "上海，中国"       # 用户修改为上海
+        expected:
+          success: true
+          final_location: "上海，中国"
+          final_weather: "(重新查询的天气)"  # 基于新地点重新查询
+    performance_sla:
+      step1_write: "< 5s"                  # 包含天气查询
+      step2_edit: "< 5s"                  # 包含重新查询天气
+      total: "< 10s"
+
+  - id: "E2E-07"
+    name: "天气确认流程 - 用户同时修改地点和天气"
+    priority: "P1"
+    description: "写入后用户同时提供地点和天气，验证直接使用用户值"
+    steps:
+      - step: 1
+        name: "初始记录（默认地点）"
+        action: "write_journal"
+        data:
+          date: "2026-03-06"
+          title: "测试确认流程2"
+          content: "初始记录，使用默认地点"
+          topic: "test"
+        expected:
+          success: true
+          location: "重庆，中国"
+          weather: "(自动查询)"
+          needs_confirmation: true
+      - step: 2
+        name: "用户同时修改地点和天气"
+        action: "edit_journal"
+        use_last_created: true
+        operations:
+          - set_location: "深圳，中国"
+          - set_weather: "暴雨，25°C"        # 用户明确提供天气
+        expected:
+          success: true
+          final_location: "深圳，中国"
+          final_weather: "暴雨，25°C"        # 使用用户提供的值
+    performance_sla:
+      step1_write: "< 5s"
+      step2_edit: "< 1s"                   # 不查询天气，直接更新
+      total: "< 7s"
