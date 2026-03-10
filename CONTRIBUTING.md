@@ -155,9 +155,9 @@ E2E 测试由 Agent 执行，读取 `tests/e2e/*.yaml` 测试用例。
 
 ## 获取帮助
 
-- **问题讨论**: [GitHub Discussions](https://github.com/anthropics/life-index/discussions)
-- **Bug 报告**: [GitHub Issues](https://github.com/anthropics/life-index/issues)
-- **功能建议**: [GitHub Issues](https://github.com/anthropics/life-index/issues/new?template=feature_request.md)
+- **问题讨论**: [GitHub Discussions](https://github.com/DrDexter6000/Life-Index/discussions)
+- **Bug 报告**: [GitHub Issues](https://github.com/DrDexter6000/Life-Index/issues)
+- **功能建议**: [GitHub Issues](https://github.com/DrDexter6000/Life-Index/issues/new?template=feature_request.md)
 
 ## 许可证
 
