@@ -58,8 +58,8 @@ tools/validate_data.py
 tools/rebuild_indices.py
 tools/check_metadata.py
 
-# ----- 归档文档 -----
-docs/archive/
+# ----- 开发阶段文档 -----
+docs/.dev-archive/
 
 # ----- 敏感文件 -----
 .env

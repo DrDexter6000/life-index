@@ -89,7 +89,7 @@
 | `people` | ❌ | 相关人物数组 |
 | `project` | ❌ | 关联项目 |
 | `tags` | ❌ | 标签数组 |
-| `abstract` | ❌ | 100字内摘要（可自动生成） |
+| `abstract` | ❌ | 100字内摘要（**Agent生成**，从content提取关键信息） |
 | `attachments` | ❌ | 附件列表，每项包含 source_path 和 description |
 
 **调用示例**:

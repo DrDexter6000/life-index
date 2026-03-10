@@ -12,8 +12,9 @@
 |------|------|------|
 | [HANDBOOK.md](./HANDBOOK.md) | 项目全貌：愿景、原则、架构、术语 | 人类（开发者、用户） |
 | [AGENT.md](./AGENT.md) | Agent 指令：工作流、工具接口、示例 | AI Agent（直接执行） |
+| [API.md](./API.md) | 工具 API 接口文档 | 开发者 |
 | [CHANGELOG.md](./CHANGELOG.md) | 决策变更历史 | 所有协作者 |
-| [Development-Roadmap-v1.md](./Development-Roadmap-v1.md) | 开发阶段与里程碑 | 项目经理 |
+| [adr/](./adr/) | 架构决策记录 | 设计决策背景 |
 
 ---
 
@@ -49,9 +50,7 @@
 | 项目版本/阶段 | **本文件** | 其他文档引用，不重复声明 |
 | 架构规范/工具列表 | [HANDBOOK.md](./HANDBOOK.md) | 设计原则、目录结构、接口定义 |
 | 工作流/CLI示例 | [AGENT.md](./AGENT.md) | Agent 直接执行的指令 |
-| 当前任务/下一步 | [dev-progress.md](./dev-progress.md) | 动态更新，记录进行中任务 |
 | 决策历史 | [CHANGELOG.md](./CHANGELOG.md) | 变更记录，不重复技术细节 |
-| 里程碑规划 | [Development-Roadmap-v1.md](./Development-Roadmap-v1.md) | 阶段目标，不重复当前状态 |
 
 ---
 
