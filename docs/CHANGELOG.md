@@ -1,6 +1,79 @@
 # Life Index 变更日志
 
 > **本文档职责**: 决策变更历史 SSOT，记录"何时做了什么决定"
+
+---
+
+## [2026-03-09] 报告文件命名规范化
+
+**决策**: 统一月报/年报文件命名，与 SCHEDULE.md 规范保持一致。
+
+**核心实现**:
+- `generate_abstract.py`: 月度报告文件名从 `monthly_abstract.md` 改为 `monthly_report_YYYY-MM.md`
+- `generate_abstract.py`: 年度报告文件名从 `yearly_abstract.md` 改为 `yearly_report_YYYY.md`
+
+**文件命名对照**:
+| 类型 | 旧命名 | 新命名 |
+|------|--------|--------|
+| 月报 | `monthly_abstract.md` | `monthly_report_2026-03.md` |
+| 年报 | `yearly_abstract.md` | `yearly_report_2026.md` |
+
+**说明**:
+- 日报、周报：不生成文件，仅推送消息（符合 SCHEDULE.md 设计）
+- 月报、年报：生成文件并推送消息
+
+**SSOT 同步**:
+- 更新 [generate_abstract.py](../tools/generate_abstract.py) 修改文件命名逻辑
+- 更新 [SKILL.md](../SKILL.md) 更新示例中的文件路径
+
+---
+
+## [2026-03-09] 附件自动检测与元数据格式修复
+
+**决策**:
+1. 实现从日志内容中自动检测本地文件路径并作为附件处理
+2. 修复元数据格式与历史日志保持一致（添加缺失的 `links` 字段）
+
+**核心实现**:
+- `write_journal.py`: 新增 `extract_file_paths_from_content()` 函数，自动提取 Windows 绝对路径和 UNC 路径
+- `write_journal.py`: 新增 `looks_like_file_path()` 辅助函数，通过文件扩展名验证路径有效性
+- `write_journal.py`: 修改 `process_attachments()` 支持自动检测附件和显式附件的合并去重
+- `write_journal.py`: 修改 `format_frontmatter()` 确保 `links: []` 字段始终输出（与历史日志格式一致）
+
+**用户体验变更**:
+- **之前**: 用户必须在 `attachments` 参数中显式提供文件路径
+- **之后**: 用户只需在正文中提及文件路径（如 `C:\Users\...\file.png`），工具自动检测并处理
+
+**Agent 行为变更**:
+- Agent 无需手动提取内容中的文件路径
+- Agent 无需重复传递自动检测到的附件
+- 用户显式提及的附件仍可通过 `attachments` 参数传递
+
+**SSOT 同步**:
+- 更新 [SKILL.md](../SKILL.md) 添加 Attachment Auto-Detection 章节
+- 更新 [write_journal.py](../tools/write_journal.py) 实现自动检测逻辑
+
+---
+
+## [2026-03-09] 修复内容保留与元数据格式问题
+
+**决策**: 修复实装后发现的两类问题：正文内容被"优化"改造、元数据格式与历史日志不一致。
+
+**问题分析**:
+1. **正文内容问题**: Agent 在调用 write-journal 前对用户输入进行了预处理（添加序号、修改标题层级等），导致原始格式丢失
+2. **元数据格式问题**: `date` 字段被添加了引号，与历史日志格式（无引号）不一致
+
+**修复内容**:
+- `write_journal.py`: 移除 `date` 字段的引号，保持 `date: 2026-03-09T20:12:46` 格式
+- `SKILL.md`: 新增 "Content Preservation Rule" 章节，明确规定 Agent 必须 100% 保留用户原始输入格式
+
+**SSOT 同步**:
+- 更新 [SKILL.md](../SKILL.md) 添加 Content Preservation Rule
+- 更新 [write_journal.py](../tools/write_journal.py) 修复 date 字段格式
+
+---
+
+> **本文档职责**: 决策变更历史 SSOT，记录"何时做了什么决定"
 > **版本/状态**: 详见 [README.md](./README.md)
 >
 > **允许写入**: 决策摘要、变更原因、影响范围、关联引用
