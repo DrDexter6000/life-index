@@ -20,23 +20,114 @@ import os
 
 # 导入配置
 sys.path.insert(0, str(Path(__file__).parent))
-from config import JOURNALS_DIR, USER_DATA_DIR
+from config import JOURNALS_DIR, USER_DATA_DIR, get_model_cache_dir, EMBEDDING_MODEL as MODEL_CONFIG
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
 VEC_INDEX_PATH = INDEX_DIR / "vectors_simple.pkl"
 META_PATH = INDEX_DIR / "vectors_simple_meta.json"
-CACHE_DIR = USER_DATA_DIR / ".cache" / "models"
+CACHE_DIR = get_model_cache_dir()  # 跨平台缓存目录
 
-# 嵌入模型配置
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-EMBEDDING_DIM = 384  # MiniLM-L6-v2 输出维度
+# 嵌入模型配置（从 config.py 统一读取）
+EMBEDDING_MODEL_NAME = MODEL_CONFIG["name"]
+EMBEDDING_DIM = MODEL_CONFIG["dimension"]
+EMBEDDING_MODEL_VERSION = MODEL_CONFIG["version"]
+
+
+def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
+    """
+    计算文件哈希值
+
+    Args:
+        file_path: 文件路径
+        algorithm: 哈希算法（默认 sha256）
+
+    Returns:
+        十六进制哈希字符串
+    """
+    import hashlib
+    hash_obj = hashlib.sha256()
+    try:
+        with open(file_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                hash_obj.update(chunk)
+        return hash_obj.hexdigest()
+    except Exception as e:
+        print(f"Warning: Failed to compute hash for {file_path}: {e}")
+        return ""
+
+
+def verify_model_integrity(model_name: str, cache_dir: Path) -> Tuple[bool, str]:
+    """
+    验证模型完整性（如果存在元数据记录）
+
+    Args:
+        model_name: 模型名称
+        cache_dir: 模型缓存目录
+
+    Returns:
+        (是否验证通过，消息)
+    """
+    # 模型元数据文件路径
+    meta_file = cache_dir / model_name.replace("/", "_") / "model_meta.json"
+
+    if not meta_file.exists():
+        # 首次使用，记录元数据
+        return True, "首次使用，将记录模型元数据"
+
+    try:
+        meta = json.loads(meta_file.read_text(encoding='utf-8'))
+        expected_hash = meta.get("config_hash", "")
+        recorded_version = meta.get("version", "")
+
+        if expected_hash and expected_hash != MODEL_CONFIG.get("config_hash", ""):
+            return False, f"模型配置哈希不匹配！预期：{MODEL_CONFIG.get('config_hash', '')[:16]}..., 实际：{expected_hash[:16]}..."
+
+        if recorded_version != MODEL_CONFIG["version"]:
+            return False, f"模型版本不一致！已记录：{recorded_version}, 当前配置：{MODEL_CONFIG['version']}"
+
+        return True, "模型完整性验证通过"
+
+    except Exception as e:
+        return False, f"验证模型完整性失败：{e}"
+
+
+def record_model_metadata(model_name: str, cache_dir: Path):
+    """
+    记录模型元数据（首次使用时）
+
+    Args:
+        model_name: 模型名称
+        cache_dir: 模型缓存目录
+    """
+    try:
+        model_dir = cache_dir / model_name.replace("/", "_")
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+        meta = {
+            "name": model_name,
+            "version": MODEL_CONFIG["version"],
+            "dimension": MODEL_CONFIG["dimension"],
+            "config_hash": MODEL_CONFIG.get("config_hash", ""),
+            "recorded_at": datetime.now().isoformat(),
+            "platform": sys.platform
+        }
+
+        meta_file = model_dir / "model_meta.json"
+        with open(meta_file, 'w', encoding='utf-8') as f:
+            json.dump(meta, f, indent=2, ensure_ascii=False)
+
+        print(f"Model metadata recorded: {meta_file}")
+
+    except Exception as e:
+        print(f"Warning: Failed to record model metadata: {e}")
 
 
 class EmbeddingModel:
     """嵌入模型管理器（单例模式）"""
     _instance = None
     _model = None
+    _model_verified = False  # 模型是否已通过完整性验证
 
     def __new__(cls):
         if cls._instance is None:
@@ -46,19 +137,33 @@ class EmbeddingModel:
     def load(self) -> bool:
         """加载嵌入模型，返回是否成功"""
         if self._model is not None:
-            return True
+            return self._model_verified
 
         try:
             from sentence_transformers import SentenceTransformer
 
-            print(f"Loading embedding model: {EMBEDDING_MODEL}...")
+            print(f"Loading embedding model: {EMBEDDING_MODEL_NAME} (v{EMBEDDING_MODEL_VERSION})...")
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+            # 步骤 1: 验证模型完整性
+            is_valid, verify_msg = verify_model_integrity(EMBEDDING_MODEL_NAME, CACHE_DIR)
+            if not is_valid:
+                print(f"Warning: Model integrity check failed: {verify_msg}")
+                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
+
+            # 步骤 2: 加载模型
             self._model = SentenceTransformer(
-                EMBEDDING_MODEL,
+                EMBEDDING_MODEL_NAME,
                 cache_folder=str(CACHE_DIR)
             )
-            print("Model loaded successfully.")
+            print(f"Model loaded successfully. (dimension={EMBEDDING_DIM})")
+
+            # 步骤 3: 记录模型元数据（如果是首次使用）
+            meta_file = CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
+            if not meta_file.exists():
+                record_model_metadata(EMBEDDING_MODEL_NAME, CACHE_DIR)
+
+            self._model_verified = True
             return True
 
         except ImportError:
@@ -84,6 +189,22 @@ class EmbeddingModel:
 def get_model() -> EmbeddingModel:
     """获取嵌入模型实例"""
     return EmbeddingModel()
+
+
+def get_model_info() -> Dict[str, Any]:
+    """
+    获取模型信息（用于诊断和日志记录）
+
+    Returns:
+        模型信息字典
+    """
+    return {
+        "name": EMBEDDING_MODEL_NAME,
+        "version": EMBEDDING_MODEL_VERSION,
+        "dimension": EMBEDDING_DIM,
+        "cache_dir": str(CACHE_DIR),
+        "config_hash": MODEL_CONFIG.get("config_hash", "")[:16] + "..." if MODEL_CONFIG.get("config_hash") else "N/A"
+    }
 
 
 class SimpleVectorIndex:

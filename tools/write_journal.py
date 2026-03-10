@@ -26,19 +26,63 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 try:
-    from lib.config import JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR
+    from lib.config import JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR, PATH_MAPPINGS
 except ImportError:
     # 回退到项目目录（用于开发测试）
     PROJECT_ROOT = Path(__file__).parent.parent
     JOURNALS_DIR = PROJECT_ROOT / "journals"
     BY_TOPIC_DIR = PROJECT_ROOT / "by-topic"
     ATTACHMENTS_DIR = PROJECT_ROOT / "attachments"
+    PATH_MAPPINGS = {}
 
 
 def get_year_month(date_str: str) -> tuple:
     """从日期字符串提取年和月"""
     dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
     return dt.year, dt.month
+
+
+def convert_path_for_platform(source_path: str) -> str:
+    """
+    跨平台路径转换（双向）
+
+    根据配置的 PATH_MAPPINGS 将路径转换为当前平台可访问的格式。
+    支持：
+    - Windows → Linux/macOS (如 C:\\Users\\xxx → /home/xxx 或 /Users/xxx)
+    - Linux/macOS → Windows (如 /home/xxx → C:\\Users\\xxx)
+    - 任意平台间的映射
+
+    Args:
+        source_path: 原始路径
+
+    Returns:
+        转换后的路径（如果匹配映射），否则返回原路径
+    """
+    if not source_path or not PATH_MAPPINGS:
+        return source_path
+
+    # 检测当前平台
+    import platform
+    current_system = platform.system()  # 'Windows', 'Linux', 'Darwin' (macOS)
+
+    # 规范化源路径用于匹配
+    normalized_source = source_path.replace('\\', '/')
+
+    for from_prefix, to_prefix in PATH_MAPPINGS.items():
+        # 规范化映射前缀
+        normalized_from = from_prefix.replace('\\', '/')
+        normalized_to = to_prefix.replace('\\', '/')
+
+        # 检查是否匹配
+        if normalized_source.lower().startswith(normalized_from.lower()):
+            # 替换前缀
+            converted = normalized_to + normalized_source[len(normalized_from):]
+            # 根据当前平台调整路径分隔符
+            if current_system == 'Windows':
+                converted = converted.replace('/', '\\')
+            return converted
+
+    return source_path
 
 
 def generate_filename(date_str: str, sequence: int = 1) -> str:
@@ -73,7 +117,7 @@ def get_next_sequence(date_str: str) -> int:
 
 
 def format_frontmatter(data: Dict[str, Any]) -> str:
-    """格式化 YAML frontmatter - 统一使用 JSON 数组格式，保持字段顺序一致"""
+    """格式化 YAML frontmatter - 统一使用 JSON 数组格式，保持字段顺序与历史日志一致"""
     lines = ["---"]
 
     # 标题（始终带引号）
@@ -81,15 +125,15 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
     if title:
         lines.append(f'title: "{title}"')
 
-    # 日期时间（ISO格式，始终带时间）
+    # 日期时间（ISO格式，始终带时间，不带引号保持与历史格式一致）
     date_str = data.get("date", "")
     if date_str:
         if len(date_str) == 10:  # YYYY-MM-DD
             from datetime import datetime
             time_str = datetime.now().strftime("%H:%M:%S")
-            lines.append(f'date: "{date_str}T{time_str}"')
+            lines.append(f'date: {date_str}T{time_str}')
         else:
-            lines.append(f'date: "{date_str}"')
+            lines.append(f'date: {date_str}')
 
     # 地点（始终带引号）
     location = data.get("location", "")
@@ -131,7 +175,7 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
     abstract = data.get("abstract", "")
     lines.append(f'abstract: "{abstract}"')
 
-    # 链接（统一使用 JSON 数组格式，即使为空）
+    # 链接（统一使用 JSON 数组格式，即使为空）- 与历史日志格式保持一致
     links = data.get("links", [])
     if not isinstance(links, list):
         links = [links] if links else []
@@ -285,7 +329,82 @@ def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]
     return updated
 
 
-def process_attachments(attachments: List[Dict[str, str]], date_str: str, dry_run: bool = False) -> List[Dict[str, str]]:
+def extract_file_paths_from_content(content: str) -> List[str]:
+    """
+    从内容中提取本地文件路径
+
+    支持的格式：
+    - Windows 绝对路径: C:\\Users\\...\\file.txt, C:/Users/.../file.txt
+    - 网络路径: \\\\[server]\\share\\file.txt
+    - UNC 路径: //server/share/file.txt
+
+    Returns:
+        文件路径列表（去重）
+    """
+    if not content:
+        return []
+
+    paths = []
+
+    # 匹配 Windows 绝对路径 (C:\\... 或 C:/...)
+    # 使用更严格的模式：必须以盘符开头，后跟反斜杠或斜杠，然后是路径组件
+    # 路径组件不能包含非法字符 :*?"<>|
+    windows_pattern = r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[^\\/:*?"<>|\r\n\s]+'
+    for match in re.finditer(windows_pattern, content):
+        path = match.group(0)
+        # 验证是否是有效文件路径（有扩展名）
+        if looks_like_file_path(path):
+            paths.append(path)
+
+    # 匹配 UNC 路径 (\\server\\share\\... 或 //server/share/...)
+    unc_pattern = r'(?:\\\\|//)[^\\/:*?"<>|\r\n]+(?:[\\/][^\\/:*?"<>|\r\n]+)*\\/[^\\/:*?"<>|\r\n]*\.[^\\/:*?"<>|\r\n\s]+'
+    for match in re.finditer(unc_pattern, content):
+        path = match.group(0)
+        if looks_like_file_path(path):
+            paths.append(path)
+
+    # 去重并保持顺序
+    seen = set()
+    unique_paths = []
+    for p in paths:
+        normalized = os.path.normpath(p).lower()
+        if normalized not in seen:
+            seen.add(normalized)
+            unique_paths.append(p)
+
+    return unique_paths
+
+
+def looks_like_file_path(path: str) -> bool:
+    """
+    判断路径是否看起来像文件路径（有扩展名）
+    """
+    if not path:
+        return False
+
+    # 检查是否有文件扩展名
+    name = os.path.basename(path)
+    if '.' in name:
+        ext = name.split('.')[-1].lower()
+        # 常见文件扩展名
+        valid_exts = {
+            'txt', 'md', 'doc', 'docx', 'pdf', 'xls', 'xlsx', 'ppt', 'pptx',
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico',
+            'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv',
+            'mp3', 'wav', 'flac', 'aac', 'ogg',
+            'zip', 'rar', '7z', 'tar', 'gz',
+            'py', 'js', 'ts', 'html', 'css', 'json', 'xml', 'yaml', 'yml',
+            'exe', 'msi', 'dmg', 'pkg', 'deb', 'rpm',
+            'psd', 'ai', 'sketch', 'fig',
+            'db', 'sqlite', 'db3'
+        }
+        if ext in valid_exts:
+            return True
+
+    return False
+
+
+def process_attachments(attachments: List[Dict[str, str]], date_str: str, dry_run: bool = False, auto_detected_paths: List[str] = None) -> List[Dict[str, str]]:
     """
     处理附件复制
 
@@ -293,27 +412,64 @@ def process_attachments(attachments: List[Dict[str, str]], date_str: str, dry_ru
         attachments: 附件列表，每项包含 source_path 和可选的 description
         date_str: 日期字符串，用于确定附件存储路径
         dry_run: 是否为模拟运行
+        auto_detected_paths: 从内容中自动检测到的文件路径
 
     Returns:
         处理后的附件列表，包含 filename 和 description
     """
-    if not attachments:
-        return []
-
     processed = []
     year, month = get_year_month(date_str)
     att_dir = ATTACHMENTS_DIR / str(year) / f"{month:02d}"
 
-    for idx, att in enumerate(attachments):
+    # 合并显式附件和自动检测的附件
+    all_attachments = []
+
+    # 添加显式附件
+    if attachments:
+        for att in attachments:
+            if isinstance(att, dict):
+                all_attachments.append(att)
+            elif isinstance(att, str):
+                all_attachments.append({"source_path": att, "description": ""})
+
+    # 添加自动检测的附件（去重）
+    existing_paths = {os.path.normpath(a.get("source_path", "")).lower() for a in all_attachments}
+    if auto_detected_paths:
+        for path in auto_detected_paths:
+            normalized = os.path.normpath(path).lower()
+            if normalized not in existing_paths:
+                all_attachments.append({"source_path": path, "description": "", "auto_detected": True})
+                existing_paths.add(normalized)
+
+    if not all_attachments:
+        return []
+
+    for idx, att in enumerate(all_attachments):
         source_path = att.get("source_path", "")
         description = att.get("description", "")
+        auto_detected = att.get("auto_detected", False)
 
-        if not source_path or not os.path.exists(source_path):
+        if not source_path:
+            continue
+
+        # 尝试跨平台路径转换
+        converted_path = convert_path_for_platform(source_path)
+
+        # 优先使用转换后的路径，如果原路径不存在的话
+        if os.path.exists(converted_path):
+            source_path = converted_path
+        elif not os.path.exists(source_path):
             processed.append({
                 "filename": f"[未找到: {source_path}]",
                 "description": description,
-                "error": "源文件不存在"
+                "error": "源文件不存在",
+                "auto_detected": auto_detected,
+                "converted_path": converted_path if converted_path != source_path else None
             })
+            continue
+
+        # 跳过目录
+        if os.path.isdir(source_path):
             continue
 
         # 生成目标文件名（处理重名）
@@ -343,7 +499,8 @@ def process_attachments(attachments: List[Dict[str, str]], date_str: str, dry_ru
             "filename": target_name,
             "rel_path": rel_path,
             "description": description,
-            "original_name": source_name
+            "original_name": source_name,
+            "auto_detected": auto_detected
         })
 
     return processed
@@ -358,7 +515,7 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
         date_str: 日期字符串（可选，用于历史天气查询）
 
     Returns:
-        天气描述字符串，失败返回空字符串
+        天气描述字符串（包含温度），失败返回空字符串
     """
     try:
         cmd = [
@@ -383,10 +540,26 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
             if isinstance(output, dict):
                 weather_data = output.get("weather", {})
                 if isinstance(weather_data, dict):
-                    # 优先使用详细描述，回退到简化描述
+                    # 构建完整天气描述：描述 + 温度
                     description = weather_data.get("description", "")
                     simple = weather_data.get("simple", "")
-                    return description or simple or ""
+                    temp_max = weather_data.get("temperature_max")
+                    temp_min = weather_data.get("temperature_min")
+
+                    # 组装天气描述
+                    parts = []
+                    if description:
+                        parts.append(description)
+                    elif simple:
+                        parts.append(simple)
+
+                    # 添加温度信息
+                    if temp_max is not None and temp_min is not None:
+                        parts.append(f"{temp_max}°C/{temp_min}°C")
+                    elif temp_max is not None:
+                        parts.append(f"{temp_max}°C")
+
+                    return " ".join(parts) if parts else ""
                 elif isinstance(weather_data, str):
                     return weather_data
                 elif "description" in output:
@@ -534,9 +707,13 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         filename = generate_filename(date_str, sequence)
         journal_path = month_dir / filename
 
-        # 处理附件
+        # 从内容中自动检测文件路径
+        content = data.get("content", "")
+        auto_detected_paths = extract_file_paths_from_content(content)
+
+        # 处理附件（显式附件 + 自动检测附件）
         attachments = data.get("attachments", [])
-        processed_attachments = process_attachments(attachments, date_str, dry_run)
+        processed_attachments = process_attachments(attachments, date_str, dry_run, auto_detected_paths)
         result["attachments_processed"] = processed_attachments
 
         # 更新数据中的附件信息（用于生成内容）

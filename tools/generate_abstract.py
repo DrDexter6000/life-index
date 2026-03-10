@@ -420,7 +420,7 @@ def generate_monthly_abstract(year: int, month: int, dry_run: bool = False) -> D
     }
 
     month_dir = JOURNALS_DIR / str(year) / f"{month:02d}"
-    abstract_path = month_dir / "monthly_abstract.md"
+    abstract_path = month_dir / f"monthly_report_{year}-{month:02d}.md"
 
     # 收集该月所有日志
     journals = collect_month_journals(year, month)
@@ -461,7 +461,7 @@ def generate_yearly_abstract(year: int, dry_run: bool = False) -> Dict[str, Any]
         "updated": False
     }
 
-    abstract_path = JOURNALS_DIR / str(year) / "yearly_abstract.md"
+    abstract_path = JOURNALS_DIR / str(year) / f"yearly_report_{year}.md"
 
     # 收集该年所有日志
     journals = collect_year_journals(year)
