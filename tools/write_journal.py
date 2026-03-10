@@ -670,15 +670,14 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         # 处理地点：如果未提供，使用默认值
         location = data.get("location", "").strip()
         if not location:
-            location = "重庆，中国"  # 显示用中文
+            location = "Chongqing, China"  # 默认地点
             result["location_used"] = location
-            # 天气查询用英文格式
+            # 天气查询用同一格式
             location_for_weather = normalize_location("")
         else:
             # 规范化地点（处理城市级别输入）
             location_for_weather = normalize_location(location)
             result["location_used"] = location
-
         data["location"] = location
 
         # 处理天气：如果未提供，自动查询

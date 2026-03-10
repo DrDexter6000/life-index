@@ -67,8 +67,8 @@ tools/setup_yearly_abstract_task.ps1
 tools/update_yearly_abstract.bat
 tools/generate_yearly_abstract.py  # 已合并到 generate_abstract.py
 
-# ----- 归档文档 -----
-docs/archive/
+# ----- 开发阶段文档 -----
+docs/.dev-archive/
 
 # ----- 文档（GitHub 已有，Skill 不需要重复）-----
 docs/

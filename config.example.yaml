@@ -1,0 +1,88 @@
+# Life Index 用户配置文件
+# ============================
+# 文件位置: ~/Documents/Life-Index/.life-index/config.yaml
+# 
+# 配置加载优先级:
+# 1. 本文件 (最高优先级)
+# 2. 环境变量 (LIFE_INDEX_*)
+# 3. 代码默认值 (最低优先级)
+
+# 默认值设置
+# ============
+defaults:
+  # 默认地点 (天气查询使用)
+  location: "Chongqing, China"
+  
+  # topic 和 project 不设置默认值，要求用户/Agent 明确指定
+  # topic: null
+  # project: null
+
+# 天气 API 配置
+# =============
+weather:
+  # API 端点
+  api_url: "https://api.open-meteo.com/v1/forecast"
+  archive_url: "https://archive-api.open-meteo.com/v1/archive"
+  
+  # 超时设置 (秒)
+  timeout_seconds: 15
+  
+  # 失败时是否允许跳过天气
+  allow_skip_on_failure: true
+
+# 跨平台路径映射
+# ===============
+# 格式: "源平台路径前缀": "目标平台路径前缀"
+# 用于在不同操作系统间迁移日志时自动转换路径
+path_mappings:
+  # Windows → Linux 示例
+  # "C:\\Users\\17865\\Downloads": "/home/dexter/Downloads"
+  
+  # Windows → macOS 示例
+  # "C:\\Users\\your_name": "/Users/your_name"
+  
+  # Linux → Windows 示例
+  # "/home/dexter": "C:\\Users\\17865"
+
+# 搜索设置
+# ========
+search:
+  # 默认搜索层级 (1=索引, 2=元数据, 3=全文)
+  default_level: 3
+  
+  # 语义搜索权重 (启用 --semantic 时)
+  semantic_weight: 0.4
+  fts_weight: 0.6
+  
+  # 默认返回结果数量
+  default_limit: 10
+
+# 向量索引设置
+# ============
+vector_index:
+  # 嵌入模型
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  
+  # 向量维度
+  dimension: 384
+  
+  # 缓存目录 (null 使用默认位置)
+  cache_dir: null
+
+# 索引维护设置
+# ============
+index:
+  # 启动时是否验证索引完整性
+  validate_on_startup: false
+  
+  # 索引文件位置 (null 使用默认位置)
+  index_dir: null
+
+# 日志设置
+# =======
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # 日志文件位置 (null = 不写文件)
+  file: null

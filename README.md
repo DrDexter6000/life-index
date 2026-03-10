@@ -247,10 +247,10 @@ Life-Index/
 > "今天想记录一下关于 Life Index 的初心。这个项目不是为了做第二个 Notion 或 Obsidian，而是为了帮助像我这样的普通人整理人生碎片。我想记录下女儿成长的细节，以及作为父亲的我的感受，比如她两岁时模仿我用电脑工作的样子..."
 
 Agent 会：
-1. **自动填充**：地点（默认"重庆，中国"）、天气（自动查询）、时间（当前时间）
+1. **自动填充**：地点（默认 "Chongqing, China"）、天气（自动查询）、时间（当前时间）
 2. **语义提取**：从内容中识别主题、标签、心情、人物
 3. **生成文件**：带 frontmatter 的 Markdown 文件
-4. **确认询问**："日志已保存。地点：重庆，中国；天气：Slight rain (小雨)。请确认是否正确？"
+4. **确认询问**："日志已保存。地点：Chongqing, China；天气：Slight rain (小雨)。请确认是否正确？"
 5. **更新索引**：自动更新月度摘要和主题索引
 
 **你也可以主动提供信息**：
@@ -329,10 +329,16 @@ Life Index 遵循 **SSOT（单一事实来源）** 原则：
 
 | 文档 | 内容 | 适用场景 |
 |:---:|:---:|:---:|
+| **[AGENTS.md](./AGENTS.md)** | AI 代理上下文、构建命令、代码风格 | AI 编码代理阅读 |
+| **[SKILL.md](./SKILL.md)** | Agent 技能定义、触发词、工具接口 | Agent 执行引擎 |
 | **[HANDBOOK.md](./docs/HANDBOOK.md)** | 项目愿景、架构设计、核心原则 | 你想理解"为什么这样设计" |
 | **[AGENT.md](./docs/AGENT.md)** | Agent 执行指令、工具接口、工作流 | 你是开发者，想实现 Agent 功能 |
+| **[API.md](./docs/API.md)** | 工具 API 接口文档 | 你需要了解工具参数和返回值 |
 | **[CHANGELOG.md](./docs/CHANGELOG.md)** | 重大决策记录、版本演进 | 你想了解项目历史 |
-| **[SCHEDULE.md](./docs/SCHEDULE.md)** | 定时任务配置指南（日报/周报/月报/年报） | 你想设置自动化报告 |
+| **[SCHEDULE.md](./docs/SCHEDULE.md)** | 定时任务配置指南 | 你想设置自动化报告 |
+| **[docs/adr/](./docs/adr/)** | 架构决策记录 (ADR) | 你想了解设计决策背景 |
+| **[references/](./references/)** | 参考文档 (天气流程、错误码) | 你需要深入了解特定流程 |
+| **[CONTRIBUTING.md](./CONTRIBUTING.md)** | 贡献指南 | 你想参与开发 |
 
 ---
 

@@ -5,9 +5,9 @@
 > **版本/状态**: 详见 [README.md](./README.md)
 >
 > **允许写入**: 设计原则、架构决策、工具职责定义、目录结构规范、术语定义
-> **禁止写入**: 具体工作流步骤（去 AGENT.md）、变更历史（去 CHANGELOG.md）、临时开发状态（去 dev-progress.md）
+> **禁止写入**: 具体工作流步骤（去 AGENT.md）、变更历史（去 CHANGELOG.md）
 >
-> **相关文档**: [工作流→AGENT.md](./AGENT.md) | [变更历史→CHANGELOG.md](./CHANGELOG.md) | [当前任务→dev-progress.md](./dev-progress.md) | [里程碑→Roadmap](./Development-Roadmap-v1.md)
+> **相关文档**: [工作流→AGENT.md](./AGENT.md) | [变更历史→CHANGELOG.md](./CHANGELOG.md) | [API→API.md](./API.md)
 
 ---
 
@@ -423,8 +423,7 @@ final_score = w1×fts_score + w2×vec_score + w3×time_decay
 - [x] RAG/FTS 索引实现
 - [x] E2E 测试框架完成
 - [x] 天气自动填充与确认流程
-
-详见: [Development-Roadmap-v1.md](./Development-Roadmap-v1.md)
+- [x] SSOT 文档体系完善
 
 ---
 
@@ -446,9 +445,9 @@ final_score = w1×fts_score + w2×vec_score + w3×time_decay
 ## 10. 参考链接
 
 - [AGENT.md](./AGENT.md) - Agent 执行指令
+- [API.md](./API.md) - 工具 API 接口
 - [CHANGELOG.md](./CHANGELOG.md) - 决策变更日志
-- [Development-Roadmap-v1.md](./Development-Roadmap-v1.md) - 开发路线图
-- [.reference/principles-v3-redesign.md](./.reference/principles-v3-redesign.md) - v3 设计原则（历史）
+- [adr/](./adr/) - 架构决策记录
 
 ---
 
@@ -467,7 +466,7 @@ final_score = w1×fts_score + w2×vec_score + w3×time_decay
 | 修改工作流逻辑 | AGENT.md | 对比当前步骤与文档描述 |
 | 调整工具接口 | AGENT.md + CHANGELOG.md | 检查接口定义章节 |
 | 变更项目原则/架构 | HANDBOOK.md + CHANGELOG.md | 检查核心原则章节 |
-| 完成里程碑任务 | Development-Roadmap-v1.md | 检查 Phase 进度 |
+| 完成里程碑任务 | CHANGELOG.md | 记录版本演进 |
 
 **检查触发条件**:
 - 用户明确说"更新文档"
