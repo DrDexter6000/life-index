@@ -13,24 +13,21 @@
 2. **推送渠道明确**: 日报/周报推送到主会话 + IM 渠道
 3. **索引任务重新设计**: 每日索引维护（检查+修复+向量增量）、每月索引维护（全量检查+重建+向量全量）
 4. **无数据处理**: 保留元数据占位，报告后询问用户是否补充
-5. **文档架构重构**: SCHEDULE.md 移动到 `references/schedule/`，与场景文档、模板文档形成内聚单元
+5. **文档架构重构**: SCHEDULE.md 移动到 `references/schedule/`
+6. **templates 融合**: 删除 templates 目录，输出格式整合到 scenarios 文档中（单一来源）
+7. **新闻链接要求**: 周报/月报/年报的国际热点每条新闻后附带来源链接
 
-**新文档结构**:
+**最终文档结构**:
 ```
 references/schedule/
 ├── SCHEDULE.md           ← Router（权威文档）
-├── scenarios/            ← 场景文档
-│   ├── daily-report.md
-│   ├── weekly-report.md
-│   ├── monthly-report.md
-│   ├── yearly-report.md
-│   ├── index-update.md
-│   └── index-rebuild.md
-└── templates/            ← 输出模板
-    ├── daily-template.md
-    ├── weekly-template.md
-    ├── monthly-template.md
-    └── yearly-template.md
+└── scenarios/            ← 场景文档（含输出格式）
+    ├── daily-report.md
+    ├── weekly-report.md
+    ├── monthly-report.md
+    ├── yearly-report.md
+    ├── index-update.md
+    └── index-rebuild.md
 ```
 
 **关键发现**: `write_journal.py` 在写入日志时已自动更新 by-topic 索引，因此每日索引任务应为"检查+修复"而非"更新"。
@@ -40,6 +37,8 @@ references/schedule/
 - 更新 [README.md](../README.md) SCHEDULE.md 路径引用
 - 更新 [INSTRUCTIONS.md](./INSTRUCTIONS.md) SCHEDULE.md 路径引用
 - 更新 [docs/README.md](./docs/README.md) 添加 SCHEDULE.md 导航
+
+---
 
 ---
 
