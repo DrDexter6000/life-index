@@ -332,7 +332,7 @@ Life Index 遵循 **SSOT（单一事实来源）** 原则：
 | **[AGENTS.md](./AGENTS.md)** | AI 代理上下文、构建命令、代码风格 | AI 编码代理阅读 |
 | **[SKILL.md](./SKILL.md)** | Agent 技能定义、触发词、工具接口 | Agent 执行引擎 |
 | **[HANDBOOK.md](./docs/HANDBOOK.md)** | 项目愿景、架构设计、核心原则 | 你想理解"为什么这样设计" |
-| **[AGENT.md](./docs/AGENT.md)** | Agent 执行指令、工具接口、工作流 | 你是开发者，想实现 Agent 功能 |
+| **[INSTRUCTIONS.md](./docs/INSTRUCTIONS.md)** | Agent 执行指令、工作流步骤 | 你是开发者，想实现 Agent 功能 |
 | **[API.md](./docs/API.md)** | 工具 API 接口文档 | 你需要了解工具参数和返回值 |
 | **[CHANGELOG.md](./docs/CHANGELOG.md)** | 重大决策记录、版本演进 | 你想了解项目历史 |
 | **[SCHEDULE.md](./docs/SCHEDULE.md)** | 定时任务配置指南 | 你想设置自动化报告 |

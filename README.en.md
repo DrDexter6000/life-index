@@ -326,7 +326,7 @@ Life Index follows the **SSOT (Single Source of Truth)** principle:
 | **[AGENTS.md](./AGENTS.md)** | AI agent context, build commands, code style | For AI coding agents |
 | **[SKILL.md](./SKILL.md)** | Agent skill definition, triggers, tool interfaces | For Agent execution engine |
 | **[HANDBOOK.md](./docs/HANDBOOK.md)** | Project vision, architecture design, core principles | You want to understand "why it's designed this way" |
-| **[AGENT.md](./docs/AGENT.md)** | Agent execution instructions, tool interfaces, workflows | You're a developer implementing Agent functionality |
+| **[INSTRUCTIONS.md](./docs/INSTRUCTIONS.md)** | Agent execution instructions, workflow steps | You're a developer implementing Agent functionality |
 | **[API.md](./docs/API.md)** | Tool API interface documentation | You need tool parameters and return values |
 | **[CHANGELOG.md](./docs/CHANGELOG.md)** | Major decision records, version evolution | You want to understand project history |
 | **[SCHEDULE.md](./docs/SCHEDULE.md)** | Scheduled task configuration guide | You want to set up automated reports |
