@@ -64,10 +64,10 @@ python tools/write_journal.py --data '<json>'
 | weather | string | ❌ | 自动查询 | 天气描述 |
 | mood | array | ❌ | [] | 心情标签 |
 | people | array | ❌ | [] | 相关人物 |
-| topic | array | ❌ | [] | 主题分类 |
+| topic | array | ✅ | - | 主题分类（7类之一） |
 | project | string | ❌ | "" | 关联项目 |
 | tags | array | ❌ | [] | 标签 |
-| abstract | string | ❌ | "" | 摘要（≤100字，**Agent生成**） |
+| abstract | string | ✅ | - | 摘要（≤100字，**Agent生成**） |
 | links | array | ❌ | [] | 相关链接 |
 | attachments | array | ❌ | [] | 附件列表 |
 
