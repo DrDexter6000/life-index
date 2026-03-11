@@ -59,7 +59,9 @@ dev = [
     "isort>=5.12.0",
     "flake8>=6.0.0",
     
-    # Documentation - 文档
+    # Documentation - 文档（Markdown 直接阅读，无需构建工具）
+    # 项目文档位于 docs/ 目录，直接阅读 Markdown 文件即可
+    # GitHub 自动渲染：https://github.com/yourusername/life-index/tree/main/docs
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.23.0",
@@ -76,7 +78,7 @@ all = [
 
 [project.urls]
 Homepage = "https://github.com/yourusername/life-index"
-Documentation = "https://life-index.readthedocs.io"
+Documentation = "https://github.com/yourusername/life-index/tree/main/docs"
 Repository = "https://github.com/yourusername/life-index"
 Issues = "https://github.com/yourusername/life-index/issues"
 
