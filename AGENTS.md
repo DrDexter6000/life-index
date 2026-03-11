@@ -61,6 +61,10 @@ Agent 具备以下原生能力，**禁止开发重复工具**：
 
 ### 4. 定时任务规范
 
+**必须使用 Agent 内置 Cron 能力**，禁止 OS 级别定时任务。
+
+定时任务配置详见 [SCHEDULE.md](references/schedule/SCHEDULE.md)。
+
 **必须使用 Agent 内置 Cron 能力**，禁止 OS 级别定时任务：
 
 | 任务类型 | Agent Cron | OS 定时任务 |
@@ -86,6 +90,16 @@ pip install sentence-transformers>=2.2.0
 ```
 
 ### 核心工具命令
+
+所有工具位于 `tools/` 目录，通过 Bash 调用。详见 [API.md](docs/API.md) 完整接口文档。
+
+```bash
+# 示例：写入日志
+python tools/write_journal.py --data '{"title":"...","content":"...","date":"2026-03-07","topic":"work"}'
+
+# 示例：搜索日志
+python tools/search_journals.py --query "关键词" --level 3
+```
 
 所有工具位于 `tools/` 目录，通过 Bash 调用：
 
