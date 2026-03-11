@@ -155,17 +155,18 @@ class LifeIndexError(Exception):
 
     def to_json(self) -> Dict[str, Any]:
         """Convert to JSON format for Agent parsing."""
-        result = {
-            "success": False,
-            "error": {
-                "code": self.code,
-                "message": self.message,
-                "details": self.details,
-                "recovery_strategy": self.recovery_strategy,
-            },
+        error_obj: Dict[str, Any] = {
+            "code": self.code,
+            "message": self.message,
+            "details": self.details,
+            "recovery_strategy": self.recovery_strategy,
         }
         if self.suggestion:
-            result["error"]["suggestion"] = self.suggestion
+            error_obj["suggestion"] = self.suggestion
+        result: Dict[str, Any] = {
+            "success": False,
+            "error": error_obj,
+        }
         return result
 
     def __str__(self) -> str:
@@ -223,9 +224,9 @@ def get_error_description(code: str) -> str:
 
 def create_error_response(
     code: str,
-    message: str = None,
-    details: Dict[str, Any] = None,
-    suggestion: str = None,
+    message: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+    suggestion: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Create a standard error response without raising exception.

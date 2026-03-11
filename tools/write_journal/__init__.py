@@ -16,10 +16,6 @@ from pathlib import Path
 from typing import Dict, Any
 
 # Import modules
-from . import frontmatter
-from . import attachments
-from . import weather
-from . import index_updater
 from .core import write_journal
 
 

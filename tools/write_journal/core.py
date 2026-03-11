@@ -438,7 +438,7 @@ def process_attachments(attachments: List[Dict[str, str]], date_str: str, dry_ru
         for path in auto_detected_paths:
             normalized = os.path.normpath(path).lower()
             if normalized not in existing_paths:
-                all_attachments.append({"source_path": path, "description": "", "auto_detected": True})
+                all_attachments.append({"source_path": path, "description": "", "auto_detected": "true"})
                 existing_paths.add(normalized)
 
     if not all_attachments:

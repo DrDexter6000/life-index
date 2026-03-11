@@ -19,7 +19,7 @@ import sys
 
 # 导入配置
 sys.path.insert(0, str(Path(__file__).parent))
-from config import JOURNALS_DIR, USER_DATA_DIR
+from config import JOURNALS_DIR, USER_DATA_DIR  # type: ignore
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -74,12 +74,12 @@ def init_fts_db() -> sqlite3.Connection:
 def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
     """解析日志文件，提取可索引内容"""
     try:
-        content = file_path.read_text(encoding='utf-8')
+        content = file_path.read_text(encoding="utf-8")
 
-        if not content.startswith('---'):
+        if not content.startswith("---"):
             return None
 
-        parts = content.split('---', 2)
+        parts = content.split("---", 2)
         if len(parts) < 3:
             return None
 
@@ -88,32 +88,38 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
 
         # 解析 frontmatter
         metadata = {}
-        for line in fm_text.split('\n'):
+        for line in fm_text.split("\n"):
             line = line.strip()
-            if ':' in line and not line.startswith('#'):
-                key, value = line.split(':', 1)
+            if ":" in line and not line.startswith("#"):
+                key, value = line.split(":", 1)
                 key = key.strip()
                 value = value.strip()
 
                 # 处理列表格式
-                if value.startswith('[') and value.endswith(']'):
-                    value = [v.strip().strip('"\'') for v in value[1:-1].split(',') if v.strip()]
+                if value.startswith("[") and value.endswith("]"):
+                    value = [
+                        v.strip().strip("\"'")
+                        for v in value[1:-1].split(",")
+                        if v.strip()
+                    ]  # type: ignore
 
                 metadata[key] = value
 
         # 构建可索引文档
         doc = {
-            'path': str(file_path.relative_to(USER_DATA_DIR)).replace('\\', '/'),
-            'title': metadata.get('title', ''),
-            'content': body,
-            'date': metadata.get('date', '')[:10],
-            'location': metadata.get('location', ''),
-            'weather': metadata.get('weather', ''),
-            'topic': _normalize_to_str(metadata.get('topic')),
-            'project': metadata.get('project', ''),
-            'tags': _normalize_to_str(metadata.get('tags')),
-            'file_hash': get_file_hash(file_path),
-            'modified_time': datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
+            "path": str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/"),
+            "title": metadata.get("title", ""),
+            "content": body,
+            "date": metadata.get("date", "")[:10],
+            "location": metadata.get("location", ""),
+            "weather": metadata.get("weather", ""),
+            "topic": _normalize_to_str(metadata.get("topic")),
+            "project": metadata.get("project", ""),
+            "tags": _normalize_to_str(metadata.get("tags")),
+            "file_hash": get_file_hash(file_path),
+            "modified_time": datetime.fromtimestamp(
+                file_path.stat().st_mtime
+            ).isoformat(),
         }
 
         return doc
@@ -126,9 +132,9 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
 def _normalize_to_str(value: Any) -> str:
     """将值规范化为字符串"""
     if not value:
-        return ''
+        return ""
     if isinstance(value, list):
-        return ', '.join(str(v) for v in value)
+        return ", ".join(str(v) for v in value)
     return str(value)
 
 
@@ -161,13 +167,13 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
             "error": str (optional)
         }
     """
-    result = {
+    result: Dict[str, Any] = {
         "success": False,
         "added": 0,
         "updated": 0,
         "removed": 0,
         "total": 0,
-        "error": None
+        "error": None,
     }
 
     try:
@@ -191,7 +197,9 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
                         continue
 
                     for journal_file in month_dir.glob("life-index_*.md"):
-                        rel_path = str(journal_file.relative_to(USER_DATA_DIR)).replace('\\', '/')
+                        rel_path = str(journal_file.relative_to(USER_DATA_DIR)).replace(
+                            "\\", "/"
+                        )
                         current_files.add(rel_path)
 
                         # 检查是否需要更新
@@ -199,10 +207,10 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
 
                         if rel_path not in indexed_files:
                             # 新文件
-                            files_to_update.append(('add', journal_file, rel_path))
+                            files_to_update.append(("add", journal_file, rel_path))
                         elif indexed_files[rel_path][0] != file_hash:
                             # 文件已修改
-                            files_to_update.append(('update', journal_file, rel_path))
+                            files_to_update.append(("update", journal_file, rel_path))
 
         # 找出需要删除的索引（文件已不存在）
         files_to_remove = set(indexed_files.keys()) - current_files
@@ -211,35 +219,46 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
         if not incremental:
             cursor.execute("DELETE FROM journals")
             files_to_remove = set()
-            files_to_update = [('add', JOURNALS_DIR / p, p) for p in current_files]
+            files_to_update = [("add", JOURNALS_DIR / p, p) for p in current_files]
             result["removed"] = len(indexed_files)
 
         # 执行删除
         for rel_path in files_to_remove:
             cursor.execute("DELETE FROM journals WHERE path = ?", (rel_path,))
-            result["removed"] += 1
+            result["removed"] = (result["removed"] or 0) + 1
 
         # 执行添加/更新
         for action, file_path, rel_path in files_to_update:
             doc = parse_journal(file_path)
             if doc:
                 # 如果是更新，先删除旧记录
-                if action == 'update':
+                if action == "update":
                     cursor.execute("DELETE FROM journals WHERE path = ?", (rel_path,))
-                    result["updated"] += 1
+                    result["updated"] = (result["updated"] or 0) + 1
                 else:
-                    result["added"] += 1
+                    result["added"] = (result["added"] or 0) + 1
 
                 # 插入新记录
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO journals (path, title, content, date, location, weather,
                                         topic, project, tags, file_hash, modified_time)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    doc['path'], doc['title'], doc['content'], doc['date'],
-                    doc['location'], doc['weather'], doc['topic'], doc['project'],
-                    doc['tags'], doc['file_hash'], doc['modified_time']
-                ))
+                """,
+                    (
+                        doc["path"],
+                        doc["title"],
+                        doc["content"],
+                        doc["date"],
+                        doc["location"],
+                        doc["weather"],
+                        doc["topic"],
+                        doc["project"],
+                        doc["tags"],
+                        doc["file_hash"],
+                        doc["modified_time"],
+                    ),
+                )
 
         conn.commit()
         conn.close()
@@ -258,7 +277,7 @@ def search_fts(
     query: str,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    limit: int = 50
+    limit: int = 50,
 ) -> List[Dict[str, Any]]:
     """
     使用 FTS5 搜索日志（带 BM25 相关性排序）
@@ -272,7 +291,7 @@ def search_fts(
     Returns:
         搜索结果列表（按 BM25 相关性排序，分数越高越相关）
     """
-    results = []
+    results: List[Dict[str, Any]] = []
 
     try:
         if not FTS_DB_PATH.exists():
@@ -317,15 +336,17 @@ def search_fts(
             # 分数 >= 5: 30% (弱相关)
             relevance = max(0, min(100, int(70 - bm25_score * 5)))
 
-            results.append({
-                'path': row[0],
-                'title': row[1],
-                'date': row[2],
-                'snippet': row[3],
-                'bm25_score': bm25_score,
-                'relevance': relevance,
-                'source': 'fts'
-            })
+            results.append(
+                {
+                    "path": row[0],
+                    "title": row[1],
+                    "date": row[2],
+                    "snippet": row[3],
+                    "bm25_score": bm25_score,
+                    "relevance": relevance,
+                    "source": "fts",
+                }
+            )
 
         conn.close()
 
@@ -341,7 +362,7 @@ def get_stats() -> Dict[str, Any]:
         "exists": FTS_DB_PATH.exists(),
         "total_documents": 0,
         "db_size_mb": 0,
-        "last_updated": None
+        "last_updated": None,
     }
 
     try:

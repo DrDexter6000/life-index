@@ -29,11 +29,16 @@ from typing import Dict, Any
 # 导入配置
 sys.path.insert(0, str(Path(__file__).parent))
 from lib.config import USER_DATA_DIR
-from lib.search_index import update_index as update_fts_index, get_stats as get_fts_stats
+from lib.search_index import (
+    update_index as update_fts_index,
+    get_stats as get_fts_stats,
+)
 from lib.semantic_search import update_vector_index, get_stats as get_vec_stats
 
 
-def build_all(incremental: bool = True, fts_only: bool = False, vec_only: bool = False) -> Dict[str, Any]:
+def build_all(
+    incremental: bool = True, fts_only: bool = False, vec_only: bool = False
+) -> Dict[str, Any]:
     """
     构建所有索引
 
@@ -45,14 +50,10 @@ def build_all(incremental: bool = True, fts_only: bool = False, vec_only: bool =
     Returns:
         构建结果
     """
-    result = {
-        "success": True,
-        "fts": None,
-        "vector": None,
-        "duration_seconds": 0
-    }
+    result = {"success": True, "fts": None, "vector": None, "duration_seconds": 0}
 
     import time
+
     start_time = time.time()
 
     # 更新 FTS 索引
@@ -62,9 +63,11 @@ def build_all(incremental: bool = True, fts_only: bool = False, vec_only: bool =
             fts_result = update_fts_index(incremental=incremental)
             result["fts"] = fts_result
             if fts_result.get("success"):
-                print(f"  ✓ FTS: +{fts_result.get('added', 0)} added, "
-                      f"~{fts_result.get('updated', 0)} updated, "
-                      f"-{fts_result.get('removed', 0)} removed")
+                print(
+                    f"  ✓ FTS: +{fts_result.get('added', 0)} added, "
+                    f"~{fts_result.get('updated', 0)} updated, "
+                    f"-{fts_result.get('removed', 0)} removed"
+                )
             else:
                 print(f"  ✗ FTS failed: {fts_result.get('error')}")
                 result["success"] = False
@@ -81,13 +84,16 @@ def build_all(incremental: bool = True, fts_only: bool = False, vec_only: bool =
         # 首先尝试 sqlite-vec
         try:
             from lib.semantic_search import update_vector_index, get_model
+
             model = get_model()
             if model.load():
                 vec_result = update_vector_index(incremental=incremental)
                 if vec_result.get("success"):
                     result["vector"] = vec_result
-                    print(f"  ✓ Vector (sqlite-vec): +{vec_result.get('added', 0)} added, "
-                          f"~{vec_result.get('updated', 0)} updated")
+                    print(
+                        f"  ✓ Vector (sqlite-vec): +{vec_result.get('added', 0)} added, "
+                        f"~{vec_result.get('updated', 0)} updated"
+                    )
                     vec_success = True
         except Exception as e:
             pass  # 失败时尝试简单索引
@@ -95,18 +101,30 @@ def build_all(incremental: bool = True, fts_only: bool = False, vec_only: bool =
         # 如果 sqlite-vec 失败，使用简单向量索引
         if not vec_success:
             try:
-                from lib.vector_index_simple import update_vector_index_simple, get_model as get_simple_model
+                from lib.vector_index_simple import (
+                    update_vector_index_simple,
+                    get_model as get_simple_model,
+                )
+
                 model = get_simple_model()
                 if model.load():
-                    vec_result = update_vector_index_simple(model.encode, incremental=incremental)
+                    vec_result = update_vector_index_simple(
+                        model.encode, incremental=incremental
+                    )
                     result["vector"] = vec_result
                     if vec_result.get("success"):
-                        print(f"  ✓ Vector (simple): +{vec_result.get('added', 0)} added, "
-                              f"~{vec_result.get('updated', 0)} updated")
+                        print(
+                            f"  ✓ Vector (simple): +{vec_result.get('added', 0)} added, "
+                            f"~{vec_result.get('updated', 0)} updated"
+                        )
                     else:
-                        print(f"  ⚠ Vector (simple): {vec_result.get('error', 'Unknown error')}")
+                        print(
+                            f"  ⚠ Vector (simple): {vec_result.get('error', 'Unknown error')}"
+                        )
                 else:
-                    print(f"  ⚠ Embedding model not available. Install: pip install sentence-transformers")
+                    print(
+                        f"  ⚠ Embedding model not available. Install: pip install sentence-transformers"
+                    )
             except Exception as e:
                 print(f"  ✗ Vector error: {e}")
                 result["vector"] = {"success": False, "error": str(e)}
@@ -117,7 +135,7 @@ def build_all(incremental: bool = True, fts_only: bool = False, vec_only: bool =
     return result
 
 
-def show_stats():
+def show_stats() -> None:
     """显示索引统计信息"""
     print("=" * 50)
     print("Life Index - Search Index Statistics")
@@ -128,15 +146,16 @@ def show_stats():
     print(f"  Exists: {'Yes' if fts_stats['exists'] else 'No'}")
     print(f"  Documents: {fts_stats['total_documents']}")
     print(f"  Size: {fts_stats['db_size_mb']} MB")
-    if fts_stats['last_updated']:
+    if fts_stats["last_updated"]:
         print(f"  Last Updated: {fts_stats['last_updated']}")
 
     print("\n🧠 Vector Index (Semantic Search):")
     # 尝试获取 sqlite-vec 统计
     try:
         from lib.semantic_search import get_stats as get_vec_stats
+
         vec_stats = get_vec_stats()
-        if vec_stats['exists'] and vec_stats['total_vectors'] > 0:
+        if vec_stats["exists"] and vec_stats["total_vectors"] > 0:
             print(f"  Backend: sqlite-vec")
             print(f"  Exists: Yes")
             print(f"  Vectors: {vec_stats['total_vectors']}")
@@ -148,6 +167,7 @@ def show_stats():
     except:
         try:
             from lib.vector_index_simple import get_index
+
             simple_index = get_index()
             simple_stats = simple_index.stats()
             print(f"  Backend: simple_numpy")
@@ -161,16 +181,16 @@ def show_stats():
     print("\n💾 Cache Directory:")
     cache_dir = USER_DATA_DIR / ".cache" / "models"
     if cache_dir.exists():
-        total_size = sum(f.stat().st_size for f in cache_dir.rglob('*') if f.is_file())
+        total_size = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file())
         print(f"  Location: {cache_dir}")
-        print(f"  Size: {round(total_size / (1024*1024), 2)} MB")
+        print(f"  Size: {round(total_size / (1024 * 1024), 2)} MB")
     else:
         print("  Not created yet")
 
     print("=" * 50)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Life Index - Build Search Index",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -187,38 +207,24 @@ Examples:
 
     # View statistics
     python build_index.py --stats
-        """
+        """,
     )
 
     parser.add_argument(
         "--rebuild",
         action="store_true",
-        help="Full rebuild (delete and recreate all indexes)"
+        help="Full rebuild (delete and recreate all indexes)",
     )
 
-    parser.add_argument(
-        "--fts-only",
-        action="store_true",
-        help="Only update FTS index"
-    )
+    parser.add_argument("--fts-only", action="store_true", help="Only update FTS index")
 
     parser.add_argument(
-        "--vec-only",
-        action="store_true",
-        help="Only update vector index"
+        "--vec-only", action="store_true", help="Only update vector index"
     )
 
-    parser.add_argument(
-        "--stats",
-        action="store_true",
-        help="Show index statistics"
-    )
+    parser.add_argument("--stats", action="store_true", help="Show index statistics")
 
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results as JSON"
-    )
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
 
     args = parser.parse_args()
 
@@ -228,9 +234,7 @@ Examples:
 
     # 执行索引构建
     result = build_all(
-        incremental=not args.rebuild,
-        fts_only=args.fts_only,
-        vec_only=args.vec_only
+        incremental=not args.rebuild, fts_only=args.fts_only, vec_only=args.vec_only
     )
 
     if args.json:

@@ -39,45 +39,46 @@ from lib.config import JOURNALS_DIR
 def parse_frontmatter(file_path: Path) -> Optional[Dict]:
     """解析 YAML frontmatter（简化版）"""
     try:
-        content = file_path.read_text(encoding='utf-8')
+        content = file_path.read_text(encoding="utf-8")
 
-        if not content.startswith('---'):
+        if not content.startswith("---"):
             return {}
 
-        parts = content.split('---', 2)
+        parts = content.split("---", 2)
         if len(parts) < 3:
             return {}
 
         fm_content = parts[1].strip()
         body = parts[2].strip()
 
-        result = {}
+        result: Dict[str, Any] = {}
         current_key = None
-        current_list = []
+        current_list: List[str] = []
         in_list = False
 
-        for line in fm_content.split('\n'):
+        for line in fm_content.split("\n"):
             stripped = line.strip()
 
-            if not stripped or stripped.startswith('#'):
+            if not stripped or stripped.startswith("#"):
                 continue
 
-            if stripped.startswith('- '):
+            if stripped.startswith("- "):
                 value = stripped[2:].strip()
-                if (value.startswith('"') and value.endswith('"')) or \
-                   (value.startswith("'") and value.endswith("'")):
+                if (value.startswith('"') and value.endswith('"')) or (
+                    value.startswith("'") and value.endswith("'")
+                ):
                     value = value[1:-1]
                 current_list.append(value)
                 in_list = True
                 continue
 
-            if ':' in stripped:
+            if ":" in stripped:
                 if in_list and current_key:
                     result[current_key] = current_list
                     current_list = []
                     in_list = False
 
-                key, value = stripped.split(':', 1)
+                key, value = stripped.split(":", 1)
                 key = key.strip()
                 value = value.strip()
 
@@ -88,21 +89,25 @@ def parse_frontmatter(file_path: Path) -> Optional[Dict]:
                     continue
 
                 # 解析值
-                if value.lower() in ('true', 'yes'):
+                parsed_value: Any
+                if value.lower() in ("true", "yes"):
                     parsed_value = True
-                elif value.lower() in ('false', 'no'):
+                elif value.lower() in ("false", "no"):
                     parsed_value = False
-                elif value.lower() in ('null', '~', ''):
+                elif value.lower() in ("null", "~", ""):
                     parsed_value = None
-                elif value.startswith('[') and value.endswith(']'):
-                    items = value[1:-1].split(',')
-                    parsed_value = [item.strip().strip('"\'') for item in items if item.strip()]
-                elif (value.startswith('"') and value.endswith('"')) or \
-                     (value.startswith("'") and value.endswith("'")):
+                elif value.startswith("[") and value.endswith("]"):
+                    items = value[1:-1].split(",")
+                    parsed_value = [
+                        item.strip().strip("\"'") for item in items if item.strip()
+                    ]
+                elif (value.startswith('"') and value.endswith('"')) or (
+                    value.startswith("'") and value.endswith("'")
+                ):
                     parsed_value = value[1:-1]
                 else:
                     try:
-                        if '.' in value:
+                        if "." in value:
                             parsed_value = float(value)
                         else:
                             parsed_value = int(value)
@@ -115,7 +120,7 @@ def parse_frontmatter(file_path: Path) -> Optional[Dict]:
         if in_list and current_key:
             result[current_key] = current_list
 
-        result['_body'] = body
+        result["_body"] = body
         return result
     except Exception:
         return {}
@@ -123,7 +128,7 @@ def parse_frontmatter(file_path: Path) -> Optional[Dict]:
 
 def collect_month_journals(year: int, month: int) -> List[Dict]:
     """收集指定月份的所有日志"""
-    journals = []
+    journals: List[Dict] = []
     month_dir = JOURNALS_DIR / str(year) / f"{month:02d}"
 
     if not month_dir.exists():
@@ -132,25 +137,27 @@ def collect_month_journals(year: int, month: int) -> List[Dict]:
     for journal_file in sorted(month_dir.glob("life-index_*.md")):
         metadata = parse_frontmatter(journal_file)
         if metadata:
-            journals.append({
-                "file": journal_file.name,
-                "path": f"./{journal_file.name}",
-                "date": metadata.get("date", ""),
-                "title": metadata.get("title", journal_file.stem),
-                "tags": metadata.get("tags", []),
-                "project": metadata.get("project", ""),
-                "topic": metadata.get("topic", []),
-                "mood": metadata.get("mood", []),
-                "people": metadata.get("people", []),
-                "abstract": metadata.get("abstract", "")
-            })
+            journals.append(
+                {
+                    "file": journal_file.name,
+                    "path": f"./{journal_file.name}",
+                    "date": metadata.get("date", ""),
+                    "title": metadata.get("title", journal_file.stem),
+                    "tags": metadata.get("tags", []),
+                    "project": metadata.get("project", ""),
+                    "topic": metadata.get("topic", []),
+                    "mood": metadata.get("mood", []),
+                    "people": metadata.get("people", []),
+                    "abstract": metadata.get("abstract", ""),
+                }
+            )
 
     return journals
 
 
 def collect_year_journals(year: int) -> List[Dict]:
     """收集指定年份的所有日志"""
-    journals = []
+    journals: List[Dict] = []
     year_dir = JOURNALS_DIR / str(year)
 
     if not year_dir.exists():
@@ -166,24 +173,28 @@ def collect_year_journals(year: int) -> List[Dict]:
             metadata = parse_frontmatter(journal_file)
             if metadata:
                 rel_path = f"./{month_dir.name}/{journal_file.name}"
-                journals.append({
-                    "file": journal_file.name,
-                    "path": rel_path,
-                    "month": month_dir.name,
-                    "date": metadata.get("date", ""),
-                    "title": metadata.get("title", journal_file.stem),
-                    "tags": metadata.get("tags", []),
-                    "project": metadata.get("project", ""),
-                    "topic": metadata.get("topic", []),
-                    "mood": metadata.get("mood", []),
-                    "people": metadata.get("people", []),
-                    "abstract": metadata.get("abstract", "")
-                })
+                journals.append(
+                    {
+                        "file": journal_file.name,
+                        "path": rel_path,
+                        "month": month_dir.name,
+                        "date": metadata.get("date", ""),
+                        "title": metadata.get("title", journal_file.stem),
+                        "tags": metadata.get("tags", []),
+                        "project": metadata.get("project", ""),
+                        "topic": metadata.get("topic", []),
+                        "mood": metadata.get("mood", []),
+                        "people": metadata.get("people", []),
+                        "abstract": metadata.get("abstract", ""),
+                    }
+                )
 
     return journals
 
 
-def generate_monthly_abstract_content(year: int, month: int, journals: List[Dict]) -> str:
+def generate_monthly_abstract_content(
+    year: int, month: int, journals: List[Dict]
+) -> str:
     """生成月度摘要内容（与 write_journal.py 格式兼容）"""
     month_name = f"{year}年{month:02d}月"
     now = datetime.now().isoformat()
@@ -195,7 +206,7 @@ def generate_monthly_abstract_content(year: int, month: int, journals: List[Dict
         f"> 日志总数: {len(journals)}",
         "",
         "## 按日期索引",
-        ""
+        "",
     ]
 
     # 按日期分组
@@ -284,7 +295,7 @@ def generate_yearly_abstract_content(year: int, journals: List[Dict]) -> str:
         "",
         f"> 生成时间: {now}",
         f"> 日志总数: {total_journals}篇",
-        ""
+        "",
     ]
 
     # 按月份统计
@@ -408,7 +419,9 @@ def generate_yearly_abstract_content(year: int, journals: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def generate_monthly_abstract(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]:
+def generate_monthly_abstract(
+    year: int, month: int, dry_run: bool = False
+) -> Dict[str, Any]:
     """生成月度摘要文件"""
     result = {
         "type": "monthly",
@@ -416,7 +429,7 @@ def generate_monthly_abstract(year: int, month: int, dry_run: bool = False) -> D
         "month": month,
         "abstract_path": None,
         "journal_count": 0,
-        "updated": False
+        "updated": False,
     }
 
     month_dir = JOURNALS_DIR / str(year) / f"{month:02d}"
@@ -442,7 +455,7 @@ def generate_monthly_abstract(year: int, month: int, dry_run: bool = False) -> D
     month_dir.mkdir(parents=True, exist_ok=True)
 
     # 写入摘要文件
-    with open(abstract_path, 'w', encoding='utf-8') as f:
+    with open(abstract_path, "w", encoding="utf-8") as f:
         f.write(content)
 
     result["updated"] = True
@@ -458,7 +471,7 @@ def generate_yearly_abstract(year: int, dry_run: bool = False) -> Dict[str, Any]
         "year": year,
         "abstract_path": None,
         "journal_count": 0,
-        "updated": False
+        "updated": False,
     }
 
     abstract_path = JOURNALS_DIR / str(year) / f"yearly_report_{year}.md"
@@ -483,7 +496,7 @@ def generate_yearly_abstract(year: int, dry_run: bool = False) -> Dict[str, Any]
     abstract_path.parent.mkdir(parents=True, exist_ok=True)
 
     # 写入摘要文件
-    with open(abstract_path, 'w', encoding='utf-8') as f:
+    with open(abstract_path, "w", encoding="utf-8") as f:
         f.write(content)
 
     result["updated"] = True
@@ -492,7 +505,7 @@ def generate_yearly_abstract(year: int, dry_run: bool = False) -> Dict[str, Any]
     return result
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Life Index 摘要生成工具（月度/年度）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -511,38 +524,26 @@ Examples:
 
     # 同时生成年度和指定月度摘要
     python generate_abstract.py --year 2026 --month 2026-03
-        """
+        """,
     )
 
     parser.add_argument(
-        "--month",
-        type=str,
-        help="生成月度摘要，格式: YYYY-MM (如 2026-03)"
+        "--month", type=str, help="生成月度摘要，格式: YYYY-MM (如 2026-03)"
     )
 
-    parser.add_argument(
-        "--year",
-        type=int,
-        help="生成年度摘要，格式: YYYY (如 2026)"
-    )
+    parser.add_argument("--year", type=int, help="生成年度摘要，格式: YYYY (如 2026)")
 
     parser.add_argument(
         "--all-months",
         action="store_true",
-        help="与 --year 一起使用，批量生成全年各月的月度摘要"
+        help="与 --year 一起使用，批量生成全年各月的月度摘要",
     )
 
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="预览模式：显示生成的内容但不写入文件"
+        "--dry-run", action="store_true", help="预览模式：显示生成的内容但不写入文件"
     )
 
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="输出结果为 JSON 格式"
-    )
+    parser.add_argument("--json", action="store_true", help="输出结果为 JSON 格式")
 
     args = parser.parse_args()
 
@@ -555,7 +556,7 @@ Examples:
     # 生成月度摘要
     if args.month:
         try:
-            year, month = map(int, args.month.split('-'))
+            year, month = map(int, args.month.split("-"))
             result = generate_monthly_abstract(year, month, args.dry_run)
             results.append(result)
         except ValueError:
@@ -577,11 +578,13 @@ Examples:
                     result = generate_monthly_abstract(args.year, month, args.dry_run)
                     results.append(result)
         else:
-            results.append({
-                "type": "monthly",
-                "year": args.year,
-                "message": f"{args.year}年目录不存在"
-            })
+            results.append(
+                {
+                    "type": "monthly",
+                    "year": args.year,
+                    "message": f"{args.year}年目录不存在",
+                }
+            )
 
     # 输出结果
     if args.json:

@@ -4,6 +4,47 @@
 
 ---
 
+## [2026-03-11] 代码质量提升与模块化重构
+
+**决策**: 修复mypy类型错误，完成核心模块的初步拆分，提升代码质量和可维护性。
+
+**核心变更**:
+1. **类型错误修复**: 修复了145+个mypy类型错误，添加完整类型注解
+   - `tools/lib/errors.py`: 修复`to_json()`和`create_error_response()`的类型注解
+   - `tools/check_metadata.py`: 添加完整类型注解
+   - `tools/validate_data.py`: 修复`sequences_by_date`类型注解
+   - `tools/generate_abstract.py`: 添加`parsed_value: Any`等类型注解
+   - `tools/edit_journal.py`: 修复`frontmatter`和`result`类型注解
+   - `tools/query_weather.py`: 添加返回类型注解
+   - `tools/rebuild_indices.py`: 修复`Optional[Path]`返回类型
+
+2. **模块拆分**: 将大文件拆分为模块化结构
+   - `tools/write_journal.py` (993行) → `write_journal/__init__.py` + `write_journal/core.py`
+   - `tools/search_journals.py` (920行) → `search_journals/__init__.py` + `search_journals/core.py`
+
+3. **导入修复**: 修复了模块导入路径问题
+   - 修复`write_journal/__init__.py`的循环导入问题
+   - 修复`search_journals/core.py`的`lib.config`导入路径
+
+**文件变更**:
+- 修改: `tools/build_index.py`, `tools/edit_journal.py`, `tools/generate_abstract.py`
+- 修改: `tools/lib/errors.py`, `tools/lib/search_index.py`
+- 修改: `tools/query_weather.py`, `tools/validate_data.py`, `tools/rebuild_indices.py`
+- 新增目录: `tools/write_journal/`, `tools/search_journals/`
+- 删除: `tools/write_journal.py`, `tools/search_journals.py` (已拆分)
+
+**SSOT 同步**:
+- 更新 [AGENTS.md](../AGENTS.md) 添加模块结构说明
+- 更新 [docs/API.md](./API.md) 反映新的模块路径
+
+---
+
+## [2026-03-11] 定时任务文档体系重构
+
+> **本文档职责**: 决策变更历史 SSOT，记录"何时做了什么决定"
+
+---
+
 ## [2026-03-11] 定时任务文档体系重构
 
 **决策**: 重构 SCHEDULE.md，采用渐进式披露 + 树形结构，优化 Agent 可读性。

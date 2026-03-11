@@ -211,7 +211,7 @@ def query_weather(
     return result
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Life Index - Query Weather Tool (Open-Meteo)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
