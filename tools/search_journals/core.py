@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Any, Tuple
 import fnmatch
 
 # 导入共享配置
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from lib.config import JOURNALS_DIR, BY_TOPIC_DIR, USER_DATA_DIR, PROJECT_ROOT
 
 

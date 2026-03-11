@@ -45,12 +45,12 @@ def parse_journal(file_path: Path) -> Tuple[Dict[str, Any], str]:
     """
     解析日志文件，返回 (frontmatter_dict, content_body)
     """
-    content = file_path.read_text(encoding='utf-8')
+    content = file_path.read_text(encoding="utf-8")
 
-    if not content.startswith('---'):
+    if not content.startswith("---"):
         return {}, content
 
-    parts = content.split('---', 2)
+    parts = content.split("---", 2)
     if len(parts) < 3:
         return {}, content
 
@@ -58,22 +58,23 @@ def parse_journal(file_path: Path) -> Tuple[Dict[str, Any], str]:
     body = parts[2].strip()
 
     # 解析 YAML frontmatter
-    frontmatter = {}
-    for line in fm_content.split('\n'):
-        if ':' in line and not line.strip().startswith('#'):
-            key, value = line.split(':', 1)
+    frontmatter: Dict[str, Any] = {}
+    for line in fm_content.split("\n"):
+        if ":" in line and not line.strip().startswith("#"):
+            key, value = line.split(":", 1)
             key = key.strip()
             value = value.strip()
 
             # 去除引号
-            if (value.startswith('"') and value.endswith('"')) or \
-               (value.startswith("'") and value.endswith("'")):
+            if (value.startswith('"') and value.endswith('"')) or (
+                value.startswith("'") and value.endswith("'")
+            ):
                 value = value[1:-1]
 
             # 解析列表
-            if value.startswith('[') and value.endswith(']'):
-                items = value[1:-1].split(',')
-                value = [item.strip().strip('"\'') for item in items if item.strip()]
+            if value.startswith("[") and value.endswith("]"):
+                items = value[1:-1].split(",")
+                value = [item.strip().strip("\"'") for item in items if item.strip()]
 
             frontmatter[key] = value
 
@@ -84,7 +85,18 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
     """格式化 YAML frontmatter"""
     lines = ["---"]
 
-    field_order = ['title', 'date', 'location', 'weather', 'mood', 'people', 'tags', 'project', 'topic', 'abstract']
+    field_order = [
+        "title",
+        "date",
+        "location",
+        "weather",
+        "mood",
+        "people",
+        "tags",
+        "project",
+        "topic",
+        "abstract",
+    ]
 
     # 按顺序输出已知字段
     for key in field_order:
@@ -93,12 +105,12 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
             if isinstance(value, list):
                 if value:
                     quoted = [f'"{v}"' for v in value]
-                    lines.append('{}: [{}]'.format(key, ', '.join(quoted)))
+                    lines.append("{}: [{}]".format(key, ", ".join(quoted)))
             elif isinstance(value, str):
                 if value:
                     lines.append(f'{key}: "{value}"')
             else:
-                lines.append(f'{key}: {value}')
+                lines.append(f"{key}: {value}")
 
     # 输出其他字段
     for key, value in data.items():
@@ -106,12 +118,12 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
             if isinstance(value, list):
                 if value:
                     quoted = [f'"{v}"' for v in value]
-                    lines.append('{}: [{}]'.format(key, ', '.join(quoted)))
+                    lines.append("{}: [{}]".format(key, ", ".join(quoted)))
             elif isinstance(value, str):
                 if value:
                     lines.append(f'{key}: "{value}"')
             else:
-                lines.append(f'{key}: {value}')
+                lines.append(f"{key}: {value}")
 
     lines.append("---")
     return "\n".join(lines)
@@ -122,27 +134,27 @@ def remove_from_index(index_file: Path, journal_filename: str) -> bool:
     if not index_file.exists():
         return False
 
-    content = index_file.read_text(encoding='utf-8')
-    lines = content.split('\n')
+    content = index_file.read_text(encoding="utf-8")
+    lines = content.split("\n")
 
     new_lines = []
     removed = False
     for line in lines:
-        if journal_filename in line and line.strip().startswith('- ['):
+        if journal_filename in line and line.strip().startswith("- ["):
             removed = True
             continue
         new_lines.append(line)
 
     if removed:
-        index_file.write_text('\n'.join(new_lines), encoding='utf-8')
+        index_file.write_text("\n".join(new_lines), encoding="utf-8")
 
     return removed
 
 
 def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> None:
     """添加日志条目到索引文件"""
-    date_str = data.get('date', '')[:10] if data.get('date') else ''
-    title = data.get('title', '无标题')
+    date_str = data.get("date", "")[:10] if data.get("date") else ""
+    title = data.get("title", "无标题")
     rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
 
     entry = f"- [{date_str}] [{title}]({rel_path})"
@@ -150,30 +162,32 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
     BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
 
     if index_file.exists():
-        content = index_file.read_text(encoding='utf-8')
+        content = index_file.read_text(encoding="utf-8")
         if entry not in content:
-            with open(index_file, 'a', encoding='utf-8') as f:
+            with open(index_file, "a", encoding="utf-8") as f:
                 f.write(entry + "\n")
     else:
         # 确定索引类型和名称
-        name = index_file.stem.replace('主题_', '').replace('项目_', '').replace('标签_', '')
-        if index_file.stem.startswith('主题_'):
+        name = (
+            index_file.stem.replace("主题_", "")
+            .replace("项目_", "")
+            .replace("标签_", "")
+        )
+        if index_file.stem.startswith("主题_"):
             header = f"# 主题: {name}\n\n"
-        elif index_file.stem.startswith('项目_'):
+        elif index_file.stem.startswith("项目_"):
             header = f"# 项目: {name}\n\n"
-        elif index_file.stem.startswith('标签_'):
+        elif index_file.stem.startswith("标签_"):
             header = f"# 标签: {name}\n\n"
         else:
             header = f"# {name}\n\n"
 
-        with open(index_file, 'w', encoding='utf-8') as f:
+        with open(index_file, "w", encoding="utf-8") as f:
             f.write(header + entry + "\n")
 
 
 def update_indices_for_change(
-    journal_path: Path,
-    old_data: Dict[str, Any],
-    new_data: Dict[str, Any]
+    journal_path: Path, old_data: Dict[str, Any], new_data: Dict[str, Any]
 ) -> List[str]:
     """
     根据数据变更更新索引
@@ -183,8 +197,8 @@ def update_indices_for_change(
     journal_filename = journal_path.name
 
     # 检查 topic 变更
-    old_topics = _normalize_to_list(old_data.get('topic'))
-    new_topics = _normalize_to_list(new_data.get('topic'))
+    old_topics = _normalize_to_list(old_data.get("topic"))
+    new_topics = _normalize_to_list(new_data.get("topic"))
 
     # 移除旧 topic 索引
     for topic in old_topics:
@@ -202,8 +216,8 @@ def update_indices_for_change(
                 updated_indices.append(str(idx_file))
 
     # 检查 project 变更
-    old_project = old_data.get('project', '')
-    new_project = new_data.get('project', '')
+    old_project = old_data.get("project", "")
+    new_project = new_data.get("project", "")
 
     if old_project != new_project:
         # 移除旧 project 索引
@@ -221,8 +235,8 @@ def update_indices_for_change(
                 updated_indices.append(str(idx_file))
 
     # 检查 tags 变更
-    old_tags = set(_normalize_to_list(old_data.get('tags')))
-    new_tags = set(_normalize_to_list(new_data.get('tags')))
+    old_tags = set(_normalize_to_list(old_data.get("tags")))
+    new_tags = set(_normalize_to_list(new_data.get("tags")))
 
     # 移除旧 tag 索引
     for tag in old_tags - new_tags:
@@ -259,7 +273,7 @@ def edit_journal(
     frontmatter_updates: Dict[str, Any],
     append_content: Optional[str] = None,
     replace_content: Optional[str] = None,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> Dict[str, Any]:
     """
     编辑日志文件
@@ -281,13 +295,13 @@ def edit_journal(
             "error": str (optional)
         }
     """
-    result = {
+    result: Dict[str, Any] = {
         "success": False,
         "journal_path": str(journal_path),
         "changes": {},
         "content_modified": False,
         "indices_updated": [],
-        "error": None
+        "error": None,
     }
 
     try:
@@ -303,7 +317,7 @@ def edit_journal(
             old_value = new_frontmatter.get(key)
 
             # 特殊处理：空字符串视为删除字段
-            if value == '' or value is None:
+            if value == "" or value is None:
                 if key in new_frontmatter:
                     del new_frontmatter[key]
                     result["changes"][key] = {"old": old_value, "new": None}
@@ -328,17 +342,21 @@ def edit_journal(
             result["success"] = True
             result["preview"] = {
                 "frontmatter": format_frontmatter(new_frontmatter),
-                "body_preview": new_body[:200] + "..." if len(new_body) > 200 else new_body
+                "body_preview": new_body[:200] + "..."
+                if len(new_body) > 200
+                else new_body,
             }
             return result
 
         # 写入文件
         new_content = format_frontmatter(new_frontmatter) + "\n\n" + new_body
-        journal_path.write_text(new_content, encoding='utf-8')
+        journal_path.write_text(new_content, encoding="utf-8")
 
         # 更新索引（如果相关字段变更）
-        if any(k in result["changes"] for k in ['topic', 'project', 'tags']):
-            updated = update_indices_for_change(journal_path, old_frontmatter, new_frontmatter)
+        if any(k in result["changes"] for k in ["topic", "project", "tags"]):
+            updated = update_indices_for_change(
+                journal_path, old_frontmatter, new_frontmatter
+            )
             result["indices_updated"] = updated
 
         result["success"] = True
@@ -349,7 +367,7 @@ def edit_journal(
     return result
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Life Index - Edit Journal Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -370,13 +388,11 @@ Examples:
         --set-location "Shanghai, China" \\
         --set-mood "开心,兴奋" \\
         --set-project "New-Project"
-        """
+        """,
     )
 
     parser.add_argument(
-        "--journal",
-        required=True,
-        help="日志文件路径（相对或绝对路径）"
+        "--journal", required=True, help="日志文件路径（相对或绝对路径）"
     )
 
     # Frontmatter 字段设置
@@ -393,26 +409,16 @@ Examples:
 
     # 内容编辑
     content_group = parser.add_mutually_exclusive_group()
+    content_group.add_argument("--append-content", help="追加内容到正文末尾")
     content_group.add_argument(
-        "--append-content",
-        help="追加内容到正文末尾"
-    )
-    content_group.add_argument(
-        "--replace-content",
-        help="替换整个正文内容（保留 frontmatter）"
+        "--replace-content", help="替换整个正文内容（保留 frontmatter）"
     )
 
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="模拟运行，不实际写入文件"
+        "--dry-run", action="store_true", help="模拟运行，不实际写入文件"
     )
 
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="输出详细日志"
-    )
+    parser.add_argument("--verbose", action="store_true", help="输出详细日志")
 
     args = parser.parse_args()
 
@@ -422,6 +428,7 @@ Examples:
         # 尝试相对于用户数据目录解析
         try:
             from lib.config import USER_DATA_DIR
+
             base_dir = USER_DATA_DIR
         except ImportError:
             base_dir = Path.cwd()
@@ -440,15 +447,23 @@ Examples:
     if args.set_weather is not None:
         frontmatter_updates["weather"] = args.set_weather
     if args.set_mood is not None:
-        frontmatter_updates["mood"] = [m.strip() for m in args.set_mood.split(",") if m.strip()]
+        frontmatter_updates["mood"] = [
+            m.strip() for m in args.set_mood.split(",") if m.strip()
+        ]
     if args.set_people is not None:
-        frontmatter_updates["people"] = [p.strip() for p in args.set_people.split(",") if p.strip()]
+        frontmatter_updates["people"] = [
+            p.strip() for p in args.set_people.split(",") if p.strip()
+        ]
     if args.set_tags is not None:
-        frontmatter_updates["tags"] = [t.strip() for t in args.set_tags.split(",") if t.strip()]
+        frontmatter_updates["tags"] = [
+            t.strip() for t in args.set_tags.split(",") if t.strip()
+        ]
     if args.set_project is not None:
         frontmatter_updates["project"] = args.set_project
     if args.set_topic is not None:
-        frontmatter_updates["topic"] = [t.strip() for t in args.set_topic.split(",") if t.strip()]
+        frontmatter_updates["topic"] = [
+            t.strip() for t in args.set_topic.split(",") if t.strip()
+        ]
     if args.set_abstract is not None:
         frontmatter_updates["abstract"] = args.set_abstract
 
@@ -458,7 +473,7 @@ Examples:
         frontmatter_updates=frontmatter_updates,
         append_content=args.append_content,
         replace_content=args.replace_content,
-        dry_run=args.dry_run
+        dry_run=args.dry_run,
     )
 
     # 输出结果

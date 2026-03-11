@@ -93,26 +93,37 @@ pip install sentence-transformers>=2.2.0
 
 所有工具位于 `tools/` 目录，通过 Bash 调用。详见 [API.md](docs/API.md) 完整接口文档。
 
-```bash
-# 示例：写入日志
-python tools/write_journal.py --data '{"title":"...","content":"...","date":"2026-03-07","topic":"work"}'
-
-# 示例：搜索日志
-python tools/search_journals.py --query "关键词" --level 3
+**模块结构**（2026-03-11更新）:
 ```
-
-所有工具位于 `tools/` 目录，通过 Bash 调用：
+tools/
+├── write_journal/              # 写入日志模块
+│   ├── __init__.py            # CLI入口
+│   └── core.py                # 核心写入逻辑
+├── search_journals/            # 搜索日志模块
+│   ├── __init__.py            # CLI入口
+│   └── core.py                # 核心搜索逻辑
+├── edit_journal.py            # 编辑日志
+├── generate_abstract.py       # 生成摘要
+├── build_index.py             # 构建索引
+├── query_weather.py           # 查询天气
+└── lib/                       # 共享库
+    ├── config.py              # 配置
+    ├── errors.py              # 错误码
+    ├── search_index.py        # 搜索索引
+    ├── semantic_search.py     # 语义搜索
+    └── vector_index_simple.py # 向量索引
+```
 
 ```bash
 # 写入日志
-python tools/write_journal.py --data '{"title":"...","content":"...","date":"2026-03-07","topic":"work"}'
+python -m tools.write_journal --data '{"title":"...","content":"...","date":"2026-03-07","topic":"work"}'
 
 # 搜索日志
-python tools/search_journals.py --query "关键词" --level 3
-python tools/search_journals.py --topic work --project Life-Index --limit 10
+python -m tools.search_journals --query "关键词" --level 3
+python -m tools.search_journals --topic work --project Life-Index --limit 10
 
 # 语义搜索（需安装 sentence-transformers）
-python tools/search_journals.py --query "学习笔记" --semantic
+python -m tools.search_journals --query "学习笔记" --semantic
 
 # 编辑日志
 python tools/edit_journal.py --journal "Journals/2026/03/life-index_2026-03-07_001.md" --set-weather "晴天"
