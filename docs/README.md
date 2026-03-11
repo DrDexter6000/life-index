@@ -14,8 +14,8 @@
 | [INSTRUCTIONS.md](./INSTRUCTIONS.md) | Agent 指令：工作流、工具接口、示例 | AI Agent（直接执行） |
 | [API.md](./API.md) | 工具 API 接口文档 | 开发者 |
 | [CHANGELOG.md](./CHANGELOG.md) | 决策变更历史 | 所有协作者 |
+| [SCHEDULE.md](../references/schedule/SCHEDULE.md) | 定时任务配置 | Agent 自动化报告 |
 | [adr/](./adr/) | 架构决策记录 | 设计决策背景 |
-
 ---
 
 ## 一分钟开始

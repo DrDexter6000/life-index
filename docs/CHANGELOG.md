@@ -4,6 +4,46 @@
 
 ---
 
+## [2026-03-11] 定时任务文档体系重构
+
+**决策**: 重构 SCHEDULE.md，采用渐进式披露 + 树形结构，优化 Agent 可读性。
+
+**核心变更**:
+1. **STOP 点简化**: 删除用户确认环节，改为 `前置检查 + 后置记录`
+2. **推送渠道明确**: 日报/周报推送到主会话 + IM 渠道
+3. **索引任务重新设计**: 每日索引维护（检查+修复+向量增量）、每月索引维护（全量检查+重建+向量全量）
+4. **无数据处理**: 保留元数据占位，报告后询问用户是否补充
+5. **文档架构重构**: SCHEDULE.md 移动到 `references/schedule/`，与场景文档、模板文档形成内聚单元
+
+**新文档结构**:
+```
+references/schedule/
+├── SCHEDULE.md           ← Router（权威文档）
+├── scenarios/            ← 场景文档
+│   ├── daily-report.md
+│   ├── weekly-report.md
+│   ├── monthly-report.md
+│   ├── yearly-report.md
+│   ├── index-update.md
+│   └── index-rebuild.md
+└── templates/            ← 输出模板
+    ├── daily-template.md
+    ├── weekly-template.md
+    ├── monthly-template.md
+    └── yearly-template.md
+```
+
+**关键发现**: `write_journal.py` 在写入日志时已自动更新 by-topic 索引，因此每日索引任务应为"检查+修复"而非"更新"。
+
+**SSOT 同步**:
+- 更新 [AGENTS.md](../AGENTS.md) SCHEDULE.md 路径引用
+- 更新 [README.md](../README.md) SCHEDULE.md 路径引用
+- 更新 [INSTRUCTIONS.md](./INSTRUCTIONS.md) SCHEDULE.md 路径引用
+- 更新 [docs/README.md](./docs/README.md) 添加 SCHEDULE.md 导航
+
+---
+
+
 ## [2026-03-09] 报告文件命名规范化
 
 **决策**: 统一月报/年报文件命名，与 SCHEDULE.md 规范保持一致。

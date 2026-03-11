@@ -69,8 +69,7 @@ Agent 具备以下原生能力，**禁止开发重复工具**：
 | 索引更新 | ✅ 使用 | ❌ 禁止 |
 | 数据清理 | ✅ 使用 | ❌ 禁止 |
 
-定时任务配置见 `docs/SCHEDULE.md`。
----
+定时任务配置见 `references/schedule/SCHEDULE.md`。
 
 ## 构建与运行命令
 
@@ -294,8 +293,7 @@ from tools.write_journal import write_journal
 | `docs/HANDBOOK.md` | 项目愿景、架构设计、核心原则 |
 | `docs/INSTRUCTIONS.md` | Agent 执行指令、工作流步骤 |
 | `docs/API.md` | 工具 API 接口文档 |
-| `docs/SCHEDULE.md` | 定时任务配置（日报/周报/月报） |
-| `docs/adr/` | 架构决策记录 |
+| `references/schedule/SCHEDULE.md` | 定时任务配置（日报/周报/月报） |
 | `references/` | 参考文档（天气流程、错误码） |
 
 ---
