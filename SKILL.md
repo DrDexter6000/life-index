@@ -174,14 +174,6 @@ Agent 改成："1. 完成A\n2. 完成B"
 6. 展示 `confirmation_message`，询问用户确认
 7. **如果天气查询失败**：使用网络搜索 Fallback
 
-1. 解析用户输入（title, content, date, topic 等）
-2. **生成摘要**：从 content 中提取关键信息，生成 ≤100 字的摘要
-3. 调用 `write_journal.py`（包含 abstract 字段）
-   - **附件自动处理**：工具自动检测 content 中的本地文件路径（如 `C:\Users\...\file.mp4`），复制到 `attachments/YYYY/MM/` 并在日志末尾添加引用
-4. **检查 `needs_confirmation`**
-5. 展示 `confirmation_message`，询问用户确认
-6. **如果天气查询失败**：使用网络搜索 Fallback
-
 ## 搜索日志
 
 1. 解析查询意图（时间、主题、关键词）
@@ -210,11 +202,6 @@ Agent 改成："1. 完成A\n2. 完成B"
 ├── by-topic/主题_*.md
 └── attachments/YYYY/MM/
 ```
-
-# Prerequisites
-
-- **Python 3.11+**
-- **可选**：sentence-transformers（语义搜索）
 
 # Examples
 
