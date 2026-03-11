@@ -4,8 +4,7 @@
 > **适用对象**: 具备文件操作能力的 AI Agent（Claude、OpenClaw 等）
 > **版本/状态**: 详见 [README.md](./README.md)
 >
-> **相关文档**: [架构→HANDBOOK.md](./HANDBOOK.md) | [定时任务→SCHEDULE.md](./SCHEDULE.md) | [变更历史→CHANGELOG.md](./CHANGELOG.md)
-
+> **相关文档**: [架构→HANDBOOK.md](./HANDBOOK.md) | [定时任务→SCHEDULE.md](../references/schedule/SCHEDULE.md) | [变更历史→CHANGELOG.md](./CHANGELOG.md)
 ---
 
 ## 前置检查
@@ -229,8 +228,7 @@ python tools/generate_abstract.py --year 2026
 
 Life Index 支持定时生成日报、周报、月报、年报，以及向量索引自动维护。
 
-详见：[SCHEDULE.md](./SCHEDULE.md)
-
+详见：[SCHEDULE.md](../references/schedule/SCHEDULE.md)
 ---
 
 ## 错误处理

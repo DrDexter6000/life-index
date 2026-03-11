@@ -222,8 +222,7 @@ Life Index 支持通过 Agent 的定时任务功能实现自动化报告：
 - **年报**：每年 12月31日 19:15 生成文件并推送
 - **向量索引更新**：每日 23:50 增量更新，每月1日 03:30 全量重建
 
-**详见 [SCHEDULE.md](./docs/SCHEDULE.md) 了解完整的定时任务配置指南。**
-
+**详见 [SCHEDULE.md](./references/schedule/SCHEDULE.md) 了解完整的定时任务配置指南。**
 ### 目录结构
 ```
 Life-Index/
