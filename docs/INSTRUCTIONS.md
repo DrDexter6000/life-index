@@ -200,7 +200,7 @@ python tools/generate_abstract.py --year 2026
 3. **分支处理**：
    - 用户提供完整地址+天气 → 直接使用
    - 仅提供地点 → 常识补全国家 → 调用 query_weather
-   - 均未提供 → 默认 Lagos, Nigeria → 调用 query_weather
+   - 均未提供 → 默认 Chongqing, China → 调用 query_weather
 4. **调用工具**：write_journal.py
 5. **向用户确认**
 
