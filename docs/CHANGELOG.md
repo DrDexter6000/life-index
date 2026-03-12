@@ -4,6 +4,63 @@
 
 ---
 
+## [2026-03-12] 模块深度拆分与代码重构
+
+**决策**: 进一步细化拆分 write_journal 和 search_journals 模块，提升代码可维护性和单一职责原则。
+
+**核心变更**:
+1. **write_journal 模块拆分**: 将 core.py (952行) 拆分为6个子模块
+   - `utils.py`: 通用工具函数（get_year_month, generate_filename, get_next_sequence, convert_path_for_platform）
+   - `frontmatter.py`: YAML frontmatter格式化（format_frontmatter, format_content, parse_frontmatter）
+   - `attachments.py`: 附件处理逻辑（extract_file_paths_from_content, looks_like_file_path, process_attachments）
+   - `weather.py`: 天气查询相关（query_weather_for_location, normalize_location）
+   - `index_updater.py`: 索引更新逻辑（update_topic_index, update_project_index, update_tag_indices, update_monthly_abstract）
+   - `core.py`: 核心协调逻辑（write_journal主函数，~192行）
+
+2. **search_journals 模块拆分**: 将 core.py (906行) 拆分为7个子模块
+   - `utils.py`: 通用工具函数（parse_frontmatter）
+   - `l1_index.py`: 一级索引搜索（scan_all_indices, search_l1_index）
+   - `l2_metadata.py`: 二级元数据搜索（search_l2_metadata）
+   - `l3_content.py`: 三级内容搜索（search_l3_content）
+   - `semantic.py`: 语义搜索相关（search_semantic, enrich_semantic_result）
+   - `ranking.py`: 结果排序算法（merge_and_rank_results, merge_and_rank_results_hybrid）
+   - `core.py`: 核心协调逻辑（hierarchical_search主函数，~233行）
+
+3. **新增模块执行入口**: 添加 `__main__.py` 支持 `python -m` 方式运行
+
+**文件变更**:
+- 修改: `tools/write_journal/core.py` (952行 → 192行)
+- 修改: `tools/search_journals/core.py` (906行 → 233行)
+- 修改: `AGENTS.md` 更新模块结构说明
+- 新增: `tools/write_journal/__main__.py`
+- 新增: `tools/write_journal/utils.py`
+- 新增: `tools/write_journal/frontmatter.py`
+- 新增: `tools/write_journal/attachments.py`
+- 新增: `tools/write_journal/weather.py`
+- 新增: `tools/write_journal/index_updater.py`
+- 新增: `tools/search_journals/__main__.py`
+- 新增: `tools/search_journals/utils.py`
+- 新增: `tools/search_journals/l1_index.py`
+- 新增: `tools/search_journals/l2_metadata.py`
+- 新增: `tools/search_journals/l3_content.py`
+- 新增: `tools/search_journals/semantic.py`
+- 新增: `tools/search_journals/ranking.py`
+
+**SSOT 同步**:
+- 更新 [AGENTS.md](../AGENTS.md) 模块结构说明（2026-03-12更新）
+- 更新 [docs/CHANGELOG.md](./CHANGELOG.md) 添加变更记录
+
+**验证结果**:
+- ✅ write_journal/core.py: 952行 → 192行（减少80%）
+- ✅ search_journals/core.py: 906行 → 233行（减少74%）
+- ✅ 所有子模块可以独立导入
+- ✅ CLI入口正常工作
+- ✅ mypy检查无新增错误
+
+---
+
+## [2026-03-11] 代码质量提升与模块化重构
+
 ## [2026-03-11] 代码质量提升与模块化重构
 
 **决策**: 修复mypy类型错误，完成核心模块的初步拆分，提升代码质量和可维护性。
