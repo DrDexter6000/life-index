@@ -96,6 +96,12 @@ py-modules = []
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["tools*"]
+exclude = ["tests*", "docs*", "references*"]
+py-modules = []
+
+[tool.setuptools.packages.find]
+where = ["."]
 include = ["tools*", "tests*"]
 exclude = ["tests*"]
 
