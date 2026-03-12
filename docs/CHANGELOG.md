@@ -4,6 +4,57 @@
 
 ---
 
+---
+
+## [2026-03-13] Schedule 文档重写：基于 OpenClaw 官方文档的定时任务配置指南
+
+**决策**: 完全重写 references/schedule/SCHEDULE.md，基于 OpenClaw 官方文档和社区最佳实践，提供真实可用的定时任务配置模板。
+
+**核心变更**:
+1. **查阅官方文档**
+   - OpenClaw 官方 Cron Jobs 文档 (openclawlab.com)
+   - Stack Junkie 社区指南
+   - 多个中文社区资源
+
+2. **编写 6 个完整任务模板**
+   - 日报 (0 22 * * *) - 200 tokens
+   - 周报 (10 22 * * 0) - 500 tokens
+   - 月报 (30 18 28-31 * *) - 1000 tokens
+   - 年报 (15 19 31 12 *) - 3000 tokens
+   - 每日索引维护 (50 23 * * *)
+   - 每月索引重建 (30 3 1 * *)
+
+3. **5 步 Agent-Native 结构**
+   - Step 1: 理解任务（为什么需要定时任务）
+   - Step 2: OpenClaw 参考模板（6个任务的 CLI + JSON 配置）
+   - Step 3: 自我系统分析（版本、路径、时区检查）
+   - Step 4: 判断与决策（决策流程图）
+   - Step 5: 执行设置（创建、验证、故障排查）
+
+4. **时区确认环节**
+   - 移除硬编码 `Asia/Shanghai`
+   - 添加 `[YOUR_TIMEZONE]` 占位符
+   - 提供时区检测命令和常见时区列表
+   - 说明 UTC 作为默认选项
+
+5. **完整的故障排查指南**
+   - 5 个常见问题及解决方案
+   - 引用官方 troubleshooting 文档
+
+**外部参考链接**:
+- [OpenClaw Cron Jobs 官方文档](https://openclawlab.com/en/docs/automation/cron-jobs/)
+- [Cron vs Heartbeat 对比](https://openclawlab.com/en/docs/automation/cron-vs-heartbeat/)
+- [Stack Junkie: 8 个自动化模板](https://www.stack-junkie.com/blog/openclaw-cron-jobs-automation-guide)
+- [Cron 表达式验证工具](https://crontab.guru/)
+
+**SSOT 同步**:
+- 更新 `references/schedule/SCHEDULE.md`（600+ 行完整指南）
+- 保留 `references/schedule/scenarios/*.md`（6 个场景详细指南）
+- 删除 VS Code 生成的多余文件
+
+---
+
+
 ## [2026-03-12] SSOT 重构：统一 frontmatter 处理，消除代码重复
 
 **决策**: 创建 `lib/frontmatter.py` 作为 YAML 解析/格式化的单一事实来源，消除多工具间的代码重复，删除冗余工具。
