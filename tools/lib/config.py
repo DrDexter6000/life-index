@@ -81,7 +81,8 @@ def _load_yaml_config(config_path: Path) -> Dict[str, Any]:
 
         with open(config_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
-    except Exception:
+    except (IOError, OSError, ImportError):
+        return {}
         return {}
 
 
@@ -178,9 +179,6 @@ def get_path_mappings() -> Dict[str, str]:
     """Get cross-platform path mappings from config."""
     # Start with config file mappings
     mappings: Dict[str, str] = USER_CONFIG.get("path_mappings", {})
-    """Get cross-platform path mappings from config."""
-    # Start with config file mappings
-    mappings = USER_CONFIG.get("path_mappings", {})
 
     # Example default mappings (disabled by default)
     # mappings.update({
@@ -302,7 +300,7 @@ def parse_frontmatter(file_path: Path) -> Dict[str, Any]:
         metadata["_body"] = body.strip()
         metadata["_file"] = str(file_path)
         return metadata
-    except Exception:
+    except (ValueError, IndexError, yaml.YAMLError):
         return {}
 
 

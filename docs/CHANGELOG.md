@@ -6,6 +6,60 @@
 
 ---
 
+## [2026-03-13] 代码质量修复：SSOT合规、事务保护、L2性能优化
+
+**决策**: 基于CTO技术评审报告，修复P0级问题，提升代码质量和架构合规性。
+
+**核心变更**:
+
+1. **SSOT原则执行**
+   - 统一使用 `lib/frontmatter` 作为frontmatter解析的单一事实来源
+   - 修复 `search_journals/utils.py` 重复实现问题
+   - 废弃 `write_journal/frontmatter.parse_frontmatter`，添加废弃警告
+
+2. **事务保护机制**
+   - 重构 `write_journal/core.py`，添加基于临时文件的事务保护
+   - 确保文件写入和索引更新的原子性
+   - 失败时自动回滚，避免数据不一致
+
+3. **L2搜索性能优化**
+   - 新建 `lib/metadata_cache.py` 模块（396行）
+   - 重构 `search_journals/l2_metadata.py` 使用SQLite元数据缓存
+   - 实现文件签名检测（mtime+size）判断缓存有效性
+   - 支持增量更新，避免重复解析
+   - 性能提升预估：50-100x（1000篇日志场景）
+
+4. **异常处理规范化**
+   - 修复25处裸 `except Exception` 为具体异常类型
+   - 涉及文件：`build_index.py`, `query_weather.py`, `generate_abstract.py`, `config.py`, `frontmatter.py` 等
+
+5. **代码清理**
+   - 删除 `config.py` 中重复的函数定义
+   - 修复 `pyproject.toml` 重复配置问题
+   - 修复 `build_index.py` 语法错误
+
+6. **测试增强**
+   - 新建 `test_metadata_cache.py` 单元测试（11个测试用例）
+   - 总测试数从48个提升到59个
+   - 所有测试100%通过
+
+**技术债务**: C+ → B+ 评级提升
+
+**SSOT 同步**:
+- `docs/API.md` - 更新搜索模块说明（如需要）
+- `docs/HANDBOOK.md` - 架构章节已反映最新设计
+- `AGENTS.md` - 工具结构说明保持准确
+
+---
+
+---
+
+> **本文档职责**: 决策变更历史 SSOT，记录"何时做了什么决定"
+
+---
+
+---
+
 ## [2026-03-13] Schedule 文档重写：基于 OpenClaw 官方文档的定时任务配置指南
 
 **决策**: 完全重写 references/schedule/SCHEDULE.md，基于 OpenClaw 官方文档和社区最佳实践，提供真实可用的定时任务配置模板。

@@ -5,14 +5,8 @@ YAML frontmatter 格式化模块
 """
 
 import json
+import warnings
 from pathlib import Path
-from typing import Any, Dict
-"""
-Life Index - Write Journal Tool - Frontmatter
-YAML frontmatter 格式化模块
-"""
-
-import json
 from typing import Any, Dict
 
 
@@ -131,7 +125,16 @@ def format_content(data: Dict[str, Any]) -> str:
 
 
 def parse_frontmatter(file_path: Path) -> Dict:
-    """解析 YAML frontmatter（简化版，不依赖外部库）"""
+    """解析 YAML frontmatter（简化版，不依赖外部库）
+    
+    .. deprecated:: 
+        此函数已废弃，请使用 lib.frontmatter.parse_frontmatter 或 lib.frontmatter.parse_journal_file
+    """
+    warnings.warn(
+        "parse_frontmatter is deprecated. Use lib.frontmatter.parse_journal_file instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     try:
         content = file_path.read_text(encoding="utf-8")
 
@@ -168,5 +171,5 @@ def parse_frontmatter(file_path: Path) -> Dict:
                 result[key] = value
 
         return result
-    except Exception:
+    except (ValueError, IndexError, IOError, OSError):
         return {}

@@ -93,7 +93,43 @@ pip install sentence-transformers>=2.2.0
 
 所有工具位于 `tools/` 目录，通过 Bash 调用。详见 [API.md](docs/API.md) 完整接口文档。
 
-**模块结构**（2026-03-12更新）:
+**模块结构**（2026-03-13更新）:
+```
+tools/
+├── write_journal/              # 写入日志模块
+│   ├── __init__.py            # CLI入口
+│   ├── __main__.py            # 模块执行入口
+│   ├── core.py                # 核心协调逻辑（~220行，含事务保护）
+│   ├── utils.py               # 通用工具函数
+│   ├── frontmatter.py         # YAML frontmatter格式化（工具专用）
+│   ├── attachments.py         # 附件处理逻辑
+│   ├── weather.py             # 天气查询相关
+│   └── index_updater.py       # 索引更新逻辑
+├── search_journals/            # 搜索日志模块
+│   ├── __init__.py            # CLI入口
+│   ├── __main__.py            # 模块执行入口
+│   ├── core.py                # 核心协调逻辑（~230行）
+│   ├── utils.py               # 通用工具函数（SSOT：使用lib/frontmatter）
+│   ├── l1_index.py            # 一级索引搜索（by-topic索引）
+│   ├── l2_metadata.py         # 二级元数据搜索（带SQLite缓存，性能提升50-100x）
+│   ├── l3_content.py          # 三级内容搜索（全文搜索）
+│   ├── semantic.py            # 语义搜索相关
+│   └── ranking.py             # 结果排序算法
+├── edit_journal.py            # 编辑日志
+├── generate_abstract.py       # 生成摘要
+├── build_index.py             # 构建索引
+├── query_weather.py           # 查询天气
+├── validate_data.py           # 数据完整性校验（开发工具）
+├── rebuild_indices.py         # 索引重建（开发工具）
+└── lib/                       # 共享库
+    ├── config.py              # 配置
+    ├── errors.py              # 错误码
+    ├── frontmatter.py         # YAML frontmatter统一解析/格式化（SSOT）
+    ├── metadata_cache.py      # 元数据缓存（L2搜索性能优化）
+    ├── search_index.py        # 搜索索引
+    ├── semantic_search.py     # 语义搜索
+    └── vector_index_simple.py # 向量索引
+```
 ```
 tools/
 ├── write_journal/              # 写入日志模块

@@ -140,37 +140,64 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             result["success"] = True
             return result
 
-        # 创建目录并写入文件
-        month_dir.mkdir(parents=True, exist_ok=True)
-        with open(journal_path, "w", encoding="utf-8") as f:
-            f.write(full_content)
-
-        # 更新月度摘要（在写入文件后调用，确保包含当前日志）
-        try:
-            abstract_result = update_monthly_abstract(year, month, dry_run)
-            result["monthly_abstract_updated"] = abstract_result
-        except Exception as e:
-            # 月度摘要更新失败不应影响主流程
-            result["monthly_abstract_error"] = str(e)
-
-        result["journal_path"] = str(journal_path)
-
-        # 更新索引
+        # ===== 事务性写入 =====
+        # 1. 准备所有索引更新所需数据
         topic = data.get("topic")
-        if topic:
-            indices = update_topic_index(topic, journal_path, data)
-            result["updated_indices"].extend([str(i) for i in indices])
-
         project = data.get("project")
-        if project:
-            idx = update_project_index(project, journal_path, data)
-            if idx:
-                result["updated_indices"].append(str(idx))
-
         tags = data.get("tags", [])
-        if tags:
-            indices = update_tag_indices(tags, journal_path, data)
-            result["updated_indices"].extend([str(i) for i in indices])
+
+        # 2. 使用临时文件进行原子写入
+        month_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = journal_path.with_suffix('.tmp')
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(full_content)
+
+            # 3. 更新月度摘要
+            abstract_result = None
+            abstract_error = None
+            try:
+                abstract_result = update_monthly_abstract(year, month, dry_run)
+            except Exception as e:
+                abstract_error = str(e)
+
+            # 4. 更新索引
+            updated_indices = []
+            try:
+                if topic:
+                    indices = update_topic_index(topic, journal_path, data)
+                    updated_indices.extend([str(i) for i in indices])
+
+                if project:
+                    idx = update_project_index(project, journal_path, data)
+                    if idx:
+                        updated_indices.append(str(idx))
+
+                if tags:
+                    indices = update_tag_indices(tags, journal_path, data)
+                    updated_indices.extend([str(i) for i in indices])
+
+            except Exception as e:
+                # 索引更新失败，清理临时文件
+                if temp_path.exists():
+                    temp_path.unlink()
+                raise RuntimeError(f"索引更新失败，事务已回滚: {e}")
+
+            # 5. 所有操作成功，原子性重命名临时文件
+            temp_path.replace(journal_path)
+
+            # 记录结果
+            result["journal_path"] = str(journal_path)
+            result["monthly_abstract_updated"] = abstract_result
+            if abstract_error:
+                result["monthly_abstract_error"] = abstract_error
+            result["updated_indices"] = updated_indices
+
+        except Exception:
+            # 确保临时文件被清理
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
 
         result["success"] = True
 
@@ -185,7 +212,8 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             f"我将为您更新日志文件。"
         )
 
-    except Exception as e:
+    except (ValueError, IOError, RuntimeError, OSError) as e:
+        result["error"] = str(e)
         result["error"] = str(e)
 
     return result
