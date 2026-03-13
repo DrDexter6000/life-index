@@ -183,7 +183,8 @@ def update_monthly_abstract(
         else:
             result["error"] = proc.stderr
 
-    except Exception as e:
+    except (OSError, IOError, RuntimeError) as e:
+        result["error"] = str(e)
         result["error"] = str(e)
 
     return result

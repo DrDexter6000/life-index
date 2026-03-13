@@ -61,7 +61,8 @@ def geocode_location(location: str) -> Optional[Dict[str, Any]]:
             "admin1": result.get("admin1", "")
         }
 
-    except Exception as e:
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError) as e:
+        return {"error": str(e)}
         return {"error": str(e)}
 
 
@@ -205,7 +206,8 @@ def query_weather(
         result["error"] = f"API error: {e.code} - {e.reason}"
     except urllib.error.URLError as e:
         result["error"] = f"Network error: {e.reason}"
-    except Exception as e:
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        result["error"] = str(e)
         result["error"] = str(e)
 
     return result

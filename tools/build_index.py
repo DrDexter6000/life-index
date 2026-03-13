@@ -71,7 +71,7 @@ def build_all(
             else:
                 print(f"  ✗ FTS failed: {fts_result.get('error')}")
                 result["success"] = False
-        except Exception as e:
+        except (RuntimeError, IOError, OSError) as e:
             print(f"  ✗ FTS error: {e}")
             result["fts"] = {"success": False, "error": str(e)}
             result["success"] = False
@@ -95,7 +95,7 @@ def build_all(
                         f"~{vec_result.get('updated', 0)} updated"
                     )
                     vec_success = True
-        except Exception as e:
+        except (ImportError, RuntimeError):
             pass  # 失败时尝试简单索引
 
         # 如果 sqlite-vec 失败，使用简单向量索引
@@ -125,7 +125,7 @@ def build_all(
                     print(
                         f"  ⚠ Embedding model not available. Install: pip install sentence-transformers"
                     )
-            except Exception as e:
+            except (RuntimeError, IOError, OSError) as e:
                 print(f"  ✗ Vector error: {e}")
                 result["vector"] = {"success": False, "error": str(e)}
 
@@ -164,7 +164,7 @@ def show_stats() -> None:
         else:
             # 尝试获取简单向量索引统计
             raise Exception("sqlite-vec not available")
-    except:
+    except (ImportError, RuntimeError):
         try:
             from lib.vector_index_simple import get_index
 
@@ -174,7 +174,7 @@ def show_stats() -> None:
             print(f"  Exists: {'Yes' if simple_stats['exists'] else 'No'}")
             print(f"  Vectors: {simple_stats['total_vectors']}")
             print(f"  Size: {simple_stats['index_size_mb']} MB")
-        except Exception as e:
+        except (ImportError, RuntimeError) as e:
             print(f"  Status: Not available")
             print(f"  Note: Install sentence-transformers for semantic search")
 

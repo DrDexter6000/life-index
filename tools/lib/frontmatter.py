@@ -86,7 +86,8 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
         metadata["_file"] = str(file_path)
         
         return metadata
-    except Exception as e:
+    except (IOError, OSError, UnicodeDecodeError) as e:
+        return {"_error": str(e), "_file": str(file_path)}
         return {"_error": str(e), "_file": str(file_path)}
 
 
@@ -320,7 +321,8 @@ def update_frontmatter_fields(
         file_path.write_text(new_content, encoding="utf-8")
         result["success"] = True
         
-    except Exception as e:
+    except (IOError, OSError, UnicodeDecodeError) as e:
+        result["error"] = str(e)
         result["error"] = str(e)
     
     return result

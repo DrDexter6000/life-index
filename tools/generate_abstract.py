@@ -122,7 +122,8 @@ def parse_frontmatter(file_path: Path) -> Optional[Dict]:
 
         result["_body"] = body
         return result
-    except Exception:
+    except (ValueError, IndexError, IOError, OSError):
+        return {}
         return {}
 
 

@@ -129,5 +129,6 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
                 elif "description" in output:
                     return output["description"]
         return ""
-    except Exception:
+    except (KeyError, ValueError, TypeError):
+        return ""
         return ""

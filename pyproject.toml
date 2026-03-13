@@ -91,20 +91,14 @@ life-index-weather = "tools.query_weather:main"
 life-index-abstract = "tools.generate_abstract:main"
 life-index-index = "tools.build_index:main"
 
-[tool.setuptools]
 py-modules = []
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["tools*"]
 exclude = ["tests*", "docs*", "references*"]
-py-modules = []
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["tools*", "tests*"]
-exclude = ["tests*"]
-
+# ========== Black - Code Formatter ==========
 # ========== Black - Code Formatter ==========
 [tool.black]
 line-length = 100
