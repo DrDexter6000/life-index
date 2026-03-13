@@ -1,5 +1,0 @@
-# Life Index - Python Dependencies
-# Install with: pip install -r tools/requirements.txt
-
-# Semantic Search (optional, for vector-based similarity search)
-sentence-transformers>=2.2.0
