@@ -6,19 +6,21 @@ Life Index - Query Weather Tool
 Usage:
     python -m tools.query_weather --location "Lagos" --date 2026-03-04
     python -m tools.query_weather --lat 6.5244 --lon 3.3792 --date 2026-03-04
-    python -m tools.query_weather --location "Lagos,Nigeria" --date 2026-03-04 --format detailed
+
+Public API:
+    from tools.query_weather import query_weather, geocode_location
+    result = query_weather(latitude=6.52, longitude=3.38, date="2026-03-04")
 """
 
-import argparse
 import json
-import logging
-import sys
 import urllib.request
 import urllib.parse
-from datetime import datetime, timedelta
+import urllib.error
+from datetime import datetime
 from typing import Dict, Optional, Any
 
-from tools.lib.logger import get_logger
+from ..lib.logger import get_logger
+from ..lib.config import ensure_dirs
 
 logger = get_logger(__name__)
 
@@ -229,102 +231,12 @@ def query_weather(
     return result
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Life Index - Query Weather Tool (Open-Meteo)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    python -m tools.query_weather --location "Lagos"
-    python -m tools.query_weather --location "Beijing,China" --date 2026-03-04
-    python -m tools.query_weather --lat 6.5244 --lon 3.3792 --date 2026-03-04
-    python -m tools.query_weather --location "Paris" --format simple
-        """,
-    )
+from .__main__ import main
 
-    parser.add_argument("--location", help='地点名称 (如 "Lagos", "Beijing,China")')
-
-    parser.add_argument("--lat", type=float, help="纬度")
-
-    parser.add_argument("--lon", type=float, help="经度")
-
-    parser.add_argument(
-        "--date",
-        default=datetime.now().strftime("%Y-%m-%d"),
-        help="日期 (YYYY-MM-DD), 默认今天",
-    )
-
-    parser.add_argument(
-        "--format", choices=["detailed", "simple"], default="detailed", help="输出格式"
-    )
-
-    parser.add_argument("--timezone", default="auto", help="时区 (默认 auto)")
-
-    args = parser.parse_args()
-
-    # 验证参数
-    if not args.location and (args.lat is None or args.lon is None):
-        print(
-            json.dumps(
-                {"success": False, "error": "必须提供 --location 或 --lat/--lon"},
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-        sys.exit(1)
-
-    # 获取坐标
-    if args.location:
-        geo_result = geocode_location(args.location)
-        if geo_result is None:
-            print(
-                json.dumps(
-                    {"success": False, "error": f"无法找到地点: {args.location}"},
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            )
-            sys.exit(1)
-        if "error" in geo_result:
-            print(
-                json.dumps(
-                    {"success": False, "error": f"地理编码错误: {geo_result['error']}"},
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            )
-            sys.exit(1)
-
-        latitude = geo_result["latitude"]
-        longitude = geo_result["longitude"]
-        location_name = f"{geo_result['name']}, {geo_result.get('admin1', '')}, {geo_result['country']}".strip(
-            ", "
-        )
-    else:
-        latitude = args.lat
-        longitude = args.lon
-        location_name = f"{latitude}, {longitude}"
-
-    # 查询天气
-    result = query_weather(latitude, longitude, args.date, args.timezone)
-    result["location_name"] = location_name
-
-    # 格式化输出
-    if args.format == "simple" and result["success"]:
-        simple_output = {
-            "success": True,
-            "location": location_name,
-            "date": args.date,
-            "weather": result["weather"].get("simple", "未知"),
-            "temp_high": result["weather"].get("temperature_max"),
-            "temp_low": result["weather"].get("temperature_min"),
-        }
-        print(json.dumps(simple_output, ensure_ascii=False, indent=2))
-    else:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-
-    sys.exit(0 if result["success"] else 1)
-
-
-if __name__ == "__main__":
-    main()
+__all__ = [
+    "query_weather",
+    "geocode_location",
+    "get_weather_code_description",
+    "simplify_weather",
+    "main",
+]

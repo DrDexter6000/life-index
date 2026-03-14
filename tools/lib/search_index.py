@@ -15,11 +15,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
-import sys
-
-# 导入配置
-sys.path.insert(0, str(Path(__file__).parent))
-from config import JOURNALS_DIR, USER_DATA_DIR  # type: ignore
+from .config import JOURNALS_DIR, USER_DATA_DIR
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"

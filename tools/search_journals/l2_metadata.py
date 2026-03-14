@@ -355,6 +355,6 @@ def get_l2_cache_stats() -> Dict[str, Any]:
 
 def invalidate_l2_cache() -> None:
     """使L2缓存失效（下次搜索将重新构建缓存）"""
-    from lib.metadata_cache import invalidate_cache
+    from ..lib.metadata_cache import invalidate_cache
 
     invalidate_cache()

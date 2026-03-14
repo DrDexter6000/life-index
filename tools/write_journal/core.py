@@ -7,20 +7,11 @@ Life Index - Write Journal Tool - Core
 from pathlib import Path
 from typing import Any, Dict
 
-# 导入配置 - 使用绝对导入确保正确的 USER_DATA_DIR
-import sys
-from pathlib import Path
-
-# 添加 tools 目录到路径
-TOOLS_LIB_DIR = Path(__file__).parent.parent / "lib"
-if str(TOOLS_LIB_DIR) not in sys.path:
-    sys.path.insert(0, str(TOOLS_LIB_DIR))
-
-from config import JOURNALS_DIR, USER_DATA_DIR
-from file_lock import FileLock, LockTimeoutError, get_journals_lock_path
-from errors import ErrorCode, create_error_response
-from timing import Timer
-from logger import get_logger
+from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
+from ..lib.errors import ErrorCode, create_error_response
+from ..lib.timing import Timer
+from ..lib.logger import get_logger
 
 # 初始化日志器
 logger = get_logger(__name__)

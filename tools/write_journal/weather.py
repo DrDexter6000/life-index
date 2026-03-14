@@ -9,13 +9,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 导入配置
-import sys
-
-TOOLS_DIR = Path(__file__).parent
-if str(TOOLS_DIR) not in sys.path:
-    sys.path.insert(0, str(TOOLS_DIR))
-
 
 def normalize_location(location: str) -> str:
     """
@@ -85,9 +78,11 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
         天气描述字符串（包含温度），失败返回空字符串
     """
     try:
+        # 使用 -m 模块调用，无需依赖文件路径
         cmd = [
             sys.executable,
-            str(TOOLS_DIR / "query_weather.py"),
+            "-m",
+            "tools.query_weather",
             "--location",
             location,
         ]
@@ -95,7 +90,12 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
             cmd.extend(["--date", date_str[:10]])
 
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, encoding="utf-8", timeout=15
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
         )
 
         if proc.returncode == 0:
@@ -130,5 +130,4 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
                     return output["description"]
         return ""
     except (KeyError, ValueError, TypeError):
-        return ""
         return ""

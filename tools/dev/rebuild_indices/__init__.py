@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import List, Dict, Set, Tuple, Any, Optional
 
 # 导入配置 (relative imports from tools/lib)
-from ...lib.config import JOURNALS_DIR, BY_TOPIC_DIR
+from ...lib.config import JOURNALS_DIR, BY_TOPIC_DIR, ensure_dirs
 from ...lib.frontmatter import parse_journal_file
 
 
@@ -311,6 +311,7 @@ python -m tools.dev.rebuild_indices              # 重建所有索引
     )
 
     args = parser.parse_args()
+    ensure_dirs()
 
     rebuilder = IndexRebuilder(dry_run=args.dry_run)
     rebuilder.run()

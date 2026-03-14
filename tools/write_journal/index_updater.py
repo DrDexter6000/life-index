@@ -11,14 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# 导入配置 - 使用绝对导入确保正确的 USER_DATA_DIR
-import sys
-
-TOOLS_LIB_DIR = Path(__file__).parent.parent / "lib"
-if str(TOOLS_LIB_DIR) not in sys.path:
-    sys.path.insert(0, str(TOOLS_LIB_DIR))
-
-from config import JOURNALS_DIR, BY_TOPIC_DIR, USER_DATA_DIR
+from ..lib.config import JOURNALS_DIR, BY_TOPIC_DIR, USER_DATA_DIR, get_index_prefixes
 
 # Define write_journal directory for subprocess calls
 WRITE_JOURNAL_DIR = Path(__file__).parent
@@ -39,6 +32,10 @@ def update_topic_index(
     else:
         return []
 
+    # 获取可配置的前缀
+    prefixes = get_index_prefixes()
+    topic_prefix = prefixes.get("topic", "主题_")
+
     date_str = data.get("date", "")[:10]
     title = data.get("title", "无标题")
     rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
@@ -50,7 +47,7 @@ def update_topic_index(
         if not t:
             continue
         BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-        index_file = BY_TOPIC_DIR / f"主题_{t}.md"
+        index_file = BY_TOPIC_DIR / f"{topic_prefix}{t}.md"
 
         if index_file.exists():
             content = index_file.read_text(encoding="utf-8")
@@ -74,8 +71,12 @@ def update_project_index(
     if not project:
         return None
 
+    # 获取可配置的前缀
+    prefixes = get_index_prefixes()
+    project_prefix = prefixes.get("project", "项目_")
+
     BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-    index_file = BY_TOPIC_DIR / f"项目_{project}.md"
+    index_file = BY_TOPIC_DIR / f"{project_prefix}{project}.md"
 
     date_str = data.get("date", "")[:10]
     title = data.get("title", "无标题")
@@ -102,12 +103,16 @@ def update_tag_indices(
     """更新标签索引文件"""
     updated = []
 
+    # 获取可配置的前缀
+    prefixes = get_index_prefixes()
+    tag_prefix = prefixes.get("tag", "标签_")
+
     for tag in tags:
         if not tag:
             continue
 
         BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-        index_file = BY_TOPIC_DIR / f"标签_{tag}.md"
+        index_file = BY_TOPIC_DIR / f"{tag_prefix}{tag}.md"
 
         date_str = data.get("date", "")[:10]
         title = data.get("title", "无标题")
@@ -161,7 +166,8 @@ def update_monthly_abstract(
     # 构建命令
     cmd = [
         sys.executable,
-        str(WRITE_JOURNAL_DIR / "generate_abstract.py"),
+        "-m",
+        "tools.generate_abstract",
         "--month",
         month_str,
         "--json",
@@ -170,23 +176,34 @@ def update_monthly_abstract(
         cmd.append("--dry-run")
 
     try:
-        # 调用 generate_abstract.py
+        # 调用 generate_abstract 模块
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, encoding="utf-8", timeout=30
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
         )
 
-        if proc.returncode == 0:
-            output = json.loads(proc.stdout)
-            if output and len(output) > 0:
-                data = output[0]
-                result["abstract_path"] = data.get("abstract_path")
-                result["journal_count"] = data.get("journal_count", 0)
-                result["updated"] = data.get("updated", False)
+        if proc.returncode == 0 and proc.stdout:
+            try:
+                output = json.loads(proc.stdout)
+                if output and len(output) > 0:
+                    data = output[0]
+                    result["abstract_path"] = data.get("abstract_path")
+                    result["journal_count"] = data.get("journal_count", 0)
+                    result["updated"] = data.get("updated", False)
+            except json.JSONDecodeError as e:
+                result["error"] = f"Invalid JSON output: {e}"
         else:
-            result["error"] = proc.stderr
+            result["error"] = (
+                proc.stderr or f"Command failed with return code {proc.returncode}"
+            )
 
+    except subprocess.TimeoutExpired:
+        result["error"] = "Command timed out after 30 seconds"
     except (OSError, IOError, RuntimeError) as e:
-        result["error"] = str(e)
         result["error"] = str(e)
 
     return result

@@ -4,125 +4,37 @@ Life Index - Abstract Generator
 摘要生成工具（月度/年度）
 
 Usage:
-    # 生成月度摘要
     python -m tools.generate_abstract --month 2026-03
-    python -m tools.generate_abstract --month 2026-03 --dry-run
-
-    # 生成年度摘要
     python -m tools.generate_abstract --year 2026
-    python -m tools.generate_abstract --year 2026 --dry-run
 
-    # 批量生成全年月度摘要
-    python -m tools.generate_abstract --year 2026 --all-months
-
-    # 同时生成年度和月度摘要
-    python -m tools.generate_abstract --year 2026 --month 2026-03
+Public API:
+    from tools.generate_abstract import generate_monthly_abstract, generate_yearly_abstract
+    result = generate_monthly_abstract(year=2026, month=3)
 """
 
-import argparse
 import json
-import re
-import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 # 导入配置和日志 (relative imports from parent tools package)
-from ..lib.config import JOURNALS_DIR
+from ..lib.config import JOURNALS_DIR, ensure_dirs
 from ..lib.logger import get_logger
+from ..lib.frontmatter import parse_journal_file
 
 logger = get_logger(__name__)
 
 
 def parse_frontmatter(file_path: Path) -> Optional[Dict]:
-    """解析 YAML frontmatter（简化版）"""
-    try:
-        content = file_path.read_text(encoding="utf-8")
-
-        if not content.startswith("---"):
-            return {}
-
-        parts = content.split("---", 2)
-        if len(parts) < 3:
-            return {}
-
-        fm_content = parts[1].strip()
-        body = parts[2].strip()
-
-        result: Dict[str, Any] = {}
-        current_key = None
-        current_list: List[str] = []
-        in_list = False
-
-        for line in fm_content.split("\n"):
-            stripped = line.strip()
-
-            if not stripped or stripped.startswith("#"):
-                continue
-
-            if stripped.startswith("- "):
-                value = stripped[2:].strip()
-                if (value.startswith('"') and value.endswith('"')) or (
-                    value.startswith("'") and value.endswith("'")
-                ):
-                    value = value[1:-1]
-                current_list.append(value)
-                in_list = True
-                continue
-
-            if ":" in stripped:
-                if in_list and current_key:
-                    result[current_key] = current_list
-                    current_list = []
-                    in_list = False
-
-                key, value = stripped.split(":", 1)
-                key = key.strip()
-                value = value.strip()
-
-                if not value:
-                    current_key = key
-                    current_list = []
-                    in_list = True
-                    continue
-
-                # 解析值
-                parsed_value: Any
-                if value.lower() in ("true", "yes"):
-                    parsed_value = True
-                elif value.lower() in ("false", "no"):
-                    parsed_value = False
-                elif value.lower() in ("null", "~", ""):
-                    parsed_value = None
-                elif value.startswith("[") and value.endswith("]"):
-                    items = value[1:-1].split(",")
-                    parsed_value = [
-                        item.strip().strip("\"'") for item in items if item.strip()
-                    ]
-                elif (value.startswith('"') and value.endswith('"')) or (
-                    value.startswith("'") and value.endswith("'")
-                ):
-                    parsed_value = value[1:-1]
-                else:
-                    try:
-                        if "." in value:
-                            parsed_value = float(value)
-                        else:
-                            parsed_value = int(value)
-                    except ValueError:
-                        parsed_value = value
-
-                result[key] = parsed_value
-                current_key = None
-
-        if in_list and current_key:
-            result[current_key] = current_list
-
-        result["_body"] = body
-        return result
-    except (ValueError, IndexError, IOError, OSError):
+    """
+    解析日志文件 frontmatter。
+    代理到 lib.frontmatter.parse_journal_file（SSOT）。
+    """
+    result = parse_journal_file(file_path)
+    if "_error" in result:
         return {}
+    return result
 
 
 def collect_month_journals(year: int, month: int) -> List[Dict]:
@@ -470,26 +382,6 @@ def generate_monthly_abstract(
 
     return result
 
-    # 生成月度摘要内容
-    content = generate_monthly_abstract_content(year, month, journals)
-    result["abstract_path"] = str(abstract_path)
-
-    if dry_run:
-        result["message"] = f"[预览] 将生成月度摘要: {abstract_path}"
-        return result
-
-    # 确保目录存在
-    month_dir.mkdir(parents=True, exist_ok=True)
-
-    # 写入摘要文件
-    with open(abstract_path, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    result["updated"] = True
-    result["message"] = f"月度摘要已保存: {abstract_path}"
-
-    return result
-
 
 def generate_yearly_abstract(year: int, dry_run: bool = False) -> Dict[str, Any]:
     """生成年度摘要文件"""
@@ -535,125 +427,5 @@ def generate_yearly_abstract(year: int, dry_run: bool = False) -> Dict[str, Any]
 
     return result
 
-    # 生成年度摘要内容
-    content = generate_yearly_abstract_content(year, journals)
-    result["abstract_path"] = str(abstract_path)
 
-    if dry_run:
-        result["message"] = f"[预览] 将生成年度摘要: {abstract_path}"
-        return result
-
-    # 确保目录存在
-    abstract_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # 写入摘要文件
-    with open(abstract_path, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    result["updated"] = True
-    result["message"] = f"年度摘要已保存: {abstract_path}"
-
-    return result
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Life Index 摘要生成工具（月度/年度）",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    # 生成月度摘要
-    python -m tools.generate_abstract --month 2026-03
-    python -m tools.generate_abstract --month 2026-03 --dry-run
-
-    # 生成年度摘要
-    python -m tools.generate_abstract --year 2026
-    python -m tools.generate_abstract --year 2026 --dry-run
-
-    # 批量生成全年月度摘要
-    python -m tools.generate_abstract --year 2026 --all-months
-
-    # 同时生成年度和指定月度摘要
-    python -m tools.generate_abstract --year 2026 --month 2026-03
-        """,
-    )
-
-    parser.add_argument(
-        "--month", type=str, help="生成月度摘要，格式: YYYY-MM (如 2026-03)"
-    )
-
-    parser.add_argument("--year", type=int, help="生成年度摘要，格式: YYYY (如 2026)")
-
-    parser.add_argument(
-        "--all-months",
-        action="store_true",
-        help="与 --year 一起使用，批量生成全年各月的月度摘要",
-    )
-
-    parser.add_argument(
-        "--dry-run", action="store_true", help="预览模式：显示生成的内容但不写入文件"
-    )
-
-    parser.add_argument("--json", action="store_true", help="输出结果为 JSON 格式")
-
-    args = parser.parse_args()
-
-    # 验证参数
-    if not args.month and not args.year:
-        parser.error("请指定 --month 或 --year 参数")
-
-    results = []
-
-    # 生成月度摘要
-    if args.month:
-        try:
-            year, month = map(int, args.month.split("-"))
-            logger.info(f"生成月度摘要：{year}年{month:02d}月")
-            result = generate_monthly_abstract(year, month, args.dry_run)
-            results.append(result)
-        except ValueError:
-            logger.error(f"--month 参数格式应为 YYYY-MM (如 2026-03)")
-            sys.exit(1)
-
-    # 生成年度摘要
-    if args.year and not args.all_months:
-        logger.info(f"生成年度摘要：{args.year}年")
-        result = generate_yearly_abstract(args.year, args.dry_run)
-        results.append(result)
-
-    # 批量生成全年月度摘要
-    if args.year and args.all_months:
-        logger.info(f"批量生成{args.year}年全年月度摘要")
-        year_dir = JOURNALS_DIR / str(args.year)
-        if year_dir.exists():
-            for month_dir in sorted(year_dir.iterdir()):
-                if month_dir.is_dir() and month_dir.name.isdigit():
-                    month = int(month_dir.name)
-                    result = generate_monthly_abstract(args.year, month, args.dry_run)
-                    results.append(result)
-        else:
-            logger.warning(f"{args.year}年目录不存在")
-            results.append(
-                {
-                    "type": "monthly",
-                    "year": args.year,
-                    "message": f"{args.year}年目录不存在",
-                }
-            )
-
-    # 输出结果
-    if args.json:
-        print(json.dumps(results, ensure_ascii=False, indent=2))
-    else:
-        for result in results:
-            print(result.get("message", ""))
-            if result.get("journal_count") is not None:
-                print(f"  日志数量: {result['journal_count']}")
-
-    # 返回非零退出码如果有错误
-    if any(not r.get("updated") and r.get("journal_count", 0) > 0 for r in results):
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+__all__ = ["generate_monthly_abstract", "generate_yearly_abstract"]
