@@ -16,12 +16,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
-import sys
-
-# 导入配置
-sys.path.insert(0, str(Path(__file__).parent))
-from config import JOURNALS_DIR, USER_DATA_DIR  # type: ignore
-from frontmatter import parse_journal_file  # type: ignore
+from .config import JOURNALS_DIR, USER_DATA_DIR
+from .frontmatter import parse_journal_file
 
 # 缓存存储目录
 CACHE_DIR = USER_DATA_DIR / ".cache"

@@ -4,30 +4,19 @@ Life Index - Build Index Tool
 索引构建工具（FTS + 向量索引）
 
 Usage:
-    # 增量更新（默认）
     python -m tools.build_index
-
-    # 全量重建
     python -m tools.build_index --rebuild
 
-    # 仅更新 FTS 索引
-    python -m tools.build_index --fts-only
-
-    # 仅更新向量索引
-    python -m tools.build_index --vec-only
-
-    # 查看统计信息
-    python -m tools.build_index --stats
+Public API:
+    from tools.build_index import build_all
+    result = build_all(incremental=True)
 """
 
-import argparse
-import json
-import sys
 from pathlib import Path
 from typing import Dict, Any
 
 # 导入配置 (relative imports from parent tools package)
-from ..lib.config import USER_DATA_DIR
+from ..lib.config import USER_DATA_DIR, ensure_dirs
 from ..lib.search_index import (
     update_index as update_fts_index,
     get_stats as get_fts_stats,
@@ -170,7 +159,6 @@ def show_stats() -> None:
         logger.info(f"  Last Updated: {fts_stats['last_updated']}")
 
     logger.info("\n🧠 Vector Index (Semantic Search):")
-    # 尝试获取 sqlite-vec 统计
     try:
         from ..lib.semantic_search import get_stats as get_vec_stats
 
@@ -184,7 +172,6 @@ def show_stats() -> None:
                 f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}"
             )
         else:
-            # 尝试获取简单向量索引统计
             raise Exception("sqlite-vec not available")
     except (ImportError, RuntimeError):
         try:
@@ -196,7 +183,7 @@ def show_stats() -> None:
             logger.info(f"  Exists: {'Yes' if simple_stats['exists'] else 'No'}")
             logger.info(f"  Vectors: {simple_stats['total_vectors']}")
             logger.info(f"  Size: {simple_stats['index_size_mb']} MB")
-        except (ImportError, RuntimeError) as e:
+        except (ImportError, RuntimeError):
             logger.info(f"  Status: Not available")
             logger.info(f"  Note: Install sentence-transformers for semantic search")
 
@@ -212,58 +199,4 @@ def show_stats() -> None:
     logger.info("=" * 50)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Life Index - Build Search Index",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    # Daily incremental update (default)
-    python -m tools.build_index
-
-    # Full rebuild (monthly maintenance)
-    python -m tools.build_index --rebuild
-
-    # Only FTS index
-    python -m tools.build_index --fts-only
-
-    # View statistics
-    python -m tools.build_index --stats
-        """,
-    )
-
-    parser.add_argument(
-        "--rebuild",
-        action="store_true",
-        help="Full rebuild (delete and recreate all indexes)",
-    )
-
-    parser.add_argument("--fts-only", action="store_true", help="Only update FTS index")
-
-    parser.add_argument(
-        "--vec-only", action="store_true", help="Only update vector index"
-    )
-
-    parser.add_argument("--stats", action="store_true", help="Show index statistics")
-
-    parser.add_argument("--json", action="store_true", help="Output results as JSON")
-
-    args = parser.parse_args()
-
-    if args.stats:
-        show_stats()
-        return
-
-    # 执行索引构建
-    result = build_all(
-        incremental=not args.rebuild, fts_only=args.fts_only, vec_only=args.vec_only
-    )
-
-    if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    elif not result["success"]:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+__all__ = ["build_all", "show_stats"]

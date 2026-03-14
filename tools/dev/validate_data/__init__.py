@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from dataclasses import dataclass, field, asdict
 
 # 导入配置 (relative imports from tools/lib)
-from ...lib.config import JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR
+from ...lib.config import JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR, ensure_dirs
 from ...lib.frontmatter import (
     parse_journal_file,
     parse_frontmatter,
@@ -534,6 +534,7 @@ python -m tools.dev.validate_data              # 完整校验并打印报告
     parser.add_argument("--json", action="store_true", help="JSON格式输出")
 
     args = parser.parse_args()
+    ensure_dirs()
 
     # 执行校验
     validator = DataValidator(fix_mode=args.fix)

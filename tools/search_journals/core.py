@@ -160,8 +160,8 @@ def hierarchical_search(
         # 尝试使用 FTS 索引（如果可用且启用）
         if use_index:
             try:
-                from lib.config import USER_DATA_DIR
-                from lib.search_index import search_fts
+                from ..lib.config import USER_DATA_DIR
+                from ..lib.search_index import search_fts
 
                 fts_results = search_fts(fts_query, date_from, date_to, limit=100)
                 if fts_results:

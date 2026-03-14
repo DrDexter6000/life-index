@@ -9,14 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Tuple
 
-# 导入配置 - 使用绝对导入确保正确的 USER_DATA_DIR
-import sys
-
-TOOLS_LIB_DIR = Path(__file__).parent.parent / "lib"
-if str(TOOLS_LIB_DIR) not in sys.path:
-    sys.path.insert(0, str(TOOLS_LIB_DIR))
-
-from config import JOURNALS_DIR, PATH_MAPPINGS, USER_DATA_DIR
+from ..lib.config import JOURNALS_DIR, PATH_MAPPINGS, USER_DATA_DIR
 
 
 def get_year_month(date_str: str) -> Tuple[int, int]:

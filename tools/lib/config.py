@@ -39,13 +39,21 @@ CONFIG_FILE = CONFIG_DIR / "config.yaml"
 # Note: Abstracts are stored within Journals directory structure:
 #   - Monthly: Journals/YYYY/MM/monthly_report_YYYY-MM.md
 #   - Yearly:  Journals/YYYY/yearly_report_YYYY.md
-#   - Monthly: Journals/YYYY/MM/monthly_abstract.md
-#   - Yearly:  Journals/YYYY/yearly_abstract.md
 # This keeps abstracts co-located with the journals they summarize.
 
-# Ensure directories exist
-for dir_path in [JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR, CONFIG_DIR]:
-    dir_path.mkdir(parents=True, exist_ok=True)
+
+def ensure_dirs() -> None:
+    """
+    确保所有必要的数据目录存在。
+
+    必须在工具的 main() 入口处显式调用，避免 import 时的副作用
+    （import 时创建目录会污染测试环境和 CI）。
+
+    各原子工具的 main() 应在执行任何操作前调用此函数。
+    """
+    for dir_path in [JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR, CONFIG_DIR]:
+        dir_path.mkdir(parents=True, exist_ok=True)
+
 
 # File naming patterns
 JOURNAL_FILENAME_PATTERN = "{project}_{date}_{seq:03d}.md"
@@ -200,6 +208,36 @@ def get_search_config() -> Dict[str, Any]:
     return _deep_merge(defaults, USER_CONFIG.get("search", {}))
 
 
+# ========== Index Prefix Configuration ==========
+def get_index_prefixes() -> Dict[str, str]:
+    """
+    获取索引文件名前缀配置。
+
+    支持国际化配置，可通过 config.yaml 自定义前缀。
+    提供中文（默认）和英文选项。
+
+    Returns:
+        {
+            "topic": "主题_",      # 或 "topic_"
+            "project": "项目_",    # 或 "project_"
+            "tag": "标签_",        # 或 "tag_"
+        }
+    """
+    # 默认使用中文前缀
+    defaults = {
+        "topic": "主题_",
+        "project": "项目_",
+        "tag": "标签_",
+    }
+
+    # 从用户配置合并（如果存在）
+    return _deep_merge(defaults, USER_CONFIG.get("index_prefixes", {}))
+
+
+# 全局前缀配置实例（延迟加载）
+INDEX_PREFIXES = get_index_prefixes()
+
+
 # ========== Vector Embedding Model Configuration ==========
 # 固定模型版本以确保嵌入一致性
 # 模型文件约 80MB，首次使用会自动下载
@@ -280,25 +318,6 @@ def get_next_sequence(project: str, date_str: str) -> int:
             continue
 
     return max(seq_nums, default=0) + 1
-
-
-def parse_frontmatter(file_path: Path) -> Dict[str, Any]:
-    """Parse YAML frontmatter from a markdown file."""
-    content = file_path.read_text(encoding="utf-8")
-
-    if not content.startswith("---"):
-        return {}
-
-    try:
-        _, fm, body = content.split("---", 2)
-        import yaml
-
-        metadata: Dict[str, Any] = yaml.safe_load(fm.strip()) or {}
-        metadata["_body"] = body.strip()
-        metadata["_file"] = str(file_path)
-        return metadata
-    except (ValueError, IndexError):
-        return {}
 
 
 def normalize_path(path: str) -> str:
