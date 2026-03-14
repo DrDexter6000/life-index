@@ -13,7 +13,7 @@
 所有工具通过 Bash CLI 调用，返回 JSON 格式：
 
 ```bash
-python tools/{tool_name}.py --data '{json_data}'
+python -m tools.{tool_name} --data '{json_data}'
 ```
 
 ### 通用返回格式
@@ -154,7 +154,7 @@ python tools/{tool_name}.py --data '{json_data}'
 ### 端点
 
 ```bash
-python tools/write_journal.py --data '<json>'
+python -m tools.write_journal --data '<json>'
 ```
 
 ### 参数
@@ -220,7 +220,7 @@ python tools/write_journal.py --data '<json>'
 ### 端点
 
 ```bash
-python tools/search_journals.py [options]
+python -m tools.search_journals [options]
 ```
 
 ### 参数
@@ -283,7 +283,7 @@ python tools/search_journals.py [options]
 ### 端点
 
 ```bash
-python tools/edit_journal.py --journal "<path>" [options]
+python -m tools.edit_journal --journal "<path>" [options]
 ```
 
 ### 参数
@@ -335,7 +335,7 @@ python tools/edit_journal.py --journal "<path>" [options]
 ### 端点
 
 ```bash
-python tools/query_weather.py --location "<location>" [options]
+python -m tools.query_weather --location "<location>" [options]
 ```
 
 ### 参数
@@ -381,7 +381,7 @@ python tools/query_weather.py --location "<location>" [options]
 ### 端点
 
 ```bash
-python tools/generate_abstract.py [options]
+python -m tools.generate_abstract [options]
 ```
 
 ### 参数
@@ -417,7 +417,7 @@ python tools/generate_abstract.py [options]
 ### 端点
 
 ```bash
-python tools/build_index.py [options]
+python -m tools.build_index [options]
 ```
 
 ### 参数
