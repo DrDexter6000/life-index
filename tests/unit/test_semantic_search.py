@@ -15,12 +15,9 @@ Tests cover:
 """
 
 import pytest
+import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
-import sys
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 class TestEmbeddingModelSingleton:

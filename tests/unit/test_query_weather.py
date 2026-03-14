@@ -8,16 +8,13 @@ import json
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 from pathlib import Path
-import sys
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from tools.query_weather import (
     geocode_location,
     get_weather_code_description,
     simplify_weather,
     query_weather,
+    main,
     GEOCODING_API,
     WEATHER_API,
     FORECAST_API,
@@ -394,7 +391,7 @@ class TestQueryWeather:
         import urllib.error
 
         mock_urlopen.side_effect = urllib.error.HTTPError(
-            "http://example.com", 404, "Not Found", {}, None
+            "http://example.com", 404, "Not Found", None, None
         )
 
         result = query_weather(39.9042, 116.4074, "2025-01-15")
@@ -506,6 +503,606 @@ class TestQueryWeather:
         assert result["weather"]["temperature_max"] is None
         assert result["weather"]["temperature_min"] is None
         assert result["weather"]["precipitation"] is None
+
+
+class TestTimeoutScenarios:
+    """Tests for API timeout handling"""
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_location_uses_timeout_10(self, mock_urlopen):
+        """Test that geocode_location uses timeout=10 parameter"""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(
+            {
+                "results": [
+                    {
+                        "name": "Lagos",
+                        "latitude": 6.5244,
+                        "longitude": 3.3792,
+                        "country": "Nigeria",
+                        "admin1": "Lagos",
+                    }
+                ]
+            }
+        ).encode("utf-8")
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        geocode_location("Lagos")
+
+        # Verify timeout=10 was passed to urlopen
+        call_kwargs = mock_urlopen.call_args[1]
+        assert "timeout" in call_kwargs
+        assert call_kwargs["timeout"] == 10
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_query_weather_uses_timeout_15(self, mock_urlopen):
+        """Test that query_weather uses timeout=15 parameter"""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(
+            {
+                "daily": {
+                    "weather_code": [0],
+                    "temperature_2m_max": [30.0],
+                    "temperature_2m_min": [25.0],
+                    "precipitation_sum": [0.0],
+                }
+            }
+        ).encode("utf-8")
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        query_weather(6.5244, 3.3792, "2025-01-15")
+
+        # Verify timeout=15 was passed to urlopen
+        call_kwargs = mock_urlopen.call_args[1]
+        assert "timeout" in call_kwargs
+        assert call_kwargs["timeout"] == 15
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_location_timeout_error(self, mock_urlopen):
+        """Test TimeoutError handling in geocode_location"""
+        mock_urlopen.side_effect = TimeoutError("Connection timed out after 10 seconds")
+
+        result = geocode_location("Lagos")
+
+        assert result is not None
+        assert "error" in result
+        assert "timed out" in result["error"].lower() or "Connection" in result["error"]
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_query_weather_timeout_error_propagates(self, mock_urlopen):
+        """Test that TimeoutError propagates from query_weather (not caught)"""
+        mock_urlopen.side_effect = TimeoutError("Connection timed out after 15 seconds")
+
+        # TimeoutError is NOT caught by query_weather, so it should propagate
+        with pytest.raises(TimeoutError):
+            query_weather(6.5244, 3.3792, "2025-01-15")
+
+
+class TestHTTPErrorHandling:
+    """Tests for various HTTP error status codes"""
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_http_404_error(self, mock_urlopen):
+        """Test geocode_location handles HTTP 404 error"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            404,
+            "Not Found",
+            None,
+            None,
+        )
+
+        result = geocode_location("UnknownCity")
+
+        assert result is not None
+        assert "error" in result
+        assert "404" in result["error"]
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_http_500_error(self, mock_urlopen):
+        """Test geocode_location handles HTTP 500 error"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            500,
+            "Internal Server Error",
+            {},
+            None,
+        )
+
+        result = geocode_location("Beijing")
+
+        assert result is not None
+        assert "error" in result
+        assert "500" in result["error"]
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_http_503_error(self, mock_urlopen):
+        """Test geocode_location handles HTTP 503 error"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            503,
+            "Service Unavailable",
+            {},
+            None,
+        )
+
+        result = geocode_location("Lagos")
+
+        assert result is not None
+        assert "error" in result
+        assert "503" in result["error"]
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_query_weather_http_500_error(self, mock_urlopen):
+        """Test query_weather handles HTTP 500 error"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://archive-api.open-meteo.com/v1/archive",
+            500,
+            "Internal Server Error",
+            {},
+            None,
+        )
+
+        result = query_weather(39.9042, 116.4074, "2025-01-15")
+
+        assert result["success"] is False
+        assert "API error" in result["error"]
+        assert "500" in result["error"]
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_query_weather_http_503_error(self, mock_urlopen):
+        """Test query_weather handles HTTP 503 error"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://archive-api.open-meteo.com/v1/archive",
+            503,
+            "Service Unavailable",
+            {},
+            None,
+        )
+
+        result = query_weather(39.9042, 116.4074, "2025-01-15")
+
+        assert result["success"] is False
+        assert "API error" in result["error"]
+        assert "503" in result["error"]
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_query_weather_http_429_rate_limit(self, mock_urlopen):
+        """Test query_weather handles HTTP 429 rate limit error"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://archive-api.open-meteo.com/v1/archive",
+            429,
+            "Too Many Requests",
+            {},
+            None,
+        )
+
+        result = query_weather(39.9042, 116.4074, "2025-01-15")
+
+        assert result["success"] is False
+        assert "API error" in result["error"]
+        assert "429" in result["error"]
+
+
+class TestConnectionErrors:
+    """Tests for connection error handling"""
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_connection_refused(self, mock_urlopen):
+        """Test geocode_location handles connection refused"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.URLError(
+            "[Errno 111] Connection refused"
+        )
+
+        result = geocode_location("Beijing")
+
+        assert result is not None
+        assert "error" in result
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_name_resolution_failure(self, mock_urlopen):
+        """Test geocode_location handles DNS resolution failure"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.URLError(
+            "[Errno -2] Name or service not known"
+        )
+
+        result = geocode_location("Beijing")
+
+        assert result is not None
+        assert "error" in result
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_query_weather_connection_refused(self, mock_urlopen):
+        """Test query_weather handles connection refused"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.URLError(
+            "[Errno 111] Connection refused"
+        )
+
+        result = query_weather(39.9042, 116.4074, "2025-01-15")
+
+        assert result["success"] is False
+        assert "Network error" in result["error"]
+
+
+class TestMainCLI:
+    """Tests for main() CLI entry point"""
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    @patch("sys.exit")
+    @patch("builtins.print")
+    def test_main_with_location_success(self, mock_print, mock_exit, mock_urlopen):
+        """Test main() with successful location lookup"""
+
+        # Setup mock to return different responses for geocoding and weather API
+        def mock_urlopen_side_effect(url, **kwargs):
+            mock_response = MagicMock()
+
+            if "geocoding-api" in url:
+                # Geocoding response
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "results": [
+                            {
+                                "name": "Lagos",
+                                "latitude": 6.5244,
+                                "longitude": 3.3792,
+                                "country": "Nigeria",
+                                "admin1": "Lagos",
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+            else:
+                # Weather response
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "daily": {
+                            "weather_code": [0],
+                            "temperature_2m_max": [30.0],
+                            "temperature_2m_min": [25.0],
+                            "precipitation_sum": [0.0],
+                        }
+                    }
+                ).encode("utf-8")
+
+            mock_response.__enter__ = MagicMock(return_value=mock_response)
+            mock_response.__exit__ = MagicMock(return_value=False)
+            return mock_response
+
+        mock_urlopen.side_effect = mock_urlopen_side_effect
+
+        with patch("sys.argv", ["query_weather", "--location", "Lagos"]):
+            main()
+
+        # Verify successful execution
+        mock_exit.assert_called_with(0)
+
+    @patch("builtins.print")
+    def test_main_missing_arguments(self, mock_print):
+        """Test main() exits with error when neither location nor lat/lon provided"""
+        with patch("sys.argv", ["query_weather"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 1
+
+        # Check error message was printed
+        printed_output = "\n".join([str(call) for call in mock_print.call_args_list])
+        assert "必须提供 --location 或 --lat/--lon" in printed_output
+
+    @patch("builtins.print")
+    def test_main_geocode_not_found(self, mock_print):
+        """Test main() exits with error when location not found"""
+        # Use mock in the module's namespace directly
+        import tools.query_weather as qw
+
+        original_geocode = qw.geocode_location
+
+        def mock_geocode(*args, **kwargs):
+            return None
+
+        qw.geocode_location = mock_geocode
+
+        try:
+            with patch("sys.argv", ["query_weather", "--location", "UnknownCityXYZ"]):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+                assert exc_info.value.code == 1
+        finally:
+            qw.geocode_location = original_geocode
+
+    @patch("builtins.print")
+    def test_main_geocode_error(self, mock_print):
+        """Test main() exits with error when geocoding fails"""
+        # Use mock in the module's namespace directly
+        import tools.query_weather as qw
+
+        original_geocode = qw.geocode_location
+
+        def mock_geocode(*args, **kwargs):
+            return {"error": "Network timeout"}
+
+        qw.geocode_location = mock_geocode
+
+        try:
+            with patch("sys.argv", ["query_weather", "--location", "Beijing"]):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+                assert exc_info.value.code == 1
+        finally:
+            qw.geocode_location = original_geocode
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    @patch("sys.exit")
+    @patch("builtins.print")
+    def test_main_with_lat_lon_success(self, mock_print, mock_exit, mock_urlopen):
+        """Test main() with direct lat/lon coordinates"""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(
+            {
+                "daily": {
+                    "weather_code": [0],
+                    "temperature_2m_max": [30.0],
+                    "temperature_2m_min": [25.0],
+                    "precipitation_sum": [0.0],
+                }
+            }
+        ).encode("utf-8")
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        with patch("sys.argv", ["query_weather", "--lat", "6.5244", "--lon", "3.3792"]):
+            main()
+
+        mock_exit.assert_called_with(0)
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    @patch("sys.exit")
+    @patch("builtins.print")
+    def test_main_simple_format_output(self, mock_print, mock_exit, mock_urlopen):
+        """Test main() with simple format output"""
+
+        # Setup mock to return different responses for geocoding and weather API
+        def mock_urlopen_side_effect(url, **kwargs):
+            mock_response = MagicMock()
+
+            if "geocoding-api" in url:
+                # Geocoding response
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "results": [
+                            {
+                                "name": "Beijing",
+                                "latitude": 39.9042,
+                                "longitude": 116.4074,
+                                "country": "China",
+                                "admin1": "Beijing",
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+            else:
+                # Weather response
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "daily": {
+                            "weather_code": [0],
+                            "temperature_2m_max": [25.0],
+                            "temperature_2m_min": [15.0],
+                            "precipitation_sum": [0.0],
+                        }
+                    }
+                ).encode("utf-8")
+
+            mock_response.__enter__ = MagicMock(return_value=mock_response)
+            mock_response.__exit__ = MagicMock(return_value=False)
+            return mock_response
+
+        mock_urlopen.side_effect = mock_urlopen_side_effect
+
+        with patch(
+            "sys.argv",
+            ["query_weather", "--location", "Beijing", "--format", "simple"],
+        ):
+            main()
+
+        mock_exit.assert_called_with(0)
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    @patch("sys.exit")
+    @patch("builtins.print")
+    def test_main_with_date_parameter(self, mock_print, mock_exit, mock_urlopen):
+        """Test main() with specific date parameter"""
+
+        # Setup mock to return different responses for geocoding and weather API
+        def mock_urlopen_side_effect(url, **kwargs):
+            mock_response = MagicMock()
+
+            if "geocoding-api" in url:
+                # Geocoding response
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "results": [
+                            {
+                                "name": "Beijing",
+                                "latitude": 39.9042,
+                                "longitude": 116.4074,
+                                "country": "China",
+                                "admin1": "Beijing",
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+            else:
+                # Weather response
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "daily": {
+                            "weather_code": [0],
+                            "temperature_2m_max": [25.0],
+                            "temperature_2m_min": [15.0],
+                            "precipitation_sum": [0.0],
+                        }
+                    }
+                ).encode("utf-8")
+
+            mock_response.__enter__ = MagicMock(return_value=mock_response)
+            mock_response.__exit__ = MagicMock(return_value=False)
+            return mock_response
+
+        mock_urlopen.side_effect = mock_urlopen_side_effect
+
+        with patch(
+            "sys.argv",
+            ["query_weather", "--location", "Beijing", "--date", "2025-01-15"],
+        ):
+            main()
+
+        mock_exit.assert_called_with(0)
+
+
+class TestIntegration:
+    """Integration tests for geocode_location and query_weather"""
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_full_workflow_location_to_weather(self, mock_urlopen):
+        """Test full workflow from location to weather query"""
+
+        # Configure mock to return different responses for geocoding and weather
+        def mock_urlopen_side_effect(url, **kwargs):
+            mock_response = MagicMock()
+
+            if "geocoding-api" in url:
+                # Geocoding response
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "results": [
+                            {
+                                "name": "Lagos",
+                                "latitude": 6.5244,
+                                "longitude": 3.3792,
+                                "country": "Nigeria",
+                                "admin1": "Lagos",
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+            else:
+                # Weather response
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "daily": {
+                            "weather_code": [61],  # Slight rain
+                            "temperature_2m_max": [31.0],
+                            "temperature_2m_min": [26.0],
+                            "precipitation_sum": [2.5],
+                        }
+                    }
+                ).encode("utf-8")
+
+            mock_response.__enter__ = MagicMock(return_value=mock_response)
+            mock_response.__exit__ = MagicMock(return_value=False)
+            return mock_response
+
+        mock_urlopen.side_effect = mock_urlopen_side_effect
+
+        # Step 1: Geocode location
+        geo_result = geocode_location("Lagos")
+        assert geo_result is not None
+        assert "error" not in geo_result
+        assert geo_result["name"] == "Lagos"
+        assert geo_result["latitude"] == 6.5244
+        assert geo_result["longitude"] == 3.3792
+
+        # Step 2: Query weather with coordinates
+        weather_result = query_weather(
+            geo_result["latitude"], geo_result["longitude"], "2025-01-15"
+        )
+        assert weather_result["success"] is True
+        assert weather_result["weather"]["code"] == 61
+        assert "Slight rain" in weather_result["weather"]["description"]
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_success_weather_failure(self, mock_urlopen):
+        """Test workflow when geocode succeeds but weather query fails"""
+        import urllib.error
+
+        def mock_urlopen_side_effect(url, **kwargs):
+            mock_response = MagicMock()
+
+            if "geocoding-api" in url:
+                # Geocoding succeeds
+                mock_response.read.return_value = json.dumps(
+                    {
+                        "results": [
+                            {
+                                "name": "TestCity",
+                                "latitude": 10.0,
+                                "longitude": 20.0,
+                                "country": "TestCountry",
+                                "admin1": "TestState",
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+                mock_response.__enter__ = MagicMock(return_value=mock_response)
+                mock_response.__exit__ = MagicMock(return_value=False)
+                return mock_response
+            else:
+                # Weather API fails
+                raise urllib.error.HTTPError(
+                    url, 500, "Internal Server Error", {}, None
+                )
+
+        mock_urlopen.side_effect = mock_urlopen_side_effect
+
+        # Geocode should succeed
+        geo_result = geocode_location("TestCity")
+        assert geo_result is not None
+        assert geo_result["latitude"] == 10.0
+
+        # Weather should fail
+        weather_result = query_weather(10.0, 20.0, "2025-01-15")
+        assert weather_result["success"] is False
+        assert "API error" in weather_result["error"]
+
+    @patch("tools.query_weather.urllib.request.urlopen")
+    def test_geocode_failure_propagation(self, mock_urlopen):
+        """Test that geocode failure is handled gracefully in integration"""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.URLError("Network unreachable")
+
+        # Geocode should return error dict
+        geo_result = geocode_location("UnknownCity")
+        assert geo_result is not None
+        assert "error" in geo_result
+        assert "Network unreachable" in geo_result["error"]
+
+        # Integration with main() would use this error dict
+        # See test_main_geocode_error
 
 
 class TestAPIEndpoints:

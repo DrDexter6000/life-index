@@ -15,10 +15,6 @@ Tests cover:
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-import sys
-
-# Add tools to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tools"))
 
 from tools.write_journal.core import write_journal
 
@@ -1111,6 +1107,819 @@ class TestWriteJournalConfirmation:
 
         assert result["needs_confirmation"] is True
         assert "Sunny" in result["confirmation_message"]
+
+
+class TestWriteJournalTransactionRollback:
+    """Tests for transaction rollback and cleanup scenarios"""
+
+    def test_index_update_failure_cleans_temp_file(self, tmp_path):
+        """Test that temp file is cleaned up when index update fails"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+            "topic": "work",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                side_effect=OSError(
+                                                    "Index write failed"
+                                                ),
+                                            ):
+                                                result = write_journal(data)
+
+        assert result["success"] is False
+        assert "索引更新失败" in result["error"]
+        # Temp file should not exist after cleanup
+        temp_file = month_dir / "life-index_2026-03-14_001.md.tmp"
+        assert not temp_file.exists()
+
+    def test_index_update_failure_with_runtime_error(self, tmp_path):
+        """Test that RuntimeError during index update is handled"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+            "topic": "work",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                side_effect=RuntimeError(
+                                                    "Runtime failure"
+                                                ),
+                                            ):
+                                                result = write_journal(data)
+
+        assert result["success"] is False
+        assert "索引更新失败" in result["error"]
+
+    def test_tag_index_update_failure_cleanup(self, tmp_path):
+        """Test cleanup when tag index update fails"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+            "tags": ["python", "testing"],
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=None,
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        side_effect=IOError(
+                                                            "Tag index failed"
+                                                        ),
+                                                    ):
+                                                        result = write_journal(data)
+
+        assert result["success"] is False
+        assert "索引更新失败" in result["error"]
+
+    def test_file_write_error_cleans_temp_file(self, tmp_path):
+        """Test that OSError during file write cleans up temp file"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        # Mock open to raise OSError for temp files
+                                        import io
+
+                                        def mock_open_error(
+                                            file, mode="r", *args, **kwargs
+                                        ):
+                                            if ".tmp" in str(file):
+                                                raise OSError("Disk full")
+                                            # Return a mock file object for other calls
+                                            return io.StringIO("test content")
+
+                                        with patch(
+                                            "builtins.open", side_effect=mock_open_error
+                                        ):
+                                            result = write_journal(data)
+
+        assert result["success"] is False
+        assert "Disk full" in result["error"]
+
+    def test_temp_file_already_deleted_during_cleanup(self, tmp_path):
+        """Test cleanup when temp file is already deleted"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+            "topic": "work",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        # Track temp file operations
+        temp_file_path = month_dir / "life-index_2026-03-14_001.md.tmp"
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                side_effect=RuntimeError("Index error"),
+                                            ):
+                                                # Ensure temp file doesn't exist for cleanup
+                                                # (simulating already deleted)
+                                                result = write_journal(data)
+
+        assert result["success"] is False
+        # Cleanup should not fail even if temp file doesn't exist
+        assert "索引更新失败" in result["error"]
+
+
+class TestWriteJournalAbstractUpdate:
+    """Tests for abstract update error handling"""
+
+    def test_abstract_update_error_continues_successfully(self, tmp_path):
+        """Test that abstract update error is recorded but doesn't fail write"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            side_effect=OSError(
+                                                "Abstract update failed"
+                                            ),
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=None,
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        return_value=[],
+                                                    ):
+                                                        result = write_journal(data)
+
+        # Abstract error should not prevent successful write
+        assert result["success"] is True
+        assert "monthly_abstract_error" in result
+        assert "Abstract update failed" in result["monthly_abstract_error"]
+
+    def test_abstract_update_runtime_error_handled(self, tmp_path):
+        """Test that RuntimeError in abstract update is handled"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            side_effect=RuntimeError(
+                                                "Subprocess failed"
+                                            ),
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=None,
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        return_value=[],
+                                                    ):
+                                                        result = write_journal(data)
+
+        assert result["success"] is True
+        assert "Subprocess failed" in result["monthly_abstract_error"]
+
+
+class TestWriteJournalSequenceRetry:
+    """Tests for sequence retry logic when file exists"""
+
+    def test_file_exists_triggers_retry(self, tmp_path):
+        """Test that existing file triggers sequence retry"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        # Create existing file with sequence 1
+        existing_file = month_dir / "life-index_2026-03-14_001.md"
+        existing_file.write_text("existing content", encoding="utf-8")
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        sequence_calls = [1, 2]  # First call returns 1, second returns 2
+
+        def mock_get_next_sequence(date_str):
+            return sequence_calls.pop(0)
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence",
+                        side_effect=mock_get_next_sequence,
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=None,
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        return_value=[],
+                                                    ):
+                                                        result = write_journal(data)
+
+        assert result["success"] is True
+        # Should write to _002.md since _001.md exists
+        assert "_002.md" in result["journal_path"]
+
+    def test_file_exists_last_retry_uses_existing_sequence(self, tmp_path):
+        """Test that last retry uses the sequence even if file exists"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        # Create existing file with sequence 1
+        existing_file = month_dir / "life-index_2026-03-14_001.md"
+        existing_file.write_text("existing content", encoding="utf-8")
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        # Always return 1 (simulating race condition where file keeps existing)
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence",
+                        return_value=1,  # Always return 1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=None,
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        return_value=[],
+                                                    ):
+                                                        result = write_journal(data)
+
+        # On last retry, it should still succeed (overwrites existing)
+        assert result["success"] is True
+
+
+class TestWriteJournalProjectIndexUpdate:
+    """Tests for project index update paths"""
+
+    def test_project_index_returns_path(self, tmp_path):
+        """Test that project index update returning a path is recorded"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+            "project": "Life-Index",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        by_topic_dir = tmp_path / "by-topic"
+        project_index = by_topic_dir / "项目_Life-Index.md"
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=project_index,
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        return_value=[],
+                                                    ):
+                                                        result = write_journal(data)
+
+        assert result["success"] is True
+        assert len(result["updated_indices"]) == 1
+        assert "项目_Life-Index.md" in result["updated_indices"][0]
+
+    def test_project_index_returns_none_not_recorded(self, tmp_path):
+        """Test that project index update returning None is not recorded"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+            "project": "NonExistent",
+        }
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.normalize_location",
+                            return_value="Chongqing, China",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.query_weather_for_location",
+                                return_value="",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=None,  # Returns None
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        return_value=[],
+                                                    ):
+                                                        result = write_journal(data)
+
+        assert result["success"] is True
+        # Project index returning None should not add to updated_indices
+        assert len(result["updated_indices"]) == 0
+
+
+class TestWriteJournalLockTimeoutDetails:
+    """Tests for detailed lock timeout handling"""
+
+    def test_lock_timeout_includes_details(self, tmp_path):
+        """Test that lock timeout error includes detailed info"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+        }
+
+        from tools.lib.file_lock import LockTimeoutError
+
+        lock_path = tmp_path / "test.lock"
+        mock_lock = MagicMock()
+        mock_lock.__enter__ = MagicMock(
+            side_effect=LockTimeoutError(str(lock_path), 30.0)
+        )
+        mock_lock.__exit__ = MagicMock(return_value=None)
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch("tools.write_journal.core.FileLock", return_value=mock_lock):
+                    with patch(
+                        "tools.write_journal.core.normalize_location",
+                        return_value="Chongqing, China",
+                    ):
+                        result = write_journal(data)
+
+        assert result["success"] is False
+        assert result["error"] is not None
+        # error is a dict with code, message, details, recovery_strategy
+        assert result["error"]["code"] == "E0005"  # LOCK_TIMEOUT
+        assert "lock" in result["error"]["message"].lower()
+
+    def test_lock_timeout_has_error_code(self, tmp_path):
+        """Test that lock timeout returns proper error code"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+        }
+
+        from tools.lib.file_lock import LockTimeoutError
+
+        lock_path = tmp_path / "test.lock"
+        mock_lock = MagicMock()
+        mock_lock.__enter__ = MagicMock(
+            side_effect=LockTimeoutError(str(lock_path), 30.0)
+        )
+        mock_lock.__exit__ = MagicMock(return_value=None)
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ):
+                with patch("tools.write_journal.core.FileLock", return_value=mock_lock):
+                    with patch(
+                        "tools.write_journal.core.normalize_location",
+                        return_value="Chongqing, China",
+                    ):
+                        result = write_journal(data)
+
+        # Check for error code in nested error dict
+        assert result["error"]["code"] == "E0005"  # LOCK_TIMEOUT code
+        assert result["error"]["recovery_strategy"] == "retry"
 
 
 if __name__ == "__main__":

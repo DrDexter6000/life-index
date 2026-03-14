@@ -15,10 +15,6 @@ Tests cover:
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-import sys
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 class TestMatchesFilters:
