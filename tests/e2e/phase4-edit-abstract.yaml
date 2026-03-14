@@ -1,0 +1,156 @@
+# E2E Test Phase 4: Edit & Abstract Workflow
+# Tests editing journals and generating summaries
+
+id: E2E-15
+name: Edit journal location and weather
+priority: P0
+category: edit-workflow
+description: Test editing location and weather fields of an existing journal
+steps:
+  - step: 1
+    action: Create initial journal
+    command: |
+      python -m tools.write_journal --data '{
+        "title": "Test Edit",
+        "content": "Initial content for edit test",
+        "date": "2026-03-14",
+        "topic": ["work"],
+        "abstract": "Test abstract for edit"
+      }'
+    expected:
+      success: true
+      needs_confirmation: true
+
+  - step: 2
+    action: Edit location
+    command: |
+      python -m tools.edit_journal --journal "{journal_path}" --set-location "Shanghai, China"
+    expected:
+      success: true
+      changes.location: exists
+
+  - step: 3
+    action: Verify edit persisted
+    command: |
+      python -m tools.search_journals --query "Test Edit" --level 2
+    expected:
+      success: true
+      results: not_empty
+
+---
+id: E2E-16
+name: Edit journal topic triggers index update
+priority: P0
+category: edit-workflow
+description: Test that editing topic updates the by-topic index
+steps:
+  - step: 1
+    action: Create journal with topic=work
+    command: |
+      python -m tools.write_journal --data '{
+        "title": "Topic Change Test",
+        "content": "Testing topic change",
+        "date": "2026-03-14",
+        "topic": ["work"],
+        "abstract": "Topic test"
+      }'
+    expected:
+      success: true
+
+  - step: 2
+    action: Change topic to learn
+    command: |
+      python -m tools.edit_journal --journal "{journal_path}" --set-topic "learn"
+    expected:
+      success: true
+      indices_updated: not_empty
+
+  - step: 3
+    action: Verify new index entry
+    command: |
+      cat ~/Documents/Life-Index/by-topic/主题_learn.md
+    expected:
+      content_contains: "Topic Change Test"
+
+---
+id: E2E-17
+name: Generate monthly abstract
+priority: P1
+category: abstract-workflow
+description: Test generating monthly abstract
+steps:
+  - step: 1
+    action: Create multiple journals
+    command: |
+      python -m tools.write_journal --data '{
+        "title": "March Entry 1",
+        "content": "First entry",
+        "date": "2026-03-01",
+        "topic": ["work"],
+        "abstract": "Entry 1"
+      }'
+    expected:
+      success: true
+
+  - step: 2
+    action: Generate monthly abstract
+    command: |
+      python -m tools.generate_abstract --month 2026-03
+    expected:
+      success: true
+
+  - step: 3
+    action: Verify abstract file exists
+    command: |
+      ls ~/Documents/Life-Index/Journals/2026/03/monthly_report_2026-03.md
+    expected:
+      exit_code: 0
+
+---
+id: E2E-18
+name: Append content to journal
+priority: P1
+category: edit-workflow
+description: Test appending content to existing journal
+steps:
+  - step: 1
+    action: Create journal
+    command: |
+      python -m tools.write_journal --data '{
+        "title": "Append Test",
+        "content": "Original content",
+        "date": "2026-03-14",
+        "topic": ["work"],
+        "abstract": "Test"
+      }'
+    expected:
+      success: true
+
+  - step: 2
+    action: Append content
+    command: |
+      python -m tools.edit_journal --journal "{journal_path}" --append-content "Added later in the day"
+    expected:
+      success: true
+      content_modified: true
+
+---
+id: E2E-19
+name: Generate yearly abstract
+priority: P2
+category: abstract-workflow
+description: Test generating yearly abstract
+steps:
+  - step: 1
+    action: Generate yearly abstract
+    command: |
+      python -m tools.generate_abstract --year 2026
+    expected:
+      success: true
+
+  - step: 2
+    action: Verify file created
+    command: |
+      ls ~/Documents/Life-Index/Journals/2026/yearly_report_2026.md
+    expected:
+      exit_code: 0
