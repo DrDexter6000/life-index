@@ -69,6 +69,7 @@ python -m tools.write_journal --data '{
   "abstract": "100字内摘要（Agent生成）",
   "topic": ["work"]
 }'
+```
 
 **工具自动处理**：默认地点、自动查询天气、自动序列号、自动更新索引。
 

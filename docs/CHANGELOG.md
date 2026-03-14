@@ -4,6 +4,39 @@
 
 ---
 
+## [2026-03-14] CTO评审第二轮修复：坏路径、残留导入、占位URL（N1-N3）
+
+**决策**: 基于 CTO 技术评审报告(REVIEW-2026-03-14.md)的第二轮任务清单，修复 P0/P1 级代码缺陷和分发体验问题。
+
+**核心变更**:
+
+1. **修复功能性缺陷 (P0) - N1**
+   - `tools/write_journal/index_updater.py:169`: 修复 `update_monthly_abstract()` 的 subprocess 调用路径
+   - 原代码: `str(WRITE_JOURNAL_DIR / "generate_abstract.py")` (错误路径，函数永远失败)
+   - 修复为: `[sys.executable, "-m", "tools.generate_abstract", ...]` (模块调用方式)
+   - 删除第 194-195 行重复赋值 `result["error"] = str(e)`
+   - 增强错误处理: 添加 `errors="replace"` 编码容错、`JSONDecodeError` 捕获、超时处理
+
+2. **清理残留导入 (P1) - N2**
+   - `tools/search_journals/core.py:163-164`: 将 `from lib.config` / `from lib.search_index` 改为 `from ..lib.xxx`
+   - `tools/search_journals/l2_metadata.py:358`: 将 `from lib.metadata_cache` 改为 `from ..lib.metadata_cache`
+   - 修复 `pip install -e .` 后 `import tools.search_journals` 失败的兼容性问题
+
+3. **修复分发体验 (P1) - N3**
+   - 全局替换 GitHub 占位符 `yourusername` → `DrDexter6000` (16 处)
+   - 涉及文件: `install.sh` (4处), `install.ps1` (4处), `pyproject.toml` (5处), `README.md` (3处)
+   - 安装脚本现在可以真正执行，用户可直接使用一键安装命令
+
+**测试结果**: 441 passed, 4 skipped (Unix-only), 0 failed
+- 修复前: 1 failed (test_create_new_abstract - 因坏路径导致 JSONDecodeError)
+- 修复后: 全部通过
+
+**SSOT 同步**:
+- `docs/CHANGELOG.md` - 本记录已更新
+- `docs/REVIEW-2026-03-14.md` - N1/N2/N3 任务状态已标记完成
+
+---
+
 ## [2026-03-14] 测试覆盖率提升至48% - 零覆盖率模块清零
 
 **决策**: 为覆盖率0%的核心模块创建完整测试套件。
@@ -91,10 +124,11 @@
 
 **核心变更**:
 
-1. **语义搜索默认安装**
-   - 将 `sentence-transformers` 和 `numpy` 从可选依赖移至主依赖
-   - 修改 `pyproject.toml`，新用户安装即获得语义搜索能力
+1. **语义搜索默认安装** ⚠️ 已回滚
+   - ~~将 `sentence-transformers` 和 `numpy` 从可选依赖移至主依赖~~
+   - **更新**: 保持为可选依赖（`[semantic]` 组），避免强制安装 ~2GB PyTorch
    - 保留三层降级机制，依赖缺失时自动回退到FTS搜索
+   - 安装方式: `pip install life-index[semantic]`
 
 2. **logging模块引入**
    - 新建 `tools/lib/logger.py` 结构化日志模块
