@@ -44,16 +44,15 @@ class TestGetSafePath:
         assert "test.txt" in str(result)
 
     def test_path_traversal_blocked(self, tmp_path):
-        """Path traversal attempts should be handled"""
+        """Path traversal attempts should return None for safety"""
         # Create a base directory
         base = tmp_path / "safe"
         base.mkdir()
 
         # Try to escape with ..
         result = get_safe_path("../../../etc/passwd", base)
-        # The function should still return a path, but it won't be inside base
-        # This is documented behavior - caller decides how to handle
-        assert result is not None
+        # The function returns None when path escapes base_dir
+        assert result is None
 
 
 class TestNormalizePath:

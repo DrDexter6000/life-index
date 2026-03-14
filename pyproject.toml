@@ -32,16 +32,14 @@ dependencies = [
     # Core dependencies - 核心依赖
     "pyyaml>=6.0",
     
-    # Optional: Semantic search - 可选：语义搜索
-    "sentence-transformers>=2.2.0; extra == 'semantic'",
-]
-
-[project.optional-dependencies]
-# Semantic search support - 语义搜索支持
-semantic = [
+    # Semantic search (now core feature) - 语义搜索（现为核心功能）
     "sentence-transformers>=2.2.0",
     "numpy>=1.24.0",
 ]
+
+[project.optional-dependencies]
+# No longer needed - semantic is now core
+# semantic search is included by default (2026-03-14 decision)
 
 # Development dependencies - 开发依赖
 dev = [
