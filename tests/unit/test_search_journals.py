@@ -5,12 +5,8 @@ Unit tests for search_journals.py core functions
 
 import pytest
 from pathlib import Path
-import sys
 
-# Add tools to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tools"))
-
-from lib.frontmatter import parse_frontmatter
+from tools.lib.frontmatter import parse_frontmatter
 
 
 class TestParseFrontmatter:

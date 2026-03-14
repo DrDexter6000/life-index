@@ -6,12 +6,8 @@ SSOT 测试：确保 frontmatter 解析/格式化行为一致
 
 import pytest
 from pathlib import Path
-import sys
 
-# Add tools to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tools"))
-
-from lib.frontmatter import (
+from tools.lib.frontmatter import (
     parse_frontmatter,
     parse_journal_file,
     format_frontmatter,
@@ -167,8 +163,8 @@ class TestFormatFrontmatter:
         }
         result = format_frontmatter(data)
 
-        assert 'mood: []' in result
-        assert 'tags: []' in result
+        assert "mood: []" in result
+        assert "tags: []" in result
 
     def test_boolean_values(self):
         """Boolean values should be formatted correctly"""

@@ -4,17 +4,13 @@ Unit tests for L2 metadata cache module
 """
 
 import pytest
-import sys
 import os
 import tempfile
 import sqlite3
 from pathlib import Path
 from datetime import datetime
 
-# Add tools to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tools"))
-
-from lib.metadata_cache import (
+from tools.lib.metadata_cache import (
     init_metadata_cache,
     get_file_signature,
     is_cache_valid,
@@ -27,7 +23,7 @@ from lib.metadata_cache import (
     update_cache_for_all_journals,
     METADATA_DB_PATH,
 )
-from lib.config import JOURNALS_DIR
+from tools.lib.config import JOURNALS_DIR
 
 
 class TestMetadataCache:

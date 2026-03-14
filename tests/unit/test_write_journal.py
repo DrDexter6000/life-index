@@ -6,17 +6,13 @@ Unit tests for write_journal.py core functions
 import pytest
 from pathlib import Path
 from datetime import datetime
-import sys
 
-# Add tools to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tools"))
-
-from write_journal.utils import (
+from tools.write_journal.utils import (
     generate_filename,
     get_next_sequence,
 )
-from write_journal.weather import normalize_location
-from lib.frontmatter import format_frontmatter
+from tools.write_journal.weather import normalize_location
+from tools.lib.frontmatter import format_frontmatter
 
 
 class TestGenerateFilename:

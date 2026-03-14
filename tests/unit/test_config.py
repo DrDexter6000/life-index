@@ -5,12 +5,8 @@ Unit tests for config.py core functions
 
 import pytest
 from pathlib import Path
-import sys
 
-# Add tools to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tools"))
-
-from lib.config import (
+from tools.lib.config import (
     get_safe_path,
     normalize_path,
     get_journal_dir,

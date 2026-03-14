@@ -6,10 +6,6 @@ Unit tests for tools/build_index/__init__.py
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-import sys
-
-# Add project root to path for tools package imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from tools.build_index import build_all, show_stats
 

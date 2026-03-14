@@ -13,12 +13,8 @@ Tests cover:
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-import sys
 import sqlite3
 import tempfile
-
-# Add project root to path for proper imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 class TestGetFileHash:
