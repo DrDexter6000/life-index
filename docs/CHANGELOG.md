@@ -4,6 +4,122 @@
 
 ---
 
+## [2026-03-14] 测试覆盖率提升至48% - 零覆盖率模块清零
+
+**决策**: 为覆盖率0%的核心模块创建完整测试套件。
+
+**核心变更**:
+
+1. **测试覆盖率提升**
+   - 从 37% 提升至 48%（+11%）
+   - 测试数从 218 增至 336（+118个测试）
+   - 通过率：100%（336 passed）
+
+2. **新增测试文件（覆盖率0%→85%+）**
+   - `test_l2_metadata.py`（24测试）- 元数据搜索模块，覆盖90%
+   - `test_l3_content.py`（19测试）- 内容搜索模块，覆盖94%
+   - `test_ranking.py`（18测试）- 结果排序算法，覆盖91%
+   - `test_semantic_search.py`（24测试）- 语义搜索模块，覆盖72%
+
+3. **测试覆盖亮点**
+   - `l2_metadata.py`: 90% - 过滤器匹配、缓存搜索、文件系统回退
+   - `l3_content.py`: 94% - 全文搜索、上下文提取、结果排序
+   - `ranking.py`: 91% - 三层结果合并、混合排序、分数计算
+   - `semantic_search.py`: 72% - 嵌入模型、向量索引、语义搜索
+
+**测试结果**: 336 passed in 1.57s
+
+---
+
+## [2026-03-14] 测试覆盖率持续提升至37%
+
+**决策**: 继续推进测试覆盖率提升。
+
+**核心变更**:
+
+1. **测试覆盖率提升**
+   - 从 29% 提升至 37%
+   - 测试数从 173 增至 218
+   - 新增 `test_search_index.py`（21测试）- FTS5索引模块
+   - 新增 `test_search_journals_core.py`（10测试）- 分层搜索核心
+   - 新增 `test_l1_index.py`（6测试）- L1索引搜索
+   - 新增 `test_edit_journal_new.py`（8测试）- 编辑日志模块
+
+2. **新增测试文件**
+   - `tests/unit/test_search_index.py` - FTS5全文索引测试
+   - `tests/unit/test_search_journals_core.py` - 分层搜索核心测试
+   - `tests/unit/test_l1_index.py` - L1索引扫描测试
+   - `tests/unit/test_edit_journal_new.py` - 编辑操作测试
+
+**测试结果**: 218 passed in 1.34s
+
+---
+
+## [2026-03-14] 测试覆盖率大幅提升 & logging模块推广
+
+**决策**: 继续推进测试覆盖率和代码质量改进。
+
+**核心变更**:
+
+1. **测试覆盖率提升**
+   - 从 16% 提升至 33%（测试数从 91 增至 154）
+   - 新增 `test_query_weather.py`（45个测试）- 完整覆盖天气查询模块
+   - 新增 `test_write_journal_core.py`（18个测试）- 核心写入逻辑测试
+   - 发现 `simplify_weather` 函数 bug："Snow grains" 因 "grains" 包含 "rain" 子串而错误匹配为雨天
+
+2. **logging模块推广**
+   - `tools/write_journal/core.py` - 添加17处日志调用
+   - `tools/edit_journal/__init__.py` - 添加完整日志覆盖
+   - `tools/generate_abstract/__init__.py` - 添加日志调用
+   - 日志输出到 stderr，JSON 结果输出到 stdout，Agent 解析不受影响
+
+3. **E2E测试新增**
+   - `tests/e2e/phase4-edit-abstract.yaml` - 编辑和摘要生成测试用例
+
+**测试结果**: 154 passed in 1.43s
+
+**SSOT 同步**:
+- 新增测试文件已创建
+- logging模块已推广至核心工具
+- CHANGELOG 本记录已更新
+
+---
+
+## [2026-03-14] 生产级改进：语义搜索默认安装、logging模块引入、测试修复
+
+**决策**: 基于CTO技术评审讨论，完成三项核心改进。
+
+**核心变更**:
+
+1. **语义搜索默认安装**
+   - 将 `sentence-transformers` 和 `numpy` 从可选依赖移至主依赖
+   - 修改 `pyproject.toml`，新用户安装即获得语义搜索能力
+   - 保留三层降级机制，依赖缺失时自动回退到FTS搜索
+
+2. **logging模块引入**
+   - 新建 `tools/lib/logger.py` 结构化日志模块
+   - 日志输出到 stderr，JSON结果输出到 stdout（Agent友好）
+   - 支持 JSON 结构化格式便于解析
+   - 更新 `tools/build_index/__init__.py` 和 `tools/search_journals/core.py` 使用logger
+   - **结论**: logging不违反agent-first原则，增强代码健壮性
+
+3. **测试修复与清理**
+   - 修复 `test_config.py` 路径遍历测试断言错误
+   - 清理接口不匹配的测试文件
+   - 当前测试覆盖率: 16%（91个测试全部通过）
+
+**技术决策记录**:
+- L1索引必要性：保留（定时任务已有批量更新设计）
+- 测试覆盖率目标：100%（持续迭代）
+- Web查看界面：未来考虑，本次不实施
+
+**SSOT 同步**:
+- `pyproject.toml` - 依赖配置已更新
+- `tools/lib/logger.py` - 新增模块
+- `docs/CHANGELOG.md` - 本记录
+
+---
+
 ## [2026-03-13] 代码质量修复：安全性、可靠性、代码清理
 
 **决策**: 基于 CTO 技术评审，修复 P0/P1 级问题，遵循 Agent-First 原则避免过度工程化。
