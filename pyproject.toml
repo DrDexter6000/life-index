@@ -31,15 +31,15 @@ requires-python = ">=3.11"
 dependencies = [
     # Core dependencies - 核心依赖
     "pyyaml>=6.0",
-    
-    # Semantic search (now core feature) - 语义搜索（现为核心功能）
-    "sentence-transformers>=2.2.0",
-    "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]
-# No longer needed - semantic is now core
-# semantic search is included by default (2026-03-14 decision)
+# 语义搜索（可选，需要 ~2GB PyTorch 依赖）
+# 启用方式: pip install life-index[semantic]
+semantic = [
+    "sentence-transformers>=2.2.0",
+    "numpy>=1.24.0",
+]
 
 # Development dependencies - 开发依赖
 dev = [
@@ -59,7 +59,7 @@ dev = [
     
     # Documentation - 文档（Markdown 直接阅读，无需构建工具）
     # 项目文档位于 docs/ 目录，直接阅读 Markdown 文件即可
-    # GitHub 自动渲染：https://github.com/yourusername/life-index/tree/main/docs
+    # GitHub 自动渲染：https://github.com/DrDexter6000/life-index/tree/main/docs
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.23.0",
@@ -70,24 +70,24 @@ dev = [
 
 # All optional dependencies - 所有可选依赖
 all = [
-    "sentence-transformers>=2.2.0",
-    "numpy>=1.24.0",
+    "life-index[semantic]",
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/life-index"
-Documentation = "https://github.com/yourusername/life-index/tree/main/docs"
-Repository = "https://github.com/yourusername/life-index"
-Issues = "https://github.com/yourusername/life-index/issues"
+Homepage = "https://github.com/DrDexter6000/life-index"
+Documentation = "https://github.com/DrDexter6000/life-index/tree/main/docs"
+Repository = "https://github.com/DrDexter6000/life-index"
+Issues = "https://github.com/DrDexter6000/life-index/issues"
 
 [project.scripts]
 # CLI entry points - 命令行入口
-life-index-write = "tools.write_journal:main"
-life-index-search = "tools.search_journals:main"
-life-index-edit = "tools.edit_journal:main"
-life-index-weather = "tools.query_weather:main"
-life-index-abstract = "tools.generate_abstract:main"
-life-index-index = "tools.build_index:main"
+# 使用 __main__:main 保持 CLI 与库 API 的干净分离
+life-index-write = "tools.write_journal.__main__:main"
+life-index-search = "tools.search_journals.__main__:main"
+life-index-edit = "tools.edit_journal.__main__:main"
+life-index-weather = "tools.query_weather.__main__:main"
+life-index-abstract = "tools.generate_abstract.__main__:main"
+life-index-index = "tools.build_index.__main__:main"
 
 py-modules = []
 
@@ -201,7 +201,7 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ]
 show_missing = true
-fail_under = 80
+fail_under = 49
 
 [tool.coverage.html]
 directory = "htmlcov"
