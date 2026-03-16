@@ -381,9 +381,11 @@ class TestSearchL2Metadata:
                 "tools.search_journals.l2_metadata._search_with_cache",
                 return_value=mock_results,
             ):
-                results = search_l2_metadata(topic="work")
+                response = search_l2_metadata(topic="work")
 
-        assert results == mock_results
+        assert response["results"] == mock_results
+        assert response["truncated"] is False
+        assert response["total_available"] == 1
 
     def test_search_cache_disabled(self):
         """Test search with cache disabled"""
@@ -395,9 +397,10 @@ class TestSearchL2Metadata:
             "tools.search_journals.l2_metadata._search_filesystem",
             return_value=mock_results,
         ):
-            results = search_l2_metadata(topic="work", use_cache=False)
+            response = search_l2_metadata(topic="work", use_cache=False)
 
-        assert results == mock_results
+        assert response["results"] == mock_results
+        assert response["truncated"] is False
 
     def test_search_cache_empty_fallback(self):
         """Test search falls back to filesystem when cache is empty"""
@@ -413,9 +416,9 @@ class TestSearchL2Metadata:
                 "tools.search_journals.l2_metadata._search_filesystem",
                 return_value=mock_results,
             ):
-                results = search_l2_metadata(topic="work")
+                response = search_l2_metadata(topic="work")
 
-        assert results == mock_results
+        assert response["results"] == mock_results
 
     def test_search_cache_error_fallback(self):
         """Test search falls back to filesystem on cache error"""
@@ -431,9 +434,9 @@ class TestSearchL2Metadata:
                 "tools.search_journals.l2_metadata._search_filesystem",
                 return_value=mock_results,
             ):
-                results = search_l2_metadata(topic="work")
+                response = search_l2_metadata(topic="work")
 
-        assert results == mock_results
+        assert response["results"] == mock_results
 
     def test_search_all_filters(self):
         """Test search with all filter parameters"""
@@ -445,7 +448,7 @@ class TestSearchL2Metadata:
             "tools.search_journals.l2_metadata._search_filesystem",
             return_value=mock_results,
         ) as mock_search:
-            results = search_l2_metadata(
+            response = search_l2_metadata(
                 date_from="2026-01-01",
                 date_to="2026-12-31",
                 location="Beijing",
@@ -459,7 +462,7 @@ class TestSearchL2Metadata:
                 use_cache=False,
             )
 
-        assert results == mock_results
+        assert response["results"] == mock_results
         mock_search.assert_called_once()
 
 
@@ -537,6 +540,102 @@ class TestCacheEnvironment:
         # Reset for other tests
         with patch.dict(os.environ, {"LIFE_INDEX_L2_CACHE": "1"}):
             importlib.reload(l2_metadata)
+
+
+class TestMaxResults:
+    """Tests for max_results truncation logic"""
+
+    def test_no_filters_truncates_at_100(self):
+        """Test that search without filters truncates at 100 results"""
+        from tools.search_journals.l2_metadata import search_l2_metadata
+
+        # Create 150 mock results
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(150)
+        ]
+
+        with patch(
+            "tools.search_journals.l2_metadata._search_filesystem",
+            return_value=mock_results,
+        ):
+            response = search_l2_metadata(use_cache=False)
+
+        assert len(response["results"]) == 100
+        assert response["truncated"] is True
+        assert response["total_available"] == 150
+
+    def test_no_filters_custom_max_results(self):
+        """Test that custom max_results is respected"""
+        from tools.search_journals.l2_metadata import search_l2_metadata
+
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(50)
+        ]
+
+        with patch(
+            "tools.search_journals.l2_metadata._search_filesystem",
+            return_value=mock_results,
+        ):
+            response = search_l2_metadata(use_cache=False, max_results=20)
+
+        assert len(response["results"]) == 20
+        assert response["truncated"] is True
+        assert response["total_available"] == 50
+
+    def test_with_filters_no_truncation(self):
+        """Test that search with filters is NOT truncated"""
+        from tools.search_journals.l2_metadata import search_l2_metadata
+
+        # Create 150 mock results
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(150)
+        ]
+
+        with patch(
+            "tools.search_journals.l2_metadata._search_filesystem",
+            return_value=mock_results,
+        ):
+            response = search_l2_metadata(topic="work", use_cache=False)
+
+        # With filter, should return all 150
+        assert len(response["results"]) == 150
+        assert response["truncated"] is False
+        assert response["total_available"] == 150
+
+    def test_max_results_none_no_limit(self):
+        """Test that max_results=None disables truncation"""
+        from tools.search_journals.l2_metadata import search_l2_metadata
+
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(200)
+        ]
+
+        with patch(
+            "tools.search_journals.l2_metadata._search_filesystem",
+            return_value=mock_results,
+        ):
+            response = search_l2_metadata(use_cache=False, max_results=None)
+
+        assert len(response["results"]) == 200
+        assert response["truncated"] is False
+
+    def test_results_under_limit_not_truncated(self):
+        """Test that results under limit are not truncated"""
+        from tools.search_journals.l2_metadata import search_l2_metadata
+
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(50)
+        ]
+
+        with patch(
+            "tools.search_journals.l2_metadata._search_filesystem",
+            return_value=mock_results,
+        ):
+            response = search_l2_metadata(use_cache=False)
+
+        assert len(response["results"]) == 50
+        assert response["truncated"] is False
+        assert response["total_available"] == 50
 
 
 if __name__ == "__main__":

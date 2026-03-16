@@ -55,7 +55,11 @@ class TestHierarchicalSearch:
         from tools.search_journals.core import hierarchical_search
 
         with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
-            mock_l2.return_value = [{"path": "test.md", "date": "2026-03-14"}]
+            mock_l2.return_value = {
+                "results": [{"path": "test.md", "date": "2026-03-14"}],
+                "truncated": False,
+                "total_available": 1,
+            }
             result = hierarchical_search(
                 location="Beijing",
                 date_from="2026-01-01",

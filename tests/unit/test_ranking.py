@@ -11,8 +11,7 @@ Tests cover:
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 class TestMergeAndRankResults:
@@ -206,17 +205,16 @@ class TestMergeAndRankResultsHybrid:
 
         assert results == []
 
-    def test_fts_results_normalized(self):
-        """Test FTS results are normalized"""
+    def test_fts_results_use_rrf(self):
+        """Test FTS-only hybrid ranking uses RRF score"""
         from tools.search_journals.ranking import merge_and_rank_results_hybrid
 
         l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 80}]
 
         results = merge_and_rank_results_hybrid([], [], l3, [], query="test")
 
-        # fts_score = 80/100 = 0.8, final_score = 0.8 * 0.6 * 100 = 48.0 (fts_weight=0.6)
-        assert results[0]["fts_score"] == 80.0  # Stored as percentage
-        assert results[0]["relevance_score"] == 48.0  # 80 * 0.6
+        assert results[0]["fts_score"] == 80.0
+        assert results[0]["relevance_score"] == pytest.approx(1 / 61, rel=1e-6)
 
     def test_semantic_results_added(self):
         """Test semantic results are added"""
@@ -236,9 +234,10 @@ class TestMergeAndRankResultsHybrid:
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/semantic.md"
+        assert results[0]["relevance_score"] == pytest.approx(1 / 61, rel=1e-6)
 
-    def test_semantic_score_normalization(self):
-        """Test semantic scores are normalized"""
+    def test_semantic_score_exposed_as_percentage(self):
+        """Test semantic score is exposed as percentage value"""
         from tools.search_journals.ranking import merge_and_rank_results_hybrid
 
         semantic = [{"path": "/test/doc.md", "similarity": 0.8, "final_score": 0.8}]
@@ -251,6 +250,7 @@ class TestMergeAndRankResultsHybrid:
             results = merge_and_rank_results_hybrid([], [], [], semantic, query="test")
 
         assert "semantic_score" in results[0]
+        assert results[0]["semantic_score"] == 80.0
 
     def test_fts_and_semantic_merged(self):
         """Test FTS and semantic results are merged"""
@@ -264,22 +264,29 @@ class TestMergeAndRankResultsHybrid:
         )
 
         assert len(results) == 1
-        assert results[0]["fts_score"] == 80.0  # Stored as percentage (0-100)
-        assert results[0]["semantic_score"] == 100.0  # Normalized to 100
+        assert results[0]["fts_score"] == 80.0
+        assert results[0]["semantic_score"] == 90.0
+        # Same document appears at rank 1 in both lists => 1/61 + 1/61
+        assert results[0]["relevance_score"] == pytest.approx(2 / 61, rel=1e-6)
 
-    def test_custom_weights(self):
-        """Test custom FTS/semantic weights"""
+    def test_custom_weights_kept_for_backward_compatibility(self):
+        """Test custom weights do not affect RRF ranking"""
         from tools.search_journals.ranking import merge_and_rank_results_hybrid
 
         l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 50}]
         semantic = [{"path": "/test/doc.md", "similarity": 0.9, "final_score": 0.9}]
 
-        results = merge_and_rank_results_hybrid(
+        results_default = merge_and_rank_results_hybrid(
+            [], [], l3, semantic, query="test"
+        )
+        results_custom = merge_and_rank_results_hybrid(
             [], [], l3, semantic, query="test", fts_weight=0.3, semantic_weight=0.7
         )
 
-        # With different weights, scores should be different
-        assert "relevance_score" in results[0]
+        assert "relevance_score" in results_default[0]
+        assert results_default[0]["relevance_score"] == pytest.approx(
+            results_custom[0]["relevance_score"], rel=1e-9
+        )
 
     def test_l2_in_hybrid(self):
         """Test L2 results in hybrid mode"""
@@ -353,6 +360,25 @@ class TestMergeAndRankResultsHybrid:
         assert results[0]["path"] == "/test/high.md"
         assert results[1]["path"] == "/test/low.md"
         assert results[2]["path"] == "/test/l1.md"
+
+
+class TestReciprocalRankFusion:
+    """Tests for reciprocal_rank_fusion helper"""
+
+    def test_overlap_document_gets_higher_score(self):
+        """Document present in two lists should rank first"""
+        from tools.search_journals.ranking import reciprocal_rank_fusion
+
+        scores = reciprocal_rank_fusion(
+            ranked_lists=[
+                ["doc_a", "doc_b", "doc_c"],
+                ["doc_x", "doc_a", "doc_y"],
+            ],
+            k=60,
+        )
+
+        assert scores["doc_a"] == pytest.approx(1 / 61 + 1 / 62, rel=1e-6)
+        assert scores["doc_a"] > scores["doc_b"]
 
 
 class TestTierPriority:

@@ -8,7 +8,7 @@ Life Index - Search Journals Tool - L2 Metadata
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
@@ -268,7 +268,8 @@ def search_l2_metadata(
     people: Optional[List[str]] = None,
     query: Optional[str] = None,
     use_cache: bool = True,
-) -> List[Dict[str, Any]]:
+    max_results: Optional[int] = 100,
+) -> Dict[str, Any]:
     """
     L2: 元数据层搜索
 
@@ -281,10 +282,19 @@ def search_l2_metadata(
     Args:
         query: 当指定 query 时，额外过滤 title/abstract/tags 包含该关键词的日志
         use_cache: 是否使用缓存（默认True）
+        max_results: 无过滤条件时的最大返回数量（默认100，None表示无限制）
+                     有过滤条件时不受此限制
+
+    Returns:
+        {
+            "results": [...],      # 匹配结果列表
+            "truncated": bool,     # 是否被截断
+            "total_available": int # 总可用数量
+        }
     """
     # 如果不使用缓存，直接扫描文件系统
     if not use_cache or not ENABLE_CACHE:
-        return _search_filesystem(
+        results = _search_filesystem(
             date_from=date_from,
             date_to=date_to,
             location=location,
@@ -296,14 +306,42 @@ def search_l2_metadata(
             people=people,
             query=query,
         )
-
-    # 尝试使用缓存搜索
-    try:
-        # 检查缓存是否存在且有数据
-        stats = get_cache_stats()
-        if stats["total_entries"] > 0:
-            # 使用缓存搜索
-            return _search_with_cache(
+    else:
+        # 尝试使用缓存搜索
+        try:
+            # 检查缓存是否存在且有数据
+            stats = get_cache_stats()
+            if stats["total_entries"] > 0:
+                # 使用缓存搜索
+                results = _search_with_cache(
+                    date_from=date_from,
+                    date_to=date_to,
+                    location=location,
+                    weather=weather,
+                    topic=topic,
+                    project=project,
+                    tags=tags,
+                    mood=mood,
+                    people=people,
+                    query=query,
+                )
+            else:
+                # 缓存为空，回退到文件系统扫描
+                results = _search_filesystem(
+                    date_from=date_from,
+                    date_to=date_to,
+                    location=location,
+                    weather=weather,
+                    topic=topic,
+                    project=project,
+                    tags=tags,
+                    mood=mood,
+                    people=people,
+                    query=query,
+                )
+        except (IOError, OSError):
+            # 缓存不可用，回退到文件系统扫描
+            results = _search_filesystem(
                 date_from=date_from,
                 date_to=date_to,
                 location=location,
@@ -315,25 +353,39 @@ def search_l2_metadata(
                 people=people,
                 query=query,
             )
-    except (IOError, OSError):
-        pass
 
-    # 缓存不可用或为空，回退到文件系统扫描
-    return _search_filesystem(
-        date_from=date_from,
-        date_to=date_to,
-        location=location,
-        weather=weather,
-        topic=topic,
-        project=project,
-        tags=tags,
-        mood=mood,
-        people=people,
-        query=query,
+    # 检查是否有过滤条件
+    has_filters = any(
+        [
+            date_from,
+            date_to,
+            location,
+            weather,
+            topic,
+            project,
+            tags,
+            mood,
+            people,
+            query,
+        ]
     )
 
+    total_available = len(results)
+    truncated = False
 
-def warm_cache(progress_callback: Optional[callable] = None) -> Dict[str, int]:
+    # 只有在无过滤条件时才应用 max_results 限制
+    if not has_filters and max_results is not None and total_available > max_results:
+        results = results[:max_results]
+        truncated = True
+
+    return {
+        "results": results,
+        "truncated": truncated,
+        "total_available": total_available,
+    }
+
+
+def warm_cache(progress_callback: Optional[Callable] = None) -> Dict[str, int]:
     """
     预热缓存：扫描所有日志文件并更新缓存
 

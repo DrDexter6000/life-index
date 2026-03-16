@@ -4,9 +4,34 @@ Life Index - Search Journals Tool - Ranking
 结果排序算法模块
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from .semantic import enrich_semantic_result
+
+
+def reciprocal_rank_fusion(
+    ranked_lists: List[List[str]], k: int = 60
+) -> Dict[str, float]:
+    """
+    Reciprocal Rank Fusion (RRF)
+
+    论文：Cormack et al., SIGIR 2009
+    score(d) = Σ 1 / (k + rank_d)
+
+    Args:
+        ranked_lists: 多个有序文档 ID 列表（rank 从 1 开始）
+        k: 平滑常数，业界常用 60
+
+    Returns:
+        dict[path, rrf_score]
+    """
+    scores: Dict[str, float] = {}
+    for ranked in ranked_lists:
+        for rank, doc_id in enumerate(ranked, start=1):
+            if not doc_id:
+                continue
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    return scores
 
 
 def merge_and_rank_results(
@@ -108,7 +133,7 @@ def merge_and_rank_results_hybrid(
     semantic_weight: float = 0.4,
 ) -> List[Dict]:
     """
-    混合排序：结合 FTS (BM25) 和语义搜索结果
+    混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
 
     Args:
         l1_results: L1 索引层结果
@@ -116,59 +141,83 @@ def merge_and_rank_results_hybrid(
         l3_results: L3 内容层结果（FTS）
         semantic_results: 语义搜索结果
         query: 查询词
-        fts_weight: FTS 得分权重
-        semantic_weight: 语义得分权重
+        fts_weight: 已弃用（为向后兼容保留）
+        semantic_weight: 已弃用（为向后兼容保留）
     """
-    scored = {}  # path -> {data, fts_score, semantic_score, final_score}
+    # 保留参数以兼容旧调用方（RRF 不再使用权重融合）
+    _ = fts_weight, semantic_weight
 
-    # 处理 L3/FTS 结果
-    max_fts_score = 0
+    scored = {}  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
+
+    # 先构建 FTS 排名（按 relevance + title_match bonus）
+    fts_ranked_paths: List[str] = []
+    fts_ordered = sorted(
+        l3_results,
+        key=lambda r: (
+            r.get("relevance", 50) + (10 if r.get("title_match") else 0),
+            r.get("path", ""),
+        ),
+        reverse=True,
+    )
+
+    # 处理 L3/FTS 结果（记录分项分数用于输出）
     for r in l3_results:
         path = r["path"]
-        # 使用 BM25 relevance 分数（0-100）
         fts_score = r.get("relevance", 50)
         if r.get("title_match"):
             fts_score += 10
-        max_fts_score = max(max_fts_score, fts_score)
 
         scored[path] = {
             "data": r,
-            "fts_score": fts_score / 100.0,  # 归一化到 0-1
-            "semantic_score": 0,
+            "fts_score": float(fts_score),
+            "semantic_score": 0.0,
+            "final_score": 0.0,
             "tier": 3,
+            "has_rrf": False,
         }
 
-    # 处理语义结果
-    max_semantic_score = (
-        max([r.get("similarity", 0) for r in semantic_results])
-        if semantic_results
-        else 1.0
-    )
-    if max_semantic_score == 0:
-        max_semantic_score = 1.0
+    for r in fts_ordered:
+        path = r.get("path")
+        if path:
+            fts_ranked_paths.append(path)
 
+    # 构建语义排名（按 similarity 降序）
+    semantic_ranked_paths: List[str] = []
+    semantic_ordered = sorted(
+        semantic_results,
+        key=lambda r: (r.get("similarity", 0), r.get("path", "")),
+        reverse=True,
+    )
+
+    # 处理语义结果（记录分项分数用于输出）
     for r in semantic_results:
         path = r["path"]
-        semantic_score = r.get("similarity", 0) / max_semantic_score  # 归一化
+        semantic_score = float(r.get("similarity", 0)) * 100.0
 
         if path in scored:
-            # 已存在，合并语义分数
             scored[path]["semantic_score"] = semantic_score
         else:
-            # 新结果 - 需要补充读取文件元数据
             enriched_data = enrich_semantic_result(r)
             scored[path] = {
                 "data": enriched_data,
-                "fts_score": 0,
+                "fts_score": 0.0,
                 "semantic_score": semantic_score,
+                "final_score": 0.0,
                 "tier": 4,  # 语义层
+                "has_rrf": False,
             }
 
-    # 计算最终得分
-    for path, item in scored.items():
-        item["final_score"] = (
-            item["fts_score"] * fts_weight + item["semantic_score"] * semantic_weight
-        ) * 100  # 转换回 0-100 范围
+    for r in semantic_ordered:
+        path = r.get("path")
+        if path:
+            semantic_ranked_paths.append(path)
+
+    # RRF 融合分数（只融合 FTS + 语义两个排序列表）
+    rrf_scores = reciprocal_rank_fusion([fts_ranked_paths, semantic_ranked_paths], k=60)
+    for path, score in rrf_scores.items():
+        if path in scored:
+            scored[path]["final_score"] = score
+            scored[path]["has_rrf"] = True
 
     # 处理 L2 结果（仅当不在 L3/语义中时）
     for r in l2_results:
@@ -200,10 +249,11 @@ def merge_and_rank_results_hybrid(
 
         scored[path] = {
             "data": r,
-            "fts_score": 0,
-            "semantic_score": 0,
-            "final_score": score,
+            "fts_score": 0.0,
+            "semantic_score": 0.0,
+            "final_score": float(score),
             "tier": 2,
+            "has_rrf": False,
         }
 
     # 处理 L1 结果
@@ -213,15 +263,18 @@ def merge_and_rank_results_hybrid(
             continue
         scored[path] = {
             "data": r,
-            "fts_score": 0,
-            "semantic_score": 0,
-            "final_score": 10,
+            "fts_score": 0.0,
+            "semantic_score": 0.0,
+            "final_score": 10.0,
             "tier": 1,
+            "has_rrf": False,
         }
 
-    # 按最终得分排序
+    # 按最终得分排序：有 RRF 融合分数的结果优先，其次按分数，再按 tier
     sorted_results = sorted(
-        scored.values(), key=lambda x: (x["final_score"], x["tier"]), reverse=True
+        scored.values(),
+        key=lambda x: (x["has_rrf"], x["final_score"], x["tier"]),
+        reverse=True,
     )
 
     # 提取数据并添加排名
@@ -229,9 +282,9 @@ def merge_and_rank_results_hybrid(
     for rank, item in enumerate(sorted_results, 1):
         data = item["data"].copy()
         data["search_rank"] = rank
-        data["relevance_score"] = round(item["final_score"], 2)
-        data["fts_score"] = round(item["fts_score"] * 100, 2)
-        data["semantic_score"] = round(item["semantic_score"] * 100, 2)
+        data["relevance_score"] = item["final_score"]
+        data["fts_score"] = round(item["fts_score"], 2)
+        data["semantic_score"] = round(item["semantic_score"], 2)
         merged.append(data)
 
     return merged

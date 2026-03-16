@@ -17,7 +17,7 @@ triggers:
 
 # Life Index Agent Skill
 
-> **完整工作流**: 详见 [INSTRUCTIONS.md](docs/INSTRUCTIONS.md) ｜ **工具参数与错误码**: 详见 [API.md](docs/API.md)
+> **工具参数与错误码**: 详见 [API.md](docs/API.md)
 
 ---
 
@@ -105,10 +105,9 @@ life-index/                         # 技能根目录（目录名固定为 life-
 │       ├── metadata_cache.py     # SQLite 元数据缓存（L2搜索优化）
 │       └── search_index.py       # FTS5 全文搜索索引
 │
-├── docs/                          # 文档目录（供 Agent 和人类阅读）
-│   ├── INSTRUCTIONS.md           # [Agent必读] 详细工作流、工具参数、执行步骤
+├── docs/                          # 文档目录
+│   ├── ARCHITECTURE.md           # 架构设计、核心原则、关键决策
 │   ├── API.md                    # 工具 API 详细文档
-│   ├── HANDBOOK.md               # 架构设计、核心理念、决策记录
 │   └── CHANGELOG.md              # 版本变更历史
 │
 ├── references/                    # 参考文档
@@ -332,12 +331,71 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 | 文档 | 用途 |
 |------|------|
-| **[INSTRUCTIONS.md](docs/INSTRUCTIONS.md)** | 完整工作流步骤（执行顺序与策略） |
-| [HANDBOOK.md](docs/HANDBOOK.md) | 项目愿景、架构设计、核心原则 |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、核心原则、关键决策 |
 | [API.md](docs/API.md) | 工具 API 接口详细文档 |
 | [SCHEDULE.md](references/schedule/SCHEDULE.md) | 定时任务配置（日报/周报/月报） |
 | [WEATHER_FLOW.md](references/WEATHER_FLOW.md) | 天气处理详细流程 |
-| [API.md#错误码列表](docs/API.md#错误码列表) | 错误码定义 |
+
+---
+
+## Workflows
+
+### 工作流1: 记录日志
+
+**步骤**:
+1. **语义解析**：从用户输入提取 title/content/date/topic
+2. **提取元数据**：从 content 中识别 mood、people、tags、project
+3. **生成摘要**：从 content 中提取关键信息，生成 ≤100 字的 abstract
+4. **处理地点和天气**：
+   - 用户提供 → 直接使用
+   - 用户未提供 → 自动填充默认地点 + 查询天气
+5. **调用工具**：`write_journal`（包含所有元数据字段）
+6. **检查 `needs_confirmation`**：展示确认信息，询问用户
+
+### 工作流2: 检索日志
+
+**四层搜索架构**:
+
+| 层级 | 名称 | 适用场景 | 性能 |
+|:----:|------|---------|------|
+| L1 | 索引层 (by-topic/) | 有明确 topic/project/tag | < 10ms |
+| L2 | 元数据层 (frontmatter) | 有时间/地点/天气等结构化过滤 | < 50ms |
+| L3 | 全文层 (FTS5) | 需要全文检索（默认） | < 50ms |
+| L4 | 语义层 (向量) | 需要语义匹配 | 可选启用 |
+
+**步骤**:
+1. **解析查询意图**：识别 time_range/metadata/fulltext/compound
+2. **选择搜索层级**：根据过滤条件选择 L1-L4
+3. **执行搜索**：`search_journals`
+4. **呈现结果**：展示匹配的日志列表
+
+### 工作流3: 编辑日志
+
+**步骤**:
+1. **定位日志**：根据日期或标题找到目标文件
+2. **确认修改**：展示当前内容，明确修改范围
+3. **执行编辑**：`edit_journal`
+4. **如修改地点**：需先调用 `query_weather` 获取新天气
+
+### 工作流4: 生成摘要
+
+**步骤**:
+1. **确定类型**：月度摘要或年度摘要
+2. **执行生成**：`generate_abstract`
+3. **返回结果**：告知文件路径和统计信息
+
+---
+
+## Error Handling
+
+| 场景 | 处理方式 |
+|------|---------|
+| 文件不存在 | 返回明确的错误信息，建议检查路径 |
+| 网络失败 | 天气查询失败时允许日志继续写入（天气字段留空） |
+| 权限不足 | 提示用户检查目录权限 |
+| 格式错误 | 返回具体的验证错误信息 |
+| 附件复制失败 | 记录原始路径，在正文中标注 |
+| 索引更新失败 | 主流程继续，记录警告待后续修复 |
 
 ---
 
@@ -362,5 +420,3 @@ Agent：
 调用：search_journals --query "重构" --date-from 2025-01-01 --date-to 2025-12-31
 返回：找到 5 篇相关日志
 ```
-
-**完整工作流（详细步骤）**: 详见 [INSTRUCTIONS.md](docs/INSTRUCTIONS.md#核心工作流)

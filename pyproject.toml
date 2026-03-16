@@ -8,18 +8,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-index"
-version = "0.1.0"
+version = "1.0.0"
 description = "Personal life journaling system with dual-dimension indexing"
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 authors = [
     {name = "Life Index Team"}
 ]
 keywords = ["journal", "life-logging", "agent-skill", "markdown", "indexing"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
