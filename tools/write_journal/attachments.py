@@ -113,8 +113,10 @@ def extract_file_paths_from_content(content: str) -> List[str]:
     # 匹配 Windows 绝对路径 (C:\... 或 C:/...)
     # 使用更严格的模式：必须以盘符开头，后跟反斜杠或斜杠，然后是路径组件
     # 路径组件不能包含非法字符 :*?"<>|
-    # FIX: 允许文件名中包含空格（中文文件名常见）
-    windows_pattern = r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[^\\/:*?"<>|\r\n]+'
+    # FIX: 允许文件名中包含空格（中文文件名常见），但扩展名部分不允许空格
+    windows_pattern = (
+        r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[\w]+'
+    )
     for match in re.finditer(windows_pattern, content):
         path = match.group(0)
         # 验证是否是有效文件路径（有扩展名）
@@ -122,8 +124,8 @@ def extract_file_paths_from_content(content: str) -> List[str]:
             paths.append(path)
 
     # 匹配 UNC 路径 (\\server\share\... 或 //server/share/...)
-    # FIX: 允许文件名中包含空格（中文文件名常见）
-    unc_pattern = r'(?:\\\\|//)[^\\/:*?"<>|\r\n]+(?:[\\/][^\\/:*?"<>|\r\n]+)*\\/[^\\/:*?"<>|\r\n]*\.[^\\/:*?"<>|\r\n]+'
+    # FIX: 允许文件名中包含空格（中文文件名常见），但扩展名部分不允许空格
+    unc_pattern = r'(?:\\\\|//)[^\\/:*?"<>|\r\n]+(?:[\\/][^\\/:*?"<>|\r\n]+)*\\/[^\\/:*?"<>|\r\n]*\.[\w]+'
     for match in re.finditer(unc_pattern, content):
         path = match.group(0)
         if looks_like_file_path(path):
