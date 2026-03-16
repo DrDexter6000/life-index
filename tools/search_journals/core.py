@@ -114,7 +114,7 @@ def hierarchical_search(
     # L2: 元数据层
     l2_start = time.time()
 
-    result["l2_results"] = search_l2_metadata(
+    l2_response = search_l2_metadata(
         date_from=date_from,
         date_to=date_to,
         location=location,
@@ -126,6 +126,11 @@ def hierarchical_search(
         people=people,
         query=query,  # 传递 query，L2 层也会过滤元数据
     )
+    result["l2_results"] = l2_response["results"]
+    # 记录截断信息（供上层参考）
+    if l2_response.get("truncated"):
+        result["l2_truncated"] = True
+        result["l2_total_available"] = l2_response.get("total_available", 0)
 
     result["performance"]["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
 
