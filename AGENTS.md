@@ -146,34 +146,27 @@ tools/
 ```
 
 ```bash
-# 写入日志
+# 推荐（pip install 后）
+life-index write --data '{"title":"...","content":"...","date":"2026-03-07","topic":"work"}'
+life-index search --query "关键词" --level 3
+life-index search --topic work --project Life-Index --limit 10
+life-index search --query "学习笔记" --semantic  # 语义搜索
+life-index edit --journal "Journals/2026/03/life-index_2026-03-07_001.md" --set-weather "晴天"
+life-index abstract --month 2026-03
+life-index index           # 增量更新
+life-index index --rebuild # 全量重建
+life-index weather --location "Lagos,Nigeria"
+
+# 开发者模式（无需安装）
 python -m tools.write_journal --data '{"title":"...","content":"...","date":"2026-03-07","topic":"work"}'
-
-# 搜索日志
 python -m tools.search_journals --query "关键词" --level 3
-python -m tools.search_journals --topic work --project Life-Index --limit 10
-
-# 语义搜索（需安装 sentence-transformers）
-python -m tools.search_journals --query "学习笔记" --semantic
-
-# 编辑日志
-python -m tools.edit_journal --journal "Journals/2026/03/life-index_2026-03-07_001.md" --set-weather "晴天"
-
-# 生成摘要
+python -m tools.edit_journal --journal "..."
 python -m tools.generate_abstract --month 2026-03
-python -m tools.generate_abstract --year 2026
-
-# 构建索引
-python -m tools.build_index           # 增量更新
-python -m tools.build_index --rebuild # 全量重建
-
-# 查询天气
+python -m tools.build_index
 python -m tools.query_weather --location "Lagos,Nigeria"
 
-# 数据校验（开发工具）
+# 开发工具
 python -m tools.dev.validate_data --json
-
-# 索引重建（开发工具）
 python -m tools.dev.rebuild_indices --dry-run
 ```
 

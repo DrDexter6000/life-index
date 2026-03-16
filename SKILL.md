@@ -50,26 +50,23 @@ triggers:
 **⚠️ 执行前确保**：已在技能根目录（包含 `SKILL.md` 和 `tools/` 的目录）
 
 ```bash
-# 记录日志（所有元数据字段必填，即使为空）
-python -m tools.write_journal --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
+# 推荐（pip install 后）
+life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
+life-index search --query "关键词" --topic work --level 3
+life-index search --query "学习" --semantic  # 语义搜索
+life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
+life-index abstract --month 2026-03
+life-index weather --location "Lagos,Nigeria"
+life-index index           # 增量更新
+life-index index --rebuild # 全量重建
 
-# 搜索日志
-python -m tools.search_journals --query "关键词" --topic work --level 3
-python -m tools.search_journals --query "学习" --semantic  # 语义搜索
-
-# 编辑日志
-python -m tools.edit_journal --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
-
-# 生成摘要
+# 开发者模式（无需安装）
+python -m tools.write_journal --data '{...}'
+python -m tools.search_journals --query "关键词"
+python -m tools.edit_journal --journal "..."
 python -m tools.generate_abstract --month 2026-03
-python -m tools.generate_abstract --year 2026
-
-# 查询天气
 python -m tools.query_weather --location "Lagos,Nigeria"
-
-# 构建索引
-python -m tools.build_index           # 增量更新
-python -m tools.build_index --rebuild # 全量重建
+python -m tools.build_index
 ```
 
 **不在技能根目录？** 参见下方 [Tool Invocation（工具调用）](#tool-invocation工具调用) 的多种方案。
