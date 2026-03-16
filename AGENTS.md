@@ -12,6 +12,12 @@
 - **纯文本格式**：Markdown + YAML Frontmatter，永不过时
 - **跨平台**：支持 Windows/Linux/macOS
 
+**关键架构决策**（开发时必须理解）:
+
+- **四层检索架构（L1→L2→L3→L4）** 的核心目的不是加速搜索，而是**逐层缩小候选集以节省 Agent 上下文 token 消耗**。2000 篇日志暴力读取需 ~3M tokens，经 L1 过滤后仅 ~5K tokens（节省 99.8%）。每层是过滤器，不是数据源。禁止修改为"一次性返回所有结果"的模式。
+- **Markdown + YAML Frontmatter** 是有意选择：20 年后无需任何软件即可阅读。禁止迁移至数据库存储日志正文。
+- **数据物理隔离**：用户数据在 `~/Documents/Life-Index/`，项目代码在仓库目录。禁止将日志存储在项目代码目录内。
+
 ---
 
 ## Agent-First 开发原则
@@ -370,10 +376,10 @@ from tools.write_journal import write_journal
 
 ### 修改日志格式
 
-1. 更新 `tools/write_journal/frontmatter.py` 中的 `format_frontmatter()`
-2. 同步更新 `tools/lib/frontmatter.py` 中的统一解析逻辑
+1. 先更新 `tools/lib/frontmatter.py`（frontmatter 解析/格式化 SSOT）
+2. 检查并同步 `tools/write_journal/frontmatter.py`（如有工具侧适配逻辑）
 3. 同步更新 `tools/lib/config.py` 中的模板
-4. 更新 `docs/HANDBOOK.md` 文档
+4. 更新 `docs/API.md` 与 `docs/HANDBOOK.md` 文档
 
 ### 添加 E2E 测试
 

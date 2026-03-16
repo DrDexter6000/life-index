@@ -24,13 +24,13 @@ test_cases:
     input:
       user_prompt: "记日志：测试附件不存在的情况"
       attachments:
-        - source_path: "C:/Users/17865/Downloads/nonexistent_file.png"
+        - source_path: "C:/Users/{username}/Downloads/nonexistent_file.png"
           description: "不存在的附件"
     expected:
       success: true  # 日志应成功写入
       journal_created: true
       attachment_error: "源文件不存在"
-      attachment_filename: "[未找到: C:/Users/17865/Downloads/nonexistent_file.png]"
+      attachment_filename: "[未找到: C:/Users/{username}/Downloads/nonexistent_file.png]"
     performance_sla:
       total: "< 2s"
 

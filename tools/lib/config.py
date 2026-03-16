@@ -187,7 +187,7 @@ def get_path_mappings() -> Dict[str, str]:
 
     # Example default mappings (disabled by default)
     # mappings.update({
-    #     "C:\\Users\\17865": "/home/dexter",
+    #     "C:\\Users\\{username}": "/home/{username}",
     # })
 
     return mappings

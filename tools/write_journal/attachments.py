@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..lib.config import ATTACHMENTS_DIR, USER_DATA_DIR
+from ..lib.logger import get_logger
 
 from .utils import get_year_month, convert_path_for_platform
+
+logger = get_logger(__name__)
 
 
 def looks_like_file_path(path: str) -> bool:
@@ -110,7 +113,8 @@ def extract_file_paths_from_content(content: str) -> List[str]:
     # 匹配 Windows 绝对路径 (C:\... 或 C:/...)
     # 使用更严格的模式：必须以盘符开头，后跟反斜杠或斜杠，然后是路径组件
     # 路径组件不能包含非法字符 :*?"<>|
-    windows_pattern = r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[^\\/:*?"<>|\r\n\s]+'
+    # FIX: 允许文件名中包含空格（中文文件名常见）
+    windows_pattern = r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[^\\/:*?"<>|\r\n]+'
     for match in re.finditer(windows_pattern, content):
         path = match.group(0)
         # 验证是否是有效文件路径（有扩展名）
@@ -118,7 +122,8 @@ def extract_file_paths_from_content(content: str) -> List[str]:
             paths.append(path)
 
     # 匹配 UNC 路径 (\\server\share\... 或 //server/share/...)
-    unc_pattern = r'(?:\\\\|//)[^\\/:*?"<>|\r\n]+(?:[\\/][^\\/:*?"<>|\r\n]+)*\\/[^\\/:*?"<>|\r\n]*\.[^\\/:*?"<>|\r\n\s]+'
+    # FIX: 允许文件名中包含空格（中文文件名常见）
+    unc_pattern = r'(?:\\\\|//)[^\\/:*?"<>|\r\n]+(?:[\\/][^\\/:*?"<>|\r\n]+)*\\/[^\\/:*?"<>|\r\n]*\.[^\\/:*?"<>|\r\n]+'
     for match in re.finditer(unc_pattern, content):
         path = match.group(0)
         if looks_like_file_path(path):
@@ -134,6 +139,72 @@ def extract_file_paths_from_content(content: str) -> List[str]:
             unique_paths.append(p)
 
     return unique_paths
+
+
+def _strip_cjk_spaces(path_str: str) -> str:
+    """
+    移除中英文/中文与数字之间被错误插入的空格。
+
+    某些 LLM（如 qwen 系列）在生成 JSON 参数时，会自动在中英文之间
+    添加空格（中文排版习惯），导致文件名被修改。
+
+    例如: "Opus 审计报告.txt" → "Opus审计报告.txt"
+
+    仅处理文件名部分（最后一个路径组件），不修改目录路径。
+    """
+    # 分离目录和文件名
+    dir_part = os.path.dirname(path_str)
+    filename = os.path.basename(path_str)
+
+    if not filename:
+        return path_str
+
+    # 移除英文/数字与中文之间的空格（双向）
+    # ASCII字符(含标点) + 空格 + CJK字符
+    filename = re.sub(r"([\x00-\x7F])\s+([\u4e00-\u9fff])", r"\1\2", filename)
+    # CJK字符 + 空格 + ASCII字符(含标点)
+    filename = re.sub(r"([\u4e00-\u9fff])\s+([\x00-\x7F])", r"\1\2", filename)
+
+    if dir_part:
+        return os.path.join(dir_part, filename)
+    return filename
+
+
+def _resolve_attachment_path(source_path: str, converted_path: str) -> Optional[str]:
+    """
+    多策略附件路径解析：精确匹配 → 跨平台转换 → 中英文空格容错。
+
+    Args:
+        source_path: 原始路径
+        converted_path: 跨平台转换后的路径
+
+    Returns:
+        可访问的文件路径，或 None（所有策略都失败）
+    """
+    # 策略1：原始路径精确匹配
+    if os.path.exists(source_path):
+        return source_path
+
+    # 策略2：跨平台转换路径
+    if converted_path != source_path and os.path.exists(converted_path):
+        return converted_path
+
+    # 策略3：中英文空格容错（去掉 LLM 错误插入的空格后重试）
+    stripped_source = _strip_cjk_spaces(source_path)
+    if stripped_source != source_path and os.path.exists(stripped_source):
+        logger.info(f"空格容错命中: [{source_path}] → [{stripped_source}]")
+        return stripped_source
+
+    # 策略3b：对跨平台转换后的路径也做空格容错
+    if converted_path != source_path:
+        stripped_converted = _strip_cjk_spaces(converted_path)
+        if stripped_converted != converted_path and os.path.exists(stripped_converted):
+            logger.info(
+                f"空格容错命中(跨平台): [{converted_path}] → [{stripped_converted}]"
+            )
+            return stripped_converted
+
+    return None
 
 
 def process_attachments(
@@ -203,13 +274,17 @@ def process_attachments(
         #     processed.append({"filename": f"[访问被拒绝: {source_path}]", ...})
         #     continue
 
+        # 诊断日志：记录工具实际收到的原始路径
+        logger.debug(f"附件原始路径: [{source_path}]")
+
         # 尝试跨平台路径转换
         converted_path = convert_path_for_platform(source_path)
 
-        # 优先使用转换后的路径，如果原路径不存在的话
-        if os.path.exists(converted_path):
-            source_path = converted_path
-        elif not os.path.exists(source_path):
+        # 路径查找：精确匹配 → 跨平台转换 → 中英文空格容错
+        resolved_path = _resolve_attachment_path(source_path, converted_path)
+
+        if resolved_path is None:
+            logger.warning(f"附件未找到: [{source_path}]")
             processed.append(
                 {
                     "filename": f"[未找到: {source_path}]",
@@ -222,6 +297,10 @@ def process_attachments(
                 }
             )
             continue
+
+        if resolved_path != source_path:
+            logger.info(f"附件路径已修正: [{source_path}] → [{resolved_path}]")
+        source_path = resolved_path
 
         # 跳过目录
         if os.path.isdir(source_path):

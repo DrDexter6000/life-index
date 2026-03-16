@@ -32,12 +32,13 @@
 
 **命令**：
 ```bash
-python tools/search_journals.py --month {LAST_MONTH} --limit 5000
+python -m tools.search_journals --date-from {LAST_MONTH}-01 --date-to {LAST_MONTH}-{MONTH_END} --limit 5000
 ```
 
 **参数说明**：
 - `{LAST_MONTH}`: 上月年月，格式 `YYYY-MM`（每月1日执行，检查刚结束的月份）
-- 示例: `python tools/search_journals.py --month 2026-02 --limit 5000`
+- `{MONTH_END}`: 上月最后一天（如 28/29/30/31）
+- 示例: `python -m tools.search_journals --date-from 2026-02-01 --date-to 2026-02-28 --limit 5000`
 
 **输出解析**：
 ```json
@@ -68,7 +69,7 @@ python tools/search_journals.py --month {LAST_MONTH} --limit 5000
 | **标签索引完整性** | 所有标签都有对应的索引文件 | 无遗漏 |
 | **索引引用完整性** | 每篇日志都被正确引用 | 无孤立日志 |
 | **无孤立索引** | 索引文件引用的日志都存在 | 无无效引用 |
-| **月度摘要存在** | 当月有 `monthly_abstract.md` | 文件存在 |
+| **月度摘要存在** | 当月有 `monthly_report_YYYY-MM.md` | 文件存在 |
 
 **执行方式**：
 1. 遍历当月所有日志
@@ -95,7 +96,7 @@ IF 发现问题:
 
 **命令**：
 ```bash
-python tools/build_index.py --rebuild
+python -m tools.build_index --rebuild
 ```
 
 **参数说明**：
@@ -124,7 +125,7 @@ IF 重建失败:
 
 **命令**：
 ```bash
-python tools/build_index.py --rebuild
+python -m tools.build_index --rebuild
 ```
 
 **说明**：
@@ -195,6 +196,6 @@ IF sentence-transformers 未安装:
 执行时间：每月1日 03:30
 扫描范围：上月所有日志
 任务性质：完整性检查 + 全量重建（如需） + 向量全量
-工具命令：python tools/build_index.py --rebuild
+工具命令：python -m tools.build_index --rebuild
 输出形式：静默完成（问题/失败时通知）
 ```

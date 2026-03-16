@@ -2,7 +2,7 @@
 
 > **本文档职责**: 项目架构规范 SSOT，描述"是什么"和"为什么"
 > **目标读者**: 人类（开发者、用户、协作者）
-> **版本/状态**: 详见 [README.md](./README.md)
+> **版本/状态**: 详见 [README.md](../README.md)
 >
 > **允许写入**: 设计原则、架构决策、工具职责定义、目录结构规范、术语定义
 > **禁止写入**: 具体工作流步骤（去 INSTRUCTIONS.md）、变更历史（去 CHANGELOG.md）
@@ -287,7 +287,7 @@ C:\Users\{username}\Documents\Life-Index\
 - **输出**: 成功状态、文件路径、更新的索引列表
 - **内部行为**: 生成文件名 → 复制附件 → 渲染 frontmatter → 写入文件 → 更新月度/年度/by-topic 索引
 
-详见: [INSTRUCTIONS.md](./INSTRUCTIONS.md#工具一write_journal)
+详见: [INSTRUCTIONS.md](./INSTRUCTIONS.md#工具接口)
 
 ### 6.2 search_journals
 
@@ -296,7 +296,7 @@ C:\Users\{username}\Documents\Life-Index\
 - **输出**: 匹配结果列表、聚合统计、性能指标
 - **策略**: L1索引层 → L2元数据层 → L3内容层（按需启用）
 
-详见: [INSTRUCTIONS.md](./INSTRUCTIONS.md#工具二search_journals)
+详见: [INSTRUCTIONS.md](./INSTRUCTIONS.md#工具接口)
 
 #### 四层搜索架构
 
@@ -344,7 +344,7 @@ final_score = w1×fts_score + w2×vec_score + w3×time_decay
 - **输出**: 成功状态、修改摘要
 - **用途**: 极速记录后的补全模式
 
-详见: [INSTRUCTIONS.md](./INSTRUCTIONS.md#工作流4极速记录补全模式推荐默认)
+详见: [INSTRUCTIONS.md](./INSTRUCTIONS.md#工作流3-编辑日志)
 
 ### 6.5 build_index
 
@@ -374,7 +374,7 @@ final_score = w1×fts_score + w2×vec_score + w3×time_decay
 
 **工具接口详细定义**: 以代码 `--help` 输出为准。INSTRUCTIONS.md 提供工作流层面的使用示例。
 
-详见: [INSTRUCTIONS.md](./INSTRUCTIONS.md#工具三query_weather)
+详见: [INSTRUCTIONS.md](./INSTRUCTIONS.md#工具接口)
 
 ---
 
@@ -505,7 +505,7 @@ final_score = w1×fts_score + w2×vec_score + w3×time_decay
 
 ### 11.1 核心原则
 
-本文档（HANDBOOK.md）、INSTRUCTIONS.md、CHANGELOG.md 构成 Life Index 的**单一事实来源（SSOT）**体系。任何项目变更必须同步更新到对应文档。
+`AGENTS.md`、`SKILL.md`、`HANDBOOK.md`、`INSTRUCTIONS.md`、`CHANGELOG.md` 共同构成 Life Index 的项目级 **单一事实来源（SSOT）**体系；其中工具参数/返回值/错误码以 `API.md` 为接口规范 SSOT。任何项目变更必须同步更新到对应文档。
 
 ### 11.2 Agent 维护义务
 
@@ -514,7 +514,7 @@ final_score = w1×fts_score + w2×vec_score + w3×time_decay
 | 操作类型 | 需更新的文档 | 检查方式 |
 |---------|-------------|---------|
 | 修改工作流逻辑 | INSTRUCTIONS.md | 对比当前步骤与文档描述 |
-| 调整工具接口 | INSTRUCTIONS.md + CHANGELOG.md | 检查接口定义章节 |
+| 调整工具接口 | SKILL.md + API.md + CHANGELOG.md | 检查触发词、接口定义与变更记录 |
 | 变更项目原则/架构 | HANDBOOK.md + CHANGELOG.md | 检查核心原则章节 |
 | 完成里程碑任务 | CHANGELOG.md | 记录版本演进 |
 
@@ -530,7 +530,26 @@ final_score = w1×fts_score + w2×vec_score + w3×time_decay
 4. 在 CHANGELOG.md 记录本次文档更新
 5. 向用户确认更新完成
 
-### 11.3 人类维护义务
+### 11.3 SSOT 权责-引用矩阵（项目级）
+
+> 目的：明确“谁是权威来源、谁只做引用”，避免多处重复维护导致漂移。
+
+| 信息类型 | 权威文档（唯一事实来源） | 可引用文档 | 禁止事项 |
+|---------|--------------------------|-----------|---------|
+| 项目上下文、开发约定 | `AGENTS.md` | `SKILL.md`、`HANDBOOK.md`、`INSTRUCTIONS.md` | 在引用文档中复制整段约定正文 |
+| 技能触发词与使用边界 | `SKILL.md` | `INSTRUCTIONS.md`、`AGENTS.md` | 在多个文档定义不一致触发词 |
+| 架构原则与设计底线 | `HANDBOOK.md` | `AGENTS.md`、`INSTRUCTIONS.md` | 在流程文档中重新定义架构原则 |
+| 执行流程与步骤 | `INSTRUCTIONS.md` | `SKILL.md`、`HANDBOOK.md` | 在其他文档维护另一套完整流程 |
+| 决策历史与变更记录 | `CHANGELOG.md` | 全部文档 | 在非 CHANGELOG 文档记录“何时改了什么” |
+| 工具参数/返回值/错误码 | `API.md` | `SKILL.md`、`INSTRUCTIONS.md`、`AGENTS.md` | 在引用文档重复完整参数表 |
+| 定时任务配置与场景细节 | `references/schedule/SCHEDULE.md` + `references/schedule/scenarios/*.md` | `SKILL.md`、`INSTRUCTIONS.md`、`HANDBOOK.md` | 在主 SSOT 文档重复维护场景细节 |
+| 天气故障处理细节 | `references/WEATHER_FLOW.md` | `INSTRUCTIONS.md`、`SKILL.md` | 在主流程文档复制完整故障树 |
+
+**约束说明**：
+- `references/` 是“操作细则与场景指南”层，不替代项目级 SSOT。
+- 项目级 SSOT 文档只保留“入口链接 + 最小必要摘要”，细节下沉到对应权威文档。
+
+### 11.4 人类维护义务
 
 作为项目所有者，你有权：
 - 直接编辑任何 SSOT 文档
