@@ -122,9 +122,19 @@ This is Life Index's mission: **Preserving those details that will make you sudd
 
 ## 🏛️ How Does It Work?
 
+### Activate the skill first (higher success rate)
+
+In current LLM/Agent ecosystems, pure natural-language triggering can be unstable.  
+For higher success rates, use: `/life-index` + an intent keyword.
+
+```text
+/life-index write journal: Today I saw old photos of Toto and suddenly missed that 2-year-old Diaper Hero — that bittersweet feeling.
+/life-index search logs: Find journal entries about "Toto".
+```
+
 ### Record
-Just tell your Agent:
-> "Log this: today I saw old photos of Toto, and suddenly I missed that 2-year-old Diaper Hero — that bittersweet feeling."
+After activating the skill, tell your Agent:
+> "/life-index write journal: today I saw old photos of Toto, and suddenly I missed that 2-year-old Diaper Hero — that bittersweet feeling."
 
 The Agent automatically organizes metadata (time, location, people, emotions, tags), generating a structured Markdown file stored on your own hard drive.
 
@@ -180,36 +190,68 @@ User Query → L1 Index Filter → L2 Metadata Filter → L3 Full-Text Search �
 
 ## 🚀 Quick Start
 
-### Agent Users (Recommended)
+<details>
+<summary>⚡ Quick Install - Life Index for Regular Users (Click to expand)</summary>
 
-1. Tell your Agent: *"Please read SKILL.md and act as my Life Index journal assistant."*
-2. Data directory is auto-created: `~/Documents/Life-Index/`
-3. Start recording: *"Today I want to record..."*
+### Who is this for?
+You want to install and use it immediately, without modifying code.
 
-### Developers
+### One-shot setup (Agent-first)
+
+Copy the full prompt below and send it to your Agent:
+
+```text
+Please complete Life Index end-user installation and verification in my OpenClaw environment.
+
+Repository:
+https://github.com/DrDexter6000/life-index
+
+Requirements:
+1) Read README.md and SKILL.md installation guidance
+2) Install in end-user mode (prefer: pipx install life-index)
+3) Place SKILL.md at ~/.openclaw/workspace/skills/life-index/
+4) Run and report:
+   - life-index --help
+   - life-index weather --location "Beijing,China"
+5) Tell me:
+   - where life-index was installed
+   - the final SKILL.md path
+   - the recommended command to write my first journal (use /life-index)
+```
+
+> Data is written under: `~/Documents/Life-Index/`
+
+</details>
+
+<details>
+<summary>⚡ Quick Install - Developer Mode (Click to expand)</summary>
+
+### Who is this for?
+You need local debugging, code changes, and tests.
+
+### One-shot setup (dev mode)
 
 ```bash
 git clone https://github.com/DrDexter6000/life-index.git
 cd life-index
-pip install -e .                    # Core installation
-pip install -e ".[semantic]"        # Optional: semantic search (~2GB model)
+
+# Core editable install
+pip install -e .
+
+# Optional: semantic search (~2GB model)
+pip install -e ".[semantic]"
 ```
 
-<details>
-<summary>📋 Command Cheat Sheet (Click to expand)</summary>
+### Common developer commands
 
 | Operation | Command |
 |:---|:---|
-| Write journal | `python -m tools.write_journal --data '{...}'` |
-| Search journals | `python -m tools.search_journals --query "keyword"` |
-| Semantic search | `python -m tools.search_journals --query "study notes" --semantic` |
-| Multi-filter | `python -m tools.search_journals --topic work --people "Toto"` |
-| Edit journal | `python -m tools.edit_journal --journal "path" --set-weather "Sunny"` |
-| Generate summary | `python -m tools.generate_abstract --month 2026-03` |
-| Query weather | `python -m tools.query_weather --location "Beijing,China"` |
-| Build index | `python -m tools.build_index` |
-
-All tools return standard JSON: `{"success": true, "data": {...}, "error": null}`
+| Unified CLI (recommended) | `life-index --help` |
+| Write journal | `life-index write --data '{...}'` |
+| Search journals | `life-index search --query "keyword"` |
+| Semantic search | `life-index search --query "study notes" --semantic` |
+| Dev invocation | `python -m tools.search_journals --query "keyword"` |
+| Run unit tests | `python -m pytest tests/unit/ -v` |
 
 </details>
 
@@ -234,8 +276,14 @@ All tools return standard JSON: `{"success": true, "data": {...}, "error": null}
 <details>
 <summary>🔧 Troubleshooting (Click to expand)</summary>
 
+**Skill triggering is unstable**  
+→ Use `"/life-index" + intent keyword` (example: `/life-index write journal: ...`)
+
+**Command not found (life-index: command not found)**  
+→ Run `python -m pipx ensurepath`, restart terminal, try again
+
 **Journals not written to ~/Documents/Life-Index/**  
-→ Ensure you use `python -m tools.xxx` instead of `python tools/xxx.py`
+→ Run `life-index --help` first to confirm CLI works; in dev mode, run `python -m tools.xxx` from repo root
 
 **Semantic search unavailable**  
 → `pip install sentence-transformers`
