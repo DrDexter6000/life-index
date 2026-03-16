@@ -129,7 +129,7 @@ test_cases:
           content: "第一次使用相同附件"
           topic: "test"
           attachments:
-            - source_path: "C:/Users/17865/Downloads/full_circle_sketch.png"
+            - source_path: "C:/Users/{username}/Downloads/full_circle_sketch.png"
               description: "测试附件"
       - step: 2
         name: "第二次使用相同附件"
@@ -140,7 +140,7 @@ test_cases:
           content: "第二次使用相同附件"
           topic: "test"
           attachments:
-            - source_path: "C:/Users/17865/Downloads/full_circle_sketch.png"
+            - source_path: "C:/Users/{username}/Downloads/full_circle_sketch.png"
               description: "测试附件"
     expected:
       step1_attachment: "full_circle_sketch.png"

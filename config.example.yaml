@@ -35,14 +35,14 @@ weather:
 # 格式: "源平台路径前缀": "目标平台路径前缀"
 # 用于在不同操作系统间迁移日志时自动转换路径
 path_mappings:
-  # Windows → Linux 示例
-  # "C:\\Users\\17865\\Downloads": "/home/dexter/Downloads"
+  # Windows → WSL/Linux 示例
+  # "C:\\Users\\{username}": "/mnt/c/Users/{username}"
   
   # Windows → macOS 示例
-  # "C:\\Users\\your_name": "/Users/your_name"
+  # "C:\\Users\\{username}": "/Users/{username}"
   
   # Linux → Windows 示例
-  # "/home/dexter": "C:\\Users\\17865"
+  # "/home/{username}": "C:\\Users\\{username}"
 
 # 搜索设置
 # ========

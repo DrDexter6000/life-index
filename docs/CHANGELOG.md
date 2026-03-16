@@ -4,6 +4,46 @@
 
 ---
 
+## [2026-03-16] SSOT 审计闭环：建立权责-引用矩阵并对齐 references 调用规范
+
+**决策**: 完成一次项目级 SSOT 审计闭环，明确“权威文档 vs 引用文档”边界，并将 references 文档中的命令与命名规则对齐到当前实现状态。
+
+**核心变更**:
+1. **建立 SSOT 权责-引用矩阵（治理层）**
+   - 在 `docs/HANDBOOK.md` 新增“11.3 SSOT 权责-引用矩阵（项目级）”
+   - 明确 8 类信息的权威来源、可引用文档和禁止事项
+   - 明确 `references/` 作为“操作细则与场景指南”层，不替代项目级 SSOT
+
+2. **统一 references 工具调用规范（执行层）**
+   - 批量替换 `python tools/*.py` → `python -m tools.xxx`
+   - 覆盖文件：
+     - `references/WEATHER_FLOW.md`
+     - `references/schedule/SCHEDULE.md`
+     - `references/schedule/scenarios/daily-report.md`
+     - `references/schedule/scenarios/weekly-report.md`
+     - `references/schedule/scenarios/monthly-report.md`
+     - `references/schedule/scenarios/yearly-report.md`
+     - `references/schedule/scenarios/index-update.md`
+     - `references/schedule/scenarios/index-rebuild.md`
+
+3. **对齐参数与产物命名到最新实现（事实层）**
+   - 将场景文档中旧参数示例（`--date/--month/--year`）改为当前可用组合：`--date-from/--date-to`
+   - 将旧月报文件名 `monthly_abstract.md` 对齐为 `monthly_report_YYYY-MM.md`
+
+**验证结果**:
+- `references/` 范围 grep 检查通过：
+  - `python tools/*.py`：0 处
+  - `tools/*.py` 文本引用：0 处
+  - `monthly_abstract.md` / `yearly_abstract.md`：0 处
+  - `search_journals --date/--month/--year` 旧参数写法：0 处
+
+**SSOT 同步**:
+- 更新 `docs/HANDBOOK.md`（新增治理矩阵）
+- 更新 `references/` 场景与流程文档（执行规范对齐）
+- 更新 `docs/CHANGELOG.md`（本记录）
+
+---
+
 ## [2026-03-14] CTO评审第二轮修复：坏路径、残留导入、占位URL（N1-N3）
 
 **决策**: 基于 CTO 技术评审报告(REVIEW-2026-03-14.md)的第二轮任务清单，修复 P0/P1 级代码缺陷和分发体验问题。

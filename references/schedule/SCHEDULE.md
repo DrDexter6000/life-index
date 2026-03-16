@@ -200,7 +200,7 @@ openclaw cron add \
   "sessionTarget": "isolated",
   "payload": {
     "kind": "agentTurn",
-    "message": "执行 Life Index 月报任务：使用 tools/generate_abstract.py --month $(date +%Y-%m) 生成本月摘要文件。读取生成的文件（Journals/YYYY/MM/monthly_report_YYYY-MM.md），推送约 1000 tokens 的月报摘要给用户，并告知文件完整路径。",
+    "message": "执行 Life Index 月报任务：使用 python -m tools.generate_abstract --month $(date +%Y-%m) 生成本月摘要文件。读取生成的文件（Journals/YYYY/MM/monthly_report_YYYY-MM.md），推送约 1000 tokens 的月报摘要给用户，并告知文件完整路径。",
     "timeoutSeconds": 600
   },
   "delivery": {
@@ -240,7 +240,7 @@ openclaw cron add \
   "sessionTarget": "isolated",
   "payload": {
     "kind": "agentTurn",
-    "message": "执行 Life Index 年报任务：使用 tools/generate_abstract.py --year $(date +%Y) 生成本年度摘要文件。读取生成的文件（Journals/YYYY/yearly_report_YYYY.md），推送约 3000 tokens 的年度总结，包含：全年概览、核心主题分析、高光时刻、年度洞察。",
+    "message": "执行 Life Index 年报任务：使用 python -m tools.generate_abstract --year $(date +%Y) 生成本年度摘要文件。读取生成的文件（Journals/YYYY/yearly_report_YYYY.md），推送约 3000 tokens 的年度总结，包含：全年概览、核心主题分析、高光时刻、年度洞察。",
     "timeoutSeconds": 900
   },
   "delivery": {
@@ -262,7 +262,7 @@ openclaw cron add \
   --cron "50 23 * * *" \
   --tz "[YOUR_TIMEZONE]" \
   --session isolated \
-  --message "执行 Life Index 索引维护：运行 tools/build_index.py 更新 FTS 索引和向量索引。此任务静默执行，无需推送。"
+  --message "执行 Life Index 索引维护：运行 python -m tools.build_index 更新 FTS 索引和向量索引。此任务静默执行，无需推送。"
 ```
 
 **或 JSON 配置**:
@@ -279,7 +279,7 @@ openclaw cron add \
   "sessionTarget": "isolated",
   "payload": {
     "kind": "agentTurn",
-    "message": "执行 Life Index 索引维护任务：运行 tools/build_index.py 增量更新 FTS 搜索索引。如果向量搜索可用，同时更新向量索引。此任务静默执行，无需输出。",
+    "message": "执行 Life Index 索引维护任务：运行 python -m tools.build_index 增量更新 FTS 搜索索引。如果向量搜索可用，同时更新向量索引。此任务静默执行，无需输出。",
     "timeoutSeconds": 300
   },
   "delivery": {
@@ -301,7 +301,7 @@ openclaw cron add \
   --cron "30 3 1 * *" \
   --tz "[YOUR_TIMEZONE]" \
   --session isolated \
-  --message "执行 Life Index 全量索引重建：运行 tools/build_index.py --rebuild 全量重建索引。此任务静默执行，无需推送。"
+  --message "执行 Life Index 全量索引重建：运行 python -m tools.build_index --rebuild 全量重建索引。此任务静默执行，无需推送。"
 ```
 
 **或 JSON 配置**:
@@ -318,7 +318,7 @@ openclaw cron add \
   "sessionTarget": "isolated",
   "payload": {
     "kind": "agentTurn",
-    "message": "执行 Life Index 全量索引重建任务：运行 tools/build_index.py --rebuild 全量重建所有索引。此任务静默执行，无需输出。",
+    "message": "执行 Life Index 全量索引重建任务：运行 python -m tools.build_index --rebuild 全量重建所有索引。此任务静默执行，无需输出。",
     "timeoutSeconds": 600
   },
   "delivery": {
@@ -637,4 +637,3 @@ openclaw gateway restart
 ---
 
 **文档结束** — 请完成 Step 1-5，为 Life Index 配置定时任务。
-

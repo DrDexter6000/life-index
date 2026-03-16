@@ -119,6 +119,29 @@ class TestExtractFilePathsFromContent:
         assert extract_file_paths_from_content("") == []
         assert extract_file_paths_from_content(None) == []
 
+    def test_extract_path_with_spaces(self):
+        """Extract paths with spaces in filename (Chinese+English common case)"""
+        from tools.write_journal.attachments import extract_file_paths_from_content
+
+        # BUG FIX TEST: Paths with spaces should be fully matched
+        content = "See C:\\Users\\17865\\Downloads\\Opus 审计报告.txt for details"
+        paths = extract_file_paths_from_content(content)
+
+        assert len(paths) == 1
+        # Should match the full filename with space, not just "Opus"
+        assert "Opus 审计报告.txt" in paths[0]
+        assert paths[0].endswith("Opus 审计报告.txt")
+
+    def test_extract_path_with_multiple_spaces(self):
+        """Extract paths with multiple spaces in filename"""
+        from tools.write_journal.attachments import extract_file_paths_from_content
+
+        content = "Check C:\\Program Files\\My App\\工作报告 2026 final.txt"
+        paths = extract_file_paths_from_content(content)
+
+        assert len(paths) == 1
+        assert "工作报告 2026 final.txt" in paths[0]
+
 
 class TestProcessAttachments:
     """Tests for process_attachments function"""
@@ -308,6 +331,106 @@ class TestCrossPlatformPaths:
         # Should still extract something
         # The exact behavior depends on implementation
         pass  # Acceptance test
+
+
+class TestStripCjkSpaces:
+    """Tests for _strip_cjk_spaces: LLM 中英文空格容错"""
+
+    def test_english_chinese_space(self):
+        """Remove space between English and Chinese characters"""
+        from tools.write_journal.attachments import _strip_cjk_spaces
+
+        assert _strip_cjk_spaces("Opus 审计报告.txt") == "Opus审计报告.txt"
+
+    def test_chinese_english_space(self):
+        """Remove space between Chinese and English characters"""
+        from tools.write_journal.attachments import _strip_cjk_spaces
+
+        assert _strip_cjk_spaces("审计报告 Final.txt") == "审计报告Final.txt"
+
+    def test_multiple_mixed_spaces(self):
+        """Remove multiple mixed-script spaces"""
+        from tools.write_journal.attachments import _strip_cjk_spaces
+
+        assert (
+            _strip_cjk_spaces("Opus 审计 Report 报告.txt") == "Opus审计Report报告.txt"
+        )
+
+    def test_preserve_english_only_spaces(self):
+        """Keep spaces between English words"""
+        from tools.write_journal.attachments import _strip_cjk_spaces
+
+        assert _strip_cjk_spaces("my report.txt") == "my report.txt"
+
+    def test_preserve_chinese_only_spaces(self):
+        """Keep spaces between Chinese characters (rare but valid)"""
+        from tools.write_journal.attachments import _strip_cjk_spaces
+
+        # Space between two Chinese chars is intentional, don't touch it
+        assert _strip_cjk_spaces("审计 报告.txt") == "审计 报告.txt"
+
+    def test_no_spaces(self):
+        """No-op when no spaces present"""
+        from tools.write_journal.attachments import _strip_cjk_spaces
+
+        assert _strip_cjk_spaces("Opus审计报告.txt") == "Opus审计报告.txt"
+
+    def test_full_path_only_modifies_filename(self):
+        """Only strip spaces in filename, not directory components"""
+        from tools.write_journal.attachments import _strip_cjk_spaces
+
+        result = _strip_cjk_spaces("C:\\Users\\test\\Downloads\\Opus 审计报告.txt")
+        assert result == "C:\\Users\\test\\Downloads\\Opus审计报告.txt"
+
+    def test_number_chinese_space(self):
+        """Remove space between number and Chinese"""
+        from tools.write_journal.attachments import _strip_cjk_spaces
+
+        assert _strip_cjk_spaces("2026 年报.txt") == "2026年报.txt"
+
+
+class TestResolveAttachmentPath:
+    """Tests for _resolve_attachment_path: multi-strategy path resolution"""
+
+    def test_exact_match(self):
+        """Return source_path when it exists"""
+        from tools.write_journal.attachments import _resolve_attachment_path
+
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
+            f.write(b"test")
+            temp_path = f.name
+
+        try:
+            result = _resolve_attachment_path(temp_path, temp_path)
+            assert result == temp_path
+        finally:
+            os.unlink(temp_path)
+
+    def test_cjk_space_fallback(self):
+        """Find file by stripping CJK spaces when exact path fails"""
+        from tools.write_journal.attachments import _resolve_attachment_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create file WITHOUT space
+            real_file = os.path.join(tmpdir, "Opus审计报告.txt")
+            with open(real_file, "w") as f:
+                f.write("test")
+
+            # Try to find it WITH space (simulating LLM-injected space)
+            bad_path = os.path.join(tmpdir, "Opus 审计报告.txt")
+            result = _resolve_attachment_path(bad_path, bad_path)
+
+            assert result == real_file
+
+    def test_all_strategies_fail(self):
+        """Return None when no strategy works"""
+        from tools.write_journal.attachments import _resolve_attachment_path
+
+        result = _resolve_attachment_path(
+            "/nonexistent/Opus 审计报告.txt",
+            "/nonexistent/Opus 审计报告.txt",
+        )
+        assert result is None
 
 
 if __name__ == "__main__":

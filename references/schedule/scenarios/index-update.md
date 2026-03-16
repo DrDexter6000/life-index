@@ -11,7 +11,7 @@
 - `by-topic/主题_xxx.md`（主题索引）
 - `by-topic/项目_xxx.md`（项目索引）
 - `by-topic/标签_xxx.md`（标签索引）
-- `monthly_abstract.md`（月度摘要）
+- `monthly_report_YYYY-MM.md`（月度摘要）
 
 因此，每日任务的目的是**检查+修复**，而非更新。
 
@@ -33,12 +33,12 @@
 
 **命令**：
 ```bash
-python tools/search_journals.py --date {YESTERDAY} --limit 100
+python -m tools.search_journals --date-from {YESTERDAY} --date-to {YESTERDAY} --limit 100
 ```
 
 **参数说明**：
 - `{YESTERDAY}`: 昨日日期，格式 `YYYY-MM-DD`
-- 示例: `python tools/search_journals.py --date 2026-03-10 --limit 100`
+- 示例: `python -m tools.search_journals --date-from 2026-03-10 --date-to 2026-03-10 --limit 100`
 
 **输出解析**：
 ```json
@@ -67,7 +67,7 @@ python tools/search_journals.py --date {YESTERDAY} --limit 100
 | **主题索引** | 每篇日志的 topic 是否都有对应的 `by-topic/主题_xxx.md` | 所有日志都被引用 |
 | **项目索引** | 每篇日志的 project 是否都有对应的 `by-topic/项目_xxx.md` | 所有日志都被引用 |
 | **标签索引** | 每篇日志的 tags 是否都有对应的 `by-topic/标签_xxx.md` | 所有日志都被引用 |
-| **月度摘要** | 当月是否有 `monthly_abstract.md` | 文件存在 |
+| **月度摘要** | 当月是否有 `monthly_report_YYYY-MM.md` | 文件存在 |
 
 **执行方式**：
 1. 读取昨日日志的 frontmatter
@@ -93,7 +93,7 @@ IF 发现不一致:
 
 **命令**：
 ```bash
-python tools/build_index.py
+python -m tools.build_index
 ```
 
 **说明**：
@@ -120,7 +120,7 @@ IF 修复失败:
 
 **命令**：
 ```bash
-python tools/build_index.py
+python -m tools.build_index
 ```
 
 **说明**：
@@ -188,7 +188,7 @@ IF sentence-transformers 未安装:
 ```
 执行时间：每天 23:50
 任务性质：检查 + 修复 + 向量增量
-关键发现：write_journal.py 已自动更新 by-topic 索引
-工具命令：python tools/build_index.py
+关键发现：tools.write_journal 已自动更新 by-topic 索引
+工具命令：python -m tools.build_index
 输出形式：静默完成（问题/失败时通知）
 ```

@@ -22,12 +22,13 @@
 
 **命令**：
 ```bash
-python tools/search_journals.py --month {YEAR}-{MONTH} --limit 2000
+python -m tools.search_journals --date-from {YEAR}-{MONTH}-01 --date-to {YEAR}-{MONTH}-{MONTH_END} --limit 2000
 ```
 
 **参数说明**：
 - `{YEAR}-{MONTH}`: 年月，格式 `YYYY-MM`
-- 示例: `python tools/search_journals.py --month 2026-03 --limit 2000`
+- `{MONTH_END}`: 当月最后一天（如 28/29/30/31）
+- 示例: `python -m tools.search_journals --date-from 2026-03-01 --date-to 2026-03-31 --limit 2000`
 
 **条件判断**：
 ```

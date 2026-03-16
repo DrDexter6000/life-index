@@ -22,12 +22,12 @@
 
 **命令**：
 ```bash
-python tools/search_journals.py --year {YEAR} --limit 10000
+python -m tools.search_journals --date-from {YEAR}-01-01 --date-to {YEAR}-12-31 --limit 10000
 ```
 
 **参数说明**：
 - `{YEAR}`: 年份，格式 `YYYY`
-- 示例: `python tools/search_journals.py --year 2026 --limit 10000`
+- 示例: `python -m tools.search_journals --date-from 2026-01-01 --date-to 2026-12-31 --limit 10000`
 
 **条件判断**：
 ```

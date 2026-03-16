@@ -23,12 +23,12 @@
 
 **命令**：
 ```bash
-python tools/search_journals.py --date {TODAY} --limit 100
+python -m tools.search_journals --date-from {TODAY} --date-to {TODAY} --limit 100
 ```
 
 **参数说明**：
 - `{TODAY}`: 当天日期，格式 `YYYY-MM-DD`
-- 示例: `python tools/search_journals.py --date 2026-03-11 --limit 100`
+- 示例: `python -m tools.search_journals --date-from 2026-03-11 --date-to 2026-03-11 --limit 100`
 
 **输出解析**：
 ```json

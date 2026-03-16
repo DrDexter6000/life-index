@@ -22,13 +22,13 @@
 
 **命令**：
 ```bash
-python tools/search_journals.py --date-from {MONDAY} --date-to {NOW} --limit 500
+python -m tools.search_journals --date-from {MONDAY} --date-to {NOW} --limit 500
 ```
 
 **参数说明**：
 - `{MONDAY}`: 本周一日期，格式 `YYYY-MM-DD`
 - `{NOW}`: 当前日期时间
-- 示例: `python tools/search_journals.py --date-from 2026-03-09 --date-to 2026-03-15 --limit 500`
+- 示例: `python -m tools.search_journals --date-from 2026-03-09 --date-to 2026-03-15 --limit 500`
 
 **条件判断**：
 ```
@@ -83,7 +83,7 @@ IF data.length > 0:
 
 **命令**：
 ```bash
-python tools/generate_abstract.py --year {CURRENT_YEAR}
+python -m tools.generate_abstract --year {CURRENT_YEAR}
 ```
 
 **说明**：

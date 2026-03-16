@@ -4,7 +4,7 @@
 
 ## 三层天气处理机制
 
-`tools/write_journal.py` 内置完整天气处理逻辑，Agent 只需调用工具，无需额外处理。
+`tools.write_journal` 内置完整天气处理逻辑，Agent 只需调用工具，无需额外处理。
 
 ### 第一层：用户提及为准
 
@@ -38,7 +38,7 @@
 
 ### 第三层：写入后确认（强制）
 
-`tools/write_journal.py` 返回 JSON 后，Agent **必须执行**：
+`tools.write_journal` 返回 JSON 后，Agent **必须执行**：
 
 1. **检查 `needs_confirmation` 字段**
 2. **如果为 `true`**：
@@ -46,7 +46,7 @@
    - **必须**询问："地点和天气是否正确？"
    - 等待用户回复
 3. **如果用户需要修改**：
-   - 调用 `tools/edit_journal.py` 更新 location/weather
+   - 调用 `python -m tools.edit_journal` 更新 location/weather
 
 **禁止行为**：
 - 看到 `success: true` 就直接结束
@@ -122,37 +122,37 @@
 
 ## 用户修改场景处理
 
-**重要**：`tools/edit_journal.py` **不会自动查询天气**，Agent 需要手动调用 `tools/query_weather.py`。
+**重要**：`tools.edit_journal` **不会自动查询天气**，Agent 需要手动调用 `tools.query_weather`。
 
 | 用户反馈 | Agent 操作 |
 |:---|:---|
-| 用户补充了地点和天气 | 调用 `tools/edit_journal.py --set-location "..." --set-weather "..."` |
-| 用户只补充了地点 | 1. 调用 `tools/query_weather.py --location "..."` 获取天气<br>2. 调用 `tools/edit_journal.py --set-location "..." --set-weather "..."` |
-| 用户只补充了城市（如"北京"） | 1. 推断为"北京，中国"<br>2. 调用 `tools/query_weather.py --location "Beijing, China"`<br>3. 调用 `tools/edit_journal.py --set-location "..." --set-weather "..."` |
+| 用户补充了地点和天气 | 调用 `python -m tools.edit_journal --set-location "..." --set-weather "..."` |
+| 用户只补充了地点 | 1. 调用 `python -m tools.query_weather --location "..."` 获取天气<br>2. 调用 `python -m tools.edit_journal --set-location "..." --set-weather "..."` |
+| 用户只补充了城市（如"北京"） | 1. 推断为"北京，中国"<br>2. 调用 `python -m tools.query_weather --location "Beijing, China"`<br>3. 调用 `python -m tools.edit_journal --set-location "..." --set-weather "..."` |
 
 **错误示例**（不要这样做）：
 ```bash
 # 只传 location，期望工具自动查询天气
-python tools/edit_journal.py --set-location "Lagos"
+python -m tools.edit_journal --set-location "Lagos"
 # ❌ 结果：weather 字段不会更新
 ```
 
 **正确示例**：
 ```bash
 # Step 1: 查询天气
-python tools/query_weather.py --location "Lagos, Nigeria"
+python -m tools.query_weather --location "Lagos, Nigeria"
 
 # Step 2: 同时更新地点和天气
-python tools/edit_journal.py --journal "..." --set-location "Lagos, Nigeria" --set-weather "阵雨 33.3°C/28.5°C"
+python -m tools.edit_journal --journal "..." --set-location "Lagos, Nigeria" --set-weather "阵雨 33.3°C/28.5°C"
 ```
 
 ## 天气 API 故障处理
 
-当 `query_weather.py` 工具的天气 API 不可用时，遵循以下 **Fallback 链**：
+当 `query_weather` 工具的天气 API 不可用时，遵循以下 **Fallback 链**：
 
 ### 第一层：工具内置 API（自动）
 
-`write_journal.py` 内部调用 `query_weather.py`，如果 API 返回错误：
+`write_journal` 内部调用 `query_weather`，如果 API 返回错误：
 - 工具返回 `weather_auto_filled: false`
 - 日志正常写入，weather 字段为空
 - 返回 `needs_confirmation: true`
@@ -166,7 +166,7 @@ python tools/edit_journal.py --journal "..." --set-location "Lagos, Nigeria" --s
    - 从搜索结果中提取天气信息
 
 2. **Fallback 成功**
-   - 将搜索到的天气信息通过 `edit_journal.py` 写入日志
+   - 将搜索到的天气信息通过 `edit_journal` 写入日志
    - 告知用户天气来源
 
 3. **Fallback 失败**
@@ -205,7 +205,7 @@ Agent：
 1. 检测到天气查询失败
 2. 使用网络搜索："Beijing China weather March 10 2026"
 3. 从搜索结果提取天气信息："Partly cloudy, 15°C"
-4. 调用 edit_journal.py --set-weather "Partly cloudy, 15°C"
+4. 调用 python -m tools.edit_journal --set-weather "Partly cloudy, 15°C"
 5. 告知用户：日志已保存。天气来源于网络搜索：Partly cloudy, 15°C。是否正确？
 ```
 
