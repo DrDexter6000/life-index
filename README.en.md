@@ -157,32 +157,51 @@ Through three-layer tagging dimensions + full-text search + semantic search, fin
 | **Project** | `LifeIndex` (This project), `Parenting` (Fatherhood journey) |
 | **Tag** | `Parenthood`, `Memory`, `Bittersweet`, `DiaperHero` |
 
-Want to find "all melancholic memories about Toto"? Search `Toto` + `Bittersweet` — regardless of project.
+Want to find "all melancholic memories about Toto"? Search `Toto` + `Bittersweet` — regardless of project. You can even search "missing my daughter" in English and find Chinese journal entries — semantic search supports 50+ languages for cross-language understanding.
 
 ### Why Can It Find Things?
 
-The Agent doesn't need to read all 2,000 of your journals — a 4-layer progressive filtering architecture lets it see **only the handful it actually needs**:
+The Agent doesn't need to read all 2,000 of your journals — a **dual-pipeline parallel retrieval architecture** lets it see **only the handful it actually needs**:
 
-> L1 (Topic Index) → L2 (Metadata Filter) → L3 (Full-Text Match) → L4 (Semantic Understanding)
+> **Keyword Pipeline** (exact match) ∥ **Semantic Pipeline** (meaning match) → RRF fusion ranking
 
-Each layer narrows the candidate set. Brute-force reading 2,000 journals costs ~3 million tokens; after filtering, only ~5,000 tokens — **99.8% savings**.
+Two pipelines run in parallel, results intelligently fused. Brute-force reading 2,000 journals costs ~3 million tokens; after retrieval, only ~5,000 tokens — **99.8% savings**.
 
 <details>
-<summary>🔍 4-Layer Search Architecture Details (Click to expand)</summary>
+<summary>🔍 Dual-Pipeline Retrieval Architecture Details (Click to expand)</summary>
 
 ```
-User Query → L1 Index Filter → L2 Metadata Filter → L3 Full-Text Search → L4 Semantic Ranking
-              (narrow scope)    (precise filtering)   (content matching)    (semantic understanding)
+                    User Query
+                   ┌────┴────┐
+            ┌──────▼──────┐  ┌──────▼──────┐
+            │ Pipeline A  │  │ Pipeline B  │
+            │  Keyword    │  │  Semantic   │
+            │             │  │             │
+            │ L1 Index    │  │ Vector      │
+            │ L2 Metadata │  │ Similarity  │
+            │ L3 FTS5     │  │ (Multilingual)│
+            └──────┬──────┘  └──────┬──────┘
+                   └────┬────┘
+              RRF Fusion (k=60)
+                      │
+                  Final Results
 ```
+
+**Pipeline A — Keyword Matching (finds "what was written")**
 
 | Layer | Data Source | Returns | Design Intent |
 |:---:|:---:|:---:|:---|
 | **L1 Index** | `by-topic/` index files | Date+title+path (~80 bytes/entry) | Quickly narrow candidates by topic/project/tag |
 | **L2 Metadata** | YAML Frontmatter (SQLite cache) | All metadata (~500 bytes/entry) | Multi-dimensional filtering by date, mood, people |
-| **L3 Content** | FTS5 full-text index | Matching snippets+context (~300 bytes/match) | Exact keyword matching, returning paragraphs not full text |
-| **L4 Semantic** | Vector embeddings (optional) | Path+similarity (~100 bytes/result) | Finds journals with similar meaning but different keywords |
+| **L3 Content** | FTS5 full-text index | Matching snippets+context (~300 bytes/match) | Exact keyword matching, BM25 ranking |
 
-**Core principle: Each layer is a filter, not a data source.**
+**Pipeline B — Semantic Search (finds "what was meant")**
+
+| Data Source | Returns | Design Intent |
+|:---:|:---:|:---|
+| Multilingual vector embeddings | Path+similarity (~100 bytes/result) | Finds journals with similar meaning but different keywords, supports cross-language retrieval |
+
+**Both pipelines run in parallel**, with results fused via [Reciprocal Rank Fusion](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) (RRF, k=60) — missing neither exact matches nor semantically related results.
 
 </details>
 
@@ -245,21 +264,117 @@ Life Index follows a "local-first" and "data-program separation" strategy:
 ## 🚀 Quick Start
 
 <details>
-<summary>🔍 4-Layer Search Architecture Details (Click to expand)</summary>
+<summary> Quick Install - Life Index End Users (Click to expand)</summary>
+
+<br>
+
+**For** — Anyone who just wants to "install and start using", no coding needed.
+
+**One-click install** — Copy the entire block below and send it to your Agent (OpenClaw, Claude Desktop, Cursor, etc.), then press Enter:
+
+```text
+Please install the Life Index skill (personal life journaling system).
+
+Repository: https://github.com/DrDexter6000/life-index
+
+Please complete the following installation and initialization steps:
+
+1) Clone the repository into your skills directory
+   Example: git clone https://github.com/DrDexter6000/life-index.git ~/.openclaw/workspace/skills/life-index
+
+2) Enter the skill directory and install Python dependencies (requires Python 3.11+)
+   cd <skills-directory>/life-index
+   pip install -e .
+
+3) Verify the installation (run these commands in order, all should return normal results):
+   - python -c "from fastembed import TextEmbedding; print('fastembed OK')"
+   - python -m tools.query_weather --location "Beijing,China"
+   - life-index --help
+
+4) Initialize the search index (required on first use; subsequent journal writes auto-update)
+   life-index index
+
+5) Tell me the installation result and index status, and how I can write my first journal entry
+
+Notes:
+- Journal data is automatically written to ~/Documents/Life-Index/, physically separated from skill code
+- All tool commands must be run from the skill root directory (the directory containing SKILL.md)
+- If you encounter ModuleNotFoundError, it means step 2's pip install did not execute successfully
+```
+
+> **Journal data is automatically written to `~/Documents/Life-Index/`**, physically separated from skill code. Even if you uninstall the skill, your journal data is never lost.
+
+</details>
+
+<details>
+<summary> Quick Install - Developers (Click to expand)</summary>
+
+<br>
+
+**For** — Those who need local debugging, code changes, and test runs.
+
+**Install (dev mode)** —
+
+```bash
+git clone https://github.com/DrDexter6000/life-index.git
+cd life-index
+
+# Core dependencies + editable install (semantic search included)
+pip install -e .
+```
+
+### Developer Commands
+
+| Action | Command |
+|:---|:---|
+| Unified CLI (recommended) | `life-index --help` |
+| Write journal | `life-index write --data '{...}'` |
+| Search journals (keyword+semantic) | `life-index search --query "keyword"` |
+| Keyword-only search | `life-index search --query "keyword" --no-semantic` |
+| Dev mode invocation | `python -m tools.search_journals --query "keyword"` |
+| Run unit tests | `python -m pytest tests/unit/ -v` |
+
+</details>
+
+<details>
+<summary> Data Directory Structure (Click to expand)</summary>
+
+<br>
 
 ```
-User Query → L1 Index Filter → L2 Metadata Filter → L3 Full-Text Search → L4 Semantic Ranking
-              (narrow scope)    (precise filtering)   (content matching)    (semantic understanding)
+~/Documents/Life-Index/
+├── Journals/                    # Main journal directory (by year/month)
+│   └── 2026/03/
+│       └── life-index_2026-03-04_002.md
+├── attachments/                 # Attachments (photos, videos, voice memos)
+│   └── 2026/03/
+└── by-topic/                    # Auto-generated indexes
+    ├── topic_think.md
+    ├── project_LifeIndex.md
+    └── tag_Parenthood.md
 ```
 
-| Layer | Data Source | Returns | Design Intent |
-|:---:|:---:|:---:|:---|
-| **L1 Index** | `by-topic/` index files | Date+title+path (~80 bytes/entry) | Quickly narrow candidates by topic/project/tag |
-| **L2 Metadata** | YAML Frontmatter (SQLite cache) | All metadata (~500 bytes/entry) | Multi-dimensional filtering by date, mood, people |
-| **L3 Content** | FTS5 full-text index | Matching snippets+context (~300 bytes/match) | Exact keyword matching, returning paragraphs not full text |
-| **L4 Semantic** | Vector embeddings (optional) | Path+similarity (~100 bytes/result) | Finds journals with similar meaning but different keywords |
+</details>
 
-**Core principle: Each layer is a filter, not a data source.**
+<details>
+<summary> Troubleshooting (Click to expand)</summary>
+
+<br>
+
+**Skill trigger is unreliable**  
+→ Use `"/life-index" + intent keyword` (e.g.: `/life-index write journal: ...`)
+
+**Tool error (ModuleNotFoundError)**  
+→ Make sure you're in the skill root directory (the one containing SKILL.md and tools/) when running commands
+
+**Journals not written to ~/Documents/Life-Index/**  
+→ Run `python -m tools.query_weather --location "Beijing,China"` from the skill root to verify tools work
+
+**Semantic search unavailable**  
+→ Confirm `fastembed` is installed: `pip install fastembed` (`pip install -e .` includes it automatically)
+
+**Permission errors**  
+→ Windows: Run terminal as Administrator | Linux/macOS: `chmod -R 755 ~/Documents/Life-Index`
 
 </details>
 
