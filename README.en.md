@@ -223,28 +223,28 @@ Life Index follows a "local-first" and "data-program separation" strategy:
 <summary>💀 Johnny Silverhand has something to say (Click to expand)</summary>
 
 > *"I see the corps... turning Night City into a machine, fueled by broken spirits, broken dreams, and empty pockets. Corps have controlled our lives for so long, taken so much... now they want our souls too!"*
+> 
+> *(我看到公司……把夜之城变成了一台机器，用人们破碎的精神、破碎的梦想和空空的口袋作为燃料。公司长期以来控制着我们的生活，夺走了很多……现在他们又想要我们的灵魂！)*
 
 > *"There are fates worse than death."*
+> 
+> *(有些命运比死亡更惨。)*
 
 </details>
 
-Through three-layer tagging dimensions + full-text search + semantic search, find your past self at any moment:
+---
 
-| Dimension | Examples |
-|:---:|:---|
-| **Topic** | `think` (Reflection), `create` (Creation), `relation` (Relationships) |
-| **Project** | `LifeIndex` (This project), `Parenting` (Fatherhood journey) |
-| **Tag** | `Parenthood`, `Memory`, `Bittersweet`, `DiaperHero` |
+## 🌱 Who Is This For?
 
-Want to find "all melancholic memories about Toto"? Search `Toto` + `Bittersweet` — regardless of project.
+- **New Parents**: Recording the authentic experience of parenthood — exhaustion, wonder, heartbreak
+- **Digital Nomads**: Moving between cities, recording locations and local states of mind
+- **Long-termists**: Wanting a system that lasts 30 years, not chasing the latest productivity tool
+- **Privacy Conscious**: Believing your life details shouldn't be training data for cloud services
+- **Every Ordinary Person**: Who believes their life fragments are worth preserving, even if not "efficient"
 
-### Why Can It Find Things?
+---
 
-The Agent doesn't need to read all 2,000 of your journals — a 4-layer progressive filtering architecture lets it see **only the handful it actually needs**:
-
-> L1 (Topic Index) → L2 (Metadata Filter) → L3 (Full-Text Match) → L4 (Semantic Understanding)
-
-Each layer narrows the candidate set. Brute-force reading 2,000 journals costs ~3 million tokens; after filtering, only ~5,000 tokens — **99.8% savings**.
+## 🚀 Quick Start
 
 <details>
 <summary>🔍 4-Layer Search Architecture Details (Click to expand)</summary>
