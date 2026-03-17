@@ -25,12 +25,13 @@ from config import (
     JOURNALS_DIR,
     USER_DATA_DIR,
     EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG,
+    get_model_cache_dir,
 )
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
 VEC_DB_PATH = INDEX_DIR / "journals_vec.db"
-CACHE_DIR = USER_DATA_DIR / ".cache" / "models"
+CACHE_DIR = get_model_cache_dir()  # 跨平台缓存目录（与 vector_index_simple.py 统一）
 
 # 嵌入模型配置（从 config.py 读取）
 EMBEDDING_MODEL = EMBEDDING_MODEL_CONFIG["name"]
