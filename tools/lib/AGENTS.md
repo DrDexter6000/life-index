@@ -15,7 +15,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | Debug concurrent write issues | `file_lock.py` | Cross-platform advisory locks for serialization |
 | Debug L2 search performance | `metadata_cache.py` | Check SQLite WAL mode, mtime/size detection |
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
-| Add semantic search feature | `semantic_search.py` | Requires sentence-transformers, graceful fallback |
+| Add semantic search feature | `semantic_search.py` | Uses fastembed (ONNX Runtime), multilingual embeddings |
 | Vector index corruption | `vector_index_simple.py` | Pickle-based fallback when sqlite-vec unavailable |
 
 ## MODULES
@@ -26,7 +26,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. All tools must use this, never duplicate logic.
 - **metadata_cache.py**: SQLite-based L2 search cache. 50-100x performance improvement over file scanning.
 - **search_index.py**: FTS5 full-text search with BM25 ranking, incremental updates.
-- **semantic_search.py**: Vector embedding search using all-MiniLM-L6-v2, optional dependency.
+- **semantic_search.py**: Vector embedding search using paraphrase-multilingual-MiniLM-L12-v2, core dependency.
 - **timing.py**: Performance timing utility for metrics collection. Used in tool outputs for monitoring.
 - **vector_index_simple.py**: Pure Python fallback vector index using numpy/pickle.
 
@@ -38,20 +38,18 @@ Shared infrastructure library for all Life Index atomic tools.
 
 **File Locking**: All write operations (journal, edit, index) use `FileLock` to prevent concurrent conflicts. Lock timeout defaults to 30s for journals, 60s for index operations.
 
-**Optional Dependencies**: Semantic search gracefully degrades when sentence-transformers unavailable. Never fail the main workflow.
+**Semantic Search**: Uses fastembed with ONNX Runtime for multilingual embeddings (50+ languages). Core feature, always available.
 
 ## ANTI-PATTERNS
 
 - **Never** duplicate frontmatter parsing logic in tools. Always import from `lib.frontmatter`.
 - **Never** hardcode paths. Use `config.USER_DATA_DIR` and derived constants.
 - **Never** raise bare exceptions. Use `LifeIndexError` with structured codes.
-- **Never** assume sentence-transformers is installed. Check availability and fallback.
+- **Never** skip error handling for vector index operations. Always use try/except with logging.
 - **Never** write journals/indexes without acquiring the appropriate lock first.
 
 ## DEPENDENCIES
 
-**This lib depends on**: Python 3.11+, standard library only (pathlib, sqlite3, typing, etc.)
-
-**Optional**: sentence-transformers (for semantic search)
+**This lib depends on**: Python 3.11+, pyyaml, fastembed>=0.4.0, numpy>=1.24.0
 
 **Tools depend on this lib**: write_journal, search_journals, edit_journal, generate_abstract, build_index, query_weather, dev/validate_data, dev/rebuild_indices

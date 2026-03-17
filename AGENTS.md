@@ -13,7 +13,7 @@
 - **纯文本格式**：Markdown + YAML Frontmatter，永不过时
 
 **关键架构决策**:
-- **四层检索架构（L1→L2→L3→L4）** 逐层缩小候选集以节省 Agent 上下文 token 消耗
+- **双管道并行检索架构** 关键词管道 ∥ 语义管道并行执行 + RRF 融合
 - **数据物理隔离**：用户数据在 `~/Documents/Life-Index/`，项目代码在仓库目录
 
 ---
@@ -24,9 +24,7 @@
 
 ```bash
 # Python 3.11+ (核心运行环境)
-
-# 可选依赖（语义搜索）
-pip install sentence-transformers>=2.2.0
+# pip install -e . 已包含语义搜索依赖（fastembed）
 ```
 
 ### 核心工具命令
@@ -49,6 +47,8 @@ python -m tools.search_journals --query "关键词"
 
 ## 模块结构
 
+> **详细模块说明**: 参见 [`tools/lib/AGENTS.md`](tools/lib/AGENTS.md)
+
 ```
 tools/
 ├── write_journal/              # 写入日志模块
@@ -56,18 +56,18 @@ tools/
 │   ├── __main__.py            # 模块执行入口
 │   ├── core.py                # 核心协调逻辑
 │   ├── attachments.py         # 附件处理
-│   ├── index_updater.py       # 索引更新
+│   ├── index_updater.py       # 索引更新（v1.2 Write-Through）
 │   ├── utils.py               # 通用工具函数
 │   └── weather.py             # 天气查询集成
-├── search_journals/            # 搜索日志模块
+├── search_journals/            # 搜索日志模块（双管道并行检索）
 │   ├── __init__.py            # CLI入口
 │   ├── __main__.py            # 模块执行入口
-│   ├── core.py                # 搜索协调逻辑
+│   ├── core.py                # 搜索协调逻辑（Pipeline A/B + RRF）
 │   ├── l1_index.py            # 一级索引搜索（by-topic）
 │   ├── l2_metadata.py         # 二级元数据搜索（SQLite缓存）
 │   ├── l3_content.py          # 三级内容搜索（FTS全文搜索）
-│   ├── ranking.py             # 结果排序算法
-│   ├── semantic.py            # 语义搜索（向量相似度）
+│   ├── ranking.py             # RRF融合排序算法
+│   ├── semantic.py            # 语义搜索（fastembed向量相似度）
 │   └── utils.py               # 搜索工具函数
 ├── edit_journal/              # 编辑日志模块
 │   ├── __init__.py            # CLI入口
@@ -81,15 +81,15 @@ tools/
 ├── query_weather/             # 查询天气模块
 │   ├── __init__.py            # CLI入口
 │   └── __main__.py            # 模块执行入口
-└── lib/                       # 共享库（SSOT）
-    ├── AGENTS.md              # 共享库开发指南
+└── lib/                       # 共享库（SSOT）→ 详见 `tools/lib/AGENTS.md`
+    ├── AGENTS.md              # 共享库开发指南（SSOT）
     ├── config.py              # 配置管理（路径、模板、默认值）
     ├── frontmatter.py         # YAML frontmatter解析/格式化（SSOT）
     ├── errors.py              # 错误码定义（SSOT）
     ├── file_lock.py           # 跨平台文件锁
     ├── metadata_cache.py      # SQLite元数据缓存（L2搜索）
     ├── search_index.py        # FTS5全文搜索索引
-    ├── semantic_search.py     # 向量嵌入语义搜索
+    ├── semantic_search.py     # 向量嵌入语义搜索（fastembed）
     ├── vector_index_simple.py # 纯Python向量索引（Fallback）
     ├── logger.py              # 日志记录工具
     └── timing.py              # 性能计时工具
@@ -197,13 +197,14 @@ python tools/write_journal.py --data '{...}'
 
 ## 相关文档
 
-| 文档 | 内容 |
-|------|------|
-| `SKILL.md` | Agent 技能定义、触发词、工具接口、工作流 |
-| `docs/ARCHITECTURE.md` | 架构设计、核心原则、关键决策 |
-| `docs/API.md` | 工具 API 接口文档 |
-| `docs/CHANGELOG.md` | 决策变更历史 |
-| `tools/lib/AGENTS.md` | 共享库开发指南 |
+| 文档 | 内容 | SSOT 声明 |
+|------|------|-----------|
+| `SKILL.md` | Agent 技能定义、触发词、工具接口、工作流 | Agent 调用入口 |
+| `docs/ARCHITECTURE.md` | 架构设计、核心原则、关键决策 | ADR 决策记录 |
+| `docs/API.md` | 工具 API 接口文档 | **SSOT**: 参数、错误码、返回值 |
+| `docs/CHANGELOG.md` | 决策变更历史 | 版本演进 |
+| `tools/lib/AGENTS.md` | 共享库开发指南 | **SSOT**: `lib/` 模块约定 |
+| `pyproject.toml` | 项目配置 | **SSOT**: 依赖、版本、入口点 |
 
 ---
 

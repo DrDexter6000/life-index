@@ -242,17 +242,18 @@ INDEX_PREFIXES = get_index_prefixes()
 # 固定模型版本以确保嵌入一致性
 # 模型文件约 80MB，首次使用会自动下载
 EMBEDDING_MODEL = {
-    "name": "sentence-transformers/all-MiniLM-L6-v2",
-    "version": "1.0.0",  # 模型版本标识
-    "dimension": 384,  # 输出向量维度
+    "name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "version": "2.0.0",  # 模型版本标识（递增触发自动重建）
+    "dimension": 384,  # 输出向量维度（与旧模型一致）
     # SHA-256 哈希值（模型配置文件的预期哈希，用于完整性校验）
-    # 注意：这是 HuggingFace 上模型文件的哈希，实际实现中我们会校验下载后的配置
-    "config_hash": "e4b6f8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8",
+    # 首次部署后填入
+    "config_hash": "",
     # 模型元数据（用于追溯和日志记录）
     "metadata": {
-        "description": "MiniLM-L6-v2 模型，适用于短文本语义相似度计算",
-        "max_seq_length": 256,
-        "recommended_for": "日志检索、语义搜索",
+        "description": "多语言 MiniLM-L12-v2 模型，支持 50+ 语言的语义相似度计算",
+        "max_seq_length": 128,  # 该模型推荐最大序列长度
+        "recommended_for": "多语言日志检索、中英文语义搜索",
+        "supported_languages": "50+ languages including zh, en, ja, ko, fr, de, es, etc.",
     },
 }
 

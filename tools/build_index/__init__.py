@@ -123,7 +123,7 @@ def build_all(
                                 )
                         else:
                             logger.info(
-                                f"  ⚠ Embedding model not available. Install: pip install sentence-transformers"
+                                f"  ⚠ Embedding model not available. Install: pip install fastembed"
                             )
                     except (RuntimeError, IOError, OSError) as e:
                         logger.error(f"  ✗ Vector error: {e}")
@@ -185,7 +185,7 @@ def show_stats() -> None:
             logger.info(f"  Size: {simple_stats['index_size_mb']} MB")
         except (ImportError, RuntimeError):
             logger.info(f"  Status: Not available")
-            logger.info(f"  Note: Install sentence-transformers for semantic search")
+            logger.info(f"  Note: Install fastembed for semantic search")
 
     logger.info("\n💾 Cache Directory:")
     cache_dir = USER_DATA_DIR / ".cache" / "models"

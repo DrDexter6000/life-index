@@ -21,39 +21,27 @@ triggers:
 
 ---
 
-## Triggers
+## Triggers & When to Use
 
-| 意图 | 触发词（中英文） |
-|:---:|:---|
-| 记录日志 | "记日志"、"记录一下"、"写日记"、"记下来"、"log this"、"record this"、"write journal"、"daily log" |
-| 搜索日志 | "查找日志"、"搜索记录"、"找一下关于...的日记"、"search journal"、"find log" |
-| 编辑日志 | "修改日志"、"补充日记"、"更新记录"、"edit journal"、"update log" |
-| 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary"、"monthly report" |
-| 生成日报 | "生成日报"、"今日总结"、"daily report" |
-| 生成周报 | "生成周报"、"本周总结"、"weekly report" |
-| 生成年报 | "生成年报"、"年度回顾"、"yearly report" |
-
----
-
-## When to Use
-
-1. **记录日志**：用户说"记录一下今天..."、"记日志..."、"log this..." → `write_journal`
-2. **搜索日志**：用户说"查找关于...的日志"、"去年春天的记录"、"search for..." → `search_journals`
-3. **编辑日志**：用户说"修改昨天的日志"、"补充一下那篇日记"、"edit..." → `edit_journal`
-4. **生成摘要**：用户说"生成月度摘要"、"查看年度总结"、"generate summary..." → `generate_abstract`
-5. **定时报告**：日报/周报/月报/年报 → 参考 [SCHEDULE.md](references/schedule/SCHEDULE.md)
+| 意图 | 触发词 | 工具 |
+|:---:|:---|:---|
+| 记录日志 | "记日志"、"记录一下"、"写日记"、"记下来"、"log this"、"record this"、"write journal" | `write_journal` |
+| 搜索日志 | "查找日志"、"搜索记录"、"找一下关于...的日记"、"search journal"、"find log" | `search_journals` |
+| 编辑日志 | "修改日志"、"补充日记"、"更新记录"、"edit journal"、"update log" | `edit_journal` |
+| 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary" | `generate_abstract` |
+| 定时报告 | 日报/周报/月报/年报 | 参考 [SCHEDULE.md](references/schedule/SCHEDULE.md) |
 
 ---
 
 ## Quick CLI Reference
 
-**⚠️ 执行前确保**：已在技能根目录（包含 `SKILL.md` 和 `tools/` 的目录）
+**⚠️ 所有命令须在技能根目录（本文件所在目录）下执行。禁止在其他目录执行、使用绝对路径调用脚本。**
 
 ```bash
 # 推荐（pip install 后）
 life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
 life-index search --query "关键词" --topic work --level 3
-life-index search --query "学习" --semantic  # 语义搜索
+life-index search --query "学习"  # 语义搜索默认启用
 life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
 life-index abstract --month 2026-03
 life-index weather --location "Lagos,Nigeria"
@@ -69,111 +57,32 @@ python -m tools.query_weather --location "Lagos,Nigeria"
 python -m tools.build_index
 ```
 
-**不在技能根目录？** 参见下方 [Tool Invocation（工具调用）](#tool-invocation工具调用) 的多种方案。
-
 ---
 
-## Project Structure（项目结构）
-
-Life Index 采用模块化目录设计，所有工具位于 `tools/` 目录下：
+## Project Structure
 
 ```
-life-index/                         # 技能根目录（目录名固定为 life-index/）
-├── SKILL.md                       # [本文件] 技能定义、触发词、使用指南
-├── pyproject.toml                 # Python 项目配置（依赖、入口点、工具链）
-├── README.md                      # 项目介绍和快速开始
-├── LICENSE                        # Apache-2.0 许可证
-├── config.example.yaml            # 用户配置示例（需复制到数据目录）
-│
-├── tools/                         # [核心] 可执行工具目录
-│   ├── write_journal/             # 写入日志工具
-│   │   ├── __init__.py           # CLI 入口
-│   │   ├── __main__.py           # python -m 执行入口
-│   │   └── core.py               # 核心逻辑（天气查询、附件处理、索引更新）
-│   │
-│   ├── search_journals/           # 搜索日志工具（L1/L2/L3/语义搜索）
-│   ├── edit_journal/              # 编辑日志工具（修改元数据、追加内容）
-│   ├── generate_abstract/         # 生成摘要工具（月报/年报）
-│   ├── build_index/               # 构建索引工具（FTS5 + 向量索引）
-│   ├── query_weather/             # 查询天气工具
-│   │
-│   └── lib/                       # [共享库] 所有工具依赖的基础模块
-│       ├── config.py             # 配置管理（数据目录、路径映射、模板）
-│       ├── frontmatter.py        # YAML frontmatter 解析/格式化（SSOT）
-│       ├── errors.py             # 错误码定义和恢复策略
-│       ├── file_lock.py          # 文件锁（并发控制）
-│       ├── metadata_cache.py     # SQLite 元数据缓存（L2搜索优化）
-│       └── search_index.py       # FTS5 全文搜索索引
-│
-├── docs/                          # 文档目录
-│   ├── ARCHITECTURE.md           # 架构设计、核心原则、关键决策
-│   ├── API.md                    # 工具 API 详细文档
-│   └── CHANGELOG.md              # 版本变更历史
-│
-├── references/                    # 参考文档
-│   ├── WEATHER_FLOW.md           # 天气处理三层机制详解
-│   ├── （错误码见 docs/API.md#错误码列表）
-│   └── schedule/                 # 定时任务配置（日报/周报/月报）
-│       └── SCHEDULE.md
-│
-├── tests/                         # 测试目录
-│   ├── e2e/                      # 端到端测试（YAML 格式）
-│   │   ├── phase1-core-workflow.yaml
-│   │   ├── phase2-search-retrieval.yaml
-│   │   └── phase3-edge-cases.yaml
-│   └── unit/                     # 单元测试
-│
-└── AGENTS.md                      # [开发者文档] 代码库导航、模块职责、约定
+life-index/                         # 技能根目录
+├── SKILL.md                       # [本文件] 技能定义
+├── tools/                         # 可执行工具目录
+│   ├── write_journal/             # 写入日志（天气查询、附件处理、索引更新）
+│   ├── search_journals/           # 搜索日志（L1/L2/L3 + 语义搜索）
+│   ├── edit_journal/              # 编辑日志（修改元数据、追加内容）
+│   ├── generate_abstract/         # 生成摘要（月报/年报）
+│   ├── build_index/               # 构建索引（FTS5 + 向量索引）
+│   ├── query_weather/             # 查询天气
+│   └── lib/                       # 共享库（SSOT）
+├── docs/                          # API.md, ARCHITECTURE.md, CHANGELOG.md
+└── references/                    # WEATHER_FLOW.md, SCHEDULE.md
 ```
 
 **关键约定**：
-- **技能代码目录**: `life-index/`（包含 tools/, docs/, 本文件 SKILL.md）
-- **工具目录**: `life-index/tools/`（所有可执行模块）
-- **用户数据目录**: `~/Documents/Life-Index/`（日志、附件、索引，与代码分离）
-- **SSOT**: `tools/lib/` 是共享库的唯一事实来源，所有工具必须从中导入
+- **用户数据目录**: `~/Documents/Life-Index/`（日志、附件、索引，与代码物理隔离）
+- **跨平台路径**: 自动处理（Agent 传原始路径即可，工具自动转换 Windows↔WSL）
+
+---
 
 ## Core Constraints
-
-### Tool Invocation（工具调用）
-
-**前置要求**：执行工具前，必须先进入技能根目录（包含 `SKILL.md` 和 `tools/` 的目录）
-
-**两种导航方式均可定位 tools/ 目录**：
-
-**方式一：通过目录名 `life-index/` 定位**
-```bash
-cd ~/.claude/skills/life-index              # Claude Desktop
-cd ~/.openclaw/workspace/skills/life-index  # OpenClaw
-cd ~/.config/opencode/skills/life-index     # OpenCode
-cd ~/.agents/skills/life-index              # 其他 Agent
-
-python -m tools.write_journal --data '{...}'
-```
-
-**方式二：通过本文件 `SKILL.md` 定位**
-```bash
-# 找到本文件(SKILL.md)所在的目录，即为技能根目录
-cd {skill_root}     # skill_root = 包含 SKILL.md 的目录
-
-python -m tools.write_journal --data '{...}'
-```
-
-**禁止**：在其他目录执行、使用绝对路径调用脚本、直接 import 工具函数
-
-### Cross-Platform Path Handling（跨平台路径）
-
-**路径已自动处理，Agent 无需干预。**
-
-Life Index 内置启发式跨平台路径转换：
-
-| 场景 | 自动处理 |
-|------|---------|
-| Windows 路径在 WSL/Linux | `C:\Users\...` → `/mnt/c/Users/...` |
-| WSL 路径在 Windows | `/mnt/c/...` → `C:\Users\...` |
-
-**Agent 只需传递原始路径**，工具自动检测并转换。
-
-> **注意**：自动转换仅在目标路径确实存在时生效。如有特殊路径映射需求，可在 `~/Documents/Life-Index/.life-index/config.yaml` 中配置 `path_mappings`。
 
 ### Content Preservation (MUST)
 
@@ -200,15 +109,22 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 ### Guardrails
 
 - **永不删除文件**：编辑只修改内容
-- **数据隔离**：数据在 `~/Documents/Life-Index/`
+- **数据隔离**：数据在 `~/Documents/Life-Index/`，与代码分离
 - **天气处理**：详见 [WEATHER_FLOW.md](references/WEATHER_FLOW.md)
-- **强制确认机制**：`write_journal` 返回后，**必须**检查并处理 `needs_confirmation` 字段（见下方"天气与地点确认"）
+
+```markdown
+❌ 不要：假设用户知道内部概念（如"by-topic索引"）
+✅ 必须：用人话说明（如"已归类到工作相关"）
+
+❌ 不要：一次问多个问题
+✅ 必须："地点和天气是否正确？"（单次确认）
+```
 
 ### 天气与地点确认（强制）
 
-**⚠️ 这是常见错误点，必须遵守：**
+**⚠️ 最常见错误点：看到 `success: true` 就直接结束对话**
 
-调用 `write_journal` 后，工具会返回如下 JSON：
+调用 `write_journal` 后，检查返回的 `needs_confirmation` 字段：
 ```json
 {
   "success": true,
@@ -220,25 +136,12 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 }
 ```
 
-**Agent 必须执行：**
-1. **检查 `needs_confirmation`**：如果为 `true`，说明使用了默认地点或自动查询的天气
-2. **展示确认信息**：向用户展示 `confirmation_message` 的内容
-3. **询问确认**：明确询问用户"地点和天气是否正确？"
-4. **等待用户回复**：不要假设正确，必须等待用户确认
+```
+❌ 错误：工具返回 success: true → Agent 直接结束："日志已保存"
 
-**错误示例**（不要这样做）：
-```
-工具返回 success: true
-→ Agent 直接结束对话："日志已保存"
-❌ 错误：跳过了用户确认
-```
-
-**正确示例**：
-```
-工具返回 success: true, needs_confirmation: true
+✅ 正确：工具返回 needs_confirmation: true
 → Agent：日志已保存。地点：Lagos, Nigeria；天气：晴天 33°C。是否正确？
 → 等待用户回复
-✅ 正确：用户有机会纠正错误的地点/天气
 ```
 
 ---
@@ -253,49 +156,42 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | content | string | ✅ | 日志正文（100%原样保留） |
 | date | string | ✅ | ISO 8601 日期时间 |
 | abstract | string | ✅ | ≤100字摘要（Agent生成） |
-| topic | array | ✅ | 主题分类，必填（如["work"]） |
-| mood | array | ✅ | 心情标签，必填，Agent语义提取1~3个（如["开心","专注"]） |
-| tags | array | ✅ | 标签，必填，Agent语义提取关键词（可多个） |
+| topic | array | ✅ | 主题分类（见下方 Topic 表） |
+| mood | array | ✅ | 心情标签，Agent语义提取1~3个（如["开心","专注"]） |
+| tags | array | ✅ | 标签，Agent语义提取关键词（可多个） |
 | location | string | ❌ | 地点，默认"Chongqing, China"，Agent询问后可更改 |
 | weather | string | ❌ | 天气，根据确认的地点自动查询 |
 | people | array | ❌ | 相关人物，Agent语义提取，没有则留空 |
 | project | string | ❌ | 关联项目，Agent语义提取，没有则留空 |
 | links | array | ❌ | 相关链接 |
-| attachments | array | ❌ | 附件路径（自动检测） |
+| attachments | array | ❌ | 附件（自动检测 content 中的本地文件路径；也可显式传递 `{"source_path":"...","description":"..."}` 对象） |
 
-**Agent 职责**：
+### Topic 分类（必填）
+
+| Topic | 含义 | 示例场景 |
+|-------|------|----------|
+| `work` | 工作/职业 | 项目进展、会议、职业发展 |
+| `learn` | 学习/成长 | 读书笔记、课程学习、技能提升 |
+| `health` | 健康/身体 | 运动、饮食、体检、医疗 |
+| `relation` | 关系/社交 | 家人、朋友、社交活动 |
+| `think` | 思考/反思 | 人生感悟、决策思考、复盘 |
+| `create` | 创作/产出 | 文章、代码、设计作品 |
+| `life` | 生活/日常 | 日常琐事、娱乐、购物 |
+
+### Agent 职责
+
 1. **必填字段**：title, content, date, abstract, topic, mood, tags — 必须有值
 2. **语义提取**：从用户内容中主动提取 mood（1~3个）、tags（关键词）、people、project
 3. **默认值**：location 默认 "Chongqing, China"，Agent可主动询问用户确认更改
 4. **空值处理**：people, project, links 未提取到时传空值（如 `"people": []`）
 5. **摘要生成**：从 content 提取关键信息，生成 ≤100 字的 abstract
-6. **必须确认地点和天气**：工具返回后，**必须**检查 `needs_confirmation` 字段，如果为 `true`，**必须**展示 `confirmation_message` 并询问用户确认
+6. **必须确认**：工具返回后检查 `needs_confirmation`，为 `true` 时展示并询问用户
 
 ---
 
-## Output Format
+## Workflows
 
-```json
-{
-  "success": true|false,
-  "data": { ... },
-  "error": { "code": "E0000", "message": "...", "recovery_strategy": "..." }
-}
-```
-
-错误码详见 [API.md](docs/API.md#错误码列表)。
-
----
-
-## ⚠️ Core Execution Checklist（执行检查清单）
-
-> **关键步骤速查**：记录日志时必须按此顺序执行，跳过任何一步都可能导致错误。
-
-### 记录日志标准流程
-
-```
-用户输入 → 步骤1 → 步骤2 → 步骤3 → 步骤4 → 完成
-```
+### 工作流1: 记录日志
 
 | 步骤 | 动作 | 关键检查点 | 常见错误 |
 |:---:|:---|:---|:---|
@@ -307,27 +203,65 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 6 | **展示确认** | 展示 `confirmation_message` | 不展示直接结束 |
 | 7 | **等待回复** | 询问用户"是否正确？" | 不询问 |
 
-### 关键禁止事项
+### 工作流2: 检索日志
 
-```markdown
-❌ 不要：看到 success: true 就直接结束对话
-✅ 必须：检查 needs_confirmation，如果为 true 必须询问确认
+**双管道并行检索架构**:
 
-❌ 不要：一次问多个问题
-✅ 必须："地点和天气是否正确？"（单次确认）
-
-❌ 不要：假设用户知道内部概念（如"by-topic索引"）
-✅ 必须：用人话说明（如"已归类到工作相关"）
+```
+            用户查询
+         ┌────┴────┐
+  ┌──────▼──────┐  ┌──────▼──────┐
+  │ Pipeline A  │  │ Pipeline B  │
+  │  关键词管道  │  │  语义管道   │
+  │             │  │             │
+  │ L1 索引过滤  │  │ 向量相似度   │
+  │ L2 元数据过滤│  │ (多语言嵌入) │
+  │ L3 FTS5 匹配 │  │             │
+  └──────┬──────┘  └──────┬──────┘
+         └────┬────┘
+    RRF 融合排序 (k=60)
+            │
+        最终结果
 ```
 
-### 快速故障排查
+**查询意图 → 参数映射**:
 
-| 问题 | 原因 | 解决 |
-|:---|:---|:---|
-| 日志保存了但没确认地点 | 跳过步骤5 | 检查 needs_confirmation 字段 |
-| 缺少 mood/tags | 步骤2未执行 | 从内容提取情绪词和关键词 |
-| 附件未复制 | 路径格式错误 | 确保是完整路径（如 `C:\Users\...\file.txt`）|
-| 天气查询失败 | API问题 | 使用网络搜索 Fallback |
+| 用户意图 | 推荐参数 |
+|:---|:---|
+| "关于工作的日志" | `--topic work` |
+| "去年的记录" | `--date-from 2025-01-01 --date-to 2025-12-31` |
+| "跟乐乐有关的" | `--people 乐乐` |
+| "关于重构的" | `--query "重构"` |
+| "开心的回忆" | `--mood 开心` |
+| "LifeIndex项目" | `--project LifeIndex` |
+| 精确关键词匹配 | `--query "关键词" --no-semantic` |
+
+**步骤**:
+1. **解析查询意图**：从用户表述中识别过滤条件
+2. **执行搜索**：`search_journals`（双管道自动启用）
+3. **呈现结果**：展示日志列表（按 RRF 分数排序）
+
+### 工作流3: 编辑日志
+
+1. **定位日志**：根据日期或标题找到目标文件
+2. **确认修改**：展示当前内容，明确修改范围
+3. **执行编辑**：`edit_journal`
+4. **如修改地点**：需先调用 `query_weather` 获取新天气，再同时更新 location 和 weather
+
+### 工作流4: 生成摘要
+
+1. **确定类型**：月度摘要（`--month YYYY-MM`）或年度摘要（`--year YYYY`）
+2. **执行生成**：`generate_abstract`
+3. **返回结果**：告知文件路径和统计信息
+
+### 工作流5: 索引维护
+
+| 场景 | 操作 |
+|:---|:---|
+| 日常写入 | 无需手动维护（Write-Through 自动更新） |
+| 搜索结果异常/缺失 | `life-index index --rebuild` 全量重建 |
+| 首次安装 | `life-index index` 初始化索引 |
+| 手动编辑过日志文件 | `life-index index` 增量更新 |
 
 ---
 
@@ -335,71 +269,10 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 | 文档 | 用途 |
 |------|------|
+| [API.md](docs/API.md) | 工具 API 接口、参数详情、错误码与恢复策略 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、核心原则、关键决策 |
-| [API.md](docs/API.md) | 工具 API 接口详细文档 |
 | [SCHEDULE.md](references/schedule/SCHEDULE.md) | 定时任务配置（日报/周报/月报） |
-| [WEATHER_FLOW.md](references/WEATHER_FLOW.md) | 天气处理详细流程 |
-
----
-
-## Workflows
-
-### 工作流1: 记录日志
-
-**步骤**:
-1. **语义解析**：从用户输入提取 title/content/date/topic
-2. **提取元数据**：从 content 中识别 mood、people、tags、project
-3. **生成摘要**：从 content 中提取关键信息，生成 ≤100 字的 abstract
-4. **处理地点和天气**：
-   - 用户提供 → 直接使用
-   - 用户未提供 → 自动填充默认地点 + 查询天气
-5. **调用工具**：`write_journal`（包含所有元数据字段）
-6. **检查 `needs_confirmation`**：展示确认信息，询问用户
-
-### 工作流2: 检索日志
-
-**四层搜索架构**:
-
-| 层级 | 名称 | 适用场景 | 性能 |
-|:----:|------|---------|------|
-| L1 | 索引层 (by-topic/) | 有明确 topic/project/tag | < 10ms |
-| L2 | 元数据层 (frontmatter) | 有时间/地点/天气等结构化过滤 | < 50ms |
-| L3 | 全文层 (FTS5) | 需要全文检索（默认） | < 50ms |
-| L4 | 语义层 (向量) | 需要语义匹配 | 可选启用 |
-
-**步骤**:
-1. **解析查询意图**：识别 time_range/metadata/fulltext/compound
-2. **选择搜索层级**：根据过滤条件选择 L1-L4
-3. **执行搜索**：`search_journals`
-4. **呈现结果**：展示匹配的日志列表
-
-### 工作流3: 编辑日志
-
-**步骤**:
-1. **定位日志**：根据日期或标题找到目标文件
-2. **确认修改**：展示当前内容，明确修改范围
-3. **执行编辑**：`edit_journal`
-4. **如修改地点**：需先调用 `query_weather` 获取新天气
-
-### 工作流4: 生成摘要
-
-**步骤**:
-1. **确定类型**：月度摘要或年度摘要
-2. **执行生成**：`generate_abstract`
-3. **返回结果**：告知文件路径和统计信息
-
----
-
-## Error Handling
-
-| 场景 | 处理方式 |
-|------|---------|
-| 文件不存在 | 返回明确的错误信息，建议检查路径 |
-| 网络失败 | 天气查询失败时允许日志继续写入（天气字段留空） |
-| 权限不足 | 提示用户检查目录权限 |
-| 格式错误 | 返回具体的验证错误信息 |
-| 附件复制失败 | 记录原始路径，在正文中标注 |
-| 索引更新失败 | 主流程继续，记录警告待后续修复 |
+| [WEATHER_FLOW.md](references/WEATHER_FLOW.md) | 天气处理详细流程与故障 Fallback |
 
 ---
 
@@ -411,9 +284,10 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 Agent：
 1. 解析：title="搜索功能优化", topic=["work"], abstract="完成搜索功能优化工作"
-2. 调用 write_journal（自动填充地点="Chongqing, China"、查询天气）
-3. 检查 needs_confirmation=true
-4. 展示：日志已保存。地点：Chongqing, China；天气：Sunny。是否正确？
+2. 提取：mood=["专注"], tags=["搜索", "优化"], people=[], project=""
+3. 调用 write_journal（自动填充地点="Chongqing, China"、查询天气）
+4. 检查 needs_confirmation=true
+5. 展示：日志已保存。地点：Chongqing, China；天气：Sunny。是否正确？
 ```
 
 **搜索历史**：

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Life Index - Search Journals Tool - CLI Entry Point
-分层级检索日志（L1索引→L2元数据→L3内容）
+双管道并行检索日志（关键词管道 ∥ 语义管道 → RRF 融合）
 """
 
 import argparse
@@ -23,7 +23,7 @@ Examples:
     python -m tools.search_journals --query "重构" --level 3
     python -m tools.search_journals --topic work --project Life-Index
     python -m tools.search_journals --date-from 2026-01-01 --date-to 2026-03-04
-    python -m tools.search_journals --query "学习笔记" --semantic
+    python -m tools.search_journals --query "学习笔记" --no-semantic
         """,
     )
 
@@ -42,12 +42,18 @@ Examples:
         type=int,
         choices=[1, 2, 3],
         default=3,
-        help="搜索层级：1=索引, 2=元数据, 3=全文 (默认: 3)",
+        help="搜索层级：1=索引, 2=元数据, 3=双管道并行 (默认: 3)",
     )
     parser.add_argument(
-        "--use-index", action="store_true", help="使用 FTS 索引加速 L3 搜索"
+        "--no-index",
+        action="store_true",
+        help="禁用 FTS 索引（回退到文件扫描，默认启用 FTS）",
     )
-    parser.add_argument("--semantic", action="store_true", help="启用语义搜索")
+    parser.add_argument(
+        "--no-semantic",
+        action="store_true",
+        help="禁用语义搜索（默认启用）",
+    )
     parser.add_argument(
         "--semantic-weight",
         type=float,
@@ -92,8 +98,8 @@ Examples:
         location=args.location,
         weather=args.weather,
         level=args.level,
-        use_index=args.use_index,
-        semantic=args.semantic,
+        use_index=not args.no_index,
+        semantic=not args.no_semantic,
         semantic_weight=args.semantic_weight,
         fts_weight=args.fts_weight,
     )

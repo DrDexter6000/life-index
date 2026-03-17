@@ -27,6 +27,7 @@ from ..lib.frontmatter import (
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.logger import get_logger
+from ..write_journal.index_updater import update_vector_index
 
 logger = get_logger(__name__)
 
@@ -316,6 +317,22 @@ def edit_journal(
                     )
                     result["indices_updated"] = updated
                     logger.info(f"已更新 {len(updated)} 个索引文件")
+
+                # 更新向量索引（如果内容相关字段变更）
+                content_fields_changed = result["content_modified"] or any(
+                    k in result["changes"] for k in ["title", "tags", "topic"]
+                )
+                if content_fields_changed:
+                    try:
+                        # 构建更新数据（合并旧的和新的 frontmatter）
+                        update_data = dict(new_frontmatter)
+                        update_data["content"] = new_body
+                        vector_updated = update_vector_index(journal_path, update_data)
+                        if vector_updated:
+                            logger.info("向量索引已同步更新")
+                            result["vector_index_updated"] = True
+                    except Exception as e:
+                        logger.warning(f"向量索引更新失败（不影响编辑）：{e}")
 
         except LockTimeoutError as e:
             # 锁超时，返回结构化错误

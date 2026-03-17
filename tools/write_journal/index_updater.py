@@ -207,3 +207,89 @@ def update_monthly_abstract(
         result["error"] = str(e)
 
     return result
+
+
+def update_vector_index(journal_path: Path, data: Dict[str, Any]) -> bool:
+    """
+    写入后同步更新向量索引（Write-Through）
+
+    Args:
+        journal_path: 日志文件路径
+        data: 日志数据（包含 title, content, abstract, tags, topic 等）
+
+    Returns:
+        True 如果更新成功，False 如果失败（不影响主流程）
+    """
+    try:
+        from ..lib.vector_index_simple import get_model, get_index
+        from ..lib.config import USER_DATA_DIR
+
+        model = get_model()
+        if not model.load():
+            return False
+
+        # 构建要嵌入的文本（与 semantic_search.py 的 parse_journal_for_vec 保持一致）
+        # 顺序：标题 + 正文前1000字 + 标签 + 主题
+        text_parts = []
+
+        title = data.get("title", "")
+        if title:
+            text_parts.append(title)
+
+        content = data.get("content", "")
+        if content:
+            # 限制正文长度，与 parse_journal_for_vec 保持一致
+            text_parts.append(content[:1000])
+
+        tags = data.get("tags", [])
+        if tags:
+            if isinstance(tags, list):
+                text_parts.extend(tags)
+            else:
+                text_parts.append(tags)
+
+        topic = data.get("topic")
+        if topic:
+            if isinstance(topic, list):
+                text_parts.extend(topic)
+            else:
+                text_parts.append(topic)
+
+        embed_text = " ".join(text_parts).strip()
+        if not embed_text:
+            return False
+
+        # 生成嵌入向量
+        embeddings = model.encode([embed_text])
+        if not embeddings:
+            return False
+
+        # 计算相对路径
+        try:
+            rel_path = str(journal_path.relative_to(USER_DATA_DIR)).replace("\\", "/")
+        except ValueError:
+            rel_path = str(journal_path).replace("\\", "/")
+
+        # 更新索引
+        index = get_index()
+        date_str = str(data.get("date", ""))[:10]
+
+        # 计算文件哈希用于后续增量更新检测
+        import hashlib
+
+        try:
+            file_content = journal_path.read_bytes()
+            file_hash = hashlib.md5(file_content).hexdigest()[:16]
+        except Exception:
+            file_hash = ""
+
+        index.add(rel_path, embeddings[0], date_str, file_hash)
+        index.commit()
+
+        return True
+
+    except (ImportError, OSError, IOError, RuntimeError) as e:
+        # 向量索引更新失败不应阻塞日志写入
+        # 日志会在下次 cron 全量重建时补上
+        print(f"Warning: Failed to update vector index: {e}")
+        return False
