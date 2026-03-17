@@ -4,9 +4,9 @@ Life Index - Semantic Search Module
 RAG 语义检索模块（基于 sqlite-vec）
 
 特性:
-- 本地嵌入模型（all-MiniLM-L6-v2，80MB）
+- 本地嵌入模型（多语言 MiniLM，~420MB）
 - 向量相似度搜索 + 时间衰减排序
-- 自动下载模型，首次使用 ~2s 加载
+- 使用 fastembed (ONNX Runtime) 进行推理
 """
 
 import sqlite3
@@ -21,20 +21,25 @@ import os
 
 # 导入配置
 sys.path.insert(0, str(Path(__file__).parent))
-from config import JOURNALS_DIR, USER_DATA_DIR
+from config import (
+    JOURNALS_DIR,
+    USER_DATA_DIR,
+    EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG,
+)
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
 VEC_DB_PATH = INDEX_DIR / "journals_vec.db"
 CACHE_DIR = USER_DATA_DIR / ".cache" / "models"
 
-# 嵌入模型配置
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-EMBEDDING_DIM = 384  # MiniLM-L6-v2 输出维度
+# 嵌入模型配置（从 config.py 读取）
+EMBEDDING_MODEL = EMBEDDING_MODEL_CONFIG["name"]
+EMBEDDING_DIM = EMBEDDING_MODEL_CONFIG["dimension"]
 
 
 class EmbeddingModel:
     """嵌入模型管理器（单例模式）"""
+
     _instance = None
     _model = None
 
@@ -49,21 +54,15 @@ class EmbeddingModel:
             return True
 
         try:
-            from sentence_transformers import SentenceTransformer
+            from fastembed import TextEmbedding
 
             print(f"Loading embedding model: {EMBEDDING_MODEL}...")
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-            self._model = SentenceTransformer(
-                EMBEDDING_MODEL,
-                cache_folder=str(CACHE_DIR)
-            )
+            self._model = TextEmbedding(EMBEDDING_MODEL, cache_dir=str(CACHE_DIR))
             print("Model loaded successfully.")
             return True
 
-        except ImportError:
-            print("Warning: sentence-transformers not installed. Run: pip install sentence-transformers")
-            return False
         except Exception as e:
             print(f"Warning: Failed to load embedding model: {e}")
             return False
@@ -74,8 +73,9 @@ class EmbeddingModel:
             return []
 
         try:
-            embeddings = self._model.encode(texts, convert_to_numpy=True)
-            return embeddings.tolist()
+            # fastembed 返回 generator，需要转换为 list
+            embeddings = list(self._model.embed(texts))
+            return embeddings
         except Exception as e:
             print(f"Encoding error: {e}")
             return []
@@ -108,7 +108,11 @@ def _load_sqlite_vec_extension(conn: sqlite3.Connection) -> bool:
                 "vec0.dll",
                 "vec.dll",
                 # Python 包目录
-                Path(sys.executable).parent / "Lib" / "site-packages" / "sqlite_vec" / "vec0.dll",
+                Path(sys.executable).parent
+                / "Lib"
+                / "site-packages"
+                / "sqlite_vec"
+                / "vec0.dll",
                 # 用户数据目录
                 USER_DATA_DIR / ".bin" / "vec0.dll",
             ]
@@ -189,12 +193,12 @@ def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
         (path, combined_text, date) or None
     """
     try:
-        content = file_path.read_text(encoding='utf-8')
+        content = file_path.read_text(encoding="utf-8")
 
-        if not content.startswith('---'):
+        if not content.startswith("---"):
             return None
 
-        parts = content.split('---', 2)
+        parts = content.split("---", 2)
         if len(parts) < 3:
             return None
 
@@ -203,44 +207,48 @@ def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
 
         # 解析 frontmatter
         metadata = {}
-        for line in fm_text.split('\n'):
+        for line in fm_text.split("\n"):
             line = line.strip()
-            if ':' in line and not line.startswith('#'):
-                key, value = line.split(':', 1)
+            if ":" in line and not line.startswith("#"):
+                key, value = line.split(":", 1)
                 key = key.strip()
                 value = value.strip()
 
-                if value.startswith('[') and value.endswith(']'):
-                    value = [v.strip().strip('"\'') for v in value[1:-1].split(',') if v.strip()]
+                if value.startswith("[") and value.endswith("]"):
+                    value = [
+                        v.strip().strip("\"'")
+                        for v in value[1:-1].split(",")
+                        if v.strip()
+                    ]
 
                 metadata[key] = value
 
         # 组合用于向量化的文本（标题 + 正文 + 标签）
         text_parts = []
 
-        if metadata.get('title'):
-            text_parts.append(metadata['title'])
+        if metadata.get("title"):
+            text_parts.append(metadata["title"])
 
         text_parts.append(body[:1000])  # 限制正文长度，避免过长
 
-        if metadata.get('tags'):
-            tags = metadata['tags']
+        if metadata.get("tags"):
+            tags = metadata["tags"]
             if isinstance(tags, list):
                 text_parts.extend(tags)
             else:
                 text_parts.append(tags)
 
-        if metadata.get('topic'):
-            topic = metadata['topic']
+        if metadata.get("topic"):
+            topic = metadata["topic"]
             if isinstance(topic, list):
                 text_parts.extend(topic)
             else:
                 text_parts.append(topic)
 
-        combined_text = ' '.join(text_parts)
+        combined_text = " ".join(text_parts)
 
-        rel_path = str(file_path.relative_to(USER_DATA_DIR)).replace('\\', '/')
-        date_str = metadata.get('date', '')[:10]
+        rel_path = str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/")
+        date_str = metadata.get("date", "")[:10]
 
         return (rel_path, combined_text, date_str)
 
@@ -280,7 +288,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
         "updated": 0,
         "removed": 0,
         "total": 0,
-        "error": None
+        "error": None,
     }
 
     # 检查模型是否可用
@@ -292,7 +300,9 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
     try:
         conn = init_vec_db()
         if conn is None:
-            result["error"] = "sqlite-vec extension not available. Vector search disabled."
+            result["error"] = (
+                "sqlite-vec extension not available. Vector search disabled."
+            )
             return result
         cursor = conn.cursor()
 
@@ -326,9 +336,13 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                             file_hash = get_file_hash(journal_file)
 
                             if rel_path not in indexed_files:
-                                files_to_process.append(('add', rel_path, text, date_str, file_hash))
+                                files_to_process.append(
+                                    ("add", rel_path, text, date_str, file_hash)
+                                )
                             elif indexed_files[rel_path] != file_hash:
-                                files_to_process.append(('update', rel_path, text, date_str, file_hash))
+                                files_to_process.append(
+                                    ("update", rel_path, text, date_str, file_hash)
+                                )
 
         # 找出需要删除的
         files_to_remove = set(indexed_files.keys()) - current_files
@@ -343,14 +357,16 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
             # 重新收集所有文件
             files_to_process = []
             for action, rel_path, text, date_str, file_hash in files_to_process:
-                if action in ('add', 'update'):
-                    files_to_process.append(('add', rel_path, text, date_str, file_hash))
+                if action in ("add", "update"):
+                    files_to_process.append(
+                        ("add", rel_path, text, date_str, file_hash)
+                    )
             result["removed"] = len(indexed_files)
 
         # 批量处理（每批 10 个，避免内存问题）
         batch_size = 10
         for i in range(0, len(files_to_process), batch_size):
-            batch = files_to_process[i:i+batch_size]
+            batch = files_to_process[i : i + batch_size]
 
             # 收集文本
             texts = [item[2] for item in batch]
@@ -370,9 +386,11 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                 embedding_bytes = json.dumps(embedding)
 
                 # 如果是更新，先删除
-                if action == 'update':
+                if action == "update":
                     try:
-                        cursor.execute("DELETE FROM journal_vectors WHERE path = ?", (rel_path,))
+                        cursor.execute(
+                            "DELETE FROM journal_vectors WHERE path = ?", (rel_path,)
+                        )
                         result["updated"] += 1
                     except Exception:
                         pass
@@ -381,17 +399,22 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
 
                 # 插入新记录
                 try:
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         INSERT INTO journal_vectors (path, embedding, date, file_hash)
                         VALUES (?, vec_f32(?), ?, ?)
-                    """, (rel_path, embedding_bytes, date_str, file_hash))
+                    """,
+                        (rel_path, embedding_bytes, date_str, file_hash),
+                    )
                 except Exception as e:
                     print(f"Insert error for {rel_path}: {e}")
 
         # 删除不存在的文件
         for rel_path in files_to_remove:
             try:
-                cursor.execute("DELETE FROM journal_vectors WHERE path = ?", (rel_path,))
+                cursor.execute(
+                    "DELETE FROM journal_vectors WHERE path = ?", (rel_path,)
+                )
                 result["removed"] += 1
             except Exception:
                 pass
@@ -405,6 +428,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
     except Exception as e:
         result["error"] = str(e)
         import traceback
+
         traceback.print_exc()
 
     return result
@@ -415,7 +439,7 @@ def search_semantic(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     top_k: int = 20,
-    time_decay_days: int = 365
+    time_decay_days: int = 365,
 ) -> List[Dict[str, Any]]:
     """
     语义搜索（向量相似度 + 时间衰减）
@@ -457,13 +481,16 @@ def search_semantic(
         # 执行向量搜索
         # 注意：sqlite-vec 的具体语法可能需要根据实际版本调整
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT path, embedding, date,
                        vec_distance_l2(embedding, vec_f32(?)) as distance
                 FROM journal_vectors
                 ORDER BY distance ASC
                 LIMIT ?
-            """, (query_vec_json, top_k * 2))  # 多取一些用于后续过滤
+            """,
+                (query_vec_json, top_k * 2),
+            )  # 多取一些用于后续过滤
 
             rows = cursor.fetchall()
 
@@ -496,17 +523,19 @@ def search_semantic(
                 # 综合得分（可调整权重）
                 final_score = similarity_score * time_factor
 
-                results.append({
-                    'path': rel_path,
-                    'date': date_str,
-                    'similarity': round(similarity_score, 4),
-                    'time_factor': round(time_factor, 4),
-                    'final_score': round(final_score, 4),
-                    'source': 'semantic'
-                })
+                results.append(
+                    {
+                        "path": rel_path,
+                        "date": date_str,
+                        "similarity": round(similarity_score, 4),
+                        "time_factor": round(time_factor, 4),
+                        "final_score": round(final_score, 4),
+                        "source": "semantic",
+                    }
+                )
 
             # 按最终得分排序
-            results.sort(key=lambda x: x['final_score'], reverse=True)
+            results.sort(key=lambda x: x["final_score"], reverse=True)
 
             # 截取前 K 个
             results = results[:top_k]
@@ -514,6 +543,7 @@ def search_semantic(
         except Exception as e:
             print(f"Vector search error: {e}")
             import traceback
+
             traceback.print_exc()
 
         conn.close()
@@ -529,7 +559,7 @@ def hybrid_search(
     fts_results: List[Dict[str, Any]],
     semantic_results: List[Dict[str, Any]],
     fts_weight: float = 0.6,
-    semantic_weight: float = 0.4
+    semantic_weight: float = 0.4,
 ) -> List[Dict[str, Any]]:
     """
     混合排序：结合 FTS 和语义搜索结果
@@ -550,46 +580,48 @@ def hybrid_search(
     # 处理 FTS 结果
     max_fts_rank = len(fts_results)
     for i, r in enumerate(fts_results):
-        path = r['path']
+        path = r["path"]
         # 排名越靠前得分越高（线性衰减）
         rank_score = 1.0 - (i / max_fts_rank) if max_fts_rank > 1 else 1.0
         scores[path] = {
-            'path': path,
-            'title': r.get('title', ''),
-            'date': r.get('date', ''),
-            'snippet': r.get('snippet', ''),
-            'fts_score': rank_score,
-            'semantic_score': 0,
-            'final_score': rank_score * fts_weight
+            "path": path,
+            "title": r.get("title", ""),
+            "date": r.get("date", ""),
+            "snippet": r.get("snippet", ""),
+            "fts_score": rank_score,
+            "semantic_score": 0,
+            "final_score": rank_score * fts_weight,
         }
 
     # 处理语义结果
-    max_semantic = max([r['final_score'] for r in semantic_results]) if semantic_results else 1.0
+    max_semantic = (
+        max([r["final_score"] for r in semantic_results]) if semantic_results else 1.0
+    )
     for r in semantic_results:
-        path = r['path']
-        semantic_score = r['final_score'] / max_semantic if max_semantic > 0 else 0
+        path = r["path"]
+        semantic_score = r["final_score"] / max_semantic if max_semantic > 0 else 0
 
         if path in scores:
             # 已存在，合并得分
-            scores[path]['semantic_score'] = semantic_score
-            scores[path]['final_score'] = (
-                scores[path]['fts_score'] * fts_weight +
-                semantic_score * semantic_weight
+            scores[path]["semantic_score"] = semantic_score
+            scores[path]["final_score"] = (
+                scores[path]["fts_score"] * fts_weight
+                + semantic_score * semantic_weight
             )
         else:
             scores[path] = {
-                'path': path,
-                'title': '',  # 需要从文件读取
-                'date': r.get('date', ''),
-                'snippet': '',
-                'fts_score': 0,
-                'semantic_score': semantic_score,
-                'final_score': semantic_score * semantic_weight
+                "path": path,
+                "title": "",  # 需要从文件读取
+                "date": r.get("date", ""),
+                "snippet": "",
+                "fts_score": 0,
+                "semantic_score": semantic_score,
+                "final_score": semantic_score * semantic_weight,
             }
 
     # 转换为列表并排序
     merged = list(scores.values())
-    merged.sort(key=lambda x: x['final_score'], reverse=True)
+    merged.sort(key=lambda x: x["final_score"], reverse=True)
 
     return merged
 
@@ -600,7 +632,7 @@ def get_stats() -> Dict[str, Any]:
         "exists": VEC_DB_PATH.exists(),
         "total_vectors": 0,
         "db_size_mb": 0,
-        "model_loaded": get_model().load()
+        "model_loaded": get_model().load(),
     }
 
     try:

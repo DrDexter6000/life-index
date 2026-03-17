@@ -7,6 +7,7 @@ Life Index - Simple Vector Index (Fallback)
 - 使用 numpy 进行向量运算
 - 使用 pickle 持久化存储
 - 与 semantic_search.py 接口兼容
+- 使用 fastembed (ONNX Runtime) 进行推理
 """
 
 import json
@@ -20,7 +21,12 @@ import os
 
 # 导入配置
 sys.path.insert(0, str(Path(__file__).parent))
-from config import JOURNALS_DIR, USER_DATA_DIR, get_model_cache_dir, EMBEDDING_MODEL as MODEL_CONFIG
+from config import (
+    JOURNALS_DIR,
+    USER_DATA_DIR,
+    get_model_cache_dir,
+    EMBEDDING_MODEL as MODEL_CONFIG,
+)
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -46,10 +52,11 @@ def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
         十六进制哈希字符串
     """
     import hashlib
+
     hash_obj = hashlib.sha256()
     try:
-        with open(file_path, 'rb') as f:
-            for chunk in iter(lambda: f.read(8192), b''):
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
                 hash_obj.update(chunk)
         return hash_obj.hexdigest()
     except Exception as e:
@@ -76,15 +83,21 @@ def verify_model_integrity(model_name: str, cache_dir: Path) -> Tuple[bool, str]
         return True, "首次使用，将记录模型元数据"
 
     try:
-        meta = json.loads(meta_file.read_text(encoding='utf-8'))
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
         expected_hash = meta.get("config_hash", "")
         recorded_version = meta.get("version", "")
 
         if expected_hash and expected_hash != MODEL_CONFIG.get("config_hash", ""):
-            return False, f"模型配置哈希不匹配！预期：{MODEL_CONFIG.get('config_hash', '')[:16]}..., 实际：{expected_hash[:16]}..."
+            return (
+                False,
+                f"模型配置哈希不匹配！预期：{MODEL_CONFIG.get('config_hash', '')[:16]}..., 实际：{expected_hash[:16]}...",
+            )
 
         if recorded_version != MODEL_CONFIG["version"]:
-            return False, f"模型版本不一致！已记录：{recorded_version}, 当前配置：{MODEL_CONFIG['version']}"
+            return (
+                False,
+                f"模型版本不一致！已记录：{recorded_version}, 当前配置：{MODEL_CONFIG['version']}",
+            )
 
         return True, "模型完整性验证通过"
 
@@ -110,11 +123,11 @@ def record_model_metadata(model_name: str, cache_dir: Path):
             "dimension": MODEL_CONFIG["dimension"],
             "config_hash": MODEL_CONFIG.get("config_hash", ""),
             "recorded_at": datetime.now().isoformat(),
-            "platform": sys.platform
+            "platform": sys.platform,
         }
 
         meta_file = model_dir / "model_meta.json"
-        with open(meta_file, 'w', encoding='utf-8') as f:
+        with open(meta_file, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2, ensure_ascii=False)
 
         print(f"Model metadata recorded: {meta_file}")
@@ -125,6 +138,7 @@ def record_model_metadata(model_name: str, cache_dir: Path):
 
 class EmbeddingModel:
     """嵌入模型管理器（单例模式）"""
+
     _instance = None
     _model = None
     _model_verified = False  # 模型是否已通过完整性验证
@@ -140,35 +154,37 @@ class EmbeddingModel:
             return self._model_verified
 
         try:
-            from sentence_transformers import SentenceTransformer
+            from fastembed import TextEmbedding
 
-            print(f"Loading embedding model: {EMBEDDING_MODEL_NAME} (v{EMBEDDING_MODEL_VERSION})...")
+            print(
+                f"Loading embedding model: {EMBEDDING_MODEL_NAME} (v{EMBEDDING_MODEL_VERSION})..."
+            )
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
             # 步骤 1: 验证模型完整性
-            is_valid, verify_msg = verify_model_integrity(EMBEDDING_MODEL_NAME, CACHE_DIR)
+            is_valid, verify_msg = verify_model_integrity(
+                EMBEDDING_MODEL_NAME, CACHE_DIR
+            )
             if not is_valid:
                 print(f"Warning: Model integrity check failed: {verify_msg}")
-                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
+                print(
+                    "Warning: Will proceed with loading, but embeddings may be inconsistent."
+                )
 
             # 步骤 2: 加载模型
-            self._model = SentenceTransformer(
-                EMBEDDING_MODEL_NAME,
-                cache_folder=str(CACHE_DIR)
-            )
+            self._model = TextEmbedding(EMBEDDING_MODEL_NAME, cache_dir=str(CACHE_DIR))
             print(f"Model loaded successfully. (dimension={EMBEDDING_DIM})")
 
             # 步骤 3: 记录模型元数据（如果是首次使用）
-            meta_file = CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
+            meta_file = (
+                CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
+            )
             if not meta_file.exists():
                 record_model_metadata(EMBEDDING_MODEL_NAME, CACHE_DIR)
 
             self._model_verified = True
             return True
 
-        except ImportError:
-            print("Warning: sentence-transformers not installed. Run: pip install sentence-transformers")
-            return False
         except Exception as e:
             print(f"Warning: Failed to load embedding model: {e}")
             return False
@@ -179,8 +195,9 @@ class EmbeddingModel:
             return []
 
         try:
-            embeddings = self._model.encode(texts, convert_to_numpy=True)
-            return embeddings.tolist()
+            # fastembed 返回 generator，需要转换为 list
+            embeddings = list(self._model.embed(texts))
+            return embeddings
         except Exception as e:
             print(f"Encoding error: {e}")
             return []
@@ -203,7 +220,9 @@ def get_model_info() -> Dict[str, Any]:
         "version": EMBEDDING_MODEL_VERSION,
         "dimension": EMBEDDING_DIM,
         "cache_dir": str(CACHE_DIR),
-        "config_hash": MODEL_CONFIG.get("config_hash", "")[:16] + "..." if MODEL_CONFIG.get("config_hash") else "N/A"
+        "config_hash": MODEL_CONFIG.get("config_hash", "")[:16] + "..."
+        if MODEL_CONFIG.get("config_hash")
+        else "N/A",
     }
 
 
@@ -226,7 +245,7 @@ class SimpleVectorIndex:
         """从磁盘加载索引"""
         if VEC_INDEX_PATH.exists():
             try:
-                with open(VEC_INDEX_PATH, 'rb') as f:
+                with open(VEC_INDEX_PATH, "rb") as f:
                     self.vectors = pickle.load(f)
             except Exception as e:
                 print(f"Warning: Failed to load vector index: {e}")
@@ -236,16 +255,16 @@ class SimpleVectorIndex:
         """保存索引到磁盘"""
         INDEX_DIR.mkdir(parents=True, exist_ok=True)
         try:
-            with open(VEC_INDEX_PATH, 'wb') as f:
+            with open(VEC_INDEX_PATH, "wb") as f:
                 pickle.dump(self.vectors, f)
 
             # 保存元数据
             meta = {
                 "total_vectors": len(self.vectors),
                 "last_updated": datetime.now().isoformat(),
-                "version": "1.0"
+                "version": "1.0",
             }
-            with open(META_PATH, 'w', encoding='utf-8') as f:
+            with open(META_PATH, "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2)
 
         except Exception as e:
@@ -257,7 +276,7 @@ class SimpleVectorIndex:
             "embedding": embedding,
             "date": date,
             "hash": file_hash,
-            "added_at": datetime.now().isoformat()
+            "added_at": datetime.now().isoformat(),
         }
 
     def remove(self, path: str):
@@ -274,7 +293,7 @@ class SimpleVectorIndex:
         query_embedding: List[float],
         top_k: int = 20,
         date_from: Optional[str] = None,
-        date_to: Optional[str] = None
+        date_to: Optional[str] = None,
     ) -> List[Tuple[str, float]]:
         """
         搜索最相似的向量（余弦相似度）
@@ -330,8 +349,10 @@ class SimpleVectorIndex:
         return {
             "exists": VEC_INDEX_PATH.exists(),
             "total_vectors": len(self.vectors),
-            "index_size_mb": round(VEC_INDEX_PATH.stat().st_size / (1024 * 1024), 2) if VEC_INDEX_PATH.exists() else 0,
-            "backend": "simple_numpy"
+            "index_size_mb": round(VEC_INDEX_PATH.stat().st_size / (1024 * 1024), 2)
+            if VEC_INDEX_PATH.exists()
+            else 0,
+            "backend": "simple_numpy",
         }
 
 
@@ -348,8 +369,7 @@ def get_index() -> SimpleVectorIndex:
 
 
 def update_vector_index_simple(
-    model_encode_func,
-    incremental: bool = True
+    model_encode_func, incremental: bool = True
 ) -> Dict[str, Any]:
     """
     更新简单向量索引
@@ -368,7 +388,7 @@ def update_vector_index_simple(
         "removed": 0,
         "total": 0,
         "error": None,
-        "backend": "simple_numpy"
+        "backend": "simple_numpy",
     }
 
     try:
@@ -377,10 +397,10 @@ def update_vector_index_simple(
         # 如果无法导入，定义本地版本
         def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
             try:
-                content = file_path.read_text(encoding='utf-8')
-                if not content.startswith('---'):
+                content = file_path.read_text(encoding="utf-8")
+                if not content.startswith("---"):
                     return None
-                parts = content.split('---', 2)
+                parts = content.split("---", 2)
                 if len(parts) < 3:
                     return None
 
@@ -388,30 +408,34 @@ def update_vector_index_simple(
                 body = parts[2].strip()
 
                 metadata = {}
-                for line in fm_text.split('\n'):
+                for line in fm_text.split("\n"):
                     line = line.strip()
-                    if ':' in line and not line.startswith('#'):
-                        key, value = line.split(':', 1)
+                    if ":" in line and not line.startswith("#"):
+                        key, value = line.split(":", 1)
                         key = key.strip()
                         value = value.strip()
-                        if value.startswith('[') and value.endswith(']'):
-                            value = [v.strip().strip('"\'') for v in value[1:-1].split(',') if v.strip()]
+                        if value.startswith("[") and value.endswith("]"):
+                            value = [
+                                v.strip().strip("\"'")
+                                for v in value[1:-1].split(",")
+                                if v.strip()
+                            ]
                         metadata[key] = value
 
                 text_parts = []
-                if metadata.get('title'):
-                    text_parts.append(metadata['title'])
+                if metadata.get("title"):
+                    text_parts.append(metadata["title"])
                 text_parts.append(body[:1000])
-                if metadata.get('tags'):
-                    tags = metadata['tags']
+                if metadata.get("tags"):
+                    tags = metadata["tags"]
                     if isinstance(tags, list):
                         text_parts.extend(tags)
                     else:
                         text_parts.append(tags)
 
-                combined_text = ' '.join(text_parts)
-                rel_path = str(file_path.relative_to(USER_DATA_DIR)).replace('\\', '/')
-                date_str = metadata.get('date', '')[:10]
+                combined_text = " ".join(text_parts)
+                rel_path = str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/")
+                date_str = metadata.get("date", "")[:10]
 
                 return (rel_path, combined_text, date_str)
             except Exception:
@@ -454,9 +478,13 @@ def update_vector_index_simple(
 
                             existing = index.get(rel_path)
                             if existing is None:
-                                files_to_process.append(('add', rel_path, text, date_str, file_hash))
+                                files_to_process.append(
+                                    ("add", rel_path, text, date_str, file_hash)
+                                )
                             elif existing.get("hash") != file_hash:
-                                files_to_process.append(('update', rel_path, text, date_str, file_hash))
+                                files_to_process.append(
+                                    ("update", rel_path, text, date_str, file_hash)
+                                )
 
         # 找出需要删除的文件
         if incremental:
@@ -468,7 +496,7 @@ def update_vector_index_simple(
         # 批量处理文件
         batch_size = 10
         for i in range(0, len(files_to_process), batch_size):
-            batch = files_to_process[i:i+batch_size]
+            batch = files_to_process[i : i + batch_size]
             texts = [item[2] for item in batch]
 
             embeddings = model_encode_func(texts)
@@ -480,7 +508,7 @@ def update_vector_index_simple(
                     break
 
                 index.add(rel_path, embeddings[j], date_str, file_hash)
-                if action == 'add':
+                if action == "add":
                     result["added"] += 1
                 else:
                     result["updated"] += 1
@@ -494,6 +522,7 @@ def update_vector_index_simple(
     except Exception as e:
         result["error"] = str(e)
         import traceback
+
         traceback.print_exc()
 
     return result
@@ -503,7 +532,7 @@ def search_semantic_simple(
     query_embedding: List[float],
     top_k: int = 20,
     date_from: Optional[str] = None,
-    date_to: Optional[str] = None
+    date_to: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     使用简单向量索引进行语义搜索
@@ -525,12 +554,14 @@ def search_semantic_simple(
     for path, score in search_results:
         data = index.get(path)
         if data:
-            results.append({
-                'path': path,
-                'date': data.get('date', ''),
-                'similarity': round(score, 4),
-                'source': 'semantic_simple'
-            })
+            results.append(
+                {
+                    "path": path,
+                    "date": data.get("date", ""),
+                    "similarity": round(score, 4),
+                    "source": "semantic_simple",
+                }
+            )
 
     return results
 

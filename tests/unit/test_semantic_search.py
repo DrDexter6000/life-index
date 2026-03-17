@@ -86,20 +86,16 @@ class TestEmbeddingModelLoad:
         EmbeddingModel._instance = None
         EmbeddingModel._model = None
 
-        mock_sentence_transformer = MagicMock()
+        mock_text_embedding = MagicMock()
 
         with patch.dict(
             "sys.modules",
-            {
-                "sentence_transformers": MagicMock(
-                    SentenceTransformer=mock_sentence_transformer
-                )
-            },
+            {"fastembed": MagicMock(TextEmbedding=mock_text_embedding)},
         ):
             model = EmbeddingModel()
             model.load()
 
-        # Result depends on whether sentence_transformers is available
+        # Result depends on whether fastembed is available
         # Just verify no exception raised
 
     def test_load_import_error(self):
@@ -110,7 +106,7 @@ class TestEmbeddingModelLoad:
         EmbeddingModel._instance = None
         EmbeddingModel._model = None
 
-        with patch.dict("sys.modules", {"sentence_transformers": None}):
+        with patch.dict("sys.modules", {"fastembed": None}):
             model = EmbeddingModel()
             result = model.load()
 
@@ -124,10 +120,10 @@ class TestEmbeddingModelLoad:
         EmbeddingModel._instance = None
         EmbeddingModel._model = None
 
-        mock_st = MagicMock()
-        mock_st.SentenceTransformer.side_effect = Exception("Model load failed")
+        mock_fe = MagicMock()
+        mock_fe.TextEmbedding.side_effect = Exception("Model load failed")
 
-        with patch.dict("sys.modules", {"sentence_transformers": mock_st}):
+        with patch.dict("sys.modules", {"fastembed": mock_fe}):
             model = EmbeddingModel()
             result = model.load()
 

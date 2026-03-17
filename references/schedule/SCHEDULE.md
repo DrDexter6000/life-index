@@ -39,8 +39,9 @@ Life Index 是一个**个人生活日志系统**：
 | 2 | **周报** | 每周日 22:10 | 总结本周轨迹，含洞察 | 推送消息 |
 | 3 | **月报** | 每月最后一天 18:30 | 深度回顾，生成摘要文件 | 文件+推送 |
 | 4 | **年报** | 12月31日 19:15 | 年度人生总结 | 文件+推送 |
-| 5 | **每日索引维护** | 每天 23:50 | 增量更新搜索索引 | 静默执行 |
-| 6 | **每月索引重建** | 每月1日 03:30 | 全量检查+重建索引 | 静默执行 |
+| 5 | **每月索引重建** | 每月1日 03:30 | 全量检查+重建索引 | 静默执行 |
+
+> **注**: v1.2 起，日志写入时同步更新索引（Write-Through），不再需要每日增量任务。
 
 **Token 预算**：
 - 日报: ~200 tokens
@@ -253,46 +254,7 @@ openclaw cron add \
 
 ---
 
-### 任务 5: 每日索引维护 (life-index-daily-index)
-
-**OpenClaw CLI 配置**:
-```bash
-openclaw cron add \
-  --name "Life Index 每日索引维护" \
-  --cron "50 23 * * *" \
-  --tz "[YOUR_TIMEZONE]" \
-  --session isolated \
-  --message "执行 Life Index 索引维护：运行 python -m tools.build_index 更新 FTS 索引和向量索引。此任务静默执行，无需推送。"
-```
-
-**或 JSON 配置**:
-```json
-{
-  "id": "life-index-daily-index",
-  "name": "Life Index 每日索引维护",
-  "enabled": true,
-  "schedule": {
-    "kind": "cron",
-    "expr": "50 23 * * *",
-    "tz": "[YOUR_TIMEZONE]"
-  },
-  "sessionTarget": "isolated",
-  "payload": {
-    "kind": "agentTurn",
-    "message": "执行 Life Index 索引维护任务：运行 python -m tools.build_index 增量更新 FTS 搜索索引。如果向量搜索可用，同时更新向量索引。此任务静默执行，无需输出。",
-    "timeoutSeconds": 300
-  },
-  "delivery": {
-    "mode": "none"
-  }
-}
-```
-
-**详细场景指南**: [scenarios/index-update.md](./scenarios/index-update.md)
-
----
-
-### 任务 6: 每月索引重建 (life-index-monthly-rebuild)
+### 任务 5: 每月索引重建 (life-index-monthly-rebuild)
 
 **OpenClaw CLI 配置**:
 ```bash
@@ -613,7 +575,6 @@ openclaw gateway restart
 - **周报详细指南**: [scenarios/weekly-report.md](./scenarios/weekly-report.md)
 - **月报详细指南**: [scenarios/monthly-report.md](./scenarios/monthly-report.md)
 - **年报详细指南**: [scenarios/yearly-report.md](./scenarios/yearly-report.md)
-- **索引维护指南**: [scenarios/index-update.md](./scenarios/index-update.md)
 - **索引重建指南**: [scenarios/index-rebuild.md](./scenarios/index-rebuild.md)
 
 ### B. 外部参考
@@ -631,8 +592,9 @@ openclaw gateway restart
 | 周报 | `10 22 * * 0` | isolated | announce | `search_journals --date-from 周一 --date-to 今天` |
 | 月报 | `30 18 28-31 * *` | isolated | announce | `generate_abstract --month YYYY-MM` |
 | 年报 | `15 19 31 12 *` | isolated | announce | `generate_abstract --year YYYY` |
-| 每日索引 | `50 23 * * *` | isolated | none | `build_index.py` |
 | 每月重建 | `30 3 1 * *` | isolated | none | `build_index.py --rebuild` |
+
+> **注**: v1.2 起，日志写入时同步更新索引（Write-Through），不再需要每日增量任务。
 
 ---
 

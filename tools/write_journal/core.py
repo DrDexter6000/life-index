@@ -29,6 +29,7 @@ from .index_updater import (
     update_project_index,
     update_tag_indices,
     update_monthly_abstract,
+    update_vector_index,
 )
 
 
@@ -231,6 +232,17 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                             if tags:
                                 indices = update_tag_indices(tags, journal_path, data)
                                 updated_indices.extend([str(i) for i in indices])
+
+                            # 6. 更新向量索引（Write-Through）
+                            try:
+                                vector_updated = update_vector_index(journal_path, data)
+                                if vector_updated:
+                                    logger.info("向量索引已同步更新")
+                            except Exception as e:
+                                # 向量索引更新失败不阻塞写入
+                                logger.warning(
+                                    f"向量索引更新失败（不影响日志写入）：{e}"
+                                )
 
                         except (OSError, IOError, RuntimeError) as e:
                             # 索引更新失败，清理临时文件

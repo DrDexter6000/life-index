@@ -7,6 +7,8 @@ Error Code Format: E{module}{type}
 - Module: 00=general, 01=file, 02=write, 03=search, 04=weather, 05=edit, 06=index
 - Type: 00-99 specific error types
 
+**SSOT Note**: Error codes are documented in docs/API.md. Keep synchronized when adding/modifying codes.
+
 Usage:
     from lib.errors import ErrorCode, LifeIndexError, raise_error
 

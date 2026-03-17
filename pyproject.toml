@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-index"
-version = "1.0.0"
+version = "1.2.0"
 description = "Personal life journaling system with dual-dimension indexing"
 readme = "README.md"
 license = "Apache-2.0"
@@ -30,16 +30,11 @@ requires-python = ">=3.11"
 dependencies = [
     # Core dependencies - 核心依赖
     "pyyaml>=6.0",
-]
-
-[project.optional-dependencies]
-# 语义搜索（可选，需要 ~2GB PyTorch 依赖）
-# 启用方式: pip install life-index[semantic]
-semantic = [
-    "sentence-transformers>=2.2.0",
+    "fastembed>=0.4.0",
     "numpy>=1.24.0",
 ]
 
+[project.optional-dependencies]
 # Development dependencies - 开发依赖
 dev = [
     # Type checking - 类型检查
@@ -69,7 +64,7 @@ dev = [
 
 # All optional dependencies - 所有可选依赖
 all = [
-    "life-index[semantic]",
+    "life-index[dev]",
 ]
 
 [project.urls]
@@ -148,7 +143,7 @@ show_error_context = true
 
 # Module-specific settings - 模块特定设置
 [[tool.mypy.overrides]]
-module = "sentence_transformers.*"
+module = "fastembed.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
