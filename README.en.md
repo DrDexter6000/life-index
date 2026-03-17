@@ -137,7 +137,8 @@ This is Life Index's mission: **Preserving those details that will make you sudd
 
 ## 🏛️ How Does It Work?
 
-### Record
+### Life Recording
+
 Tell your Agent what you want to log, and it archives it for you:
 
 > /life-index write journal: today I saw old photos of Toto, and suddenly I missed that 2-year-old Diaper Hero — that bittersweet feeling.
@@ -146,7 +147,32 @@ The Agent automatically organizes metadata (time, location, people, emotions, ta
 
 > **💡 Trigger tip**: In current LLM/Agent ecosystems, pure natural-language triggering can be unstable. In practice, putting `/life-index` + an intent keyword (e.g. "write journal", "search logs") in a single message gives a much higher success rate.
 
-### Retrieve
+**Your Data, Forever Yours**
+
+Life Index follows a "data-program separation" design: skill code lives in your Agent's skills directory, while your journals, attachments, and indexes are stored independently in your system user directory.
+
+This means: even if Life Index disappears tomorrow, your data remains — pure Markdown + YAML format, readable by any text editor, clear and timeless, never expiring.
+
+<details>
+<summary>View user data storage structure (Click to expand)</summary>
+
+```
+~/Documents/Life-Index/
+├── Journals/                    # Main journal directory (by year/month)
+│   └── 2026/03/
+│       └── life-index_2026-03-04_002.md
+├── attachments/                 # Attachments (photos, videos, voice memos)
+│   └── 2026/03/
+└── by-topic/                    # Auto-generated indexes
+    ├── topic_think.md
+    ├── project_LifeIndex.md
+    └── tag_Parenthood.md
+```
+
+</details>
+
+### Life Retrieval
+
 Through three-layer tagging dimensions + full-text search + semantic search, find your past self at any moment:
 
 | Dimension | Examples |
@@ -201,6 +227,8 @@ User Query → L1 Index Filter → L2 Metadata Filter → L3 Full-Text Search �
 <details>
 <summary>Quick Install - Life Index for Regular Users (Click to expand)</summary>
 
+<br>
+
 **Who is this for** — You want to install and use it immediately, without modifying code.
 
 **One-shot setup** — Copy the full prompt below and send it to your Agent:
@@ -226,6 +254,8 @@ Steps:
 
 <details>
 <summary>Quick Install - Developer Mode (Click to expand)</summary>
+
+<br>
 
 **Who is this for** — You need local debugging, code changes, and tests.
 
@@ -258,6 +288,8 @@ pip install -e ".[semantic]"
 <details>
 <summary>Data Directory Structure (Click to expand)</summary>
 
+<br>
+
 ```
 ~/Documents/Life-Index/
 ├── Journals/                    # Main journal directory (by year/month)
@@ -275,6 +307,8 @@ pip install -e ".[semantic]"
 
 <details>
 <summary>Troubleshooting (Click to expand)</summary>
+
+<br>
 
 **Skill triggering is unstable**  
 → Use `"/life-index" + intent keyword` (example: `/life-index write journal: ...`)
