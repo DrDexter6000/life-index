@@ -42,14 +42,19 @@ I didn't create this to flex technical skills. I built it because I desperately 
 
 ## ⚠️ Key Distinction: What Life Index Is Not
 
-| | **Life Index** | **PKM** (Notion/Obsidian) | **Agent Memory** (Mem0/Zep) |
-|:---|:---:|:---:|:---:|
-| **The question it answers** | "What was I feeling then?" | "What do I know?" | "What did I just say?" |
-| **Data structure** | Chronological archive | Knowledge graph | Context-window optimized |
-| **Data lifespan** | **Permanent** | Long-term, but restructured | Temporary, forgotten |
-| **Serves** | **Humans** | Humans | Agents |
+| Dimension | **Life Index** | **PKM** (Notion/Obsidian) | **Agent Memory** (Mem0/Zep) |
+|:---|:---|:---|:---|
+| **Core Question** | "What was I feeling then?" | "What do I know?" | "What did I just say?" |
+| **Data Form** | Life slices on a timeline | Networked knowledge nodes | Temporary session context |
+| **Retention** | **Permanent, as legacy** | Long-term, evolves with cognition | Ephemeral, discarded after use |
+| **Serves Whom** | **Humans** (for your future self or descendants) | Humans (present-day knowledge workers) | Agents (present-day AI assistants) |
+| **Input Method** | Natural language storytelling, Agent auto-archives | Active curation, manual linking | Automatic capture, frictionless but invisible |
+| **Retrieval Logic** | Emotion + time + theme for memory recall | Keywords + bidirectional links for discovery | Recency + similarity for conversation |
+| **Ownership** | **Entirely yours**, local files never expire | Yours, but format may lock to software | Owned by service provider, subject to deletion |
+| **Cost of Failure** | None — Markdown files remain readable forever | Export difficulties, format lock-in | Instant zero, loss without warning |
 
-In one line: **Agent memory is consumable. Life Index is legacy.**
+> **Agent memory is consumable** — it helps you order food, write code, then vanishes into the void.  
+> **Life Index is legacy** — it records why you cried, who you loved, until the end of time.
 
 ---
 
@@ -72,7 +77,7 @@ Everyone deserves such a life archive.
 —— **Do you still remember what drove that decisive choice you made ten years ago?**  
 —— **Would you like to leave your next generation a playbook of life lessons, a collection of mistakes, or even a digital legacy of memories?**
 
-**This is digital equity for common people — not about optimizing Agents, but about recording ourselves.**
+<u>This is digital equity for common people</u> — not about optimizing Agents, but about recording ourselves.
 
 ---
 
@@ -196,12 +201,9 @@ User Query → L1 Index Filter → L2 Metadata Filter → L3 Full-Text Search �
 <details>
 <summary>Quick Install - Life Index for Regular Users (Click to expand)</summary>
 
-### Who is this for?
-You want to install and use it immediately, without modifying code.
+**Who is this for** — You want to install and use it immediately, without modifying code.
 
-### One-shot setup (Agent-first)
-
-Copy the full prompt below and send it to your Agent:
+**One-shot setup** — Copy the full prompt below and send it to your Agent:
 
 ```text
 Please install the Life Index skill for me.
@@ -225,10 +227,9 @@ Steps:
 <details>
 <summary>Quick Install - Developer Mode (Click to expand)</summary>
 
-### Who is this for?
-You need local debugging, code changes, and tests.
+**Who is this for** — You need local debugging, code changes, and tests.
 
-### One-shot setup (dev mode)
+**One-shot setup (dev mode)** —
 
 ```bash
 git clone https://github.com/DrDexter6000/life-index.git
