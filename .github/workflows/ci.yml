@@ -7,6 +7,20 @@ on:
     branches: [ main ]
 
 jobs:
+  doc-sync:
+    runs-on: ubuntu-latest
+    name: Documentation Sync Check
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Run documentation sync check
+      run: python .github/scripts/check_doc_sync.py
+
   test:
     runs-on: ubuntu-latest
     strategy:
