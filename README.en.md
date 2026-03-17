@@ -137,7 +137,7 @@ This is Life Index's mission: **Preserving those details that will make you sudd
 
 ## 🏛️ How Does It Work?
 
-### 📝 Core Feature One: Life Recording
+### 📝 Core Function: Life Journaling
 
 Tell your Agent what you want to log, and it archives it for you:
 
@@ -147,7 +147,7 @@ The Agent automatically organizes metadata (time, location, people, emotions, ta
 
 > **💡 Trigger tip**: In current LLM/Agent ecosystems, pure natural-language triggering can be unstable. In practice, putting `/life-index` + an intent keyword (e.g. "write journal", "search logs") in a single message gives a much higher success rate.
 
-### 📖 Core Feature Two: Life Retrieval
+### 📖 Core Function: Life Recall
 
 Through three-layer tagging dimensions + full-text search + semantic search, find your past self at any moment:
 
