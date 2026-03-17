@@ -281,27 +281,30 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 
 请按以下步骤完成安装和初始化：
 
-1) 将仓库克隆到你的技能目录
-   例如：git clone https://github.com/DrDexter6000/life-index.git ~/.openclaw/workspace/skills/life-index
+1) 将仓库克隆到你的技能目录（浅克隆，节省空间）
+   git clone --depth 1 https://github.com/DrDexter6000/life-index.git <你的技能目录>/life-index
 
-2) 进入技能目录，安装 Python 依赖（需要 Python 3.11+）
+2) 进入技能目录，删除运行时不需要的开发文件（减少约 60% 体积）
    cd <技能目录>/life-index
+   rm -rf tests/ conftest.py docs/archive/ .github/ .vscode/ .agents/ .opencode/ .sisyphus/ .cowork-temp/ .pytest_cache/ .ruff_cache/ .coverage htmlcov/ cov_report/ dist/ life_index.egg-info/ __pycache__/ assets/ nul README.md README.en.md AGENTS.md .clawhubignore
+
+3) 安装 Python 依赖（需要 Python 3.11+）
    pip install -e .
 
-3) 验证安装是否成功（依次执行以下命令，全部应返回正常结果）：
+4) 验证安装是否成功（依次执行以下命令，全部应返回正常结果）：
    - python -c "from fastembed import TextEmbedding; print('fastembed OK')"
    - python -m tools.query_weather --location "Beijing,China"
    - life-index --help
 
-4) 初始化搜索索引（首次使用必须执行，之后写入日志时会自动更新）
+5) 初始化搜索索引（首次使用必须执行，之后写入日志时会自动更新）
    life-index index
 
-5) 告诉我安装结果和索引初始化情况，以及我该如何记录第一篇日志
+6) 告诉我安装结果和索引初始化情况，以及我该如何记录第一篇日志
 
 注意事项：
 - 日志数据会自动写入 ~/Documents/Life-Index/，与技能代码物理隔离
 - 所有工具命令必须在技能根目录下执行（包含 SKILL.md 的目录）
-- 如果遇到 ModuleNotFoundError，说明第 2 步的 pip install 没有成功执行
+- 如果遇到 ModuleNotFoundError，说明第 3 步的 pip install 没有成功执行
 ```
 
 > **日志数据自动写入 `~/Documents/Life-Index/`**，与技能代码物理隔离。即使卸载技能，你的日志数据也不会丢失。

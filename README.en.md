@@ -279,27 +279,30 @@ Repository: https://github.com/DrDexter6000/life-index
 
 Please complete the following installation and initialization steps:
 
-1) Clone the repository into your skills directory
-   Example: git clone https://github.com/DrDexter6000/life-index.git ~/.openclaw/workspace/skills/life-index
+1) Clone the repository into your skills directory (shallow clone to save space)
+   git clone --depth 1 https://github.com/DrDexter6000/life-index.git <your-skills-directory>/life-index
 
-2) Enter the skill directory and install Python dependencies (requires Python 3.11+)
+2) Enter the skill directory and remove development files not needed at runtime (~60% size reduction)
    cd <skills-directory>/life-index
+   rm -rf tests/ conftest.py docs/archive/ .github/ .vscode/ .agents/ .opencode/ .sisyphus/ .cowork-temp/ .pytest_cache/ .ruff_cache/ .coverage htmlcov/ cov_report/ dist/ life_index.egg-info/ __pycache__/ assets/ nul README.md README.en.md AGENTS.md .clawhubignore
+
+3) Install Python dependencies (requires Python 3.11+)
    pip install -e .
 
-3) Verify the installation (run these commands in order, all should return normal results):
+4) Verify the installation (run these commands in order, all should return normal results):
    - python -c "from fastembed import TextEmbedding; print('fastembed OK')"
    - python -m tools.query_weather --location "Beijing,China"
    - life-index --help
 
-4) Initialize the search index (required on first use; subsequent journal writes auto-update)
+5) Initialize the search index (required on first use; subsequent journal writes auto-update)
    life-index index
 
-5) Tell me the installation result and index status, and how I can write my first journal entry
+6) Tell me the installation result and index status, and how I can write my first journal entry
 
 Notes:
 - Journal data is automatically written to ~/Documents/Life-Index/, physically separated from skill code
 - All tool commands must be run from the skill root directory (the directory containing SKILL.md)
-- If you encounter ModuleNotFoundError, it means step 2's pip install did not execute successfully
+- If you encounter ModuleNotFoundError, it means step 3's pip install did not execute successfully
 ```
 
 > **Journal data is automatically written to `~/Documents/Life-Index/`**, physically separated from skill code. Even if you uninstall the skill, your journal data is never lost.
