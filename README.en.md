@@ -107,11 +107,21 @@ While organizing old files, I came across photos of Toto as a baby. That little 
 
 A sudden sadness hit me — I miss that tiny human so much. I wish I could hold that little lump of warmth in my arms again.
 
+Before age three, Toto was like a little animal — driven entirely by instinct. Hungry, sleepy, playful, wanting Daddy or Mommy — none of it went through her brain.
+
+And the world was so dangerous for her. She knew nothing, understood nothing. What fascinated her most was observing Mom and Dad's every move, circling us every day, imitating our gestures.
+
 I still remember her waddling to the balcony, opening my cigarette pack, and handing me one — she didn't know what she was doing, but she was summarizing her observations of Dad's habits [laughs with tears].
+
+At three, Toto started kindergarten. She began meeting teachers and classmates — she became a child with her own thoughts, personality, even plans. Mom and Dad were no longer the sole center of her world.
+
+After three, Toto remains the most important, most precious being in the entire universe — but truly, she is no longer that babbling little baby. That Diaper Hero who captivated me, she has grown up.
+
+I both wish our family could stay forever in that time when she was 2 — and hope she grows up to experience an even more beautiful world.
 
 All in all, little bump, Dad misses you.
 
-Toto, this project was built by Dad for you.
+Toto, this one is for you.
 ```
 
 </details>
@@ -184,7 +194,7 @@ User Query → L1 Index Filter → L2 Metadata Filter → L3 Full-Text Search �
 ## 🚀 Quick Start
 
 <details>
-<summary>⚡ Quick Install - Life Index for Regular Users (Click to expand)</summary>
+<summary>Quick Install - Life Index for Regular Users (Click to expand)</summary>
 
 ### Who is this for?
 You want to install and use it immediately, without modifying code.
@@ -213,7 +223,7 @@ Steps:
 </details>
 
 <details>
-<summary>⚡ Quick Install - Developer Mode (Click to expand)</summary>
+<summary>Quick Install - Developer Mode (Click to expand)</summary>
 
 ### Who is this for?
 You need local debugging, code changes, and tests.
@@ -245,7 +255,7 @@ pip install -e ".[semantic]"
 </details>
 
 <details>
-<summary>📂 Data Directory Structure (Click to expand)</summary>
+<summary>Data Directory Structure (Click to expand)</summary>
 
 ```
 ~/Documents/Life-Index/
@@ -263,7 +273,7 @@ pip install -e ".[semantic]"
 </details>
 
 <details>
-<summary>🔧 Troubleshooting (Click to expand)</summary>
+<summary>Troubleshooting (Click to expand)</summary>
 
 **Skill triggering is unstable**  
 → Use `"/life-index" + intent keyword` (example: `/life-index write journal: ...`)
@@ -292,7 +302,7 @@ Prefer manual maintenance over automation traps
 Prefer reliability over performance
 ```
 
-We deliberately DON'T do: ❌ Cloud sync · ❌ Rich text editing · ❌ Real-time collaboration · ❌ AI thinking for you
+We deliberately DON'T do: ✕ Cloud sync · ✕ Rich text editing · ✕ Real-time collaboration · ✕ AI thinking for you
 
 ---
 
@@ -325,6 +335,6 @@ Currently, Life Index is in personal-use stage. If you resonate with the "Person
 
 ---
 
-> *"I both wish our family could stay forever in that time when she was 2 — and hope she grows up to experience an even more beautiful world. All in all, little bump, Dad misses you. Toto, this project was built by Dad for you."*
+> *"I both wish our family could stay forever in that time when she was 2 — and hope she grows up to experience an even more beautiful world. All in all, little bump, Dad misses you. Toto, this one is for you."*
 > 
 > *—— From the first Life Index entry, March 4, 2026, Lagos. Not a record of her growth. A record of my love for her.*
