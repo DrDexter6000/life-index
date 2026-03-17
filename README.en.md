@@ -222,11 +222,11 @@ Life Index follows a "local-first" and "data-program separation" strategy:
 <details>
 <summary>💀 Johnny Silverhand has something to say (Click to expand)</summary>
 
-> *"I see the corps... turning Night City into a machine, fueled by broken spirits, broken dreams, and empty pockets. Corps have controlled our lives for so long, taken so much... now they want our souls too!"*
-> *(我看到公司……把夜之城变成了一台机器，用人们破碎的精神、破碎的梦想和空空的口袋作为燃料。公司长期以来控制着我们的生活，夺走了很多……现在他们又想要我们的灵魂！)*
+> *"I see the corps... turning Night City into a machine, fueled by broken spirits, broken dreams, and empty pockets. Corps have controlled our lives for so long, taken so much... now they want our souls too!"*    
+> *我看到公司……把夜之城变成了一台机器，用人们破碎的精神、破碎的梦想和空空的口袋作为燃料。公司长期以来控制着我们的生活，夺走了很多……现在他们又想要我们的灵魂！*
 
-> *"There are fates worse than death."*
-> *(有些命运比死亡更惨。)*
+> *"There are fates worse than death."*    
+> *有些命运比死亡更惨。*
 
 </details>
 
