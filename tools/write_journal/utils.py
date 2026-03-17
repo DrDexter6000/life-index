@@ -4,6 +4,8 @@ Life Index - Write Journal Tool - Utilities
 通用工具函数模块
 """
 
+import os
+import platform
 import re
 from datetime import datetime
 from pathlib import Path
@@ -20,45 +22,67 @@ def get_year_month(date_str: str) -> Tuple[int, int]:
 
 def convert_path_for_platform(source_path: str) -> str:
     """
-    跨平台路径转换（双向）
+    跨平台路径转换（双向）- 启发式 + 配置映射
 
-    根据配置的 PATH_MAPPINGS 将路径转换为当前平台可访问的格式。
-    支持：
-    - Windows → Linux/macOS (如 C:\\Users\\xxx → /home/xxx 或 /Users/xxx)
-    - Linux/macOS → Windows (如 /home/xxx → C:\\Users\\xxx)
-    - 任意平台间的映射
+    优先使用启发式自动检测常见跨平台场景（如 WSL），
+    然后回退到用户配置的 PATH_MAPPINGS。
+
+    支持场景：
+    - Windows ↔ WSL: C:\\Users\\xxx ↔ /mnt/c/Users/xxx
+    - 用户自定义映射（通过 config.yaml）
 
     Args:
         source_path: 原始路径
 
     Returns:
-        转换后的路径（如果匹配映射），否则返回原路径
+        转换后的路径（如果匹配），否则返回原路径
     """
-    if not source_path or not PATH_MAPPINGS:
+    if not source_path:
         return source_path
-
-    # 检测当前平台
-    import platform
 
     current_system = platform.system()  # 'Windows', 'Linux', 'Darwin' (macOS)
 
-    # 规范化源路径用于匹配
-    normalized_source = source_path.replace("\\", "/")
+    # ========== 启发式 1: Windows 路径在 Linux/WSL 环境 ==========
+    # 检测: Linux + 路径以盘符开头 (如 C:\... 或 C:/...)
+    if current_system == "Linux":
+        win_match = re.match(r"^([A-Za-z]):[/\\](.*)$", source_path)
+        if win_match:
+            drive, rest = win_match.groups()
+            # 转换: C:\Users\... → /mnt/c/Users/...
+            wsl_path = f"/mnt/{drive.lower()}/{rest.replace('\\', '/')}"
 
-    for from_prefix, to_prefix in PATH_MAPPINGS.items():
-        # 规范化映射前缀
-        normalized_from = from_prefix.replace("\\", "/")
-        normalized_to = to_prefix.replace("\\", "/")
+            # 保守策略: 只有转换后的路径确实存在时才使用
+            if os.path.exists(wsl_path):
+                return wsl_path
 
-        # 检查是否匹配
-        if normalized_source.lower().startswith(normalized_from.lower()):
-            # 替换前缀
-            converted = normalized_to + normalized_source[len(normalized_from) :]
-            # 根据当前平台调整路径分隔符
-            if current_system == "Windows":
-                converted = converted.replace("/", "\\")
-            return converted
+    # ========== 启发式 2: WSL 路径在 Windows 环境 ==========
+    # 检测: Windows + 路径以 /mnt/x/ 开头
+    if current_system == "Windows":
+        wsl_match = re.match(r"^/mnt/([a-z])/(.*)$", source_path)
+        if wsl_match:
+            drive, rest = wsl_match.groups()
+            # 转换: /mnt/c/Users/... → C:\Users\...
+            win_path = f"{drive.upper()}:\\{rest.replace('/', '\\')}"
 
+            # 保守策略: 只有转换后的路径确实存在时才使用
+            if os.path.exists(win_path):
+                return win_path
+
+    # ========== 回退: 用户配置的 PATH_MAPPINGS ==========
+    if PATH_MAPPINGS:
+        normalized_source = source_path.replace("\\", "/")
+
+        for from_prefix, to_prefix in PATH_MAPPINGS.items():
+            normalized_from = from_prefix.replace("\\", "/")
+            normalized_to = to_prefix.replace("\\", "/")
+
+            if normalized_source.lower().startswith(normalized_from.lower()):
+                converted = normalized_to + normalized_source[len(normalized_from) :]
+                if current_system == "Windows":
+                    converted = converted.replace("/", "\\")
+                return converted
+
+    # 无匹配，返回原路径
     return source_path
 
 

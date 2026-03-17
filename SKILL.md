@@ -162,14 +162,18 @@ python -m tools.write_journal --data '{...}'
 
 ### Cross-Platform Path Handling（跨平台路径）
 
-如果 Life Index 运行在 WSL/Linux，而附件在 Windows 盘符：
+**路径已自动处理，Agent 无需干预。**
 
-在 `~/Documents/Life-Index/config.yaml` 中配置路径映射：
-```yaml
-path_mappings:
-  "C:\\Users\\{username}": "/mnt/c/Users/{username}"
-  "/mnt/c/Users/{username}": "C:\\Users\\{username}"
-```
+Life Index 内置启发式跨平台路径转换：
+
+| 场景 | 自动处理 |
+|------|---------|
+| Windows 路径在 WSL/Linux | `C:\Users\...` → `/mnt/c/Users/...` |
+| WSL 路径在 Windows | `/mnt/c/...` → `C:\Users\...` |
+
+**Agent 只需传递原始路径**，工具自动检测并转换。
+
+> **注意**：自动转换仅在目标路径确实存在时生效。如有特殊路径映射需求，可在 `~/Documents/Life-Index/.life-index/config.yaml` 中配置 `path_mappings`。
 
 ### Content Preservation (MUST)
 
