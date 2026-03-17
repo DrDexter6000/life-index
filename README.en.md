@@ -122,21 +122,14 @@ This is Life Index's mission: **Preserving those details that will make you sudd
 
 ## 🏛️ How Does It Work?
 
-### Activate the skill first (higher success rate)
-
-In current LLM/Agent ecosystems, pure natural-language triggering can be unstable.  
-For higher success rates, use: `/life-index` + an intent keyword.
-
-```text
-/life-index write journal: Today I saw old photos of Toto and suddenly missed that 2-year-old Diaper Hero — that bittersweet feeling.
-/life-index search logs: Find journal entries about "Toto".
-```
-
 ### Record
-After activating the skill, tell your Agent:
-> "/life-index write journal: today I saw old photos of Toto, and suddenly I missed that 2-year-old Diaper Hero — that bittersweet feeling."
+Tell your Agent what you want to log, and it archives it for you:
+
+> /life-index write journal: today I saw old photos of Toto, and suddenly I missed that 2-year-old Diaper Hero — that bittersweet feeling.
 
 The Agent automatically organizes metadata (time, location, people, emotions, tags), generating a structured Markdown file stored on your own hard drive.
+
+> **💡 Trigger tip**: In current LLM/Agent ecosystems, pure natural-language triggering can be unstable. In practice, putting `/life-index` + an intent keyword (e.g. "write journal", "search logs") in a single message gives a much higher success rate.
 
 ### Retrieve
 Through three-layer tagging dimensions + full-text search + semantic search, find your past self at any moment:
@@ -201,25 +194,21 @@ You want to install and use it immediately, without modifying code.
 Copy the full prompt below and send it to your Agent:
 
 ```text
-Please complete Life Index end-user installation and verification in my OpenClaw environment.
+Please install the Life Index skill for me.
 
-Repository:
-https://github.com/DrDexter6000/life-index
+Repository: https://github.com/DrDexter6000/life-index
 
-Requirements:
-1) Read README.md and SKILL.md installation guidance
-2) Install in end-user mode (prefer: pipx install life-index)
-3) Place SKILL.md at ~/.openclaw/workspace/skills/life-index/
-4) Run and report:
-   - life-index --help
-   - life-index weather --location "Beijing,China"
-5) Tell me:
-   - where life-index was installed
-   - the final SKILL.md path
-   - the recommended command to write my first journal (use /life-index)
+Steps:
+1) Clone the repository into your skills directory (e.g. ~/.openclaw/workspace/skills/life-index)
+2) Confirm the skills directory contains at least:
+   SKILL.md, README.md, README.en.md, LICENSE, pyproject.toml,
+   tools/, docs/, references/
+3) Run a verification from the skills directory:
+   - python -m tools.query_weather --location "Beijing,China"
+4) Tell me the result, and how I should write my first journal entry (use /life-index trigger)
 ```
 
-> Data is written under: `~/Documents/Life-Index/`
+> Journal data is written under `~/Documents/Life-Index/`, physically separated from skill code.
 
 </details>
 
@@ -279,11 +268,11 @@ pip install -e ".[semantic]"
 **Skill triggering is unstable**  
 → Use `"/life-index" + intent keyword` (example: `/life-index write journal: ...`)
 
-**Command not found (life-index: command not found)**  
-→ Run `python -m pipx ensurepath`, restart terminal, try again
+**Tool execution error (ModuleNotFoundError)**  
+→ Make sure you run commands from the skill root directory (the one containing SKILL.md and tools/)
 
 **Journals not written to ~/Documents/Life-Index/**  
-→ Run `life-index --help` first to confirm CLI works; in dev mode, run `python -m tools.xxx` from repo root
+→ Run `python -m tools.query_weather --location "Beijing,China"` from the skill root to confirm tools work
 
 **Semantic search unavailable**  
 → `pip install sentence-transformers`
