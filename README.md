@@ -290,8 +290,6 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 
 3) 安装 Python 依赖（需要 Python 3.11+）
    pip install -e .
-   如果报错 "externally-managed-environment"（Python 3.12+ 的 Debian/Ubuntu 系统常见），改用虚拟环境：
-   python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 
 4) 验证安装是否成功（依次执行以下命令，全部应返回正常结果）：
    - python -c "from fastembed import TextEmbedding; print('fastembed OK')"
@@ -307,7 +305,6 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 - 根据网络条件不同，整个安装过程可能耗时 5~10 分钟（主要是下载依赖和嵌入模型）
 - 日志数据会自动写入 ~/Documents/Life-Index/，与技能代码物理隔离
 - 所有工具命令必须在技能根目录下执行（包含 SKILL.md 的目录）
-- 如果第 3 步使用了虚拟环境，后续每次使用前需先激活：source .venv/bin/activate
 - 如果遇到 ModuleNotFoundError，说明第 3 步的 pip install 没有成功执行
 ```
 
