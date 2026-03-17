@@ -137,7 +137,7 @@ This is Life Index's mission: **Preserving those details that will make you sudd
 
 ## 🏛️ How Does It Work?
 
-### Life Recording
+### 📝 Core Feature One: Life Recording
 
 Tell your Agent what you want to log, and it archives it for you:
 
@@ -147,14 +147,53 @@ The Agent automatically organizes metadata (time, location, people, emotions, ta
 
 > **💡 Trigger tip**: In current LLM/Agent ecosystems, pure natural-language triggering can be unstable. In practice, putting `/life-index` + an intent keyword (e.g. "write journal", "search logs") in a single message gives a much higher success rate.
 
-**Your Data, Forever Yours**
+### 📖 Core Feature Two: Life Retrieval
 
-Life Index follows a "data-program separation" design: skill code lives in your Agent's skills directory, while your journals, attachments, and indexes are stored independently in your system user directory.
+Through three-layer tagging dimensions + full-text search + semantic search, find your past self at any moment:
 
-This means: even if Life Index disappears tomorrow, your data remains — pure Markdown + YAML format, readable by any text editor, clear and timeless, never expiring.
+| Dimension | Examples |
+|:---:|:---|
+| **Topic** | `think` (Reflection), `create` (Creation), `relation` (Relationships) |
+| **Project** | `LifeIndex` (This project), `Parenting` (Fatherhood journey) |
+| **Tag** | `Parenthood`, `Memory`, `Bittersweet`, `DiaperHero` |
+
+Want to find "all melancholic memories about Tuantuan"? Search `Tuantuan` + `Bittersweet` — regardless of project.
+
+### Why Can It Find Things?
+
+The Agent doesn't need to read all 2,000 of your journals — a 4-layer progressive filtering architecture lets it see **only the handful it actually needs**:
+
+> L1 (Topic Index) → L2 (Metadata Filter) → L3 (Full-Text Match) → L4 (Semantic Understanding)
+
+Each layer narrows the candidate set. Brute-force reading 2,000 journals costs ~3 million tokens; after filtering, only ~5,000 tokens — **99.8% savings**.
 
 <details>
-<summary>View user data storage structure (Click to expand)</summary>
+<summary>🔍 4-Layer Search Architecture Details (Click to expand)</summary>
+
+```
+User Query → L1 Index Filter → L2 Metadata Filter → L3 Full-Text Search → L4 Semantic Ranking
+              (narrow scope)    (precise filtering)   (content matching)    (semantic understanding)
+```
+
+| Layer | Data Source | Returns | Design Intent |
+|:---:|:---:|:---:|:---|
+| **L1 Index** | `by-topic/` index files | Date+title+path (~80 bytes/entry) | Quickly narrow candidates by topic/project/tag |
+| **L2 Metadata** | YAML Frontmatter (SQLite cache) | All metadata (~500 bytes/entry) | Multi-dimensional filtering by date, mood, people |
+| **L3 Content** | FTS5 full-text index | Matching snippets+context (~300 bytes/match) | Exact keyword matching, returning paragraphs not full text |
+| **L4 Semantic** | Vector embeddings (optional) | Path+similarity (~100 bytes/result) | Finds journals with similar meaning but different keywords |
+
+**Core principle: Each layer is a filter, not a data source.**
+
+</details>
+
+---
+
+### 🛡️ Your Data, Forever Yours
+
+Life Index follows a "local-first" and "data-program separation" strategy:
+
+- **Skill code** lives in your Agent's skills directory
+- **Your journals, attachments, and indexes** are stored independently in your system user directory
 
 ```
 ~/Documents/Life-Index/
@@ -169,9 +208,25 @@ This means: even if Life Index disappears tomorrow, your data remains — pure M
     └── tag_Parenthood.md
 ```
 
-</details>
+**This means**: 20 years from now, even if Life Index has ceased to exist, your data will still be there — pure Markdown + YAML format, readable by any text editor, clear and timeless, never expiring.
 
-### Life Retrieval
+---
+
+### ⚠️ Important: Data Backup Recommendations
+
+- Users should ask their Agent to **regularly encrypt and backup the journal data directory**
+- Users may choose between **local devices** or **cloud backup** methods
+
+> **But Life Index strongly recommends local device backup** — protect your **digital legacy (Relic)**, don't voluntarily feed your **soul imprint (Engram)** into the corporations' **Mikoshi**
+
+<details>
+<summary>💀 Johnny Silverhand has something to say (Click to expand)</summary>
+
+> *"I see the corps... turning Night City into a machine, fueled by broken spirits, broken dreams, and empty pockets. Corps have controlled our lives for so long, taken so much... now they want our souls too!"*
+
+> *"There are fates worse than death."*
+
+</details>
 
 Through three-layer tagging dimensions + full-text search + semantic search, find your past self at any moment:
 
