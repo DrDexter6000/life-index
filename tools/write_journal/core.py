@@ -18,10 +18,7 @@ logger = get_logger(__name__)
 
 # 导入子模块
 from .utils import get_year_month, generate_filename, get_next_sequence
-from ..lib.frontmatter import (
-    format_frontmatter,
-    format_journal_content as format_content,
-)
+from ..lib.frontmatter import format_journal_content as format_content
 from .attachments import extract_file_paths_from_content, process_attachments
 from .weather import query_weather_for_location, normalize_location
 from .index_updater import (
@@ -177,10 +174,8 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 # 更新数据中的附件信息（用于生成内容）
                 data["attachments"] = processed_attachments
 
-                # 生成内容
-                frontmatter = format_frontmatter(data)
-                content = format_content(data)
-                full_content = f"{frontmatter}\n\n{content}"
+                # 生成内容（format_journal_content 已包含 frontmatter + body）
+                full_content = format_content(data)
 
                 if dry_run:
                     result["journal_path"] = str(journal_path)
