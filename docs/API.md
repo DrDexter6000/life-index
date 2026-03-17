@@ -464,4 +464,4 @@ python -m tools.build_index [options]
 
 配置文件位置：`~/Documents/Life-Index/.life-index/config.yaml`
 
-详见 [config.example.yaml](../../config.example.yaml)
+详见 [config.example.yaml](../config.example.yaml)

@@ -32,16 +32,26 @@ weather:
 
 # 跨平台路径映射
 # ===============
+# ⚠️ 注意: Life Index 已内置启发式自动路径转换，此配置仅用于特殊场景
+#
+# 自动转换已启用（无需配置）:
+#   - Windows 路径 (C:\Users\...) → WSL 路径 (/mnt/c/Users/...)
+#   - WSL 路径 (/mnt/c/...) → Windows 路径 (C:\Users\...)
+#
+# 仅在以下情况需要手动配置:
+#   - 非标准挂载点（如自定义 WSL 挂载位置）
+#   - 特殊网络路径映射
+#   - 多系统间迁移日志文件
+#
 # 格式: "源平台路径前缀": "目标平台路径前缀"
-# 用于在不同操作系统间迁移日志时自动转换路径
 path_mappings:
-  # Windows → WSL/Linux 示例
-  # "C:\\Users\\{username}": "/mnt/c/Users/{username}"
+  # Windows → WSL/Linux 示例（非标准挂载点）
+  # "C:\\Users\\{username}": "/custom/mnt/c/Users/{username}"
   
-  # Windows → macOS 示例
-  # "C:\\Users\\{username}": "/Users/{username}"
+  # Windows → macOS 示例（Parallels 等虚拟机）
+  # "C:\\Users\\{username}": "/Volumes/C/Users/{username}"
   
-  # Linux → Windows 示例
+  # Linux → Windows 示例（反向映射）
   # "/home/{username}": "C:\\Users\\{username}"
 
 # 搜索设置

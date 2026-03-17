@@ -1,6 +1,7 @@
 # AGENTS.md - Life Index 项目开发指南
 
-> 本文档为 Life Index 项目开发、为 AI 编码代理提供项目上下文。
+> 本文档为 Life Index 项目开发、为 AI 编码代理提供项目上下文。  
+> **最后更新**: 2026-03-17 | **版本**: v1.1 | **状态**: 活跃维护
 
 ## 项目概述
 
@@ -55,22 +56,43 @@ tools/
 │   ├── __main__.py            # 模块执行入口
 │   ├── core.py                # 核心协调逻辑
 │   ├── attachments.py         # 附件处理
-│   └── index_updater.py       # 索引更新
+│   ├── index_updater.py       # 索引更新
+│   ├── utils.py               # 通用工具函数
+│   └── weather.py             # 天气查询集成
 ├── search_journals/            # 搜索日志模块
-│   ├── l1_index.py            # 一级索引搜索
+│   ├── __init__.py            # CLI入口
+│   ├── __main__.py            # 模块执行入口
+│   ├── core.py                # 搜索协调逻辑
+│   ├── l1_index.py            # 一级索引搜索（by-topic）
 │   ├── l2_metadata.py         # 二级元数据搜索（SQLite缓存）
-│   ├── l3_content.py          # 三级内容搜索（全文搜索）
-│   └── ranking.py             # 结果排序算法
+│   ├── l3_content.py          # 三级内容搜索（FTS全文搜索）
+│   ├── ranking.py             # 结果排序算法
+│   ├── semantic.py            # 语义搜索（向量相似度）
+│   └── utils.py               # 搜索工具函数
 ├── edit_journal/              # 编辑日志模块
+│   ├── __init__.py            # CLI入口
+│   └── __main__.py            # 模块执行入口
 ├── generate_abstract/         # 生成摘要模块
+│   ├── __init__.py            # CLI入口
+│   └── __main__.py            # 模块执行入口
 ├── build_index/               # 构建索引模块
+│   ├── __init__.py            # CLI入口
+│   └── __main__.py            # 模块执行入口
 ├── query_weather/             # 查询天气模块
-└── lib/                       # 共享库
-    ├── config.py              # 配置
+│   ├── __init__.py            # CLI入口
+│   └── __main__.py            # 模块执行入口
+└── lib/                       # 共享库（SSOT）
+    ├── AGENTS.md              # 共享库开发指南
+    ├── config.py              # 配置管理（路径、模板、默认值）
     ├── frontmatter.py         # YAML frontmatter解析/格式化（SSOT）
-    ├── errors.py              # 错误码
-    ├── file_lock.py           # 文件锁
-    └── metadata_cache.py      # 元数据缓存
+    ├── errors.py              # 错误码定义（SSOT）
+    ├── file_lock.py           # 跨平台文件锁
+    ├── metadata_cache.py      # SQLite元数据缓存（L2搜索）
+    ├── search_index.py        # FTS5全文搜索索引
+    ├── semantic_search.py     # 向量嵌入语义搜索
+    ├── vector_index_simple.py # 纯Python向量索引（Fallback）
+    ├── logger.py              # 日志记录工具
+    └── timing.py              # 性能计时工具
 ```
 
 ---
