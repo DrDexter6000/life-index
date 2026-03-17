@@ -196,7 +196,7 @@ def format_journal_content(data: Dict[str, Any]) -> str:
                 filename = att.get("filename", "")
                 rel_path = att.get("rel_path", "")
                 description = att.get("description", "")
-                path = rel_path or f"../../../Attachments/{filename}"
+                path = rel_path or f"../../../attachments/{filename}"
                 lines.append(f"- [{filename}]({path}) - {description}")
             elif isinstance(att, str):
                 lines.append(f"- [{att}]({att})")

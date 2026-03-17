@@ -568,7 +568,7 @@ class TestWriteJournalAttachments:
         mock_attachments = [
             {
                 "filename": "file.pdf",
-                "rel_path": "../../../Attachments/2026/03/file.pdf",
+                "rel_path": "../../../attachments/2026/03/file.pdf",
                 "description": "Test file",
             }
         ]
@@ -640,7 +640,7 @@ class TestWriteJournalAttachments:
         mock_attachments = [
             {
                 "filename": "document.pdf",
-                "rel_path": "../../../Attachments/2026/03/document.pdf",
+                "rel_path": "../../../attachments/2026/03/document.pdf",
                 "description": "",
             }
         ]

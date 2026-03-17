@@ -328,7 +328,7 @@ def process_attachments(
             shutil.copy2(source_path, att_dir / target_name)
 
         # 生成相对路径 (../../../Attachments/YYYY/MM/filename)
-        rel_path = f"../../../Attachments/{year}/{month:02d}/{target_name}"
+        rel_path = f"../../../attachments/{year}/{month:02d}/{target_name}"
 
         processed.append(
             {
