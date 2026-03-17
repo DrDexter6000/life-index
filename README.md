@@ -96,7 +96,7 @@
 ---
 title: "想念小英雄"
 date: 2026-03-04T19:43:02
-location: "Lagos, Nigeria"
+location: "Chongqing, China"
 weather: "晴天（浮云、阵雨）"
 mood: ["思念", "温暖", "感伤"]
 people: ["乐乐"]
@@ -226,11 +226,9 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 <summary>💀 强尼·银手有话说（点击展开）</summary>
 
 > *"我看到公司……把夜之城变成了一台机器，用人们破碎的精神、破碎的梦想和空空的口袋作为燃料。公司长期以来控制着我们的生活，夺走了很多……现在他们又想要我们的灵魂！"*
-> 
 > *(I saw corporations... turn Night City into a machine, fueled by broken spirits, broken dreams, and empty pockets. Corporations have been controlling our lives, taking... and now they want our souls!)*
 
 > *"有些命运比死亡更惨。"*
-> 
 > *(There are fates worse than death.)*
 
 </details>

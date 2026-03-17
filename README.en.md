@@ -96,7 +96,7 @@ In this age of AI and cloud everything, I took a counter-intuitive path: **No cl
 ---
 title: "Missing the Diaper Hero"
 date: 2026-03-04T19:43:02
-location: "Lagos, Nigeria"
+location: "Chongqing, China"
 weather: "Sunny (floating clouds, occasional showers)"
 mood: ["Nostalgic", "Warm", "Melancholy"]
 people: ["Toto"]
@@ -214,20 +214,18 @@ Life Index follows a "local-first" and "data-program separation" strategy:
 
 ### ⚠️ Important: Data Backup Recommendations
 
-- Users should ask their Agent to **regularly encrypt and backup the journal data directory**
-- Users may choose between **local devices** or **cloud backup** methods
+- Instruct your Agent to **regularly backup the journal data directory with encryption**
+- You may choose between **local devices** or **cloud backup** methods
 
-> **But Life Index strongly recommends local device backup** — protect your **digital legacy (Relic)**, don't voluntarily feed your **soul imprint (Engram)** into the corporations' **Mikoshi**
+> **But Life Index strongly recommends local device backup** — protect your **Relic**, don't voluntarily feed your **Engram** into the bit techs' **Mikoshi**
 
 <details>
 <summary>💀 Johnny Silverhand has something to say (Click to expand)</summary>
 
 > *"I see the corps... turning Night City into a machine, fueled by broken spirits, broken dreams, and empty pockets. Corps have controlled our lives for so long, taken so much... now they want our souls too!"*
-> 
 > *(我看到公司……把夜之城变成了一台机器，用人们破碎的精神、破碎的梦想和空空的口袋作为燃料。公司长期以来控制着我们的生活，夺走了很多……现在他们又想要我们的灵魂！)*
 
 > *"There are fates worse than death."*
-> 
 > *(有些命运比死亡更惨。)*
 
 </details>
@@ -262,123 +260,6 @@ User Query → L1 Index Filter → L2 Metadata Filter → L3 Full-Text Search �
 | **L4 Semantic** | Vector embeddings (optional) | Path+similarity (~100 bytes/result) | Finds journals with similar meaning but different keywords |
 
 **Core principle: Each layer is a filter, not a data source.**
-
-</details>
-
----
-
-## 🌱 Who Is This For?
-
-- **New Parents**: Recording the authentic experience of parenthood — exhaustion, wonder, heartbreak
-- **Digital Nomads**: Moving between cities, recording locations and local states of mind
-- **Long-termists**: Wanting a system that lasts 30 years, not chasing the latest productivity tool
-- **Privacy Conscious**: Believing your life details shouldn't be training data for cloud services
-- **Every Ordinary Person**: Who believes their life fragments are worth preserving, even if not "efficient"
-
----
-
-## 🚀 Quick Start
-
-<details>
-<summary>Quick Install - Life Index for Regular Users (Click to expand)</summary>
-
-<br>
-
-**Who is this for** — You want to install and use it immediately, without modifying code.
-
-**One-shot setup** — Copy the full prompt below and send it to your Agent:
-
-```text
-Please install the Life Index skill for me.
-
-Repository: https://github.com/DrDexter6000/life-index
-
-Steps:
-1) Clone the repository into your skills directory (e.g. ~/.openclaw/workspace/skills/life-index)
-2) Confirm the skills directory contains at least:
-   SKILL.md, README.md, README.en.md, LICENSE, pyproject.toml,
-   tools/, docs/, references/
-3) Run a verification from the skills directory:
-   - python -m tools.query_weather --location "Beijing,China"
-4) Tell me the result, and how I should write my first journal entry (use /life-index trigger)
-```
-
-> Journal data is written under `~/Documents/Life-Index/`, physically separated from skill code.
-
-</details>
-
-<details>
-<summary>Quick Install - Developer Mode (Click to expand)</summary>
-
-<br>
-
-**Who is this for** — You need local debugging, code changes, and tests.
-
-**One-shot setup (dev mode)** —
-
-```bash
-git clone https://github.com/DrDexter6000/life-index.git
-cd life-index
-
-# Core editable install
-pip install -e .
-
-# Optional: semantic search (~2GB model)
-pip install -e ".[semantic]"
-```
-
-### Common developer commands
-
-| Operation | Command |
-|:---|:---|
-| Unified CLI (recommended) | `life-index --help` |
-| Write journal | `life-index write --data '{...}'` |
-| Search journals | `life-index search --query "keyword"` |
-| Semantic search | `life-index search --query "study notes" --semantic` |
-| Dev invocation | `python -m tools.search_journals --query "keyword"` |
-| Run unit tests | `python -m pytest tests/unit/ -v` |
-
-</details>
-
-<details>
-<summary>Data Directory Structure (Click to expand)</summary>
-
-<br>
-
-```
-~/Documents/Life-Index/
-├── Journals/                    # Main journal directory (by year/month)
-│   └── 2026/03/
-│       └── life-index_2026-03-04_002.md
-├── attachments/                 # Attachments (photos, videos, voice memos)
-│   └── 2026/03/
-└── by-topic/                    # Auto-generated indexes
-    ├── topic_think.md
-    ├── project_LifeIndex.md
-    └── tag_Parenthood.md
-```
-
-</details>
-
-<details>
-<summary>Troubleshooting (Click to expand)</summary>
-
-<br>
-
-**Skill triggering is unstable**  
-→ Use `"/life-index" + intent keyword` (example: `/life-index write journal: ...`)
-
-**Tool execution error (ModuleNotFoundError)**  
-→ Make sure you run commands from the skill root directory (the one containing SKILL.md and tools/)
-
-**Journals not written to ~/Documents/Life-Index/**  
-→ Run `python -m tools.query_weather --location "Beijing,China"` from the skill root to confirm tools work
-
-**Semantic search unavailable**  
-→ `pip install sentence-transformers`
-
-**Permission Denied**  
-→ Windows: Run terminal as admin | Linux/macOS: `chmod -R 755 ~/Documents/Life-Index`
 
 </details>
 
