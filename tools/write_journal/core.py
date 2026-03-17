@@ -18,7 +18,10 @@ logger = get_logger(__name__)
 
 # 导入子模块
 from .utils import get_year_month, generate_filename, get_next_sequence
-from .frontmatter import format_frontmatter, format_content
+from ..lib.frontmatter import (
+    format_frontmatter,
+    format_journal_content as format_content,
+)
 from .attachments import extract_file_paths_from_content, process_attachments
 from .weather import query_weather_for_location, normalize_location
 from .index_updater import (

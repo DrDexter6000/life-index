@@ -246,7 +246,7 @@ class TestProcessAttachments:
             )
 
         assert "rel_path" in result[0]
-        assert "Attachments" in result[0]["rel_path"]
+        assert "attachments" in result[0]["rel_path"]
         assert "2026" in result[0]["rel_path"]
 
     def test_skip_directories(self, tmp_path):

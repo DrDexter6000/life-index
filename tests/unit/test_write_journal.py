@@ -15,7 +15,10 @@ from tools.write_journal.utils import (
     get_year_month,
 )
 from tools.write_journal.weather import normalize_location
-from tools.write_journal.frontmatter import format_frontmatter, format_content
+from tools.lib.frontmatter import (
+    format_frontmatter,
+    format_journal_content as format_content,
+)
 
 
 class TestGenerateFilename:
@@ -115,12 +118,12 @@ class TestFormatFrontmatter:
         assert '"https://example.com"' in result
         assert '"file1.txt"' in result
 
-    def test_date_only_adds_current_time(self):
-        """Test that date without time gets current time appended"""
+    def test_date_only_unchanged(self):
+        """Test that date without time is kept as-is"""
         data = {"date": "2026-03-10", "title": "Test"}
         result = format_frontmatter(data)
-        # Should have time component added
-        assert "date: 2026-03-10T" in result
+        # Should keep date as-is (no time appended)
+        assert "date: 2026-03-10" in result
         # Should not have quotes around date
         assert '"date:' not in result
 
@@ -132,7 +135,14 @@ class TestFormatFrontmatter:
 
     def test_empty_string_fields(self):
         """Test that empty string fields are still included"""
-        data = {"date": "2026-03-10", "title": "Test", "location": "", "weather": ""}
+        data = {
+            "date": "2026-03-10",
+            "title": "Test",
+            "location": "",
+            "weather": "",
+            "project": "",
+            "abstract": "",
+        }
         result = format_frontmatter(data)
         assert 'location: ""' in result
         assert 'weather: ""' in result
@@ -146,35 +156,35 @@ class TestFormatFrontmatter:
         # Title should be quoted
         assert 'title: "' in result
 
-    def test_mood_string_converted_to_list(self):
-        """Test that mood as string is converted to list"""
+    def test_mood_string_unchanged(self):
+        """Test that mood as string is kept as string"""
         data = {"date": "2026-03-10", "mood": "happy"}
         result = format_frontmatter(data)
-        assert 'mood: ["happy"]' in result
+        assert 'mood: "happy"' in result
 
-    def test_mood_empty_string_becomes_empty_list(self):
-        """Test that empty mood string becomes empty list"""
+    def test_mood_empty_string_preserved(self):
+        """Test that empty mood string is preserved"""
         data = {"date": "2026-03-10", "mood": ""}
         result = format_frontmatter(data)
-        assert "mood: []" in result
+        assert 'mood: ""' in result
 
-    def test_people_string_converted_to_list(self):
-        """Test that people as string is converted to list"""
+    def test_people_string_unchanged(self):
+        """Test that people as string is kept as string"""
         data = {"date": "2026-03-10", "people": "Alice"}
         result = format_frontmatter(data)
-        assert 'people: ["Alice"]' in result
+        assert 'people: "Alice"' in result
 
-    def test_tags_string_converted_to_list(self):
-        """Test that tags as string is converted to list"""
+    def test_tags_string_unchanged(self):
+        """Test that tags as string is kept as string"""
         data = {"date": "2026-03-10", "tags": "test"}
         result = format_frontmatter(data)
-        assert 'tags: ["test"]' in result
+        assert 'tags: "test"' in result
 
-    def test_topic_string_converted_to_list(self):
-        """Test that topic as string is converted to list"""
+    def test_topic_string_unchanged(self):
+        """Test that topic as string is kept as string"""
         data = {"date": "2026-03-10", "topic": "work"}
         result = format_frontmatter(data)
-        assert 'topic: ["work"]' in result
+        assert 'topic: "work"' in result
 
     def test_links_string_converted_to_list(self):
         """Test that links as string is converted to list"""
@@ -200,11 +210,11 @@ class TestFormatFrontmatter:
         assert '"file.txt"' in result
 
     def test_attachments_dict_missing_both_paths(self):
-        """Test attachments dict without rel_path or filename is skipped"""
+        """Test attachments dict without rel_path or filename is serialized as JSON"""
         data = {"date": "2026-03-10", "attachments": [{"description": "no path"}]}
         result = format_frontmatter(data)
-        # Should not include the attachment
-        assert "no path" not in result
+        # Lib version serializes the entire dict as JSON
+        assert '"description": "no path"' in result
 
     def test_attachments_mixed_types(self):
         """Test attachments with mixed string and dict types"""
@@ -276,11 +286,11 @@ class TestFormatFrontmatter:
         project_pos = result.find('project: "Life-Index"')
         assert tags_pos < project_pos
 
-    def test_no_title_skipped(self):
-        """Test that empty title is skipped"""
+    def test_empty_title_included(self):
+        """Test that empty title is included as empty string"""
         data = {"date": "2026-03-10", "title": ""}
         result = format_frontmatter(data)
-        assert "title:" not in result
+        assert 'title: ""' in result
 
     def test_attachments_list_empty(self):
         """Test empty attachments list"""
@@ -563,10 +573,13 @@ class TestFormatContent:
         assert "Test content here" in result
 
     def test_content_empty(self):
-        """Test empty content"""
+        """Test empty content still produces frontmatter"""
         data = {"title": "", "content": ""}
         result = format_content(data)
-        assert result.strip() == ""
+        # Lib version produces frontmatter with empty values
+        assert "---" in result
+        assert "schema_version: 1" in result
+        assert 'title: ""' in result
 
     def test_content_with_attachments_dicts(self):
         """Test content with attachments as dicts"""
@@ -587,13 +600,18 @@ class TestFormatContent:
         assert "(attachments/file1.txt)" in result
         assert "Test file 1" in result
 
-    def test_content_with_attachments_strings_skipped(self):
-        """Test that string attachments are skipped (only dicts supported)"""
-        data = {"title": "", "content": "", "attachments": ["file1.txt", "file2.txt"]}
-        # String attachments will cause AttributeError in current implementation
-        # This is a known limitation - attachments should be dicts in content
-        with pytest.raises(AttributeError):
-            format_content(data)
+    def test_content_with_attachments_strings(self):
+        """Test that string attachments are supported"""
+        data = {
+            "title": "Test",
+            "content": "Body",
+            "attachments": ["file1.txt", "file2.txt"],
+        }
+        result = format_content(data)
+        # Lib version supports string attachments
+        assert "## Attachments" in result
+        assert "[file1.txt](file1.txt)" in result
+        assert "[file2.txt](file2.txt)" in result
 
     def test_content_with_mixed_attachments_dict_only(self):
         """Test content with only dict attachments"""
@@ -615,12 +633,13 @@ class TestFormatContent:
     def test_content_attachments_with_missing_rel_path(self):
         """Test attachments fallback to filename when rel_path missing"""
         data = {
-            "title": "",
-            "content": "",
+            "title": "Test",
+            "content": "Body",
             "attachments": [{"filename": "file.txt", "description": "Test"}],
         }
         result = format_content(data)
-        assert "../../../Attachments/file.txt" in result
+        # Lib version falls back to ../../../attachments/{filename} (lowercase)
+        assert "../../../attachments/file.txt" in result
 
     def test_content_multiline(self):
         """Test multiline content"""

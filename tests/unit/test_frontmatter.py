@@ -338,7 +338,7 @@ class TestFormatJournalContent:
         }
         result = format_journal_content(data)
 
-        assert "Attachments/no_path.png" in result
+        assert "attachments/no_path.png" in result
 
 
 class TestValidateMetadata:
