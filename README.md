@@ -288,24 +288,29 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
    cd <技能目录>/life-index
    rm -rf tests/ conftest.py docs/archive/ .github/ .vscode/ .agents/ .opencode/ .sisyphus/ .cowork-temp/ .pytest_cache/ .ruff_cache/ .coverage htmlcov/ cov_report/ dist/ life_index.egg-info/ __pycache__/ assets/ nul README.md README.en.md AGENTS.md .clawhubignore
 
-3) 安装 Python 依赖（需要 Python 3.11+）
-   pip install -e .
+3) 创建 Python 虚拟环境并安装依赖（需要 Python 3.11+）
+   python3 -m venv .venv
+   .venv/bin/pip install -e .
+   注意：Windows 上用 .venv\Scripts\pip install -e .
 
 4) 验证安装是否成功（依次执行以下命令，全部应返回正常结果）：
-   - python -c "from fastembed import TextEmbedding; print('fastembed OK')"
-   - python -m tools.query_weather --location "Beijing,China"
-   - life-index --help
+   - .venv/bin/python -c "from fastembed import TextEmbedding; print('fastembed OK')"
+   - .venv/bin/python -m tools.query_weather --location "Beijing,China"
+   - .venv/bin/life-index health
+   注意：Windows 上把 .venv/bin/ 替换为 .venv\Scripts\
 
 5) 初始化搜索索引（首次执行会自动下载 ~80MB 嵌入模型，可能需要 1-3 分钟，请耐心等待）
-   life-index index
+   .venv/bin/life-index index
 
-6) 告诉我安装结果和索引初始化情况。然后阅读技能根目录下的 SKILL.md 文件，根据其中 "Quick CLI Reference" 部分的内容，告诉我该如何记录第一篇日志
+6) 告诉我安装结果和 health 检查输出。然后阅读技能根目录下的 SKILL.md 文件，根据其中 "Quick CLI Reference" 部分的内容，告诉我该如何记录第一篇日志
 
 注意事项：
 - 根据网络条件不同，整个安装过程可能耗时 5~10 分钟（主要是下载依赖和嵌入模型）
 - 日志数据会自动写入 ~/Documents/Life-Index/，与技能代码物理隔离
 - 所有工具命令必须在技能根目录下执行（包含 SKILL.md 的目录）
-- 如果遇到 ModuleNotFoundError，说明第 3 步的 pip install 没有成功执行
+- 所有 Python/CLI 命令必须通过 .venv/bin/（Windows: .venv\Scripts\）前缀调用
+- 如果遇到 ModuleNotFoundError，请确认使用了 .venv/bin/python 而非系统 python
+- 如果 .venv 损坏（如 Python 版本升级后），删除 .venv 目录后重新执行第 3 步即可修复
 ```
 
 > **日志数据自动写入 `~/Documents/Life-Index/`**，与技能代码物理隔离。即使卸载技能，你的日志数据也不会丢失。
@@ -325,20 +330,25 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 git clone https://github.com/DrDexter6000/life-index.git
 cd life-index
 
-# 核心依赖 + 可编辑安装（已包含语义搜索）
-pip install -e .
+# 创建虚拟环境 + 可编辑安装（已包含语义搜索）
+python3 -m venv .venv
+.venv/bin/pip install -e .    # Windows: .venv\Scripts\pip install -e .
 ```
 
 ### 开发者常用命令
 
 | 操作 | 命令 |
 |:---|:---|
+| 激活虚拟环境 | `source .venv/bin/activate` (Windows: `.venv\Scripts\activate`) |
 | 统一 CLI（推荐） | `life-index --help` |
+| 健康检查 | `life-index health` |
 | 记录日志 | `life-index write --data '{...}'` |
 | 搜索日志（关键词+语义） | `life-index search --query "关键词"` |
 | 仅关键词搜索 | `life-index search --query "关键词" --no-semantic` |
 | 开发者调用 | `python -m tools.search_journals --query "关键词"` |
 | 运行单元测试 | `python -m pytest tests/unit/ -v` |
+
+> **提示**: 开发者可以先 `source .venv/bin/activate`，之后所有命令无需 `.venv/bin/` 前缀。
 
 </details>
 
@@ -371,13 +381,19 @@ pip install -e .
 → 用 `"/life-index" + 意图词`（例如：`/life-index 记日志：...`）
 
 **工具执行报错（ModuleNotFoundError）**  
-→ 确认你在技能根目录（包含 SKILL.md 和 tools/ 的目录）下执行命令
+→ 确认使用 `.venv/bin/python`（而非系统 python）执行命令，且在技能根目录下
 
 **日志没有写入 ~/Documents/Life-Index/**  
-→ 在技能根目录运行 `python -m tools.query_weather --location "Beijing,China"` 确认工具可用
+→ 在技能根目录运行 `.venv/bin/python -m tools.query_weather --location "Beijing,China"` 确认工具可用
 
 **语义搜索不可用**  
-→ 确认已安装 `fastembed`：`pip install fastembed`（`pip install -e .` 已自动包含）
+→ 运行 `.venv/bin/life-index health` 检查 fastembed 是否已安装
+
+**venv 损坏（Python 升级后、迁移系统后）**  
+→ 删除 `.venv` 目录，重新执行 `python3 -m venv .venv && .venv/bin/pip install -e .`
+
+**安装健康检查**  
+→ 运行 `.venv/bin/life-index health` 查看所有检查项的状态
 
 **权限错误**  
 → Windows: 以管理员身份运行终端 | Linux/macOS: `chmod -R 755 ~/Documents/Life-Index`

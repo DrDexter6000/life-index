@@ -286,23 +286,29 @@ Please complete the following installation and initialization steps:
    cd <skills-directory>/life-index
    rm -rf tests/ conftest.py docs/archive/ .github/ .vscode/ .agents/ .opencode/ .sisyphus/ .cowork-temp/ .pytest_cache/ .ruff_cache/ .coverage htmlcov/ cov_report/ dist/ life_index.egg-info/ __pycache__/ assets/ nul README.md README.en.md AGENTS.md .clawhubignore
 
-3) Install Python dependencies (requires Python 3.11+)
-   pip install -e .
+3) Create Python virtual environment and install dependencies (requires Python 3.11+)
+   python3 -m venv .venv
+   .venv/bin/pip install -e .
+   Note: On Windows use .venv\Scripts\pip install -e .
 
 4) Verify the installation (run these commands in order, all should return normal results):
-   - python -c "from fastembed import TextEmbedding; print('fastembed OK')"
-   - python -m tools.query_weather --location "Beijing,China"
-   - life-index --help
+   - .venv/bin/python -c "from fastembed import TextEmbedding; print('fastembed OK')"
+   - .venv/bin/python -m tools.query_weather --location "Beijing,China"
+   - .venv/bin/life-index health
+   Note: On Windows replace .venv/bin/ with .venv\Scripts\
 
-5) Initialize the search index (required on first use; subsequent journal writes auto-update)
-   life-index index
+5) Initialize the search index (first run will auto-download ~80MB embedding model, may take 1-3 minutes, please be patient)
+   .venv/bin/life-index index
 
-6) Tell me the installation result and index status, and how I can write my first journal entry
+6) Tell me the installation result and health check output. Then read the SKILL.md file in the skill root directory, and based on the "Quick CLI Reference" section, tell me how to write my first journal entry
 
 Notes:
+- Depending on network conditions, the entire installation may take 5-10 minutes (mainly downloading dependencies and embedding model)
 - Journal data is automatically written to ~/Documents/Life-Index/, physically separated from skill code
 - All tool commands must be run from the skill root directory (the directory containing SKILL.md)
-- If you encounter ModuleNotFoundError, it means step 3's pip install did not execute successfully
+- All Python/CLI commands must be called with .venv/bin/ prefix (Windows: .venv\Scripts\)
+- If you encounter ModuleNotFoundError, confirm you're using .venv/bin/python instead of system python
+- If .venv is corrupted (e.g., after Python version upgrade), delete the .venv directory and re-run step 3 to fix
 ```
 
 > **Journal data is automatically written to `~/Documents/Life-Index/`**, physically separated from skill code. Even if you uninstall the skill, your journal data is never lost.
@@ -316,26 +322,31 @@ Notes:
 
 **For** — Those who need local debugging, code changes, and test runs.
 
-**Install (dev mode)** —
+**One-click install steps (dev mode)** —
 
 ```bash
 git clone https://github.com/DrDexter6000/life-index.git
 cd life-index
 
-# Core dependencies + editable install (semantic search included)
-pip install -e .
+# Create virtual environment + editable install (semantic search included)
+python3 -m venv .venv
+.venv/bin/pip install -e .    # Windows: .venv\Scripts\pip install -e .
 ```
 
 ### Developer Commands
 
 | Action | Command |
 |:---|:---|
+| Activate virtual environment | `source .venv/bin/activate` (Windows: `.venv\Scripts\activate`) |
 | Unified CLI (recommended) | `life-index --help` |
+| Health check | `life-index health` |
 | Write journal | `life-index write --data '{...}'` |
 | Search journals (keyword+semantic) | `life-index search --query "keyword"` |
 | Keyword-only search | `life-index search --query "keyword" --no-semantic` |
 | Dev mode invocation | `python -m tools.search_journals --query "keyword"` |
 | Run unit tests | `python -m pytest tests/unit/ -v` |
+
+> **Tip**: Developers can run `source .venv/bin/activate` first, then all commands don't need the `.venv/bin/` prefix.
 
 </details>
 
@@ -368,13 +379,19 @@ pip install -e .
 → Use `"/life-index" + intent keyword` (e.g.: `/life-index write journal: ...`)
 
 **Tool error (ModuleNotFoundError)**  
-→ Make sure you're in the skill root directory (the one containing SKILL.md and tools/) when running commands
+→ Confirm using `.venv/bin/python` (instead of system python) to execute commands, and in the skill root directory
 
 **Journals not written to ~/Documents/Life-Index/**  
-→ Run `python -m tools.query_weather --location "Beijing,China"` from the skill root to verify tools work
+→ Run `.venv/bin/python -m tools.query_weather --location "Beijing,China"` from the skill root to verify tools work
 
 **Semantic search unavailable**  
-→ Confirm `fastembed` is installed: `pip install fastembed` (`pip install -e .` includes it automatically)
+→ Run `.venv/bin/life-index health` to check if fastembed is installed
+
+**venv corrupted (after Python upgrade, system migration)**  
+→ Delete `.venv` directory, then re-run `python3 -m venv .venv && .venv/bin/pip install -e .`
+
+**Installation health check**  
+→ Run `.venv/bin/life-index health` to view status of all check items
 
 **Permission errors**  
 → Windows: Run terminal as Administrator | Linux/macOS: `chmod -R 755 ~/Documents/Life-Index`

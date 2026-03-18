@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 # 导入配置 (relative imports from parent tools package)
-from ..lib.config import USER_DATA_DIR, ensure_dirs
+from ..lib.config import USER_DATA_DIR, ensure_dirs, get_model_cache_dir
 from ..lib.search_index import (
     update_index as update_fts_index,
     get_stats as get_fts_stats,
@@ -188,7 +188,7 @@ def show_stats() -> None:
             logger.info(f"  Note: Install fastembed for semantic search")
 
     logger.info("\n💾 Cache Directory:")
-    cache_dir = USER_DATA_DIR / ".cache" / "models"
+    cache_dir = get_model_cache_dir()
     if cache_dir.exists():
         total_size = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file())
         logger.info(f"  Location: {cache_dir}")
