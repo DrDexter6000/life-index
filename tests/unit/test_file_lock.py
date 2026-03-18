@@ -210,6 +210,7 @@ class TestFileLockAcquireUnix:
         os.close(lock2._file_handle)
 
 
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
 class TestFileLockAcquireWindows:
     """Tests for Windows-specific lock acquisition"""
 
@@ -797,6 +798,7 @@ class TestFileLockEdgeCases:
 class TestFileLockWindowsBlocking:
     """Tests for Windows blocking mode with various scenarios"""
 
+    @pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
     def test_acquire_windows_blocking_with_timeout_times_out(self, tmp_path):
         """Windows blocking with timeout should return False on timeout"""
         lock_path = tmp_path / "test.lock"
@@ -819,6 +821,7 @@ class TestFileLockWindowsBlocking:
 class TestFileLockExceptionCleanup:
     """Tests for exception handling and cleanup"""
 
+    @pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
     def test_acquire_re_raises_lock_acquisition_error(self, tmp_path):
         """Should raise LockAcquisitionError in non-blocking mode"""
         lock_path = tmp_path / "test.lock"
@@ -838,6 +841,7 @@ class TestFileLockExceptionCleanup:
             except (OSError, TypeError):
                 pass
 
+    @pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
     def test_acquire_cleans_up_on_exception_in_windows_acquire(self, tmp_path):
         """Should clean up file handle on unexpected exception during Windows acquire"""
         lock_path = tmp_path / "test.lock"
@@ -855,6 +859,7 @@ class TestFileLockExceptionCleanup:
             assert lock._file_handle is None
             assert lock._locked is False
 
+    @pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
     def test_acquire_cleans_up_file_handle_on_unexpected_error(self, tmp_path):
         """Should clean up file handle on unexpected error during acquire"""
         lock_path = tmp_path / "test.lock"
