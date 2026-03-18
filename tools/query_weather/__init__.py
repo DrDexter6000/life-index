@@ -253,12 +253,9 @@ def query_weather(
     return result
 
 
-from .__main__ import main
-
 __all__ = [
     "query_weather",
     "geocode_location",
     "get_weather_code_description",
     "simplify_weather",
-    "main",
 ]

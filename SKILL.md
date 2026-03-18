@@ -35,27 +35,34 @@ triggers:
 
 ## Quick CLI Reference
 
-**⚠️ 所有命令须在技能根目录（本文件所在目录）下执行。禁止在其他目录执行、使用绝对路径调用脚本。**
+**⚠️ 所有命令须在技能根目录（本文件所在目录）下执行。所有 Python/CLI 命令必须通过虚拟环境调用。**
+
+**跨平台 venv 路径规则**：
+- **Linux/macOS/WSL**: `.venv/bin/life-index` 或 `.venv/bin/python`
+- **Windows**: `.venv\Scripts\life-index` 或 `.venv\Scripts\python`
 
 ```bash
-# 推荐（pip install 后）
-life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
-life-index search --query "关键词" --topic work --level 3
-life-index search --query "学习"  # 语义搜索默认启用
-life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
-life-index abstract --month 2026-03
-life-index weather --location "Lagos,Nigeria"
-life-index index           # 增量更新
-life-index index --rebuild # 全量重建
+# 统一 CLI（推荐）
+.venv/bin/life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
+.venv/bin/life-index search --query "关键词" --topic work --level 3
+.venv/bin/life-index search --query "学习"  # 语义搜索默认启用
+.venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
+.venv/bin/life-index abstract --month 2026-03
+.venv/bin/life-index weather --location "Lagos,Nigeria"
+.venv/bin/life-index index           # 增量更新
+.venv/bin/life-index index --rebuild # 全量重建
+.venv/bin/life-index health          # 安装健康检查
 
-# 开发者模式（无需安装）
-python -m tools.write_journal --data '{...}'
-python -m tools.search_journals --query "关键词"
-python -m tools.edit_journal --journal "..."
-python -m tools.generate_abstract --month 2026-03
-python -m tools.query_weather --location "Lagos,Nigeria"
-python -m tools.build_index
+# 开发者模式
+.venv/bin/python -m tools.write_journal --data '{...}'
+.venv/bin/python -m tools.search_journals --query "关键词"
+.venv/bin/python -m tools.edit_journal --journal "..."
+.venv/bin/python -m tools.generate_abstract --month 2026-03
+.venv/bin/python -m tools.query_weather --location "Lagos,Nigeria"
+.venv/bin/python -m tools.build_index
 ```
+
+**故障恢复**: 如果命令报 `ModuleNotFoundError` 或 venv 异常，运行 `.venv/bin/life-index health` 诊断。若 health 命令本身失败，说明 venv 损坏，删除 `.venv/` 后重新创建：`python3 -m venv .venv && .venv/bin/pip install -e .`
 
 ---
 
@@ -77,8 +84,10 @@ life-index/                         # 技能根目录
 ```
 
 **关键约定**：
+- **虚拟环境**: 所有命令通过 `.venv/bin/`（Windows: `.venv\Scripts\`）前缀调用
 - **用户数据目录**: `~/Documents/Life-Index/`（日志、附件、索引，与代码物理隔离）
 - **跨平台路径**: 自动处理（Agent 传原始路径即可，工具自动转换 Windows↔WSL）
+- **健康检查**: 遇到异常时先运行 `.venv/bin/life-index health` 诊断
 
 ---
 
@@ -259,9 +268,9 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 场景 | 操作 |
 |:---|:---|
 | 日常写入 | 无需手动维护（Write-Through 自动更新） |
-| 搜索结果异常/缺失 | `life-index index --rebuild` 全量重建 |
-| 首次安装 | `life-index index` 初始化索引 |
-| 手动编辑过日志文件 | `life-index index` 增量更新 |
+| 搜索结果异常/缺失 | `.venv/bin/life-index index --rebuild` 全量重建 |
+| 首次安装 | `.venv/bin/life-index index` 初始化索引 |
+| 手动编辑过日志文件 | `.venv/bin/life-index index` 增量更新 |
 
 ---
 
