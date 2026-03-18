@@ -299,6 +299,8 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
    - .venv/bin/life-index health
    注意：Windows 上把 .venv/bin/ 替换为 .venv\Scripts\
 
+   说明：fresh install 时，如果你在执行第 5 步之前先运行 `life-index health`，看到 `status: "degraded"` 且提示数据目录/索引尚不存在，这是正常现象；完成第 5 步后再运行一次 health，预期应为健康状态。
+
 5) 初始化搜索索引（首次执行会自动下载 ~80MB 嵌入模型，可能需要 1-3 分钟，请耐心等待）
    .venv/bin/life-index index
 
@@ -308,9 +310,10 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 - 根据网络条件不同，整个安装过程可能耗时 5~10 分钟（主要是下载依赖和嵌入模型）
 - 日志数据会自动写入 ~/Documents/Life-Index/，与技能代码物理隔离
 - 所有工具命令必须在技能根目录下执行（包含 SKILL.md 的目录）
-- 所有 Python/CLI 命令必须通过 .venv/bin/（Windows: .venv\Scripts\）前缀调用
+- 所有 Python/CLI 命令必须通过 .venv/bin/（Windows: **优先使用** .venv\Scripts\）前缀调用
 - 如果遇到 ModuleNotFoundError，请确认使用了 .venv/bin/python 而非系统 python
 - 如果 .venv 损坏（如 Python 版本升级后），删除 .venv 目录后重新执行第 3 步即可修复
+- Windows 首次写日志时，如遇到 PowerShell JSON 转义麻烦，推荐先把 JSON 保存为文件，再执行 `life-index write --data @first-entry.json`
 ```
 
 > **日志数据自动写入 `~/Documents/Life-Index/`**，与技能代码物理隔离。即使卸载技能，你的日志数据也不会丢失。
@@ -383,8 +386,14 @@ python3 -m venv .venv
 **工具执行报错（ModuleNotFoundError）**  
 → 确认使用 `.venv/bin/python`（而非系统 python）执行命令，且在技能根目录下
 
+**fresh install 时 health 显示 degraded**  
+→ 如果还没执行 `life-index index`，这是正常现象；先初始化索引，再重新运行 health
+
 **日志没有写入 ~/Documents/Life-Index/**  
 → 在技能根目录运行 `.venv/bin/python -m tools.query_weather --location "Beijing,China"` 确认工具可用
+
+**Windows 下 `write --data '{...}'` 很难转义**  
+→ 优先改用 `life-index write --data @first-entry.json`
 
 **语义搜索不可用**  
 → 运行 `.venv/bin/life-index health` 检查 fastembed 是否已安装

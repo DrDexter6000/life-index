@@ -39,7 +39,7 @@ triggers:
 
 **跨平台 venv 路径规则**：
 - **Linux/macOS/WSL**: `.venv/bin/life-index` 或 `.venv/bin/python`
-- **Windows**: `.venv\Scripts\life-index` 或 `.venv\Scripts\python`
+- **Windows**: `.venv\Scripts\life-index` 或 `.venv\Scripts\python`（首次排障/验证时优先显式使用此路径）
 
 ```bash
 # 统一 CLI（推荐）
@@ -53,6 +53,9 @@ triggers:
 .venv/bin/life-index index --rebuild # 全量重建
 .venv/bin/life-index health          # 安装健康检查
 
+# Windows 首次写入更稳妥的方式
+.venv\Scripts\life-index write --data @first-entry.json
+
 # 开发者模式
 .venv/bin/python -m tools.write_journal --data '{...}'
 .venv/bin/python -m tools.search_journals --query "关键词"
@@ -63,6 +66,11 @@ triggers:
 ```
 
 **故障恢复**: 如果命令报 `ModuleNotFoundError` 或 venv 异常，运行 `.venv/bin/life-index health` 诊断。若 health 命令本身失败，说明 venv 损坏，删除 `.venv/` 后重新创建：`python3 -m venv .venv && .venv/bin/pip install -e .`
+
+**Fresh install 提示**:
+- 如果在首次执行 `.venv/bin/life-index index` 之前先运行 `health`，看到 `status: "degraded"` 且数据目录/索引不存在，这是正常现象
+- 完成 `index` 初始化后再次运行 `health`，预期应恢复为健康状态
+- Windows 首次 `write --data '{...}'` 如遇 JSON 转义麻烦，优先使用 `--data @file.json`
 
 ---
 

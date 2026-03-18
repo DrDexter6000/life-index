@@ -49,7 +49,8 @@ def convert_path_for_platform(source_path: str) -> str:
         if win_match:
             drive, rest = win_match.groups()
             # 转换: C:\Users\... → /mnt/c/Users/...
-            wsl_path = f"/mnt/{drive.lower()}/{rest.replace('\\', '/')}"
+            normalized_rest = rest.replace("\\", "/")
+            wsl_path = f"/mnt/{drive.lower()}/{normalized_rest}"
 
             # 保守策略: 只有转换后的路径确实存在时才使用
             if os.path.exists(wsl_path):
@@ -62,7 +63,8 @@ def convert_path_for_platform(source_path: str) -> str:
         if wsl_match:
             drive, rest = wsl_match.groups()
             # 转换: /mnt/c/Users/... → C:\Users\...
-            win_path = f"{drive.upper()}:\\{rest.replace('/', '\\')}"
+            normalized_rest = rest.replace("/", "\\")
+            win_path = f"{drive.upper()}:\\{normalized_rest}"
 
             # 保守策略: 只有转换后的路径确实存在时才使用
             if os.path.exists(win_path):

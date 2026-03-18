@@ -1,0 +1,399 @@
+# Agent Onboarding Guide: Life Index Installation
+
+> **Document Purpose**: Step-by-step operational instructions for AI agents installing Life Index on behalf of users.
+> **Audience**: External AI agents (not humans)
+> **Scope**: Complete installation, initialization, and first-use verification
+> **SSOT References**: `SKILL.md`, `docs/API.md`, `docs/review/execution/ONBOARDING_CHECKLIST.md`
+
+---
+
+## 1. Goal
+
+Install and initialize Life Index on the user's machine, verify the installation is functional, and complete the first write/search cycle to confirm end-to-end operation.
+
+You are acting on behalf of a user. Your job is to execute the installation workflow safely, verify each stage, and report the result back clearly.
+
+Before taking any action, read this entire document once.
+
+---
+
+## 2. Prerequisites
+
+Before starting, verify these requirements are met:
+
+| Requirement | Verification Command | Minimum Version |
+|:---|:---|:---|
+| Python | `python3 --version` or `python --version` | 3.11+ |
+| Git | `git --version` | Any recent |
+| Disk space | ~200MB available | For code, venv, and embedding model |
+| Network | Internet connection | For cloning and model download |
+
+**Action**: Run the verification commands. If any fail, stop and report the missing prerequisite to the user.
+
+---
+
+## 3. Repository Location
+
+- **Primary**: `https://github.com/DrDexter6000/life-index`
+- **Clone target**: User-specified skill directory, or current working directory if unspecified
+
+---
+
+## 4. Installation Steps
+
+Execute these steps in order. Do not skip steps.
+
+### Step 4.1: Clone Repository
+
+```bash
+git clone --depth 1 https://github.com/DrDexter6000/life-index.git <target-directory>/life-index
+cd <target-directory>/life-index
+```
+
+**Success Criteria**:
+- Repository cloned without errors
+- Current working directory is now the repository root
+- `SKILL.md` and `pyproject.toml` exist in this directory
+
+**Failure Handling**:
+- If clone fails: Check network, retry once, then report to user
+- If files missing: Delete partial clone and retry
+
+---
+
+### Step 4.2: Create Virtual Environment
+
+```bash
+python3 -m venv .venv
+```
+
+**Success Criteria**:
+- `.venv/` directory created
+- No errors in output
+
+**Failure Handling**:
+- If Python not found: Try `python -m venv .venv` (Windows) or `py -3 -m venv .venv`
+- If permission denied: Report to user with exact error
+
+---
+
+### Step 4.3: Install Package (Editable Mode)
+
+**Linux/macOS/WSL**:
+```bash
+.venv/bin/pip install -e .
+```
+
+**Windows**:
+```powershell
+.venv\Scripts\pip install -e .
+```
+
+**Success Criteria**:
+- Installation completes with "Successfully installed life-index"
+- Dependencies installed (pyyaml, fastembed, numpy)
+- No red error messages
+
+**Failure Handling**:
+- If `pip` not found: Virtual environment may be corrupted, delete `.venv/` and recreate
+- If dependency fails: Retry once, then report to user
+
+---
+
+## 5. Virtual Environment Usage Rules
+
+**CRITICAL**: All subsequent commands MUST use the venv Python/CLI, not system Python.
+
+| Platform | Python Path | CLI Path |
+|:---|:---|:---|
+| Linux/macOS/WSL | `.venv/bin/python` | `.venv/bin/life-index` |
+| Windows | `.venv\Scripts\python` | `.venv\Scripts\life-index` |
+
+**Guardrail**: If you see `ModuleNotFoundError` at any point, you are likely using system Python instead of venv Python. Switch to the venv path.
+
+---
+
+## 6. Windows Path Preference
+
+On Windows, the path separator is backslash (`\`), not forward slash (`/`). The executable directory is `Scripts`, not `bin`.
+
+**Correct**: `.venv\Scripts\life-index`
+**Incorrect**: `.venv/bin/life-index` (will fail on Windows)
+
+---
+
+## 7. Initialization Workflow
+
+Execute these steps in order. Each step must succeed before proceeding.
+
+### Step 7.1: Build Index (Initialization)
+
+```bash
+# Linux/macOS:
+.venv/bin/life-index index
+
+# Windows:
+.venv\Scripts\life-index index
+```
+
+**What Happens**:
+1. Creates `~/Documents/Life-Index/` directory structure
+2. Downloads ~80MB embedding model (first run only, takes 1-3 minutes)
+3. Initializes FTS5 and vector indexes
+
+**Success Criteria**:
+- Command completes without errors
+- Progress shown for model download (if first run)
+- Returns success message
+
+**Expected Wait**: 1-3 minutes for model download on first run. Do not interrupt.
+
+**Failure Handling**:
+- If hangs >5 minutes: Report "model download timeout" to user
+- If errors: Capture full output and report
+
+---
+
+### Step 7.2: Health Check
+
+```bash
+# Linux/macOS:
+.venv/bin/life-index health
+
+# Windows:
+.venv\Scripts\life-index health
+```
+
+**Success Criteria**:
+- `success: true`
+- `status` is "healthy" or "degraded" (not "unhealthy")
+- No critical errors in the returned `issues` list
+
+**Known Nuance**: Pre-init `health` may legitimately report "degraded" before initial indexing. This is expected and acceptable. The post-init health check (after Step 7.1) should show "healthy" or acceptable "degraded" state.
+
+**Acceptable Warnings**:
+- `virtual_env: "warning"` — Expected if running via full path
+- `fastembed: "warning"` — Optional; search works without semantic features
+
+**Failure Handling**:
+- If `status: "unhealthy"`: Capture all issues and report to user
+- If `ModuleNotFoundError`: Venv not being used, return to Step 5
+
+---
+
+### Step 7.3: First Write
+
+Create the first journal entry to verify write functionality.
+
+**Linux/macOS**:
+```bash
+.venv/bin/life-index write --data '{
+  "title": "First Journal Entry",
+  "content": "Today I set up Life Index. Looking forward to recording my journey.",
+  "date": "2026-03-18",
+  "topic": ["life"],
+  "abstract": "Initial setup of Life Index journaling system.",
+  "mood": ["hopeful"],
+  "tags": ["setup"],
+  "people": [],
+  "project": "",
+  "links": []
+}'
+```
+
+**Windows (Recommended: File-based)**:
+```powershell
+# Create JSON file first (avoids escaping issues)
+$json = @'
+{
+  "title": "First Journal Entry",
+  "content": "Today I set up Life Index. Looking forward to recording my journey.",
+  "date": "2026-03-18",
+  "topic": ["life"],
+  "abstract": "Initial setup of Life Index journaling system.",
+  "mood": ["hopeful"],
+  "tags": ["setup"],
+  "people": [],
+  "project": "",
+  "links": []
+}
+'@
+$json | Out-File -FilePath "first-entry.json" -Encoding utf8
+.venv\Scripts\life-index write --data @first-entry.json
+```
+
+**Success Criteria**:
+- `success: true`
+- `journal_path` returned with valid path
+- File exists at `~/Documents/Life-Index/Journals/YYYY/MM/life-index_YYYY-MM-DD_001.md`
+- If `needs_confirmation` is returned, include the confirmation message in your final report instead of inventing your own summary
+
+**Failure Handling**:
+- If JSON parse error: On Windows, use file-based input (`@file.json`)
+- If missing required fields error: Include all fields shown in example
+- If write fails: Capture error code and report
+
+---
+
+### Step 7.4: First Search
+
+Verify the entry can be retrieved via search.
+
+```bash
+# Linux/macOS:
+.venv/bin/life-index search --query "First Journal"
+
+# Windows:
+.venv\Scripts\life-index search --query "First Journal"
+```
+
+**Success Criteria**:
+- `success: true`
+- Returned search payload includes at least one matching result
+- The entry just written appears in the returned results
+
+**Failure Handling**:
+- If `total: 0`: Run `.venv/bin/life-index index` (or Windows equivalent) to rebuild index, then retry search
+- If errors: Capture and report
+
+---
+
+## 8. Success Criteria Summary
+
+| Step | Success Indicator |
+|:---|:---|
+| Clone | Repository exists, `SKILL.md` present |
+| Venv | `.venv/` directory created |
+| Install | "Successfully installed life-index" message |
+| Index | Command completes, model downloaded |
+| Health | `success: true`, `status` not "unhealthy" |
+| First Write | `success: true`, `journal_path` returned |
+| First Search | `success: true`, `total` >= 1, entry found |
+
+---
+
+## 9. Common Failure Handling
+
+### ModuleNotFoundError
+
+**Cause**: Using system Python instead of venv Python
+**Fix**: Use `.venv/bin/python` (Linux/macOS) or `.venv\Scripts\python` (Windows)
+
+### JSON Parse Error (Windows)
+
+**Cause**: PowerShell escaping issues
+**Fix**: Use file-based input: `--data @file.json`
+
+### Index Build Hangs
+
+**Cause**: Downloading ~80MB embedding model
+**Fix**: Wait 1-3 minutes, do not interrupt
+
+### No Search Results
+
+**Cause**: Index not built or corrupted
+**Fix**: Run `life-index index` to rebuild
+
+### Health Shows "degraded"
+
+**Cause**: Data directory, search index, or embedding model is not fully initialized yet
+**Fix**: If this happened before the initial `life-index index`, continue with indexing. If it still happens after indexing, include the issues list in the final report.
+
+### Venv Corrupted
+
+**Cause**: Python version change or interrupted install
+**Fix**: Delete `.venv/` directory, recreate with `python3 -m venv .venv`, reinstall with `pip install -e .`
+
+---
+
+## 10. Final Report Format
+
+Report back to the user using this exact structure:
+
+```
+## Life Index Installation Complete
+
+**Status**: ✅ Success (or ❌ Failed with errors)
+
+**Installation Location**: <full path to life-index directory>
+
+**Data Directory**: ~/Documents/Life-Index/
+
+**Health Check**: <healthy/degraded/unhealthy>
+- Python version: <version>
+- Virtual environment: <active/inactive>
+- Dependencies: <all installed/missing: X>
+
+**First Journal**: <path to first entry>
+- Title: <title>
+- Date: <date>
+- Location: <location>
+- Weather: <weather>
+
+**Search Test**: <passed/failed>
+- Query: "First Journal"
+- Results found: <number>
+
+**Next Steps**:
+1. Life Index is ready to use via: `.venv/bin/life-index <command>`
+2. Available commands: write, search, edit, abstract, weather, index, health
+3. See SKILL.md in the installation directory for full documentation
+
+**Notes**:
+- <any warnings or non-blocking issues>
+- <reminder about Windows path syntax if applicable>
+- <whether `needs_confirmation` was returned by first write>
+```
+
+---
+
+## 11. Guardrails (Strict)
+
+### Do NOT:
+- Modify any files outside the installation workflow
+- Delete user data in `~/Documents/Life-Index/` if it exists
+- Install additional dependencies not specified in `pyproject.toml`
+- Require `gh` CLI or any GitHub-specific tools
+- Create MCP server configurations (not supported)
+- Modify repository source code during installation
+- Skip the health check or first write/search verification
+
+### Do:
+- Keep all user data in `~/Documents/Life-Index/` (separate from code)
+- Use venv paths exclusively for all commands
+- Report exact error messages on failure
+- Verify each step before proceeding
+- Clean up partial installations on failure (if requested by user)
+- Stop immediately if prerequisites are missing or a command fails twice in the same step
+
+---
+
+## 12. Data Locations Reference
+
+| Location | Path |
+|:---|:---|
+| Journals | `~/Documents/Life-Index/Journals/` |
+| Attachments | `~/Documents/Life-Index/attachments/` |
+| Index | `~/Documents/Life-Index/.index/` |
+| Config (optional) | `~/Documents/Life-Index/.life-index/config.yaml` |
+
+---
+
+## 13. CLI Quick Reference
+
+| Command | Purpose |
+|:---|:---|
+| `life-index health` | Installation health check |
+| `life-index index` | Build/update search index |
+| `life-index index --rebuild` | Full index rebuild |
+| `life-index write --data '{...}'` | Write new journal entry |
+| `life-index search --query "..."` | Search journals |
+| `life-index edit --journal "..." --set-weather "..."` | Edit existing entry |
+| `life-index abstract --month YYYY-MM` | Generate monthly summary |
+| `life-index weather --location "..."` | Query weather for location |
+
+---
+
+**Document Version**: 1.0
+**Last Updated**: 2026-03-19
+**SSOT**: `SKILL.md`, `docs/API.md`, `docs/review/execution/ONBOARDING_CHECKLIST.md`

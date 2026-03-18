@@ -337,10 +337,14 @@ class TestEditJournal:
             "---\ntitle: Test\ndate: 2026-03-14\n---\n\n# Content\n", encoding="utf-8"
         )
 
-        result = edit_journal(journal, {}, append_content="New paragraph")
+        with patch(
+            "tools.edit_journal.update_vector_index", return_value=False
+        ) as mock_update:
+            result = edit_journal(journal, {}, append_content="New paragraph")
 
         assert result["success"] is True
         assert result["content_modified"] is True
+        mock_update.assert_called_once()
 
         content = journal.read_text(encoding="utf-8")
         assert "New paragraph" in content
@@ -355,10 +359,16 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        result = edit_journal(journal, {}, replace_content="# New Content\n\nReplaced.")
+        with patch(
+            "tools.edit_journal.update_vector_index", return_value=False
+        ) as mock_update:
+            result = edit_journal(
+                journal, {}, replace_content="# New Content\n\nReplaced."
+            )
 
         assert result["success"] is True
         assert result["content_modified"] is True
+        mock_update.assert_called_once()
 
         content = journal.read_text(encoding="utf-8")
         assert "Old Content" not in content

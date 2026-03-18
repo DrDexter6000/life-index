@@ -12,6 +12,16 @@ from .core import hierarchical_search
 from ..lib.config import ensure_dirs
 
 
+def _emit_json(payload: dict) -> None:
+    """Print JSON safely across Windows console encodings."""
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        fallback_text = json.dumps(payload, ensure_ascii=True, indent=2)
+        print(fallback_text)
+
+
 def main() -> None:
     """CLI entry point"""
     parser = argparse.ArgumentParser(
@@ -110,7 +120,7 @@ Examples:
         result["total_found"] = len(result["merged_results"])
 
     # 输出结果
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    _emit_json(result)
 
     sys.exit(0 if result.get("success") else 1)
 
