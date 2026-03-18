@@ -270,51 +270,40 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 
 <br>
 
-**适用人群** —— 只想“安装后立刻用”，不需要改代码。
+**适用人群** —— 只想“把项目交给自己的 Agent 安装并初始化”，不需要自己改代码。
 
-**一键安装** —— 把下面整段话直接复制给你的 Agent（OpenClaw、Claude Desktop、Cursor 等均可），然后回车：
+**推荐方式** —— 先让你的 Agent 阅读仓库根目录的 `AGENT_ONBOARDING.md`，再按其中步骤执行安装、初始化、首写入、首搜索与最终汇报。
+
+**复制给你的 Agent** —— 把下面这段话直接发给你的 Agent（OpenClaw、Claude Desktop、Cursor 等均可）：
 
 ```text
-请帮我安装 Life Index 技能（个人生活日志系统）。
+请阅读并严格按照这个仓库里的 `AGENT_ONBOARDING.md` 执行 Life Index 的安装和初始化：
+https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
-仓库地址：https://github.com/DrDexter6000/life-index
+要求：
+1. 先完整阅读该文档，再开始执行
+2. 按顺序完成 clone、venv、install、index、health、first write、first search
+3. 所有 Python/CLI 命令都必须使用虚拟环境路径
+4. 每一步都先验证成功，再进入下一步
+5. 如果某一步失败，停止并报告精确错误
+6. 不要修改安装流程之外的文件，也不要改仓库源码
 
-请按以下步骤完成安装和初始化：
-
-1) 将仓库克隆到你的技能目录（浅克隆，节省空间）
-   git clone --depth 1 https://github.com/DrDexter6000/life-index.git <你的技能目录>/life-index
-
-2) 进入技能目录，删除运行时不需要的开发文件（减少约 60% 体积）
-   cd <技能目录>/life-index
-   rm -rf tests/ conftest.py docs/archive/ .github/ .vscode/ .agents/ .opencode/ .sisyphus/ .cowork-temp/ .pytest_cache/ .ruff_cache/ .coverage htmlcov/ cov_report/ dist/ life_index.egg-info/ __pycache__/ assets/ nul README.md README.en.md AGENTS.md .clawhubignore
-
-3) 创建 Python 虚拟环境并安装依赖（需要 Python 3.11+）
-   python3 -m venv .venv
-   .venv/bin/pip install -e .
-   注意：Windows 上用 .venv\Scripts\pip install -e .
-
-4) 验证安装是否成功（依次执行以下命令，全部应返回正常结果）：
-   - .venv/bin/python -c "from fastembed import TextEmbedding; print('fastembed OK')"
-   - .venv/bin/python -m tools.query_weather --location "Beijing,China"
-   - .venv/bin/life-index health
-   注意：Windows 上把 .venv/bin/ 替换为 .venv\Scripts\
-
-   说明：fresh install 时，如果你在执行第 5 步之前先运行 `life-index health`，看到 `status: "degraded"` 且提示数据目录/索引尚不存在，这是正常现象；完成第 5 步后再运行一次 health，预期应为健康状态。
-
-5) 初始化搜索索引（首次执行会自动下载 ~80MB 嵌入模型，可能需要 1-3 分钟，请耐心等待）
-   .venv/bin/life-index index
-
-6) 告诉我安装结果和 health 检查输出。然后阅读技能根目录下的 SKILL.md 文件，根据其中 "Quick CLI Reference" 部分的内容，告诉我该如何记录第一篇日志
-
-注意事项：
-- 根据网络条件不同，整个安装过程可能耗时 5~10 分钟（主要是下载依赖和嵌入模型）
-- 日志数据会自动写入 ~/Documents/Life-Index/，与技能代码物理隔离
-- 所有工具命令必须在技能根目录下执行（包含 SKILL.md 的目录）
-- 所有 Python/CLI 命令必须通过 .venv/bin/（Windows: **优先使用** .venv\Scripts\）前缀调用
-- 如果遇到 ModuleNotFoundError，请确认使用了 .venv/bin/python 而非系统 python
-- 如果 .venv 损坏（如 Python 版本升级后），删除 .venv 目录后重新执行第 3 步即可修复
-- Windows 首次写日志时，如遇到 PowerShell JSON 转义麻烦，推荐先把 JSON 保存为文件，再执行 `life-index write --data @first-entry.json`
+最后请按 `AGENT_ONBOARDING.md` 里的 Final Report Format 向我汇报结果。
 ```
+
+**你也可以直接把整个 `AGENT_ONBOARDING.md` 文件发给你的 Agent。** 如果你的 Agent 支持读取 GitHub 仓库文件，优先让它直接读取该文件；如果不支持，就把文件内容复制给它。
+
+**安装完成后，Agent 应至少完成这些验证**：
+- `life-index index` 跑通
+- `life-index health` 返回 `success: true`
+- 完成 first write
+- 完成 first search
+
+**已知说明**：
+- fresh install 时，如果在初次 `index` 之前先运行 `life-index health`，返回 `status: "degraded"` 是正常现象
+- Windows 上应优先使用 `.venv\Scripts\...`
+- Windows 首次写日志时，推荐 `life-index write --data @first-entry.json`
+- 日志数据默认写入 `~/Documents/Life-Index/`，与仓库代码物理隔离
 
 > **日志数据自动写入 `~/Documents/Life-Index/`**，与技能代码物理隔离。即使卸载技能，你的日志数据也不会丢失。
 

@@ -268,51 +268,42 @@ Life Index follows a "local-first" and "data-program separation" strategy:
 
 <br>
 
-**For** — Anyone who just wants to "install and start using", no coding needed.
+**For** — Anyone who wants their own Agent to install and initialize Life Index, without manually stepping through setup.
 
-**One-click install** — Copy the entire block below and send it to your Agent (OpenClaw, Claude Desktop, Cursor, etc.), then press Enter:
+**Recommended workflow** — Have your Agent read the repository-root file `AGENT_ONBOARDING.md`, then execute the setup exactly as instructed there.
+
+**Send this to your Agent** — Copy the prompt below and paste it into your Agent (OpenClaw, Claude Desktop, Cursor, etc.):
 
 ```text
-Please install the Life Index skill (personal life journaling system).
+Please read and follow the onboarding instructions in this repository file:
+https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
-Repository: https://github.com/DrDexter6000/life-index
+Your task is to install and initialize Life Index for me by following that document exactly.
 
-Please complete the following installation and initialization steps:
+Requirements:
+1. Read the full document before taking action
+2. Complete the steps in order: clone, venv, install, index, health, first write, first search
+3. Use the repository virtual environment for all Python/CLI commands
+4. Verify each step before moving to the next one
+5. If any step fails, stop and report the exact error
+6. Do not modify unrelated files or change repository source code during installation
 
-1) Clone the repository into your skills directory (shallow clone to save space)
-   git clone --depth 1 https://github.com/DrDexter6000/life-index.git <your-skills-directory>/life-index
-
-2) Enter the skill directory and remove development files not needed at runtime (~60% size reduction)
-   cd <skills-directory>/life-index
-   rm -rf tests/ conftest.py docs/archive/ .github/ .vscode/ .agents/ .opencode/ .sisyphus/ .cowork-temp/ .pytest_cache/ .ruff_cache/ .coverage htmlcov/ cov_report/ dist/ life_index.egg-info/ __pycache__/ assets/ nul README.md README.en.md AGENTS.md .clawhubignore
-
-3) Create Python virtual environment and install dependencies (requires Python 3.11+)
-   python3 -m venv .venv
-   .venv/bin/pip install -e .
-   Note: On Windows use .venv\Scripts\pip install -e .
-
-4) Verify the installation (run these commands in order, all should return normal results):
-   - .venv/bin/python -c "from fastembed import TextEmbedding; print('fastembed OK')"
-   - .venv/bin/python -m tools.query_weather --location "Beijing,China"
-   - .venv/bin/life-index health
-   Note: On Windows replace .venv/bin/ with .venv\Scripts\
-
-   Note: On a fresh install, if you run `life-index health` before step 5, it may legitimately report `status: "degraded"` because the data directory and indexes do not exist yet. After step 5, run health again; it should become healthy.
-
-5) Initialize the search index (first run will auto-download ~80MB embedding model, may take 1-3 minutes, please be patient)
-   .venv/bin/life-index index
-
-6) Tell me the installation result and health check output. Then read the SKILL.md file in the skill root directory, and based on the "Quick CLI Reference" section, tell me how to write my first journal entry
-
-Notes:
-- Depending on network conditions, the entire installation may take 5-10 minutes (mainly downloading dependencies and embedding model)
-- Journal data is automatically written to ~/Documents/Life-Index/, physically separated from skill code
-- All tool commands must be run from the skill root directory (the directory containing SKILL.md)
-- All Python/CLI commands must be called with .venv/bin/ prefix (Windows: **prefer** .venv\Scripts\)
-- If you encounter ModuleNotFoundError, confirm you're using .venv/bin/python instead of system python
-- If .venv is corrupted (e.g., after Python version upgrade), delete the .venv directory and re-run step 3 to fix
-- On Windows, if inline JSON is awkward for the first write, prefer `life-index write --data @first-entry.json`
+At the end, report back using the Final Report Format defined in `AGENT_ONBOARDING.md`.
 ```
+
+**You can also send the full `AGENT_ONBOARDING.md` file directly to your Agent.** If your Agent can read files from GitHub, let it read that file directly. If not, copy the file contents into the chat.
+
+**Minimum verification your Agent should complete**:
+- `life-index index` runs successfully
+- `life-index health` returns `success: true`
+- the first write succeeds
+- the first search finds the newly created entry
+
+**Known notes**:
+- On a fresh install, running `life-index health` before the initial `index` may legitimately return `status: "degraded"`
+- On Windows, prefer `.venv\Scripts\...`
+- On Windows, the safest first-write pattern is `life-index write --data @first-entry.json`
+- Journal data is stored in `~/Documents/Life-Index/`, separate from the repository code
 
 > **Journal data is automatically written to `~/Documents/Life-Index/`**, physically separated from skill code. Even if you uninstall the skill, your journal data is never lost.
 
@@ -368,7 +359,7 @@ python3 -m venv .venv
 └── by-topic/                    # Auto-generated indexes
     ├── topic_think.md
     ├── project_LifeIndex.md
-    └── tag_Parenthood.md
+    └── tag_parenthood.md
 ```
 
 </details>
