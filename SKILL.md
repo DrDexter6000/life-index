@@ -200,6 +200,19 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 ## Workflows
 
+### 意图澄清（强制）
+
+当用户请求可能被解读为多种操作时，**必须先澄清再调用工具**：
+
+| 歧义类型 | 示例 | 正确处理 |
+|:---|:---|:---|
+| 写入 vs 编辑 | "把今天晚饭记进去，或者如果有了就补进去" | 先询问：是新建日志还是修改已有日志？ |
+| 编辑目标不明确 | "把那篇写深圳的日志改一下" | 先搜索确认目标，再执行编辑 |
+| 修改范围不清 | "更新一下昨天的日志" | 先确认要修改哪些字段 |
+
+❌ 错误：猜测用户意图，直接调用工具
+✅ 正确：明确意图后再调用工具
+
 ### 工作流1: 记录日志
 
 | 步骤 | 动作 | 关键检查点 | 常见错误 |
@@ -211,6 +224,24 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 5 | **检查确认** | `needs_confirmation` 为 true？ | ⚠️ **最常见错误：直接跳过** |
 | 6 | **展示确认** | 展示 `confirmation_message` | 不展示直接结束 |
 | 7 | **等待回复** | 询问用户"是否正确？" | 不询问 |
+
+**写入结果解读**：
+
+`write_journal` 返回以下状态字段，Agent必须正确解读：
+
+| 字段 | 值 | 含义 | Agent行为 |
+|:---|:---:|:---|:---|
+| `success` | true/false | 日志是否成功写入 | false → 告知用户写入失败 |
+| `needs_confirmation` | true/false | 是否需要用户确认地点/天气 | true → 展示确认信息，等待用户回复 |
+| `index_status` | complete/degraded/not_started | 索引更新状态 | degraded → 告知用户"已保存，但搜索可能暂时找不到" |
+| `side_effects_status` | complete/degraded/not_started | 附件/摘要等副作用状态 | degraded → 告知用户"已保存，但部分信息未更新" |
+| `weather_auto_filled` | true/false | 天气是否自动填充 | true → 在确认信息中标注"自动获取" |
+
+**降级状态处理示例**：
+```
+success: true, index_status: degraded
+→ "日志已保存，但索引更新遇到问题，新日志可能暂时无法被搜索到。"
+```
 
 ### 工作流2: 检索日志
 

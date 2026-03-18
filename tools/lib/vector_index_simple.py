@@ -247,9 +247,43 @@ class SimpleVectorIndex:
             try:
                 with open(VEC_INDEX_PATH, "rb") as f:
                     self.vectors = pickle.load(f)
+                # 加载后自动清理陈旧向量
+                self._cleanup_stale_vectors()
             except Exception as e:
                 print(f"Warning: Failed to load vector index: {e}")
                 self.vectors = {}
+
+    def _cleanup_stale_vectors(self) -> int:
+        """
+        清理指向不存在文件的陈旧向量。
+
+        Returns:
+            清理的向量数量
+        """
+        if not self.vectors:
+            return 0
+
+        stale_paths = []
+        for path in self.vectors.keys():
+            # 检查文件是否存在
+            # 路径可能是相对路径（相对于 USER_DATA_DIR）或绝对路径
+            file_path = Path(path)
+            if not file_path.is_absolute():
+                file_path = USER_DATA_DIR / path
+
+            if not file_path.exists():
+                stale_paths.append(path)
+
+        # 删除陈旧向量
+        for path in stale_paths:
+            del self.vectors[path]
+
+        # 如果有清理，保存索引
+        if stale_paths:
+            self._save()
+            print(f"[INFO] Cleaned {len(stale_paths)} stale vectors from index")
+
+        return len(stale_paths)
 
     def _save(self):
         """保存索引到磁盘"""
