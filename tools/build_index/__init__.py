@@ -172,8 +172,9 @@ def show_stats() -> None:
                 f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}"
             )
         else:
-            raise Exception("sqlite-vec not available")
-    except (ImportError, RuntimeError):
+            # sqlite-vec exists but empty, try simple index
+            raise ImportError("sqlite-vec empty, trying simple index")
+    except (ImportError, RuntimeError, Exception):
         try:
             from ..lib.vector_index_simple import get_index
 

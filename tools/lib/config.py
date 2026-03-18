@@ -19,7 +19,13 @@ from typing import Dict, Any, Optional
 #   Windows: C:\Users\<username>\Documents\Life-Index
 #   macOS:   ~/Documents/Life-Index
 #   Linux:   ~/Documents/Life-Index
-USER_DATA_DIR = Path.home() / "Documents" / "Life-Index"
+#
+# Can be overridden via LIFE_INDEX_DATA_DIR environment variable (for testing)
+_user_data_env = os.environ.get("LIFE_INDEX_DATA_DIR")
+if _user_data_env:
+    USER_DATA_DIR = Path(_user_data_env)
+else:
+    USER_DATA_DIR = Path.home() / "Documents" / "Life-Index"
 
 # Project root (for reference only, not for data storage)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
