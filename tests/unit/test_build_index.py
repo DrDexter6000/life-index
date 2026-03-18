@@ -442,9 +442,11 @@ class TestShowStats:
 
         mock_fts_stats.assert_called_once()
 
-    @patch("tools.build_index.USER_DATA_DIR")
+    @patch("tools.build_index.get_model_cache_dir")
     @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_cache_directory_exists(self, mock_fts_stats, mock_data_dir):
+    def test_show_stats_cache_directory_exists(
+        self, mock_fts_stats, mock_cache_dir_getter
+    ):
         """Test show_stats with existing cache directory"""
         mock_fts_stats.return_value = {
             "exists": True,
@@ -457,11 +459,7 @@ class TestShowStats:
         mock_cache_dir = MagicMock()
         mock_cache_dir.exists.return_value = True
         mock_cache_dir.rglob.return_value = []
-
-        mock_data_dir.__truediv__ = MagicMock()
-        mock_result = MagicMock()
-        mock_result.__truediv__ = MagicMock(return_value=mock_cache_dir)
-        mock_data_dir.__truediv__.return_value = mock_result
+        mock_cache_dir_getter.return_value = mock_cache_dir
 
         with patch("tools.lib.semantic_search.get_stats") as mock_vec:
             mock_vec.return_value = {
@@ -475,9 +473,11 @@ class TestShowStats:
 
         mock_cache_dir.exists.assert_called()
 
-    @patch("tools.build_index.USER_DATA_DIR")
+    @patch("tools.build_index.get_model_cache_dir")
     @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_cache_directory_not_exists(self, mock_fts_stats, mock_data_dir):
+    def test_show_stats_cache_directory_not_exists(
+        self, mock_fts_stats, mock_cache_dir_getter
+    ):
         """Test show_stats when cache directory doesn't exist"""
         mock_fts_stats.return_value = {
             "exists": False,
@@ -488,11 +488,7 @@ class TestShowStats:
 
         mock_cache_dir = MagicMock()
         mock_cache_dir.exists.return_value = False
-
-        mock_data_dir.__truediv__ = MagicMock()
-        mock_result = MagicMock()
-        mock_result.__truediv__ = MagicMock(return_value=mock_cache_dir)
-        mock_data_dir.__truediv__.return_value = mock_result
+        mock_cache_dir_getter.return_value = mock_cache_dir
 
         # Mock semantic_search.get_stats to return existing vector index
         with patch("tools.lib.semantic_search.get_stats") as mock_vec:

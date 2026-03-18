@@ -40,6 +40,8 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             "success": bool,
             "journal_path": str,
             "updated_indices": [str],
+            "index_status": str,
+            "side_effects_status": str,
             "attachments_processed": [dict],
             "location_used": str,
             "weather_used": str,
@@ -57,6 +59,8 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         "success": False,
         "journal_path": None,
         "updated_indices": [],
+        "index_status": "not_started",
+        "side_effects_status": "not_started",
         "attachments_processed": [],
         "location_used": "",
         "weather_used": "",
@@ -204,15 +208,18 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     with timer.measure("abstract_update"):
                         abstract_result = None
                         abstract_error = None
+                        abstract_success = False
                         try:
                             abstract_result = update_monthly_abstract(
                                 year, month, dry_run
                             )
+                            abstract_success = True
                         except (OSError, IOError, RuntimeError) as e:
                             abstract_error = str(e)
 
                     # 4. 更新索引
                     updated_indices = []
+                    vector_index_error = None
                     with timer.measure("index_update"):
                         try:
                             if topic:
@@ -235,6 +242,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                                     logger.info("向量索引已同步更新")
                             except Exception as e:
                                 # 向量索引更新失败不阻塞写入
+                                vector_index_error = str(e)
                                 logger.warning(
                                     f"向量索引更新失败（不影响日志写入）：{e}"
                                 )
@@ -255,7 +263,19 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     result["monthly_abstract_updated"] = abstract_result
                     if abstract_error:
                         result["monthly_abstract_error"] = abstract_error
+                    if vector_index_error:
+                        result["vector_index_error"] = vector_index_error
                     result["updated_indices"] = updated_indices
+
+                    if vector_index_error:
+                        result["index_status"] = "degraded"
+                    else:
+                        result["index_status"] = "complete"
+
+                    if abstract_success and not vector_index_error:
+                        result["side_effects_status"] = "complete"
+                    else:
+                        result["side_effects_status"] = "degraded"
 
                 except (OSError, IOError, RuntimeError):
                     # 确保临时文件被清理
@@ -289,6 +309,8 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
     except (ValueError, IOError, RuntimeError, OSError) as e:
         logger.error(f"写入日志失败：{e}", exc_info=True)
         result["error"] = str(e)
+        result["index_status"] = "not_started"
+        result["side_effects_status"] = "not_started"
 
     # 添加性能指标
     timer.stop()
