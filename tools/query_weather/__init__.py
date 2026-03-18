@@ -241,6 +241,14 @@ def query_weather(
             {"date": date, "lat": latitude, "lon": longitude},
             "请检查网络连接，或手动输入天气信息",
         )
+    except TimeoutError as e:
+        logger.error(f"Weather timeout error: {e}")
+        return create_error_response(
+            ErrorCode.WEATHER_TIMEOUT,
+            f"网络错误：{e}",
+            {"date": date, "lat": latitude, "lon": longitude},
+            "请检查网络连接，或手动输入天气信息",
+        )
     except (json.JSONDecodeError, KeyError, IndexError) as e:
         logger.error(f"Weather data parsing error: {e}")
         return create_error_response(
@@ -258,4 +266,12 @@ __all__ = [
     "geocode_location",
     "get_weather_code_description",
     "simplify_weather",
+    "main",
 ]
+
+
+def main() -> None:
+    """Package-surface compatibility wrapper for CLI entrypoint."""
+    from .__main__ import main as cli_main
+
+    cli_main()
