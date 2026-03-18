@@ -534,13 +534,14 @@ class TestTimeoutScenarios:
         assert result["error"]["code"] in ["E0400", "E0401", "E0402", "E0403"]
 
     @patch("tools.query_weather.urllib.request.urlopen")
-    def test_query_weather_timeout_error_propagates(self, mock_urlopen):
-        """Test that TimeoutError propagates from query_weather (not caught)"""
+    def test_query_weather_timeout_error_returns_structured_error(self, mock_urlopen):
+        """Test that TimeoutError is returned as a structured error from query_weather"""
         mock_urlopen.side_effect = TimeoutError("Connection timed out after 15 seconds")
 
-        # TimeoutError is NOT caught by query_weather, so it should propagate
-        with pytest.raises(TimeoutError):
-            query_weather(6.5244, 3.3792, "2025-01-15")
+        result = query_weather(6.5244, 3.3792, "2025-01-15")
+
+        assert result["success"] is False
+        assert result["error"]["code"] == "E0401"
 
 
 class TestHTTPErrorHandling:
