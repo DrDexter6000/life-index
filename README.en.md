@@ -297,6 +297,8 @@ Please complete the following installation and initialization steps:
    - .venv/bin/life-index health
    Note: On Windows replace .venv/bin/ with .venv\Scripts\
 
+   Note: On a fresh install, if you run `life-index health` before step 5, it may legitimately report `status: "degraded"` because the data directory and indexes do not exist yet. After step 5, run health again; it should become healthy.
+
 5) Initialize the search index (first run will auto-download ~80MB embedding model, may take 1-3 minutes, please be patient)
    .venv/bin/life-index index
 
@@ -306,9 +308,10 @@ Notes:
 - Depending on network conditions, the entire installation may take 5-10 minutes (mainly downloading dependencies and embedding model)
 - Journal data is automatically written to ~/Documents/Life-Index/, physically separated from skill code
 - All tool commands must be run from the skill root directory (the directory containing SKILL.md)
-- All Python/CLI commands must be called with .venv/bin/ prefix (Windows: .venv\Scripts\)
+- All Python/CLI commands must be called with .venv/bin/ prefix (Windows: **prefer** .venv\Scripts\)
 - If you encounter ModuleNotFoundError, confirm you're using .venv/bin/python instead of system python
 - If .venv is corrupted (e.g., after Python version upgrade), delete the .venv directory and re-run step 3 to fix
+- On Windows, if inline JSON is awkward for the first write, prefer `life-index write --data @first-entry.json`
 ```
 
 > **Journal data is automatically written to `~/Documents/Life-Index/`**, physically separated from skill code. Even if you uninstall the skill, your journal data is never lost.
@@ -381,8 +384,14 @@ python3 -m venv .venv
 **Tool error (ModuleNotFoundError)**  
 → Confirm using `.venv/bin/python` (instead of system python) to execute commands, and in the skill root directory
 
+**Health shows degraded on a fresh install**  
+→ If you have not run `life-index index` yet, this is expected. Initialize the index first, then run health again.
+
 **Journals not written to ~/Documents/Life-Index/**  
 → Run `.venv/bin/python -m tools.query_weather --location "Beijing,China"` from the skill root to verify tools work
+
+**Windows `write --data '{...}'` is hard to escape**  
+→ Prefer `life-index write --data @first-entry.json`
 
 **Semantic search unavailable**  
 → Run `.venv/bin/life-index health` to check if fastembed is installed

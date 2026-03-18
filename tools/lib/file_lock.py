@@ -126,6 +126,24 @@ class FileLock:
         """Acquire lock on Unix systems using fcntl."""
         import fcntl
 
+        if blocking and self.timeout is not None:
+            start_time = time.time()
+            flags = fcntl.LOCK_EX | fcntl.LOCK_NB
+
+            while True:
+                try:
+                    fcntl.flock(self._file_handle, flags)
+                    return True
+                except (IOError, OSError) as e:
+                    if e.errno not in (11, 35):  # EAGAIN, EWOULDBLOCK
+                        raise
+
+                    elapsed = time.time() - start_time
+                    if elapsed >= self.timeout:
+                        return False
+
+                    time.sleep(self.poll_interval)
+
         flags = fcntl.LOCK_EX
         if not blocking:
             flags |= fcntl.LOCK_NB

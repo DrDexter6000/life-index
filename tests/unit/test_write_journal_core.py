@@ -19,6 +19,13 @@ from unittest.mock import patch, MagicMock
 from tools.write_journal.core import write_journal
 
 
+@pytest.fixture(autouse=True)
+def mock_vector_update_side_effect():
+    """Keep write_journal unit tests isolated from vector index/model loading."""
+    with patch("tools.write_journal.core.update_vector_index", return_value=False):
+        yield
+
+
 class TestWriteJournalBasic:
     """Tests for basic write_journal functionality"""
 

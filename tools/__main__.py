@@ -23,6 +23,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+from tools.lib.config import USER_DATA_DIR, JOURNALS_DIR, get_model_cache_dir
+
 
 def health_check() -> None:
     """
@@ -124,8 +126,8 @@ def health_check() -> None:
         )
 
     # 5. Data directory
-    data_dir = Path.home() / "Documents" / "Life-Index"
-    journals_dir = data_dir / "Journals"
+    data_dir = USER_DATA_DIR
+    journals_dir = JOURNALS_DIR
     data_exists = data_dir.exists()
     journal_count = 0
     if journals_dir.exists():
@@ -164,8 +166,6 @@ def health_check() -> None:
 
     # 7. Embedding model cache
     try:
-        from tools.lib.config import get_model_cache_dir
-
         cache_dir = get_model_cache_dir()
         model_files = list(cache_dir.rglob("*.onnx")) if cache_dir.exists() else []
         model_downloaded = len(model_files) > 0

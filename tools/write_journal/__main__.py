@@ -12,6 +12,16 @@ from .core import write_journal
 from ..lib.config import ensure_dirs
 
 
+def _emit_json(payload: dict) -> None:
+    """Print JSON safely across Windows console encodings."""
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        fallback_text = json.dumps(payload, ensure_ascii=True, indent=2)
+        print(fallback_text)
+
+
 def main() -> None:
     """CLI entry point"""
     parser = argparse.ArgumentParser(
@@ -49,22 +59,10 @@ Examples:
             # 直接解析JSON
             data = json.loads(args.data)
     except json.JSONDecodeError as e:
-        print(
-            json.dumps(
-                {"success": False, "error": f"JSON解析错误: {e}"},
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
+        _emit_json({"success": False, "error": f"JSON解析错误: {e}"})
         sys.exit(1)
     except FileNotFoundError:
-        print(
-            json.dumps(
-                {"success": False, "error": f"文件未找到: {args.data[1:]}"},
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
+        _emit_json({"success": False, "error": f"文件未找到: {args.data[1:]}"})
         sys.exit(1)
 
     if args.verbose:
@@ -76,7 +74,7 @@ Examples:
     result = write_journal(data, dry_run=args.dry_run)
 
     # 输出结果
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    _emit_json(result)
 
     # 返回码
     sys.exit(0 if result["success"] else 1)
