@@ -272,41 +272,20 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 
 **适用人群** —— 只想“把项目交给自己的 Agent 安装并初始化”，不需要自己改代码。
 
-**推荐方式** —— 先让你的 Agent 阅读仓库根目录的 `AGENT_ONBOARDING.md`，再按其中步骤执行安装、初始化、首写入、首搜索与最终汇报。
-
 **复制给你的 Agent** —— 把下面这段话直接发给你的 Agent（OpenClaw、Claude Desktop、Cursor 等均可）：
 
 ```text
-请阅读并严格按照这个仓库里的 `AGENT_ONBOARDING.md` 执行 Life Index 的安装和初始化：
+请阅读并严格按照这个仓库里的 `AGENT_ONBOARDING.md` 完成 Life Index 的安装、初始化与验证：
 https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 要求：
 1. 先完整阅读该文档，再开始执行
-2. 按顺序完成 clone、venv、install、index、health、first write、first search
+2. 严格按文档完成安装、初始化、验证与后续可选个性化步骤
 3. 所有 Python/CLI 命令都必须使用虚拟环境路径
-4. 每一步都先验证成功，再进入下一步
-5. 如果某一步失败，停止并报告精确错误
-6. 完成安装、初始化、first write、first search 后，可按 `AGENT_ONBOARDING.md` 的 optional customization step 询问我是否要设置专用触发词和默认地址
-7. 除 `AGENT_ONBOARDING.md` 明确允许的 customization 外，不要修改安装流程之外的文件，也不要改仓库源码
+4. 如果某一步失败，立即停止并报告精确错误
+5. 最终请使用中文按文档要求向我汇报结果
 
-最后请使用中文按 `AGENT_ONBOARDING.md` 里的 Final Report Format 向我汇报结果。
 ```
-
-**你也可以直接把整个 `AGENT_ONBOARDING.md` 文件发给你的 Agent。** 如果你的 Agent 支持读取 GitHub 仓库文件，优先让它直接读取该文件；如果不支持，就把文件内容复制给它。
-
-**安装完成后，Agent 应至少完成这些验证**：
-- `life-index index` 跑通
-- `life-index health` 返回 `success: true`
-- 完成 first write
-- 完成 first search
-
-**已知说明**：
-- fresh install 时，如果在初次 `index` 之前先运行 `life-index health`，返回 `status: "degraded"` 是正常现象
-- Windows 上应优先使用 `.venv\Scripts\...`
-- Windows 首次写日志时，推荐 `life-index write --data @first-entry.json`
-- 日志数据默认写入 `~/Documents/Life-Index/`，与仓库代码物理隔离
-
-> **日志数据自动写入 `~/Documents/Life-Index/`**，与技能代码物理隔离。即使卸载技能，你的日志数据也不会丢失。
 
 </details>
 

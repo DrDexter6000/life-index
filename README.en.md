@@ -270,43 +270,20 @@ Life Index follows a "local-first" and "data-program separation" strategy:
 
 **For** — Anyone who wants their own Agent to install and initialize Life Index, without manually stepping through setup.
 
-**Recommended workflow** — Have your Agent read the repository-root file `AGENT_ONBOARDING.md`, then execute the setup exactly as instructed there.
-
 **Send this to your Agent** — Copy the prompt below and paste it into your Agent (OpenClaw, Claude Desktop, Cursor, etc.):
 
 ```text
-Please read and follow the onboarding instructions in this repository file:
+Please read and follow `AGENT_ONBOARDING.md` in this repository to complete the full Life Index install, initialization, and verification flow:
 https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
-
-Your task is to install and initialize Life Index for me by following that document exactly.
 
 Requirements:
 1. Read the full document before taking action
-2. Complete the steps in order: clone, venv, install, index, health, first write, first search
+2. Follow the documented install, initialization, verification, and optional customization flow
 3. Use the repository virtual environment for all Python/CLI commands
-4. Verify each step before moving to the next one
-5. If any step fails, stop and report the exact error
-6. After install, init, first write, and first search succeed, you may follow the optional customization step in `AGENT_ONBOARDING.md` to ask whether I want a preferred trigger phrase and default location
-7. Other than the explicitly allowed customization in `AGENT_ONBOARDING.md`, do not modify unrelated files or repository source code during installation
+4. If any step fails, stop and report the exact error
+5. Report back in English using the format required by the document
 
-At the end, report back in English using the Final Report Format defined in `AGENT_ONBOARDING.md`.
 ```
-
-**You can also send the full `AGENT_ONBOARDING.md` file directly to your Agent.** If your Agent can read files from GitHub, let it read that file directly. If not, copy the file contents into the chat.
-
-**Minimum verification your Agent should complete**:
-- `life-index index` runs successfully
-- `life-index health` returns `success: true`
-- the first write succeeds
-- the first search finds the newly created entry
-
-**Known notes**:
-- On a fresh install, running `life-index health` before the initial `index` may legitimately return `status: "degraded"`
-- On Windows, prefer `.venv\Scripts\...`
-- On Windows, the safest first-write pattern is `life-index write --data @first-entry.json`
-- Journal data is stored in `~/Documents/Life-Index/`, separate from the repository code
-
-> **Journal data is automatically written to `~/Documents/Life-Index/`**, physically separated from skill code. Even if you uninstall the skill, your journal data is never lost.
 
 </details>
 
