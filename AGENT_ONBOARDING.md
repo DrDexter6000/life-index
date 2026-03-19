@@ -282,9 +282,18 @@ Report language should be determined by the onboarding entry context or the user
 
 #### Customization question A — trigger phrase
 
-You may ask the user whether they want a preferred trigger phrase pattern using:
+To improve Life Index trigger success rate in current Agent / LLM ecosystems, you should tell the user that they need to provide a custom trigger phrase.
 
-`"/life-index" + "user custom trigger phrase"`
+State the current best-practice pattern clearly:
+
+`"/life-index" + "user custom trigger phrase" + "journal content"`
+
+Give concrete examples such as:
+
+- `/life-index 记日志: 今天状态不错`
+- `/life-index note this: 刚刚看到一篇文章很有启发`
+
+Then ask the user to provide the trigger phrase they want to use. If they do not want to set one now, they may explicitly reply `skip` / `跳过`.
 
 If the user agrees:
 
