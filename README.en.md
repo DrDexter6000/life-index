@@ -286,7 +286,8 @@ Requirements:
 3. Use the repository virtual environment for all Python/CLI commands
 4. Verify each step before moving to the next one
 5. If any step fails, stop and report the exact error
-6. Do not modify unrelated files or change repository source code during installation
+6. After install, init, first write, and first search succeed, you may follow the optional customization step in `AGENT_ONBOARDING.md` to ask whether I want a preferred trigger phrase and default location
+7. Other than the explicitly allowed customization in `AGENT_ONBOARDING.md`, do not modify unrelated files or repository source code during installation
 
 At the end, report back in English using the Final Report Format defined in `AGENT_ONBOARDING.md`.
 ```

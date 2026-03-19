@@ -286,7 +286,8 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 3. 所有 Python/CLI 命令都必须使用虚拟环境路径
 4. 每一步都先验证成功，再进入下一步
 5. 如果某一步失败，停止并报告精确错误
-6. 不要修改安装流程之外的文件，也不要改仓库源码
+6. 完成安装、初始化、first write、first search 后，可按 `AGENT_ONBOARDING.md` 的 optional customization step 询问我是否要设置专用触发词和默认地址
+7. 除 `AGENT_ONBOARDING.md` 明确允许的 customization 外，不要修改安装流程之外的文件，也不要改仓库源码
 
 最后请使用中文按 `AGENT_ONBOARDING.md` 里的 Final Report Format 向我汇报结果。
 ```

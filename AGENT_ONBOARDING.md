@@ -132,6 +132,8 @@ On Windows, the path separator is backslash (`\`), not forward slash (`/`). The 
 
 Execute these steps in order. Each step must succeed before proceeding.
 
+After the required verification flow is complete, an **optional customization step** may follow. That step is governed by `docs/review/execution/ONBOARDING_CUSTOMIZATION_PROTOCOL.md` and the guardrails in this document.
+
 ### Step 7.1: Build Index (Initialization)
 
 ```bash
@@ -264,6 +266,56 @@ Verify the entry can be retrieved via search.
 
 ---
 
+### Step 7.5: Optional Customization (Post-Install Personalization)
+
+Run this step **only after** Steps 7.1-7.4 succeed.
+
+This step is optional. If the user does not want customization, skip it and finish onboarding normally.
+
+#### Customization question A — trigger phrase
+
+You may ask the user whether they want a preferred trigger phrase pattern using:
+
+`"/life-index" + "user custom trigger phrase"`
+
+If the user agrees:
+
+- you may update the trigger definitions in `SKILL.md`
+- keep `/life-index` in the trigger list
+- keep trigger examples and trigger table entries consistent with the edited trigger list
+- do **not** rewrite unrelated workflow sections
+
+#### Customization question B — default location preference
+
+You may ask the user whether they want to save a different preferred default address instead of `Chongqing, China`.
+
+If the user agrees:
+
+- write the preference to `~/Documents/Life-Index/.life-index/config.yaml`
+- use `config.example.yaml` as the schema reference
+- preserve unrelated config fields if the file already exists
+- use `City, Country` format
+
+#### Important honesty rule
+
+You may report that the preference was **saved**.
+
+You must **not** claim that the new default location is already active at runtime unless you explicitly verified that behavior.
+
+#### Strict boundaries for this step
+
+**Allowed**:
+- update the trigger list/examples in `SKILL.md`
+- create or update `~/Documents/Life-Index/.life-index/config.yaml`
+
+**Not allowed**:
+- modify tool source code under `tools/`
+- modify `docs/API.md`, `docs/ARCHITECTURE.md`, or `pyproject.toml`
+- remove `/life-index` from the trigger list
+- perform any customization without explicit user approval
+
+---
+
 ## 8. Success Criteria Summary
 
 | Step | Success Indicator |
@@ -275,6 +327,7 @@ Verify the entry can be retrieved via search.
 | Health | `success: true`, `status` not "unhealthy" |
 | First Write | `success: true`, `journal_path` returned |
 | First Search | `success: true`, `total` >= 1, entry found |
+| Optional Customization | User-approved personalization applied or explicitly skipped |
 
 ---
 
@@ -340,6 +393,11 @@ Report back to the user using this exact structure:
 - Query: "First Journal"
 - Results found: <number>
 
+**Customization**:
+- Trigger phrase: <configured/skipped>
+- Default location preference: <saved/skipped>
+- Default location runtime verification: <verified/not verified/not attempted>
+
 **Next Steps**:
 1. Life Index is ready to use via: `.venv/bin/life-index <command>`
 2. Available commands: write, search, edit, abstract, weather, index, health
@@ -361,7 +419,7 @@ Report back to the user using this exact structure:
 - Install additional dependencies not specified in `pyproject.toml`
 - Require `gh` CLI or any GitHub-specific tools
 - Create MCP server configurations (not supported)
-- Modify repository source code during installation
+- Modify repository source code during installation, except the explicitly allowed trigger-surface edits in `SKILL.md` during optional customization
 - Skip the health check or first write/search verification
 
 ### Do:
@@ -371,6 +429,8 @@ Report back to the user using this exact structure:
 - Verify each step before proceeding
 - Clean up partial installations on failure (if requested by user)
 - Stop immediately if prerequisites are missing or a command fails twice in the same step
+- Keep customization clearly separate from installation success/failure
+- Report honestly whether default-location customization was only saved or also runtime-verified
 
 ---
 
