@@ -12,7 +12,7 @@
 This checklist covers the complete onboarding flow:
 
 ```
-Install → Initialize → Health Check → First Write → First Search
+Install → Initialize → Health Check → First Write → First Search → Optional Customization
 ```
 
 This ordering is intentional:
@@ -20,6 +20,7 @@ This ordering is intentional:
 - `index` is the practical initialization step for a fresh install
 - `health` is most useful **after** initialization, because a pre-init run may correctly report a degraded state when the data directory and indexes do not exist yet
 - `write` and `search` are the final proof that the cold-start path actually works end to end
+- optional customization is a separate final stage so personalization does not blur installation success
 
 Each stage has:
 - Required actions
@@ -366,12 +367,45 @@ Note: this run reused an already downloaded embedding model cache. A truly cold 
 | 5 | JSON escaping is tricky on Windows PowerShell | Medium | Recommend `--data @file.json` |
 | 6 | Required fields are not obvious from CLI help alone | Low | Point to `docs/API.md` for full schema |
 | 7 | Weather description may contain mojibake from upstream data in some environments | Low | Non-blocking; treat as separate output-quality issue if it persists |
-| 8 | Default location "Chongqing, China" is author-specific | Medium | Agent must ask for location BEFORE first write; see SKILL.md "地点询问时机" |
+| 8 | Default location "Chongqing, China" is author-specific | Medium | Keep current product rule for first write, then offer optional default-location customization after onboarding |
 | 9 | fastembed "mean pooling" warning on first run | Low | Non-blocking; cosmetic warning from library, does not affect functionality |
+| 10 | Entry-prompt language and final report language may drift | Medium | Chinese entry must end with Chinese report; English entry must end with English report |
+| 11 | Users may want post-install trigger/default-location personalization | Medium | Add optional customization phase with explicit boundaries |
 
 ---
 
-## 8. Quick Reference Card
+## 8. Stage 6: Optional Customization
+
+This stage runs only after install, init, health, first write, and first search already succeeded.
+
+### Supported customization actions
+
+1. **Trigger phrase customization**
+   - Pattern: `"/life-index" + "user custom trigger phrase"`
+   - Agent may update the allowed trigger surfaces in `SKILL.md`
+   - `/life-index` must remain present
+
+2. **Default location preference**
+   - Agent may create or update `~/Documents/Life-Index/.life-index/config.yaml`
+   - Use `defaults.location: "City, Country"`
+   - Must report honestly whether the preference was only saved or also runtime-verified
+
+### Success criteria
+
+- [ ] Customization is only attempted with explicit user approval
+- [ ] Trigger customization preserves `/life-index`
+- [ ] Default location preference is written to user config, not source code
+- [ ] Final report distinguishes installation success from customization status
+- [ ] Final report uses the same language as the entry prompt
+
+### Reference
+
+- `docs/review/execution/ONBOARDING_CUSTOMIZATION_PROTOCOL.md`
+- `docs/review/evals/ONBOARDING_CUSTOMIZATION_EVAL_CASES.md`
+
+---
+
+## 9. Quick Reference Card
 
 ### Commands by platform
 
@@ -393,7 +427,7 @@ Note: this run reused an already downloaded embedding model cache. A truly cold 
 
 ---
 
-## 9. Troubleshooting Quick Links
+## 10. Troubleshooting Quick Links
 
 | Symptom | Check |
 |:---|:---|
@@ -405,7 +439,7 @@ Note: this run reused an already downloaded embedding model cache. A truly cold 
 
 ---
 
-## 10. SSOT References
+## 11. SSOT References
 
 | Truth | Location |
 |:---|:---|
@@ -414,15 +448,17 @@ Note: this run reused an already downloaded embedding model cache. A truly cold 
 | Health check details | `tools/__main__.py` `health_check()` |
 | Installation instructions | `README.md` "快速安装" |
 | Topic definitions | `docs/API.md` "Topic 分类定义" |
+| Onboarding customization protocol | `docs/review/execution/ONBOARDING_CUSTOMIZATION_PROTOCOL.md` |
 
 ---
 
-## 11. Maintenance Note
+## 12. Maintenance Note
 
 This checklist should be updated when:
 1. New installation friction points are discovered
 2. Command syntax changes in Tier 1 docs
 3. New platforms are supported
 4. Installation flow is modified
+5. Optional customization rules or boundaries change
 
 Last verified: 2026-03-18
