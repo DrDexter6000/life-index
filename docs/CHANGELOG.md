@@ -2,6 +2,22 @@
 
 > **本文档职责**: 决策变更历史 SSOT，记录里程碑级别变更
 
+> **补充说明**: 自 v1.x 起，本文档同时作为面向未来正式 release notes 的锚点。历史日期条目继续保留；未来版本发布可在顶部补充版本锚定条目，并在需要时明确升级动作（如 rebuild、migration、额外验证）。
+
+## [Unreleased]
+
+> 用于记录下一次正式版本发布前、值得进入 release notes 的用户可感知变化。
+
+建议在这里记录：
+- 用户可见功能变化
+- 需要 operator action 的升级事项
+- rebuild / migration / compatibility 相关提示
+
+相关文档：
+- `docs/VERSION_POLICY.md`
+- `docs/UPGRADE.md`
+- `docs/COMPATIBILITY.md`
+
 ---
 
 ## [2026-03-16] v1.0 Release Playbook 启动
