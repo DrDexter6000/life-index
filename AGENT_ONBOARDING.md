@@ -425,7 +425,7 @@ Report back to the user using this exact structure:
 **How to Use Life Index Now**:
 - Title: <localized equivalent of "开始使用 Life Index" in the same language as the report>
 - Welcome line: <localized equivalent of "恭喜！🎉 Life Index 已经安装完成。" in the same language as the report>
-- Best-practice line: <state clearly, in the same language as the report, that the current best practice is `"/life-index" + "the user's chosen trigger phrase" : "the user's journal content"`>
+- Best-practice line: <state clearly, in the same language as the report, that the current best practice is `/life-index + the user's chosen trigger phrase : the user's journal content`>
 - Trigger line: <localized equivalent of "您当前的默认触发词是：`/life-index [user custom trigger phrase]`">
 - Location line: <localized equivalent of "您当前的默认城市是：`[user default city, country]`">
 - Intro line: <localized equivalent of "现在，您可以直接这样开始记录：">
