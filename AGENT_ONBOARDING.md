@@ -3,13 +3,15 @@
 > **Document Purpose**: Step-by-step operational instructions for AI agents installing Life Index on behalf of users.
 > **Audience**: External AI agents (not humans)
 > **Scope**: Complete installation, initialization, and first-use verification
-> **SSOT References**: `SKILL.md`, `docs/API.md`, `docs/review/execution/ONBOARDING_CHECKLIST.md`
+> **SSOT References**: `SKILL.md`, `docs/API.md`, `docs/review/execution/ONBOARDING_CHECKLIST.md`, `docs/UPGRADE.md`, `docs/VERSION_POLICY.md`, `docs/COMPATIBILITY.md`
 
 ---
 
 ## 1. Goal
 
 Install and initialize Life Index on the user's machine, verify the installation is functional, and complete the first write/search cycle to confirm end-to-end operation.
+
+If the user's request is to upgrade an existing installation rather than perform a fresh install, use `docs/UPGRADE.md` as the primary operational guide instead of treating the task as onboarding.
 
 You are acting on behalf of a user. Your job is to execute the installation workflow safely, verify each stage, and report the result back clearly.
 

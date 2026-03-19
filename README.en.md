@@ -368,6 +368,9 @@ python3 -m venv .venv
 **venv corrupted (after Python upgrade, system migration)**  
 → Delete `.venv` directory, then re-run `python3 -m venv .venv && .venv/bin/pip install -e .`
 
+**Upgrade to a newer version**  
+→ See `docs/UPGRADE.md`; version semantics live in `docs/VERSION_POLICY.md`, and compatibility boundaries live in `docs/COMPATIBILITY.md`
+
 **Installation health check**  
 → Run `.venv/bin/life-index health` to view status of all check items
 
