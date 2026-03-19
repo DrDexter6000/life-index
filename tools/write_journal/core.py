@@ -7,7 +7,7 @@ Life Index - Write Journal Tool - Core
 from pathlib import Path
 from typing import Any, Dict
 
-from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.config import JOURNALS_DIR, USER_DATA_DIR, get_default_location
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.timing import Timer
@@ -87,10 +87,10 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         # 处理地点：如果未提供，使用默认值
         location = data.get("location", "").strip()
         if not location:
-            location = "Chongqing, China"  # 默认地点
+            location = get_default_location()
             result["location_used"] = location
-            # 天气查询用同一格式
-            location_for_weather = normalize_location("")
+            # 天气查询使用实际默认地点
+            location_for_weather = normalize_location(location)
         else:
             # 规范化地点（处理城市级别输入）
             location_for_weather = normalize_location(location)
