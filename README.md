@@ -370,6 +370,9 @@ python3 -m venv .venv
 **venv 损坏（Python 升级后、迁移系统后）**  
 → 删除 `.venv` 目录，重新执行 `python3 -m venv .venv && .venv/bin/pip install -e .`
 
+**升级到新版本**  
+→ 请参考 `docs/UPGRADE.md`；版本语义见 `docs/VERSION_POLICY.md`，兼容性边界见 `docs/COMPATIBILITY.md`
+
 **安装健康检查**  
 → 运行 `.venv/bin/life-index health` 查看所有检查项的状态
 
