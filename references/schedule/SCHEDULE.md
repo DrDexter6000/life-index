@@ -1,13 +1,13 @@
-# Life Index 定时任务设置指南
+# Life Index 可选自动化设置指南
 
-> **本文档角色**: 指导 Agent 为 Life Index 技能配置定时任务  
+> **本文档角色**: 指导 Agent 在基础 onboarding 成功后，为 Life Index 技能配置**可选**自动化任务  
 > **阅读对象**: AI Agent（OpenClaw / Claude Desktop / 其他支持定时任务的平台）  
 > **版本**: v3.2 | **基于**: OpenClaw 官方文档 v2026.3  
 > **参考**: [OpenClaw Cron Jobs 官方文档](https://openclawlab.com/en/docs/automation/cron-jobs/)
 
 ---
 
-## Step 1: 理解任务 — 为什么需要定时任务？
+## Step 1: 理解任务 — 为什么有些用户会需要自动化？
 
 ### 1.1 Life Index 是什么
 
@@ -16,45 +16,79 @@ Life Index 是一个**个人生活日志系统**：
 - 你作为 Agent 协助记录和检索
 - 日志存储在本地，支持多维度索引
 
-### 1.2 为什么需要定时任务？
+### 1.2 本文档的边界
 
-当前你能做的是**被动响应**（用户找你时才处理）。但以下场景**必须主动**：
+本文档不是 Life Index 原生运行时能力说明。
+
+它描述的是：
+
+- 当基础安装和验证已经成功后
+- 如果用户希望启用 recurring review / maintenance workflows
+- Agent 如何利用**宿主平台自己的定时任务能力**为用户完成配置
+
+这意味着：
+
+- Life Index 本身不内建 scheduler runtime
+- 用户完全可以**不启用**任何自动化，仍然完整使用 Life Index
+- 自动化设置属于**可选增强步骤**，不是安装完成的前置条件
+
+### 1.3 为什么有些用户会需要自动化？
+
+当前 Life Index 的基础能力已经支持：写入、搜索、编辑、摘要生成、Write-Through 索引更新。
+
+有些用户还希望获得额外的使用体验，例如：
 
 | 场景 | 用户状态 | 定时任务价值 |
 |------|---------|-------------|
-| 晚间回顾 | 可能忘记查看今日记录 | 22:00 自动推送日报，主动提醒 |
-| 周末总结 | 周末可能不打开应用 | 周日自动推送周报，持续追踪 |
-| 月末归档 | 可能忘记生成月度摘要 | 月末自动生成并保存月报文件 |
-| 搜索性能 | 用户无感知，但需要维护 | 深夜自动维护索引，保持搜索速度 |
+| 晚间回顾 | 希望每天收到回顾摘要 | 可选启用日报 |
+| 周末总结 | 希望每周固定复盘 | 可选启用周报 |
+| 月末归档 | 希望定期生成长期回顾文件 | 推荐启用月报 |
+| 年度总结 | 希望形成长期年度回顾 | 推荐启用年报 |
+| 搜索维护 | 希望低频做额外卫生检查 | 可选启用维护任务 |
 
-### 1.3 你的任务
+### 1.4 你的任务
 
-**核心目标**: 为 Life Index 配置 6 个定时任务，让用户获得"数字生活管家"体验。
+**核心目标**: 在用户明确同意的前提下，帮助用户配置他们真正需要的自动化任务。
 
-**任务清单**：
+**推荐自动化**（优先考虑）：
 
 | # | 任务名称 | 触发时间 | 工作内容 | 输出 |
 |---|---------|---------|---------|------|
-| 1 | **日报** | 每天 22:00 | 汇总今日日志，生成摘要 | 推送消息 |
-| 2 | **周报** | 每周日 22:10 | 总结本周轨迹，含洞察 | 推送消息 |
-| 3 | **月报** | 每月最后一天 18:30 | 深度回顾，生成摘要文件 | 文件+推送 |
-| 4 | **年报** | 12月31日 19:15 | 年度人生总结 | 文件+推送 |
-| 5 | **每月索引重建** | 每月1日 03:30 | 全量检查+重建索引 | 静默执行 |
+| 1 | **月报** | 每月最后一天 18:30 | 深度回顾，生成摘要文件 | 文件+推送 |
+| 2 | **年报** | 12月31日 19:15 | 年度人生总结 | 文件+推送 |
+| 3 | **每月索引重建** | 每月1日 03:30 | 低频检查/重建索引 | 静默执行 |
+
+**可选配方**（按用户偏好启用）：
+
+| # | 任务名称 | 触发时间 | 工作内容 | 输出 |
+|---|---------|---------|---------|------|
+| 4 | **日报** | 每天 22:00 | 汇总今日日志，生成摘要 | 推送消息 |
+| 5 | **周报** | 每周日 22:10 | 总结本周轨迹，含洞察 | 推送消息 |
 
 > **注**: v1.2 起，日志写入时同步更新索引（Write-Through），不再需要每日增量任务。
 
-**Token 预算**：
-- 日报: ~200 tokens
-- 周报: ~500 tokens  
-- 月报: ~1000 tokens
-- 年报: ~3000 tokens
-- 索引任务: 无输出，不计 Token
+> **用户选择原则**: 不要假设所有用户都需要全部自动化。允许用户选择：不启用 / 只启用推荐项 / 启用日报周报 / 自定义组合。
+
+### 1.5 前置条件
+
+在进入自动化设置前，应该先确认：
+
+1. 基础 onboarding 已完成
+2. 首次写入与首次搜索验证通过
+3. 当前宿主平台支持 cron / schedule 类能力
+4. 用户已明确表示希望现在配置自动化
 
 ---
 
 ## Step 2: OpenClaw 定时任务参考模板
 
-以下 6 个任务模板基于 **OpenClaw 官方文档** 和 **社区最佳实践** 编写。
+以下模板基于 **OpenClaw 官方文档** 和 **社区最佳实践** 编写。
+
+使用原则：
+
+- 优先配置用户明确想要的任务
+- 默认推荐：月报、年报、每月索引重建
+- 日报、周报保留为可选 recipe，不应默认全部启用
 
 **⚠️ 重要提示：时区配置**
 
@@ -94,7 +128,7 @@ openclaw cron rm      # 删除任务
 
 ---
 
-### 任务 1: 日报 (life-index-daily-report)
+### 可选任务 1: 日报 (life-index-daily-report)
 
 **OpenClaw CLI 配置**:
 ```bash
@@ -134,7 +168,7 @@ openclaw cron add \
 
 ---
 
-### 任务 2: 周报 (life-index-weekly-report)
+### 可选任务 2: 周报 (life-index-weekly-report)
 
 **OpenClaw CLI 配置**:
 ```bash
@@ -174,7 +208,7 @@ openclaw cron add \
 
 ---
 
-### 任务 3: 月报 (life-index-monthly-report)
+### 推荐任务 1: 月报 (life-index-monthly-report)
 
 **OpenClaw CLI 配置**:
 ```bash
@@ -214,7 +248,7 @@ openclaw cron add \
 
 ---
 
-### 任务 4: 年报 (life-index-yearly-report)
+### 推荐任务 2: 年报 (life-index-yearly-report)
 
 **OpenClaw CLI 配置**:
 ```bash
@@ -254,7 +288,7 @@ openclaw cron add \
 
 ---
 
-### 任务 5: 每月索引重建 (life-index-monthly-rebuild)
+### 推荐任务 3: 每月索引重建 (life-index-monthly-rebuild)
 
 **OpenClaw CLI 配置**:
 ```bash
@@ -299,7 +333,7 @@ openclaw cron add \
 
 ### 3.1 检查 OpenClaw 版本和功能
 
-**执行以下命令**:
+**执行以下命令**：
 ```bash
 # 检查 OpenClaw 版本
 openclaw --version
@@ -380,26 +414,30 @@ ls -la /app/skills/life-index/ 2>/dev/null
 
 ## Step 4: 判断与决策
 
-基于 Step 3 的分析结果，决定如何配置。
+基于 Step 3 的分析结果，决定**是否配置**以及**配置哪些任务**。
 
 ### 决策流程
 
 ```
-OpenClaw 版本是否 ≥ 2026.2？
+用户是否明确希望现在启用自动化？
 │
-├─ 否 → 升级 OpenClaw 到最新版本
+├─ 否 → 结束本指南；保持 Life Index 基础能力可用即可
 │
-└─ 是 → cron 命令是否可用？
+└─ 是 → OpenClaw 版本是否 ≥ 2026.2？
         │
-        ├─ 否 → 检查 gateway 配置，确保 cron.enabled 为 true
+        ├─ 否 → 升级 OpenClaw 到最新版本
         │
-        └─ 是 → 技能路径是否正确？
+        └─ 是 → cron 命令是否可用？
                 │
-                ├─ 路径与模板一致
-                │   → 直接执行 Step 2 的 CLI 命令
+                ├─ 否 → 检查 gateway 配置，确保 cron.enabled 为 true
                 │
-                └─ 路径不同
-                    → 修改命令中的技能路径，保持其他配置不变
+                └─ 是 → 技能路径是否正确？
+                        │
+                        ├─ 路径与模板一致
+                        │   → 选择要启用的任务并执行 Step 5
+                        │
+                        └─ 路径不同
+                            → 修改命令中的技能路径，保持其他配置不变
 ```
 
 ### 路径调整示例
@@ -423,27 +461,38 @@ cd ~/.openclaw/skills/life-index
 
 ### 5.1 配置步骤
 
-**方式一：通过 CLI 逐一创建（推荐）**
+先与用户确认他们要启用哪一组任务。
 
-按顺序执行 Step 2 中的 6 个 CLI 命令：
+**推荐默认组合**：
+
+- 月报
+- 年报
+- 每月索引重建
+
+**可选附加组合**：
+
+- 日报
+- 周报
+- 自定义组合
+
+**方式一：通过 CLI 创建所选任务（推荐）**
+
+按用户选择执行对应的 CLI 命令：
 
 ```bash
-# 1. 日报
+# 可选：日报
 openclaw cron add --name "Life Index 日报" --cron "0 22 * * *" ...
 
-# 2. 周报
+# 可选：周报
 openclaw cron add --name "Life Index 周报" --cron "10 22 * * 0" ...
 
-# 3. 月报
+# 推荐：月报
 openclaw cron add --name "Life Index 月报" --cron "30 18 28-31 * *" ...
 
-# 4. 年报
+# 推荐：年报
 openclaw cron add --name "Life Index 年报" --cron "15 19 31 12 *" ...
 
-# 5. 每日索引
-openclaw cron add --name "Life Index 每日索引维护" --cron "50 23 * * *" ...
-
-# 6. 每月重建
+# 推荐：每月重建
 openclaw cron add --name "Life Index 每月索引重建" --cron "30 3 1 * *" ...
 ```
 
@@ -451,30 +500,29 @@ openclaw cron add --name "Life Index 每月索引重建" --cron "30 3 1 * *" ...
 
 告诉你的 OpenClaw Agent：
 ```
-请为我创建 6 个 Life Index 定时任务。
+请为我配置 Life Index 的可选自动化任务。
 
 任务配置如下：
 
-1. 日报：每天 22:00，isolated session，announce 推送
+1. 日报（可选）：每天 22:00，isolated session，announce 推送
    任务内容：查询今日日志，生成 200 tokens 摘要
 
-2. 周报：每周日 22:10，isolated session，announce 推送
+2. 周报（可选）：每周日 22:10，isolated session，announce 推送
    任务内容：查询本周日志，生成 500 tokens 周报
 
-3. 月报：每月最后一天 18:30，isolated session，announce 推送
+3. 月报（推荐）：每月最后一天 18:30，isolated session，announce 推送
    任务内容：生成本月摘要文件，推送约 1000 tokens
 
-4. 年报：12月31日 19:15，isolated session，announce 推送
+4. 年报（推荐）：12月31日 19:15，isolated session，announce 推送
    任务内容：生成本年度摘要文件，推送约 3000 tokens
 
-5. 每日索引：每天 23:50，isolated session，无推送
-   任务内容：运行 build_index.py 增量更新索引
-
-6. 每月重建：每月1日 03:30，isolated session，无推送
-   任务内容：运行 build_index.py --rebuild 全量重建索引
+5. 每月重建（推荐维护）：每月1日 03:30，isolated session，无推送
+   任务内容：运行 python -m tools.build_index --rebuild 全量重建索引，用于低频维护/修复
 
 时区：Asia/Shanghai
 技能路径：（根据实际路径填写）
+
+只创建我明确选择启用的任务，不要默认全部启用。
 ```
 
 ### 5.2 验证配置
@@ -499,11 +547,11 @@ openclaw cron run <job-id>
 
 ### 5.3 完成清单
 
-- [ ] 6 个任务全部创建成功
-- [ ] `openclaw cron list` 显示所有任务
-- [ ] 手动测试每个任务都能正常运行
+- [ ] 用户选择的任务已全部创建成功
+- [ ] `openclaw cron list` 显示已选择的任务
+- [ ] 至少手动测试一个关键任务成功运行
 - [ ] 推送渠道配置正确（main session + IM channels）
-- [ ] 等待首次定时触发，确认自动执行成功
+- [ ] 等待至少一个首次定时触发，确认自动执行成功
 
 ---
 

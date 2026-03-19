@@ -340,6 +340,56 @@ You must **not** claim that the new default location is already active at runtim
 
 ---
 
+### Step 7.6: Optional Automation Setup Handoff
+
+Run this step **only after** Steps 7.1-7.5 complete successfully or optional customization is explicitly skipped.
+
+This step is optional. If the user does not want recurring automation, skip it and finish onboarding normally.
+
+This step does **not** mean Life Index contains native scheduling runtime.
+It means the agent may, on supported host platforms, help the user configure optional recurring automation by following:
+
+- `references/schedule/SCHEDULE.md`
+
+#### Purpose of this handoff
+
+Use this handoff only if the user wants post-onboarding quality-of-life automation such as:
+
+- monthly report
+- yearly report
+- monthly rebuild / maintenance
+- optional daily / weekly reports
+
+#### Required interaction rule
+
+Ask the user whether they want to continue with optional automation setup **after** installation verification is already complete.
+
+Do not present automation as mandatory.
+
+#### Required boundary rule
+
+When handing off to `SCHEDULE.md`, keep the following distinctions explicit:
+
+- installation success is already complete
+- automation setup depends on host-platform scheduling support
+- the user may enable only the tasks they want
+- failure in automation setup must not be reported as installation failure
+
+#### Strict boundaries for this step
+
+**Allowed**:
+- explain that optional automation setup is available
+- ask whether the user wants to continue
+- if the user agrees, follow `references/schedule/SCHEDULE.md`
+
+**Not allowed**:
+- claim Life Index has built-in scheduler runtime
+- force the user to configure automation
+- blur automation failure into installation failure
+- duplicate the full scheduler guide inside onboarding instead of handing off to `SCHEDULE.md`
+
+---
+
 ## 8. Success Criteria Summary
 
 | Step | Success Indicator |
@@ -352,6 +402,7 @@ You must **not** claim that the new default location is already active at runtim
 | First Write | `success: true`, `journal_path` returned |
 | First Search | `success: true`, `total` >= 1, entry found |
 | Optional Customization | User-approved personalization applied or explicitly skipped |
+| Optional Automation Setup | User either skipped automation or was correctly handed off to `SCHEDULE.md` after successful onboarding |
 
 ---
 
