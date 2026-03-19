@@ -272,6 +272,14 @@ Run this step **only after** Steps 7.1-7.4 succeed.
 
 This step is optional. If the user does not want customization, skip it and finish onboarding normally.
 
+This step currently covers **only**:
+
+1. trigger phrase customization
+2. default location preference
+
+Do **not** add a separate language-preference question during optional customization.
+Report language should be determined by the onboarding entry context or the user's explicit request in the current conversation, not stored as a new customization setting.
+
 #### Customization question A — trigger phrase
 
 You may ask the user whether they want a preferred trigger phrase pattern using:
@@ -369,6 +377,13 @@ You must **not** claim that the new default location is already active at runtim
 
 Report back to the user using this exact structure:
 
+**Language rule for the entire report**:
+
+- If the onboarding entry prompt came from `README.md`, the entire final report must be in Chinese
+- If the onboarding entry prompt came from `README.en.md`, the entire final report must be in English
+- If the user explicitly requests another report language in the current conversation, follow that explicit request
+- The `How to Use Life Index Now` section must use the **same language as the rest of the final report**
+
 ```
 ## Life Index Installation Complete
 
@@ -399,21 +414,22 @@ Report back to the user using this exact structure:
 - Default location runtime verification: <verified/not verified/not attempted>
 
 **How to Use Life Index Now**:
-- Title: 开始使用 Life Index
-- Welcome line: 恭喜！🎉 Life Index 已经安装完成。
-- Trigger line: 您当前的默认触发词是：`/life-index [user custom trigger phrase]`
-- Location line: 您当前的默认城市是：`[user default city, country]`
-- Intro line: 现在，您可以直接这样开始记录：
-- Logging example 1: `"/life-index [user custom trigger phrase] 今天完成了 Life Index 的安装测试，感觉很顺利"`
-- Logging example 2: `"/life-index [user custom trigger phrase] 刚刚看到一篇文章很有启发：https://..."`
-- Capability intro: 除了记录日志，您还可以继续让我帮您：
-- Capability 1: 搜索过去的记录
-- Capability 1 example: 例如：`/life-index 搜索：上个月我有多少次晚睡？`
-- Capability 2: 回顾某一段时间或某个主题
-- Capability 2 example: 例如：`/life-index 回顾过去半年我关于 Life Index 的开发情况`
-- Capability 3: 修改刚记录的信息
-- Capability 3 example: 例如：更新地点、天气、标题，或补充内容
-- Closing line: 如果你愿意，我现在就可以帮你记录第一条正式日志。
+- Title: <localized equivalent of "开始使用 Life Index" in the same language as the report>
+- Welcome line: <localized equivalent of "恭喜！🎉 Life Index 已经安装完成。" in the same language as the report>
+- Best-practice line: <state clearly, in the same language as the report, that the current best practice is `"/life-index" + "the user's chosen trigger phrase" : "the user's journal content"`>
+- Trigger line: <localized equivalent of "您当前的默认触发词是：`/life-index [user custom trigger phrase]`">
+- Location line: <localized equivalent of "您当前的默认城市是：`[user default city, country]`">
+- Intro line: <localized equivalent of "现在，您可以直接这样开始记录：">
+- Logging example 1: `"/life-index [user custom trigger phrase]: 今天完成了 Life Index 的安装测试，感觉很顺利"` (localize the non-trigger content to match the report language)
+- Logging example 2: `"/life-index [user custom trigger phrase]: 刚刚看到一篇文章很有启发：https://..."` (localize the non-trigger content to match the report language)
+- Capability intro: <localized equivalent of "除了记录日志，您还可以继续让我帮您：">
+- Capability 1: <localized equivalent of "搜索过去的记录">
+- Capability 1 example: <localized equivalent of `例如：/life-index 搜索: 我上个月有多少次晚睡？`>
+- Capability 2: <localized equivalent of "回顾某一段时间或某个主题">
+- Capability 2 example: <localized equivalent of `例如：/life-index 回顾过去半年我关于 Life Index 的开发情况`>
+- Capability 3: <localized equivalent of "修改刚记录的信息">
+- Capability 3 example: <localized equivalent of "例如：更新地点、天气、标题，或补充内容">
+- Closing line: <localized equivalent of "下面你可以直接开始记录您的第一篇日志啦🎉！">
 
 **Next Steps**:
 1. Life Index is ready to use via: `.venv/bin/life-index <command>`
@@ -450,6 +466,8 @@ Report back to the user using this exact structure:
 - Report honestly whether default-location customization was only saved or also runtime-verified
 - In both `Customization` and `How to Use Life Index Now`, represent the trigger only as the combined form `/life-index [user custom trigger phrase]`; never present `/life-index` and the custom phrase as separate alternatives
 - Keep the `How to Use Life Index Now` section human-facing, concise, and aligned to the fixed delivery structure above
+- Keep the entire final report in one language; do not mix English section headings with a Chinese usage guide or vice versa
+- Do not ask the user for a persistent language preference during optional customization unless the product later adds an actual stored language setting
 
 ---
 
