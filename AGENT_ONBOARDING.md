@@ -193,30 +193,37 @@ After the required verification flow is complete, an **optional customization st
 
 Create the first journal entry to verify write functionality.
 
+Use the machine's current local date at execution time, formatted as `YYYY-MM-DD`.
+Do **not** write placeholder text such as `System current time` or `{TODAY}` literally into the JSON payload.
+
 **Linux/macOS**:
 ```bash
-.venv/bin/life-index write --data '{
-  "title": "First Journal Entry",
-  "content": "Today I set up Life Index. Looking forward to recording my journey.",
-  "date": "2026-03-18",
-  "topic": ["life"],
-  "abstract": "Initial setup of Life Index journaling system.",
-  "mood": ["hopeful"],
-  "tags": ["setup"],
-  "people": [],
-  "project": "",
-  "links": []
-}'
+TODAY=$(date +%F)
+
+.venv/bin/life-index write --data "{
+  \"title\": \"First Journal Entry\",
+  \"content\": \"Today I set up Life Index. Looking forward to recording my journey.\",
+  \"date\": \"$TODAY\",
+  \"topic\": [\"life\"],
+  \"abstract\": \"Initial setup of Life Index journaling system.\",
+  \"mood\": [\"hopeful\"],
+  \"tags\": [\"setup\"],
+  \"people\": [],
+  \"project\": \"\",
+  \"links\": []
+}"
 ```
 
 **Windows (Recommended: File-based)**:
 ```powershell
-# Create JSON file first (avoids escaping issues)
-$json = @'
+# Compute current local date first, then create JSON file (avoids escaping issues)
+$today = Get-Date -Format 'yyyy-MM-dd'
+
+$json = @"
 {
   "title": "First Journal Entry",
   "content": "Today I set up Life Index. Looking forward to recording my journey.",
-  "date": "2026-03-18",
+  "date": "$today",
   "topic": ["life"],
   "abstract": "Initial setup of Life Index journaling system.",
   "mood": ["hopeful"],
@@ -225,7 +232,7 @@ $json = @'
   "project": "",
   "links": []
 }
-'@
+"@
 $json | Out-File -FilePath "first-entry.json" -Encoding utf8
 .venv\Scripts\life-index write --data @first-entry.json
 ```
