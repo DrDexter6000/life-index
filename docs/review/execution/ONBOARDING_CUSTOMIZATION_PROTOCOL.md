@@ -51,9 +51,18 @@ It defines an **optional personalization step** that happens only after successf
 
 ### Product stance
 
-Agents may ask the user whether they want a preferred trigger pattern using:
+Agents should explain that, to improve Life Index trigger success rate in current Agent / LLM ecosystems, the user should provide a custom trigger phrase.
 
-`"/life-index" + "user custom trigger phrase"`
+The best-practice pattern must be presented clearly as:
+
+`"/life-index" + "user custom trigger phrase" + "journal content"`
+
+Agents should give concrete examples such as:
+
+- `/life-index 记日志: 今天状态不错`
+- `/life-index note this: 刚刚看到一篇文章很有启发`
+
+Then agents should ask the user to provide the trigger phrase they want to use. If the user does not want to set one now, they may explicitly reply `skip` / `跳过`.
 
 This is a product-level onboarding recommendation backed by real-world usage validation.
 Do not replace it with a different trigger strategy during onboarding.
