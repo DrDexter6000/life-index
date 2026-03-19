@@ -201,6 +201,8 @@ python tools/write_journal.py --data '{...}'
 |------|------|-----------|
 | `SKILL.md` | Agent 技能定义、触发词、工具接口、工作流 | Agent 调用入口 |
 | `docs/ARCHITECTURE.md` | 架构设计、核心原则、关键决策 | ADR 决策记录 |
+| `docs/PRODUCT_BOUNDARY.md` | 产品边界、三层模型、默认拒绝方向 | 产品边界决策备忘录 |
+| `docs/EXECUTION_PRIORITIES.md` | v1.x 执行优先级、roadmap guardrails、当前主线顺序 | 执行优先级备忘录 |
 | `docs/API.md` | 工具 API 接口文档 | **SSOT**: 参数、错误码、返回值 |
 | `docs/CHANGELOG.md` | 决策变更历史 | 版本演进 |
 | `tools/lib/AGENTS.md` | 共享库开发指南 | **SSOT**: `lib/` 模块约定 |
