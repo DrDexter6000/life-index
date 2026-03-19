@@ -288,7 +288,7 @@ Requirements:
 5. If any step fails, stop and report the exact error
 6. Do not modify unrelated files or change repository source code during installation
 
-At the end, report back using the Final Report Format defined in `AGENT_ONBOARDING.md`.
+At the end, report back in English using the Final Report Format defined in `AGENT_ONBOARDING.md`.
 ```
 
 **You can also send the full `AGENT_ONBOARDING.md` file directly to your Agent.** If your Agent can read files from GitHub, let it read that file directly. If not, copy the file contents into the chat.

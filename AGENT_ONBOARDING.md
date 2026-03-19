@@ -43,6 +43,12 @@ Before starting, verify these requirements are met:
 
 Execute these steps in order. Do not skip steps.
 
+**Platform Command Fallback Rule**:
+- If the host Agent platform provides its own skill install / add / setup commands, you may try them first only if the user explicitly asked for that platform-specific path.
+- If those commands fail, are unavailable, or do not clearly complete the installation, do **not** get stuck there.
+- Fall back to the standard repository-driven path in this document: `git clone` → `python -m venv .venv` → `pip install -e .` → `life-index index` → verification.
+- Prefer the documented repository workflow over undocumented host-platform behavior.
+
 ### Step 4.1: Clone Repository
 
 ```bash
