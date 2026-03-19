@@ -288,7 +288,7 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 5. 如果某一步失败，停止并报告精确错误
 6. 不要修改安装流程之外的文件，也不要改仓库源码
 
-最后请按 `AGENT_ONBOARDING.md` 里的 Final Report Format 向我汇报结果。
+最后请使用中文按 `AGENT_ONBOARDING.md` 里的 Final Report Format 向我汇报结果。
 ```
 
 **你也可以直接把整个 `AGENT_ONBOARDING.md` 文件发给你的 Agent。** 如果你的 Agent 支持读取 GitHub 仓库文件，优先让它直接读取该文件；如果不支持，就把文件内容复制给它。
