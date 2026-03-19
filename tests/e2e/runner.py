@@ -228,10 +228,10 @@ class E2ETestRunner:
         expected = case.get("expected", {})
 
         # Determine which tool to call
-        if "extract" in input_data:
+        if "extract" in input_data or "data" in input_data:
             # write_journal test
             return self._test_write_journal(input_data, expected)
-        elif "query" in input_data or "data" in input_data:
+        elif "query" in input_data:
             # search or other tool test
             action = input_data.get("action", "search")
             if action == "search":
@@ -279,7 +279,7 @@ class E2ETestRunner:
         self, input_data: Dict[str, Any], expected: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Test write_journal tool."""
-        extract = input_data.get("extract", input_data)
+        extract = input_data.get("extract") or input_data.get("data") or input_data
 
         # Preprocess to handle Python-style syntax
         extract = self._preprocess_test_data(extract)
@@ -305,7 +305,7 @@ class E2ETestRunner:
             if result.returncode != 0:
                 return {"passed": False, "error": f"Tool failed: {result.stderr}"}
 
-            output = json.loads(result.stdout)
+            output = self._parse_json_output(result.stdout)
 
             # Validate results
             validation = self._validate_output(output, expected)
@@ -349,7 +349,7 @@ class E2ETestRunner:
             if result.returncode != 0:
                 return {"passed": False, "error": f"Tool failed: {result.stderr}"}
 
-            output = json.loads(result.stdout)
+            output = self._parse_json_output(result.stdout)
             validation = self._validate_output(output, expected)
 
             return {
@@ -386,7 +386,7 @@ class E2ETestRunner:
             if result.returncode != 0:
                 return {"passed": False, "error": f"Tool failed: {result.stderr}"}
 
-            output = json.loads(result.stdout)
+            output = self._parse_json_output(result.stdout)
             validation = self._validate_output(output, expected)
 
             return {
@@ -400,6 +400,33 @@ class E2ETestRunner:
         except json.JSONDecodeError as e:
             return {"passed": False, "error": f"Invalid JSON output: {e}"}
 
+    def _parse_json_output(self, stdout: str) -> Dict[str, Any]:
+        """Extract JSON payload from mixed stdout text."""
+        text = stdout.strip()
+        if not text:
+            raise json.JSONDecodeError("Empty output", stdout, 0)
+
+        first_brace = text.find("{")
+        last_brace = text.rfind("}")
+        if first_brace == -1 or last_brace == -1 or last_brace < first_brace:
+            raise json.JSONDecodeError("No JSON object found", stdout, 0)
+
+        payload = text[first_brace : last_brace + 1]
+        return json.loads(payload)
+
+    def _resolve_expected_value(self, output: Dict[str, Any], key: str) -> Any:
+        """Map legacy E2E expectation keys to current tool output."""
+        alias_map = {
+            "journal_created": bool(output.get("journal_path")),
+            "location": output.get("location_used"),
+            "weather": output.get("weather_used"),
+            "final_location": output.get("changes", {}).get("location", {}).get("new"),
+            "final_weather": output.get("changes", {}).get("weather", {}).get("new"),
+        }
+        if key in alias_map:
+            return alias_map[key]
+        return output.get(key)
+
     def _validate_output(
         self, output: Dict[str, Any], expected: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -407,7 +434,7 @@ class E2ETestRunner:
         errors = []
 
         for key, expected_value in expected.items():
-            actual_value = output.get(key)
+            actual_value = self._resolve_expected_value(output, key)
 
             # Handle special matchers
             if isinstance(expected_value, str):
