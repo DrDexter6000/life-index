@@ -176,7 +176,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | topic | array | ✅ | 主题分类（见下方 Topic 表） |
 | mood | array | ✅ | 心情标签，Agent语义提取1~3个（如["开心","专注"]） |
 | tags | array | ✅ | 标签，Agent语义提取关键词（可多个） |
-| location | string | ❌ | 地点，默认"Chongqing, China"，Agent询问后可更改 |
+| location | string | ❌ | 地点；Agent 必须在写入前询问用户，未指定时默认 "Chongqing, China" |
 | weather | string | ❌ | 天气，根据确认的地点自动查询 |
 | people | array | ❌ | 相关人物，Agent语义提取，没有则留空 |
 | project | string | ❌ | 关联项目，Agent语义提取，没有则留空 |
@@ -199,7 +199,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 1. **必填字段**：title, content, date, abstract, topic, mood, tags — 必须有值
 2. **语义提取**：从用户内容中主动提取 mood（1~3个）、tags（关键词）、people、project
-3. **默认值**：location 默认 "Chongqing, China"，Agent可主动询问用户确认更改
+3. **地点（写入前必问）**：用户未提及地点时，Agent **必须先询问再写入**；用户未指定则默认 "Chongqing, China"。同一会话已确认过的地点可复用
 4. **空值处理**：people, project, links 未提取到时传空值（如 `"people": []`）
 5. **摘要生成**：从 content 提取关键信息，生成 ≤100 字的 abstract
 6. **必须确认**：工具返回后检查 `needs_confirmation`，为 `true` 时展示并询问用户
@@ -226,12 +226,13 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 步骤 | 动作 | 关键检查点 | 常见错误 |
 |:---:|:---|:---|:---|
 | 1 | **解析意图** | 提取 title, content, date, topic | 遗漏 topic |
-| 2 | **提取元数据** | 识别 mood(1-3个)、tags、people、project | mood 为空数组 |
-| 3 | **生成摘要** | abstract ≤100字 | 摘要过长 |
-| 4 | **调用工具** | `write_journal` 包含所有字段 | 缺少必填字段 |
-| 5 | **检查确认** | `needs_confirmation` 为 true？ | ⚠️ **最常见错误：直接跳过** |
-| 6 | **展示确认** | 展示 `confirmation_message` | 不展示直接结束 |
-| 7 | **等待回复** | 询问用户"是否正确？" | 不询问 |
+| 2 | **询问地点** | 用户未提及地点？→ 先问后写 | ⚠️ **常见错误：不问直接写** |
+| 3 | **提取元数据** | 识别 mood(1-3个)、tags、people、project | mood 为空数组 |
+| 4 | **生成摘要** | abstract ≤100字 | 摘要过长 |
+| 5 | **调用工具** | `write_journal` 包含所有字段 | 缺少必填字段 |
+| 6 | **检查确认** | `needs_confirmation` 为 true？ | ⚠️ **最常见错误：直接跳过** |
+| 7 | **展示确认** | 展示 `confirmation_message` | 不展示直接结束 |
+| 8 | **等待回复** | 询问用户"是否正确？" | 不询问 |
 
 **写入结果解读**：
 

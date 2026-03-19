@@ -366,6 +366,8 @@ Note: this run reused an already downloaded embedding model cache. A truly cold 
 | 5 | JSON escaping is tricky on Windows PowerShell | Medium | Recommend `--data @file.json` |
 | 6 | Required fields are not obvious from CLI help alone | Low | Point to `docs/API.md` for full schema |
 | 7 | Weather description may contain mojibake from upstream data in some environments | Low | Non-blocking; treat as separate output-quality issue if it persists |
+| 8 | Default location "Chongqing, China" is author-specific | Medium | Agent must ask for location BEFORE first write; see SKILL.md "地点询问时机" |
+| 9 | fastembed "mean pooling" warning on first run | Low | Non-blocking; cosmetic warning from library, does not affect functionality |
 
 ---
 
