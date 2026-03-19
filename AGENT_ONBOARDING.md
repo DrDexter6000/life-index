@@ -398,6 +398,15 @@ Report back to the user using this exact structure:
 - Default location preference: <saved/skipped>
 - Default location runtime verification: <verified/not verified/not attempted>
 
+**How to Use Life Index Now**:
+- Welcome line: <e.g. 恭喜！🎉 Life Index 已经安装完毕。>
+- Active trigger phrase: <the actual trigger phrase now available to the user>
+- Active default location: <the actual current default location or current system default>
+- First-use guidance: <one short sentence explaining that the user can now start recording with `/life-index` plus the active trigger phrase and their content>
+- Example 1: <a simple natural-language logging example>
+- Example 2: <a simple natural-language search or review example>
+- Example 3: <an optional edit / recap / summary example based on what is truly supported>
+
 **Next Steps**:
 1. Life Index is ready to use via: `.venv/bin/life-index <command>`
 2. Available commands: write, search, edit, abstract, weather, index, health
@@ -431,6 +440,8 @@ Report back to the user using this exact structure:
 - Stop immediately if prerequisites are missing or a command fails twice in the same step
 - Keep customization clearly separate from installation success/failure
 - Report honestly whether default-location customization was only saved or also runtime-verified
+- Make the `How to Use Life Index Now` section human-facing, concise, and based on the actual configured trigger/location values
+- Use natural-language examples that a novice user can imitate immediately; do not expose unnecessary agent-only workflow detail
 
 ---
 

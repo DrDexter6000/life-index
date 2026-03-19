@@ -119,6 +119,59 @@ Using code/test/doc inspection plus review-bundle mapping, this run established 
 
 ---
 
+## 3.4 Onboarding customization runtime verification
+
+### Goal
+
+Verify whether a user-saved default location preference is actually consumed by the real write path, not just documented in config or covered by unit tests.
+
+### Sandbox setup
+
+- Isolated `LIFE_INDEX_DATA_DIR`:
+  `D:\Loster AI\Projects\life-index\.sisyphus\onboarding-runtime-evidence\Life-Index`
+- User config file created at:
+  `D:\Loster AI\Projects\life-index\.sisyphus\onboarding-runtime-evidence\Life-Index\.life-index\config.yaml`
+- Config content:
+
+```yaml
+defaults:
+  location: "Lagos, Nigeria"
+```
+
+### Commands
+
+```bash
+LIFE_INDEX_DATA_DIR="D:\Loster AI\Projects\life-index\.sisyphus\onboarding-runtime-evidence\Life-Index" ".venv/Scripts/python.exe" -m tools health
+
+LIFE_INDEX_DATA_DIR="D:\Loster AI\Projects\life-index\.sisyphus\onboarding-runtime-evidence\Life-Index" ".venv/Scripts/python.exe" -m tools write --data @"D:\Loster AI\Projects\life-index\.sisyphus\onboarding-runtime-evidence\first-entry.json"
+```
+
+### Observed result
+
+- `health` correctly pointed at the isolated data directory
+- `write` succeeded against the isolated data directory
+- returned payload contained:
+  - `"location_used": "Lagos, Nigeria"`
+  - `"needs_confirmation": true`
+  - `confirmation_message` showing `地点：Lagos, Nigeria`
+
+### Interpretation
+
+- This is **runtime-observed** evidence that the configured default location is now consumed by the real write path
+- This closes the previous gap where `config.py` supported `defaults.location` but `write_journal` still hardcoded `"Chongqing, China"`
+- The onboarding customization flow may now honestly claim that saving `defaults.location` is not only recorded but also runtime-effective for subsequent writes
+
+### Observed caveats
+
+- CLI log output on Windows still showed mojibake in some console lines, but the returned JSON payload contained the correct location value
+- The `fastembed` mean-pooling warning still appeared during the run and remains non-blocking
+
+### Status
+
+- **Confirmed (runtime-observed)**
+
+---
+
 ## 4. Evidence summary by domain
 
 ## 4.1 Workflow domain
