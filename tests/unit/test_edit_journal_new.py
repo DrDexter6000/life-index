@@ -328,6 +328,57 @@ class TestEditJournal:
         content = journal.read_text(encoding="utf-8")
         assert "Sunny" in content
 
+    def test_edit_location_without_weather_rejected(self, tmp_path):
+        """Location changes must include weather"""
+        from tools.edit_journal import edit_journal
+
+        journal = tmp_path / "test.md"
+        original = (
+            "---\n"
+            "title: Test\n"
+            "date: 2026-03-14\n"
+            "location: Chongqing, China\n"
+            "weather: Sunny\n"
+            "---\n\n"
+            "# Content\n"
+        )
+        journal.write_text(original, encoding="utf-8")
+
+        result = edit_journal(journal, {"location": "Beijing, China"})
+
+        assert result["success"] is False
+        assert result["error"]["code"] == "E0504"
+        assert journal.read_text(encoding="utf-8") == original
+
+    def test_edit_location_with_weather_succeeds(self, tmp_path):
+        """Location and weather can be updated together"""
+        from tools.edit_journal import edit_journal
+
+        journal = tmp_path / "test.md"
+        journal.write_text(
+            "---\n"
+            "title: Test\n"
+            "date: 2026-03-14\n"
+            "location: Chongqing, China\n"
+            "weather: Sunny\n"
+            "---\n\n"
+            "# Content\n",
+            encoding="utf-8",
+        )
+
+        result = edit_journal(
+            journal,
+            {"location": "Beijing, China", "weather": "Cloudy 18°C"},
+        )
+
+        assert result["success"] is True
+        assert result["changes"]["location"]["new"] == "Beijing, China"
+        assert result["changes"]["weather"]["new"] == "Cloudy 18°C"
+
+        content = journal.read_text(encoding="utf-8")
+        assert "Beijing, China" in content
+        assert "Cloudy 18°C" in content
+
     def test_edit_append_content(self, tmp_path):
         """Edit appends content to body"""
         from tools.edit_journal import edit_journal

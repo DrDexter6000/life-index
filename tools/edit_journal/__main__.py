@@ -21,6 +21,10 @@ def main() -> None:
         description="Life Index - Edit Journal Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+重要规则:
+    修改地点时，必须同时提供新的天气。
+    推荐顺序：先 query_weather；如果失败，可手动查询天气后，再一起传入 --set-location 和 --set-weather。
+
 Examples:
     # 设置地点和天气
     python -m tools.edit_journal --journal "Journals/2026/03/life-index_2026-03-05_001.md" \\

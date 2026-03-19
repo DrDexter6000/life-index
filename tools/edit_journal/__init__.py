@@ -249,6 +249,17 @@ def edit_journal(
                 "请使用 --set-*, --append-content 或 --replace-content 指定修改",
             )
 
+        if "location" in frontmatter_updates:
+            weather_value = frontmatter_updates.get("weather")
+            if not isinstance(weather_value, str) or not weather_value.strip():
+                logger.warning("修改地点时缺少同步天气")
+                return create_error_response(
+                    ErrorCode.LOCATION_WEATHER_REQUIRED,
+                    "修改地点时，必须同时更新天气",
+                    {"required_fields": ["location", "weather"]},
+                    "请先查询新地点的天气；如果 query_weather 失败，可手动提供天气后再一起修改",
+                )
+
         # 使用 lib-frontmatter 更新
         # 构建完整数据用于格式化
         metadata = parse_journal_file(journal_path)

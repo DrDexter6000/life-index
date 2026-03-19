@@ -199,7 +199,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 1. **必填字段**：title, content, date, abstract, topic, mood, tags — 必须有值
 2. **语义提取**：从用户内容中主动提取 mood（1~3个）、tags（关键词）、people、project
-3. **地点默认规则**：用户未提及地点时，工具默认使用 "Chongqing, China"；写入成功后 Agent 必须展示确认信息并等待用户确认或修正
+3. **地点默认规则**：正文里明确写出的地点优先；只有正文和入参都未提供地点时，工具才使用默认地点；用了默认地点后，写入成功后 Agent 必须展示确认信息并等待用户确认或修正
 4. **空值处理**：people, project, links 未提取到时传空值（如 `"people": []`）
 5. **摘要生成**：从 content 提取关键信息，生成 ≤100 字的 abstract
 6. **必须确认**：工具返回后检查 `needs_confirmation`，为 `true` 时展示并询问用户
@@ -228,7 +228,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 1 | **解析意图** | 提取 title, content, date, topic | 遗漏 topic |
 | 2 | **提取元数据** | 识别 mood(1-3个)、tags、people、project | mood 为空数组 |
 | 3 | **生成摘要** | abstract ≤100字 | 摘要过长 |
-| 4 | **调用工具** | `write_journal` 包含所有字段；location 缺失时允许工具使用默认 Chongqing, China | 误以为必须写前补问地点 |
+| 4 | **调用工具** | `write_journal` 包含所有字段；正文里明确地点/天气时优先采用正文信息；location 缺失时才允许工具使用默认地点 | 让默认值覆盖正文里已写明的信息 |
 | 5 | **检查确认** | `needs_confirmation` 为 true？ | ⚠️ **最常见错误：直接跳过** |
 | 6 | **展示确认** | 展示 `confirmation_message` | 不展示直接结束 |
 | 7 | **等待回复** | 询问用户"是否正确？" | 不询问 |
@@ -306,7 +306,7 @@ success: true, index_status: degraded
 1. **定位日志**：根据日期或标题找到目标文件
 2. **确认修改**：展示当前内容，明确修改范围
 3. **执行编辑**：`edit_journal`
-4. **如修改地点**：需先调用 `query_weather` 获取新天气，再同时更新 location 和 weather
+4. **如修改地点**：必须同时更新 location 和 weather；先调用 `query_weather` 获取新天气，若失败可由 Agent 手动联网查询天气后再一起更新
 
 ### 工作流4: 生成摘要
 

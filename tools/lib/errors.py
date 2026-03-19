@@ -79,6 +79,7 @@ class ErrorCode:
     EDIT_CONFLICT = "E0501"
     FIELD_NOT_RECOGNIZED = "E0502"
     NO_CHANGES_SPECIFIED = "E0503"
+    LOCATION_WEATHER_REQUIRED = "E0504"
 
     # ========== Index Module (06xx) ==========
     INDEX_BUILD_FAILED = "E0600"
@@ -134,6 +135,7 @@ class LifeIndexError(Exception):
         # Edit errors: Ask user
         ErrorCode.JOURNAL_NOT_FOUND: "ask_user",
         ErrorCode.NO_CHANGES_SPECIFIED: "ask_user",
+        ErrorCode.LOCATION_WEATHER_REQUIRED: "ask_user",
         # Search errors: Return empty
         ErrorCode.NO_RESULTS: "continue_empty",
         ErrorCode.QUERY_EMPTY: "ask_user",
@@ -218,6 +220,7 @@ ERROR_DESCRIPTIONS = {
     ErrorCode.EDIT_CONFLICT: "Edit conflict detected",
     ErrorCode.FIELD_NOT_RECOGNIZED: "Field not recognized for editing",
     ErrorCode.NO_CHANGES_SPECIFIED: "No changes specified",
+    ErrorCode.LOCATION_WEATHER_REQUIRED: "Location changes require weather update",
     # Index
     ErrorCode.INDEX_BUILD_FAILED: "Failed to build index",
     ErrorCode.INDEX_CORRUPTED: "Index is corrupted",

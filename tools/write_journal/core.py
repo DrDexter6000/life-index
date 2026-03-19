@@ -4,6 +4,7 @@ Life Index - Write Journal Tool - Core
 核心协调模块
 """
 
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -28,6 +29,32 @@ from .index_updater import (
     update_monthly_abstract,
     update_vector_index,
 )
+
+
+def extract_explicit_metadata_from_content(content: str) -> Dict[str, str]:
+    """从正文中提取明确声明的元数据（仅保守支持显式标签格式）"""
+    extracted: Dict[str, str] = {}
+    if not content:
+        return extracted
+
+    patterns = {
+        "location": re.compile(
+            r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
+        ),
+        "weather": re.compile(
+            r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
+        ),
+    }
+
+    for line in content.splitlines():
+        for field, pattern in patterns.items():
+            if field in extracted:
+                continue
+            match = pattern.match(line)
+            if match:
+                extracted[field] = match.group(1).strip()
+
+    return extracted
 
 
 def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
@@ -63,6 +90,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         "side_effects_status": "not_started",
         "attachments_processed": [],
         "location_used": "",
+        "location_auto_filled": False,
         "weather_used": "",
         "weather_auto_filled": False,
         "needs_confirmation": False,
@@ -80,14 +108,18 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
 
         logger.info(f"开始写入日志：date={date_str}, title={data.get('title', 'N/A')}")
 
+        content = data.get("content", "")
+        explicit_metadata = extract_explicit_metadata_from_content(content)
+
         # ===== 第一层：用户提及为准 =====
-        # 如果用户提供了地点和天气，直接使用
+        # 如果正文里明确写了地点和天气，优先使用正文中的信息
 
         # ===== 第二层：自动填充 =====
         # 处理地点：如果未提供，使用默认值
-        location = data.get("location", "").strip()
+        location = explicit_metadata.get("location") or data.get("location", "").strip()
         if not location:
             location = get_default_location()
+            result["location_auto_filled"] = True
             result["location_used"] = location
             # 天气查询使用实际默认地点
             location_for_weather = normalize_location(location)
@@ -98,7 +130,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         data["location"] = location
 
         # 处理天气：如果未提供，自动查询
-        weather = data.get("weather", "").strip()
+        weather = explicit_metadata.get("weather") or data.get("weather", "").strip()
         if not weather:
             # 尝试获取天气（使用英文格式的地点）
             logger.debug(f"查询天气：location={location_for_weather}")
@@ -296,15 +328,15 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         result["success"] = True
 
         # ===== 第三层：写入后确认 =====
-        result["needs_confirmation"] = True
-        result["confirmation_message"] = (
-            f"日志已保存至：{journal_path}\n\n"
-            f"当前记录信息：\n"
-            f"- 地点：{location}\n"
-            f"- 天气：{weather if weather else '（未获取）'}\n\n"
-            f"请确认以上信息是否正确。如需修改，请告诉我新的地点或天气信息，"
-            f"我将为您更新日志文件。"
-        )
+        result["needs_confirmation"] = result["location_auto_filled"]
+        if result["needs_confirmation"]:
+            result["confirmation_message"] = (
+                f"日志已保存至：{journal_path}\n\n"
+                f"本次使用了默认地点：{location}\n"
+                f"- 天气：{weather if weather else '（未获取）'}\n\n"
+                f"如果这个地点不对，请告诉我正确地点。"
+                f"我会基于新地点更新地点和天气。"
+            )
 
     except (ValueError, IOError, RuntimeError, OSError) as e:
         logger.error(f"写入日志失败：{e}", exc_info=True)
