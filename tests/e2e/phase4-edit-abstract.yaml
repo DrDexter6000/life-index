@@ -1,156 +1,202 @@
-# E2E Test Phase 4: Edit & Abstract Workflow
-# Tests editing journals and generating summaries
+# Life Index E2E 测试 - Phase 4: Edit & Abstract Workflow
 
-id: E2E-15
-name: Edit journal location and weather
-priority: P0
-category: edit-workflow
-description: Test editing location and weather fields of an existing journal
-steps:
-  - step: 1
-    action: Create initial journal
-    command: |
-      python -m tools.write_journal --data '{
-        "title": "Test Edit",
-        "content": "Initial content for edit test",
-        "date": "2026-03-14",
-        "topic": ["work"],
-        "abstract": "Test abstract for edit"
-      }'
-    expected:
-      success: true
-      needs_confirmation: true
+test_suite:
+  name: "Phase 4 - Edit & Abstract Workflow"
+  version: "1.0"
+  executor: "Agent"
+  cleanup_after_test: true
 
-  - step: 2
-    action: Edit location
-    command: |
-      python -m tools.edit_journal --journal "{journal_path}" --set-location "Shanghai, China"
-    expected:
-      success: true
-      changes.location: exists
+performance_metrics:
+  - step: "edit_journal"
+    description: "编辑日志 frontmatter / 正文"
+  - step: "search"
+    description: "通过搜索验证编辑结果"
+  - step: "generate_abstract"
+    description: "生成月度/年度摘要"
+  - step: "total"
+    description: "端到端总耗时"
 
-  - step: 3
-    action: Verify edit persisted
-    command: |
-      python -m tools.search_journals --query "Test Edit" --level 2
-    expected:
-      success: true
-      results: not_empty
+test_cases:
+  - id: "E2E-15"
+    name: "编辑地点和天气后可按新地点检索"
+    priority: "P1"
+    description: "先创建日志，再同时修改地点和天气，最后按标题+地点检索验证修改已生效。"
+    steps:
+      - step: 1
+        name: "创建初始日志"
+        action: "write_journal"
+        data:
+          date: "2026-03-14"
+          title: "Test Edit"
+          content: "Initial content for edit test"
+          topic: ["work"]
+          abstract: "Test abstract for edit"
+        expected:
+          success: true
+          journal_created: true
+      - step: 2
+        name: "同步修改地点和天气"
+        action: "edit_journal"
+        use_last_created: true
+        operations:
+          - set_location: "Shanghai, China"
+          - set_weather: "Cloudy 22°C"
+        expected:
+          success: true
+          final_location: "Shanghai, China"
+          final_weather: "Cloudy 22°C"
+      - step: 3
+        name: "按标题和地点检索验证"
+        action: "search"
+        query_params:
+          query: "Initial content for edit test"
+          location: "Shanghai, China"
+          level: 3
+        expected:
+          success: true
+          results_count: ">= 1"
+          contains_titles:
+            - "Test Edit"
+    performance_sla:
+      total: "< 10s"
 
----
-id: E2E-16
-name: Edit journal topic triggers index update
-priority: P0
-category: edit-workflow
-description: Test that editing topic updates the by-topic index
-steps:
-  - step: 1
-    action: Create journal with topic=work
-    command: |
-      python -m tools.write_journal --data '{
-        "title": "Topic Change Test",
-        "content": "Testing topic change",
-        "date": "2026-03-14",
-        "topic": ["work"],
-        "abstract": "Topic test"
-      }'
-    expected:
-      success: true
+  - id: "E2E-16"
+    name: "编辑 topic 会触发索引更新并可按新 topic 检索"
+    priority: "P1"
+    description: "创建 work 日志后改为 learn，验证返回索引更新信息，并可按新 topic 检索到该日志。"
+    steps:
+      - step: 1
+        name: "创建 work 日志"
+        action: "write_journal"
+        data:
+          date: "2026-03-14"
+          title: "Topic Change Test"
+          content: "Testing topic change"
+          topic: ["work"]
+          abstract: "Topic test"
+        expected:
+          success: true
+          journal_created: true
+      - step: 2
+        name: "将 topic 改为 learn"
+        action: "edit_journal"
+        use_last_created: true
+        operations:
+          - set_topic: "learn"
+        expected:
+          success: true
+          indices_updated: "(non-empty)"
+      - step: 3
+        name: "按新 topic 检索验证"
+        action: "search"
+        query_params:
+          query: "Testing topic change"
+          topic: "learn"
+          level: 3
+        expected:
+          success: true
+          results_count: ">= 1"
+          contains_titles:
+            - "Topic Change Test"
+    performance_sla:
+      total: "< 10s"
 
-  - step: 2
-    action: Change topic to learn
-    command: |
-      python -m tools.edit_journal --journal "{journal_path}" --set-topic "learn"
-    expected:
-      success: true
-      indices_updated: not_empty
+  - id: "E2E-17"
+    name: "生成月度摘要"
+    priority: "P1"
+    description: "创建 2026-03 日志后生成月度摘要，验证摘要文件路径与统计信息返回。"
+    steps:
+      - step: 1
+        name: "创建三月日志"
+        action: "write_journal"
+        data:
+          date: "2026-03-01"
+          title: "March Entry 1"
+          content: "First entry"
+          topic: ["work"]
+          abstract: "Entry 1"
+        expected:
+          success: true
+          journal_created: true
+      - step: 2
+        name: "生成月度摘要"
+        action: "generate_abstract"
+        period: "month"
+        value: "2026-03"
+        expected:
+          success: true
+          updated: true
+          abstract_path: "(non-empty)"
+          journal_count: ">= 1"
+    performance_sla:
+      total: "< 10s"
 
-  - step: 3
-    action: Verify new index entry
-    command: |
-      cat ~/Documents/Life-Index/by-topic/主题_learn.md
-    expected:
-      content_contains: "Topic Change Test"
+  - id: "E2E-18"
+    name: "追加正文后可全文检索到新增内容"
+    priority: "P1"
+    description: "创建日志后追加正文，再通过全文搜索验证新增内容已经持久化。"
+    steps:
+      - step: 1
+        name: "创建初始日志"
+        action: "write_journal"
+        data:
+          date: "2026-03-14"
+          title: "Append Test"
+          content: "Original content"
+          topic: ["work"]
+          abstract: "Append test"
+        expected:
+          success: true
+          journal_created: true
+      - step: 2
+        name: "追加正文"
+        action: "edit_journal"
+        use_last_created: true
+        operations:
+          - append_content: "Added later in the day"
+        expected:
+          success: true
+          content_modified: true
+      - step: 3
+        name: "全文检索新增内容"
+        action: "search"
+        query_params:
+          query: "Added later in the day"
+          level: 3
+        expected:
+          success: true
+          results_count: ">= 1"
+          contains_titles:
+            - "Append Test"
+    performance_sla:
+      total: "< 10s"
 
----
-id: E2E-17
-name: Generate monthly abstract
-priority: P1
-category: abstract-workflow
-description: Test generating monthly abstract
-steps:
-  - step: 1
-    action: Create multiple journals
-    command: |
-      python -m tools.write_journal --data '{
-        "title": "March Entry 1",
-        "content": "First entry",
-        "date": "2026-03-01",
-        "topic": ["work"],
-        "abstract": "Entry 1"
-      }'
-    expected:
-      success: true
-
-  - step: 2
-    action: Generate monthly abstract
-    command: |
-      python -m tools.generate_abstract --month 2026-03
-    expected:
-      success: true
-
-  - step: 3
-    action: Verify abstract file exists
-    command: |
-      ls ~/Documents/Life-Index/Journals/2026/03/monthly_report_2026-03.md
-    expected:
-      exit_code: 0
-
----
-id: E2E-18
-name: Append content to journal
-priority: P1
-category: edit-workflow
-description: Test appending content to existing journal
-steps:
-  - step: 1
-    action: Create journal
-    command: |
-      python -m tools.write_journal --data '{
-        "title": "Append Test",
-        "content": "Original content",
-        "date": "2026-03-14",
-        "topic": ["work"],
-        "abstract": "Test"
-      }'
-    expected:
-      success: true
-
-  - step: 2
-    action: Append content
-    command: |
-      python -m tools.edit_journal --journal "{journal_path}" --append-content "Added later in the day"
-    expected:
-      success: true
-      content_modified: true
-
----
-id: E2E-19
-name: Generate yearly abstract
-priority: P2
-category: abstract-workflow
-description: Test generating yearly abstract
-steps:
-  - step: 1
-    action: Generate yearly abstract
-    command: |
-      python -m tools.generate_abstract --year 2026
-    expected:
-      success: true
-
-  - step: 2
-    action: Verify file created
-    command: |
-      ls ~/Documents/Life-Index/Journals/2026/yearly_report_2026.md
-    expected:
-      exit_code: 0
+  - id: "E2E-19"
+    name: "生成年度摘要"
+    priority: "P2"
+    description: "创建 2026 年日志后生成年度摘要，验证摘要文件路径与统计信息返回。"
+    steps:
+      - step: 1
+        name: "创建年度日志"
+        action: "write_journal"
+        data:
+          date: "2026-11-18"
+          title: "Yearly Entry 1"
+          content: "Annual summary input"
+          topic: ["life"]
+          abstract: "Yearly entry"
+        expected:
+          success: true
+          journal_created: true
+      - step: 2
+        name: "生成年度摘要"
+        action: "generate_abstract"
+        period: "year"
+        value: "2026"
+        expected:
+          success: true
+          updated: true
+          abstract_path: "(non-empty)"
+          journal_count: ">= 1"
+    performance_sla:
+      total: "< 10s"
