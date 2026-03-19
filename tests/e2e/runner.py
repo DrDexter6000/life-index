@@ -81,6 +81,7 @@ class E2ETestRunner:
         1: "phase1-core-workflow.yaml",
         2: "phase2-search-retrieval.yaml",
         3: "phase3-edge-cases.yaml",
+        4: "phase4-edit-abstract.yaml",
     }
 
     def __init__(
@@ -273,6 +274,28 @@ class E2ETestRunner:
                     all_passed = False
                     errors.append(f"Step {step.get('step')}: {result.get('error')}")
 
+            elif action == "search":
+                result = self._test_search(
+                    step.get("query_params", {}), step.get("expected", {})
+                )
+                if not result["passed"]:
+                    all_passed = False
+                    errors.append(f"Step {step.get('step')}: {result.get('error')}")
+
+            elif action == "generate_abstract":
+                result = self._test_generate_abstract(
+                    step.get("period"), step.get("value"), step.get("expected", {})
+                )
+                if not result["passed"]:
+                    all_passed = False
+                    errors.append(f"Step {step.get('step')}: {result.get('error')}")
+
+            else:
+                all_passed = False
+                errors.append(
+                    f"Step {step.get('step')}: Unknown step action '{action}'"
+                )
+
         return {"passed": all_passed, "error": "; ".join(errors) if errors else ""}
 
     def _test_write_journal(
@@ -431,7 +454,49 @@ class E2ETestRunner:
         except json.JSONDecodeError as e:
             return {"passed": False, "error": f"Invalid JSON output: {e}"}
 
-    def _parse_json_output(self, stdout: str) -> Dict[str, Any]:
+    def _test_generate_abstract(
+        self, period: Optional[str], value: Optional[str], expected: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Test generate_abstract tool."""
+        cmd = [sys.executable, "-m", "tools.generate_abstract", "--json"]
+
+        if period == "month" and value:
+            cmd.extend(["--month", str(value)])
+        elif period == "year" and value:
+            cmd.extend(["--year", str(value)])
+        else:
+            return {"passed": False, "error": "Invalid abstract generation params"}
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=str(self.project_root),
+                timeout=30,
+            )
+
+            if result.returncode != 0:
+                return {"passed": False, "error": f"Tool failed: {result.stderr}"}
+
+            output = self._parse_json_output(result.stdout)
+            if isinstance(output, list):
+                output = output[0] if output else {}
+
+            validation = self._validate_output(output, expected)
+
+            return {
+                "passed": validation["passed"],
+                "error": validation.get("error", ""),
+                "details": output,
+            }
+
+        except subprocess.TimeoutExpired:
+            return {"passed": False, "error": "Tool timeout (>30s)"}
+        except json.JSONDecodeError as e:
+            return {"passed": False, "error": f"Invalid JSON output: {e}"}
+
+    def _parse_json_output(self, stdout: str) -> Any:
         """Extract JSON payload from mixed stdout text."""
         text = stdout.strip()
         if not text:
@@ -520,6 +585,24 @@ class E2ETestRunner:
 
             # Handle special matchers
             if isinstance(expected_value, str):
+                match = re.match(
+                    r"^(>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$", expected_value.strip()
+                )
+                if match and isinstance(actual_value, (int, float)):
+                    op, threshold = match.groups()
+                    threshold_num = float(threshold)
+                    actual_num = float(actual_value)
+                    comparisons = {
+                        ">=": actual_num >= threshold_num,
+                        "<=": actual_num <= threshold_num,
+                        ">": actual_num > threshold_num,
+                        "<": actual_num < threshold_num,
+                    }
+                    if not comparisons[op]:
+                        errors.append(
+                            f"{key}: expected {expected_value}, got {actual_value}"
+                        )
+                    continue
                 if expected_value == "(非空字符串)" or expected_value == "(non-empty)":
                     if not actual_value:
                         errors.append(f"{key}: expected non-empty, got empty")
@@ -677,7 +760,7 @@ Examples:
         "-p",
         type=int,
         nargs="+",
-        choices=[1, 2, 3],
+        choices=[1, 2, 3, 4],
         help="Run specific phase(s)",
     )
     parser.add_argument(
