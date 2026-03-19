@@ -164,7 +164,7 @@ python -m tools.write_journal --data '<json>'
 | title | string | ✅ | - | 日志标题（≤20字） |
 | content | string | ✅ | - | 日志正文（原样保留） |
 | date | string | ✅ | - | 日期（ISO 8601: YYYY-MM-DD） |
-| location | string | ❌ | "Chongqing, China" | 地点 |
+| location | string | ❌ | "Chongqing, China" | 地点；未提供时使用当前默认地点，写入后需走确认流程 |
 | weather | string | ❌ | 自动查询 | 天气描述 |
 | mood | array | ❌ | [] | 心情标签 |
 | people | array | ❌ | [] | 相关人物 |
@@ -202,6 +202,12 @@ python -m tools.write_journal --data '<json>'
   }
 }
 ```
+
+### 写入后的确认语义
+
+- `needs_confirmation` 应视为当前写入协议中的正常后续步骤，而不是可忽略的偶发分支
+- 当 `location` / `weather` 由工具默认或自动填充时，Agent 必须展示 `confirmation_message` 并等待用户确认或修正
+- 如果用户要求修正地点/天气，后续应进入 correction flow，而不是把原写入描述为失败
 
 ### 错误码
 
@@ -465,3 +471,9 @@ python -m tools.build_index [options]
 配置文件位置：`~/Documents/Life-Index/.life-index/config.yaml`
 
 详见 [config.example.yaml](../config.example.yaml)
+
+### 当前与 onboarding customization 相关的配置说明
+
+- 用户可在 `config.yaml` 中记录 `defaults.location`
+- onboarding agent 可在安装完成后的 optional customization step 中写入该偏好
+- 但是否被当前运行时写入链路自动消费，应以实际验证结果为准；Agent 不得在未验证时声称其已生效
