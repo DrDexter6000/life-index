@@ -164,8 +164,8 @@ python -m tools.write_journal --data '<json>'
 | title | string | ✅ | - | 日志标题（≤20字） |
 | content | string | ✅ | - | 日志正文（原样保留） |
 | date | string | ✅ | - | 日期（ISO 8601: YYYY-MM-DD） |
-| location | string | ❌ | "Chongqing, China" | 地点；未提供时使用当前默认地点，写入后需走确认流程 |
-| weather | string | ❌ | 自动查询 | 天气描述 |
+| location | string | ❌ | 默认地点兜底 | 地点；若正文中已明确写出地点，优先采用正文信息；仅在正文和入参都未提供时才使用默认地点 |
+| weather | string | ❌ | 自动查询/手动兜底 | 天气描述；若正文中已明确写出天气，优先采用正文信息 |
 | mood | array | ❌ | [] | 心情标签 |
 | people | array | ❌ | [] | 相关人物 |
 | topic | array | ✅ | - | 主题分类（7类之一） |
@@ -203,10 +203,11 @@ python -m tools.write_journal --data '<json>'
 }
 ```
 
-### 写入后的确认语义
+### 写入与确认语义
 
 - `needs_confirmation` 应视为当前写入协议中的正常后续步骤，而不是可忽略的偶发分支
-- 当 `location` / `weather` 由工具默认或自动填充时，Agent 必须展示 `confirmation_message` 并等待用户确认或修正
+- 正文中明确写出的地点/天气优先级最高，Agent 不得再用默认地点或自动查询结果覆盖
+- 只有在正文和入参都未提供地点、工具使用了默认地点时，Agent 才必须展示 `confirmation_message` 并等待用户确认或修正
 - 如果用户要求修正地点/天气，后续应进入 correction flow，而不是把原写入描述为失败
 
 ### 错误码
@@ -311,6 +312,12 @@ python -m tools.edit_journal --journal "<path>" [options]
 | replace-content | string | ❌ | - | 替换整个正文 |
 | dry-run | flag | ❌ | false | 模拟运行 |
 
+### 编辑规则
+
+- 只要修改 `location`，就必须同时提交新的 `weather`
+- 推荐顺序：先调用 `query_weather` 获取天气；如果失败，允许 Agent 手动联网查询天气后再继续编辑
+- 如果最终拿不到新的天气，本次地点修改不得成功写入
+
 ### 返回值
 
 ```json
@@ -333,6 +340,7 @@ python -m tools.edit_journal --journal "<path>" [options]
 | E0500 | 日志不存在 | ask_user |
 | E0502 | 字段不识别 | ask_user |
 | E0503 | 无变更 | ask_user |
+| E0504 | 修改地点时缺少天气 | ask_user |
 
 ---
 
@@ -379,6 +387,12 @@ python -m tools.query_weather --location "<location>" [options]
 | E0400 | API 请求失败 | skip_optional |
 | E0401 | API 超时 | skip_optional |
 | E0402 | 地点未找到 | ask_user |
+
+### 天气失败后的兜底
+
+- `query_weather` 是首选天气来源
+- 如果 `query_weather` 失败，Agent 可手动联网查询天气并将结果提供给 `edit_journal`
+- 对于地点修改场景，只有 `query_weather` 和 Agent 手动查询都失败时，才允许把本次修改判定为失败
 
 ---
 
