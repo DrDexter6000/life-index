@@ -170,4 +170,5 @@ tags: ["重构", "优化"]
 
 - [API.md](./API.md) - 工具接口详细文档
 - [CHANGELOG.md](./CHANGELOG.md) - 版本变更历史
+- [PRODUCT_BOUNDARY.md](./PRODUCT_BOUNDARY.md) - 产品边界与三层模型
 - [AGENTS.md](../AGENTS.md) - 开发者上下文

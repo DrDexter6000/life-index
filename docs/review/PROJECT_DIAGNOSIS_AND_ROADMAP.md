@@ -8,6 +8,8 @@
 > **创建时间**: 2026-03-18
 > **创建背景**: 基于一次 CTO 级别项目审视，目标是在不丢失评审结论的前提下，沉淀项目现状、关键问题与未来 3 个阶段的执行路线
 > **当前状态**: 以 Agent-first + Local-first 为核心方向，工程基础良好，但 workflow clarity / tool boundary clarity 仍需优先收敛
+> **后续状态更新**: 产品边界已在 `docs/PRODUCT_BOUNDARY.md` 中正式收敛；本文档保留 diagnosis / roadmap 视角
+> **执行优先级更新**: v1.x 当前主线顺序已在 `docs/EXECUTION_PRIORITIES.md` 中正式收敛
 
 ---
 
