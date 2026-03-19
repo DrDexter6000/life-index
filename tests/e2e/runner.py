@@ -231,7 +231,7 @@ class E2ETestRunner:
         if "extract" in input_data or "data" in input_data:
             # write_journal test
             return self._test_write_journal(input_data, expected)
-        elif "query" in input_data:
+        elif "query" in input_data or "query_params" in input_data:
             # search or other tool test
             action = input_data.get("action", "search")
             if action == "search":
@@ -328,14 +328,45 @@ class E2ETestRunner:
         self, input_data: Dict[str, Any], expected: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Test search_journals tool."""
+        query_params = dict(input_data.get("query_params", {}))
+        merged_input = {k: v for k, v in input_data.items() if k != "query_params"}
+        merged_input.update(query_params)
+
         cmd = [sys.executable, "-m", "tools.search_journals"]
 
-        if "query" in input_data:
-            cmd.extend(["--query", input_data["query"]])
-        if "topic" in input_data:
-            cmd.extend(["--topic", input_data["topic"]])
-        if "level" in input_data:
-            cmd.extend(["--level", str(input_data["level"])])
+        if "query" in merged_input:
+            cmd.extend(["--query", str(merged_input["query"])])
+        if "topic" in merged_input:
+            cmd.extend(["--topic", str(merged_input["topic"])])
+        if "project" in merged_input:
+            cmd.extend(["--project", str(merged_input["project"])])
+        if "tags" in merged_input:
+            tags = merged_input["tags"]
+            if isinstance(tags, list):
+                tags = ",".join(str(tag) for tag in tags)
+            cmd.extend(["--tags", str(tags)])
+        if "mood" in merged_input:
+            mood = merged_input["mood"]
+            if isinstance(mood, list):
+                mood = ",".join(str(item) for item in mood)
+            cmd.extend(["--mood", str(mood)])
+        if "people" in merged_input:
+            people = merged_input["people"]
+            if isinstance(people, list):
+                people = ",".join(str(item) for item in people)
+            cmd.extend(["--people", str(people)])
+        if "date_from" in merged_input:
+            cmd.extend(["--date-from", str(merged_input["date_from"])])
+        if "date_to" in merged_input:
+            cmd.extend(["--date-to", str(merged_input["date_to"])])
+        if "location" in merged_input:
+            cmd.extend(["--location", str(merged_input["location"])])
+        if "weather" in merged_input:
+            cmd.extend(["--weather", str(merged_input["weather"])])
+        if "level" in merged_input:
+            cmd.extend(["--level", str(merged_input["level"])])
+        if "limit" in merged_input:
+            cmd.extend(["--limit", str(merged_input["limit"])])
 
         try:
             result = subprocess.run(
@@ -432,8 +463,59 @@ class E2ETestRunner:
     ) -> Dict[str, Any]:
         """Validate tool output against expected values."""
         errors = []
+        merged_results = output.get("merged_results", []) or []
 
         for key, expected_value in expected.items():
+            if key == "results_count":
+                actual_count = len(merged_results)
+                if isinstance(expected_value, str):
+                    match = re.match(r"^(>=|<=|>|<)\s*(\d+)$", expected_value.strip())
+                    if match:
+                        op, threshold = match.groups()
+                        threshold_int = int(threshold)
+                        comparisons = {
+                            ">=": actual_count >= threshold_int,
+                            "<=": actual_count <= threshold_int,
+                            ">": actual_count > threshold_int,
+                            "<": actual_count < threshold_int,
+                        }
+                        if not comparisons[op]:
+                            errors.append(
+                                f"{key}: expected {expected_value}, got {actual_count}"
+                            )
+                        continue
+                if actual_count != expected_value:
+                    errors.append(
+                        f"{key}: expected {expected_value}, got {actual_count}"
+                    )
+                continue
+
+            if key == "contains_titles":
+                titles = [str(item.get("title", "")) for item in merged_results]
+                for expected_title in expected_value:
+                    if not any(expected_title in title for title in titles):
+                        errors.append(f"contains_titles: missing {expected_title}")
+                continue
+
+            if key == "highlights_contain":
+                snippets = [str(item.get("snippet", "")) for item in merged_results]
+                if not any(str(expected_value) in snippet for snippet in snippets):
+                    errors.append(f"highlights_contain: missing {expected_value}")
+                continue
+
+            if key == "all_results_match_tags":
+                for item in merged_results:
+                    item_tags = (
+                        item.get("tags") or item.get("metadata", {}).get("tags") or []
+                    )
+                    for expected_tag in expected_value:
+                        if expected_tag not in item_tags:
+                            errors.append(
+                                f"all_results_match_tags: result {item.get('rel_path', item.get('path', 'unknown'))} missing {expected_tag}"
+                            )
+                            break
+                continue
+
             actual_value = self._resolve_expected_value(output, key)
 
             # Handle special matchers

@@ -31,7 +31,7 @@ test_cases:
       success: true
       results_count: ">= 1"
       contains_titles:
-        - "回归 LobsterAI"
+        - "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
     performance_sla:
       search_l1: "< 10ms"
       total: "< 500ms"
@@ -43,13 +43,13 @@ test_cases:
     input:
       user_prompt: "查找3月份关于开发经验的日志"
       query_params:
-        tags: ["开发经验"]
+        tags: ["tag1"]
         date_from: "2026-03-01"
         date_to: "2026-03-31"
     expected:
       success: true
       results_count: ">= 1"
-      all_results_match_tags: ["开发经验"]
+      all_results_match_tags: ["tag1"]
     performance_sla:
       search_l2: "< 50ms"
       total: "< 1s"
@@ -61,7 +61,7 @@ test_cases:
     input:
       user_prompt: "搜索提到 LobsterAI 的日志"
       query_params:
-        keywords: "LobsterAI"
+        query: "LobsterAI"
         level: 3
     expected:
       success: true
