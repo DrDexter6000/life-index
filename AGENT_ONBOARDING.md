@@ -431,11 +431,6 @@ Report back to the user using this exact structure:
 - Capability 3 example: <localized equivalent of "例如：更新地点、天气、标题，或补充内容">
 - Closing line: <localized equivalent of "下面你可以直接开始记录您的第一篇日志啦🎉！">
 
-**Next Steps**:
-1. Life Index is ready to use via: `.venv/bin/life-index <command>`
-2. Available commands: write, search, edit, abstract, weather, index, health
-3. See SKILL.md in the installation directory for full documentation
-
 **Notes**:
 - <any warnings or non-blocking issues>
 - <reminder about Windows path syntax if applicable>
