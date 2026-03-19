@@ -11,8 +11,18 @@ tests/e2e/
 ├── README.md                    # 本文件
 ├── phase1-core-workflow.yaml    # Phase 1: 核心工作流覆盖
 ├── phase2-search-retrieval.yaml # Phase 2: 搜索检索覆盖
-└── phase3-edge-cases.yaml       # Phase 3: 边界与异常
+├── phase3-edge-cases.yaml       # Phase 3: 边界与异常
+└── phase4-edit-abstract.yaml    # Phase 4: Edit & Abstract Workflow
 ```
+
+## 当前接入状态
+
+| Phase | 文件 | 状态 |
+|------|------|------|
+| Phase 1 | `phase1-core-workflow.yaml` | 已接入 runner，已通过 |
+| Phase 2 | `phase2-search-retrieval.yaml` | 已接入 runner，已通过 |
+| Phase 3 | `phase3-edge-cases.yaml` | 已接入 runner，已通过 |
+| Phase 4 | `phase4-edit-abstract.yaml` | 已接入 runner，已通过 |
 
 ## 执行方式
 
@@ -21,7 +31,7 @@ tests/e2e/
 当用户说"执行 E2E 测试"时，Agent 应按以下流程执行：
 
 1. **读取测试文件**
-   - 按顺序读取 `phase1-*.yaml`、`phase2-*.yaml`、`phase3-*.yaml`
+   - 按顺序读取 `phase1-*.yaml`、`phase2-*.yaml`、`phase3-*.yaml`、`phase4-*.yaml`
    - 解析 `test_cases` 列表
 
 2. **逐一执行测试用例**
@@ -48,6 +58,12 @@ tests/e2e/
 ## 测试用例格式规范
 
 ```yaml
+test_suite:
+  name: "Phase X - 名称"
+  version: "1.0"
+  executor: "Agent"
+  cleanup_after_test: true
+
 test_cases:
   - id: "E2E-XX"           # 唯一标识
     name: "测试名称"        # 人类可读名称
@@ -61,6 +77,38 @@ test_cases:
       ...
     performance_sla:       # 性能指标
       step_name: "< Xms"
+```
+
+多步骤工作流可使用：
+
+```yaml
+test_cases:
+  - id: "E2E-XX"
+    name: "多步骤测试"
+    steps:
+      - step: 1
+        name: "创建日志"
+        action: "write_journal"
+        data: {...}
+        expected: {...}
+      - step: 2
+        name: "编辑日志"
+        action: "edit_journal"
+        use_last_created: true
+        operations:
+          - set_topic: "learn"
+        expected: {...}
+      - step: 3
+        name: "执行搜索"
+        action: "search"
+        query_params: {...}
+        expected: {...}
+      - step: 4
+        name: "生成摘要"
+        action: "generate_abstract"
+        period: "month"
+        value: "2026-03"
+        expected: {...}
 ```
 
 ## 性能指标说明
