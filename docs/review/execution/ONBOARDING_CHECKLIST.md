@@ -185,23 +185,29 @@ That is not a failure by itself. The acceptance check for this onboarding path i
 
 ### Write first journal entry
 
+Use the machine's current local date at execution time, formatted as `YYYY-MM-DD`.
+Do **not** write placeholder text such as `System current time` or `{TODAY}` literally into the JSON payload.
+
 ```bash
 # Linux/macOS:
-.venv/bin/life-index write --data '{
-  "title": "First Journal Entry",
-  "content": "Today I set up Life Index. Looking forward to recording my journey.",
-  "date": "2026-03-18",
-  "topic": ["life"],
-  "abstract": "Initial setup of Life Index journaling system.",
-  "mood": ["hopeful"],
-  "tags": ["setup"],
-  "people": [],
-  "project": "",
-  "links": []
-}'
+TODAY=$(date +%F)
+
+.venv/bin/life-index write --data "{
+  \"title\": \"First Journal Entry\",
+  \"content\": \"Today I set up Life Index. Looking forward to recording my journey.\",
+  \"date\": \"$TODAY\",
+  \"topic\": [\"life\"],
+  \"abstract\": \"Initial setup of Life Index journaling system.\",
+  \"mood\": [\"hopeful\"],
+  \"tags\": [\"setup\"],
+  \"people\": [],
+  \"project\": \"\",
+  \"links\": []
+}"
 
 # Windows (PowerShell):
-.venv\Scripts\life-index write --data '{\n  "title": "First Journal Entry",\n  "content": "Today I set up Life Index. Looking forward to recording my journey.",\n  "date": "2026-03-18",\n  "topic": ["life"],\n  "abstract": "Initial setup of Life Index journaling system.",\n  "mood": ["hopeful"],\n  "tags": ["setup"],\n  "people": [],\n  "project": "",\n  "links": []\n}'
+$today = Get-Date -Format 'yyyy-MM-dd'
+.venv\Scripts\life-index write --data "{\n  \"title\": \"First Journal Entry\",\n  \"content\": \"Today I set up Life Index. Looking forward to recording my journey.\",\n  \"date\": \"$today\",\n  \"topic\": [\"life\"],\n  \"abstract\": \"Initial setup of Life Index journaling system.\",\n  \"mood\": [\"hopeful\"],\n  \"tags\": [\"setup\"],\n  \"people\": [],\n  \"project\": \"\",\n  \"links\": []\n}"
 ```
 
 ### Safer Windows variant (recommended)
@@ -209,11 +215,13 @@ That is not a failure by itself. The acceptance check for this onboarding path i
 The CLI supports `@file.json` input. On Windows this is usually more reliable than inline JSON:
 
 ```powershell
-@'
+$today = Get-Date -Format 'yyyy-MM-dd'
+
+@"
 {
   "title": "First Journal Entry",
   "content": "Today I set up Life Index. Looking forward to recording my journey.",
-  "date": "2026-03-18",
+  "date": "$today",
   "topic": ["life"],
   "abstract": "Initial setup of Life Index journaling system.",
   "mood": ["hopeful"],
@@ -222,7 +230,7 @@ The CLI supports `@file.json` input. On Windows this is usually more reliable th
   "project": "",
   "links": []
 }
-'@ | Out-File -FilePath first-entry.json -Encoding utf8
+"@ | Out-File -FilePath first-entry.json -Encoding utf8
 
 .venv\Scripts\life-index write --data @first-entry.json
 ```
@@ -233,7 +241,7 @@ The CLI supports `@file.json` input. On Windows this is usually more reliable th
 {
   "success": true,
   "data": {
-    "journal_path": "Journals/2026/03/life-index_2026-03-18_001.md",
+    "journal_path": "Journals/YYYY/MM/life-index_YYYY-MM-DD_001.md",
     "updated_indices": [...],
     "location_used": "Chongqing, China",
     "weather_used": "Sunny 25°C",
@@ -247,7 +255,7 @@ The CLI supports `@file.json` input. On Windows this is usually more reliable th
 
 - [ ] `success: true`
 - [ ] `journal_path` returned with valid path
-- [ ] File exists at `~/Documents/Life-Index/Journals/2026/03/life-index_2026-03-18_001.md`
+- [ ] File exists at `~/Documents/Life-Index/Journals/YYYY/MM/life-index_YYYY-MM-DD_001.md`
 
 ### Friction point: JSON escaping on Windows
 
@@ -297,9 +305,9 @@ $json | Out-File -FilePath "temp.json" -Encoding utf8
     "total": 1,
     "results": [
       {
-        "path": "Journals/2026/03/life-index_2026-03-18_001.md",
+        "path": "Journals/YYYY/MM/life-index_YYYY-MM-DD_001.md",
         "title": "First Journal Entry",
-        "date": "2026-03-18",
+        "date": "YYYY-MM-DD used at execution time",
         "abstract": "Initial setup of Life Index journaling system.",
         "score": 0.95
       }
@@ -322,7 +330,7 @@ $json | Out-File -FilePath "temp.json" -Encoding utf8
 **Resolution**:
 1. Check that index was built: `.venv/bin/life-index index`
 2. Try broader query: `--query "setup"`
-3. Check journal file exists: `ls ~/Documents/Life-Index/Journals/2026/03/`
+3. Check the journal file exists in the execution-time month directory under `~/Documents/Life-Index/Journals/YYYY/MM/`
 
 ---
 
