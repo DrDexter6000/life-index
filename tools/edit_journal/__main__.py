@@ -16,6 +16,16 @@ from ..lib.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _emit_json(payload: dict) -> None:
+    """Print JSON safely across Windows console encodings."""
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        fallback_text = json.dumps(payload, ensure_ascii=True, indent=2)
+        print(fallback_text)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Life Index - Edit Journal Tool",
@@ -132,7 +142,7 @@ Examples:
     )
 
     # 输出结果（保持 JSON 输出到 stdout）
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    _emit_json(result)
 
     if result["success"]:
         logger.info("工具执行成功")

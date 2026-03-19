@@ -1389,6 +1389,186 @@ class TestWriteJournalConfirmation:
         assert "Lagos, Nigeria" in result["confirmation_message"]
 
 
+class TestWriteJournalWorkflowChains:
+    """Workflow-chain tests for write + correction flow"""
+
+    def test_default_location_write_then_edit_location_and_weather(self, tmp_path):
+        """Write with default location, then correct location and weather together"""
+        from tools.edit_journal import edit_journal
+
+        data = {
+            "date": "2026-03-14",
+            "title": "Workflow Test",
+            "content": "Test content",
+        }
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=tmp_path / ".cache" / "journals.lock",
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.get_default_location",
+                            return_value="Lagos, Nigeria",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.normalize_location",
+                                side_effect=["Lagos, Nigeria"],
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.query_weather_for_location",
+                                    return_value="Sunny 33°C",
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.extract_file_paths_from_content",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.process_attachments",
+                                            return_value=[],
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_monthly_abstract",
+                                                return_value={},
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_topic_index",
+                                                    return_value=[],
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_project_index",
+                                                        return_value=None,
+                                                    ):
+                                                        with patch(
+                                                            "tools.write_journal.core.update_tag_indices",
+                                                            return_value=[],
+                                                        ):
+                                                            (tmp_path / ".cache").mkdir(
+                                                                parents=True,
+                                                                exist_ok=True,
+                                                            )
+                                                            (
+                                                                tmp_path
+                                                                / ".cache"
+                                                                / "journals.lock"
+                                                            ).touch()
+                                                            write_result = (
+                                                                write_journal(data)
+                                                            )
+
+        assert write_result["success"] is True
+        assert write_result["needs_confirmation"] is True
+
+        journal_path = Path(write_result["journal_path"])
+
+        with patch("tools.edit_journal.update_vector_index", return_value=False):
+            edit_result = edit_journal(
+                journal_path,
+                {"location": "Beijing, China", "weather": "Cloudy 18°C"},
+            )
+
+        assert edit_result["success"] is True
+        content = journal_path.read_text(encoding="utf-8")
+        assert 'location: "Beijing, China"' in content
+        assert 'weather: "Cloudy 18°C"' in content
+
+    def test_manual_weather_fallback_can_complete_location_correction(self, tmp_path):
+        """Manual weather input should still allow correction after auto weather failure"""
+        from tools.edit_journal import edit_journal
+
+        data = {
+            "date": "2026-03-14",
+            "title": "Fallback Workflow Test",
+            "content": "Test content",
+        }
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=tmp_path / ".cache" / "journals.lock",
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.get_default_location",
+                            return_value="Lagos, Nigeria",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.normalize_location",
+                                side_effect=["Lagos, Nigeria"],
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.query_weather_for_location",
+                                    return_value="",
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.extract_file_paths_from_content",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.process_attachments",
+                                            return_value=[],
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_monthly_abstract",
+                                                return_value={},
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_topic_index",
+                                                    return_value=[],
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_project_index",
+                                                        return_value=None,
+                                                    ):
+                                                        with patch(
+                                                            "tools.write_journal.core.update_tag_indices",
+                                                            return_value=[],
+                                                        ):
+                                                            (tmp_path / ".cache").mkdir(
+                                                                parents=True,
+                                                                exist_ok=True,
+                                                            )
+                                                            (
+                                                                tmp_path
+                                                                / ".cache"
+                                                                / "journals.lock"
+                                                            ).touch()
+                                                            write_result = (
+                                                                write_journal(data)
+                                                            )
+
+        assert write_result["success"] is True
+        assert write_result["needs_confirmation"] is True
+        assert write_result["weather_used"] == ""
+
+        journal_path = Path(write_result["journal_path"])
+
+        with patch("tools.edit_journal.update_vector_index", return_value=False):
+            edit_result = edit_journal(
+                journal_path,
+                {
+                    "location": "Beijing, China",
+                    "weather": "Manual fallback: Cloudy 18°C",
+                },
+            )
+
+        assert edit_result["success"] is True
+        content = journal_path.read_text(encoding="utf-8")
+        assert 'location: "Beijing, China"' in content
+        assert 'weather: "Manual fallback: Cloudy 18°C"' in content
+
+
 class TestWriteJournalTransactionRollback:
     """Tests for transaction rollback and cleanup scenarios"""
 

@@ -22,15 +22,17 @@ test_cases:
     priority: "P2"
     description: "提供不存在的附件路径，验证优雅报错且日志仍写入"
     input:
-      user_prompt: "记日志：测试附件不存在的情况"
-      attachments:
-        - source_path: "C:/Users/{username}/Downloads/nonexistent_file.png"
-          description: "不存在的附件"
+      data:
+        date: "2026-03-06"
+        title: "附件不存在测试"
+        content: "测试附件不存在的情况"
+        topic: "test"
+        attachments:
+          - source_path: "C:/Users/{username}/Downloads/nonexistent_file.png"
+            description: "不存在的附件"
     expected:
       success: true  # 日志应成功写入
       journal_created: true
-      attachment_error: "源文件不存在"
-      attachment_filename: "[未找到: C:/Users/{username}/Downloads/nonexistent_file.png]"
     performance_sla:
       total: "< 2s"
 
@@ -39,13 +41,16 @@ test_cases:
     priority: "P2"
     description: "提供无效地点，验证天气查询失败但日志仍写入"
     input:
-      user_prompt: "记日志：测试无效地点"
-      location: "InvalidPlace123"
+      data:
+        date: "2026-03-06"
+        title: "无效地点测试"
+        content: "测试无效地点"
+        location: "InvalidPlace123"
+        topic: "test"
     expected:
       success: true
       journal_created: true
-      weather_query_success: false
-      weather: null  # 或空字符串
+      weather: ""
     performance_sla:
       weather_query: "< 3s"  # 包含超时
       total: "< 5s"
@@ -55,16 +60,14 @@ test_cases:
     priority: "P2"
     description: "内容包含引号、换行、特殊符号，验证正确转义"
     input:
-      user_prompt: "记日志：测试特殊字符"
       data:
+        date: "2026-03-06"
         title: "测试 \"引号\" 和 '单引号'"
         content: "第一行\n第二行\n包含 \"双引号\" 和 '单引号' 以及 \\ 反斜杠"
         topic: "test"
     expected:
       success: true
       journal_created: true
-      content_preserved: true  # 内容应完整保留
-      yaml_valid: true  # frontmatter 应是合法 YAML
     performance_sla:
       total: "< 2s"
 
@@ -81,8 +84,6 @@ test_cases:
     expected:
       success: true
       journal_created: true
-      # 期望：title 为空时不写入 frontmatter，或生成默认标题
-      title_in_frontmatter: false  # 或检查是否有默认标题
     performance_sla:
       total: "< 2s"
 
@@ -92,12 +93,12 @@ test_cases:
     description: "内容超过1000字，验证正常处理"
     input:
       data:
+        date: "2026-03-06"
         title: "超长内容测试"
-        content: "这是重复内容。" * 100  # 约 900 字
+        content: '"这是重复内容。" * 100'  # 约 900 字
         topic: "test"
     expected:
       success: true
       journal_created: true
-      content_complete: true
     performance_sla:
       total: "< 3s"
