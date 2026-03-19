@@ -394,18 +394,26 @@ Report back to the user using this exact structure:
 - Results found: <number>
 
 **Customization**:
-- Trigger phrase: <configured/skipped>
+- Trigger phrase: <if configured, report only in the combined form `/life-index [user custom trigger phrase]`; never report `/life-index` and the custom phrase as separate alternatives>
 - Default location preference: <saved/skipped>
 - Default location runtime verification: <verified/not verified/not attempted>
 
 **How to Use Life Index Now**:
-- Welcome line: <e.g. 恭喜！🎉 Life Index 已经安装完毕。>
-- Active trigger phrase: <the actual trigger phrase now available to the user>
-- Active default location: <the actual current default location or current system default>
-- First-use guidance: <one short sentence explaining that the user can now start recording with `/life-index` plus the active trigger phrase and their content>
-- Example 1: <a simple natural-language logging example>
-- Example 2: <a simple natural-language search or review example>
-- Example 3: <an optional edit / recap / summary example based on what is truly supported>
+- Title: 开始使用 Life Index
+- Welcome line: 恭喜！🎉 Life Index 已经安装完成。
+- Trigger line: 您当前的默认触发词是：`/life-index [user custom trigger phrase]`
+- Location line: 您当前的默认城市是：`[user default city, country]`
+- Intro line: 现在，您可以直接这样开始记录：
+- Logging example 1: `"/life-index [user custom trigger phrase] 今天完成了 Life Index 的安装测试，感觉很顺利"`
+- Logging example 2: `"/life-index [user custom trigger phrase] 刚刚看到一篇文章很有启发：https://..."`
+- Capability intro: 除了记录日志，您还可以继续让我帮您：
+- Capability 1: 搜索过去的记录
+- Capability 1 example: 例如：`/life-index 搜索：上个月我有多少次晚睡？`
+- Capability 2: 回顾某一段时间或某个主题
+- Capability 2 example: 例如：`/life-index 回顾过去半年我关于 Life Index 的开发情况`
+- Capability 3: 修改刚记录的信息
+- Capability 3 example: 例如：更新地点、天气、标题，或补充内容
+- Closing line: 如果你愿意，我现在就可以帮你记录第一条正式日志。
 
 **Next Steps**:
 1. Life Index is ready to use via: `.venv/bin/life-index <command>`
@@ -440,8 +448,8 @@ Report back to the user using this exact structure:
 - Stop immediately if prerequisites are missing or a command fails twice in the same step
 - Keep customization clearly separate from installation success/failure
 - Report honestly whether default-location customization was only saved or also runtime-verified
-- Make the `How to Use Life Index Now` section human-facing, concise, and based on the actual configured trigger/location values
-- Use natural-language examples that a novice user can imitate immediately; do not expose unnecessary agent-only workflow detail
+- In both `Customization` and `How to Use Life Index Now`, represent the trigger only as the combined form `/life-index [user custom trigger phrase]`; never present `/life-index` and the custom phrase as separate alternatives
+- Keep the `How to Use Life Index Now` section human-facing, concise, and aligned to the fixed delivery structure above
 
 ---
 
