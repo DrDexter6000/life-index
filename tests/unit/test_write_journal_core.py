@@ -260,6 +260,73 @@ class TestWriteJournalLocation:
         # Default location should be used (Chongqing, China)
         assert result["location_used"] == "Chongqing, China"
 
+    def test_configured_default_location_used(self, tmp_path):
+        """Test that configured default location is used when none provided"""
+        data = {
+            "date": "2026-03-14",
+            "content": "Test content",
+        }
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=tmp_path / ".cache" / "journals.lock",
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.get_default_location",
+                            return_value="Lagos, Nigeria",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.normalize_location",
+                                return_value="Lagos, Nigeria",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.query_weather_for_location",
+                                    return_value="",
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.extract_file_paths_from_content",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.process_attachments",
+                                            return_value=[],
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_monthly_abstract",
+                                                return_value={},
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_topic_index",
+                                                    return_value=[],
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_project_index",
+                                                        return_value=None,
+                                                    ):
+                                                        with patch(
+                                                            "tools.write_journal.core.update_tag_indices",
+                                                            return_value=[],
+                                                        ):
+                                                            (tmp_path / ".cache").mkdir(
+                                                                parents=True,
+                                                                exist_ok=True,
+                                                            )
+                                                            (
+                                                                tmp_path
+                                                                / ".cache"
+                                                                / "journals.lock"
+                                                            ).touch()
+                                                            result = write_journal(data)
+
+        assert result["location_used"] == "Lagos, Nigeria"
+
     def test_user_provided_location_preserved(self, tmp_path):
         """Test that user-provided location is preserved"""
         data = {
