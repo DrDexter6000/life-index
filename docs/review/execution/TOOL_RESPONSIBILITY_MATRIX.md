@@ -4,6 +4,7 @@
 > **Audience**: Project Owner, reviewers, implementers, and future agents
 > **SSOT relationship**: This document is review-scoped execution guidance. Runtime interface truth remains in `docs/API.md`, `SKILL.md`, `docs/ARCHITECTURE.md`, and code.
 > **Scope for this first cut**: `write_journal`, `edit_journal`, `query_weather`, `search_journals`
+> **状态**: 部分采纳 — 核心 caller-facing ownership 已上提到 `docs/API.md`、`SKILL.md`、`references/WEATHER_FLOW.md`；本文件保留矩阵式 review reasoning 与剩余开放问题
 
 ---
 

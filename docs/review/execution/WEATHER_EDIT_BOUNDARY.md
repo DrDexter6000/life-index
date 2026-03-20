@@ -4,6 +4,7 @@
 > **Audience**: Project Owner, reviewers, implementers, and future agents
 > **SSOT relationship**: This document is review-scoped execution guidance. Runtime interface truth remains in `docs/API.md`, workflow truth remains in `SKILL.md`, weather-flow truth remains in `references/WEATHER_FLOW.md`, and architecture truth remains in `docs/ARCHITECTURE.md`.
 > **Scope for this first cut**: Location-weather coordination across `write_journal`, `edit_journal`, and `query_weather`
+> **状态**: 部分采纳 — 核心 caller-facing contract 已上提到 `docs/API.md` 与 `references/WEATHER_FLOW.md`；本文件保留 review reasoning 与开放问题
 
 ---
 

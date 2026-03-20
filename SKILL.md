@@ -233,6 +233,17 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 6 | **展示确认** | 展示 `confirmation_message` | 不展示直接结束 |
 | 7 | **等待回复** | 询问用户"是否正确？" | 不询问 |
 
+**澄清规则（强制）**：
+- 如果无法判断用户是在“新写一篇”还是“修改已有日志”，必须先澄清
+- 如果无法负责任地构造最小可写 payload，必须先澄清再调用 `write_journal`
+- 不得把缺失的用户意图留给工具在运行时“猜出来”
+
+**失败与后续规则（强制）**：
+- pre-tool 阶段若意图或关键字段不清楚，先澄清，不得直接调用工具
+- tool failure 时，不得假装 journal 已保存
+- write succeeded 但用户拒绝自动补全值时，应进入 correction flow，不得把已成功写入重新表述为“写入失败”
+- 必须区分：未保存 / 已保存但待确认 / 已保存但存在降级 side effects
+
 ### 安装后的可选个性化（Agent-first）
 
 安装与首次验证完成后，Agent 可按 `AGENT_ONBOARDING.md` 的 optional customization step 询问用户是否要做两项个性化设置：
@@ -301,12 +312,35 @@ success: true, index_status: degraded
 2. **执行搜索**：`search_journals`（双管道自动启用）
 3. **呈现结果**：展示日志列表（按 RRF 分数排序）
 
+**职责边界（强制）**：
+- `search_journals` 负责 retrieval execution，不负责替用户下结论
+- Agent 必须区分“搜索结果为空”与“搜索执行失败”
+- Agent 负责解释结果、回答用户真正的问题，并在需要时建议 refinement / follow-up
+- 不得把工具返回的原始结果列表直接等同于最终用户答案
+
+**澄清与失败规则（强制）**：
+- 当用户请求过于模糊、无法形成有意义的 query / filter 时，应先澄清，再调用 `search_journals`
+- 如果工具执行失败，不得把 failure 伪装成“没搜到”
+- 如果工具成功但无结果，应如实说明为空结果，并可建议用户缩小/放宽条件
+- 如果用户在搜索后其实想继续执行 edit / summarize / compare，Agent 必须显式切换到下一工作流，而不是默认混做
+
 ### 工作流3: 编辑日志
 
 1. **定位日志**：根据日期或标题找到目标文件
 2. **确认修改**：展示当前内容，明确修改范围
 3. **执行编辑**：`edit_journal`
 4. **如修改地点**：必须同时更新 location 和 weather；先调用 `query_weather` 获取新天气，若失败可由 Agent 手动联网查询天气后再一起更新
+
+**澄清规则（强制）**：
+- 如果目标日志不明确，必须先定位并确认，不能猜测编辑目标
+- 如果不清楚用户要 append、replace 还是 metadata update，必须先澄清
+- 如果请求听起来更像“新增一段人生记录”而不是“修改已有日志”，必须切回 write vs edit 澄清
+
+**确认与失败规则（强制）**：
+- edit flow 默认不要求像 write flow 那样的 post-write confirmation loop，但对高风险 replace / destructive edit，Agent 可先做额外确认
+- 如果 coupled-field prerequisite（如新地点对应天气）尚未解决，不得直接把 edit 当作可安全执行
+- 如果 edit tool 执行失败，不得宣称修改已成功
+- 如果 journal mutation 已完成但 weather alignment 未完成，必须诚实区分“编辑状态”和“字段语义对齐状态”
 
 ### 工作流4: 生成摘要
 
@@ -331,6 +365,8 @@ success: true, index_status: degraded
 |------|------|
 | [API.md](docs/API.md) | 工具 API 接口、参数详情、错误码与恢复策略 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、核心原则、关键决策 |
+| [PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md) | 产品边界、三层模型、默认拒绝方向 |
+| [EXECUTION_PRIORITIES.md](docs/EXECUTION_PRIORITIES.md) | v1.x 执行优先级与当前主线 |
 | [SCHEDULE.md](references/schedule/SCHEDULE.md) | 定时任务配置（日报/周报/月报） |
 | [WEATHER_FLOW.md](references/WEATHER_FLOW.md) | 天气处理详细流程与故障 Fallback |
 
