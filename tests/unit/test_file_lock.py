@@ -333,9 +333,7 @@ class TestFileLockAcquire:
         lock_path = tmp_path / "test.lock"
         lock = FileLock(lock_path)
 
-        with patch.object(
-            lock, "_ensure_lock_file", side_effect=RuntimeError("Unexpected")
-        ):
+        with patch.object(lock, "_ensure_lock_file", side_effect=RuntimeError("Unexpected")):
             with pytest.raises(RuntimeError):
                 lock.acquire()
 

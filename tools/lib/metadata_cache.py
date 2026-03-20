@@ -106,9 +106,7 @@ def is_cache_valid(file_path: Path, cached_mtime: float, cached_size: int) -> bo
     return current_mtime == cached_mtime and current_size == cached_size
 
 
-def parse_and_cache_journal(
-    conn: sqlite3.Connection, file_path: Path
-) -> Optional[Dict[str, Any]]:
+def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
     """解析日志并更新缓存"""
     try:
         # 解析日志文件
@@ -180,15 +178,11 @@ def parse_and_cache_journal(
         return None
 
 
-def get_cached_metadata(
-    conn: sqlite3.Connection, file_path: Path
-) -> Optional[Dict[str, Any]]:
+def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
     """从缓存获取元数据（如果有效）"""
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT * FROM metadata_cache WHERE file_path = ?", (str(file_path),)
-    )
+    cursor.execute("SELECT * FROM metadata_cache WHERE file_path = ?", (str(file_path),))
 
     row = cursor.fetchone()
     if row is None:
@@ -305,9 +299,7 @@ def invalidate_cache(file_path: Optional[Path] = None) -> None:
     try:
         cursor = conn.cursor()
         if file_path:
-            cursor.execute(
-                "DELETE FROM metadata_cache WHERE file_path = ?", (str(file_path),)
-            )
+            cursor.execute("DELETE FROM metadata_cache WHERE file_path = ?", (str(file_path),))
         else:
             cursor.execute("DELETE FROM metadata_cache")
         conn.commit()

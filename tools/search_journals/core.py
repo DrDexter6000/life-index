@@ -127,9 +127,7 @@ def hierarchical_search(
 
         result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
         result["total_found"] = len(result["l1_results"])
-        result["performance"]["total_time_ms"] = round(
-            (time.time() - start_time) * 1000, 2
-        )
+        result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
         return result
 
     # ── Level 2: 索引 + 元数据（向后兼容，提前返回） ──
@@ -175,9 +173,7 @@ def hierarchical_search(
 
         result["performance"]["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
         result["total_found"] = len(result["l2_results"])
-        result["performance"]["total_time_ms"] = round(
-            (time.time() - start_time) * 1000, 2
-        )
+        result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
         return result
 
     # ── Level 3: 双管道并行搜索 ──
@@ -230,12 +226,7 @@ def hierarchical_search(
 
         if query:
             # 处理多关键词：将空格分隔转换为 FTS5 OR 语法
-            if (
-                query
-                and " " in query
-                and "OR" not in query.upper()
-                and "AND" not in query.upper()
-            ):
+            if query and " " in query and "OR" not in query.upper() and "AND" not in query.upper():
                 keywords = [k.strip() for k in query.split() if k.strip()]
                 if len(keywords) > 1:
                     fts_query = " OR ".join(keywords)
@@ -272,9 +263,7 @@ def hierarchical_search(
             # 如果没有 FTS 结果，使用传统文件系统扫描
             if not l3_results:
                 candidate_paths = [r["path"] for r in l1_results + l2_results]
-                l3_results = search_l3_content(
-                    query, candidate_paths if candidate_paths else None
-                )
+                l3_results = search_l3_content(query, candidate_paths if candidate_paths else None)
                 logger.debug(f"File scan found {len(l3_results)} results")
 
         perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)
@@ -340,9 +329,7 @@ def hierarchical_search(
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(
-            l1_results, l2_results, l3_results, query
-        )
+        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)

@@ -35,13 +35,9 @@ Examples:
         """,
     )
 
-    parser.add_argument(
-        "--data", required=True, help="JSON数据，或 @文件路径 (如 @input.json)"
-    )
+    parser.add_argument("--data", required=True, help="JSON数据，或 @文件路径 (如 @input.json)")
 
-    parser.add_argument(
-        "--dry-run", action="store_true", help="模拟运行，不实际写入文件"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="模拟运行，不实际写入文件")
 
     parser.add_argument("--verbose", action="store_true", help="输出详细日志")
 
@@ -66,9 +62,7 @@ Examples:
         sys.exit(1)
 
     if args.verbose:
-        print(
-            f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr
-        )
+        print(f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr)
 
     # 执行写入
     result = write_journal(data, dry_run=args.dry_run)

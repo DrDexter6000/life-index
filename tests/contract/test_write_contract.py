@@ -18,7 +18,6 @@ from unittest.mock import patch, MagicMock
 
 from tools.write_journal.core import write_journal
 
-
 # ── Documented field contracts ──
 
 REQUIRED_SUCCESS_FIELDS = {
@@ -83,12 +82,8 @@ def _run_write(data: dict, writable_env: dict, dry_run: bool = False) -> dict:
             "tools.write_journal.core.get_journals_lock_path",
             return_value=writable_env["lock_path"],
         ):
-            with patch(
-                "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-            ):
-                with patch(
-                    "tools.write_journal.core.get_next_sequence", return_value=1
-                ):
+            with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                     with patch(
                         "tools.write_journal.core.query_weather_for_location",
                         return_value="Sunny 25°C",

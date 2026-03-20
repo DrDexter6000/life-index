@@ -44,9 +44,7 @@ def health_check() -> None:
     has_critical = False
 
     # 1. Python version
-    py_version = (
-        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    )
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     py_ok = sys.version_info >= (3, 11)
     checks.append(
         {
@@ -171,9 +169,7 @@ def health_check() -> None:
         model_downloaded = len(model_files) > 0
         cache_size_mb = 0.0
         if cache_dir.exists():
-            total_bytes = sum(
-                f.stat().st_size for f in cache_dir.rglob("*") if f.is_file()
-            )
+            total_bytes = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file())
             cache_size_mb = round(total_bytes / (1024 * 1024), 2)
         checks.append(
             {

@@ -13,7 +13,6 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-
 # Schema 版本（用于未来格式变更的向后兼容）
 SCHEMA_VERSION = 1
 
@@ -97,9 +96,7 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
         abstract_match = re.search(r"\n\n([^#\n].*?)(?=\n\n|\Z)", body, re.DOTALL)
         if abstract_match:
             abstract = abstract_match.group(1).strip()[:100]
-            metadata["_abstract"] = (
-                abstract + "..." if len(abstract) == 100 else abstract
-            )
+            metadata["_abstract"] = abstract + "..." if len(abstract) == 100 else abstract
         else:
             metadata["_abstract"] = "(无摘要)"
 

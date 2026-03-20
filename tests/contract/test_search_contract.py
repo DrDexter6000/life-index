@@ -15,7 +15,6 @@ from unittest.mock import patch, MagicMock
 
 from tools.search_journals.core import hierarchical_search
 
-
 # ── Documented response fields ──
 
 REQUIRED_RESPONSE_FIELDS = {

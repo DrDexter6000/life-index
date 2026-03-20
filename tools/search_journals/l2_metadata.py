@@ -20,7 +20,6 @@ from ..lib.metadata_cache import (
     get_cache_stats,
 )
 
-
 # 是否启用缓存（可通过环境变量控制）
 ENABLE_CACHE = os.environ.get("LIFE_INDEX_L2_CACHE", "1") == "1"
 
@@ -109,17 +108,11 @@ def _matches_filters(
         )
         file_tags = metadata.get("tags", [])
         tags_str = (
-            " ".join(file_tags).lower()
-            if isinstance(file_tags, list)
-            else str(file_tags).lower()
+            " ".join(file_tags).lower() if isinstance(file_tags, list) else str(file_tags).lower()
         )
 
         # 检查 title/abstract/tags 是否包含 query
-        if (
-            query_lower not in title
-            and query_lower not in abstract
-            and query_lower not in tags_str
-        ):
+        if query_lower not in title and query_lower not in abstract and query_lower not in tags_str:
             return False
 
     return True
@@ -233,9 +226,7 @@ def _search_filesystem(
 
                     # 匹配成功
                     try:
-                        rel_path = os.path.relpath(journal_file, USER_DATA_DIR).replace(
-                            "\\", "/"
-                        )
+                        rel_path = os.path.relpath(journal_file, USER_DATA_DIR).replace("\\", "/")
                     except ValueError:
                         rel_path = str(journal_file).replace("\\", "/")
 

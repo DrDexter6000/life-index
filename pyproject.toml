@@ -51,15 +51,6 @@ dev = [
     "isort>=5.12.0",
     "flake8>=6.0.0",
     
-    # Documentation - 文档（Markdown 直接阅读，无需构建工具）
-    # 项目文档位于 docs/ 目录，直接阅读 Markdown 文件即可
-    # GitHub 自动渲染：https://github.com/DrDexter6000/life-index/tree/main/docs
-    "mkdocs>=1.5.0",
-    "mkdocs-material>=9.0.0",
-    "mkdocstrings[python]>=0.23.0",
-    "mkdocs-gen-files>=0.5.0",
-    "mkdocs-literate-nav>=0.6.0",
-    "mkdocs-section-index>=0.3.0",
 ]
 
 # All optional dependencies - 所有可选依赖
@@ -77,15 +68,6 @@ Issues = "https://github.com/DrDexter6000/life-index/issues"
 # Unified CLI entry point - 统一命令行入口
 # Usage: life-index <command> [options]
 life-index = "tools.__main__:main"
-
-# Legacy entry points (kept for backward compatibility) - 旧入口点（保留向后兼容）
-# Deprecated: Use 'life-index write' instead of 'life-index-write'
-life-index-write = "tools.write_journal.__main__:main"
-life-index-search = "tools.search_journals.__main__:main"
-life-index-edit = "tools.edit_journal.__main__:main"
-life-index-weather = "tools.query_weather.__main__:main"
-life-index-abstract = "tools.generate_abstract.__main__:main"
-life-index-index = "tools.build_index.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -125,6 +107,7 @@ skip_gitignore = true
 # ========== mypy - Type Checking ==========
 [tool.mypy]
 python_version = "3.11"
+explicit_package_bases = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -203,6 +186,3 @@ fail_under = 49
 [tool.coverage.html]
 directory = "htmlcov"
 
-# ========== mkdocs - Documentation ==========
-[tool.mkdocs]
-# Configuration in mkdocs.yml

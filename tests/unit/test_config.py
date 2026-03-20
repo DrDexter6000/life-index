@@ -165,9 +165,7 @@ class TestLoadYamlConfig:
     def test_valid_yaml_loads_correctly(self, tmp_path):
         """Valid YAML file should load correctly"""
         config_file = tmp_path / "valid.yaml"
-        config_file.write_text(
-            "defaults:\n  location: Test City\nweather:\n  timeout: 30"
-        )
+        config_file.write_text("defaults:\n  location: Test City\nweather:\n  timeout: 30")
         result = _load_yaml_config(config_file)
         assert result["defaults"]["location"] == "Test City"
         assert result["weather"]["timeout"] == 30

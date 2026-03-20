@@ -3,7 +3,7 @@
 > **Document Purpose**: Step-by-step operational instructions for AI agents installing Life Index on behalf of users.
 > **Audience**: External AI agents (not humans)
 > **Scope**: Complete installation, initialization, and first-use verification
-> **SSOT References**: `SKILL.md`, `docs/API.md`, `docs/archive/review-2026-03/ONBOARDING_CHECKLIST.md`, `docs/UPGRADE.md`
+> **SSOT References**: `SKILL.md`, `docs/API.md`, `docs/UPGRADE.md`
 
 ---
 

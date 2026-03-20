@@ -30,12 +30,8 @@ class TestHealthCheck:
         monkeypatch.setattr("tools.__main__.USER_DATA_DIR", data_dir)
         monkeypatch.setattr("tools.__main__.JOURNALS_DIR", journals_dir)
         monkeypatch.setattr("tools.__main__.get_model_cache_dir", lambda: cache_dir)
-        monkeypatch.setitem(
-            sys.modules, "yaml", types.SimpleNamespace(__version__="test")
-        )
-        monkeypatch.setitem(
-            sys.modules, "fastembed", types.SimpleNamespace(__version__="test")
-        )
+        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
+        monkeypatch.setitem(sys.modules, "fastembed", types.SimpleNamespace(__version__="test"))
 
         health_check()
 
@@ -45,14 +41,10 @@ class TestHealthCheck:
         assert payload["success"] is True
         assert payload["data"]["status"] in {"healthy", "degraded"}
         data_directory_check = next(
-            check
-            for check in payload["data"]["checks"]
-            if check["name"] == "data_directory"
+            check for check in payload["data"]["checks"] if check["name"] == "data_directory"
         )
         search_index_check = next(
-            check
-            for check in payload["data"]["checks"]
-            if check["name"] == "search_index"
+            check for check in payload["data"]["checks"] if check["name"] == "search_index"
         )
 
         assert data_directory_check["path"] == str(data_dir)

@@ -210,9 +210,7 @@ topic: ["work"]
         month_dir.mkdir(parents=True)
 
         journal = month_dir / "life-index_2026-03-14_001.md"
-        journal.write_text(
-            "---\ntitle: Test\ndate: 2026-03-14\n---\n# Content", encoding="utf-8"
-        )
+        journal.write_text("---\ntitle: Test\ndate: 2026-03-14\n---\n# Content", encoding="utf-8")
 
         with patch("tools.generate_abstract.JOURNALS_DIR", tmp_path / "Journals"):
             result = generate_monthly_abstract(2026, 3, dry_run=True)
@@ -238,9 +236,7 @@ class TestGenerateYearlyAbstract:
         month_dir.mkdir(parents=True)
 
         journal = month_dir / "life-index_2026-03-14_001.md"
-        journal.write_text(
-            "---\ntitle: Test\ndate: 2026-03-14\n---\n# Content", encoding="utf-8"
-        )
+        journal.write_text("---\ntitle: Test\ndate: 2026-03-14\n---\n# Content", encoding="utf-8")
 
         with patch("tools.generate_abstract.JOURNALS_DIR", tmp_path / "Journals"):
             result = generate_yearly_abstract(2026)

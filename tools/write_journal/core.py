@@ -38,12 +38,8 @@ def extract_explicit_metadata_from_content(content: str) -> Dict[str, str]:
         return extracted
 
     patterns = {
-        "location": re.compile(
-            r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
-        ),
-        "weather": re.compile(
-            r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
-        ),
+        "location": re.compile(r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
+        "weather": re.compile(r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
     }
 
     for line in content.splitlines():
@@ -135,9 +131,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             # 尝试获取天气（使用英文格式的地点）
             logger.debug(f"查询天气：location={location_for_weather}")
             with timer.measure("weather_query"):
-                queried_weather = query_weather_for_location(
-                    location_for_weather, date_str
-                )
+                queried_weather = query_weather_for_location(location_for_weather, date_str)
             if queried_weather:
                 weather = queried_weather
                 result["weather_used"] = weather
@@ -242,9 +236,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         abstract_error = None
                         abstract_success = False
                         try:
-                            abstract_result = update_monthly_abstract(
-                                year, month, dry_run
-                            )
+                            abstract_result = update_monthly_abstract(year, month, dry_run)
                             abstract_success = True
                         except (OSError, IOError, RuntimeError) as e:
                             abstract_error = str(e)
@@ -275,9 +267,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                             except Exception as e:
                                 # 向量索引更新失败不阻塞写入
                                 vector_index_error = str(e)
-                                logger.warning(
-                                    f"向量索引更新失败（不影响日志写入）：{e}"
-                                )
+                                logger.warning(f"向量索引更新失败（不影响日志写入）：{e}")
 
                         except (OSError, IOError, RuntimeError) as e:
                             # 索引更新失败，清理临时文件

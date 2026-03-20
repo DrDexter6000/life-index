@@ -13,9 +13,7 @@ from ..lib.config import USER_DATA_DIR
 from .utils import parse_frontmatter
 
 
-def search_semantic(
-    query: str, date_from: str = "", date_to: str = ""
-) -> List[Dict[str, Any]]:
+def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[Dict[str, Any]]:
     """
     执行语义搜索
 

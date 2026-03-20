@@ -101,12 +101,8 @@ class TestScanAllIndices:
         index_dir = tmp_path / "by-topic"
         index_dir.mkdir(parents=True)
 
-        (index_dir / "主题_work.md").write_text(
-            "- [2026-03-14] [A](path/a.md)", encoding="utf-8"
-        )
-        (index_dir / "主题_learn.md").write_text(
-            "- [2026-03-14] [B](path/b.md)", encoding="utf-8"
-        )
+        (index_dir / "主题_work.md").write_text("- [2026-03-14] [A](path/a.md)", encoding="utf-8")
+        (index_dir / "主题_learn.md").write_text("- [2026-03-14] [B](path/b.md)", encoding="utf-8")
 
         with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
             results = l1_index.scan_all_indices()

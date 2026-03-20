@@ -59,13 +59,7 @@ fts_index/
 
 # ----- 开发/维护专用工具（不发布）-----
 # 这些工具仅用于开发和数据维护，不随 Skill 发布
-tools/validate_data.py
-tools/rebuild_indices.py
-tools/check_metadata.py
-tools/migrate_legacy_logs.py
-tools/setup_yearly_abstract_task.ps1
-tools/update_yearly_abstract.bat
-tools/generate_yearly_abstract.py  # 已合并到 generate_abstract.py
+tools/dev/
 
 # ----- 开发阶段文档 -----
 docs/.dev-archive/
@@ -73,7 +67,6 @@ docs/.dev-archive/
 # ----- 文档（GitHub 已有，Skill 不需要重复）-----
 docs/
 CHANGELOG.md
-OPENCLAW_MIGRATION_PLAN.md
 
 # ----- 模型缓存（运行时下载）-----
 .cache/

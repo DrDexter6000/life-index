@@ -53,9 +53,7 @@ class LockTimeoutError(TimeoutError):
     def __init__(self, lock_path: str, timeout: float):
         self.lock_path = lock_path
         self.timeout = timeout
-        super().__init__(
-            f"Could not acquire lock on '{lock_path}' within {timeout:.1f} seconds"
-        )
+        super().__init__(f"Could not acquire lock on '{lock_path}' within {timeout:.1f} seconds")
 
 
 class LockAcquisitionError(OSError):

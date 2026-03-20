@@ -196,9 +196,7 @@ class TestFormatFrontmatter:
         """Test attachments with dict containing rel_path"""
         data = {
             "date": "2026-03-10",
-            "attachments": [
-                {"rel_path": "attachments/file.txt", "filename": "file.txt"}
-            ],
+            "attachments": [{"rel_path": "attachments/file.txt", "filename": "file.txt"}],
         }
         result = format_frontmatter(data)
         assert '"attachments/file.txt"' in result
@@ -448,9 +446,7 @@ class TestGetNextSequence:
         """Non-existent directory should return sequence 1"""
         mock_month_dir = MagicMock()
         mock_month_dir.exists.return_value = False
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
         result = get_next_sequence("2026-03-15")
         assert result == 1
 
@@ -460,9 +456,7 @@ class TestGetNextSequence:
         mock_month_dir = MagicMock()
         mock_month_dir.exists.return_value = True
         mock_month_dir.glob.return_value = []
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
         result = get_next_sequence("2026-03-15")
         assert result == 1
 
@@ -478,9 +472,7 @@ class TestGetNextSequence:
         mock_file3 = MagicMock()
         mock_file3.name = "life-index_2026-03-15_002.md"
         mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
         result = get_next_sequence("2026-03-15")
         assert result == 4
 
@@ -496,9 +488,7 @@ class TestGetNextSequence:
         mock_file3 = MagicMock()
         mock_file3.name = "life-index_2026-03-16_001.md"
         mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
         result = get_next_sequence("2026-03-15")
         assert result == 3
 
@@ -510,9 +500,7 @@ class TestGetNextSequence:
         mock_file = MagicMock()
         mock_file.name = "life-index_2026-03-15_999.md"
         mock_month_dir.glob.return_value = [mock_file]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
         result = get_next_sequence("2026-03-15")
         assert result == 1000
 
@@ -528,9 +516,7 @@ class TestGetNextSequence:
         mock_file3 = MagicMock()
         mock_file3.name = "life-index_2026-03-15_.md"
         mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
         result = get_next_sequence("2026-03-15")
         assert result == 2
 
@@ -540,9 +526,7 @@ class TestGetNextSequence:
         mock_month_dir = MagicMock()
         mock_month_dir.exists.return_value = True
         mock_month_dir.glob.return_value = []
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
         result = get_next_sequence("2026-03-15T14:30:00")
         assert result == 1
         mock_journals_dir.__truediv__.assert_called_with("2026")

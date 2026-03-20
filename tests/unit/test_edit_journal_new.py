@@ -216,9 +216,7 @@ class TestUpdateIndicesForChange:
 
         # Create old index
         old_index = tmp_path / "主题_work.md"
-        old_index.write_text(
-            "# 主题：work\n\n- [2026-03-14] [Test](path.md)\n", encoding="utf-8"
-        )
+        old_index.write_text("# 主题：work\n\n- [2026-03-14] [Test](path.md)\n", encoding="utf-8")
 
         journal_path = tmp_path / "test.md"
         journal_path.write_text("# Test", encoding="utf-8")
@@ -236,9 +234,7 @@ class TestUpdateIndicesForChange:
         from tools.edit_journal import update_indices_for_change
 
         old_index = tmp_path / "项目_OldProject.md"
-        old_index.write_text(
-            "# 项目：OldProject\n\n- [Test](path.md)\n", encoding="utf-8"
-        )
+        old_index.write_text("# 项目：OldProject\n\n- [Test](path.md)\n", encoding="utf-8")
 
         journal_path = tmp_path / "test.md"
         journal_path.write_text("# Test", encoding="utf-8")
@@ -388,9 +384,7 @@ class TestEditJournal:
             "---\ntitle: Test\ndate: 2026-03-14\n---\n\n# Content\n", encoding="utf-8"
         )
 
-        with patch(
-            "tools.edit_journal.update_vector_index", return_value=False
-        ) as mock_update:
+        with patch("tools.edit_journal.update_vector_index", return_value=False) as mock_update:
             result = edit_journal(journal, {}, append_content="New paragraph")
 
         assert result["success"] is True
@@ -410,12 +404,8 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        with patch(
-            "tools.edit_journal.update_vector_index", return_value=False
-        ) as mock_update:
-            result = edit_journal(
-                journal, {}, replace_content="# New Content\n\nReplaced."
-            )
+        with patch("tools.edit_journal.update_vector_index", return_value=False) as mock_update:
+            result = edit_journal(journal, {}, replace_content="# New Content\n\nReplaced.")
 
         assert result["success"] is True
         assert result["content_modified"] is True

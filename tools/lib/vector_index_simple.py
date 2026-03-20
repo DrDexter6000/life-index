@@ -162,23 +162,17 @@ class EmbeddingModel:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
             # 步骤 1: 验证模型完整性
-            is_valid, verify_msg = verify_model_integrity(
-                EMBEDDING_MODEL_NAME, CACHE_DIR
-            )
+            is_valid, verify_msg = verify_model_integrity(EMBEDDING_MODEL_NAME, CACHE_DIR)
             if not is_valid:
                 print(f"Warning: Model integrity check failed: {verify_msg}")
-                print(
-                    "Warning: Will proceed with loading, but embeddings may be inconsistent."
-                )
+                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
 
             # 步骤 2: 加载模型
             self._model = TextEmbedding(EMBEDDING_MODEL_NAME, cache_dir=str(CACHE_DIR))
             print(f"Model loaded successfully. (dimension={EMBEDDING_DIM})")
 
             # 步骤 3: 记录模型元数据（如果是首次使用）
-            meta_file = (
-                CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
-            )
+            meta_file = CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
             if not meta_file.exists():
                 record_model_metadata(EMBEDDING_MODEL_NAME, CACHE_DIR)
 
@@ -220,9 +214,11 @@ def get_model_info() -> Dict[str, Any]:
         "version": EMBEDDING_MODEL_VERSION,
         "dimension": EMBEDDING_DIM,
         "cache_dir": str(CACHE_DIR),
-        "config_hash": MODEL_CONFIG.get("config_hash", "")[:16] + "..."
-        if MODEL_CONFIG.get("config_hash")
-        else "N/A",
+        "config_hash": (
+            MODEL_CONFIG.get("config_hash", "")[:16] + "..."
+            if MODEL_CONFIG.get("config_hash")
+            else "N/A"
+        ),
     }
 
 
@@ -383,9 +379,11 @@ class SimpleVectorIndex:
         return {
             "exists": VEC_INDEX_PATH.exists(),
             "total_vectors": len(self.vectors),
-            "index_size_mb": round(VEC_INDEX_PATH.stat().st_size / (1024 * 1024), 2)
-            if VEC_INDEX_PATH.exists()
-            else 0,
+            "index_size_mb": (
+                round(VEC_INDEX_PATH.stat().st_size / (1024 * 1024), 2)
+                if VEC_INDEX_PATH.exists()
+                else 0
+            ),
             "backend": "simple_numpy",
         }
 
@@ -402,9 +400,7 @@ def get_index() -> SimpleVectorIndex:
     return _index_instance
 
 
-def update_vector_index_simple(
-    model_encode_func, incremental: bool = True
-) -> Dict[str, Any]:
+def update_vector_index_simple(model_encode_func, incremental: bool = True) -> Dict[str, Any]:
     """
     更新简单向量索引
 
@@ -450,9 +446,7 @@ def update_vector_index_simple(
                         value = value.strip()
                         if value.startswith("[") and value.endswith("]"):
                             value = [
-                                v.strip().strip("\"'")
-                                for v in value[1:-1].split(",")
-                                if v.strip()
+                                v.strip().strip("\"'") for v in value[1:-1].split(",") if v.strip()
                             ]
                         metadata[key] = value
 

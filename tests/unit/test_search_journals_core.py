@@ -77,9 +77,7 @@ class TestHierarchicalSearch:
 
         with patch("tools.search_journals.core.search_l3_content") as mock_l3:
             with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
-                with patch(
-                    "tools.search_journals.core.merge_and_rank_results"
-                ) as mock_rank:
+                with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
@@ -173,9 +171,7 @@ class TestHierarchicalSearch:
                         mock_l3.return_value = []
                         mock_rank.return_value = [{"path": "test.md", "score": 0.8}]
                         # Do NOT pass semantic= — test that default is True
-                        result = hierarchical_search(
-                            query="Python", level=3, use_index=False
-                        )
+                        result = hierarchical_search(query="Python", level=3, use_index=False)
 
         assert result["success"] is True
         assert result["query_params"]["semantic"] is True
@@ -202,9 +198,7 @@ class TestHierarchicalSearch:
                             {"path": "fts.md", "score": 0.9},
                             {"path": "sem.md", "score": 0.8},
                         ]
-                        result = hierarchical_search(
-                            query="test", level=3, use_index=False
-                        )
+                        result = hierarchical_search(query="test", level=3, use_index=False)
 
         assert result["success"] is True
         assert len(result["l3_results"]) >= 1
@@ -220,9 +214,7 @@ class TestHierarchicalSearch:
         with patch("tools.search_journals.core.search_semantic") as mock_sem:
             with patch("tools.search_journals.core.search_l3_content") as mock_l3:
                 with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
-                    with patch(
-                        "tools.search_journals.core.merge_and_rank_results"
-                    ) as mock_rank:
+                    with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                         mock_l2.return_value = {
                             "results": [],
                             "truncated": False,
