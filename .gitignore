@@ -74,3 +74,4 @@ credentials.json
 *.pem
 *.key
 .sisyphus/
+docs/archive/
