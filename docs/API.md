@@ -210,6 +210,16 @@ python -m tools.write_journal --data '<json>'
 - 只有在正文和入参都未提供地点、工具使用了默认地点时，Agent 才必须展示 `confirmation_message` 并等待用户确认或修正
 - 如果用户要求修正地点/天气，后续应进入 correction flow，而不是把原写入描述为失败
 
+### 写入成功 / 降级 / 修复语义
+
+- `journal_path` 可被成功返回时，应优先理解为**核心 journal 已 durably saved**
+- `needs_confirmation: true` 表示“写入成功但仍需确认/修正”，**不等于写入失败**
+- 索引、附件、补充信息等 side effects 若处于降级状态，应报告为“已保存，但仍有后续修复或可见性问题”，不应抹掉核心写入成功这一事实
+- Agent 必须保留这三种区别：
+  1. 写入失败
+  2. 写入成功，但仍需 confirmation / correction
+  3. 写入成功，但 side effects / index visibility 不完整
+
 ### 错误码
 
 | 代码 | 说明 | 恢复策略 |
@@ -283,6 +293,12 @@ python -m tools.search_journals [options]
 | E0303 | 无结果 | continue_empty |
 | E0300 | 索引不存在 | continue |
 
+### caller-facing 解释语义
+
+- `search_journals` 返回结果列表表示 retrieval execution 成功，不等于 Agent 已完成最终用户答案
+- `E0303` 或空结果应解释为“执行成功但没有匹配结果”，不应解释为执行失败
+- 工具 failure 与空结果必须在调用方叙述中严格区分
+
 ---
 
 ## edit_journal
@@ -317,6 +333,20 @@ python -m tools.edit_journal --journal "<path>" [options]
 - 只要修改 `location`，就必须同时提交新的 `weather`
 - 推荐顺序：先调用 `query_weather` 获取天气；如果失败，允许 Agent 手动联网查询天气后再继续编辑
 - 如果最终拿不到新的天气，本次地点修改不得成功写入
+- 调用前必须先解决 target selection 与 mutation intent；`edit_journal` 不负责替调用方猜测编辑目标或变更类型
+
+### 地点 / 天气耦合语义
+
+- `edit_journal` 是**确定性修改工具**，不负责自动刷新天气
+- `query_weather` 负责天气能力查询，不负责 journal mutation
+- 因此只修改 `location` 时，Agent / caller 必须显式承担“先查天气、再同时提交 location + weather”的 orchestration
+- 如果天气刷新失败，Agent 必须诚实区分“journal edit 状态”和“weather refresh 状态”，不能暗示天气已经同步正确
+
+### caller-facing 成功 / 失败语义
+
+- `edit_journal` success 应理解为请求的 deterministic mutation 已成功应用
+- 如果 edit 前置条件尚未满足（例如 coupled-field prerequisite 未解决），正确行为是先澄清或补齐，再调用工具
+- 对于 location/weather 这类耦合修改，调用方必须区分“编辑失败”与“语义对齐尚未完成”
 
 ### 返回值
 
@@ -393,6 +423,7 @@ python -m tools.query_weather --location "<location>" [options]
 - `query_weather` 是首选天气来源
 - 如果 `query_weather` 失败，Agent 可手动联网查询天气并将结果提供给 `edit_journal`
 - 对于地点修改场景，只有 `query_weather` 和 Agent 手动查询都失败时，才允许把本次修改判定为失败
+- `query_weather` 是 capability tool，不是 recovery orchestrator；失败后的流程判断由 Agent / caller 负责
 
 ---
 

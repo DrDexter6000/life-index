@@ -4,7 +4,7 @@
 > **Audience**: Project Owner, reviewers, implementers, and future agents
 > **SSOT relationship**: This document is review-scoped execution guidance. Runtime workflow truth remains in `SKILL.md`, interface truth remains in `docs/API.md`, and architecture truth remains in `docs/ARCHITECTURE.md`.
 > **Scope for this first cut**: Write journal, search journals, edit journal
-> **状态**: 已采纳 — 核心workflow指导已上提到 `SKILL.md`
+> **状态**: 部分采纳 — 核心 runtime workflow guidance 已上提到 `SKILL.md`，本文件保留更细的 review reasoning 与开放问题
 > **采纳日期**: 2026-03-18
 > **后续维护**: 本文档保留作为历史记录和详细参考，运行时指导以 `SKILL.md` 为准
 

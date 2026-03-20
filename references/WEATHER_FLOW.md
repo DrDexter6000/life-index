@@ -124,6 +124,11 @@
 
 **重要**：`tools.edit_journal` **不会自动查询天气**，Agent 需要手动调用 `tools.query_weather`。
 
+**职责边界**：
+- `tools.edit_journal` 只负责 journal mutation
+- `tools.query_weather` 只负责 weather capability
+- “地点变了，天气也要一起对齐”属于 Agent / caller 的 orchestration 责任，不是任一单工具的隐式职责
+
 | 用户反馈 | Agent 操作 |
 |:---|:---|
 | 用户补充了地点和天气 | 调用 `python -m tools.edit_journal --set-location "..." --set-weather "..."` |

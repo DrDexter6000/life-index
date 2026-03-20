@@ -182,6 +182,8 @@
 - search result 与 agent answer 的职责边界
 - 哪些 workflow 仍然只存在于 review 文档，而尚未提升到更稳定的正式层级
 
+> **状态更新**: 上述第一轮高优先级 contract 已分别上提到 `docs/API.md`、`SKILL.md`、`references/WEATHER_FLOW.md`；下一轮应处理剩余仍停留在 review 层的 workflow rules。
+
 ---
 
 ## 9. 与其他文档的关系
