@@ -365,8 +365,7 @@ success: true, index_status: degraded
 |------|------|
 | [API.md](docs/API.md) | 工具 API 接口、参数详情、错误码与恢复策略 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、核心原则、关键决策 |
-| [PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md) | 产品边界、三层模型、默认拒绝方向 |
-| [EXECUTION_PRIORITIES.md](docs/EXECUTION_PRIORITIES.md) | v1.x 执行优先级与当前主线 |
+| [PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md) | 产品边界、三层模型、执行优先级与默认拒绝方向 |
 | [SCHEDULE.md](references/schedule/SCHEDULE.md) | 定时任务配置（日报/周报/月报） |
 | [WEATHER_FLOW.md](references/WEATHER_FLOW.md) | 天气处理详细流程与故障 Fallback |
 

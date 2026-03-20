@@ -1,54 +1,145 @@
 # Life Index Upgrade Guide
 
-> **Document role**: Define the supported upgrade path for Life Index v1.x.
-> **Audience**: End users, operators, and agents performing upgrades on behalf of users.
-> **Authority**: Active upgrade guidance for repo-first releases; version semantics remain defined in `docs/VERSION_POLICY.md`.
+> **文档角色**: Life Index v1.x 的版本语义、兼容性承诺与升级操作指南
+> **目标读者**: 项目 Owner、贡献者、操作者、代用户执行升级的 Agent
+> **Authority**: 版本含义、兼容性边界、升级流程的统一参考；版本号值以 `pyproject.toml` 为准
 
 ---
 
-## 1. Scope
+## 1. 版本语义
 
-This document explains how to upgrade an existing Life Index installation during the v1.x series.
+Life Index 在 v1.x 期间使用 **SemVer-lite**，版本判断以用户数据安全和操作者工作流影响为主要依据，而非内部实现变化。
 
-It focuses on the supported operator path, recovery for common upgrade problems, and the minimum validation required after an upgrade.
+### Patch
+
+以下变更使用 patch 版本：
+
+- Bug 修复
+- 文档修正或措辞优化
+- 无需用户操作的内部重构
+- 不改变迁移需求的性能/可靠性改进
+
+Patch 发布不应要求用户手动迁移日志或配置。建议的升级后操作仅限轻量级验证或重建非持久性索引/缓存。
+
+### Minor
+
+以下变更使用 minor 版本：
+
+- 新增用户可见功能
+- 已有命令或工作流的有意义扩展
+- 向后兼容的元数据或搜索行为变化
+
+Minor 发布可能需要用户阅读 release notes 或执行 `life-index index` 等轻量维护操作，但不应要求手动迁移持久性用户资产。
+
+### Major
+
+以下变更使用 major 版本：
+
+- 日志、frontmatter、配置或附件需要手动迁移
+- CLI 行为被故意破坏或移除
+- 现有安装/升级流程不再适用
+- 持久性用户资产的兼容性承诺无法维持
+
+Major 发布必须附带明确的迁移指南。
+
+### 破坏性变更的定义
+
+对本项目而言，破坏性变更由**用户资产兼容性**和**操作者工作流中断**定义，而非仅由内部重构定义。
+
+通常属于破坏性变更：
+- 日志或 frontmatter 不兼容
+- 配置不兼容
+- 超出正常升级路径的必要操作者动作
+- 使现有正常用法失效的 CLI 行为变化
+
+通常不单独构成破坏性变更：
+- 内部模块重构
+- 用户可见行为不变的实现清理
+- 仅需重建的索引/缓存变更（持久性用户资产完好）
+
+### 版本判断规则
+
+1. 是否需要用户迁移日志、配置或附件？→ Major
+2. 是否新增有意义的用户可见功能，且持久性资产兼容？→ Minor
+3. 主要是修复、澄清或内部改进，无迁移负担？→ Patch
+
+如果不确定，选择对本地优先系统用户更安全、更清晰的解释。
 
 ---
 
-## 2. Supported Upgrade Anchor for v1.x
+## 2. 兼容性承诺
 
-The supported upgrade model for current Life Index releases is:
+### 核心原则
+
+Life Index 是本地优先系统。v1.x 期间，兼容性决策优先保护用户拥有的持久性资产，而非每一个内部缓存或索引产物。
+
+### 持久性资产（默认向后兼容）
+
+以下资产在整个 v1.x 期间应保持向后兼容：
+
+- `~/Documents/Life-Index/Journals/`
+- 日志关联的附件文件
+- `~/Documents/Life-Index/.life-index/config.yaml`
+
+普通的 patch 和 minor 发布不应强制用户手动重写或迁移这些资产。如果某个变更需要此类迁移，应作为更强的发布事件处理并明确记录。
+
+### 可重建的运行状态
+
+以下状态可以被视为可重建的运行状态，而非持久性兼容关键资产：
+
+- `.index/`
+- 元数据缓存产物
+- 搜索索引产物
+- 向量索引产物
+
+如果这些状态变得过时或与新内部实现不兼容，首选的补救方式是刷新、重建索引，而非冒险修改用户拥有的日志或配置。
+
+### 迁移说明触发条件
+
+当发布影响以下任一项时，release notes 和升级指南变为强制性：
+
+- frontmatter 契约
+- 配置 schema 或语义
+- 需要操作者明确操作的搜索/索引行为
+- 与正常升级路径不同的安装或 CLI 用法
+
+### 迁移工具触发条件
+
+仅当以下至少一项为真时，才应考虑自动迁移工具：
+
+- 手动迁移可能损坏日志或配置
+- 所需迁移过于重复或脆弱
+- 不能合理期望用户安全地手动执行变更
+
+如果清晰的手动指南足够且安全，在 v1.x 期间优先使用手动指南。
+
+---
+
+## 3. 升级工作流
+
+### 当前支持的升级模型
 
 - **repo-first**
-- **release-tagged when formal releases are cut**
-- **editable install inside a local virtual environment**
+- **正式发布时打 release tag**
+- **本地虚拟环境中的可编辑安装**
 
-In practical terms, users upgrade an existing repository checkout rather than switching to a different distribution mechanism.
+用户通过更新已有的仓库 checkout 来升级，而非切换到其他分发机制。
 
----
+### Step 1 — 备份用户数据
 
-## 3. Supported Upgrade Workflow
-
-### Step 1 — Back up user data
-
-Before upgrading, back up:
+升级前备份：
 
 - `~/Documents/Life-Index/`
 
-This protects journals, attachments, configuration, and any user-owned content before version changes are applied.
-
-### Step 2 — Update the repository
-
-Update the local checkout to the intended release tag or approved target revision.
-
-Typical repo-first operator flow:
+### Step 2 — 更新仓库
 
 ```bash
 git pull
 ```
 
-If a specific release tag is required, check out that target explicitly instead of blindly following the moving branch tip.
+如果需要特定 release tag，应明确 checkout 该目标，而非盲目跟随移动的分支 tip。
 
-### Step 3 — Reinstall the current code into the venv
+### Step 3 — 重新安装到 venv
 
 **Linux/macOS/WSL**:
 
@@ -62,9 +153,7 @@ If a specific release tag is required, check out that target explicitly instead 
 .venv\Scripts\pip install -e .
 ```
 
-This ensures the current checked-out code and dependency set are aligned.
-
-### Step 4 — Run health check
+### Step 4 — 运行健康检查
 
 **Linux/macOS/WSL**:
 
@@ -78,9 +167,7 @@ This ensures the current checked-out code and dependency set are aligned.
 .venv\Scripts\life-index health
 ```
 
-### Step 5 — Refresh index state
-
-Run the standard index command after upgrade:
+### Step 5 — 刷新索引
 
 **Linux/macOS/WSL**:
 
@@ -94,83 +181,81 @@ Run the standard index command after upgrade:
 .venv\Scripts\life-index index
 ```
 
-### Step 6 — Rebuild only when needed
+### Step 6 — 仅在需要时重建
 
-Use rebuild flow only when at least one of these is true:
+仅当以下至少一项为真时使用重建流程：
 
-- release notes explicitly require it
-- `health` indicates a search/index problem
-- search validation after upgrade still looks wrong
-
-Preferred rebuild command:
+- release notes 明确要求
+- `health` 指示搜索/索引问题
+- 升级后搜索验证仍有异常
 
 ```bash
 python -m tools.build_index --rebuild
 ```
 
-### Step 7 — Validate against existing data
+### Step 7 — 验证现有数据
 
-Run at least one known search against an existing journal entry and confirm the expected result still appears.
-
----
-
-## 4. Minimum Post-Upgrade Validation Checklist
-
-Every supported upgrade should pass this minimum checklist:
-
-1. `life-index health` succeeds and does not report an unhealthy state
-2. one known search against existing data returns expected results
-3. if release notes mention retrieval/index/search changes, `life-index index` has been run
-4. if health or search still looks wrong, rebuild flow has been considered or executed
+对至少一条已有日志执行已知搜索，确认预期结果仍然出现。
 
 ---
 
-## 5. Stronger Optional Validation Checklist
+## 4. 升级后验证清单
 
-For cautious operators, or for releases that touched retrieval/indexing behavior, use this stronger checklist as well:
+### 最低验证（每次升级必须通过）
 
-1. confirm the current config can still be read
-2. perform one small write test
-3. perform one search for the newly written entry
+1. `life-index health` 成功且未报告不健康状态
+2. 对现有数据的一次已知搜索返回预期结果
+3. 如果 release notes 提到检索/索引/搜索变更，已运行 `life-index index`
+4. 如果 health 或搜索仍有异常，已考虑或执行重建流程
 
-This stronger check is optional unless release notes say otherwise.
+### 增强验证（可选，谨慎操作者推荐）
 
----
+1. 确认当前配置可正常读取
+2. 执行一次小型写入测试
+3. 对新写入的条目执行一次搜索
 
-## 6. Recovery Rule for Broken Virtual Environments
-
-If the virtual environment is stale or broken after:
-
-- Python version changes
-- interrupted install
-- dependency resolution failure
-
-then recover with this approach:
-
-1. remove `.venv/`
-2. recreate the virtual environment
-3. reinstall with `pip install -e .`
-4. continue from the standard post-upgrade validation flow
+除非 release notes 另有说明，增强验证为可选。
 
 ---
 
-## 7. When Release Notes Must Override the Default Flow
+## 5. 虚拟环境损坏恢复
 
-Release notes should be treated as authoritative when they explicitly require:
+如果虚拟环境在 Python 版本变更、安装中断或依赖解析失败后损坏：
 
-- rebuild of indexes
-- additional compatibility checks
-- special migration actions
-- temporary operator workarounds for a specific release
-
-If release notes say more than this document, follow the release notes for that release.
+1. 删除 `.venv/`
+2. 重新创建虚拟环境
+3. 重新安装：`pip install -e .`
+4. 继续标准的升级后验证流程
 
 ---
 
-## 8. Relationship to Other Release Documents
+## 6. Release Notes 优先规则
 
-Use this document together with:
+当 release notes 明确要求以下操作时，应视为权威指令：
 
-- `docs/VERSION_POLICY.md` for patch/minor/major semantics
-- `docs/CHANGELOG.md` for release history and release-facing upgrade notes
-- distribution strategy documentation for the rationale behind the current repo-first model
+- 重建索引
+- 额外的兼容性检查
+- 特殊迁移动作
+- 特定版本的临时操作者变通方案
+
+如果 release notes 的要求超出本文档，以该版本的 release notes 为准。
+
+---
+
+## 7. 维护者经验法则
+
+发布前的检查清单：
+
+1. 此变更是否可能影响日志、附件或配置？
+2. 如果是，变更是否仍然向后兼容？
+3. 如果不兼容，发布分级是否正确？是否附带明确的迁移指南？
+4. 如果问题仅涉及索引/缓存，重建是否可以作为安全的默认方案？
+
+如果不确定，优先选择保护持久性用户资产并使操作者必要动作明确的路径。
+
+---
+
+## 8. 相关文档
+
+- `docs/CHANGELOG.md` — 发布历史和面向发布的升级说明
+- `pyproject.toml` — 当前版本号 SSOT
