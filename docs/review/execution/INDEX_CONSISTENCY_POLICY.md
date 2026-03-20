@@ -259,7 +259,7 @@ Do not report “all good” when retrieval state is known to be stale or incomp
 
 ## 9. Relationship to write failure semantics
 
-This document extends `docs/review/execution/WRITE_FAILURE_SEMANTICS.md`.
+This document extends `docs/archive/review-2026-03/WRITE_FAILURE_SEMANTICS.md`.
 
 That document establishes:
 
