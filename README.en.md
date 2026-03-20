@@ -369,7 +369,7 @@ python3 -m venv .venv
 → Delete `.venv` directory, then re-run `python3 -m venv .venv && .venv/bin/pip install -e .`
 
 **Upgrade to a newer version**  
-→ See `docs/UPGRADE.md`; version semantics live in `docs/VERSION_POLICY.md`, and compatibility boundaries live in `docs/COMPATIBILITY.md`
+→ See `docs/UPGRADE.md` (includes version semantics and compatibility expectations)
 
 **Installation health check**  
 → Run `.venv/bin/life-index health` to view status of all check items

@@ -14,9 +14,7 @@
 - rebuild / migration / compatibility 相关提示
 
 相关文档：
-- `docs/VERSION_POLICY.md`
 - `docs/UPGRADE.md`
-- `docs/COMPATIBILITY.md`
 
 ---
 
