@@ -108,9 +108,7 @@ def collect_year_journals(year: int) -> List[Dict]:
     return journals
 
 
-def generate_monthly_abstract_content(
-    year: int, month: int, journals: List[Dict]
-) -> str:
+def generate_monthly_abstract_content(year: int, month: int, journals: List[Dict]) -> str:
     """生成月度摘要内容（与 write_journal.py 格式兼容）"""
     month_name = f"{year}年{month:02d}月"
     now = datetime.now().isoformat()
@@ -335,9 +333,7 @@ def generate_yearly_abstract_content(year: int, journals: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def generate_monthly_abstract(
-    year: int, month: int, dry_run: bool = False
-) -> Dict[str, Any]:
+def generate_monthly_abstract(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]:
     """生成月度摘要文件"""
     result: Dict[str, Any] = {
         "success": False,

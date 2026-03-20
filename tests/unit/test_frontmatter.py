@@ -188,18 +188,10 @@ class TestFormatFrontmatter:
 
         lines = result.strip().split("\n")
         # Find field positions
-        title_pos = next(
-            (i for i, line in enumerate(lines) if line.startswith("title:")), -1
-        )
-        date_pos = next(
-            (i for i, line in enumerate(lines) if line.startswith("date:")), -1
-        )
-        topic_pos = next(
-            (i for i, line in enumerate(lines) if line.startswith("topic:")), -1
-        )
-        tags_pos = next(
-            (i for i, line in enumerate(lines) if line.startswith("tags:")), -1
-        )
+        title_pos = next((i for i, line in enumerate(lines) if line.startswith("title:")), -1)
+        date_pos = next((i for i, line in enumerate(lines) if line.startswith("date:")), -1)
+        topic_pos = next((i for i, line in enumerate(lines) if line.startswith("topic:")), -1)
+        tags_pos = next((i for i, line in enumerate(lines) if line.startswith("tags:")), -1)
 
         # Verify order per FIELD_ORDER: title < date < tags < topic
         assert title_pos < date_pos
@@ -409,9 +401,7 @@ Content.
 """
         file_path.write_text(original_content, encoding="utf-8")
 
-        result = update_frontmatter_fields(
-            file_path, {"title": "Updated"}, dry_run=True
-        )
+        result = update_frontmatter_fields(file_path, {"title": "Updated"}, dry_run=True)
 
         assert result["success"] is True
         assert "title" in result["changes"]
@@ -435,9 +425,7 @@ Content.
 """
         file_path.write_text(original_content, encoding="utf-8")
 
-        result = update_frontmatter_fields(
-            file_path, {"title": "Updated"}, dry_run=False
-        )
+        result = update_frontmatter_fields(file_path, {"title": "Updated"}, dry_run=False)
 
         assert result["success"] is True
         assert "title" in result["changes"]
@@ -489,9 +477,7 @@ Content.
 """
         file_path.write_text(content, encoding="utf-8")
 
-        result = update_frontmatter_fields(
-            file_path, {"weather": "Sunny"}, dry_run=False
-        )
+        result = update_frontmatter_fields(file_path, {"weather": "Sunny"}, dry_run=False)
 
         assert result["success"] is True
         assert "weather" in result["changes"]

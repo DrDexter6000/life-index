@@ -89,11 +89,7 @@ Examples:
     # 解析列表参数
     tags = [t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else None
     mood = [m.strip() for m in args.mood.split(",") if m.strip()] if args.mood else None
-    people = (
-        [p.strip() for p in args.people.split(",") if p.strip()]
-        if args.people
-        else None
-    )
+    people = [p.strip() for p in args.people.split(",") if p.strip()] if args.people else None
 
     # 执行搜索
     result = hierarchical_search(

@@ -37,9 +37,7 @@ Examples:
         """,
     )
 
-    parser.add_argument(
-        "--month", type=str, help="生成月度摘要，格式: YYYY-MM (如 2026-03)"
-    )
+    parser.add_argument("--month", type=str, help="生成月度摘要，格式: YYYY-MM (如 2026-03)")
 
     parser.add_argument("--year", type=int, help="生成年度摘要，格式: YYYY (如 2026)")
 

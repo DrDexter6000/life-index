@@ -290,9 +290,7 @@ class TestUpdateTagIndices:
 
         with patch("tools.write_journal.index_updater.BY_TOPIC_DIR", index_dir):
             with patch("tools.write_journal.index_updater.JOURNALS_DIR", tmp_path):
-                result = update_tag_indices(
-                    ["python", "", "testing"], journal_path, data
-                )
+                result = update_tag_indices(["python", "", "testing"], journal_path, data)
 
         # Should only create 2 files (skip empty string)
         assert len(result) == 2
@@ -413,9 +411,7 @@ Content here.
 
         with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=mock_output, stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout=mock_output, stderr="")
                 result = update_monthly_abstract(2026, 3, dry_run=False)
 
         assert result["abstract_path"] is not None
@@ -443,9 +439,7 @@ Content here.
 
         with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=mock_output, stderr=""
-                )
+                mock_run.return_value = MagicMock(returncode=0, stdout=mock_output, stderr="")
                 result = update_monthly_abstract(2026, 3, dry_run=True)
 
         # Verify --dry-run flag was passed
@@ -482,9 +476,7 @@ Content here.
 
         with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
             with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = subprocess.TimeoutExpired(
-                    cmd=["test"], timeout=30
-                )
+                mock_run.side_effect = subprocess.TimeoutExpired(cmd=["test"], timeout=30)
                 result = update_monthly_abstract(2026, 3, dry_run=False)
 
         assert result["abstract_path"] is None

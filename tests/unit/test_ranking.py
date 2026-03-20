@@ -222,9 +222,7 @@ class TestMergeAndRankResultsHybrid:
 
         semantic = [{"path": "/test/semantic.md", "similarity": 0.9}]
 
-        with patch(
-            "tools.search_journals.ranking.enrich_semantic_result"
-        ) as mock_enrich:
+        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
             mock_enrich.return_value = {
                 "path": "/test/semantic.md",
                 "title": "Semantic Doc",
@@ -242,9 +240,7 @@ class TestMergeAndRankResultsHybrid:
 
         semantic = [{"path": "/test/doc.md", "similarity": 0.8, "final_score": 0.8}]
 
-        with patch(
-            "tools.search_journals.ranking.enrich_semantic_result"
-        ) as mock_enrich:
+        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
             mock_enrich.return_value = {"path": "/test/doc.md", "title": "Doc"}
 
             results = merge_and_rank_results_hybrid([], [], [], semantic, query="test")
@@ -276,9 +272,7 @@ class TestMergeAndRankResultsHybrid:
         l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 50}]
         semantic = [{"path": "/test/doc.md", "similarity": 0.9, "final_score": 0.9}]
 
-        results_default = merge_and_rank_results_hybrid(
-            [], [], l3, semantic, query="test"
-        )
+        results_default = merge_and_rank_results_hybrid([], [], l3, semantic, query="test")
         results_custom = merge_and_rank_results_hybrid(
             [], [], l3, semantic, query="test", fts_weight=0.3, semantic_weight=0.7
         )
@@ -320,9 +314,7 @@ class TestMergeAndRankResultsHybrid:
         l2 = [{"path": "/test/doc.md", "title": "Doc", "metadata": {}}]
         semantic = [{"path": "/test/doc.md", "similarity": 0.8, "final_score": 0.8}]
 
-        with patch(
-            "tools.search_journals.ranking.enrich_semantic_result"
-        ) as mock_enrich:
+        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
             mock_enrich.return_value = {"path": "/test/doc.md", "title": "Doc"}
 
             results = merge_and_rank_results_hybrid([], l2, l3, semantic, query="test")
@@ -352,9 +344,7 @@ class TestMergeAndRankResultsHybrid:
         l3_low = [{"path": "/test/low.md", "title": "Low", "relevance": 40}]
         l1 = [{"path": "/test/l1.md", "date": "2026-03-14"}]
 
-        results = merge_and_rank_results_hybrid(
-            l1, [], l3_high + l3_low, [], query="test"
-        )
+        results = merge_and_rank_results_hybrid(l1, [], l3_high + l3_low, [], query="test")
 
         # High relevance should be first
         assert results[0]["path"] == "/test/high.md"
@@ -390,9 +380,7 @@ class TestTierPriority:
 
         l1 = [{"path": "/test/doc.md", "date": "2026-03-14"}]
         l2 = [{"path": "/test/doc.md", "title": "Doc", "metadata": {}}]
-        l3 = [
-            {"path": "/test/doc.md", "title": "Doc", "relevance": 15}
-        ]  # Low but in L3
+        l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 15}]  # Low but in L3
 
         results = merge_and_rank_results(l1, l2, l3, query="test")
 

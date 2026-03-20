@@ -39,10 +39,11 @@ nul
 .pytest_cache/
 .coverage
 htmlcov/
+cov_report/
 .ruff_cache/
 
 # ----- E2E测试报告 -----
-tests/reports/*.json
+tests/reports/
 
 # ----- 运行时数据（用户本地生成）-----
 # 注意：这些数据在 ~/Documents/Life-Index/，不在项目目录

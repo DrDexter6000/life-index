@@ -405,17 +405,12 @@ class TestQueryWeather:
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
 
-        result = query_weather(
-            39.9042, 116.4074, "2025-01-15", timezone="Asia/Shanghai"
-        )
+        result = query_weather(39.9042, 116.4074, "2025-01-15", timezone="Asia/Shanghai")
 
         assert result["success"] is True
         # Verify timezone was passed (check URL contains timezone parameter)
         call_args = mock_urlopen.call_args[0][0]
-        assert (
-            "timezone=Asia%2FShanghai" in call_args
-            or "timezone=Asia/Shanghai" in call_args
-        )
+        assert "timezone=Asia%2FShanghai" in call_args or "timezone=Asia/Shanghai" in call_args
 
     @patch("tools.query_weather.urllib.request.urlopen")
     def test_precipitation_data(self, mock_urlopen):
@@ -667,9 +662,7 @@ class TestConnectionErrors:
         """Test geocode_location handles connection refused"""
         import urllib.error
 
-        mock_urlopen.side_effect = urllib.error.URLError(
-            "[Errno 111] Connection refused"
-        )
+        mock_urlopen.side_effect = urllib.error.URLError("[Errno 111] Connection refused")
 
         result = geocode_location("Beijing")
 
@@ -681,9 +674,7 @@ class TestConnectionErrors:
         """Test geocode_location handles DNS resolution failure"""
         import urllib.error
 
-        mock_urlopen.side_effect = urllib.error.URLError(
-            "[Errno -2] Name or service not known"
-        )
+        mock_urlopen.side_effect = urllib.error.URLError("[Errno -2] Name or service not known")
 
         result = geocode_location("Beijing")
 
@@ -695,9 +686,7 @@ class TestConnectionErrors:
         """Test query_weather handles connection refused"""
         import urllib.error
 
-        mock_urlopen.side_effect = urllib.error.URLError(
-            "[Errno 111] Connection refused"
-        )
+        mock_urlopen.side_effect = urllib.error.URLError("[Errno 111] Connection refused")
 
         result = query_weather(39.9042, 116.4074, "2025-01-15")
 
@@ -1031,9 +1020,7 @@ class TestIntegration:
                 return mock_response
             else:
                 # Weather API fails
-                raise urllib.error.HTTPError(
-                    url, 500, "Internal Server Error", {}, None
-                )
+                raise urllib.error.HTTPError(url, 500, "Internal Server Error", {}, None)
 
         mock_urlopen.side_effect = mock_urlopen_side_effect
 

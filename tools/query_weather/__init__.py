@@ -205,9 +205,7 @@ def query_weather(
         daily = data.get("daily", {})
 
         if not daily or not daily.get("weather_code"):
-            logger.warning(
-                f"No weather data available for {date} at ({latitude}, {longitude})"
-            )
+            logger.warning(f"No weather data available for {date} at ({latitude}, {longitude})")
             result["error"] = "No weather data available for this date"
             return result
 

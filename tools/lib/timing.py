@@ -70,9 +70,7 @@ class Timer:
         finally:
             duration_ms = (time.perf_counter() - start) * 1000
             self._entries.append(
-                TimingEntry(
-                    name=name, duration_ms=round(duration_ms, 2), start_time=start
-                )
+                TimingEntry(name=name, duration_ms=round(duration_ms, 2), start_time=start)
             )
 
     def add(self, name: str, duration_ms: float) -> "Timer":
@@ -114,9 +112,7 @@ class Timer:
         """
         metrics = {
             "timings": self.to_dict(),
-            "entries": [
-                {"name": e.name, "duration_ms": e.duration_ms} for e in self._entries
-            ],
+            "entries": [{"name": e.name, "duration_ms": e.duration_ms} for e in self._entries],
         }
 
         if self._start_time and self._end_time:

@@ -231,5 +231,5 @@ Life Index 核心产品包含：
 - `docs/UPGRADE.md` — 版本语义、兼容性承诺与升级指南
 - `references/WEATHER_FLOW.md` — 天气相关 caller/tool 边界与 correction flow
 - `references/schedule/SCHEDULE.md` — 可选自动化边界
-- `docs/archive/review-2026-03/PROJECT_DIAGNOSIS_AND_ROADMAP.md` — review-scoped 诊断与路线背景（已归档）
-- `docs/archive/review-2026-03/TOOL_RESPONSIBILITY_MATRIX.md` — Agent / Tool 职责边界细化
+- `docs/archive/review-2026-03/PROJECT_DIAGNOSIS_AND_ROADMAP.md` — review-scoped 诊断与路线背景（已归档，仅供历史参考）
+- `docs/archive/review-2026-03/TOOL_RESPONSIBILITY_MATRIX.md` — Agent / Tool 职责边界细化（已归档，仅供历史参考）

@@ -24,7 +24,6 @@ from tools.lib.errors import (
     ERROR_DESCRIPTIONS,
 )
 
-
 # ── All error codes documented in API.md ──
 
 API_MD_ERROR_CODES = {
@@ -90,13 +89,11 @@ class TestErrorCodeCompleteness:
         all_codes = {
             v
             for k, v in vars(ErrorCode).items()
-            if not k.startswith("_")
-            and isinstance(v, str)
-            and ERROR_CODE_PATTERN.match(v)
+            if not k.startswith("_") and isinstance(v, str) and ERROR_CODE_PATTERN.match(v)
         }
-        assert code in all_codes, (
-            f"Error code {code} is documented in API.md but missing from ErrorCode class"
-        )
+        assert (
+            code in all_codes
+        ), f"Error code {code} is documented in API.md but missing from ErrorCode class"
 
     def test_all_errorcode_constants_follow_format(self):
         """Every string constant in ErrorCode follows E{4-digit} format."""
@@ -105,9 +102,9 @@ class TestErrorCodeCompleteness:
                 continue
             val = getattr(ErrorCode, attr_name)
             if isinstance(val, str):
-                assert ERROR_CODE_PATTERN.match(val), (
-                    f"ErrorCode.{attr_name} = '{val}' does not match E{{4-digit}} format"
-                )
+                assert ERROR_CODE_PATTERN.match(
+                    val
+                ), f"ErrorCode.{attr_name} = '{val}' does not match E{{4-digit}} format"
 
     def test_no_duplicate_error_codes(self):
         """No two ErrorCode constants share the same code string."""
@@ -117,9 +114,9 @@ class TestErrorCodeCompleteness:
                 continue
             val = getattr(ErrorCode, attr_name)
             if isinstance(val, str) and ERROR_CODE_PATTERN.match(val):
-                assert val not in seen, (
-                    f"Duplicate code {val}: ErrorCode.{seen[val]} and ErrorCode.{attr_name}"
-                )
+                assert (
+                    val not in seen
+                ), f"Duplicate code {val}: ErrorCode.{seen[val]} and ErrorCode.{attr_name}"
                 seen[val] = attr_name
 
 
@@ -154,9 +151,7 @@ class TestRecoveryStrategies:
             (ErrorCode.QUERY_EMPTY, "ask_user"),
         ],
     )
-    def test_specific_code_strategy_matches_api_md(
-        self, code: str, expected_strategy: str
-    ):
+    def test_specific_code_strategy_matches_api_md(self, code: str, expected_strategy: str):
         """Specific code→strategy mappings match what API.md documents."""
         err = LifeIndexError(code, "test")
         assert err.recovery_strategy == expected_strategy, (
@@ -210,9 +205,7 @@ class TestLifeIndexErrorToJson:
 
     def test_to_json_contains_exactly_documented_keys(self):
         """Error object contains only the documented keys (no extraneous fields)."""
-        err = LifeIndexError(
-            ErrorCode.FILE_NOT_FOUND, "Not found", {"path": "/x"}, "Check path"
-        )
+        err = LifeIndexError(ErrorCode.FILE_NOT_FOUND, "Not found", {"path": "/x"}, "Check path")
         result = err.to_json()
 
         expected_top_keys = {"success", "error"}
@@ -265,9 +258,9 @@ class TestCreateErrorResponse:
             val = getattr(ErrorCode, attr_name)
             if isinstance(val, str) and ERROR_CODE_PATTERN.match(val):
                 desc = get_error_description(val)
-                assert desc != "Unknown error" or val == ErrorCode.UNKNOWN_ERROR, (
-                    f"ErrorCode.{attr_name} ({val}) has no description in ERROR_DESCRIPTIONS"
-                )
+                assert (
+                    desc != "Unknown error" or val == ErrorCode.UNKNOWN_ERROR
+                ), f"ErrorCode.{attr_name} ({val}) has no description in ERROR_DESCRIPTIONS"
 
 
 class TestIsRecoverable:

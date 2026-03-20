@@ -154,13 +154,9 @@ class TestProcessAttachments:
         source_file = tmp_path / "source.mp4"
         source_file.write_text("test content")
 
-        with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
-        ):
+        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
             result = process_attachments(
-                attachments=[
-                    {"source_path": str(source_file), "description": "Test file"}
-                ],
+                attachments=[{"source_path": str(source_file), "description": "Test file"}],
                 date_str="2026-03-10",
                 dry_run=True,
             )
@@ -172,13 +168,9 @@ class TestProcessAttachments:
         """Process a nonexistent source file"""
         from tools.write_journal.attachments import process_attachments
 
-        with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
-        ):
+        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
             result = process_attachments(
-                attachments=[
-                    {"source_path": "/nonexistent/file.mp4", "description": ""}
-                ],
+                attachments=[{"source_path": "/nonexistent/file.mp4", "description": ""}],
                 date_str="2026-03-10",
                 dry_run=True,
             )
@@ -197,9 +189,7 @@ class TestProcessAttachments:
         auto_file = tmp_path / "auto.png"
         auto_file.write_text("test")
 
-        with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
-        ):
+        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",
@@ -216,9 +206,7 @@ class TestProcessAttachments:
         source_file = tmp_path / "file.mp4"
         source_file.write_text("test")
 
-        with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
-        ):
+        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",
@@ -236,9 +224,7 @@ class TestProcessAttachments:
         source_file = tmp_path / "test.mp4"
         source_file.write_text("test")
 
-        with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
-        ):
+        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",
@@ -257,9 +243,7 @@ class TestProcessAttachments:
         source_dir = tmp_path / "subdir"
         source_dir.mkdir()
 
-        with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
-        ):
+        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
             result = process_attachments(
                 attachments=[{"source_path": str(source_dir), "description": ""}],
                 date_str="2026-03-10",
@@ -352,9 +336,7 @@ class TestStripCjkSpaces:
         """Remove multiple mixed-script spaces"""
         from tools.write_journal.attachments import _strip_cjk_spaces
 
-        assert (
-            _strip_cjk_spaces("Opus 审计 Report 报告.txt") == "Opus审计Report报告.txt"
-        )
+        assert _strip_cjk_spaces("Opus 审计 Report 报告.txt") == "Opus审计Report报告.txt"
 
     def test_preserve_english_only_spaces(self):
         """Keep spaces between English words"""

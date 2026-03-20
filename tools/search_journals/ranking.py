@@ -9,9 +9,7 @@ from typing import Dict, List, Optional
 from .semantic import enrich_semantic_result
 
 
-def reciprocal_rank_fusion(
-    ranked_lists: List[List[str]], k: int = 60
-) -> Dict[str, float]:
+def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = 60) -> Dict[str, float]:
     """
     Reciprocal Rank Fusion (RRF)
 
@@ -80,9 +78,7 @@ def merge_and_rank_results(
                 else ""
             )
             tags = metadata.get("tags", [])
-            tags_str = (
-                " ".join(tags).lower() if isinstance(tags, list) else str(tags).lower()
-            )
+            tags_str = " ".join(tags).lower() if isinstance(tags, list) else str(tags).lower()
 
             # title 匹配 +8 分（限制上限，确保不超过 L3 内容匹配）
             if query_lower in title:
@@ -108,9 +104,7 @@ def merge_and_rank_results(
         }
 
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
-    sorted_results = sorted(
-        scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True
-    )
+    sorted_results = sorted(scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True)
 
     # 提取数据并添加排名信息
     merged = []
@@ -236,9 +230,7 @@ def merge_and_rank_results_hybrid(
                 else ""
             )
             tags = metadata.get("tags", [])
-            tags_str = (
-                " ".join(tags).lower() if isinstance(tags, list) else str(tags).lower()
-            )
+            tags_str = " ".join(tags).lower() if isinstance(tags, list) else str(tags).lower()
 
             if query_lower in title:
                 score += 8

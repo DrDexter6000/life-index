@@ -40,9 +40,7 @@ Examples:
 
     parser.add_argument("--fts-only", action="store_true", help="Only update FTS index")
 
-    parser.add_argument(
-        "--vec-only", action="store_true", help="Only update vector index"
-    )
+    parser.add_argument("--vec-only", action="store_true", help="Only update vector index")
 
     parser.add_argument("--stats", action="store_true", help="Show index statistics")
 
@@ -56,9 +54,7 @@ Examples:
         return
 
     # 执行索引构建
-    result = build_all(
-        incremental=not args.rebuild, fts_only=args.fts_only, vec_only=args.vec_only
-    )
+    result = build_all(incremental=not args.rebuild, fts_only=args.fts_only, vec_only=args.vec_only)
 
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))

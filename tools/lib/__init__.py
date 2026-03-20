@@ -12,9 +12,9 @@ from .config import (
 )
 
 __all__ = [
-    'USER_DATA_DIR',
-    'JOURNALS_DIR',
-    'BY_TOPIC_DIR',
-    'ATTACHMENTS_DIR',
-    'ABSTRACTS_DIR',
+    "USER_DATA_DIR",
+    "JOURNALS_DIR",
+    "BY_TOPIC_DIR",
+    "ATTACHMENTS_DIR",
+    "ABSTRACTS_DIR",
 ]

@@ -82,8 +82,10 @@ Examples:
 
         latitude = geo_result["latitude"]
         longitude = geo_result["longitude"]
-        location_name = f"{geo_result['name']}, {geo_result.get('admin1', '')}, {geo_result['country']}".strip(
-            ", "
+        location_name = (
+            f"{geo_result['name']}, {geo_result.get('admin1', '')}, {geo_result['country']}".strip(
+                ", "
+            )
         )
     else:
         latitude = args.lat

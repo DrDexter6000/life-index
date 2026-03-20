@@ -102,9 +102,7 @@ It is very interesting to learn Python."""
             mock_path_instance.read_text.return_value = journal_content
             mock_path_class.return_value = mock_path_instance
 
-            with patch(
-                "tools.search_journals.l3_content.parse_frontmatter"
-            ) as mock_parse:
+            with patch("tools.search_journals.l3_content.parse_frontmatter") as mock_parse:
                 mock_parse.return_value = (
                     {"title": "Daily Notes", "date": "2026-03-14T10:00:00"},
                     "I am working on Python programming today.\nIt is very interesting to learn Python.",
@@ -121,9 +119,7 @@ It is very interesting to learn Python."""
                     mock_year.iterdir.return_value = [mock_month]
                     mock_dir.iterdir.return_value = [mock_year]
 
-                    with patch(
-                        "tools.search_journals.l3_content.USER_DATA_DIR", Path("/test")
-                    ):
+                    with patch("tools.search_journals.l3_content.USER_DATA_DIR", Path("/test")):
                         results = search_l3_content("Python")
 
         # Result count may vary due to mocking complexity
@@ -300,9 +296,7 @@ Content"""
             mock_path.side_effect = lambda p: (
                 mock_existing if p == "/test/exists.md" else mock_nonexistent
             )
-            results = search_l3_content(
-                "test", paths=["/test/exists.md", "/test/missing.md"]
-            )
+            results = search_l3_content("test", paths=["/test/exists.md", "/test/missing.md"])
 
         # Non-existent paths should be filtered out
 

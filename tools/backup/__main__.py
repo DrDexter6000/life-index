@@ -55,11 +55,7 @@ Examples:
             sys.exit(1)
 
         backups = list_backups(Path(args.dest))
-        print(
-            json.dumps(
-                {"success": True, "backups": backups}, ensure_ascii=False, indent=2
-            )
-        )
+        print(json.dumps({"success": True, "backups": backups}, ensure_ascii=False, indent=2))
         sys.exit(0)
 
     elif args.restore:

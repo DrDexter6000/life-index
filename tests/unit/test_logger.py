@@ -472,9 +472,7 @@ class TestLoggerAdapter:
     def test_process_without_context(self):
         """Should work without context extra"""
         adapter = LoggerAdapter(logging.getLogger("test"), None)
-        msg, kwargs = adapter.process(
-            "Test message", {"extra_data": {"file": "test.md"}}
-        )
+        msg, kwargs = adapter.process("Test message", {"extra_data": {"file": "test.md"}})
 
         assert kwargs["extra"]["extra_data"]["file"] == "test.md"
 

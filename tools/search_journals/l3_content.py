@@ -14,9 +14,7 @@ from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
 from .utils import parse_frontmatter
 
 
-def search_l3_content(
-    query: str, paths: Optional[List[str]] = None
-) -> List[Dict[str, Any]]:
+def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """
     L3: 内容层搜索 - 全文检索
 
@@ -63,9 +61,7 @@ def search_l3_content(
             if title_match or body_matches:
                 # 计算相对路径（基于 USER_DATA_DIR，避免跨驱动器问题）
                 try:
-                    rel_path = os.path.relpath(journal_file, USER_DATA_DIR).replace(
-                        "\\", "/"
-                    )
+                    rel_path = os.path.relpath(journal_file, USER_DATA_DIR).replace("\\", "/")
                 except ValueError:
                     # 如果无法计算相对路径，使用绝对路径
                     rel_path = str(journal_file).replace("\\", "/")
