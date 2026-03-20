@@ -53,7 +53,7 @@ triggers:
 .venv/bin/life-index index --rebuild # 全量重建
 .venv/bin/life-index health          # 安装健康检查
 
-# Windows 首次写入更稳妥的方式
+# Windows 首次写入更稳妥的方式（first-entry.json 由 Agent 在 onboarding 中动态生成）
 .venv\Scripts\life-index write --data @first-entry.json
 
 # 开发者模式

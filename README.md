@@ -362,7 +362,7 @@ python3 -m venv .venv
 → 在技能根目录运行 `.venv/bin/python -m tools.query_weather --location "Beijing,China"` 确认工具可用
 
 **Windows 下 `write --data '{...}'` 很难转义**  
-→ 优先改用 `life-index write --data @first-entry.json`
+→ 优先改用 `life-index write --data @first-entry.json`（该文件由 Agent 在安装流程中自动生成，非仓库自带；手动使用时需自行创建 JSON 文件）
 
 **语义搜索不可用**  
 → 运行 `.venv/bin/life-index health` 检查 fastembed 是否已安装

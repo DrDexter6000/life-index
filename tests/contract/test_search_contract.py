@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""
+Contract tests: search_journals response shape
+
+Verifies that hierarchical_search() output conforms to the contract
+documented in docs/API.md:
+1. Response contains all documented fields
+2. Field types match documentation
+3. Level-specific early-return contracts
+4. Empty results vs failure distinction
+"""
+
+import pytest
+from unittest.mock import patch, MagicMock
+
+from tools.search_journals.core import hierarchical_search
+
+
+# ── Documented response fields ──
+
+REQUIRED_RESPONSE_FIELDS = {
+    "success",
+    "query_params",
+    "l1_results",
+    "l2_results",
+    "l3_results",
+    "semantic_results",
+    "merged_results",
+    "total_found",
+    "performance",
+}
+
+
+@pytest.fixture(autouse=True)
+def mock_search_dependencies():
+    """Mock all search dependencies to isolate contract testing."""
+    with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.core.search_l2_metadata",
+            return_value={"results": [], "truncated": False, "total_available": 0},
+        ):
+            with patch("tools.search_journals.core.search_l3_content", return_value=[]):
+                with patch(
+                    "tools.search_journals.core.search_semantic",
+                    return_value=[],
+                ):
+                    with patch(
+                        "tools.search_journals.core.scan_all_indices",
+                        return_value=[],
+                    ):
+                        yield
+
+
+class TestSearchResponseShape:
+    """hierarchical_search() response shape matches API.md."""
+
+    def test_level1_response_has_all_required_fields(self):
+        """Level 1 search returns all documented fields."""
+        result = hierarchical_search(topic="work", level=1)
+
+        for field in REQUIRED_RESPONSE_FIELDS:
+            assert field in result, f"Missing required field: {field}"
+
+    def test_level2_response_has_all_required_fields(self):
+        """Level 2 search returns all documented fields."""
+        result = hierarchical_search(
+            location="Beijing",
+            date_from="2026-01-01",
+            date_to="2026-03-31",
+            level=2,
+        )
+
+        for field in REQUIRED_RESPONSE_FIELDS:
+            assert field in result, f"Missing required field: {field}"
+
+    def test_level3_response_has_all_required_fields(self):
+        """Level 3 (full dual-pipeline) search returns all documented fields."""
+        result = hierarchical_search(query="test", level=3)
+
+        for field in REQUIRED_RESPONSE_FIELDS:
+            assert field in result, f"Missing required field: {field}"
+
+
+class TestSearchFieldTypes:
+    """Field types match API.md documentation."""
+
+    def test_success_is_bool(self):
+        """success field is boolean."""
+        result = hierarchical_search(topic="work", level=1)
+        assert isinstance(result["success"], bool)
+
+    def test_result_arrays_are_lists(self):
+        """l1/l2/l3/semantic/merged results are all lists."""
+        result = hierarchical_search(query="test", level=3)
+
+        assert isinstance(result["l1_results"], list)
+        assert isinstance(result["l2_results"], list)
+        assert isinstance(result["l3_results"], list)
+        assert isinstance(result["semantic_results"], list)
+        assert isinstance(result["merged_results"], list)
+
+    def test_total_found_is_int(self):
+        """total_found is an integer."""
+        result = hierarchical_search(topic="work", level=1)
+        assert isinstance(result["total_found"], int)
+
+    def test_performance_is_dict(self):
+        """performance is a dictionary."""
+        result = hierarchical_search(topic="work", level=1)
+        assert isinstance(result["performance"], dict)
+
+    def test_query_params_is_dict(self):
+        """query_params is a dictionary reflecting input parameters."""
+        result = hierarchical_search(
+            query="test",
+            topic="work",
+            level=3,
+            semantic=True,
+        )
+        assert isinstance(result["query_params"], dict)
+        assert result["query_params"]["query"] == "test"
+        assert result["query_params"]["topic"] == "work"
+        assert result["query_params"]["level"] == 3
+        assert result["query_params"]["semantic"] is True
+
+
+class TestSearchEmptyVsFailure:
+    """Empty results and failures are properly distinguished (API.md contract)."""
+
+    def test_empty_results_is_success(self):
+        """No results found is success=True with empty arrays (not a failure)."""
+        result = hierarchical_search(query="nonexistent_query_xyz", level=3)
+
+        assert result["success"] is True
+        assert result["total_found"] == 0
+
+    def test_success_true_on_valid_search(self):
+        """A valid search execution always returns success=True."""
+        result = hierarchical_search(topic="work", level=1)
+        assert result["success"] is True
+
+
+class TestSearchPerformanceFields:
+    """Performance metrics are present and correctly typed."""
+
+    def test_level1_has_timing(self):
+        """Level 1 search includes l1_time_ms and total_time_ms."""
+        result = hierarchical_search(topic="work", level=1)
+
+        assert "l1_time_ms" in result["performance"]
+        assert "total_time_ms" in result["performance"]
+        assert isinstance(result["performance"]["l1_time_ms"], (int, float))
+        assert isinstance(result["performance"]["total_time_ms"], (int, float))
+
+    def test_level2_has_timing(self):
+        """Level 2 search includes l2_time_ms and total_time_ms."""
+        result = hierarchical_search(location="Beijing", level=2)
+
+        assert "total_time_ms" in result["performance"]
+
+
+class TestSearchQueryParamsContract:
+    """query_params echoes input parameters accurately."""
+
+    def test_query_params_reflects_inputs(self):
+        """query_params contains the search parameters that were used."""
+        result = hierarchical_search(
+            query="test query",
+            topic="work",
+            project="Life-Index",
+            tags=["tag1", "tag2"],
+            mood=["happy"],
+            people=["Alice"],
+            date_from="2026-01-01",
+            date_to="2026-03-31",
+            level=3,
+            semantic=False,
+        )
+
+        qp = result["query_params"]
+        assert qp["query"] == "test query"
+        assert qp["topic"] == "work"
+        assert qp["project"] == "Life-Index"
+        assert qp["tags"] == ["tag1", "tag2"]
+        assert qp["mood"] == ["happy"]
+        assert qp["people"] == ["Alice"]
+        assert qp["date_from"] == "2026-01-01"
+        assert qp["date_to"] == "2026-03-31"
+        assert qp["level"] == 3
+        assert qp["semantic"] is False
