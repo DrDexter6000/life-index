@@ -212,7 +212,7 @@ This document should be revisited if:
 
 ## 9. Verification note
 
-Phase 3 fresh-install rehearsal evidence now exists in `ONBOARDING_CHECKLIST.md`.
+Phase 3 fresh-install rehearsal evidence now exists in `docs/archive/review-2026-03/ONBOARDING_CHECKLIST.md`.
 
 What the rehearsal validated:
 

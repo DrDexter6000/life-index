@@ -629,10 +629,10 @@ Define the canonical workflows and explicit responsibility boundaries between Ag
 
 | Artifact | File path | Purpose | SSOT status |
 |:---|:---|:---|:---:|
-| Tool responsibility matrix | `docs/review/execution/TOOL_RESPONSIBILITY_MATRIX.md` | Define what each tool does and must not do | Yes |
-| Canonical workflow spec | `docs/review/execution/CANONICAL_WORKFLOWS.md` | Define write/search/edit happy path, clarification path, confirmation path, failure path | Yes |
-| Write failure semantics note | `docs/review/execution/WRITE_FAILURE_SEMANTICS.md` | Define blocking vs non-blocking behavior for write-related steps | Yes |
-| Weather/edit boundary note | `docs/review/execution/WEATHER_EDIT_BOUNDARY.md` | Define location-weather coordination rules | Yes |
+| Tool responsibility matrix | `docs/archive/review-2026-03/TOOL_RESPONSIBILITY_MATRIX.md` | Define what each tool does and must not do | Yes |
+| Canonical workflow spec | `docs/archive/review-2026-03/CANONICAL_WORKFLOWS.md` | Define write/search/edit happy path, clarification path, confirmation path, failure path | Yes |
+| Write failure semantics note | `docs/archive/review-2026-03/WRITE_FAILURE_SEMANTICS.md` | Define blocking vs non-blocking behavior for write-related steps | Yes |
+| Weather/edit boundary note | `docs/archive/review-2026-03/WEATHER_EDIT_BOUNDARY.md` | Define location-weather coordination rules | Yes |
 
 #### Test-first artifacts (must exist before implementation/refactor)
 
@@ -640,8 +640,8 @@ Create these scenario docs before changing workflow-related code or docs:
 
 | Scenario set | File path | Minimum cases |
 |:---|:---|:---:|
-| Workflow scenarios | `docs/review/evals/WORKFLOW_SCENARIOS.md` | 10 |
-| Boundary review checklist | `docs/review/evals/BOUNDARY_REVIEW_CHECKLIST.md` | 1 checklist |
+| Workflow scenarios | `docs/archive/review-2026-03/WORKFLOW_SCENARIOS.md` | 10 |
+| Boundary review checklist | `docs/archive/review-2026-03/BOUNDARY_REVIEW_CHECKLIST.md` | 1 checklist |
 
 Minimum workflow scenarios must include:
 
@@ -659,12 +659,12 @@ Minimum workflow scenarios must include:
 #### Ordered execution steps
 
 1. Create `docs/review/execution/` and `docs/review/evals/`
-2. Write `docs/review/evals/WORKFLOW_SCENARIOS.md`
-3. Write `docs/review/evals/BOUNDARY_REVIEW_CHECKLIST.md`
-4. Write `docs/review/execution/TOOL_RESPONSIBILITY_MATRIX.md`
-5. Write `docs/review/execution/CANONICAL_WORKFLOWS.md`
-6. Write `docs/review/execution/WRITE_FAILURE_SEMANTICS.md`
-7. Write `docs/review/execution/WEATHER_EDIT_BOUNDARY.md`
+2. Write `docs/archive/review-2026-03/WORKFLOW_SCENARIOS.md`
+3. Write `docs/archive/review-2026-03/BOUNDARY_REVIEW_CHECKLIST.md`
+4. Write `docs/archive/review-2026-03/TOOL_RESPONSIBILITY_MATRIX.md`
+5. Write `docs/archive/review-2026-03/CANONICAL_WORKFLOWS.md`
+6. Write `docs/archive/review-2026-03/WRITE_FAILURE_SEMANTICS.md`
+7. Write `docs/archive/review-2026-03/WEATHER_EDIT_BOUNDARY.md`
 8. Review all four execution docs against the scenario set
 9. Only then consider code or API adjustments
 
@@ -680,16 +680,16 @@ Minimum workflow scenarios must include:
 
 #### Verifiable acceptance criteria
 
-- [ ] `docs/review/execution/TOOL_RESPONSIBILITY_MATRIX.md` exists and each tool section includes: responsibilities, non-responsibilities, inputs, outputs, caller obligations, failure semantics, sync/async behavior
-- [ ] `docs/review/execution/CANONICAL_WORKFLOWS.md` exists and includes write/search/edit workflows with happy path, clarification path, confirmation path, failure path
-- [ ] `docs/review/execution/WRITE_FAILURE_SEMANTICS.md` explicitly classifies each write-related step as blocking, non-blocking, or repairable
-- [ ] `docs/review/execution/WEATHER_EDIT_BOUNDARY.md` explicitly states what happens when location changes without weather refresh
-- [ ] `docs/review/evals/WORKFLOW_SCENARIOS.md` contains at least 10 concrete scenarios
-- [ ] All artifacts pass `docs/review/evals/BOUNDARY_REVIEW_CHECKLIST.md`
+- [ ] `docs/archive/review-2026-03/TOOL_RESPONSIBILITY_MATRIX.md` exists and each tool section includes: responsibilities, non-responsibilities, inputs, outputs, caller obligations, failure semantics, sync/async behavior
+- [ ] `docs/archive/review-2026-03/CANONICAL_WORKFLOWS.md` exists and includes write/search/edit workflows with happy path, clarification path, confirmation path, failure path
+- [ ] `docs/archive/review-2026-03/WRITE_FAILURE_SEMANTICS.md` explicitly classifies each write-related step as blocking, non-blocking, or repairable
+- [ ] `docs/archive/review-2026-03/WEATHER_EDIT_BOUNDARY.md` explicitly states what happens when location changes without weather refresh
+- [ ] `docs/archive/review-2026-03/WORKFLOW_SCENARIOS.md` contains at least 10 concrete scenarios
+- [ ] All artifacts pass `docs/archive/review-2026-03/BOUNDARY_REVIEW_CHECKLIST.md`
 
 #### Review gate
 
-Phase 2 cannot start until all Phase 1 artifacts exist and a reviewer can answer “yes” to every checklist item in `docs/review/evals/BOUNDARY_REVIEW_CHECKLIST.md`.
+Phase 2 cannot start until all Phase 1 artifacts exist and a reviewer can answer “yes” to every checklist item in `docs/archive/review-2026-03/BOUNDARY_REVIEW_CHECKLIST.md`.
 
 #### Allowed scope
 
@@ -714,9 +714,9 @@ Turn the clarified workflows into a verifiable quality system.
 
 | Artifact | File path | Purpose | SSOT status |
 |:---|:---|:---|:---:|
-| Workflow eval cases | `docs/review/evals/WORKFLOW_EVAL_CASES.md` | Validate routing, clarification, confirmation behavior | Yes |
-| Retrieval eval cases | `docs/review/evals/RETRIEVAL_EVAL_CASES.md` | Validate keyword vs semantic vs fusion behavior | Yes |
-| Failure injection checklist | `docs/review/evals/FAILURE_INJECTION_CHECKLIST.md` | Validate degraded and recovery behavior | Yes |
+| Workflow eval cases | `docs/archive/review-2026-03/WORKFLOW_EVAL_CASES.md` | Validate routing, clarification, confirmation behavior | Yes |
+| Retrieval eval cases | `docs/archive/review-2026-03/RETRIEVAL_EVAL_CASES.md` | Validate keyword vs semantic vs fusion behavior | Yes |
+| Failure injection checklist | `docs/archive/review-2026-03/FAILURE_INJECTION_CHECKLIST.md` | Validate degraded and recovery behavior | Yes |
 | Index consistency policy | `docs/review/execution/INDEX_CONSISTENCY_POLICY.md` | Define sync, best-effort, and repair expectations | Yes |
 
 #### Test-first rule
@@ -725,9 +725,9 @@ No reliability-related code change should begin before the corresponding eval ca
 
 #### Ordered execution steps
 
-1. Write `docs/review/evals/WORKFLOW_EVAL_CASES.md`
-2. Write `docs/review/evals/RETRIEVAL_EVAL_CASES.md`
-3. Write `docs/review/evals/FAILURE_INJECTION_CHECKLIST.md`
+1. Write `docs/archive/review-2026-03/WORKFLOW_EVAL_CASES.md`
+2. Write `docs/archive/review-2026-03/RETRIEVAL_EVAL_CASES.md`
+3. Write `docs/archive/review-2026-03/FAILURE_INJECTION_CHECKLIST.md`
 4. Write `docs/review/execution/INDEX_CONSISTENCY_POLICY.md`
 5. Validate current system behavior against the new eval artifacts
 6. Record gaps between expected vs actual behavior
@@ -769,14 +769,14 @@ Make the project easier to install, understand, and use without needing hidden p
 | Artifact | File path | Purpose | SSOT status |
 |:---|:---|:---|:---:|
 | Distribution strategy note | `docs/review/execution/DISTRIBUTION_STRATEGY.md` | Define preferred install/distribution path | Yes |
-| Onboarding checklist | `docs/review/execution/ONBOARDING_CHECKLIST.md` | Define first-run path from install to first successful usage | Yes |
+| Onboarding checklist | `docs/archive/review-2026-03/ONBOARDING_CHECKLIST.md` | Define first-run path from install to first successful usage | Yes |
 | Documentation boundary plan | `docs/review/execution/DOCS_BOUNDARY_PLAN.md` | Clarify roles of README, SKILL, API, ARCHITECTURE, roadmap docs | Yes |
 | MCP re-evaluation note | `docs/review/execution/MCP_REEVALUATION.md` | Reassess whether MCP adapter is justified after P1/P2 | Yes |
 
 #### Ordered execution steps
 
 1. Write `docs/review/execution/DISTRIBUTION_STRATEGY.md`
-2. Write `docs/review/execution/ONBOARDING_CHECKLIST.md`
+2. Write `docs/archive/review-2026-03/ONBOARDING_CHECKLIST.md`
 3. Write `docs/review/execution/DOCS_BOUNDARY_PLAN.md`
 4. Run one fresh-install onboarding rehearsal
 5. Record friction points

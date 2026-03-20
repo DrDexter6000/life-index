@@ -178,4 +178,4 @@ v1.x 当前接受并鼓励的方向是：
 - `references/WEATHER_FLOW.md` — 天气相关 caller/tool 边界与 correction flow
 - `references/schedule/SCHEDULE.md` — 可选自动化边界
 - `docs/review/PROJECT_DIAGNOSIS_AND_ROADMAP.md` — review-scoped 诊断与路线背景
-- `docs/review/execution/TOOL_RESPONSIBILITY_MATRIX.md` — Agent / Tool 职责边界细化
+- `docs/archive/review-2026-03/TOOL_RESPONSIBILITY_MATRIX.md` — Agent / Tool 职责边界细化

@@ -78,8 +78,8 @@ These are the most perishable documents in the bundle.
 
 Examples:
 
-- `docs/review/evals/PHASE1_CHECKLIST_REVIEW.md`
-- `docs/review/evals/BASELINE_EVALUATION_REVIEW.md`
+- `docs/archive/review-2026-03/PHASE1_CHECKLIST_REVIEW.md`
+- `docs/archive/review-2026-03/BASELINE_EVALUATION_REVIEW.md`
 - future baseline run result docs
 
 These documents do not define truth. They record:
