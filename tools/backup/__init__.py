@@ -18,14 +18,13 @@ import json
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, cast
 
 from ..lib.config import (
     JOURNALS_DIR,
     BY_TOPIC_DIR,
     ATTACHMENTS_DIR,
     USER_DATA_DIR,
-    ensure_dirs,
 )
 from ..lib.logger import get_logger
 
@@ -51,7 +50,8 @@ def load_backup_manifest(backup_dir: Path) -> Dict[str, Any]:
     if manifest_path.exists():
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data: Dict[str, Any] = json.load(f)
+                return data
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"无法加载备份清单: {e}")
     return {"backups": [], "files": {}}
@@ -92,7 +92,7 @@ def create_backup(
             "manifest_path": str,
         }
     """
-    result = {
+    result: Dict[str, Any] = {
         "success": False,
         "backup_path": "",
         "files_backed_up": 0,
@@ -191,14 +191,17 @@ def create_backup(
 
         # 保存备份清单
         if not dry_run:
-            backup_record = {
+            backup_record: Dict[str, Any] = {
                 "timestamp": timestamp,
                 "type": "full" if full else "incremental",
                 "path": str(backup_subdir),
                 "files_backed_up": result["files_backed_up"],
                 "files_skipped": result["files_skipped"],
             }
-            manifest["backups"].append(backup_record)
+            if "backups" not in manifest:
+                manifest["backups"] = []
+            backups = cast(List[Dict[str, Any]], manifest["backups"])
+            backups.append(backup_record)
             save_backup_manifest(dest, manifest)
             result["manifest_path"] = str(dest / ".life-index-backup-manifest.json")
 
@@ -220,7 +223,7 @@ def create_backup(
 def list_backups(backup_dir: Path) -> List[Dict[str, Any]]:
     """列出所有备份记录"""
     manifest = load_backup_manifest(backup_dir)
-    return manifest.get("backups", [])
+    return cast(List[Dict[str, Any]], manifest.get("backups", []))
 
 
 def restore_backup(
@@ -239,7 +242,7 @@ def restore_backup(
     Returns:
         恢复结果
     """
-    result = {
+    result: Dict[str, Any] = {
         "success": False,
         "files_restored": 0,
         "errors": [],
@@ -250,7 +253,7 @@ def restore_backup(
         dest = Path(dest_path) if dest_path else USER_DATA_DIR
 
         if not backup.exists():
-            result["errors"].append(f"备份目录不存在: {backup}")
+            cast(List[str], result["errors"]).append(f"备份目录不存在: {backup}")
             return result
 
         # 恢复各个目录
@@ -275,15 +278,15 @@ def restore_backup(
                         except (IOError, OSError) as e:
                             error_msg = f"恢复失败 {file_path}: {e}"
                             logger.error(error_msg)
-                            result["errors"].append(error_msg)
+                            cast(List[str], result["errors"]).append(error_msg)
 
-        result["success"] = len(result["errors"]) == 0
+        result["success"] = len(cast(List[str], result["errors"])) == 0
         logger.info(f"恢复完成: {result['files_restored']} 个文件已恢复")
 
     except (OSError, IOError, RuntimeError) as e:
         error_msg = f"恢复过程出错: {e}"
         logger.error(error_msg)
-        result["errors"].append(error_msg)
+        cast(List[str], result["errors"]).append(error_msg)
 
     return result
 

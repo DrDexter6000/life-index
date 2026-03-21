@@ -8,10 +8,9 @@ import os
 import platform
 import re
 from datetime import datetime
-from pathlib import Path
 from typing import Tuple
 
-from ..lib.config import JOURNALS_DIR, PATH_MAPPINGS, USER_DATA_DIR
+from ..lib.config import JOURNALS_DIR, PATH_MAPPINGS
 
 
 def get_year_month(date_str: str) -> Tuple[int, int]:

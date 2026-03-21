@@ -20,7 +20,6 @@ from datetime import datetime
 from typing import Dict, Optional, Any
 
 from ..lib.logger import get_logger
-from ..lib.config import ensure_dirs
 from ..lib.errors import ErrorCode, create_error_response
 
 logger = get_logger(__name__)
@@ -59,9 +58,10 @@ def geocode_location(location: str) -> Optional[Dict[str, Any]]:
 
         # 返回第一个结果
         result = data["results"][0]
-        logger.debug(
-            f"Geocoded location: {result.get('name')} ({result.get('latitude')}, {result.get('longitude')})"
-        )
+        loc_name = result.get("name")
+        loc_lat = result.get("latitude")
+        loc_lon = result.get("longitude")
+        logger.debug(f"Geocoded location: {loc_name} ({loc_lat}, {loc_lon})")
         return {
             "name": result.get("name", ""),
             "latitude": result.get("latitude", 0),
@@ -205,7 +205,9 @@ def query_weather(
         daily = data.get("daily", {})
 
         if not daily or not daily.get("weather_code"):
-            logger.warning(f"No weather data available for {date} at ({latitude}, {longitude})")
+            logger.warning(
+                f"No weather data available for {date} at ({latitude}, {longitude})"
+            )
             result["error"] = "No weather data available for this date"
             return result
 

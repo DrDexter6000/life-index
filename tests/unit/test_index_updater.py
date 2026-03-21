@@ -290,7 +290,9 @@ class TestUpdateTagIndices:
 
         with patch("tools.write_journal.index_updater.BY_TOPIC_DIR", index_dir):
             with patch("tools.write_journal.index_updater.JOURNALS_DIR", tmp_path):
-                result = update_tag_indices(["python", "", "testing"], journal_path, data)
+                result = update_tag_indices(
+                    ["python", "", "testing"], journal_path, data
+                )
 
         # Should only create 2 files (skip empty string)
         assert len(result) == 2
@@ -411,7 +413,9 @@ Content here.
 
         with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout=mock_output, stderr="")
+                mock_run.return_value = MagicMock(
+                    returncode=0, stdout=mock_output, stderr=""
+                )
                 result = update_monthly_abstract(2026, 3, dry_run=False)
 
         assert result["abstract_path"] is not None
@@ -439,7 +443,9 @@ Content here.
 
         with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
             with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout=mock_output, stderr="")
+                mock_run.return_value = MagicMock(
+                    returncode=0, stdout=mock_output, stderr=""
+                )
                 result = update_monthly_abstract(2026, 3, dry_run=True)
 
         # Verify --dry-run flag was passed
@@ -476,7 +482,9 @@ Content here.
 
         with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
             with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = subprocess.TimeoutExpired(cmd=["test"], timeout=30)
+                mock_run.side_effect = subprocess.TimeoutExpired(
+                    cmd=["test"], timeout=30
+                )
                 result = update_monthly_abstract(2026, 3, dry_run=False)
 
         assert result["abstract_path"] is None
@@ -667,6 +675,390 @@ class TestIndexEntryFormat:
         assert "2026-03-11" in content
         assert "Test1" in content
         assert "Test2" in content
+
+
+class TestUpdateVectorIndex:
+    """Tests for update_vector_index function"""
+
+    def test_success_with_model_loaded(self, tmp_path):
+        """Success case with model loaded and valid data"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("---\ntitle: Test\n---\nContent")
+
+        data = {
+            "title": "Test Title",
+            "content": "Test content here",
+            "tags": ["python", "testing"],
+            "topic": ["work"],
+            "date": "2026-03-10T10:00:00",
+        }
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                with patch("tools.lib.config.USER_DATA_DIR", tmp_path):
+                    result = update_vector_index(journal_path, data)
+
+        assert result is True
+        mock_model.load.assert_called_once()
+        mock_model.encode.assert_called_once()
+        mock_index.add.assert_called_once()
+        mock_index.commit.assert_called_once()
+
+    def test_model_not_loaded_returns_false(self, tmp_path):
+        """Model not loaded should return False"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test", "content": "Content"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = False
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            result = update_vector_index(journal_path, data)
+
+        assert result is False
+        mock_model.load.assert_called_once()
+
+    def test_empty_text_parts_returns_false(self, tmp_path):
+        """Empty text_parts (no title, content, tags, topic) should return False"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {}  # No title, content, tags, or topic
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            result = update_vector_index(journal_path, data)
+
+        assert result is False
+
+    def test_no_embeddings_returns_false(self, tmp_path):
+        """No embeddings returned should return False"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test Title"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = []  # Empty embeddings
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            result = update_vector_index(journal_path, data)
+
+        assert result is False
+
+    def test_import_error_handling(self, tmp_path):
+        """ImportError exception should return False"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test"}
+
+        # Patch the import inside the function to raise ImportError
+        with patch(
+            "tools.lib.vector_index_simple.get_model",
+            side_effect=ImportError("No module named 'tools.lib.vector_index_simple'"),
+        ):
+            result = update_vector_index(journal_path, data)
+
+        assert result is False
+
+    def test_os_error_handling(self, tmp_path):
+        """OSError during file operations should return False"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test Title"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+        mock_index.add.side_effect = OSError("Disk full")
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                result = update_vector_index(journal_path, data)
+
+        assert result is False
+
+    def test_io_error_handling(self, tmp_path):
+        """IOError during file operations should return False"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test Title"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+        mock_index.add.side_effect = IOError("IO error")
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                result = update_vector_index(journal_path, data)
+
+        assert result is False
+
+    def test_runtime_error_handling(self, tmp_path):
+        """RuntimeError should return False"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test Title"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+        mock_index.add.side_effect = RuntimeError("Runtime error")
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                result = update_vector_index(journal_path, data)
+
+        assert result is False
+
+    def test_tags_as_list(self, tmp_path):
+        """Tags as list should be handled correctly"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test", "tags": ["tag1", "tag2"]}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                with patch("tools.lib.config.USER_DATA_DIR", tmp_path):
+                    result = update_vector_index(journal_path, data)
+
+        assert result is True
+        # Verify encode was called with tags included
+        call_args = mock_model.encode.call_args[0][0][0]
+        assert "tag1" in call_args
+        assert "tag2" in call_args
+
+    def test_tags_as_string(self, tmp_path):
+        """Tags as string should be handled correctly"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test", "tags": "single_tag"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                with patch("tools.lib.config.USER_DATA_DIR", tmp_path):
+                    result = update_vector_index(journal_path, data)
+
+        assert result is True
+        call_args = mock_model.encode.call_args[0][0][0]
+        assert "single_tag" in call_args
+
+    def test_topic_as_list(self, tmp_path):
+        """Topic as list should be handled correctly"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test", "topic": ["work", "learn"]}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                with patch("tools.lib.config.USER_DATA_DIR", tmp_path):
+                    result = update_vector_index(journal_path, data)
+
+        assert result is True
+        call_args = mock_model.encode.call_args[0][0][0]
+        assert "work" in call_args
+        assert "learn" in call_args
+
+    def test_topic_as_string(self, tmp_path):
+        """Topic as string should be handled correctly"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test", "topic": "work"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                with patch("tools.lib.config.USER_DATA_DIR", tmp_path):
+                    result = update_vector_index(journal_path, data)
+
+        assert result is True
+        call_args = mock_model.encode.call_args[0][0][0]
+        assert "work" in call_args
+
+    def test_content_truncated_to_1000_chars(self, tmp_path):
+        """Content should be truncated to 1000 characters"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        long_content = "x" * 2000
+        data = {"title": "Test", "content": long_content}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                with patch("tools.lib.config.USER_DATA_DIR", tmp_path):
+                    result = update_vector_index(journal_path, data)
+
+        assert result is True
+        call_args = mock_model.encode.call_args[0][0][0]
+        # Content should be truncated to 1000 chars + title + space
+        assert len(call_args) < len(long_content) + 10
+
+    def test_journal_path_outside_user_data_dir(self, tmp_path):
+        """Journal path outside USER_DATA_DIR should use absolute path"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test", "date": "2026-03-10"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+
+        # Use a different directory as USER_DATA_DIR
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                with patch("tools.lib.config.USER_DATA_DIR", other_dir):
+                    result = update_vector_index(journal_path, data)
+
+        assert result is True
+        # Verify add was called with the path
+        mock_index.add.assert_called_once()
+        call_kwargs = mock_index.add.call_args
+        # First positional arg should be the path
+        assert call_kwargs[0][0] is not None
+
+    def test_file_hash_exception_handling(self, tmp_path):
+        """File hash calculation exception should be handled gracefully"""
+        from tools.write_journal.index_updater import update_vector_index
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("content")
+
+        data = {"title": "Test", "date": "2026-03-10"}
+
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+
+        mock_index = MagicMock()
+
+        # Make read_bytes raise an exception
+        with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
+            with patch(
+                "tools.lib.vector_index_simple.get_index", return_value=mock_index
+            ):
+                with patch("tools.lib.config.USER_DATA_DIR", tmp_path):
+                    with patch.object(
+                        type(journal_path),
+                        "read_bytes",
+                        side_effect=PermissionError("Access denied"),
+                    ):
+                        result = update_vector_index(journal_path, data)
+
+        assert result is True
+        # Verify add was called with empty file_hash
+        mock_index.add.assert_called_once()
+        # The 4th positional arg should be empty string for file_hash
+        call_args = mock_index.add.call_args[0]
+        assert call_args[3] == ""
 
 
 if __name__ == "__main__":

@@ -5,10 +5,9 @@ Life Index - Write Journal Tool - Core
 """
 
 import re
-from pathlib import Path
 from typing import Any, Dict
 
-from ..lib.config import JOURNALS_DIR, USER_DATA_DIR, get_default_location
+from ..lib.config import JOURNALS_DIR, FILE_LOCK_TIMEOUT_DEFAULT, get_default_location
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.timing import Timer
@@ -38,8 +37,12 @@ def extract_explicit_metadata_from_content(content: str) -> Dict[str, str]:
         return extracted
 
     patterns = {
-        "location": re.compile(r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
-        "weather": re.compile(r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
+        "location": re.compile(
+            r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
+        ),
+        "weather": re.compile(
+            r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
+        ),
     }
 
     for line in content.splitlines():
@@ -131,7 +134,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             # 尝试获取天气（使用英文格式的地点）
             logger.debug(f"查询天气：location={location_for_weather}")
             with timer.measure("weather_query"):
-                queried_weather = query_weather_for_location(location_for_weather, date_str)
+                queried_weather = query_weather_for_location(
+                    location_for_weather, date_str
+                )
             if queried_weather:
                 weather = queried_weather
                 result["weather_used"] = weather
@@ -151,7 +156,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         # 使用文件锁保护序列号生成和写入操作，防止并发冲突
         logger.debug("获取文件锁...")
         with timer.measure("lock_acquire"):
-            lock = FileLock(get_journals_lock_path(), timeout=30.0)
+            lock = FileLock(get_journals_lock_path(), timeout=FILE_LOCK_TIMEOUT_DEFAULT)
 
         try:
             with lock:
@@ -236,7 +241,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         abstract_error = None
                         abstract_success = False
                         try:
-                            abstract_result = update_monthly_abstract(year, month, dry_run)
+                            abstract_result = update_monthly_abstract(
+                                year, month, dry_run
+                            )
                             abstract_success = True
                         except (OSError, IOError, RuntimeError) as e:
                             abstract_error = str(e)
@@ -267,7 +274,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                             except Exception as e:
                                 # 向量索引更新失败不阻塞写入
                                 vector_index_error = str(e)
-                                logger.warning(f"向量索引更新失败（不影响日志写入）：{e}")
+                                logger.warning(
+                                    f"向量索引更新失败（不影响日志写入）：{e}"
+                                )
 
                         except (OSError, IOError, RuntimeError) as e:
                             # 索引更新失败，清理临时文件
@@ -311,7 +320,10 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             return create_error_response(
                 ErrorCode.LOCK_TIMEOUT,
                 f"无法获取写入锁，请稍后重试：{e}",
-                {"lock_path": str(get_journals_lock_path()), "timeout": 30.0},
+                {
+                    "lock_path": str(get_journals_lock_path()),
+                    "timeout": FILE_LOCK_TIMEOUT_DEFAULT,
+                },
                 "等待几秒后重试，或检查是否有其他进程正在写入",
             )
 

@@ -15,7 +15,6 @@ from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
 from ..lib.metadata_cache import (
     get_or_update_metadata,
     get_all_cached_metadata,
-    init_metadata_cache,
     update_cache_for_all_journals,
     get_cache_stats,
 )
@@ -108,11 +107,17 @@ def _matches_filters(
         )
         file_tags = metadata.get("tags", [])
         tags_str = (
-            " ".join(file_tags).lower() if isinstance(file_tags, list) else str(file_tags).lower()
+            " ".join(file_tags).lower()
+            if isinstance(file_tags, list)
+            else str(file_tags).lower()
         )
 
         # 检查 title/abstract/tags 是否包含 query
-        if query_lower not in title and query_lower not in abstract and query_lower not in tags_str:
+        if (
+            query_lower not in title
+            and query_lower not in abstract
+            and query_lower not in tags_str
+        ):
             return False
 
     return True
@@ -131,7 +136,7 @@ def _search_with_cache(
     query: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """使用缓存的元数据进行搜索（高性能路径）"""
-    results = []
+    results: List[Dict[str, Any]] = []
 
     # 获取所有缓存的元数据
     cached_entries = get_all_cached_metadata()
@@ -187,7 +192,7 @@ def _search_filesystem(
     query: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """使用文件系统扫描搜索（Fallback路径）"""
-    results = []
+    results: List[Dict[str, Any]] = []
 
     if not JOURNALS_DIR.exists():
         return results
@@ -226,7 +231,9 @@ def _search_filesystem(
 
                     # 匹配成功
                     try:
-                        rel_path = os.path.relpath(journal_file, USER_DATA_DIR).replace("\\", "/")
+                        rel_path = os.path.relpath(journal_file, USER_DATA_DIR).replace(
+                            "\\", "/"
+                        )
                     except ValueError:
                         rel_path = str(journal_file).replace("\\", "/")
 
@@ -241,7 +248,7 @@ def _search_filesystem(
                         }
                     )
 
-                except (IOError, OSError, ValueError) as e:
+                except (IOError, OSError, ValueError):
                     continue
 
     return results

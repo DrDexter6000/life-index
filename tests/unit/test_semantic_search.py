@@ -176,6 +176,19 @@ class TestEmbeddingModelEncode:
 
         assert result == []
 
+    def test_encode_returns_empty_when_model_missing_after_load(self):
+        """Test encode returns empty when model becomes None after load succeeds"""
+        from tools.lib.semantic_search import EmbeddingModel
+
+        EmbeddingModel._instance = None
+        EmbeddingModel._model = None
+
+        model = EmbeddingModel()
+        with patch.object(EmbeddingModel, "load", return_value=True):
+            result = model.encode(["test text"])
+
+        assert result == []
+
 
 class TestGetModel:
     """Tests for get_model function"""
@@ -202,7 +215,9 @@ class TestLoadSqliteVecExtension:
         mock_conn = MagicMock()
 
         with patch("platform.system", return_value="Windows"):
-            with patch.object(mock_conn, "load_extension", side_effect=Exception("Not found")):
+            with patch.object(
+                mock_conn, "load_extension", side_effect=Exception("Not found")
+            ):
                 result = _load_sqlite_vec_extension(mock_conn)
 
         # Should try multiple paths and eventually fail
@@ -228,7 +243,9 @@ class TestLoadSqliteVecExtension:
         mock_conn = MagicMock()
 
         with patch("platform.system", return_value="Linux"):
-            with patch.object(mock_conn, "load_extension", side_effect=Exception("Not found")):
+            with patch.object(
+                mock_conn, "load_extension", side_effect=Exception("Not found")
+            ):
                 _load_sqlite_vec_extension(mock_conn)
 
         # Should try multiple library names
@@ -304,7 +321,9 @@ class TestInitVecDb:
         """Test successful vector database initialization"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True):
+        with patch(
+            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True
+        ):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
@@ -319,7 +338,9 @@ class TestInitVecDb:
         """Test init when extension loading fails"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=False):
+        with patch(
+            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=False
+        ):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_connect.return_value = mock_conn
@@ -332,7 +353,9 @@ class TestInitVecDb:
         """Test that init_vec_db creates INDEX_DIR if needed"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True):
+        with patch(
+            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True
+        ):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
@@ -349,7 +372,9 @@ class TestInitVecDb:
         """Test when table creation fails"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True):
+        with patch(
+            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True
+        ):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
@@ -366,7 +391,9 @@ class TestInitVecDb:
         """Test that init_vec_db returns connection on success"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True):
+        with patch(
+            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True
+        ):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
@@ -714,7 +741,111 @@ Body content."""
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
                 # Return existing indexed file
-                mock_cursor.fetchall.return_value = [("Journals/2026/03/test.md", "abc123")]
+                mock_cursor.fetchall.return_value = [
+                    ("Journals/2026/03/test.md", "abc123")
+                ]
+                mock_conn.cursor.return_value = mock_cursor
+                mock_init_db.return_value = mock_conn
+
+                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                    mock_dir.exists.return_value = True
+                    mock_dir.iterdir.return_value = []
+
+                    result = update_vector_index(incremental=True)
+
+        assert result["success"] is True
+
+    def test_update_indexed_files_query_exception(self):
+        """Test update continues when indexed file query fails"""
+        from tools.lib.semantic_search import update_vector_index
+
+        with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+            mock_model = MagicMock()
+            mock_model.load.return_value = True
+            mock_model.encode.return_value = [[0.1, 0.2]]
+            mock_get_model.return_value = mock_model
+
+            with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
+                mock_conn = MagicMock()
+                mock_cursor = MagicMock()
+                mock_cursor.execute.side_effect = Exception("Select failed")
+                mock_conn.cursor.return_value = mock_cursor
+                mock_init_db.return_value = mock_conn
+
+                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                    mock_dir.exists.return_value = True
+                    mock_dir.iterdir.return_value = []
+
+                    result = update_vector_index(incremental=True)
+
+        assert result["success"] is True
+
+    def test_update_insert_exception(self):
+        """Test update tolerates insert failures"""
+        from tools.lib.semantic_search import update_vector_index
+
+        with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+            mock_model = MagicMock()
+            mock_model.load.return_value = True
+            mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+            mock_get_model.return_value = mock_model
+
+            with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
+                mock_conn = MagicMock()
+                mock_cursor = MagicMock()
+                mock_cursor.fetchall.return_value = []
+                mock_cursor.execute.side_effect = [
+                    None,
+                    Exception("Insert failed"),
+                ]
+                mock_conn.cursor.return_value = mock_cursor
+                mock_init_db.return_value = mock_conn
+
+                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                    mock_dir.exists.return_value = True
+
+                    mock_year_dir = MagicMock()
+                    mock_year_dir.is_dir.return_value = True
+                    mock_year_dir.name = "2026"
+
+                    mock_month_dir = MagicMock()
+                    mock_month_dir.is_dir.return_value = True
+
+                    mock_journal = MagicMock()
+                    mock_journal.name = "life-index_2026-03-14_001.md"
+                    mock_journal.read_text.return_value = """---
+title: \"Test\"
+date: 2026-03-14
+---
+Body content."""
+                    mock_journal.read_bytes.return_value = b"content"
+
+                    mock_month_dir.glob.return_value = [mock_journal]
+                    mock_year_dir.iterdir.return_value = [mock_month_dir]
+                    mock_dir.iterdir.return_value = [mock_year_dir]
+
+                    result = update_vector_index(incremental=True)
+
+        assert result["success"] is True
+        assert result["added"] == 1
+
+    def test_update_remove_missing_file_exception(self):
+        """Test update tolerates delete failures for removed files"""
+        from tools.lib.semantic_search import update_vector_index
+
+        with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+            mock_model = MagicMock()
+            mock_model.load.return_value = True
+            mock_model.encode.return_value = []
+            mock_get_model.return_value = mock_model
+
+            with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
+                mock_conn = MagicMock()
+                mock_cursor = MagicMock()
+                mock_cursor.fetchall.return_value = [
+                    ("Journals/2026/03/gone.md", "abc123")
+                ]
+                mock_cursor.execute.side_effect = [None, Exception("Delete failed")]
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
@@ -897,6 +1028,34 @@ class TestSearchSemantic:
 
         assert results == []
 
+    def test_search_malformed_date(self):
+        """Test malformed dates fall back to neutral time factor"""
+        from tools.lib.semantic_search import search_semantic
+
+        with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+            mock_model = MagicMock()
+            mock_model.load.return_value = True
+            mock_model.encode.return_value = [[0.1, 0.2]]
+            mock_get_model.return_value = mock_model
+
+            with patch("tools.lib.semantic_search.VEC_DB_PATH") as mock_db_path:
+                mock_db_path.exists.return_value = True
+
+                with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
+                    mock_conn = MagicMock()
+                    mock_cursor = MagicMock()
+                    mock_cursor.fetchall.return_value = [
+                        ("path/to/doc.md", "[0.1, 0.2]", "bad-date", 0.5)
+                    ]
+                    mock_conn.cursor.return_value = mock_cursor
+                    mock_conn.close.return_value = None
+                    mock_init_db.return_value = mock_conn
+
+                    results = search_semantic("test query")
+
+        assert len(results) == 1
+        assert results[0]["time_factor"] == 1.0
+
 
 class TestHybridSearch:
     """Tests for hybrid_search function"""
@@ -931,7 +1090,9 @@ class TestHybridSearch:
         results = hybrid_search("query", fts_results, [])
 
         assert len(results) == 2
-        assert results[0]["fts_score"] > results[1]["fts_score"]  # Higher rank = higher score
+        assert (
+            results[0]["fts_score"] > results[1]["fts_score"]
+        )  # Higher rank = higher score
 
     def test_hybrid_semantic_only(self):
         """Test hybrid search with only semantic results"""

@@ -17,8 +17,10 @@ Usage:
 
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Any, Generator, TypeVar, Callable
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 @dataclass
@@ -46,7 +48,7 @@ class Timer:
         {'parse_ms': 123.4, 'write_ms': 56.7, 'total_ms': 180.1}
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._entries: List[TimingEntry] = []
         self._start_time: Optional[float] = None
         self._end_time: Optional[float] = None
@@ -62,7 +64,7 @@ class Timer:
         return self
 
     @contextmanager
-    def measure(self, name: str):
+    def measure(self, name: str) -> Generator[None, None, None]:
         """Context manager to measure a named operation."""
         start = time.perf_counter()
         try:
@@ -70,7 +72,9 @@ class Timer:
         finally:
             duration_ms = (time.perf_counter() - start) * 1000
             self._entries.append(
-                TimingEntry(name=name, duration_ms=round(duration_ms, 2), start_time=start)
+                TimingEntry(
+                    name=name, duration_ms=round(duration_ms, 2), start_time=start
+                )
             )
 
     def add(self, name: str, duration_ms: float) -> "Timer":
@@ -94,7 +98,7 @@ class Timer:
 
     def to_dict(self) -> Dict[str, float]:
         """Convert timing entries to a dictionary."""
-        result = {}
+        result: Dict[str, float] = {}
         for entry in self._entries:
             result[f"{entry.name}_ms"] = entry.duration_ms
 
@@ -110,9 +114,11 @@ class Timer:
         Returns:
             Dictionary with timing metrics suitable for JSON output.
         """
-        metrics = {
+        metrics: Dict[str, Any] = {
             "timings": self.to_dict(),
-            "entries": [{"name": e.name, "duration_ms": e.duration_ms} for e in self._entries],
+            "entries": [
+                {"name": e.name, "duration_ms": e.duration_ms} for e in self._entries
+            ],
         }
 
         if self._start_time and self._end_time:
@@ -122,7 +128,7 @@ class Timer:
 
 
 # Convenience function for quick timing
-def timed(func):
+def timed(func: F) -> F:
     """
     Decorator to time a function and return metrics.
 
@@ -137,7 +143,7 @@ def timed(func):
     import functools
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         timer = Timer().start()
         try:
             result = func(*args, **kwargs)
@@ -151,4 +157,4 @@ def timed(func):
             timer.stop()
             raise
 
-    return wrapper
+    return wrapper  # type: ignore[return-value]

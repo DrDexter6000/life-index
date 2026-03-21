@@ -5,7 +5,6 @@ Life Index - Search Journals Tool - L1 Index
 """
 
 import re
-from pathlib import Path
 from typing import Any, Dict, List
 
 # 导入配置 (relative imports from tools/lib)
@@ -19,8 +18,8 @@ def scan_all_indices() -> List[Dict[str, Any]]:
     Returns:
         所有索引条目合并后的列表
     """
-    results = []
-    seen_paths = set()
+    results: List[Dict[str, Any]] = []
+    seen_paths: set[str] = set()
 
     if not BY_TOPIC_DIR.exists():
         return results
@@ -60,7 +59,7 @@ def search_l1_index(query_type: str, query_value: str) -> List[Dict[str, Any]]:
         query_type: 'topic', 'project', 'tag'
         query_value: 查询值
     """
-    results = []
+    results: List[Dict[str, Any]] = []
 
     if query_type == "topic":
         index_file = BY_TOPIC_DIR / f"主题_{query_value}.md"

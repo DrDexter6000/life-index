@@ -10,7 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..lib.config import ATTACHMENTS_DIR, USER_DATA_DIR
+from ..lib.config import ATTACHMENTS_DIR
 from ..lib.logger import get_logger
 
 from .utils import get_year_month, convert_path_for_platform
@@ -114,7 +114,9 @@ def extract_file_paths_from_content(content: str) -> List[str]:
     # 使用更严格的模式：必须以盘符开头，后跟反斜杠或斜杠，然后是路径组件
     # 路径组件不能包含非法字符 :*?"<>|
     # FIX: 允许文件名中包含空格（中文文件名常见），但扩展名部分不允许空格
-    windows_pattern = r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[\w]+'
+    windows_pattern = (
+        r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[\w]+'
+    )
     for match in re.finditer(windows_pattern, content):
         path = match.group(0)
         # 验证是否是有效文件路径（有扩展名）
@@ -124,7 +126,8 @@ def extract_file_paths_from_content(content: str) -> List[str]:
     # 匹配 UNC 路径 (\\server\share\... 或 //server/share/...)
     # FIX: 允许文件名中包含空格（中文文件名常见），但扩展名部分不允许空格
     unc_pattern = (
-        r'(?:\\\\|//)[^\\/:*?"<>|\r\n]+(?:[\\/][^\\/:*?"<>|\r\n]+)*\\/[^\\/:*?"<>|\r\n]*\.[\w]+'
+        r'(?:\\\\|//)[^\\/:*?"<>|\r\n]+(?:[\\/][^\\/:*?"<>|\r\n]+)*'
+        r'[\\/][^\\/:*?"<>|\r\n]*\.[\w]+'
     )
     for match in re.finditer(unc_pattern, content):
         path = match.group(0)
@@ -201,14 +204,16 @@ def _resolve_attachment_path(source_path: str, converted_path: str) -> Optional[
     if converted_path != source_path:
         stripped_converted = _strip_cjk_spaces(converted_path)
         if stripped_converted != converted_path and os.path.exists(stripped_converted):
-            logger.info(f"空格容错命中(跨平台): [{converted_path}] → [{stripped_converted}]")
+            logger.info(
+                f"空格容错命中(跨平台): [{converted_path}] → [{stripped_converted}]"
+            )
             return stripped_converted
 
     return None
 
 
 def process_attachments(
-    attachments: List[Dict[str, str]],
+    attachments: List[Dict[str, str] | str],
     date_str: str,
     dry_run: bool = False,
     auto_detected_paths: Optional[List[str]] = None,
@@ -241,7 +246,9 @@ def process_attachments(
                 all_attachments.append({"source_path": att, "description": ""})
 
     # 添加自动检测的附件（去重）
-    existing_paths = {os.path.normpath(a.get("source_path", "")).lower() for a in all_attachments}
+    existing_paths = {
+        os.path.normpath(a.get("source_path", "")).lower() for a in all_attachments
+    }
     if auto_detected_paths:
         for path in auto_detected_paths:
             normalized = os.path.normpath(path).lower()
@@ -289,7 +296,9 @@ def process_attachments(
                     "description": description,
                     "error": "源文件不存在",
                     "auto_detected": auto_detected,
-                    "converted_path": converted_path if converted_path != source_path else None,
+                    "converted_path": converted_path
+                    if converted_path != source_path
+                    else None,
                 }
             )
             continue

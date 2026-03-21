@@ -12,10 +12,24 @@ Tests cover:
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+import importlib
+import sys
 
 
 class TestHierarchicalSearch:
     """Tests for hierarchical_search function"""
+
+    def test_search_level1_no_filters_scans_all(self):
+        """Level 1 without filters should scan all indices"""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.scan_all_indices") as mock_scan:
+            mock_scan.return_value = [{"path": "all.md", "date": "2026-03-14"}]
+            result = hierarchical_search(level=1)
+
+        assert result["success"] is True
+        assert result["l1_results"] == [{"path": "all.md", "date": "2026-03-14"}]
+        mock_scan.assert_called_once()
 
     def test_search_level1_by_topic(self):
         """Level 1 search by topic"""
@@ -71,13 +85,31 @@ class TestHierarchicalSearch:
         assert result["success"] is True
         mock_l2.assert_called_once()
 
+    def test_search_level2_truncated_response(self):
+        """Level 2 should propagate truncated metadata response"""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+            mock_l2.return_value = {
+                "results": [{"path": "test.md", "date": "2026-03-14"}],
+                "truncated": True,
+                "total_available": 100,
+            }
+            result = hierarchical_search(level=2)
+
+        assert result["success"] is True
+        assert result["l2_truncated"] is True
+        assert result["l2_total_available"] == 100
+
     def test_search_level3_content(self):
         """Level 3 search with content query (keyword-only, semantic disabled)"""
         from tools.search_journals.core import hierarchical_search
 
         with patch("tools.search_journals.core.search_l3_content") as mock_l3:
             with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
-                with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
+                with patch(
+                    "tools.search_journals.core.merge_and_rank_results"
+                ) as mock_rank:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
@@ -171,7 +203,9 @@ class TestHierarchicalSearch:
                         mock_l3.return_value = []
                         mock_rank.return_value = [{"path": "test.md", "score": 0.8}]
                         # Do NOT pass semantic= — test that default is True
-                        result = hierarchical_search(query="Python", level=3, use_index=False)
+                        result = hierarchical_search(
+                            query="Python", level=3, use_index=False
+                        )
 
         assert result["success"] is True
         assert result["query_params"]["semantic"] is True
@@ -198,7 +232,9 @@ class TestHierarchicalSearch:
                             {"path": "fts.md", "score": 0.9},
                             {"path": "sem.md", "score": 0.8},
                         ]
-                        result = hierarchical_search(query="test", level=3, use_index=False)
+                        result = hierarchical_search(
+                            query="test", level=3, use_index=False
+                        )
 
         assert result["success"] is True
         assert len(result["l3_results"]) >= 1
@@ -214,7 +250,9 @@ class TestHierarchicalSearch:
         with patch("tools.search_journals.core.search_semantic") as mock_sem:
             with patch("tools.search_journals.core.search_l3_content") as mock_l3:
                 with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
-                    with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
+                    with patch(
+                        "tools.search_journals.core.merge_and_rank_results"
+                    ) as mock_rank:
                         mock_l2.return_value = {
                             "results": [],
                             "truncated": False,
@@ -228,8 +266,256 @@ class TestHierarchicalSearch:
 
         assert result["success"] is True
         assert result["semantic_results"] == []
+        assert result["semantic_available"] is False
+        assert "--no-semantic" in result["semantic_note"]
         # semantic pipeline should not have been called
         mock_sem.assert_not_called()
+
+    def test_search_semantic_missing_index_degrades_to_keyword_only(self):
+        """Missing semantic index should degrade gracefully with a user-facing note."""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch(
+            "tools.search_journals.core.get_semantic_runtime_status",
+            return_value={
+                "available": False,
+                "reason": "vector index not found",
+                "note": "向量索引未建立，请运行 life-index index",
+            },
+        ):
+            with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.core.search_l3_content") as mock_l3:
+                    with patch(
+                        "tools.search_journals.core.merge_and_rank_results"
+                    ) as mock_rank:
+                        mock_l2.return_value = {
+                            "results": [],
+                            "truncated": False,
+                            "total_available": 0,
+                        }
+                        mock_l3.return_value = [{"path": "keyword.md", "relevance": 88}]
+                        mock_rank.return_value = [{"path": "keyword.md", "score": 0.88}]
+
+                        result = hierarchical_search(
+                            query="test",
+                            level=3,
+                            semantic=True,
+                            use_index=False,
+                        )
+
+        assert result["success"] is True
+        assert result["semantic_results"] == []
+        assert result["semantic_available"] is False
+        assert result["merged_results"] == [{"path": "keyword.md", "score": 0.88}]
+        assert result["semantic_note"] == "向量索引未建立，请运行 life-index index"
+        assert result["performance"]["semantic_degraded"] == "vector index not found"
+
+    def test_search_level3_fts_query_preprocessing_and_success(self):
+        """Level 3 should preprocess multi-keyword query and use FTS index results"""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+            with patch(
+                "tools.search_journals.core.merge_and_rank_results"
+            ) as mock_rank:
+                with patch("tools.lib.search_index.search_fts") as mock_fts:
+                    mock_l2.return_value = {
+                        "results": [],
+                        "truncated": False,
+                        "total_available": 0,
+                    }
+                    mock_fts.return_value = [
+                        {
+                            "path": "Journals/2026/03/test.md",
+                            "date": "2026-03-14",
+                            "title": "Test",
+                            "snippet": "match",
+                            "relevance": 88,
+                        }
+                    ]
+                    mock_rank.return_value = [{"path": "test.md", "score": 0.88}]
+
+                    result = hierarchical_search(
+                        query="python testing code",
+                        level=3,
+                        semantic=False,
+                        use_index=True,
+                    )
+
+        assert result["success"] is True
+        assert result["l3_results"][0]["source"] == "fts_index"
+        assert " OR " in mock_fts.call_args[0][0]
+
+    def test_search_level3_fts_fallback_to_file_scan(self):
+        """Level 3 should fall back to file scan when FTS import/search path fails"""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.core.search_l1_index") as mock_l1:
+                with patch("tools.search_journals.core.search_l3_content") as mock_l3:
+                    with patch(
+                        "tools.search_journals.core.merge_and_rank_results"
+                    ) as mock_rank:
+                        mock_l2.return_value = {
+                            "results": [{"path": "l2.md", "date": "2026-03-14"}],
+                            "truncated": False,
+                            "total_available": 1,
+                        }
+                        mock_l1.return_value = [{"path": "l1.md", "date": "2026-03-14"}]
+                        mock_l3.return_value = [{"path": "scan.md", "relevance": 77}]
+                        mock_rank.return_value = [{"path": "scan.md", "score": 0.77}]
+
+                        result = hierarchical_search(
+                            query="fallback query",
+                            topic="work",
+                            level=3,
+                            semantic=False,
+                            use_index=True,
+                        )
+
+        assert result["success"] is True
+        assert result["l3_results"] == [{"path": "scan.md", "relevance": 77}]
+        mock_l3.assert_called_once()
+
+    def test_search_level3_truncated_propagation(self):
+        """Level 3 should propagate truncated flag from metadata pipeline"""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.core.search_l3_content") as mock_l3:
+                with patch(
+                    "tools.search_journals.core.merge_and_rank_results"
+                ) as mock_rank:
+                    mock_l2.return_value = {
+                        "results": [{"path": "test.md", "date": "2026-03-14"}],
+                        "truncated": True,
+                        "total_available": 50,
+                    }
+                    mock_l3.return_value = []
+                    mock_rank.return_value = []
+
+                    result = hierarchical_search(
+                        query="test",
+                        level=3,
+                        semantic=False,
+                        use_index=False,
+                    )
+
+        assert result["l2_truncated"] is True
+        assert result["l2_total_available"] == 50
+
+    def test_search_level3_no_query_keyword_only_merge(self):
+        """Level 3 without query should skip L3 and use keyword-only merge"""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+            with patch(
+                "tools.search_journals.core.merge_and_rank_results"
+            ) as mock_rank:
+                mock_l2.return_value = {
+                    "results": [{"path": "meta.md", "date": "2026-03-14"}],
+                    "truncated": False,
+                    "total_available": 1,
+                }
+                mock_rank.return_value = [{"path": "meta.md", "score": 1.0}]
+
+                result = hierarchical_search(level=3, semantic=False, use_index=False)
+
+        assert result["success"] is True
+        assert result["l3_results"] == []
+        assert result["merged_results"] == [{"path": "meta.md", "score": 1.0}]
+
+    def test_search_level3_keyword_pipeline_project_and_tags(self):
+        """Level 3 keyword pipeline should query project and tag indexes"""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l1_index") as mock_l1:
+            with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.core.search_l3_content") as mock_l3:
+                    with patch(
+                        "tools.search_journals.core.merge_and_rank_results"
+                    ) as mock_rank:
+                        mock_l1.side_effect = [
+                            [{"path": "project.md", "date": "2026-03-14"}],
+                            [{"path": "tag1.md", "date": "2026-03-14"}],
+                            [{"path": "tag2.md", "date": "2026-03-14"}],
+                        ]
+                        mock_l2.return_value = {
+                            "results": [],
+                            "truncated": False,
+                            "total_available": 0,
+                        }
+                        mock_l3.return_value = []
+                        mock_rank.return_value = []
+
+                        result = hierarchical_search(
+                            query="test",
+                            project="Life-Index",
+                            tags=["python", "testing"],
+                            level=3,
+                            semantic=False,
+                            use_index=False,
+                        )
+
+        assert result["success"] is True
+        assert mock_l1.call_args_list[0].args == ("project", "Life-Index")
+        assert mock_l1.call_args_list[1].args == ("tag", "python")
+        assert mock_l1.call_args_list[2].args == ("tag", "testing")
+
+    def test_search_level3_fts_single_keyword_keeps_original_query(self):
+        """Single keyword query should be passed to FTS unchanged"""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+            with patch(
+                "tools.search_journals.core.merge_and_rank_results"
+            ) as mock_rank:
+                with patch("tools.lib.search_index.search_fts") as mock_fts:
+                    mock_l2.return_value = {
+                        "results": [],
+                        "truncated": False,
+                        "total_available": 0,
+                    }
+                    mock_fts.return_value = []
+                    mock_rank.return_value = []
+
+                    result = hierarchical_search(
+                        query="python",
+                        level=3,
+                        semantic=False,
+                        use_index=True,
+                    )
+
+        assert result["success"] is True
+        assert mock_fts.call_args[0][0] == "python"
+
+
+class TestModuleImportFallback:
+    """Tests for import-time fallbacks in core module"""
+
+    def test_logger_import_fallback(self):
+        """Module should fall back to stdlib logging when lib.logger import fails"""
+        module_name = "tools.search_journals.core"
+        original_module = sys.modules.get(module_name)
+        sys.modules.pop(module_name, None)
+
+        real_import = __import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name.endswith("lib.logger"):
+                raise ImportError("logger unavailable")
+            return real_import(name, globals, locals, fromlist, level)
+
+        try:
+            with patch("builtins.__import__", side_effect=fake_import):
+                with patch("logging.getLogger") as mock_get_logger:
+                    module = importlib.import_module(module_name)
+                    assert module.logger is mock_get_logger.return_value
+                    mock_get_logger.assert_called_with("search_journals")
+        finally:
+            sys.modules.pop(module_name, None)
+            if original_module is not None:
+                sys.modules[module_name] = original_module
 
 
 class TestSearchParams:

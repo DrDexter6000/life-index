@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-index"
-version = "1.2.0"
+version = "1.3.0"
 description = "Personal life journaling system with dual-dimension indexing"
 readme = "README.md"
 license = "Apache-2.0"
@@ -133,6 +133,10 @@ ignore_missing_imports = true
 module = "numpy.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "fcntl"
+ignore_missing_imports = true
+
 # ========== pytest - Testing ==========
 [tool.pytest.ini_options]
 minversion = "7.0"
@@ -181,7 +185,7 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ]
 show_missing = true
-fail_under = 49
+fail_under = 70
 
 [tool.coverage.html]
 directory = "htmlcov"

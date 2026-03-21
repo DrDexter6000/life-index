@@ -12,14 +12,13 @@ Public API:
     result = generate_monthly_abstract(year=2026, month=3)
 """
 
-import json
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 # 导入配置和日志 (relative imports from parent tools package)
-from ..lib.config import JOURNALS_DIR, ensure_dirs
+from ..lib.config import JOURNALS_DIR
 from ..lib.logger import get_logger
 from ..lib.frontmatter import parse_journal_file
 from ..lib.errors import ErrorCode, create_error_response
@@ -108,7 +107,9 @@ def collect_year_journals(year: int) -> List[Dict]:
     return journals
 
 
-def generate_monthly_abstract_content(year: int, month: int, journals: List[Dict]) -> str:
+def generate_monthly_abstract_content(
+    year: int, month: int, journals: List[Dict]
+) -> str:
     """生成月度摘要内容（与 write_journal.py 格式兼容）"""
     month_name = f"{year}年{month:02d}月"
     now = datetime.now().isoformat()
@@ -333,7 +334,9 @@ def generate_yearly_abstract_content(year: int, journals: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def generate_monthly_abstract(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]:
+def generate_monthly_abstract(
+    year: int, month: int, dry_run: bool = False
+) -> Dict[str, Any]:
     """生成月度摘要文件"""
     result: Dict[str, Any] = {
         "success": False,
