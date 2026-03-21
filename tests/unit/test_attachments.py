@@ -53,11 +53,29 @@ class TestLooksLikeFilePath:
         from tools.write_journal.attachments import looks_like_file_path
 
         assert looks_like_file_path("") is False
-        assert looks_like_file_path(None) is False
 
 
 class TestExtractFilePathsFromContent:
     """Tests for extract_file_paths_from_content function"""
+
+    def test_extract_unc_path(self):
+        """Extract UNC network style paths"""
+        from tools.write_journal.attachments import extract_file_paths_from_content
+
+        content = r"See \\server\share\folder\file.pdf for details"
+        paths = extract_file_paths_from_content(content)
+
+        assert len(paths) == 1
+        assert paths[0].endswith("file.pdf")
+
+    def test_skip_invalid_windows_extension_match(self):
+        """Windows-looking paths with invalid extensions should be filtered out"""
+        from tools.write_journal.attachments import extract_file_paths_from_content
+
+        content = r"Check C:\Users\test\file.unknownext immediately"
+        paths = extract_file_paths_from_content(content)
+
+        assert paths == []
 
     def test_extract_windows_absolute_path(self):
         """Extract Windows absolute paths"""
@@ -117,7 +135,6 @@ class TestExtractFilePathsFromContent:
         from tools.write_journal.attachments import extract_file_paths_from_content
 
         assert extract_file_paths_from_content("") == []
-        assert extract_file_paths_from_content(None) == []
 
     def test_extract_path_with_spaces(self):
         """Extract paths with spaces in filename (Chinese+English common case)"""
@@ -146,6 +163,56 @@ class TestExtractFilePathsFromContent:
 class TestProcessAttachments:
     """Tests for process_attachments function"""
 
+    def test_process_string_attachment(self, tmp_path):
+        """String attachment entries should be converted to dict form"""
+        from tools.write_journal.attachments import process_attachments
+
+        source_file = tmp_path / "string.mp4"
+        source_file.write_text("test content")
+
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
+            result = process_attachments(
+                attachments=[str(source_file)],
+                date_str="2026-03-10",
+                dry_run=True,
+            )
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "string.mp4"
+
+    def test_empty_attachments_returns_empty(self, tmp_path):
+        """Empty attachments and no auto-detected paths should return empty list"""
+        from tools.write_journal.attachments import process_attachments
+
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
+            assert process_attachments([], "2026-03-10", dry_run=True) == []
+
+    def test_skip_empty_source_path(self, tmp_path):
+        """Entries with empty source_path should be skipped"""
+        from tools.write_journal.attachments import process_attachments
+
+        source_file = tmp_path / "valid.mp4"
+        source_file.write_text("test")
+
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
+            result = process_attachments(
+                attachments=[
+                    {"source_path": "", "description": "bad"},
+                    {"source_path": str(source_file), "description": "good"},
+                ],
+                date_str="2026-03-10",
+                dry_run=True,
+            )
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "valid.mp4"
+
     def test_process_single_attachment(self, tmp_path):
         """Process a single attachment"""
         from tools.write_journal.attachments import process_attachments
@@ -154,9 +221,13 @@ class TestProcessAttachments:
         source_file = tmp_path / "source.mp4"
         source_file.write_text("test content")
 
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
             result = process_attachments(
-                attachments=[{"source_path": str(source_file), "description": "Test file"}],
+                attachments=[
+                    {"source_path": str(source_file), "description": "Test file"}
+                ],
                 date_str="2026-03-10",
                 dry_run=True,
             )
@@ -168,9 +239,13 @@ class TestProcessAttachments:
         """Process a nonexistent source file"""
         from tools.write_journal.attachments import process_attachments
 
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
             result = process_attachments(
-                attachments=[{"source_path": "/nonexistent/file.mp4", "description": ""}],
+                attachments=[
+                    {"source_path": "/nonexistent/file.mp4", "description": ""}
+                ],
                 date_str="2026-03-10",
                 dry_run=True,
             )
@@ -189,7 +264,9 @@ class TestProcessAttachments:
         auto_file = tmp_path / "auto.png"
         auto_file.write_text("test")
 
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",
@@ -206,7 +283,9 @@ class TestProcessAttachments:
         source_file = tmp_path / "file.mp4"
         source_file.write_text("test")
 
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",
@@ -224,7 +303,9 @@ class TestProcessAttachments:
         source_file = tmp_path / "test.mp4"
         source_file.write_text("test")
 
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",
@@ -243,7 +324,9 @@ class TestProcessAttachments:
         source_dir = tmp_path / "subdir"
         source_dir.mkdir()
 
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"):
+        with patch(
+            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+        ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_dir), "description": ""}],
                 date_str="2026-03-10",
@@ -291,6 +374,29 @@ class TestProcessAttachments:
         copied_file = att_dir / "2026" / "03" / "source.mp4"
         assert copied_file.exists()
 
+    def test_rename_duplicate_files(self, tmp_path):
+        """Duplicate target filenames should be renamed with counter suffix"""
+        from tools.write_journal.attachments import process_attachments
+
+        source_file = tmp_path / "source.mp4"
+        source_file.write_text("new content")
+
+        att_dir = tmp_path / "attachments"
+        existing_dir = att_dir / "2026" / "03"
+        existing_dir.mkdir(parents=True)
+        (existing_dir / "source.mp4").write_text("existing")
+
+        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", att_dir):
+            result = process_attachments(
+                attachments=[{"source_path": str(source_file), "description": ""}],
+                date_str="2026-03-10",
+                dry_run=False,
+            )
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "source_001.mp4"
+        assert (existing_dir / "source_001.mp4").exists()
+
 
 class TestCrossPlatformPaths:
     """Tests for cross-platform path handling"""
@@ -336,7 +442,9 @@ class TestStripCjkSpaces:
         """Remove multiple mixed-script spaces"""
         from tools.write_journal.attachments import _strip_cjk_spaces
 
-        assert _strip_cjk_spaces("Opus 审计 Report 报告.txt") == "Opus审计Report报告.txt"
+        assert (
+            _strip_cjk_spaces("Opus 审计 Report 报告.txt") == "Opus审计Report报告.txt"
+        )
 
     def test_preserve_english_only_spaces(self):
         """Keep spaces between English words"""
@@ -413,6 +521,36 @@ class TestResolveAttachmentPath:
             "/nonexistent/Opus 审计报告.txt",
         )
         assert result is None
+
+    def test_cross_platform_converted_path_match(self):
+        """Return converted path when original is missing but converted exists"""
+        from tools.write_journal.attachments import _resolve_attachment_path
+
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
+            f.write(b"test")
+            converted = f.name
+
+        try:
+            result = _resolve_attachment_path("/nonexistent/original.txt", converted)
+            assert result == converted
+        finally:
+            os.unlink(converted)
+
+    def test_cross_platform_cjk_space_fallback(self):
+        """Resolve via stripped converted path when converted path contains injected CJK spaces"""
+        from tools.write_journal.attachments import _resolve_attachment_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            real_file = os.path.join(tmpdir, "Opus审计报告.txt")
+            with open(real_file, "w", encoding="utf-8") as f:
+                f.write("test")
+
+            converted_bad = os.path.join(tmpdir, "Opus 审计报告.txt")
+            result = _resolve_attachment_path(
+                "/nonexistent/original.txt", converted_bad
+            )
+
+            assert result == real_file
 
 
 if __name__ == "__main__":

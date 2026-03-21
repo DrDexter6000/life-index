@@ -15,9 +15,11 @@ import pickle
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 import sys
-import os
+
+if TYPE_CHECKING:
+    from fastembed import TextEmbedding
 
 # 导入配置
 sys.path.insert(0, str(Path(__file__).parent))
@@ -88,9 +90,10 @@ def verify_model_integrity(model_name: str, cache_dir: Path) -> Tuple[bool, str]
         recorded_version = meta.get("version", "")
 
         if expected_hash and expected_hash != MODEL_CONFIG.get("config_hash", ""):
+            expected = MODEL_CONFIG.get("config_hash", "")[:16]
             return (
                 False,
-                f"模型配置哈希不匹配！预期：{MODEL_CONFIG.get('config_hash', '')[:16]}..., 实际：{expected_hash[:16]}...",
+                f"模型配置哈希不匹配！预期：{expected}..., 实际：{expected_hash[:16]}...",
             )
 
         if recorded_version != MODEL_CONFIG["version"]:
@@ -105,7 +108,7 @@ def verify_model_integrity(model_name: str, cache_dir: Path) -> Tuple[bool, str]
         return False, f"验证模型完整性失败：{e}"
 
 
-def record_model_metadata(model_name: str, cache_dir: Path):
+def record_model_metadata(model_name: str, cache_dir: Path) -> None:
     """
     记录模型元数据（首次使用时）
 
@@ -139,11 +142,11 @@ def record_model_metadata(model_name: str, cache_dir: Path):
 class EmbeddingModel:
     """嵌入模型管理器（单例模式）"""
 
-    _instance = None
-    _model = None
-    _model_verified = False  # 模型是否已通过完整性验证
+    _instance: Optional["EmbeddingModel"] = None
+    _model: Optional["TextEmbedding"] = None
+    _model_verified: bool = False  # 模型是否已通过完整性验证
 
-    def __new__(cls):
+    def __new__(cls) -> "EmbeddingModel":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -162,17 +165,23 @@ class EmbeddingModel:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
             # 步骤 1: 验证模型完整性
-            is_valid, verify_msg = verify_model_integrity(EMBEDDING_MODEL_NAME, CACHE_DIR)
+            is_valid, verify_msg = verify_model_integrity(
+                EMBEDDING_MODEL_NAME, CACHE_DIR
+            )
             if not is_valid:
                 print(f"Warning: Model integrity check failed: {verify_msg}")
-                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
+                print(
+                    "Warning: Will proceed with loading, but embeddings may be inconsistent."
+                )
 
             # 步骤 2: 加载模型
             self._model = TextEmbedding(EMBEDDING_MODEL_NAME, cache_dir=str(CACHE_DIR))
             print(f"Model loaded successfully. (dimension={EMBEDDING_DIM})")
 
             # 步骤 3: 记录模型元数据（如果是首次使用）
-            meta_file = CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
+            meta_file = (
+                CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
+            )
             if not meta_file.exists():
                 record_model_metadata(EMBEDDING_MODEL_NAME, CACHE_DIR)
 
@@ -188,10 +197,14 @@ class EmbeddingModel:
         if not self.load():
             return []
 
+        if self._model is None:
+            return []
+
         try:
             # fastembed 返回 generator，需要转换为 list
             embeddings = list(self._model.embed(texts))
-            return embeddings
+            # Convert numpy arrays to lists
+            return [list(e) for e in embeddings]
         except Exception as e:
             print(f"Encoding error: {e}")
             return []
@@ -233,11 +246,11 @@ class SimpleVectorIndex:
     }
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.vectors: Dict[str, Dict[str, Any]] = {}
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         """从磁盘加载索引"""
         if VEC_INDEX_PATH.exists():
             try:
@@ -281,7 +294,7 @@ class SimpleVectorIndex:
 
         return len(stale_paths)
 
-    def _save(self):
+    def _save(self) -> None:
         """保存索引到磁盘"""
         INDEX_DIR.mkdir(parents=True, exist_ok=True)
         try:
@@ -300,7 +313,7 @@ class SimpleVectorIndex:
         except Exception as e:
             print(f"Warning: Failed to save vector index: {e}")
 
-    def add(self, path: str, embedding: List[float], date: str, file_hash: str):
+    def add(self, path: str, embedding: List[float], date: str, file_hash: str) -> None:
         """添加或更新向量"""
         self.vectors[path] = {
             "embedding": embedding,
@@ -309,7 +322,7 @@ class SimpleVectorIndex:
             "added_at": datetime.now().isoformat(),
         }
 
-    def remove(self, path: str):
+    def remove(self, path: str) -> None:
         """删除向量"""
         if path in self.vectors:
             del self.vectors[path]
@@ -366,11 +379,11 @@ class SimpleVectorIndex:
 
         return results[:top_k]
 
-    def commit(self):
+    def commit(self) -> None:
         """提交更改到磁盘"""
         self._save()
 
-    def clear(self):
+    def clear(self) -> None:
         """清空所有向量"""
         self.vectors.clear()
 
@@ -400,7 +413,10 @@ def get_index() -> SimpleVectorIndex:
     return _index_instance
 
 
-def update_vector_index_simple(model_encode_func, incremental: bool = True) -> Dict[str, Any]:
+def update_vector_index_simple(
+    model_encode_func: Callable[[List[str]], List[List[float]]],
+    incremental: bool = True,
+) -> Dict[str, Any]:
     """
     更新简单向量索引
 
@@ -411,7 +427,7 @@ def update_vector_index_simple(model_encode_func, incremental: bool = True) -> D
     Returns:
         更新结果统计
     """
-    result = {
+    result: Dict[str, Any] = {
         "success": False,
         "added": 0,
         "updated": 0,
@@ -437,17 +453,21 @@ def update_vector_index_simple(model_encode_func, incremental: bool = True) -> D
                 fm_text = parts[1].strip()
                 body = parts[2].strip()
 
-                metadata = {}
+                metadata: Dict[str, Any] = {}
                 for line in fm_text.split("\n"):
                     line = line.strip()
                     if ":" in line and not line.startswith("#"):
-                        key, value = line.split(":", 1)
+                        key, raw_value = line.split(":", 1)
                         key = key.strip()
-                        value = value.strip()
-                        if value.startswith("[") and value.endswith("]"):
-                            value = [
-                                v.strip().strip("\"'") for v in value[1:-1].split(",") if v.strip()
+                        value_str = raw_value.strip()
+                        if value_str.startswith("[") and value_str.endswith("]"):
+                            value: Any = [
+                                v.strip().strip("\"'")
+                                for v in value_str[1:-1].split(",")
+                                if v.strip()
                             ]
+                        else:
+                            value = value_str
                         metadata[key] = value
 
                 text_parts = []

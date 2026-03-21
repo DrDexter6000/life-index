@@ -12,10 +12,8 @@ L2搜索元数据缓存管理
 
 import sqlite3
 import json
-import time
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from .config import JOURNALS_DIR, USER_DATA_DIR
 from .frontmatter import parse_journal_file
 
@@ -60,22 +58,22 @@ def init_metadata_cache() -> sqlite3.Connection:
 
     # 创建索引加速查询
     cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_metadata_date 
+        CREATE INDEX IF NOT EXISTS idx_metadata_date
         ON metadata_cache(date)
     """)
 
     cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_metadata_topic 
+        CREATE INDEX IF NOT EXISTS idx_metadata_topic
         ON metadata_cache(topic)
     """)
 
     cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_metadata_project 
+        CREATE INDEX IF NOT EXISTS idx_metadata_project
         ON metadata_cache(project)
     """)
 
     cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_metadata_location 
+        CREATE INDEX IF NOT EXISTS idx_metadata_location
         ON metadata_cache(location)
     """)
 
@@ -106,7 +104,9 @@ def is_cache_valid(file_path: Path, cached_mtime: float, cached_size: int) -> bo
     return current_mtime == cached_mtime and current_size == cached_size
 
 
-def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
+def parse_and_cache_journal(
+    conn: sqlite3.Connection, file_path: Path
+) -> Optional[Dict[str, Any]]:
     """解析日志并更新缓存"""
     try:
         # 解析日志文件
@@ -136,8 +136,9 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT OR REPLACE INTO metadata_cache 
-            (file_path, date, title, location, weather, topic, project, tags, mood, people, abstract, file_mtime, file_size)
+            INSERT OR REPLACE INTO metadata_cache
+            (file_path, date, title, location, weather, topic, project,
+             tags, mood, people, abstract, file_mtime, file_size)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
@@ -174,15 +175,19 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
             "metadata": metadata,
         }
 
-    except (IOError, OSError, ValueError) as e:
+    except (IOError, OSError, ValueError):
         return None
 
 
-def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
+def get_cached_metadata(
+    conn: sqlite3.Connection, file_path: Path
+) -> Optional[Dict[str, Any]]:
     """从缓存获取元数据（如果有效）"""
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM metadata_cache WHERE file_path = ?", (str(file_path),))
+    cursor.execute(
+        "SELECT * FROM metadata_cache WHERE file_path = ?", (str(file_path),)
+    )
 
     row = cursor.fetchone()
     if row is None:
@@ -299,7 +304,9 @@ def invalidate_cache(file_path: Optional[Path] = None) -> None:
     try:
         cursor = conn.cursor()
         if file_path:
-            cursor.execute("DELETE FROM metadata_cache WHERE file_path = ?", (str(file_path),))
+            cursor.execute(
+                "DELETE FROM metadata_cache WHERE file_path = ?", (str(file_path),)
+            )
         else:
             cursor.execute("DELETE FROM metadata_cache")
         conn.commit()
@@ -335,7 +342,7 @@ def get_cache_stats() -> Dict[str, Any]:
 
 
 def update_cache_for_all_journals(
-    progress_callback: Optional[callable] = None,
+    progress_callback: Optional[Callable[[int, int, int], None]] = None,
 ) -> Dict[str, int]:
     """更新所有日志的缓存（用于重建缓存）"""
     conn = init_metadata_cache()

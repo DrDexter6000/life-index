@@ -244,6 +244,11 @@ def get_index_prefixes() -> Dict[str, str]:
 INDEX_PREFIXES = get_index_prefixes()
 
 
+# ========== File Lock Configuration ==========
+# 锁超时配置（秒）
+FILE_LOCK_TIMEOUT_DEFAULT = 30  # 正常操作（写日志等）
+FILE_LOCK_TIMEOUT_REBUILD = 120  # 索引重建（批量操作需要更长时间）
+
 # ========== Vector Embedding Model Configuration ==========
 # 固定模型版本以确保嵌入一致性
 # 模型文件约 80MB，首次使用会自动下载
@@ -342,8 +347,6 @@ def normalize_path(path: str) -> str:
     Returns:
         标准化后的路径（使用 '/' 分隔符）
     """
-    import platform
-
     if not path:
         return ""
 
@@ -355,7 +358,6 @@ def normalize_path(path: str) -> str:
     path = path.replace("\\", "/")
 
     # 3. 应用路径映射（如果配置了）
-    current_platform = platform.system()
     for src_prefix, dst_prefix in PATH_MAPPINGS.items():
         # 标准化映射配置中的分隔符
         src_prefix = src_prefix.replace("\\", "/")

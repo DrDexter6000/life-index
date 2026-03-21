@@ -44,7 +44,7 @@ import os
 import time
 import platform
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional, Type
 
 
 class LockTimeoutError(TimeoutError):
@@ -53,7 +53,9 @@ class LockTimeoutError(TimeoutError):
     def __init__(self, lock_path: str, timeout: float):
         self.lock_path = lock_path
         self.timeout = timeout
-        super().__init__(f"Could not acquire lock on '{lock_path}' within {timeout:.1f} seconds")
+        super().__init__(
+            f"Could not acquire lock on '{lock_path}' within {timeout:.1f} seconds"
+        )
 
 
 class LockAcquisitionError(OSError):
@@ -91,6 +93,8 @@ class FileLock:
         ...     pass
     """
 
+    DEFAULT_TIMEOUT = 30.0  # 类级别默认超时（秒）
+
     def __init__(
         self,
         lock_path: str | Path,
@@ -124,13 +128,15 @@ class FileLock:
         """Acquire lock on Unix systems using fcntl."""
         import fcntl
 
+        assert self._file_handle is not None
+
         if blocking and self.timeout is not None:
             start_time = time.time()
-            flags = fcntl.LOCK_EX | fcntl.LOCK_NB
+            flags = fcntl.LOCK_EX | fcntl.LOCK_NB  # type: ignore[attr-defined]
 
             while True:
                 try:
-                    fcntl.flock(self._file_handle, flags)
+                    fcntl.flock(self._file_handle, flags)  # type: ignore[attr-defined]
                     return True
                 except (IOError, OSError) as e:
                     if e.errno not in (11, 35):  # EAGAIN, EWOULDBLOCK
@@ -142,12 +148,12 @@ class FileLock:
 
                     time.sleep(self.poll_interval)
 
-        flags = fcntl.LOCK_EX
+        flags = fcntl.LOCK_EX  # type: ignore[attr-defined]
         if not blocking:
-            flags |= fcntl.LOCK_NB
+            flags |= fcntl.LOCK_NB  # type: ignore[attr-defined]
 
         try:
-            fcntl.flock(self._file_handle, flags)
+            fcntl.flock(self._file_handle, flags)  # type: ignore[attr-defined]
             return True
         except (IOError, OSError) as e:
             if not blocking and e.errno in (11, 35):  # EAGAIN, EWOULDBLOCK
@@ -158,11 +164,14 @@ class FileLock:
         """Release lock on Unix systems using fcntl."""
         import fcntl
 
-        fcntl.flock(self._file_handle, fcntl.LOCK_UN)
+        assert self._file_handle is not None
+        fcntl.flock(self._file_handle, fcntl.LOCK_UN)  # type: ignore[attr-defined]
 
     def _acquire_windows(self, blocking: bool = True) -> bool:
         """Acquire lock on Windows using msvcrt."""
         import msvcrt
+
+        assert self._file_handle is not None
 
         try:
             if blocking:
@@ -190,6 +199,8 @@ class FileLock:
     def _release_windows(self) -> None:
         """Release lock on Windows using msvcrt."""
         import msvcrt
+
+        assert self._file_handle is not None
 
         # Seek to beginning and unlock
         os.lseek(self._file_handle, 0, os.SEEK_SET)
@@ -308,7 +319,12 @@ class FileLock:
             self.acquire(blocking=True)
             return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[object],
+    ) -> None:
         """Exit context manager - release lock."""
         self.release()
 
@@ -343,13 +359,15 @@ def get_index_lock_path() -> Path:
 
 
 # Convenience functions for common use cases
-def with_journals_lock(func, *args, timeout: float = 30.0, **kwargs):
+def with_journals_lock(
+    func: Callable[..., Any], *args: Any, timeout: Optional[float] = None, **kwargs: Any
+) -> Any:
     """
     Execute a function with the journals lock held.
 
     Args:
         func: Function to execute
-        timeout: Lock acquisition timeout in seconds
+        timeout: Lock acquisition timeout in seconds (defaults to FILE_LOCK_TIMEOUT_DEFAULT)
         *args, **kwargs: Arguments to pass to func
 
     Returns:
@@ -358,17 +376,23 @@ def with_journals_lock(func, *args, timeout: float = 30.0, **kwargs):
     Raises:
         LockTimeoutError: If lock cannot be acquired within timeout
     """
+    from .config import FILE_LOCK_TIMEOUT_DEFAULT
+
+    if timeout is None:
+        timeout = FILE_LOCK_TIMEOUT_DEFAULT
     with FileLock(get_journals_lock_path(), timeout=timeout):
         return func(*args, **kwargs)
 
 
-def with_index_lock(func, *args, timeout: float = 60.0, **kwargs):
+def with_index_lock(
+    func: Callable[..., Any], *args: Any, timeout: Optional[float] = None, **kwargs: Any
+) -> Any:
     """
     Execute a function with the index lock held.
 
     Args:
         func: Function to execute
-        timeout: Lock acquisition timeout in seconds
+        timeout: Lock acquisition timeout in seconds (defaults to FILE_LOCK_TIMEOUT_REBUILD)
         *args, **kwargs: Arguments to pass to func
 
     Returns:
@@ -377,5 +401,9 @@ def with_index_lock(func, *args, timeout: float = 60.0, **kwargs):
     Raises:
         LockTimeoutError: If lock cannot be acquired within timeout
     """
+    from .config import FILE_LOCK_TIMEOUT_REBUILD
+
+    if timeout is None:
+        timeout = FILE_LOCK_TIMEOUT_REBUILD
     with FileLock(get_index_lock_path(), timeout=timeout):
         return func(*args, **kwargs)

@@ -38,6 +38,7 @@ nul
 # ----- 测试输出 -----
 .pytest_cache/
 .coverage
+coverage*.xml
 htmlcov/
 cov_report/
 .ruff_cache/

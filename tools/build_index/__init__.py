@@ -12,16 +12,14 @@ Public API:
     result = build_all(incremental=True)
 """
 
-from pathlib import Path
 from typing import Dict, Any
 
 # 导入配置 (relative imports from parent tools package)
-from ..lib.config import USER_DATA_DIR, ensure_dirs, get_model_cache_dir
+from ..lib.config import get_model_cache_dir, FILE_LOCK_TIMEOUT_REBUILD
 from ..lib.search_index import (
     update_index as update_fts_index,
     get_stats as get_fts_stats,
 )
-from ..lib.semantic_search import update_vector_index, get_stats as get_vec_stats
 from ..lib.file_lock import FileLock, LockTimeoutError, get_index_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.logger import get_logger
@@ -44,7 +42,12 @@ def build_all(
     Returns:
         构建结果
     """
-    result = {"success": True, "fts": None, "vector": None, "duration_seconds": 0}
+    result: Dict[str, Any] = {
+        "success": True,
+        "fts": None,
+        "vector": None,
+        "duration_seconds": 0.0,
+    }
 
     import time
 
@@ -52,7 +55,7 @@ def build_all(
 
     # ===== 文件锁保护 =====
     # 使用文件锁保护索引构建，防止并发冲突
-    lock = FileLock(get_index_lock_path(), timeout=60.0)
+    lock = FileLock(get_index_lock_path(), timeout=FILE_LOCK_TIMEOUT_REBUILD)
 
     try:
         with lock:
@@ -83,7 +86,10 @@ def build_all(
 
                 # 首先尝试 sqlite-vec
                 try:
-                    from ..lib.semantic_search import update_vector_index, get_model
+                    from ..lib.semantic_search import (
+                        update_vector_index,
+                        get_model,
+                    )
 
                     model = get_model()
                     if model.load():
@@ -106,10 +112,10 @@ def build_all(
                             get_model as get_simple_model,
                         )
 
-                        model = get_simple_model()
-                        if model.load():
+                        simple_model = get_simple_model()
+                        if simple_model.load():
                             vec_result = update_vector_index_simple(
-                                model.encode, incremental=incremental
+                                simple_model.encode, incremental=incremental
                             )
                             result["vector"] = vec_result
                             if vec_result.get("success"):
@@ -119,11 +125,13 @@ def build_all(
                                 )
                             else:
                                 logger.warning(
-                                    f"  ⚠ Vector (simple): {vec_result.get('error', 'Unknown error')}"
+                                    "  ⚠ Vector (simple): "
+                                    f"{vec_result.get('error', 'Unknown error')}"
                                 )
                         else:
                             logger.info(
-                                f"  ⚠ Embedding model not available. Install: pip install fastembed"
+                                "  ⚠ Embedding model not available. "
+                                "Install: pip install fastembed"
                             )
                     except (RuntimeError, IOError, OSError) as e:
                         logger.error(f"  ✗ Vector error: {e}")
@@ -134,7 +142,10 @@ def build_all(
         return create_error_response(
             ErrorCode.LOCK_TIMEOUT,
             f"无法获取索引锁，请稍后重试: {e}",
-            {"lock_path": str(get_index_lock_path()), "timeout": 60.0},
+            {
+                "lock_path": str(get_index_lock_path()),
+                "timeout": FILE_LOCK_TIMEOUT_REBUILD,
+            },
             "等待几秒后重试，或检查是否有其他进程正在构建索引",
         )
 
@@ -164,11 +175,13 @@ def show_stats() -> None:
 
         vec_stats = get_vec_stats()
         if vec_stats["exists"] and vec_stats["total_vectors"] > 0:
-            logger.info(f"  Backend: sqlite-vec")
-            logger.info(f"  Exists: Yes")
+            logger.info("  Backend: sqlite-vec")
+            logger.info("  Exists: Yes")
             logger.info(f"  Vectors: {vec_stats['total_vectors']}")
             logger.info(f"  Size: {vec_stats['db_size_mb']} MB")
-            logger.info(f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}")
+            logger.info(
+                f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}"
+            )
         else:
             # sqlite-vec exists but empty, try simple index
             raise ImportError("sqlite-vec empty, trying simple index")
@@ -178,13 +191,13 @@ def show_stats() -> None:
 
             simple_index = get_index()
             simple_stats = simple_index.stats()
-            logger.info(f"  Backend: simple_numpy")
+            logger.info("  Backend: simple_numpy")
             logger.info(f"  Exists: {'Yes' if simple_stats['exists'] else 'No'}")
             logger.info(f"  Vectors: {simple_stats['total_vectors']}")
             logger.info(f"  Size: {simple_stats['index_size_mb']} MB")
         except (ImportError, RuntimeError):
-            logger.info(f"  Status: Not available")
-            logger.info(f"  Note: Install fastembed for semantic search")
+            logger.info("  Status: Not available")
+            logger.info("  Note: Install fastembed for semantic search")
 
     logger.info("\n💾 Cache Directory:")
     cache_dir = get_model_cache_dir()

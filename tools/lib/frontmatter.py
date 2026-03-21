@@ -11,7 +11,7 @@ import re
 import yaml
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 # Schema 版本（用于未来格式变更的向后兼容）
 SCHEMA_VERSION = 1
@@ -96,7 +96,9 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
         abstract_match = re.search(r"\n\n([^#\n].*?)(?=\n\n|\Z)", body, re.DOTALL)
         if abstract_match:
             abstract = abstract_match.group(1).strip()[:100]
-            metadata["_abstract"] = abstract + "..." if len(abstract) == 100 else abstract
+            metadata["_abstract"] = (
+                abstract + "..." if len(abstract) == 100 else abstract
+            )
         else:
             metadata["_abstract"] = "(无摘要)"
 
@@ -113,8 +115,6 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
     格式化 frontmatter 为标准 YAML
     保持字段顺序与历史日志一致
     """
-    import json
-
     lines = ["---"]
 
     # 自动添加 schema_version（如果未提供）
@@ -217,7 +217,7 @@ def update_frontmatter_fields(
     Returns:
         包含变更信息的字典
     """
-    result = {
+    result: Dict[str, Any] = {
         "success": False,
         "changes": {},
         "error": None,

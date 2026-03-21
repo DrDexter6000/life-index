@@ -12,17 +12,15 @@ Public API:
     result = edit_journal(journal_path=path, frontmatter_updates={"weather": "晴天"})
 """
 
-import json
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
 # 导入配置 (relative imports from parent tools package)
-from ..lib.config import JOURNALS_DIR, BY_TOPIC_DIR, ensure_dirs
+from ..lib.config import JOURNALS_DIR, BY_TOPIC_DIR
 from ..lib.frontmatter import (
     parse_journal_file,
     format_frontmatter,
-    update_frontmatter_fields,
 )
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
@@ -86,7 +84,11 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
             logger.debug(f"添加条目到索引：{index_file.name}")
     else:
         # 确定索引类型和名称
-        name = index_file.stem.replace("主题_", "").replace("项目_", "").replace("标签_", "")
+        name = (
+            index_file.stem.replace("主题_", "")
+            .replace("项目_", "")
+            .replace("标签_", "")
+        )
         if index_file.stem.startswith("主题_"):
             header = f"# 主题：{name}\n\n"
         elif index_file.stem.startswith("项目_"):
@@ -298,7 +300,9 @@ def edit_journal(
             result["success"] = True
             result["preview"] = {
                 "frontmatter": format_frontmatter(new_frontmatter),
-                "body_preview": new_body[:200] + "..." if len(new_body) > 200 else new_body,
+                "body_preview": new_body[:200] + "..."
+                if len(new_body) > 200
+                else new_body,
             }
             return result
 

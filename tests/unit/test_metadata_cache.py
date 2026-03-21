@@ -228,6 +228,362 @@ class TestMetadataCache:
         assert stats["total_entries"] == 0
 
 
+class TestParseAndCacheJournalEdgeCases:
+    """Tests for edge cases in parse_and_cache_journal"""
+
+    def test_parse_and_cache_journal_exception_handling(self, tmp_path, monkeypatch):
+        """Test exception handling in parse_and_cache_journal (lines 178-179)"""
+        test_file = tmp_path / "test.md"
+        test_file.write_text(
+            '---\ntitle: "Test"\ndate: 2026-03-13\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        # Mock parse_journal_file to raise an exception
+        def mock_parse_raise(*args, **kwargs):
+            raise ValueError("Simulated parse error")
+
+        import tools.lib.metadata_cache as mc
+
+        monkeypatch.setattr(mc, "parse_journal_file", mock_parse_raise)
+
+        conn = init_metadata_cache()
+        try:
+            result = parse_and_cache_journal(conn, test_file)
+            assert result is None
+        finally:
+            conn.close()
+
+
+class TestConnectionManagement:
+    """Tests for connection management in cache functions"""
+
+    def test_get_or_update_metadata_creates_connection(self, tmp_path):
+        """Test get_or_update_metadata with conn=None creates its own connection (lines 233-237)"""
+        test_file = tmp_path / "test.md"
+        test_file.write_text(
+            '---\ntitle: "Auto Connection Test"\ndate: 2026-03-13\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        # Call without providing connection
+        result = get_or_update_metadata(test_file, conn=None)
+        assert result is not None
+        assert result["title"] == "Auto Connection Test"
+
+    def test_get_all_cached_metadata_creates_connection(self, tmp_path):
+        """Test get_all_cached_metadata with conn=None creates its own connection (lines 256-260)"""
+        # Clean state
+        invalidate_cache()
+
+        # Add a test file
+        test_file = tmp_path / "test.md"
+        test_file.write_text(
+            '---\ntitle: "All Metadata Test"\ndate: 2026-03-13\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        get_or_update_metadata(test_file)
+
+        # Call without providing connection
+        results = get_all_cached_metadata(conn=None)
+        assert isinstance(results, list)
+        assert len(results) >= 1
+
+        # Verify the entry is there
+        found = any(r["title"] == "All Metadata Test" for r in results)
+        assert found
+
+
+class TestInvalidateCacheSpecificFile:
+    """Tests for invalidating cache for specific files"""
+
+    def test_invalidate_cache_specific_file(self, tmp_path):
+        """Test invalidate_cache with specific file_path (line 307)"""
+        # Clean slate
+        invalidate_cache()
+
+        # Create two test files
+        test_file1 = tmp_path / "test1.md"
+        test_file1.write_text(
+            '---\ntitle: "File 1"\ndate: 2026-03-13\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        test_file2 = tmp_path / "test2.md"
+        test_file2.write_text(
+            '---\ntitle: "File 2"\ndate: 2026-03-13\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        # Cache both
+        get_or_update_metadata(test_file1)
+        get_or_update_metadata(test_file2)
+
+        # Verify both are cached
+        stats = get_cache_stats()
+        assert stats["total_entries"] >= 2
+
+        # Invalidate only file1
+        invalidate_cache(test_file1)
+
+        # Verify file1 is gone but file2 remains
+        conn = init_metadata_cache()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM metadata_cache WHERE file_path = ?",
+                (str(test_file1),),
+            )
+            count1 = cursor.fetchone()[0]
+            assert count1 == 0
+
+            cursor.execute(
+                "SELECT COUNT(*) FROM metadata_cache WHERE file_path = ?",
+                (str(test_file2),),
+            )
+            count2 = cursor.fetchone()[0]
+            assert count2 == 1
+        finally:
+            conn.close()
+
+
+class TestUpdateCacheForAllJournals:
+    """Tests for update_cache_for_all_journals function (lines 348-391)"""
+
+    def test_update_cache_for_all_journals_empty_dir(self, monkeypatch, tmp_path):
+        """Test update_cache_for_all_journals with empty JOURNALS_DIR"""
+        # Mock JOURNALS_DIR to empty temp directory
+        import tools.lib.metadata_cache as mc
+
+        monkeypatch.setattr(mc, "JOURNALS_DIR", tmp_path)
+
+        # Clean cache
+        invalidate_cache()
+
+        result = update_cache_for_all_journals()
+        assert result["updated"] == 0
+        assert result["skipped"] == 0
+        assert result["errors"] == 0
+
+    def test_update_cache_for_all_journals_with_journals(self, monkeypatch, tmp_path):
+        """Test update_cache_for_all_journals with actual journal files"""
+        import tools.lib.metadata_cache as mc
+
+        # Create mock journal directory structure
+        journals_dir = tmp_path / "Journals"
+        year_dir = journals_dir / "2026"
+        month_dir = year_dir / "03"
+        month_dir.mkdir(parents=True)
+
+        # Create test journal files
+        journal1 = month_dir / "life-index_2026-03-01_001.md"
+        journal1.write_text(
+            '---\ntitle: "Journal 1"\ndate: 2026-03-01\ntopic: ["work"]\n---\n\nContent 1\n',
+            encoding="utf-8",
+        )
+
+        journal2 = month_dir / "life-index_2026-03-02_001.md"
+        journal2.write_text(
+            '---\ntitle: "Journal 2"\ndate: 2026-03-02\ntopic: ["life"]\n---\n\nContent 2\n',
+            encoding="utf-8",
+        )
+
+        # Mock JOURNALS_DIR
+        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+
+        # Clean cache
+        invalidate_cache()
+
+        result = update_cache_for_all_journals()
+        assert result["updated"] == 2
+        assert result["skipped"] == 0
+        assert result["errors"] == 0
+
+    def test_update_cache_for_all_journals_skips_cached(self, monkeypatch, tmp_path):
+        """Test update_cache_for_all_journals skips already cached files"""
+        import tools.lib.metadata_cache as mc
+
+        # Create mock journal directory structure
+        journals_dir = tmp_path / "Journals"
+        year_dir = journals_dir / "2026"
+        month_dir = year_dir / "03"
+        month_dir.mkdir(parents=True)
+
+        journal1 = month_dir / "life-index_2026-03-01_001.md"
+        journal1.write_text(
+            '---\ntitle: "Cached Journal"\ndate: 2026-03-01\ntopic: ["work"]\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+
+        # Clean cache and run once
+        invalidate_cache()
+        result1 = update_cache_for_all_journals()
+        assert result1["updated"] == 1
+
+        # Run again - should skip cached file
+        result2 = update_cache_for_all_journals()
+        assert result2["updated"] == 0
+        assert result2["skipped"] == 1
+
+    def test_update_cache_for_all_journals_progress_callback(
+        self, monkeypatch, tmp_path
+    ):
+        """Test update_cache_for_all_journals with progress callback"""
+        import tools.lib.metadata_cache as mc
+
+        # Create mock journal directory structure
+        journals_dir = tmp_path / "Journals"
+        year_dir = journals_dir / "2026"
+        month_dir = year_dir / "03"
+        month_dir.mkdir(parents=True)
+
+        journal1 = month_dir / "life-index_2026-03-01_001.md"
+        journal1.write_text(
+            '---\ntitle: "Journal 1"\ndate: 2026-03-01\ntopic: ["work"]\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+
+        # Track callback invocations
+        callback_calls = []
+
+        def progress_callback(updated, skipped, errors):
+            callback_calls.append((updated, skipped, errors))
+
+        invalidate_cache()
+        result = update_cache_for_all_journals(progress_callback)
+
+        assert len(callback_calls) >= 1
+        assert result["updated"] == 1
+
+    def test_update_cache_for_all_journals_error_handling(self, monkeypatch, tmp_path):
+        """Test update_cache_for_all_journals handles errors during journal iteration"""
+        import tools.lib.metadata_cache as mc
+
+        # Create mock journal directory structure
+        journals_dir = tmp_path / "Journals"
+        year_dir = journals_dir / "2026"
+        month_dir = year_dir / "03"
+        month_dir.mkdir(parents=True)
+
+        # Valid journal
+        journal1 = month_dir / "life-index_2026-03-01_001.md"
+        journal1.write_text(
+            '---\ntitle: "Valid Journal"\ndate: 2026-03-01\ntopic: ["work"]\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        # Another journal that will cause an error
+        journal2 = month_dir / "life-index_2026-03-02_001.md"
+        journal2.write_text(
+            '---\ntitle: "Error Journal"\ndate: 2026-03-02\ntopic: ["work"]\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+
+        # Mock parse_and_cache_journal to raise an exception for journal2
+        original_parse = mc.parse_and_cache_journal
+        call_count = [0]
+
+        def mock_parse_with_error(conn, file_path):
+            call_count[0] += 1
+            if "2026-03-02" in str(file_path):
+                raise IOError("Simulated IO error")
+            return original_parse(conn, file_path)
+
+        monkeypatch.setattr(mc, "parse_and_cache_journal", mock_parse_with_error)
+
+        invalidate_cache()
+        result = update_cache_for_all_journals()
+
+        assert result["updated"] == 1
+        assert result["errors"] == 1
+
+    def test_update_cache_for_all_journals_skips_non_year_dirs(
+        self, monkeypatch, tmp_path
+    ):
+        """Test update_cache_for_all_journals skips non-year directories"""
+        import tools.lib.metadata_cache as mc
+
+        # Create mock journal directory structure
+        journals_dir = tmp_path / "Journals"
+
+        # Non-year directory (should be skipped)
+        non_year_dir = journals_dir / "notes"
+        non_year_dir.mkdir(parents=True)
+
+        # Valid year directory
+        year_dir = journals_dir / "2026"
+        month_dir = year_dir / "03"
+        month_dir.mkdir(parents=True)
+
+        journal1 = month_dir / "life-index_2026-03-01_001.md"
+        journal1.write_text(
+            '---\ntitle: "Journal"\ndate: 2026-03-01\ntopic: ["work"]\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+
+        invalidate_cache()
+        result = update_cache_for_all_journals()
+
+        assert result["updated"] == 1
+
+    def test_update_cache_for_all_journals_nonexistent_dir(self, monkeypatch, tmp_path):
+        """Test update_cache_for_all_journals when JOURNALS_DIR doesn't exist"""
+        import tools.lib.metadata_cache as mc
+
+        nonexistent = tmp_path / "nonexistent"
+        monkeypatch.setattr(mc, "JOURNALS_DIR", nonexistent)
+
+        invalidate_cache()
+        result = update_cache_for_all_journals()
+
+        assert result["updated"] == 0
+        assert result["skipped"] == 0
+        assert result["errors"] == 0
+
+    def test_update_cache_for_all_journals_skips_non_dir_months(
+        self, monkeypatch, tmp_path
+    ):
+        """Test update_cache_for_all_journals skips non-directory items in year dir (line 362)"""
+        import tools.lib.metadata_cache as mc
+
+        # Create mock journal directory structure
+        journals_dir = tmp_path / "Journals"
+        year_dir = journals_dir / "2026"
+        year_dir.mkdir(parents=True)
+
+        # Create a file (not directory) in year dir - should be skipped
+        non_dir_file = year_dir / "notes.txt"
+        non_dir_file.write_text("some notes", encoding="utf-8")
+
+        # Create valid month directory with journal
+        month_dir = year_dir / "03"
+        month_dir.mkdir()
+
+        journal1 = month_dir / "life-index_2026-03-01_001.md"
+        journal1.write_text(
+            '---\ntitle: "Journal"\ndate: 2026-03-01\ntopic: ["work"]\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+
+        invalidate_cache()
+        result = update_cache_for_all_journals()
+
+        # Should process the valid journal, skip the non-dir file
+        assert result["updated"] == 1
+        assert result["errors"] == 0
+
+
 class TestCachePerformance:
     """Tests for cache performance characteristics"""
 

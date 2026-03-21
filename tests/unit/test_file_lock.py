@@ -333,7 +333,9 @@ class TestFileLockAcquire:
         lock_path = tmp_path / "test.lock"
         lock = FileLock(lock_path)
 
-        with patch.object(lock, "_ensure_lock_file", side_effect=RuntimeError("Unexpected")):
+        with patch.object(
+            lock, "_ensure_lock_file", side_effect=RuntimeError("Unexpected")
+        ):
             with pytest.raises(RuntimeError):
                 lock.acquire()
 
@@ -666,7 +668,7 @@ class TestWithIndexLock:
             assert result == "result"
 
     def test_uses_default_timeout(self):
-        """Should use default timeout of 60.0 seconds"""
+        """Should use default timeout of 120.0 seconds (FILE_LOCK_TIMEOUT_REBUILD)"""
         mock_func = MagicMock()
 
         with patch("tools.lib.file_lock.FileLock") as mock_lock_class:
@@ -677,7 +679,7 @@ class TestWithIndexLock:
 
             mock_lock_class.assert_called_once()
             call_kwargs = mock_lock_class.call_args[1]
-            assert call_kwargs.get("timeout") == 60.0
+            assert call_kwargs.get("timeout") == 120.0
 
     def test_allows_custom_timeout(self):
         """Should allow custom timeout"""

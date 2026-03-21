@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from .l1_index import scan_all_indices, search_l1_index
 from .l2_metadata import search_l2_metadata
 from .l3_content import search_l3_content
-from .semantic import search_semantic
+from .semantic import get_semantic_runtime_status, search_semantic
 from .ranking import merge_and_rank_results, merge_and_rank_results_hybrid
 
 # 导入 logger
@@ -95,8 +95,12 @@ def hierarchical_search(
         "semantic_results": [],
         "merged_results": [],
         "total_found": 0,
+        "semantic_available": semantic,
         "performance": {},
     }
+
+    if not semantic:
+        result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
 
     start_time = time.time()
 
@@ -127,7 +131,9 @@ def hierarchical_search(
 
         result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
         result["total_found"] = len(result["l1_results"])
-        result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+        result["performance"]["total_time_ms"] = round(
+            (time.time() - start_time) * 1000, 2
+        )
         return result
 
     # ── Level 2: 索引 + 元数据（向后兼容，提前返回） ──
@@ -173,7 +179,9 @@ def hierarchical_search(
 
         result["performance"]["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
         result["total_found"] = len(result["l2_results"])
-        result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+        result["performance"]["total_time_ms"] = round(
+            (time.time() - start_time) * 1000, 2
+        )
         return result
 
     # ── Level 3: 双管道并行搜索 ──
@@ -226,7 +234,12 @@ def hierarchical_search(
 
         if query:
             # 处理多关键词：将空格分隔转换为 FTS5 OR 语法
-            if query and " " in query and "OR" not in query.upper() and "AND" not in query.upper():
+            if (
+                query
+                and " " in query
+                and "OR" not in query.upper()
+                and "AND" not in query.upper()
+            ):
                 keywords = [k.strip() for k in query.split() if k.strip()]
                 if len(keywords) > 1:
                     fts_query = " OR ".join(keywords)
@@ -263,7 +276,9 @@ def hierarchical_search(
             # 如果没有 FTS 结果，使用传统文件系统扫描
             if not l3_results:
                 candidate_paths = [r["path"] for r in l1_results + l2_results]
-                l3_results = search_l3_content(query, candidate_paths if candidate_paths else None)
+                l3_results = search_l3_content(
+                    query, candidate_paths if candidate_paths else None
+                )
                 logger.debug(f"File scan found {len(l3_results)} results")
 
         perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)
@@ -279,14 +294,24 @@ def hierarchical_search(
 
     def pipeline_semantic() -> tuple:
         """语义搜索管道"""
-        if not (semantic and query):
-            return [], {}
+        if not semantic:
+            return [], {}, False, "语义搜索已通过 --no-semantic 禁用。"
+        if not query:
+            return [], {}, True, None
+
+        runtime_status = get_semantic_runtime_status()
+        if not runtime_status["available"]:
+            reason = str(runtime_status["reason"])
+            note = str(runtime_status["note"])
+            logger.info(f"语义搜索不可用，降级为纯关键词搜索: {reason}")
+            return [], {"semantic_degraded": reason}, False, note
+
         sem_start = time.time()
         sem_results = search_semantic(query, date_from or "", date_to or "")
         perf = {"semantic_time_ms": round((time.time() - sem_start) * 1000, 2)}
         if sem_results:
             logger.debug(f"Semantic found {len(sem_results)} results")
-        return sem_results, perf
+        return sem_results, perf, True, None
 
     # ── 并行执行双管道 ──
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -302,13 +327,18 @@ def hierarchical_search(
             l2_total_available,
             kw_perf,
         ) = future_keyword.result()
-        semantic_results, sem_perf = future_semantic.result()
+        semantic_results, sem_perf, semantic_available, semantic_note = (
+            future_semantic.result()
+        )
 
     # 填充结果
     result["l1_results"] = l1_results
     result["l2_results"] = l2_results
     result["l3_results"] = l3_results
     result["semantic_results"] = semantic_results
+    result["semantic_available"] = semantic_available
+    if semantic_note:
+        result["semantic_note"] = semantic_note
     if l2_truncated:
         result["l2_truncated"] = True
         result["l2_total_available"] = l2_total_available
@@ -329,7 +359,9 @@ def hierarchical_search(
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
+        result["merged_results"] = merge_and_rank_results(
+            l1_results, l2_results, l3_results, query
+        )
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)

@@ -7,7 +7,7 @@ Life Index - Write Journal Tool - Weather
 import json
 import subprocess
 import sys
-from pathlib import Path
+from typing import Any, Dict
 
 
 def normalize_location(location: str) -> str:
@@ -99,7 +99,7 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
         )
 
         if proc.returncode == 0:
-            output = json.loads(proc.stdout)
+            output: Dict[str, Any] = json.loads(proc.stdout)
             # 提取天气描述（处理嵌套结构）
             if isinstance(output, dict):
                 weather_data = output.get("weather", {})
@@ -127,7 +127,7 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
                 elif isinstance(weather_data, str):
                     return weather_data
                 elif "description" in output:
-                    return output["description"]
+                    return str(output["description"])
         return ""
     except (KeyError, ValueError, TypeError):
         return ""

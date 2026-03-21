@@ -20,6 +20,7 @@ Usage:
 import json
 import logging
 import sys
+from collections.abc import MutableMapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -43,8 +44,9 @@ class JSONFormatter(logging.Formatter):
         }
 
         # 添加额外字段
-        if hasattr(record, "extra_data") and record.extra_data:
-            log_data["data"] = record.extra_data
+        extra_data = getattr(record, "extra_data", None)
+        if extra_data:
+            log_data["data"] = extra_data
 
         # 添加异常信息
         if record.exc_info:
@@ -177,7 +179,9 @@ class LoggerAdapter(logging.LoggerAdapter):
         adapter.info("Processing...", extra_data={"file": "test.md"})
     """
 
-    def process(self, msg: str, kwargs: Dict[str, Any]) -> tuple:
+    def process(
+        self, msg: str, kwargs: MutableMapping[str, Any]
+    ) -> tuple[str, MutableMapping[str, Any]]:
         # 合并额外数据
         extra_data = kwargs.pop("extra_data", {})
         if self.extra:
@@ -193,7 +197,9 @@ class LoggerAdapter(logging.LoggerAdapter):
 _default_logger: Optional[logging.Logger] = None
 
 
-def init_logging(verbose: bool = False, log_file: Optional[Path] = None) -> logging.Logger:
+def init_logging(
+    verbose: bool = False, log_file: Optional[Path] = None
+) -> logging.Logger:
     """
     初始化全局日志配置
 

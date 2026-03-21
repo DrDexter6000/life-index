@@ -4,6 +4,7 @@ Life Index - Search Journals Tool - Semantic
 语义搜索模块
 """
 
+import importlib.util
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -13,7 +14,36 @@ from ..lib.config import USER_DATA_DIR
 from .utils import parse_frontmatter
 
 
-def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[Dict[str, Any]]:
+SEMANTIC_INDEX_PATH = USER_DATA_DIR / ".index" / "vectors_simple.pkl"
+SEMANTIC_MISSING_INDEX_NOTE = "向量索引未建立，请运行 life-index index"
+
+
+def get_semantic_runtime_status() -> Dict[str, str | bool]:
+    """Return whether semantic search can run in the current environment."""
+    if importlib.util.find_spec("fastembed") is None:
+        return {
+            "available": False,
+            "reason": "fastembed dependency is not installed",
+            "note": "fastembed 未安装，当前已降级为关键词搜索。",
+        }
+
+    if not SEMANTIC_INDEX_PATH.exists():
+        return {
+            "available": False,
+            "reason": f"vector index not found: {SEMANTIC_INDEX_PATH}",
+            "note": SEMANTIC_MISSING_INDEX_NOTE,
+        }
+
+    return {
+        "available": True,
+        "reason": "",
+        "note": "",
+    }
+
+
+def search_semantic(
+    query: str, date_from: str = "", date_to: str = ""
+) -> List[Dict[str, Any]]:
     """
     执行语义搜索
 
@@ -25,7 +55,11 @@ def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[
     Returns:
         语义搜索结果列表
     """
-    results = []
+    results: List[Dict[str, Any]] = []
+
+    runtime_status = get_semantic_runtime_status()
+    if not runtime_status["available"]:
+        return results
 
     try:
         # 尝试使用简单向量索引（Windows 兼容）
