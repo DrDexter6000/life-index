@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘 - Life Index{% endblock %}
+
+{% block content %}
+<section class="space-y-8">
+    <header>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 sm:text-4xl">仪表盘</h1>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">浏览你的 Life Index 统计概览。</p>
+    </header>
+
+    <section class="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
+            <p class="text-sm text-gray-500 dark:text-gray-400">总日志数</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stats.total_journals }}</p>
+        </article>
+        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
+            <p class="text-sm text-gray-500 dark:text-gray-400">总字数</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stats.total_words }}</p>
+        </article>
+        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
+            <p class="text-sm text-gray-500 dark:text-gray-400">最长连续记录</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stats.longest_streak }}</p>
+        </article>
+        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
+            <p class="text-sm text-gray-500 dark:text-gray-400">本月日志</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stats.month_journals }}</p>
+        </article>
+    </section>
+
+    <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
+            <h2 class="text-xl font-semibold tracking-tight">那年今日</h2>
+            {% if stats.on_this_day %}
+                <div class="mt-4 space-y-3">
+                    {% for entry in stats.on_this_day %}
+                        <a href="/journal/{{ entry.journal_route_path }}" class="block rounded-lg border border-gray-200 p-4 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                                <h3 class="font-medium">{{ entry.title }}</h3>
+                                <span class="text-sm text-gray-500 dark:text-gray-400 sm:text-right">{{ entry.date }}</span>
+                            </div>
+                            {% if entry.abstract %}
+                                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">{{ entry.abstract }}</p>
+                            {% endif %}
+                        </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">今天还没有历史同日记录，继续写下去，未来会很有意思。</p>
+            {% endif %}
+        </article>
+
+        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
+            <h2 class="text-xl font-semibold tracking-tight">连续记录</h2>
+            <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">当前连续：{{ stats.current_streak }} 天</p>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">里程碑：{{ stats.milestone or 0 }}</p>
+        </article>
+    </section>
+</section>
+{% endblock %}
