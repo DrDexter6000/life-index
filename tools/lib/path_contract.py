@@ -47,8 +47,6 @@ def merge_journal_path_fields(
     """Return payload merged with normalized path fields."""
     result = dict(payload)
     result.update(
-        build_journal_path_fields(
-            file_path, journals_dir=journals_dir, user_data_dir=user_data_dir
-        )
+        build_journal_path_fields(file_path, journals_dir=journals_dir, user_data_dir=user_data_dir)
     )
     return result

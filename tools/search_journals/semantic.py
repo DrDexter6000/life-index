@@ -15,7 +15,6 @@ from ..lib.path_contract import merge_journal_path_fields
 
 from .utils import parse_frontmatter
 
-
 SEMANTIC_INDEX_PATH = USER_DATA_DIR / ".index" / "vectors_simple.pkl"
 SEMANTIC_MISSING_INDEX_NOTE = "向量索引未建立，请运行 life-index index"
 
@@ -43,9 +42,7 @@ def get_semantic_runtime_status() -> Dict[str, str | bool]:
     }
 
 
-def search_semantic(
-    query: str, date_from: str = "", date_to: str = ""
-) -> List[Dict[str, Any]]:
+def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[Dict[str, Any]]:
     """
     执行语义搜索
 

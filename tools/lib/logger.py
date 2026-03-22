@@ -197,9 +197,7 @@ class LoggerAdapter(logging.LoggerAdapter):
 _default_logger: Optional[logging.Logger] = None
 
 
-def init_logging(
-    verbose: bool = False, log_file: Optional[Path] = None
-) -> logging.Logger:
+def init_logging(verbose: bool = False, log_file: Optional[Path] = None) -> logging.Logger:
     """
     初始化全局日志配置
 
