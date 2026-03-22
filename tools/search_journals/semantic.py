@@ -56,10 +56,6 @@ def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[
     """
     results: List[Dict[str, Any]] = []
 
-    runtime_status = get_semantic_runtime_status()
-    if not runtime_status["available"]:
-        return results
-
     try:
         # 尝试使用简单向量索引（Windows 兼容）
         from ..lib.vector_index_simple import get_model, get_index
