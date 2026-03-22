@@ -112,8 +112,7 @@ class DataValidator:
             self.journal_files = [
                 f
                 for f in self.journal_files
-                if not f.name.startswith("monthly_")
-                and not f.name.startswith("yearly_")
+                if not f.name.startswith("monthly_") and not f.name.startswith("yearly_")
             ]
 
         # 收集索引文件
@@ -220,9 +219,7 @@ class DataValidator:
                     )
 
             # 检查序列号连续性
-            match = re.search(
-                r"life-index_(\d{4}-\d{2}-\d{2})_(\d{3})\.md$", journal_file.name
-            )
+            match = re.search(r"life-index_(\d{4}-\d{2}-\d{2})_(\d{3})\.md$", journal_file.name)
             if match:
                 date_part = match.group(1)
                 seq = int(match.group(2))
@@ -293,9 +290,7 @@ class DataValidator:
                         else:
                             # 只有文件名，根据日志日期推断路径
                             # 从日志文件名提取日期: life-index_YYYY-MM-DD_NNN.md
-                            date_match = re.search(
-                                r"(\d{4})-(\d{2})-\d{2}", journal_file.name
-                            )
+                            date_match = re.search(r"(\d{4})-(\d{2})-\d{2}", journal_file.name)
                             if date_match:
                                 year, month = date_match.groups()
                                 att_path = ATTACHMENTS_DIR / year / month / att
@@ -350,10 +345,7 @@ class DataValidator:
                     index_file = BY_TOPIC_DIR / f"主题_{topic}.md"
                     if index_file.exists():
                         content = index_file.read_text(encoding="utf-8")
-                        if (
-                            rel_path.name not in content
-                            and str(rel_path) not in content
-                        ):
+                        if rel_path.name not in content and str(rel_path) not in content:
                             self.result.issues.append(
                                 ValidationIssue(
                                     level="warning",
@@ -475,9 +467,7 @@ def print_report(result: ValidationResult, use_json: bool = False) -> None:
 
         for issue in result.issues:
             cat_name = categories.get(issue.category, issue.category)
-            level_icon = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}.get(
-                issue.level, "•"
-            )
+            level_icon = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}.get(issue.level, "•")
             fixable = " [可自动修复]" if issue.auto_fixable else ""
 
             print(f"{level_icon} [{cat_name}] {issue.message}{fixable}")
@@ -496,14 +486,10 @@ def print_report(result: ValidationResult, use_json: bool = False) -> None:
                 f"   主题分布: {dict(sorted(result.stats['topics'].items(), key=lambda x: -x[1])[:5])}"
             )
         if result.stats.get("projects"):
-            proj_dict = dict(
-                sorted(result.stats["projects"].items(), key=lambda x: -x[1])[:5]
-            )
+            proj_dict = dict(sorted(result.stats["projects"].items(), key=lambda x: -x[1])[:5])
             print(f"   项目分布: {proj_dict}")
         if result.stats.get("monthly_distribution"):
-            print(
-                f"   月度分布: {dict(sorted(result.stats['monthly_distribution'].items()))}"
-            )
+            print(f"   月度分布: {dict(sorted(result.stats['monthly_distribution'].items()))}")
 
     print()
     print("=" * 60)
@@ -521,13 +507,9 @@ python -m tools.dev.validate_data              # 完整校验并打印报告
         """,
     )
 
-    parser.add_argument(
-        "--quick", action="store_true", help="快速模式：仅检查文件数量和基本结构"
-    )
+    parser.add_argument("--quick", action="store_true", help="快速模式：仅检查文件数量和基本结构")
 
-    parser.add_argument(
-        "--fix", action="store_true", help="自动修复可修复的问题（谨慎使用）"
-    )
+    parser.add_argument("--fix", action="store_true", help="自动修复可修复的问题（谨慎使用）")
 
     parser.add_argument("--json", action="store_true", help="JSON格式输出")
 
