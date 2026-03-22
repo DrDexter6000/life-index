@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block title %}写日志 - Life Index{% endblock %}
+
+{% block content %}
+<section class="space-y-6">
+    <header>
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100 sm:text-4xl">写日志</h1>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">记录你的人生瞬间。</p>
+    </header>
+
+    {% if error %}
+    <div class="rounded-xl bg-red-50 p-4 dark:bg-red-900/20">
+        <div class="flex items-center gap-3">
+            <span class="text-xl">⚠️</span>
+            <div>
+                <h3 class="font-medium text-red-900 dark:text-red-100">保存失败</h3>
+                <p class="text-sm text-red-700 dark:text-red-300">{{ error }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <article class="rounded-xl bg-white p-5 shadow dark:bg-gray-800 sm:p-6">
+        <form method="POST" action="/write" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div class="flex flex-col gap-3 border-b border-gray-200 pb-4 dark:border-gray-700 md:flex-row md:items-center">
+                <label for="template" class="text-sm font-medium text-gray-700 dark:text-gray-300">选择模板</label>
+                <select
+                    id="template"
+                    class="template-selector rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                    name="template"
+                    data-templates='{{ templates_json | safe }}'
+                >
+                    {% for item in templates %}
+                    <option value="{{ item.id }}" {% if selected_template == item.id %}selected{% endif %}>{{ item.name }}</option>
+                    {% endfor %}
+                </select>
+                <span class="text-xs text-gray-500 dark:text-gray-400">切换模板将预填内容骨架，不会覆盖你已输入的内容</span>
+            </div>
+
+            <div>
+                <label for="content" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    日志内容 <span class="text-red-500">*</span>
+                </label>
+                <textarea
+                    id="content"
+                    name="content"
+                    rows="12"
+                    required
+                    placeholder="写下你的想法、感受、经历..."
+                    class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3 font-mono text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
+                >{{ content }}</textarea>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">支持 Markdown 格式</p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700 dark:text-gray-300">标题</label>
+                    <input id="title" name="title" type="text" value="{{ title }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ '如不填写，AI 将自动生成标题' if llm_available else '请手动填写' }}</p>
+                </div>
+                <div>
+                    <label for="date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">日期</label>
+                    <input id="date" name="date" type="datetime-local" value="{{ date }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="topic" class="block text-sm font-medium text-gray-700 dark:text-gray-300">主题 {% if not llm_available %}<span class="text-red-500">*</span>{% endif %}</label>
+                    <select id="topic" name="topic" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                        <option value="">请选择主题</option>
+                        <option value="work" {% if topic == 'work' %}selected{% endif %}>工作</option>
+                        <option value="learn" {% if topic == 'learn' %}selected{% endif %}>学习</option>
+                        <option value="health" {% if topic == 'health' %}selected{% endif %}>健康</option>
+                        <option value="relation" {% if topic == 'relation' %}selected{% endif %}>关系</option>
+                        <option value="think" {% if topic == 'think' %}selected{% endif %}>思考</option>
+                        <option value="create" {% if topic == 'create' %}selected{% endif %}>创作</option>
+                        <option value="life" {% if topic == 'life' %}selected{% endif %}>生活</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ '如不填写，AI 将自动判断主题' if llm_available else '请手动填写' }}</p>
+                </div>
+                <div>
+                    <label for="mood" class="block text-sm font-medium text-gray-700 dark:text-gray-300">心情</label>
+                    <input id="mood" name="mood" type="text" value="{{ mood }}" placeholder="多个心情可用逗号分隔" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ '如不填写，AI 将自动感知情绪' if llm_available else '请手动填写' }}</p>
+                </div>
+                <div>
+                    <label for="tags" class="block text-sm font-medium text-gray-700 dark:text-gray-300">标签</label>
+                    <input id="tags" name="tags" type="text" value="{{ tags }}" placeholder="多个标签可用逗号分隔" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ '如不填写，AI 将自动提取标签' if llm_available else '请手动填写' }}</p>
+                </div>
+                <div>
+                    <label for="people" class="block text-sm font-medium text-gray-700 dark:text-gray-300">人物</label>
+                    <input id="people" name="people" type="text" value="{{ people }}" placeholder="多个名字可用逗号分隔" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ '如不填写，AI 将自动识别提及的人物' if llm_available else '请手动填写' }}</p>
+                </div>
+                <div>
+                    <label for="location" class="block text-sm font-medium text-gray-700 dark:text-gray-300">地点</label>
+                    <div class="mt-1 flex flex-col gap-2 sm:flex-row">
+                        <input id="location" name="location" type="text" value="{{ location }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                        <button id="geolocation-btn" type="button" data-idle-text="📍" class="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">📍</button>
+                        <button id="weather-btn" type="button" data-idle-text="查询天气" class="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">查询天气</button>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">如不填写，将使用默认地点并自动查询天气</p>
+                </div>
+                <div>
+                    <label for="weather" class="block text-sm font-medium text-gray-700 dark:text-gray-300">天气</label>
+                    <input id="weather" name="weather" type="text" value="{{ weather }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <p id="weather-status" class="mt-1 text-xs text-gray-500 dark:text-gray-400"></p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">如不填写，将根据地点自动查询</p>
+                </div>
+                <div>
+                    <label for="project" class="block text-sm font-medium text-gray-700 dark:text-gray-300">项目</label>
+                    <input id="project" name="project" type="text" value="{{ project }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">关联项目（可选）</p>
+                </div>
+            </div>
+
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                <h3 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">附件</h3>
+                <div class="mb-4">
+                    <label class="mb-2 block text-sm text-gray-600 dark:text-gray-400">本地文件</label>
+                    <input id="local-file-input" type="file" name="attachments" multiple class="block w-full text-sm text-gray-500 file:mr-4 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/30 dark:file:text-indigo-300">
+                    <p id="selected-files-status" class="mt-2 text-xs text-gray-500 dark:text-gray-400">尚未选择本地文件</p>
+                </div>
+                <div>
+                    <label class="mb-2 block text-sm text-gray-600 dark:text-gray-400">网络文件 URL</label>
+                    <div id="url-inputs" class="space-y-2">
+                        <input type="url" name="attachment_urls" placeholder="https://example.com/image.jpg" class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    </div>
+                    <p id="attachment-status" class="mt-2 text-xs text-gray-500 dark:text-gray-400">可添加多个 URL，留空的输入框会被忽略</p>
+                    <button id="add-url-btn" type="button" class="mt-2 inline-flex min-h-[44px] items-center text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">+ 添加更多 URL</button>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:gap-4">
+                <button id="submit-btn" type="submit" data-idle-text="保存日志" class="min-h-[44px] rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-600">
+                    保存日志
+                </button>
+                <p id="form-status" class="text-xs text-gray-500 dark:text-gray-400"></p>
+                <a href="/" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">取消</a>
+            </div>
+        </form>
+    </article>
+</section>
+
+<script>
+    (() => {
+        const templateSelector = document.querySelector('.template-selector');
+        const contentField = document.getElementById('content');
+        const topicField = document.getElementById('topic');
+        const geolocationBtn = document.getElementById('geolocation-btn');
+        const weatherBtn = document.getElementById('weather-btn');
+        const locationField = document.getElementById('location');
+        const weatherField = document.getElementById('weather');
+        const weatherStatus = document.getElementById('weather-status');
+        const dateField = document.getElementById('date');
+        const localFileInput = document.getElementById('local-file-input');
+        const selectedFilesStatus = document.getElementById('selected-files-status');
+        const attachmentStatus = document.getElementById('attachment-status');
+        const writeForm = document.querySelector('form');
+        const submitBtn = document.getElementById('submit-btn');
+        const formStatus = document.getElementById('form-status');
+        const urlInputs = document.getElementById('url-inputs');
+        const addUrlBtn = document.getElementById('add-url-btn');
+
+        const setButtonBusy = (button, busyText, isBusy) => {
+            if (!button) {
+                return;
+            }
+            const idleText = button.dataset.idleText || button.textContent || '';
+            if (!button.dataset.idleText) {
+                button.dataset.idleText = idleText;
+            }
+            button.disabled = isBusy;
+            button.textContent = isBusy ? busyText : idleText;
+            button.classList.toggle('opacity-50', isBusy);
+            button.classList.toggle('cursor-not-allowed', isBusy);
+        };
+
+        const setWeatherStatus = (message, isError = false) => {
+            if (!weatherStatus) {
+                return;
+            }
+            weatherStatus.textContent = message;
+            weatherStatus.classList.toggle('text-red-600', isError);
+            weatherStatus.classList.toggle('dark:text-red-400', isError);
+            weatherStatus.classList.toggle('text-gray-500', !isError);
+            weatherStatus.classList.toggle('dark:text-gray-400', !isError);
+        };
+
+        const setFormStatus = (message, isError = false) => {
+            if (!formStatus) {
+                return;
+            }
+            formStatus.textContent = message;
+            formStatus.classList.toggle('text-red-600', isError);
+            formStatus.classList.toggle('dark:text-red-400', isError);
+            formStatus.classList.toggle('text-gray-500', !isError);
+            formStatus.classList.toggle('dark:text-gray-400', !isError);
+        };
+
+        const updateSelectedFilesStatus = () => {
+            if (!selectedFilesStatus || !localFileInput) {
+                return;
+            }
+            const count = localFileInput.files ? localFileInput.files.length : 0;
+            selectedFilesStatus.textContent = count > 0 ? `已选择 ${count} 个本地文件` : '尚未选择本地文件';
+        };
+
+        const updateAttachmentStatus = () => {
+            if (!attachmentStatus || !urlInputs) {
+                return;
+            }
+            const urlFields = Array.from(urlInputs.querySelectorAll('input[name="attachment_urls"]'));
+            const filledCount = urlFields.filter((input) => input.value.trim()).length;
+            const totalCount = urlFields.length;
+            attachmentStatus.textContent = filledCount > 0
+                ? `已填写 ${filledCount} 个 URL（共 ${totalCount} 个输入框）`
+                : '可添加多个 URL，留空的输入框会被忽略';
+        };
+
+        const buildUrlInput = () => {
+            const row = document.createElement('div');
+            row.className = 'flex gap-2';
+
+            const input = document.createElement('input');
+            input.type = 'url';
+            input.name = 'attachment_urls';
+            input.placeholder = 'https://example.com/image.jpg';
+            input.className = 'block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100';
+            input.addEventListener('input', updateAttachmentStatus);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'remove-url-btn rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700';
+            removeBtn.textContent = '移除';
+            removeBtn.addEventListener('click', () => {
+                row.remove();
+                if (urlInputs && urlInputs.children.length === 0) {
+                    urlInputs.appendChild(buildUrlInput());
+                }
+                updateAttachmentStatus();
+            });
+
+            row.appendChild(input);
+            row.appendChild(removeBtn);
+            return row;
+        };
+
+        const fetchWeatherForLocation = async () => {
+            const location = locationField ? locationField.value.trim() : '';
+            if (!location || !weatherField) {
+                setWeatherStatus('请先填写地点', true);
+                return false;
+            }
+
+            setButtonBusy(weatherBtn, '正在查询天气...', true);
+            setWeatherStatus('正在查询天气...');
+
+            try {
+                const params = new URLSearchParams({ location });
+                if (dateField && dateField.value) {
+                    params.set('date', dateField.value);
+                }
+
+                const response = await fetch(`/api/weather?${params.toString()}`);
+                const result = await response.json();
+                if (result.success && result.weather) {
+                    weatherField.value = result.weather;
+                    setWeatherStatus('已自动填充天气');
+                    return true;
+                }
+
+                setWeatherStatus(result.error || '天气查询失败，请手动填写', true);
+                return false;
+            } catch {
+                setWeatherStatus('天气查询失败，请手动填写', true);
+                return false;
+            } finally {
+                setButtonBusy(weatherBtn, '正在查询天气...', false);
+            }
+        };
+
+        if (locationField && weatherField) {
+            locationField.addEventListener('input', () => {
+                weatherField.value = '';
+                setWeatherStatus('地点已更新，请重新查询天气');
+            });
+        }
+
+        if (templateSelector && contentField && topicField) {
+            const templates = JSON.parse(templateSelector.dataset.templates || '[]');
+            templateSelector.addEventListener('change', () => {
+                const selected = templates.find((item) => item.id === templateSelector.value);
+                if (!selected) {
+                    return;
+                }
+
+                const existingContent = contentField.value.trim();
+                const existingTopic = topicField.value.trim();
+                if ((existingContent || existingTopic) && !confirm('切换模板可能覆盖未保存内容，是否继续？')) {
+                    return;
+                }
+
+                if (!existingContent) {
+                    contentField.value = selected.content || '';
+                }
+
+                if (!existingTopic && Array.isArray(selected.topic) && selected.topic.length > 0) {
+                    topicField.value = selected.topic[0];
+                }
+            });
+        }
+
+        if (geolocationBtn && locationField) {
+            geolocationBtn.addEventListener('click', () => {
+                if (!navigator.geolocation) {
+                    alert('位置信息获取失败');
+                    return;
+                }
+
+                setButtonBusy(geolocationBtn, '正在定位...', true);
+                setWeatherStatus('正在定位...');
+
+                navigator.geolocation.getCurrentPosition(
+                    async ({ coords }) => {
+                        const fallback = `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+                        try {
+                            const params = new URLSearchParams({
+                                lat: coords.latitude.toString(),
+                                lon: coords.longitude.toString(),
+                            });
+                            const response = await fetch(`/api/reverse-geocode?${params.toString()}`);
+                            const result = await response.json();
+                            locationField.value = result.success && result.location ? result.location : fallback;
+                        } catch {
+                            locationField.value = fallback;
+                        }
+                        if (weatherField) {
+                            weatherField.value = '';
+                        }
+                        await fetchWeatherForLocation();
+                        setButtonBusy(geolocationBtn, '正在定位...', false);
+                    },
+                    () => {
+                        setButtonBusy(geolocationBtn, '正在定位...', false);
+                        setWeatherStatus('位置信息获取失败', true);
+                        alert('位置信息获取失败');
+                    }
+                );
+            });
+        }
+
+        if (weatherBtn) {
+            weatherBtn.addEventListener('click', async () => {
+                const ok = await fetchWeatherForLocation();
+                if (!ok && locationField && !locationField.value.trim()) {
+                    alert('请先填写地点');
+                }
+            });
+        }
+
+        if (addUrlBtn && urlInputs) {
+            addUrlBtn.addEventListener('click', () => {
+                urlInputs.appendChild(buildUrlInput());
+                updateAttachmentStatus();
+            });
+        }
+
+        if (urlInputs) {
+            const existingInputs = Array.from(urlInputs.querySelectorAll('input[name="attachment_urls"]'));
+            existingInputs.forEach((input) => {
+                if (input.parentElement === urlInputs) {
+                    const row = buildUrlInput();
+                    const replacementInput = row.querySelector('input[name="attachment_urls"]');
+                    if (replacementInput) {
+                        replacementInput.value = input.value;
+                    }
+                    input.replaceWith(row);
+                }
+            });
+            updateAttachmentStatus();
+        }
+
+        if (localFileInput) {
+            localFileInput.addEventListener('change', updateSelectedFilesStatus);
+            updateSelectedFilesStatus();
+        }
+
+        if (writeForm && submitBtn) {
+            writeForm.addEventListener('submit', () => {
+                setButtonBusy(submitBtn, '正在保存...', true);
+                setFormStatus('正在保存...');
+            });
+        }
+    })();
+</script>
+{% endblock %}
