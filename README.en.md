@@ -155,7 +155,7 @@ And once you've accumulated enough of "yourself," perhaps one day these records 
 
 # ⚡ Quick Start
 
-## End Users
+## End Users (Base Install)
 
 **Who this is for** — Anyone who just wants their Agent to install and set things up. No code editing required.
 
@@ -167,12 +167,33 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 Requirements:
 1. Read the full document before taking any action
-2. Follow the documented install, initialization, verification, and optional customization steps
+2. Start with the documented local-state detection step, then automatically follow the correct fresh-install, upgrade, or repair path
 3. Use the virtual environment path for all Python/CLI commands
 4. If any step fails, stop immediately and report the exact error
 5. Report back in English using the format specified in the document
 
 ```
+
+## End Users (Optional Web GUI)
+
+**Who this is for** — Anyone who wants their Agent to install Life Index and also set up the local browser interface.
+
+**Copy this to your Agent** — Paste the prompt below into your Agent (OpenClaw, Claude Desktop, Cursor, etc.):
+
+```text
+Please read and follow `AGENT_ONBOARDING_WEB.md` in this repository to complete the full Life Index install, initialization, verification, and local Web GUI verification:
+https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING_WEB.md
+
+Requirements:
+1. Read the full document before taking any action
+2. Start with the documented local-state detection step, then automatically follow the correct fresh-install, upgrade, add-web, or repair path
+3. Use the virtual environment path for all Python/CLI commands
+4. If any step fails, stop immediately and report the exact error
+5. Report back in English using the format specified in the document, including the local Web GUI URL
+
+```
+
+> **Note**: These onboarding documents now begin with local-state detection and will auto-route to the correct fresh-install, upgrade, add-web, or repair path. Ordinary users do not need to classify that manually first.
 
 <details>
 <summary>🔧 Developer Setup (Click to expand)</summary>
@@ -243,6 +264,21 @@ python3 -m venv .venv
 → Windows: Run terminal as Administrator | Linux/macOS: `chmod -R 755 ~/Documents/Life-Index`
 
 </details>
+
+## 🌐 Optional Local Web GUI
+
+If you prefer to browse, search, write, and edit your records in a browser, Life Index also offers an **optional local Web GUI** starting from v1.4.0.
+
+It is not a separate product and it does not replace the Agent-first workflow — it is simply a more visual shell around the same local life archive.
+
+Current pages include:
+- dashboard
+- search
+- write
+- journal
+- edit
+
+If you want that path, use the **Optional Web GUI** Agent prompt above.
 
 ---
 

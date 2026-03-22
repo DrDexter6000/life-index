@@ -11,7 +11,9 @@
 
 Install and initialize Life Index on the user's machine, verify the installation is functional, and complete the first write/search cycle to confirm end-to-end operation.
 
-If the user's request is to upgrade an existing installation rather than perform a fresh install, use `docs/UPGRADE.md` as the primary operational guide instead of treating the task as onboarding.
+This document is now a **smart entrypoint** rather than a fresh-install-only script. Your first job is to detect whether the machine is in a fresh install state, an upgrade state, or a partial/broken state.
+
+If the user explicitly wants the optional local browser interface (Web GUI), use `AGENT_ONBOARDING_WEB.md` as the primary operational guide instead of extending this base onboarding flow ad hoc.
 
 You are acting on behalf of a user. Your job is to execute the installation workflow safely, verify each stage, and report the result back clearly.
 
@@ -19,7 +21,83 @@ Before taking any action, read this entire document once.
 
 ---
 
-## 2. Prerequisites
+## 2. Step 0 — Detect Local State Before Doing Anything
+
+Do **not** clone, recreate `.venv`, or write a first journal until you complete this detection gate.
+
+### Step 0.1: Check user data first (highest priority)
+
+Check whether the user already has Life Index data:
+
+- `~/Documents/Life-Index/`
+- `~/Documents/Life-Index/Journals/`
+- any existing journal files under `Journals/YYYY/MM/*.md`
+
+**Rule**:
+- If real journal data already exists, treat the machine as **not fresh install** unless strong evidence proves otherwise.
+- Protect user data first. Do not assume it is safe to restart from zero.
+
+### Step 0.2: Check repo / venv state
+
+Check whether the current working directory already contains:
+
+- a Life Index repository checkout (`SKILL.md`, `pyproject.toml`)
+- `.venv/`
+- an existing editable install or reachable `life-index` CLI
+
+### Step 0.3: Run health if a usable install might exist
+
+If `.venv` exists, or if `life-index` already appears to be installed, try a health check using the venv CLI path first.
+
+### Step 0.4: Decide the route
+
+Use these rules:
+
+#### Route A — Fresh Install
+
+Choose **Fresh Install** only if all of the following are true:
+
+- no existing journal data is found
+- no reliable existing repo/venv installation is found
+- there is no sign of a partial prior install worth preserving
+
+If Fresh Install is selected, continue with the normal onboarding steps in this document.
+
+#### Route B — Upgrade Existing Install
+
+Choose **Upgrade** if any of the following are true:
+
+- existing journal data is found
+- a working repo + `.venv` already exists
+- `life-index health` can run on an existing install
+
+If Upgrade is selected, stop following this onboarding flow and switch to `docs/UPGRADE.md` as the primary operational guide.
+
+#### Route C — Repair / Ambiguous State
+
+Choose **Repair / Ambiguous** if signals conflict, for example:
+
+- journal data exists but repo/venv is missing
+- `.venv` exists but `life-index health` fails badly
+- repo exists but install looks partial or broken
+
+If Repair / Ambiguous is selected:
+
+1. do **not** pretend this is a clean fresh install
+2. use `docs/UPGRADE.md` as the repair baseline
+3. if the state is still unclear after basic inspection, ask the user before doing destructive cleanup
+
+### Step 0.5: Version is only a supporting signal
+
+If you can identify the installed version, use it only to understand whether the machine is behind the current repository version.
+
+Do **not** use version alone to classify fresh install vs upgrade.
+
+---
+
+## 3. Prerequisites
+
+---
 
 Before starting, verify these requirements are met:
 
@@ -34,14 +112,14 @@ Before starting, verify these requirements are met:
 
 ---
 
-## 3. Repository Location
+## 4. Repository Location
 
 - **Primary**: `https://github.com/DrDexter6000/life-index`
 - **Clone target**: User-specified skill directory, or current working directory if unspecified
 
 ---
 
-## 4. Installation Steps
+## 5. Installation Steps
 
 Execute these steps in order. Do not skip steps.
 
@@ -108,7 +186,7 @@ python3 -m venv .venv
 
 ---
 
-## 5. Virtual Environment Usage Rules
+## 6. Virtual Environment Usage Rules
 
 **CRITICAL**: All subsequent commands MUST use the venv Python/CLI, not system Python.
 
@@ -121,7 +199,7 @@ python3 -m venv .venv
 
 ---
 
-## 6. Windows Path Preference
+## 7. Windows Path Preference
 
 On Windows, the path separator is backslash (`\`), not forward slash (`/`). The executable directory is `Scripts`, not `bin`.
 
@@ -130,7 +208,7 @@ On Windows, the path separator is backslash (`\`), not forward slash (`/`). The 
 
 ---
 
-## 7. Initialization Workflow
+## 8. Initialization Workflow
 
 Execute these steps in order. Each step must succeed before proceeding.
 
