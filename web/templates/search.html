@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}搜索 - Life Index{% endblock %}
+
+{% block content %}
+<section class="space-y-6">
+    <header>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 sm:text-4xl">搜索日志</h1>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">通过关键词、主题或日期查找你的人生记录。</p>
+    </header>
+
+    <section class="rounded-xl bg-white p-5 shadow dark:bg-gray-800 sm:p-6">
+        <form
+            hx-get="/search"
+            hx-target="#search-results"
+            hx-trigger="submit"
+            hx-indicator="#search-indicator"
+            class="space-y-4"
+        >
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center md:flex-row">
+                <div class="flex-1">
+                    <label for="q" class="block text-sm font-medium text-gray-700 dark:text-gray-300">搜索关键词</label>
+                    <input
+                        type="text"
+                        id="q"
+                        name="q"
+                        value="{{ query }}"
+                        placeholder="输入关键词、标签或心情..."
+                        class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
+                    >
+                </div>
+                <div class="w-full sm:w-48 md:w-48">
+                    <label for="topic" class="block text-sm font-medium text-gray-700 dark:text-gray-300">主题</label>
+                    <select
+                        id="topic"
+                        name="topic"
+                        class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                    >
+                        <option value="">全部主题</option>
+                        <option value="work" {% if topic == 'work' %}selected{% endif %}>工作</option>
+                        <option value="learn" {% if topic == 'learn' %}selected{% endif %}>学习</option>
+                        <option value="health" {% if topic == 'health' %}selected{% endif %}>健康</option>
+                        <option value="relation" {% if topic == 'relation' %}selected{% endif %}>关系</option>
+                        <option value="think" {% if topic == 'think' %}selected{% endif %}>思考</option>
+                        <option value="create" {% if topic == 'create' %}selected{% endif %}>创作</option>
+                        <option value="life" {% if topic == 'life' %}selected{% endif %}>生活</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center md:flex-row">
+                <div class="flex-1">
+                    <label for="date_from" class="block text-sm font-medium text-gray-700 dark:text-gray-300">开始日期</label>
+                    <input
+                        type="date"
+                        id="date_from"
+                        name="date_from"
+                        value="{{ date_from }}"
+                        class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                    >
+                </div>
+                <div class="flex-1">
+                    <label for="date_to" class="block text-sm font-medium text-gray-700 dark:text-gray-300">结束日期</label>
+                    <input
+                        type="date"
+                        id="date_to"
+                        name="date_to"
+                        value="{{ date_to }}"
+                        class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                    >
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                <button
+                    type="submit"
+                    class="min-h-[44px] rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                >
+                    搜索
+                </button>
+                <span id="search-indicator" class="htmx-indicator text-sm text-gray-500 dark:text-gray-400">
+                    搜索中...
+                </span>
+            </div>
+        </form>
+    </section>
+
+    <div id="search-results">
+        {% include "partials/search_results.html" %}
+    </div>
+</section>
+{% endblock %}
