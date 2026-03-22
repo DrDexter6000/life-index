@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from .config import JOURNALS_DIR, USER_DATA_DIR
+from .path_contract import build_journal_path_fields
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -95,16 +96,17 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
                 # 处理列表格式
                 if value.startswith("[") and value.endswith("]"):
                     value = [
-                        v.strip().strip("\"'")
-                        for v in value[1:-1].split(",")
-                        if v.strip()
+                        v.strip().strip("\"'") for v in value[1:-1].split(",") if v.strip()
                     ]  # type: ignore
 
                 metadata[key] = value
 
         # 构建可索引文档
+        path_fields = build_journal_path_fields(
+            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        )
         doc = {
-            "path": str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/"),
+            "path": path_fields["rel_path"],
             "title": metadata.get("title", ""),
             "content": body,
             "date": metadata.get("date", "")[:10],
@@ -114,9 +116,7 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
             "project": metadata.get("project", ""),
             "tags": _normalize_to_str(metadata.get("tags")),
             "file_hash": get_file_hash(file_path),
-            "modified_time": datetime.fromtimestamp(
-                file_path.stat().st_mtime
-            ).isoformat(),
+            "modified_time": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
         }
 
         return doc
@@ -194,9 +194,7 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
                         continue
 
                     for journal_file in month_dir.glob("life-index_*.md"):
-                        rel_path = str(journal_file.relative_to(USER_DATA_DIR)).replace(
-                            "\\", "/"
-                        )
+                        rel_path = str(journal_file.relative_to(USER_DATA_DIR)).replace("\\", "/")
                         current_files.add(rel_path)
 
                         # 检查是否需要更新

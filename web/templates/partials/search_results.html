@@ -1,0 +1,88 @@
+{# HTMX partial for search results - no extends, just the results content #}
+
+{% if error %}
+    <div class="rounded-xl bg-red-50 p-5 dark:bg-red-900/20 sm:p-6">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl">⚠️</span>
+            <div>
+                <h3 class="font-medium text-red-900 dark:text-red-100">搜索出错</h3>
+                <p class="text-sm text-red-700 dark:text-red-300">{{ error }}</p>
+            </div>
+        </div>
+    </div>
+{% elif results is defined and results %}
+    <div class="space-y-4">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                共找到 <span class="font-medium text-gray-900 dark:text-gray-100">{{ total_found }}</span> 条结果
+                {% if time_ms > 0 %}
+                    <span class="text-gray-400 dark:text-gray-500">（{{ "%.2f"|format(time_ms) }} 毫秒）</span>
+                {% endif %}
+            </p>
+        </div>
+
+        <div class="space-y-3">
+            {% for item in results %}
+                <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 transition-shadow hover:shadow-md dark:bg-gray-800 sm:p-6">
+                    <a href="/journal/{{ item.journal_route_path }}" class="block">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                            <div class="flex-1">
+                                <h3 class="font-medium tracking-tight text-gray-900 hover:text-indigo-600 dark:text-gray-100 dark:hover:text-indigo-400">
+                                    {{ item.title or '无标题' }}
+                                </h3>
+                                {% if item.date %}
+                                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ item.date }}</p>
+                                {% endif %}
+                            </div>
+                            {% if item.score is defined and item.score is not none %}
+                                <span class="min-h-[44px] text-xs text-gray-400 dark:text-gray-500 sm:text-right">相关度: {{ "%.3f"|format(item.score) }}</span>
+                            {% endif %}
+                        </div>
+
+                        {% if item.abstract %}
+                            <p class="mt-3 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{{ item.abstract }}</p>
+                        {% endif %}
+
+                        {% if item.mood or item.tags or item.topic %}
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                {% for mood in item.mood or [] %}
+                                    <span class="rounded-full bg-pink-100 px-2 py-1 text-xs text-pink-700 dark:bg-pink-900/30 dark:text-pink-300">{{ mood }}</span>
+                                {% endfor %}
+                                {% for tag in item.tags or [] %}
+                                    <span class="rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{{ tag }}</span>
+                                {% endfor %}
+                                {% for topic in item.topic or [] %}
+                                    <span class="rounded-full bg-green-100 px-2 py-1 text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300">{{ topic }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        {% if item.highlight %}
+                            <div class="mt-3 rounded-lg bg-gray-50 p-3 dark:bg-gray-700/50">
+                                <p class="text-sm text-gray-600 dark:text-gray-300">{{ item.highlight | safe }}</p>
+                            </div>
+                        {% endif %}
+                    </a>
+                </article>
+            {% endfor %}
+        </div>
+    </div>
+{% elif query %}
+    {# Empty state - searched but no results #}
+    <div class="rounded-xl bg-gray-50 p-6 text-center dark:bg-gray-800/50 sm:p-8">
+        <span class="text-4xl">🔍</span>
+        <h3 class="mt-4 font-medium text-gray-900 dark:text-gray-100">未找到相关日志</h3>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            尝试使用不同的关键词，或调整筛选条件
+        </p>
+    </div>
+{% else %}
+    {# Initial state - no search performed yet #}
+    <div class="rounded-xl bg-gray-50 p-6 text-center dark:bg-gray-800/50 sm:p-8">
+        <span class="text-4xl">🔍</span>
+        <h3 class="mt-4 font-medium text-gray-900 dark:text-gray-100">开始搜索日志</h3>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            输入关键词查找你的人生记录
+        </p>
+    </div>
+{% endif %}

@@ -9,6 +9,7 @@ import tempfile
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+from unittest.mock import patch
 
 from tools.lib.metadata_cache import (
     init_metadata_cache,
@@ -102,7 +103,7 @@ class TestMetadataCache:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT title FROM metadata_cache WHERE file_path = ?",
-                (str(test_file),),
+                (str(test_file).replace("\\", "/"),),
             )
             row = cursor.fetchone()
             assert row is not None
@@ -333,19 +334,138 @@ class TestInvalidateCacheSpecificFile:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT COUNT(*) FROM metadata_cache WHERE file_path = ?",
-                (str(test_file1),),
+                (str(test_file1).replace("\\", "/"),),
             )
             count1 = cursor.fetchone()[0]
             assert count1 == 0
 
             cursor.execute(
                 "SELECT COUNT(*) FROM metadata_cache WHERE file_path = ?",
-                (str(test_file2),),
+                (str(test_file2).replace("\\", "/"),),
             )
             count2 = cursor.fetchone()[0]
             assert count2 == 1
         finally:
             conn.close()
+
+    def test_get_cached_metadata_reads_legacy_backslash_path_row(self, tmp_path):
+        """Legacy Windows-style cache rows remain readable after normalization rollout."""
+        journals_dir = tmp_path / "Journals"
+        journal_file = journals_dir / "2026" / "03" / "legacy.md"
+        journal_file.parent.mkdir(parents=True)
+        journal_file.write_text(
+            '---\ntitle: "Legacy Row"\ndate: 2026-03-13\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        with (
+            patch("tools.lib.metadata_cache.USER_DATA_DIR", tmp_path),
+            patch("tools.lib.metadata_cache.JOURNALS_DIR", journals_dir),
+        ):
+            conn = init_metadata_cache()
+            try:
+                mtime, size = get_file_signature(journal_file)
+                legacy_path = str(journal_file)
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO metadata_cache
+                    (file_path, date, title, location, weather, topic, project,
+                     tags, mood, people, abstract, file_mtime, file_size)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        legacy_path,
+                        "2026-03-13",
+                        "Legacy Row",
+                        "",
+                        "",
+                        "[]",
+                        "",
+                        "[]",
+                        "[]",
+                        "[]",
+                        "",
+                        mtime,
+                        size,
+                    ),
+                )
+                conn.commit()
+
+                result = get_cached_metadata(conn, journal_file)
+            finally:
+                conn.close()
+
+        assert result is not None
+        assert result["title"] == "Legacy Row"
+        assert result["file_path"] == str(journal_file).replace("\\", "/")
+        assert result["rel_path"] == "Journals/2026/03/legacy.md"
+
+    def test_invalidate_cache_removes_legacy_backslash_path_row(self, tmp_path):
+        """Specific-file invalidation removes old cache rows stored with legacy separators."""
+        invalidate_cache()
+
+        journals_dir = tmp_path / "Journals"
+        journal_file = journals_dir / "2026" / "03" / "legacy_delete.md"
+        journal_file.parent.mkdir(parents=True)
+        journal_file.write_text(
+            '---\ntitle: "Legacy Delete"\ndate: 2026-03-13\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        conn = init_metadata_cache()
+        try:
+            mtime, size = get_file_signature(journal_file)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO metadata_cache
+                (file_path, date, title, location, weather, topic, project,
+                 tags, mood, people, abstract, file_mtime, file_size)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(journal_file),
+                    "2026-03-13",
+                    "Legacy Delete",
+                    "",
+                    "",
+                    "[]",
+                    "",
+                    "[]",
+                    "[]",
+                    "[]",
+                    "",
+                    mtime,
+                    size,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        invalidate_cache(journal_file)
+
+        conn = init_metadata_cache()
+        try:
+            cursor = conn.cursor()
+            normalized = str(journal_file).replace("\\", "/")
+            legacy = str(journal_file)
+            if legacy == normalized:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM metadata_cache WHERE file_path = ?",
+                    (normalized,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM metadata_cache WHERE file_path IN (?, ?)",
+                    (normalized, legacy),
+                )
+            remaining = cursor.fetchone()[0]
+        finally:
+            conn.close()
+
+        assert remaining == 0
 
 
 class TestUpdateCacheForAllJournals:
@@ -607,6 +727,8 @@ class TestCachePerformance:
         cache_time = time.time() - start
 
         # Both should return same result
+        assert result1 is not None
+        assert result2 is not None
         assert result1["title"] == result2["title"]
 
         # Cache should be faster (typically 10-100x)

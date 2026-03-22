@@ -53,9 +53,7 @@ class LockTimeoutError(TimeoutError):
     def __init__(self, lock_path: str, timeout: float):
         self.lock_path = lock_path
         self.timeout = timeout
-        super().__init__(
-            f"Could not acquire lock on '{lock_path}' within {timeout:.1f} seconds"
-        )
+        super().__init__(f"Could not acquire lock on '{lock_path}' within {timeout:.1f} seconds")
 
 
 class LockAcquisitionError(OSError):
@@ -128,15 +126,17 @@ class FileLock:
         """Acquire lock on Unix systems using fcntl."""
         import fcntl
 
+        fcntl_module: Any = fcntl
+
         assert self._file_handle is not None
 
         if blocking and self.timeout is not None:
             start_time = time.time()
-            flags = fcntl.LOCK_EX | fcntl.LOCK_NB  # type: ignore[attr-defined]
+            flags = fcntl_module.LOCK_EX | fcntl_module.LOCK_NB
 
             while True:
                 try:
-                    fcntl.flock(self._file_handle, flags)  # type: ignore[attr-defined]
+                    fcntl_module.flock(self._file_handle, flags)
                     return True
                 except (IOError, OSError) as e:
                     if e.errno not in (11, 35):  # EAGAIN, EWOULDBLOCK
@@ -148,12 +148,12 @@ class FileLock:
 
                     time.sleep(self.poll_interval)
 
-        flags = fcntl.LOCK_EX  # type: ignore[attr-defined]
+        flags = fcntl_module.LOCK_EX
         if not blocking:
-            flags |= fcntl.LOCK_NB  # type: ignore[attr-defined]
+            flags |= fcntl_module.LOCK_NB
 
         try:
-            fcntl.flock(self._file_handle, flags)  # type: ignore[attr-defined]
+            fcntl_module.flock(self._file_handle, flags)
             return True
         except (IOError, OSError) as e:
             if not blocking and e.errno in (11, 35):  # EAGAIN, EWOULDBLOCK
@@ -164,12 +164,16 @@ class FileLock:
         """Release lock on Unix systems using fcntl."""
         import fcntl
 
+        fcntl_module: Any = fcntl
+
         assert self._file_handle is not None
-        fcntl.flock(self._file_handle, fcntl.LOCK_UN)  # type: ignore[attr-defined]
+        fcntl_module.flock(self._file_handle, fcntl_module.LOCK_UN)
 
     def _acquire_windows(self, blocking: bool = True) -> bool:
         """Acquire lock on Windows using msvcrt."""
         import msvcrt
+
+        msvcrt_module: Any = msvcrt
 
         assert self._file_handle is not None
 
@@ -180,7 +184,7 @@ class FileLock:
                 start_time = time.time()
                 while True:
                     try:
-                        msvcrt.locking(self._file_handle, msvcrt.LK_NBLCK, 1)
+                        msvcrt_module.locking(self._file_handle, msvcrt_module.LK_NBLCK, 1)
                         return True
                     except OSError:
                         # Check timeout
@@ -191,7 +195,7 @@ class FileLock:
                         time.sleep(self.poll_interval)
             else:
                 # Non-blocking
-                msvcrt.locking(self._file_handle, msvcrt.LK_NBLCK, 1)
+                msvcrt_module.locking(self._file_handle, msvcrt_module.LK_NBLCK, 1)
                 return True
         except OSError:
             return False
@@ -200,11 +204,13 @@ class FileLock:
         """Release lock on Windows using msvcrt."""
         import msvcrt
 
+        msvcrt_module: Any = msvcrt
+
         assert self._file_handle is not None
 
         # Seek to beginning and unlock
         os.lseek(self._file_handle, 0, os.SEEK_SET)
-        msvcrt.locking(self._file_handle, msvcrt.LK_UNLCK, 1)
+        msvcrt_module.locking(self._file_handle, msvcrt_module.LK_UNLCK, 1)
 
     def acquire(self, blocking: bool = True) -> bool:
         """

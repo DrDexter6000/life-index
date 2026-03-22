@@ -5,10 +5,12 @@ Life Index - Search Journals Tool - L1 Index
 """
 
 import re
+from pathlib import Path
 from typing import Any, Dict, List
 
 # 导入配置 (relative imports from tools/lib)
-from ..lib.config import BY_TOPIC_DIR, USER_DATA_DIR, PROJECT_ROOT
+from ..lib.config import BY_TOPIC_DIR, USER_DATA_DIR, JOURNALS_DIR
+from ..lib.path_contract import merge_journal_path_fields
 
 
 def scan_all_indices() -> List[Dict[str, Any]]:
@@ -33,18 +35,19 @@ def scan_all_indices() -> List[Dict[str, Any]]:
             matches = re.findall(pattern, content)
 
             for date_str, title, path in matches:
-                full_path = str(USER_DATA_DIR / path)
-                if full_path not in seen_paths:
-                    seen_paths.add(full_path)
-                    results.append(
-                        {
-                            "date": date_str,
-                            "title": title,
-                            "path": full_path,
-                            "rel_path": path,
-                            "source": "index:all",
-                        }
-                    )
+                normalized = merge_journal_path_fields(
+                    {
+                        "date": date_str,
+                        "title": title,
+                        "source": "index:all",
+                    },
+                    USER_DATA_DIR / Path(path),
+                    journals_dir=JOURNALS_DIR,
+                    user_data_dir=USER_DATA_DIR,
+                )
+                if normalized["path"] not in seen_paths:
+                    seen_paths.add(normalized["path"])
+                    results.append(normalized)
         except (OSError, IOError):
             continue
 
@@ -80,15 +83,17 @@ def search_l1_index(query_type: str, query_value: str) -> List[Dict[str, Any]]:
     matches = re.findall(pattern, content)
 
     for date_str, title, path in matches:
-        full_path = PROJECT_ROOT / path
         results.append(
-            {
-                "date": date_str,
-                "title": title,
-                "path": str(full_path),
-                "rel_path": path,
-                "source": f"index:{query_type}={query_value}",
-            }
+            merge_journal_path_fields(
+                {
+                    "date": date_str,
+                    "title": title,
+                    "source": f"index:{query_type}={query_value}",
+                },
+                USER_DATA_DIR / Path(path),
+                journals_dir=JOURNALS_DIR,
+                user_data_dir=USER_DATA_DIR,
+            )
         )
 
     return results

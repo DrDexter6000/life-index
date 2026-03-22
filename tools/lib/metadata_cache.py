@@ -16,15 +16,32 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from .config import JOURNALS_DIR, USER_DATA_DIR
 from .frontmatter import parse_journal_file
+from .path_contract import build_journal_path_fields
 
 # 缓存存储目录
 CACHE_DIR = USER_DATA_DIR / ".cache"
 METADATA_DB_PATH = CACHE_DIR / "metadata_cache.db"
+METADATA_CACHE_REBUILD_HINT = (
+    "如发现旧缓存路径格式导致的异常，可执行 `life-index index --rebuild` 进行重建。"
+)
 
 # 内存缓存（进程生命周期）
 _memory_cache: Dict[str, Any] = {}
 _memory_cache_timestamp: float = 0
 _memory_cache_ttl: int = 60  # 内存缓存TTL（秒）
+
+
+def _candidate_cache_keys(file_path: Path) -> List[str]:
+    """Return normalized and legacy cache keys for backward compatibility."""
+    normalized = build_journal_path_fields(
+        file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+    )["path"]
+    legacy = str(file_path)
+
+    keys = [normalized]
+    if legacy != normalized:
+        keys.append(legacy)
+    return keys
 
 
 def init_metadata_cache() -> sqlite3.Connection:
@@ -104,9 +121,7 @@ def is_cache_valid(file_path: Path, cached_mtime: float, cached_size: int) -> bo
     return current_mtime == cached_mtime and current_size == cached_size
 
 
-def parse_and_cache_journal(
-    conn: sqlite3.Connection, file_path: Path
-) -> Optional[Dict[str, Any]]:
+def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
     """解析日志并更新缓存"""
     try:
         # 解析日志文件
@@ -118,7 +133,10 @@ def parse_and_cache_journal(
         mtime, size = get_file_signature(file_path)
 
         # 提取可过滤字段
-        file_path_str = str(file_path)
+        path_fields = build_journal_path_fields(
+            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        )
+        file_path_str = path_fields["path"]
         date = metadata.get("date", "")[:10] if metadata.get("date") else ""
         title = metadata.get("title", "")
         location = metadata.get("location", "")
@@ -162,6 +180,8 @@ def parse_and_cache_journal(
 
         return {
             "file_path": file_path_str,
+            "rel_path": path_fields["rel_path"],
+            "journal_route_path": path_fields["journal_route_path"],
             "date": date,
             "title": title,
             "location": location,
@@ -179,15 +199,18 @@ def parse_and_cache_journal(
         return None
 
 
-def get_cached_metadata(
-    conn: sqlite3.Connection, file_path: Path
-) -> Optional[Dict[str, Any]]:
+def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
     """从缓存获取元数据（如果有效）"""
     cursor = conn.cursor()
+    candidate_keys = _candidate_cache_keys(file_path)
 
-    cursor.execute(
-        "SELECT * FROM metadata_cache WHERE file_path = ?", (str(file_path),)
-    )
+    if len(candidate_keys) == 1:
+        cursor.execute("SELECT * FROM metadata_cache WHERE file_path = ?", (candidate_keys[0],))
+    else:
+        cursor.execute(
+            "SELECT * FROM metadata_cache WHERE file_path IN (?, ?)",
+            (candidate_keys[0], candidate_keys[1]),
+        )
 
     row = cursor.fetchone()
     if row is None:
@@ -198,8 +221,12 @@ def get_cached_metadata(
         return None
 
     # 转换为字典
+    normalized_fields = build_journal_path_fields(
+        row["file_path"], journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+    )
     return {
-        "file_path": row["file_path"],
+        "file_path": normalized_fields["path"],
+        **normalized_fields,
         "date": row["date"],
         "title": row["title"],
         "location": row["location"],
@@ -263,9 +290,15 @@ def get_all_cached_metadata(
 
         results = []
         for row in cursor.fetchall():
+            normalized_fields = build_journal_path_fields(
+                row["file_path"],
+                journals_dir=JOURNALS_DIR,
+                user_data_dir=USER_DATA_DIR,
+            )
             results.append(
                 {
-                    "file_path": row["file_path"],
+                    "file_path": normalized_fields["path"],
+                    **normalized_fields,
                     "date": row["date"],
                     "title": row["title"],
                     "location": row["location"],
@@ -304,9 +337,17 @@ def invalidate_cache(file_path: Optional[Path] = None) -> None:
     try:
         cursor = conn.cursor()
         if file_path:
-            cursor.execute(
-                "DELETE FROM metadata_cache WHERE file_path = ?", (str(file_path),)
-            )
+            candidate_keys = _candidate_cache_keys(file_path)
+            if len(candidate_keys) == 1:
+                cursor.execute(
+                    "DELETE FROM metadata_cache WHERE file_path = ?",
+                    (candidate_keys[0],),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM metadata_cache WHERE file_path IN (?, ?)",
+                    (candidate_keys[0], candidate_keys[1]),
+                )
         else:
             cursor.execute("DELETE FROM metadata_cache")
         conn.commit()
@@ -336,6 +377,7 @@ def get_cache_stats() -> Dict[str, Any]:
             "db_size_mb": round(db_size / (1024 * 1024), 2),
             "last_update": last_update,
             "cache_path": str(METADATA_DB_PATH),
+            "rebuild_hint": METADATA_CACHE_REBUILD_HINT,
         }
     finally:
         conn.close()

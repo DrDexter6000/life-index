@@ -10,9 +10,10 @@ from typing import Any, Dict, List
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.config import USER_DATA_DIR
+from ..lib.config import JOURNALS_DIR
+from ..lib.path_contract import merge_journal_path_fields
 
 from .utils import parse_frontmatter
-
 
 SEMANTIC_INDEX_PATH = USER_DATA_DIR / ".index" / "vectors_simple.pkl"
 SEMANTIC_MISSING_INDEX_NOTE = "向量索引未建立，请运行 life-index index"
@@ -41,9 +42,7 @@ def get_semantic_runtime_status() -> Dict[str, str | bool]:
     }
 
 
-def search_semantic(
-    query: str, date_from: str = "", date_to: str = ""
-) -> List[Dict[str, Any]]:
+def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[Dict[str, Any]]:
     """
     执行语义搜索
 
@@ -56,10 +55,6 @@ def search_semantic(
         语义搜索结果列表
     """
     results: List[Dict[str, Any]] = []
-
-    runtime_status = get_semantic_runtime_status()
-    if not runtime_status["available"]:
-        return results
 
     try:
         # 尝试使用简单向量索引（Windows 兼容）
@@ -78,13 +73,16 @@ def search_semantic(
                     vec_data = index.get(path)
                     date_str = vec_data.get("date", "") if vec_data else ""
                     results.append(
-                        {
-                            "path": str(USER_DATA_DIR / path),
-                            "rel_path": path,
-                            "date": date_str,
-                            "similarity": round(score, 4),
-                            "source": "semantic",
-                        }
+                        merge_journal_path_fields(
+                            {
+                                "date": date_str,
+                                "similarity": round(score, 4),
+                                "source": "semantic",
+                            },
+                            USER_DATA_DIR / Path(path),
+                            journals_dir=JOURNALS_DIR,
+                            user_data_dir=USER_DATA_DIR,
+                        )
                     )
     except (OSError, IOError, ImportError):
         # 语义搜索失败时返回空列表（可能是模型未安装或文件读取失败）

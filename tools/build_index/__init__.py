@@ -20,6 +20,7 @@ from ..lib.search_index import (
     update_index as update_fts_index,
     get_stats as get_fts_stats,
 )
+from ..lib.metadata_cache import get_cache_stats
 from ..lib.file_lock import FileLock, LockTimeoutError, get_index_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.logger import get_logger
@@ -47,6 +48,7 @@ def build_all(
         "fts": None,
         "vector": None,
         "duration_seconds": 0.0,
+        "rebuild_hint": "",
     }
 
     import time
@@ -150,6 +152,8 @@ def build_all(
         )
 
     result["duration_seconds"] = round(time.time() - start_time, 2)
+    cache_stats = get_cache_stats()
+    result["rebuild_hint"] = cache_stats.get("rebuild_hint", "")
     logger.info(f"Completed in {result['duration_seconds']}s")
 
     return result
@@ -179,9 +183,7 @@ def show_stats() -> None:
             logger.info("  Exists: Yes")
             logger.info(f"  Vectors: {vec_stats['total_vectors']}")
             logger.info(f"  Size: {vec_stats['db_size_mb']} MB")
-            logger.info(
-                f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}"
-            )
+            logger.info(f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}")
         else:
             # sqlite-vec exists but empty, try simple index
             raise ImportError("sqlite-vec empty, trying simple index")
@@ -207,6 +209,16 @@ def show_stats() -> None:
         logger.info(f"  Size: {round(total_size / (1024 * 1024), 2)} MB")
     else:
         logger.info("  Not created yet")
+
+    logger.info("\n🗂 Metadata Cache:")
+    cache_stats = get_cache_stats()
+    logger.info(f"  Entries: {cache_stats['total_entries']}")
+    logger.info(f"  Size: {cache_stats['db_size_mb']} MB")
+    logger.info(f"  Path: {cache_stats['cache_path']}")
+    if cache_stats["last_update"]:
+        logger.info(f"  Last Updated: {cache_stats['last_update']}")
+    if cache_stats.get("rebuild_hint"):
+        logger.info(f"  Hint: {cache_stats['rebuild_hint']}")
 
     logger.info("=" * 50)
 
