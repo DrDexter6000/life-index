@@ -314,6 +314,34 @@ class TestBuildAll:
         assert isinstance(result["duration_seconds"], (int, float))
         assert result["duration_seconds"] >= 0
 
+    @patch("tools.build_index.get_index_lock_path")
+    @patch("tools.build_index.FileLock")
+    @patch("tools.build_index.update_fts_index")
+    def test_build_all_includes_rebuild_hint(
+        self, mock_update_fts, mock_file_lock, mock_lock_path
+    ):
+        """Build results should surface rebuild guidance for historical cache format cleanup."""
+        mock_lock_path.return_value = Path("/tmp/test.lock")
+        mock_lock = MagicMock()
+        mock_file_lock.return_value = mock_lock
+        mock_lock.__enter__ = MagicMock(return_value=mock_lock)
+        mock_lock.__exit__ = MagicMock(return_value=False)
+
+        mock_update_fts.return_value = {"success": True, "added": 0}
+
+        with patch("tools.lib.semantic_search.get_model") as mock_model:
+            mock_model.return_value.load.return_value = False
+            with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
+                with patch(
+                    "tools.lib.vector_index_simple.get_model"
+                ) as mock_simple_model:
+                    mock_simple_model.return_value.load.return_value = False
+
+                    result = build_all()
+
+        assert "rebuild_hint" in result
+        assert "life-index index --rebuild" in result["rebuild_hint"]
+
 
 class TestShowStats:
     """Tests for show_stats function"""
@@ -492,6 +520,47 @@ class TestShowStats:
                 show_stats()
 
         mock_cache_dir.exists.assert_called()
+
+    @patch("tools.build_index.get_model_cache_dir")
+    @patch("tools.build_index.get_fts_stats")
+    @patch("tools.build_index.get_cache_stats")
+    def test_show_stats_logs_metadata_cache_rebuild_hint(
+        self, mock_cache_stats, mock_fts_stats, mock_cache_dir_getter
+    ):
+        """Stats output should surface metadata cache rebuild guidance."""
+        mock_fts_stats.return_value = {
+            "exists": True,
+            "total_documents": 5,
+            "db_size_mb": 0.1,
+            "last_updated": None,
+        }
+        mock_cache_stats.return_value = {
+            "total_entries": 10,
+            "db_size_mb": 0.2,
+            "last_update": "2026-03-14T10:00:00",
+            "cache_path": "C:/tmp/metadata_cache.db",
+            "rebuild_hint": "如发现旧缓存路径格式导致的异常，可执行 `life-index index --rebuild` 进行重建。",
+        }
+
+        mock_cache_dir = MagicMock()
+        mock_cache_dir.exists.return_value = False
+        mock_cache_dir_getter.return_value = mock_cache_dir
+
+        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
+            mock_vec.return_value = {
+                "exists": True,
+                "total_vectors": 5,
+                "model_loaded": False,
+                "db_size_mb": 0.1,
+            }
+            with patch("tools.build_index.logger") as mock_logger:
+                show_stats()
+
+        logged = "\n".join(
+            str(call.args[0]) for call in mock_logger.info.call_args_list
+        )
+        assert "metadata cache" in logged.lower()
+        assert "life-index index --rebuild" in logged
 
 
 class TestIntegration:
