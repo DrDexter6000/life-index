@@ -18,6 +18,30 @@
 
 ---
 
+## [2026-03-22] v1.4.0 — Web GUI delivery-ready handoff
+
+**决策**: 将 Web GUI 从 MVP 实现推进到可交付状态，并完成真实浏览器主链路 walkthrough 验证。
+
+**核心变更**:
+- 新增完整 Web GUI 交互层：dashboard / journal / search / write / edit 页面全部落地
+- 新增 Web 写入主链路：本地附件上传、URL 附件下载桥接、写作模板、metadata smart-fill、success/warning surfacing
+- 新增 Web 编辑主链路：编辑页、`/api/weather`、`/api/reverse-geocode`、location/weather 前端闭环
+- 新增多轮产品 polish：weather/loading feedback、attachment UX、responsive/layout consistency、visual hierarchy/touch-target refinement、base/nav/writing closeout
+- 修复真实浏览器 walkthrough 暴露的主链路缺陷：`/write` 空 `attachments` 422、search results `score=None` 模板渲染 500
+- 新增专项验证：URL download unit tests、CSRF contract tests、aggregated web regression、真实 Playwright walkthrough
+
+**升级说明**:
+- 这是 **minor release**：新增大量用户可见功能，但不要求迁移日志、附件或配置
+- 推荐升级后执行：`life-index index`
+- 仅当 health 或搜索验证异常时，再执行：`python -m tools.build_index --rebuild`
+- 如果需要使用 Web GUI，请重新安装带 web 依赖的环境：Windows 下建议执行 `.venv\Scripts\pip install -e .[web]`
+
+**验证状态**:
+- aggregated Web regression 已通过
+- 真实 Playwright walkthrough 已打通：write → journal → edit → search → dashboard reload
+
+---
+
 ## [2026-03-20] v1.3.0 — 工程加固
 
 **决策**: 基于 CTO 架构评审（v1.2.0），完成 CI 加固、覆盖率保护、搜索降级和集成测试。

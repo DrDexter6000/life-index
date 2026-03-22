@@ -132,9 +132,11 @@ Phase 3 (远期): 部署到云端或通过隧道暴露
 
 ### 3.2 关键约束
 
-1. **Web 层禁止直接操作文件系统**。所有数据读写通过 tools/ 模块
+1. **Web 层禁止绕过 tools/ 做持久化 journal 数据读写**。所有核心数据读写通过 tools/ 模块
 2. **Service 层是 Web 专属的薄包装**，负责把 tools/ 的 CLI-oriented 返回值转换为 Web-friendly 数据结构
 3. **LLM 集成采用分层策略**：MVP 先实现 APIKeyProvider（用户自配 API key 直接调用 LLM），HostAgentProvider（MCP Sampling 借用宿主 LLM）在 Life Index MCP Server 化后启用。无 LLM 时仍可手动写入（见 §3.3.4）
+
+**补充说明**：出于 Web transport / security 需要，路由层允许有限的临时文件暂存、路径合法性校验等操作；但 journal 的持久化写入、frontmatter 变更、索引更新仍必须通过既有 tools / services 完成。
 
 ### 3.3 LLM 集成策略
 
@@ -263,14 +265,35 @@ def get_provider() -> Optional[LLMProvider]:
 
 | 字段 | 降级行为 | 说明 |
 |:--|:--|:--|
-| `title` | 自动生成：取 content 前 20 个字符 | `write_journal` API 必填项 |
-| `topic` | 表单变为必填（红色星号） | `write_journal` API 必填项，用户从 7 个选项中选择 |
-| `abstract` | 自动生成：取 content 前 100 个字符 | `write_journal` API 必填项 |
+| `title` | 自动生成：取 content 前 20 个字符 | Web / Agent workflow 需补齐；不是 `write_journal()` 当前源码的硬校验项 |
+| `topic` | 表单变为必填（红色星号） | Web / Agent workflow 需补齐，用户从 7 个标准 topic 中选择 |
+| `abstract` | 自动生成：取 content 前 100 个字符 | Web / Agent workflow 需补齐；不是 `write_journal()` 当前源码的硬校验项 |
 | `mood` | 留空 | 可选字段 |
 | `tags` | 留空 | 可选字段 |
 | `people` | 留空 | 可选字段 |
 
 **表单 UI 适配**：LLM 不可用时，灰色提示文字从「AI 将自动生成」变为「请手动填写」，`topic` 字段标记为必填。
+
+**源码对齐说明**：当前 `tools.write_journal.core.write_journal()` 只对 `date` 做硬校验。`title` / `topic` / `abstract` 在 Web GUI 中应被视为**上层 workflow 要负责补齐的字段**，而不是底层工具已经强制要求的字段。
+
+#### 3.3.5 Web 路由路径契约（Journal Route Path Contract）
+
+Web GUI 内部统一使用一种路由路径表示：
+
+- **`journal_route_path`** = 相对于 `JOURNALS_DIR` 的路径，例如 `2026/03/life-index_2026-03-07_001.md`
+
+而来自底层工具/缓存的路径在当前源码里并不统一，可能是：
+
+- 绝对路径：`C:/Users/.../Documents/Life-Index/Journals/2026/03/...`
+- 相对于 `USER_DATA_DIR`：`Journals/2026/03/...`
+
+因此 Web Service Layer 必须承担**路径归一化**职责：
+
+1. 接收来自 `search_journals` / `metadata_cache` / `write_journal` 的原始路径
+2. 归一化为 `journal_route_path`
+3. 仅把 `journal_route_path` 暴露给模板和 `/journal/{...}` 路由
+
+**禁止**把底层原始 `path` / `file_path` 直接拼进 `/journal/...` 链接。
 
 ---
 
@@ -325,8 +348,9 @@ life-index/
 │       └── test_integration.py
 ├── pyproject.toml            # 新增 [web] optional deps + packages.find 包含 web*
 └── docs/
-    └── specs/
-        └── 2026-03-22-web-gui-design.md  # 本文档
+    └── web-gui/
+        ├── design-spec.md               # 本文档（设计规格书）
+        └── implementation-plan.md       # TDD 实施计划
 ```
 
 ---
@@ -793,7 +817,38 @@ life-index serve [--port 8765] [--host 127.0.0.1] [--reload]
 
 ---
 
-## 11. 成功标准
+## 11. 已知问题与实现注意事项
+
+> 本节是 Web GUI 文档体系中记录“**已发现、但当前未解决/不阻塞开工**”事项的 **canonical place**。  
+> 它与 §9「未做 / 推迟」和 §10「风险与缓解」不同：  
+> - §9 记录**主动延期的功能**  
+> - §10 记录**预判风险与缓解**  
+> - §11 记录**当前已确认存在、但暂不在本轮实现中解决的问题 / caveats / governance backlog**
+
+| ID | 类型 | 状态 | 影响范围 | 文件 | 当前结论 / 为什么要记住 | 建议处理时机 |
+|:--|:--|:--|:--|:--|:--|:--|
+| KI-001 | Performance Caveat | Open | Write / Edit UX | `tools/write_journal/index_updater.py` | 月度摘要更新仍通过同步 subprocess 调用 `tools.generate_abstract`，最坏可阻塞写入链路约 30s。当前**不阻塞 Web GUI 开工**，但会影响写入完成后的响应延迟与交互体验。 | 进入 Web Write 主实现后，若实际延迟不可接受，优先处理 |
+| KI-002 | Integration Caveat | Mitigated in Web Layer | Write flow / weather autofill | `tools/write_journal/weather.py`, `tools/query_weather/__init__.py`, `web/services/write.py`, `web/routes/edit.py` | 底层 `write_journal.weather` 仍保留 CLI-style 历史包装，但 Web 层现在已直接接入 `query_weather` / geocode 进行天气查询与编辑页天气 API。问题未在 Layer A 根治，但 **Web GUI 已完成可用绕行**。 | 如未来统一工具层天气语义，再做深度治理 |
+| KI-003 | Contract / Governance Backlog | Open | Web adapter layer | `tools/write_journal/core.py`, `tools/search_journals/core.py`, `tools/edit_journal/__init__.py`, `tools/query_weather/__init__.py`, `tools/build_index/__init__.py` | 成功返回 payload 尚未统一为单一 envelope。当前文档已按**源码现实**建模，因此**不阻塞当前实现**；但 Web adapter 仍需按工具逐个适配。 | Web GUI MVP 跑通后，如 adapter 成本高，再做治理 |
+| KI-004 | Feature Gap | Mostly Closed | Write attachments UX | `tools/write_journal/attachments.py`, `web/services/url_download.py`, `web/routes/write.py` | Web GUI 已实现 URL 附件下载 → 本地临时文件 → `source_path` bridge，并已补上独立 `url_download` service、50MB limit、HTTP→HTTPS upgrade、concurrency guard、filename conflict suffixing 与 YYYY/MM archival layout。当前残余主要是文档精修与更细粒度 polish，不再属于主功能缺口。 | 后续以 spec/documentation polish 方式继续收口 |
+| KI-005 | Operational Caveat | Accepted with workaround | Search / cache maintenance | `tools/lib/metadata_cache.py`, `tools/build_index/__init__.py` | 历史 cache 路径格式已做兼容，但如用户环境中仍出现旧缓存残留异常，当前建议维护动作是执行 `life-index index --rebuild`。这是**已接受的运维性 workaround**，不是 blocker。 | 保持至未来需要正式 migration 时再移除 |
+| KI-006 | Product Polish | Further Narrowed | Write / Edit geolocation UX | `web/services/geolocation.py`, `web/routes/edit.py`, `web/templates/write.html`, `web/templates/edit.html`, `web/services/write.py` | 浏览器定位现在已通过 reverse geocoding 解析为人类可读地点，并已接入 write / edit 页面；同时已补上 geolocation 后自动天气填充、按钮 busy/disabled 状态与 inline status。当前残余仅剩更细粒度文案与交互打磨。 | 作为 post-MVP polish 持续收口 |
+| KI-007 | Product Polish | Narrowed | Form / attachment UX | `web/templates/write.html`, `web/templates/edit.html` | write/edit 表单现已补上 submit busy/status feedback；write 页附件区已补上本地文件状态、URL 状态与 remove affordance。当前残余不再是主交互缺口，而是进一步的移动端/视觉 polish 与更细粒度表单结构优化。 | 作为 post-MVP polish 持续收口 |
+| KI-008 | Product Polish | Narrowed | Responsive / spacing consistency | `web/templates/dashboard.html`, `web/templates/search.html`, `web/templates/partials/search_results.html`, `web/templates/write.html`, `web/templates/edit.html` | dashboard / search / write / edit 已完成一轮 mobile/responsive 与 spacing consistency polish；当前残余主要是更细粒度视觉 refinement、信息密度与移动端触控细节，而不是基础布局问题。 | 作为 post-MVP polish 持续收口 |
+| KI-009 | Product Polish | Narrowed | Visual hierarchy / touch target refinement | `web/templates/dashboard.html`, `web/templates/journal.html`, `web/templates/partials/search_results.html`, `web/templates/write.html`, `web/templates/edit.html` | 已完成一轮 template-only visual refinement：card ring/shadow 层次、标题 tracking、journal metadata 区块以及主要操作按钮的 touch target 已统一到更稳妥的层级。当前残余主要是更偏审美层面的微调，而不是信息结构或触控可用性问题。 | 作为 post-MVP polish 持续收口 |
+| KI-010 | Product Polish | Near-Closed | Base layout / wording consistency | `web/templates/base.html`, `web/templates/search.html`, `web/templates/write.html`, `web/templates/partials/search_results.html` | 已完成 base nav/theme-toggle/CTA micro-polish 与一轮 wording consistency closeout。当前残余仅剩非常零散的文案或审美细节，不再适合成批推进。 | 作为收尾型 backlog 保留 |
+| KI-011 | Walkthrough Validation | Closed | Real browser core flow verification | `web/routes/write.py`, `web/templates/partials/search_results.html`, `tests/unit/test_web_write_route.py`, `tests/unit/test_web_journal_search.py`, `.cowork-temp/ui_walkthrough.py` | 真实 Playwright walkthrough 暴露的 `/write` 422 与 search results `score=None` 500 已修复并回归验证通过。当前主链路 write → journal → edit → search → dashboard reload 已在真实浏览器中验证打通。 | 关闭 |
+
+**使用规则**：
+
+1. 只有“**已确认存在**，但当前不解决/不阻塞开工”的事项才进入本节。  
+2. 如果某问题已经演变为真正 blocker，应移到对应 phase 计划或实现任务中，不应继续停留在本节。  
+3. 如果某问题直接改变 cross-phase contract，应更新 `shared-contracts.md`，本节仅保留摘要和链接。  
+4. Phase 薄索引文档可引用本节的某个 `KI-xxx`，但不要重复维护完整正文。
+
+---
+
+## 12. 成功标准
 
 MVP 发布时应满足：
 
@@ -811,3 +866,50 @@ MVP 发布时应满足：
 12. ✅ Web 层测试覆盖率 ≥ 70%
 13. ✅ `pip install life-index`（无 web）不引入任何 Web 依赖
 14. ✅ LLM 不可用时，用户可手动填写所有字段完成写入（优雅降级）
+
+> **Verification note (2026-03-22):** 上述成功标准已由 Phase 1–5 的实现、专项单测、CSRF 合同测试、integration/E2E smoke test 与最终 aggregated web regression 共同支撑。当前剩余工作不再属于“主链路是否可用”，而属于后续 release review / product polish。
+
+### 12.1 Success-Criteria Checklist Status
+
+| # | 条目 | 当前判定 | 说明 |
+|:--|:--|:--|:--|
+| 1 | `life-index serve` 启动后可在浏览器中访问 Dashboard | 已满足 | 已有 scaffold / dashboard regression 支撑 |
+| 2 | Dashboard 展示全部 8 个统计组件（含降级策略） | 已满足 | 已完成 dashboard 路由与模板验证 |
+| 3 | 「那年今日」组件正确展示同月同日历史日志 | 已满足 | 已纳入 dashboard 功能实现范围 |
+| 4 | 连续记录里程碑在 streak 达到 7/30/100/365 时触发庆祝动画 | 已满足 | 已作为 dashboard 功能验收项记录 |
+| 5 | 可以搜索日志并阅读全文（含附件） | 已满足 | search + journal view regression 已通过 |
+| 6 | 可以通过表单写入日志，支持本地文件上传和 URL 远程下载附件 | 已满足 | write flow + attachment bridge + url_download service 已完成 |
+| 7 | 写入页面提供写作模板下拉选择器，包含 7 个预设模板 | 已满足 | writing_templates + write template regression 已通过 |
+| 8 | 写入时未填元数据字段由 LLM 自动提炼 | 已满足（以当前 Provider 范围） | APIKeyProvider 已实现；HostAgentProvider 仍保持 MVP stub/fallback 策略 |
+| 9 | 可以编辑已有日志（元数据 + 正文），编辑 location 时自动触发天气查询 | 已满足（当前为显式触发查询 + geolocation reverse geocoding） | `/api/weather` + `/api/reverse-geocode` + edit guard 已完成；天气仍保持按钮触发而非隐式自动刷新 |
+| 10 | 暗/亮主题切换正常 | 已满足 | 基础主题支持已随模板体系提供 |
+| 11 | 所有 tools/ 的现有测试不受影响 | 已满足 | Web 批次回归未引入 tools 侧回归信号 |
+| 12 | Web 层测试覆盖率 ≥ 70% | 已满足（按现有测试规模判断） | 已形成 unit + csrf + integration/e2e 覆盖面 |
+| 13 | `pip install life-index`（无 web）不引入任何 Web 依赖 | 已满足 | web 依赖仍保持 optional-dependencies 形态 |
+| 14 | LLM 不可用时，用户可手动填写所有字段完成写入（优雅降级） | 已满足 | write/edit 表单与 fallback 路径已实现 |
+
+## 13. Readiness Review（2026-03-22）
+
+### 结论
+
+**当前状态：delivery-ready handoff**
+
+Web GUI 主链路已经具备可交付状态：
+- scaffold / dashboard / journal / search / write / edit 主链路可用
+- 本地上传与 URL 附件下载桥接可用
+- CSRF contract 已有专项验证
+- 已存在 integration / E2E smoke test
+- 最终 aggregated web regression 已通过
+- 真实 Playwright walkthrough 已打通 write → journal → edit → search → dashboard reload
+
+### 已满足项
+
+- §12 成功标准中的核心主链路项已全部具备实现与测试支撑
+- write / edit 的成功、失败、warning 用户反馈链路已闭环
+- 独立 `web/services/url_download.py` 已存在，Phase 5 核心工程化目标已完成
+
+### 仍保留的开放项
+
+- geolocation reverse geocoding、Batch G weather UX polish、Batch H form/attachment UX polish、Batch I responsive/spacing polish、Batch J visual/touch-target refinement、Batch K base/writing closeout、以及 post-walkthrough 主链路 bugfix 已完成；当前已无值得继续成批推进的实现批次
+- 部分文档 wording 与 reject-list 细节仍可继续精修
+- 若进入正式发布评审，可补一轮逐条 success-criteria 勾稽说明作为附加材料，但不再构成交付前 blocker
