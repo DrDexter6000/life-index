@@ -1,12 +1,14 @@
 # Life Index Web GUI — Design Spec
 
-> **Version**: Draft v1.4
+> **Version**: v1.4.0 design reference
 > **Date**: 2026-03-22
-> **Status**: Draft
+> **Status**: Released reference document
 > **Author**: Brainstorming session (User + Sisyphus)
 > **Review**: v1.0 review → v1.1 (9 fixes); v1.2 adds Write smart-fill, URL attachments, Edit page, LLM Mode A+; v1.3 fixes 2 MAJOR + 7 MINOR from Oracle/Momus review (HostAgentProvider IPC mechanism, ADR-005 strengthened, Content-Type validation, degradation strategy, E07xx error codes, etc.); v1.4 adds 3 MVP features from brainstorm (那年今日、写作模板、连续记录里程碑) + deferred features table rewrite
 
 ---
+
+> **Post-release note (2026-03-22):** Web GUI 已随 `v1.4.0` 发布。本文件继续作为设计参考保留；任何未进入实际已发布范围的增强项，应转入 `docs/web-gui/post-v1.4-backlog.md` 继续规划，而不是再视为当前 release closeout 工作。
 
 ## 1. 动机与背景
 
