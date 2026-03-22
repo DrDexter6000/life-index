@@ -28,6 +28,7 @@ from config import (
     EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG,
     get_model_cache_dir,
 )
+from path_contract import build_journal_path_fields
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -255,7 +256,9 @@ def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
 
         combined_text = " ".join(text_parts)
 
-        rel_path = str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/")
+        rel_path = build_journal_path_fields(
+            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        )["rel_path"]
         date_str = metadata.get("date", "")[:10]
 
         return (rel_path, combined_text, date_str)

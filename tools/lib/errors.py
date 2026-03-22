@@ -4,7 +4,7 @@ Life Index - Structured Error Codes Module
 Provides structured error codes for Agent to take different strategies.
 
 Error Code Format: E{module}{type}
-- Module: 00=general, 01=file, 02=write, 03=search, 04=weather, 05=edit, 06=index
+- Module: 00=general, 01=file, 02=write, 03=search, 04=weather, 05=edit, 06=index, 07=web
 - Type: 00-99 specific error types
 
 **SSOT Note**: Error codes are documented in docs/API.md.
@@ -41,6 +41,7 @@ class ErrorCode:
         04 - Weather API
         05 - Journal edit operations
         06 - Index operations
+        07 - Web GUI operations
     """
 
     # ========== General Errors (00xx) ==========
@@ -91,6 +92,16 @@ class ErrorCode:
     INDEX_CORRUPTED = "E0601"
     VECTOR_STORE_ERROR = "E0602"
     FTS_INDEX_ERROR = "E0603"
+
+    # ========== Web Module (07xx) ==========
+    WEB_GENERAL_ERROR = "E0700"
+    URL_DOWNLOAD_FAILED = "E0701"
+    URL_CONTENT_TYPE_REJECTED = "E0702"
+    LLM_PROVIDER_UNAVAILABLE = "E0703"
+    LLM_EXTRACTION_FAILED = "E0704"
+    GEOLOCATION_FAILED = "E0705"
+    NOMINATIM_UNAVAILABLE = "E0706"
+    WEB_DEPS_MISSING = "E0707"
 
 
 class LifeIndexError(Exception):
@@ -147,6 +158,15 @@ class LifeIndexError(Exception):
         # Lock errors: Retry or ask user
         ErrorCode.LOCK_TIMEOUT: "retry",
         ErrorCode.LOCK_ACQUISITION_FAILED: "retry",
+        # Web errors
+        ErrorCode.WEB_GENERAL_ERROR: "ask_user",
+        ErrorCode.URL_DOWNLOAD_FAILED: "skip_optional",
+        ErrorCode.URL_CONTENT_TYPE_REJECTED: "ask_user",
+        ErrorCode.LLM_PROVIDER_UNAVAILABLE: "skip_optional",
+        ErrorCode.LLM_EXTRACTION_FAILED: "skip_optional",
+        ErrorCode.GEOLOCATION_FAILED: "skip_optional",
+        ErrorCode.NOMINATIM_UNAVAILABLE: "skip_optional",
+        ErrorCode.WEB_DEPS_MISSING: "fail",
     }
 
     def __init__(
@@ -231,6 +251,15 @@ ERROR_DESCRIPTIONS = {
     ErrorCode.INDEX_CORRUPTED: "Index is corrupted",
     ErrorCode.VECTOR_STORE_ERROR: "Vector store error",
     ErrorCode.FTS_INDEX_ERROR: "FTS index error",
+    # Web
+    ErrorCode.WEB_GENERAL_ERROR: "Web GUI general error",
+    ErrorCode.URL_DOWNLOAD_FAILED: "URL attachment download failed",
+    ErrorCode.URL_CONTENT_TYPE_REJECTED: "URL file type not in allowed list",
+    ErrorCode.LLM_PROVIDER_UNAVAILABLE: "All LLM providers unavailable",
+    ErrorCode.LLM_EXTRACTION_FAILED: "LLM metadata extraction failed",
+    ErrorCode.GEOLOCATION_FAILED: "Browser geolocation failed",
+    ErrorCode.NOMINATIM_UNAVAILABLE: "Nominatim reverse geocoding failed",
+    ErrorCode.WEB_DEPS_MISSING: "Web GUI dependencies not installed",
 }
 
 
