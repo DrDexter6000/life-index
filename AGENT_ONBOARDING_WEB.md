@@ -41,6 +41,14 @@ Check whether there is already:
 - `.venv/`
 - a reachable `life-index` CLI
 
+#### Host-managed canonical checkout rule
+
+If the host Agent platform provides a canonical skill-install directory, prefer that managed checkout.
+
+If that canonical checkout exists, reuse it. Do **not** create or keep validating a duplicate checkout under a generic workspace path unless the canonical path is unavailable and the user explicitly approves a different location.
+
+If multiple Life Index checkouts are detected, do **not** create another one. Report the duplicate-checkout state and prefer the host-managed canonical checkout or the user-designated checkout for repair/upgrade work.
+
 If `.venv` exists or the CLI appears installed, prefer the venv path and run `life-index health`.
 
 ### Step 0.3: Check Web capability only after base signals
@@ -91,6 +99,7 @@ Choose this if signals conflict, for example:
 - journal data exists but repo/venv is missing
 - `.venv` exists but base health fails badly
 - Web dependencies look partial or broken
+- multiple competing Life Index checkouts exist and the active one is unclear
 
 If selected:
 
@@ -199,6 +208,14 @@ Use the venv CLI path.
 - If output says `Web GUI dependencies not installed`, return to the install step and reinstall with `.[web]`
 - If port 8765 is already in use, either stop the conflicting process or retry with another localhost port and record it in the final report
 
+### Step 5.1b: Keep the result truthful
+
+For Web onboarding, the user should either be able to open the GUI immediately after onboarding, or be told explicitly that the server is no longer running.
+
+Do **not** claim “the Web GUI is running” unless it is still reachable after your task ends.
+
+If you only verified startup transiently, report that verification succeeded but provide exact restart instructions instead of claiming the service is still live.
+
 ---
 
 ### Step 5.2: Verify the Health Endpoint
@@ -227,6 +244,31 @@ With the server running, verify the Web health endpoint.
 
 ---
 
+### Step 5.2b: Verify the Homepage, not just the API
+
+After `/api/health` succeeds, also verify the homepage:
+
+**Linux/macOS/WSL**:
+```bash
+.venv/bin/python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8765/'); print(r.status)"
+```
+
+**Windows**:
+```powershell
+.venv\Scripts\python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8765/'); print(r.status)"
+```
+
+### Success Criteria
+
+- Request returns HTTP 200 for `/`
+- This confirms the user-facing GUI shell is reachable, not only the API
+
+### Failure Handling
+
+- If `/api/health` works but `/` fails, do **not** report success; report that the Web API is alive but the user-facing GUI is not yet verified
+
+---
+
 ### Step 5.3: Record the Local Access URL
 
 Record the final local URL for the user:
@@ -236,6 +278,13 @@ http://127.0.0.1:8765
 ```
 
 If you had to use another port, report the actual URL.
+
+Also report whether the server is:
+
+- still running now
+- or already stopped, with the exact restart command
+
+If the server is still running, also tell the user how to stop it.
 
 ---
 
@@ -254,7 +303,11 @@ Your final report to the user must clearly separate:
 - whether Web dependencies installed successfully
 - whether `life-index serve` started successfully
 - whether `/api/health` responded successfully
+- whether `/` responded successfully
 - the exact local URL to open in a browser
+- whether the server is still running at report time
+- the exact command to restart it
+- the exact command to stop it
 
 ### If Anything Failed
 
@@ -270,7 +323,7 @@ This document verifies that the Web GUI is **installed and reachable**.
 
 It does **not** require you to perform a full browser walkthrough of dashboard / search / write / edit unless the user explicitly asks for that extra validation.
 
-For onboarding, successful base verification + successful `serve` startup + successful `/api/health` is sufficient.
+For onboarding, successful base verification + successful `serve` startup + successful `/api/health` + successful `/` reachability is the minimum acceptable Web verification.
 
 ---
 

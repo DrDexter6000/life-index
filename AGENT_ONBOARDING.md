@@ -45,6 +45,12 @@ Check whether the current working directory already contains:
 - `.venv/`
 - an existing editable install or reachable `life-index` CLI
 
+#### Host-managed canonical checkout rule
+
+If the host Agent platform already manages skills in a canonical directory, prefer that managed checkout over ad hoc working-directory clones.
+
+If you discover multiple Life Index checkouts, do **not** silently pick a random one and do **not** create a third clone. Prefer the host-managed canonical checkout or the user-designated checkout, and if the active install location is still ambiguous, report the conflict and ask the user before cleanup.
+
 ### Step 0.3: Run health if a usable install might exist
 
 If `.venv` exists, or if `life-index` already appears to be installed, try a health check using the venv CLI path first.
@@ -70,6 +76,7 @@ Choose **Upgrade** if any of the following are true:
 - existing journal data is found
 - a working repo + `.venv` already exists
 - `life-index health` can run on an existing install
+- a host-managed canonical checkout already exists
 
 If Upgrade is selected, stop following this onboarding flow and switch to `docs/UPGRADE.md` as the primary operational guide.
 
@@ -129,7 +136,16 @@ Execute these steps in order. Do not skip steps.
 - Fall back to the standard repository-driven path in this document: `git clone` → `python -m venv .venv` → `pip install -e .` → `life-index index` → verification.
 - Prefer the documented repository workflow over undocumented host-platform behavior.
 
+**Canonical Path Guardrail**:
+- If the host platform already manages a canonical skill checkout, do **not** create a duplicate checkout in a generic workspace root.
+- Reuse and repair the canonical checkout first.
+- If no canonical checkout exists, either use the user-specified target directory or the platform's documented skill-install location.
+
 ### Step 4.1: Clone Repository
+
+If the host platform provides a documented canonical skill-install directory and no managed checkout exists yet, clone into that location.
+
+Otherwise use the generic form below:
 
 ```bash
 git clone --depth 1 https://github.com/DrDexter6000/life-index.git <target-directory>/life-index
