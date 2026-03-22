@@ -58,10 +58,6 @@ attachments/
 vector_store/
 fts_index/
 
-# ----- 开发专用工具（不上传 GitHub）-----
-# 这些工具仅开发使用，发布时排除
-tools/dev/
-
 # ----- 开发阶段文档 -----
 docs/.dev-archive/
 
