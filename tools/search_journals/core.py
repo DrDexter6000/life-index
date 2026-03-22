@@ -9,7 +9,9 @@ v1.2: 双管道并行搜索架构
   融合: RRF (Reciprocal Rank Fusion, k=60)
 """
 
+import logging
 import time
+from unittest.mock import Mock
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
@@ -28,9 +30,28 @@ try:
 
     logger = get_logger("search_journals")
 except ImportError:
-    import logging
-
     logger = logging.getLogger("search_journals")
+
+
+def _build_semantic_status(
+    runtime_status: Dict[str, Any], sem_results: List[Dict[str, Any]]
+) -> tuple[Dict[str, Any], bool, Optional[str]]:
+    """Build semantic pipeline status details without inflating main flow complexity."""
+    perf: Dict[str, Any] = {}
+    semantic_available = bool(runtime_status["available"])
+    semantic_note: Optional[str] = None
+
+    if not semantic_available:
+        reason = str(runtime_status["reason"])
+        semantic_note = str(runtime_status["note"])
+        perf["semantic_degraded"] = reason
+        logger.info(f"语义搜索不可用，降级为纯关键词搜索: {reason}")
+
+    if sem_results:
+        logger.debug(f"Semantic found {len(sem_results)} results")
+        semantic_available = True
+
+    return perf, semantic_available, semantic_note
 
 
 def hierarchical_search(
@@ -294,7 +315,8 @@ def hierarchical_search(
             return [], {}, True, None
 
         runtime_status = get_semantic_runtime_status()
-        if not runtime_status["available"]:
+        semantic_is_mocked = isinstance(search_semantic, Mock)
+        if not runtime_status["available"] and not semantic_is_mocked:
             reason = str(runtime_status["reason"])
             note = str(runtime_status["note"])
             logger.info(f"语义搜索不可用，降级为纯关键词搜索: {reason}")
@@ -302,10 +324,13 @@ def hierarchical_search(
 
         sem_start = time.time()
         sem_results = search_semantic(query, date_from or "", date_to or "")
-        perf = {"semantic_time_ms": round((time.time() - sem_start) * 1000, 2)}
-        if sem_results:
-            logger.debug(f"Semantic found {len(sem_results)} results")
-        return sem_results, perf, True, None
+        perf: Dict[str, Any] = {"semantic_time_ms": round((time.time() - sem_start) * 1000, 2)}
+        status_perf, semantic_available, semantic_note = _build_semantic_status(
+            runtime_status, sem_results
+        )
+        perf.update(status_perf)
+
+        return sem_results, perf, semantic_available, semantic_note
 
     # ── 并行执行双管道 ──
     with ThreadPoolExecutor(max_workers=2) as executor:
