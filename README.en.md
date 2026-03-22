@@ -159,6 +159,8 @@ And once you've accumulated enough of "yourself," perhaps one day these records 
 
 **Who this is for** — Anyone who just wants their Agent to install and set things up. No code editing required.
 
+> If your Agent platform already manages a canonical skill-install directory or checkout, prefer reusing it instead of creating a duplicate checkout in a generic workspace root.
+
 **Copy this to your Agent** — Paste the prompt below into your Agent (OpenClaw, Claude Desktop, Cursor, etc.):
 
 ```text
@@ -178,6 +180,8 @@ Requirements:
 
 **Who this is for** — Anyone who wants their Agent to install Life Index and also set up the local browser interface.
 
+> If your Agent platform already manages a canonical skill-install directory or checkout, prefer reusing it to avoid duplicate checkouts.
+
 **Copy this to your Agent** — Paste the prompt below into your Agent (OpenClaw, Claude Desktop, Cursor, etc.):
 
 ```text
@@ -190,10 +194,11 @@ Requirements:
 3. Use the virtual environment path for all Python/CLI commands
 4. If any step fails, stop immediately and report the exact error
 5. Report back in English using the format specified in the document, including the local Web GUI URL
+6. Tell me whether the Web GUI is still running when your task ends; if not, give me the exact commands to start and stop it manually
 
 ```
 
-> **Note**: These onboarding documents now begin with local-state detection and will auto-route to the correct fresh-install, upgrade, add-web, or repair path. Ordinary users do not need to classify that manually first.
+> **Note**: These onboarding documents now begin with local-state detection and will auto-route to the correct fresh-install, upgrade, add-web, or repair path. Ordinary users do not need to classify that manually first. If the host platform already manages a canonical checkout, the Agent should also prefer reusing it.
 
 <details>
 <summary>🔧 Developer Setup (Click to expand)</summary>

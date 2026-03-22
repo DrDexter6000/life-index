@@ -159,6 +159,8 @@ Tuantuan, this one is for you.
 
 **适用人群** —— 只想"把项目交给自己的 Agent 安装并初始化"，不需要自己改代码。
 
+> 如果你的 Agent 平台已经有自己的技能安装目录或 canonical checkout，请优先复用它，而不是在 generic workspace 里再 clone 一份新的仓库。
+
 **复制给你的 Agent** —— 把下面这段话直接发给你的 Agent（OpenClaw、Claude Desktop、Cursor 等均可）：
 
 ```text
@@ -178,6 +180,8 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 **适用人群** —— 想让 Agent 不仅完成安装，还顺手把本地浏览器界面也装好、验好的人。
 
+> 如果你的 Agent 平台已经有自己的技能安装目录或 canonical checkout，请优先复用它，避免生成第二份重复 checkout。
+
 **复制给你的 Agent** —— 把下面这段话直接发给你的 Agent（OpenClaw、Claude Desktop、Cursor 等均可）：
 
 ```text
@@ -190,10 +194,11 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING_WEB.md
 3. 所有 Python/CLI 命令都必须使用虚拟环境路径
 4. 如果任一步失败，立即停止并报告精确错误
 5. 最终请使用中文按文档要求向我汇报结果，并告诉我本地 Web GUI 访问地址
+6. 必须告诉我 Web GUI 在任务结束时是否仍然保持运行；如果没有继续运行，必须同时告诉我如何手动启动和停止
 
 ```
 
-> **说明**：现在这两份 onboarding 文档都会先检查本地状态，再自动判断应走 fresh install、upgrade、补装 Web GUI，还是 repair 路径；普通用户不需要先自己判断。
+> **说明**：现在这两份 onboarding 文档都会先检查本地状态，再自动判断应走 fresh install、upgrade、补装 Web GUI，还是 repair 路径；普通用户不需要先自己判断。如果你的 Agent 平台已经管理了 canonical checkout，也会优先复用它。
 
 <details>
 <summary>🔧 开发者安装（点击展开）</summary>
