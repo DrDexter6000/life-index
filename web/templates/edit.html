@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}编辑日志 - Life Index{% endblock %}
+
+{% block content %}
+<section class="space-y-6">
+    <header>
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100 sm:text-4xl">编辑日志</h1>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">修改已有日志内容与元数据。</p>
+    </header>
+
+    {% if error %}
+    <div class="rounded-xl bg-red-50 p-4 dark:bg-red-900/20">
+        <div class="flex items-center gap-3">
+            <span class="text-xl">⚠️</span>
+            <div>
+                <h3 class="font-medium text-red-900 dark:text-red-100">保存失败</h3>
+                <p class="text-sm text-red-700 dark:text-red-300">{{ error }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <article class="rounded-xl bg-white p-5 shadow dark:bg-gray-800 sm:p-6">
+        <form method="POST" action="/journal/{{ journal_route_path }}/edit" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" id="original-location" value="{{ location }}">
+
+            <div>
+                <label for="content" class="block text-sm font-medium text-gray-700 dark:text-gray-300">日志内容</label>
+                <textarea id="content" name="content" rows="12" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3 font-mono text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">{{ content }}</textarea>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700 dark:text-gray-300">标题</label>
+                    <input id="title" name="title" type="text" value="{{ title }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">日期</label>
+                    <input id="date" name="date" type="datetime-local" value="{{ date }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="topic" class="block text-sm font-medium text-gray-700 dark:text-gray-300">主题</label>
+                    <input id="topic" name="topic" type="text" value="{{ topic }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="mood" class="block text-sm font-medium text-gray-700 dark:text-gray-300">心情</label>
+                    <input id="mood" name="mood" type="text" value="{{ mood }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="tags" class="block text-sm font-medium text-gray-700 dark:text-gray-300">标签</label>
+                    <input id="tags" name="tags" type="text" value="{{ tags }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="people" class="block text-sm font-medium text-gray-700 dark:text-gray-300">人物</label>
+                    <input id="people" name="people" type="text" value="{{ people }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="location" class="block text-sm font-medium text-gray-700 dark:text-gray-300">地点</label>
+                    <div class="mt-1 flex flex-col gap-2 sm:flex-row">
+                        <input id="location" name="location" type="text" value="{{ location }}" class="block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                        <button id="geolocation-btn" type="button" data-idle-text="📍" class="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">📍</button>
+                        <button id="weather-btn" type="button" data-idle-text="查询天气" class="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">查询天气</button>
+                    </div>
+                </div>
+                <div>
+                    <label for="weather" class="block text-sm font-medium text-gray-700 dark:text-gray-300">天气</label>
+                    <input id="weather" name="weather" type="text" value="{{ weather }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <p id="weather-status" class="mt-1 text-xs text-gray-500 dark:text-gray-400"></p>
+                    <p id="weather-warning" class="mt-1 text-xs text-amber-600 dark:text-amber-400">修改地点后，保存前请先查询天气或手动填写天气。</p>
+                </div>
+                <div>
+                    <label for="project" class="block text-sm font-medium text-gray-700 dark:text-gray-300">项目</label>
+                    <input id="project" name="project" type="text" value="{{ project }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+                <div>
+                    <label for="abstract" class="block text-sm font-medium text-gray-700 dark:text-gray-300">摘要</label>
+                    <input id="abstract" name="abstract" type="text" value="{{ abstract }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:gap-4">
+                <button id="submit-btn" type="submit" data-idle-text="保存修改" class="min-h-[44px] rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-600">
+                    保存修改
+                </button>
+                <p id="form-status" class="text-xs text-gray-500 dark:text-gray-400"></p>
+                <a href="/journal/{{ journal_route_path }}" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">取消</a>
+            </div>
+        </form>
+    </article>
+</section>
+<script>
+    (() => {
+        const weatherBtn = document.getElementById('weather-btn');
+        const geolocationBtn = document.getElementById('geolocation-btn');
+        const locationField = document.getElementById('location');
+        const weatherField = document.getElementById('weather');
+        const dateField = document.getElementById('date');
+        const originalLocationField = document.getElementById('original-location');
+        const editForm = document.querySelector('form');
+        const submitBtn = document.getElementById('submit-btn');
+        const formStatus = document.getElementById('form-status');
+        const weatherWarning = document.getElementById('weather-warning');
+        const weatherStatus = document.getElementById('weather-status');
+        let locationDirty = false;
+
+        const setButtonBusy = (button, busyText, isBusy) => {
+            if (!button) {
+                return;
+            }
+            const idleText = button.dataset.idleText || button.textContent || '';
+            if (!button.dataset.idleText) {
+                button.dataset.idleText = idleText;
+            }
+            button.disabled = isBusy;
+            button.textContent = isBusy ? busyText : idleText;
+            button.classList.toggle('opacity-50', isBusy);
+            button.classList.toggle('cursor-not-allowed', isBusy);
+        };
+
+        const setWeatherStatus = (message, isError = false) => {
+            if (!weatherStatus) {
+                return;
+            }
+            weatherStatus.textContent = message;
+            weatherStatus.classList.toggle('text-red-600', isError);
+            weatherStatus.classList.toggle('dark:text-red-400', isError);
+            weatherStatus.classList.toggle('text-gray-500', !isError);
+            weatherStatus.classList.toggle('dark:text-gray-400', !isError);
+        };
+
+        const setFormStatus = (message, isError = false) => {
+            if (!formStatus) {
+                return;
+            }
+            formStatus.textContent = message;
+            formStatus.classList.toggle('text-red-600', isError);
+            formStatus.classList.toggle('dark:text-red-400', isError);
+            formStatus.classList.toggle('text-gray-500', !isError);
+            formStatus.classList.toggle('dark:text-gray-400', !isError);
+        };
+
+        const updateWeatherWarning = () => {
+            if (!weatherWarning || !locationField || !originalLocationField) {
+                return;
+            }
+            const locationChanged = locationField.value.trim() !== originalLocationField.value.trim();
+            locationDirty = locationChanged;
+            weatherWarning.style.display = locationChanged ? 'block' : 'none';
+        };
+
+        const fetchWeatherForLocation = async () => {
+            const location = locationField.value.trim();
+            if (!location) {
+                setWeatherStatus('请先填写地点', true);
+                return false;
+            }
+
+            setButtonBusy(weatherBtn, '正在查询天气...', true);
+            setWeatherStatus('正在查询天气...');
+
+            try {
+                const params = new URLSearchParams({ location });
+                if (dateField && dateField.value) {
+                    params.set('date', dateField.value);
+                }
+
+                const response = await fetch(`/api/weather?${params.toString()}`);
+                const result = await response.json();
+                if (result.success && result.weather) {
+                    weatherField.value = result.weather;
+                    setWeatherStatus('已自动填充天气');
+                    updateWeatherWarning();
+                    return true;
+                }
+
+                setWeatherStatus(result.error || '天气查询失败，请手动填写', true);
+                return false;
+            } catch {
+                setWeatherStatus('天气查询失败，请手动填写', true);
+                return false;
+            } finally {
+                setButtonBusy(weatherBtn, '正在查询天气...', false);
+            }
+        };
+
+        if (!weatherBtn || !locationField || !weatherField) {
+            return;
+        }
+
+        updateWeatherWarning();
+        locationField.addEventListener('input', () => {
+            weatherField.value = '';
+            setWeatherStatus('地点已更新，请重新查询天气');
+            updateWeatherWarning();
+        });
+
+        if (geolocationBtn) {
+            geolocationBtn.addEventListener('click', () => {
+                if (!navigator.geolocation) {
+                    setWeatherStatus('位置信息获取失败', true);
+                    alert('位置信息获取失败');
+                    return;
+                }
+
+                setButtonBusy(geolocationBtn, '正在定位...', true);
+                setWeatherStatus('正在定位...');
+
+                navigator.geolocation.getCurrentPosition(
+                    async ({ coords }) => {
+                        const fallback = `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+                        try {
+                            const params = new URLSearchParams({
+                                lat: coords.latitude.toString(),
+                                lon: coords.longitude.toString(),
+                            });
+                            const response = await fetch(`/api/reverse-geocode?${params.toString()}`);
+                            const result = await response.json();
+                            locationField.value = result.success && result.location ? result.location : fallback;
+                        } catch {
+                            locationField.value = fallback;
+                        }
+                        weatherField.value = '';
+                        updateWeatherWarning();
+                        await fetchWeatherForLocation();
+                        setButtonBusy(geolocationBtn, '正在定位...', false);
+                    },
+                    () => {
+                        setButtonBusy(geolocationBtn, '正在定位...', false);
+                        setWeatherStatus('位置信息获取失败', true);
+                        alert('位置信息获取失败');
+                    }
+                );
+            });
+        }
+
+        weatherBtn.addEventListener('click', async () => {
+            const ok = await fetchWeatherForLocation();
+            if (!ok && !locationField.value.trim()) {
+                alert('请先填写地点');
+            }
+        });
+
+        if (editForm) {
+            editForm.addEventListener('submit', (event) => {
+                const originalLocation = originalLocationField ? originalLocationField.value.trim() : '';
+                const currentLocation = locationField.value.trim();
+                const currentWeather = weatherField.value.trim();
+                if (currentLocation !== originalLocation && !currentWeather) {
+                    event.preventDefault();
+                    setFormStatus('保存前请先查询天气或手动填写天气', true);
+                    alert('保存前请先查询天气或手动填写天气');
+                    return;
+                }
+
+                if (submitBtn) {
+                    setButtonBusy(submitBtn, '正在保存...', true);
+                }
+                setFormStatus('正在保存...');
+            });
+        }
+    })();
+</script>
+{% endblock %}
