@@ -82,12 +82,12 @@ This document is the single reference for:
 - ✅ Phase 4c edit foundation 已完成，并已包含 `/api/weather` 与 location/weather 前端闭环
 - ✅ Phase 5 closeout 已完成（独立 URL download service、CSRF/E2E 验证、release-readiness 收尾）
 
-## Readiness snapshot after broad regression
+## Post-release snapshot (v1.4.0)
 
 ### Verified status
 
 - 已执行最终 aggregated Web regression：scaffold / dashboard / journal / search / write / edit / url_download / csrf / e2e 全部通过
-- 当前 Web GUI 已达到 **delivery-ready handoff** 状态（主链路已完成真实浏览器 walkthrough 验证）
+- Web GUI 已随 **v1.4.0** 正式发布（PR #3 已合并，tag / GitHub Release 已发布）
 - 主链路（写入、附件桥接、warning surfacing、编辑、天气联动、独立 URL download service、CSRF contract、E2E smoke）均已跑通
 
 ### Remaining gaps
@@ -98,6 +98,8 @@ This document is the single reference for:
    - 主要集中在 Phase 5 reject-list 细节描述与 residual polish wording
 3. **剩余开放项已降级为 post-MVP polish，而非 release blocker**
    - 当前已具备 success-criteria checklist、readiness note、aggregated regression 证据
+4. **下一阶段工作应转为 backlog 驱动，而非继续 release closeout**
+   - 建议统一参考 `post-v1.4-backlog.md` 管理后续产品增强项与文档 closeout
 
 ### Next batch candidates
 
@@ -123,6 +125,7 @@ This document is the single reference for:
 
 ## Final release review summary
 
-- **Go / No-Go judgement:** Go for delivery handoff
-- **Reason:** 主链路、专项测试、integration/E2E smoke、aggregated regression、以及真实 Playwright walkthrough 均已具备
-- **Remaining work type:** 零散文案/审美细节，而非当前交付阻塞项
+- **Release status:** Shipped in v1.4.0
+- **Reason:** 主链路、专项测试、integration/E2E smoke、aggregated regression、真实 Playwright walkthrough、以及 GitHub release 链路均已具备
+- **Remaining work type:** backlog 化的 post-MVP polish / feature expansion，而非当前交付阻塞项
+- **Next planning anchor:** `docs/web-gui/post-v1.4-backlog.md`

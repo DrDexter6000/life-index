@@ -15,6 +15,11 @@
 
 相关文档：
 - `docs/UPGRADE.md`
+- `docs/web-gui/post-v1.4-backlog.md`
+
+**当前规划说明**:
+- `v1.4.0` 已发布完成，后续 Web GUI 工作以 post-v1.4 backlog 管理
+- 下一批更适合处理文档状态统一、非阻塞 polish、以及新 feature 的优先级规划
 
 ---
 
