@@ -12,6 +12,8 @@ v1.2: 双管道并行搜索架构
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
+from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.path_contract import merge_journal_path_fields
 
 # 导入子模块
 from .l1_index import scan_all_indices, search_l1_index
@@ -251,21 +253,24 @@ def hierarchical_search(
             # 尝试使用 FTS 索引（如果可用且启用）
             if use_index:
                 try:
-                    from ..lib.config import USER_DATA_DIR
                     from ..lib.search_index import search_fts
 
                     fts_results = search_fts(fts_query, date_from, date_to, limit=100)
                     if fts_results:
                         l3_results = [
                             {
-                                "path": str(USER_DATA_DIR / r["path"]),
-                                "rel_path": r["path"],
                                 "date": r["date"],
                                 "title": r["title"],
                                 "snippet": r.get("snippet", ""),
                                 "match_count": 1,
                                 "source": "fts_index",
                                 "relevance": r.get("relevance", 50),
+                                **merge_journal_path_fields(
+                                    {},
+                                    USER_DATA_DIR / r["path"],
+                                    journals_dir=JOURNALS_DIR,
+                                    user_data_dir=USER_DATA_DIR,
+                                ),
                             }
                             for r in fts_results
                         ]
