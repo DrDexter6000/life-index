@@ -84,21 +84,15 @@ class DataValidator:
 
     def _collect_files(self) -> None:
         self.journal_files = (
-            sorted(JOURNALS_DIR.rglob("life-index_*.md"))
-            if JOURNALS_DIR.exists()
-            else []
+            sorted(JOURNALS_DIR.rglob("life-index_*.md")) if JOURNALS_DIR.exists() else []
         )
-        self.index_files = (
-            sorted(BY_TOPIC_DIR.glob("*.md")) if BY_TOPIC_DIR.exists() else []
-        )
+        self.index_files = sorted(BY_TOPIC_DIR.glob("*.md")) if BY_TOPIC_DIR.exists() else []
         self.attachment_files = (
             sorted(ATTACHMENTS_DIR.rglob("*")) if ATTACHMENTS_DIR.exists() else []
         )
         self.result.total_journals = len(self.journal_files)
         self.result.total_indices = len(self.index_files)
-        self.result.total_attachments = len(
-            [p for p in self.attachment_files if p.is_file()]
-        )
+        self.result.total_attachments = len([p for p in self.attachment_files if p.is_file()])
 
     def _parse_frontmatter(self, file_path: Path) -> dict[str, Any] | None:
         try:
@@ -110,9 +104,7 @@ class DataValidator:
         if metadata is None:
             return None
         if "_error" in metadata:
-            self._add_issue(
-                "error", "metadata", str(file_path), str(metadata["_error"])
-            )
+            self._add_issue("error", "metadata", str(file_path), str(metadata["_error"]))
             return None
         return metadata
 
@@ -131,9 +123,7 @@ class DataValidator:
             if metadata is None:
                 continue
 
-            rel_path = str(journal_path.relative_to(JOURNALS_DIR.parent)).replace(
-                "\\", "/"
-            )
+            rel_path = str(journal_path.relative_to(JOURNALS_DIR.parent)).replace("\\", "/")
             self.journal_entries[rel_path] = metadata
 
             for field_name in self.REQUIRED_FIELDS:
@@ -158,13 +148,9 @@ class DataValidator:
             if date_value:
                 date_text = str(date_value)
                 if not re.match(r"^\d{4}-\d{2}-\d{2}(?:T.*)?(?:Z)?$", date_text):
-                    self._add_issue(
-                        "error", "metadata", rel_path, f"Invalid date: {date_text}"
-                    )
+                    self._add_issue("error", "metadata", rel_path, f"Invalid date: {date_text}")
 
-            match = re.search(
-                r"life-index_(\d{4}-\d{2}-\d{2})_(\d{3})\.md$", journal_path.name
-            )
+            match = re.search(r"life-index_(\d{4}-\d{2}-\d{2})_(\d{3})\.md$", journal_path.name)
             if match:
                 date_key, seq_text = match.groups()
                 sequence_groups.setdefault(date_key, []).append(int(seq_text))
@@ -190,9 +176,7 @@ class DataValidator:
             for link in pattern.findall(content):
                 resolved = self._resolve_link(index_file, link)
                 if resolved is not None and not resolved.exists():
-                    self._add_issue(
-                        "error", "link", str(index_file), f"Dead link: {link}"
-                    )
+                    self._add_issue("error", "link", str(index_file), f"Dead link: {link}")
 
     def _generate_stats(self) -> None:
         stats = {

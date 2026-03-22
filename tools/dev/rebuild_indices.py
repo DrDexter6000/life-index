@@ -63,9 +63,7 @@ class IndexRebuilder:
 
         lines = [f"# {header}", ""]
         for rel_path, metadata in entries:
-            title = str(
-                metadata.get("_title") or metadata.get("title") or Path(rel_path).stem
-            )
+            title = str(metadata.get("_title") or metadata.get("title") or Path(rel_path).stem)
             lines.append(f"- [{title}](../{rel_path})")
 
         output_path = BY_TOPIC_DIR / filename
@@ -112,9 +110,7 @@ class IndexRebuilder:
         self.journal_metadata = {}
         for journal_path in self.journals:
             metadata = self._parse_frontmatter(journal_path)
-            rel_path = str(journal_path.relative_to(JOURNALS_DIR.parent)).replace(
-                "\\", "/"
-            )
+            rel_path = str(journal_path.relative_to(JOURNALS_DIR.parent)).replace("\\", "/")
             self.journal_metadata[rel_path] = metadata
 
         self._clean_dead_links()
