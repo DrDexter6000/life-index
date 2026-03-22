@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}{{ journal.metadata.title }} — Life Index{% endblock %}
+
+{% block content %}
+<article class="mx-auto max-w-4xl space-y-6">
+    <nav class="text-sm text-gray-500 dark:text-gray-400">
+        <a href="/" class="hover:underline">返回</a>
+    </nav>
+
+    {% if saved %}
+    <section class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-100 sm:p-6">
+        <div class="font-medium">修改已保存</div>
+        <p class="mt-1">你的编辑内容已经成功更新。</p>
+    </section>
+    {% endif %}
+
+    {% if warning %}
+    <section class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-100 sm:p-6">
+        <div class="font-medium">附件提醒</div>
+        <p class="mt-1">{{ warning }}</p>
+    </section>
+    {% endif %}
+
+    <header class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">{{ journal.metadata.title }}</h1>
+                {% if journal.metadata.date %}
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ journal.metadata.date }}</p>
+                {% endif %}
+            </div>
+            <a href="/journal/{{ journal.journal_route_path }}/edit" class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">编辑</a>
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-2 text-sm">
+            {% for mood in journal.metadata.mood or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-gray-700">{{ mood }}</span>{% endfor %}
+            {% for tag in journal.metadata.tags or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-gray-700">{{ tag }}</span>{% endfor %}
+            {% for topic in journal.metadata.topic or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-gray-700">{{ topic }}</span>{% endfor %}
+            {% for person in journal.metadata.people or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-gray-700">{{ person }}</span>{% endfor %}
+        </div>
+
+        <dl class="mt-6 divide-y divide-gray-100 text-sm dark:divide-gray-700">
+            {% if journal.metadata.location %}
+            <div class="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <dt class="text-gray-500 dark:text-gray-400">地点</dt>
+                <dd class="font-medium text-gray-900 dark:text-gray-100">{{ journal.metadata.location }}</dd>
+            </div>
+            {% endif %}
+            {% if journal.metadata.weather %}
+            <div class="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <dt class="text-gray-500 dark:text-gray-400">天气</dt>
+                <dd class="font-medium text-gray-900 dark:text-gray-100">{{ journal.metadata.weather }}</dd>
+            </div>
+            {% endif %}
+            {% if journal.metadata.abstract %}
+            <div class="flex flex-col gap-1 py-3">
+                <dt class="text-gray-500 dark:text-gray-400">摘要</dt>
+                <dd class="font-medium text-gray-900 dark:text-gray-100">{{ journal.metadata.abstract }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+    </header>
+
+    <section class="prose max-w-none rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:prose-invert dark:bg-gray-800 sm:p-6">
+        {{ journal.html_content | safe }}
+    </section>
+</article>
+{% endblock %}
