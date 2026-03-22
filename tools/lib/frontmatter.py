@@ -166,7 +166,8 @@ def format_journal_content(data: Dict[str, Any]) -> str:
     Returns:
         完整的日志文件内容
     """
-    frontmatter = format_frontmatter(data)
+    frontmatter_data = {k: v for k, v in data.items() if k != "content"}
+    frontmatter = format_frontmatter(frontmatter_data)
 
     lines = []
 

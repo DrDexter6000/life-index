@@ -302,6 +302,42 @@ class TestFormatFrontmatter:
         result = format_frontmatter(data)
         assert "links: []" in result
 
+
+class TestFormatJournalContent:
+    """Tests for complete journal content formatting."""
+
+    def test_runtime_content_not_duplicated_into_frontmatter(self):
+        """Body content should only appear in markdown body, not frontmatter."""
+        data = {
+            "title": "Test Journal",
+            "date": "2026-03-10T14:30:00",
+            "content": "First paragraph.\n\nSecond paragraph.",
+        }
+
+        result = format_content(data)
+
+        assert 'content: "' not in result
+        assert result.count("First paragraph.") == 1
+        assert "---\n\n\n# Test Journal\n\nFirst paragraph." in result
+
+    def test_attachments_section_stays_separated_from_body(self):
+        """Attachments section should be separated from body by a blank line."""
+        data = {
+            "title": "Test Journal",
+            "date": "2026-03-10T14:30:00",
+            "content": "Body text.",
+            "attachments": [
+                {
+                    "filename": "file.png",
+                    "rel_path": "../../../attachments/2026/03/file.png",
+                }
+            ],
+        }
+
+        result = format_content(data)
+
+        assert "Body text.\n\n## Attachments" in result
+
     def test_mood_list_empty(self):
         """Test empty mood list"""
         data = {"date": "2026-03-10", "mood": []}
