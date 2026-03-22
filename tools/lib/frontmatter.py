@@ -200,7 +200,7 @@ def format_journal_content(data: Dict[str, Any]) -> str:
         lines.append("")
 
     body = "\n".join(lines)
-    return f"{frontmatter}\n\n{body}"
+    return f"{frontmatter}\n\n\n{body}"
 
 
 def update_frontmatter_fields(
