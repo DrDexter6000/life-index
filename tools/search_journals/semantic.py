@@ -10,6 +10,8 @@ from typing import Any, Dict, List
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.config import USER_DATA_DIR
+from ..lib.config import JOURNALS_DIR
+from ..lib.path_contract import merge_journal_path_fields
 
 from .utils import parse_frontmatter
 
@@ -78,13 +80,16 @@ def search_semantic(
                     vec_data = index.get(path)
                     date_str = vec_data.get("date", "") if vec_data else ""
                     results.append(
-                        {
-                            "path": str(USER_DATA_DIR / path),
-                            "rel_path": path,
-                            "date": date_str,
-                            "similarity": round(score, 4),
-                            "source": "semantic",
-                        }
+                        merge_journal_path_fields(
+                            {
+                                "date": date_str,
+                                "similarity": round(score, 4),
+                                "source": "semantic",
+                            },
+                            USER_DATA_DIR / Path(path),
+                            journals_dir=JOURNALS_DIR,
+                            user_data_dir=USER_DATA_DIR,
+                        )
                     )
     except (OSError, IOError, ImportError):
         # 语义搜索失败时返回空列表（可能是模型未安装或文件读取失败）
