@@ -291,6 +291,7 @@ def main() -> None:
         "index": "tools.build_index.__main__",
         "abstract": "tools.generate_abstract.__main__",
         "backup": "tools.backup.__main__",
+        "serve": "web.__main__",
     }
 
     if subcmd in cmd_map:
