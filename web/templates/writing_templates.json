@@ -1,0 +1,51 @@
+[
+  {
+    "id": "blank",
+    "name": "空白日志",
+    "topic": [],
+    "content": "",
+    "tags": []
+  },
+  {
+    "id": "letter_to_tuantuan",
+    "name": "给乐乐的信",
+    "topic": ["think", "relation"],
+    "content": "# 亲爱的乐乐\n\n爸爸今天想对你说……\n\n",
+    "tags": []
+  },
+  {
+    "id": "daily_gratitude",
+    "name": "今日感恩",
+    "topic": ["think"],
+    "content": "# 今日感恩\n\n今天我感恩的三件事：\n\n1. \n2. \n3. \n\n",
+    "tags": []
+  },
+  {
+    "id": "work_log",
+    "name": "工作日志",
+    "topic": ["work"],
+    "content": "# 工作日志\n\n## 今日完成\n\n- \n\n## 遇到的问题\n\n- \n\n## 明日计划\n\n- \n",
+    "tags": []
+  },
+  {
+    "id": "study_notes",
+    "name": "学习笔记",
+    "topic": ["learn"],
+    "content": "# 学习笔记\n\n## 今天学了什么\n\n\n\n## 关键收获\n\n\n\n## 还不理解的地方\n\n\n",
+    "tags": []
+  },
+  {
+    "id": "book_review",
+    "name": "读后感",
+    "topic": ["learn", "think"],
+    "content": "# 读后感\n\n**书名**：\n**作者**：\n\n## 核心观点\n\n\n\n## 我的思考\n\n\n",
+    "tags": []
+  },
+  {
+    "id": "health_checkin",
+    "name": "健康打卡",
+    "topic": ["health"],
+    "content": "# 健康打卡\n\n- 睡眠：\n- 运动：\n- 饮食：\n- 身体状况：\n\n",
+    "tags": []
+  }
+]

@@ -93,7 +93,9 @@ class TestInitFtsDb:
                 conn = search_index.init_fts_db()
 
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='journals'")
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='journals'"
+        )
         result = cursor.fetchone()
 
         assert result is not None
@@ -235,6 +237,28 @@ Content.
             assert "learn" in result.get("topic", "")
             assert "python" in result.get("tags", "")
 
+    def test_parse_falls_back_when_relative_to_user_data_dir_fails(self, tmp_path):
+        """Path generation should stay usable even if relative_to(USER_DATA_DIR) fails."""
+        from tools.lib import search_index
+
+        journal = tmp_path / "test.md"
+        journal.write_text(
+            """---
+title: Test Journal
+date: 2026-03-14
+---
+
+Body.
+""",
+            encoding="utf-8",
+        )
+
+        with patch.object(search_index, "USER_DATA_DIR", tmp_path / "other-root"):
+            result = search_index.parse_journal(journal)
+
+        assert result is not None
+        assert result["path"] == str(journal).replace("\\", "/")
+
 
 class TestNormalizeToStr:
     """Tests for _normalize_to_str function"""
@@ -347,7 +371,9 @@ class TestUpdateIndex:
 
         with patch.object(search_index, "JOURNALS_DIR", journals_dir):
             with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
+                ):
                     with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
                         result = search_index.update_index(incremental=False)
 
@@ -381,7 +407,9 @@ This is new content.
 
         with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
             with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
+                ):
                     with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
                         result = search_index.update_index(incremental=True)
 
@@ -412,7 +440,9 @@ Original content.
 
         with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
             with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
+                ):
                     with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
                         # First update - add file
                         result1 = search_index.update_index(incremental=True)
@@ -459,7 +489,9 @@ Content to delete.
 
         with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
             with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
+                ):
                     with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
                         # Add file
                         result1 = search_index.update_index(incremental=True)
@@ -496,7 +528,9 @@ Content {i + 1}.
 
         with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
             with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
+                ):
                     with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
                         # Incremental add
                         result1 = search_index.update_index(incremental=True)
@@ -537,7 +571,9 @@ Valid content.
 
         with patch.object(search_index, "JOURNALS_DIR", journals_dir):
             with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
+                ):
                     with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
                         result = search_index.update_index(incremental=True)
 
@@ -575,7 +611,9 @@ Content.
 
         with patch.object(search_index, "JOURNALS_DIR", journals_dir):
             with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
+                ):
                     with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
                         result = search_index.update_index(incremental=False)
 

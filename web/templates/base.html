@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN" x-data="{ darkMode: localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches) }" :class="{ 'dark': darkMode }">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Life Index{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body class="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-200">
+    <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center space-x-8">
+                    <a href="/" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">Life Index</a>
+                    <div class="hidden sm:flex space-x-4">
+                        <a href="/" class="inline-flex items-center justify-center min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">仪表盘</a>
+                        <a href="/search" class="inline-flex items-center justify-center min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">搜索</a>
+                        <a href="/write" class="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600">写日志</a>
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    <button @click="darkMode = !darkMode; localStorage.setItem('theme', darkMode ? 'dark' : 'light')" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700" :title="darkMode ? '切换浅色模式' : '切换深色模式'">
+                        <span x-show="darkMode">☀️</span>
+                        <span x-show="!darkMode">🌙</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <p class="text-center text-sm text-gray-500 dark:text-gray-400">Life Index — 你的人生档案馆</p>
+        </div>
+    </footer>
+</body>
+</html>

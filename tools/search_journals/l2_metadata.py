@@ -18,6 +18,7 @@ from ..lib.metadata_cache import (
     update_cache_for_all_journals,
     get_cache_stats,
 )
+from ..lib.path_contract import build_journal_path_fields
 
 # 是否启用缓存（可通过环境变量控制）
 ENABLE_CACHE = os.environ.get("LIFE_INDEX_L2_CACHE", "1") == "1"
@@ -107,17 +108,11 @@ def _matches_filters(
         )
         file_tags = metadata.get("tags", [])
         tags_str = (
-            " ".join(file_tags).lower()
-            if isinstance(file_tags, list)
-            else str(file_tags).lower()
+            " ".join(file_tags).lower() if isinstance(file_tags, list) else str(file_tags).lower()
         )
 
         # 检查 title/abstract/tags 是否包含 query
-        if (
-            query_lower not in title
-            and query_lower not in abstract
-            and query_lower not in tags_str
-        ):
+        if query_lower not in title and query_lower not in abstract and query_lower not in tags_str:
             return False
 
     return True
@@ -160,17 +155,15 @@ def _search_with_cache(
 
         # 匹配成功
         file_path = Path(entry["file_path"])
-        try:
-            rel_path = os.path.relpath(file_path, USER_DATA_DIR).replace("\\", "/")
-        except ValueError:
-            rel_path = str(file_path).replace("\\", "/")
+        path_fields = build_journal_path_fields(
+            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        )
 
         results.append(
             {
                 "date": entry["date"],
                 "title": entry.get("title", "无标题"),
-                "path": str(file_path),
-                "rel_path": rel_path,
+                **path_fields,
                 "metadata": entry["metadata"],
                 "source": "metadata_cache",
             }
@@ -230,19 +223,17 @@ def _search_filesystem(
                         continue
 
                     # 匹配成功
-                    try:
-                        rel_path = os.path.relpath(journal_file, USER_DATA_DIR).replace(
-                            "\\", "/"
-                        )
-                    except ValueError:
-                        rel_path = str(journal_file).replace("\\", "/")
+                    path_fields = build_journal_path_fields(
+                        journal_file,
+                        journals_dir=JOURNALS_DIR,
+                        user_data_dir=USER_DATA_DIR,
+                    )
 
                     results.append(
                         {
                             "date": entry["date"],
                             "title": entry.get("title", "无标题"),
-                            "path": str(journal_file),
-                            "rel_path": rel_path,
+                            **path_fields,
                             "metadata": entry["metadata"],
                             "source": "filesystem_scan",
                         }

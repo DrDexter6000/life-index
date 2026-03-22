@@ -543,6 +543,28 @@ Body."""
         if result:
             assert result[2] == "2026-03-14"
 
+    def test_parse_falls_back_when_relative_to_user_data_dir_fails(self):
+        """Path extraction should survive relative_to(USER_DATA_DIR) failures."""
+        from tools.lib.semantic_search import parse_journal_for_vec
+
+        content = """---
+title: "Test Journal"
+date: 2026-03-14
+---
+
+Body content.
+"""
+
+        with patch("pathlib.Path.read_text", return_value=content):
+            with patch(
+                "pathlib.Path.relative_to", side_effect=ValueError("different drive")
+            ):
+                result = parse_journal_for_vec(Path("/test/journal.md"))
+
+        assert result is not None
+        assert result[0] == "/test/journal.md"
+        assert "Test Journal" in result[1]
+
 
 class TestGetFileHash:
     """Tests for get_file_hash function"""

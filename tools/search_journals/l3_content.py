@@ -4,12 +4,12 @@ Life Index - Search Journals Tool - L3 Content
 三级内容搜索模块（全文搜索）
 """
 
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.path_contract import build_journal_path_fields
 
 from .utils import parse_frontmatter
 
@@ -59,19 +59,17 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                     body_matches.append({"line": i, "context": context.strip()})
 
             if title_match or body_matches:
-                # 计算相对路径（基于 USER_DATA_DIR，避免跨驱动器问题）
-                try:
-                    rel_path = os.path.relpath(journal_file, USER_DATA_DIR).replace("\\", "/")
-                except ValueError:
-                    # 如果无法计算相对路径，使用绝对路径
-                    rel_path = str(journal_file).replace("\\", "/")
+                path_fields = build_journal_path_fields(
+                    journal_file,
+                    journals_dir=JOURNALS_DIR,
+                    user_data_dir=USER_DATA_DIR,
+                )
 
                 results.append(
                     {
                         "date": metadata.get("date", "")[:10],
                         "title": title or "无标题",
-                        "path": str(journal_file),
-                        "rel_path": rel_path,
+                        **path_fields,
                         "title_match": title_match,
                         "body_matches": body_matches,
                         "match_count": len(body_matches) + (1 if title_match else 0),
