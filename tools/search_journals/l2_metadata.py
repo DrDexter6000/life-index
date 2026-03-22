@@ -108,17 +108,11 @@ def _matches_filters(
         )
         file_tags = metadata.get("tags", [])
         tags_str = (
-            " ".join(file_tags).lower()
-            if isinstance(file_tags, list)
-            else str(file_tags).lower()
+            " ".join(file_tags).lower() if isinstance(file_tags, list) else str(file_tags).lower()
         )
 
         # 检查 title/abstract/tags 是否包含 query
-        if (
-            query_lower not in title
-            and query_lower not in abstract
-            and query_lower not in tags_str
-        ):
+        if query_lower not in title and query_lower not in abstract and query_lower not in tags_str:
             return False
 
     return True

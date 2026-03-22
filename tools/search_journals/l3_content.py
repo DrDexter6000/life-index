@@ -14,9 +14,7 @@ from ..lib.path_contract import build_journal_path_fields
 from .utils import parse_frontmatter
 
 
-def search_l3_content(
-    query: str, paths: Optional[List[str]] = None
-) -> List[Dict[str, Any]]:
+def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """
     L3: 内容层搜索 - 全文检索
 

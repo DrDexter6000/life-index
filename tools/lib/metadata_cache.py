@@ -121,9 +121,7 @@ def is_cache_valid(file_path: Path, cached_mtime: float, cached_size: int) -> bo
     return current_mtime == cached_mtime and current_size == cached_size
 
 
-def parse_and_cache_journal(
-    conn: sqlite3.Connection, file_path: Path
-) -> Optional[Dict[str, Any]]:
+def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
     """解析日志并更新缓存"""
     try:
         # 解析日志文件
@@ -201,17 +199,13 @@ def parse_and_cache_journal(
         return None
 
 
-def get_cached_metadata(
-    conn: sqlite3.Connection, file_path: Path
-) -> Optional[Dict[str, Any]]:
+def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
     """从缓存获取元数据（如果有效）"""
     cursor = conn.cursor()
     candidate_keys = _candidate_cache_keys(file_path)
 
     if len(candidate_keys) == 1:
-        cursor.execute(
-            "SELECT * FROM metadata_cache WHERE file_path = ?", (candidate_keys[0],)
-        )
+        cursor.execute("SELECT * FROM metadata_cache WHERE file_path = ?", (candidate_keys[0],))
     else:
         cursor.execute(
             "SELECT * FROM metadata_cache WHERE file_path IN (?, ?)",
