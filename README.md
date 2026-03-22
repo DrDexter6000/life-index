@@ -155,7 +155,7 @@ Toto, this one is for you.
 
 # ⚡ 快速开始
 
-## 普通用户
+## 普通用户（基础版）
 
 **适用人群** —— 只想"把项目交给自己的 Agent 安装并初始化"，不需要自己改代码。
 
@@ -167,12 +167,33 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 要求：
 1. 先完整阅读该文档，再开始执行
-2. 严格按文档完成安装、初始化、验证与后续可选个性化步骤
+2. 先按文档执行本地状态检测，再自动判断 fresh install、upgrade 或 repair，并完成后续步骤
 3. 所有 Python/CLI 命令都必须使用虚拟环境路径
 4. 如果某一步失败，立即停止并报告精确错误
 5. 最终请使用中文按文档要求向我汇报结果
 
 ```
+
+## 普通用户（Web GUI 可选版）
+
+**适用人群** —— 想让 Agent 不仅完成安装，还顺手把本地浏览器界面也装好、验好的人。
+
+**复制给你的 Agent** —— 把下面这段话直接发给你的 Agent（OpenClaw、Claude Desktop、Cursor 等均可）：
+
+```text
+请阅读并严格按照这个仓库里的 `AGENT_ONBOARDING_WEB.md` 完成 Life Index（含可选 Web GUI）的安装、初始化、验证与本地 Web GUI 验证：
+https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING_WEB.md
+
+要求：
+1. 先完整阅读该文档，再开始执行
+2. 先按文档执行本地状态检测，再自动判断 fresh install、upgrade、add-web 或 repair，并完成后续步骤
+3. 所有 Python/CLI 命令都必须使用虚拟环境路径
+4. 如果任一步失败，立即停止并报告精确错误
+5. 最终请使用中文按文档要求向我汇报结果，并告诉我本地 Web GUI 访问地址
+
+```
+
+> **说明**：现在这两份 onboarding 文档都会先检查本地状态，再自动判断应走 fresh install、upgrade、补装 Web GUI，还是 repair 路径；普通用户不需要先自己判断。
 
 <details>
 <summary>🔧 开发者安装（点击展开）</summary>
@@ -243,6 +264,21 @@ python3 -m venv .venv
 → Windows: 以管理员身份运行终端 | Linux/macOS: `chmod -R 755 ~/Documents/Life-Index`
 
 </details>
+
+## 🌐 可选的本地 Web GUI
+
+如果你更喜欢在浏览器里翻看、搜索、书写与修改自己的记录，v1.4.0 开始，Life Index 也提供一个**可选的本地 Web GUI**。
+
+它不是另一套系统，也不是取代 Agent 的第二产品线——只是为同一份本地人生档案，加上一层更直观的浏览器壳层。
+
+当前已包含：
+- dashboard（总览）
+- search（检索）
+- write（写日志）
+- journal（阅读）
+- edit（编辑）
+
+如果你想走这条路径，请直接使用上面的 **Web GUI 可选版** Agent prompt。
 
 ---
 
