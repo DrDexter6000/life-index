@@ -16,12 +16,13 @@
 python -m tools.{tool_name} --data '{json_data}'
 ```
 
-### 通用返回格式
+### 通用返回约定
+
+当前源码的**错误返回**遵循统一结构：
 
 ```json
 {
-  "success": true|false,
-  "data": { ... },
+  "success": false,
   "error": {
     "code": "E0000",
     "message": "错误信息",
@@ -30,6 +31,18 @@ python -m tools.{tool_name} --data '{json_data}'
   }
 }
 ```
+
+当前源码的**成功返回**没有统一 `data` wrapper；通常采用工具自定义的顶层字段：
+
+```json
+{
+  "success": true,
+  "...tool_specific_fields": "...",
+  "error": null
+}
+```
+
+> 若未来要统一成功返回格式，应先修改源码，再回写本文档。
 
 ### 错误码分类
 
@@ -161,17 +174,17 @@ python -m tools.write_journal --data '<json>'
 
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| title | string | ✅ | - | 日志标题（≤20字） |
-| content | string | ✅ | - | 日志正文（原样保留） |
+| title | string | ❌ | 自动生成/调用方补齐 | 日志标题（≤20字） |
+| content | string | ⚠️ workflow 通常要求 | - | 日志正文（原样保留） |
 | date | string | ✅ | - | 日期（ISO 8601: YYYY-MM-DD） |
 | location | string | ❌ | 默认地点兜底 | 地点；若正文中已明确写出地点，优先采用正文信息；仅在正文和入参都未提供时才使用默认地点 |
 | weather | string | ❌ | 自动查询/手动兜底 | 天气描述；若正文中已明确写出天气，优先采用正文信息 |
 | mood | array | ❌ | [] | 心情标签 |
 | people | array | ❌ | [] | 相关人物 |
-| topic | array | ✅ | - | 主题分类（7类之一） |
+| topic | array | ❌ | 调用方补齐/LLM 提炼 | 主题分类（7类之一） |
 | project | string | ❌ | "" | 关联项目 |
 | tags | array | ❌ | [] | 标签 |
-| abstract | string | ✅ | - | 摘要（≤100字，**Agent生成**） |
+| abstract | string | ❌ | 调用方补齐/LLM 提炼 | 摘要（≤100字，**Agent生成**） |
 | links | array | ❌ | [] | 相关链接 |
 | attachments | array | ❌ | [] | 附件列表 |
 
@@ -189,19 +202,25 @@ python -m tools.write_journal --data '<json>'
 ```json
 {
   "success": true,
-  "data": {
-    "journal_path": "Journals/2026/03/life-index_2026-03-10_001.md",
-    "updated_indices": ["主题_work.md", "项目_Life-Index.md"],
-    "attachments_processed": [...],
-    "location_used": "Beijing, China",
-    "location_auto_filled": false,
-    "weather_used": "Sunny 25°C",
-    "weather_auto_filled": true,
-    "needs_confirmation": true,
-    "confirmation_message": "日志已保存。地点：Beijing, China；天气：Sunny 25°C。请确认以上信息是否正确？"
-  }
+  "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
+  "updated_indices": ["C:/Users/.../Documents/Life-Index/by-topic/主题_work.md"],
+  "attachments_processed": [...],
+  "location_used": "Beijing, China",
+  "location_auto_filled": false,
+  "weather_used": "Sunny 25°C",
+  "weather_auto_filled": true,
+  "needs_confirmation": true,
+  "confirmation_message": "日志已保存至：C:/Users/.../Documents/Life-Index/Journals/...",
+  "error": null,
+  "metrics": {"total_ms": 142.5}
 }
 ```
+
+### 当前源码校验语义
+
+- `write_journal()` 当前源码只对 `date` 做硬校验
+- `content` 在产品 / workflow 语义上通常应提供，但并非这里定义的同级硬校验项
+- `title` / `topic` / `abstract` 更准确地说是 **Agent / Web workflow 负责补齐**，不是 `write_journal()` 当前源码的硬必填
 
 ### 写入与确认语义
 
@@ -266,24 +285,27 @@ python -m tools.search_journals [options]
 ```json
 {
   "success": true,
-  "data": {
+  "query_params": {
     "query": "重构",
-    "total": 5,
-    "results": [
-      {
-        "path": "Journals/2026/03/life-index_2026-03-06_001.md",
-        "title": "搜索功能重构",
-        "date": "2026-03-06",
-        "location": "Chongqing, China",
-        "abstract": "完成了搜索架构的重构...",
-        "score": 0.85
-      }
-    ],
-    "search_level": 3,
-    "search_time_ms": 45
-  }
+    "level": 3,
+    "semantic": true
+  },
+  "merged_results": [
+    {
+      "path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-06_001.md",
+      "rel_path": "Journals/2026/03/life-index_2026-03-06_001.md",
+      "title": "搜索功能重构",
+      "date": "2026-03-06",
+      "rrf_score": 0.85
+    }
+  ],
+  "total_found": 5,
+  "semantic_available": true,
+  "performance": {"total_time_ms": 45}
 }
 ```
+
+> 当前搜索结果中的 `path` 经常是绝对路径；上层调用方不应直接把它拼进 Web 路由。
 
 ### 错误码
 
@@ -353,13 +375,14 @@ python -m tools.edit_journal --journal "<path>" [options]
 ```json
 {
   "success": true,
-  "data": {
-    "journal_path": "Journals/2026/03/life-index_2026-03-10_001.md",
-    "changes": {
-      "location": {"old": "Chongqing, China", "new": "Beijing, China"},
-      "weather": {"old": "Sunny", "new": "Cloudy"}
-    }
-  }
+  "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
+  "changes": {
+    "location": {"old": "Chongqing, China", "new": "Beijing, China"},
+    "weather": {"old": "Sunny", "new": "Cloudy"}
+  },
+  "content_modified": false,
+  "indices_updated": [],
+  "error": null
 }
 ```
 
@@ -396,17 +419,17 @@ python -m tools.query_weather --location "<location>" [options]
 ```json
 {
   "success": true,
-  "data": {
-    "location": "Beijing, China",
-    "date": "2026-03-10",
-    "weather": "Partly cloudy",
-    "temperature": {
-      "max": 18.5,
-      "min": 8.2,
-      "unit": "celsius"
-    },
-    "description": "Partly cloudy 18.5°C/8.2°C"
-  }
+  "date": "2026-03-10",
+  "location": {"lat": 39.9, "lon": 116.4},
+  "weather": {
+    "code": 2,
+    "description": "Partly cloudy (多云)",
+    "simple": "多云",
+    "temperature_max": 18.5,
+    "temperature_min": 8.2,
+    "precipitation": 0.0
+  },
+  "error": null
 }
 ```
 
@@ -448,16 +471,12 @@ python -m tools.generate_abstract [options]
 
 ```json
 {
-  "success": true,
-  "data": {
-    "type": "monthly",
-    "period": "2026-03",
-    "output_path": "Journals/2026/03/monthly_abstract.md",
-    "stats": {
-      "total_journals": 15,
-      "by_topic": {"work": 8, "life": 5, "learn": 2}
-    }
-  }
+  "type": "monthly",
+  "year": 2026,
+  "month": 3,
+  "updated": true,
+  "journal_count": 15,
+  "message": "月度摘要已生成"
 }
 ```
 
@@ -483,15 +502,18 @@ python -m tools.build_index [options]
 ```json
 {
   "success": true,
-  "data": {
-    "journals_indexed": 45,
-    "index_path": ".vector_index/journals_fts.db",
-    "build_time_ms": 1200,
-    "validation": {
-      "status": "passed",
-      "issues": []
-    }
-  }
+  "fts": {
+    "success": true,
+    "added": 45,
+    "updated": 0,
+    "removed": 0
+  },
+  "vector": {
+    "success": true,
+    "added": 45,
+    "updated": 0
+  },
+  "duration_seconds": 1.2
 }
 ```
 
