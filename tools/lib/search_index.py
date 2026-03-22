@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from .config import JOURNALS_DIR, USER_DATA_DIR
+from .path_contract import build_journal_path_fields
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -103,8 +104,11 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
                 metadata[key] = value
 
         # 构建可索引文档
+        path_fields = build_journal_path_fields(
+            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        )
         doc = {
-            "path": str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/"),
+            "path": path_fields["rel_path"],
             "title": metadata.get("title", ""),
             "content": body,
             "date": metadata.get("date", "")[:10],
