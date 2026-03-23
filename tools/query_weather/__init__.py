@@ -30,19 +30,8 @@ WEATHER_API = "https://archive-api.open-meteo.com/v1/archive"
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 
 
-def geocode_location(location: str) -> Optional[Dict[str, Any]]:
-    """
-    将地点名称转换为经纬度
-
-    Returns:
-        {
-            "name": str,
-            "latitude": float,
-            "longitude": float,
-            "country": str,
-            "admin1": str (省份/州)
-        }
-    """
+def _geocode_single(location: str) -> Optional[Dict[str, Any]]:
+    """执行单次地点 geocode 请求。"""
     try:
         params = urllib.parse.urlencode(
             {"name": location, "count": 5, "language": "en", "format": "json"}
@@ -84,6 +73,37 @@ def geocode_location(location: str) -> Optional[Dict[str, Any]]:
             {"location": location, "error": str(e)},
             "请检查地点名称是否正确，或使用英文格式（如 'Beijing,China'）",
         )
+
+
+def geocode_location(location: str) -> Optional[Dict[str, Any]]:
+    """
+    将地点名称转换为经纬度
+
+    Returns:
+        {
+            "name": str,
+            "latitude": float,
+            "longitude": float,
+            "country": str,
+            "admin1": str (省份/州)
+        }
+    """
+    parts = [part.strip() for part in location.split(",") if part.strip()]
+    candidates = [", ".join(parts[index:]) for index in range(len(parts))]
+
+    seen: set[str] = set()
+    deduped_candidates = [
+        candidate
+        for candidate in candidates
+        if not (candidate in seen or seen.add(candidate))
+    ]
+
+    for candidate in deduped_candidates:
+        result = _geocode_single(candidate)
+        if result:
+            return result
+
+    return None
 
 
 def get_weather_code_description(code: int) -> str:
@@ -205,7 +225,9 @@ def query_weather(
         daily = data.get("daily", {})
 
         if not daily or not daily.get("weather_code"):
-            logger.warning(f"No weather data available for {date} at ({latitude}, {longitude})")
+            logger.warning(
+                f"No weather data available for {date} at ({latitude}, {longitude})"
+            )
             result["error"] = "No weather data available for this date"
             return result
 
