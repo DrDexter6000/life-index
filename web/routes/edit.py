@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import secrets
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
@@ -85,7 +86,11 @@ def _journal_to_form_data(journal: dict[str, Any]) -> dict[str, Any]:
 def query_weather_for_location(
     location: str, date: str | None = None
 ) -> dict[str, Any]:
-    normalized_date = date or ""
+    normalized_date = (
+        date.strip()[:10]
+        if date is not None and date.strip()
+        else datetime.now().strftime("%Y-%m-%d")
+    )
     geocode_result = geocode_location(location)
     if not isinstance(geocode_result, dict):
         return {"success": False, "weather": None, "error": "地点解析失败"}

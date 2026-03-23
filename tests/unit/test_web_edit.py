@@ -251,6 +251,70 @@ class TestEditRoute:
         assert response.json()["weather"] == "晴天 28°C"
         assert response.json()["error"] is None
 
+    @patch("web.routes.edit.query_weather")
+    @patch("web.routes.edit.geocode_location")
+    def test_weather_api_treats_empty_date_as_missing(
+        self,
+        mock_geocode: MagicMock,
+        mock_query_weather: MagicMock,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        mock_geocode.return_value = {
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        }
+        mock_query_weather.return_value = {
+            "success": True,
+            "weather": {
+                "simple": "晴",
+                "description": "Sunny",
+            },
+        }
+
+        client = TestClient(create_app())
+        response = client.get("/api/weather?location=Lagos,Nigeria&date=")
+
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+        called_args = mock_query_weather.call_args.args
+        assert called_args[0] == 6.5244
+        assert called_args[1] == 3.3792
+        assert isinstance(called_args[2], str)
+        assert len(called_args[2]) == 10
+
+    @patch("web.routes.edit.query_weather")
+    @patch("web.routes.edit.geocode_location")
+    def test_weather_api_normalizes_datetime_local_value(
+        self,
+        mock_geocode: MagicMock,
+        mock_query_weather: MagicMock,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        mock_geocode.return_value = {
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        }
+        mock_query_weather.return_value = {
+            "success": True,
+            "weather": {
+                "simple": "晴",
+                "description": "Sunny",
+            },
+        }
+
+        client = TestClient(create_app())
+        response = client.get(
+            "/api/weather?location=Lagos,Nigeria&date=2026-03-23T19:31"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+        mock_query_weather.assert_called_once_with(6.5244, 3.3792, "2026-03-23")
+
     @patch("web.routes.edit.reverse_geocode_for_coordinates")
     def test_reverse_geocode_api_returns_location_payload(
         self, mock_reverse_geocode: MagicMock
