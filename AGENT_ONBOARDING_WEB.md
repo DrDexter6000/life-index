@@ -332,3 +332,12 @@ For onboarding, successful base verification + successful `serve` startup + succ
 - `AGENT_ONBOARDING.md` — Base install and initialization authority
 - `docs/UPGRADE.md` — Upgrade guide for both base and Web GUI users
 - `README.md` / `README.en.md` — User-facing quick-start prompts
+
+---
+
+## 10. Short User Prompts You May Suggest
+
+When the user asks how to control the Web GUI after onboarding, prefer these short, platform-neutral prompts:
+
+- Start: `启动 Life Index Web GUI，确保可访问，告诉我地址`
+- Stop: `停止 Life Index Web GUI，并确认对应端口已释放`
