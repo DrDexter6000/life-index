@@ -200,6 +200,11 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING_WEB.md
 
 > **说明**：现在这两份 onboarding 文档都会先检查本地状态，再自动判断应走 fresh install、upgrade、补装 Web GUI，还是 repair 路径；普通用户不需要先自己判断。如果你的 Agent 平台已经管理了 canonical checkout，也会优先复用它。
 
+### Web GUI 常用一句话指令
+
+- 启动：**启动 Life Index Web GUI，确保可访问，告诉我地址**
+- 停止：**停止 Life Index Web GUI，并确认对应端口已释放**
+
 <details>
 <summary>🔧 开发者安装（点击展开）</summary>
 

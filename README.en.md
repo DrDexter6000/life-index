@@ -200,6 +200,11 @@ Requirements:
 
 > **Note**: These onboarding documents now begin with local-state detection and will auto-route to the correct fresh-install, upgrade, add-web, or repair path. Ordinary users do not need to classify that manually first. If the host platform already manages a canonical checkout, the Agent should also prefer reusing it.
 
+### Quick Web GUI Prompts
+
+- Start: **Start Life Index Web GUI, make sure it is reachable, and tell me the address**
+- Stop: **Stop Life Index Web GUI and confirm the port has been released**
+
 <details>
 <summary>🔧 Developer Setup (Click to expand)</summary>
 
