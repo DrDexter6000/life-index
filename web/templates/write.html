@@ -303,11 +303,9 @@
                     return;
                 }
 
-                if (!existingContent) {
-                    contentField.value = selected.content || '';
-                }
+                contentField.value = selected.content || '';
 
-                if (!existingTopic && Array.isArray(selected.topic) && selected.topic.length > 0) {
+                if (Array.isArray(selected.topic) && selected.topic.length > 0) {
                     topicField.value = selected.topic[0];
                 }
             });
