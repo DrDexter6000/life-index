@@ -52,7 +52,7 @@ class TestDualPipelineParallelExecution:
             execution_log.append(("sem_start", time.perf_counter()))
             time.sleep(0.05)  # Simulate work
             execution_log.append(("sem_end", time.perf_counter()))
-            return []
+            return [], {"semantic_encode_ms": 1.0, "semantic_search_ms": 1.0}
 
         with patch("tools.search_journals.core.search_l1_index", side_effect=mock_l1):
             with patch(
@@ -112,7 +112,8 @@ class TestDualPipelineParallelExecution:
                     "tools.search_journals.core.search_l3_content", side_effect=mock_l3
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -147,7 +148,8 @@ class TestDualPipelineParallelExecution:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -264,7 +266,8 @@ class TestSemanticSearchDegradation:
                     return_value=l3_results,
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -298,7 +301,8 @@ class TestSemanticSearchDegradation:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -355,7 +359,8 @@ class TestEndToEndSearch:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -397,7 +402,8 @@ class TestEndToEndSearch:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -412,6 +418,39 @@ class TestEndToEndSearch:
 
         assert "total_time_ms" in result["performance"]
         assert result["performance"]["total_time_ms"] > 0
+
+    def test_semantic_substep_timings_are_reported(self):
+        """Semantic pipeline should expose encode/search timing metrics."""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+            with patch(
+                "tools.search_journals.core.search_l2_metadata",
+                return_value={"results": [], "truncated": False},
+            ):
+                with patch(
+                    "tools.search_journals.core.search_l3_content", return_value=[]
+                ):
+                    with patch(
+                        "tools.search_journals.core.search_semantic",
+                        return_value=(
+                            [],
+                            {"semantic_encode_ms": 12.3, "semantic_search_ms": 4.5},
+                        ),
+                    ):
+                        with patch(
+                            "tools.search_journals.core.get_semantic_runtime_status"
+                        ) as mock_status:
+                            mock_status.return_value = {
+                                "available": True,
+                                "reason": "",
+                                "note": "",
+                            }
+
+                            result = hierarchical_search(query="test", level=3)
+
+        assert result["performance"]["semantic_encode_ms"] == 12.3
+        assert result["performance"]["semantic_search_ms"] == 4.5
 
     def test_level_1_returns_l1_only(self):
         """Level 1 search should return only L1 results."""
@@ -469,7 +508,8 @@ class TestSearchWithFilters:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -506,7 +546,8 @@ class TestSearchWithFilters:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -535,7 +576,8 @@ class TestSearchWithFilters:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -572,7 +614,8 @@ class TestSearchWeights:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"
@@ -606,7 +649,8 @@ class TestSearchWeights:
                     "tools.search_journals.core.search_l3_content", return_value=[]
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic", return_value=[]
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
                     ):
                         with patch(
                             "tools.search_journals.core.get_semantic_runtime_status"

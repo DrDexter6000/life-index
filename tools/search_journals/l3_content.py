@@ -14,7 +14,18 @@ from ..lib.path_contract import build_journal_path_fields
 from .utils import parse_frontmatter
 
 
-def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def _compute_fallback_relevance(title_match: bool, body_match_count: int) -> int:
+    """Estimate fallback search relevance conservatively for file-scan results."""
+    score = 0
+    if title_match:
+        score += 40
+    score += min(body_match_count, 3) * 10
+    return min(score, 80)
+
+
+def search_l3_content(
+    query: str, paths: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
     """
     L3: 内容层搜索 - 全文检索
 
@@ -58,7 +69,9 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                     context = "\n".join(lines[start:end])
                     body_matches.append({"line": i, "context": context.strip()})
 
-            if title_match or body_matches:
+            relevance = _compute_fallback_relevance(title_match, len(body_matches))
+
+            if relevance >= 30:
                 path_fields = build_journal_path_fields(
                     journal_file,
                     journals_dir=JOURNALS_DIR,
@@ -73,6 +86,7 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
                         "title_match": title_match,
                         "body_matches": body_matches,
                         "match_count": len(body_matches) + (1 if title_match else 0),
+                        "relevance": relevance,
                         "source": "content_search",
                     }
                 )

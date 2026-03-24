@@ -113,6 +113,27 @@ class TestL3ContentPathContract:
         ):
             results = search_l3_content("Python", paths=[str(journal_file)])
 
+        assert len(results) == 0
+
+    def test_search_l3_content_with_specific_paths_exposes_route_path_for_strong_match(
+        self, tmp_path
+    ) -> None:
+        from tools.search_journals.l3_content import search_l3_content
+
+        journals_dir = tmp_path / "Journals"
+        journal_file = journals_dir / "2026" / "03" / "test.md"
+        journal_file.parent.mkdir(parents=True)
+        journal_file.write_text(
+            "---\ntitle: Python Test\ndate: 2026-03-14\n---\n\nPython content",
+            encoding="utf-8",
+        )
+
+        with (
+            patch("tools.search_journals.l3_content.USER_DATA_DIR", tmp_path),
+            patch("tools.search_journals.l3_content.JOURNALS_DIR", journals_dir),
+        ):
+            results = search_l3_content("Python", paths=[str(journal_file)])
+
         assert results[0]["path"] == str(journal_file).replace("\\", "/")
         assert results[0]["rel_path"] == "Journals/2026/03/test.md"
         assert results[0]["journal_route_path"] == "2026/03/test.md"

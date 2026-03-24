@@ -7,15 +7,35 @@ Life Index - Write Journal Tool - Attachments
 import os
 import re
 import shutil
+import asyncio
+import mimetypes
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..lib.config import ATTACHMENTS_DIR
 from ..lib.logger import get_logger
+from ..lib.url_download import download_url
 
 from .utils import get_year_month, convert_path_for_platform
 
 logger = get_logger(__name__)
+
+
+def _get_attachment_metadata(file_path: str) -> dict[str, Any]:
+    content_type, _ = mimetypes.guess_type(file_path)
+    size: int | None = None
+    try:
+        size = os.path.getsize(file_path)
+    except OSError:
+        size = None
+
+    return {"content_type": content_type, "size": size}
+
+
+async def download_attachment_from_url(
+    url: str, target_dir: Path, date_str: str, timeout: float = 30.0
+) -> dict[str, Any]:
+    return await download_url(url, target_dir, date_str=date_str, timeout=timeout)
 
 
 def looks_like_file_path(path: str) -> bool:
@@ -114,7 +134,9 @@ def extract_file_paths_from_content(content: str) -> List[str]:
     # 使用更严格的模式：必须以盘符开头，后跟反斜杠或斜杠，然后是路径组件
     # 路径组件不能包含非法字符 :*?"<>|
     # FIX: 允许文件名中包含空格（中文文件名常见），但扩展名部分不允许空格
-    windows_pattern = r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[\w]+'
+    windows_pattern = (
+        r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[\w]+'
+    )
     for match in re.finditer(windows_pattern, content):
         path = match.group(0)
         # 验证是否是有效文件路径（有扩展名）
@@ -202,7 +224,9 @@ def _resolve_attachment_path(source_path: str, converted_path: str) -> Optional[
     if converted_path != source_path:
         stripped_converted = _strip_cjk_spaces(converted_path)
         if stripped_converted != converted_path and os.path.exists(stripped_converted):
-            logger.info(f"空格容错命中(跨平台): [{converted_path}] → [{stripped_converted}]")
+            logger.info(
+                f"空格容错命中(跨平台): [{converted_path}] → [{stripped_converted}]"
+            )
             return stripped_converted
 
     return None
@@ -242,7 +266,9 @@ def process_attachments(
                 all_attachments.append({"source_path": att, "description": ""})
 
     # 添加自动检测的附件（去重）
-    existing_paths = {os.path.normpath(a.get("source_path", "")).lower() for a in all_attachments}
+    existing_paths = {
+        os.path.normpath(a.get("source_path", "")).lower() for a in all_attachments
+    }
     if auto_detected_paths:
         for path in auto_detected_paths:
             normalized = os.path.normpath(path).lower()
@@ -257,8 +283,30 @@ def process_attachments(
 
     for idx, att in enumerate(all_attachments):
         source_path = att.get("source_path", "")
+        source_url = att.get("source_url", "")
         description = att.get("description", "")
         auto_detected = att.get("auto_detected", False)
+
+        if source_url:
+            download_result = asyncio.run(
+                download_attachment_from_url(source_url, att_dir, date_str)
+            )
+            if not download_result.get("success"):
+                processed.append(
+                    {
+                        "filename": f"[下载失败: {source_url}]",
+                        "description": description,
+                        "error": str(download_result.get("error") or "下载失败"),
+                        "auto_detected": auto_detected,
+                        "error_code": download_result.get("error_code"),
+                    }
+                )
+                continue
+
+            source_path = str(download_result.get("path", ""))
+
+        input_content_type = att.get("content_type")
+        input_size = att.get("size")
 
         if not source_path:
             continue
@@ -290,7 +338,9 @@ def process_attachments(
                     "description": description,
                     "error": "源文件不存在",
                     "auto_detected": auto_detected,
-                    "converted_path": converted_path if converted_path != source_path else None,
+                    "converted_path": converted_path
+                    if converted_path != source_path
+                    else None,
                 }
             )
             continue
@@ -320,19 +370,32 @@ def process_attachments(
 
             # 复制文件
             att_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_path, att_dir / target_name)
+            shutil.copy(source_path, att_dir / target_name)
 
         # 生成相对路径 (../../../Attachments/YYYY/MM/filename)
         rel_path = f"../../../attachments/{year}/{month:02d}/{target_name}"
+        metadata = _get_attachment_metadata(source_path)
+        if input_content_type is not None:
+            metadata["content_type"] = str(input_content_type)
+        if input_size is not None:
+            metadata["size"] = int(input_size)
+        if source_url and download_result.get("content_type") is not None:
+            metadata["content_type"] = str(download_result.get("content_type"))
+        if source_url and download_result.get("size") is not None:
+            metadata["size"] = int(download_result.get("size"))
 
-        processed.append(
-            {
-                "filename": target_name,
-                "rel_path": rel_path,
-                "description": description,
-                "original_name": source_name,
-                "auto_detected": auto_detected,
-            }
-        )
+        processed_entry = {
+            "filename": target_name,
+            "rel_path": rel_path,
+            "description": description,
+            "original_name": source_name,
+            "auto_detected": auto_detected,
+            "content_type": metadata.get("content_type"),
+            "size": metadata.get("size"),
+        }
+        if source_url:
+            processed_entry["source_url"] = source_url
+
+        processed.append(processed_entry)
 
     return processed

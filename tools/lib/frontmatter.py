@@ -7,11 +7,12 @@ Life Index - Frontmatter Utilities
 使用 yaml.safe_load 确保完整 YAML 规范支持（多行字符串、嵌套、特殊字符等）。
 """
 
+import mimetypes
 import re
 import yaml
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Literal, Tuple
 
 # Schema 版本（用于未来格式变更的向后兼容）
 SCHEMA_VERSION = 1
@@ -38,6 +39,96 @@ LIST_FIELDS = {"mood", "people", "tags", "topic", "links", "attachments"}
 STRING_FIELDS = {"title", "date", "location", "weather", "project", "abstract"}
 
 
+def normalize_attachment_entries(
+    attachments: list[Any] | None,
+    *,
+    mode: Literal["write_input", "stored_metadata"],
+) -> list[dict[str, Any]]:
+    """Normalize attachment entries for shared write/read handling."""
+    normalized: list[dict[str, Any]] = []
+
+    for attachment in attachments or []:
+        if mode == "write_input":
+            entry = _normalize_attachment_write_input(attachment)
+        else:
+            entry = _normalize_attachment_stored_metadata(attachment)
+
+        if entry is not None:
+            normalized.append(entry)
+
+    return normalized
+
+
+def _normalize_attachment_write_input(attachment: Any) -> dict[str, Any] | None:
+    if isinstance(attachment, str):
+        source_path = attachment.strip()
+        if not source_path:
+            return None
+        return {"source_path": source_path, "description": ""}
+
+    if not isinstance(attachment, dict):
+        return None
+
+    source_path = str(attachment.get("source_path", "")).strip()
+    source_url = str(attachment.get("source_url", "")).strip()
+    if not source_path and not source_url:
+        return None
+
+    normalized: dict[str, Any] = {"description": str(attachment.get("description", ""))}
+    if source_path:
+        normalized["source_path"] = source_path
+    if source_url:
+        normalized["source_url"] = source_url
+    if attachment.get("content_type") is not None:
+        normalized["content_type"] = str(attachment.get("content_type"))
+    size_value = attachment.get("size")
+    if size_value is not None:
+        normalized["size"] = int(size_value)
+    return normalized
+
+
+def _guess_attachment_content_type(path: str) -> str | None:
+    content_type, _ = mimetypes.guess_type(path)
+    return content_type
+
+
+def _normalize_attachment_stored_metadata(attachment: Any) -> dict[str, Any] | None:
+    if isinstance(attachment, dict):
+        raw_path = str(
+            attachment.get("rel_path")
+            or attachment.get("path")
+            or attachment.get("source_path")
+            or ""
+        ).strip()
+        if not raw_path:
+            return None
+
+        return {
+            "raw_path": raw_path,
+            "path": raw_path,
+            "name": str(attachment.get("filename") or Path(raw_path).name),
+            "description": str(attachment.get("description", "")),
+            "source_url": attachment.get("source_url"),
+            "content_type": attachment.get("content_type")
+            or _guess_attachment_content_type(raw_path),
+            "size": attachment.get("size"),
+        }
+
+    raw_path = str(attachment).strip()
+    if not raw_path:
+        return None
+
+    return {
+        "raw_path": raw_path,
+        "path": raw_path,
+        "name": Path(raw_path).name,
+        "description": "",
+        "source_url": None,
+        "content_type": _guess_attachment_content_type(raw_path),
+        "size": None,
+    }
+
+
 def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     """
     解析 YAML frontmatter
@@ -61,7 +152,9 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     try:
         metadata: Dict[str, Any] = yaml.safe_load(fm_content) or {}
     except yaml.YAMLError:
-        metadata = {}
+        metadata, body = _recover_legacy_content_frontmatter(fm_content, body)
+
+    metadata, body = _merge_legacy_content_into_body(metadata, body)
 
     # yaml.safe_load 会将 ISO 8601 时间戳解析为 datetime 对象。
     # 整个代码库以字符串形式处理日期，转回字符串以保持接口稳定。
@@ -72,6 +165,50 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
             metadata[key] = value.isoformat()
 
     return metadata, body
+
+
+def _recover_legacy_content_frontmatter(
+    fm_content: str, body: str
+) -> Tuple[Dict[str, Any], str]:
+    """Recover metadata/body from legacy malformed `content: "..."` frontmatter."""
+    content_match = re.search(r'^content:\s*"', fm_content, re.MULTILINE)
+    if not content_match:
+        return {}, body
+
+    metadata_prefix = fm_content[: content_match.start()].strip()
+    content_block = fm_content[content_match.end() :]
+
+    if content_block.endswith('"'):
+        content_block = content_block[:-1]
+
+    try:
+        metadata: Dict[str, Any] = yaml.safe_load(metadata_prefix) or {}
+    except yaml.YAMLError:
+        return {}, body
+
+    recovered_body = content_block.strip()
+    trailing_body = body.strip()
+    if trailing_body:
+        recovered_body = (
+            f"{recovered_body}\n\n{trailing_body}" if recovered_body else trailing_body
+        )
+
+    return metadata, recovered_body
+
+
+def _merge_legacy_content_into_body(
+    metadata: Dict[str, Any], body: str
+) -> Tuple[Dict[str, Any], str]:
+    legacy_content = metadata.pop("content", None)
+    if not isinstance(legacy_content, str) or not legacy_content.strip():
+        return metadata, body
+
+    merged_body = legacy_content.strip()
+    trailing_body = body.strip()
+    if trailing_body:
+        merged_body = f"{merged_body}\n\n{trailing_body}"
+
+    return metadata, merged_body
 
 
 def parse_journal_file(file_path: Path) -> Dict[str, Any]:
@@ -96,7 +233,9 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
         abstract_match = re.search(r"\n\n([^#\n].*?)(?=\n\n|\Z)", body, re.DOTALL)
         if abstract_match:
             abstract = abstract_match.group(1).strip()[:100]
-            metadata["_abstract"] = abstract + "..." if len(abstract) == 100 else abstract
+            metadata["_abstract"] = (
+                abstract + "..." if len(abstract) == 100 else abstract
+            )
         else:
             metadata["_abstract"] = "(无摘要)"
 
@@ -140,6 +279,11 @@ def _format_field(key: str, value: Any) -> str:
     """格式化单个字段"""
     import json
 
+    list_like_fields = {"topic", "tags", "mood", "people"}
+
+    if key in list_like_fields and isinstance(value, str):
+        value = [value]
+
     if isinstance(value, list):
         # 列表使用 JSON 格式
         return f"{key}: {json.dumps(value, ensure_ascii=False)}"
@@ -181,21 +325,6 @@ def format_journal_content(data: Dict[str, Any]) -> str:
     content = data.get("content", "")
     if content:
         lines.append(content)
-        lines.append("")
-
-    # 附件引用
-    attachments = data.get("attachments", [])
-    if attachments:
-        lines.append("## Attachments")
-        for att in attachments:
-            if isinstance(att, dict):
-                filename = att.get("filename", "")
-                rel_path = att.get("rel_path", "")
-                description = att.get("description", "")
-                path = rel_path or f"../../../attachments/{filename}"
-                lines.append(f"- [{filename}]({path}) - {description}")
-            elif isinstance(att, str):
-                lines.append(f"- [{att}]({att})")
         lines.append("")
 
     body = "\n".join(lines)

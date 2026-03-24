@@ -7,6 +7,7 @@ Life Index - Search Journals Tool - L2 Metadata
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -23,6 +24,34 @@ from ..lib.path_contract import build_journal_path_fields
 # 是否启用缓存（可通过环境变量控制）
 ENABLE_CACHE = os.environ.get("LIFE_INDEX_L2_CACHE", "1") == "1"
 
+_ASCII_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_CJK_RE = re.compile(r"[\u3400-\u9fff]")
+
+
+def _query_matches_text(text: str, query: str) -> bool:
+    normalized_query = query.strip().lower()
+    normalized_text = text.strip().lower()
+    if not normalized_query or not normalized_text:
+        return False
+
+    if _CJK_RE.search(normalized_query):
+        return normalized_query in normalized_text
+
+    if _ASCII_TOKEN_RE.fullmatch(normalized_query):
+        pattern = re.compile(
+            rf"(?<![a-z0-9]){re.escape(normalized_query)}(?![a-z0-9])",
+            re.IGNORECASE,
+        )
+        return bool(pattern.search(normalized_text))
+
+    return normalized_query in normalized_text
+
+
+def _query_matches_tags(tags: Any, query: str) -> bool:
+    if isinstance(tags, list):
+        return any(_query_matches_text(str(tag), query) for tag in tags)
+    return _query_matches_text(str(tags), query)
+
 
 def _matches_filters(
     metadata: Dict[str, Any],
@@ -38,11 +67,13 @@ def _matches_filters(
     query: Optional[str] = None,
 ) -> bool:
     """检查元数据是否匹配过滤条件"""
-    # 日期过滤
+    # 日期过滤 - 只比较日期部分（前10个字符：YYYY-MM-DD）
     file_date = metadata.get("date", "")
-    if date_from and file_date < date_from:
+    # 提取日期部分（处理 ISO 8601 格式如 2026-03-04T19:43:02+01:00）
+    file_date_part = file_date[:10] if len(file_date) >= 10 else file_date
+    if date_from and file_date_part < date_from[:10]:
         return False
-    if date_to and file_date > date_to:
+    if date_to and file_date_part > date_to[:10]:
         return False
 
     # 地点过滤
@@ -99,20 +130,20 @@ def _matches_filters(
 
     # Query 过滤：当指定 query 时，要求元数据包含该关键词
     if query:
-        query_lower = query.lower()
-        title = metadata.get("title", "").lower()
+        title = metadata.get("title", "")
         abstract = (
-            metadata.get("abstract", "").lower()
+            metadata.get("abstract", "")
             if isinstance(metadata.get("abstract"), str)
             else ""
         )
         file_tags = metadata.get("tags", [])
-        tags_str = (
-            " ".join(file_tags).lower() if isinstance(file_tags, list) else str(file_tags).lower()
-        )
 
         # 检查 title/abstract/tags 是否包含 query
-        if query_lower not in title and query_lower not in abstract and query_lower not in tags_str:
+        if (
+            not _query_matches_text(title, query)
+            and not _query_matches_text(abstract, query)
+            and not _query_matches_tags(file_tags, query)
+        ):
             return False
 
     return True

@@ -102,7 +102,9 @@ It is very interesting to learn Python."""
             mock_path_instance.read_text.return_value = journal_content
             mock_path_class.return_value = mock_path_instance
 
-            with patch("tools.search_journals.l3_content.parse_frontmatter") as mock_parse:
+            with patch(
+                "tools.search_journals.l3_content.parse_frontmatter"
+            ) as mock_parse:
                 mock_parse.return_value = (
                     {"title": "Daily Notes", "date": "2026-03-14T10:00:00"},
                     "I am working on Python programming today.\nIt is very interesting to learn Python.",
@@ -119,7 +121,9 @@ It is very interesting to learn Python."""
                     mock_year.iterdir.return_value = [mock_month]
                     mock_dir.iterdir.return_value = [mock_year]
 
-                    with patch("tools.search_journals.l3_content.USER_DATA_DIR", Path("/test")):
+                    with patch(
+                        "tools.search_journals.l3_content.USER_DATA_DIR", Path("/test")
+                    ):
                         results = search_l3_content("Python")
 
         # Result count may vary due to mocking complexity
@@ -222,6 +226,72 @@ Learning Python every day."""
         assert sorted_results[1]["path"] == "medium.md"
         assert sorted_results[2]["path"] == "low.md"
 
+    def test_single_body_substring_match_is_filtered_as_weak_result(self):
+        """Fallback body scan should reject a lone weak substring hit."""
+        from tools.search_journals.l3_content import search_l3_content
+
+        journal_content = """---
+title: "Ops Notes"
+date: 2026-03-14
+---
+
+Today I reviewed the operator manual once.
+No other direct evidence exists here.
+"""
+
+        mock_file = MagicMock()
+        mock_file.read_text.return_value = journal_content
+
+        with patch("tools.search_journals.l3_content.Path") as mock_path:
+            mock_path_instance = MagicMock()
+            mock_path_instance.exists.return_value = True
+            mock_path_instance.read_text.return_value = journal_content
+            mock_path.return_value = mock_path_instance
+
+            with patch(
+                "tools.search_journals.l3_content.parse_frontmatter"
+            ) as mock_parse:
+                mock_parse.return_value = (
+                    {"title": "Ops Notes", "date": "2026-03-14T10:00:00"},
+                    "Today I reviewed the operator manual once.\nNo other direct evidence exists here.",
+                )
+
+                results = search_l3_content("rat", paths=["/test/journal.md"])
+
+        assert results == []
+
+    def test_title_match_survives_with_explicit_relevance_signal(self):
+        """Strong title match should survive fallback filtering with relevance metadata."""
+        from tools.search_journals.l3_content import search_l3_content
+
+        journal_content = """---
+title: "Python Migration"
+date: 2026-03-14
+---
+
+We migrated core tooling this week.
+"""
+
+        with patch("tools.search_journals.l3_content.Path") as mock_path:
+            mock_path_instance = MagicMock()
+            mock_path_instance.exists.return_value = True
+            mock_path_instance.read_text.return_value = journal_content
+            mock_path.return_value = mock_path_instance
+
+            with patch(
+                "tools.search_journals.l3_content.parse_frontmatter"
+            ) as mock_parse:
+                mock_parse.return_value = (
+                    {"title": "Python Migration", "date": "2026-03-14T10:00:00"},
+                    "We migrated core tooling this week.",
+                )
+
+                results = search_l3_content("python", paths=["/test/journal.md"])
+
+        assert len(results) == 1
+        assert results[0]["title_match"] is True
+        assert "relevance" in results[0]
+
 
 class TestBodyMatches:
     """Tests for body match extraction"""
@@ -296,7 +366,9 @@ Content"""
             mock_path.side_effect = lambda p: (
                 mock_existing if p == "/test/exists.md" else mock_nonexistent
             )
-            results = search_l3_content("test", paths=["/test/exists.md", "/test/missing.md"])
+            results = search_l3_content(
+                "test", paths=["/test/exists.md", "/test/missing.md"]
+            )
 
         # Non-existent paths should be filtered out
 

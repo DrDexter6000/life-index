@@ -5,7 +5,7 @@ Life Index - Write Journal Tool - Core
 """
 
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from ..lib.config import JOURNALS_DIR, FILE_LOCK_TIMEOUT_DEFAULT, get_default_location
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
@@ -30,26 +30,46 @@ from .index_updater import (
 )
 
 
-def extract_explicit_metadata_from_content(content: str) -> Dict[str, str]:
-    """从正文中提取明确声明的元数据（仅保守支持显式标签格式）"""
+def extract_explicit_metadata_from_content(content: str) -> Tuple[Dict[str, str], str]:
+    """从正文中提取明确声明的元数据，并返回清理后的正文。"""
     extracted: Dict[str, str] = {}
+    if content is None:
+        return extracted, ""
     if not content:
-        return extracted
+        return extracted, content
 
     patterns = {
-        "location": re.compile(r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
-        "weather": re.compile(r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
+        "location": re.compile(
+            r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
+        ),
+        "weather": re.compile(
+            r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
+        ),
     }
 
+    remaining_lines = []
+    matched_fields = set()
+
     for line in content.splitlines():
+        matched = False
         for field, pattern in patterns.items():
-            if field in extracted:
+            if field in matched_fields:
                 continue
             match = pattern.match(line)
             if match:
                 extracted[field] = match.group(1).strip()
+                matched_fields.add(field)
+                matched = True
+                break
 
-    return extracted
+        if not matched:
+            remaining_lines.append(line)
+
+    cleaned_content = "\n".join(remaining_lines)
+    if extracted:
+        cleaned_content = cleaned_content.strip()
+
+    return extracted, cleaned_content
 
 
 def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
@@ -104,7 +124,10 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         logger.info(f"开始写入日志：date={date_str}, title={data.get('title', 'N/A')}")
 
         content = data.get("content", "")
-        explicit_metadata = extract_explicit_metadata_from_content(content)
+        explicit_metadata, cleaned_content = extract_explicit_metadata_from_content(
+            content
+        )
+        data["content"] = cleaned_content
 
         # ===== 第一层：用户提及为准 =====
         # 如果正文里明确写了地点和天气，优先使用正文中的信息
@@ -130,7 +153,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             # 尝试获取天气（使用英文格式的地点）
             logger.debug(f"查询天气：location={location_for_weather}")
             with timer.measure("weather_query"):
-                queried_weather = query_weather_for_location(location_for_weather, date_str)
+                queried_weather = query_weather_for_location(
+                    location_for_weather, date_str
+                )
             if queried_weather:
                 weather = queried_weather
                 result["weather_used"] = weather
@@ -186,7 +211,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 assert month_dir is not None
 
                 # 从内容中自动检测文件路径
-                content = data.get("content", "")
+                content = cleaned_content
                 auto_detected_paths = extract_file_paths_from_content(content)
                 logger.debug(f"从内容中检测到 {len(auto_detected_paths)} 个附件路径")
 
@@ -235,7 +260,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         abstract_error = None
                         abstract_success = False
                         try:
-                            abstract_result = update_monthly_abstract(year, month, dry_run)
+                            abstract_result = update_monthly_abstract(
+                                year, month, dry_run
+                            )
                             abstract_success = True
                         except (OSError, IOError, RuntimeError) as e:
                             abstract_error = str(e)
@@ -266,7 +293,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                             except Exception as e:
                                 # 向量索引更新失败不阻塞写入
                                 vector_index_error = str(e)
-                                logger.warning(f"向量索引更新失败（不影响日志写入）：{e}")
+                                logger.warning(
+                                    f"向量索引更新失败（不影响日志写入）：{e}"
+                                )
 
                         except (OSError, IOError, RuntimeError) as e:
                             # 索引更新失败，清理临时文件

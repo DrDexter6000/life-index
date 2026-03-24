@@ -15,9 +15,11 @@ from tools.write_journal.utils import (
     get_year_month,
 )
 from tools.write_journal.weather import normalize_location
+from tools.write_journal.core import extract_explicit_metadata_from_content
 from tools.lib.frontmatter import (
     format_frontmatter,
     format_journal_content as format_content,
+    normalize_attachment_entries,
 )
 
 
@@ -156,35 +158,35 @@ class TestFormatFrontmatter:
         # Title should be quoted
         assert 'title: "' in result
 
-    def test_mood_string_unchanged(self):
-        """Test that mood as string is kept as string"""
+    def test_mood_string_normalized_to_array(self):
+        """Test that mood as string is normalized to single-element array"""
         data = {"date": "2026-03-10", "mood": "happy"}
         result = format_frontmatter(data)
-        assert 'mood: "happy"' in result
+        assert 'mood: ["happy"]' in result
 
-    def test_mood_empty_string_preserved(self):
-        """Test that empty mood string is preserved"""
+    def test_mood_empty_string_normalized_to_array(self):
+        """Test that empty mood string is normalized to single-element array"""
         data = {"date": "2026-03-10", "mood": ""}
         result = format_frontmatter(data)
-        assert 'mood: ""' in result
+        assert 'mood: [""]' in result
 
-    def test_people_string_unchanged(self):
-        """Test that people as string is kept as string"""
+    def test_people_string_normalized_to_array(self):
+        """Test that people as string is normalized to single-element array"""
         data = {"date": "2026-03-10", "people": "Alice"}
         result = format_frontmatter(data)
-        assert 'people: "Alice"' in result
+        assert 'people: ["Alice"]' in result
 
-    def test_tags_string_unchanged(self):
-        """Test that tags as string is kept as string"""
+    def test_tags_string_normalized_to_array(self):
+        """Test that tags as string is normalized to single-element array"""
         data = {"date": "2026-03-10", "tags": "test"}
         result = format_frontmatter(data)
-        assert 'tags: "test"' in result
+        assert 'tags: ["test"]' in result
 
-    def test_topic_string_unchanged(self):
-        """Test that topic as string is kept as string"""
+    def test_topic_string_normalized_to_array(self):
+        """Test that topic as string is normalized to single-element array"""
         data = {"date": "2026-03-10", "topic": "work"}
         result = format_frontmatter(data)
-        assert 'topic: "work"' in result
+        assert 'topic: ["work"]' in result
 
     def test_links_string_converted_to_list(self):
         """Test that links as string is converted to list"""
@@ -196,7 +198,9 @@ class TestFormatFrontmatter:
         """Test attachments with dict containing rel_path"""
         data = {
             "date": "2026-03-10",
-            "attachments": [{"rel_path": "attachments/file.txt", "filename": "file.txt"}],
+            "attachments": [
+                {"rel_path": "attachments/file.txt", "filename": "file.txt"}
+            ],
         }
         result = format_frontmatter(data)
         assert '"attachments/file.txt"' in result
@@ -320,8 +324,8 @@ class TestFormatJournalContent:
         assert result.count("First paragraph.") == 1
         assert "---\n\n\n# Test Journal\n\nFirst paragraph." in result
 
-    def test_attachments_section_stays_separated_from_body(self):
-        """Attachments section should be separated from body by a blank line."""
+    def test_attachments_are_stored_in_frontmatter_not_body_block(self):
+        """New journals should keep attachment data in frontmatter only."""
         data = {
             "title": "Test Journal",
             "date": "2026-03-10T14:30:00",
@@ -336,7 +340,106 @@ class TestFormatJournalContent:
 
         result = format_content(data)
 
-        assert "Body text.\n\n## Attachments" in result
+        assert '"rel_path": "../../../attachments/2026/03/file.png"' in result
+        assert "## Attachments" not in result
+
+
+class TestAttachmentNormalization:
+    def test_normalize_attachment_entries_for_write_payloads(self):
+        result = normalize_attachment_entries(
+            [
+                "C:/temp/a.png",
+                {"source_path": "C:/temp/b.pdf", "description": "pdf"},
+                {"filename": "ignored.txt"},
+            ],
+            mode="write_input",
+        )
+
+        assert result == [
+            {"source_path": "C:/temp/a.png", "description": ""},
+            {"source_path": "C:/temp/b.pdf", "description": "pdf"},
+        ]
+
+    def test_normalize_attachment_entries_for_reading_structured_objects(self):
+        result = normalize_attachment_entries(
+            [
+                {
+                    "filename": "file.pptx",
+                    "rel_path": "../../../attachments/2026/03/file.pptx",
+                    "description": "deck",
+                },
+                "../../../attachments/2026/03/legacy.png",
+            ],
+            mode="stored_metadata",
+        )
+
+        assert len(result) == 2
+        assert result[0]["raw_path"] == "../../../attachments/2026/03/file.pptx"
+        assert result[0]["path"] == "../../../attachments/2026/03/file.pptx"
+        assert result[0]["name"] == "file.pptx"
+        assert result[0]["description"] == "deck"
+        assert result[1]["raw_path"] == "../../../attachments/2026/03/legacy.png"
+        assert result[1]["path"] == "../../../attachments/2026/03/legacy.png"
+        assert result[1]["name"] == "legacy.png"
+        assert result[1]["description"] == ""
+
+
+class TestWriteJournalAttachmentContract:
+    def test_chat_style_local_path_still_auto_detects_attachment(
+        self, isolated_data_dir: Path
+    ) -> None:
+        from tools.write_journal.core import write_journal
+
+        source_file = isolated_data_dir / "source" / "evidence.png"
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_text("image-bytes", encoding="utf-8")
+        journals_dir = isolated_data_dir / "Journals"
+        cache_dir = isolated_data_dir / ".cache"
+        lock_path = cache_dir / "journals.lock"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
+
+        data = {
+            "date": "2026-03-14",
+            "title": "Chat Attachment",
+            "content": f"今天记录一下。\n附件路径：{source_file}",
+            "topic": ["work"],
+            "abstract": "附件自动识别测试",
+            "mood": [],
+            "tags": [],
+        }
+
+        with (
+            patch("tools.write_journal.core.JOURNALS_DIR", journals_dir),
+            patch(
+                "tools.write_journal.attachments.ATTACHMENTS_DIR",
+                isolated_data_dir / "attachments",
+            ),
+            patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=lock_path,
+            ),
+            patch(
+                "tools.write_journal.core.query_weather_for_location",
+                return_value="Sunny",
+            ),
+            patch(
+                "tools.write_journal.core.update_monthly_abstract",
+                return_value="abstract.md",
+            ),
+            patch("tools.write_journal.core.update_topic_index", return_value=[]),
+            patch("tools.write_journal.core.update_project_index", return_value=None),
+            patch("tools.write_journal.core.update_tag_indices", return_value=[]),
+            patch("tools.write_journal.core.update_vector_index", return_value=False),
+        ):
+            result = write_journal(data)
+
+        assert result["success"] is True
+        assert len(result["attachments_processed"]) == 1
+        written = Path(result["journal_path"]).read_text(encoding="utf-8")
+        assert "attachments: [{" in written
+        assert '"filename": "evidence.png"' in written
+        assert "## Attachments" not in written
 
     def test_mood_list_empty(self):
         """Test empty mood list"""
@@ -482,7 +585,9 @@ class TestGetNextSequence:
         """Non-existent directory should return sequence 1"""
         mock_month_dir = MagicMock()
         mock_month_dir.exists.return_value = False
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
+            mock_month_dir
+        )
         result = get_next_sequence("2026-03-15")
         assert result == 1
 
@@ -492,7 +597,9 @@ class TestGetNextSequence:
         mock_month_dir = MagicMock()
         mock_month_dir.exists.return_value = True
         mock_month_dir.glob.return_value = []
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
+            mock_month_dir
+        )
         result = get_next_sequence("2026-03-15")
         assert result == 1
 
@@ -508,7 +615,9 @@ class TestGetNextSequence:
         mock_file3 = MagicMock()
         mock_file3.name = "life-index_2026-03-15_002.md"
         mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
+            mock_month_dir
+        )
         result = get_next_sequence("2026-03-15")
         assert result == 4
 
@@ -524,7 +633,9 @@ class TestGetNextSequence:
         mock_file3 = MagicMock()
         mock_file3.name = "life-index_2026-03-16_001.md"
         mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
+            mock_month_dir
+        )
         result = get_next_sequence("2026-03-15")
         assert result == 3
 
@@ -536,7 +647,9 @@ class TestGetNextSequence:
         mock_file = MagicMock()
         mock_file.name = "life-index_2026-03-15_999.md"
         mock_month_dir.glob.return_value = [mock_file]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
+            mock_month_dir
+        )
         result = get_next_sequence("2026-03-15")
         assert result == 1000
 
@@ -552,7 +665,9 @@ class TestGetNextSequence:
         mock_file3 = MagicMock()
         mock_file3.name = "life-index_2026-03-15_.md"
         mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
+            mock_month_dir
+        )
         result = get_next_sequence("2026-03-15")
         assert result == 2
 
@@ -562,7 +677,9 @@ class TestGetNextSequence:
         mock_month_dir = MagicMock()
         mock_month_dir.exists.return_value = True
         mock_month_dir.glob.return_value = []
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = mock_month_dir
+        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
+            mock_month_dir
+        )
         result = get_next_sequence("2026-03-15T14:30:00")
         assert result == 1
         mock_journals_dir.__truediv__.assert_called_with("2026")
@@ -602,7 +719,7 @@ class TestFormatContent:
         assert 'title: ""' in result
 
     def test_content_with_attachments_dicts(self):
-        """Test content with attachments as dicts"""
+        """Attachment dicts should remain serialized in frontmatter only."""
         data = {
             "title": "",
             "content": "",
@@ -615,26 +732,25 @@ class TestFormatContent:
             ],
         }
         result = format_content(data)
-        assert "## Attachments" in result
-        assert "[file1.txt]" in result
-        assert "(attachments/file1.txt)" in result
-        assert "Test file 1" in result
+        assert (
+            'attachments: [{"filename": "file1.txt", "rel_path": '
+            '"attachments/file1.txt", "description": "Test file 1"}]' in result
+        )
+        assert "## Attachments" not in result
 
     def test_content_with_attachments_strings(self):
-        """Test that string attachments are supported"""
+        """String attachments should remain serialized in frontmatter only."""
         data = {
             "title": "Test",
             "content": "Body",
             "attachments": ["file1.txt", "file2.txt"],
         }
         result = format_content(data)
-        # Lib version supports string attachments
-        assert "## Attachments" in result
-        assert "[file1.txt](file1.txt)" in result
-        assert "[file2.txt](file2.txt)" in result
+        assert 'attachments: ["file1.txt", "file2.txt"]' in result
+        assert "## Attachments" not in result
 
     def test_content_with_mixed_attachments_dict_only(self):
-        """Test content with only dict attachments"""
+        """Body content should coexist with frontmatter-only attachment metadata."""
         data = {
             "title": "",
             "content": "Some content",
@@ -648,18 +764,24 @@ class TestFormatContent:
         }
         result = format_content(data)
         assert "Some content" in result
-        assert "## Attachments" in result
+        assert (
+            'attachments: [{"filename": "file2.txt", "rel_path": '
+            '"attachments/file2.txt", "description": "Test file"}]' in result
+        )
+        assert "## Attachments" not in result
 
     def test_content_attachments_with_missing_rel_path(self):
-        """Test attachments fallback to filename when rel_path missing"""
+        """Missing rel_path should preserve the structured attachment object in frontmatter."""
         data = {
             "title": "Test",
             "content": "Body",
             "attachments": [{"filename": "file.txt", "description": "Test"}],
         }
         result = format_content(data)
-        # Lib version falls back to ../../../attachments/{filename} (lowercase)
-        assert "../../../attachments/file.txt" in result
+        assert (
+            'attachments: [{"filename": "file.txt", "description": "Test"}]' in result
+        )
+        assert "## Attachments" not in result
 
     def test_content_multiline(self):
         """Test multiline content"""
@@ -691,6 +813,32 @@ class TestFormatContent:
         data = {"title": "Test", "content": "Content", "attachments": []}
         result = format_content(data)
         assert "## Attachments" not in result
+
+
+class TestExtractExplicitMetadataFromContent:
+    def test_extracts_metadata_and_removes_lines_from_content(self):
+        content = "地点：Lagos\n天气：晴天\n今天很开心"
+
+        extracted, cleaned_content = extract_explicit_metadata_from_content(content)
+
+        assert extracted == {"location": "Lagos", "weather": "晴天"}
+        assert cleaned_content == "今天很开心"
+
+    def test_returns_empty_metadata_and_original_content_when_no_match(self):
+        content = "今天很开心\n继续努力"
+
+        extracted, cleaned_content = extract_explicit_metadata_from_content(content)
+
+        assert extracted == {}
+        assert cleaned_content == content
+
+    def test_extracts_each_field_only_once_and_preserves_later_duplicates(self):
+        content = "地点：A\n地点：B\n天气：晴天\n今天很开心"
+
+        extracted, cleaned_content = extract_explicit_metadata_from_content(content)
+
+        assert extracted == {"location": "A", "weather": "晴天"}
+        assert cleaned_content == "地点：B\n今天很开心"
 
 
 if __name__ == "__main__":

@@ -255,6 +255,28 @@ class TestParseAndCacheJournalEdgeCases:
         finally:
             conn.close()
 
+    def test_parse_and_cache_journal_preserves_string_topic_for_safe_upstream_normalization(
+        self, tmp_path
+    ):
+        """Legacy scalar topic values remain readable without breaking callers that normalize them."""
+        test_file = tmp_path / "string_topic.md"
+        test_file.write_text(
+            '---\ntitle: "String Topic"\ndate: 2026-03-13\ntopic: "think"\n---\n\nContent\n',
+            encoding="utf-8",
+        )
+
+        conn = init_metadata_cache()
+        try:
+            cached = parse_and_cache_journal(conn, test_file)
+            all_entries = get_all_cached_metadata(conn)
+        finally:
+            conn.close()
+
+        assert cached is not None
+        assert cached["topic"] == "think"
+        matched = next(item for item in all_entries if item["title"] == "String Topic")
+        assert matched["topic"] == "think"
+
 
 class TestConnectionManagement:
     """Tests for connection management in cache functions"""

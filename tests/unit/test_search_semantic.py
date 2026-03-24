@@ -35,11 +35,13 @@ class TestSearchSemantic:
         mock_index.get.return_value = {"date": "2026-03-20"}
         mock_get_index.return_value = mock_index
 
-        results = search_semantic("test query")
+        results, metrics = search_semantic("test query")
 
         assert len(results) == 2
         assert results[0]["similarity"] == 0.95
         assert results[0]["source"] == "semantic"
+        assert "semantic_encode_ms" in metrics
+        assert "semantic_search_ms" in metrics
 
     @patch("tools.lib.vector_index_simple.get_model")
     def test_search_semantic_model_not_loaded(self, mock_get_model):
@@ -48,18 +50,20 @@ class TestSearchSemantic:
         mock_model.load.return_value = False
         mock_get_model.return_value = mock_model
 
-        results = search_semantic("test query")
+        results, metrics = search_semantic("test query")
 
         assert results == []
+        assert metrics == {}
 
     @patch("tools.lib.vector_index_simple.get_model")
     def test_search_semantic_import_error(self, mock_get_model):
         """Test semantic search with ImportError"""
         mock_get_model.side_effect = ImportError("No module")
 
-        results = search_semantic("test query")
+        results, metrics = search_semantic("test query")
 
         assert results == []
+        assert metrics == {}
 
     @patch("tools.lib.vector_index_simple.get_index")
     @patch("tools.lib.vector_index_simple.get_model")
@@ -74,7 +78,7 @@ class TestSearchSemantic:
         mock_index.search.return_value = []
         mock_get_index.return_value = mock_index
 
-        results = search_semantic(
+        results, metrics = search_semantic(
             "test query", date_from="2026-01-01", date_to="2026-03-31"
         )
 
@@ -83,6 +87,8 @@ class TestSearchSemantic:
         call_kwargs = mock_index.search.call_args
         assert call_kwargs[1].get("date_from") == "2026-01-01"
         assert call_kwargs[1].get("date_to") == "2026-03-31"
+        assert "semantic_encode_ms" in metrics
+        assert "semantic_search_ms" in metrics
 
     @patch("tools.lib.vector_index_simple.get_index")
     @patch("tools.lib.vector_index_simple.get_model")
@@ -93,9 +99,170 @@ class TestSearchSemantic:
         mock_model.encode.side_effect = OSError("Read error")
         mock_get_model.return_value = mock_model
 
-        results = search_semantic("test query")
+        results, metrics = search_semantic("test query")
 
         assert results == []
+        assert "semantic_encode_ms" in metrics
+
+    @patch("tools.lib.vector_index_simple.get_index")
+    @patch("tools.lib.vector_index_simple.get_model")
+    def test_search_semantic_returns_encode_and_search_timings(
+        self, mock_get_model, mock_get_index
+    ):
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_model.return_value = mock_model
+
+        mock_index = MagicMock()
+        mock_index.search.return_value = []
+        mock_get_index.return_value = mock_index
+
+        results, metrics = search_semantic("test query")
+
+        assert results == []
+        assert "semantic_encode_ms" in metrics
+        assert "semantic_search_ms" in metrics
+
+    @patch("tools.lib.vector_index_simple.get_index")
+    @patch("tools.lib.vector_index_simple.get_model")
+    def test_search_semantic_filters_low_similarity_and_uses_default_top_k(
+        self, mock_get_model, mock_get_index
+    ):
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_model.return_value = mock_model
+
+        mock_index = MagicMock()
+        mock_index.search.return_value = [
+            ("Journals/2026/03/strong.md", 0.9),
+            ("Journals/2026/03/borderline.md", 0.4),
+            ("Journals/2026/03/weak.md", 0.2),
+        ]
+        mock_index.get.return_value = {"date": "2026-03-20"}
+        mock_get_index.return_value = mock_index
+
+        results, _ = search_semantic("test query")
+
+        assert len(results) == 2
+        assert results[0]["similarity"] == 0.9
+        assert results[1]["similarity"] == 0.4
+        assert mock_index.search.call_args.kwargs["top_k"] == 15
+
+    @patch("tools.lib.vector_index_simple.get_index")
+    @patch("tools.lib.vector_index_simple.get_model")
+    def test_search_semantic_default_threshold_keeps_borderline_similarity(
+        self, mock_get_model, mock_get_index
+    ):
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_model.return_value = mock_model
+
+        mock_index = MagicMock()
+        mock_index.search.return_value = [
+            ("Journals/2026/03/borderline.md", 0.4),
+        ]
+        mock_index.get.return_value = {"date": "2026-03-20"}
+        mock_get_index.return_value = mock_index
+
+        results, _ = search_semantic("test query")
+
+        assert len(results) == 1
+        assert results[0]["similarity"] == 0.4
+
+    @patch("tools.lib.vector_index_simple.get_index")
+    @patch("tools.lib.vector_index_simple.get_model")
+    def test_search_semantic_default_threshold_keeps_moderate_similarity(
+        self, mock_get_model, mock_get_index
+    ):
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_model.return_value = mock_model
+
+        mock_index = MagicMock()
+        mock_index.search.return_value = [
+            ("Journals/2026/03/moderate.md", 0.42),
+        ]
+        mock_index.get.return_value = {"date": "2026-03-20"}
+        mock_get_index.return_value = mock_index
+
+        results, _ = search_semantic("test query")
+
+        assert len(results) == 1
+        assert results[0]["similarity"] == 0.42
+
+    @patch("tools.lib.vector_index_simple.get_index")
+    @patch("tools.lib.vector_index_simple.get_model")
+    def test_search_semantic_default_threshold_keeps_036_and_034_at_025_floor(
+        self, mock_get_model, mock_get_index
+    ):
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_model.return_value = mock_model
+
+        mock_index = MagicMock()
+        mock_index.search.return_value = [
+            ("Journals/2026/03/keep.md", 0.36),
+            ("Journals/2026/03/drop.md", 0.34),
+        ]
+        mock_index.get.return_value = {"date": "2026-03-20"}
+        mock_get_index.return_value = mock_index
+
+        results, _ = search_semantic("test query")
+
+        assert len(results) == 2
+        assert results[0]["similarity"] == 0.36
+        assert results[1]["similarity"] == 0.34
+
+    @patch("tools.lib.vector_index_simple.get_index")
+    @patch("tools.lib.vector_index_simple.get_model")
+    def test_search_semantic_default_threshold_keeps_026_but_rejects_024(
+        self, mock_get_model, mock_get_index
+    ):
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_model.return_value = mock_model
+
+        mock_index = MagicMock()
+        mock_index.search.return_value = [
+            ("Journals/2026/03/keep026.md", 0.26),
+            ("Journals/2026/03/drop024.md", 0.24),
+        ]
+        mock_index.get.return_value = {"date": "2026-03-20"}
+        mock_get_index.return_value = mock_index
+
+        results, _ = search_semantic("test query")
+
+        assert len(results) == 1
+        assert results[0]["similarity"] == 0.26
+
+    @patch("tools.lib.vector_index_simple.get_index")
+    @patch("tools.lib.vector_index_simple.get_model")
+    def test_search_semantic_accepts_custom_threshold_and_top_k(
+        self, mock_get_model, mock_get_index
+    ):
+        mock_model = MagicMock()
+        mock_model.load.return_value = True
+        mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_model.return_value = mock_model
+
+        mock_index = MagicMock()
+        mock_index.search.return_value = [
+            ("Journals/2026/03/strong.md", 0.9),
+            ("Journals/2026/03/weak.md", 0.2),
+        ]
+        mock_index.get.return_value = {"date": "2026-03-20"}
+        mock_get_index.return_value = mock_index
+
+        results, _ = search_semantic("test query", min_similarity=0.1, top_k=5)
+
+        assert len(results) == 2
+        assert mock_index.search.call_args.kwargs["top_k"] == 5
 
 
 class TestEnrichSemanticResult:

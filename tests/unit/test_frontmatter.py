@@ -94,6 +94,28 @@ Body content.
         # Should handle YAML error gracefully
         assert isinstance(metadata, dict)
 
+    def test_malformed_legacy_content_field_recovers_metadata_and_body(self):
+        """Legacy malformed content field should preserve metadata and body."""
+        content = """---
+title: "关于团团的事"
+date: 2026-03-20T21:46:00+01:00
+attachments: [{"filename": "diary_tuantuan.png", "rel_path": "../../../attachments/2026/03/diary_tuantuan.png", "description": "日记配图"}]
+content: "今天多喝了点，脑子晕晕的
+
+我想记录一下昨天关于团团的事"
+---
+
+## Attachments
+- [diary_tuantuan.png](../../../attachments/2026/03/diary_tuantuan.png) - 日记配图
+"""
+        metadata, body = parse_frontmatter(content)
+
+        assert metadata["title"] == "关于团团的事"
+        assert metadata["date"] == "2026-03-20T21:46:00+01:00"
+        assert metadata["attachments"][0]["filename"] == "diary_tuantuan.png"
+        assert "今天多喝了点" in body
+        assert "## Attachments" in body
+
     def test_datetime_conversion(self):
         """ISO 8601 timestamps should be converted to strings (line 73)"""
         content = """---
@@ -188,10 +210,18 @@ class TestFormatFrontmatter:
 
         lines = result.strip().split("\n")
         # Find field positions
-        title_pos = next((i for i, line in enumerate(lines) if line.startswith("title:")), -1)
-        date_pos = next((i for i, line in enumerate(lines) if line.startswith("date:")), -1)
-        topic_pos = next((i for i, line in enumerate(lines) if line.startswith("topic:")), -1)
-        tags_pos = next((i for i, line in enumerate(lines) if line.startswith("tags:")), -1)
+        title_pos = next(
+            (i for i, line in enumerate(lines) if line.startswith("title:")), -1
+        )
+        date_pos = next(
+            (i for i, line in enumerate(lines) if line.startswith("date:")), -1
+        )
+        topic_pos = next(
+            (i for i, line in enumerate(lines) if line.startswith("topic:")), -1
+        )
+        tags_pos = next(
+            (i for i, line in enumerate(lines) if line.startswith("tags:")), -1
+        )
 
         # Verify order per FIELD_ORDER: title < date < tags < topic
         assert title_pos < date_pos
@@ -286,7 +316,7 @@ class TestFormatJournalContent:
         assert "Body without title." in result
 
     def test_attachments_dict_format(self):
-        """Test attachments with dict format (lines 196-200)"""
+        """Test attachments with dict format are stored in frontmatter only (no body section)."""
         data = {
             "title": "Test",
             "date": "2026-03-10",
@@ -301,13 +331,15 @@ class TestFormatJournalContent:
         }
         result = format_journal_content(data)
 
-        assert "## Attachments" in result
-        assert "[photo.jpg]" in result
+        # Attachments live in frontmatter only — no body section
+        assert "## Attachments" not in result
+        # Frontmatter should contain the attachment metadata
+        assert "photo.jpg" in result
         assert "../attachments/photo.jpg" in result
         assert "A nice photo" in result
 
     def test_attachments_string_format(self):
-        """Test attachments with string format (lines 201-202)"""
+        """Test attachments with string format are stored in frontmatter only."""
         data = {
             "title": "Test",
             "date": "2026-03-10",
@@ -316,12 +348,13 @@ class TestFormatJournalContent:
         }
         result = format_journal_content(data)
 
-        assert "## Attachments" in result
-        assert "[file1.mp4](file1.mp4)" in result
-        assert "[file2.pdf](file2.pdf)" in result
+        # Attachments live in frontmatter only — no body section
+        assert "## Attachments" not in result
+        assert "file1.mp4" in result
+        assert "file2.pdf" in result
 
     def test_attachments_with_rel_path_fallback(self):
-        """Test attachment uses rel_path or fallback to Attachments/"""
+        """Test attachment dict without rel_path still appears in frontmatter."""
         data = {
             "title": "Test",
             "date": "2026-03-10",
@@ -330,7 +363,10 @@ class TestFormatJournalContent:
         }
         result = format_journal_content(data)
 
-        assert "attachments/no_path.png" in result
+        # Attachment metadata present in frontmatter
+        assert "no_path.png" in result
+        # No body attachment section
+        assert "## Attachments" not in result
 
 
 class TestValidateMetadata:
@@ -401,7 +437,9 @@ Content.
 """
         file_path.write_text(original_content, encoding="utf-8")
 
-        result = update_frontmatter_fields(file_path, {"title": "Updated"}, dry_run=True)
+        result = update_frontmatter_fields(
+            file_path, {"title": "Updated"}, dry_run=True
+        )
 
         assert result["success"] is True
         assert "title" in result["changes"]
@@ -425,7 +463,9 @@ Content.
 """
         file_path.write_text(original_content, encoding="utf-8")
 
-        result = update_frontmatter_fields(file_path, {"title": "Updated"}, dry_run=False)
+        result = update_frontmatter_fields(
+            file_path, {"title": "Updated"}, dry_run=False
+        )
 
         assert result["success"] is True
         assert "title" in result["changes"]
@@ -477,7 +517,9 @@ Content.
 """
         file_path.write_text(content, encoding="utf-8")
 
-        result = update_frontmatter_fields(file_path, {"weather": "Sunny"}, dry_run=False)
+        result = update_frontmatter_fields(
+            file_path, {"weather": "Sunny"}, dry_run=False
+        )
 
         assert result["success"] is True
         assert "weather" in result["changes"]
@@ -580,6 +622,29 @@ location: "北京，中国"
 
         assert metadata["title"] == "测试标题"
         assert "这是中文内容" in metadata["_body"]
+
+    def test_parse_legacy_malformed_content_field_preserves_attachments(self, tmp_path):
+        """Legacy malformed content field should still expose attachments metadata."""
+        file_path = tmp_path / "legacy.md"
+        content = """---
+title: "关于团团的事"
+date: 2026-03-20T21:46:00+01:00
+attachments: [{"filename": "diary_tuantuan.png", "rel_path": "../../../attachments/2026/03/diary_tuantuan.png", "description": "日记配图"}]
+content: "今天多喝了点，脑子晕晕的
+
+我想记录一下昨天关于团团的事"
+---
+
+## Attachments
+- [diary_tuantuan.png](../../../attachments/2026/03/diary_tuantuan.png) - 日记配图
+"""
+        file_path.write_text(content, encoding="utf-8")
+
+        metadata = parse_journal_file(file_path)
+
+        assert metadata["attachments"][0]["filename"] == "diary_tuantuan.png"
+        assert "今天多喝了点" in metadata["_body"]
+        assert "## Attachments" in metadata["_body"]
 
 
 class TestMigrateMetadata:

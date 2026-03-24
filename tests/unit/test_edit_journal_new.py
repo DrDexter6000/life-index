@@ -829,6 +829,52 @@ class TestEditJournal:
         # No change recorded since field didn't exist
         assert "nonexistent_field" not in result["changes"]
 
+    def test_edit_preserves_structured_links_and_attachments_updates(self, tmp_path):
+        """Edit should round-trip structured links and attachments without corruption."""
+        from tools.edit_journal import edit_journal
+        from tools.lib.frontmatter import parse_frontmatter
+
+        journal = tmp_path / "test.md"
+        journal.write_text(
+            "---\n"
+            'title: "Test"\n'
+            "date: 2026-03-14\n"
+            'links: ["https://example.com/a"]\n'
+            'attachments: [{"filename": "old.png", "rel_path": "../../../attachments/2026/03/old.png"}]\n'
+            "---\n\n"
+            "# Content\n",
+            encoding="utf-8",
+        )
+
+        result = edit_journal(
+            journal,
+            {
+                "links": ["https://example.com/b", "https://example.com/c"],
+                "attachments": [
+                    "../../../attachments/2026/03/new.png",
+                    {
+                        "filename": "deck.pdf",
+                        "rel_path": "../../../attachments/2026/03/deck.pdf",
+                    },
+                ],
+            },
+        )
+
+        assert result["success"] is True
+
+        metadata, _body = parse_frontmatter(journal.read_text(encoding="utf-8"))
+        assert metadata["links"] == [
+            "https://example.com/b",
+            "https://example.com/c",
+        ]
+        assert metadata["attachments"] == [
+            "../../../attachments/2026/03/new.png",
+            {
+                "filename": "deck.pdf",
+                "rel_path": "../../../attachments/2026/03/deck.pdf",
+            },
+        ]
+
     def test_edit_lock_timeout(self, tmp_path):
         """Edit handles lock timeout gracefully"""
         from tools.edit_journal import edit_journal

@@ -133,7 +133,10 @@ class TestHierarchicalSearch:
                     with patch(
                         "tools.search_journals.core.merge_and_rank_results_hybrid"
                     ) as mock_rank:
-                        mock_sem.return_value = [{"path": "test.md", "similarity": 0.8}]
+                        mock_sem.return_value = (
+                            [{"path": "test.md", "similarity": 0.8}],
+                            {"semantic_encode_ms": 1.0, "semantic_search_ms": 2.0},
+                        )
                         mock_l2.return_value = {
                             "results": [],
                             "truncated": False,
@@ -194,7 +197,10 @@ class TestHierarchicalSearch:
                     with patch(
                         "tools.search_journals.core.merge_and_rank_results_hybrid"
                     ) as mock_rank:
-                        mock_sem.return_value = [{"path": "test.md", "similarity": 0.8}]
+                        mock_sem.return_value = (
+                            [{"path": "test.md", "similarity": 0.8}],
+                            {"semantic_encode_ms": 1.0, "semantic_search_ms": 2.0},
+                        )
                         mock_l2.return_value = {
                             "results": [],
                             "truncated": False,
@@ -221,7 +227,10 @@ class TestHierarchicalSearch:
                     with patch(
                         "tools.search_journals.core.merge_and_rank_results_hybrid"
                     ) as mock_rank:
-                        mock_sem.return_value = [{"path": "sem.md", "similarity": 0.9}]
+                        mock_sem.return_value = (
+                            [{"path": "sem.md", "similarity": 0.9}],
+                            {"semantic_encode_ms": 1.0, "semantic_search_ms": 2.0},
+                        )
                         mock_l2.return_value = {
                             "results": [],
                             "truncated": False,
@@ -241,7 +250,8 @@ class TestHierarchicalSearch:
         assert len(result["semantic_results"]) >= 1
         # Performance should have both timings
         assert "l3_time_ms" in result["performance"]
-        assert "semantic_time_ms" in result["performance"]
+        assert "semantic_encode_ms" in result["performance"]
+        assert "semantic_search_ms" in result["performance"]
 
     def test_search_no_semantic_flag(self):
         """v1.2: semantic=False disables semantic pipeline"""
@@ -376,6 +386,38 @@ class TestHierarchicalSearch:
         assert result["success"] is True
         assert result["l3_results"] == [{"path": "scan.md", "relevance": 77}]
         mock_l3.assert_called_once()
+
+    def test_search_level3_fallback_results_do_not_get_default_relevance_50(self):
+        """Fallback-only L3 results should not be inflated by ranking defaults."""
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.core.search_l3_content") as mock_l3:
+                mock_l2.return_value = {
+                    "results": [],
+                    "truncated": False,
+                    "total_available": 0,
+                }
+                mock_l3.return_value = [
+                    {
+                        "path": "scan.md",
+                        "title": "Weak fallback",
+                        "title_match": False,
+                        "body_matches": [{"line": 1, "context": "rat substring once"}],
+                        "match_count": 1,
+                        "source": "content_search",
+                    }
+                ]
+
+                result = hierarchical_search(
+                    query="rat",
+                    level=3,
+                    semantic=False,
+                    use_index=False,
+                )
+
+        assert result["success"] is True
+        assert result["merged_results"] == []
 
     def test_search_level3_truncated_propagation(self):
         """Level 3 should propagate truncated flag from metadata pipeline"""

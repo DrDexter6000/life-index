@@ -11,6 +11,7 @@ from tools.lib.config import (
     _deep_merge,
     _get_env_config,
     _load_yaml_config,
+    get_llm_config,
     get_index_prefixes,
     get_journal_dir,
     get_model_cache_dir,
@@ -19,6 +20,8 @@ from tools.lib.config import (
     get_search_config,
     get_weather_config,
     normalize_path,
+    save_default_location,
+    save_llm_config,
 )
 
 
@@ -165,7 +168,9 @@ class TestLoadYamlConfig:
     def test_valid_yaml_loads_correctly(self, tmp_path):
         """Valid YAML file should load correctly"""
         config_file = tmp_path / "valid.yaml"
-        config_file.write_text("defaults:\n  location: Test City\nweather:\n  timeout: 30")
+        config_file.write_text(
+            "defaults:\n  location: Test City\nweather:\n  timeout: 30"
+        )
         result = _load_yaml_config(config_file)
         assert result["defaults"]["location"] == "Test City"
         assert result["weather"]["timeout"] == 30
@@ -319,6 +324,94 @@ class TestGetSearchConfig:
         result = get_search_config()
         assert result["default_level"] == 2
         assert result["custom_param"] == "test"
+
+
+class TestGetLLMConfig:
+    def test_default_llm_config(self, monkeypatch):
+        monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+        monkeypatch.delenv("LIFE_INDEX_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("LIFE_INDEX_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("LIFE_INDEX_LLM_MODEL", raising=False)
+
+        result = get_llm_config()
+
+        assert result["api_key"] == ""
+        assert result["base_url"] == "https://api.openai.com/v1"
+        assert result["model"] == "gpt-4o-mini"
+
+    def test_config_llm_values_loaded(self, monkeypatch):
+        monkeypatch.setattr(
+            "tools.lib.config.USER_CONFIG",
+            {
+                "llm": {
+                    "api_key": "config-key",
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "model": "openai/gpt-4o-mini",
+                }
+            },
+        )
+        monkeypatch.delenv("LIFE_INDEX_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("LIFE_INDEX_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("LIFE_INDEX_LLM_MODEL", raising=False)
+
+        result = get_llm_config()
+
+        assert result["api_key"] == "config-key"
+        assert result["base_url"] == "https://openrouter.ai/api/v1"
+        assert result["model"] == "openai/gpt-4o-mini"
+
+    def test_env_vars_override_llm_config(self, monkeypatch):
+        monkeypatch.setattr(
+            "tools.lib.config.USER_CONFIG",
+            {
+                "llm": {
+                    "api_key": "config-key",
+                    "base_url": "https://config.example/v1",
+                    "model": "config-model",
+                }
+            },
+        )
+        monkeypatch.setenv("LIFE_INDEX_LLM_API_KEY", "env-key")
+        monkeypatch.setenv("LIFE_INDEX_LLM_BASE_URL", "https://env.example/v1")
+        monkeypatch.setenv("LIFE_INDEX_LLM_MODEL", "env-model")
+
+        result = get_llm_config()
+
+        assert result["api_key"] == "env-key"
+        assert result["base_url"] == "https://env.example/v1"
+        assert result["model"] == "env-model"
+
+
+class TestSaveLLMConfig:
+    def test_save_llm_config_writes_yaml(self, monkeypatch, tmp_path):
+        config_dir = tmp_path / ".life-index"
+        config_file = config_dir / "config.yaml"
+        monkeypatch.setattr("tools.lib.config.CONFIG_DIR", config_dir)
+        monkeypatch.setattr("tools.lib.config.CONFIG_FILE", config_file)
+        monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+
+        save_llm_config(
+            api_key="saved-key",
+            base_url="https://saved.example/v1",
+            model="saved-model",
+        )
+
+        loaded = _load_yaml_config(config_file)
+        assert loaded["llm"]["api_key"] == "saved-key"
+        assert loaded["llm"]["base_url"] == "https://saved.example/v1"
+        assert loaded["llm"]["model"] == "saved-model"
+
+    def test_save_default_location_writes_yaml(self, monkeypatch, tmp_path):
+        config_dir = tmp_path / ".life-index"
+        config_file = config_dir / "config.yaml"
+        monkeypatch.setattr("tools.lib.config.CONFIG_DIR", config_dir)
+        monkeypatch.setattr("tools.lib.config.CONFIG_FILE", config_file)
+        monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+
+        save_default_location("Lagos, Nigeria")
+
+        loaded = _load_yaml_config(config_file)
+        assert loaded["defaults"]["location"] == "Lagos, Nigeria"
 
 
 class TestGetIndexPrefixes:
