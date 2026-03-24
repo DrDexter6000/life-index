@@ -17,6 +17,8 @@ import re
 import subprocess
 import sys
 import time
+import tempfile
+import shutil
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -98,6 +100,15 @@ class E2ETestRunner:
         self.dry_run = dry_run
         self.cleanup = cleanup
         self.created_files: List[Path] = []
+        self.created_attachments: List[Path] = []
+        self._temp_root = Path(tempfile.mkdtemp(prefix="life_index_e2e_"))
+        self.test_data_dir = self._temp_root / "Life-Index"
+        self.test_data_dir.mkdir(parents=True, exist_ok=True)
+
+    def _build_env(self) -> Dict[str, str]:
+        env = dict(__import__("os").environ)
+        env["LIFE_INDEX_DATA_DIR"] = str(self.test_data_dir)
+        return env
 
     def run_phase(self, phase_num: int) -> PhaseResult:
         """Run all test cases in a phase."""
@@ -252,7 +263,9 @@ class E2ETestRunner:
             action = step.get("action")
 
             if action == "write_journal":
-                result = self._test_write_journal(step.get("data", {}), step.get("expected", {}))
+                result = self._test_write_journal(
+                    step.get("data", {}), step.get("expected", {})
+                )
                 if not result["passed"]:
                     all_passed = False
                     errors.append(f"Step {step.get('step')}: {result.get('error')}")
@@ -273,7 +286,9 @@ class E2ETestRunner:
                     errors.append(f"Step {step.get('step')}: {result.get('error')}")
 
             elif action == "search":
-                result = self._test_search(step.get("query_params", {}), step.get("expected", {}))
+                result = self._test_search(
+                    step.get("query_params", {}), step.get("expected", {})
+                )
                 if not result["passed"]:
                     all_passed = False
                     errors.append(f"Step {step.get('step')}: {result.get('error')}")
@@ -288,7 +303,9 @@ class E2ETestRunner:
 
             else:
                 all_passed = False
-                errors.append(f"Step {step.get('step')}: Unknown step action '{action}'")
+                errors.append(
+                    f"Step {step.get('step')}: Unknown step action '{action}'"
+                )
 
         return {"passed": all_passed, "error": "; ".join(errors) if errors else ""}
 
@@ -316,6 +333,7 @@ class E2ETestRunner:
                 capture_output=True,
                 text=True,
                 cwd=str(self.project_root),
+                env=self._build_env(),
                 timeout=30,
             )
 
@@ -329,6 +347,16 @@ class E2ETestRunner:
 
             if output.get("success") and output.get("journal_path"):
                 self.created_files.append(Path(output["journal_path"]))
+                for attachment in output.get("attachments", []) or []:
+                    rel_path = (
+                        attachment.get("rel_path")
+                        if isinstance(attachment, dict)
+                        else None
+                    )
+                    if rel_path:
+                        self.created_attachments.append(
+                            (self.test_data_dir / Path(rel_path)).resolve()
+                        )
 
             return {
                 "passed": validation["passed"],
@@ -341,7 +369,9 @@ class E2ETestRunner:
         except json.JSONDecodeError as e:
             return {"passed": False, "error": f"Invalid JSON output: {e}"}
 
-    def _test_search(self, input_data: Dict[str, Any], expected: Dict[str, Any]) -> Dict[str, Any]:
+    def _test_search(
+        self, input_data: Dict[str, Any], expected: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Test search_journals tool."""
         query_params = dict(input_data.get("query_params", {}))
         merged_input = {k: v for k, v in input_data.items() if k != "query_params"}
@@ -389,6 +419,7 @@ class E2ETestRunner:
                 capture_output=True,
                 text=True,
                 cwd=str(self.project_root),
+                env=self._build_env(),
                 timeout=30,
             )
 
@@ -426,6 +457,7 @@ class E2ETestRunner:
                 capture_output=True,
                 text=True,
                 cwd=str(self.project_root),
+                env=self._build_env(),
                 timeout=30,
             )
 
@@ -465,6 +497,7 @@ class E2ETestRunner:
                 capture_output=True,
                 text=True,
                 cwd=str(self.project_root),
+                env=self._build_env(),
                 timeout=30,
             )
 
@@ -515,7 +548,9 @@ class E2ETestRunner:
             return alias_map[key]
         return output.get(key)
 
-    def _validate_output(self, output: Dict[str, Any], expected: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_output(
+        self, output: Dict[str, Any], expected: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Validate tool output against expected values."""
         errors = []
         merged_results = output.get("merged_results", []) or []
@@ -535,10 +570,14 @@ class E2ETestRunner:
                             "<": actual_count < threshold_int,
                         }
                         if not comparisons[op]:
-                            errors.append(f"{key}: expected {expected_value}, got {actual_count}")
+                            errors.append(
+                                f"{key}: expected {expected_value}, got {actual_count}"
+                            )
                         continue
                 if actual_count != expected_value:
-                    errors.append(f"{key}: expected {expected_value}, got {actual_count}")
+                    errors.append(
+                        f"{key}: expected {expected_value}, got {actual_count}"
+                    )
                 continue
 
             if key == "contains_titles":
@@ -556,7 +595,9 @@ class E2ETestRunner:
 
             if key == "all_results_match_tags":
                 for item in merged_results:
-                    item_tags = item.get("tags") or item.get("metadata", {}).get("tags") or []
+                    item_tags = (
+                        item.get("tags") or item.get("metadata", {}).get("tags") or []
+                    )
                     for expected_tag in expected_value:
                         if expected_tag not in item_tags:
                             errors.append(
@@ -569,7 +610,9 @@ class E2ETestRunner:
 
             # Handle special matchers
             if isinstance(expected_value, str):
-                match = re.match(r"^(>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$", expected_value.strip())
+                match = re.match(
+                    r"^(>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)$", expected_value.strip()
+                )
                 if match and isinstance(actual_value, (int, float)):
                     op, threshold = match.groups()
                     threshold_num = float(threshold)
@@ -581,7 +624,9 @@ class E2ETestRunner:
                         "<": actual_num < threshold_num,
                     }
                     if not comparisons[op]:
-                        errors.append(f"{key}: expected {expected_value}, got {actual_value}")
+                        errors.append(
+                            f"{key}: expected {expected_value}, got {actual_value}"
+                        )
                     continue
                 if expected_value == "(非空字符串)" or expected_value == "(non-empty)":
                     if not actual_value:
@@ -600,7 +645,9 @@ class E2ETestRunner:
             # Handle boolean
             if isinstance(expected_value, bool):
                 if actual_value != expected_value:
-                    errors.append(f"{key}: expected {expected_value}, got {actual_value}")
+                    errors.append(
+                        f"{key}: expected {expected_value}, got {actual_value}"
+                    )
                 continue
 
             # Handle string/number comparison
@@ -633,7 +680,9 @@ class E2ETestRunner:
                 "total": total_cases,
                 "passed": total_passed,
                 "failed": total_failed,
-                "pass_rate": round(total_passed / total_cases, 2) if total_cases > 0 else 0,
+                "pass_rate": round(total_passed / total_cases, 2)
+                if total_cases > 0
+                else 0,
             },
             "phases": [r.to_dict() for r in results],
         }
@@ -695,7 +744,9 @@ class E2ETestRunner:
             for case in phase["cases"]:
                 status = "✅" if case["passed"] else "❌"
                 duration = f"{case['duration_ms']:.0f}ms"
-                lines.append(f"| {case['id']} | {case['name']} | {status} | {duration} |")
+                lines.append(
+                    f"| {case['id']} | {case['name']} | {status} | {duration} |"
+                )
 
             lines.append("")
 
@@ -713,6 +764,16 @@ class E2ETestRunner:
                     path.unlink()
             except Exception as e:
                 print(f"  Warning: Could not delete {path}: {e}")
+
+        for path in self.created_attachments:
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception as e:
+                print(f"  Warning: Could not delete {path}: {e}")
+
+        if self._temp_root.exists():
+            shutil.rmtree(self._temp_root, ignore_errors=True)
 
 
 def main():
@@ -751,7 +812,9 @@ Examples:
 
     args = parser.parse_args()
 
-    runner = E2ETestRunner(ci_mode=args.ci, dry_run=args.dry_run, cleanup=not args.no_cleanup)
+    runner = E2ETestRunner(
+        ci_mode=args.ci, dry_run=args.dry_run, cleanup=not args.no_cleanup
+    )
 
     try:
         summary = runner.run_all(args.phase)

@@ -269,6 +269,84 @@ After `/api/health` succeeds, also verify the homepage:
 
 ---
 
+### Step 5.2c: Web runtime / data-dir verification gate
+
+Before claiming the Web GUI is safe to use for browse / search / write / edit, verify which data directory the running instance is actually reading.
+
+#### Default safety rule
+
+For manual Web acceptance, prefer a sandbox-first workflow instead of pointing the GUI directly at the real user directory.
+
+Preferred commands:
+
+**Linux/macOS/WSL**:
+```bash
+.venv/bin/python -m tools.dev.run_with_temp_data_dir --for-web
+.venv/bin/python -m tools.dev.run_with_temp_data_dir --for-web --seed
+```
+
+**Windows**:
+```powershell
+.venv\Scripts\python -m tools.dev.run_with_temp_data_dir --for-web
+.venv\Scripts\python -m tools.dev.run_with_temp_data_dir --for-web --seed
+```
+
+Use `--for-web --seed` when you need a realistic browser acceptance pass against copied user data. Treat that mode as a readonly simulation unless the user explicitly asks for another workflow.
+
+#### Required checks after startup
+
+After `life-index serve` starts, do **not** immediately continue to write/edit verification. First confirm runtime consistency from all of these signals:
+
+1. startup output from `life-index serve`
+2. `http://127.0.0.1:8765/api/runtime` (preferred) or `http://127.0.0.1:8765/api/health`
+3. the page-level runtime banner / runtime panel in the Web GUI
+
+You must confirm:
+
+- the local URL is the one you intend to report
+- `user_data_dir` matches the intended directory
+- `journals_dir` matches the intended Journals location
+- whether `life_index_data_dir_override` is true or false
+- whether `readonly_simulation` is true or false
+
+#### Stop conditions
+
+Stop immediately and do **not** continue to write/edit verification if any of the following is true:
+
+- the reported data directory is not the one you intended to use
+- runtime signals disagree with each other (startup output vs API vs page banner)
+- you cannot tell whether the instance is reading the real user directory or a sandbox
+- manual acceptance needs a safer sandbox flow, but the current instance is pointed at the real user directory
+
+If any stop condition triggers:
+
+1. stop the current server
+2. do **not** continue with write/edit actions
+3. restart using the correct `LIFE_INDEX_DATA_DIR` or the sandbox helper above
+4. re-run the runtime verification gate before proceeding
+
+#### Continue conditions
+
+Only continue with deeper Web verification or user-facing write/edit actions if all of the following are true:
+
+- the local URL is correct
+- `user_data_dir` is the intended directory
+- `journals_dir` is the intended Journals directory
+- runtime signals agree across startup output, API, and page UI
+- if using `--for-web --seed`, `readonly_simulation=true` is visible
+
+#### Cleanup / recovery reminder
+
+If a sandbox was used only for acceptance, delete the temporary directory after verification.
+
+If you accidentally wrote to the real user directory during testing or acceptance, clean up those temporary artifacts and run:
+
+```bash
+life-index index --rebuild
+```
+
+---
+
 ### Step 5.3: Record the Local Access URL
 
 Record the final local URL for the user:

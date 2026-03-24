@@ -61,8 +61,10 @@ def isolated_data_dir(tmp_path: Path) -> Generator[Path, None, None]:
 
     # 同样需要重新加载依赖 config 的模块
     import tools.lib.vector_index_simple as vec_module
+    import tools.lib.metadata_cache as metadata_cache_module
 
     importlib.reload(vec_module)
+    importlib.reload(metadata_cache_module)
 
     try:
         yield test_data_dir
@@ -76,6 +78,7 @@ def isolated_data_dir(tmp_path: Path) -> Generator[Path, None, None]:
         # 重新加载模块以恢复原始状态
         importlib.reload(config_module)
         importlib.reload(vec_module)
+        importlib.reload(metadata_cache_module)
 
 
 @pytest.fixture(scope="function")
