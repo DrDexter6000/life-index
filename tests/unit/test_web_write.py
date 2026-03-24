@@ -6,10 +6,20 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import asyncio
 from pathlib import Path
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+import pytest_asyncio
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _drain_asyncio_tasks() -> AsyncGenerator[None, None]:
+    yield
+    await asyncio.sleep(0)
 
 
 class TestLLMProviderABC:
@@ -45,13 +55,27 @@ class TestHostAgentProvider:
         provider = HostAgentProvider()
         assert await provider.extract_metadata("任意内容") == {}
 
+    @pytest.mark.asyncio
+    async def test_summarize_search_returns_empty(self) -> None:
+        from web.services.llm_provider import HostAgentProvider
+
+        provider = HostAgentProvider()
+        assert await provider.summarize_search("乐乐", [{"title": "a"}]) == {}
+
 
 class TestAPIKeyProvider:
     @pytest.mark.asyncio
     async def test_is_available_without_key(self) -> None:
         from web.services.llm_provider import APIKeyProvider
 
-        with patch.dict(os.environ, {}, clear=True):
+        with patch(
+            "web.services.llm_provider.get_llm_config",
+            return_value={
+                "api_key": "",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+            },
+        ):
             provider = APIKeyProvider()
             assert await provider.is_available() is False
 
@@ -59,7 +83,14 @@ class TestAPIKeyProvider:
     async def test_is_available_with_key(self) -> None:
         from web.services.llm_provider import APIKeyProvider
 
-        with patch.dict(os.environ, {"LIFE_INDEX_LLM_API_KEY": "sk-test"}, clear=True):
+        with patch(
+            "web.services.llm_provider.get_llm_config",
+            return_value={
+                "api_key": "sk-test",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+            },
+        ):
             provider = APIKeyProvider()
             assert await provider.is_available() is True
 
@@ -67,7 +98,14 @@ class TestAPIKeyProvider:
     async def test_default_base_url_and_model(self) -> None:
         from web.services.llm_provider import APIKeyProvider
 
-        with patch.dict(os.environ, {"LIFE_INDEX_LLM_API_KEY": "sk-test"}, clear=True):
+        with patch(
+            "web.services.llm_provider.get_llm_config",
+            return_value={
+                "api_key": "sk-test",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+            },
+        ):
             provider = APIKeyProvider()
 
         assert provider.base_url == "https://api.openai.com/v1"
@@ -98,7 +136,14 @@ class TestAPIKeyProvider:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch.dict(os.environ, {"LIFE_INDEX_LLM_API_KEY": "sk-test"}, clear=True):
+        with patch(
+            "web.services.llm_provider.get_llm_config",
+            return_value={
+                "api_key": "sk-test",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+            },
+        ):
             provider = APIKeyProvider()
 
         with patch("web.services.llm_provider.httpx.AsyncClient") as mock_client_cls:
@@ -124,7 +169,14 @@ class TestAPIKeyProvider:
         }
         mock_response.raise_for_status = MagicMock()
 
-        with patch.dict(os.environ, {"LIFE_INDEX_LLM_API_KEY": "sk-test"}, clear=True):
+        with patch(
+            "web.services.llm_provider.get_llm_config",
+            return_value={
+                "api_key": "sk-test",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+            },
+        ):
             provider = APIKeyProvider()
 
         with patch("web.services.llm_provider.httpx.AsyncClient") as mock_client_cls:
@@ -138,20 +190,116 @@ class TestAPIKeyProvider:
 
         assert result == {}
 
+    @pytest.mark.asyncio
+    async def test_summarize_search_success(self) -> None:
+        from web.services.llm_provider import APIKeyProvider
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "summary": "关于乐乐，你最近在回顾亲子时光。",
+                                "key_entries": [
+                                    {
+                                        "title": "想念乐乐",
+                                        "date": "2026-03-07",
+                                        "reason": "翻看旧照片触发想念",
+                                    }
+                                ],
+                                "time_span": "2026年3月",
+                            }
+                        )
+                    }
+                }
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch(
+            "web.services.llm_provider.get_llm_config",
+            return_value={
+                "api_key": "sk-test",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+            },
+        ):
+            provider = APIKeyProvider()
+
+        with patch("web.services.llm_provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value = mock_client
+
+            result = await provider.summarize_search(
+                "乐乐",
+                [
+                    {
+                        "title": "想念乐乐",
+                        "date": "2026-03-07",
+                        "abstract": "翻看旧照片",
+                        "highlight": "乐乐小时候照片",
+                    }
+                ],
+            )
+
+        assert result["summary"] == "关于乐乐，你最近在回顾亲子时光。"
+        assert result["key_entries"][0]["title"] == "想念乐乐"
+        assert result["time_span"] == "2026年3月"
+
+    @pytest.mark.asyncio
+    async def test_summarize_search_timeout_returns_empty(self) -> None:
+        from web.services.llm_provider import APIKeyProvider
+
+        with patch.dict(os.environ, {"LIFE_INDEX_LLM_API_KEY": "sk-test"}, clear=True):
+            provider = APIKeyProvider()
+
+        with patch("web.services.llm_provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+            mock_client_cls.return_value = mock_client
+
+            result = await provider.summarize_search(
+                "乐乐",
+                [{"title": "想念乐乐", "date": "2026-03-07"}],
+            )
+
+        assert result == {}
+
 
 class TestGetProvider:
     @pytest.mark.asyncio
     async def test_returns_none_when_all_unavailable(self) -> None:
         from web.services.llm_provider import get_provider
 
-        with patch.dict(os.environ, {}, clear=True):
+        with patch(
+            "web.services.llm_provider.get_llm_config",
+            return_value={
+                "api_key": "",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+            },
+        ):
             assert await get_provider() is None
 
     @pytest.mark.asyncio
     async def test_returns_api_key_provider_when_configured(self) -> None:
         from web.services.llm_provider import APIKeyProvider, get_provider
 
-        with patch.dict(os.environ, {"LIFE_INDEX_LLM_API_KEY": "sk-test"}, clear=True):
+        with patch(
+            "web.services.llm_provider.get_llm_config",
+            return_value={
+                "api_key": "sk-test",
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+            },
+        ):
             provider = await get_provider()
 
         assert isinstance(provider, APIKeyProvider)
@@ -220,6 +368,69 @@ class TestPrepareJournalData:
 
         assert result["title"]
         assert result["abstract"]
+        assert result["topic"] == ["life"]
+
+    @pytest.mark.asyncio
+    async def test_fallback_title_uses_first_non_empty_line(self) -> None:
+        module = importlib.import_module("web.services.write")
+        prepare_journal_data = getattr(module, "prepare_journal_data")
+
+        result = await prepare_journal_data(
+            {
+                "content": "\n\n第一行标题\n第二行正文",
+                "topic": ["life"],
+                "date": "2026-03-22",
+            },
+            provider=None,
+        )
+
+        assert result["title"] == "第一行标题"
+
+    @pytest.mark.asyncio
+    async def test_fallback_title_uses_empty_title_default(self) -> None:
+        module = importlib.import_module("web.services.write")
+        fallback_title = getattr(module, "_fallback_title")
+
+        assert fallback_title("") == "无标题日志"
+
+    @pytest.mark.asyncio
+    async def test_fallback_abstract_skips_markdown_heading_lines(self) -> None:
+        module = importlib.import_module("web.services.write")
+        prepare_journal_data = getattr(module, "prepare_journal_data")
+
+        result = await prepare_journal_data(
+            {
+                "content": "# 标题\n\n## 小标题\n\n正文第一段\n正文第二段",
+                "topic": ["life"],
+                "date": "2026-03-22",
+            },
+            provider=None,
+        )
+
+        assert result["abstract"].startswith("正文第一段 正文第二段")
+
+    @pytest.mark.asyncio
+    async def test_provider_failure_falls_back_to_required_metadata(self) -> None:
+        module = importlib.import_module("web.services.write")
+        prepare_journal_data = getattr(module, "prepare_journal_data")
+
+        provider = AsyncMock()
+        provider.extract_metadata.side_effect = RuntimeError("provider failed")
+
+        result = await prepare_journal_data(
+            {
+                "content": "第一行标题\n\n正文内容",
+                "topic": ["life"],
+                "date": "2026-03-22",
+            },
+            provider=provider,
+        )
+
+        assert result["title"] == "第一行标题"
+        assert result["abstract"]
+        assert result["mood"] == []
+        assert result["tags"] == []
+        assert result["people"] == []
         assert result["topic"] == ["life"]
 
     @pytest.mark.asyncio
@@ -340,7 +551,7 @@ class TestPrepareJournalData:
                 )
 
         assert result["location"] == "Lagos, Nigeria"
-        assert result.get("weather", "") == ""
+        assert "weather" not in result
 
     @pytest.mark.asyncio
     async def test_preserves_attachment_fields(self) -> None:
@@ -448,6 +659,71 @@ class TestAttachmentBridgeHelpers:
             {"source_path": "C:/temp/b.pdf", "description": "pdf"},
         ]
 
+    def test_build_attachment_records_skips_entries_without_source_path(self) -> None:
+        module = importlib.import_module("web.services.write")
+        build_attachment_payloads = getattr(module, "build_attachment_payloads")
+
+        result = build_attachment_payloads(
+            [
+                {"filename": "file.txt"},
+                {"source_path": "", "description": "empty"},
+                {"source_path": "C:/temp/ok.txt", "description": "ok"},
+            ]
+        )
+
+        assert result == [{"source_path": "C:/temp/ok.txt", "description": "ok"}]
+
+    def test_build_attachment_records_preserves_source_url_entries(self) -> None:
+        module = importlib.import_module("web.services.write")
+        build_attachment_payloads = getattr(module, "build_attachment_payloads")
+
+        result = build_attachment_payloads(
+            [
+                {
+                    "source_url": "https://example.com/photo.jpg",
+                    "description": "远程图片",
+                    "content_type": "image/jpeg",
+                    "size": 123,
+                }
+            ]
+        )
+
+        assert result == [
+            {
+                "source_url": "https://example.com/photo.jpg",
+                "description": "远程图片",
+                "content_type": "image/jpeg",
+                "size": 123,
+            }
+        ]
+
+    def test_download_attachment_from_url_returns_metadata_fields(self) -> None:
+        module = importlib.import_module("web.services.write")
+        download_attachment_from_url = getattr(module, "download_attachment_from_url")
+
+        fake_result = {
+            "success": True,
+            "path": "C:/tmp/photo.jpg",
+            "filename": "photo.jpg",
+            "content_type": "image/jpeg",
+            "size": 123,
+        }
+
+        with patch(
+            "web.services.write.download_url", new=AsyncMock(return_value=fake_result)
+        ):
+            result = download_attachment_from_url(
+                "https://example.com/photo.jpg", date_str="2026-03-10"
+            )
+
+        assert result == {
+            "source_url": "https://example.com/photo.jpg",
+            "source_path": "C:/tmp/photo.jpg",
+            "description": "https://example.com/photo.jpg",
+            "content_type": "image/jpeg",
+            "size": 123,
+        }
+
     def test_download_attachment_from_url_saves_temp_file(self, tmp_path: Path) -> None:
         module = importlib.import_module("web.services.write")
         download_attachment_from_url = getattr(module, "download_attachment_from_url")
@@ -536,3 +812,91 @@ class TestWritingTemplates:
         assert blank["topic"] == []
         assert blank["content"] == ""
         assert blank["tags"] == []
+
+
+class TestWriteRoutePhase3:
+    @patch("web.routes.write.get_provider", new_callable=AsyncMock)
+    def test_write_page_shows_llm_ready_status_when_provider_available(
+        self, mock_get_provider: AsyncMock
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        mock_get_provider.return_value = AsyncMock()
+
+        client = TestClient(create_app())
+        response = client.get("/write")
+
+        assert response.status_code == 200
+        assert "AI 辅助已就绪" in response.text
+        assert "留空的字段将由 AI 自动提炼" in response.text
+
+    @patch("web.routes.write.write_journal_web", new_callable=AsyncMock)
+    @patch("web.routes.write.prepare_journal_data", new_callable=AsyncMock)
+    @patch("web.routes.write.get_provider", new_callable=AsyncMock)
+    def test_submit_write_returns_confirmation_page_instead_of_redirect(
+        self,
+        mock_get_provider: AsyncMock,
+        mock_prepare_journal_data: AsyncMock,
+        mock_write_journal_web: AsyncMock,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        mock_get_provider.return_value = AsyncMock()
+        mock_prepare_journal_data.return_value = {
+            "title": "测试标题",
+            "content": "测试正文",
+            "date": "2026-03-24T09:15:00",
+            "topic": ["life"],
+            "mood": ["平静"],
+            "tags": ["测试"],
+            "people": [],
+            "location": "Lagos, Nigeria",
+            "weather": "晴天",
+            "project": "",
+            "abstract": "测试摘要",
+            "attachments": [],
+            "attachment_urls": [],
+        }
+        mock_write_journal_web.return_value = {
+            "success": True,
+            "journal_route_path": "2026/03/test.md",
+            "path": "C:/fake/Journals/2026/03/test.md",
+            "journal_path": "C:/fake/Journals/2026/03/test.md",
+            "needs_confirmation": False,
+            "confirmation_message": "",
+        }
+
+        client = TestClient(create_app())
+        get_response = client.get("/write")
+        csrf_token = get_response.cookies.get("csrf_token")
+        assert csrf_token
+
+        response = client.post(
+            "/write",
+            data={
+                "csrf_token": csrf_token,
+                "title": "",
+                "content": "测试正文",
+                "date": "2026-03-24T09:15:00",
+                "topic": "life",
+                "mood": "",
+                "tags": "",
+                "people": "",
+                "location": "",
+                "weather": "",
+                "project": "",
+                "template": "blank",
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 200
+        assert "确认完成" in response.text
+        assert "测试标题" in response.text
+        assert "/journal/2026/03/test.md/edit" in response.text
+
+    def test_write_confirm_template_exists(self) -> None:
+        template_path = Path("web/templates/write_confirm.html")
+        assert template_path.exists()

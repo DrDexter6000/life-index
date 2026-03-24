@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import tomllib
+from unittest.mock import patch
 
 from tools.lib.errors import ErrorCode, LifeIndexError, ERROR_DESCRIPTIONS
 
@@ -182,6 +183,45 @@ class TestServeCommand:
         args = parse_args(["--reload"])
         assert args.reload is True
 
+    def test_web_main_prints_operator_runtime_guidance(self) -> None:
+        from web.__main__ import main
+
+        with (
+            patch("web.__main__.parse_args") as mock_parse_args,
+            patch("web.__main__.check_deps", return_value=(True, None)),
+            patch("uvicorn.run") as mock_run,
+            patch("builtins.print") as mock_print,
+        ):
+            mock_parse_args.return_value.host = "127.0.0.1"
+            mock_parse_args.return_value.port = 8765
+            mock_parse_args.return_value.reload = False
+
+            main()
+
+        assert mock_run.called
+        printed_messages = [
+            str(call.args[0]) for call in mock_print.call_args_list if call.args
+        ]
+        assert any(
+            "Life Index Web GUI starting" in message for message in printed_messages
+        )
+        assert any("http://127.0.0.1:8765" in message for message in printed_messages)
+
+    def test_app_startup_logs_active_runtime_data_source(self) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        with patch("builtins.print") as mock_print:
+            with TestClient(create_app()):
+                pass
+
+        printed_messages = [
+            str(call.args[0]) for call in mock_print.call_args_list if call.args
+        ]
+        assert any(
+            "Life Index Web GUI runtime" in message for message in printed_messages
+        )
+
 
 class TestBaseTemplate:
     """Verify base.html template structure and rendering."""
@@ -194,13 +234,71 @@ class TestBaseTemplate:
     def test_base_template_contains_polished_nav_controls(self) -> None:
         from web.config import TEMPLATES_DIR
 
-        source = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+        source = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8") + (
+            TEMPLATES_DIR / "components" / "header.html"
+        ).read_text(encoding="utf-8")
         assert "min-h-[44px]" in source
         assert "inline-flex items-center justify-center" in source
-        assert "rounded-lg" in source
+        assert "rounded-full" in source
         assert "rounded-md text-sm font-medium text-white bg-indigo-600" not in source
         assert "切换深色模式" in source
         assert "切换浅色模式" in source
+
+    def test_base_template_bootstraps_theme_before_alpine(self) -> None:
+        from web.config import TEMPLATES_DIR
+
+        source = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+        bootstrap_marker = "document.documentElement.classList.toggle('dark'"
+        alpine_marker = "cdn.jsdelivr.net/npm/alpinejs"
+
+        assert bootstrap_marker in source
+        assert source.index(bootstrap_marker) < source.index(alpine_marker)
+
+    def test_base_template_includes_echarts_cdn_and_extra_scripts_block(self) -> None:
+        from web.config import TEMPLATES_DIR
+
+        source = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+
+        assert "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" in source
+        assert "{% block extra_scripts %}{% endblock %}" in source
+
+    def test_base_template_uses_clean_layout_without_runtime_transparency_banner(
+        self,
+    ) -> None:
+        from web.config import TEMPLATES_DIR
+
+        source = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+
+        assert (
+            '<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 min-h-[44px]">'
+            in source
+        )
+        assert "当前数据源" not in source
+
+    def test_runtime_banner_is_not_rendered_in_base_template_output(self) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        with TestClient(create_app()) as client:
+            response = client.get("/")
+
+        assert response.status_code == 200
+        assert "当前数据源" not in response.text
+
+    def test_runtime_banner_readonly_copy_is_not_rendered(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path / "sandbox"))
+        monkeypatch.setenv("LIFE_INDEX_READONLY_SIMULATION", "1")
+
+        with TestClient(create_app()) as client:
+            response = client.get("/")
+
+        assert response.status_code == 200
+        assert "只读仿真" not in response.text
 
     def test_batch_k_copy_and_cta_polish_present(self) -> None:
         from web.config import TEMPLATES_DIR
@@ -212,7 +310,8 @@ class TestBaseTemplate:
         )
 
         assert 'id="add-url-btn"' in write_source
-        assert "min-h-[44px]" in write_source
+        assert 'id="submit-btn"' in write_source
+        assert "min-h-[46px]" in write_source
         assert 'id="location"' in write_source
         assert "mt-1 block w-full" in write_source
         assert "min-h-[44px]" in search_source

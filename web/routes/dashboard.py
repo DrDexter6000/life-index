@@ -16,6 +16,7 @@ async def dashboard(request: Request) -> HTMLResponse:
         "dashboard.html",
         {
             "request": request,
+            "current_page": "/",
             "stats": stats,
         },
     )

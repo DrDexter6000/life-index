@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from tools.lib.frontmatter import parse_journal_file
-from tools.lib.metadata_cache import get_all_cached_metadata
+from tools.lib.metadata_cache import (
+    get_all_cached_metadata,
+    init_metadata_cache,
+    parse_and_cache_journal,
+)
+from tools.lib.config import JOURNALS_DIR
 
 
 @dataclass(slots=True)
@@ -94,10 +99,29 @@ def _counter_to_chart(counter: Counter[str]) -> list[dict[str, Any]]:
     return [{"name": name, "value": value} for name, value in counter.most_common()]
 
 
+def _normalize_text_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _entry_file_exists(entry: dict[str, Any]) -> bool:
+    file_path = entry.get("file_path")
+    if not file_path:
+        return False
+    return Path(str(file_path)).exists()
+
+
 def _build_on_this_day(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     month, day = _today_month_day()
     matches: list[dict[str, Any]] = []
     for entry in entries:
+        if not _entry_file_exists(entry):
+            continue
         raw = str(entry.get("date", ""))[:10]
         try:
             parsed = datetime.strptime(raw, "%Y-%m-%d").date()
@@ -142,11 +166,41 @@ def _build_people_graph(
     }
 
 
-def compute_dashboard_stats() -> DashboardStats:
+def _iter_journal_files() -> list[Path]:
+    if not JOURNALS_DIR.exists():
+        return []
+    return sorted(JOURNALS_DIR.rglob("life-index_*.md"))
+
+
+def get_all_journal_files() -> list[Path]:
+    return _iter_journal_files()
+
+
+def _load_dashboard_entries() -> list[dict[str, Any]]:
     try:
-        entries = get_all_cached_metadata()
+        cached_entries = get_all_cached_metadata()
     except Exception:
-        entries = []
+        cached_entries = []
+
+    journal_files = get_all_journal_files()
+    if cached_entries and journal_files and len(cached_entries) < len(journal_files):
+        conn = init_metadata_cache()
+        try:
+            rebuilt_entries: list[dict[str, Any]] = []
+            for journal_file in journal_files:
+                entry = parse_and_cache_journal(conn, journal_file)
+                if entry:
+                    rebuilt_entries.append(entry)
+            if rebuilt_entries:
+                return rebuilt_entries
+        finally:
+            conn.close()
+
+    return cached_entries
+
+
+def compute_dashboard_stats() -> DashboardStats:
+    entries = _load_dashboard_entries()
 
     stats = DashboardStats()
     stats.total_journals = len(entries)
@@ -170,11 +224,11 @@ def compute_dashboard_stats() -> DashboardStats:
     heatmap_counter: Counter[str] = Counter()
 
     for entry in entries:
-        for mood in entry.get("mood", []):
+        for mood in _normalize_text_list(entry.get("mood", [])):
             mood_counter[str(mood)] += 1
-        for topic in entry.get("topic", []):
+        for topic in _normalize_text_list(entry.get("topic", [])):
             topic_counter[str(topic)] += 1
-        for tag in entry.get("tags", []):
+        for tag in _normalize_text_list(entry.get("tags", [])):
             tag_counter[str(tag)] += 1
         raw_date = str(entry.get("date", ""))[:10]
         if raw_date:

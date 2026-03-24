@@ -3,12 +3,47 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import quote
 from typing import Any
+import re
 
 import markdown
+import re
 
 from tools.lib.config import JOURNALS_DIR
-from tools.lib.frontmatter import parse_journal_file
+from tools.lib.frontmatter import normalize_attachment_entries, parse_journal_file
+
+
+def _extract_links_from_body(body: str) -> list[dict[str, str]]:
+    """Extract Markdown links from body text."""
+    links = []
+    # Match Markdown links: [text](url)
+    pattern = r"\[([^\]]+)\]\(([^)]+)\)"
+    for match in re.finditer(pattern, body):
+        title = match.group(1).strip()
+        url = match.group(2).strip()
+        # Skip attachment links (relative paths)
+        if url.startswith("http://") or url.startswith("https://"):
+            links.append(
+                {
+                    "title": title,
+                    "url": url,
+                }
+            )
+    return links
+
+
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v", ".avi"}
+
+
+def _classify_attachment_kind(name: str) -> tuple[str, bool]:
+    suffix = Path(name).suffix.lower()
+    if suffix in IMAGE_EXTENSIONS:
+        return "image", True
+    if suffix in VIDEO_EXTENSIONS:
+        return "video", True
+    return "file", False
 
 
 def _safe_journal_path(relative_path: str) -> Path:
@@ -20,7 +55,15 @@ def _safe_journal_path(relative_path: str) -> Path:
 
 
 def _rewrite_attachment_urls(body: str) -> str:
-    return body.replace("../../../attachments/", "/attachments/")
+    rewritten = body.replace("../../../attachments/", "/attachments/")
+
+    def _rewrite_markdown_url(match: re.Match[str]) -> str:
+        prefix, url, suffix = match.groups()
+        if not url.startswith("/attachments/"):
+            return match.group(0)
+        return f"{prefix}{quote(url, safe='/:')}{suffix}"
+
+    return re.sub(r"(!?\[[^\]]*\]\()([^)]+)(\))", _rewrite_markdown_url, rewritten)
 
 
 def get_journal(relative_path: str) -> dict[str, Any]:
@@ -41,10 +84,34 @@ def get_journal(relative_path: str) -> dict[str, Any]:
     metadata = {key: value for key, value in parsed.items() if not key.startswith("_")}
     metadata["title"] = parsed.get("_title") or metadata.get("title") or file_path.stem
 
+    attachment_links: list[dict[str, str]] = []
+    for attachment in normalize_attachment_entries(
+        metadata.get("attachments", []), mode="stored_metadata"
+    ):
+        kind, is_previewable = _classify_attachment_kind(attachment["name"])
+        attachment_links.append(
+            {
+                "raw_path": attachment["raw_path"],
+                "href": _rewrite_attachment_urls(attachment["path"]),
+                "name": attachment["name"],
+                "kind": kind,
+                "is_previewable": is_previewable,
+                "source_url": attachment.get("source_url"),
+                "content_type": attachment.get("content_type"),
+                "size": attachment.get("size"),
+            }
+        )
+
+    metadata["links"] = metadata.get("links", []) or []
+
+    # Extract links from body content
+    body_links = _extract_links_from_body(str(parsed.get("_body", "")))
+
     return {
         "metadata": metadata,
         "html_content": html_content,
         "raw_body": str(parsed.get("_body", "")),
-        "attachments": metadata.get("attachments", []),
+        "attachments": attachment_links,
+        "links": body_links,
         "journal_route_path": relative_path,
     }

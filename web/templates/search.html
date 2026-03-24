@@ -3,38 +3,65 @@
 {% block title %}搜索 - Life Index{% endblock %}
 
 {% block content %}
-<section class="space-y-6">
-    <header>
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 sm:text-4xl">搜索日志</h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">通过关键词、主题或日期查找你的人生记录。</p>
+<section class="space-y-8">
+    <header class="space-y-3">
+        <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">Search</p>
+        <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">搜索日志</h1>
+        <p class="max-w-3xl text-sm sm:text-base" style="color: var(--color-on-surface-variant);">
+            通过关键词、主题或日期查找你的人生记录。
+        </p>
+        {% if has_active_filters %}
+            <div class="mt-4 flex flex-wrap gap-2">
+                {% if query %}
+                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">关键词：{{ query }}</span>
+                {% endif %}
+                {% if topic %}
+                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">主题：{{ topic }}</span>
+                {% endif %}
+                {% if mood %}
+                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255, 113, 108, 0.15); color: var(--color-error);">情绪：{{ mood }}</span>
+                {% endif %}
+                {% if tags %}
+                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">标签：{{ tags }}</span>
+                {% endif %}
+                {% if people %}
+                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(249, 135, 62, 0.15); color: var(--color-secondary);">人物：{{ people }}</span>
+                {% endif %}
+                {% if date_from or date_to %}
+                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 198, 207, 0.15); color: var(--color-on-surface-variant);">日期：{{ date_from or '不限' }}{% if date_to and date_to != date_from %} ~ {{ date_to }}{% elif date_to == date_from and date_to %}{% endif %}</span>
+                {% endif %}
+            </div>
+        {% endif %}
     </header>
 
-    <section class="rounded-xl bg-white p-5 shadow dark:bg-gray-800 sm:p-6">
+    <section class="rounded-2xl p-6 sm:p-6 sm:p-7 min-h-[44px]" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
         <form
             hx-get="/search"
             hx-target="#search-results"
             hx-trigger="submit"
             hx-indicator="#search-indicator"
-            class="space-y-4"
+            class="space-y-6"
         >
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center md:flex-row">
                 <div class="flex-1">
-                    <label for="q" class="block text-sm font-medium text-gray-700 dark:text-gray-300">搜索关键词</label>
+                    <label for="q" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">搜索关键词</label>
                     <input
                         type="text"
                         id="q"
                         name="q"
                         value="{{ query }}"
                         placeholder="输入关键词、标签或心情..."
-                        class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
+                        class="w-full rounded-full px-5 py-3 text-sm sm:text-base"
+                        style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
                     >
                 </div>
                 <div class="w-full sm:w-48 md:w-48">
-                    <label for="topic" class="block text-sm font-medium text-gray-700 dark:text-gray-300">主题</label>
+                    <label for="topic" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">主题</label>
                     <select
                         id="topic"
                         name="topic"
-                        class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                        class="w-full rounded-full px-5 py-3 text-sm sm:text-base"
+                        style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
                     >
                         <option value="">全部主题</option>
                         <option value="work" {% if topic == 'work' %}selected{% endif %}>工作</option>
@@ -50,23 +77,25 @@
 
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center md:flex-row">
                 <div class="flex-1">
-                    <label for="date_from" class="block text-sm font-medium text-gray-700 dark:text-gray-300">开始日期</label>
+                    <label for="date_from" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">开始日期</label>
                     <input
                         type="date"
                         id="date_from"
                         name="date_from"
                         value="{{ date_from }}"
-                        class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                        class="w-full rounded-full px-5 py-3 text-sm sm:text-base"
+                        style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
                     >
                 </div>
                 <div class="flex-1">
-                    <label for="date_to" class="block text-sm font-medium text-gray-700 dark:text-gray-300">结束日期</label>
+                    <label for="date_to" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">结束日期</label>
                     <input
                         type="date"
                         id="date_to"
                         name="date_to"
                         value="{{ date_to }}"
-                        class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                        class="w-full rounded-full px-5 py-3 text-sm sm:text-base"
+                        style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
                     >
                 </div>
             </div>
@@ -74,11 +103,12 @@
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <button
                     type="submit"
-                    class="min-h-[44px] rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                    class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95"
+                    style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);"
                 >
                     搜索
                 </button>
-                <span id="search-indicator" class="htmx-indicator text-sm text-gray-500 dark:text-gray-400">
+                <span id="search-indicator" class="htmx-indicator text-sm" style="color: var(--color-on-surface-variant);">
                     搜索中...
                 </span>
             </div>

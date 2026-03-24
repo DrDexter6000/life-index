@@ -43,8 +43,131 @@ class TestEditService:
         assert result["frontmatter_updates"] == {"location": "Abuja"}
         assert result["location_weather_required"] is True
 
+    def test_compute_edit_diff_ignores_unsubmitted_links_and_attachments(self) -> None:
+        module = importlib.import_module("web.services.edit")
+        compute_edit_diff = getattr(module, "compute_edit_diff")
+
+        result = compute_edit_diff(
+            original={
+                "title": "原标题",
+                "links": ["https://example.com/a"],
+                "attachments": [
+                    {
+                        "filename": "file.png",
+                        "rel_path": "../../../attachments/2026/03/file.png",
+                    }
+                ],
+                "_body": "原正文",
+            },
+            submitted={
+                "title": "新标题",
+                "content": "原正文",
+            },
+        )
+
+        assert result["frontmatter_updates"] == {"title": "新标题"}
+
+    def test_compute_edit_diff_tracks_links_and_attachments_changes(self) -> None:
+        module = importlib.import_module("web.services.edit")
+        compute_edit_diff = getattr(module, "compute_edit_diff")
+
+        result = compute_edit_diff(
+            original={
+                "links": ["https://example.com/a"],
+                "attachments": ["../../../attachments/2026/03/old.png"],
+                "_body": "原正文",
+            },
+            submitted={
+                "links": "https://example.com/b\nhttps://example.com/c",
+                "attachments": (
+                    "../../../attachments/2026/03/new.png\n"
+                    '{"filename":"deck.pdf","rel_path":"../../../attachments/2026/03/deck.pdf"}'
+                ),
+                "content": "原正文",
+            },
+        )
+
+        assert result["frontmatter_updates"] == {
+            "links": ["https://example.com/b", "https://example.com/c"],
+            "attachments": [
+                "../../../attachments/2026/03/new.png",
+                {
+                    "filename": "deck.pdf",
+                    "rel_path": "../../../attachments/2026/03/deck.pdf",
+                },
+            ],
+        }
+
 
 class TestEditRoute:
+    def test_journal_to_form_data_normalizes_datetime_for_input(self) -> None:
+        from web.routes.edit import _journal_to_form_data
+
+        form_data = _journal_to_form_data(
+            {
+                "metadata": {
+                    "date": "2026-03-07T14:30:00",
+                },
+                "raw_body": "原正文",
+            }
+        )
+
+        assert form_data["date"] == "2026-03-07T14:30:00"
+
+    def test_journal_to_form_data_preserves_links_and_attachments_metadata(
+        self,
+    ) -> None:
+        from web.routes.edit import _journal_to_form_data
+
+        form_data = _journal_to_form_data(
+            {
+                "metadata": {
+                    "links": ["https://example.com/a"],
+                    "attachments": [
+                        {
+                            "filename": "file.png",
+                            "rel_path": "../../../attachments/2026/03/file.png",
+                        }
+                    ],
+                },
+                "raw_body": "原正文",
+            }
+        )
+
+        assert form_data["links"] == ["https://example.com/a"]
+        assert form_data["attachments"] == [
+            {
+                "filename": "file.png",
+                "rel_path": "../../../attachments/2026/03/file.png",
+            }
+        ]
+
+    def test_build_edit_context_stringifies_links_and_attachments_for_textareas(
+        self,
+    ) -> None:
+        from web.routes.edit import _build_edit_context
+
+        context = _build_edit_context(
+            request=MagicMock(url=MagicMock(path="/journal/a/edit")),
+            csrf_token="token",
+            journal_route_path="2026/03/a.md",
+            form_data={
+                "links": ["https://example.com/a", "https://example.com/b"],
+                "attachments": [
+                    "../../../attachments/2026/03/legacy.png",
+                    {
+                        "filename": "deck.pdf",
+                        "rel_path": "../../../attachments/2026/03/deck.pdf",
+                    },
+                ],
+            },
+            llm_available=False,
+        )
+
+        assert context["links"] == "https://example.com/a\nhttps://example.com/b"
+        assert "../../../attachments/2026/03/legacy.png" in context["attachments"]
+        assert '"filename": "deck.pdf"' in context["attachments"]
+
     @patch("web.routes.edit.get_journal")
     @patch("web.routes.edit.get_provider", new_callable=AsyncMock)
     def test_get_edit_page_prefills_form(
@@ -67,6 +190,8 @@ class TestEditRoute:
                 "location": "Lagos, Nigeria",
                 "weather": "Sunny 28°C",
                 "project": "Life Index",
+                "links": ["https://example.com/a"],
+                "attachments": ["../../../attachments/2026/03/file.png"],
             },
             "raw_body": "原正文内容",
             "attachments": [],
@@ -80,7 +205,71 @@ class TestEditRoute:
         assert "编辑日志" in response.text
         assert "测试日志" in response.text
         assert "原正文内容" in response.text
+        assert "https://example.com/a" in response.text
+        assert "../../../attachments/2026/03/file.png" in response.text
         assert "csrf_token" in response.cookies
+
+    @patch("web.routes.edit.get_journal")
+    @patch("web.routes.edit.get_provider", new_callable=AsyncMock)
+    def test_get_edit_page_does_not_show_removed_runtime_operator_guidance(
+        self,
+        mock_provider: AsyncMock,
+        mock_get_journal: MagicMock,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        mock_provider.return_value = None
+        mock_get_journal.return_value = {
+            "metadata": {"title": "测试日志"},
+            "raw_body": "原正文内容",
+            "attachments": [],
+            "journal_route_path": "2026/03/test.md",
+        }
+
+        client = TestClient(create_app())
+        response = client.get("/journal/2026/03/test.md/edit")
+
+        assert response.status_code == 200
+        assert "当前实例将修改以下数据目录中的日志" not in response.text
+        assert "保存修改前请先确认当前数据源符合预期" not in response.text
+
+    @patch("web.routes.edit.get_journal")
+    @patch("web.routes.edit.get_provider", new_callable=AsyncMock)
+    def test_get_edit_page_does_not_show_removed_readonly_simulation_warning(
+        self,
+        mock_provider: AsyncMock,
+        mock_get_journal: MagicMock,
+        monkeypatch,
+        tmp_path,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path / "sandbox"))
+        monkeypatch.setenv("LIFE_INDEX_READONLY_SIMULATION", "1")
+        mock_provider.return_value = None
+        mock_get_journal.return_value = {
+            "metadata": {"title": "测试日志"},
+            "raw_body": "原正文内容",
+            "attachments": [],
+            "journal_route_path": "2026/03/test.md",
+        }
+
+        client = TestClient(create_app())
+        response = client.get("/journal/2026/03/test.md/edit")
+
+        assert response.status_code == 200
+        assert "只读仿真" not in response.text
+        assert "当前为只读仿真模式，保存修改只会写入临时副本" not in response.text
+        assert "提交后仍会写入临时副本，不会回写真实用户目录" not in response.text
+
+    def test_edit_template_exposes_links_and_attachments_fields(self) -> None:
+        from web.config import TEMPLATES_DIR
+
+        source = (TEMPLATES_DIR / "edit.html").read_text(encoding="utf-8")
+        assert 'name="links"' in source
+        assert 'name="attachments"' in source
 
     def test_post_edit_rejects_csrf_mismatch(self) -> None:
         from fastapi.testclient import TestClient
@@ -155,6 +344,57 @@ class TestEditRoute:
 
         assert response.status_code == 303
         assert "saved=1" in response.headers["location"]
+
+    def test_post_edit_success_in_readonly_simulation_redirects_with_notice(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path / "sandbox"))
+        monkeypatch.setenv("LIFE_INDEX_READONLY_SIMULATION", "1")
+
+        with patch("web.routes.edit.get_journal") as mock_get_journal:
+            with patch(
+                "web.routes.edit.get_provider", new_callable=AsyncMock
+            ) as mock_provider:
+                with patch("web.routes.edit.compute_edit_diff") as mock_diff:
+                    with patch(
+                        "web.routes.edit.edit_journal_web", new_callable=AsyncMock
+                    ) as mock_edit:
+                        mock_provider.return_value = None
+                        mock_get_journal.return_value = {
+                            "metadata": {"title": "原标题", "topic": ["life"]},
+                            "raw_body": "原正文",
+                            "attachments": [],
+                            "journal_route_path": "2026/03/test.md",
+                        }
+                        mock_diff.return_value = {
+                            "frontmatter_updates": {"title": "新标题"},
+                            "replace_content": "新正文",
+                            "location_weather_required": False,
+                        }
+                        mock_edit.return_value = {"success": True}
+
+                        client = TestClient(create_app())
+                        get_response = client.get("/journal/2026/03/test.md/edit")
+                        csrf_token = get_response.cookies.get("csrf_token")
+                        assert csrf_token is not None
+                        response = client.post(
+                            "/journal/2026/03/test.md/edit",
+                            data={
+                                "csrf_token": csrf_token,
+                                "title": "新标题",
+                                "content": "新正文",
+                                "topic": "life",
+                            },
+                            follow_redirects=False,
+                        )
+
+        assert response.status_code == 303
+        assert "saved=1" in response.headers["location"]
+        assert "warning=" in response.headers["location"]
+        assert "%E4%B8%B4%E6%97%B6%E5%89%AF%E6%9C%AC" in response.headers["location"]
 
     def test_post_edit_failure_preserves_edit_state(self) -> None:
         from fastapi.testclient import TestClient
@@ -232,14 +472,14 @@ class TestEditRoute:
         assert response.status_code == 200
         assert "修改已保存" in response.text
 
-    @patch("web.routes.edit.query_weather_for_location")
+    @patch("web.routes.api.query_weather_for_location")
     def test_weather_api_returns_simple_weather(self, mock_weather: MagicMock) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
         mock_weather.return_value = {
             "success": True,
-            "weather": "晴天 28°C",
+            "weather": "Sunny 28°C",
             "error": None,
         }
 
@@ -248,11 +488,11 @@ class TestEditRoute:
 
         assert response.status_code == 200
         assert response.json()["success"] is True
-        assert response.json()["weather"] == "晴天 28°C"
+        assert response.json()["weather"] == "Sunny 28°C"
         assert response.json()["error"] is None
 
-    @patch("web.routes.edit.query_weather")
-    @patch("web.routes.edit.geocode_location")
+    @patch("web.routes.api.query_weather")
+    @patch("web.routes.api.geocode_location")
     def test_weather_api_treats_empty_date_as_missing(
         self,
         mock_geocode: MagicMock,
@@ -270,6 +510,8 @@ class TestEditRoute:
             "weather": {
                 "simple": "晴",
                 "description": "Sunny",
+                "temperature_max": 28,
+                "temperature_min": 22,
             },
         }
 
@@ -284,8 +526,8 @@ class TestEditRoute:
         assert isinstance(called_args[2], str)
         assert len(called_args[2]) == 10
 
-    @patch("web.routes.edit.query_weather")
-    @patch("web.routes.edit.geocode_location")
+    @patch("web.routes.api.query_weather")
+    @patch("web.routes.api.geocode_location")
     def test_weather_api_normalizes_datetime_local_value(
         self,
         mock_geocode: MagicMock,
@@ -315,7 +557,26 @@ class TestEditRoute:
         assert response.json()["success"] is True
         mock_query_weather.assert_called_once_with(6.5244, 3.3792, "2026-03-23")
 
-    @patch("web.routes.edit.reverse_geocode_for_coordinates")
+    def test_extract_weather_text_returns_english_weather_with_temperature(
+        self,
+    ) -> None:
+        from web.routes.api import _extract_weather_text
+
+        result = _extract_weather_text(
+            {
+                "success": True,
+                "weather": {
+                    "description": "Sunny",
+                    "temperature_max": 28,
+                    "temperature_min": 22,
+                    "simple": "晴",
+                },
+            }
+        )
+
+        assert result == "Sunny 28°C/22°C"
+
+    @patch("web.routes.api.reverse_geocode_for_coordinates")
     def test_reverse_geocode_api_returns_location_payload(
         self, mock_reverse_geocode: MagicMock
     ) -> None:
@@ -336,7 +597,7 @@ class TestEditRoute:
         assert response.json()["location"] == "Lagos, Lagos State, Nigeria"
         assert response.json()["error"] is None
 
-    @patch("web.routes.edit.query_weather_for_location")
+    @patch("web.routes.api.query_weather_for_location")
     def test_weather_api_requires_location(self, mock_weather: MagicMock) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
@@ -347,7 +608,7 @@ class TestEditRoute:
         assert response.status_code == 400
         mock_weather.assert_not_called()
 
-    @patch("web.routes.edit.query_weather_for_location")
+    @patch("web.routes.api.query_weather_for_location")
     def test_weather_api_returns_structured_error_payload(
         self, mock_weather: MagicMock
     ) -> None:
@@ -396,13 +657,15 @@ class TestEditTemplate:
         assert 'id="submit-btn"' in source
         assert 'data-idle-text="保存修改"' in source
         assert 'id="form-status"' in source
+        assert 'id="submit-runtime-hint"' not in source
         assert "正在保存..." in source
         assert "formStatus" in source
         assert "submitBtn" in source
+        assert "提交后仍会写入临时副本" not in source
         assert "sm:text-4xl" in source
-        assert "sm:p-6" in source
+        assert "sm:p-7" in source
         assert "sm:flex-row" in source
-        assert "min-h-[44px]" in source
+        assert "min-h-[46px]" in source
         assert "tracking-tight" in source
         assert "保存前请先查询天气" in source
         assert "submit" in source
@@ -410,7 +673,7 @@ class TestEditTemplate:
         assert "locationDirty" in source
         assert "正在定位" in source
         assert "正在查询天气" in source
-        assert "bg-red-50" in source
+        assert "rgba(255, 113, 108, 0.08)" in source
 
 
 class TestEditRouteRegistration:

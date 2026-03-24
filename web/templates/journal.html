@@ -3,67 +3,182 @@
 {% block title %}{{ journal.metadata.title }} — Life Index{% endblock %}
 
 {% block content %}
-<article class="mx-auto max-w-4xl space-y-6">
-    <nav class="text-sm text-gray-500 dark:text-gray-400">
-        <a href="/" class="hover:underline">返回</a>
+<article class="mx-auto max-w-7xl space-y-8">
+    <nav class="text-sm" style="color: var(--color-on-surface-variant);">
+        <a href="/" class="transition-colors hover:opacity-80" style="color: var(--color-primary);">← 返回</a>
     </nav>
 
     {% if saved %}
-    <section class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-100 sm:p-6">
-        <div class="font-medium">修改已保存</div>
-        <p class="mt-1">你的编辑内容已经成功更新。</p>
+    <section class="rounded-2xl p-4 sm:p-6" style="background: rgba(133, 255, 242, 0.08); box-shadow: 0 0 0 1px rgba(133, 255, 242, 0.2);">
+        <div class="font-display text-xl font-medium" style="color: var(--color-tertiary);">修改已保存</div>
+        <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">你的编辑内容已经成功更新。</p>
     </section>
     {% endif %}
 
     {% if warning %}
-    <section class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-100 sm:p-6">
-        <div class="font-medium">附件提醒</div>
-        <p class="mt-1">{{ warning }}</p>
+    <section class="rounded-2xl p-4 sm:p-6" style="background: rgba(249, 135, 62, 0.08); box-shadow: 0 0 0 1px rgba(249, 135, 62, 0.2);">
+        <div class="font-display text-xl font-medium" style="color: var(--color-secondary);">附件提醒</div>
+        <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">{{ warning }}</p>
     </section>
     {% endif %}
 
-    <header class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
+    <header class="rounded-2xl p-6 sm:p-8" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-                <h1 class="text-3xl font-bold tracking-tight">{{ journal.metadata.title }}</h1>
+                <h1 class="font-display text-3xl font-semibold tracking-tight" style="color: var(--color-on-surface);">{{ journal.metadata.title }}</h1>
                 {% if journal.metadata.date %}
-                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ journal.metadata.date }}</p>
+                    <p class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">{{ journal.metadata.date }}</p>
                 {% endif %}
             </div>
-            <a href="/journal/{{ journal.journal_route_path }}/edit" class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">编辑</a>
+            <a href="/journal/{{ journal.journal_route_path }}/edit" class="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">编辑</a>
         </div>
 
         <div class="mt-4 flex flex-wrap gap-2 text-sm">
-            {% for mood in journal.metadata.mood or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-gray-700">{{ mood }}</span>{% endfor %}
-            {% for tag in journal.metadata.tags or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-gray-700">{{ tag }}</span>{% endfor %}
-            {% for topic in journal.metadata.topic or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-gray-700">{{ topic }}</span>{% endfor %}
-            {% for person in journal.metadata.people or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full bg-gray-100 px-3 py-2 dark:bg-gray-700">{{ person }}</span>{% endfor %}
+            {% for mood in journal.metadata.mood or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full px-3 py-2" style="background: rgba(255, 113, 108, 0.15); color: var(--color-error);">{{ mood }}</span>{% endfor %}
+            {% for tag in journal.metadata.tags or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full px-3 py-2" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">{{ tag }}</span>{% endfor %}
+            {% for topic in journal.metadata.topic or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full px-3 py-2" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">{{ topic }}</span>{% endfor %}
+            {% for person in journal.metadata.people or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full px-3 py-2" style="background: rgba(249, 135, 62, 0.15); color: var(--color-secondary);">{{ person }}</span>{% endfor %}
         </div>
 
-        <dl class="mt-6 divide-y divide-gray-100 text-sm dark:divide-gray-700">
+        <dl class="mt-6 space-y-2 text-sm divide-y divide-gray-100">
             {% if journal.metadata.location %}
-            <div class="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <dt class="text-gray-500 dark:text-gray-400">地点</dt>
-                <dd class="font-medium text-gray-900 dark:text-gray-100">{{ journal.metadata.location }}</dd>
+            <div class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                <dt style="color: var(--color-on-surface-variant);">地点</dt>
+                <dd class="font-medium" style="color: var(--color-on-surface);">{{ journal.metadata.location }}</dd>
             </div>
             {% endif %}
             {% if journal.metadata.weather %}
-            <div class="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <dt class="text-gray-500 dark:text-gray-400">天气</dt>
-                <dd class="font-medium text-gray-900 dark:text-gray-100">{{ journal.metadata.weather }}</dd>
+            <div class="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
+                <dt style="color: var(--color-on-surface-variant);">天气</dt>
+                <dd class="font-medium" style="color: var(--color-on-surface);">{{ journal.metadata.weather }}</dd>
             </div>
             {% endif %}
             {% if journal.metadata.abstract %}
-            <div class="flex flex-col gap-1 py-3">
-                <dt class="text-gray-500 dark:text-gray-400">摘要</dt>
-                <dd class="font-medium text-gray-900 dark:text-gray-100">{{ journal.metadata.abstract }}</dd>
+            <div class="flex flex-col gap-1 py-2">
+                <dt style="color: var(--color-on-surface-variant);">摘要</dt>
+                <dd class="font-medium" style="color: var(--color-on-surface);">{{ journal.metadata.abstract }}</dd>
             </div>
             {% endif %}
         </dl>
+
+        {% set meta_links = journal.metadata.links or [] %}
+        {% set body_links = journal.links or [] %}
+        {# Build unique links dict using base URL as key, prefer body links with titles #}
+        {% set unique_links = {} %}
+        {%- for link_item in body_links -%}
+            {%- set base_url = link_item.url.split('?')[0] -%}
+            {%- if base_url not in unique_links -%}
+                {%- set _ = unique_links.update({base_url: {'url': link_item.url, 'title': link_item.title}}) -%}
+            {%- endif -%}
+        {%- endfor -%}
+        {%- for link_url in meta_links -%}
+            {%- set base_url = link_url.split('?')[0] -%}
+            {%- if base_url not in unique_links -%}
+                {%- set _ = unique_links.update({base_url: {'url': link_url, 'title': link_url}}) -%}
+            {%- endif -%}
+        {%- endfor -%}
+        {% set total_count = unique_links|length %}
+        {% if total_count > 0 %}
+        <section class="mt-6">
+            <h2 class="mb-3 text-sm" style="color: var(--color-on-surface-variant);">相关链接 ({{ total_count }})</h2>
+            <div class="rounded-xl p-4" style="background: var(--color-surface-container-low); box-shadow: 0 0 0 1px rgba(68, 72, 79, 0.1);">
+                <ul class="space-y-2">
+                    {%- for base_url, link_data in unique_links.items() -%}
+                    {%- set domain = link_data.url.split('/')[2] if '//' in link_data.url else link_data.url -%}
+                    <li>
+                        <a href="{{ link_data.url }}" class="flex items-center gap-2 group" target="_blank" rel="noreferrer noopener">
+                            <span style="color: var(--color-primary); font-size: 0.875rem; line-height: 1.5;">{{ link_data.title }}</span>
+                            <span class="type-label" style="color: var(--color-on-surface-variant);">→ {{ domain }}</span>
+                            <span style="color: var(--color-on-surface-variant); opacity: 0.5;">↗</span>
+                        </a>
+                    </li>
+                    {%- endfor -%}
+                </ul>
+            </div>
+        </section>
+        {% endif %}
+
+        {% set image_attachments = [] %}
+        {% set video_attachments = [] %}
+        {% set file_attachments = [] %}
+        {% for attachment in journal.attachments %}
+            {% if attachment.kind == 'image' %}
+                {% set _ = image_attachments.append(attachment) %}
+            {% elif attachment.kind == 'video' %}
+                {% set _ = video_attachments.append(attachment) %}
+            {% elif attachment.kind == 'file' %}
+                {% set _ = file_attachments.append(attachment) %}
+            {% endif %}
+        {% endfor %}
+
+        {% if image_attachments %}
+        <section class="mt-6">
+            <h2 class="font-display text-xl font-medium tracking-tight" style="color: var(--color-on-surface);">图片附件</h2>
+            <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {% for attachment in image_attachments %}
+                <a href="{{ attachment.href }}" class="group overflow-hidden rounded-2xl transition-all hover:shadow-md" style="background: rgba(26, 30, 40, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);" target="_blank" rel="noreferrer noopener">
+                    <img src="{{ attachment.href }}" alt="{{ attachment.name }}" class="h-56 w-full object-cover">
+                    <div class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                        <span class="truncate font-medium" style="color: var(--color-on-surface);">{{ attachment.name }}</span>
+                        <span style="color: var(--color-primary);">查看</span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if video_attachments %}
+        <section class="mt-6">
+            <h2 class="font-display text-xl font-medium tracking-tight" style="color: var(--color-on-surface);">视频附件</h2>
+            <div class="mt-3 space-y-4">
+                {% for attachment in video_attachments %}
+                <article class="overflow-hidden rounded-2xl" style="background: rgba(26, 30, 40, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);">
+                    <video controls preload="metadata" class="w-full bg-black">
+                        <source src="{{ attachment.href }}">
+                    </video>
+                    <div class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                        <span class="truncate font-medium" style="color: var(--color-on-surface);">{{ attachment.name }}</span>
+                        <a href="{{ attachment.href }}" class="transition-colors hover:opacity-80" style="color: var(--color-primary);" target="_blank" rel="noreferrer noopener">打开原文件</a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if file_attachments %}
+        <section class="mt-6">
+            <h2 class="font-display text-xl font-medium tracking-tight" style="color: var(--color-on-surface);">文件附件</h2>
+            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {% for attachment in file_attachments %}
+                <a href="{{ attachment.href }}" class="flex min-h-[72px] items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm transition-all hover:shadow-md" style="background: rgba(26, 30, 40, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);" target="_blank" rel="noreferrer noopener">
+                    <div class="min-w-0">
+                        <div class="font-medium truncate" style="color: var(--color-on-surface);">{{ attachment.name }}</div>
+                        <div class="mt-1 text-xs" style="color: var(--color-on-surface-variant);">点击打开文件</div>
+                    </div>
+                    <span class="shrink-0" style="color: var(--color-primary);">打开</span>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
     </header>
 
-    <section class="prose max-w-none rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:prose-invert dark:bg-gray-800 sm:p-6">
+    <section class="prose max-w-none rounded-2xl p-6 sm:p-8" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05); white-space: pre-wrap;">
         {{ journal.html_content | safe }}
     </section>
+
+    <style>
+        /* Make links more visible in journal content */
+        .prose a {
+            color: var(--color-primary);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+        .prose a:hover {
+            opacity: 0.8;
+        }
+    </style>
 </article>
 {% endblock %}

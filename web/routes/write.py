@@ -8,12 +8,15 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import quote
+
+import markdown
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from web.config import TEMPLATES_DIR
+from web.services.journal import get_journal
+from web.services.date_adapter import resolve_standard_date_value, to_gui_datetime_value
 from web.services.llm_provider import get_provider
 from web.services.write import (
     cleanup_staged_files,
@@ -25,6 +28,15 @@ from web.services.write import (
 router = APIRouter()
 
 TEMPLATES_JSON_PATH = TEMPLATES_DIR / "writing_templates.json"
+
+
+def _readonly_simulation_warning_message() -> str | None:
+    from web.runtime import get_runtime_info
+
+    runtime = get_runtime_info()
+    if not runtime.get("readonly_simulation"):
+        return None
+    return "当前操作已写入临时副本，不会回写真实用户目录；如需保留结果，请先人工确认后再迁移。"
 
 
 def load_writing_templates() -> list[dict[str, Any]]:
@@ -53,17 +65,24 @@ def _build_template_context(
     values = form_data or {}
     return {
         "request": request,
+        "current_page": "/write",
         "csrf_token": csrf_token,
         "templates": templates,
         "templates_json": json.dumps(templates, ensure_ascii=False),
         "llm_available": llm_available,
+        "llm_status_label": "AI 辅助已就绪" if llm_available else "AI 辅助不可用",
+        "llm_status_message": (
+            "留空的字段将由 AI 自动提炼。"
+            if llm_available
+            else "未配置 AI 服务。请手动填写关键字段，或前往设置启用 AI。"
+        ),
         "error": error,
         "success": False,
         "journal_url": None,
         "title": _normalize_field_value(values.get("title")),
         "content": _normalize_field_value(values.get("content")),
-        "date": _normalize_field_value(values.get("date"))
-        or datetime.now().strftime("%Y-%m-%dT%H:%M"),
+        "date": to_gui_datetime_value(_normalize_field_value(values.get("date")))
+        or datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "topic": _normalize_field_value(values.get("topic")),
         "mood": ", ".join(values.get("mood", []))
         if isinstance(values.get("mood"), list)
@@ -78,6 +97,70 @@ def _build_template_context(
         "weather": _normalize_field_value(values.get("weather")),
         "project": _normalize_field_value(values.get("project")),
         "selected_template": _normalize_field_value(values.get("template")) or "blank",
+    }
+
+
+def _source_label(source: str | None) -> str:
+    return {
+        "ai": "由 AI 自动提炼",
+        "rule": "由规则自动生成",
+        "user": "用户填写",
+        "auto": "自动获取",
+    }.get(str(source or ""), "")
+
+
+def _build_write_confirm_context(
+    request: Request,
+    *,
+    journal: dict[str, Any],
+    field_sources: dict[str, str],
+    llm_available: bool,
+    warning_message: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "request": request,
+        "current_page": "/write",
+        "journal": journal,
+        "field_sources": field_sources,
+        "field_source_labels": {
+            field: _source_label(source) for field, source in field_sources.items()
+        },
+        "llm_available": llm_available,
+        "warning": warning_message,
+    }
+
+
+def _build_fallback_confirmation_journal(
+    prepared_data: dict[str, Any], journal_route_path: str
+) -> dict[str, Any]:
+    metadata_fields = (
+        "title",
+        "date",
+        "topic",
+        "mood",
+        "tags",
+        "people",
+        "location",
+        "weather",
+        "project",
+        "abstract",
+        "links",
+    )
+    metadata = {
+        field: prepared_data.get(field)
+        for field in metadata_fields
+        if prepared_data.get(field) not in (None, "", [])
+    }
+    html_content = markdown.markdown(
+        str(prepared_data.get("content", "")), extensions=["fenced_code", "tables"]
+    )
+    return {
+        "metadata": metadata,
+        "html_content": html_content,
+        "raw_body": str(prepared_data.get("content", "")),
+        "attachments": [],
+        "links": [],
+        "journal_route_path": journal_route_path,
     }
 
 
@@ -178,7 +261,9 @@ async def submit_write(
     try:
         for url in normalized_urls:
             try:
-                downloaded_attachments.append(download_attachment_from_url(url))
+                downloaded_attachments.append(
+                    download_attachment_from_url(url, date_str=date or None)
+                )
             except Exception as exc:
                 if _is_blocking_attachment_error(exc):
                     raise
@@ -189,7 +274,7 @@ async def submit_write(
         raw_form_data: dict[str, Any] = {
             "title": title,
             "content": content,
-            "date": date,
+            "date": resolve_standard_date_value(date),
             "topic": topic,
             "mood": mood,
             "tags": tags,
@@ -219,7 +304,7 @@ async def submit_write(
     raw_form_data: dict[str, Any] = {
         "title": title,
         "content": content,
-        "date": date,
+        "date": resolve_standard_date_value(date),
         "topic": topic,
         "mood": mood,
         "tags": tags,
@@ -252,19 +337,38 @@ async def submit_write(
         _set_csrf_cookie(response, new_csrf_token)
         return response
 
-    result = await write_journal_web(prepared_data)
+    field_sources = dict(prepared_data.get("field_sources", {}))
+    data_to_write = dict(prepared_data)
+    data_to_write.pop("field_sources", None)
+
+    result = await write_journal_web(data_to_write)
     if result.get("success") and result.get("journal_route_path"):
         cleanup_staged_files(staged_attachments)
-        redirect_url = f"/journal/{result['journal_route_path']}"
+        warning_parts: list[str] = []
+        readonly_warning = _readonly_simulation_warning_message()
+        if readonly_warning:
+            warning_parts.append(readonly_warning)
         if skipped_attachment_errors:
-            warning_message = "；".join(
+            warning_parts.extend(
                 f"已跳过附件下载失败：{message}"
                 for message in skipped_attachment_errors
             )
-            redirect_url = f"{redirect_url}?warning={quote(warning_message)}"
-        return RedirectResponse(
-            url=redirect_url,
-            status_code=303,
+        journal = get_journal(str(result["journal_route_path"]))
+        if journal.get("error"):
+            journal = _build_fallback_confirmation_journal(
+                data_to_write, str(result["journal_route_path"])
+            )
+        warning_message = "；".join(warning_parts) if warning_parts else None
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "write_confirm.html",
+            _build_write_confirm_context(
+                request,
+                journal=journal,
+                field_sources=field_sources,
+                llm_available=provider is not None,
+                warning_message=warning_message,
+            ),
         )
 
     cleanup_staged_files(staged_attachments)

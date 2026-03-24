@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.lib.config import JOURNALS_DIR, USER_DATA_DIR, get_default_location
+from tools.lib.frontmatter import normalize_attachment_entries
 from tools.lib.path_contract import merge_journal_path_fields
 from tools.query_weather import geocode_location, query_weather
 from tools.write_journal.core import write_journal
@@ -31,49 +32,52 @@ def _normalize_text_list(value: Any) -> list[str]:
 
 
 def _fallback_title(content: str) -> str:
-    return content[:20].strip() or "无标题"
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    if not lines:
+        return "无标题日志"
+    return lines[0][:50]
 
 
 def _fallback_abstract(content: str) -> str:
+    meaningful_lines = [
+        line.strip()
+        for line in content.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if meaningful_lines:
+        return " ".join(meaningful_lines)[:100]
     return content[:100].strip()
 
 
 def build_attachment_payloads(
     attachments: list[dict[str, Any] | str],
-) -> list[dict[str, str]]:
-    payloads: list[dict[str, str]] = []
-    for item in attachments:
-        if isinstance(item, str):
-            payloads.append({"source_path": item, "description": ""})
-            continue
-
-        source_path = str(item.get("source_path", "")).strip()
-        if not source_path:
-            continue
-
-        payloads.append(
-            {
-                "source_path": source_path,
-                "description": str(item.get("description", "")),
-            }
-        )
-    return payloads
+) -> list[dict[str, Any]]:
+    return normalize_attachment_entries(attachments, mode="write_input")
 
 
 def download_attachment_from_url(
     url: str,
     *,
+    date_str: str | None = None,
     temp_dir: Path | None = None,
     timeout: float = 30.0,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     target_dir = temp_dir or Path(tempfile.mkdtemp(prefix="life-index-url-"))
-    result = asyncio.run(download_url(url, target_dir, timeout=timeout))
+    result = asyncio.run(
+        download_url(url, target_dir, date_str=date_str, timeout=timeout)
+    )
     if not result.get("success"):
         error_code = result.get("error_code")
         if error_code == "E0702":
             raise ValueError(str(result.get("error") or "Content-Type 不支持"))
         raise RuntimeError(str(result.get("error") or "下载失败"))
-    return {"source_path": str(result["path"]), "description": url}
+    return {
+        "source_url": url,
+        "source_path": str(result["path"]),
+        "description": url,
+        "content_type": result.get("content_type"),
+        "size": result.get("size"),
+    }
 
 
 def cleanup_staged_files(staged_attachments: list[dict[str, str]]) -> None:
@@ -110,25 +114,53 @@ async def prepare_journal_data(
 
     prepared = dict(form_data)
     prepared["content"] = content
+    field_sources: dict[str, str] = {}
+
+    for field in (
+        "title",
+        "topic",
+        "mood",
+        "tags",
+        "people",
+        "location",
+        "weather",
+        "project",
+    ):
+        if field == "topic":
+            if _normalize_text_list(prepared.get(field)):
+                field_sources[field] = "user"
+            continue
+        if str(prepared.get(field, "")).strip():
+            field_sources[field] = "user"
+
+    if str(prepared.get("date", "")).strip():
+        field_sources["date"] = "user"
 
     extracted: dict[str, Any] = {}
     if provider is not None:
-        extracted = await provider.extract_metadata(content)
+        try:
+            extracted = await provider.extract_metadata(content)
+        except Exception:
+            extracted = {}
 
     for field in ("title", "abstract"):
         if not prepared.get(field) and extracted.get(field):
             prepared[field] = extracted[field]
+            field_sources[field] = "ai"
 
     for field in ("mood", "tags", "people", "topic"):
         if not _normalize_text_list(prepared.get(field)):
             normalized = _normalize_text_list(extracted.get(field))
             if normalized:
                 prepared[field] = normalized
+                field_sources[field] = "ai"
 
     if not prepared.get("title"):
         prepared["title"] = _fallback_title(content)
+        field_sources["title"] = "rule"
     if not prepared.get("abstract"):
         prepared["abstract"] = _fallback_abstract(content)
+        field_sources["abstract"] = "rule"
 
     prepared["attachments"] = build_attachment_payloads(
         list(form_data.get("attachments", []))
@@ -139,6 +171,7 @@ async def prepare_journal_data(
     weather = str(prepared.get("weather", "")).strip()
     if not location:
         location = get_default_location()
+        field_sources["location"] = "auto"
 
     coordinate_pair = parse_coordinate_location(location)
     if coordinate_pair is not None:
@@ -146,6 +179,7 @@ async def prepare_journal_data(
         resolved_location = str(reverse_result.get("location") or "").strip()
         if reverse_result.get("success") and resolved_location:
             location = resolved_location
+            field_sources["location"] = "auto"
 
     prepared["location"] = location
 
@@ -162,15 +196,32 @@ async def prepare_journal_data(
                 str(prepared.get("date", "")),
             )
             weather = _extract_weather_text(weather_result)
-    prepared["weather"] = weather
+    if weather:
+        prepared["weather"] = weather
+        field_sources.setdefault("weather", "auto")
+    else:
+        prepared.pop("weather", None)
 
     prepared["topic"] = _normalize_text_list(prepared.get("topic"))
     prepared["mood"] = _normalize_text_list(prepared.get("mood"))
     prepared["tags"] = _normalize_text_list(prepared.get("tags"))
     prepared["people"] = _normalize_text_list(prepared.get("people"))
 
+    field_sources.setdefault("title", "user")
+    field_sources.setdefault("abstract", "rule")
+    field_sources.setdefault("topic", "rule")
+    field_sources.setdefault("mood", "rule")
+    field_sources.setdefault("tags", "rule")
+    field_sources.setdefault("people", "rule")
+    field_sources.setdefault("location", "user")
+    field_sources.setdefault("date", "auto")
+    if "weather" in prepared:
+        field_sources.setdefault("weather", "user")
+
     if not provider and not prepared["topic"]:
         raise ValueError("LLM 不可用时，topic 为必填字段")
+
+    prepared["field_sources"] = field_sources
 
     return prepared
 
