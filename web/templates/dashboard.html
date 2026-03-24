@@ -4,57 +4,656 @@
 
 {% block content %}
 <section class="space-y-8">
-    <header>
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 sm:text-4xl">仪表盘</h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">浏览你的 Life Index 统计概览。</p>
+    <header class="space-y-3">
+        <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">Dashboard</p>
+        <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">仪表盘</h1>
+        <p class="max-w-3xl text-sm sm:text-base" style="color: var(--color-on-surface-variant);">
+            浏览你的 Life Index 统计概览，回顾人生轨迹。
+        </p>
     </header>
 
-    <section class="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
-            <p class="text-sm text-gray-500 dark:text-gray-400">总日志数</p>
-            <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stats.total_journals }}</p>
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6 ring-1 ring-black/5" style="animation-delay: 0ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <p class="text-sm" style="color: var(--color-on-surface-variant);">总日志数</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: var(--color-on-surface);">{{ stats.total_journals }}</p>
         </article>
-        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
-            <p class="text-sm text-gray-500 dark:text-gray-400">总字数</p>
-            <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stats.total_words }}</p>
+        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6" style="animation-delay: 40ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <p class="text-sm" style="color: var(--color-on-surface-variant);">总字数</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: var(--color-on-surface);">{{ stats.total_words }}</p>
         </article>
-        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
-            <p class="text-sm text-gray-500 dark:text-gray-400">最长连续记录</p>
-            <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stats.longest_streak }}</p>
+        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6" style="animation-delay: 80ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <p class="text-sm" style="color: var(--color-on-surface-variant);">最长连续记录</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: var(--color-on-surface);">{{ stats.longest_streak }}</p>
         </article>
-        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
-            <p class="text-sm text-gray-500 dark:text-gray-400">本月日志</p>
-            <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stats.month_journals }}</p>
+        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6" style="animation-delay: 120ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <p class="text-sm" style="color: var(--color-on-surface-variant);">本月日志</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: var(--color-on-surface);">{{ stats.month_journals }}</p>
         </article>
     </section>
 
-    <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
-            <h2 class="text-xl font-semibold tracking-tight">那年今日</h2>
+    <section>
+        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6" style="animation-delay: 160ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">写作热力图</h2>
+                    <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">过去一年写作频率一览。</p>
+                </div>
+                <div class="hidden sm:flex items-center gap-2 text-xs" style="color: var(--color-on-surface-variant);">
+                    <span class="inline-flex h-3 w-3 rounded-sm" style="background: var(--color-primary);"></span>
+                    <span>3+ 篇</span>
+                    <span class="inline-flex h-3 w-3 rounded-sm" style="background: rgba(255, 231, 146, 0.6);"></span>
+                    <span>2 篇</span>
+                    <span class="inline-flex h-3 w-3 rounded-sm" style="background: rgba(255, 231, 146, 0.35);"></span>
+                    <span>1 篇</span>
+                    <span class="inline-flex h-3 w-3 rounded-sm" style="background: rgba(255, 231, 146, 0.1);"></span>
+                    <span>无记录</span>
+                </div>
+            </div>
+            {% if stats.heatmap %}
+                <div id="heatmap-chart" class="mt-4 h-[180px] w-full"></div>
+            {% else %}
+                <div class="mt-4 flex flex-col items-center justify-center py-12 text-center" role="status" aria-live="polite">
+                    <svg class="h-12 w-12" viewBox="0 0 48 48" fill="none" aria-hidden="true" style="color: var(--color-on-surface-variant); opacity: 0.3;">
+                        <rect x="8" y="10" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.55" />
+                        <rect x="18" y="10" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.4" />
+                        <rect x="28" y="10" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.65" />
+                        <rect x="8" y="20" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.35" />
+                        <rect x="18" y="20" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.75" />
+                        <rect x="28" y="20" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.45" />
+                        <rect x="8" y="30" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.7" />
+                        <rect x="18" y="30" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.3" />
+                        <rect x="28" y="30" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.55" />
+                    </svg>
+                    <p class="mt-3 text-sm" style="color: var(--color-on-surface-variant);">还没有写作记录，开始你的第一篇日志 →</p>
+                    <a href="/write" class="mt-2 text-sm transition-colors hover:opacity-80" style="color: var(--color-primary);">写一篇日志 →</a>
+                </div>
+            {% endif %}
+        </article>
+    </section>
+
+    <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 200ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">那年今日</h2>
             {% if stats.on_this_day %}
                 <div class="mt-4 space-y-3">
                     {% for entry in stats.on_this_day %}
-                        <a href="/journal/{{ entry.journal_route_path }}" class="block rounded-lg border border-gray-200 p-4 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40">
+                        <a href="/journal/{{ entry.journal_route_path }}" class="block rounded-xl p-4 transition-all hover:shadow-md" style="background: rgba(26, 30, 40, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);">
                             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                                <h3 class="font-medium">{{ entry.title }}</h3>
-                                <span class="text-sm text-gray-500 dark:text-gray-400 sm:text-right">{{ entry.date }}</span>
+                                <h3 class="font-medium" style="color: var(--color-on-surface);">{{ entry.title }}</h3>
+                                <span class="text-sm sm:text-right" style="color: var(--color-on-surface-variant);">{{ entry.date }}</span>
                             </div>
                             {% if entry.abstract %}
-                                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">{{ entry.abstract }}</p>
+                                <p class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">{{ entry.abstract }}</p>
                             {% endif %}
                         </a>
                     {% endfor %}
                 </div>
             {% else %}
-                <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">今天还没有历史同日记录，继续写下去，未来会很有意思。</p>
+                <p class="mt-4 text-sm" style="color: var(--color-on-surface-variant);">今天还没有历史同日记录，继续写下去，未来会很有意思。</p>
             {% endif %}
         </article>
 
-        <article class="rounded-xl bg-white p-5 shadow ring-1 ring-black/5 dark:bg-gray-800 sm:p-6">
-            <h2 class="text-xl font-semibold tracking-tight">连续记录</h2>
-            <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">当前连续：{{ stats.current_streak }} 天</p>
-            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">里程碑：{{ stats.milestone or 0 }}</p>
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 240ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">连续记录</h2>
+            <p class="mt-4 text-sm" style="color: var(--color-on-surface-variant);">当前连续：{{ stats.current_streak }} 天</p>
+            <p class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">里程碑：{{ stats.milestone or 0 }}</p>
+        </article>
+    </section>
+
+    <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 280ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">主题分布</h2>
+            <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">7 个 Life Index 主题在最近日志中的分布。</p>
+            {% if stats.topic_distribution %}
+                <div id="topic-chart" class="mt-4 h-[300px] w-full sm:h-[320px]"></div>
+            {% else %}
+                <div class="mt-4 flex flex-col items-center justify-center py-12 text-center" role="status" aria-live="polite">
+                    <svg class="h-12 w-12" viewBox="0 0 48 48" fill="none" aria-hidden="true" style="color: var(--color-on-surface-variant); opacity: 0.3;">
+                        <circle cx="24" cy="24" r="16" stroke="currentColor" stroke-width="5" opacity="0.45" />
+                        <circle cx="24" cy="24" r="7" stroke="currentColor" stroke-width="5" opacity="0.8" />
+                    </svg>
+                    <p class="mt-3 text-sm" style="color: var(--color-on-surface-variant);">还没有足够数据生成主题分布</p>
+                    <a href="/write" class="mt-2 text-sm transition-colors hover:opacity-80" style="color: var(--color-primary);">写一篇日志 →</a>
+                </div>
+            {% endif %}
+        </article>
+
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 320ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">情绪频率</h2>
+            <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">最常出现的情绪关键词（Top 10）。</p>
+            {% if stats.mood_frequency %}
+                <div id="mood-chart" class="mt-4 h-[300px] w-full sm:h-[320px]"></div>
+            {% else %}
+                <div class="mt-4 flex flex-col items-center justify-center py-12 text-center" role="status" aria-live="polite">
+                    <svg class="h-12 w-12" viewBox="0 0 48 48" fill="none" aria-hidden="true" style="color: var(--color-on-surface-variant); opacity: 0.3;">
+                        <rect x="9" y="27" width="5" height="11" rx="1.5" fill="currentColor" opacity="0.45" />
+                        <rect x="18" y="20" width="5" height="18" rx="1.5" fill="currentColor" opacity="0.7" />
+                        <rect x="27" y="13" width="5" height="25" rx="1.5" fill="currentColor" opacity="0.85" />
+                        <rect x="36" y="23" width="5" height="15" rx="1.5" fill="currentColor" opacity="0.55" />
+                    </svg>
+                    <p class="mt-3 text-sm" style="color: var(--color-on-surface-variant);">记录更多日志，情绪图谱将在这里呈现</p>
+                    <a href="/write" class="mt-2 text-sm transition-colors hover:opacity-80" style="color: var(--color-primary);">写一篇日志 →</a>
+                </div>
+            {% endif %}
+        </article>
+    </section>
+
+    <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 360ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">标签词云</h2>
+            <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">高频标签会以更醒目的方式呈现。</p>
+            {% if stats.tag_cloud|length >= 5 %}
+                <div id="tagcloud-chart" class="mt-4 h-[280px] w-full sm:h-[300px]"></div>
+            {% elif stats.tag_cloud %}
+                <div class="mt-4">
+                    <p class="mb-3 text-sm" style="color: var(--color-on-surface-variant);">标签少于 5 个时，显示标签列表</p>
+                    <div class="flex flex-wrap gap-2">
+                        {% for tag in stats.tag_cloud %}
+                            <a href="/search?tag={{ tag.name | urlencode }}" class="inline-flex items-center rounded-full px-3 py-1 text-sm transition-all hover:opacity-80" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">
+                                <span>{{ tag.name }}</span>
+                                <span class="ml-2 text-xs" style="opacity: 0.8;">{{ tag.value }}</span>
+                            </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% else %}
+                <div class="mt-4 flex flex-col items-center justify-center py-12 text-center" role="status" aria-live="polite">
+                    <svg class="h-12 w-12" viewBox="0 0 48 48" fill="none" aria-hidden="true" style="color: var(--color-on-surface-variant); opacity: 0.3;">
+                        <path d="M14 28c0-4.418 3.582-8 8-8h2c5.523 0 10 4.477 10 10v1H20c-3.314 0-6-2.686-6-6v0Z" fill="currentColor" opacity="0.45" />
+                        <path d="M10 16c0-3.314 2.686-6 6-6h2c2.761 0 5 2.239 5 5v1H16c-3.314 0-6-2.686-6-6Z" fill="currentColor" opacity="0.75" />
+                    </svg>
+                    <p class="mt-3 text-sm" style="color: var(--color-on-surface-variant);">标签少于 5 个时，显示标签列表</p>
+                    <a href="/write" class="mt-2 text-sm transition-colors hover:opacity-80" style="color: var(--color-primary);">写一篇日志 →</a>
+                </div>
+            {% endif %}
+        </article>
+
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 400ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">人物关系</h2>
+            <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">共同出现的人物会形成关系图谱。</p>
+            {% if stats.people_graph.nodes|length >= 2 %}
+                <div id="people-chart" class="mt-4 h-[280px] w-full sm:h-[300px]"></div>
+            {% else %}
+                <div class="mt-4 flex flex-col items-center justify-center py-12 text-center" role="status" aria-live="polite">
+                    <svg class="h-12 w-12" viewBox="0 0 48 48" fill="none" aria-hidden="true" style="color: var(--color-on-surface-variant); opacity: 0.3;">
+                        <circle cx="24" cy="11" r="4" fill="currentColor" opacity="0.85" />
+                        <circle cx="12" cy="33" r="3.5" fill="currentColor" opacity="0.55" />
+                        <circle cx="36" cy="33" r="3.5" fill="currentColor" opacity="0.7" />
+                        <path d="M24 15v10" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.65" />
+                        <path d="M16 29h16" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.65" />
+                    </svg>
+                    <p class="mt-3 text-sm" style="color: var(--color-on-surface-variant);">在日志中提及人物后，关系图谱将在这里呈现</p>
+                    <a href="/write" class="mt-2 text-sm transition-colors hover:opacity-80" style="color: var(--color-primary);">写一篇日志 →</a>
+                </div>
+            {% endif %}
         </article>
     </section>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2/dist/echarts-wordcloud.min.js"></script>
+<script>
+    window.__lifeIndexDashboardCharts = window.__lifeIndexDashboardCharts || [];
+
+        const registerDashboardChart = (chart, container) => {
+        if (!chart || !container) {
+            return;
+        }
+
+        const existing = window.__lifeIndexDashboardCharts.find((entry) => entry.container === container);
+        if (existing) {
+            existing.chart = chart;
+            return;
+        }
+
+        window.__lifeIndexDashboardCharts.push({ chart, container });
+    };
+
+        const resizeDashboardCharts = () => {
+        for (const entry of window.__lifeIndexDashboardCharts) {
+            entry.chart && entry.chart.resize();
+        }
+    };
+
+    if (!window.__lifeIndexDashboardResizeBound) {
+        let dashboardResizeTimer = null;
+        window.addEventListener('resize', () => {
+            window.clearTimeout(dashboardResizeTimer);
+            dashboardResizeTimer = window.setTimeout(() => resizeDashboardCharts(), 100);
+        });
+        window.__lifeIndexDashboardResizeBound = true;
+    }
+
+        const lightAccentPalette = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#64748b'];
+        const darkAccentPalette = ['#FFE792', '#85FFF2', '#F9873E', '#FFD709', '#C4B6FE', '#67E8F9', '#CBD5E1'];
+
+        (() => {
+        const chartDom = document.getElementById('heatmap-chart');
+        if (!chartDom || typeof echarts !== 'object') {
+            return;
+        }
+
+        const heatmapRaw = {{ stats.heatmap | tojson }};
+        const heatmapEntries = Object.entries(heatmapRaw || {});
+        if (!heatmapEntries.length) {
+            return;
+        }
+
+        const today = new Date();
+        const oneYearAgo = new Date(today);
+        oneYearAgo.setFullYear(today.getFullYear() - 1);
+        const startDate = oneYearAgo.toISOString().slice(0, 10);
+        const endDate = today.toISOString().slice(0, 10);
+
+        const darkPalette = ['rgba(255, 231, 146, 0.1)', 'rgba(255, 231, 146, 0.35)', 'rgba(255, 231, 146, 0.6)', 'rgba(255, 231, 146, 1)'];
+        let heatmapChart = null;
+
+        const buildOption = (isDark) => {
+            const axisColor = '#C4C6CF';
+            const tooltipBg = 'rgba(18, 22, 30, 0.95)';
+            const tooltipText = '#F9F9FF';
+
+            return {
+                animationDuration: 800,
+                backgroundColor: 'transparent',
+                tooltip: {
+                    position: 'top',
+                    backgroundColor: tooltipBg,
+                    borderColor: 'rgba(68, 72, 79, 0.3)',
+                    borderWidth: 1,
+                    textStyle: { color: tooltipText },
+                    formatter(params) {
+                        const count = params.value[1];
+                        return `${params.value[0]}: ${count} 篇日志`;
+                    },
+                },
+                visualMap: {
+                    min: 0,
+                    max: 3,
+                    show: false,
+                    calculable: false,
+                    inRange: { color: darkPalette },
+                },
+                calendar: {
+                    top: 24,
+                    left: 30,
+                    right: 12,
+                    range: [startDate, endDate],
+                    cellSize: ['auto', 16],
+                    splitLine: { show: false },
+                    itemStyle: {
+                        color: darkPalette[0],
+                        borderWidth: 2,
+                        borderColor: '#0A0E14',
+                    },
+                    yearLabel: {
+                        show: true,
+                        color: axisColor,
+                        fontWeight: 600,
+                    },
+                    monthLabel: {
+                        nameMap: 'ZH',
+                        color: axisColor,
+                    },
+                    dayLabel: {
+                        firstDay: 1,
+                        nameMap: ['日', '一', '二', '三', '四', '五', '六'],
+                        color: axisColor,
+                    },
+                },
+                series: [{
+                    type: 'heatmap',
+                    coordinateSystem: 'calendar',
+                    data: heatmapEntries.map(([date, count]) => [date, count >= 3 ? 3 : count]),
+                }],
+            };
+        };
+
+        const renderHeatmap = () => {
+            const isDark = document.documentElement.classList.contains('dark');
+            if (heatmapChart) {
+                heatmapChart.dispose();
+            }
+            heatmapChart = echarts.init(chartDom, isDark ? 'dark' : null);
+            heatmapChart.setOption(buildOption(isDark));
+            registerDashboardChart(heatmapChart, chartDom);
+            heatmapChart.off('click');
+            heatmapChart.on('click', (params) => {
+                const date = params?.value?.[0];
+                if (date) {
+                    window.location.href = `/search?date=${encodeURIComponent(date)}`;
+                }
+            });
+        };
+
+        renderHeatmap();
+
+        const observer = new MutationObserver(() => {
+            renderHeatmap();
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    })();
+
+    (() => {
+        const topicChartDom = document.getElementById('topic-chart');
+        const moodChartDom = document.getElementById('mood-chart');
+        const topicData = {{ stats.topic_distribution | tojson }} || [];
+        const moodData = {{ stats.mood_frequency | tojson }} || [];
+
+        if (typeof echarts !== 'object' || (!topicChartDom && !moodChartDom)) {
+            return;
+        }
+
+        const topicColorMap = {
+            work: '#FFE792',
+            learn: '#85FFF2',
+            health: '#FF716C',
+            relation: '#F9873E',
+            think: '#C4B6FE',
+            create: '#67E8F9',
+            life: '#CBD5E1',
+        };
+
+        let topicChart = null;
+        let moodChart = null;
+
+        const buildTopicOption = (isDark) => ({
+            animationDuration: 800,
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'item',
+                formatter(params) {
+                    return `${params.name}: ${params.value} 篇 (${params.percent}%)`;
+                },
+            },
+            legend: {
+                orient: 'vertical',
+                right: 0,
+                top: 'center',
+                textStyle: {
+                    color: '#C4C6CF',
+                },
+                formatter(name) {
+                    const matched = topicData.find((item) => item.name === name);
+                    const total = topicData.reduce((sum, item) => sum + item.value, 0) || 1;
+                    const percent = matched ? Math.round((matched.value / total) * 100) : 0;
+                    return `${name} ${percent}%`;
+                },
+            },
+            series: [{
+                type: 'pie',
+                radius: ['40%', '70%'],
+                center: ['35%', '50%'],
+                avoidLabelOverlap: true,
+                label: { show: false },
+                emphasis: {
+                    itemStyle: {
+                        shadowBlur: 12,
+                        shadowOffsetX: 0,
+                        shadowColor: 'rgba(0, 0, 0, 0.25)',
+                    },
+                },
+                data: topicData.map((item) => ({
+                    value: item.value,
+                    name: item.name,
+                    itemStyle: { color: topicColorMap[item.name] || '#94a3b8' },
+                })),
+            }],
+        });
+
+        const buildMoodOption = (isDark) => {
+            const topMoodData = [...moodData]
+                .sort((a, b) => b.value - a.value)
+                .slice(0, 10);
+
+            return {
+                animationDuration: 800,
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    formatter(params) {
+                        const item = params[0];
+                        return `${item.name}: 出现 ${item.value} 次`;
+                    },
+                },
+                grid: {
+                    left: '4%',
+                    right: '6%',
+                    top: 8,
+                    bottom: 8,
+                    containLabel: true,
+                },
+                xAxis: {
+                    type: 'value',
+                    splitLine: {
+                        lineStyle: { color: 'rgba(68, 72, 79, 0.3)' },
+                    },
+                    axisLine: {
+                        lineStyle: { color: '#C4C6CF' },
+                    },
+                    axisLabel: {
+                        color: '#C4C6CF',
+                    },
+                },
+                yAxis: {
+                    type: 'category',
+                    inverse: true,
+                    data: topMoodData.map((item) => item.name),
+                    axisTick: { show: false },
+                    axisLine: { show: false },
+                    axisLabel: {
+                        color: '#F9F9FF',
+                    },
+                },
+                series: [{
+                    type: 'bar',
+                    data: topMoodData.map((item) => item.value),
+                    barWidth: '60%',
+                    itemStyle: {
+                        borderRadius: [0, 6, 6, 0],
+                        color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
+                            { offset: 0, color: '#FFE792' },
+                            { offset: 1, color: 'rgba(255, 231, 146, 0.4)' },
+                        ]),
+                    },
+                    label: {
+                        show: true,
+                        position: 'right',
+                        color: '#F9F9FF',
+                    },
+                }],
+            };
+        };
+
+        const renderDv2Charts = () => {
+            const isDark = document.documentElement.classList.contains('dark');
+
+            if (topicChartDom && topicData.length) {
+                if (topicChart) {
+                    topicChart.dispose();
+                }
+                topicChart = echarts.init(topicChartDom, isDark ? 'dark' : null);
+                topicChart.setOption(buildTopicOption(isDark));
+                registerDashboardChart(topicChart, topicChartDom);
+                topicChart.off('click');
+                topicChart.on('click', (params) => {
+                    if (params?.name) {
+                        window.location.href = `/search?topic=${encodeURIComponent(params.name)}`;
+                    }
+                });
+            }
+
+            if (moodChartDom && moodData.length) {
+                if (moodChart) {
+                    moodChart.dispose();
+                }
+                moodChart = echarts.init(moodChartDom, isDark ? 'dark' : null);
+                moodChart.setOption(buildMoodOption(isDark));
+                registerDashboardChart(moodChart, moodChartDom);
+                moodChart.off('click');
+                moodChart.on('click', (params) => {
+                    if (params?.name) {
+                        window.location.href = `/search?mood=${encodeURIComponent(params.name)}`;
+                    }
+                });
+            }
+        };
+
+        renderDv2Charts();
+
+        const observer = new MutationObserver(() => {
+            renderDv2Charts();
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    })();
+
+    (() => {
+        const tagCloudDom = document.getElementById('tagcloud-chart');
+        const peopleChartDom = document.getElementById('people-chart');
+        const tagCloudData = {{ stats.tag_cloud | tojson }} || [];
+        const peopleGraphData = {{ stats.people_graph | tojson }} || { nodes: [], edges: [] };
+
+        if (typeof echarts !== 'object' || (!tagCloudDom && !peopleChartDom)) {
+            return;
+        }
+
+        let tagCloudChart = null;
+        let peopleChart = null;
+
+        const buildTagCloudOption = (isDark) => ({
+            animationDuration: 800,
+            backgroundColor: 'transparent',
+            tooltip: {
+                formatter: '{b}: {c}',
+            },
+            series: [{
+                type: 'wordCloud',
+                shape: 'circle',
+                left: 'center',
+                top: 'center',
+                width: '90%',
+                height: '90%',
+                sizeRange: [14, 42],
+                rotationRange: [-35, 35],
+                rotationStep: 15,
+                gridSize: 8,
+                drawOutOfBound: false,
+                layoutAnimation: true,
+                textStyle: {
+                    fontFamily: 'Manrope, sans-serif',
+                    fontWeight: 'bold',
+                    color() {
+                        const palette = ['#FFE792', '#85FFF2', '#F9873E', '#FFD709', '#C4B6FE', '#67E8F9', '#CBD5E1'];
+                        return palette[Math.floor(Math.random() * palette.length)];
+                    },
+                },
+                emphasis: {
+                    focus: 'self',
+                    textStyle: {
+                        shadowBlur: 10,
+                        shadowColor: 'rgba(0,0,0,0.3)',
+                    },
+                },
+                data: tagCloudData,
+            }],
+        });
+
+        const buildPeopleGraphOption = (isDark) => ({
+            animationDuration: 800,
+            backgroundColor: 'transparent',
+            tooltip: {
+                formatter(params) {
+                    if (params.dataType === 'node') {
+                        return `${params.data.name}: 出现在 ${params.data.count} 篇日志中`;
+                    }
+                    return `${params.data.source} ↔ ${params.data.target}: ${params.data.weight} 次共同出现`;
+                },
+            },
+            series: [{
+                type: 'graph',
+                layout: 'force',
+                roam: true,
+                draggable: true,
+                label: {
+                    show: true,
+                    position: 'right',
+                    color: '#F9F9FF',
+                },
+                force: {
+                    repulsion: 220,
+                    gravity: 0.08,
+                    edgeLength: [40, 120],
+                    layoutAnimation: true,
+                },
+                lineStyle: {
+                    color: '#6B7280',
+                    curveness: 0.18,
+                    opacity: 0.75,
+                    width: 2,
+                },
+                emphasis: {
+                    focus: 'adjacency',
+                    lineStyle: { width: 4 },
+                },
+                data: (peopleGraphData.nodes || []).map((node, index) => ({
+                    ...node,
+                    value: node.count,
+                    symbolSize: Math.max(18, Math.round(Math.log(node.count + 1) * 18)),
+                    itemStyle: {
+                        color: ['#FFE792', '#85FFF2', '#F9873E', '#FFD709', '#C4B6FE', '#67E8F9', '#CBD5E1'][index % 7],
+                    },
+                })),
+                links: (peopleGraphData.edges || []).map((edge) => ({
+                    ...edge,
+                    lineStyle: {
+                        width: Math.max(1, edge.weight),
+                    },
+                })),
+            }],
+        });
+
+        const renderDv3Charts = () => {
+            const isDark = document.documentElement.classList.contains('dark');
+
+            if (tagCloudDom && tagCloudData.length >= 5 && typeof echarts.init === 'function') {
+                if (tagCloudChart) {
+                    tagCloudChart.dispose();
+                }
+                tagCloudChart = echarts.init(tagCloudDom, isDark ? 'dark' : null);
+                tagCloudChart.setOption(buildTagCloudOption(isDark));
+                registerDashboardChart(tagCloudChart, tagCloudDom);
+                tagCloudChart.off('click');
+                tagCloudChart.on('click', (params) => {
+                    if (params?.name) {
+                        window.location.href = `/search?tag=${encodeURIComponent(params.name)}`;
+                    }
+                });
+            }
+
+            if (peopleChartDom && (peopleGraphData.nodes || []).length >= 2) {
+                if (peopleChart) {
+                    peopleChart.dispose();
+                }
+                peopleChart = echarts.init(peopleChartDom, isDark ? 'dark' : null);
+                peopleChart.setOption(buildPeopleGraphOption(isDark));
+                registerDashboardChart(peopleChart, peopleChartDom);
+                peopleChart.off('click');
+                peopleChart.on('click', (params) => {
+                    if (params?.dataType === 'node' && params?.data?.name) {
+                        window.location.href = `/search?people=${encodeURIComponent(params.data.name)}`;
+                    }
+                });
+            }
+        };
+
+        renderDv3Charts();
+
+        const observer = new MutationObserver(() => {
+            renderDv3Charts();
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    })();
+</script>
 {% endblock %}

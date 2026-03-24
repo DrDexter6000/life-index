@@ -24,6 +24,7 @@ async def journal_view(request: Request, journal_path: str) -> HTMLResponse:
         "journal.html",
         {
             "request": request,
+            "current_page": request.url.path,
             "journal": journal,
             "saved": request.query_params.get("saved") == "1",
             "warning": request.query_params.get("warning"),

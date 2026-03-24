@@ -19,8 +19,8 @@ class TestWriteRoute:
         ) as mock_provider:
             mock_provider.return_value = None
 
-            client = TestClient(create_app())
-            response = client.get("/write")
+            with TestClient(create_app()) as client:
+                response = client.get("/write")
 
         assert response.status_code == 200
         assert "写日志" in response.text
@@ -35,12 +35,12 @@ class TestWriteRoute:
         ) as mock_provider:
             mock_provider.return_value = None
 
-            client = TestClient(create_app())
-            response = client.get("/write")
+            with TestClient(create_app()) as client:
+                response = client.get("/write")
 
         assert response.status_code == 200
-        assert "选择模板" in response.text
-        assert "letter_to_tuantuan" in response.text
+        assert "模板" in response.text
+        assert "空白日志" in response.text
 
     def test_get_write_page_includes_reverse_geocoding_hook(self) -> None:
         from fastapi.testclient import TestClient
@@ -51,13 +51,51 @@ class TestWriteRoute:
         ) as mock_provider:
             mock_provider.return_value = None
 
-            client = TestClient(create_app())
-            response = client.get("/write")
+            with TestClient(create_app()) as client:
+                response = client.get("/write")
 
         assert response.status_code == 200
         assert "geolocation-btn" in response.text
         assert "/api/reverse-geocode" in response.text
         assert "navigator.geolocation.getCurrentPosition" in response.text
+
+    def test_get_write_page_shows_runtime_operator_guidance(self) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        with patch(
+            "web.routes.write.get_provider", new_callable=AsyncMock
+        ) as mock_provider:
+            mock_provider.return_value = None
+
+            with TestClient(create_app()) as client:
+                response = client.get("/write")
+
+        assert response.status_code == 200
+        assert "当前实例将把新日志写入以下目录" not in response.text
+        assert "写入前请先确认当前数据源符合预期" not in response.text
+
+    def test_get_write_page_shows_readonly_simulation_warning(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path / "sandbox"))
+        monkeypatch.setenv("LIFE_INDEX_READONLY_SIMULATION", "1")
+
+        with patch(
+            "web.routes.write.get_provider", new_callable=AsyncMock
+        ) as mock_provider:
+            mock_provider.return_value = None
+
+            with TestClient(create_app()) as client:
+                response = client.get("/write")
+
+        assert response.status_code == 200
+        assert "只读仿真" not in response.text
+        assert "当前为只读仿真模式，保存日志只会写入临时副本" not in response.text
+        assert "提交后仍会写入临时副本，不会回写真实用户目录" not in response.text
 
     def test_post_write_rejects_csrf_mismatch(self) -> None:
         from fastapi.testclient import TestClient
@@ -68,17 +106,17 @@ class TestWriteRoute:
         ) as mock_provider:
             mock_provider.return_value = None
 
-            client = TestClient(create_app())
-            client.get("/write")
-            response = client.post(
-                "/write",
-                data={
-                    "csrf_token": "wrong-token",
-                    "content": "正文",
-                    "topic": "life",
-                    "date": "2026-03-22",
-                },
-            )
+            with TestClient(create_app()) as client:
+                client.get("/write")
+                response = client.post(
+                    "/write",
+                    data={
+                        "csrf_token": "wrong-token",
+                        "content": "正文",
+                        "topic": "life",
+                        "date": "2026-03-22",
+                    },
+                )
 
         assert response.status_code == 403
 
@@ -106,27 +144,28 @@ class TestWriteRoute:
                         "journal_route_path": "2026/03/test.md",
                     }
 
-                    client = TestClient(create_app())
-                    get_response = client.get("/write")
-                    csrf_token = get_response.cookies.get("csrf_token")
-                    assert csrf_token is not None
+                    with TestClient(create_app()) as client:
+                        get_response = client.get("/write")
+                        csrf_token = get_response.cookies.get("csrf_token")
+                        assert csrf_token is not None
 
-                    response = client.post(
-                        "/write",
-                        data={
-                            "csrf_token": csrf_token,
-                            "content": "正文",
-                            "topic": "life",
-                            "date": "2026-03-22",
-                            "attachments": "",
-                        },
-                        follow_redirects=False,
-                    )
+                        response = client.post(
+                            "/write",
+                            data={
+                                "csrf_token": csrf_token,
+                                "content": "正文",
+                                "topic": "life",
+                                "date": "2026-03-22",
+                                "attachments": "",
+                            },
+                            follow_redirects=False,
+                        )
 
-        assert response.status_code == 303
-        assert response.headers["location"] == "/journal/2026/03/test.md"
+        assert response.status_code == 200
+        assert "确认完成" in response.text
+        assert "/journal/2026/03/test.md" in response.text
 
-    def test_post_write_success_redirects_to_journal(self) -> None:
+    def test_post_write_success_returns_confirmation_page(self) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
@@ -157,7 +196,56 @@ class TestWriteRoute:
                             "description": "https://example.com/file.png",
                         }
 
-                        client = TestClient(create_app())
+                        with TestClient(create_app()) as client:
+                            get_response = client.get("/write")
+                            csrf_token = get_response.cookies.get("csrf_token")
+                            assert csrf_token is not None
+                            response = client.post(
+                                "/write",
+                                data={
+                                    "csrf_token": csrf_token,
+                                    "content": "正文",
+                                    "topic": "life",
+                                    "date": "2026-03-22",
+                                },
+                                follow_redirects=False,
+                            )
+
+        assert response.status_code == 200
+        assert "确认写入结果" in response.text
+        assert "/journal/2026/03/test.md" in response.text
+        assert "/journal/2026/03/test.md/edit" in response.text
+
+    def test_post_write_success_in_readonly_simulation_shows_notice_on_confirmation_page(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path / "sandbox"))
+        monkeypatch.setenv("LIFE_INDEX_READONLY_SIMULATION", "1")
+
+        with patch(
+            "web.routes.write.get_provider", new_callable=AsyncMock
+        ) as mock_provider:
+            with patch(
+                "web.routes.write.prepare_journal_data", new_callable=AsyncMock
+            ) as mock_prepare:
+                with patch(
+                    "web.routes.write.write_journal_web", new_callable=AsyncMock
+                ) as mock_write:
+                    mock_provider.return_value = None
+                    mock_prepare.return_value = {
+                        "content": "正文",
+                        "topic": ["life"],
+                        "date": "2026-03-22",
+                    }
+                    mock_write.return_value = {
+                        "success": True,
+                        "journal_route_path": "2026/03/test.md",
+                    }
+
+                    with TestClient(create_app()) as client:
                         get_response = client.get("/write")
                         csrf_token = get_response.cookies.get("csrf_token")
                         assert csrf_token is not None
@@ -172,8 +260,9 @@ class TestWriteRoute:
                             follow_redirects=False,
                         )
 
-        assert response.status_code == 303
-        assert response.headers["location"] == "/journal/2026/03/test.md"
+        assert response.status_code == 200
+        assert "写入提醒" in response.text
+        assert "当前操作已写入临时副本，不会回写真实用户目录" in response.text
 
     def test_post_write_failure_preserves_user_input(self) -> None:
         from fastapi.testclient import TestClient
@@ -200,20 +289,20 @@ class TestWriteRoute:
                         "error": "写入失败",
                     }
 
-                    client = TestClient(create_app())
-                    get_response = client.get("/write")
-                    csrf_token = get_response.cookies.get("csrf_token")
-                    assert csrf_token is not None
-                    response = client.post(
-                        "/write",
-                        data={
-                            "csrf_token": csrf_token,
-                            "content": "保留的正文",
-                            "topic": "life",
-                            "date": "2026-03-22",
-                            "title": "保留标题",
-                        },
-                    )
+                    with TestClient(create_app()) as client:
+                        get_response = client.get("/write")
+                        csrf_token = get_response.cookies.get("csrf_token")
+                        assert csrf_token is not None
+                        response = client.post(
+                            "/write",
+                            data={
+                                "csrf_token": csrf_token,
+                                "content": "保留的正文",
+                                "topic": "life",
+                                "date": "2026-03-22",
+                                "title": "保留标题",
+                            },
+                        )
 
         assert response.status_code == 200
         assert "写入失败" in response.text
@@ -251,31 +340,31 @@ class TestWriteRoute:
                             "description": "https://example.com/file.png",
                         }
 
-                        client = TestClient(create_app())
-                        get_response = client.get("/write")
-                        csrf_token = get_response.cookies.get("csrf_token")
-                        assert csrf_token is not None
+                        with TestClient(create_app()) as client:
+                            get_response = client.get("/write")
+                            csrf_token = get_response.cookies.get("csrf_token")
+                            assert csrf_token is not None
 
-                        response = client.post(
-                            "/write",
-                            data={
-                                "csrf_token": csrf_token,
-                                "content": "正文",
-                                "topic": "life",
-                                "date": "2026-03-22",
-                                "attachment_urls": "https://example.com/file.png",
-                            },
-                            files={
-                                "attachments": (
-                                    "note.txt",
-                                    BytesIO(b"hello"),
-                                    "text/plain",
-                                ),
-                            },
-                            follow_redirects=False,
-                        )
+                            response = client.post(
+                                "/write",
+                                data={
+                                    "csrf_token": csrf_token,
+                                    "content": "正文",
+                                    "topic": "life",
+                                    "date": "2026-03-22",
+                                    "attachment_urls": "https://example.com/file.png",
+                                },
+                                files={
+                                    "attachments": (
+                                        "note.txt",
+                                        BytesIO(b"hello"),
+                                        "text/plain",
+                                    ),
+                                },
+                                follow_redirects=False,
+                            )
 
-        assert response.status_code == 303
+        assert response.status_code == 200
         assert mock_prepare.await_count == 1
         prepare_args = mock_prepare.await_args_list[0].args[0]
         assert prepare_args["attachment_urls"] == ["https://example.com/file.png"]
@@ -334,33 +423,35 @@ class TestWriteRoute:
                                 "journal_route_path": "2026/03/test.md",
                             }
 
-                            client = TestClient(create_app())
-                            get_response = client.get("/write")
-                            csrf_token = get_response.cookies.get("csrf_token")
-                            assert csrf_token is not None
+                            with TestClient(create_app()) as client:
+                                get_response = client.get("/write")
+                                csrf_token = get_response.cookies.get("csrf_token")
+                                assert csrf_token is not None
 
-                            response = client.post(
-                                "/write",
-                                data={
-                                    "csrf_token": csrf_token,
-                                    "content": "正文",
-                                    "topic": "life",
-                                    "date": "2026-03-22",
-                                    "attachment_urls": "https://example.com/file.png",
-                                },
-                                files={
-                                    "attachments": (
-                                        "note.txt",
-                                        BytesIO(b"hello"),
-                                        "text/plain",
-                                    ),
-                                },
-                                follow_redirects=False,
-                            )
+                                response = client.post(
+                                    "/write",
+                                    data={
+                                        "csrf_token": csrf_token,
+                                        "content": "正文",
+                                        "topic": "life",
+                                        "date": "2026-03-22",
+                                        "attachment_urls": "https://example.com/file.png",
+                                    },
+                                    files={
+                                        "attachments": (
+                                            "note.txt",
+                                            BytesIO(b"hello"),
+                                            "text/plain",
+                                        ),
+                                    },
+                                    follow_redirects=False,
+                                )
 
-        assert response.status_code == 303
+        assert response.status_code == 200
         mock_stage.assert_called_once()
-        mock_download.assert_called_once_with("https://example.com/file.png")
+        mock_download.assert_called_once_with(
+            "https://example.com/file.png", date_str="2026-03-22"
+        )
         assert mock_prepare.await_count == 1
         prepare_args = mock_prepare.await_args_list[0].args[0]
         assert prepare_args["attachments"] == [
@@ -384,21 +475,21 @@ class TestWriteRoute:
                 mock_provider.return_value = None
                 mock_download.side_effect = ValueError("Content-Type 不支持")
 
-                client = TestClient(create_app())
-                get_response = client.get("/write")
-                csrf_token = get_response.cookies.get("csrf_token")
-                assert csrf_token is not None
+                with TestClient(create_app()) as client:
+                    get_response = client.get("/write")
+                    csrf_token = get_response.cookies.get("csrf_token")
+                    assert csrf_token is not None
 
-                response = client.post(
-                    "/write",
-                    data={
-                        "csrf_token": csrf_token,
-                        "content": "正文",
-                        "topic": "life",
-                        "date": "2026-03-22",
-                        "attachment_urls": "https://example.com/index.html",
-                    },
-                )
+                    response = client.post(
+                        "/write",
+                        data={
+                            "csrf_token": csrf_token,
+                            "content": "正文",
+                            "topic": "life",
+                            "date": "2026-03-22",
+                            "attachment_urls": "https://example.com/index.html",
+                        },
+                    )
 
         assert response.status_code == 200
         assert "Content-Type 不支持" in response.text
@@ -424,28 +515,28 @@ class TestWriteRoute:
                         ]
                         mock_download.side_effect = ValueError("Content-Type 不支持")
 
-                        client = TestClient(create_app())
-                        get_response = client.get("/write")
-                        csrf_token = get_response.cookies.get("csrf_token")
-                        assert csrf_token is not None
+                        with TestClient(create_app()) as client:
+                            get_response = client.get("/write")
+                            csrf_token = get_response.cookies.get("csrf_token")
+                            assert csrf_token is not None
 
-                        response = client.post(
-                            "/write",
-                            data={
-                                "csrf_token": csrf_token,
-                                "content": "正文",
-                                "topic": "life",
-                                "date": "2026-03-22",
-                                "attachment_urls": "https://example.com/file.png",
-                            },
-                            files={
-                                "attachments": (
-                                    "note.txt",
-                                    BytesIO(b"hello"),
-                                    "text/plain",
-                                ),
-                            },
-                        )
+                            response = client.post(
+                                "/write",
+                                data={
+                                    "csrf_token": csrf_token,
+                                    "content": "正文",
+                                    "topic": "life",
+                                    "date": "2026-03-22",
+                                    "attachment_urls": "https://example.com/file.png",
+                                },
+                                files={
+                                    "attachments": (
+                                        "note.txt",
+                                        BytesIO(b"hello"),
+                                        "text/plain",
+                                    ),
+                                },
+                            )
 
         assert response.status_code == 200
         mock_cleanup.assert_called_once_with(
@@ -493,32 +584,32 @@ class TestWriteRoute:
                                 "journal_route_path": "2026/03/test.md",
                             }
 
-                            client = TestClient(create_app())
-                            get_response = client.get("/write")
-                            csrf_token = get_response.cookies.get("csrf_token")
-                            assert csrf_token is not None
+                            with TestClient(create_app()) as client:
+                                get_response = client.get("/write")
+                                csrf_token = get_response.cookies.get("csrf_token")
+                                assert csrf_token is not None
 
-                            response = client.post(
-                                "/write",
-                                data={
-                                    "csrf_token": csrf_token,
-                                    "content": "正文",
-                                    "topic": "life",
-                                    "date": "2026-03-22",
-                                    "attachment_urls": "https://example.com/file.png",
-                                },
-                                files={
-                                    "attachments": (
-                                        "note.txt",
-                                        BytesIO(b"hello"),
-                                        "text/plain",
-                                    ),
-                                },
-                                follow_redirects=False,
-                            )
+                                response = client.post(
+                                    "/write",
+                                    data={
+                                        "csrf_token": csrf_token,
+                                        "content": "正文",
+                                        "topic": "life",
+                                        "date": "2026-03-22",
+                                        "attachment_urls": "https://example.com/file.png",
+                                    },
+                                    files={
+                                        "attachments": (
+                                            "note.txt",
+                                            BytesIO(b"hello"),
+                                            "text/plain",
+                                        ),
+                                    },
+                                    follow_redirects=False,
+                                )
 
-        assert response.status_code == 303
-        assert "warning=" in response.headers["location"]
+        assert response.status_code == 200
+        assert "写入提醒" in response.text
         assert mock_prepare.await_count == 1
         prepare_args = mock_prepare.await_args_list[0].args[0]
         assert prepare_args["attachments"] == [
@@ -549,18 +640,18 @@ class TestWriteTemplate:
         source = (TEMPLATES_DIR / "write.html").read_text(encoding="utf-8")
         assert '{% extends "base.html" %}' in source
         assert "csrf_token" in source
-        assert "选择模板" in source
-        assert "日志内容" in source
+        assert "模板" in source
+        assert "附件" in source
 
     def test_write_template_has_safe_preset_prefill_script(self) -> None:
         from web.config import TEMPLATES_DIR
 
         source = (TEMPLATES_DIR / "write.html").read_text(encoding="utf-8")
         assert "data-templates" in source
-        assert "template-selector" in source
-        assert "confirm(" in source
-        assert "existingContent" in source
-        assert "existingTopic" in source
+        assert "template-section" in source
+        assert "templateSelector" in source
+        assert "contentField" in source
+        assert "topicField" in source
 
     def test_write_template_has_geolocation_hook(self) -> None:
         from web.config import TEMPLATES_DIR
@@ -575,7 +666,7 @@ class TestWriteTemplate:
         assert "/api/weather" in source
         assert "weatherField.value = ''" in source
         assert "正在定位" in source
-        assert "正在查询天气" in source
+        assert "setButtonBusy(weatherBtn, '查询中...', true)" in source
         assert "位置信息获取失败" in source
 
     def test_write_template_has_dynamic_url_inputs(self) -> None:
@@ -585,19 +676,17 @@ class TestWriteTemplate:
         assert 'id="url-inputs"' in source
         assert 'id="add-url-btn"' in source
         assert 'id="local-file-input"' in source
-        assert 'id="selected-files-status"' in source
-        assert 'id="attachment-status"' in source
         assert 'id="submit-btn"' in source
         assert 'data-idle-text="保存日志"' in source
         assert "正在保存..." in source
-        assert "remove-url-btn" in source
-        assert "selectedFilesStatus" in source
-        assert "attachmentStatus" in source
+        assert "add-url-btn" in source
         assert "submitBtn" in source
+        assert 'id="submit-runtime-hint"' not in source
+        assert "提交后仍会写入临时副本" not in source
         assert "sm:text-4xl" in source
-        assert "sm:p-6" in source
+        assert "sm:p-5" in source or "sm:p-10" in source
         assert "sm:flex-row" in source
-        assert "min-h-[44px]" in source
+        assert "min-h-[46px]" in source
         assert "tracking-tight" in source
         assert "attachment_urls" in source
         assert "appendChild" in source

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,32 @@ from tools.edit_journal import edit_journal
 from tools.lib.config import JOURNALS_DIR, USER_DATA_DIR
 from tools.lib.path_contract import merge_journal_path_fields
 from web.services.write import _normalize_text_list
+
+
+def _normalize_multiline_text(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    lines = str(value).splitlines()
+    return [line.strip() for line in lines if line.strip()]
+
+
+def _normalize_attachment_textarea(value: Any) -> list[dict[str, Any] | str]:
+    normalized: list[dict[str, Any] | str] = []
+    for line in _normalize_multiline_text(value):
+        if line.startswith("{"):
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                normalized.append(line)
+                continue
+            if isinstance(parsed, dict):
+                normalized.append(parsed)
+                continue
+        normalized.append(line)
+    return normalized
 
 
 def compute_edit_diff(
@@ -42,6 +69,20 @@ def compute_edit_diff(
         submitted_value = _normalize_text_list(submitted.get(field))
         if submitted_value != original_value:
             frontmatter_updates[field] = submitted_value
+
+    if "links" in submitted:
+        original_links = _normalize_text_list(original.get("links"))
+        submitted_links = _normalize_multiline_text(submitted.get("links"))
+        if submitted_links != original_links:
+            frontmatter_updates["links"] = submitted_links
+
+    if "attachments" in submitted:
+        original_attachments = original.get("attachments", []) or []
+        submitted_attachments = _normalize_attachment_textarea(
+            submitted.get("attachments")
+        )
+        if submitted_attachments != original_attachments:
+            frontmatter_updates["attachments"] = submitted_attachments
 
     replace_content = None
     original_body = str(original.get("_body", ""))

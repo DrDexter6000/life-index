@@ -3,89 +3,117 @@
 {% block title %}编辑日志 - Life Index{% endblock %}
 
 {% block content %}
-<section class="space-y-6">
-    <header>
-        <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100 sm:text-4xl">编辑日志</h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">修改已有日志内容与元数据。</p>
+<section class="space-y-8">
+    <header class="space-y-3">
+        <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">Edit Journal</p>
+        <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">编辑日志</h1>
+        <p class="max-w-3xl text-sm sm:text-base" style="color: var(--color-on-surface-variant);">
+            修改已有日志内容与元数据。
+        </p>
     </header>
 
     {% if error %}
-    <div class="rounded-xl bg-red-50 p-4 dark:bg-red-900/20">
+    <div class="rounded-2xl p-4" style="background: rgba(255, 113, 108, 0.08); box-shadow: 0 0 0 1px rgba(255, 113, 108, 0.2);">
         <div class="flex items-center gap-3">
             <span class="text-xl">⚠️</span>
             <div>
-                <h3 class="font-medium text-red-900 dark:text-red-100">保存失败</h3>
-                <p class="text-sm text-red-700 dark:text-red-300">{{ error }}</p>
+                <h3 class="font-display text-xl font-medium" style="color: var(--color-error);">保存失败</h3>
+                <p class="text-sm" style="color: var(--color-error);">{{ error }}</p>
             </div>
         </div>
     </div>
     {% endif %}
 
-    <article class="rounded-xl bg-white p-5 shadow dark:bg-gray-800 sm:p-6">
+    <article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
         <form method="POST" action="/journal/{{ journal_route_path }}/edit" class="space-y-6">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" id="original-location" value="{{ location }}">
+            <input type="hidden" id="original-date-raw" name="original_date_raw" value="{{ original_date_raw }}">
 
             <div>
-                <label for="content" class="block text-sm font-medium text-gray-700 dark:text-gray-300">日志内容</label>
-                <textarea id="content" name="content" rows="12" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3 font-mono text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">{{ content }}</textarea>
+                <label for="content" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">日志内容</label>
+                <textarea id="content" name="content" rows="12" class="w-full rounded-2xl px-4 py-3 font-mono text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface); resize: vertical;">{{ content }}</textarea>
             </div>
 
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
-                    <label for="title" class="block text-sm font-medium text-gray-700 dark:text-gray-300">标题</label>
-                    <input id="title" name="title" type="text" value="{{ title }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <label for="title" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">标题</label>
+                    <input id="title" name="title" type="text" value="{{ title }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
-                    <label for="date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">日期</label>
-                    <input id="date" name="date" type="datetime-local" value="{{ date }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <label for="date" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">日期</label>
+                    <input id="date" name="date" type="datetime-local" value="{{ date }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
-                    <label for="topic" class="block text-sm font-medium text-gray-700 dark:text-gray-300">主题</label>
-                    <input id="topic" name="topic" type="text" value="{{ topic }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <label for="topic" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">主题</label>
+                    <select id="topic" name="topic" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                        <option value="">自动判断</option>
+                        <option value="work" {% if topic == 'work' %}selected{% endif %}>工作</option>
+                        <option value="learn" {% if topic == 'learn' %}selected{% endif %}>学习</option>
+                        <option value="health" {% if topic == 'health' %}selected{% endif %}>健康</option>
+                        <option value="relation" {% if topic == 'relation' %}selected{% endif %}>关系</option>
+                        <option value="think" {% if topic == 'think' %}selected{% endif %}>思考</option>
+                        <option value="create" {% if topic == 'create' %}selected{% endif %}>创作</option>
+                        <option value="life" {% if topic == 'life' %}selected{% endif %}>生活</option>
+                    </select>
                 </div>
                 <div>
-                    <label for="mood" class="block text-sm font-medium text-gray-700 dark:text-gray-300">心情</label>
-                    <input id="mood" name="mood" type="text" value="{{ mood }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <label for="mood" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">心情</label>
+                    <input id="mood" name="mood" type="text" value="{{ mood }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
-                    <label for="tags" class="block text-sm font-medium text-gray-700 dark:text-gray-300">标签</label>
-                    <input id="tags" name="tags" type="text" value="{{ tags }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <label for="tags" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">标签</label>
+                    <input id="tags" name="tags" type="text" value="{{ tags }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
-                    <label for="people" class="block text-sm font-medium text-gray-700 dark:text-gray-300">人物</label>
-                    <input id="people" name="people" type="text" value="{{ people }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <label for="people" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">人物</label>
+                    <input id="people" name="people" type="text" value="{{ people }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
-                    <label for="location" class="block text-sm font-medium text-gray-700 dark:text-gray-300">地点</label>
-                    <div class="mt-1 flex flex-col gap-2 sm:flex-row">
-                        <input id="location" name="location" type="text" value="{{ location }}" class="block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
-                        <button id="geolocation-btn" type="button" data-idle-text="📍" class="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">📍</button>
-                        <button id="weather-btn" type="button" data-idle-text="查询天气" class="min-h-[44px] rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">查询天气</button>
+                    <label for="location" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">地点</label>
+                    <div class="flex flex-col gap-2 sm:flex-row">
+                        <input id="location" name="location" type="text" value="{{ location }}" placeholder="如：北京" class="block w-full flex-1 rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                        <button id="geolocation-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-full text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
                     </div>
                 </div>
                 <div>
-                    <label for="weather" class="block text-sm font-medium text-gray-700 dark:text-gray-300">天气</label>
-                    <input id="weather" name="weather" type="text" value="{{ weather }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
-                    <p id="weather-status" class="mt-1 text-xs text-gray-500 dark:text-gray-400"></p>
-                    <p id="weather-warning" class="mt-1 text-xs text-amber-600 dark:text-amber-400">修改地点后，保存前请先查询天气或手动填写天气。</p>
+                    <label for="weather" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">天气</label>
+                    <div class="flex flex-col gap-2 sm:flex-row">
+                        <input id="weather" name="weather" type="text" value="{{ weather }}" placeholder="如：晴天 28°C" class="block w-full flex-1 rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                        <button id="weather-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-full text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
+                    </div>
+                    <p id="weather-status" class="mt-1 text-xs" style="color: var(--color-on-surface-variant);"></p>
+                    <p id="weather-warning" class="mt-1 text-xs" style="color: var(--color-secondary);">修改地点后，保存前请先查询天气或手动填写天气。</p>
                 </div>
                 <div>
-                    <label for="project" class="block text-sm font-medium text-gray-700 dark:text-gray-300">项目</label>
-                    <input id="project" name="project" type="text" value="{{ project }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <label for="project" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">项目</label>
+                    <input id="project" name="project" type="text" value="{{ project }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
-                    <label for="abstract" class="block text-sm font-medium text-gray-700 dark:text-gray-300">摘要</label>
-                    <input id="abstract" name="abstract" type="text" value="{{ abstract }}" class="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                    <label for="abstract" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">摘要</label>
+                    <input id="abstract" name="abstract" type="text" value="{{ abstract }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
             </div>
 
-            <div class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:gap-4">
-                <button id="submit-btn" type="submit" data-idle-text="保存修改" class="min-h-[44px] rounded-lg bg-indigo-600 px-6 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-600">
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                    <label for="links" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">相关链接</label>
+                    <textarea id="links" name="links" rows="5" class="w-full rounded-2xl px-4 py-3 font-mono text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface); resize: vertical;">{{ links }}</textarea>
+                    <p class="mt-1 text-xs" style="color: var(--color-on-surface-variant);">每行一个链接。</p>
+                </div>
+                <div>
+                    <label for="attachments" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">附件</label>
+                    <textarea id="attachments" name="attachments" rows="5" class="w-full rounded-2xl px-4 py-3 font-mono text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface); resize: vertical;">{{ attachments }}</textarea>
+                    <p class="mt-1 text-xs" style="color: var(--color-on-surface-variant);">每行一个附件路径；如需编辑 structured attachment，可粘贴单行 JSON object。</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:gap-4" style="border-top: 1px solid rgba(68, 72, 79, 0.1);">
+                <button id="submit-btn" type="submit" data-idle-text="保存修改" class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">
                     保存修改
                 </button>
-                <p id="form-status" class="text-xs text-gray-500 dark:text-gray-400"></p>
-                <a href="/journal/{{ journal_route_path }}" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">取消</a>
+                <p id="form-status" class="text-xs" style="color: var(--color-on-surface-variant);"></p>
+                <a href="/journal/{{ journal_route_path }}" class="text-sm transition-colors hover:opacity-80" style="color: var(--color-on-surface-variant);">取消</a>
             </div>
         </form>
     </article>
@@ -115,8 +143,8 @@
             }
             button.disabled = isBusy;
             button.textContent = isBusy ? busyText : idleText;
-            button.classList.toggle('opacity-50', isBusy);
-            button.classList.toggle('cursor-not-allowed', isBusy);
+            button.style.opacity = isBusy ? '0.5' : '';
+            button.style.cursor = isBusy ? 'not-allowed' : '';
         };
 
         const setWeatherStatus = (message, isError = false) => {
@@ -124,10 +152,7 @@
                 return;
             }
             weatherStatus.textContent = message;
-            weatherStatus.classList.toggle('text-red-600', isError);
-            weatherStatus.classList.toggle('dark:text-red-400', isError);
-            weatherStatus.classList.toggle('text-gray-500', !isError);
-            weatherStatus.classList.toggle('dark:text-gray-400', !isError);
+            weatherStatus.style.color = isError ? 'var(--color-error)' : 'var(--color-on-surface-variant)';
         };
 
         const setFormStatus = (message, isError = false) => {
@@ -135,10 +160,7 @@
                 return;
             }
             formStatus.textContent = message;
-            formStatus.classList.toggle('text-red-600', isError);
-            formStatus.classList.toggle('dark:text-red-400', isError);
-            formStatus.classList.toggle('text-gray-500', !isError);
-            formStatus.classList.toggle('dark:text-gray-400', !isError);
+            formStatus.style.color = isError ? 'var(--color-error)' : 'var(--color-on-surface-variant)';
         };
 
         const updateWeatherWarning = () => {
