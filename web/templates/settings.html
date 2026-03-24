@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}LLM 设置 - Life Index{% endblock %}
+
+{% block content %}
+<section class="space-y-8">
+    <header class="space-y-3">
+        <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">LLM Configuration</p>
+        <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">LLM 设置</h1>
+        <p class="max-w-3xl text-sm sm:text-base" style="color: var(--color-on-surface-variant);">
+            为 Life Index 配置本地保存的 LLM 凭据。这里的配置只服务于你的个人档案馆，不进入代码仓库，也不会改变基础版日志格式。
+        </p>
+    </header>
+
+    <section class="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);">
+            <form method="POST" action="/settings" class="space-y-6">
+                <div class="grid gap-6 sm:grid-cols-2">
+                    <div class="sm:col-span-2 space-y-2">
+                        <label for="api_key" class="block text-sm font-medium" style="color: var(--color-on-surface);">API Key</label>
+                        <input id="api_key" name="api_key" type="password" value="{{ api_key }}" placeholder="留空则禁用 API 调用" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);" autocomplete="off">
+                        {% if api_key_masked %}
+                        <p class="text-xs" style="color: var(--color-on-surface-variant);">当前已保存 Key：{{ api_key_masked }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div class="space-y-2">
+                        <label for="base_url_preset" class="block text-sm font-medium" style="color: var(--color-on-surface);">Provider</label>
+                        <select id="base_url_preset" name="base_url_preset" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                            {% for preset, label in base_url_presets %}
+                            <option value="{{ preset }}" {% if base_url_preset == preset %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label for="model" class="block text-sm font-medium" style="color: var(--color-on-surface);">Model</label>
+                        <input id="model" name="model" type="text" value="{{ model }}" placeholder="如：gpt-4o-mini" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                    </div>
+
+                    <div class="sm:col-span-2 space-y-2">
+                        <label for="base_url" class="block text-sm font-medium" style="color: var(--color-on-surface);">Base URL</label>
+                        <input id="base_url" name="base_url" type="text" value="{{ base_url }}" placeholder="https://api.openai.com/v1" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                        <p class="text-xs" style="color: var(--color-on-surface-variant);">可选择 OpenAI / OpenRouter，或填写兼容 OpenAI API 的自定义地址。</p>
+                    </div>
+
+                    <div class="sm:col-span-2 space-y-2">
+                        <label for="default_location" class="block text-sm font-medium" style="color: var(--color-on-surface);">Default Location</label>
+                        <input id="default_location" name="default_location" type="text" value="{{ default_location }}" placeholder="如：Chongqing, China" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                        <p class="text-xs" style="color: var(--color-on-surface-variant);">当前阶段仅展示默认地点；LLM 配置将优先写入用户数据目录下的 config.yaml。</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="submit" class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">
+                        保存并测试连接
+                    </button>
+                    {% if save_message %}
+                    <span class="text-sm" style="color: var(--color-on-surface-variant);">{{ save_message }}</span>
+                    {% endif %}
+                </div>
+            </form>
+        </article>
+
+        <aside class="space-y-6">
+            <article class="rounded-2xl p-6" style="background: rgba(30, 35, 48, 0.82); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+                <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">连接状态</h2>
+                {% if connectivity_message %}
+                <p class="mt-4 text-sm leading-7" style="color: {% if connectivity_ok %}var(--color-tertiary){% else %}var(--color-error){% endif %};">
+                    {{ connectivity_message }}
+                </p>
+                {% else %}
+                <p class="mt-4 text-sm leading-7" style="color: var(--color-on-surface-variant);">
+                    保存后会立即向你的 LLM Provider 发起一次轻量测试请求，反馈连接是否可用。
+                </p>
+                {% endif %}
+            </article>
+
+            <article class="rounded-2xl p-6" style="background: rgba(26, 30, 40, 0.82); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+                <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">数据主权说明</h2>
+                <ul class="mt-4 space-y-3 text-sm leading-7" style="color: var(--color-on-surface-variant);">
+                    <li>• 配置保存在 <code style="color: var(--color-primary);">~/Documents/Life-Index/.life-index/config.yaml</code></li>
+                    <li>• 环境变量依然优先于 config.yaml，兼容旧工作流</li>
+                    <li>• 这里只配置 LLM 连接，不改变基础版日志落盘格式</li>
+                </ul>
+            </article>
+        </aside>
+    </section>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (() => {
+        const preset = document.getElementById('base_url_preset');
+        const baseUrl = document.getElementById('base_url');
+        if (!preset || !baseUrl) return;
+
+        preset.addEventListener('change', () => {
+            if (preset.value !== 'custom') {
+                baseUrl.value = preset.value;
+            }
+        });
+    })();
+</script>
+{% endblock %}

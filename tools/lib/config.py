@@ -4,8 +4,8 @@ Life Index - Shared Configuration Module
 Centralized configuration for all atomic tools.
 
 Configuration Loading Priority:
-1. User config file: ~/Documents/Life-Index/.life-index/config.yaml (highest)
-2. Environment variables: LIFE_INDEX_* (middle)
+1. Environment variables: LIFE_INDEX_* (highest)
+2. User config file: ~/Documents/Life-Index/.life-index/config.yaml (middle)
 3. Code defaults (lowest)
 """
 
@@ -14,6 +14,27 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+import yaml
+
+
+def resolve_user_data_dir() -> Path:
+    """Resolve active user data directory from env override or platform default.
+
+    Priority:
+    1. LIFE_INDEX_DATA_DIR environment variable
+    2. Path.home()/Documents/Life-Index
+    """
+    user_data_env = os.environ.get("LIFE_INDEX_DATA_DIR")
+    if user_data_env:
+        return Path(user_data_env)
+    return Path.home() / "Documents" / "Life-Index"
+
+
+def resolve_journals_dir() -> Path:
+    """Resolve active journals directory based on current data-dir resolution."""
+    return resolve_user_data_dir() / "Journals"
+
+
 # User data directory (OS standard user documents directory)
 # Uses Path.home() for cross-platform compatibility:
 #   Windows: C:\Users\<username>\Documents\Life-Index
@@ -21,11 +42,7 @@ from typing import Dict, Any, Optional
 #   Linux:   ~/Documents/Life-Index
 #
 # Can be overridden via LIFE_INDEX_DATA_DIR environment variable (for testing)
-_user_data_env = os.environ.get("LIFE_INDEX_DATA_DIR")
-if _user_data_env:
-    USER_DATA_DIR = Path(_user_data_env)
-else:
-    USER_DATA_DIR = Path.home() / "Documents" / "Life-Index"
+USER_DATA_DIR = resolve_user_data_dir()
 
 # Project root (for reference only, not for data storage)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
@@ -91,11 +108,9 @@ def _load_yaml_config(config_path: Path) -> Dict[str, Any]:
         return {}
 
     try:
-        import yaml
-
         with open(config_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
-    except (IOError, OSError, ImportError):
+    except (IOError, OSError, yaml.YAMLError):
         return {}
 
 
@@ -110,6 +125,9 @@ def _get_env_config() -> Dict[str, Any]:
         "LIFE_INDEX_WEATHER_TIMEOUT": ("weather", "timeout_seconds"),
         "LIFE_INDEX_SEARCH_LEVEL": ("search", "default_level"),
         "LIFE_INDEX_LOG_LEVEL": ("logging", "level"),
+        "LIFE_INDEX_LLM_API_KEY": ("llm", "api_key"),
+        "LIFE_INDEX_LLM_BASE_URL": ("llm", "base_url"),
+        "LIFE_INDEX_LLM_MODEL": ("llm", "model"),
     }
 
     for env_var, (section, key) in env_mappings.items():
@@ -138,13 +156,18 @@ def load_user_config() -> Dict[str, Any]:
     2. Environment variables
     3. Code defaults (handled by callers)
     """
-    # Start with file config
+    # Start with file config, then override with environment variables
     file_config = _load_yaml_config(CONFIG_FILE)
-
-    # Merge with environment variables
     env_config = _get_env_config()
 
     return _deep_merge(file_config, env_config)
+
+
+def reload_user_config() -> Dict[str, Any]:
+    """Reload user config from disk/environment and refresh module cache."""
+    global USER_CONFIG
+    USER_CONFIG = load_user_config()
+    return USER_CONFIG
 
 
 # ========== Configuration Instance ==========
@@ -179,6 +202,47 @@ def get_weather_config() -> Dict[str, Any]:
         "allow_skip_on_failure": True,
     }
     return _deep_merge(defaults, USER_CONFIG.get("weather", {}))
+
+
+def get_llm_config() -> Dict[str, str]:
+    """Get LLM configuration with env > config file > defaults priority."""
+    llm_config = USER_CONFIG.get("llm", {})
+    api_key_env = os.environ.get("LIFE_INDEX_LLM_API_KEY", "").strip()
+    base_url_env = os.environ.get("LIFE_INDEX_LLM_BASE_URL", "").strip()
+    model_env = os.environ.get("LIFE_INDEX_LLM_MODEL", "").strip()
+    return {
+        "api_key": api_key_env or str(llm_config.get("api_key") or "").strip(),
+        "base_url": str(
+            base_url_env or llm_config.get("base_url") or "https://api.openai.com/v1"
+        ).strip(),
+        "model": str(model_env or llm_config.get("model") or "gpt-4o-mini").strip(),
+    }
+
+
+def save_llm_config(*, api_key: str, base_url: str, model: str) -> None:
+    """Persist LLM configuration into user config.yaml."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    existing = _load_yaml_config(CONFIG_FILE)
+    existing["llm"] = {
+        "api_key": str(api_key).strip(),
+        "base_url": str(base_url).strip(),
+        "model": str(model).strip(),
+    }
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
+    reload_user_config()
+
+
+def save_default_location(location: str) -> None:
+    """Persist default location into user config.yaml."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    existing = _load_yaml_config(CONFIG_FILE)
+    defaults = existing.get("defaults", {})
+    defaults["location"] = str(location).strip()
+    existing["defaults"] = defaults
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
+    reload_user_config()
 
 
 WEATHER_API_URL = get_weather_config()["api_url"]
