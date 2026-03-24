@@ -1,0 +1,29 @@
+<div class="flex items-start gap-3">
+    <span class="text-xl" aria-hidden="true">🤖</span>
+    <div class="min-w-0 flex-1">
+        <h3 class="font-display text-xl font-medium tracking-tight" style="color: var(--color-on-surface);">AI 智能归纳</h3>
+        <p id="search-ai-summary-loading" class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">AI 正在奋力归纳总结中...</p>
+        <p class="hidden" data-timeout-15-message="LLM 服务器或网络不稳定，还请耐心等待"></p>
+        <p class="hidden" data-timeout-30-message="AI 归纳超时。"></p>
+        <button type="button" class="mt-3 hidden rounded-full px-4 py-2 text-sm font-medium" style="background: rgba(255, 231, 146, 0.12); color: var(--color-primary);" data-retry-button onclick="window.htmx && htmx.trigger('#search-ai-summary','load')">重试</button>
+    </div>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('search-ai-summary');
+  if (!root) return;
+  const loading = root.querySelector('#search-ai-summary-loading');
+  const retryButton = root.querySelector('[data-retry-button]');
+  const timeout15 = root.querySelector('[data-timeout-15-message]')?.getAttribute('data-timeout-15-message');
+  const timeout30 = root.querySelector('[data-timeout-30-message]')?.getAttribute('data-timeout-30-message');
+  window.clearTimeout(root._summaryTimeout15);
+  window.clearTimeout(root._summaryTimeout30);
+  root._summaryTimeout15 = window.setTimeout(() => {
+    if (loading && timeout15) loading.textContent = timeout15;
+  }, 15000);
+  root._summaryTimeout30 = window.setTimeout(() => {
+    if (loading && timeout30) loading.textContent = timeout30;
+    if (retryButton) retryButton.classList.remove('hidden');
+  }, 30000);
+})();
+</script>

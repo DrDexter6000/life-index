@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from tools.lib.config import get_llm_config
 from tools.lib.errors import ErrorCode
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,12 @@ class LLMProvider(ABC):
     async def is_available(self) -> bool:
         """检查 Provider 是否可用。"""
 
+    @abstractmethod
+    async def summarize_search(
+        self, query: str, results: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """对搜索结果做 AI 归纳。"""
+
 
 class HostAgentProvider(LLMProvider):
     async def extract_metadata(self, content: str) -> dict[str, Any]:
@@ -46,14 +53,18 @@ class HostAgentProvider(LLMProvider):
     async def is_available(self) -> bool:
         return False
 
+    async def summarize_search(
+        self, query: str, results: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        return {}
+
 
 class APIKeyProvider(LLMProvider):
     def __init__(self) -> None:
-        self.api_key = os.getenv("LIFE_INDEX_LLM_API_KEY", "").strip()
-        self.base_url = os.getenv(
-            "LIFE_INDEX_LLM_BASE_URL", "https://api.openai.com/v1"
-        ).strip()
-        self.model = os.getenv("LIFE_INDEX_LLM_MODEL", "gpt-4o-mini").strip()
+        config = get_llm_config()
+        self.api_key = config["api_key"]
+        self.base_url = config["base_url"]
+        self.model = config["model"]
 
     async def is_available(self) -> bool:
         return bool(self.api_key)
@@ -101,6 +112,60 @@ class APIKeyProvider(LLMProvider):
             parsed["topic"] = [
                 str(topic) for topic in topics if str(topic) in VALID_TOPICS
             ]
+
+        return parsed if isinstance(parsed, dict) else {}
+
+    async def summarize_search(
+        self, query: str, results: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        if not await self.is_available() or not query or not results:
+            return {}
+
+        compact_results = [
+            {
+                "title": item.get("title", ""),
+                "date": item.get("date", ""),
+                "abstract": item.get("abstract", ""),
+                "highlight": item.get("highlight", ""),
+                "topic": item.get("topic", []),
+            }
+            for item in results[:8]
+        ]
+        prompt = (
+            "请基于以下 Life Index 搜索结果，输出 JSON，格式为 "
+            '{"summary": "一句到三句自然语言总结", "key_entries": [{"title": "标题", "date": "日期", "reason": "为什么重要"}], "time_span": "时间跨度"}。'
+            "不要输出 JSON 以外的内容。\n"
+            f"查询词：{query}\n结果：{json.dumps(compact_results, ensure_ascii=False)}"
+        )
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "你是 Life Index 搜索归纳助手。请严格返回 JSON。",
+                },
+                {"role": "user", "content": prompt},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.base_url.rstrip('/')}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+                response.raise_for_status()
+            response_json = response.json()
+            content_text = response_json["choices"][0]["message"]["content"]
+            parsed = json.loads(content_text)
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, json.JSONDecodeError):
+            return {}
 
         return parsed if isinstance(parsed, dict) else {}
 
