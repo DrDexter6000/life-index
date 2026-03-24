@@ -254,6 +254,42 @@ class TestBuildAll:
         # Verify incremental=False is passed
         mock_update_fts.assert_called_once_with(incremental=False)
 
+    @patch("tools.build_index.update_cache_for_all_journals")
+    @patch("tools.build_index.invalidate_cache")
+    @patch("tools.build_index.get_index_lock_path")
+    @patch("tools.build_index.FileLock")
+    @patch("tools.build_index.update_fts_index")
+    def test_build_all_full_rebuild_refreshes_metadata_cache(
+        self,
+        mock_update_fts,
+        mock_file_lock,
+        mock_lock_path,
+        mock_invalidate_cache,
+        mock_update_cache,
+    ):
+        """Full rebuild should refresh metadata cache used by dashboard/search."""
+        mock_lock_path.return_value = Path("/tmp/test.lock")
+        mock_lock = MagicMock()
+        mock_file_lock.return_value = mock_lock
+        mock_lock.__enter__ = MagicMock(return_value=mock_lock)
+        mock_lock.__exit__ = MagicMock(return_value=False)
+
+        mock_update_fts.return_value = {"success": True, "added": 10}
+        mock_update_cache.return_value = {"updated": 42, "skipped": 0, "errors": 0}
+
+        with patch("tools.lib.semantic_search.get_model") as mock_model:
+            mock_model.return_value.load.return_value = False
+            with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
+                with patch(
+                    "tools.lib.vector_index_simple.get_model"
+                ) as mock_simple_model:
+                    mock_simple_model.return_value.load.return_value = False
+
+                    build_all(incremental=False)
+
+        mock_invalidate_cache.assert_called_once_with()
+        mock_update_cache.assert_called_once_with()
+
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.create_error_response")

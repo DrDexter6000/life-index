@@ -41,11 +41,11 @@ def mock_search_dependencies():
             with patch("tools.search_journals.core.search_l3_content", return_value=[]):
                 with patch(
                     "tools.search_journals.core.search_semantic",
-                    return_value=[],
+                    return_value=([], {}),
                 ):
                     with patch(
                         "tools.search_journals.core.scan_all_indices",
-                        return_value=[],
+                        return_value=([], {}),
                     ):
                         yield
 

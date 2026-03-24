@@ -819,6 +819,49 @@ class TestSearchFtsEdgeCases:
                 results = search_index.search_fts("test")
                 assert results == []
 
+    def test_search_filters_low_relevance_results_by_default(self, tmp_path):
+        """Results below the default minimum relevance are discarded."""
+        from tools.lib import search_index
+
+        db_path = tmp_path / "test_fts.db"
+        db_path.write_text("", encoding="utf-8")
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("low.md", "Low", "2026-03-10", "low snippet", 7.0),
+            ("high.md", "High", "2026-03-11", "high snippet", 5.0),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
+                results = search_index.search_fts("Python")
+
+        assert [result["path"] for result in results] == ["high.md"]
+        assert results[0]["relevance"] == 45
+
+    def test_search_fts_accepts_custom_min_relevance(self, tmp_path):
+        """Custom minimum relevance should keep weaker results when configured."""
+        from tools.lib import search_index
+
+        db_path = tmp_path / "test_fts.db"
+        db_path.write_text("", encoding="utf-8")
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("low.md", "Low", "2026-03-10", "low snippet", 7.0),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
+                results = search_index.search_fts("Python", min_relevance=30)
+
+        assert [result["path"] for result in results] == ["low.md"]
+        assert results[0]["relevance"] == 35
+
 
 class TestGetStatsEdgeCases:
     """Extended tests for get_stats (lines 378-383)"""

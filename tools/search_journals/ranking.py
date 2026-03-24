@@ -6,10 +6,36 @@ Life Index - Search Journals Tool - Ranking
 
 from typing import Any, Dict, List, Optional
 
+from .l2_metadata import _query_matches_tags, _query_matches_text
 from .semantic import enrich_semantic_result
 
 
-def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = 60) -> Dict[str, float]:
+def _hybrid_priority(item: Dict[str, Any]) -> int:
+    """Priority bucket for hybrid result ordering.
+
+    Prefer true lexical matches first, then keyword-only metadata hits,
+    then semantic-only backfill.
+    """
+    fts_score = float(item.get("fts_score", 0.0))
+    semantic_score = float(item.get("semantic_score", 0.0))
+    tier = int(item.get("tier", 0))
+
+    if fts_score > 0 and semantic_score > 0:
+        return 5
+    if fts_score > 0:
+        return 4
+    if tier == 2:
+        return 3
+    if tier == 1:
+        return 2
+    if semantic_score > 0:
+        return 1
+    return 0
+
+
+def reciprocal_rank_fusion(
+    ranked_lists: List[List[str]], k: int = 60
+) -> Dict[str, float]:
     """
     Reciprocal Rank Fusion (RRF)
 
@@ -37,6 +63,8 @@ def merge_and_rank_results(
     l2_results: List[Dict],
     l3_results: List[Dict],
     query: Optional[str] = None,
+    min_score: float = 25,
+    max_results: int = 20,
 ) -> List[Dict]:
     """
     合并三层搜索结果并按相关性排序
@@ -52,7 +80,7 @@ def merge_and_rank_results(
     for r in l3_results:
         path = r["path"]
         # BM25 分数转换：relevance 已经是 0-100 的匹配度
-        base_score = r.get("relevance", 50)
+        base_score = r.get("relevance", 0)
         # 标题匹配额外加分
         if r.get("title_match"):
             base_score += 10
@@ -69,26 +97,24 @@ def merge_and_rank_results(
         score = 20  # L2 基础分（显著低于 L3 的最低分）
 
         if query:
-            query_lower = query.lower()
-            title = r.get("title", "").lower()
+            title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "").lower()
+                metadata.get("abstract", "")
                 if isinstance(metadata.get("abstract"), str)
                 else ""
             )
             tags = metadata.get("tags", [])
-            tags_str = " ".join(tags).lower() if isinstance(tags, list) else str(tags).lower()
 
             # title 匹配 +8 分（限制上限，确保不超过 L3 内容匹配）
-            if query_lower in title:
+            if _query_matches_text(title, query):
                 score += 8
-            # abstract 匹配 +5 分
-            if query_lower in abstract:
-                score += 5
-            # tags 匹配 +2 分
-            if query_lower in tags_str:
-                score += 2
+            # abstract 匹配 +4 分（abstract-only 命中不应越过默认门槛）
+            if _query_matches_text(abstract, query):
+                score += 4
+            # tags 匹配 +1 分（仅作弱辅助信号）
+            if _query_matches_tags(tags, query):
+                score += 1
 
         scored[path] = {"data": r, "score": score, "tier": 2}
 
@@ -104,7 +130,16 @@ def merge_and_rank_results(
         }
 
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
-    sorted_results = sorted(scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True)
+    sorted_results = sorted(
+        scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True
+    )
+    effective_min_score = min_score
+    if query and min_score == 25:
+        effective_min_score = 26
+    sorted_results = [
+        item for item in sorted_results if item["score"] >= effective_min_score
+    ]
+    sorted_results = sorted_results[:max_results]
 
     # 提取数据并添加排名信息
     merged = []
@@ -125,6 +160,9 @@ def merge_and_rank_results_hybrid(
     query: Optional[str] = None,
     fts_weight: float = 0.6,
     semantic_weight: float = 0.4,
+    min_rrf_score: float = 0.016,
+    min_non_rrf_score: float = 25,
+    max_results: int = 20,
 ) -> List[Dict]:
     """
     混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
@@ -141,16 +179,16 @@ def merge_and_rank_results_hybrid(
     # 保留参数以兼容旧调用方（RRF 不再使用权重融合）
     _ = fts_weight, semantic_weight
 
-    scored: Dict[str, Dict[str, Any]] = (
-        {}
-    )  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
+    scored: Dict[
+        str, Dict[str, Any]
+    ] = {}  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
 
     # 先构建 FTS 排名（按 relevance + title_match bonus）
     fts_ranked_paths: List[str] = []
     fts_ordered = sorted(
         l3_results,
         key=lambda r: (
-            r.get("relevance", 50) + (10 if r.get("title_match") else 0),
+            r.get("relevance", 0) + (10 if r.get("title_match") else 0),
             r.get("path", ""),
         ),
         reverse=True,
@@ -159,7 +197,7 @@ def merge_and_rank_results_hybrid(
     # 处理 L3/FTS 结果（记录分项分数用于输出）
     for r in l3_results:
         path = r["path"]
-        fts_score = r.get("relevance", 50)
+        fts_score = r.get("relevance", 0)
         if r.get("title_match"):
             fts_score += 10
 
@@ -223,23 +261,21 @@ def merge_and_rank_results_hybrid(
 
         score = 20  # L2 基础分
         if query:
-            query_lower = query.lower()
-            title = r.get("title", "").lower()
+            title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "").lower()
+                metadata.get("abstract", "")
                 if isinstance(metadata.get("abstract"), str)
                 else ""
             )
             tags = metadata.get("tags", [])
-            tags_str = " ".join(tags).lower() if isinstance(tags, list) else str(tags).lower()
 
-            if query_lower in title:
+            if _query_matches_text(title, query):
                 score += 8
-            if query_lower in abstract:
-                score += 5
-            if query_lower in tags_str:
-                score += 2
+            if _query_matches_text(abstract, query):
+                score += 4
+            if _query_matches_tags(tags, query):
+                score += 1
 
         scored[path] = {
             "data": r,
@@ -264,12 +300,30 @@ def merge_and_rank_results_hybrid(
             "has_rrf": False,
         }
 
-    # 按最终得分排序：有 RRF 融合分数的结果优先，其次按分数，再按 tier
+    # 按混合检索意图排序：
+    # 1) 真正的关键词命中（尤其 FTS）优先
+    # 2) 结构化关键词命中（L2/L1）次之
+    # 3) 纯语义结果作为补漏回填
     sorted_results = sorted(
         scored.values(),
-        key=lambda x: (x["has_rrf"], x["final_score"], x["tier"]),
+        key=lambda x: (
+            _hybrid_priority(x),
+            x["final_score"],
+            x["fts_score"],
+            x["semantic_score"],
+        ),
         reverse=True,
     )
+    effective_min_non_rrf_score = min_non_rrf_score
+    if query and min_non_rrf_score == 25:
+        effective_min_non_rrf_score = 26
+    sorted_results = [
+        item
+        for item in sorted_results
+        if (item["has_rrf"] and item["final_score"] >= min_rrf_score)
+        or (not item["has_rrf"] and item["final_score"] >= effective_min_non_rrf_score)
+    ]
+    sorted_results = sorted_results[:max_results]
 
     # 提取数据并添加排名
     merged = []

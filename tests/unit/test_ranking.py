@@ -63,7 +63,7 @@ class TestMergeAndRankResults:
 
         l2 = [{"path": "/test/l2.md", "title": "L2 Doc", "metadata": {}}]
 
-        results = merge_and_rank_results([], l2, [], query="test")
+        results = merge_and_rank_results([], l2, [], query=None, min_score=0)
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/l2.md"
@@ -74,7 +74,7 @@ class TestMergeAndRankResults:
 
         l2 = [{"path": "/test/doc.md", "title": "test document", "metadata": {}}]
 
-        results = merge_and_rank_results([], l2, [], query="test")
+        results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
         # Base 20 + title match 8 = 28
         assert results[0]["relevance_score"] == 28
@@ -91,10 +91,26 @@ class TestMergeAndRankResults:
             }
         ]
 
+        results = merge_and_rank_results([], l2, [], query="test", min_score=0)
+
+        # Base 20 + abstract match 4 = 24
+        assert results[0]["relevance_score"] == 24
+
+    def test_l2_abstract_only_match_does_not_clear_default_threshold(self):
+        """Weak metadata-only abstract hits should be dropped by default."""
+        from tools.search_journals.ranking import merge_and_rank_results
+
+        l2 = [
+            {
+                "path": "/test/doc.md",
+                "title": "Doc",
+                "metadata": {"abstract": "test abstract"},
+            }
+        ]
+
         results = merge_and_rank_results([], l2, [], query="test")
 
-        # Base 20 + abstract match 5 = 25
-        assert results[0]["relevance_score"] == 25
+        assert results == []
 
     def test_l2_tags_match_scoring(self):
         """Test L2 results scoring with tags match"""
@@ -108,10 +124,10 @@ class TestMergeAndRankResults:
             }
         ]
 
-        results = merge_and_rank_results([], l2, [], query="test")
+        results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
-        # Base 20 + tags match 2 = 22
-        assert results[0]["relevance_score"] == 22
+        # Base 20 + tags match 1 = 21
+        assert results[0]["relevance_score"] == 21
 
     def test_l2_combined_scoring(self):
         """Test L2 results with multiple matches"""
@@ -125,10 +141,10 @@ class TestMergeAndRankResults:
             }
         ]
 
-        results = merge_and_rank_results([], l2, [], query="test")
+        results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
-        # Base 20 + title 8 + abstract 5 + tags 2 = 35
-        assert results[0]["relevance_score"] == 35
+        # Base 20 + title 8 + abstract 4 + tags 1 = 33
+        assert results[0]["relevance_score"] == 33
 
     def test_l1_results_added(self):
         """Test L1 results are added when not in L2/L3"""
@@ -136,7 +152,7 @@ class TestMergeAndRankResults:
 
         l1 = [{"path": "/test/l1.md", "date": "2026-03-14"}]
 
-        results = merge_and_rank_results(l1, [], [], query="test")
+        results = merge_and_rank_results(l1, [], [], query="test", min_score=0)
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/l1.md"
@@ -188,7 +204,7 @@ class TestMergeAndRankResults:
 
         l2 = [{"path": "/test/doc.md", "title": "Doc", "metadata": {}}]
 
-        results = merge_and_rank_results([], l2, [], query=None)
+        results = merge_and_rank_results([], l2, [], query=None, min_score=0)
 
         # Should use base score 20 without query matching
         assert results[0]["relevance_score"] == 20
@@ -211,7 +227,9 @@ class TestMergeAndRankResultsHybrid:
 
         l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 80}]
 
-        results = merge_and_rank_results_hybrid([], [], l3, [], query="test")
+        results = merge_and_rank_results_hybrid(
+            [], [], l3, [], query="test", min_rrf_score=0
+        )
 
         assert results[0]["fts_score"] == 80.0
         assert results[0]["relevance_score"] == pytest.approx(1 / 61, rel=1e-6)
@@ -222,13 +240,17 @@ class TestMergeAndRankResultsHybrid:
 
         semantic = [{"path": "/test/semantic.md", "similarity": 0.9}]
 
-        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
+        with patch(
+            "tools.search_journals.ranking.enrich_semantic_result"
+        ) as mock_enrich:
             mock_enrich.return_value = {
                 "path": "/test/semantic.md",
                 "title": "Semantic Doc",
             }
 
-            results = merge_and_rank_results_hybrid([], [], [], semantic, query="test")
+            results = merge_and_rank_results_hybrid(
+                [], [], [], semantic, query="test", min_rrf_score=0
+            )
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/semantic.md"
@@ -240,10 +262,14 @@ class TestMergeAndRankResultsHybrid:
 
         semantic = [{"path": "/test/doc.md", "similarity": 0.8, "final_score": 0.8}]
 
-        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
+        with patch(
+            "tools.search_journals.ranking.enrich_semantic_result"
+        ) as mock_enrich:
             mock_enrich.return_value = {"path": "/test/doc.md", "title": "Doc"}
 
-            results = merge_and_rank_results_hybrid([], [], [], semantic, query="test")
+            results = merge_and_rank_results_hybrid(
+                [], [], [], semantic, query="test", min_rrf_score=0
+            )
 
         assert "semantic_score" in results[0]
         assert results[0]["semantic_score"] == 80.0
@@ -272,7 +298,9 @@ class TestMergeAndRankResultsHybrid:
         l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 50}]
         semantic = [{"path": "/test/doc.md", "similarity": 0.9, "final_score": 0.9}]
 
-        results_default = merge_and_rank_results_hybrid([], [], l3, semantic, query="test")
+        results_default = merge_and_rank_results_hybrid(
+            [], [], l3, semantic, query="test"
+        )
         results_custom = merge_and_rank_results_hybrid(
             [], [], l3, semantic, query="test", fts_weight=0.3, semantic_weight=0.7
         )
@@ -288,11 +316,31 @@ class TestMergeAndRankResultsHybrid:
 
         l2 = [{"path": "/test/l2.md", "title": "L2 Doc", "metadata": {}}]
 
-        results = merge_and_rank_results_hybrid([], l2, [], [], query="test")
+        results = merge_and_rank_results_hybrid(
+            [], l2, [], [], query=None, min_non_rrf_score=0
+        )
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/l2.md"
         assert results[0]["relevance_score"] == 20
+
+    def test_l2_hybrid_abstract_only_match_does_not_clear_default_threshold(self):
+        """Weak L2-only matches should not survive hybrid fallback thresholds."""
+        from tools.search_journals.ranking import merge_and_rank_results_hybrid
+
+        l2 = [
+            {
+                "path": "/test/l2.md",
+                "title": "Doc",
+                "metadata": {"abstract": "test abstract"},
+            }
+        ]
+
+        results = merge_and_rank_results_hybrid(
+            [], l2, [], [], query="test", min_non_rrf_score=0
+        )
+
+        assert results[0]["relevance_score"] == 24
 
     def test_l1_in_hybrid(self):
         """Test L1 results in hybrid mode"""
@@ -300,7 +348,9 @@ class TestMergeAndRankResultsHybrid:
 
         l1 = [{"path": "/test/l1.md", "date": "2026-03-14"}]
 
-        results = merge_and_rank_results_hybrid(l1, [], [], [], query="test")
+        results = merge_and_rank_results_hybrid(
+            l1, [], [], [], query="test", min_non_rrf_score=0
+        )
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/l1.md"
@@ -314,7 +364,9 @@ class TestMergeAndRankResultsHybrid:
         l2 = [{"path": "/test/doc.md", "title": "Doc", "metadata": {}}]
         semantic = [{"path": "/test/doc.md", "similarity": 0.8, "final_score": 0.8}]
 
-        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
+        with patch(
+            "tools.search_journals.ranking.enrich_semantic_result"
+        ) as mock_enrich:
             mock_enrich.return_value = {"path": "/test/doc.md", "title": "Doc"}
 
             results = merge_and_rank_results_hybrid([], l2, l3, semantic, query="test")
@@ -344,7 +396,15 @@ class TestMergeAndRankResultsHybrid:
         l3_low = [{"path": "/test/low.md", "title": "Low", "relevance": 40}]
         l1 = [{"path": "/test/l1.md", "date": "2026-03-14"}]
 
-        results = merge_and_rank_results_hybrid(l1, [], l3_high + l3_low, [], query="test")
+        results = merge_and_rank_results_hybrid(
+            l1,
+            [],
+            l3_high + l3_low,
+            [],
+            query="test",
+            min_non_rrf_score=0,
+            min_rrf_score=0,
+        )
 
         # High relevance should be first
         assert results[0]["path"] == "/test/high.md"
@@ -380,9 +440,11 @@ class TestTierPriority:
 
         l1 = [{"path": "/test/doc.md", "date": "2026-03-14"}]
         l2 = [{"path": "/test/doc.md", "title": "Doc", "metadata": {}}]
-        l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 15}]  # Low but in L3
+        l3 = [
+            {"path": "/test/doc.md", "title": "Doc", "relevance": 15}
+        ]  # Low but in L3
 
-        results = merge_and_rank_results(l1, l2, l3, query="test")
+        results = merge_and_rank_results(l1, l2, l3, query="test", min_score=0)
 
         # L3 result should be first even with lower score
         assert len(results) == 1

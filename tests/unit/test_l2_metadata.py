@@ -41,8 +41,14 @@ class TestMatchesFilters:
         from tools.search_journals.l2_metadata import _matches_filters
 
         metadata = {"date": "2026-03-14"}
-        assert _matches_filters(metadata, date_from="2026-03-01", date_to="2026-03-31") is True
-        assert _matches_filters(metadata, date_from="2026-01-01", date_to="2026-01-31") is False
+        assert (
+            _matches_filters(metadata, date_from="2026-03-01", date_to="2026-03-31")
+            is True
+        )
+        assert (
+            _matches_filters(metadata, date_from="2026-01-01", date_to="2026-01-31")
+            is False
+        )
 
     def test_location_filter(self):
         """Test location filter"""
@@ -51,7 +57,9 @@ class TestMatchesFilters:
         metadata = {"location": "Beijing, China"}
         assert _matches_filters(metadata, location="Beijing") is True
         assert _matches_filters(metadata, location="Shanghai") is False
-        assert _matches_filters(metadata, location="beijing") is True  # Case insensitive
+        assert (
+            _matches_filters(metadata, location="beijing") is True
+        )  # Case insensitive
 
     def test_weather_filter(self):
         """Test weather filter"""
@@ -161,6 +169,13 @@ class TestMatchesFilters:
         metadata = {"tags": ["python", "programming"]}
         assert _matches_filters(metadata, query="python") is True
         assert _matches_filters(metadata, query="java") is False
+
+    def test_query_filter_rejects_short_substring_inside_longer_word(self):
+        """Short substring noise should not count as a metadata query hit."""
+        from tools.search_journals.l2_metadata import _matches_filters
+
+        metadata = {"title": "Operator Notes"}
+        assert _matches_filters(metadata, query="rat") is False
 
     def test_query_filter_abstract_non_string(self):
         """Test query filter with non-string abstract"""
@@ -366,7 +381,9 @@ class TestSearchL2Metadata:
         mock_stats = {"total_entries": 10, "last_updated": "2026-03-14"}
         mock_results = [{"path": "test.md", "title": "Test"}]
 
-        with patch("tools.search_journals.l2_metadata.get_cache_stats", return_value=mock_stats):
+        with patch(
+            "tools.search_journals.l2_metadata.get_cache_stats", return_value=mock_stats
+        ):
             with patch(
                 "tools.search_journals.l2_metadata._search_with_cache",
                 return_value=mock_results,
@@ -399,7 +416,9 @@ class TestSearchL2Metadata:
         mock_stats = {"total_entries": 0}
         mock_results = [{"path": "test.md", "title": "Test"}]
 
-        with patch("tools.search_journals.l2_metadata.get_cache_stats", return_value=mock_stats):
+        with patch(
+            "tools.search_journals.l2_metadata.get_cache_stats", return_value=mock_stats
+        ):
             with patch(
                 "tools.search_journals.l2_metadata._search_filesystem",
                 return_value=mock_results,
@@ -498,7 +517,9 @@ class TestCacheStats:
 
         mock_stats = {"total_entries": 10, "last_updated": "2026-03-14"}
 
-        with patch("tools.search_journals.l2_metadata.get_cache_stats", return_value=mock_stats):
+        with patch(
+            "tools.search_journals.l2_metadata.get_cache_stats", return_value=mock_stats
+        ):
             result = get_l2_cache_stats()
 
         assert result["total_entries"] == 10
@@ -536,7 +557,9 @@ class TestMaxResults:
         from tools.search_journals.l2_metadata import search_l2_metadata
 
         # Create 150 mock results
-        mock_results = [{"path": f"test{i}.md", "title": f"Test {i}"} for i in range(150)]
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(150)
+        ]
 
         with patch(
             "tools.search_journals.l2_metadata._search_filesystem",
@@ -552,7 +575,9 @@ class TestMaxResults:
         """Test that custom max_results is respected"""
         from tools.search_journals.l2_metadata import search_l2_metadata
 
-        mock_results = [{"path": f"test{i}.md", "title": f"Test {i}"} for i in range(50)]
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(50)
+        ]
 
         with patch(
             "tools.search_journals.l2_metadata._search_filesystem",
@@ -569,7 +594,9 @@ class TestMaxResults:
         from tools.search_journals.l2_metadata import search_l2_metadata
 
         # Create 150 mock results
-        mock_results = [{"path": f"test{i}.md", "title": f"Test {i}"} for i in range(150)]
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(150)
+        ]
 
         with patch(
             "tools.search_journals.l2_metadata._search_filesystem",
@@ -586,7 +613,9 @@ class TestMaxResults:
         """Test that max_results=None disables truncation"""
         from tools.search_journals.l2_metadata import search_l2_metadata
 
-        mock_results = [{"path": f"test{i}.md", "title": f"Test {i}"} for i in range(200)]
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(200)
+        ]
 
         with patch(
             "tools.search_journals.l2_metadata._search_filesystem",
@@ -601,7 +630,9 @@ class TestMaxResults:
         """Test that results under limit are not truncated"""
         from tools.search_journals.l2_metadata import search_l2_metadata
 
-        mock_results = [{"path": f"test{i}.md", "title": f"Test {i}"} for i in range(50)]
+        mock_results = [
+            {"path": f"test{i}.md", "title": f"Test {i}"} for i in range(50)
+        ]
 
         with patch(
             "tools.search_journals.l2_metadata._search_filesystem",

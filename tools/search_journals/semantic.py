@@ -6,12 +6,13 @@ Life Index - Search Journals Tool - Semantic
 
 import importlib.util
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.config import USER_DATA_DIR
 from ..lib.config import JOURNALS_DIR
 from ..lib.path_contract import merge_journal_path_fields
+from ..lib.timing import Timer
 
 from .utils import parse_frontmatter
 
@@ -42,7 +43,13 @@ def get_semantic_runtime_status() -> Dict[str, str | bool]:
     }
 
 
-def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[Dict[str, Any]]:
+def search_semantic(
+    query: str,
+    date_from: str = "",
+    date_to: str = "",
+    min_similarity: float = 0.25,
+    top_k: int = 15,
+) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
     """
     执行语义搜索
 
@@ -50,11 +57,14 @@ def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[
         query: 查询词
         date_from: 起始日期
         date_to: 结束日期
+        min_similarity: 最低语义相似度阈值
+        top_k: 最大语义召回量
 
     Returns:
-        语义搜索结果列表
+        语义搜索结果列表与细粒度计时
     """
     results: List[Dict[str, Any]] = []
+    timer = Timer()
 
     try:
         # 尝试使用简单向量索引（Windows 兼容）
@@ -62,14 +72,21 @@ def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[
 
         model = get_model()
         if model.load():
-            query_embeddings = model.encode([query])
+            with timer.measure("semantic_encode"):
+                query_embeddings = model.encode([query])
             if query_embeddings:
                 index = get_index()
-                semantic_raw = index.search(
-                    query_embeddings[0], top_k=50, date_from=date_from, date_to=date_to
-                )
+                with timer.measure("semantic_search"):
+                    semantic_raw = index.search(
+                        query_embeddings[0],
+                        top_k=top_k,
+                        date_from=date_from,
+                        date_to=date_to,
+                    )
                 # 转换格式
                 for path, score in semantic_raw:
+                    if score < min_similarity:
+                        continue
                     vec_data = index.get(path)
                     date_str = vec_data.get("date", "") if vec_data else ""
                     results.append(
@@ -88,7 +105,7 @@ def search_semantic(query: str, date_from: str = "", date_to: str = "") -> List[
         # 语义搜索失败时返回空列表（可能是模型未安装或文件读取失败）
         pass
 
-    return results
+    return results, timer.to_dict()
 
 
 def enrich_semantic_result(semantic_result: Dict) -> Dict:

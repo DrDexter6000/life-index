@@ -254,6 +254,97 @@ class TestProcessAttachments:
         assert "error" in result[0]
         assert "未找到" in result[0]["filename"]
 
+    def test_process_url_attachment_downloads_and_archives(self, tmp_path):
+        """URL attachment entries should be downloaded then normalized into archived attachments."""
+        from tools.write_journal.attachments import process_attachments
+
+        downloaded = tmp_path / "downloads" / "2026" / "03" / "photo.jpg"
+        downloaded.parent.mkdir(parents=True, exist_ok=True)
+        downloaded.write_bytes(b"jpeg-bytes")
+
+        async def fake_download(url: str, target_dir: Path, date_str: str):
+            assert url == "https://example.com/photo.jpg"
+            assert date_str == "2026-03-10"
+            return {
+                "success": True,
+                "path": str(downloaded),
+                "filename": "photo.jpg",
+                "content_type": "image/jpeg",
+                "size": 10,
+            }
+
+        with patch(
+            "tools.write_journal.attachments.download_attachment_from_url",
+            new=fake_download,
+        ):
+            with patch(
+                "tools.write_journal.attachments.ATTACHMENTS_DIR",
+                tmp_path / "attachments",
+            ):
+                result = process_attachments(
+                    attachments=[
+                        {
+                            "source_url": "https://example.com/photo.jpg",
+                            "description": "远程图片",
+                        }
+                    ],
+                    date_str="2026-03-10",
+                    dry_run=True,
+                )
+
+        assert result == [
+            {
+                "filename": "photo.jpg",
+                "rel_path": "../../../attachments/2026/03/photo.jpg",
+                "description": "远程图片",
+                "original_name": "photo.jpg",
+                "auto_detected": False,
+                "source_url": "https://example.com/photo.jpg",
+                "content_type": "image/jpeg",
+                "size": 10,
+            }
+        ]
+
+    def test_process_url_attachment_surfaces_download_failure(self, tmp_path):
+        """Download failures should be reported as attachment processing errors."""
+        from tools.write_journal.attachments import process_attachments
+
+        async def fake_download(url: str, target_dir: Path, date_str: str):
+            return {
+                "success": False,
+                "error": "download failed",
+                "error_code": "E0701",
+            }
+
+        with patch(
+            "tools.write_journal.attachments.download_attachment_from_url",
+            new=fake_download,
+        ):
+            with patch(
+                "tools.write_journal.attachments.ATTACHMENTS_DIR",
+                tmp_path / "attachments",
+            ):
+                result = process_attachments(
+                    attachments=[
+                        {
+                            "source_url": "https://example.com/bad.jpg",
+                            "description": "坏链接",
+                        }
+                    ],
+                    date_str="2026-03-10",
+                    dry_run=True,
+                )
+
+        assert result == [
+            {
+                "filename": "[下载失败: https://example.com/bad.jpg]",
+                "description": "坏链接",
+                "error": "download failed",
+                "auto_detected": False,
+                "error_code": "E0701",
+            }
+        ]
+
     def test_merge_auto_detected_paths(self, tmp_path):
         """Merge explicit and auto-detected paths"""
         from tools.write_journal.attachments import process_attachments
@@ -373,6 +464,8 @@ class TestProcessAttachments:
         # Check file was copied
         copied_file = att_dir / "2026" / "03" / "source.mp4"
         assert copied_file.exists()
+        assert result[0]["content_type"] == "video/mp4"
+        assert result[0]["size"] == len("test content")
 
     def test_rename_duplicate_files(self, tmp_path):
         """Duplicate target filenames should be renamed with counter suffix"""

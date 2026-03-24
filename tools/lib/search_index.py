@@ -96,7 +96,9 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
                 # 处理列表格式
                 if value.startswith("[") and value.endswith("]"):
                     value = [
-                        v.strip().strip("\"'") for v in value[1:-1].split(",") if v.strip()
+                        v.strip().strip("\"'")
+                        for v in value[1:-1].split(",")
+                        if v.strip()
                     ]  # type: ignore
 
                 metadata[key] = value
@@ -116,7 +118,9 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
             "project": metadata.get("project", ""),
             "tags": _normalize_to_str(metadata.get("tags")),
             "file_hash": get_file_hash(file_path),
-            "modified_time": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
+            "modified_time": datetime.fromtimestamp(
+                file_path.stat().st_mtime
+            ).isoformat(),
         }
 
         return doc
@@ -194,7 +198,9 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
                         continue
 
                     for journal_file in month_dir.glob("life-index_*.md"):
-                        rel_path = str(journal_file.relative_to(USER_DATA_DIR)).replace("\\", "/")
+                        rel_path = str(journal_file.relative_to(USER_DATA_DIR)).replace(
+                            "\\", "/"
+                        )
                         current_files.add(rel_path)
 
                         # 检查是否需要更新
@@ -274,6 +280,7 @@ def search_fts(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     limit: int = 50,
+    min_relevance: int = 40,
 ) -> List[Dict[str, Any]]:
     """
     使用 FTS5 搜索日志（带 BM25 相关性排序）
@@ -283,6 +290,7 @@ def search_fts(
         date_from: 起始日期 YYYY-MM-DD
         date_to: 结束日期 YYYY-MM-DD
         limit: 最大返回结果数
+        min_relevance: 最低相关性阈值（0-100）
 
     Returns:
         搜索结果列表（按 BM25 相关性排序，分数越高越相关）
@@ -331,6 +339,8 @@ def search_fts(
             # 分数 0: 70% (中等相关)
             # 分数 >= 5: 30% (弱相关)
             relevance = max(0, min(100, int(70 - bm25_score * 5)))
+            if relevance < min_relevance:
+                continue
 
             results.append(
                 {
