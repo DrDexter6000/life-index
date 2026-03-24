@@ -1,6 +1,6 @@
 # AGENTS.md - tools/lib/
 
-> **最后更新**: 2026-03-17 | **版本**: v1.1 | **状态**: 活跃维护
+> **最后更新**: 2026-03-25 | **版本**: v1.2 | **状态**: 活跃维护
 
 ## OVERVIEW
 Shared infrastructure library for all Life Index atomic tools.
@@ -16,6 +16,8 @@ Shared infrastructure library for all Life Index atomic tools.
 | Debug L2 search performance | `metadata_cache.py` | Check SQLite WAL mode, mtime/size detection |
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
 | Add semantic search feature | `semantic_search.py` | Uses fastembed (ONNX Runtime), multilingual embeddings |
+| Debug path normalization | `path_contract.py` | Canonical path normalization and route-safe path shaping |
+| Debug URL download pipeline | `url_download.py` | Shared remote-file download helper used by write/web flows |
 | Vector index corruption | `vector_index_simple.py` | Pickle-based fallback when sqlite-vec unavailable |
 
 ## MODULES
@@ -25,9 +27,11 @@ Shared infrastructure library for all Life Index atomic tools.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. All tools must use this, never duplicate logic.
 - **metadata_cache.py**: SQLite-based L2 search cache. 50-100x performance improvement over file scanning.
+- **path_contract.py**: Shared path normalization helpers for route-safe, user-safe journal paths.
 - **search_index.py**: FTS5 full-text search with BM25 ranking, incremental updates.
 - **semantic_search.py**: Vector embedding search using paraphrase-multilingual-MiniLM-L12-v2, core dependency.
 - **timing.py**: Performance timing utility for metrics collection. Used in tool outputs for monitoring.
+- **url_download.py**: Shared URL download helper for attachment ingestion and related flows.
 - **vector_index_simple.py**: Pure Python fallback vector index using numpy/pickle.
 
 ## CONVENTIONS
@@ -44,12 +48,13 @@ Shared infrastructure library for all Life Index atomic tools.
 
 - **Never** duplicate frontmatter parsing logic in tools. Always import from `lib.frontmatter`.
 - **Never** hardcode paths. Use `config.USER_DATA_DIR` and derived constants.
+- **Never** duplicate `USER_DATA_DIR` resolution outside `tools/lib/config.py` (e.g., in `web/runtime.py`). Web/runtime code must import `config.USER_DATA_DIR` / `config.JOURNALS_DIR` directly, not recompute via `Path.home()`.
 - **Never** raise bare exceptions. Use `LifeIndexError` with structured codes.
 - **Never** skip error handling for vector index operations. Always use try/except with logging.
 - **Never** write journals/indexes without acquiring the appropriate lock first.
 
 ## DEPENDENCIES
 
-**This lib depends on**: Python 3.11+, pyyaml, fastembed>=0.4.0, numpy>=1.24.0
+**This lib depends on**: Python 3.11+, pyyaml, fastembed>=0.5.1,<1.0, numpy>=1.24.0
 
-**Tools depend on this lib**: write_journal, search_journals, edit_journal, generate_abstract, build_index, query_weather, dev/validate_data, dev/rebuild_indices
+**Tools depend on this lib**: write_journal, search_journals, edit_journal, generate_abstract, build_index, query_weather, backup, dev/validate_data, dev/rebuild_indices, dev/run_with_temp_data_dir, Web GUI service layer helpers

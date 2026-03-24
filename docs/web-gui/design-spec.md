@@ -9,6 +9,10 @@
 ---
 
 > **Post-release note (2026-03-22):** Web GUI 已随 `v1.4.0` 发布。本文件继续作为设计参考保留；任何未进入实际已发布范围的增强项，应转入 `docs/web-gui/post-v1.4-backlog.md` 继续规划，而不是再视为当前 release closeout 工作。
+>
+> **Docs note (2026-03-25):** Web GUI 初始实现期的 phase plans、upgrade specs 与 legacy full TDD 文档已归档至 `docs/archives/web_gui_init/`；当前文档入口见 [`docs/web-gui/README.md`](README.md)。
+>
+> **UI/UX Design Direction (2026-03-24):** 视觉设计方向的权威文档已迁移至 [`docs/web-gui/UIUX/DESIGN-DIRECTION.md`](UIUX/DESIGN-DIRECTION.md)。该文档定义了 Celestial Editorial 美学体系、交互模式分层、差异化优先级与分阶段路线图，取代此前 `Reference Samples/Overall DESIGN.md` 的设计定义职能。
 
 ## 1. 动机与背景
 
@@ -22,7 +26,7 @@ Life Index v1.x 作为 Agent Skill，依赖宿主 Agent（OpenClaw/Claude Deskto
 
 ### 1.2 与 PRODUCT_BOUNDARY.md 的关系
 
-Web GUI 属于 **Layer C — Future Application Layer**，严格遵守已有边界：
+Web GUI 属于 **Layer C — Optional Application Layer**，是当前已经存在的可选本地壳层，严格遵守已有边界：
 
 - ✅ 以同一份本地用户数据为中心（`~/Documents/Life-Index/`）
 - ✅ 不破坏现有 durable data / compatibility 承诺
@@ -351,8 +355,8 @@ life-index/
 ├── pyproject.toml            # 新增 [web] optional deps + packages.find 包含 web*
 └── docs/
     └── web-gui/
-        ├── design-spec.md               # 本文档（设计规格书）
-        └── implementation-plan.md       # TDD 实施计划
+        ├── README.md                    # 当前文档入口
+        └── design-spec.md               # 本文档（设计规格书）
 ```
 
 ---
@@ -845,7 +849,7 @@ life-index serve [--port 8765] [--host 127.0.0.1] [--reload]
 
 1. 只有“**已确认存在**，但当前不解决/不阻塞开工”的事项才进入本节。  
 2. 如果某问题已经演变为真正 blocker，应移到对应 phase 计划或实现任务中，不应继续停留在本节。  
-3. 如果某问题直接改变 cross-phase contract，应更新 `shared-contracts.md`，本节仅保留摘要和链接。  
+3. 如果某问题直接改变跨阶段契约，应优先回写当前主文档或归档中的历史过程文档；本节仅保留摘要和链接。
 4. Phase 薄索引文档可引用本节的某个 `KI-xxx`，但不要重复维护完整正文。
 
 ---

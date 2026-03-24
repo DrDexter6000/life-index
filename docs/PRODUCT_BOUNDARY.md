@@ -54,9 +54,9 @@ Life Index 核心产品包含：
 
 ---
 
-### 2.3 Layer C — Future Application Layer
+### 2.3 Layer C — Optional Application Layer
 
-未来如果出现 GUI、timeline browser、dashboard shell、packaging shell 或其他更易用的访问层，它们只能被视为 Layer A + Layer B 之上的可选壳层。
+当前已落地的本地 Web GUI，以及未来可能出现的 timeline browser、dashboard shell、packaging shell 等访问层，都只能被视为 Layer A + Layer B 之上的可选壳层。
 
 可接受的前提：
 
@@ -110,9 +110,9 @@ Life Index 核心产品包含：
 - 当前产品重心是稳定 capability model 和 workflow model
 - 协议适配层如果未来出现，也只能是外层适配，不应先于产品边界收敛
 
-### 关于 Future App Shell
+### 关于 Optional App Shell
 
-- future shell 可以被探索
+- 当前 Web GUI 已作为可选本地壳层存在；未来仍可继续探索更多 shell
 - 但只有在不破坏本地数据中心、工具契约中心、产品身份中心的前提下才成立
 
 ---
@@ -184,7 +184,6 @@ Life Index 核心产品包含：
 
 以下方向可以保留，但不应进入当前主线：
 
-- Future app shell / GUI / dashboard shell
 - 更丰富的 timeline browsing experience
 - repo-first 之外的分发扩展（如更重的 installer / package channel）
 - MCP / protocol adapter

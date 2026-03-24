@@ -186,16 +186,74 @@ python -m tools.write_journal --data '<json>'
 | tags | array | ❌ | [] | 标签 |
 | abstract | string | ❌ | 调用方补齐/LLM 提炼 | 摘要（≤100字，**Agent生成**） |
 | links | array | ❌ | [] | 相关链接 |
-| attachments | array | ❌ | [] | 附件列表 |
+| attachments | array | ❌ | [] | 附件列表；输入阶段支持本地路径自动检测，也支持显式对象输入；写入后以 frontmatter `attachments` 作为唯一 SSOT |
 
 ### 附件对象格式
+
+#### 输入阶段（调用 `write_journal` 时）
 
 ```json
 {
   "source_path": "C:/Users/xxx/file.png",
-  "description": "附件说明"
+  "description": "附件说明",
+  "content_type": "image/png",
+  "size": 12345
 }
 ```
+
+或：
+
+```json
+{
+  "source_url": "https://example.com/file.png",
+  "description": "附件说明",
+  "content_type": "image/png",
+  "size": 12345
+}
+```
+
+> `content_type` / `size` 在输入阶段均为可选；如果调用方未提供，系统会在本地文件复制或 URL 下载阶段尽力自动推断。
+
+#### 写入后 stored attachment 对象（frontmatter `attachments`）
+
+```json
+{
+  "filename": "file.png",
+  "rel_path": "../../../attachments/2026/03/file.png",
+  "description": "附件说明",
+  "original_name": "file.png",
+  "auto_detected": false,
+  "source_url": "https://example.com/file.png",
+  "content_type": "image/png",
+  "size": 12345
+}
+```
+
+> 对于本地附件，`source_url` 通常为 `null` / 缺省；对于 legacy journals，读取侧应允许 `content_type` 与 `size` 缺省，并按文件扩展名做兼容推断。
+
+### 附件输入契约说明
+
+- 聊天 / Agent 场景下，Life Index **保留自动从 `content` 中识别本地文件路径** 的能力
+- 因此类似下面的输入仍然有效：
+
+```text
+/life-index 记日志：今天……
+附件路径：C:\Users\me\Desktop\photo.png
+```
+
+- 也支持显式 `attachments` 对象输入
+- 显式 `attachments` 对象既支持本地文件：`source_path`，也支持远程文件：`source_url`
+- 当提供 `source_url` 时，系统会先下载远程文件，再按 Life Index 附件归档流程写入 frontmatter `attachments`
+- **不要求**额外魔法词或强制 DSL 语法
+- 推荐表达方式是把附件路径单独成段，以提升 Agent 解析稳定性，但这只是推荐，不是强制要求
+
+### 附件存储契约说明
+
+- 新 journal 写入时，附件信息仅写入 frontmatter `attachments`
+- 不再自动向正文追加 `## Attachments` / `## 附件` 区块
+- 读取侧应兼容：
+  - legacy string attachment entries
+  - structured attachment objects
 
 ### 返回值
 
@@ -238,6 +296,15 @@ python -m tools.write_journal --data '<json>'
   1. 写入失败
   2. 写入成功，但仍需 confirmation / correction
   3. 写入成功，但 side effects / index visibility 不完整
+
+### Tool hard-required vs workflow-required
+
+- `docs/API.md` 描述的是 **tool contract / 运行时硬契约**
+- 某些字段（如 `title` / `abstract` / `topic` / `mood` / `tags`）在产品 workflow 中通常应由 Agent 或 Web 层补齐
+- 但这不自动等同于 `write_journal()` 当前源码层面的硬校验必填
+- 如两者需要同时表述，应优先区分：
+  1. **tool hard-required**（工具自身拒绝缺失）
+  2. **workflow-required**（调用方在进入工具前应补齐）
 
 ### 错误码
 
@@ -519,6 +586,46 @@ python -m tools.build_index [options]
 
 ---
 
+## backup
+
+### 端点
+
+```bash
+python -m tools.backup [options]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| dest | string | 条件必填 | - | 备份目标目录；create/list 模式需要 |
+| full | flag | ❌ | false | 执行全量备份 |
+| dry-run | flag | ❌ | false | 模拟运行，不实际复制文件 |
+| list | flag | ❌ | false | 列出指定备份目录下的备份记录 |
+| restore | string | ❌ | - | 从指定备份目录恢复 |
+
+### 返回值
+
+创建备份示例：
+
+```json
+{
+  "success": true,
+  "backup_path": "D:/backup/life-index-backup-20260325_120000",
+  "files_backed_up": 42,
+  "files_skipped": 10,
+  "errors": [],
+  "manifest_path": "D:/backup/.life-index-backup-manifest.json"
+}
+```
+
+### 说明
+
+- `backup` 属于数据安全与 operator 工具，不改变 journal/frontmatter 契约
+- 恢复前应先由调用方确认目标目录与覆盖风险
+
+---
+
 ## Topic 分类定义
 
 | Topic | 含义 | 示例场景 |
@@ -544,3 +651,46 @@ python -m tools.build_index [options]
 - 用户可在 `config.yaml` 中记录 `defaults.location`
 - onboarding agent 可在安装完成后的 optional customization step 中写入该偏好
 - 但是否被当前运行时写入链路自动消费，应以实际验证结果为准；Agent 不得在未验证时声称其已生效
+
+---
+
+## dev helper: run_with_temp_data_dir
+
+### 端点
+
+```bash
+python -m tools.dev.run_with_temp_data_dir [--seed] [--for-web] [--name LABEL] [--cleanup-now] [--json]
+```
+
+### 用途
+
+- 为手工调试 / Web GUI 验收创建隔离的临时 `LIFE_INDEX_DATA_DIR`
+- `--seed` 表示先复制当前真实用户数据，再基于副本做仿真验收
+- `--for-web` 表示输出 Web GUI 验收模式所需的启动提示、清单与验收后建议
+
+### 关键结构化输出字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `temp_root` | string | 临时沙盒根目录 |
+| `data_dir` | string | 实际注入 `LIFE_INDEX_DATA_DIR` 的目录 |
+| `source_data_dir` | string \| null | 当使用 `--seed` 时的数据复制来源 |
+| `seeded` | boolean | 是否复制了真实用户数据 |
+| `for_web` | boolean | 是否处于 Web GUI 验收模式 |
+| `readonly_simulation` | boolean | `--for-web --seed` 时为 `true`，表示复制数据后的只读仿真验收，不会回写真实用户目录 |
+| `mode` | string | 当前模式；典型值：`generic` / `web_acceptance` |
+| `serve_command` | string | 推荐的 `life-index serve` 启动命令 |
+| `browser_url` | string | 推荐打开的浏览器地址 |
+| `safe_to_delete_after` | boolean | 当前临时沙盒在验收完成后是否可安全删除 |
+| `shell_snippet` | string | 可直接复用的启动 shell 片段 |
+| `acceptance_checklist` | string[] | Web GUI 验收建议检查项 |
+| `post_acceptance_actions` | string[] | 验收后的建议动作 |
+| `next_steps` | string[] | 调用 helper 后建议按顺序执行的下一步 |
+| `cleanup_command` | string | 建议的临时沙盒清理命令 |
+| `summary` | object | 创建 / seeded / cleaned 统计 |
+
+### Agent / 开发者使用约定
+
+- 手工 Web GUI 验收优先使用：`python -m tools.dev.run_with_temp_data_dir --for-web`
+- 若要基于当前真实数据做仿真验收，使用：`python -m tools.dev.run_with_temp_data_dir --for-web --seed`
+- `--for-web --seed` **不会回写真实用户目录**；如需保留变更，必须人工确认后再迁回
