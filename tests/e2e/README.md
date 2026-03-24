@@ -55,6 +55,38 @@ tests/e2e/
    - 删除测试生成的附件
    - 保留索引文件（可选）
 
+## 数据隔离（强制）
+
+- E2E runner 必须使用隔离的临时 `LIFE_INDEX_DATA_DIR`，**不得**默认写入真实用户目录 `~/Documents/Life-Index/`
+- 人工调试若需要模拟真实数据结构，也必须先复制到临时目录后再执行
+- 任何 E2E / 调试过程产生的日志、附件、索引都必须在临时目录内创建并在结束后清理
+- 若某次人工调试误写入真实用户目录，执行人必须：
+  1. 记录被写入的文件
+  2. 删除污染文件
+  3. 执行 `life-index index --rebuild`
+
+### 手工调试 / Web GUI 验收推荐流程
+
+优先使用隔离沙盒工具，而不是直接拿真实用户目录做验收：
+
+```bash
+# 创建一个全新的 Web GUI 验收沙盒
+python -m tools.dev.run_with_temp_data_dir --for-web
+
+# 如果需要复制当前用户数据做“仿真验收”
+python -m tools.dev.run_with_temp_data_dir --for-web --seed
+```
+
+`--for-web --seed` 表示：
+- 先复制当前用户数据到临时目录
+- 再基于副本做 Web GUI 验收
+- **不会回写真实用户目录**
+
+工具会打印：
+- 临时 `LIFE_INDEX_DATA_DIR`
+- 如何用该目录启动 `life-index serve`
+- 调试结束后的清理提醒
+
 ## 测试用例格式规范
 
 ```yaml

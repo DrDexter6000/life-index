@@ -55,7 +55,7 @@ dev = [
 
 # Web GUI dependencies - Web 界面依赖
 web = [
-    "fastapi>=0.110.0",
+    "fastapi>=0.135.2",
     "uvicorn[standard]>=0.27.0",
     "jinja2>=3.1.0",
     "python-multipart>=0.0.9",
@@ -152,6 +152,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "7.0"
 addopts = "-ra -q --strict-markers --strict-config"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = [
     "tests",
 ]

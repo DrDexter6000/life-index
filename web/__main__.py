@@ -39,6 +39,17 @@ def main() -> None:
 
     import uvicorn
     from web.app import create_app
+    from web.runtime import get_runtime_info
+
+    runtime = get_runtime_info()
+    print(
+        "Life Index Web GUI starting: "
+        f"http://{args.host}:{args.port} | "
+        f"user_data_dir={runtime['user_data_dir']} | "
+        f"journals_dir={runtime['journals_dir']} | "
+        f"override={runtime['life_index_data_dir_override']} | "
+        f"readonly_simulation={runtime['readonly_simulation']}"
+    )
 
     uvicorn.run(create_app(), host=args.host, port=args.port, reload=args.reload)
 
