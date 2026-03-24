@@ -14,12 +14,14 @@
 1. 统一 Web GUI 文档中的 release / handoff / delivered wording
 2. 明确哪些设计项已发布、哪些只是后续候选功能
 3. 在后续 release 时保持 `CHANGELOG.md` 与 Web GUI 文档的状态同步
+4. 保持 runtime transparency、sandbox / readonly simulation 与 onboarding gate 的描述和实现一致
 
 ### P2 — Post-MVP product polish
 
 1. 更细粒度的 visual refinement（信息密度、视觉节奏、空状态层级）
 2. 更细粒度的 write / edit 交互 polish（helper text、progress/status、移动端细节）
 3. attachment / weather 相关 UX 继续细化，但仅在真实使用反馈支持时推进
+4. 已落地的 LLM / search enhancement 不再作为 closeout 待办重复推进；如需继续演进，应以新的 backlog / spec 重新立项
 
 ### P3 — Next feature candidates
 
@@ -113,12 +115,14 @@
 1. 文档状态统一
 2. wording consistency closeout
 3. backlog 明确归档
+4. runtime / sandbox / onboarding 术语统一
 
 ### Batch 2 — 可一口气完成
 
 1. 对 P3 候选功能做价值排序
 2. 为下一版本确定 MVP / non-MVP 边界
 3. 形成新的实施计划或子计划文档
+4. 在切换前重新确认是否先做 LLM-0.5 / LLM-1，还是直接进入 feature planning
 
 ## Not recommended as one big batch
 

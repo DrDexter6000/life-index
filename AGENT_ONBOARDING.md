@@ -228,7 +228,7 @@ On Windows, the path separator is backslash (`\`), not forward slash (`/`). The 
 
 Execute these steps in order. Each step must succeed before proceeding.
 
-After the required verification flow is complete, an **optional customization step** may follow. That step is governed by `docs/archive/review-2026-03/ONBOARDING_CUSTOMIZATION_PROTOCOL.md` and the guardrails in this document.
+After the required verification flow is complete, an **optional customization step** may follow. That step should follow the guardrails in this document plus the current configuration contracts in `docs/API.md` / `tools/lib/config.py`; the older review-scoped customization protocol is no longer the active reference.
 
 ### Step 7.1: Build Index (Initialization)
 

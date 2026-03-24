@@ -231,10 +231,21 @@ python3 -m venv .venv
 | 记录日志 | `life-index write --data '{...}'` |
 | 搜索日志（关键词+语义） | `life-index search --query "关键词"` |
 | 仅关键词搜索 | `life-index search --query "关键词" --no-semantic` |
+| 备份数据 | `life-index backup --dest <backup-dir>` |
+| 启动 Web GUI | `life-index serve` |
 | 开发者调用 | `python -m tools.search_journals --query "关键词"` |
 | 运行单元测试 | `python -m pytest tests/unit/ -v` |
 
 > **提示**: 开发者可以先 `source .venv/bin/activate`，之后所有命令无需 `.venv/bin/` 前缀。
+
+> **安全调试提示**：手工 Web GUI 验收 / 调试时，优先使用隔离沙盒工具，而不是直接操作真实用户目录：
+>
+> - `python -m tools.dev.run_with_temp_data_dir --for-web`
+> - `python -m tools.dev.run_with_temp_data_dir --for-web --seed`
+
+> 其中 `--for-web --seed` 属于复制真实数据后的只读仿真验收，不会回写真实用户目录。
+>
+> 结构化输出字段契约见：`docs/API.md` → `dev helper: run_with_temp_data_dir`
 
 </details>
 
@@ -289,6 +300,8 @@ python3 -m venv .venv
 - edit（编辑）
 
 如果你想走这条路径，请直接使用上面的 **Web GUI 可选版** Agent prompt。
+
+当前 Web GUI 文档主入口：[`docs/web-gui/README.md`](./docs/web-gui/README.md)
 
 ---
 

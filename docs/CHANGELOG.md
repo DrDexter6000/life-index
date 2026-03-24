@@ -15,11 +15,55 @@
 
 相关文档：
 - `docs/UPGRADE.md`
+- `docs/web-gui/README.md`
 - `docs/web-gui/post-v1.4-backlog.md`
 
 **当前规划说明**:
-- `v1.4.0` 已发布完成，后续 Web GUI 工作以 post-v1.4 backlog 管理
-- 下一批更适合处理文档状态统一、非阻塞 polish、以及新 feature 的优先级规划
+- `v1.4.0` 已发布完成，后续 Web GUI 工作以 post-v1.4 backlog 与 next-phase roadmap 管理
+- 当前阶段已完成一轮 Tier 1 / Web GUI 文档收口：`docs/web-gui/` 仅保留当前态文档与 `UIUX/`，历史初始化/升级过程文档已归档到 `docs/archives/web_gui_init/`
+- 已落地的 Web GUI 增强能力（dashboard visual、bugfix、write confirm、settings、search AI summary）应视为当前现实；历史 upgrade 计划仅作为审计档案保留
+
+**工程加固（未发布）**:
+- 提高 Web 依赖下的 FastAPI 最低版本到 `0.135.2`，避免旧版本组合再次触发 `HTTP_422_UNPROCESSABLE_ENTITY` 弃用警告
+- 在 pytest 配置中显式设置 `asyncio_default_fixture_loop_scope = "function"`，消除 `pytest-asyncio` 弃用警告并固定异步 fixture 行为
+- 以上变更属于 patch 级依赖/测试环境稳定性修复，不改变用户日志、附件、frontmatter 或 Web 业务行为
+
+**Web GUI 仪表盘与测试稳定性（未发布）**:
+- Dashboard DV-2 已完成：新增主题分布环形图与情绪频率水平柱状图，并补齐空状态、Dark Mode 与搜索跳转交互
+- 历史 dashboard 执行计划已归档到 `docs/archives/web_gui_init/upgrade/plan-dashboard-visual.md`
+- 修复 `tests/unit/test_web_write.py` 与 `tests/unit/test_web_write_route.py` 组合运行时的 `ResourceWarning`，当前 scoped web regression 已恢复为 clean output
+
+**Web GUI 仪表盘视觉线闭环（未发布）**:
+- Dashboard DV-1 ~ DV-5 已全部完成：热力图、主题分布、情绪频率、标签词云、人物关系、布局响应式、空状态统一、Dark Mode 抛光与轻量动效均已落地
+- Dashboard 现已作为一条完整可交付视觉线收尾；后续工作优先参考当前 backlog / roadmap，而不是继续使用已归档 phase plan 作为入口
+
+**Web GUI 文档收口与 Tier 1 对齐（未发布）**:
+- `docs/web-gui/README.md` 已成为当前 Web GUI 文档入口
+- `docs/web-gui/UIUX/` 被保留为当前视觉方向与迁移资料目录
+- `docs/archives/web_gui_init/` 已收纳历史 phase plans、legacy full TDD 文档与 `upgrade/` 规格/执行计划，保留原始目录结构供审计追溯
+- `README.md`、`AGENTS.md`、`docs/PRODUCT_BOUNDARY.md`、`docs/API.md`、`tools/lib/AGENTS.md`、`AGENT_ONBOARDING.md` 已同步当前项目现实（可选 Web GUI、backup CLI、archive 路径、tool/workflow 权责边界）
+
+**运行时透明度与安全验收链路闭环（未发布）**:
+- 已清理真实用户数据目录中的确认污染日志/附件，并执行 `life-index index --rebuild` 重新对齐 metadata cache / search index
+- `AGENTS.md` 已新增强制防污染规则：开发 / 测试 Agent 默认不得向真实 `~/Documents/Life-Index/` 写入临时日志或附件；如因验收需要误写真实目录，必须记录、删除并 rebuild
+- `tests/e2e/runner.py` 已做代码级隔离：E2E runner 默认注入隔离的临时 `LIFE_INDEX_DATA_DIR`，并清理测试生成 journal / attachment，避免再次污染真实用户数据
+- 新增 `tools.dev.run_with_temp_data_dir` 沙盒 helper，支持 `--for-web`、`--seed`、`--cleanup-now`、`--name` 以及结构化 `--json` 输出；当前已形成手工 Web GUI 验收的标准安全入口
+- `docs/API.md` 已文档化 `run_with_temp_data_dir` 的输出契约（含 `readonly_simulation`、`acceptance_checklist`、`post_acceptance_actions`、`next_steps`、`cleanup_command` 等字段），`README.md` 已增加可见入口
+- Web GUI 现已在 `/api/health`、`/api/runtime`、启动日志、全局 runtime banner 以及 dashboard/search/write/edit/journal 页面级提示中显式暴露当前数据源、override 状态与只读仿真标记，降低验收/调试时误连真实用户目录的风险
+- `AGENT_ONBOARDING_WEB.md` 已新增 Web runtime / data-dir verification gate，要求 Agent 在继续 write/edit 验收前先核对启动日志、API 与页面 runtime 信息
+- write/edit 在 `readonly_simulation=true` 时保持“写入临时副本、不回写真实目录”的非阻塞模型，并在成功跳转后通过 journal warning banner 明示当前操作发生在临时副本中
+- write/edit 提交区现已补上 action-level 提示：当 `readonly_simulation=true` 时，提交按钮附近会明确提示“提交后仍会写入临时副本，不会回写真实用户目录”
+- 当前阶段的非 README closeout 文档已完成一轮状态统一：`CHANGELOG.md`、`docs/web-gui/post-v1.4-backlog.md`、`docs/web-gui/next-phase-roadmap.md` 与 `AGENT_ONBOARDING_WEB.md` 对 post-v1.4 closeout、runtime transparency、sandbox / readonly simulation 与 onboarding gate 的叙述已重新对齐
+
+**当前阶段 closeout checklist（进行中）**:
+- [x] sandbox / anti-pollution 安全链路落地
+- [x] `/api/health`、`/api/runtime`、startup log 与页面 runtime 提示对齐
+- [x] dashboard/search/write/edit/journal 页面级 runtime/operator 提示补齐
+- [x] write/edit 在 readonly simulation 下的非阻塞 notice 模型落地
+- [x] `AGENT_ONBOARDING_WEB.md` 增加 runtime / data-dir verification gate
+- [x] 非 README 文档状态统一
+- [x] write/edit 提交区 action-level transparency 提示补齐
+- [ ] 进入下一轮 UI/UX 想法讨论与优先级判断
 
 ---
 

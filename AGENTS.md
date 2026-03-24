@@ -1,11 +1,16 @@
 # AGENTS.md - Life Index 项目开发指南
 
 > 本文档为 Life Index 项目开发、为 AI 编码代理提供项目上下文。  
-> **最后更新**: 2026-03-17 | **版本**: v1.1 | **状态**: 活跃维护
+> **最后更新**: 2026-03-25 | **版本**: v1.2 | **状态**: 活跃维护
 
 ## 项目概述
 
-**Life Index** 是一个 Agent Skill（技能包），提供个人生活日志记录能力。用户通过自然语言与 Agent 交互，Agent 调用 Python 原子工具完成日志的记录、搜索、编辑和摘要生成。
+**Life Index** 是一个 Agent-first、local-first 的个人人生日志与检索系统。当前项目同时包含：
+
+- **Layer A / Core**：CLI 原子工具（write / search / edit / abstract / weather / index / backup）
+- **Layer C / Optional Shell**：可选本地 Web GUI（dashboard / search / write / journal / edit / settings）
+
+用户既可以通过自然语言 + Agent 调用 Python 原子工具，也可以通过浏览器访问同一份本地数据。
 
 **核心理念**:
 - **Agent-first**：发挥 Agent 自然语言理解和生成能力，仅在需要原子性/准确性时开发专用工具
@@ -36,7 +41,9 @@ life-index search --query "关键词" --level 3
 life-index edit --journal "Journals/2026/03/life-index_2026-03-07_001.md" --set-weather "晴天"
 life-index abstract --month 2026-03
 life-index weather --location "Lagos,Nigeria"
+life-index backup --dest "D:/Backups/Life-Index"
 life-index index           # 增量更新
+life-index serve           # 启动本地 Web GUI
 
 # 开发者模式（无需安装）
 python -m tools.write_journal --data '{...}'
@@ -50,49 +57,23 @@ python -m tools.search_journals --query "关键词"
 > **详细模块说明**: 参见 [`tools/lib/AGENTS.md`](tools/lib/AGENTS.md)
 
 ```
-tools/
-├── write_journal/              # 写入日志模块
-│   ├── __init__.py            # CLI入口
-│   ├── __main__.py            # 模块执行入口
-│   ├── core.py                # 核心协调逻辑
-│   ├── attachments.py         # 附件处理
-│   ├── index_updater.py       # 索引更新（v1.2 Write-Through）
-│   ├── utils.py               # 通用工具函数
-│   └── weather.py             # 天气查询集成
-├── search_journals/            # 搜索日志模块（双管道并行检索）
-│   ├── __init__.py            # CLI入口
-│   ├── __main__.py            # 模块执行入口
-│   ├── core.py                # 搜索协调逻辑（Pipeline A/B + RRF）
-│   ├── l1_index.py            # 一级索引搜索（by-topic）
-│   ├── l2_metadata.py         # 二级元数据搜索（SQLite缓存）
-│   ├── l3_content.py          # 三级内容搜索（FTS全文搜索）
-│   ├── ranking.py             # RRF融合排序算法
-│   ├── semantic.py            # 语义搜索（fastembed向量相似度）
-│   └── utils.py               # 搜索工具函数
-├── edit_journal/              # 编辑日志模块
-│   ├── __init__.py            # CLI入口
-│   └── __main__.py            # 模块执行入口
-├── generate_abstract/         # 生成摘要模块
-│   ├── __init__.py            # CLI入口
-│   └── __main__.py            # 模块执行入口
-├── build_index/               # 构建索引模块
-│   ├── __init__.py            # CLI入口
-│   └── __main__.py            # 模块执行入口
-├── query_weather/             # 查询天气模块
-│   ├── __init__.py            # CLI入口
-│   └── __main__.py            # 模块执行入口
+tools/                         # Core CLI/tool layer
+├── write_journal/
+├── search_journals/
+├── edit_journal/
+├── generate_abstract/
+├── build_index/
+├── query_weather/
+├── backup/                    # 数据备份工具
+├── dev/                       # 开发/验收辅助工具（含 run_with_temp_data_dir）
 └── lib/                       # 共享库（SSOT）→ 详见 `tools/lib/AGENTS.md`
-    ├── AGENTS.md              # 共享库开发指南（SSOT）
-    ├── config.py              # 配置管理（路径、模板、默认值）
-    ├── frontmatter.py         # YAML frontmatter解析/格式化（SSOT）
-    ├── errors.py              # 错误码定义（SSOT）
-    ├── file_lock.py           # 跨平台文件锁
-    ├── metadata_cache.py      # SQLite元数据缓存（L2搜索）
-    ├── search_index.py        # FTS5全文搜索索引
-    ├── semantic_search.py     # 向量嵌入语义搜索（fastembed）
-    ├── vector_index_simple.py # 纯Python向量索引（Fallback）
-    ├── logger.py              # 日志记录工具
-    └── timing.py              # 性能计时工具
+
+web/                           # Optional local Web GUI shell
+├── routes/                    # dashboard/search/write/journal/edit/settings/api
+├── services/                  # Web-only thin adapters over tools/
+├── templates/                 # Jinja2 templates
+├── static/                    # CSS / static assets
+└── __main__.py                # `life-index serve` 入口
 ```
 
 ---
@@ -193,6 +174,18 @@ python tools/write_journal.py --data '{...}'
 - 项目代码: 仓库目录
 - 两者物理隔离，不可混淆
 
+### 测试防污染规则（强制）
+
+- **严禁**为了开发 / 测试目的，默认向真实用户数据目录 `~/Documents/Life-Index/` 写入临时日志、临时附件或其它测试污染物
+- 自动化测试必须优先使用临时目录（如 `tmp_path`、`LIFE_INDEX_DATA_DIR` override、isolated fixture）
+- 如果因人工验收 / E2E 调试 **不得不** 在真实用户数据目录下创建临时日志或附件，执行该操作的 Agent / 开发者必须在任务结束前：
+  1. 明确记录创建了哪些文件
+  2. 删除所有临时日志与临时附件
+  3. 执行 `life-index index --rebuild` 刷新 metadata cache / search index
+- **禁止**把测试样例、占位内容、坏附件引用、pytest 临时路径、"测试日志" 之类内容留在用户真实日志目录中
+- 如无法确认某篇日志是否为真实用户记录，默认不得删除，必须先列清单并请求用户确认
+- 进行手工 Web GUI 验收 / 调试时，优先使用隔离沙盒工具：`python -m tools.dev.run_with_temp_data_dir --for-web`（如需复制当前数据结构可加 `--seed`；此模式属于复制数据后的只读仿真验收，不会回写真实用户目录）
+
 ---
 
 ## 相关文档
@@ -206,6 +199,7 @@ python tools/write_journal.py --data '{...}'
 | `docs/CHANGELOG.md` | 决策变更历史 | 版本演进 |
 | `tools/lib/AGENTS.md` | 共享库开发指南 | **SSOT**: `lib/` 模块约定 |
 | `pyproject.toml` | 项目配置 | **SSOT**: 依赖、版本、入口点 |
+| `docs/web-gui/README.md` | Web GUI 当前文档入口 | Web GUI 当前态索引 |
 
 ---
 
