@@ -190,6 +190,23 @@ class TestAPIKeyProvider:
 
         assert result == {}
 
+    def test_extraction_prompt_includes_topic_table(self) -> None:
+        """Regression: prompt must include Topic classification table so LLM knows valid values."""
+        from web.services.llm_provider import EXTRACTION_SYSTEM_PROMPT
+
+        prompt = str(EXTRACTION_SYSTEM_PROMPT)
+        # Must mention the 7 valid topic values
+        for topic in ("work", "learn", "health", "relation", "think", "create", "life"):
+            assert topic in prompt, (
+                f"Topic '{topic}' missing from EXTRACTION_SYSTEM_PROMPT"
+            )
+        # Must mention topic as array field
+        assert "topic" in prompt
+        # Must mention mood extraction limit
+        assert "mood" in prompt
+        # Must mention abstract length constraint
+        assert "abstract" in prompt
+
     @pytest.mark.asyncio
     async def test_summarize_search_success(self) -> None:
         from web.services.llm_provider import APIKeyProvider
@@ -432,6 +449,45 @@ class TestPrepareJournalData:
         assert result["tags"] == []
         assert result["people"] == []
         assert result["topic"] == ["life"]
+        assert result["llm_status"]["state"] == "failed"
+        assert "provider failed" in result["llm_status"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_provider_unavailable_marks_llm_status_unavailable(self) -> None:
+        module = importlib.import_module("web.services.write")
+        prepare_journal_data = getattr(module, "prepare_journal_data")
+
+        result = await prepare_journal_data(
+            {
+                "content": "今天写了一点东西，用来测试摘要和标题自动回填。",
+                "topic": ["life"],
+                "date": "2026-03-22",
+            },
+            provider=None,
+        )
+
+        assert result["llm_status"]["state"] == "unavailable"
+        assert "未配置" in result["llm_status"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_provider_empty_extraction_marks_llm_status_fallback(self) -> None:
+        module = importlib.import_module("web.services.write")
+        prepare_journal_data = getattr(module, "prepare_journal_data")
+
+        provider = AsyncMock()
+        provider.extract_metadata.return_value = {}
+
+        result = await prepare_journal_data(
+            {
+                "content": "第一行标题\n\n正文内容",
+                "topic": ["life"],
+                "date": "2026-03-22",
+            },
+            provider=provider,
+        )
+
+        assert result["llm_status"]["state"] == "fallback"
+        assert "未返回可用结果" in result["llm_status"]["message"]
 
     @pytest.mark.asyncio
     async def test_uses_default_location_when_missing(self) -> None:
@@ -552,6 +608,35 @@ class TestPrepareJournalData:
 
         assert result["location"] == "Lagos, Nigeria"
         assert "weather" not in result
+
+    @pytest.mark.asyncio
+    async def test_weather_lookup_uses_date_portion_for_datetime_input(self) -> None:
+        module = importlib.import_module("web.services.write")
+        prepare_journal_data = getattr(module, "prepare_journal_data")
+
+        with patch("web.services.write.geocode_location") as mock_geocode:
+            with patch("web.services.write.query_weather") as mock_weather:
+                mock_geocode.return_value = {
+                    "latitude": 6.5244,
+                    "longitude": 3.3792,
+                }
+                mock_weather.return_value = {
+                    "success": True,
+                    "weather": {"simple": "晴天"},
+                }
+
+                result = await prepare_journal_data(
+                    {
+                        "content": "今天状态不错",
+                        "topic": ["life"],
+                        "date": "2026-03-22T09:15:00",
+                        "location": "Lagos, Nigeria",
+                    },
+                    provider=None,
+                )
+
+        mock_weather.assert_called_once_with(6.5244, 3.3792, "2026-03-22")
+        assert result["weather"] == "晴天"
 
     @pytest.mark.asyncio
     async def test_preserves_attachment_fields(self) -> None:
