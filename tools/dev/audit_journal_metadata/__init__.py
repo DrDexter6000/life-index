@@ -10,9 +10,7 @@ from typing import Any
 from ...lib.frontmatter import format_frontmatter, parse_journal_file
 
 LIST_FIELDS = ("topic", "tags", "mood", "people")
-REBUILD_HINT = (
-    "修复后请执行 `life-index index --rebuild` 以重建 metadata cache 和搜索索引。"
-)
+REBUILD_HINT = "修复后请执行 `life-index index --rebuild` 以重建 metadata cache 和搜索索引。"
 
 
 @dataclass

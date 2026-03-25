@@ -93,9 +93,7 @@ def geocode_location(location: str) -> Optional[Dict[str, Any]]:
 
     seen: set[str] = set()
     deduped_candidates = [
-        candidate
-        for candidate in candidates
-        if not (candidate in seen or seen.add(candidate))
+        candidate for candidate in candidates if not (candidate in seen or seen.add(candidate))
     ]
 
     for candidate in deduped_candidates:
@@ -225,9 +223,7 @@ def query_weather(
         daily = data.get("daily", {})
 
         if not daily or not daily.get("weather_code"):
-            logger.warning(
-                f"No weather data available for {date} at ({latitude}, {longitude})"
-            )
+            logger.warning(f"No weather data available for {date} at ({latitude}, {longitude})")
             result["error"] = "No weather data available for this date"
             return result
 

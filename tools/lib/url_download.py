@@ -64,8 +64,7 @@ def _is_allowed_content_type(content_type: str) -> bool:
         lowered.startswith("image/")
         or lowered.startswith("audio/")
         or lowered.startswith("video/")
-        or lowered
-        in {"application/pdf", "application/zip", "text/plain", "text/markdown"}
+        or lowered in {"application/pdf", "application/zip", "text/plain", "text/markdown"}
     )
 
 
