@@ -25,7 +25,7 @@
     {% endif %}
 
     <article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-        <form method="POST" action="/journal/{{ journal_route_path }}/edit" class="space-y-6">
+        <form method="POST" action="/journal/{{ journal_route_path }}/edit" class="space-y-6" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" id="original-location" value="{{ location }}">
             <input type="hidden" id="original-date-raw" name="original_date_raw" value="{{ original_date_raw }}">
@@ -102,9 +102,35 @@
                     <p class="mt-1 text-xs" style="color: var(--color-on-surface-variant);">每行一个链接。</p>
                 </div>
                 <div>
-                    <label for="attachments" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">附件</label>
-                    <textarea id="attachments" name="attachments" rows="5" class="w-full rounded-2xl px-4 py-3 font-mono text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface); resize: vertical;">{{ attachments }}</textarea>
-                    <p class="mt-1 text-xs" style="color: var(--color-on-surface-variant);">每行一个附件路径；如需编辑 structured attachment，可粘贴单行 JSON object。</p>
+                    <label class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">附件</label>
+                    <div id="attachments-section" class="rounded-xl p-4 space-y-3" style="background: var(--color-surface-container-low); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                        <!-- Local files -->
+                        <div>
+                            <input
+                                id="local-file-input"
+                                type="file"
+                                name="attachments"
+                                multiple
+                                class="block w-full type-body file-upload-styled"
+                                style="color: var(--color-on-surface-variant);"
+                            >
+                        </div>
+                        <!-- URL inputs -->
+                        <div>
+                            <div id="url-inputs" class="space-y-2">
+                                <input type="url" name="attachment_urls" placeholder="https://example.com/image.jpg" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                            </div>
+                            <button id="add-url-btn" type="button" class="mt-2 type-label" style="color: var(--color-primary); background: none; border: none; cursor: pointer;">+ 添加更多</button>
+                        </div>
+                        <!-- Existing attachments display -->
+                        {% if attachments %}
+                        <div class="pt-2" style="border-top: 1px solid rgba(68, 72, 79, 0.15);">
+                            <p class="text-xs mb-2" style="color: var(--color-on-surface-variant);">已有附件（路径）：</p>
+                            <textarea id="attachments" name="attachments" rows="3" class="w-full rounded-2xl px-4 py-3 font-mono text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface); resize: vertical;">{{ attachments }}</textarea>
+                            <p class="mt-1 text-xs" style="color: var(--color-on-surface-variant);">如需编辑 structured attachment，可粘贴单行 JSON object。</p>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
 
@@ -118,6 +144,27 @@
         </form>
     </article>
 </section>
+<style>
+    /* Styled file input */
+    .file-upload-styled::file-selector-button {
+        background-color: var(--color-surface-container-high);
+        color: var(--color-on-surface-variant);
+        border: none;
+        border-radius: 9999px;
+        padding: 8px 16px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-right: 12px;
+        box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);
+    }
+    .file-upload-styled::file-selector-button:hover {
+        background-color: var(--color-surface-bright);
+        box-shadow: inset 0 0 0 1px var(--color-primary);
+    }
+</style>
+
 <script>
     (() => {
         const weatherBtn = document.getElementById('weather-btn');
@@ -131,6 +178,9 @@
         const formStatus = document.getElementById('form-status');
         const weatherWarning = document.getElementById('weather-warning');
         const weatherStatus = document.getElementById('weather-status');
+        const localFileInput = document.getElementById('local-file-input');
+        const urlInputs = document.getElementById('url-inputs');
+        const addUrlBtn = document.getElementById('add-url-btn');
         let locationDirty = false;
 
         const setButtonBusy = (button, busyText, isBusy) => {
@@ -171,6 +221,56 @@
             locationDirty = locationChanged;
             weatherWarning.style.display = locationChanged ? 'block' : 'none';
         };
+
+        /* ===== Attachment URL input management ===== */
+        const buildUrlInput = () => {
+            const row = document.createElement('div');
+            row.className = 'flex gap-2';
+
+            const input = document.createElement('input');
+            input.type = 'url';
+            input.name = 'attachment_urls';
+            input.placeholder = 'https://example.com/image.jpg';
+            input.className = 'flex-1 rounded-full px-4 py-2.5 text-sm';
+            input.style.cssText = 'background: var(--color-surface); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);';
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'px-3 py-2 rounded-full text-sm font-medium';
+            removeBtn.style.cssText = 'background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); cursor: pointer;';
+            removeBtn.textContent = '移除';
+            removeBtn.addEventListener('click', () => {
+                row.remove();
+            });
+
+            row.appendChild(input);
+            row.appendChild(removeBtn);
+            return row;
+        };
+
+        if (urlInputs && addUrlBtn) {
+            addUrlBtn.addEventListener('click', () => {
+                if (urlInputs && urlInputs.children.length > 0) {
+                    const lastInput = urlInputs.querySelector('input[name="attachment_urls"]');
+                    if (lastInput && !lastInput.value.trim()) {
+                        lastInput.focus();
+                        return;
+                    }
+                }
+                if (urlInputs) {
+                    urlInputs.appendChild(buildUrlInput());
+                }
+            });
+
+            urlInputs.addEventListener('input', (e) => {
+                if (e.target && e.target.name === 'attachment_urls' && e.target.value.trim() === '' && urlInputs) {
+                    const rows = urlInputs.querySelectorAll('div.flex');
+                    if (rows.length > 1) {
+                        e.target.closest('div.flex').remove();
+                    }
+                }
+            });
+        }
 
         const fetchWeatherForLocation = async () => {
             const location = locationField.value.trim();

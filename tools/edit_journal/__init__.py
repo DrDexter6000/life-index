@@ -308,7 +308,7 @@ def edit_journal(
             with lock:
                 logger.debug("获取文件锁成功")
                 # 写入文件
-                new_content = format_frontmatter(new_frontmatter) + "\n\n" + new_body
+                new_content = format_frontmatter(new_frontmatter) + "\n\n\n" + new_body
                 journal_path.write_text(new_content, encoding="utf-8")
                 logger.info(f"已写入文件：{journal_path.name}")
 

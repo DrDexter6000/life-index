@@ -3,23 +3,20 @@
 from __future__ import annotations
 
 import re
-import time
 from pathlib import Path
 from typing import Any
 
 from tools.search_journals.core import hierarchical_search
 
+from tools.lib.config import get_search_weights
 from web.services.llm_provider import LLMProvider
-
-_SEARCH_CACHE: dict[tuple[Any, ...], tuple[float, dict[str, Any]]] = {}
-_SEARCH_CACHE_TTL_SECONDS = 60
-_SEARCH_CACHE_MAXSIZE = 32
 
 
 def _is_valid_journal_route_path(path: str | None) -> bool:
     if not path:
         return False
     normalized = str(path).replace("\\", "/")
+    filename = normalized.rsplit("/", 1)[-1].lower()
     return not (
         normalized.startswith("/")
         or ":/" in normalized
@@ -27,6 +24,10 @@ def _is_valid_journal_route_path(path: str | None) -> bool:
         or "pytest-" in normalized
         or "/Temp/" in normalized
         or normalized.startswith("Temp/")
+        or filename.startswith("monthly_report_")
+        or filename.startswith("yearly_report_")
+        or filename == "monthly_abstract.md"
+        or filename == "yearly_abstract.md"
     )
 
 
@@ -83,51 +84,11 @@ def _has_filters(params: dict[str, Any]) -> bool:
             params.get("mood"),
             params.get("tags"),
             params.get("people"),
+            params.get("project"),
+            params.get("location"),
+            params.get("weather"),
         )
     )
-
-
-def _build_cache_key(
-    params: dict[str, Any],
-    level: int,
-    semantic: bool,
-    limit: int,
-    provider: LLMProvider | None,
-) -> tuple[Any, ...]:
-    return (
-        params.get("query"),
-        params.get("topic"),
-        params.get("date_from"),
-        params.get("date_to"),
-        tuple(params.get("mood") or []),
-        tuple(params.get("tags") or []),
-        tuple(params.get("people") or []),
-        level,
-        semantic,
-        limit,
-        id(provider) if provider is not None else None,
-    )
-
-
-def _get_cached_result(cache_key: tuple[Any, ...]) -> dict[str, Any] | None:
-    cached = _SEARCH_CACHE.get(cache_key)
-    if not cached:
-        return None
-
-    cached_at, result = cached
-    if time.time() - cached_at > _SEARCH_CACHE_TTL_SECONDS:
-        _SEARCH_CACHE.pop(cache_key, None)
-        return None
-
-    return result.copy()
-
-
-def _store_cached_result(cache_key: tuple[Any, ...], result: dict[str, Any]) -> None:
-    if len(_SEARCH_CACHE) >= _SEARCH_CACHE_MAXSIZE:
-        oldest_key = min(_SEARCH_CACHE.items(), key=lambda item: item[1][0])[0]
-        _SEARCH_CACHE.pop(oldest_key, None)
-
-    _SEARCH_CACHE[cache_key] = (time.time(), result.copy())
 
 
 async def search_journals_web(
@@ -138,6 +99,9 @@ async def search_journals_web(
     mood: str | list[str] | None = None,
     tags: str | list[str] | None = None,
     people: str | list[str] | None = None,
+    project: str | None = None,
+    location: str | None = None,
+    weather: str | None = None,
     level: int = 3,
     semantic: bool = True,
     limit: int = 20,
@@ -153,6 +117,9 @@ async def search_journals_web(
         "mood": _normalize_list_param(mood),
         "tags": _normalize_list_param(tags),
         "people": _normalize_list_param(people),
+        "project": project or None,
+        "location": location or None,
+        "weather": weather or None,
     }
 
     base_result = {
@@ -165,6 +132,9 @@ async def search_journals_web(
         "topic": normalized_params["topic"] or "",
         "date_from": normalized_params["date_from"] or "",
         "date_to": normalized_params["date_to"] or "",
+        "project": normalized_params["project"] or "",
+        "location": normalized_params["location"] or "",
+        "weather": normalized_params["weather"] or "",
         "ai_summary": {
             "state": "idle",
             "summary": None,
@@ -177,10 +147,8 @@ async def search_journals_web(
     if not _has_filters(normalized_params):
         return base_result
 
-    cache_key = _build_cache_key(normalized_params, level, semantic, limit, provider)
-    cached_result = _get_cached_result(cache_key)
-    if cached_result is not None:
-        return cached_result
+    # 获取搜索权重
+    fts_weight, semantic_weight = get_search_weights()
 
     try:
         raw_result = hierarchical_search(
@@ -191,8 +159,13 @@ async def search_journals_web(
             mood=normalized_params["mood"],
             tags=normalized_params["tags"],
             people=normalized_params["people"],
+            project=normalized_params["project"],
+            location=normalized_params["location"],
+            weather=normalized_params["weather"],
             level=level,
             semantic=semantic,
+            fts_weight=fts_weight,
+            semantic_weight=semantic_weight,
         )
     except Exception as exc:
         return {
@@ -279,5 +252,45 @@ async def search_journals_web(
             "message": None,
         }
 
-    _store_cached_result(cache_key, result)
+    return result
+
+
+def _dedupe_query_hints(user_query: str, derived_queries: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in [user_query, *derived_queries]:
+        normalized = str(value or "").strip()
+        if not normalized:
+            continue
+        lowered = normalized.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        ordered.append(normalized)
+    return ordered
+
+
+async def search_ai_journals_web(
+    *,
+    user_query: str,
+    derived_queries: list[str] | None,
+    date_from: str | None,
+    date_to: str | None,
+    provider: LLMProvider | None,
+    limit: int = 15,
+) -> dict[str, Any]:
+    query_hints = _dedupe_query_hints(user_query, list(derived_queries or []))
+    combined_query = " ".join(query_hints)
+    result = await search_journals_web(
+        query=combined_query,
+        date_from=date_from,
+        date_to=date_to,
+        level=3,
+        semantic=True,
+        limit=limit,
+        provider=provider,
+    )
+    result["effective_query"] = combined_query
+    result["derived_queries"] = query_hints[1:]
+    result["display_query"] = user_query
     return result

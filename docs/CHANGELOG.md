@@ -28,6 +28,13 @@
 - 在 pytest 配置中显式设置 `asyncio_default_fixture_loop_scope = "function"`，消除 `pytest-asyncio` 弃用警告并固定异步 fixture 行为
 - 以上变更属于 patch 级依赖/测试环境稳定性修复，不改变用户日志、附件、frontmatter 或 Web 业务行为
 
+**Web GUI 搜索 / 写入 / 编辑契约归位（未发布）**:
+- regular `/search` 已恢复为 canonical dual-pipeline search contract：默认启用语义检索，并将当前 provider 透传给同一次 retrieval 结果上的 AI summary
+- `/api/search/summarize` 已与当前页面 filters 对齐，避免 summary 与用户正在查看的结果集脱节
+- `/api/search/ai` 已收口为“query derivation + canonical retrieval + answer rendering”模型；路由层不再维护第二套多次检索 / 手工 merge / ranking 真相
+- write 页面已补上显式 `llm_status`（`unavailable` / `failed` / `fallback` / `ready`），不再把 AI metadata extraction 失败静默吞掉
+- edit 页面当前明确为 manual-only deterministic edit；地点变更但天气为空时，后端会阻断 unsafe save
+
 **Web GUI 仪表盘与测试稳定性（未发布）**:
 - Dashboard DV-2 已完成：新增主题分布环形图与情绪频率水平柱状图，并补齐空状态、Dark Mode 与搜索跳转交互
 - 历史 dashboard 执行计划已归档到 `docs/archives/web_gui_init/upgrade/plan-dashboard-visual.md`

@@ -17,6 +17,22 @@
     </section>
     {% endif %}
 
+    {% if location_needs_confirm %}
+    <section class="rounded-2xl p-4 sm:p-6" style="background: rgba(249, 135, 62, 0.08); box-shadow: 0 0 0 1px rgba(249, 135, 62, 0.3);">
+        <div class="flex items-start gap-3">
+            <span class="text-lg" aria-hidden="true">📍</span>
+            <div class="flex-1">
+                <div class="font-display text-xl font-medium" style="color: var(--color-secondary);">请确认地点</div>
+                <p class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">{{ location_confirm_message or '本次使用了默认地点。请确认或更正。' }}</p>
+                <div class="mt-4 flex flex-wrap gap-3">
+                    <a href="/journal/{{ journal.journal_route_path }}/edit" class="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-secondary); color: var(--color-background);">去修正地点</a>
+                    <a href="/journal/{{ journal.journal_route_path }}" class="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-surface-container-high); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">地点正确</a>
+                </div>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
     <section class="rounded-2xl p-4 sm:p-5" style="background: {% if llm_available %}rgba(133, 255, 242, 0.08){% else %}rgba(255, 231, 146, 0.08){% endif %}; box-shadow: 0 0 0 1px {% if llm_available %}rgba(133, 255, 242, 0.16){% else %}rgba(255, 231, 146, 0.16){% endif %};">
         <div class="flex items-start gap-3">
             <span class="text-lg" aria-hidden="true">{% if llm_available %}🟢{% else %}🟡{% endif %}</span>
@@ -49,6 +65,7 @@
                 'mood': '心情',
                 'tags': '标签',
                 'people': '人物',
+                'project': '项目',
                 'date': '日期',
                 'location': '地点',
                 'weather': '天气'

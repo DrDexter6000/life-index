@@ -10,9 +10,7 @@ from typing import Any
 from ...lib.frontmatter import format_frontmatter, parse_journal_file
 
 LIST_FIELDS = ("topic", "tags", "mood", "people")
-REBUILD_HINT = (
-    "修复后请执行 `life-index index --rebuild` 以重建 metadata cache 和搜索索引。"
-)
+REBUILD_HINT = "修复后请执行 `life-index index --rebuild` 以重建 metadata cache 和搜索索引。"
 
 
 @dataclass
@@ -78,7 +76,9 @@ class JournalMetadataAuditor:
                             field=field_name,
                             message=f"Field '{field_name}' is stored as scalar string",
                             suggestion=(
-                                f'Rewrite {field_name} as JSON/YAML list, e.g. {field_name}: ["{value.strip()}"]'
+                                "Rewrite "
+                                f"{field_name} as JSON/YAML list, "
+                                f'e.g. {field_name}: ["{value.strip()}"]'
                             ),
                             auto_fixable=False,
                         )

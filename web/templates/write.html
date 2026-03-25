@@ -10,6 +10,10 @@
         <p class="max-w-3xl text-sm sm:text-base" style="color: var(--color-on-surface-variant);">
             可以是一句感悟、一个链接，或者是一整篇日记...
         </p>
+        <div class="inline-flex max-w-3xl flex-col gap-1 rounded-2xl px-4 py-3" style="background: rgba(18, 22, 30, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <span class="text-sm font-medium" style="color: var(--color-on-surface);">{{ llm_status_label }}</span>
+            <span class="text-xs" style="color: var(--color-on-surface-variant);">{{ llm_status_message }}</span>
+        </div>
     </header>
 
     {% if error %}
@@ -24,18 +28,8 @@
     </div>
     {% endif %}
 
-    <div class="rounded-2xl p-4 sm:p-5" style="background: {% if llm_available %}rgba(133, 255, 242, 0.08){% else %}rgba(255, 231, 146, 0.08){% endif %}; box-shadow: 0 0 0 1px {% if llm_available %}rgba(133, 255, 242, 0.16){% else %}rgba(255, 231, 146, 0.16){% endif %};">
-        <div class="flex items-start gap-3">
-            <span class="text-lg" aria-hidden="true">{% if llm_available %}🟢{% else %}🟡{% endif %}</span>
-            <div>
-                <h2 class="type-title" style="color: {% if llm_available %}var(--color-tertiary){% else %}var(--color-primary){% endif %};">{{ llm_status_label }}</h2>
-                <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">{{ llm_status_message }}{% if not llm_available %} <a href="/settings" style="color: var(--color-primary);">前往设置 →</a>{% endif %}</p>
-            </div>
-        </div>
-    </div>
-
     <article class="rounded-2xl p-6 sm:p-10" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-        <form method="POST" action="/write" class="space-y-8" id="write-form">
+        <form method="POST" action="/write" class="space-y-8" id="write-form" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
             <!-- Template Selector -->
@@ -73,13 +67,6 @@
                     class="w-full rounded-2xl px-4 py-4 type-body"
                     style="line-height: 1.8; resize: vertical; min-height: 280px; background: var(--color-surface-container-low); border: 1px solid rgba(68, 72, 79, 0.15); color: var(--color-on-surface);"
                 >{{ content }}</textarea>
-            </div>
-
-            <!-- AI-Generated Fields Notice -->
-            <div id="ai-notice" class="rounded-xl p-3" style="background: {% if llm_available %}rgba(133, 255, 242, 0.05){% else %}rgba(255, 231, 146, 0.05){% endif %}; box-shadow: 0 0 0 1px {% if llm_available %}rgba(133, 255, 242, 0.1){% else %}rgba(255, 231, 146, 0.1){% endif %};">
-                <p class="type-label" style="color: {% if llm_available %}var(--color-tertiary){% else %}var(--color-primary){% endif %};">
-                    <span style="opacity: 0.7;">💡</span> {% if llm_available %}以下字段将由AI自动分析填充，也可手动修改{% else %}AI 不可用时，请手动填写关键字段；留空字段仅能按规则回填{% endif %}
-                </p>
             </div>
 
             <!-- Metadata Grid -->
@@ -120,8 +107,8 @@
                 <!-- Location -->
                 <div>
                     <label class="block mb-1.5 text-sm font-medium" style="color: var(--color-on-surface);">地点</label>
-                    <div class="flex gap-2">
-                        <input id="location" name="location" type="text" value="{{ location }}" placeholder="如：北京" class="mt-1 block w-full flex-1 rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <div class="flex items-center gap-2">
+                        <input id="location" name="location" type="text" value="{{ location }}" placeholder="如：Beijing, China" class="block w-full flex-1 rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                         <button id="geolocation-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-full text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
                     </div>
                     <p class="mt-1 text-xs" style="color: var(--color-on-surface-variant);">如不填写地点和天气，将使用默认地点并查询天气数据</p>
@@ -130,7 +117,7 @@
                 <!-- Weather -->
                 <div>
                     <label class="block mb-1.5 text-sm font-medium" style="color: var(--color-on-surface);">天气</label>
-                    <div class="flex gap-2">
+                    <div class="flex items-center gap-2">
                         <input id="weather" name="weather" type="text" value="{{ weather }}" placeholder="如：晴天 28°C" class="flex-1 rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                         <button id="weather-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-full text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
                     </div>
@@ -146,7 +133,7 @@
                 <!-- Project -->
                 <div class="sm:col-span-2 lg:col-span-2">
                     <label class="block mb-1.5 text-sm font-medium" style="color: var(--color-on-surface);">项目</label>
-                    <input id="project" name="project" type="text" value="{{ project }}" placeholder="关联项目（选填）" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="project" name="project" type="text" value="{{ project }}" placeholder="{% if llm_available %}留空则由 AI 自动生成{% else %}请手动填写（启用 AI 可自动生成）{% endif %}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
             </div>
 
@@ -161,7 +148,7 @@
                         type="file"
                         name="attachments"
                         multiple
-                        class="block w-full type-body file-upload-styled"
+                        class="mt-1 block w-full type-body file-upload-styled"
                         style="color: var(--color-on-surface-variant);"
                     >
                 </div>

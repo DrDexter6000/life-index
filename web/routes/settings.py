@@ -11,8 +11,10 @@ from fastapi.responses import HTMLResponse
 from tools.lib.config import (
     get_default_location,
     get_llm_config,
+    get_search_weights,
     save_default_location,
     save_llm_config,
+    save_search_weights,
 )
 
 router = APIRouter()
@@ -65,17 +67,21 @@ def _build_settings_context(
     request: Request,
     *,
     form_data: dict[str, Any] | None = None,
-    save_message: str | None = None,
+    llm_save_message: str | None = None,
+    weight_save_message: str | None = None,
     connectivity_ok: bool | None = None,
     connectivity_message: str | None = None,
 ) -> dict[str, Any]:
     values = form_data or {}
     llm_config = get_llm_config()
+    fts_weight, semantic_weight = get_search_weights()
 
     api_key = str(values.get("api_key", llm_config["api_key"]))
     base_url = str(values.get("base_url", llm_config["base_url"]))
     model = str(values.get("model", llm_config["model"]))
     default_location = str(values.get("default_location", get_default_location()))
+    fts_weight = float(values.get("fts_weight", fts_weight))
+    semantic_weight = float(values.get("semantic_weight", semantic_weight))
 
     preset_value = next(
         (preset for preset, _label in BASE_URL_PRESETS if preset == base_url),
@@ -91,8 +97,11 @@ def _build_settings_context(
         "base_url_preset": values.get("base_url_preset", preset_value),
         "model": model,
         "default_location": default_location,
+        "fts_weight": fts_weight,
+        "semantic_weight": semantic_weight,
         "base_url_presets": BASE_URL_PRESETS,
-        "save_message": save_message,
+        "llm_save_message": llm_save_message,
+        "weight_save_message": weight_save_message,
         "connectivity_ok": connectivity_ok,
         "connectivity_message": connectivity_message,
     }
@@ -115,23 +124,42 @@ async def submit_settings(
     base_url_preset: str = Form("custom"),
     model: str = Form("gpt-4o-mini"),
     default_location: str = Form(""),
+    test_only: str = Form("0"),
 ) -> HTMLResponse:
     selected_base_url = (
         base_url.strip() if base_url_preset == "custom" else base_url_preset.strip()
     )
 
+    if test_only == "1":
+        # Test-only mode: only check connectivity, don't save anything
+        connectivity_ok, connectivity_message = await _check_llm_connectivity(
+            api_key, selected_base_url, model
+        )
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "settings.html",
+            _build_settings_context(
+                request,
+                form_data={
+                    "api_key": api_key,
+                    "base_url": selected_base_url,
+                    "base_url_preset": base_url_preset,
+                    "model": model,
+                    "default_location": default_location,
+                },
+                connectivity_ok=connectivity_ok,
+                connectivity_message=connectivity_message,
+                llm_save_message="测试完成",
+            ),
+        )
+
+    # Save-only mode
     save_llm_config(
         api_key=api_key,
         base_url=selected_base_url,
         model=model,
     )
     save_default_location(default_location)
-
-    connectivity_ok, connectivity_message = await _check_llm_connectivity(
-        api_key,
-        selected_base_url,
-        model,
-    )
 
     return request.app.state.templates.TemplateResponse(
         request,
@@ -145,8 +173,36 @@ async def submit_settings(
                 "model": model,
                 "default_location": default_location,
             },
-            save_message="配置已保存",
-            connectivity_ok=connectivity_ok,
-            connectivity_message=connectivity_message,
+            llm_save_message="配置已保存",
+        ),
+    )
+
+
+@router.post("/settings/weights", response_class=HTMLResponse)
+async def submit_weights(
+    request: Request,
+    fts_weight: str = Form(""),
+    semantic_weight: str = Form(""),
+) -> HTMLResponse:
+    try:
+        fw = float(fts_weight)
+        sw = float(semantic_weight)
+        fw = max(0.0, min(1.0, fw))
+        sw = max(0.0, min(1.0, sw))
+        save_search_weights(fw, sw)
+        weight_save_message = "权重已保存"
+    except ValueError:
+        weight_save_message = "保存失败"
+
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "settings.html",
+        _build_settings_context(
+            request,
+            form_data={
+                "fts_weight": fts_weight,
+                "semantic_weight": semantic_weight,
+            },
+            weight_save_message=weight_save_message,
         ),
     )

@@ -54,6 +54,99 @@ def _build_semantic_status(
     return perf, semantic_available, semantic_note
 
 
+def _search_level_1(
+    *,
+    result: Dict[str, Any],
+    topic: Optional[str],
+    project: Optional[str],
+    tags: Optional[List[str]],
+    start_time: float,
+) -> Dict[str, Any]:
+    l1_start = time.time()
+
+    if topic:
+        result["l1_results"].extend(search_l1_index("topic", topic))
+    if project:
+        result["l1_results"].extend(search_l1_index("project", project))
+    if tags:
+        for tag in tags:
+            result["l1_results"].extend(search_l1_index("tag", tag))
+
+    if not topic and not project and not tags:
+        result["l1_results"].extend(scan_all_indices())
+
+    seen_paths: set = set()
+    unique_l1: List[Dict] = []
+    for item in result["l1_results"]:
+        if item["path"] not in seen_paths:
+            seen_paths.add(item["path"])
+            unique_l1.append(item)
+    result["l1_results"] = unique_l1
+
+    result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
+    result["total_found"] = len(result["l1_results"])
+    result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+    return result
+
+
+def _search_level_2(
+    *,
+    result: Dict[str, Any],
+    query: Optional[str],
+    topic: Optional[str],
+    project: Optional[str],
+    tags: Optional[List[str]],
+    mood: Optional[List[str]],
+    people: Optional[List[str]],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    location: Optional[str],
+    weather: Optional[str],
+    start_time: float,
+) -> Dict[str, Any]:
+    l1_start = time.time()
+
+    if topic:
+        result["l1_results"].extend(search_l1_index("topic", topic))
+    if project:
+        result["l1_results"].extend(search_l1_index("project", project))
+    if tags:
+        for tag in tags:
+            result["l1_results"].extend(search_l1_index("tag", tag))
+
+    seen_paths: set = set()
+    unique_l1: List[Dict] = []
+    for item in result["l1_results"]:
+        if item["path"] not in seen_paths:
+            seen_paths.add(item["path"])
+            unique_l1.append(item)
+    result["l1_results"] = unique_l1
+    result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
+
+    l2_start = time.time()
+    l2_response = search_l2_metadata(
+        date_from=date_from,
+        date_to=date_to,
+        location=location,
+        weather=weather,
+        topic=topic,
+        project=project,
+        tags=tags,
+        mood=mood,
+        people=people,
+        query=query,
+    )
+    result["l2_results"] = l2_response["results"]
+    if l2_response.get("truncated"):
+        result["l2_truncated"] = True
+        result["l2_total_available"] = l2_response.get("total_available", 0)
+
+    result["performance"]["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
+    result["total_found"] = len(result["l2_results"])
+    result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+    return result
+
+
 def hierarchical_search(
     query: Optional[str] = None,
     topic: Optional[str] = None,
@@ -129,83 +222,30 @@ def hierarchical_search(
 
     # ── Level 1: 索引层（向后兼容，提前返回） ──
     if level == 1:
-        l1_start = time.time()
-
-        if topic:
-            result["l1_results"].extend(search_l1_index("topic", topic))
-        if project:
-            result["l1_results"].extend(search_l1_index("project", project))
-        if tags:
-            for tag in tags:
-                result["l1_results"].extend(search_l1_index("tag", tag))
-
-        # 当无过滤条件但指定 level=1 时，扫描所有索引文件
-        if not topic and not project and not tags:
-            result["l1_results"].extend(scan_all_indices())
-
-        # 去重
-        seen_paths: set = set()
-        unique_l1: List[Dict] = []
-        for r in result["l1_results"]:
-            if r["path"] not in seen_paths:
-                seen_paths.add(r["path"])
-                unique_l1.append(r)
-        result["l1_results"] = unique_l1
-
-        result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
-        result["total_found"] = len(result["l1_results"])
-        result["performance"]["total_time_ms"] = round(
-            (time.time() - start_time) * 1000, 2
+        return _search_level_1(
+            result=result,
+            topic=topic,
+            project=project,
+            tags=tags,
+            start_time=start_time,
         )
-        return result
 
     # ── Level 2: 索引 + 元数据（向后兼容，提前返回） ──
     if level == 2:
-        l1_start = time.time()
-
-        if topic:
-            result["l1_results"].extend(search_l1_index("topic", topic))
-        if project:
-            result["l1_results"].extend(search_l1_index("project", project))
-        if tags:
-            for tag in tags:
-                result["l1_results"].extend(search_l1_index("tag", tag))
-
-        # 去重
-        seen_paths = set()
-        unique_l1 = []
-        for r in result["l1_results"]:
-            if r["path"] not in seen_paths:
-                seen_paths.add(r["path"])
-                unique_l1.append(r)
-        result["l1_results"] = unique_l1
-
-        result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
-
-        l2_start = time.time()
-        l2_response = search_l2_metadata(
-            date_from=date_from,
-            date_to=date_to,
-            location=location,
-            weather=weather,
+        return _search_level_2(
+            result=result,
+            query=query,
             topic=topic,
             project=project,
             tags=tags,
             mood=mood,
             people=people,
-            query=query,
+            date_from=date_from,
+            date_to=date_to,
+            location=location,
+            weather=weather,
+            start_time=start_time,
         )
-        result["l2_results"] = l2_response["results"]
-        if l2_response.get("truncated"):
-            result["l2_truncated"] = True
-            result["l2_total_available"] = l2_response.get("total_available", 0)
-
-        result["performance"]["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
-        result["total_found"] = len(result["l2_results"])
-        result["performance"]["total_time_ms"] = round(
-            (time.time() - start_time) * 1000, 2
-        )
-        return result
 
     # ── Level 3: 双管道并行搜索 ──
 
@@ -257,12 +297,7 @@ def hierarchical_search(
 
         if query:
             # 处理多关键词：将空格分隔转换为 FTS5 OR 语法
-            if (
-                query
-                and " " in query
-                and "OR" not in query.upper()
-                and "AND" not in query.upper()
-            ):
+            if query and " " in query and "OR" not in query.upper() and "AND" not in query.upper():
                 keywords = [k.strip() for k in query.split() if k.strip()]
                 if len(keywords) > 1:
                     fts_query = " OR ".join(keywords)
@@ -295,16 +330,31 @@ def hierarchical_search(
                             }
                             for r in fts_results
                         ]
+
+                        # When FTS recall is suspiciously low, supplement with full-corpus
+                        # content scan so body-only matches are not missed due to stale or
+                        # incomplete index coverage.
+                        if query and len(l3_results) < 5:
+                            fallback_l3_results = search_l3_content(query, None)
+                            seen_paths = {
+                                str(item.get("journal_route_path") or item.get("path") or "")
+                                for item in l3_results
+                            }
+                            for item in fallback_l3_results:
+                                key = str(item.get("journal_route_path") or item.get("path") or "")
+                                if key and key not in seen_paths:
+                                    l3_results.append(item)
+                                    seen_paths.add(key)
                         logger.debug(f"FTS found {len(l3_results)} results")
                 except (ImportError, OSError) as e:
                     logger.debug(f"FTS error: {e}")
 
             # 如果没有 FTS 结果，使用传统文件系统扫描
             if not l3_results:
-                candidate_paths = [r["path"] for r in l1_results + l2_results]
-                l3_results = search_l3_content(
-                    query, candidate_paths if candidate_paths else None
-                )
+                # IMPORTANT: when FTS is unavailable, fallback must search full corpus.
+                # Restricting to L2-filtered candidates causes body-only keyword matches
+                # (e.g. names appearing only in content) to be lost before L3 sees them.
+                l3_results = search_l3_content(query, None)
                 logger.debug(f"File scan found {len(l3_results)} results")
 
         perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)
@@ -355,9 +405,7 @@ def hierarchical_search(
             l2_total_available,
             kw_perf,
         ) = future_keyword.result()
-        semantic_results, sem_perf, semantic_available, semantic_note = (
-            future_semantic.result()
-        )
+        semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
 
     # 填充结果
     result["l1_results"] = l1_results
@@ -387,9 +435,7 @@ def hierarchical_search(
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(
-            l1_results, l2_results, l3_results, query
-        )
+        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)

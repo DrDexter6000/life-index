@@ -63,19 +63,13 @@ class AttachmentNormalizer:
         result.summary["issues"] = len(result.issues)
         return result
 
-    def _scan_file(
-        self, journal_file: Path, metadata: dict[str, Any]
-    ) -> list[NormalizationIssue]:
+    def _scan_file(self, journal_file: Path, metadata: dict[str, Any]) -> list[NormalizationIssue]:
         issues: list[NormalizationIssue] = []
         attachments = metadata.get("attachments", []) or []
         body = str(metadata.get("_body", ""))
 
         for attachment in attachments:
-            if (
-                isinstance(attachment, str)
-                and "/" not in attachment
-                and "\\" not in attachment
-            ):
+            if isinstance(attachment, str) and "/" not in attachment and "\\" not in attachment:
                 issues.append(
                     NormalizationIssue(
                         level="warning",
@@ -94,7 +88,9 @@ class AttachmentNormalizer:
                     category="attachment_body_duplication",
                     file=str(journal_file),
                     message="Body attachment section duplicates frontmatter storage",
-                    suggestion="Keep frontmatter attachments as SSOT and remove generated body section",
+                    suggestion=(
+                        "Keep frontmatter attachments as SSOT " "and remove generated body section"
+                    ),
                     auto_fixable=True,
                 )
             )
@@ -113,9 +109,7 @@ class AttachmentNormalizer:
 
         return issues
 
-    def _build_preview(
-        self, journal_file: Path, metadata: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _build_preview(self, journal_file: Path, metadata: dict[str, Any]) -> dict[str, Any]:
         normalized_attachments: list[dict[str, Any]] = []
         for entry in normalize_attachment_entries(
             metadata.get("attachments", []), mode="stored_metadata"

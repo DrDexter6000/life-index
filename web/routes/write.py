@@ -63,6 +63,26 @@ def _build_template_context(
     error: str | None = None,
 ) -> dict[str, Any]:
     values = form_data or {}
+    llm_state = _normalize_field_value(values.get("llm_status_state"))
+    llm_message_override = _normalize_field_value(values.get("llm_status_message"))
+
+    if llm_state == "failed":
+        llm_status_label = "AI 提炼失败"
+        llm_status_message = (
+            llm_message_override or "AI 提炼失败，当前已回退到规则补全，请检查后重试。"
+        )
+    elif llm_state == "fallback":
+        llm_status_label = "AI 未提炼出结果"
+        llm_status_message = (
+            llm_message_override or "AI 未返回可用结果，当前使用规则补全或手动字段。"
+        )
+    elif llm_available:
+        llm_status_label = "AI 辅助已就绪"
+        llm_status_message = "留空的字段将由 AI 自动提炼。"
+    else:
+        llm_status_label = "AI 辅助不可用"
+        llm_status_message = "未配置 AI 服务。请手动填写关键字段，或前往设置启用 AI。"
+
     return {
         "request": request,
         "current_page": "/write",
@@ -70,12 +90,8 @@ def _build_template_context(
         "templates": templates,
         "templates_json": json.dumps(templates, ensure_ascii=False),
         "llm_available": llm_available,
-        "llm_status_label": "AI 辅助已就绪" if llm_available else "AI 辅助不可用",
-        "llm_status_message": (
-            "留空的字段将由 AI 自动提炼。"
-            if llm_available
-            else "未配置 AI 服务。请手动填写关键字段，或前往设置启用 AI。"
-        ),
+        "llm_status_label": llm_status_label,
+        "llm_status_message": llm_status_message,
         "error": error,
         "success": False,
         "journal_url": None,
@@ -116,6 +132,8 @@ def _build_write_confirm_context(
     field_sources: dict[str, str],
     llm_available: bool,
     warning_message: str | None = None,
+    location_needs_confirm: bool = False,
+    location_confirm_message: str | None = None,
 ) -> dict[str, Any]:
     return {
         "request": request,
@@ -127,6 +145,8 @@ def _build_write_confirm_context(
         },
         "llm_available": llm_available,
         "warning": warning_message,
+        "location_needs_confirm": location_needs_confirm,
+        "location_confirm_message": location_confirm_message,
     }
 
 
@@ -322,6 +342,14 @@ async def submit_write(
     except ValueError as exc:
         cleanup_staged_files(staged_attachments)
         new_csrf_token = _generate_csrf_token()
+        llm_error_text = str(exc)
+        raw_form_data_with_status = dict(raw_form_data)
+        if llm_error_text.startswith("AI 提炼失败："):
+            raw_form_data_with_status["llm_status_state"] = "failed"
+            raw_form_data_with_status["llm_status_message"] = llm_error_text
+        elif "未返回可用结果" in llm_error_text:
+            raw_form_data_with_status["llm_status_state"] = "fallback"
+            raw_form_data_with_status["llm_status_message"] = llm_error_text
         response = request.app.state.templates.TemplateResponse(
             request,
             "write.html",
@@ -330,7 +358,7 @@ async def submit_write(
                 csrf_token=new_csrf_token,
                 templates=templates,
                 llm_available=provider is not None,
-                form_data=raw_form_data,
+                form_data=raw_form_data_with_status,
                 error=str(exc),
             ),
         )
@@ -338,8 +366,10 @@ async def submit_write(
         return response
 
     field_sources = dict(prepared_data.get("field_sources", {}))
+    llm_status = dict(prepared_data.get("llm_status", {}))
     data_to_write = dict(prepared_data)
     data_to_write.pop("field_sources", None)
+    data_to_write.pop("llm_status", None)
 
     result = await write_journal_web(data_to_write)
     if result.get("success") and result.get("journal_route_path"):
@@ -366,8 +396,10 @@ async def submit_write(
                 request,
                 journal=journal,
                 field_sources=field_sources,
-                llm_available=provider is not None,
+                llm_available=llm_status.get("state") == "ready",
                 warning_message=warning_message,
+                location_needs_confirm=bool(result.get("needs_confirmation")),
+                location_confirm_message=result.get("confirmation_message"),
             ),
         )
 
@@ -391,7 +423,11 @@ async def submit_write(
             csrf_token=new_csrf_token,
             templates=templates,
             llm_available=provider is not None,
-            form_data=prepared_data,
+            form_data={
+                **prepared_data,
+                "llm_status_state": llm_status.get("state") or "idle",
+                "llm_status_message": llm_status.get("message") or "",
+            },
             error=error_message,
         ),
     )

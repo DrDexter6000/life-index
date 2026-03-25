@@ -11,32 +11,29 @@ jobs:
     runs-on: ubuntu-latest
     name: Documentation Sync Check
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
 
     - name: Run documentation sync check
       run: python .github/scripts/check_doc_sync.py
 
-  test:
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.11', '3.12']
-
+    name: Lint
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - name: Set up Python
+      uses: actions/setup-python@v6
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.12'
 
     - name: Cache pip packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
@@ -57,9 +54,66 @@ jobs:
       run: |
         black --check --diff tools/
 
+  typecheck:
+    runs-on: ubuntu-latest
+    name: Type Check
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    - name: Cache pip packages
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-timeout
+        pip install -e ".[dev,web]"
+
     - name: Type check with mypy
       run: |
         mypy tools/ --ignore-missing-imports
+
+  tests:
+    runs-on: ubuntu-latest
+    name: Tests (${{ matrix.python-version }})
+    needs:
+    - lint
+    - typecheck
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip packages
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-timeout
+        pip install -e ".[dev,web]"
 
     - name: Test with pytest
       run: |

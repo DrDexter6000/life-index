@@ -179,9 +179,7 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="JSON 格式输出")
     args = parser.parse_args()
 
-    result = TopicTaxonomyNormalizer(
-        journals_dir=JOURNALS_DIR, dry_run=not args.fix
-    ).run()
+    result = TopicTaxonomyNormalizer(journals_dir=JOURNALS_DIR, dry_run=not args.fix).run()
     print_report(result, use_json=args.json)
 
 

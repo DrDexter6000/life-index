@@ -107,9 +107,30 @@ async def reverse_geocode_api(
 async def search_summarize_api(
     request: Request,
     query: str = Query(...),
+    topic: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    mood: str | None = Query(None),
+    tags: str | None = Query(None),
+    people: str | None = Query(None),
+    project: str | None = Query(None),
+    location: str | None = Query(None),
 ) -> HTMLResponse:
     provider = await get_provider()
-    search_result = await search_journals_web(query=query, provider=provider)
+    search_result = await search_journals_web(
+        query=query,
+        topic=topic,
+        date_from=date_from,
+        date_to=date_to,
+        mood=mood,
+        tags=tags,
+        people=people,
+        project=project,
+        location=location,
+        weather=None,
+        semantic=True,
+        provider=provider,
+    )
     return request.app.state.templates.TemplateResponse(
         request,
         "partials/search_summary.html",
