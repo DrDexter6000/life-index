@@ -694,3 +694,74 @@ python -m tools.dev.run_with_temp_data_dir [--seed] [--for-web] [--name LABEL] [
 - 手工 Web GUI 验收优先使用：`python -m tools.dev.run_with_temp_data_dir --for-web`
 - 若要基于当前真实数据做仿真验收，使用：`python -m tools.dev.run_with_temp_data_dir --for-web --seed`
 - `--for-web --seed` **不会回写真实用户目录**；如需保留变更，必须人工确认后再迁回
+
+---
+
+## CLI version / bootstrap authority
+
+### 端点
+
+```bash
+life-index --version
+life-index version
+```
+
+### 用途
+
+- 暴露当前已安装 package version
+- 暴露当前 checkout 所携带的 `bootstrap-manifest.json`
+- 供 onboarding / upgrade / repair 流程做 freshness gate 使用
+
+### 返回值
+
+```json
+{
+  "package_version": "1.4.0",
+  "bootstrap_manifest": {
+    "repo_version": "1.4.0",
+    "onboarding_schema_version": "2.0",
+    "manifest_schema": 1,
+    "requires_checkout_sync": true,
+    "target_ref": "main",
+    "release_channel": "stable",
+    "required_authority_docs": [
+      "AGENT_ONBOARDING.md",
+      "AGENT_ONBOARDING_WEB.md",
+      "docs/UPGRADE.md",
+      "README.md",
+      "bootstrap-manifest.json"
+    ]
+  }
+}
+```
+
+### 说明
+
+- `life-index health` 只回答运行时健康，不回答 checkout freshness
+- `life-index --version` 用于 freshness / authority 校验
+- onboarding agent 不得用 `health` 替代 `--version` / manifest freshness gate
+
+---
+
+## Web runtime freshness fields
+
+### `/api/health`
+
+- `status`
+- `version`
+- `bootstrap_manifest`
+- `runtime`
+
+### `/api/runtime`
+
+- `package_version`
+- `bootstrap_manifest`
+- `user_data_dir`
+- `journals_dir`
+- `life_index_data_dir_override`
+- `readonly_simulation`
+
+### 说明
+
+- `/api/health` 与 `/api/runtime` 现在都可用于 Web onboarding / acceptance 时确认运行实例对应的 package version 与 bootstrap authority
+- agent 仍需区分：runtime health ≠ checkout freshness；但 runtime API 现在会显式暴露 freshness 相关元数据
