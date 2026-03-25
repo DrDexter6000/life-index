@@ -69,12 +69,8 @@ class TestWriteJournalBasic:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.query_weather_for_location",
                             return_value="Sunny 25°C",
@@ -110,9 +106,7 @@ class TestWriteJournalBasic:
                                                         "tools.write_journal.core.update_tag_indices",
                                                         return_value=[],
                                                     ):
-                                                        result = write_journal(
-                                                            data, dry_run=False
-                                                        )
+                                                        result = write_journal(data, dry_run=False)
 
         assert result["success"] is True
         assert result["journal_path"] is not None
@@ -132,12 +126,8 @@ class TestWriteJournalBasic:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.query_weather_for_location",
                             return_value="Sunny 25°C",
@@ -208,12 +198,8 @@ class TestWriteJournalLocation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Chongqing, China",
@@ -277,12 +263,8 @@ class TestWriteJournalLocation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -345,12 +327,8 @@ class TestWriteJournalLocation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Beijing, China",
@@ -388,9 +366,7 @@ class TestWriteJournalLocation:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -408,12 +384,8 @@ class TestWriteJournalLocation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -481,12 +453,8 @@ class TestWriteJournalWeather:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -524,9 +492,7 @@ class TestWriteJournalWeather:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -546,12 +512,8 @@ class TestWriteJournalWeather:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -588,9 +550,7 @@ class TestWriteJournalWeather:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -611,12 +571,8 @@ class TestWriteJournalWeather:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -679,12 +635,8 @@ class TestWriteJournalWeather:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -722,9 +674,7 @@ class TestWriteJournalWeather:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -762,7 +712,11 @@ class TestWriteJournalLockTimeout:
                         "tools.write_journal.core.normalize_location",
                         return_value="Chongqing, China",
                     ):
-                        result = write_journal(data)
+                        with patch(
+                            "tools.write_journal.core.query_weather_for_location",
+                            return_value="",
+                        ):
+                            result = write_journal(data)
 
         assert result["success"] is False
         assert "error" in result
@@ -776,9 +730,7 @@ class TestWriteJournalAttachments:
         data = {
             "date": "2026-03-14",
             "content": "Test content",
-            "attachments": [
-                {"source_path": "/path/to/file.pdf", "description": "Test file"}
-            ],
+            "attachments": [{"source_path": "/path/to/file.pdf", "description": "Test file"}],
         }
 
         mock_attachments = [
@@ -794,12 +746,8 @@ class TestWriteJournalAttachments:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -837,9 +785,7 @@ class TestWriteJournalAttachments:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -866,12 +812,8 @@ class TestWriteJournalAttachments:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -909,9 +851,7 @@ class TestWriteJournalAttachments:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -936,12 +876,8 @@ class TestWriteJournalIndexUpdates:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -979,9 +915,7 @@ class TestWriteJournalIndexUpdates:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1002,12 +936,8 @@ class TestWriteJournalIndexUpdates:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1045,9 +975,7 @@ class TestWriteJournalIndexUpdates:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1071,12 +999,8 @@ class TestWriteJournalIndexUpdates:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1114,9 +1038,7 @@ class TestWriteJournalIndexUpdates:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1138,12 +1060,8 @@ class TestWriteJournalMetrics:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1181,9 +1099,7 @@ class TestWriteJournalMetrics:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1207,12 +1123,8 @@ class TestWriteJournalConfirmation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Beijing, China",
@@ -1250,9 +1162,7 @@ class TestWriteJournalConfirmation:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1272,12 +1182,8 @@ class TestWriteJournalConfirmation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1315,9 +1221,7 @@ class TestWriteJournalConfirmation:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1336,12 +1240,8 @@ class TestWriteJournalConfirmation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -1412,12 +1312,8 @@ class TestWriteJournalWorkflowChains:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -1463,9 +1359,7 @@ class TestWriteJournalWorkflowChains:
                                                                 / ".cache"
                                                                 / "journals.lock"
                                                             ).touch()
-                                                            write_result = (
-                                                                write_journal(data)
-                                                            )
+                                                            write_result = write_journal(data)
 
         assert write_result["success"] is True
         assert write_result["needs_confirmation"] is True
@@ -1498,12 +1392,8 @@ class TestWriteJournalWorkflowChains:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -1549,9 +1439,7 @@ class TestWriteJournalWorkflowChains:
                                                                 / ".cache"
                                                                 / "journals.lock"
                                                             ).touch()
-                                                            write_result = (
-                                                                write_journal(data)
-                                                            )
+                                                            write_result = write_journal(data)
 
         assert write_result["success"] is True
         assert write_result["needs_confirmation"] is True
@@ -1599,12 +1487,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1627,9 +1511,7 @@ class TestWriteJournalTransactionRollback:
                                         ):
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
-                                                side_effect=OSError(
-                                                    "Index write failed"
-                                                ),
+                                                side_effect=OSError("Index write failed"),
                                             ):
                                                 result = write_journal(data)
 
@@ -1661,12 +1543,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1689,9 +1567,7 @@ class TestWriteJournalTransactionRollback:
                                         ):
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
-                                                side_effect=RuntimeError(
-                                                    "Runtime failure"
-                                                ),
+                                                side_effect=RuntimeError("Runtime failure"),
                                             ):
                                                 result = write_journal(data)
 
@@ -1720,12 +1596,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1756,9 +1628,7 @@ class TestWriteJournalTransactionRollback:
                                                 ):
                                                     with patch(
                                                         "tools.write_journal.core.update_tag_indices",
-                                                        side_effect=IOError(
-                                                            "Tag index failed"
-                                                        ),
+                                                        side_effect=IOError("Tag index failed"),
                                                     ):
                                                         result = write_journal(data)
 
@@ -1786,12 +1656,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1811,17 +1677,13 @@ class TestWriteJournalTransactionRollback:
                                         # Mock open to raise OSError for temp files
                                         import io
 
-                                        def mock_open_error(
-                                            file, mode="r", *args, **kwargs
-                                        ):
+                                        def mock_open_error(file, mode="r", *args, **kwargs):
                                             if ".tmp" in str(file):
                                                 raise OSError("Disk full")
                                             # Return a mock file object for other calls
                                             return io.StringIO("test content")
 
-                                        with patch(
-                                            "builtins.open", side_effect=mock_open_error
-                                        ):
+                                        with patch("builtins.open", side_effect=mock_open_error):
                                             result = write_journal(data)
 
         assert result["success"] is False
@@ -1852,12 +1714,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1915,12 +1773,8 @@ class TestWriteJournalAbstractUpdate:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1939,9 +1793,7 @@ class TestWriteJournalAbstractUpdate:
                                     ):
                                         with patch(
                                             "tools.write_journal.core.update_monthly_abstract",
-                                            side_effect=OSError(
-                                                "Abstract update failed"
-                                            ),
+                                            side_effect=OSError("Abstract update failed"),
                                         ):
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
@@ -1983,12 +1835,8 @@ class TestWriteJournalAbstractUpdate:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2007,9 +1855,7 @@ class TestWriteJournalAbstractUpdate:
                                     ):
                                         with patch(
                                             "tools.write_journal.core.update_monthly_abstract",
-                                            side_effect=RuntimeError(
-                                                "Subprocess failed"
-                                            ),
+                                            side_effect=RuntimeError("Subprocess failed"),
                                         ):
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
@@ -2062,9 +1908,7 @@ class TestWriteJournalSequenceRetry:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
                     with patch(
                         "tools.write_journal.core.get_next_sequence",
                         side_effect=mock_get_next_sequence,
@@ -2133,9 +1977,7 @@ class TestWriteJournalSequenceRetry:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
                     with patch(
                         "tools.write_journal.core.get_next_sequence",
                         return_value=1,  # Always return 1
@@ -2206,12 +2048,8 @@ class TestWriteJournalProjectIndexUpdate:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2272,12 +2110,8 @@ class TestWriteJournalProjectIndexUpdate:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2331,9 +2165,7 @@ class TestWriteJournalLockTimeoutDetails:
 
         lock_path = tmp_path / "test.lock"
         mock_lock = MagicMock()
-        mock_lock.__enter__ = MagicMock(
-            side_effect=LockTimeoutError(str(lock_path), 30.0)
-        )
+        mock_lock.__enter__ = MagicMock(side_effect=LockTimeoutError(str(lock_path), 30.0))
         mock_lock.__exit__ = MagicMock(return_value=None)
 
         with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
@@ -2346,7 +2178,11 @@ class TestWriteJournalLockTimeoutDetails:
                         "tools.write_journal.core.normalize_location",
                         return_value="Chongqing, China",
                     ):
-                        result = write_journal(data)
+                        with patch(
+                            "tools.write_journal.core.query_weather_for_location",
+                            return_value="",
+                        ):
+                            result = write_journal(data)
 
         assert result["success"] is False
         assert result["error"] is not None
@@ -2365,9 +2201,7 @@ class TestWriteJournalLockTimeoutDetails:
 
         lock_path = tmp_path / "test.lock"
         mock_lock = MagicMock()
-        mock_lock.__enter__ = MagicMock(
-            side_effect=LockTimeoutError(str(lock_path), 30.0)
-        )
+        mock_lock.__enter__ = MagicMock(side_effect=LockTimeoutError(str(lock_path), 30.0))
         mock_lock.__exit__ = MagicMock(return_value=None)
 
         with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
