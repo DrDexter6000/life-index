@@ -1,0 +1,15 @@
+{
+  "repo_version": "1.4.0",
+  "onboarding_schema_version": "2.0",
+  "manifest_schema": 1,
+  "requires_checkout_sync": true,
+  "target_ref": "main",
+  "release_channel": "stable",
+  "required_authority_docs": [
+    "AGENT_ONBOARDING.md",
+    "AGENT_ONBOARDING_WEB.md",
+    "docs/UPGRADE.md",
+    "README.md",
+    "bootstrap-manifest.json"
+  ]
+}
