@@ -291,24 +291,36 @@ class TestMergeAndRankResultsHybrid:
         # Same document appears at rank 1 in both lists => 1/61 + 1/61
         assert results[0]["relevance_score"] == pytest.approx(2 / 61, rel=1e-6)
 
-    def test_custom_weights_kept_for_backward_compatibility(self):
-        """Test custom weights do not affect RRF ranking"""
+    def test_custom_weights_change_hybrid_ordering(self):
+        """Test custom weights can change ordering between hybrid candidates."""
         from tools.search_journals.ranking import merge_and_rank_results_hybrid
 
-        l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 50}]
-        semantic = [{"path": "/test/doc.md", "similarity": 0.9, "final_score": 0.9}]
+        l3 = [
+            {"path": "/fts-first.md", "title": "FTS First", "relevance": 80},
+            {"path": "/shared.md", "title": "Shared", "relevance": 70},
+        ]
+        semantic = [
+            {"path": "/shared.md", "similarity": 0.99},
+            {"path": "/fts-first.md", "similarity": 0.95},
+        ]
 
-        results_default = merge_and_rank_results_hybrid(
-            [], [], l3, semantic, query="test"
-        )
-        results_custom = merge_and_rank_results_hybrid(
-            [], [], l3, semantic, query="test", fts_weight=0.3, semantic_weight=0.7
-        )
+        with patch(
+            "tools.search_journals.ranking.enrich_semantic_result"
+        ) as mock_enrich:
+            mock_enrich.side_effect = lambda item: {
+                "path": item["path"],
+                "title": item["path"],
+            }
 
-        assert "relevance_score" in results_default[0]
-        assert results_default[0]["relevance_score"] == pytest.approx(
-            results_custom[0]["relevance_score"], rel=1e-9
-        )
+            results_fts_heavy = merge_and_rank_results_hybrid(
+                [], [], l3, semantic, query="test", fts_weight=0.9, semantic_weight=0.1
+            )
+            results_semantic_heavy = merge_and_rank_results_hybrid(
+                [], [], l3, semantic, query="test", fts_weight=0.1, semantic_weight=0.9
+            )
+
+        assert results_fts_heavy[0]["path"] == "/fts-first.md"
+        assert results_semantic_heavy[0]["path"] == "/shared.md"
 
     def test_l2_in_hybrid(self):
         """Test L2 results in hybrid mode"""

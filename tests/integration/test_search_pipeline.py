@@ -667,6 +667,62 @@ class TestSearchWeights:
 
         assert result["success"] is True
 
+    def test_low_fts_recall_supplements_with_full_corpus_scan(self):
+        from tools.search_journals.core import hierarchical_search
+
+        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+            with patch(
+                "tools.search_journals.core.search_l2_metadata",
+                return_value={"results": [], "truncated": False},
+            ):
+                with patch(
+                    "tools.search_journals.core.search_fts",
+                    return_value=[
+                        {
+                            "date": "2026-03-10",
+                            "title": "FTS 命中",
+                            "path": "Journals/2026/03/a.md",
+                            "relevance": 80,
+                        }
+                    ],
+                    create=True,
+                ):
+                    with patch(
+                        "tools.search_journals.core.search_l3_content",
+                        return_value=[
+                            {
+                                "path": "Journals/2026/03/a.md",
+                                "journal_route_path": "2026/03/a.md",
+                                "title": "FTS 命中",
+                            },
+                            {
+                                "path": "Journals/2026/03/b.md",
+                                "journal_route_path": "2026/03/b.md",
+                                "title": "补搜命中",
+                            },
+                        ],
+                    ) as mock_l3:
+                        with patch(
+                            "tools.search_journals.core.search_semantic",
+                            return_value=([], {}),
+                        ):
+                            with patch(
+                                "tools.search_journals.core.get_semantic_runtime_status"
+                            ) as mock_status:
+                                mock_status.return_value = {
+                                    "available": False,
+                                    "reason": "",
+                                    "note": "",
+                                }
+
+                                result = hierarchical_search(query="补搜测试", level=3)
+
+        assert result["success"] is True
+        assert mock_l3.call_count == 1
+        paths = {item.get("journal_route_path") for item in result["l3_results"]}
+        assert "2026/03/a.md" in paths
+        assert "2026/03/b.md" in paths
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

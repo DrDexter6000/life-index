@@ -295,16 +295,39 @@ def hierarchical_search(
                             }
                             for r in fts_results
                         ]
+
+                        # When FTS recall is suspiciously low, supplement with full-corpus
+                        # content scan so body-only matches are not missed due to stale or
+                        # incomplete index coverage.
+                        if query and len(l3_results) < 5:
+                            fallback_l3_results = search_l3_content(query, None)
+                            seen_paths = {
+                                str(
+                                    item.get("journal_route_path")
+                                    or item.get("path")
+                                    or ""
+                                )
+                                for item in l3_results
+                            }
+                            for item in fallback_l3_results:
+                                key = str(
+                                    item.get("journal_route_path")
+                                    or item.get("path")
+                                    or ""
+                                )
+                                if key and key not in seen_paths:
+                                    l3_results.append(item)
+                                    seen_paths.add(key)
                         logger.debug(f"FTS found {len(l3_results)} results")
                 except (ImportError, OSError) as e:
                     logger.debug(f"FTS error: {e}")
 
             # 如果没有 FTS 结果，使用传统文件系统扫描
             if not l3_results:
-                candidate_paths = [r["path"] for r in l1_results + l2_results]
-                l3_results = search_l3_content(
-                    query, candidate_paths if candidate_paths else None
-                )
+                # IMPORTANT: when FTS is unavailable, fallback must search full corpus.
+                # Restricting to L2-filtered candidates causes body-only keyword matches
+                # (e.g. names appearing only in content) to be lost before L3 sees them.
+                l3_results = search_l3_content(query, None)
                 logger.debug(f"File scan found {len(l3_results)} results")
 
         perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)

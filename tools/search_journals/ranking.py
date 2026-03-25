@@ -20,16 +20,14 @@ def _hybrid_priority(item: Dict[str, Any]) -> int:
     semantic_score = float(item.get("semantic_score", 0.0))
     tier = int(item.get("tier", 0))
 
-    if fts_score > 0 and semantic_score > 0:
-        return 5
     if fts_score > 0:
-        return 4
+        return 5
     if tier == 2:
-        return 3
+        return 4
     if tier == 1:
-        return 2
+        return 3
     if semantic_score > 0:
-        return 1
+        return 2
     return 0
 
 
@@ -173,11 +171,9 @@ def merge_and_rank_results_hybrid(
         l3_results: L3 内容层结果（FTS）
         semantic_results: 语义搜索结果
         query: 查询词
-        fts_weight: 已弃用（为向后兼容保留）
-        semantic_weight: 已弃用（为向后兼容保留）
+        fts_weight: FTS 排名权重（默认 0.6，影响关键词命中在最终结果中的占比）
+        semantic_weight: 语义排名权重（默认 0.4，影响语义相似度在最终结果中的占比）
     """
-    # 保留参数以兼容旧调用方（RRF 不再使用权重融合）
-    _ = fts_weight, semantic_weight
 
     scored: Dict[
         str, Dict[str, Any]
@@ -246,8 +242,16 @@ def merge_and_rank_results_hybrid(
         if path:
             semantic_ranked_paths.append(path)
 
-    # RRF 融合分数（只融合 FTS + 语义两个排序列表）
-    rrf_scores = reciprocal_rank_fusion([fts_ranked_paths, semantic_ranked_paths], k=60)
+    # RRF 融合分数（加权融合：FTS 管道 × fts_weight，语义管道 × semantic_weight）
+    k = 60
+    scores: Dict[str, float] = {}
+    for rank, doc_id in enumerate(fts_ranked_paths, start=1):
+        if doc_id:
+            scores[doc_id] = scores.get(doc_id, 0.0) + fts_weight / (k + rank)
+    for rank, doc_id in enumerate(semantic_ranked_paths, start=1):
+        if doc_id:
+            scores[doc_id] = scores.get(doc_id, 0.0) + semantic_weight / (k + rank)
+    rrf_scores = scores
     for path, score in rrf_scores.items():
         if path in scored:
             scored[path]["final_score"] = score
