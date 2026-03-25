@@ -152,6 +152,13 @@ def extract_file_paths_from_content(content: str) -> List[str]:
         if looks_like_file_path(path):
             paths.append(path)
 
+    # 匹配 Unix/Linux/macOS 绝对路径 (/tmp/.../file.txt)
+    unix_pattern = r"/(?:[^/\s\r\n]+/)*[^/\s\r\n]+\.[\w]+"
+    for match in re.finditer(unix_pattern, content):
+        path = match.group(0)
+        if looks_like_file_path(path):
+            paths.append(path)
+
     # 去重并保持顺序
     seen = set()
     unique_paths = []

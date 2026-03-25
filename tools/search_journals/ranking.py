@@ -31,6 +31,19 @@ def _hybrid_priority(item: Dict[str, Any]) -> int:
     return 0
 
 
+def _hybrid_backfill_score(item: Dict[str, Any]) -> float:
+    """Display score for low-recall hybrid backfill entries."""
+    fts_score = float(item.get("fts_score", 0.0))
+    semantic_score = float(item.get("semantic_score", 0.0))
+    final_score = float(item.get("final_score", 0.0))
+
+    if fts_score > 0:
+        return max(final_score, fts_score)
+    if semantic_score > 0:
+        return max(final_score, semantic_score)
+    return final_score
+
+
 def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = 60) -> Dict[str, float]:
     """
     Reciprocal Rank Fusion (RRF)
@@ -311,13 +324,39 @@ def merge_and_rank_results_hybrid(
     effective_min_non_rrf_score = min_non_rrf_score
     if query and min_non_rrf_score == 25:
         effective_min_non_rrf_score = 26
-    sorted_results = [
+    thresholded_results = [
         item
         for item in sorted_results
         if (item["has_rrf"] and item["final_score"] >= min_rrf_score)
         or (not item["has_rrf"] and item["final_score"] >= effective_min_non_rrf_score)
     ]
-    sorted_results = sorted_results[:max_results]
+
+    # Low-recall backfill: if thresholding leaves too few real retrieval hits,
+    # preserve a small amount of strong lexical/semantic evidence instead of
+    # returning an empty (or near-empty) hybrid result set.
+    has_retrieval_signal = any(
+        item["fts_score"] > 0 or item["semantic_score"] > 0 for item in sorted_results
+    )
+    target_count = min(3, len(sorted_results), max_results)
+    if has_retrieval_signal and len(thresholded_results) < target_count:
+        seen_paths = {
+            str(item["data"].get("path", ""))
+            for item in thresholded_results
+            if item["data"].get("path")
+        }
+        for item in sorted_results:
+            path = str(item["data"].get("path", ""))
+            if path in seen_paths:
+                continue
+            fallback_item = dict(item)
+            fallback_item["final_score"] = _hybrid_backfill_score(item)
+            thresholded_results.append(fallback_item)
+            if path:
+                seen_paths.add(path)
+            if len(thresholded_results) >= target_count:
+                break
+
+    sorted_results = thresholded_results[:max_results]
 
     # 提取数据并添加排名
     merged = []
