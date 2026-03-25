@@ -159,6 +159,31 @@ class TestFormatFrontmatter:
         # Title should be quoted
         assert 'title: "' in result
 
+    def test_format_content_skips_duplicate_markdown_title_line(self):
+        data = {
+            "date": "2026-03-10",
+            "title": "今天状态不错",
+            "content": "# 今天状态不错\n\n正文第一段\n正文第二段",
+        }
+
+        result = format_content(data)
+
+        assert result.count("# 今天状态不错") == 1
+        assert "正文第一段" in result
+        assert "正文第二段" in result
+
+    def test_format_content_keeps_non_duplicate_first_line(self):
+        data = {
+            "date": "2026-03-10",
+            "title": "今天状态不错",
+            "content": "# 另一个标题\n\n正文第一段",
+        }
+
+        result = format_content(data)
+
+        assert result.count("# 今天状态不错") == 1
+        assert "# 另一个标题" in result
+
 
 class TestIndexUpdaterPathSanitization:
     def test_update_tag_indices_sanitizes_path_separators_in_tag_names(

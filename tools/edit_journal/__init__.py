@@ -84,7 +84,11 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
             logger.debug(f"添加条目到索引：{index_file.name}")
     else:
         # 确定索引类型和名称
-        name = index_file.stem.replace("主题_", "").replace("项目_", "").replace("标签_", "")
+        name = (
+            index_file.stem.replace("主题_", "")
+            .replace("项目_", "")
+            .replace("标签_", "")
+        )
         if index_file.stem.startswith("主题_"):
             header = f"# 主题：{name}\n\n"
         elif index_file.stem.startswith("项目_"):
@@ -296,7 +300,9 @@ def edit_journal(
             result["success"] = True
             result["preview"] = {
                 "frontmatter": format_frontmatter(new_frontmatter),
-                "body_preview": new_body[:200] + "..." if len(new_body) > 200 else new_body,
+                "body_preview": new_body[:200] + "..."
+                if len(new_body) > 200
+                else new_body,
             }
             return result
 
@@ -308,7 +314,7 @@ def edit_journal(
             with lock:
                 logger.debug("获取文件锁成功")
                 # 写入文件
-                new_content = format_frontmatter(new_frontmatter) + "\n\n" + new_body
+                new_content = format_frontmatter(new_frontmatter) + "\n\n\n" + new_body
                 journal_path.write_text(new_content, encoding="utf-8")
                 logger.info(f"已写入文件：{journal_path.name}")
 

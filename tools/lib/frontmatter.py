@@ -324,7 +324,21 @@ def format_journal_content(data: Dict[str, Any]) -> str:
     # 正文
     content = data.get("content", "")
     if content:
-        lines.append(content)
+        # Skip first line if it duplicates the title (strip '#' prefix and whitespace)
+        content_lines = content.splitlines()
+        skip_first = False
+        if title:
+            first_non_empty = next(
+                (l.strip() for l in content_lines if l.strip()), None
+            )
+            if first_non_empty:
+                # Strip leading '#' and whitespace for comparison
+                stripped = first_non_empty.lstrip("#").strip()
+                if stripped == title or stripped == f"#{title}":
+                    skip_first = True
+        if skip_first and len(content_lines) > 1:
+            content_lines = content_lines[1:]
+        lines.append("\n".join(content_lines))
         lines.append("")
 
     body = "\n".join(lines)
