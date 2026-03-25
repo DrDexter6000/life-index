@@ -16,6 +16,7 @@ from tools.write_journal.utils import (
 )
 from tools.write_journal.weather import normalize_location
 from tools.write_journal.core import extract_explicit_metadata_from_content
+from tools.write_journal.index_updater import update_tag_indices
 from tools.lib.frontmatter import (
     format_frontmatter,
     format_journal_content as format_content,
@@ -157,6 +158,28 @@ class TestFormatFrontmatter:
         result = format_frontmatter(data)
         # Title should be quoted
         assert 'title: "' in result
+
+
+class TestIndexUpdaterPathSanitization:
+    def test_update_tag_indices_sanitizes_path_separators_in_tag_names(
+        self, tmp_path: Path
+    ) -> None:
+        journal_path = (
+            tmp_path / "Journals" / "2026" / "03" / "life-index_2026-03-25_001.md"
+        )
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text("body", encoding="utf-8")
+
+        with patch(
+            "tools.write_journal.index_updater.BY_TOPIC_DIR", tmp_path / "by-topic"
+        ):
+            updated = update_tag_indices(
+                ["UI/UX设计"], journal_path, {"date": "2026-03-25"}
+            )
+
+        assert len(updated) == 1
+        assert updated[0].exists()
+        assert updated[0].name == "标签_UI_UX设计.md"
 
     def test_mood_string_normalized_to_array(self):
         """Test that mood as string is normalized to single-element array"""
