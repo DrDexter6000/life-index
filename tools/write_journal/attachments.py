@@ -280,6 +280,7 @@ def process_attachments(
         source_url = att.get("source_url", "")
         description = att.get("description", "")
         auto_detected = att.get("auto_detected", False)
+        download_result: dict[str, Any] = {}
 
         if source_url:
             download_result = asyncio.run(
@@ -373,8 +374,12 @@ def process_attachments(
             metadata["size"] = int(input_size)
         if source_url and download_result.get("content_type") is not None:
             metadata["content_type"] = str(download_result.get("content_type"))
-        if source_url and download_result.get("size") is not None:
-            metadata["size"] = int(download_result.get("size"))
+        download_size = download_result.get("size") if source_url else None
+        if download_size is not None and not isinstance(download_size, bool):
+            if isinstance(download_size, (int, float)):
+                metadata["size"] = int(download_size)
+            elif isinstance(download_size, str):
+                metadata["size"] = int(download_size)
 
         processed_entry = {
             "filename": target_name,

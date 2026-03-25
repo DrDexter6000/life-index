@@ -33,8 +33,6 @@ from .index_updater import (
 def extract_explicit_metadata_from_content(content: str) -> Tuple[Dict[str, str], str]:
     """从正文中提取明确声明的元数据，并返回清理后的正文。"""
     extracted: Dict[str, str] = {}
-    if content is None:
-        return extracted, ""
     if not content:
         return extracted, content
 

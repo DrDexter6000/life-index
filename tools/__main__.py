@@ -21,7 +21,7 @@ Commands:
 import json
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, cast
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 
@@ -33,7 +33,9 @@ BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-ma
 def read_bootstrap_manifest() -> Dict[str, Any]:
     with BOOTSTRAP_MANIFEST_PATH.open("r", encoding="utf-8") as f:
         payload = json.load(f)
-    return payload
+    if not isinstance(payload, dict):
+        raise ValueError("bootstrap-manifest.json must contain a JSON object")
+    return cast(Dict[str, Any], payload)
 
 
 def get_package_version() -> str:
