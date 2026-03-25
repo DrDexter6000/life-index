@@ -21,8 +21,74 @@ jobs:
     - name: Run documentation sync check
       run: python .github/scripts/check_doc_sync.py
 
-  test:
+  lint:
     runs-on: ubuntu-latest
+    name: Lint
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-timeout
+        pip install -e ".[dev,web]"
+
+    - name: Lint with flake8
+      run: |
+        flake8 tools/ --count --max-complexity=40 --max-line-length=100 --show-source --statistics
+
+    - name: Format check with black
+      run: |
+        black --check --diff tools/
+
+  typecheck:
+    runs-on: ubuntu-latest
+    name: Type Check
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-timeout
+        pip install -e ".[dev,web]"
+
+    - name: Type check with mypy
+      run: |
+        mypy tools/ --ignore-missing-imports
+
+  tests:
+    runs-on: ubuntu-latest
+    name: Tests (${{ matrix.python-version }})
+    needs:
+    - lint
+    - typecheck
     strategy:
       matrix:
         python-version: ['3.11', '3.12']
@@ -48,18 +114,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install pytest pytest-cov pytest-timeout
         pip install -e ".[dev,web]"
-
-    - name: Lint with flake8
-      run: |
-        flake8 tools/ --count --max-complexity=40 --max-line-length=100 --show-source --statistics
-
-    - name: Format check with black
-      run: |
-        black --check --diff tools/
-
-    - name: Type check with mypy
-      run: |
-        mypy tools/ --ignore-missing-imports
 
     - name: Test with pytest
       run: |
