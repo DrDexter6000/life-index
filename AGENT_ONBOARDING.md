@@ -21,11 +21,22 @@ Before taking any action, read this entire document once.
 
 ---
 
-## 2. Step 0 — Detect Local State Before Doing Anything
+## 2. Step 0 — Refresh Authority First, Then Detect Local State
 
-Do **not** clone, recreate `.venv`, or write a first journal until you complete this detection gate.
+Do **not** clone, recreate `.venv`, run `health`, or classify fresh-install vs upgrade until you complete this gate.
 
-### Step 0.1: Check user data first (highest priority)
+### Step 0.1: Refresh authority documents first
+
+Before trusting any local checkout, refresh these files from the current upstream repository and use the refreshed copies as the authority for the rest of the task:
+
+- `AGENT_ONBOARDING.md`
+- `docs/UPGRADE.md`
+- `README.md`
+- `bootstrap-manifest.json`
+
+You must treat local copies of these files as potentially stale.
+
+### Step 0.2: Check user data first (highest priority)
 
 Check whether the user already has Life Index data:
 
@@ -37,13 +48,14 @@ Check whether the user already has Life Index data:
 - If real journal data already exists, treat the machine as **not fresh install** unless strong evidence proves otherwise.
 - Protect user data first. Do not assume it is safe to restart from zero.
 
-### Step 0.2: Check repo / venv state
+### Step 0.3: Identify the canonical checkout
 
-Check whether the current working directory already contains:
+Check whether there is already a Life Index repository checkout with files such as:
 
-- a Life Index repository checkout (`SKILL.md`, `pyproject.toml`)
+- `SKILL.md`
+- `pyproject.toml`
+- `bootstrap-manifest.json`
 - `.venv/`
-- an existing editable install or reachable `life-index` CLI
 
 #### Host-managed canonical checkout rule
 
@@ -51,13 +63,34 @@ If the host Agent platform already manages skills in a canonical directory, pref
 
 If you discover multiple Life Index checkouts, do **not** silently pick a random one and do **not** create a third clone. Prefer the host-managed canonical checkout or the user-designated checkout, and if the active install location is still ambiguous, report the conflict and ask the user before cleanup.
 
-### Step 0.3: Run health if a usable install might exist
+### Step 0.4: Mandatory sync gate before any route decision
 
-If `.venv` exists, or if `life-index` already appears to be installed, try a health check using the venv CLI path first.
+If a canonical checkout exists and network access is available, you **must** sync that checkout before doing health checks or route classification.
 
-### Step 0.4: Decide the route
+Minimum rule:
 
-Use these rules:
+1. fetch/pull the canonical checkout from the upstream repository
+2. ensure `bootstrap-manifest.json` exists after sync
+3. reinstall into `.venv` after sync using the documented editable install path
+
+If the checkout cannot be synced because of local conflicts, detached state, or other git problems, do **not** pretend the checkout is current. Switch to repair handling.
+
+If network is unavailable, you may continue only after explicitly warning the user that you cannot verify freshness and may be operating on a stale checkout.
+
+### Step 0.5: Version/freshness is a mandatory gate
+
+Use the refreshed `bootstrap-manifest.json` plus local `life-index --version` output to determine whether the local checkout and installed package reflect the expected current version.
+
+**Critical rule**:
+- health only proves the installed system works
+- freshness proves the installed system is current
+- both gates must pass before you may report the install as current
+
+Do **not** treat `.venv` existence, CLI reachability, or passing `life-index health` as evidence that the checkout is up to date.
+
+### Step 0.6: Only now decide the route
+
+Use these rules **after** authority refresh and checkout sync:
 
 #### Route A — Fresh Install
 
@@ -74,9 +107,8 @@ If Fresh Install is selected, continue with the normal onboarding steps in this 
 Choose **Upgrade** if any of the following are true:
 
 - existing journal data is found
-- a working repo + `.venv` already exists
-- `life-index health` can run on an existing install
-- a host-managed canonical checkout already exists
+- a canonical checkout exists and has just been successfully synced
+- an existing install was found and reinstalled after sync
 
 If Upgrade is selected, stop following this onboarding flow and switch to `docs/UPGRADE.md` as the primary operational guide.
 
@@ -85,20 +117,14 @@ If Upgrade is selected, stop following this onboarding flow and switch to `docs/
 Choose **Repair / Ambiguous** if signals conflict, for example:
 
 - journal data exists but repo/venv is missing
-- `.venv` exists but `life-index health` fails badly
-- repo exists but install looks partial or broken
+- `.venv` exists but `life-index health` fails badly after sync/reinstall
+- repo exists but checkout sync fails or install still looks partial/broken
 
 If Repair / Ambiguous is selected:
 
 1. do **not** pretend this is a clean fresh install
 2. use `docs/UPGRADE.md` as the repair baseline
 3. if the state is still unclear after basic inspection, ask the user before doing destructive cleanup
-
-### Step 0.5: Version is only a supporting signal
-
-If you can identify the installed version, use it only to understand whether the machine is behind the current repository version.
-
-Do **not** use version alone to classify fresh install vs upgrade.
 
 ---
 

@@ -19,11 +19,23 @@ Before taking any action, read this entire document once.
 
 ---
 
-## 2. Step 0 — Detect Local State Before Doing Anything
+## 2. Step 0 — Refresh Authority First, Then Detect Local State
 
-Do **not** clone, recreate `.venv`, or install web dependencies until you complete this detection gate.
+Do **not** clone, recreate `.venv`, install web dependencies, run `serve`, or classify install state until you complete this gate.
 
-### Step 0.1: Check user data first
+### Step 0.1: Refresh authority documents first
+
+Before trusting any local checkout, refresh these files from the current upstream repository and use the refreshed copies as the authority for the rest of the task:
+
+- `AGENT_ONBOARDING_WEB.md`
+- `AGENT_ONBOARDING.md`
+- `docs/UPGRADE.md`
+- `README.md`
+- `bootstrap-manifest.json`
+
+Treat local copies of these files as potentially stale.
+
+### Step 0.2: Check user data first
 
 Check whether the user already has Life Index data under:
 
@@ -33,11 +45,12 @@ Check whether the user already has Life Index data under:
 
 If real journal data exists, treat the machine as **not fresh install** unless strong evidence proves otherwise.
 
-### Step 0.2: Check repo / venv / CLI state
+### Step 0.3: Identify the canonical checkout
 
 Check whether there is already:
 
 - a Life Index repository checkout
+- `bootstrap-manifest.json`
 - `.venv/`
 - a reachable `life-index` CLI
 
@@ -49,16 +62,42 @@ If that canonical checkout exists, reuse it. Do **not** create or keep validatin
 
 If multiple Life Index checkouts are detected, do **not** create another one. Report the duplicate-checkout state and prefer the host-managed canonical checkout or the user-designated checkout for repair/upgrade work.
 
-If `.venv` exists or the CLI appears installed, prefer the venv path and run `life-index health`.
+### Step 0.4: Mandatory sync gate before any route decision
 
-### Step 0.3: Check Web capability only after base signals
+If a canonical checkout exists and network access is available, you **must** sync that checkout before doing base health checks, Web capability checks, or route classification.
 
-If a base install exists, determine whether the Web layer already exists:
+Minimum rule:
+
+1. fetch/pull the canonical checkout from the upstream repository
+2. ensure `bootstrap-manifest.json` exists after sync
+3. reinstall into `.venv` after sync using the Web-enabled editable install path when Web onboarding is requested
+
+If checkout sync fails because of local conflicts, detached state, or unclear git state, do **not** treat the checkout as current. Switch to repair handling.
+
+If network is unavailable, you may continue only after explicitly warning the user that freshness could not be verified.
+
+### Step 0.5: Version/freshness is a mandatory gate
+
+Use the refreshed `bootstrap-manifest.json`, local checkout state, and `life-index --version` output to determine whether the local install reflects the expected current version.
+
+**Critical rule**:
+- `life-index health` proves runtime health
+- `life-index serve` proves Web capability
+- neither proves checkout freshness
+
+All three questions are separate:
+1. is the checkout current?
+2. is the base install healthy?
+3. is the Web layer installed and working?
+
+### Step 0.6: Check Web capability only after sync + reinstall
+
+If a base install exists after sync, determine whether the Web layer already exists:
 
 - can the venv path run `life-index serve`
 - if it starts, does `http://127.0.0.1:8765/api/health` return HTTP 200 with `status = ok`
 
-### Step 0.4: Decide the route
+### Step 0.7: Only now decide the route
 
 Use these rules:
 
@@ -76,8 +115,8 @@ If selected, continue with the fresh-install flow in this document.
 
 Choose this if:
 
-- base install exists
-- Web dependencies appear installed
+- base install exists after sync
+- Web dependencies are installed after sync/reinstall
 - the machine is already a Web user or was intended to be one
 
 If selected, switch to `docs/UPGRADE.md` and use the Web GUI upgrade path.
@@ -86,8 +125,8 @@ If selected, switch to `docs/UPGRADE.md` and use the Web GUI upgrade path.
 
 Choose this if:
 
-- base install exists
-- user data exists or `life-index health` works
+- base install exists after sync
+- user data exists or `life-index health` works after sync
 - but `life-index serve` is unavailable or Web deps are clearly missing
 
 If selected, switch to `docs/UPGRADE.md` and use the Web GUI upgrade path to add `.[web]`.
@@ -97,8 +136,8 @@ If selected, switch to `docs/UPGRADE.md` and use the Web GUI upgrade path to add
 Choose this if signals conflict, for example:
 
 - journal data exists but repo/venv is missing
-- `.venv` exists but base health fails badly
-- Web dependencies look partial or broken
+- `.venv` exists but base health fails badly after sync/reinstall
+- Web dependencies look partial or broken after sync/reinstall
 - multiple competing Life Index checkouts exist and the active one is unclear
 
 If selected:
@@ -106,12 +145,6 @@ If selected:
 1. do **not** force a fake fresh install
 2. use `docs/UPGRADE.md` as the repair baseline
 3. if ambiguity remains, ask the user before cleanup that could discard local state
-
-### Step 0.5: Version is only a supporting signal
-
-If you can determine the installed version, use it only to understand whether the machine is behind the current repo version.
-
-Do **not** use version alone to decide fresh install vs upgrade.
 
 ---
 
