@@ -74,6 +74,13 @@ Minimum rule:
 
 If checkout sync fails because of local conflicts, detached state, or unclear git state, do **not** treat the checkout as current. Switch to repair handling.
 
+**Untracked files conflict**: If `git pull` fails with an error like `please move or remove them before you can merge`, it means local untracked files/directories conflict with files added in the remote. Handle it like this:
+
+1. Identify the conflicting untracked files from the error message
+2. If the conflicting items are clearly temporary or generated artifacts (e.g., `tools/dev/`, `docs/web-gui/UIUX/`, `web/static/css/celestial.css`), delete them with `rm -rf <path>`
+3. Retry `git pull`
+4. If conflicts remain or the conflicting items look like valuable local state, do **not** delete them automatically — report the conflict and ask the user before cleanup
+
 If network is unavailable, you may continue only after explicitly warning the user that freshness could not be verified.
 
 ### Step 0.5: Version/freshness is a mandatory gate
@@ -216,7 +223,25 @@ Do not skip those steps. The Web GUI is a convenience shell over the same local 
 
 After the base flow succeeds, verify the local Web GUI.
 
-### Step 5.1: Start the Web GUI Server
+### Step 5.1: Stop Any Pre-existing Server First
+
+**Critical**: If a `life-index serve` process was already running before this onboarding session (e.g., from a previous or stale install), it is still running the **old code** even after you just ran `pip install -e ".[web]"`. A running server does **not** automatically reload when the package is reinstalled.
+
+Before starting a new server, stop any existing one:
+
+**Linux/macOS/WSL**:
+```bash
+pkill -f "life-index serve" || true
+```
+
+**Windows**:
+```powershell
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq *life-index*" 2>$null; true
+```
+
+Then verify the port is free before proceeding.
+
+### Step 5.2: Start the Web GUI Server
 
 Use the venv CLI path.
 
@@ -241,7 +266,7 @@ Use the venv CLI path.
 - If output says `Web GUI dependencies not installed`, return to the install step and reinstall with `.[web]`
 - If port 8765 is already in use, either stop the conflicting process or retry with another localhost port and record it in the final report
 
-### Step 5.1b: Keep the result truthful
+### Step 5.2b: Keep the result truthful
 
 For Web onboarding, the user should either be able to open the GUI immediately after onboarding, or be told explicitly that the server is no longer running.
 
@@ -251,7 +276,7 @@ If you only verified startup transiently, report that verification succeeded but
 
 ---
 
-### Step 5.2: Verify the Health Endpoint
+### Step 5.3: Verify the Health Endpoint
 
 With the server running, verify the Web health endpoint.
 
@@ -277,7 +302,7 @@ With the server running, verify the Web health endpoint.
 
 ---
 
-### Step 5.2b: Verify the Homepage, not just the API
+### Step 5.4: Verify the Homepage, not just the API
 
 After `/api/health` succeeds, also verify the homepage:
 
@@ -302,7 +327,7 @@ After `/api/health` succeeds, also verify the homepage:
 
 ---
 
-### Step 5.2c: Web runtime / data-dir verification gate
+### Step 5.5: Web runtime / data-dir verification gate
 
 Before claiming the Web GUI is safe to use for browse / search / write / edit, verify which data directory the running instance is actually reading.
 
@@ -380,7 +405,7 @@ life-index index --rebuild
 
 ---
 
-### Step 5.3: Record the Local Access URL
+### Step 5.6: Record the Local Access URL
 
 Record the final local URL for the user:
 
