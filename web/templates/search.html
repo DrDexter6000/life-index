@@ -3,120 +3,249 @@
 {% block title %}搜索 - Life Index{% endblock %}
 
 {% block content %}
-<section class="space-y-8">
+<section class="space-y-8" id="search-page">
     <header class="space-y-3">
         <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">Search</p>
         <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">搜索日志</h1>
         <p class="max-w-3xl text-sm sm:text-base" style="color: var(--color-on-surface-variant);">
             通过关键词、主题或日期查找你的人生记录。
         </p>
-        {% if has_active_filters %}
-            <div class="mt-4 flex flex-wrap gap-2">
-                {% if query %}
-                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">关键词：{{ query }}</span>
-                {% endif %}
-                {% if topic %}
-                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">主题：{{ topic }}</span>
-                {% endif %}
-                {% if mood %}
-                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255, 113, 108, 0.15); color: var(--color-error);">情绪：{{ mood }}</span>
-                {% endif %}
-                {% if tags %}
-                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">标签：{{ tags }}</span>
-                {% endif %}
-                {% if people %}
-                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(249, 135, 62, 0.15); color: var(--color-secondary);">人物：{{ people }}</span>
-                {% endif %}
-                {% if date_from or date_to %}
-                    <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 198, 207, 0.15); color: var(--color-on-surface-variant);">日期：{{ date_from or '不限' }}{% if date_to and date_to != date_from %} ~ {{ date_to }}{% elif date_to == date_from and date_to %}{% endif %}</span>
-                {% endif %}
-            </div>
-        {% endif %}
     </header>
 
-    <section class="rounded-2xl p-6 sm:p-6 sm:p-7 min-h-[44px]" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-        <form
-            hx-get="/search"
-            hx-target="#search-results"
-            hx-trigger="submit"
-            hx-indicator="#search-indicator"
-            class="space-y-6"
-        >
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-center md:flex-row">
-                <div class="flex-1">
-                    <label for="q" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">搜索关键词</label>
-                    <input
-                        type="text"
-                        id="q"
-                        name="q"
-                        value="{{ query }}"
-                        placeholder="输入关键词、标签或心情..."
-                        class="w-full rounded-full px-5 py-3 text-sm sm:text-base"
-                        style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
-                    >
-                </div>
-                <div class="w-full sm:w-48 md:w-48">
-                    <label for="topic" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">主题</label>
-                    <select
-                        id="topic"
-                        name="topic"
-                        class="w-full rounded-full px-5 py-3 text-sm sm:text-base"
-                        style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
-                    >
-                        <option value="">全部主题</option>
-                        <option value="work" {% if topic == 'work' %}selected{% endif %}>工作</option>
-                        <option value="learn" {% if topic == 'learn' %}selected{% endif %}>学习</option>
-                        <option value="health" {% if topic == 'health' %}selected{% endif %}>健康</option>
-                        <option value="relation" {% if topic == 'relation' %}selected{% endif %}>关系</option>
-                        <option value="think" {% if topic == 'think' %}selected{% endif %}>思考</option>
-                        <option value="create" {% if topic == 'create' %}selected{% endif %}>创作</option>
-                        <option value="life" {% if topic == 'life' %}selected{% endif %}>生活</option>
-                    </select>
-                </div>
-            </div>
+    <!-- Tab Navigation -->
+    <div class="flex gap-1 p-1 rounded-full inline-flex" style="background: rgba(255,255,255,0.05); width: fit-content;">
+        <button
+            id="tab-keyword"
+            onclick="switchTab('keyword')"
+            class="tab-btn px-5 py-2 rounded-full text-sm font-medium transition-all"
+            style="background: {% if active_tab != 'ai' %}var(--color-primary){% else %}transparent{% endif %}; color: {% if active_tab != 'ai' %}var(--color-background){% else %}var(--color-on-surface-variant){% endif %}; border: none; cursor: pointer;">
+            关键词搜索
+        </button>
+        <button
+            id="tab-ai"
+            onclick="switchTab('ai')"
+            class="tab-btn px-5 py-2 rounded-full text-sm font-medium transition-all"
+            style="background: {% if active_tab == 'ai' %}var(--color-primary){% else %}transparent{% endif %}; color: {% if active_tab == 'ai' %}var(--color-background){% else %}var(--color-on-surface-variant){% endif %}; border: none; cursor: pointer;">
+            AI 搜索
+        </button>
+    </div>
 
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-center md:flex-row">
-                <div class="flex-1">
-                    <label for="date_from" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">开始日期</label>
-                    <input
-                        type="date"
-                        id="date_from"
-                        name="date_from"
-                        value="{{ date_from }}"
-                        class="w-full rounded-full px-5 py-3 text-sm sm:text-base"
-                        style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
-                    >
-                </div>
-                <div class="flex-1">
-                    <label for="date_to" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">结束日期</label>
-                    <input
-                        type="date"
-                        id="date_to"
-                        name="date_to"
-                        value="{{ date_to }}"
-                        class="w-full rounded-full px-5 py-3 text-sm sm:text-base"
-                        style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
-                    >
-                </div>
-            </div>
+    <!-- Keyword Search Tab -->
+    <div id="panel-keyword" class="{% if active_tab == 'ai' %}hidden{% endif %}">
+        <section class="rounded-2xl p-6 sm:p-7 min-h-[44px]" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <form
+                hx-get="/search"
+                hx-target="#search-results"
+                hx-trigger="submit"
+                hx-indicator="#search-indicator"
+                hx-vals='js:{active_tab: "keyword"}'
+                class="space-y-5"
+            >
+                <input type="hidden" name="tab" value="keyword">
 
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                <button
-                    type="submit"
-                    class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95"
-                    style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);"
-                >
-                    搜索
-                </button>
-                <span id="search-indicator" class="htmx-indicator text-sm" style="color: var(--color-on-surface-variant);">
-                    搜索中...
-                </span>
-            </div>
-        </form>
-    </section>
+                <!-- Row 1: Query + Topic -->
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
+                    <div class="flex-1">
+                        <label for="q" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">搜索关键词</label>
+                        <input
+                            type="text"
+                            id="q"
+                            name="q"
+                            value="{{ query }}"
+                            placeholder="输入关键词..."
+                            class="w-full rounded-full px-5 py-3 text-sm"
+                            style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
+                        >
+                    </div>
+                    <div class="w-full sm:w-48">
+                        <label for="topic" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">主题</label>
+                        <select
+                            id="topic"
+                            name="topic"
+                            class="w-full rounded-full px-4 py-3 text-sm"
+                            style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
+                        >
+                            <option value="">全部主题</option>
+                            <option value="work" {% if topic == 'work' %}selected{% endif %}>工作</option>
+                            <option value="learn" {% if topic == 'learn' %}selected{% endif %}>学习</option>
+                            <option value="health" {% if topic == 'health' %}selected{% endif %}>健康</option>
+                            <option value="relation" {% if topic == 'relation' %}selected{% endif %}>关系</option>
+                            <option value="think" {% if topic == 'think' %}selected{% endif %}>思考</option>
+                            <option value="create" {% if topic == 'create' %}selected{% endif %}>创作</option>
+                            <option value="life" {% if topic == 'life' %}selected{% endif %}>生活</option>
+                        </select>
+                    </div>
+                </div>
 
-    <div id="search-results">
+                <!-- Row 2: Date Range -->
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
+                    <div class="flex-1">
+                        <label for="date_from" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">开始日期</label>
+                        <input
+                            type="date"
+                            id="date_from"
+                            name="date_from"
+                            value="{{ date_from }}"
+                            class="w-full rounded-full px-5 py-3 text-sm"
+                            style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
+                        >
+                    </div>
+                    <div class="flex-1">
+                        <label for="date_to" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">结束日期</label>
+                        <input
+                            type="date"
+                            id="date_to"
+                            name="date_to"
+                            value="{{ date_to }}"
+                            class="w-full rounded-full px-5 py-3 text-sm"
+                            style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
+                        >
+                    </div>
+                </div>
+
+                <!-- Row 3: Submit -->
+                <div class="flex items-center gap-3">
+                    <button
+                        type="submit"
+                        class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95"
+                        style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);"
+                    >
+                        搜索
+                    </button>
+                    <span id="search-indicator" class="htmx-indicator text-sm" style="color: var(--color-on-surface-variant);">
+                        搜索中...
+                    </span>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <!-- AI Search Tab -->
+    <div id="panel-ai" class="{% if active_tab != 'ai' %}hidden{% endif %}">
+        <section class="rounded-2xl p-6 sm:p-7 min-h-[44px]" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <form
+                hx-post="/api/search/ai"
+                hx-target="#ai-results"
+                hx-swap="innerHTML"
+                hx-trigger="submit"
+                hx-indicator="#ai-indicator"
+                class="space-y-5"
+            >
+                <div>
+                    <label for="ai-query" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">问一个关于你人生记录的问题</label>
+                    <textarea
+                        id="ai-query"
+                        name="query"
+                        rows="3"
+                        placeholder="例如：过去十天我有多少天晚于10点之后入睡？"
+                        class="w-full rounded-2xl px-4 py-3 text-sm"
+                        style="line-height: 1.7; resize: vertical; background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
+                    >{{ ai_query or '' }}</textarea>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button
+                        type="submit"
+                        class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95"
+                        style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);"
+                    >
+                        问 AI
+                    </button>
+                    <span id="ai-indicator" class="htmx-indicator text-sm" style="color: var(--color-on-surface-variant);">
+                        AI 思考中...
+                    </span>
+                </div>
+            </form>
+        </section>
+
+        <!-- AI Results Area -->
+        <div id="ai-results" class="space-y-4">
+            {% if ai_summary %}
+            <article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+                <div class="flex items-start gap-3 mb-4">
+                    <span class="text-2xl">🤖</span>
+                    <div>
+                        <h3 class="font-display text-xl font-medium" style="color: var(--color-on-surface);">AI 回答</h3>
+                        <p class="text-sm" style="color: var(--color-on-surface-variant);">基于搜索到的 {{ ai_total }} 篇相关日志</p>
+                    </div>
+                </div>
+                <div class="prose max-w-none text-sm leading-7" style="color: var(--color-on-surface);">
+                    {{ ai_summary | safe }}
+                </div>
+                {% if ai_key_entries %}
+                <div class="mt-6 pt-6" style="border-top: 1px solid rgba(68, 72, 79, 0.15);">
+                    <h4 class="text-sm font-medium mb-3" style="color: var(--color-on-surface);">相关日志</h4>
+                    <ul class="space-y-2">
+                        {% for entry in ai_key_entries %}
+                        <li>
+                            <a href="/journal/{{ entry.route_path }}" class="text-sm hover:underline" style="color: var(--color-primary);">{{ entry.title }}</a>
+                            <span class="text-xs ml-2" style="color: var(--color-on-surface-variant);">{{ entry.date }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </article>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Active Filters Display -->
+    {% if has_active_filters and active_tab != 'ai' %}
+    <div class="flex flex-wrap gap-2">
+        {% if query %}
+            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">关键词：{{ query }}</span>
+        {% endif %}
+        {% if topic %}
+            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">主题：{{ topic }}</span>
+        {% endif %}
+        {% if date_from or date_to %}
+            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 198, 207, 0.15); color: var(--color-on-surface-variant);">日期：{{ date_from or '不限' }} ~ {{ date_to or '不限' }}</span>
+        {% endif %}
+        {% if project %}
+            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(249, 135, 62, 0.15); color: var(--color-secondary);">项目：{{ project }}</span>
+        {% endif %}
+        {% if location %}
+            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">地点：{{ location }}</span>
+        {% endif %}
+        {% if mood %}
+            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">情绪：{{ mood }}</span>
+        {% endif %}
+        {% if tags %}
+            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">标签：{{ tags }}</span>
+        {% endif %}
+        {% if people %}
+            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">人物：{{ people }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Search Results -->
+    <div id="search-results" class="{% if active_tab == 'ai' %}hidden{% endif %}">
         {% include "partials/search_results.html" %}
     </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function switchTab(tab) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.style.background = 'transparent';
+            btn.style.color = 'var(--color-on-surface-variant)';
+        });
+        const activeBtn = document.getElementById('tab-' + tab);
+        if (activeBtn) {
+            activeBtn.style.background = 'var(--color-primary)';
+            activeBtn.style.color = 'var(--color-background)';
+        }
+
+        // Show/hide panels
+        document.getElementById('panel-keyword').classList.toggle('hidden', tab !== 'keyword');
+        document.getElementById('panel-ai').classList.toggle('hidden', tab !== 'ai');
+
+        // Show/hide results area
+        document.getElementById('search-results').classList.toggle('hidden', tab !== 'keyword');
+    }
+</script>
 {% endblock %}

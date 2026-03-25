@@ -834,6 +834,18 @@ class TestSearchService:
 
 
 class TestSearchRoute:
+    def test_search_page_renders_keyword_and_ai_tabs(self) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        client = TestClient(create_app())
+        response = client.get("/search")
+
+        assert response.status_code == 200
+        assert "关键词搜索" in response.text
+        assert "AI 搜索" in response.text
+        assert 'id="tab-ai"' in response.text
+
     @patch("web.routes.search.search_journals_web")
     @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     def test_search_date_param_prefills_date_filters_and_runs_search(
