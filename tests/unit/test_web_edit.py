@@ -271,6 +271,14 @@ class TestEditRoute:
         assert 'name="links"' in source
         assert 'name="attachments"' in source
 
+    def test_edit_template_supports_file_and_url_attachment_inputs(self) -> None:
+        from web.config import TEMPLATES_DIR
+
+        source = (TEMPLATES_DIR / "edit.html").read_text(encoding="utf-8")
+        assert 'type="file"' in source
+        assert 'name="attachment_urls"' in source
+        assert 'id="add-url-btn"' in source
+
     def test_post_edit_rejects_csrf_mismatch(self) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
@@ -444,6 +452,81 @@ class TestEditRoute:
         assert "编辑失败" in response.text
         assert "失败后保留的正文" in response.text
         assert "新标题" in response.text
+
+    def test_post_edit_blocks_location_change_without_weather(self) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        with patch("web.routes.edit.get_journal") as mock_get_journal:
+            with patch(
+                "web.routes.edit.get_provider", new_callable=AsyncMock
+            ) as mock_provider:
+                with patch("web.routes.edit.compute_edit_diff") as mock_diff:
+                    with patch(
+                        "web.routes.edit.edit_journal_web", new_callable=AsyncMock
+                    ) as mock_edit:
+                        mock_provider.return_value = AsyncMock()
+                        mock_get_journal.return_value = {
+                            "metadata": {
+                                "title": "原标题",
+                                "topic": ["life"],
+                                "location": "Lagos",
+                                "weather": "晴",
+                            },
+                            "raw_body": "原正文",
+                            "attachments": [],
+                            "journal_route_path": "2026/03/test.md",
+                        }
+                        mock_diff.return_value = {
+                            "frontmatter_updates": {"location": "Abuja"},
+                            "replace_content": None,
+                            "location_weather_required": True,
+                        }
+
+                        client = TestClient(create_app())
+                        get_response = client.get("/journal/2026/03/test.md/edit")
+                        csrf_token = get_response.cookies.get("csrf_token")
+                        assert csrf_token is not None
+
+                        response = client.post(
+                            "/journal/2026/03/test.md/edit",
+                            data={
+                                "csrf_token": csrf_token,
+                                "title": "原标题",
+                                "content": "原正文",
+                                "location": "Abuja",
+                                "weather": "",
+                            },
+                        )
+
+        assert response.status_code == 200
+        assert "请先查询天气或手动填写天气" in response.text
+        mock_edit.assert_not_awaited()
+
+    def test_get_edit_page_does_not_claim_ai_assistance_when_provider_available(
+        self,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        with patch("web.routes.edit.get_journal") as mock_get_journal:
+            with patch(
+                "web.routes.edit.get_provider", new_callable=AsyncMock
+            ) as mock_provider:
+                mock_provider.return_value = AsyncMock()
+                mock_get_journal.return_value = {
+                    "metadata": {"title": "测试日志"},
+                    "raw_body": "原正文内容",
+                    "attachments": [],
+                    "journal_route_path": "2026/03/test.md",
+                }
+
+                client = TestClient(create_app())
+                response = client.get("/journal/2026/03/test.md/edit")
+
+        assert response.status_code == 200
+        assert "AI 辅助已就绪" not in response.text
+        assert "自动提炼" not in response.text
 
     @patch("web.routes.journal.get_journal")
     def test_journal_route_renders_edit_success_banner(

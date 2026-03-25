@@ -1,32 +1,34 @@
 {% extends "base.html" %}
 
-{% block title %}LLM 设置 - Life Index{% endblock %}
+{% block title %}设置 - Life Index{% endblock %}
 
 {% block content %}
 <section class="space-y-8">
     <header class="space-y-3">
-        <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">LLM Configuration</p>
-        <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">LLM 设置</h1>
+        <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">Settings</p>
+        <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">设置</h1>
         <p class="max-w-3xl text-sm sm:text-base" style="color: var(--color-on-surface-variant);">
-            为 Life Index 配置本地保存的 LLM 凭据。这里的配置只服务于你的个人档案馆，不进入代码仓库，也不会改变基础版日志格式。
+            为 Life Index 配置本地保存的偏好设置。配置保存在你的个人数据目录，不进入代码仓库。
         </p>
     </header>
 
-    <section class="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);">
+    <div class="grid gap-6 lg:grid-cols-2">
+        <!-- LLM API 配置 -->
+        <article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <h2 class="font-display text-2xl font-medium tracking-tight mb-6" style="color: var(--color-on-surface);">LLM API</h2>
             <form method="POST" action="/settings" class="space-y-6">
-                <div class="grid gap-6 sm:grid-cols-2">
-                    <div class="sm:col-span-2 space-y-2">
-                        <label for="api_key" class="block text-sm font-medium" style="color: var(--color-on-surface);">API Key</label>
-                        <input id="api_key" name="api_key" type="password" value="{{ api_key }}" placeholder="留空则禁用 API 调用" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);" autocomplete="off">
-                        {% if api_key_masked %}
-                        <p class="text-xs" style="color: var(--color-on-surface-variant);">当前已保存 Key：{{ api_key_masked }}</p>
-                        {% endif %}
-                    </div>
+                <div class="space-y-2">
+                    <label for="api_key" class="block text-sm font-medium" style="color: var(--color-on-surface);">API Key</label>
+                    <input id="api_key" name="api_key" type="password" value="{{ api_key }}" placeholder="留空则禁用 API 调用" class="w-full rounded-full px-5 py-3 text-sm" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);" autocomplete="off">
+                    {% if api_key_masked %}
+                    <p class="text-xs" style="color: var(--color-on-surface-variant);">当前已保存：{{ api_key_masked }}</p>
+                    {% endif %}
+                </div>
 
+                <div class="grid gap-4 sm:grid-cols-2">
                     <div class="space-y-2">
                         <label for="base_url_preset" class="block text-sm font-medium" style="color: var(--color-on-surface);">Provider</label>
-                        <select id="base_url_preset" name="base_url_preset" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                        <select id="base_url_preset" name="base_url_preset" class="w-full rounded-full px-5 py-3 text-sm" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
                             {% for preset, label in base_url_presets %}
                             <option value="{{ preset }}" {% if base_url_preset == preset %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
@@ -35,73 +37,218 @@
 
                     <div class="space-y-2">
                         <label for="model" class="block text-sm font-medium" style="color: var(--color-on-surface);">Model</label>
-                        <input id="model" name="model" type="text" value="{{ model }}" placeholder="如：gpt-4o-mini" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
-                    </div>
-
-                    <div class="sm:col-span-2 space-y-2">
-                        <label for="base_url" class="block text-sm font-medium" style="color: var(--color-on-surface);">Base URL</label>
-                        <input id="base_url" name="base_url" type="text" value="{{ base_url }}" placeholder="https://api.openai.com/v1" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
-                        <p class="text-xs" style="color: var(--color-on-surface-variant);">可选择 OpenAI / OpenRouter，或填写兼容 OpenAI API 的自定义地址。</p>
-                    </div>
-
-                    <div class="sm:col-span-2 space-y-2">
-                        <label for="default_location" class="block text-sm font-medium" style="color: var(--color-on-surface);">Default Location</label>
-                        <input id="default_location" name="default_location" type="text" value="{{ default_location }}" placeholder="如：Chongqing, China" class="w-full rounded-full px-5 py-3 text-sm sm:text-base" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
-                        <p class="text-xs" style="color: var(--color-on-surface-variant);">当前阶段仅展示默认地点；LLM 配置将优先写入用户数据目录下的 config.yaml。</p>
+                        <input id="model" name="model" type="text" value="{{ model }}" placeholder="如：gpt-4o-mini" class="w-full rounded-full px-5 py-3 text-sm" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
                     </div>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-3">
-                    <button type="submit" class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">
-                        保存并测试连接
+                <div class="space-y-2">
+                    <label for="base_url" class="block text-sm font-medium" style="color: var(--color-on-surface);">Base URL</label>
+                    <input id="base_url" name="base_url" type="text" value="{{ base_url }}" placeholder="https://api.openai.com/v1" class="w-full rounded-full px-5 py-3 text-sm" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                </div>
+
+                <div class="space-y-2">
+                    <label for="default_location" class="block text-sm font-medium" style="color: var(--color-on-surface);">默认地点</label>
+                    <input id="default_location" name="default_location" type="text" value="{{ default_location }}" placeholder="如：Chongqing, China" class="w-full rounded-full px-5 py-3 text-sm" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                    <p class="text-xs" style="color: var(--color-on-surface-variant);">日志地点留空时使用此默认地点查询天气</p>
+                </div>
+
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <button type="button" onclick="testConnection(event)" class="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);">
+                        测试API
                     </button>
-                    {% if save_message %}
-                    <span class="text-sm" style="color: var(--color-on-surface-variant);">{{ save_message }}</span>
+                    <button type="submit" class="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 8px 20px rgba(255, 231, 146, 0.15);">
+                        保存API
+                    </button>
+                    {% if llm_save_message %}
+                    <span class="text-sm" style="color: var(--color-on-surface-variant);">{{ llm_save_message }}</span>
+                    {% endif %}
+                </div>
+
+                {% if connectivity_message %}
+                <div class="rounded-xl p-3" style="background: {% if connectivity_ok %}rgba(133, 255, 242, 0.08){% else %}rgba(255, 113, 108, 0.08){% endif %}; box-shadow: 0 0 0 1px {% if connectivity_ok %}rgba(133, 255, 242, 0.16){% else %}rgba(255, 113, 108, 0.16){% endif %};">
+                    <p class="text-sm" style="color: {% if connectivity_ok %}var(--color-tertiary){% else %}var(--color-error){% endif %};">{{ connectivity_message }}</p>
+                </div>
+                {% endif %}
+            </form>
+        </article>
+
+        <!-- 搜索权重配置 -->
+        <article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+            <h2 class="font-display text-2xl font-medium tracking-tight mb-6" style="color: var(--color-on-surface);">搜索权重</h2>
+            <form method="POST" action="/settings/weights" class="space-y-6" id="weights-form">
+                <p class="text-sm leading-5" style="color: var(--color-on-surface-variant);">
+                    调整关键词搜索与语义搜索在最终结果排序中的相对影响力。拖动任一滑块，另一项自动补偿，合计始终为 100%。
+                </p>
+
+                <!-- Keyword Weight -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label for="fts_weight" class="text-sm font-medium" style="color: var(--color-on-surface);">关键词权重</label>
+                        <span id="fts_weight_label" class="text-sm font-medium" style="color: var(--color-primary);">{{ (fts_weight * 100) | int }}%</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input
+                            type="range"
+                            id="fts_weight"
+                            name="fts_weight"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value="{{ fts_weight }}"
+                            class="flex-1 h-2 rounded-full appearance-none cursor-pointer"
+                            style="accent-color: #FFE792;"
+                        >
+                        <span class="text-xs shrink-0" style="color: var(--color-on-surface-variant);">精确匹配</span>
+                    </div>
+                </div>
+
+                <!-- Semantic Weight -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label for="semantic_weight" class="text-sm font-medium" style="color: var(--color-on-surface);">语义权重</label>
+                        <span id="semantic_weight_label" class="text-sm font-medium" style="color: var(--color-tertiary);">{{ (semantic_weight * 100) | int }}%</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input
+                            type="range"
+                            id="semantic_weight"
+                            name="semantic_weight"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value="{{ semantic_weight }}"
+                            class="flex-1 h-2 rounded-full appearance-none cursor-pointer"
+                            style="accent-color: #85FFF2;"
+                        >
+                        <span class="text-xs shrink-0" style="color: var(--color-on-surface-variant);">语义相似</span>
+                    </div>
+                </div>
+
+                <!-- 快捷预设 -->
+                <div class="flex gap-2 flex-wrap">
+                    <button type="button" onclick="setWeights(0.6, 0.4)" class="text-xs px-3 py-1.5 rounded-full transition-opacity hover:opacity-80" style="background: rgba(255, 231, 146, 0.1); color: var(--color-primary); border: 1px solid rgba(255, 231, 146, 0.2);">关键词优先</button>
+                    <button type="button" onclick="setWeights(0.4, 0.6)" class="text-xs px-3 py-1.5 rounded-full transition-opacity hover:opacity-80" style="background: rgba(133, 255, 242, 0.1); color: var(--color-tertiary); border: 1px solid rgba(133, 255, 242, 0.2);">语义优先</button>
+                    <button type="button" onclick="setWeights(0.5, 0.5)" class="text-xs px-3 py-1.5 rounded-full transition-opacity hover:opacity-80" style="background: rgba(196, 182, 254, 0.1); color: #C4B6FE; border: 1px solid rgba(196, 182, 254, 0.2);">均衡</button>
+                    <button type="button" onclick="setWeights(1.0, 0.0)" class="text-xs px-3 py-1.5 rounded-full transition-opacity hover:opacity-80" style="background: rgba(255, 113, 108, 0.1); color: var(--color-error); border: 1px solid rgba(255, 113, 108, 0.2);">仅关键词</button>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button type="submit" class="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 8px 20px rgba(255, 231, 146, 0.15);">
+                        保存权重
+                    </button>
+                    {% if weight_save_message %}
+                    <span class="text-sm" style="color: var(--color-on-surface-variant);">{{ weight_save_message }}</span>
                     {% endif %}
                 </div>
             </form>
         </article>
+    </div>
 
-        <aside class="space-y-6">
-            <article class="rounded-2xl p-6" style="background: rgba(30, 35, 48, 0.82); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-                <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">连接状态</h2>
-                {% if connectivity_message %}
-                <p class="mt-4 text-sm leading-7" style="color: {% if connectivity_ok %}var(--color-tertiary){% else %}var(--color-error){% endif %};">
-                    {{ connectivity_message }}
-                </p>
-                {% else %}
-                <p class="mt-4 text-sm leading-7" style="color: var(--color-on-surface-variant);">
-                    保存后会立即向你的 LLM Provider 发起一次轻量测试请求，反馈连接是否可用。
-                </p>
-                {% endif %}
-            </article>
-
-            <article class="rounded-2xl p-6" style="background: rgba(26, 30, 40, 0.82); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-                <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">数据主权说明</h2>
-                <ul class="mt-4 space-y-3 text-sm leading-7" style="color: var(--color-on-surface-variant);">
-                    <li>• 配置保存在 <code style="color: var(--color-primary);">~/Documents/Life-Index/.life-index/config.yaml</code></li>
-                    <li>• 环境变量依然优先于 config.yaml，兼容旧工作流</li>
-                    <li>• 这里只配置 LLM 连接，不改变基础版日志落盘格式</li>
-                </ul>
-            </article>
-        </aside>
-    </section>
+    <!-- 数据主权说明 -->
+    <article class="rounded-2xl p-6" style="background: rgba(26, 30, 40, 0.82); box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+        <h2 class="font-display text-xl font-medium tracking-tight mb-4" style="color: var(--color-on-surface);">数据主权说明</h2>
+        <ul class="grid gap-2 sm:grid-cols-2 text-sm leading-7" style="color: var(--color-on-surface-variant);">
+            <li>• 配置保存在 <code style="color: var(--color-primary);">~/Documents/Life-Index/.life-index/config.yaml</code></li>
+            <li>• 环境变量优先于 config.yaml，兼容旧工作流</li>
+            <li>• Web GUI 配置不影响基础版日志落盘格式</li>
+            <li>• 配置完全属于你，不进入代码仓库</li>
+        </ul>
+    </article>
 </section>
-
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+    // Base URL preset
     (() => {
         const preset = document.getElementById('base_url_preset');
         const baseUrl = document.getElementById('base_url');
         if (!preset || !baseUrl) return;
-
         preset.addEventListener('change', () => {
             if (preset.value !== 'custom') {
                 baseUrl.value = preset.value;
             }
         });
+    })();
+
+    // Test connection (separate from save)
+    async function testConnection(event) {
+        const apiKey = document.getElementById('api_key').value;
+        const baseUrl = document.getElementById('base_url').value;
+        const model = document.getElementById('model').value;
+        if (!apiKey.trim()) {
+            alert('请先填写 API Key');
+            return;
+        }
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = '测试中...';
+        try {
+            const formData = new FormData();
+            formData.append('api_key', apiKey);
+            formData.append('base_url', baseUrl);
+            formData.append('base_url_preset', document.getElementById('base_url_preset').value);
+            formData.append('model', model);
+            formData.append('default_location', document.getElementById('default_location').value);
+            formData.append('test_only', '1');
+            const resp = await fetch('/settings', { method: 'POST', body: formData });
+            const html = await resp.text();
+            document.open();
+            document.write(html);
+            document.close();
+        } catch(e) {
+            alert('测试失败: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '测试API';
+        }
+    }
+
+    // Search weight sliders — keep total = 100%
+    (() => {
+        const ftsSlider = document.getElementById('fts_weight');
+        const semSlider = document.getElementById('semantic_weight');
+        if (!ftsSlider || !semSlider) return;
+
+        const ftsLabel = document.getElementById('fts_weight_label');
+        const semLabel = document.getElementById('semantic_weight_label');
+
+        // Hardcoded colors to avoid CSS variable flicker
+        const FTS_COLOR = '#FFE792';
+        const SEM_COLOR = '#85FFF2';
+        const TRACK_BG = 'rgba(68, 72, 79, 0.15)';
+
+        function updateDisplay() {
+            const fts = parseFloat(ftsSlider.value);
+            const sem = parseFloat(semSlider.value);
+            const total = Math.round((fts + sem) * 100);
+            ftsLabel.textContent = Math.round(fts * 100) + '%';
+            semLabel.textContent = Math.round(sem * 100) + '%';
+            ftsSlider.style.background = `linear-gradient(to right, ${FTS_COLOR} ${fts*100}%, ${TRACK_BG} ${fts*100}%)`;
+            semSlider.style.background = `linear-gradient(to right, ${SEM_COLOR} ${sem*100}%, ${TRACK_BG} ${sem*100}%)`;
+        }
+
+        ftsSlider.addEventListener('input', () => {
+            const fts = parseFloat(ftsSlider.value);
+            const sem = Math.max(0, Math.min(1, 1.0 - fts));
+            semSlider.value = sem.toFixed(2);
+            updateDisplay();
+        });
+
+        semSlider.addEventListener('input', () => {
+            const sem = parseFloat(semSlider.value);
+            const fts = Math.max(0, Math.min(1, 1.0 - sem));
+            ftsSlider.value = fts.toFixed(2);
+            updateDisplay();
+        });
+
+        window.setWeights = function(fts, sem) {
+            ftsSlider.value = fts;
+            semSlider.value = sem;
+            updateDisplay();
+        };
+
+        updateDisplay();
     })();
 </script>
 {% endblock %}

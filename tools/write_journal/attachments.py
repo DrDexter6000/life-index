@@ -134,9 +134,7 @@ def extract_file_paths_from_content(content: str) -> List[str]:
     # 使用更严格的模式：必须以盘符开头，后跟反斜杠或斜杠，然后是路径组件
     # 路径组件不能包含非法字符 :*?"<>|
     # FIX: 允许文件名中包含空格（中文文件名常见），但扩展名部分不允许空格
-    windows_pattern = (
-        r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[\w]+'
-    )
+    windows_pattern = r'[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]*[\\/])*[^\\/:*?"<>|\r\n]*\.[\w]+'
     for match in re.finditer(windows_pattern, content):
         path = match.group(0)
         # 验证是否是有效文件路径（有扩展名）
@@ -150,6 +148,18 @@ def extract_file_paths_from_content(content: str) -> List[str]:
         r'[\\/][^\\/:*?"<>|\r\n]*\.[\w]+'
     )
     for match in re.finditer(unc_pattern, content):
+        path = match.group(0)
+        if looks_like_file_path(path):
+            paths.append(path)
+
+    # 匹配 Unix/Linux/macOS 绝对路径 (/tmp/.../file.txt)
+    unix_pattern = r"/(?:[^/\s\r\n]+/)*[^/\s\r\n]+\.[\w]+"
+    for match in re.finditer(unix_pattern, content):
+        start = match.start()
+        if start >= 2 and re.match(r"[A-Za-z]:", content[start - 2 : start]):
+            continue
+        if start >= 3 and content[start - 3 : start] == "://":
+            continue
         path = match.group(0)
         if looks_like_file_path(path):
             paths.append(path)
@@ -224,9 +234,7 @@ def _resolve_attachment_path(source_path: str, converted_path: str) -> Optional[
     if converted_path != source_path:
         stripped_converted = _strip_cjk_spaces(converted_path)
         if stripped_converted != converted_path and os.path.exists(stripped_converted):
-            logger.info(
-                f"空格容错命中(跨平台): [{converted_path}] → [{stripped_converted}]"
-            )
+            logger.info(f"空格容错命中(跨平台): [{converted_path}] → [{stripped_converted}]")
             return stripped_converted
 
     return None
@@ -266,9 +274,7 @@ def process_attachments(
                 all_attachments.append({"source_path": att, "description": ""})
 
     # 添加自动检测的附件（去重）
-    existing_paths = {
-        os.path.normpath(a.get("source_path", "")).lower() for a in all_attachments
-    }
+    existing_paths = {os.path.normpath(a.get("source_path", "")).lower() for a in all_attachments}
     if auto_detected_paths:
         for path in auto_detected_paths:
             normalized = os.path.normpath(path).lower()
@@ -286,6 +292,7 @@ def process_attachments(
         source_url = att.get("source_url", "")
         description = att.get("description", "")
         auto_detected = att.get("auto_detected", False)
+        download_result: dict[str, Any] = {}
 
         if source_url:
             download_result = asyncio.run(
@@ -338,9 +345,7 @@ def process_attachments(
                     "description": description,
                     "error": "源文件不存在",
                     "auto_detected": auto_detected,
-                    "converted_path": converted_path
-                    if converted_path != source_path
-                    else None,
+                    "converted_path": converted_path if converted_path != source_path else None,
                 }
             )
             continue
@@ -381,8 +386,12 @@ def process_attachments(
             metadata["size"] = int(input_size)
         if source_url and download_result.get("content_type") is not None:
             metadata["content_type"] = str(download_result.get("content_type"))
-        if source_url and download_result.get("size") is not None:
-            metadata["size"] = int(download_result.get("size"))
+        download_size = download_result.get("size") if source_url else None
+        if download_size is not None and not isinstance(download_size, bool):
+            if isinstance(download_size, (int, float)):
+                metadata["size"] = int(download_size)
+            elif isinstance(download_size, str):
+                metadata["size"] = int(download_size)
 
         processed_entry = {
             "filename": target_name,

@@ -638,14 +638,14 @@ class TestSettingsRoute:
         response = client.get("/settings")
 
         assert response.status_code == 200
-        assert "LLM 设置" in response.text
+        assert "LLM API" in response.text
         assert "gpt-4o-mini" in response.text
         assert "OpenAI" in response.text
         assert "••••1234" in response.text
 
     @patch("web.routes.settings._check_llm_connectivity")
     @patch("web.routes.settings.save_llm_config")
-    def test_settings_page_saves_config_and_reports_connectivity(
+    def test_settings_page_saves_config_without_connectivity_check(
         self,
         mock_save_llm_config: MagicMock,
         mock_check_llm_connectivity: MagicMock,
@@ -673,7 +673,7 @@ class TestSettingsRoute:
             base_url="https://openrouter.ai/api/v1",
             model="openai/gpt-4o-mini",
         )
-        assert "连接成功" in response.text
+        mock_check_llm_connectivity.assert_not_called()
         assert "配置已保存" in response.text
 
 
@@ -770,71 +770,11 @@ class TestSearchService:
     def test_search_error_handled_gracefully(self, mock_search: MagicMock) -> None:
         from web.services import search as search_module
 
-        search_module._SEARCH_CACHE.clear()
         mock_search.side_effect = Exception("Database error")
         result = asyncio.run(search_module.search_journals_web(query="测试"))
         assert result["success"] is False
         assert result["total_found"] == 0
         assert result["error"]
-
-    @patch("web.services.search.hierarchical_search")
-    def test_search_reuses_cached_result_for_identical_params(
-        self, mock_search: MagicMock
-    ) -> None:
-        from web.services import search as search_module
-
-        search_module._SEARCH_CACHE.clear()
-        mock_search.return_value = {
-            "success": True,
-            "merged_results": [],
-            "total_found": 0,
-            "performance": {"total_time_ms": 10.0},
-        }
-
-        asyncio.run(search_module.search_journals_web(query="测试", topic="work"))
-        asyncio.run(search_module.search_journals_web(query="测试", topic="work"))
-
-        assert mock_search.call_count == 1
-
-    @patch("web.services.search.hierarchical_search")
-    def test_search_cache_key_differs_for_different_params(
-        self, mock_search: MagicMock
-    ) -> None:
-        from web.services import search as search_module
-
-        search_module._SEARCH_CACHE.clear()
-        mock_search.return_value = {
-            "success": True,
-            "merged_results": [],
-            "total_found": 0,
-            "performance": {"total_time_ms": 10.0},
-        }
-
-        asyncio.run(search_module.search_journals_web(query="测试", topic="work"))
-        asyncio.run(search_module.search_journals_web(query="测试", topic="life"))
-
-        assert mock_search.call_count == 2
-
-    @patch("web.services.search.hierarchical_search")
-    @patch("web.services.search.time.time")
-    def test_search_cache_expires_after_ttl(
-        self, mock_time: MagicMock, mock_search: MagicMock
-    ) -> None:
-        from web.services import search as search_module
-
-        search_module._SEARCH_CACHE.clear()
-        mock_search.return_value = {
-            "success": True,
-            "merged_results": [],
-            "total_found": 0,
-            "performance": {"total_time_ms": 10.0},
-        }
-        mock_time.side_effect = [1000.0, 1061.0, 1061.0]
-
-        asyncio.run(search_module.search_journals_web(query="测试", topic="work"))
-        asyncio.run(search_module.search_journals_web(query="测试", topic="work"))
-
-        assert mock_search.call_count == 2
 
     def test_sanitize_snippet_removes_attachments_block(self) -> None:
         from web.services.search import _sanitize_snippet
@@ -894,9 +834,22 @@ class TestSearchService:
 
 
 class TestSearchRoute:
+    def test_search_page_renders_keyword_and_ai_tabs(self) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        client = TestClient(create_app())
+        response = client.get("/search")
+
+        assert response.status_code == 200
+        assert "关键词搜索" in response.text
+        assert "AI 搜索" in response.text
+        assert 'id="tab-ai"' in response.text
+
     @patch("web.routes.search.search_journals_web")
+    @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     def test_search_date_param_prefills_date_filters_and_runs_search(
-        self, mock_search: MagicMock
+        self, mock_get_provider: AsyncMock, mock_search: MagicMock
     ) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
@@ -916,6 +869,8 @@ class TestSearchRoute:
             "time_ms": 12.0,
             "error": None,
         }
+        provider = AsyncMock()
+        mock_get_provider.return_value = provider
 
         client = TestClient(create_app())
         response = client.get("/search?date=2026-03-13")
@@ -931,12 +886,17 @@ class TestSearchRoute:
             mood=None,
             tags=None,
             people=None,
-            provider=None,
+            project=None,
+            location=None,
+            weather=None,
+            semantic=True,
+            provider=provider,
         )
 
     @patch("web.routes.search.search_journals_web")
+    @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     def test_search_mood_param_runs_filter_only_search(
-        self, mock_search: MagicMock
+        self, mock_get_provider: AsyncMock, mock_search: MagicMock
     ) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
@@ -956,6 +916,8 @@ class TestSearchRoute:
             "time_ms": 7.0,
             "error": None,
         }
+        provider = AsyncMock()
+        mock_get_provider.return_value = provider
 
         client = TestClient(create_app())
         response = client.get("/search?mood=%E5%85%B4%E5%A5%8B")
@@ -970,12 +932,17 @@ class TestSearchRoute:
             mood="兴奋",
             tags=None,
             people=None,
-            provider=None,
+            project=None,
+            location=None,
+            weather=None,
+            semantic=True,
+            provider=provider,
         )
 
     @patch("web.routes.search.search_journals_web")
+    @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     def test_search_tag_param_alias_runs_filter_only_search(
-        self, mock_search: MagicMock
+        self, mock_get_provider: AsyncMock, mock_search: MagicMock
     ) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
@@ -995,6 +962,8 @@ class TestSearchRoute:
             "time_ms": 8.0,
             "error": None,
         }
+        provider = AsyncMock()
+        mock_get_provider.return_value = provider
 
         client = TestClient(create_app())
         response = client.get("/search?tag=OpenClaw")
@@ -1009,12 +978,17 @@ class TestSearchRoute:
             mood=None,
             tags="OpenClaw",
             people=None,
-            provider=None,
+            project=None,
+            location=None,
+            weather=None,
+            semantic=True,
+            provider=provider,
         )
 
     @patch("web.routes.search.search_journals_web")
+    @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     def test_search_people_param_runs_filter_only_search(
-        self, mock_search: MagicMock
+        self, mock_get_provider: AsyncMock, mock_search: MagicMock
     ) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
@@ -1034,6 +1008,8 @@ class TestSearchRoute:
             "time_ms": 9.0,
             "error": None,
         }
+        provider = AsyncMock()
+        mock_get_provider.return_value = provider
 
         client = TestClient(create_app())
         response = client.get("/search?people=%E5%9B%A2%E5%9B%A2")
@@ -1048,7 +1024,50 @@ class TestSearchRoute:
             mood=None,
             tags=None,
             people="团团",
-            provider=None,
+            project=None,
+            location=None,
+            weather=None,
+            semantic=True,
+            provider=provider,
+        )
+
+    @patch("web.routes.search.search_journals_web")
+    @patch("web.routes.search.get_provider", new_callable=AsyncMock)
+    def test_search_query_forwards_provider_and_semantic_defaults(
+        self,
+        mock_get_provider: AsyncMock,
+        mock_search: MagicMock,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        provider = AsyncMock()
+        mock_get_provider.return_value = provider
+        mock_search.return_value = {
+            "success": True,
+            "results": [],
+            "total_found": 0,
+            "time_ms": 5.0,
+            "error": None,
+        }
+
+        client = TestClient(create_app())
+        response = client.get("/search?q=关键词")
+
+        assert response.status_code == 200
+        mock_search.assert_called_once_with(
+            query="关键词",
+            topic=None,
+            date_from=None,
+            date_to=None,
+            mood=None,
+            tags=None,
+            people=None,
+            project=None,
+            location=None,
+            weather=None,
+            semantic=True,
+            provider=provider,
         )
 
     @patch("web.routes.search.search_journals_web")
@@ -1247,6 +1266,59 @@ class TestSearchRouterRegistration:
 
 
 class TestSearchPhase4:
+    @patch("web.routes.search._derive_search_queries", new_callable=AsyncMock)
+    @patch("web.routes.search.get_provider", new_callable=AsyncMock)
+    @patch("web.routes.search.search_ai_journals_web", new_callable=AsyncMock)
+    def test_ai_search_delegates_retrieval_to_canonical_ai_search_service(
+        self,
+        mock_ai_search: AsyncMock,
+        mock_get_provider: AsyncMock,
+        mock_derive_queries: AsyncMock,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        provider = AsyncMock()
+        mock_get_provider.return_value = provider
+        mock_derive_queries.return_value = ["睡眠不足", "凌晨", "晚睡"]
+        mock_ai_search.return_value = {
+            "success": True,
+            "results": [
+                {
+                    "title": "睡眠不足早起验收编码成果",
+                    "date": "2026-03-14",
+                    "journal_route_path": "2026/03/life-index_2026-03-14_002.md",
+                    "score": 0.9,
+                }
+            ],
+            "total_found": 1,
+            "time_ms": 12.0,
+            "error": None,
+            "ai_summary": {
+                "state": "ready",
+                "summary": "最近 30 天有多天晚睡。",
+                "key_entries": [],
+                "time_span": "过去30天",
+            },
+        }
+
+        client = TestClient(create_app())
+        response = client.post(
+            "/api/search/ai",
+            data={"query": "过去30天我有哪几天是晚于十点之后睡觉的"},
+        )
+
+        assert response.status_code == 200
+        assert "基于搜索到的 1 篇相关日志" in response.text
+        awaited = mock_ai_search.await_args
+        assert awaited is not None
+        assert awaited.kwargs["user_query"] == "过去30天我有哪几天是晚于十点之后睡觉的"
+        assert awaited.kwargs["derived_queries"] == ["睡眠不足", "凌晨", "晚睡"]
+        assert awaited.kwargs["provider"] is provider
+        assert awaited.kwargs["limit"] == 15
+        assert awaited.kwargs["date_from"]
+        assert awaited.kwargs["date_to"]
+
     @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     @patch("web.routes.search.search_journals_web", new_callable=AsyncMock)
     def test_search_page_renders_htmx_ai_summary_loader_when_available(
@@ -1353,6 +1425,48 @@ class TestSearchPhase4:
         assert "关于关键词，你最近主要在记录高质量工作片段。" in response.text
         assert "<!DOCTYPE" not in response.text
 
+    @patch("web.routes.api.get_provider", new_callable=AsyncMock)
+    @patch("web.routes.api.search_journals_web", new_callable=AsyncMock)
+    def test_search_summarize_api_forwards_filter_contract(
+        self,
+        mock_search: AsyncMock,
+        mock_get_provider: AsyncMock,
+    ) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        provider = AsyncMock()
+        mock_get_provider.return_value = provider
+        mock_search.return_value = {
+            "success": True,
+            "results": [],
+            "total_found": 0,
+            "time_ms": 0.0,
+            "error": None,
+            "ai_summary": {"state": "idle", "summary": None, "key_entries": []},
+        }
+
+        client = TestClient(create_app())
+        response = client.get(
+            "/api/search/summarize?query=关键词&topic=work&date_from=2026-03-01&date_to=2026-03-31&people=团团"
+        )
+
+        assert response.status_code == 200
+        mock_search.assert_awaited_once_with(
+            query="关键词",
+            topic="work",
+            date_from="2026-03-01",
+            date_to="2026-03-31",
+            mood=None,
+            tags=None,
+            people="团团",
+            project=None,
+            location=None,
+            weather=None,
+            semantic=True,
+            provider=provider,
+        )
+
     def test_search_page_contains_htmx_summary_container_and_timeout_markers(
         self,
     ) -> None:
@@ -1374,9 +1488,9 @@ class TestSearchTemplate:
 
         source = (TEMPLATES_DIR / "search.html").read_text(encoding="utf-8")
         assert "sm:text-4xl" in source
-        assert "sm:p-6" in source
+        assert "sm:p-7" in source
         assert "sm:flex-row" in source
-        assert "sm:items-center" in source
+        assert "sm:items-end" in source
         assert "sm:w-48" in source
 
     def test_search_results_template_contains_responsive_result_layout(self) -> None:

@@ -20,22 +20,31 @@ def _hybrid_priority(item: Dict[str, Any]) -> int:
     semantic_score = float(item.get("semantic_score", 0.0))
     tier = int(item.get("tier", 0))
 
-    if fts_score > 0 and semantic_score > 0:
-        return 5
     if fts_score > 0:
-        return 4
+        return 5
     if tier == 2:
-        return 3
+        return 4
     if tier == 1:
-        return 2
+        return 3
     if semantic_score > 0:
-        return 1
+        return 2
     return 0
 
 
-def reciprocal_rank_fusion(
-    ranked_lists: List[List[str]], k: int = 60
-) -> Dict[str, float]:
+def _hybrid_backfill_score(item: Dict[str, Any]) -> float:
+    """Display score for low-recall hybrid backfill entries."""
+    fts_score = float(item.get("fts_score", 0.0))
+    semantic_score = float(item.get("semantic_score", 0.0))
+    final_score = float(item.get("final_score", 0.0))
+
+    if fts_score > 0:
+        return max(final_score, fts_score)
+    if semantic_score > 0:
+        return max(final_score, semantic_score)
+    return final_score
+
+
+def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = 60) -> Dict[str, float]:
     """
     Reciprocal Rank Fusion (RRF)
 
@@ -100,9 +109,7 @@ def merge_and_rank_results(
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "")
-                if isinstance(metadata.get("abstract"), str)
-                else ""
+                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
 
@@ -130,15 +137,11 @@ def merge_and_rank_results(
         }
 
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
-    sorted_results = sorted(
-        scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True
-    )
+    sorted_results = sorted(scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True)
     effective_min_score = min_score
     if query and min_score == 25:
         effective_min_score = 26
-    sorted_results = [
-        item for item in sorted_results if item["score"] >= effective_min_score
-    ]
+    sorted_results = [item for item in sorted_results if item["score"] >= effective_min_score]
     sorted_results = sorted_results[:max_results]
 
     # 提取数据并添加排名信息
@@ -173,15 +176,13 @@ def merge_and_rank_results_hybrid(
         l3_results: L3 内容层结果（FTS）
         semantic_results: 语义搜索结果
         query: 查询词
-        fts_weight: 已弃用（为向后兼容保留）
-        semantic_weight: 已弃用（为向后兼容保留）
+        fts_weight: FTS 排名权重（默认 0.6，影响关键词命中在最终结果中的占比）
+        semantic_weight: 语义排名权重（默认 0.4，影响语义相似度在最终结果中的占比）
     """
-    # 保留参数以兼容旧调用方（RRF 不再使用权重融合）
-    _ = fts_weight, semantic_weight
 
-    scored: Dict[
-        str, Dict[str, Any]
-    ] = {}  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
+    scored: Dict[str, Dict[str, Any]] = (
+        {}
+    )  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
 
     # 先构建 FTS 排名（按 relevance + title_match bonus）
     fts_ranked_paths: List[str] = []
@@ -246,8 +247,16 @@ def merge_and_rank_results_hybrid(
         if path:
             semantic_ranked_paths.append(path)
 
-    # RRF 融合分数（只融合 FTS + 语义两个排序列表）
-    rrf_scores = reciprocal_rank_fusion([fts_ranked_paths, semantic_ranked_paths], k=60)
+    # RRF 融合分数（加权融合：FTS 管道 × fts_weight，语义管道 × semantic_weight）
+    k = 60
+    scores: Dict[str, float] = {}
+    for rank, doc_id in enumerate(fts_ranked_paths, start=1):
+        if doc_id:
+            scores[doc_id] = scores.get(doc_id, 0.0) + fts_weight / (k + rank)
+    for rank, doc_id in enumerate(semantic_ranked_paths, start=1):
+        if doc_id:
+            scores[doc_id] = scores.get(doc_id, 0.0) + semantic_weight / (k + rank)
+    rrf_scores = scores
     for path, score in rrf_scores.items():
         if path in scored:
             scored[path]["final_score"] = score
@@ -264,9 +273,7 @@ def merge_and_rank_results_hybrid(
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "")
-                if isinstance(metadata.get("abstract"), str)
-                else ""
+                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
 
@@ -317,13 +324,39 @@ def merge_and_rank_results_hybrid(
     effective_min_non_rrf_score = min_non_rrf_score
     if query and min_non_rrf_score == 25:
         effective_min_non_rrf_score = 26
-    sorted_results = [
+    thresholded_results = [
         item
         for item in sorted_results
         if (item["has_rrf"] and item["final_score"] >= min_rrf_score)
         or (not item["has_rrf"] and item["final_score"] >= effective_min_non_rrf_score)
     ]
-    sorted_results = sorted_results[:max_results]
+
+    # Low-recall backfill: if thresholding leaves too few real retrieval hits,
+    # preserve a small amount of strong lexical/semantic evidence instead of
+    # returning an empty (or near-empty) hybrid result set.
+    has_retrieval_signal = any(
+        item["fts_score"] > 0 or item["semantic_score"] > 0 for item in sorted_results
+    )
+    target_count = min(3, len(sorted_results), max_results)
+    if has_retrieval_signal and len(thresholded_results) < target_count:
+        seen_paths = {
+            str(item["data"].get("path", ""))
+            for item in thresholded_results
+            if item["data"].get("path")
+        }
+        for item in sorted_results:
+            path = str(item["data"].get("path", ""))
+            if path in seen_paths:
+                continue
+            fallback_item = dict(item)
+            fallback_item["final_score"] = _hybrid_backfill_score(item)
+            thresholded_results.append(fallback_item)
+            if path:
+                seen_paths.add(path)
+            if len(thresholded_results) >= target_count:
+                break
+
+    sorted_results = thresholded_results[:max_results]
 
     # 提取数据并添加排名
     merged = []

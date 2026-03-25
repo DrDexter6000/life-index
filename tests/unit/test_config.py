@@ -18,10 +18,12 @@ from tools.lib.config import (
     get_next_sequence,
     get_safe_path,
     get_search_config,
+    get_search_weights,
     get_weather_config,
     normalize_path,
     save_default_location,
     save_llm_config,
+    save_search_weights,
 )
 
 
@@ -324,6 +326,27 @@ class TestGetSearchConfig:
         result = get_search_config()
         assert result["default_level"] == 2
         assert result["custom_param"] == "test"
+
+    def test_get_search_weights_returns_tuple(self, monkeypatch):
+        monkeypatch.setattr(
+            "tools.lib.config.USER_CONFIG",
+            {"search": {"fts_weight": 0.75, "semantic_weight": 0.25}},
+        )
+
+        assert get_search_weights() == (0.75, 0.25)
+
+    def test_save_search_weights_persists_and_reloads(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "config"
+        config_file = config_dir / "config.yaml"
+        monkeypatch.setattr("tools.lib.config.CONFIG_DIR", config_dir)
+        monkeypatch.setattr("tools.lib.config.CONFIG_FILE", config_file)
+        monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+
+        save_search_weights(0.7, 0.3)
+
+        loaded = _load_yaml_config(config_file)
+        assert loaded["search"]["fts_weight"] == 0.7
+        assert loaded["search"]["semantic_weight"] == 0.3
 
 
 class TestGetLLMConfig:

@@ -131,11 +131,7 @@ def _matches_filters(
     # Query 过滤：当指定 query 时，要求元数据包含该关键词
     if query:
         title = metadata.get("title", "")
-        abstract = (
-            metadata.get("abstract", "")
-            if isinstance(metadata.get("abstract"), str)
-            else ""
-        )
+        abstract = metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
         file_tags = metadata.get("tags", [])
 
         # 检查 title/abstract/tags 是否包含 query

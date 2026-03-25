@@ -105,6 +105,50 @@ def _extract_weather_text(weather_result: dict[str, Any] | None) -> str:
     return str(simple).strip() if simple else ""
 
 
+def _weather_query_date(date_value: Any) -> str:
+    return str(date_value or "").strip()[:10]
+
+
+def _compact_location(value: str) -> str:
+    parts = [part.strip() for part in str(value or "").split(",") if part.strip()]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]}, {parts[-1]}"
+
+
+KNOWN_PROJECT_ALIASES: list[tuple[str, str]] = [
+    ("life index", "Life Index"),
+    ("life-index", "Life Index"),
+    ("lifeindex", "Life Index"),
+    ("web gui", "Life Index"),
+    ("digital-self", "Digital-self"),
+    ("digital self", "Digital-self"),
+    ("skyvision africa", "SkyVision Africa"),
+    ("lobsterai", "LobsterAI"),
+    ("carloha", "Carloha"),
+]
+
+
+def _infer_project(prepared: dict[str, Any], extracted: dict[str, Any]) -> str:
+    explicit = str(prepared.get("project") or extracted.get("project") or "").strip()
+    if explicit:
+        return explicit
+
+    corpus_parts = [
+        str(prepared.get("title") or ""),
+        str(prepared.get("content") or ""),
+        " ".join(_normalize_text_list(prepared.get("tags"))),
+        " ".join(_normalize_text_list(extracted.get("tags"))),
+    ]
+    corpus = "\n".join(corpus_parts).lower()
+    for needle, canonical in KNOWN_PROJECT_ALIASES:
+        if needle in corpus:
+            return canonical
+    return ""
+
+
 async def prepare_journal_data(
     form_data: dict[str, Any], provider: LLMProvider | None
 ) -> dict[str, Any]:
@@ -115,6 +159,12 @@ async def prepare_journal_data(
     prepared = dict(form_data)
     prepared["content"] = content
     field_sources: dict[str, str] = {}
+    llm_status: dict[str, str | None] = {
+        "state": "unavailable" if provider is None else "idle",
+        "message": "未配置 AI 服务，将使用规则补全或手动字段。"
+        if provider is None
+        else None,
+    }
 
     for field in (
         "title",
@@ -140,8 +190,23 @@ async def prepare_journal_data(
     if provider is not None:
         try:
             extracted = await provider.extract_metadata(content)
-        except Exception:
+        except Exception as exc:
             extracted = {}
+            llm_status = {
+                "state": "failed",
+                "message": f"AI 提炼失败：{exc}；已回退到规则补全，请检查后重试。",
+            }
+        else:
+            if extracted:
+                llm_status = {
+                    "state": "ready",
+                    "message": "AI 已成功提炼可用元数据。",
+                }
+            else:
+                llm_status = {
+                    "state": "fallback",
+                    "message": "AI 未返回可用结果，已回退到规则补全或手动字段。",
+                }
 
     for field in ("title", "abstract"):
         if not prepared.get(field) and extracted.get(field):
@@ -150,10 +215,17 @@ async def prepare_journal_data(
 
     for field in ("mood", "tags", "people", "topic"):
         if not _normalize_text_list(prepared.get(field)):
-            normalized = _normalize_text_list(extracted.get(field))
-            if normalized:
+            # Apply extracted values; only override if LLM actually returned something
+            # (even an empty array means "LLM explicitly found nothing" vs missing key = "didn't try")
+            if field in extracted:
+                normalized = _normalize_text_list(extracted.get(field))
                 prepared[field] = normalized
                 field_sources[field] = "ai"
+
+    inferred_project = _infer_project(prepared, extracted)
+    if inferred_project and not str(prepared.get("project", "")).strip():
+        prepared["project"] = inferred_project
+        field_sources["project"] = "ai"
 
     if not prepared.get("title"):
         prepared["title"] = _fallback_title(content)
@@ -181,7 +253,7 @@ async def prepare_journal_data(
             location = resolved_location
             field_sources["location"] = "auto"
 
-    prepared["location"] = location
+    prepared["location"] = _compact_location(location)
 
     if not weather and location:
         geocode_result = geocode_location(location)
@@ -193,7 +265,7 @@ async def prepare_journal_data(
             weather_result = query_weather(
                 float(geocode_result["latitude"]),
                 float(geocode_result["longitude"]),
-                str(prepared.get("date", "")),
+                _weather_query_date(prepared.get("date", "")),
             )
             weather = _extract_weather_text(weather_result)
     if weather:
@@ -222,6 +294,7 @@ async def prepare_journal_data(
         raise ValueError("LLM 不可用时，topic 为必填字段")
 
     prepared["field_sources"] = field_sources
+    prepared["llm_status"] = llm_status
 
     return prepared
 

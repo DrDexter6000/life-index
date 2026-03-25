@@ -129,7 +129,7 @@ async def edit_page(request: Request, journal_path: str) -> HTMLResponse:
             csrf_token=csrf_token,
             journal_route_path=journal_path,
             form_data=_journal_to_form_data(journal),
-            llm_available=provider is not None,
+            llm_available=False,
         ),
     )
     _set_csrf_cookie(response, csrf_token)
@@ -185,6 +185,23 @@ async def submit_edit(
     original = {**journal.get("metadata", {}), "_body": journal.get("raw_body", "")}
     diff = compute_edit_diff(original=original, submitted=form_data)
 
+    if diff.get("location_weather_required"):
+        new_csrf_token = _generate_csrf_token()
+        response = request.app.state.templates.TemplateResponse(
+            request,
+            "edit.html",
+            _build_edit_context(
+                request,
+                csrf_token=new_csrf_token,
+                journal_route_path=journal_path,
+                form_data=form_data,
+                llm_available=False,
+                error="修改地点后，请先查询天气或手动填写天气。",
+            ),
+        )
+        _set_csrf_cookie(response, new_csrf_token)
+        return response
+
     result = await edit_journal_web(
         journal_path=journal_path,
         frontmatter_updates=diff["frontmatter_updates"],
@@ -206,7 +223,7 @@ async def submit_edit(
             csrf_token=new_csrf_token,
             journal_route_path=journal_path,
             form_data=form_data,
-            llm_available=provider is not None,
+            llm_available=False,
             error=str(result.get("error") or "编辑失败"),
         ),
     )

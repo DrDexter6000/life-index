@@ -278,6 +278,28 @@ def get_search_config() -> Dict[str, Any]:
     return _deep_merge(defaults, USER_CONFIG.get("search", {}))
 
 
+def get_search_weights() -> tuple[float, float]:
+    """Return (fts_weight, semantic_weight) from config."""
+    cfg = get_search_config()
+    return (
+        float(cfg.get("fts_weight", 0.6)),
+        float(cfg.get("semantic_weight", 0.4)),
+    )
+
+
+def save_search_weights(fts_weight: float, semantic_weight: float) -> None:
+    """Persist search weights into user config.yaml."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    existing = _load_yaml_config(CONFIG_FILE)
+    search_cfg = existing.get("search", {})
+    search_cfg["fts_weight"] = round(float(fts_weight), 2)
+    search_cfg["semantic_weight"] = round(float(semantic_weight), 2)
+    existing["search"] = search_cfg
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
+    reload_user_config()
+
+
 # ========== Index Prefix Configuration ==========
 def get_index_prefixes() -> Dict[str, str]:
     """

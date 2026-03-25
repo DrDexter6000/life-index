@@ -387,6 +387,7 @@ python -m tools.search_journals [options]
 - `search_journals` 返回结果列表表示 retrieval execution 成功，不等于 Agent 已完成最终用户答案
 - `E0303` 或空结果应解释为“执行成功但没有匹配结果”，不应解释为执行失败
 - 工具 failure 与空结果必须在调用方叙述中严格区分
+- Web / Agent 调用方如需做自然语言总结，应基于**同一次 retrieval 返回的结果集**进行解释；不应在上层路由中再维护第二套并行检索 / merge / ranking 真相
 
 ---
 

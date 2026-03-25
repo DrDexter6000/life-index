@@ -17,7 +17,7 @@
                 id="search-ai-summary"
                 class="rounded-2xl p-5 sm:p-6"
                 style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);"
-                hx-get="/api/search/summarize?query={{ query | urlencode }}"
+                hx-get="/api/search/summarize?query={{ query | urlencode }}{% if topic %}&topic={{ topic | urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from | urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to | urlencode }}{% endif %}{% if mood %}&mood={{ mood | urlencode }}{% endif %}{% if tags %}&tags={{ tags | urlencode }}{% endif %}{% if people %}&people={{ people | urlencode }}{% endif %}{% if project %}&project={{ project | urlencode }}{% endif %}{% if location %}&location={{ location | urlencode }}{% endif %}"
                 hx-trigger="load"
                 hx-swap="innerHTML"
                 hx-indicator="#search-ai-summary-loading"

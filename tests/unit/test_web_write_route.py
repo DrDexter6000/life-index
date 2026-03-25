@@ -309,6 +309,40 @@ class TestWriteRoute:
         assert "保留的正文" in response.text
         assert "保留标题" in response.text
 
+    def test_post_write_provider_failure_surfaces_explicit_llm_message(self) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        with patch(
+            "web.routes.write.get_provider", new_callable=AsyncMock
+        ) as mock_provider:
+            with patch(
+                "web.routes.write.prepare_journal_data", new_callable=AsyncMock
+            ) as mock_prepare:
+                mock_provider.return_value = AsyncMock()
+                mock_prepare.side_effect = ValueError(
+                    "AI 提炼失败：provider failed；已回退到规则补全，请检查后重试。"
+                )
+
+                with TestClient(create_app()) as client:
+                    get_response = client.get("/write")
+                    csrf_token = get_response.cookies.get("csrf_token")
+                    assert csrf_token is not None
+
+                    response = client.post(
+                        "/write",
+                        data={
+                            "csrf_token": csrf_token,
+                            "content": "正文",
+                            "topic": "life",
+                            "date": "2026-03-22",
+                        },
+                    )
+
+        assert response.status_code == 200
+        assert "AI 提炼失败" in response.text
+        assert "规则补全" in response.text
+
     def test_post_write_passes_uploaded_files_and_urls(self) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
