@@ -80,10 +80,12 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:
+        runtime_info = get_runtime_info()
         return {
             "status": "ok",
             "version": app.version,
-            "runtime": get_runtime_info(),
+            "bootstrap_manifest": runtime_info["bootstrap_manifest"],
+            "runtime": runtime_info,
         }
 
     @app.get("/api/runtime")
