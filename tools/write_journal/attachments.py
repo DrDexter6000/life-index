@@ -155,6 +155,11 @@ def extract_file_paths_from_content(content: str) -> List[str]:
     # 匹配 Unix/Linux/macOS 绝对路径 (/tmp/.../file.txt)
     unix_pattern = r"/(?:[^/\s\r\n]+/)*[^/\s\r\n]+\.[\w]+"
     for match in re.finditer(unix_pattern, content):
+        start = match.start()
+        if start >= 2 and re.match(r"[A-Za-z]:", content[start - 2 : start]):
+            continue
+        if start >= 3 and content[start - 3 : start] == "://":
+            continue
         path = match.group(0)
         if looks_like_file_path(path):
             paths.append(path)
