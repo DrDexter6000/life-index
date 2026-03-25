@@ -189,16 +189,17 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING_WEB.md
 
 要求：
-1. 先完整阅读该文档，再开始执行
-2. 先按文档执行本地状态检测，再自动判断 fresh install、upgrade、add-web 或 repair，并完成后续步骤
-3. 所有 Python/CLI 命令都必须使用虚拟环境路径
-4. 如果任一步失败，立即停止并报告精确错误
-5. 最终请使用中文按文档要求向我汇报结果，并告诉我本地 Web GUI 访问地址
-6. 必须告诉我 Web GUI 在任务结束时是否仍然保持运行；如果没有继续运行，必须同时告诉我如何手动启动和停止
+1. 先刷新并阅读最新 authority files，再开始执行：`AGENT_ONBOARDING_WEB.md`、`AGENT_ONBOARDING.md`、`docs/UPGRADE.md`、`README.md`、`bootstrap-manifest.json`
+2. 如果本地已存在 canonical checkout，必须先同步 checkout 并重装到 `.venv`，再做 route 判断；不要因为文件存在或 `health` 正常就跳过同步
+3. route 判断必须发生在 authority refresh + checkout sync 之后，再决定 fresh install、upgrade、add-web 或 repair
+4. 所有 Python/CLI 命令都必须使用虚拟环境路径
+5. 如果任一步失败，立即停止并报告精确错误
+6. 最终请使用中文按文档要求向我汇报结果，并告诉我本地 Web GUI 访问地址
+7. 必须告诉我 Web GUI 在任务结束时是否仍然保持运行；如果没有继续运行，必须同时告诉我如何手动启动和停止
 
 ```
 
-> **说明**：现在这两份 onboarding 文档都会先检查本地状态，再自动判断应走 fresh install、upgrade、补装 Web GUI，还是 repair 路径；普通用户不需要先自己判断。如果你的 Agent 平台已经管理了 canonical checkout，也会优先复用它。
+> **说明**：现在这两份 onboarding 文档都会先刷新 authority files，再同步 canonical checkout，然后才判断应走 fresh install、upgrade、补装 Web GUI，还是 repair 路径；普通用户不需要先自己判断。如果你的 Agent 平台已经管理了 canonical checkout，也会优先复用它，但复用前必须先同步。
 
 ### Web GUI 常用一句话指令
 
@@ -227,6 +228,7 @@ python3 -m venv .venv
 |:---|:---|
 | 激活虚拟环境 | `source .venv/bin/activate` (Windows: `.venv\Scripts\activate`) |
 | 统一 CLI（推荐） | `life-index --help` |
+| 查看版本/authority | `life-index --version` |
 | 健康检查 | `life-index health` |
 | 记录日志 | `life-index write --data '{...}'` |
 | 搜索日志（关键词+语义） | `life-index search --query "关键词"` |
