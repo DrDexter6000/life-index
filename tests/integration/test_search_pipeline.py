@@ -201,29 +201,44 @@ class TestRRFFusion:
                 [], [], fts_results, semantic_results, query="test"
             )
 
-        # doc_b should rank higher (present in both, ranked 1st in semantic, 2nd in FTS)
-        # doc_a ranked 1st in FTS, 2nd in semantic
-        # RRF scores: doc_a = 1/(60+1) + 1/(60+2) = 1/61 + 1/62
-        #             doc_b = 1/(60+2) + 1/(60+1) = 1/62 + 1/61
-        # They should be very close but doc_b has slight edge from semantic being 1st
+        # Weighted RRF defaults to fts=0.6, semantic=0.4, so doc_a should rank higher
+        # because lexical rank-1 outweighs semantic rank-1 by default.
         assert len(merged) == 2
         doc_a_score = next(r["relevance_score"] for r in merged if "doc_a" in r["path"])
         doc_b_score = next(r["relevance_score"] for r in merged if "doc_b" in r["path"])
-        assert doc_b_score >= doc_a_score, (
-            "doc_b should rank >= doc_a due to semantic 1st place"
-        )
+        assert doc_a_score > doc_b_score
 
     def test_rrf_with_empty_semantic_results(self):
-        """RRF should fall back to pure keyword ranking when semantic is empty."""
-        from tools.search_journals.ranking import merge_and_rank_results_hybrid
+        """Core search falls back to pure keyword ranking when semantic is empty."""
+        from tools.search_journals.core import hierarchical_search
 
-        fts_results = [
-            {"path": "/test/doc_a.md", "title": "Doc A", "relevance": 80},
-            {"path": "/test/doc_b.md", "title": "Doc B", "relevance": 60},
-        ]
+        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+            with patch(
+                "tools.search_journals.core.search_l2_metadata",
+                return_value={"results": [], "truncated": False},
+            ):
+                with patch(
+                    "tools.search_journals.core.search_l3_content",
+                    return_value=[
+                        {"path": "/test/doc_a.md", "title": "Doc A", "relevance": 80},
+                        {"path": "/test/doc_b.md", "title": "Doc B", "relevance": 60},
+                    ],
+                ):
+                    with patch(
+                        "tools.search_journals.core.search_semantic",
+                        return_value=([], {}),
+                    ):
+                        with patch(
+                            "tools.search_journals.core.get_semantic_runtime_status"
+                        ) as mock_status:
+                            mock_status.return_value = {
+                                "available": False,
+                                "reason": "",
+                                "note": "",
+                            }
+                            result = hierarchical_search(query="test", level=3)
 
-        merged = merge_and_rank_results_hybrid([], [], fts_results, [], query="test")
-
+        merged = result["merged_results"]
         assert len(merged) == 2
         assert merged[0]["path"] == "/test/doc_a.md"
         assert merged[1]["path"] == "/test/doc_b.md"

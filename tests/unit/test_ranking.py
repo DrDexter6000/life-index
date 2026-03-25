@@ -222,7 +222,7 @@ class TestMergeAndRankResultsHybrid:
         assert results == []
 
     def test_fts_results_use_rrf(self):
-        """Test FTS-only hybrid ranking uses RRF score"""
+        """Test FTS-only hybrid ranking uses weighted RRF score."""
         from tools.search_journals.ranking import merge_and_rank_results_hybrid
 
         l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 80}]
@@ -232,10 +232,10 @@ class TestMergeAndRankResultsHybrid:
         )
 
         assert results[0]["fts_score"] == 80.0
-        assert results[0]["relevance_score"] == pytest.approx(1 / 61, rel=1e-6)
+        assert results[0]["relevance_score"] == pytest.approx(0.6 / 61, rel=1e-6)
 
     def test_semantic_results_added(self):
-        """Test semantic results are added"""
+        """Test semantic results are added with weighted RRF score."""
         from tools.search_journals.ranking import merge_and_rank_results_hybrid
 
         semantic = [{"path": "/test/semantic.md", "similarity": 0.9}]
@@ -254,7 +254,7 @@ class TestMergeAndRankResultsHybrid:
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/semantic.md"
-        assert results[0]["relevance_score"] == pytest.approx(1 / 61, rel=1e-6)
+        assert results[0]["relevance_score"] == pytest.approx(0.4 / 61, rel=1e-6)
 
     def test_semantic_score_exposed_as_percentage(self):
         """Test semantic score is exposed as percentage value"""
@@ -288,8 +288,8 @@ class TestMergeAndRankResultsHybrid:
         assert len(results) == 1
         assert results[0]["fts_score"] == 80.0
         assert results[0]["semantic_score"] == 90.0
-        # Same document appears at rank 1 in both lists => 1/61 + 1/61
-        assert results[0]["relevance_score"] == pytest.approx(2 / 61, rel=1e-6)
+        # Same document appears at rank 1 in both lists => 0.6/61 + 0.4/61
+        assert results[0]["relevance_score"] == pytest.approx(1 / 61, rel=1e-6)
 
     def test_custom_weights_change_hybrid_ordering(self):
         """Test custom weights can change ordering between hybrid candidates."""

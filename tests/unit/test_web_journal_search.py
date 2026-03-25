@@ -638,14 +638,14 @@ class TestSettingsRoute:
         response = client.get("/settings")
 
         assert response.status_code == 200
-        assert "LLM 设置" in response.text
+        assert "LLM API" in response.text
         assert "gpt-4o-mini" in response.text
         assert "OpenAI" in response.text
         assert "••••1234" in response.text
 
     @patch("web.routes.settings._check_llm_connectivity")
     @patch("web.routes.settings.save_llm_config")
-    def test_settings_page_saves_config_and_reports_connectivity(
+    def test_settings_page_saves_config_without_connectivity_check(
         self,
         mock_save_llm_config: MagicMock,
         mock_check_llm_connectivity: MagicMock,
@@ -673,7 +673,7 @@ class TestSettingsRoute:
             base_url="https://openrouter.ai/api/v1",
             model="openai/gpt-4o-mini",
         )
-        assert "连接成功" in response.text
+        mock_check_llm_connectivity.assert_not_called()
         assert "配置已保存" in response.text
 
 
@@ -1488,9 +1488,9 @@ class TestSearchTemplate:
 
         source = (TEMPLATES_DIR / "search.html").read_text(encoding="utf-8")
         assert "sm:text-4xl" in source
-        assert "sm:p-6" in source
+        assert "sm:p-7" in source
         assert "sm:flex-row" in source
-        assert "sm:items-center" in source
+        assert "sm:items-end" in source
         assert "sm:w-48" in source
 
     def test_search_results_template_contains_responsive_result_layout(self) -> None:

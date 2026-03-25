@@ -534,7 +534,7 @@ class TestPrepareJournalData:
                 with patch("web.services.write.query_weather") as mock_weather:
                     mock_reverse_geocode.return_value = {
                         "success": True,
-                        "location": "Lagos, Lagos State, Nigeria",
+                        "location": "Lagos, Nigeria",
                     }
                     mock_geocode.return_value = {
                         "latitude": 6.5244,
@@ -556,8 +556,8 @@ class TestPrepareJournalData:
                     )
 
         mock_reverse_geocode.assert_called_once_with(6.5244, 3.3792)
-        mock_geocode.assert_called_once_with("Lagos, Lagos State, Nigeria")
-        assert result["location"] == "Lagos, Lagos State, Nigeria"
+        mock_geocode.assert_called_once_with("Lagos, Nigeria")
+        assert result["location"] == "Lagos, Nigeria"
         assert result["weather"] == "晴天"
 
     @pytest.mark.asyncio
