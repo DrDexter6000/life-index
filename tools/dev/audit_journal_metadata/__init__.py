@@ -78,7 +78,9 @@ class JournalMetadataAuditor:
                             field=field_name,
                             message=f"Field '{field_name}' is stored as scalar string",
                             suggestion=(
-                                f'Rewrite {field_name} as JSON/YAML list, e.g. {field_name}: ["{value.strip()}"]'
+                                "Rewrite "
+                                f"{field_name} as JSON/YAML list, "
+                                f'e.g. {field_name}: ["{value.strip()}"]'
                             ),
                             auto_fixable=False,
                         )

@@ -54,6 +54,99 @@ def _build_semantic_status(
     return perf, semantic_available, semantic_note
 
 
+def _search_level_1(
+    *,
+    result: Dict[str, Any],
+    topic: Optional[str],
+    project: Optional[str],
+    tags: Optional[List[str]],
+    start_time: float,
+) -> Dict[str, Any]:
+    l1_start = time.time()
+
+    if topic:
+        result["l1_results"].extend(search_l1_index("topic", topic))
+    if project:
+        result["l1_results"].extend(search_l1_index("project", project))
+    if tags:
+        for tag in tags:
+            result["l1_results"].extend(search_l1_index("tag", tag))
+
+    if not topic and not project and not tags:
+        result["l1_results"].extend(scan_all_indices())
+
+    seen_paths: set = set()
+    unique_l1: List[Dict] = []
+    for item in result["l1_results"]:
+        if item["path"] not in seen_paths:
+            seen_paths.add(item["path"])
+            unique_l1.append(item)
+    result["l1_results"] = unique_l1
+
+    result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
+    result["total_found"] = len(result["l1_results"])
+    result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+    return result
+
+
+def _search_level_2(
+    *,
+    result: Dict[str, Any],
+    query: Optional[str],
+    topic: Optional[str],
+    project: Optional[str],
+    tags: Optional[List[str]],
+    mood: Optional[List[str]],
+    people: Optional[List[str]],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    location: Optional[str],
+    weather: Optional[str],
+    start_time: float,
+) -> Dict[str, Any]:
+    l1_start = time.time()
+
+    if topic:
+        result["l1_results"].extend(search_l1_index("topic", topic))
+    if project:
+        result["l1_results"].extend(search_l1_index("project", project))
+    if tags:
+        for tag in tags:
+            result["l1_results"].extend(search_l1_index("tag", tag))
+
+    seen_paths: set = set()
+    unique_l1: List[Dict] = []
+    for item in result["l1_results"]:
+        if item["path"] not in seen_paths:
+            seen_paths.add(item["path"])
+            unique_l1.append(item)
+    result["l1_results"] = unique_l1
+    result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
+
+    l2_start = time.time()
+    l2_response = search_l2_metadata(
+        date_from=date_from,
+        date_to=date_to,
+        location=location,
+        weather=weather,
+        topic=topic,
+        project=project,
+        tags=tags,
+        mood=mood,
+        people=people,
+        query=query,
+    )
+    result["l2_results"] = l2_response["results"]
+    if l2_response.get("truncated"):
+        result["l2_truncated"] = True
+        result["l2_total_available"] = l2_response.get("total_available", 0)
+
+    result["performance"]["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
+    result["total_found"] = len(result["l2_results"])
+    result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+    return result
+
+
 def hierarchical_search(
     query: Optional[str] = None,
     topic: Optional[str] = None,
@@ -129,83 +222,30 @@ def hierarchical_search(
 
     # ── Level 1: 索引层（向后兼容，提前返回） ──
     if level == 1:
-        l1_start = time.time()
-
-        if topic:
-            result["l1_results"].extend(search_l1_index("topic", topic))
-        if project:
-            result["l1_results"].extend(search_l1_index("project", project))
-        if tags:
-            for tag in tags:
-                result["l1_results"].extend(search_l1_index("tag", tag))
-
-        # 当无过滤条件但指定 level=1 时，扫描所有索引文件
-        if not topic and not project and not tags:
-            result["l1_results"].extend(scan_all_indices())
-
-        # 去重
-        seen_paths: set = set()
-        unique_l1: List[Dict] = []
-        for r in result["l1_results"]:
-            if r["path"] not in seen_paths:
-                seen_paths.add(r["path"])
-                unique_l1.append(r)
-        result["l1_results"] = unique_l1
-
-        result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
-        result["total_found"] = len(result["l1_results"])
-        result["performance"]["total_time_ms"] = round(
-            (time.time() - start_time) * 1000, 2
+        return _search_level_1(
+            result=result,
+            topic=topic,
+            project=project,
+            tags=tags,
+            start_time=start_time,
         )
-        return result
 
     # ── Level 2: 索引 + 元数据（向后兼容，提前返回） ──
     if level == 2:
-        l1_start = time.time()
-
-        if topic:
-            result["l1_results"].extend(search_l1_index("topic", topic))
-        if project:
-            result["l1_results"].extend(search_l1_index("project", project))
-        if tags:
-            for tag in tags:
-                result["l1_results"].extend(search_l1_index("tag", tag))
-
-        # 去重
-        seen_paths = set()
-        unique_l1 = []
-        for r in result["l1_results"]:
-            if r["path"] not in seen_paths:
-                seen_paths.add(r["path"])
-                unique_l1.append(r)
-        result["l1_results"] = unique_l1
-
-        result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
-
-        l2_start = time.time()
-        l2_response = search_l2_metadata(
-            date_from=date_from,
-            date_to=date_to,
-            location=location,
-            weather=weather,
+        return _search_level_2(
+            result=result,
+            query=query,
             topic=topic,
             project=project,
             tags=tags,
             mood=mood,
             people=people,
-            query=query,
+            date_from=date_from,
+            date_to=date_to,
+            location=location,
+            weather=weather,
+            start_time=start_time,
         )
-        result["l2_results"] = l2_response["results"]
-        if l2_response.get("truncated"):
-            result["l2_truncated"] = True
-            result["l2_total_available"] = l2_response.get("total_available", 0)
-
-        result["performance"]["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
-        result["total_found"] = len(result["l2_results"])
-        result["performance"]["total_time_ms"] = round(
-            (time.time() - start_time) * 1000, 2
-        )
-        return result
 
     # ── Level 3: 双管道并行搜索 ──
 

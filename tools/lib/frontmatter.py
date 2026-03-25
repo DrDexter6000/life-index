@@ -329,7 +329,7 @@ def format_journal_content(data: Dict[str, Any]) -> str:
         skip_first = False
         if title:
             first_non_empty = next(
-                (l.strip() for l in content_lines if l.strip()), None
+                (line.strip() for line in content_lines if line.strip()), None
             )
             if first_non_empty:
                 # Strip leading '#' and whitespace for comparison

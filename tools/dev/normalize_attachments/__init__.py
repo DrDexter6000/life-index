@@ -94,7 +94,10 @@ class AttachmentNormalizer:
                     category="attachment_body_duplication",
                     file=str(journal_file),
                     message="Body attachment section duplicates frontmatter storage",
-                    suggestion="Keep frontmatter attachments as SSOT and remove generated body section",
+                    suggestion=(
+                        "Keep frontmatter attachments as SSOT "
+                        "and remove generated body section"
+                    ),
                     auto_fixable=True,
                 )
             )
