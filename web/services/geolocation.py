@@ -32,12 +32,11 @@ def _normalize_address(address: dict[str, Any]) -> str:
         or address.get("town")
         or address.get("village")
         or address.get("municipality")
-        or address.get("county")
+        or address.get("state")
         or ""
     ).strip()
-    state = str(address.get("state") or address.get("region") or "").strip()
     country = str(address.get("country") or "").strip()
-    parts = [part for part in [city, state, country] if part]
+    parts = [part for part in [city, country] if part]
     return ", ".join(parts)
 
 

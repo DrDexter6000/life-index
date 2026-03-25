@@ -271,6 +271,14 @@ class TestEditRoute:
         assert 'name="links"' in source
         assert 'name="attachments"' in source
 
+    def test_edit_template_supports_file_and_url_attachment_inputs(self) -> None:
+        from web.config import TEMPLATES_DIR
+
+        source = (TEMPLATES_DIR / "edit.html").read_text(encoding="utf-8")
+        assert 'type="file"' in source
+        assert 'name="attachment_urls"' in source
+        assert 'id="add-url-btn"' in source
+
     def test_post_edit_rejects_csrf_mismatch(self) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app

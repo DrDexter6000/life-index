@@ -985,3 +985,13 @@ class TestWriteRoutePhase3:
     def test_write_confirm_template_exists(self) -> None:
         template_path = Path("web/templates/write_confirm.html")
         assert template_path.exists()
+
+    def test_write_confirm_template_exposes_location_confirmation_and_project(
+        self,
+    ) -> None:
+        source = Path("web/templates/write_confirm.html").read_text(encoding="utf-8")
+
+        assert "location_needs_confirm" in source
+        assert "location_confirm_message" in source
+        assert "去修正地点" in source
+        assert "'project': '项目'" in source
