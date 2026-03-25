@@ -19,15 +19,45 @@ Commands:
 """
 
 import json
+from pathlib import Path
 import sys
 from typing import Any, Dict, List, Tuple
+
+from importlib.metadata import PackageNotFoundError, version as package_version
 
 from tools.lib.config import USER_DATA_DIR, JOURNALS_DIR, get_model_cache_dir
 
 
+BOOTSTRAP_MANIFEST_PATH = (
+    Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
+)
+
+
+def read_bootstrap_manifest() -> Dict[str, Any]:
+    with BOOTSTRAP_MANIFEST_PATH.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+    return payload
+
+
+def get_package_version() -> str:
+    try:
+        return package_version("life-index")
+    except PackageNotFoundError:
+        return "dev"
+
+
+def get_version_info() -> Dict[str, Any]:
+    return {
+        "package_version": get_package_version(),
+        "bootstrap_manifest": read_bootstrap_manifest(),
+    }
+
+
 def _check_python_version() -> Tuple[Dict[str, Any], str, bool]:
     """检查 Python 版本"""
-    py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_version = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
     py_ok = sys.version_info >= (3, 11)
     check = {
         "name": "python_version",
@@ -162,7 +192,9 @@ def _check_embedding_model() -> Dict[str, Any]:
         model_downloaded = len(model_files) > 0
         cache_size_mb = 0.0
         if cache_dir.exists():
-            total_bytes = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file())
+            total_bytes = sum(
+                f.stat().st_size for f in cache_dir.rglob("*") if f.is_file()
+            )
             cache_size_mb = round(total_bytes / (1024 * 1024), 2)
         check = {
             "name": "embedding_model",
@@ -277,6 +309,10 @@ def main() -> None:
         health_check()
         return
 
+    if subcmd == "--version":
+        print(json.dumps(get_version_info(), ensure_ascii=False, indent=2))
+        return
+
     # Map subcommands to __main__ module paths
     # Each submodule has its own __main__.py with a main() function
     cmd_map = {
@@ -298,6 +334,8 @@ def main() -> None:
         # Import and run the submodule's main()
         module = __import__(cmd_map[subcmd], fromlist=["main"])
         module.main()
+    elif subcmd in ("-V", "version"):
+        print(json.dumps(get_version_info(), ensure_ascii=False, indent=2))
     elif subcmd in ("--help", "-h", "help"):
         print_usage()
     else:
@@ -319,6 +357,7 @@ def print_usage() -> None:
     print("  abstract  Generate monthly/yearly summaries")
     print("  backup    Backup journal data")
     print("  health    Check installation health")
+    print("  version   Show package and bootstrap manifest version info")
     print()
     print("Run 'life-index <command> --help' for command-specific options.")
     print()
