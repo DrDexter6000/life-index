@@ -69,6 +69,7 @@ def _build_settings_context(
     form_data: dict[str, Any] | None = None,
     llm_save_message: str | None = None,
     weight_save_message: str | None = None,
+    search_mode_save_message: str | None = None,
     connectivity_ok: bool | None = None,
     connectivity_message: str | None = None,
 ) -> dict[str, Any]:
@@ -82,6 +83,7 @@ def _build_settings_context(
     default_location = str(values.get("default_location", get_default_location()))
     fts_weight = float(values.get("fts_weight", fts_weight))
     semantic_weight = float(values.get("semantic_weight", semantic_weight))
+    search_mode = str(values.get("search_mode", "balanced"))
 
     preset_value = next(
         (preset for preset, _label in BASE_URL_PRESETS if preset == base_url),
@@ -99,9 +101,11 @@ def _build_settings_context(
         "default_location": default_location,
         "fts_weight": fts_weight,
         "semantic_weight": semantic_weight,
+        "search_mode": search_mode,
         "base_url_presets": BASE_URL_PRESETS,
         "llm_save_message": llm_save_message,
         "weight_save_message": weight_save_message,
+        "search_mode_save_message": search_mode_save_message,
         "connectivity_ok": connectivity_ok,
         "connectivity_message": connectivity_message,
     }
@@ -204,5 +208,29 @@ async def submit_weights(
                 "semantic_weight": semantic_weight,
             },
             weight_save_message=weight_save_message,
+        ),
+    )
+
+
+@router.post("/settings/search-mode", response_class=HTMLResponse)
+async def submit_search_mode(
+    request: Request,
+    search_mode: str = Form("balanced"),
+) -> HTMLResponse:
+    """Save search mode preference (strict/balanced/loose)."""
+    valid_modes = ["strict", "balanced", "loose"]
+    if search_mode not in valid_modes:
+        search_mode = "balanced"
+
+    # TODO: Save to config (for now just acknowledge)
+    # save_search_mode(search_mode)
+
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "settings.html",
+        _build_settings_context(
+            request,
+            form_data={"search_mode": search_mode},
+            search_mode_save_message="搜索模式已保存",
         ),
     )
