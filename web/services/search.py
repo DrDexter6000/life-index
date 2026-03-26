@@ -109,6 +109,12 @@ async def search_journals_web(
     limit: int = 20,
     provider: LLMProvider | None = None,
     enable_ai_summary: bool = True,
+    # Web-only recall overrides (CLI uses hardcoded defaults)
+    semantic_top_k: int = 50,
+    semantic_min_similarity: float = 0.15,
+    fts_min_relevance: int = 25,
+    rrf_min_score: float = 0.008,
+    non_rrf_min_score: float = 10,
 ) -> dict[str, Any]:
     """Return a web-friendly search payload for templates and routes."""
 
@@ -169,6 +175,11 @@ async def search_journals_web(
             semantic=semantic,
             fts_weight=fts_weight,
             semantic_weight=semantic_weight,
+            semantic_top_k=semantic_top_k,
+            semantic_min_similarity=semantic_min_similarity,
+            fts_min_relevance=fts_min_relevance,
+            rrf_min_score=rrf_min_score,
+            non_rrf_min_score=non_rrf_min_score,
         )
     except Exception as exc:
         return {
