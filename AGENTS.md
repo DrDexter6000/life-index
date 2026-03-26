@@ -188,6 +188,141 @@ python tools/write_journal.py --data '{...}'
 
 ---
 
+## 开发部署：快速同步到实机
+
+> **适用场景**：开发环境验证后，快速同步到本地 OpenClaw 实机测试环境，**不走 GitHub 云端**。
+> **目标路径**：`Z:\home\dexter\.openclaw\workspace\skills\life-index`
+
+### 触发词
+
+- "部署"
+- "deploy to local"
+- "同步到实机"
+- "推送到测试环境"
+
+### 前置条件
+
+- 开发环境已完成验证（测试通过 / 手工验收完成）
+- 目标部署目录可访问
+
+### 部署流程
+
+#### Step 1: 扫描变更
+
+```bash
+# 在开发目录执行，查看相对于上一次 commit 的变更
+git diff --name-only HEAD
+# 或查看未提交的变更
+git status --short
+```
+
+**输出**：变更文件列表（如 `web/routes/edit.py`, `tools/write_journal/core.py`）
+
+#### Step 2: 扫描部署目录状态
+
+```bash
+# 检查部署目录是否存在 .venv
+ls "Z:\home\dexter\.openclaw\workspace\skills\life-index\.venv"
+# 检查部署目录版本
+cat "Z:\home\dexter\.openclaw\workspace\skills\life-index\pyproject.toml" | grep version
+```
+
+**关键检查项**：
+- `.venv/` 是否存在 → 存在则保留，仅刷新
+- `pyproject.toml` 版本 → 判断是否需要 reinstall
+
+#### Step 3: 执行同步
+
+**同步规则**：
+
+| 操作 | 规则 |
+|------|------|
+| **复制** | 变更的 `.py`, `.md`, `.yaml`, `.html`, `.css`, `.js`, `pyproject.toml` 文件 |
+| **排除** | `.venv/`, `.git/`, `__pycache__/`, `.cache/`, `*.pyc`, `.env`, `secrets.*` |
+| **保护** | 不删除 `.venv/`，不删除 `.git/`，不触碰 `~/Documents/Life-Index/` |
+
+**同步命令示例**（Windows）：
+
+```powershell
+# 复制单个文件
+Copy-Item "D:\Loster AI\Projects\life-index\web\routes\edit.py" -Destination "Z:\home\dexter\.openclaw\workspace\skills\life-index\web\routes\edit.py" -Force
+
+# 复制整个目录
+Copy-Item "D:\Loster AI\Projects\life-index\web\*" -Destination "Z:\home\dexter\.openclaw\workspace\skills\life-index\web\" -Recurse -Force
+
+# 排除特定目录的复制
+Get-ChildItem "D:\Loster AI\Projects\life-index" -Exclude ".venv",".git","__pycache__",".cache" | Copy-Item -Destination "Z:\home\dexter\.openclaw\workspace\skills\life-index" -Recurse -Force
+```
+
+#### Step 4: 刷新虚拟环境（如需）
+
+```bash
+# 在部署目录执行，重新安装依赖
+cd "Z:\home\dexter\.openclaw\workspace\skills\life-index"
+.venv\Scripts\pip install -e ".[web]"
+```
+
+**触发条件**：
+- `pyproject.toml` 有变更
+- 新增了依赖项
+- 首次部署
+
+#### Step 5: 快速验证
+
+```bash
+# 在部署目录执行
+cd "Z:\home\dexter\.openclaw\workspace\skills\life-index"
+.venv\Scripts\life-index --version
+.venv\Scripts\life-index health
+```
+
+**验证通过标准**：
+- `--version` 输出正确版本号
+- `health` 返回 `status: healthy` 或已知 degraded 原因
+
+### 保护规则（强制）
+
+1. **不删除 `.venv/`** — 虚拟环境重建成本高，仅 `pip install` 刷新
+2. **不删除 `.git/`** — 部署目录是受管 checkout，需要 git 元数据
+3. **不触碰用户数据** — `~/Documents/Life-Index/` 是用户数据目录，物理隔离
+4. **不走 GitHub** — 直接从开发目录复制到部署目录，跳过 git push/pull
+5. **增量同步优先** — 仅复制变更文件，避免全量覆盖
+
+### 典型使用场景
+
+**场景 1：修复 Bug 后快速验证**
+
+```
+用户：部署
+Agent：
+  1. 扫描变更：web/routes/edit.py, web/templates/edit.html
+  2. 检查部署目录：.venv 存在，版本匹配
+  3. 复制变更文件到部署目录
+  4. 快速验证：life-index health 通过
+  5. 报告：部署完成，变更已生效
+```
+
+**场景 2：新增依赖后重新安装**
+
+```
+用户：deploy to local
+Agent：
+  1. 扫描变更：pyproject.toml, tools/new_tool/__init__.py
+  2. 检查部署目录：.venv 存在
+  3. 复制变更文件
+  4. 刷新 venv：pip install -e ".[web]"
+  5. 快速验证：life-index --version 显示新版本
+  6. 报告：部署完成，依赖已更新
+```
+
+### 注意事项
+
+- **WSL 路径问题**：`Z:\` 对应 `\\wsl.localhost\Ubuntu\...`，Git 操作可能需要 `safe.directory` 配置
+- **文件锁定**：如果 Web GUI 正在运行，先停止再部署
+- **测试文件**：`tests/` 目录是否同步取决于是否需要在实机运行测试
+
+---
+
 ## 相关文档
 
 | 文档 | 内容 | SSOT 声明 |
