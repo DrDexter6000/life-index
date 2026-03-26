@@ -27,12 +27,23 @@ Do **not** clone, recreate `.venv`, run `health`, or classify fresh-install vs u
 
 ### Step 0.1: Refresh authority documents first
 
-Before trusting any local checkout, refresh these files from the current upstream repository and use the refreshed copies as the authority for the rest of the task:
+Before trusting any local checkout, refresh `bootstrap-manifest.json` from the current upstream repository first.
 
+- `bootstrap-manifest.json`
+
+Then treat that manifest as the version/authority anchor and refresh every file listed in its `required_authority_docs` array before proceeding.
+
+At minimum, the refreshed authority set must include:
+
+- `bootstrap-manifest.json`
 - `AGENT_ONBOARDING.md`
+- `AGENT_ONBOARDING_WEB.md`
+- `SKILL.md`
+- `docs/API.md`
+- `docs/PRODUCT_BOUNDARY.md`
+- `tools/lib/AGENTS.md`
 - `docs/UPGRADE.md`
 - `README.md`
-- `bootstrap-manifest.json`
 
 You must treat local copies of these files as potentially stale.
 
@@ -681,6 +692,6 @@ Report back to the user using this exact structure:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2026-03-19
-**SSOT**: `SKILL.md`, `docs/API.md`, `docs/archive/review-2026-03/ONBOARDING_CHECKLIST.md`
+**Document Version**: 1.1
+**Last Updated**: 2026-03-26
+**Authority Chain**: `bootstrap-manifest.json` → `AGENT_ONBOARDING.md` / `AGENT_ONBOARDING_WEB.md` / `docs/UPGRADE.md` / `README.md` → domain SSOT docs such as `SKILL.md`, `docs/API.md`, `docs/PRODUCT_BOUNDARY.md`, `tools/lib/AGENTS.md`

@@ -25,13 +25,23 @@ Do **not** clone, recreate `.venv`, install web dependencies, run `serve`, or cl
 
 ### Step 0.1: Refresh authority documents first
 
-Before trusting any local checkout, refresh these files from the current upstream repository and use the refreshed copies as the authority for the rest of the task:
+Before trusting any local checkout, refresh `bootstrap-manifest.json` from the current upstream repository first.
 
+- `bootstrap-manifest.json`
+
+Then treat that manifest as the version/authority anchor and refresh every file listed in its `required_authority_docs` array before proceeding.
+
+At minimum, the refreshed authority set must include:
+
+- `bootstrap-manifest.json`
 - `AGENT_ONBOARDING_WEB.md`
 - `AGENT_ONBOARDING.md`
+- `SKILL.md`
+- `docs/API.md`
+- `docs/PRODUCT_BOUNDARY.md`
+- `tools/lib/AGENTS.md`
 - `docs/UPGRADE.md`
 - `README.md`
-- `bootstrap-manifest.json`
 
 Treat local copies of these files as potentially stale.
 

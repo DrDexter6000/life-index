@@ -1,3 +1,5 @@
+> **⚠️ REFERENCE SAMPLE ONLY**: This file is archived brainstorming input, not the current visual/UX authority. The authoritative design direction document is `../DESIGN-DIRECTION.md`.
+
 完整分析报告：Life Index UI/UX方向决策
 一、关键发现：竞品并未覆盖你的定位
 我的研究证实了之前的判断——Day One、Calmly Writer等产品并未实现Life Index的核心承诺。

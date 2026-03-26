@@ -1,3 +1,5 @@
+> **⚠️ REFERENCE SAMPLE ONLY**: This file is archived brainstorming input, not the current visual/UX authority. The authoritative design direction document is `../DESIGN-DIRECTION.md`.
+
 这是一个非常经典的产品设计分歧：“工具的隐形” vs “体验的共鸣”。
 
 GPT 5.4 的视角是典型的古典 SaaS 增长逻辑（也是硅谷过去十年的主流标准）：做日记应用，认知负荷越低越好，UI 必须退居幕后，让内容成为主角。它给出的 Day One、Calmly Writer 确实是这条路上的满分作业。

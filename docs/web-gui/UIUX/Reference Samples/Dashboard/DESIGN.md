@@ -1,3 +1,5 @@
+> **⚠️ DEPRECATED**: This file is a reference sample only. The authoritative design direction document is [`DESIGN-DIRECTION.md`](../../DESIGN-DIRECTION.md). All future design decisions should reference that document.
+
 # Design System Document
 
 ## 1. Overview & Creative North Star: "The Celestial Storybook"
