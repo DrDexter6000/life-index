@@ -398,9 +398,14 @@ body.celestial::before {
 }
 
 /* Ensure all content sits above the ambient glow */
-body.celestial > * {
+body.celestial > *:not(nav) {
   position: relative;
   z-index: 1;
+}
+
+/* Nav can have its own positioning (fixed for floating header) */
+body.celestial > nav {
+  z-index: 50;
 }
 
 /* Celestial input styles */
