@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import importlib
 import secrets
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from web.services.date_adapter import resolve_standard_date_value, to_gui_datetime_value
 from web.services.edit import compute_edit_diff, edit_journal_web
-from web.services.llm_provider import get_provider
+from web.services.llm_provider import get_provider  # noqa: F401 - kept for test mocks
+from web.services.write import cleanup_staged_files, download_attachment_from_url
 
 router = APIRouter()
 get_journal = importlib.import_module("web.services.journal").get_journal
@@ -31,9 +32,7 @@ def _generate_csrf_token() -> str:
     return secrets.token_urlsafe(24)
 
 
-def _set_csrf_cookie(
-    response: HTMLResponse | RedirectResponse, csrf_token: str
-) -> None:
+def _set_csrf_cookie(response: HTMLResponse | RedirectResponse, csrf_token: str) -> None:
     response.set_cookie("csrf_token", csrf_token, samesite="lax")
 
 
@@ -57,6 +56,45 @@ def _stringify_multiline_field(value: Any) -> str:
                     lines.append(text)
         return "\n".join(lines)
     return "" if value is None else str(value)
+
+
+def _normalize_uploads(uploads: Any) -> list[UploadFile]:
+    """Normalize upload input to a list of UploadFile objects."""
+    if uploads is None:
+        return []
+    if hasattr(uploads, "filename") and not isinstance(uploads, str):
+        upload = cast(UploadFile, uploads)
+        filename = getattr(upload, "filename", None)
+        return [upload] if filename else []
+    if isinstance(uploads, str):
+        return []
+
+    normalized: list[UploadFile] = []
+    for upload in uploads:
+        if hasattr(upload, "filename") and not isinstance(upload, str):
+            filename = getattr(upload, "filename", None)
+            if filename:
+                normalized.append(cast(UploadFile, upload))
+    return normalized
+
+
+def _stage_uploaded_files(uploads: list[UploadFile]) -> list[dict[str, str]]:
+    """Stage uploaded files to temp directory for processing."""
+    import tempfile
+    from pathlib import Path
+
+    staged: list[dict[str, str]] = []
+    for upload in uploads:
+        filename = upload.filename or "attachment"
+        suffix = Path(filename).suffix
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+            prefix="life-index-edit-upload-",
+        ) as temp_file:
+            temp_file.write(upload.file.read())
+            staged.append({"source_path": temp_file.name, "description": ""})
+    return staged
 
 
 def _build_edit_context(
@@ -88,6 +126,7 @@ def _build_edit_context(
         "abstract": _stringify_field(form_data.get("abstract")),
         "links": _stringify_multiline_field(form_data.get("links", [])),
         "attachments": _stringify_multiline_field(form_data.get("attachments", [])),
+        "existing_attachments": _stringify_multiline_field(form_data.get("attachments", [])),
         "content": _stringify_field(form_data.get("content")),
     }
 
@@ -114,7 +153,6 @@ def _journal_to_form_data(journal: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/journal/{journal_path:path}/edit", response_class=HTMLResponse)
 async def edit_page(request: Request, journal_path: str) -> HTMLResponse:
-    provider = await get_provider()
     try:
         journal = get_journal(journal_path)
     except ValueError:
@@ -153,18 +191,40 @@ async def submit_edit(
     project: str = Form(""),
     abstract: str = Form(""),
     links: str = Form(""),
-    attachments: str = Form(""),
+    existing_attachments: str = Form(""),
     content: str = Form(""),
+    attachment_urls: list[str] | None = Form(None),
+    attachments: list[UploadFile | str] | UploadFile | str | None = File(None),
 ) -> Response:
     cookie_token = request.cookies.get("csrf_token")
     if not cookie_token or cookie_token != csrf_token:
         raise HTTPException(status_code=403, detail="CSRF 验证失败")
 
-    provider = await get_provider()
     try:
         journal = get_journal(journal_path)
     except ValueError:
         raise HTTPException(status_code=404, detail="日志未找到")
+
+    # Process uploaded files
+    staged_attachments = _stage_uploaded_files(_normalize_uploads(attachments))
+
+    # Process URL attachments
+    normalized_urls = [item.strip() for item in (attachment_urls or []) if item and item.strip()]
+    downloaded_attachments: list[dict[str, str]] = []
+    for url in normalized_urls:
+        try:
+            downloaded_attachments.append(download_attachment_from_url(url, date_str=date or None))
+        except Exception:
+            pass  # Skip failed URL downloads on edit
+
+    # Merge with existing attachments (from textarea)
+    all_attachments: list[dict[str, str] | str] = []
+    if existing_attachments.strip():
+        from web.services.edit import _normalize_attachment_textarea
+
+        all_attachments.extend(_normalize_attachment_textarea(existing_attachments))
+    all_attachments.extend(staged_attachments)
+    all_attachments.extend(downloaded_attachments)
 
     form_data = {
         "title": title,
@@ -179,13 +239,14 @@ async def submit_edit(
         "project": project,
         "abstract": abstract,
         "links": links,
-        "attachments": attachments,
+        "attachments": all_attachments,
         "content": content,
     }
     original = {**journal.get("metadata", {}), "_body": journal.get("raw_body", "")}
     diff = compute_edit_diff(original=original, submitted=form_data)
 
     if diff.get("location_weather_required"):
+        cleanup_staged_files(staged_attachments)
         new_csrf_token = _generate_csrf_token()
         response = request.app.state.templates.TemplateResponse(
             request,
@@ -208,12 +269,14 @@ async def submit_edit(
         replace_content=diff["replace_content"],
     )
     if result.get("success"):
+        cleanup_staged_files(staged_attachments)
         redirect_url = f"/journal/{journal_path}?saved=1"
         readonly_warning = _readonly_simulation_warning_message()
         if readonly_warning:
             redirect_url = f"{redirect_url}&warning={quote(readonly_warning)}"
         return RedirectResponse(url=redirect_url, status_code=303)
 
+    cleanup_staged_files(staged_attachments)
     new_csrf_token = _generate_csrf_token()
     response = request.app.state.templates.TemplateResponse(
         request,
