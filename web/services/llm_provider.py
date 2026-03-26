@@ -146,6 +146,7 @@ class APIKeyProvider(LLMProvider):
                 {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
                 {"role": "user", "content": content},
             ],
+            "temperature": 0.5,
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -218,6 +219,7 @@ class APIKeyProvider(LLMProvider):
         if not await self.is_available() or not query or not results:
             return {}
 
+        # Include ALL results for comprehensive summarization
         compact_results = [
             {
                 "title": item.get("title", ""),
@@ -229,7 +231,7 @@ class APIKeyProvider(LLMProvider):
                 "tags": item.get("tags", []),
                 "mood": item.get("mood", []),
             }
-            for item in results[:8]
+            for item in results
         ]
         prompt = (
             "请基于以下 Life Index 搜索结果，输出 JSON，格式为 "
@@ -247,6 +249,8 @@ class APIKeyProvider(LLMProvider):
                 },
                 {"role": "user", "content": prompt},
             ],
+            "temperature": 1.2,
+            "max_tokens": 50000,
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
