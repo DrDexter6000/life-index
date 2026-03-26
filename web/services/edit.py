@@ -24,7 +24,41 @@ def _normalize_multiline_text(value: Any) -> list[str]:
 
 
 def _normalize_attachment_textarea(value: Any) -> list[dict[str, Any] | str]:
-    normalized: list[dict[str, Any] | str] = []
+    """Normalize attachment input to a list of dicts or strings.
+
+    Handles:
+    - Already normalized lists (list of dicts with source_path)
+    - JSON strings from textarea
+    - Plain string paths (one per line)
+    """
+    if value is None:
+        return []
+
+    # If already a list, process each item
+    if isinstance(value, list):
+        normalized: list[dict[str, Any] | str] = []
+        for item in value:
+            if isinstance(item, dict):
+                # Already a dict, keep as-is
+                normalized.append(item)
+            elif isinstance(item, str):
+                # String might be JSON or plain path
+                item = item.strip()
+                if not item:
+                    continue
+                if item.startswith("{"):
+                    try:
+                        parsed = json.loads(item)
+                        if isinstance(parsed, dict):
+                            normalized.append(parsed)
+                            continue
+                    except json.JSONDecodeError:
+                        pass
+                normalized.append(item)
+        return normalized
+
+    # String input (from textarea)
+    normalized = []
     for line in _normalize_multiline_text(value):
         if line.startswith("{"):
             try:
@@ -51,9 +85,7 @@ def compute_edit_diff(
     for field in scalar_fields:
         original_value = original.get(field)
         submitted_value = str(submitted.get(field, "")).strip()
-        normalized_original = (
-            "" if original_value is None else str(original_value).strip()
-        )
+        normalized_original = "" if original_value is None else str(original_value).strip()
         if (
             field == "weather"
             and submitted_value == ""
@@ -78,9 +110,7 @@ def compute_edit_diff(
 
     if "attachments" in submitted:
         original_attachments = original.get("attachments", []) or []
-        submitted_attachments = _normalize_attachment_textarea(
-            submitted.get("attachments")
-        )
+        submitted_attachments = _normalize_attachment_textarea(submitted.get("attachments"))
         if submitted_attachments != original_attachments:
             frontmatter_updates["attachments"] = submitted_attachments
 
