@@ -140,3 +140,16 @@ async def search_summarize_api(
             "ai_summary": search_result.get("ai_summary", {}),
         },
     )
+
+
+@router.get("/llm-status")
+async def llm_status_api() -> JSONResponse:
+    """Check if LLM provider is available for metadata extraction."""
+    provider = await get_provider()
+    available = provider is not None
+    return JSONResponse(
+        {
+            "success": True,
+            "available": available,
+        }
+    )
