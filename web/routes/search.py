@@ -222,6 +222,7 @@ async def search_page(request: Request) -> HTMLResponse:
     search_result: dict[str, Any] | None = None
     provider = await get_provider()
     if has_active_filters and tab != "ai":
+        # Keyword search: fast results without AI summary
         search_result = await search_journals_web(
             query=query or None,
             topic=topic or None,
@@ -235,6 +236,7 @@ async def search_page(request: Request) -> HTMLResponse:
             weather=None,
             semantic=True,
             provider=provider,
+            enable_ai_summary=False,
         )
 
     if is_htmx:

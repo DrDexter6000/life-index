@@ -108,6 +108,7 @@ async def search_journals_web(
     semantic: bool = True,
     limit: int = 20,
     provider: LLMProvider | None = None,
+    enable_ai_summary: bool = True,
 ) -> dict[str, Any]:
     """Return a web-friendly search payload for templates and routes."""
 
@@ -207,7 +208,16 @@ async def search_journals_web(
         "time_ms": float(raw_result.get("performance", {}).get("total_time_ms", 0.0)),
     }
 
-    if provider is None:
+    if not enable_ai_summary:
+        # AI summary disabled for this search (keyword search mode)
+        result["ai_summary"] = {
+            "state": "disabled",
+            "summary": None,
+            "key_entries": [],
+            "time_span": None,
+            "message": None,
+        }
+    elif provider is None:
         result["ai_summary"] = {
             "state": "unavailable",
             "summary": None,
