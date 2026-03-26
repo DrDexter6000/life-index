@@ -13,6 +13,7 @@ Public API:
 """
 
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
@@ -26,6 +27,7 @@ from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.logger import get_logger
 from ..write_journal.index_updater import update_vector_index
+from ..write_journal.attachments import process_attachments
 
 logger = get_logger(__name__)
 
@@ -259,6 +261,90 @@ def edit_journal(
         metadata = parse_journal_file(journal_path)
         old_frontmatter = {k: v for k, v in metadata.items() if not k.startswith("_")}
         old_body = metadata.get("_body", "")
+
+        # ===== 处理附件更新 =====
+        # 如果 frontmatter_updates 包含附件，需要检查是否有需要处理的新附件
+        # 已有附件（含 filename/rel_path 或相对路径）直接保留
+        # 新附件（含 source_path 且是绝对路径）需要处理
+        if "attachments" in frontmatter_updates:
+            raw_attachments = frontmatter_updates["attachments"]
+            if raw_attachments:
+                # 分离已有附件和新附件
+                existing_attachments = []
+                new_attachments = []
+
+                for att in (
+                    raw_attachments if isinstance(raw_attachments, list) else [raw_attachments]
+                ):
+                    if isinstance(att, str):
+                        # 字符串：检查是否是相对路径
+                        # 相对路径（如 ../../../attachments/...）视为已有附件引用
+                        # 绝对路径（如 /tmp/... 或 C:\...）视为新上传的文件
+                        if att.startswith("../") or att.startswith("./"):
+                            existing_attachments.append(att)
+                        else:
+                            # 绝对路径，需要处理
+                            new_attachments.append({"source_path": att, "description": ""})
+                    elif isinstance(att, dict):
+                        # 检查是否已经是处理过的格式
+                        if "filename" in att and "rel_path" in att:
+                            # 已经是完整格式，直接保留
+                            existing_attachments.append(att)
+                        elif "source_path" in att:
+                            # 检查 source_path 是否是绝对路径
+                            source = att["source_path"]
+                            is_absolute = os.path.isabs(source) or source.startswith("/tmp/")
+                            if is_absolute:
+                                # 新上传的附件，需要处理
+                                new_attachments.append(att)
+                            else:
+                                # 相对路径，视为已有附件
+                                existing_attachments.append(att)
+                        else:
+                            # 其他格式，直接保留
+                            existing_attachments.append(att)
+                    else:
+                        existing_attachments.append(att)
+
+                # 如果有新附件需要处理
+                if new_attachments:
+                    # 获取日期用于确定附件存储路径
+                    date_str = None
+                    if "date" in frontmatter_updates:
+                        date_str = frontmatter_updates["date"]
+                    elif old_frontmatter.get("date"):
+                        date_str = old_frontmatter["date"]
+
+                    # 解析日期字符串
+                    if date_str:
+                        if isinstance(date_str, str):
+                            date_str = date_str[:10]
+                        else:
+                            date_str = str(date_str)[:10]
+                    else:
+                        date_str = datetime.now().strftime("%Y-%m-%d")
+
+                    logger.info(f"处理编辑中的新附件，日期: {date_str}")
+
+                    # 调用 CLI 标准附件处理流程
+                    processed_new = process_attachments(
+                        attachments=new_attachments,
+                        date_str=date_str,
+                        dry_run=dry_run,
+                    )
+
+                    # 合并已有附件和处理后的新附件
+                    all_attachments = existing_attachments + processed_new
+                    frontmatter_updates["attachments"] = all_attachments
+                    logger.info(f"附件处理完成: {len(processed_new)} 个新附件")
+
+                    result["attachments_processed"] = len(processed_new)
+                else:
+                    # 只有已有附件，直接使用
+                    frontmatter_updates["attachments"] = existing_attachments
+            else:
+                # 空附件列表，表示删除所有附件
+                frontmatter_updates["attachments"] = []
 
         # 应用 frontmatter 更新
         new_frontmatter = dict(old_frontmatter)
