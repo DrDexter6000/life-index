@@ -737,11 +737,15 @@ life-index version
     "target_ref": "main",
     "release_channel": "stable",
     "required_authority_docs": [
+      "bootstrap-manifest.json",
       "AGENT_ONBOARDING.md",
       "AGENT_ONBOARDING_WEB.md",
+      "SKILL.md",
+      "docs/API.md",
+      "docs/PRODUCT_BOUNDARY.md",
+      "tools/lib/AGENTS.md",
       "docs/UPGRADE.md",
-      "README.md",
-      "bootstrap-manifest.json"
+      "README.md"
     ]
   }
 }

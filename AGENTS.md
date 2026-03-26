@@ -192,6 +192,7 @@ python tools/write_journal.py --data '{...}'
 
 | 文档 | 内容 | SSOT 声明 |
 |------|------|-----------|
+| `bootstrap-manifest.json` | Bootstrap authority / freshness manifest | **Authority anchor**: onboarding 必须先刷新并按其中 `required_authority_docs` 获取权威文档 |
 | `SKILL.md` | Agent 技能定义、触发词、工具接口、工作流 | Agent 调用入口 |
 | `docs/ARCHITECTURE.md` | 架构设计、核心原则、关键决策 | ADR 决策记录 |
 | `docs/PRODUCT_BOUNDARY.md` | 产品边界、三层模型、执行优先级、默认拒绝方向 | 产品边界决策备忘录 |

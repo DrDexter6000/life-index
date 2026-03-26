@@ -17,6 +17,7 @@ triggers:
 
 # Life Index Agent Skill
 
+> **Authority Chain**: `bootstrap-manifest.json` 是 freshness / authority anchor。涉及安装、升级、repair、环境判断时，必须先刷新 `bootstrap-manifest.json`，再按其 `required_authority_docs` 刷新对应文档，然后才允许 sync checkout 或 route 判断。
 > **工具参数与错误码**: 详见 [API.md](docs/API.md)
 
 ---
@@ -391,6 +392,10 @@ success: true, index_status: degraded
 
 | 文档 | 用途 |
 |------|------|
+| [bootstrap-manifest.json](bootstrap-manifest.json) | authority / freshness 锚点；先刷新它，再按 `required_authority_docs` 获取当前权威文档 |
+| [AGENT_ONBOARDING.md](AGENT_ONBOARDING.md) | 基础安装、初始化、repair / route 判断入口 |
+| [AGENT_ONBOARDING_WEB.md](AGENT_ONBOARDING_WEB.md) | Web GUI 安装、add-web、Web 验证入口 |
+| [UPGRADE.md](docs/UPGRADE.md) | 升级 / 修复路径的权威操作说明 |
 | [API.md](docs/API.md) | 工具 API 接口、参数详情、错误码与恢复策略 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、核心原则、关键决策 |
 | [PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md) | 产品边界、三层模型、执行优先级与默认拒绝方向 |
