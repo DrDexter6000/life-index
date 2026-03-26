@@ -171,8 +171,8 @@ def merge_and_rank_results_hybrid(
     query: Optional[str] = None,
     fts_weight: float = 0.6,
     semantic_weight: float = 0.4,
-    min_rrf_score: float = 0.016,
-    min_non_rrf_score: float = 15,
+    min_rrf_score: float = 0.008,
+    min_non_rrf_score: float = 10,
     max_results: int = 20,
 ) -> List[Dict]:
     """

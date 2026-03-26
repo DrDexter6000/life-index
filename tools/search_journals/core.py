@@ -345,7 +345,7 @@ def hierarchical_search(
                         # When FTS recall is suspiciously low, supplement with full-corpus
                         # content scan so body-only matches are not missed due to stale or
                         # incomplete index coverage.
-                        if query and len(l3_results) < 2:
+                        if query and len(l3_results) < 5:
                             fallback_l3_results = search_l3_content(query, None)
                             seen_paths = {
                                 str(
