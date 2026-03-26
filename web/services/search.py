@@ -8,7 +8,7 @@ from typing import Any
 
 from tools.search_journals.core import hierarchical_search
 
-from tools.lib.config import get_search_weights
+from tools.lib.config import get_search_mode, get_search_weights
 from web.services.llm_provider import LLMProvider
 
 
@@ -156,8 +156,35 @@ async def search_journals_web(
     if not _has_filters(normalized_params):
         return base_result
 
-    # 获取搜索权重
+    # 获取搜索权重和模式
     fts_weight, semantic_weight = get_search_weights()
+    search_mode = get_search_mode()
+
+    # 根据搜索模式调整参数
+    mode_params = {
+        "strict": {
+            "semantic_top_k": 20,
+            "semantic_min_similarity": 0.25,
+            "fts_min_relevance": 35,
+            "rrf_min_score": 0.016,
+            "non_rrf_min_score": 20,
+        },
+        "balanced": {
+            "semantic_top_k": 50,
+            "semantic_min_similarity": 0.15,
+            "fts_min_relevance": 25,
+            "rrf_min_score": 0.008,
+            "non_rrf_min_score": 10,
+        },
+        "loose": {
+            "semantic_top_k": 100,
+            "semantic_min_similarity": 0.10,
+            "fts_min_relevance": 15,
+            "rrf_min_score": 0.004,
+            "non_rrf_min_score": 5,
+        },
+    }
+    params = mode_params.get(search_mode, mode_params["balanced"])
 
     try:
         raw_result = hierarchical_search(
@@ -175,11 +202,11 @@ async def search_journals_web(
             semantic=semantic,
             fts_weight=fts_weight,
             semantic_weight=semantic_weight,
-            semantic_top_k=semantic_top_k,
-            semantic_min_similarity=semantic_min_similarity,
-            fts_min_relevance=fts_min_relevance,
-            rrf_min_score=rrf_min_score,
-            non_rrf_min_score=non_rrf_min_score,
+            semantic_top_k=params["semantic_top_k"],
+            semantic_min_similarity=params["semantic_min_similarity"],
+            fts_min_relevance=params["fts_min_relevance"],
+            rrf_min_score=params["rrf_min_score"],
+            non_rrf_min_score=params["non_rrf_min_score"],
         )
     except Exception as exc:
         return {
