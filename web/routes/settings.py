@@ -11,9 +11,11 @@ from fastapi.responses import HTMLResponse
 from tools.lib.config import (
     get_default_location,
     get_llm_config,
+    get_search_mode,
     get_search_weights,
     save_default_location,
     save_llm_config,
+    save_search_mode,
     save_search_weights,
 )
 
@@ -83,7 +85,7 @@ def _build_settings_context(
     default_location = str(values.get("default_location", get_default_location()))
     fts_weight = float(values.get("fts_weight", fts_weight))
     semantic_weight = float(values.get("semantic_weight", semantic_weight))
-    search_mode = str(values.get("search_mode", "balanced"))
+    search_mode = str(values.get("search_mode", get_search_mode()))
 
     preset_value = next(
         (preset for preset, _label in BASE_URL_PRESETS if preset == base_url),
@@ -222,8 +224,7 @@ async def submit_search_mode(
     if search_mode not in valid_modes:
         search_mode = "balanced"
 
-    # TODO: Save to config (for now just acknowledge)
-    # save_search_mode(search_mode)
+    save_search_mode(search_mode)
 
     return request.app.state.templates.TemplateResponse(
         request,

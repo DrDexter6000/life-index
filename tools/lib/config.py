@@ -300,6 +300,27 @@ def save_search_weights(fts_weight: float, semantic_weight: float) -> None:
     reload_user_config()
 
 
+def get_search_mode() -> str:
+    """Return search mode from config (strict/balanced/loose)."""
+    cfg = get_search_config()
+    return str(cfg.get("mode", "balanced"))
+
+
+def save_search_mode(mode: str) -> None:
+    """Persist search mode into user config.yaml."""
+    valid_modes = ["strict", "balanced", "loose"]
+    if mode not in valid_modes:
+        mode = "balanced"
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    existing = _load_yaml_config(CONFIG_FILE)
+    search_cfg = existing.get("search", {})
+    search_cfg["mode"] = mode
+    existing["search"] = search_cfg
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
+    reload_user_config()
+
+
 # ========== Index Prefix Configuration ==========
 def get_index_prefixes() -> Dict[str, str]:
     """
