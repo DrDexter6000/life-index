@@ -22,12 +22,36 @@ from web.services.llm_provider import LLMProvider
 
 
 def _normalize_text_list(value: Any) -> list[str]:
+    """Normalize a value to a list of strings.
+
+    Handles:
+    - None → []
+    - Already a list → strip each item
+    - Comma-separated string → split and strip each item
+    - Single string → wrap in list
+
+    This ensures "tag1, tag2" becomes ["tag1", "tag2"] not ["tag1, tag2"].
+    """
     if value is None:
         return []
     if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
+        # Already a list - but items might be comma-separated strings
+        result: list[str] = []
+        for item in value:
+            item_str = str(item).strip()
+            if not item_str:
+                continue
+            # If the item contains commas, split it
+            if "," in item_str:
+                result.extend(
+                    [part.strip() for part in item_str.split(",") if part.strip()]
+                )
+            else:
+                result.append(item_str)
+        return result
     if isinstance(value, str) and value.strip():
-        return [value.strip()]
+        # Split on commas for form input like "tag1, tag2, tag3"
+        return [item.strip() for item in value.split(",") if item.strip()]
     return []
 
 
@@ -215,8 +239,8 @@ async def prepare_journal_data(
 
     for field in ("mood", "tags", "people", "topic"):
         if not _normalize_text_list(prepared.get(field)):
-            # Apply extracted values; only override if LLM actually returned something
-            # (even an empty array means "LLM explicitly found nothing" vs missing key = "didn't try")
+            # Apply extracted values; only override if LLM returned something
+            # (empty array = "LLM found nothing" vs missing key = "didn't try")
             if field in extracted:
                 normalized = _normalize_text_list(extracted.get(field))
                 prepared[field] = normalized
