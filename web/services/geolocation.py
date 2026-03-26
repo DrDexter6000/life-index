@@ -15,7 +15,8 @@ USER_AGENT = "life-index-web-gui/1.0"
 
 def parse_coordinate_location(value: str) -> tuple[float, float] | None:
     """Parse a `lat, lon` text value emitted by browser geolocation."""
-    parts = [part.strip() for part in value.split(",")]
+    normalized = value.replace("，", ",")
+    parts = [part.strip() for part in normalized.split(",")]
     if len(parts) != 2:
         return None
     try:

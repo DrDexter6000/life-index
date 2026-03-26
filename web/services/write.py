@@ -41,17 +41,19 @@ def _normalize_text_list(value: Any) -> list[str]:
             item_str = str(item).strip()
             if not item_str:
                 continue
-            # If the item contains commas, split it
-            if "," in item_str:
+            # Normalize full-width commas to half-width, then split
+            normalized = item_str.replace("，", ",")
+            if "," in normalized:
                 result.extend(
-                    [part.strip() for part in item_str.split(",") if part.strip()]
+                    [part.strip() for part in normalized.split(",") if part.strip()]
                 )
             else:
                 result.append(item_str)
         return result
     if isinstance(value, str) and value.strip():
-        # Split on commas for form input like "tag1, tag2, tag3"
-        return [item.strip() for item in value.split(",") if item.strip()]
+        # Normalize full-width commas to half-width, then split
+        normalized = value.replace("，", ",")
+        return [item.strip() for item in normalized.split(",") if item.strip()]
     return []
 
 

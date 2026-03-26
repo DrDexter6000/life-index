@@ -86,10 +86,22 @@ Examples:
     args = parser.parse_args()
     ensure_dirs()
 
-    # 解析列表参数
-    tags = [t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else None
-    mood = [m.strip() for m in args.mood.split(",") if m.strip()] if args.mood else None
-    people = [p.strip() for p in args.people.split(",") if p.strip()] if args.people else None
+    # 解析列表参数（支持全角逗号）
+    tags = (
+        [t.strip() for t in args.tags.replace("，", ",").split(",") if t.strip()]
+        if args.tags
+        else None
+    )
+    mood = (
+        [m.strip() for m in args.mood.replace("，", ",").split(",") if m.strip()]
+        if args.mood
+        else None
+    )
+    people = (
+        [p.strip() for p in args.people.replace("，", ",").split(",") if p.strip()]
+        if args.people
+        else None
+    )
 
     # 执行搜索
     result = hierarchical_search(

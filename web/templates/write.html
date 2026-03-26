@@ -91,19 +91,19 @@
                 <!-- Mood -->
                 <div>
                     <label class="block mb-1.5 text-sm font-medium" style="color: var(--color-on-surface);">心情</label>
-                    <input id="mood" name="mood" type="text" value="{{ mood }}" placeholder="{% if llm_available %}留空则由 AI 自动生成{% else %}请手动填写（启用 AI 可自动生成）{% endif %}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="mood" name="mood" type="text" value="{{ mood }}" placeholder="如：专注, 充实" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
 
                 <!-- Tags -->
                 <div>
                     <label class="block mb-1.5 text-sm font-medium" style="color: var(--color-on-surface);">标签</label>
-                    <input id="tags" name="tags" type="text" value="{{ tags }}" placeholder="{% if llm_available %}留空则由 AI 自动生成{% else %}请手动填写（启用 AI 可自动生成）{% endif %}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="tags" name="tags" type="text" value="{{ tags }}" placeholder="如：亲子, 回忆" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
 
                 <!-- People -->
                 <div>
                     <label class="block mb-1.5 text-sm font-medium" style="color: var(--color-on-surface);">人物</label>
-                    <input id="people" name="people" type="text" value="{{ people }}" placeholder="{% if llm_available %}留空则由 AI 自动生成{% else %}请手动填写（启用 AI 可自动生成）{% endif %}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="people" name="people" type="text" value="{{ people }}" placeholder="如：团团, 爸爸" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
 
                 <!-- Location -->
@@ -145,7 +145,7 @@
                 <!-- Project -->
                 <div class="sm:col-span-2 lg:col-span-2">
                     <label class="block mb-1.5 text-sm font-medium" style="color: var(--color-on-surface);">项目</label>
-                    <input id="project" name="project" type="text" value="{{ project }}" placeholder="{% if llm_available %}留空则由 AI 自动生成{% else %}请手动填写（启用 AI 可自动生成）{% endif %}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="project" name="project" type="text" value="{{ project }}" placeholder="如：LifeIndex, 育儿日记" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
             </div>
 
@@ -293,7 +293,7 @@
             return row;
         };
 
-        // File input handling with semantic list display
+        // File input handling with semantic list display — SVG icons matching Celestial theme
         const getFileIcon = (filename) => {
             const ext = filename.split('.').pop().toLowerCase();
             const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
@@ -301,11 +301,20 @@
             const audioExts = ['mp3', 'wav', 'flac', 'aac', 'ogg'];
             const docExts = ['pdf', 'doc', 'docx', 'txt', 'md'];
 
-            if (imageExts.includes(ext)) return '🖼️';
-            if (videoExts.includes(ext)) return '🎬';
-            if (audioExts.includes(ext)) return '🎵';
-            if (docExts.includes(ext)) return '📄';
-            return '📎';
+            // SVG icons — minimal line style matching Celestial aesthetic
+            const svgs = {
+                image: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
+                video: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2.5"/><polygon points="10,8 16,12 10,16" fill="currentColor" stroke="none"/><circle cx="18" cy="7" r="1.5" fill="currentColor"/></svg>',
+                audio: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 5.42A5 5 0 0 1 19 12a5.55 0 011-3.42 6.58"/><path d="M19.07 4.93A10 10 0 0121 12a10 10 0 01-2.07 7.07"/></svg>',
+                doc: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002h12a2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>',
+                default: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 0 00-2 2v16a2 0 002 12h12a2 0 002-2V9z"/><polyline points="13,2 13,9 20,9"/></svg>'
+            };
+            
+            if (imageExts.includes(ext)) return svgs.image;
+            if (videoExts.includes(ext)) return svgs.video;
+            if (audioExts.includes(ext)) return svgs.audio;
+            if (docExts.includes(ext)) return svgs.doc;
+            return svgs.default;
         };
 
         const formatFileSize = (bytes) => {
@@ -329,8 +338,8 @@
                 item.style.cssText = 'background: var(--color-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.1);';
 
                 const icon = document.createElement('span');
-                icon.textContent = getFileIcon(file.name);
-                icon.style.fontSize = '1.1rem';
+                icon.innerHTML = getFileIcon(file.name);
+                icon.style.cssText = 'color: var(--color-on-surface-variant); display: flex; align-items: center;';
 
                 const info = document.createElement('div');
                 info.className = 'flex-1 min-w-0';
@@ -551,8 +560,8 @@
                         return;
                     }
                 }
-            } catch (e) {
-                // Cache read failed, continue to fetch
+            } catch {
+                // Cache parse error, continue to fetch
             }
 
             // Fetch fresh status
@@ -561,15 +570,11 @@
                 const result = await response.json();
                 const available = result.success && result.available;
 
-                // Cache the result
-                try {
-                    localStorage.setItem(AI_STATUS_CACHE_KEY, JSON.stringify({
-                        available,
-                        timestamp: Date.now()
-                    }));
-                } catch (e) {
-                    // Cache write failed, ignore
-                }
+                // Update cache
+                localStorage.setItem(AI_STATUS_CACHE_KEY, JSON.stringify({
+                    available,
+                    timestamp: Date.now()
+                }));
 
                 if (available) {
                     aiStatusIcon.textContent = '✨';
@@ -580,10 +585,10 @@
                     aiStatusText.textContent = 'AI 服务未配置，请手动填写元数据';
                     aiStatusNotice.style.color = 'var(--color-on-surface-variant)';
                 }
-            } catch (e) {
-                // Request failed
+            } catch {
+                // On error, assume unavailable
                 aiStatusIcon.textContent = '○';
-                aiStatusText.textContent = 'AI 服务检测失败，请手动填写元数据';
+                aiStatusText.textContent = 'AI 服务未配置，请手动填写元数据';
                 aiStatusNotice.style.color = 'var(--color-on-surface-variant)';
             }
         };
@@ -591,58 +596,55 @@
         // Run AI status check on page load
         checkAIStatus();
 
-        const enterZen = () => {
+        const activateZenMode = () => {
             document.body.classList.add('zen-active');
         };
 
-        const exitZen = () => {
+        const deactivateZenMode = () => {
             document.body.classList.remove('zen-active');
         };
 
-        const isZenActive = () => document.body.classList.contains('zen-active');
+        const handlePointerMove = (e) => {
+            const { clientX, clientY } = e;
+            const { innerWidth, innerHeight } = window;
+            const nearEdge =
+                clientX < zenEdgeThreshold ||
+                clientX > innerWidth - zenEdgeThreshold ||
+                clientY < zenEdgeThreshold ||
+                clientY > innerHeight - zenEdgeThreshold;
+            if (nearEdge) {
+                deactivateZenMode();
+            }
+        };
 
         if (contentField) {
-            contentField.addEventListener('focus', enterZen);
-            contentField.addEventListener('blur', (e) => {
-                setTimeout(() => {
-                    const active = document.activeElement;
-                    if (active !== contentField && active !== titleInput) {
-                        exitZen();
-                    }
-                }, 50);
+            contentField.addEventListener('focus', () => {
+                activateZenMode();
+                window.addEventListener('pointermove', handlePointerMove);
             });
+
+            const cleanup = () => {
+                deactivateZenMode();
+                window.removeEventListener('pointermove', handlePointerMove);
+            };
+
+            contentField.addEventListener('blur', cleanup);
         }
 
+        // Title field also triggers zen mode for consistent experience
         if (titleInput) {
-            titleInput.addEventListener('focus', enterZen);
-            titleInput.addEventListener('blur', (e) => {
-                setTimeout(() => {
-                    const active = document.activeElement;
-                    if (active !== contentField && active !== titleInput) {
-                        exitZen();
-                    }
-                }, 50);
+            titleInput.addEventListener('focus', () => {
+                activateZenMode();
+                window.addEventListener('pointermove', handlePointerMove);
             });
+
+            const cleanupTitle = () => {
+                deactivateZenMode();
+                window.removeEventListener('pointermove', handlePointerMove);
+            };
+
+            titleInput.addEventListener('blur', cleanupTitle);
         }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && isZenActive()) {
-                exitZen();
-                if (contentField) contentField.blur();
-                if (titleInput) titleInput.blur();
-            }
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (!isZenActive()) return;
-            const x = e.clientX;
-            const y = e.clientY;
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            if (x <= zenEdgeThreshold || x >= w - zenEdgeThreshold || y <= zenEdgeThreshold || y >= h - zenEdgeThreshold) {
-                exitZen();
-            }
-        });
     })();
 </script>
 {% endblock %}

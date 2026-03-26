@@ -617,6 +617,8 @@ body.celestial nav,
 body.celestial footer,
 body.celestial #template-section,
 body.celestial #ai-notice,
+body.celestial #write-page > header,
+body.celestial #ai-status-notice,
 body.celestial #metadata-section,
 body.celestial #attachments-section,
 body.celestial #submit-section {
@@ -626,8 +628,9 @@ body.celestial #submit-section {
 /* Zen active: fade out non-essential UI */
 body.celestial.zen-active nav,
 body.celestial.zen-active footer,
+body.celestial.zen-active #write-page > header,
 body.celestial.zen-active #template-section,
-body.celestial.zen-active #ai-notice,
+body.celestial.zen-active #ai-status-notice,
 body.celestial.zen-active #metadata-section,
 body.celestial.zen-active #attachments-section {
   opacity: 0;
@@ -654,8 +657,9 @@ body.celestial.zen-active #submit-section:hover {
 @media (prefers-reduced-motion: reduce) {
   body.celestial nav,
   body.celestial footer,
+  body.celestial #write-page > header,
   body.celestial #template-section,
-  body.celestial #ai-notice,
+  body.celestial #ai-status-notice,
   body.celestial #metadata-section,
   body.celestial #attachments-section,
   body.celestial #submit-section {

@@ -43,7 +43,8 @@ def _get_distinct_values(column: str) -> list[str]:
 
 
 def _compact_location(value: str) -> str:
-    parts = [part.strip() for part in str(value or "").split(",") if part.strip()]
+    normalized = str(value or "").replace("，", ",")
+    parts = [part.strip() for part in normalized.split(",") if part.strip()]
     if not parts:
         return ""
     if len(parts) == 1:
