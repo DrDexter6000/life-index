@@ -23,7 +23,9 @@ def _compute_fallback_relevance(title_match: bool, body_match_count: int) -> int
     return min(score, 80)
 
 
-def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def search_l3_content(
+    query: str, paths: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
     """
     L3: 内容层搜索 - 全文检索
 
@@ -69,7 +71,7 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
 
             relevance = _compute_fallback_relevance(title_match, len(body_matches))
 
-            if relevance >= 30:
+            if relevance >= 15:
                 path_fields = build_journal_path_fields(
                     journal_file,
                     journals_dir=JOURNALS_DIR,

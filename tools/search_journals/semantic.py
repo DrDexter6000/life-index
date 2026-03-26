@@ -47,8 +47,8 @@ def search_semantic(
     query: str,
     date_from: str = "",
     date_to: str = "",
-    min_similarity: float = 0.25,
-    top_k: int = 15,
+    min_similarity: float = 0.15,
+    top_k: int = 50,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
     """
     执行语义搜索
