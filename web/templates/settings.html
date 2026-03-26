@@ -72,72 +72,47 @@
             </form>
         </article>
 
-        <!-- 搜索权重配置 -->
+        <!-- 搜索模式配置 -->
         <article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-            <h2 class="font-display text-2xl font-medium tracking-tight mb-6" style="color: var(--color-on-surface);">搜索权重</h2>
-            <form method="POST" action="/settings/weights" class="space-y-6" id="weights-form">
+            <h2 class="font-display text-2xl font-medium tracking-tight mb-6" style="color: var(--color-on-surface);">搜索模式</h2>
+            <form method="POST" action="/settings/search-mode" class="space-y-6" id="search-mode-form">
                 <p class="text-sm leading-5" style="color: var(--color-on-surface-variant);">
-                    调整关键词搜索与语义搜索在最终结果排序中的相对影响力。拖动任一滑块，另一项自动补偿，合计始终为 100%。
+                    选择搜索结果的严格程度。严格模式返回更精确的结果，宽松模式返回更多可能相关的结果。
                 </p>
 
-                <!-- Keyword Weight -->
+                <!-- Search Mode Selection -->
                 <div class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <label for="fts_weight" class="text-sm font-medium" style="color: var(--color-on-surface);">关键词权重</label>
-                        <span id="fts_weight_label" class="text-sm font-medium" style="color: var(--color-primary);">{{ (fts_weight * 100) | int }}%</span>
+                    <div class="flex flex-col gap-3">
+                        <label class="flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-white/5" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <input type="radio" name="search_mode" value="strict" {% if search_mode == 'strict' %}checked{% endif %} class="mt-0.5">
+                            <div>
+                                <div class="font-medium text-sm" style="color: var(--color-on-surface);">严格模式</div>
+                                <div class="text-xs mt-1" style="color: var(--color-on-surface-variant);">高精度，少结果。适合查找特定内容。</div>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-white/5" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <input type="radio" name="search_mode" value="balanced" {% if search_mode == 'balanced' or not search_mode %}checked{% endif %} class="mt-0.5">
+                            <div>
+                                <div class="font-medium text-sm" style="color: var(--color-on-surface);">均衡模式</div>
+                                <div class="text-xs mt-1" style="color: var(--color-on-surface-variant);">平衡精度与召回。推荐日常使用。</div>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-white/5" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <input type="radio" name="search_mode" value="loose" {% if search_mode == 'loose' %}checked{% endif %} class="mt-0.5">
+                            <div>
+                                <div class="font-medium text-sm" style="color: var(--color-on-surface);">宽松模式</div>
+                                <div class="text-xs mt-1" style="color: var(--color-on-surface-variant);">高召回，多结果。适合探索性搜索。</div>
+                            </div>
+                        </label>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <input
-                            type="range"
-                            id="fts_weight"
-                            name="fts_weight"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value="{{ fts_weight }}"
-                            class="flex-1 h-2 rounded-full appearance-none cursor-pointer"
-                            style="accent-color: #FFE792;"
-                        >
-                        <span class="text-xs shrink-0" style="color: var(--color-on-surface-variant);">精确匹配</span>
-                    </div>
-                </div>
-
-                <!-- Semantic Weight -->
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <label for="semantic_weight" class="text-sm font-medium" style="color: var(--color-on-surface);">语义权重</label>
-                        <span id="semantic_weight_label" class="text-sm font-medium" style="color: var(--color-tertiary);">{{ (semantic_weight * 100) | int }}%</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <input
-                            type="range"
-                            id="semantic_weight"
-                            name="semantic_weight"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value="{{ semantic_weight }}"
-                            class="flex-1 h-2 rounded-full appearance-none cursor-pointer"
-                            style="accent-color: #85FFF2;"
-                        >
-                        <span class="text-xs shrink-0" style="color: var(--color-on-surface-variant);">语义相似</span>
-                    </div>
-                </div>
-
-                <!-- 快捷预设 -->
-                <div class="flex gap-2 flex-wrap">
-                    <button type="button" onclick="setWeights(0.6, 0.4)" class="text-xs px-3 py-1.5 rounded-full transition-opacity hover:opacity-80" style="background: rgba(255, 231, 146, 0.1); color: var(--color-primary); border: 1px solid rgba(255, 231, 146, 0.2);">关键词优先</button>
-                    <button type="button" onclick="setWeights(0.4, 0.6)" class="text-xs px-3 py-1.5 rounded-full transition-opacity hover:opacity-80" style="background: rgba(133, 255, 242, 0.1); color: var(--color-tertiary); border: 1px solid rgba(133, 255, 242, 0.2);">语义优先</button>
-                    <button type="button" onclick="setWeights(0.5, 0.5)" class="text-xs px-3 py-1.5 rounded-full transition-opacity hover:opacity-80" style="background: rgba(196, 182, 254, 0.1); color: #C4B6FE; border: 1px solid rgba(196, 182, 254, 0.2);">均衡</button>
-                    <button type="button" onclick="setWeights(1.0, 0.0)" class="text-xs px-3 py-1.5 rounded-full transition-opacity hover:opacity-80" style="background: rgba(255, 113, 108, 0.1); color: var(--color-error); border: 1px solid rgba(255, 113, 108, 0.2);">仅关键词</button>
                 </div>
 
                 <div class="flex items-center gap-3">
                     <button type="submit" class="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 8px 20px rgba(255, 231, 146, 0.15);">
-                        保存权重
+                        保存模式
                     </button>
-                    {% if weight_save_message %}
-                    <span class="text-sm" style="color: var(--color-on-surface-variant);">{{ weight_save_message }}</span>
+                    {% if search_mode_save_message %}
+                    <span class="text-sm" style="color: var(--color-on-surface-variant);">{{ search_mode_save_message }}</span>
                     {% endif %}
                 </div>
             </form>
@@ -204,51 +179,9 @@
         }
     }
 
-    // Search weight sliders — keep total = 100%
+    // Search mode form handling (if needed in future)
     (() => {
-        const ftsSlider = document.getElementById('fts_weight');
-        const semSlider = document.getElementById('semantic_weight');
-        if (!ftsSlider || !semSlider) return;
-
-        const ftsLabel = document.getElementById('fts_weight_label');
-        const semLabel = document.getElementById('semantic_weight_label');
-
-        // Hardcoded colors to avoid CSS variable flicker
-        const FTS_COLOR = '#FFE792';
-        const SEM_COLOR = '#85FFF2';
-        const TRACK_BG = 'rgba(68, 72, 79, 0.15)';
-
-        function updateDisplay() {
-            const fts = parseFloat(ftsSlider.value);
-            const sem = parseFloat(semSlider.value);
-            const total = Math.round((fts + sem) * 100);
-            ftsLabel.textContent = Math.round(fts * 100) + '%';
-            semLabel.textContent = Math.round(sem * 100) + '%';
-            ftsSlider.style.background = `linear-gradient(to right, ${FTS_COLOR} ${fts*100}%, ${TRACK_BG} ${fts*100}%)`;
-            semSlider.style.background = `linear-gradient(to right, ${SEM_COLOR} ${sem*100}%, ${TRACK_BG} ${sem*100}%)`;
-        }
-
-        ftsSlider.addEventListener('input', () => {
-            const fts = parseFloat(ftsSlider.value);
-            const sem = Math.max(0, Math.min(1, 1.0 - fts));
-            semSlider.value = sem.toFixed(2);
-            updateDisplay();
-        });
-
-        semSlider.addEventListener('input', () => {
-            const sem = parseFloat(semSlider.value);
-            const fts = Math.max(0, Math.min(1, 1.0 - sem));
-            ftsSlider.value = fts.toFixed(2);
-            updateDisplay();
-        });
-
-        window.setWeights = function(fts, sem) {
-            ftsSlider.value = fts;
-            semSlider.value = sem;
-            updateDisplay();
-        };
-
-        updateDisplay();
+        // Radio buttons work natively, no JS needed for basic functionality
     })();
 </script>
 {% endblock %}
