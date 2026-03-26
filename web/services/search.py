@@ -69,7 +69,9 @@ def _normalize_list_param(value: str | list[str] | None) -> list[str] | None:
         normalized = [item.strip() for item in value if item and item.strip()]
         return normalized or None
 
-    normalized = [item.strip() for item in value.split(",") if item.strip()]
+    # Support both full-width and half-width commas
+    normalized_value = value.replace("，", ",")
+    normalized = [item.strip() for item in normalized_value.split(",") if item.strip()]
     return normalized or None
 
 
