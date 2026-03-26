@@ -236,10 +236,14 @@
 
         const setButtonBusy = (button, busyText, isBusy) => {
             if (!button) return;
-            const idleText = button.dataset.idleText || button.textContent || '';
-            if (!button.dataset.idleText) button.dataset.idleText = idleText;
+            // Store original innerHTML (preserving SVG icons) on first call
+            if (!button._idleHTML) button._idleHTML = button.innerHTML;
             button.disabled = isBusy;
-            button.textContent = isBusy ? busyText : idleText;
+            if (isBusy) {
+                button.textContent = busyText;
+            } else {
+                button.innerHTML = button._idleHTML;
+            }
             button.style.opacity = isBusy ? '0.5' : '';
             button.style.cursor = isBusy ? 'not-allowed' : '';
         };
