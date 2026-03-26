@@ -163,6 +163,12 @@ def hierarchical_search(
     semantic: bool = True,
     semantic_weight: float = 0.4,
     fts_weight: float = 0.6,
+    # Web-only recall overrides
+    semantic_top_k: int = 50,
+    semantic_min_similarity: float = 0.15,
+    fts_min_relevance: int = 25,
+    rrf_min_score: float = 0.008,
+    non_rrf_min_score: float = 10,
 ) -> Dict[str, Any]:
     """
     双管道并行搜索
@@ -322,7 +328,13 @@ def hierarchical_search(
                 try:
                     from ..lib.search_index import search_fts
 
-                    fts_results = search_fts(fts_query, date_from, date_to, limit=100)
+                    fts_results = search_fts(
+                        fts_query,
+                        date_from,
+                        date_to,
+                        limit=100,
+                        min_relevance=fts_min_relevance,
+                    )
                     if fts_results:
                         l3_results = [
                             {
@@ -406,7 +418,13 @@ def hierarchical_search(
             logger.info(f"语义搜索不可用，降级为纯关键词搜索: {reason}")
             return [], {"semantic_degraded": reason}, False, note
 
-        sem_results, perf = search_semantic(query, date_from or "", date_to or "")
+        sem_results, perf = search_semantic(
+            query,
+            date_from or "",
+            date_to or "",
+            top_k=semantic_top_k,
+            min_similarity=semantic_min_similarity,
+        )
         perf["semantic_time_ms"] = round((time.time() - sem_start) * 1000, 2)
         logger.info(
             f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms"
@@ -461,6 +479,8 @@ def hierarchical_search(
             query,
             fts_weight=fts_weight,
             semantic_weight=semantic_weight,
+            min_rrf_score=rrf_min_score,
+            min_non_rrf_score=non_rrf_min_score,
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
