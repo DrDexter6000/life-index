@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 # 导入配置 (relative imports from tools/lib)
 from ..lib.config import BY_TOPIC_DIR, USER_DATA_DIR, JOURNALS_DIR
 from ..lib.path_contract import merge_journal_path_fields
+from ..write_journal.index_updater import build_index_filename
 
 
 def scan_all_indices() -> List[Dict[str, Any]]:
@@ -64,12 +65,8 @@ def search_l1_index(query_type: str, query_value: str) -> List[Dict[str, Any]]:
     """
     results: List[Dict[str, Any]] = []
 
-    if query_type == "topic":
-        index_file = BY_TOPIC_DIR / f"主题_{query_value}.md"
-    elif query_type == "project":
-        index_file = BY_TOPIC_DIR / f"项目_{query_value}.md"
-    elif query_type == "tag":
-        index_file = BY_TOPIC_DIR / f"标签_{query_value}.md"
+    if query_type in {"topic", "project", "tag"}:
+        index_file = BY_TOPIC_DIR / build_index_filename(query_type, query_value)
     else:
         return results
 
