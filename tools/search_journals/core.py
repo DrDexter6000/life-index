@@ -271,6 +271,9 @@ def hierarchical_search(
             if r["path"] not in seen and not seen.add(r["path"])  # type: ignore[func-returns-value]
         ]
         perf["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
+        logger.info(
+            f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms"
+        )
 
         # L2: 元数据过滤
         l2_start = time.time()
@@ -290,6 +293,9 @@ def hierarchical_search(
         l2_truncated = l2_response.get("truncated", False)
         l2_total_available = l2_response.get("total_available", 0)
         perf["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
+        logger.info(
+            f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms"
+        )
 
         # L3: FTS5 内容搜索
         l3_start = time.time()
@@ -297,7 +303,12 @@ def hierarchical_search(
 
         if query:
             # 处理多关键词：将空格分隔转换为 FTS5 OR 语法
-            if query and " " in query and "OR" not in query.upper() and "AND" not in query.upper():
+            if (
+                query
+                and " " in query
+                and "OR" not in query.upper()
+                and "AND" not in query.upper()
+            ):
                 keywords = [k.strip() for k in query.split() if k.strip()]
                 if len(keywords) > 1:
                     fts_query = " OR ".join(keywords)
@@ -334,14 +345,22 @@ def hierarchical_search(
                         # When FTS recall is suspiciously low, supplement with full-corpus
                         # content scan so body-only matches are not missed due to stale or
                         # incomplete index coverage.
-                        if query and len(l3_results) < 5:
+                        if query and len(l3_results) < 2:
                             fallback_l3_results = search_l3_content(query, None)
                             seen_paths = {
-                                str(item.get("journal_route_path") or item.get("path") or "")
+                                str(
+                                    item.get("journal_route_path")
+                                    or item.get("path")
+                                    or ""
+                                )
                                 for item in l3_results
                             }
                             for item in fallback_l3_results:
-                                key = str(item.get("journal_route_path") or item.get("path") or "")
+                                key = str(
+                                    item.get("journal_route_path")
+                                    or item.get("path")
+                                    or ""
+                                )
                                 if key and key not in seen_paths:
                                     l3_results.append(item)
                                     seen_paths.add(key)
@@ -358,6 +377,9 @@ def hierarchical_search(
                 logger.debug(f"File scan found {len(l3_results)} results")
 
         perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)
+        logger.info(
+            f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms"
+        )
 
         return (
             l1_results,
@@ -370,6 +392,7 @@ def hierarchical_search(
 
     def pipeline_semantic() -> tuple:
         """语义搜索管道"""
+        sem_start = time.time()
         if not semantic:
             return [], {}, False, "语义搜索已通过 --no-semantic 禁用。"
         if not query:
@@ -384,6 +407,10 @@ def hierarchical_search(
             return [], {"semantic_degraded": reason}, False, note
 
         sem_results, perf = search_semantic(query, date_from or "", date_to or "")
+        perf["semantic_time_ms"] = round((time.time() - sem_start) * 1000, 2)
+        logger.info(
+            f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms"
+        )
         status_perf, semantic_available, semantic_note = _build_semantic_status(
             runtime_status, sem_results
         )
@@ -405,7 +432,9 @@ def hierarchical_search(
             l2_total_available,
             kw_perf,
         ) = future_keyword.result()
-        semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
+        semantic_results, sem_perf, semantic_available, semantic_note = (
+            future_semantic.result()
+        )
 
     # 填充结果
     result["l1_results"] = l1_results
@@ -435,9 +464,21 @@ def hierarchical_search(
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
+        result["merged_results"] = merge_and_rank_results(
+            l1_results, l2_results, l3_results, query
+        )
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+
+    # Log summary
+    total_time = result["performance"]["total_time_ms"]
+    l1_time = result["performance"].get("l1_time_ms", 0)
+    l2_time = result["performance"].get("l2_time_ms", 0)
+    l3_time = result["performance"].get("l3_time_ms", 0)
+    sem_time = result["performance"].get("semantic_time_ms", 0)
+    logger.info(
+        f"[SearchPerf] Total: {total_time}ms (L1:{l1_time} L2:{l2_time} L3:{l3_time} Semantic:{sem_time}) | Results: {result['total_found']}"
+    )
 
     return result
