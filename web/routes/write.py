@@ -100,15 +100,21 @@ def _build_template_context(
         "date": to_gui_datetime_value(_normalize_field_value(values.get("date")))
         or datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "topic": _normalize_field_value(values.get("topic")),
-        "mood": ", ".join(values.get("mood", []))
-        if isinstance(values.get("mood"), list)
-        else _normalize_field_value(values.get("mood")),
-        "tags": ", ".join(values.get("tags", []))
-        if isinstance(values.get("tags"), list)
-        else _normalize_field_value(values.get("tags")),
-        "people": ", ".join(values.get("people", []))
-        if isinstance(values.get("people"), list)
-        else _normalize_field_value(values.get("people")),
+        "mood": (
+            ", ".join(values.get("mood", []))
+            if isinstance(values.get("mood"), list)
+            else _normalize_field_value(values.get("mood"))
+        ),
+        "tags": (
+            ", ".join(values.get("tags", []))
+            if isinstance(values.get("tags"), list)
+            else _normalize_field_value(values.get("tags"))
+        ),
+        "people": (
+            ", ".join(values.get("people", []))
+            if isinstance(values.get("people"), list)
+            else _normalize_field_value(values.get("people"))
+        ),
         "location": _normalize_field_value(values.get("location")),
         "weather": _normalize_field_value(values.get("weather")),
         "project": _normalize_field_value(values.get("project")),
@@ -134,6 +140,7 @@ def _build_write_confirm_context(
     warning_message: str | None = None,
     location_needs_confirm: bool = False,
     location_confirm_message: str | None = None,
+    attachment_summary: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     return {
         "request": request,
@@ -147,6 +154,7 @@ def _build_write_confirm_context(
         "warning": warning_message,
         "location_needs_confirm": location_needs_confirm,
         "location_confirm_message": location_confirm_message,
+        "attachment_summary": attachment_summary or {"detected": 0, "processed": 0, "failed": 0},
     }
 
 
@@ -184,9 +192,7 @@ def _build_fallback_confirmation_journal(
     }
 
 
-def _set_csrf_cookie(
-    response: HTMLResponse | RedirectResponse, csrf_token: str
-) -> None:
+def _set_csrf_cookie(response: HTMLResponse | RedirectResponse, csrf_token: str) -> None:
     response.set_cookie("csrf_token", csrf_token, samesite="lax")
 
 
@@ -271,9 +277,7 @@ async def submit_write(
 
     templates = load_writing_templates()
     provider = await get_provider()
-    normalized_urls = [
-        item.strip() for item in (attachment_urls or []) if item and item.strip()
-    ]
+    normalized_urls = [item.strip() for item in (attachment_urls or []) if item and item.strip()]
     staged_attachments = stage_uploaded_files(_normalize_uploads(attachments))
 
     downloaded_attachments: list[dict[str, str]] = []
@@ -380,8 +384,7 @@ async def submit_write(
             warning_parts.append(readonly_warning)
         if skipped_attachment_errors:
             warning_parts.extend(
-                f"已跳过附件下载失败：{message}"
-                for message in skipped_attachment_errors
+                f"已跳过附件下载失败：{message}" for message in skipped_attachment_errors
             )
         journal = get_journal(str(result["journal_route_path"]))
         if journal.get("error"):
@@ -400,6 +403,11 @@ async def submit_write(
                 warning_message=warning_message,
                 location_needs_confirm=bool(result.get("needs_confirmation")),
                 location_confirm_message=result.get("confirmation_message"),
+                attachment_summary={
+                    "detected": int(result.get("attachments_detected_count") or 0),
+                    "processed": int(result.get("attachments_processed_count") or 0),
+                    "failed": int(result.get("attachments_failed_count") or 0),
+                },
             ),
         )
 
@@ -410,10 +418,7 @@ async def submit_write(
         error_message = (
             error_message
             + "\n"
-            + "\n".join(
-                f"已跳过附件下载失败：{message}"
-                for message in skipped_attachment_errors
-            )
+            + "\n".join(f"已跳过附件下载失败：{message}" for message in skipped_attachment_errors)
         )
     response = request.app.state.templates.TemplateResponse(
         request,

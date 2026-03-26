@@ -33,6 +33,23 @@
     </section>
     {% endif %}
 
+    {% set detected = attachment_summary.detected if attachment_summary else 0 %}
+    {% set processed = attachment_summary.processed if attachment_summary else 0 %}
+    {% set failed = attachment_summary.failed if attachment_summary else 0 %}
+    {% if detected or processed or failed %}
+    <section class="rounded-2xl p-4 sm:p-6" style="background: rgba(133, 255, 242, 0.08); box-shadow: 0 0 0 1px rgba(133, 255, 242, 0.18);">
+        <div class="flex items-start gap-3">
+            <span class="text-lg" aria-hidden="true">📎</span>
+            <div class="flex-1">
+                <div class="font-display text-xl font-medium" style="color: var(--color-tertiary);">附件处理结果</div>
+                <p class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">
+                    检测到 {{ detected }} 个附件候选；成功归档 {{ processed }} 个{% if failed %}；失败 {{ failed }} 个{% endif %}。
+                </p>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
     <section class="rounded-2xl p-4 sm:p-5" style="background: {% if llm_available %}rgba(133, 255, 242, 0.08){% else %}rgba(255, 231, 146, 0.08){% endif %}; box-shadow: 0 0 0 1px {% if llm_available %}rgba(133, 255, 242, 0.16){% else %}rgba(255, 231, 146, 0.16){% endif %};">
         <div class="flex items-start gap-3">
             <span class="text-lg" aria-hidden="true">{% if llm_available %}🟢{% else %}🟡{% endif %}</span>

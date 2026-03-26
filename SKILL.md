@@ -172,11 +172,9 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 ```json
 {
   "success": true,
-  "data": {
-    "journal_path": "...",
-    "needs_confirmation": true,
-    "confirmation_message": "地点：Lagos, Nigeria；天气：晴天 33°C"
-  }
+  "journal_path": "...",
+  "needs_confirmation": true,
+  "confirmation_message": "地点：Lagos, Nigeria；天气：晴天 33°C"
 }
 ```
 
@@ -226,10 +224,10 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 1. **必填字段**：title, content, date, abstract, topic, mood, tags — 必须有值
 2. **语义提取**：从用户内容中主动提取 mood（1~3个）、tags（关键词）、people、project
-3. **地点默认规则**：正文里明确写出的地点优先；只有正文和入参都未提供地点时，工具才使用默认地点；用了默认地点后，写入成功后 Agent 必须展示确认信息并等待用户确认或修正
+3. **地点规则**：正文里明确写出的地点优先；只有正文和入参都未提供地点时，工具才使用默认地点；但无论地点来源为何，只要写入成功，Agent 都必须展示确认信息并等待用户确认或修正
 4. **空值处理**：people, project, links 未提取到时传空值（如 `"people": []`）
 5. **摘要生成**：从 content 提取关键信息，生成 ≤100 字的 abstract
-6. **必须确认**：工具返回后检查 `needs_confirmation`，为 `true` 时展示并询问用户
+6. **必须确认**：工具返回后检查 `needs_confirmation`；对所有成功写入结果，这都应视为必须执行的 follow-up
 
 ---
 
@@ -256,7 +254,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 2 | **提取元数据** | 识别 mood(1-3个)、tags、people、project | mood 为空数组 |
 | 3 | **生成摘要** | abstract ≤100字 | 摘要过长 |
 | 4 | **调用工具** | `write_journal` 包含所有字段；正文里明确地点/天气时优先采用正文信息；location 缺失时才允许工具使用默认地点 | 让默认值覆盖正文里已写明的信息 |
-| 5 | **检查确认** | `needs_confirmation` 为 true？ | ⚠️ **最常见错误：直接跳过** |
+| 5 | **检查确认** | `needs_confirmation` 为 true？（成功写入后必须 follow-up） | ⚠️ **最常见错误：直接跳过** |
 | 6 | **展示确认** | 展示 `confirmation_message` | 不展示直接结束 |
 | 7 | **等待回复** | 询问用户"是否正确？" | 不询问 |
 
@@ -294,6 +292,9 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | `index_status` | complete/degraded/not_started | 索引更新状态 | degraded → 告知用户"已保存，但搜索可能暂时找不到" |
 | `side_effects_status` | complete/degraded/not_started | 附件/摘要等副作用状态 | degraded → 告知用户"已保存，但部分信息未更新" |
 | `weather_auto_filled` | true/false | 天气是否自动填充 | true → 在确认信息中标注"自动获取" |
+| `attachments_detected_count` | int | 从正文自动检测到的本地附件路径数量 | 向用户反馈检测结果 |
+| `attachments_processed_count` | int | 成功归档的附件数量 | 向用户反馈成功归档数量 |
+| `attachments_failed_count` | int | 检测到但处理失败的附件数量 | >0 时提示用户检查失败附件 |
 
 **降级状态处理示例**：
 ```

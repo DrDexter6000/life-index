@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import importlib
-import json
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
@@ -14,9 +13,7 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             mock_provider.return_value = None
 
             with TestClient(create_app()) as client:
@@ -30,9 +27,7 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             mock_provider.return_value = None
 
             with TestClient(create_app()) as client:
@@ -46,9 +41,7 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             mock_provider.return_value = None
 
             with TestClient(create_app()) as client:
@@ -63,9 +56,7 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             mock_provider.return_value = None
 
             with TestClient(create_app()) as client:
@@ -75,18 +66,14 @@ class TestWriteRoute:
         assert "当前实例将把新日志写入以下目录" not in response.text
         assert "写入前请先确认当前数据源符合预期" not in response.text
 
-    def test_get_write_page_shows_readonly_simulation_warning(
-        self, monkeypatch, tmp_path
-    ) -> None:
+    def test_get_write_page_shows_readonly_simulation_warning(self, monkeypatch, tmp_path) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
         monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path / "sandbox"))
         monkeypatch.setenv("LIFE_INDEX_READONLY_SIMULATION", "1")
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             mock_provider.return_value = None
 
             with TestClient(create_app()) as client:
@@ -101,9 +88,7 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             mock_provider.return_value = None
 
             with TestClient(create_app()) as client:
@@ -124,9 +109,7 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch(
                 "web.routes.write.prepare_journal_data", new_callable=AsyncMock
             ) as mock_prepare:
@@ -169,18 +152,14 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch(
                 "web.routes.write.prepare_journal_data", new_callable=AsyncMock
             ) as mock_prepare:
                 with patch(
                     "web.routes.write.write_journal_web", new_callable=AsyncMock
                 ) as mock_write:
-                    with patch(
-                        "web.routes.write.download_attachment_from_url"
-                    ) as mock_download:
+                    with patch("web.routes.write.download_attachment_from_url") as mock_download:
                         mock_provider.return_value = None
                         mock_prepare.return_value = {
                             "content": "正文",
@@ -190,6 +169,11 @@ class TestWriteRoute:
                         mock_write.return_value = {
                             "success": True,
                             "journal_route_path": "2026/03/test.md",
+                            "needs_confirmation": True,
+                            "confirmation_message": "请确认这个地点是否正确。",
+                            "attachments_detected_count": 1,
+                            "attachments_processed_count": 1,
+                            "attachments_failed_count": 0,
                         }
                         mock_download.return_value = {
                             "source_path": "C:/temp/downloaded-file.png",
@@ -215,6 +199,59 @@ class TestWriteRoute:
         assert "确认写入结果" in response.text
         assert "/journal/2026/03/test.md" in response.text
         assert "/journal/2026/03/test.md/edit" in response.text
+        assert "请确认地点" in response.text
+        assert "请确认这个地点是否正确。" in response.text
+        assert "附件处理结果" in response.text
+        assert "检测到 1 个" in response.text
+        assert "成功归档 1 个" in response.text
+
+    def test_post_write_success_surfaces_failed_attachment_summary(self) -> None:
+        from fastapi.testclient import TestClient
+        from web.app import create_app
+
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
+            with patch(
+                "web.routes.write.prepare_journal_data", new_callable=AsyncMock
+            ) as mock_prepare:
+                with patch(
+                    "web.routes.write.write_journal_web", new_callable=AsyncMock
+                ) as mock_write:
+                    mock_provider.return_value = None
+                    mock_prepare.return_value = {
+                        "content": "正文",
+                        "topic": ["life"],
+                        "date": "2026-03-22",
+                    }
+                    mock_write.return_value = {
+                        "success": True,
+                        "journal_route_path": "2026/03/test.md",
+                        "needs_confirmation": True,
+                        "confirmation_message": "请确认这个地点是否正确。",
+                        "attachments_detected_count": 2,
+                        "attachments_processed_count": 1,
+                        "attachments_failed_count": 1,
+                    }
+
+                    with TestClient(create_app()) as client:
+                        get_response = client.get("/write")
+                        csrf_token = get_response.cookies.get("csrf_token")
+                        assert csrf_token is not None
+                        response = client.post(
+                            "/write",
+                            data={
+                                "csrf_token": csrf_token,
+                                "content": "正文",
+                                "topic": "life",
+                                "date": "2026-03-22",
+                            },
+                            follow_redirects=False,
+                        )
+
+        assert response.status_code == 200
+        assert "附件处理结果" in response.text
+        assert "检测到 2 个" in response.text
+        assert "成功归档 1 个" in response.text
+        assert "失败 1 个" in response.text
 
     def test_post_write_success_in_readonly_simulation_shows_notice_on_confirmation_page(
         self, monkeypatch, tmp_path
@@ -225,9 +262,7 @@ class TestWriteRoute:
         monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path / "sandbox"))
         monkeypatch.setenv("LIFE_INDEX_READONLY_SIMULATION", "1")
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch(
                 "web.routes.write.prepare_journal_data", new_callable=AsyncMock
             ) as mock_prepare:
@@ -268,9 +303,7 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch(
                 "web.routes.write.prepare_journal_data", new_callable=AsyncMock
             ) as mock_prepare:
@@ -313,9 +346,7 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch(
                 "web.routes.write.prepare_journal_data", new_callable=AsyncMock
             ) as mock_prepare:
@@ -347,18 +378,14 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch(
                 "web.routes.write.prepare_journal_data", new_callable=AsyncMock
             ) as mock_prepare:
                 with patch(
                     "web.routes.write.write_journal_web", new_callable=AsyncMock
                 ) as mock_write:
-                    with patch(
-                        "web.routes.write.download_attachment_from_url"
-                    ) as mock_download:
+                    with patch("web.routes.write.download_attachment_from_url") as mock_download:
                         mock_provider.return_value = None
                         mock_prepare.return_value = {
                             "content": "正文",
@@ -413,16 +440,12 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch(
                 "web.routes.write.prepare_journal_data", new_callable=AsyncMock
             ) as mock_prepare:
                 with patch("web.routes.write.stage_uploaded_files") as mock_stage:
-                    with patch(
-                        "web.routes.write.download_attachment_from_url"
-                    ) as mock_download:
+                    with patch("web.routes.write.download_attachment_from_url") as mock_download:
                         with patch(
                             "web.routes.write.write_journal_web", new_callable=AsyncMock
                         ) as mock_write:
@@ -483,9 +506,7 @@ class TestWriteRoute:
 
         assert response.status_code == 200
         mock_stage.assert_called_once()
-        mock_download.assert_called_once_with(
-            "https://example.com/file.png", date_str="2026-03-22"
-        )
+        mock_download.assert_called_once_with("https://example.com/file.png", date_str="2026-03-22")
         assert mock_prepare.await_count == 1
         prepare_args = mock_prepare.await_args_list[0].args[0]
         assert prepare_args["attachments"] == [
@@ -500,12 +521,8 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
-            with patch(
-                "web.routes.write.download_attachment_from_url"
-            ) as mock_download:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
+            with patch("web.routes.write.download_attachment_from_url") as mock_download:
                 mock_provider.return_value = None
                 mock_download.side_effect = ValueError("Content-Type 不支持")
 
@@ -532,14 +549,10 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch("web.routes.write.stage_uploaded_files") as mock_stage:
                 with patch("web.routes.write.cleanup_staged_files") as mock_cleanup:
-                    with patch(
-                        "web.routes.write.download_attachment_from_url"
-                    ) as mock_download:
+                    with patch("web.routes.write.download_attachment_from_url") as mock_download:
                         mock_provider.return_value = None
                         mock_stage.return_value = [
                             {
@@ -581,13 +594,9 @@ class TestWriteRoute:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
-        with patch(
-            "web.routes.write.get_provider", new_callable=AsyncMock
-        ) as mock_provider:
+        with patch("web.routes.write.get_provider", new_callable=AsyncMock) as mock_provider:
             with patch("web.routes.write.stage_uploaded_files") as mock_stage:
-                with patch(
-                    "web.routes.write.download_attachment_from_url"
-                ) as mock_download:
+                with patch("web.routes.write.download_attachment_from_url") as mock_download:
                     with patch(
                         "web.routes.write.prepare_journal_data", new_callable=AsyncMock
                     ) as mock_prepare:
@@ -656,9 +665,7 @@ class TestWriteRouteRegistration:
         from web.app import create_app
 
         app = create_app()
-        paths = [
-            getattr(route, "path") for route in app.routes if hasattr(route, "path")
-        ]
+        paths = [getattr(route, "path") for route in app.routes if hasattr(route, "path")]
         assert "/write" in paths
 
 

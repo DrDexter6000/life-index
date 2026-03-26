@@ -263,6 +263,9 @@ python -m tools.write_journal --data '<json>'
   "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
   "updated_indices": ["C:/Users/.../Documents/Life-Index/by-topic/主题_work.md"],
   "attachments_processed": [...],
+  "attachments_detected_count": 1,
+  "attachments_processed_count": 1,
+  "attachments_failed_count": 0,
   "location_used": "Beijing, China",
   "location_auto_filled": false,
   "weather_used": "Sunny 25°C",
@@ -283,9 +286,17 @@ python -m tools.write_journal --data '<json>'
 ### 写入与确认语义
 
 - `needs_confirmation` 应视为当前写入协议中的正常后续步骤，而不是可忽略的偶发分支
+- 任何 `success: true` 的写入结果都必须进入地点确认环节；Agent / Web 不得自行判断“这次可以不问”
 - 正文中明确写出的地点/天气优先级最高，Agent 不得再用默认地点或自动查询结果覆盖
-- 只有在正文和入参都未提供地点、工具使用了默认地点时，Agent 才必须展示 `confirmation_message` 并等待用户确认或修正
+- `location_auto_filled` 用于解释地点来源，不再作为是否执行确认环节的决策条件
 - 如果用户要求修正地点/天气，后续应进入 correction flow，而不是把原写入描述为失败
+
+### 附件检测与处理语义
+
+- `attachments_detected_count`：从最终 `content` 中自动检测到的本地附件路径数量
+- `attachments_processed_count`：成功归档到 Life Index `attachments/` 目录的附件数量
+- `attachments_failed_count`：检测到但处理失败的附件数量
+- Agent / Web 成功反馈必须显式消费这些字段，不得把附件处理结果留给模型自行猜测
 
 ### 写入成功 / 降级 / 修复语义
 
