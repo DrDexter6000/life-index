@@ -20,6 +20,85 @@
 **关键架构决策**:
 - **双管道并行检索架构** 关键词管道 ∥ 语义管道并行执行 + RRF 融合
 - **数据物理隔离**：用户数据在 `~/Documents/Life-Index/`，项目代码在仓库目录
+- **CLI 为 SSOT**：Web GUI 必须调用 CLI 工具，不得绕过
+
+---
+
+## Web GUI 开发约束（强制）
+
+### 核心原则
+
+**CLI 是最高 SSOT，Web GUI 只是 CLI 的薄封装。**
+
+```mermaid
+flowchart TB
+    subgraph WebLayer["Web 层（只做数据收集）"]
+        A[表单输入] --> B[基本验证]
+        B --> C[调用 CLI]
+    end
+    
+    subgraph CLILayer["CLI 层（所有业务逻辑）"]
+        C --> D[数据转换]
+        D --> E[格式化]
+        E --> F[写入文件]
+    end
+```
+
+### Web 层允许的操作
+
+| 操作 | 允许 | 示例 |
+|------|------|------|
+| 收集表单数据 | ✅ | `tags: str = Form("")` |
+| 基本验证 | ✅ | 检查必填字段、CSRF |
+| 调用 CLI 工具 | ✅ | `write_journal(data)` |
+| 文件上传暂存 | ✅ | `tempfile.NamedTemporaryFile` |
+| HTML 渲染 | ✅ | Jinja2 模板 |
+
+### Web 层禁止的操作
+
+| 操作 | 禁止 | 原因 |
+|------|------|------|
+| 数据格式转换 | ❌ | CLI 负责统一格式 |
+| 自己生成 frontmatter | ❌ | 使用 `format_frontmatter()` |
+| 自己解析/写入日志文件 | ❌ | 调用 `write_journal`/`edit_journal` |
+| 绕过 CLI 直接操作数据 | ❌ | 破坏 SSOT 原则 |
+
+### 数据流规范
+
+```python
+# ✅ 正确：Web 层只收集，CLI 层处理
+form_data = {"tags": "tag1, tag2, tag3"}  # 原始输入
+result = write_journal(form_data)  # CLI 负责分割
+
+# ❌ 错误：Web 层自己处理格式
+form_data = {"tags": ["tag1", "tag2", "tag3"]}  # Web 层分割了
+```
+
+### 测试要求
+
+**每个 Web 路由必须有端到端格式测试：**
+
+```python
+# tests/contract/test_web_cli_alignment.py
+def test_edit_tags_format_matches_cli():
+    """编辑后的 tags 格式必须与 CLI 写入的格式一致"""
+    # 通过 Web 编辑
+    web_result = edit_via_web(tags="tag1, tag2")
+    # 通过 CLI 写入
+    cli_result = write_via_cli(tags=["tag1", "tag2"])
+    
+    # 格式必须一致
+    assert web_result["frontmatter"]["tags"] == cli_result["frontmatter"]["tags"]
+```
+
+### 检查清单
+
+**开发 Web 功能时必须确认：**
+
+- [ ] 是否调用了 CLI 工具？
+- [ ] 是否在 Web 层做了数据转换？（如果是，移到 CLI）
+- [ ] 是否有端到端格式测试？
+- [ ] 修改后是否运行了 `tests/contract/` 测试？
 
 ---
 

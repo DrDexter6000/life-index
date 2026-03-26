@@ -167,7 +167,9 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     return metadata, body
 
 
-def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dict[str, Any], str]:
+def _recover_legacy_content_frontmatter(
+    fm_content: str, body: str
+) -> Tuple[Dict[str, Any], str]:
     """Recover metadata/body from legacy malformed `content: "..."` frontmatter."""
     content_match = re.search(r'^content:\s*"', fm_content, re.MULTILINE)
     if not content_match:
@@ -187,7 +189,9 @@ def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dic
     recovered_body = content_block.strip()
     trailing_body = body.strip()
     if trailing_body:
-        recovered_body = f"{recovered_body}\n\n{trailing_body}" if recovered_body else trailing_body
+        recovered_body = (
+            f"{recovered_body}\n\n{trailing_body}" if recovered_body else trailing_body
+        )
 
     return metadata, recovered_body
 
@@ -229,7 +233,9 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
         abstract_match = re.search(r"\n\n([^#\n].*?)(?=\n\n|\Z)", body, re.DOTALL)
         if abstract_match:
             abstract = abstract_match.group(1).strip()[:100]
-            metadata["_abstract"] = abstract + "..." if len(abstract) == 100 else abstract
+            metadata["_abstract"] = (
+                abstract + "..." if len(abstract) == 100 else abstract
+            )
         else:
             metadata["_abstract"] = "(无摘要)"
 
@@ -276,7 +282,8 @@ def _format_field(key: str, value: Any) -> str:
     list_like_fields = {"topic", "tags", "mood", "people"}
 
     if key in list_like_fields and isinstance(value, str):
-        value = [value]
+        # 按逗号分割，确保 "tag1, tag2" 变成 ["tag1", "tag2"]
+        value = [item.strip() for item in value.split(",") if item.strip()]
 
     if isinstance(value, list):
         # 列表使用 JSON 格式
@@ -322,7 +329,9 @@ def format_journal_content(data: Dict[str, Any]) -> str:
         content_lines = content.splitlines()
         skip_first = False
         if title:
-            first_non_empty = next((line.strip() for line in content_lines if line.strip()), None)
+            first_non_empty = next(
+                (line.strip() for line in content_lines if line.strip()), None
+            )
             if first_non_empty:
                 # Strip leading '#' and whitespace for comparison
                 stripped = first_non_empty.lstrip("#").strip()
