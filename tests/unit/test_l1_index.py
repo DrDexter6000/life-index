@@ -8,8 +8,7 @@ Tests cover:
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 class TestSearchL1Index:
@@ -75,6 +74,27 @@ class TestSearchL1Index:
 
         with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
             results = l1_index.search_l1_index("tag", "python")
+
+        assert len(results) >= 1
+
+    def test_search_tag_uses_sanitized_filename(self, tmp_path):
+        """Tag search should use the same sanitized filename logic as write-time index updates."""
+        from tools.search_journals import l1_index
+
+        index_dir = tmp_path / "by-topic"
+        index_dir.mkdir(parents=True)
+
+        index_file = index_dir / "标签_UI_UX设计.md"
+        index_file.write_text(
+            """# 标签: UI/UX设计
+
+- [2026-03-14] [Design Notes](../../Journals/2026/03/design.md)
+""",
+            encoding="utf-8",
+        )
+
+        with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
+            results = l1_index.search_l1_index("tag", "UI/UX设计")
 
         assert len(results) >= 1
 

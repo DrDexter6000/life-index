@@ -22,6 +22,19 @@ def _sanitize_index_name(value: str) -> str:
     return text.replace("/", "_").replace("\\", "_")
 
 
+def sanitize_index_name(value: str) -> str:
+    """Public SSOT helper for index-safe topic/project/tag names."""
+    return _sanitize_index_name(value)
+
+
+def build_index_filename(kind: str, value: str) -> str:
+    prefixes = get_index_prefixes()
+    default_prefixes = {"topic": "主题_", "project": "项目_", "tag": "标签_"}
+    prefix = prefixes.get(kind, default_prefixes[kind])
+    safe_value = sanitize_index_name(value)
+    return f"{prefix}{safe_value}.md"
+
+
 def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> List[Path]:
     """更新主题索引文件 - 支持单个主题或主题列表"""
     if not topic:
@@ -36,9 +49,6 @@ def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> 
         return []
 
     # 获取可配置的前缀
-    prefixes = get_index_prefixes()
-    topic_prefix = prefixes.get("topic", "主题_")
-
     date_str = data.get("date", "")[:10]
     title = data.get("title", "无标题")
     rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
@@ -50,8 +60,7 @@ def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> 
         if not t:
             continue
         BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-        safe_topic = _sanitize_index_name(str(t))
-        index_file = BY_TOPIC_DIR / f"{topic_prefix}{safe_topic}.md"
+        index_file = BY_TOPIC_DIR / build_index_filename("topic", str(t))
 
         if index_file.exists():
             content = index_file.read_text(encoding="utf-8")
@@ -74,12 +83,8 @@ def update_project_index(project: str, journal_path: Path, data: Dict[str, Any])
         return None
 
     # 获取可配置的前缀
-    prefixes = get_index_prefixes()
-    project_prefix = prefixes.get("project", "项目_")
-
     BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-    safe_project = _sanitize_index_name(project)
-    index_file = BY_TOPIC_DIR / f"{project_prefix}{safe_project}.md"
+    index_file = BY_TOPIC_DIR / build_index_filename("project", project)
 
     date_str = data.get("date", "")[:10]
     title = data.get("title", "无标题")
@@ -105,16 +110,12 @@ def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]
     updated = []
 
     # 获取可配置的前缀
-    prefixes = get_index_prefixes()
-    tag_prefix = prefixes.get("tag", "标签_")
-
     for tag in tags:
         if not tag:
             continue
 
         BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-        safe_tag = _sanitize_index_name(str(tag))
-        index_file = BY_TOPIC_DIR / f"{tag_prefix}{safe_tag}.md"
+        index_file = BY_TOPIC_DIR / build_index_filename("tag", str(tag))
 
         date_str = data.get("date", "")[:10]
         title = data.get("title", "无标题")

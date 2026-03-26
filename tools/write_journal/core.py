@@ -98,6 +98,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         "index_status": "not_started",
         "side_effects_status": "not_started",
         "attachments_processed": [],
+        "attachments_detected_count": 0,
+        "attachments_processed_count": 0,
+        "attachments_failed_count": 0,
         "location_used": "",
         "location_auto_filled": False,
         "weather_used": "",
@@ -203,6 +206,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 # 从内容中自动检测文件路径
                 content = cleaned_content
                 auto_detected_paths = extract_file_paths_from_content(content)
+                result["attachments_detected_count"] = len(auto_detected_paths)
                 logger.debug(f"从内容中检测到 {len(auto_detected_paths)} 个附件路径")
 
                 # 处理附件（显式附件 + 自动检测附件）
@@ -212,6 +216,16 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         attachments, date_str, dry_run, auto_detected_paths
                     )
                 result["attachments_processed"] = processed_attachments
+                result["attachments_processed_count"] = len(
+                    [
+                        att
+                        for att in processed_attachments
+                        if not str(att.get("filename", "")).startswith("[")
+                    ]
+                )
+                result["attachments_failed_count"] = (
+                    len(processed_attachments) - result["attachments_processed_count"]
+                )
                 if processed_attachments:
                     logger.info(f"处理了 {len(processed_attachments)} 个附件")
 
@@ -335,13 +349,14 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         result["success"] = True
 
         # ===== 第三层：写入后确认 =====
-        result["needs_confirmation"] = result["location_auto_filled"]
+        result["needs_confirmation"] = True
         if result["needs_confirmation"]:
             result["confirmation_message"] = (
                 f"日志已保存至：{journal_path}\n\n"
-                f"本次使用了默认地点：{location}\n"
+                f"本次记录地点：{location}\n"
                 f"- 天气：{weather if weather else '（未获取）'}\n\n"
-                f"如果这个地点不对，请告诉我正确地点。"
+                f"请确认这个地点是否正确。"
+                f"如果不对，请告诉我正确地点。"
                 f"我会基于新地点更新地点和天气。"
             )
 

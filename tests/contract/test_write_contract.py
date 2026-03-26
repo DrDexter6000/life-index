@@ -13,8 +13,7 @@ documented in docs/API.md and SKILL.md:
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from tools.write_journal.core import write_journal
 
@@ -218,8 +217,8 @@ class TestWriteJournalConfirmationContract:
         assert result["needs_confirmation"] is True
         assert len(result["confirmation_message"]) > 0
 
-    def test_explicit_location_no_confirmation(self, writable_env):
-        """When location is explicitly provided, needs_confirmation is False."""
+    def test_explicit_location_still_requires_confirmation(self, writable_env):
+        """Any successful write must require post-write location confirmation."""
         data = {
             "date": "2026-03-14",
             "title": "Explicit Location",
@@ -234,10 +233,11 @@ class TestWriteJournalConfirmationContract:
 
         assert result["success"] is True
         assert result["location_auto_filled"] is False
-        assert result["needs_confirmation"] is False
+        assert result["needs_confirmation"] is True
+        assert "Beijing, China" in result["confirmation_message"]
 
-    def test_needs_confirmation_equals_location_auto_filled(self, writable_env):
-        """Contract: needs_confirmation == location_auto_filled."""
+    def test_any_successful_write_requires_confirmation(self, writable_env):
+        """Contract: any successful write must request location confirmation."""
         for loc_value in [None, "", "Beijing, China"]:
             data = {
                 "date": "2026-03-14",
@@ -253,11 +253,32 @@ class TestWriteJournalConfirmationContract:
 
             result = _run_write(data, writable_env)
             if result["success"]:
-                assert result["needs_confirmation"] == result["location_auto_filled"], (
-                    f"needs_confirmation ({result['needs_confirmation']}) != "
-                    f"location_auto_filled ({result['location_auto_filled']}) "
-                    f"for location={loc_value!r}"
-                )
+                assert result["needs_confirmation"] is True
+                assert len(result["confirmation_message"]) > 0
+
+
+class TestWriteJournalAttachmentResultContract:
+    def test_auto_detected_attachment_summary_exposed(self, writable_env, tmp_path):
+        source_file = tmp_path / "design.png"
+        source_file.write_text("image", encoding="utf-8")
+
+        data = {
+            "date": "2026-03-14",
+            "title": "Attachment Summary",
+            "content": f"日志附件：{source_file}",
+            "topic": ["create"],
+            "abstract": "Attachment contract.",
+            "mood": [],
+            "tags": [],
+        }
+
+        result = _run_write(data, writable_env)
+
+        assert result["success"] is True
+        assert result["attachments_detected_count"] == 1
+        assert result["attachments_processed_count"] == 1
+        assert result["attachments_failed_count"] == 0
+        assert len(result["attachments_processed"]) == 1
 
 
 class TestWriteJournalValidation:
