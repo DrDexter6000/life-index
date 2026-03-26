@@ -38,15 +38,15 @@
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                     <label for="title" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">标题</label>
-                    <input id="title" name="title" type="text" value="{{ title }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="title" name="title" type="text" value="{{ title }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="date" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">日期</label>
-                    <input id="date" name="date" type="datetime-local" value="{{ date }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="date" name="date" type="datetime-local" value="{{ date }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="topic" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">主题</label>
-                    <select id="topic" name="topic" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <select id="topic" name="topic" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                         <option value="">自动判断</option>
                         <option value="work" {% if topic == 'work' %}selected{% endif %}>工作</option>
                         <option value="learn" {% if topic == 'learn' %}selected{% endif %}>学习</option>
@@ -59,39 +59,39 @@
                 </div>
                 <div>
                     <label for="mood" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">心情</label>
-                    <input id="mood" name="mood" type="text" value="{{ mood }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="mood" name="mood" type="text" value="{{ mood }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="tags" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">标签</label>
-                    <input id="tags" name="tags" type="text" value="{{ tags }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="tags" name="tags" type="text" value="{{ tags }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="people" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">人物</label>
-                    <input id="people" name="people" type="text" value="{{ people }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="people" name="people" type="text" value="{{ people }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="location" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">地点</label>
                     <div class="flex flex-col gap-2 sm:flex-row">
-                        <input id="location" name="location" type="text" value="{{ location }}" placeholder="如：北京" class="block w-full flex-1 rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
-                        <button id="geolocation-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-full text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
+                        <input id="location" name="location" type="text" value="{{ location }}" placeholder="如：北京" class="block w-full flex-1 rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                        <button id="geolocation-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-lg text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
                     </div>
                 </div>
                 <div>
                     <label for="weather" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">天气</label>
                     <div class="flex flex-col gap-2 sm:flex-row">
-                        <input id="weather" name="weather" type="text" value="{{ weather }}" placeholder="如：晴天 28°C" class="block w-full flex-1 rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
-                        <button id="weather-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-full text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
+                        <input id="weather" name="weather" type="text" value="{{ weather }}" placeholder="如：晴天 28°C" class="block w-full flex-1 rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                        <button id="weather-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-lg text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
                     </div>
                     <p id="weather-status" class="mt-1 text-xs" style="color: var(--color-on-surface-variant);"></p>
                     <p id="weather-warning" class="mt-1 text-xs" style="color: var(--color-secondary);">修改地点后，保存前请先查询天气或手动填写天气。</p>
                 </div>
                 <div>
                     <label for="project" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">项目</label>
-                    <input id="project" name="project" type="text" value="{{ project }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="project" name="project" type="text" value="{{ project }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="abstract" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">摘要</label>
-                    <input id="abstract" name="abstract" type="text" value="{{ abstract }}" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="abstract" name="abstract" type="text" value="{{ abstract }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
             </div>
 
@@ -118,7 +118,7 @@
                         <!-- URL inputs -->
                         <div>
                             <div id="url-inputs" class="space-y-2">
-                                <input type="url" name="attachment_urls" placeholder="https://example.com/image.jpg" class="w-full rounded-full px-4 py-2.5 text-sm" style="background: var(--color-surface); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                                <input type="url" name="attachment_urls" placeholder="https://example.com/image.jpg" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                             </div>
                             <button id="add-url-btn" type="button" class="mt-2 type-label" style="color: var(--color-primary); background: none; border: none; cursor: pointer;">+ 添加更多</button>
                         </div>
@@ -135,7 +135,7 @@
             </div>
 
             <div class="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:gap-4" style="border-top: 1px solid rgba(68, 72, 79, 0.1);">
-                <button id="submit-btn" type="submit" data-idle-text="保存修改" class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">
+                <button id="submit-btn" type="submit" data-idle-text="保存修改" class="inline-flex min-h-[46px] items-center justify-center rounded-lg px-6 py-3 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">
                     保存修改
                 </button>
                 <p id="form-status" class="text-xs" style="color: var(--color-on-surface-variant);"></p>
@@ -231,12 +231,12 @@
             input.type = 'url';
             input.name = 'attachment_urls';
             input.placeholder = 'https://example.com/image.jpg';
-            input.className = 'flex-1 rounded-full px-4 py-2.5 text-sm';
+            input.className = 'flex-1 rounded-lg px-4 py-2.5 text-sm';
             input.style.cssText = 'background: var(--color-surface); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);';
 
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
-            removeBtn.className = 'px-3 py-2 rounded-full text-sm font-medium';
+            removeBtn.className = 'px-3 py-2 rounded-lg text-sm font-medium';
             removeBtn.style.cssText = 'background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); cursor: pointer;';
             removeBtn.textContent = '移除';
             removeBtn.addEventListener('click', () => {
