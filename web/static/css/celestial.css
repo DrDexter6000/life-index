@@ -276,23 +276,27 @@
   }
 }
 
-/* Subtle ambient pulse for background glow — ENHANCED 50% */
+/* Subtle ambient pulse for background glow — DRAMATICALLY ENHANCED +20% range */
 @keyframes ambient-drift {
   0%, 100% {
-    opacity: 0.9;
+    opacity: 1.1;
     transform: translate(-50%, -50%) scale(1) rotate(0deg);
   }
-  25% {
-    opacity: 1.2;
-    transform: translate(-48%, -52%) scale(1.08) rotate(1.5deg);
-  }
-  50% {
+  20% {
     opacity: 1.5;
-    transform: translate(-50%, -50%) scale(1.15) rotate(0deg);
+    transform: translate(-42%, -58%) scale(1.22) rotate(3deg);
   }
-  75% {
-    opacity: 1.1;
-    transform: translate(-52%, -48%) scale(1.05) rotate(-1.5deg);
+  40% {
+    opacity: 1.9;
+    transform: translate(-58%, -42%) scale(1.32) rotate(-2deg);
+  }
+  60% {
+    opacity: 1.6;
+    transform: translate(-46%, -54%) scale(1.24) rotate(2deg);
+  }
+  80% {
+    opacity: 1.3;
+    transform: translate(-54%, -46%) scale(1.16) rotate(-3deg);
   }
 }
 
@@ -341,7 +345,7 @@ body.celestial {
   min-height: 100vh;
 }
 
-/* Grain overlay — storybook paper texture */
+/* Grain overlay — storybook paper texture (finer) */
 body.celestial::after {
   content: '';
   position: fixed;
@@ -349,52 +353,63 @@ body.celestial::after {
   left: 0;
   width: 100%;
   height: 100%;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='6' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.025;
   pointer-events: none;
   z-index: 1000;
 }
 
-/* Dreamy ambient glow — multi-layer radial gradients behind content */
+/* Dreamy ambient glow — multi-layer radial gradients behind content (brighter +30%) */
 body.celestial::before {
   content: '';
   position: fixed;
   top: 40%;
   left: 50%;
-  width: 140vw;
-  height: 100vh;
+  width: 160vw;
+  height: 120vh;
   background:
-    /* Primary amber glow — warm sun */
+    /* Primary amber glow — warm sun (brighter +30%) */
     radial-gradient(
-      ellipse 80% 50% at 30% 30%,
-      rgba(255, 231, 146, 0.08) 0%,
-      rgba(255, 231, 146, 0.03) 25%,
-      transparent 50%
+      ellipse 90% 60% at 25% 25%,
+      rgba(255, 231, 146, 0.198) 0%,
+      rgba(255, 231, 146, 0.079) 30%,
+      rgba(255, 231, 146, 0.026) 50%,
+      transparent 70%
     ),
-    /* Secondary coral glow — warm accent */
+    /* Secondary coral glow — warm accent (brighter +30%) */
     radial-gradient(
-      ellipse 60% 40% at 70% 60%,
-      rgba(249, 135, 62, 0.06) 0%,
-      rgba(249, 135, 62, 0.02) 30%,
-      transparent 55%
+      ellipse 70% 50% at 75% 65%,
+      rgba(249, 135, 62, 0.158) 0%,
+      rgba(249, 135, 62, 0.066) 35%,
+      rgba(249, 135, 62, 0.026) 55%,
+      transparent 75%
     ),
-    /* Tertiary teal glow — ethereal cool */
+    /* Tertiary teal glow — ethereal cool (brighter +30%) */
     radial-gradient(
-      ellipse 50% 60% at 80% 20%,
-      rgba(133, 255, 242, 0.05) 0%,
-      rgba(133, 255, 242, 0.015) 35%,
-      transparent 60%
+      ellipse 60% 70% at 85% 15%,
+      rgba(133, 255, 242, 0.132) 0%,
+      rgba(133, 255, 242, 0.053) 40%,
+      rgba(133, 255, 242, 0.020) 60%,
+      transparent 80%
     ),
-    /* Deep space base gradient */
+    /* Quaternary purple glow — mystical depth (brighter +30%) */
+    radial-gradient(
+      ellipse 50% 50% at 15% 75%,
+      rgba(196, 182, 254, 0.106) 0%,
+      rgba(196, 182, 254, 0.040) 45%,
+      transparent 70%
+    ),
+    /* Deep space base gradient (brighter +30%) */
     radial-gradient(
       ellipse at center,
-      rgba(30, 35, 48, 0.5) 0%,
-      transparent 70%
+      rgba(30, 35, 48, 0.79) 0%,
+      rgba(18, 22, 30, 0.40) 50%,
+      transparent 80%
     );
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 0;
-  animation: ambient-drift 15s ease-in-out infinite;
+  animation: ambient-drift 12s ease-in-out infinite;
 }
 
 /* Ensure all content sits above the ambient glow */
@@ -611,7 +626,69 @@ body.celestial > nav {
 }
 
 /* ============================================
-    M. ZEN TYPING MODE (沉浸输入态)
+    M. CURSOR BREATHING ANIMATION (光标呼吸)
+    DESIGN-DIRECTION §4.2 - 2s周期，opacity 0.1-0.3
+    ============================================ */
+@keyframes cursor-breathe {
+    0%, 100% {
+        box-shadow: 0 0 4px rgba(255, 231, 146, 0.1), 0 0 8px rgba(255, 231, 146, 0.05);
+    }
+    50% {
+        box-shadow: 0 0 8px rgba(255, 231, 146, 0.3), 0 0 16px rgba(255, 231, 146, 0.15);
+    }
+}
+
+/* Apply breathing effect to focused textarea in zen mode */
+body.celestial.zen-active #content:focus {
+    animation: cursor-breathe 2s ease-in-out infinite;
+}
+
+/* Save toast notification */
+.save-toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.75rem;
+    background: rgba(18, 22, 30, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    color: var(--color-on-surface-variant);
+    font-size: 0.875rem;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+    z-index: 100;
+}
+
+.save-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Seal ceremony animation - content area gently contracts */
+@keyframes seal-ceremony {
+    0% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+    50% {
+        transform: scale(0.98);
+        filter: brightness(0.95);
+    }
+    100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+}
+
+.seal-animation {
+    animation: seal-ceremony 0.6s ease-out;
+}
+
+/* ============================================
+    N. ZEN TYPING MODE (沉浸输入态)
     Triggered when body has .zen-active class.
     Fades out non-writing UI; keeps title, content,
     and save status visible.

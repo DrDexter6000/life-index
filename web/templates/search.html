@@ -12,19 +12,19 @@
         </p>
     </header>
 
-    <!-- Tab Navigation -->
-    <div class="flex gap-1 p-1 rounded-full inline-flex" style="background: rgba(255,255,255,0.05); width: fit-content;">
+    <!-- Tab Navigation - rounded-xl instead of rounded-full per DESIGN-DIRECTION §2.4 -->
+    <div class="flex gap-1 p-1 rounded-xl inline-flex" style="background: rgba(255,255,255,0.05); width: fit-content;">
         <button
             id="tab-keyword"
             onclick="switchTab('keyword')"
-            class="tab-btn px-5 py-2 rounded-full text-sm font-medium transition-all"
+            class="tab-btn px-5 py-2 rounded-xl text-sm font-medium transition-all"
             style="background: {% if active_tab != 'ai' %}var(--color-primary){% else %}transparent{% endif %}; color: {% if active_tab != 'ai' %}var(--color-background){% else %}var(--color-on-surface-variant){% endif %}; border: none; cursor: pointer;">
             关键词搜索
         </button>
         <button
             id="tab-ai"
             onclick="switchTab('ai')"
-            class="tab-btn px-5 py-2 rounded-full text-sm font-medium transition-all"
+            class="tab-btn px-5 py-2 rounded-xl text-sm font-medium transition-all"
             style="background: {% if active_tab == 'ai' %}var(--color-primary){% else %}transparent{% endif %}; color: {% if active_tab == 'ai' %}var(--color-background){% else %}var(--color-on-surface-variant){% endif %}; border: none; cursor: pointer;">
             AI 搜索
         </button>
@@ -53,7 +53,7 @@
                             name="q"
                             value="{{ query }}"
                             placeholder="输入关键词..."
-                            class="w-full rounded-full px-5 py-3 text-sm"
+                            class="w-full rounded-xl px-5 py-3 text-sm"
                             style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
                         >
                     </div>
@@ -62,7 +62,7 @@
                         <select
                             id="topic"
                             name="topic"
-                            class="w-full rounded-full px-4 py-3 text-sm"
+                            class="w-full rounded-xl px-4 py-3 text-sm"
                             style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
                         >
                             <option value="">全部主题</option>
@@ -86,7 +86,7 @@
                             id="date_from"
                             name="date_from"
                             value="{{ date_from }}"
-                            class="w-full rounded-full px-5 py-3 text-sm"
+                            class="w-full rounded-xl px-5 py-3 text-sm"
                             style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
                         >
                     </div>
@@ -97,7 +97,7 @@
                             id="date_to"
                             name="date_to"
                             value="{{ date_to }}"
-                            class="w-full rounded-full px-5 py-3 text-sm"
+                            class="w-full rounded-xl px-5 py-3 text-sm"
                             style="background: var(--color-surface-container-low); color: var(--color-on-surface); box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15);"
                         >
                     </div>
@@ -107,7 +107,7 @@
                 <div class="flex items-center gap-3">
                     <button
                         type="submit"
-                        class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95"
+                        class="inline-flex min-h-[46px] items-center justify-center rounded-xl px-6 py-3 text-sm font-medium transition-transform active:scale-95"
                         style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);"
                     >
                         搜索
@@ -145,7 +145,7 @@
                 <div class="flex items-center gap-3">
                     <button
                         type="submit"
-                        class="inline-flex min-h-[46px] items-center justify-center rounded-full px-6 py-3 text-sm font-medium transition-transform active:scale-95"
+                        class="inline-flex min-h-[46px] items-center justify-center rounded-xl px-6 py-3 text-sm font-medium transition-transform active:scale-95"
                         style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);"
                     >
                         问 AI
@@ -193,28 +193,28 @@
     {% if has_active_filters and active_tab != 'ai' %}
     <div class="flex flex-wrap gap-2">
         {% if query %}
-            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">关键词：{{ query }}</span>
+            <span class="rounded-xl px-3 py-1 text-xs" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">关键词：{{ query }}</span>
         {% endif %}
         {% if topic %}
-            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">主题：{{ topic }}</span>
+            <span class="rounded-xl px-3 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">主题：{{ topic }}</span>
         {% endif %}
         {% if date_from or date_to %}
-            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 198, 207, 0.15); color: var(--color-on-surface-variant);">日期：{{ date_from or '不限' }} ~ {{ date_to or '不限' }}</span>
+            <span class="rounded-xl px-3 py-1 text-xs" style="background: rgba(196, 198, 207, 0.15); color: var(--color-on-surface-variant);">日期：{{ date_from or '不限' }} ~ {{ date_to or '不限' }}</span>
         {% endif %}
         {% if project %}
-            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(249, 135, 62, 0.15); color: var(--color-secondary);">项目：{{ project }}</span>
+            <span class="rounded-xl px-3 py-1 text-xs" style="background: rgba(249, 135, 62, 0.15); color: var(--color-secondary);">项目：{{ project }}</span>
         {% endif %}
         {% if location %}
-            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">地点：{{ location }}</span>
+            <span class="rounded-xl px-3 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">地点：{{ location }}</span>
         {% endif %}
         {% if mood %}
-            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">情绪：{{ mood }}</span>
+            <span class="rounded-xl px-3 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">情绪：{{ mood }}</span>
         {% endif %}
         {% if tags %}
-            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">标签：{{ tags }}</span>
+            <span class="rounded-xl px-3 py-1 text-xs" style="background: rgba(255, 231, 146, 0.15); color: var(--color-primary);">标签：{{ tags }}</span>
         {% endif %}
         {% if people %}
-            <span class="rounded-full px-3 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">人物：{{ people }}</span>
+            <span class="rounded-xl px-3 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">人物：{{ people }}</span>
         {% endif %}
     </div>
     {% endif %}
@@ -224,6 +224,89 @@
         {% include "partials/search_results.html" %}
     </div>
 </section>
+
+<style>
+    /* Dual Pipeline Visualization - DESIGN-DIRECTION §4.3 */
+    .pipeline-container {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        background: rgba(18, 22, 30, 0.6);
+        border-radius: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    
+    .pipeline-node {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    
+    .pipeline-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        transition: all 0.3s ease;
+    }
+    
+    .pipeline-indicator.keyword {
+        background: var(--color-primary);
+        box-shadow: 0 0 8px rgba(255, 231, 146, 0.5);
+    }
+    
+    .pipeline-indicator.semantic {
+        background: var(--color-tertiary);
+        box-shadow: 0 0 8px rgba(133, 255, 242, 0.5);
+    }
+    
+    .pipeline-indicator.rrf {
+        background: var(--color-secondary);
+        box-shadow: 0 0 8px rgba(249, 135, 62, 0.5);
+    }
+    
+    .pipeline-indicator.searching {
+        animation: pipeline-pulse 1s ease-in-out infinite;
+    }
+    
+    @keyframes pipeline-pulse {
+        0%, 100% { opacity: 0.4; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.2); }
+    }
+    
+    .pipeline-label {
+        font-size: 0.75rem;
+        color: var(--color-on-surface-variant);
+    }
+    
+    .pipeline-count {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-on-surface);
+    }
+    
+    .pipeline-connector {
+        flex: 1;
+        height: 2px;
+        background: linear-gradient(90deg, var(--color-primary), var(--color-tertiary));
+        opacity: 0.3;
+        position: relative;
+    }
+    
+    .pipeline-connector::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 0;
+        height: 0;
+        border-left: 6px solid var(--color-tertiary);
+        border-top: 4px solid transparent;
+        border-bottom: 4px solid transparent;
+    }
+</style>
 {% endblock %}
 
 {% block extra_scripts %}

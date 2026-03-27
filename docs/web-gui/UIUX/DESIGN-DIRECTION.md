@@ -115,11 +115,11 @@ Kimi 的重新定义最精准——它不是"戏剧化（theatrical）"，而是
 | 元素类型 | 圆角规格 | 说明 |
 |:---|:---|:---|
 | **大视觉元素**（卡片、容器、区块） | `rounded-xl` (1.5rem) 至 `rounded-2xl` (2rem) | 保持有机柔和，符合 Celestial 美学 |
-| **小视觉元素**（按钮、输入框、下拉菜单、chip、toggle） | `rounded-md` (0.375rem) 至 `rounded-lg` (0.5rem) | **比原先减小约50%**，避免过度圆润显得不自然 |
+| **小视觉元素**（按钮、输入框、下拉菜单、chip、toggle） | `rounded-xl` (0.75rem) | 柔和但不过分圆润，保持专业感 |
 
 **约束**：
 - 禁止 `rounded-none` 和 `rounded-sm`——一切保持柔和
-- 禁止小元素使用 `rounded-full` pill 形状（输入框、按钮等改为中等圆角）
+- 禁止小元素使用 `rounded-full` pill 形状（输入框、按钮等统一使用 `rounded-xl`）
 
 ### 2.5 间距与呼吸
 

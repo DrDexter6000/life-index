@@ -238,12 +238,24 @@ async def search_journals_web(
             }
         )
 
+    # Extract dual-pipeline stats for visualization (DESIGN-DIRECTION §4.3)
+    performance = raw_result.get("performance", {})
+    dual_pipeline_stats = {
+        "keyword_count": len(raw_result.get("l2_results", [])),
+        "semantic_count": len(raw_result.get("semantic_results", [])),
+        "rrf_count": len(raw_result.get("merged_results", [])),
+        "keyword_time_ms": performance.get("keyword_time_ms", 0.0),
+        "semantic_time_ms": performance.get("semantic_time_ms", 0.0),
+        "rrf_time_ms": performance.get("rrf_time_ms", 0.0),
+    }
+
     result = {
         **base_result,
         "success": bool(raw_result.get("success", True)),
         "results": results,
         "total_found": len(results),
-        "time_ms": float(raw_result.get("performance", {}).get("total_time_ms", 0.0)),
+        "time_ms": float(performance.get("total_time_ms", 0.0)),
+        "dual_pipeline": dual_pipeline_stats,
     }
 
     if not enable_ai_summary:
