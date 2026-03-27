@@ -150,9 +150,19 @@
                     >
                         问 AI
                     </button>
-                    <span id="ai-indicator" class="htmx-indicator text-sm" style="color: var(--color-on-surface-variant);">
-                        AI 思考中...
-                    </span>
+                    <!-- Celestial Loading Indicator -->
+                    <div id="ai-indicator" class="htmx-indicator flex items-center gap-4">
+                        <div class="celestial-loader">
+                            <div class="celestial-ring celestial-ring-outer"></div>
+                            <div class="celestial-ring celestial-ring-middle"></div>
+                            <div class="celestial-ring celestial-ring-inner"></div>
+                            <div class="celestial-core"></div>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <span id="ai-status-text" class="text-sm font-medium" style="color: var(--color-tertiary);">正在聆听您的问题</span>
+                            <span id="ai-timer" class="text-xs" style="color: var(--color-on-surface-variant); opacity: 0.6;"></span>
+                        </div>
+                    </div>
                 </div>
             </form>
         </section>
@@ -306,6 +316,109 @@
         border-top: 4px solid transparent;
         border-bottom: 4px solid transparent;
     }
+    
+    /* ========================================
+       Celestial Loading Animation
+       Inspired by the stars and cosmos
+       ======================================== */
+    
+    /* Hide the celestial loader by default (htmx-indicator) */
+    #ai-indicator {
+        display: none;
+    }
+    
+    /* Show when HTMX request is in progress */
+    #ai-indicator.htmx-request {
+        display: flex;
+    }
+    
+    .celestial-loader {
+        position: relative;
+        width: 44px;
+        height: 44px;
+    }
+    
+    .celestial-ring {
+        position: absolute;
+        border-radius: 50%;
+        border: 2px solid transparent;
+    }
+    
+    .celestial-ring-outer {
+        inset: 0;
+        border-color: rgba(133, 255, 242, 0.3);
+        animation: celestial-pulse-outer 2s ease-in-out infinite;
+    }
+    
+    .celestial-ring-middle {
+        inset: 6px;
+        border-color: rgba(133, 255, 242, 0.5);
+        animation: celestial-pulse-middle 2s ease-in-out infinite 0.3s;
+    }
+    
+    .celestial-ring-inner {
+        inset: 12px;
+        border-color: rgba(133, 255, 242, 0.7);
+        animation: celestial-pulse-inner 2s ease-in-out infinite 0.6s;
+    }
+    
+    .celestial-core {
+        position: absolute;
+        inset: 16px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(133, 255, 242, 0.9) 0%, rgba(133, 255, 242, 0) 70%);
+        animation: celestial-glow 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes celestial-pulse-outer {
+        0%, 100% { 
+            opacity: 0.3; 
+            transform: scale(1);
+            border-color: rgba(133, 255, 242, 0.3);
+        }
+        50% { 
+            opacity: 0.6; 
+            transform: scale(1.05);
+            border-color: rgba(255, 231, 146, 0.4);
+        }
+    }
+    
+    @keyframes celestial-pulse-middle {
+        0%, 100% { 
+            opacity: 0.5; 
+            transform: scale(1);
+            border-color: rgba(133, 255, 242, 0.5);
+        }
+        50% { 
+            opacity: 0.8; 
+            transform: scale(1.08);
+            border-color: rgba(255, 231, 146, 0.5);
+        }
+    }
+    
+    @keyframes celestial-pulse-inner {
+        0%, 100% { 
+            opacity: 0.7; 
+            transform: scale(1);
+            border-color: rgba(133, 255, 242, 0.7);
+        }
+        50% { 
+            opacity: 1; 
+            transform: scale(1.1);
+            border-color: rgba(255, 231, 146, 0.7);
+        }
+    }
+    
+    @keyframes celestial-glow {
+        0%, 100% { 
+            opacity: 0.6;
+            box-shadow: 0 0 8px rgba(133, 255, 242, 0.4);
+        }
+        50% { 
+            opacity: 1;
+            box-shadow: 0 0 16px rgba(133, 255, 242, 0.6), 0 0 24px rgba(255, 231, 146, 0.3);
+        }
+    }
 </style>
 {% endblock %}
 
@@ -330,5 +443,85 @@
         // Show/hide results area
         document.getElementById('search-results').classList.toggle('hidden', tab !== 'keyword');
     }
+    
+    // ========================================
+    // Celestial Loading Timer & Status
+    // ========================================
+    
+    let aiTimerInterval = null;
+    let aiStartTime = null;
+    
+    const aiStatusMessages = [
+        { time: 0, text: "正在聆听您的问题" },
+        { time: 3, text: "正在搜索记忆的角落" },
+        { time: 8, text: "正在梳理时间的脉络" },
+        { time: 15, text: "正在编织温暖的文字" },
+        { time: 25, text: "快好了，正在打磨最后的细节" },
+    ];
+    
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        if (mins > 0) {
+            return `${mins}分${secs}秒`;
+        }
+        return `${secs}秒`;
+    }
+    
+    function updateAiStatus() {
+        if (!aiStartTime) return;
+        
+        const elapsed = Math.floor((Date.now() - aiStartTime) / 1000);
+        const timerEl = document.getElementById('ai-timer');
+        const statusEl = document.getElementById('ai-status-text');
+        
+        if (timerEl) {
+            timerEl.textContent = formatTime(elapsed);
+        }
+        
+        // Update status message based on elapsed time
+        let currentStatus = aiStatusMessages[0].text;
+        for (let i = aiStatusMessages.length - 1; i >= 0; i--) {
+            if (elapsed >= aiStatusMessages[i].time) {
+                currentStatus = aiStatusMessages[i].text;
+                break;
+            }
+        }
+        
+        if (statusEl) {
+            statusEl.textContent = currentStatus;
+        }
+    }
+    
+    function startAiTimer() {
+        aiStartTime = Date.now();
+        updateAiStatus();
+        aiTimerInterval = setInterval(updateAiStatus, 1000);
+    }
+    
+    function stopAiTimer() {
+        if (aiTimerInterval) {
+            clearInterval(aiTimerInterval);
+            aiTimerInterval = null;
+        }
+        aiStartTime = null;
+    }
+    
+    // Hook into HTMX events
+    document.body.addEventListener('htmx:beforeRequest', function(evt) {
+        if (evt.detail.pathInfo.requestPath === '/api/search/ai') {
+            startAiTimer();
+        }
+    });
+    
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.pathInfo.requestPath === '/api/search/ai') {
+            stopAiTimer();
+        }
+    });
+    
+    document.body.addEventListener('htmx:responseError', function(evt) {
+        stopAiTimer();
+    });
 </script>
 {% endblock %}

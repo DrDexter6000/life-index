@@ -67,14 +67,14 @@ Examples:
     parser.add_argument(
         "--semantic-weight",
         type=float,
-        default=0.4,
-        help="语义搜索权重 (默认: 0.4)",
+        default=1.0,
+        help="语义搜索权重 (默认: 1.0)",
     )
     parser.add_argument(
         "--fts-weight",
         type=float,
-        default=0.6,
-        help="FTS 搜索权重 (默认: 0.6)",
+        default=1.0,
+        help="FTS 搜索权重 (默认: 1.0)",
     )
     parser.add_argument(
         "--limit",

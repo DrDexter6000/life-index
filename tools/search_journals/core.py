@@ -162,9 +162,9 @@ def hierarchical_search(
     use_index: bool = True,
     semantic: bool = True,
     semantic_weight: float = 0.4,
-    fts_weight: float = 0.6,
+    fts_weight: float = 1.0,
     # Web-only recall overrides
-    semantic_top_k: int = 50,
+    semantic_top_k: int = 30,
     semantic_min_similarity: float = 0.15,
     fts_min_relevance: int = 25,
     rrf_min_score: float = 0.008,

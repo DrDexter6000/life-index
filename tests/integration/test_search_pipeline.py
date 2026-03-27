@@ -201,8 +201,9 @@ class TestRRFFusion:
                 [], [], fts_results, semantic_results, query="test"
             )
 
-        # Weighted RRF defaults to fts=0.6, semantic=0.4, so doc_a should rank higher
-        # because lexical rank-1 outweighs semantic rank-1 by default.
+        # Equal weights (1.0, 1.0): RRF scores are equal for both docs.
+        # doc_a ranks first because it has higher FTS score (80 > 60),
+        # which is the secondary sort key after RRF score.
         assert len(merged) == 2
         doc_a_score = next(r["relevance_score"] for r in merged if "doc_a" in r["path"])
         doc_b_score = next(r["relevance_score"] for r in merged if "doc_b" in r["path"])

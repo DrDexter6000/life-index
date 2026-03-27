@@ -71,13 +71,15 @@ def test_search_journals_web_adds_ai_summary_when_provider_available(
     provider = AsyncMock()
     provider.summarize_search.return_value = {
         "summary": "关于团团，你最近主要在回忆亲子相处片段。",
-        "key_entries": [
+        "insights": [
             {
-                "title": "想念团团",
+                "theme": "想念团团",
+                "quote": "「回看旧照片触发了强烈想念」",
                 "date": "2026-03-07",
-                "reason": "回看旧照片触发了强烈想念",
+                "insight": "回看旧照片触发了强烈想念",
             }
         ],
+        "suggestions": ["多记录和孩子在一起的时光"],
         "time_span": "2026年3月",
     }
 
@@ -93,8 +95,8 @@ def test_search_journals_web_adds_ai_summary_when_provider_available(
 
     assert result["ai_summary"]["summary"] == "关于团团，你最近主要在回忆亲子相处片段。"
     assert result["ai_summary"]["state"] == "ready"
-    assert result["ai_summary"]["key_entries"][0]["title"] == "想念团团"
-    assert result["ai_summary"]["time_span"] == "2026年3月"
+    assert result["ai_summary"]["insights"][0]["theme"] == "想念团团"
+    assert result["ai_summary"]["suggestions"][0] == "多记录和孩子在一起的时光"
 
 
 def test_search_journals_web_returns_ai_unavailable_state_without_provider(
@@ -227,6 +229,7 @@ def test_search_ai_journals_web_uses_single_canonical_search_call(
         semantic=True,
         limit=15,
         provider=provider,
+        search_preset="ai",
     )
     assert result["derived_queries"] == ["睡眠不足", "凌晨", "晚睡"]
     assert result["display_query"] == "过去30天我有哪几天是晚于十点之后睡觉的"
