@@ -271,8 +271,8 @@ def get_search_config() -> Dict[str, Any]:
     """Get search configuration."""
     defaults = {
         "default_level": 3,
-        "semantic_weight": 0.4,
-        "fts_weight": 0.6,
+        "semantic_weight": 1.0,
+        "fts_weight": 1.0,
         "default_limit": 10,
     }
     return _deep_merge(defaults, USER_CONFIG.get("search", {}))
@@ -282,8 +282,8 @@ def get_search_weights() -> tuple[float, float]:
     """Return (fts_weight, semantic_weight) from config."""
     cfg = get_search_config()
     return (
-        float(cfg.get("fts_weight", 0.6)),
-        float(cfg.get("semantic_weight", 0.4)),
+        float(cfg.get("fts_weight", 1.0)),
+        float(cfg.get("semantic_weight", 1.0)),
     )
 
 

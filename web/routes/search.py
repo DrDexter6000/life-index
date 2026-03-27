@@ -68,26 +68,120 @@ def _normalize_result_title(value: str) -> str:
     return str(value or "").strip().strip('"').strip("'").strip("‘").strip("’")
 
 
-def _parse_relative_date_window(query: str) -> tuple[str | None, str | None]:
-    text = str(query or "")
-    now = datetime.now()
-
-    match = re.search(r"(?:过去|最近)(\d{1,3})天", text)
-    if match:
-        days = int(match.group(1))
-        start = (now - timedelta(days=max(days - 1, 0))).strftime("%Y-%m-%d")
-        end = now.strftime("%Y-%m-%d")
-        return start, end
-
-    return None, None
-
-
 def _behavioral_query_expansions(user_query: str) -> list[str]:
     # Deliberately avoid query-specific hardcoding here.
     # Behavioral expansion should come from the generic LLM-based query derivation path.
     return []
 
 
+async def _derive_search_plan(provider: Any, user_query: str) -> dict[str, Any]:
+    """
+    LLM 统一提取查询计划（日期范围 + 搜索关键词）
+
+    Returns:
+        {
+            "date_from": "YYYY-MM-DD" | None,
+            "date_to": "YYYY-MM-DD" | None,
+            "queries": ["keyword1", "keyword2", ...]
+        }
+    """
+    api_key = getattr(provider, "api_key", "")
+    base_url = getattr(provider, "base_url", "")
+    model = getattr(provider, "model", "")
+    if not (api_key and base_url and model):
+        return {"date_from": None, "date_to": None, "queries": []}
+
+    import httpx
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    prompt = f"""Analyze the user's question for a personal journal search system.
+Today is {today}.
+
+Extract:
+1. Date range (if mentioned in the question)
+2. Search keywords (1-5 words or short phrases)
+
+Return JSON only:
+{{"date_from": "YYYY-MM-DD or null", "date_to": "YYYY-MM-DD or null", "queries": ["keyword1", "keyword2"]}}
+
+Date parsing rules:
+- "过去三天" / "last 3 days" → date_from = 3 days ago, date_to = today
+- "上周" / "last week" → date_from = last Monday, date_to = last Sunday  
+- "本月" / "this month" → date_from = 1st of this month, date_to = today
+- If no date mentioned, return null for both
+- Always use YYYY-MM-DD format
+
+Query extraction rules:
+- Extract 1-5 keywords likely to appear in journal text
+- Use the language the user used
+
+User question: {user_query}"""
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                f"{base_url.rstrip('/')}/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "Return valid JSON only. No explanation.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "max_tokens": 200,
+                    "temperature": 0.3,
+                },
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+            response.raise_for_status()
+            text = (
+                response.json()
+                .get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+    except Exception:
+        return {"date_from": None, "date_to": None, "queries": []}
+
+    # Parse JSON response
+    try:
+        # Remove markdown code blocks if present
+        import re
+
+        text = re.sub(r"^```(?:json)?\s*", "", str(text), flags=re.IGNORECASE)
+        text = re.sub(r"```\s*$", "", text).strip()
+        parsed = json.loads(text)
+
+        date_from = parsed.get("date_from")
+        date_to = parsed.get("date_to")
+        queries = parsed.get("queries", [])
+
+        # Validate date format
+        if date_from and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(date_from)):
+            date_from = None
+        if date_to and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(date_to)):
+            date_to = None
+
+        # Validate queries
+        if not isinstance(queries, list):
+            queries = []
+        queries = [str(q) for q in queries if q and len(str(q)) <= 40][:5]
+
+        return {
+            "date_from": date_from,
+            "date_to": date_to,
+            "queries": queries,
+        }
+    except (json.JSONDecodeError, TypeError):
+        return {"date_from": None, "date_to": None, "queries": []}
+
+
+# 保留旧函数作为 fallback
 async def _derive_search_queries(provider: Any, user_query: str) -> list[str]:
     api_key = getattr(provider, "api_key", "")
     base_url = getattr(provider, "base_url", "")
@@ -346,8 +440,11 @@ async def ai_search(request: Request):
             status_code=400,
         )
 
-    date_from, date_to = _parse_relative_date_window(user_query)
-    derived_queries = await _derive_search_queries(provider, user_query)
+    # 使用 LLM 统一提取查询计划（日期 + 关键词）
+    search_plan = await _derive_search_plan(provider, user_query)
+    date_from = search_plan.get("date_from")
+    date_to = search_plan.get("date_to")
+    derived_queries = search_plan.get("queries", [])
 
     ai_search_result = await search_ai_journals_web(
         user_query=user_query,
@@ -366,12 +463,47 @@ async def ai_search(request: Request):
 
     ai_summary_state = dict(ai_search_result.get("ai_summary") or {})
     summary = ai_summary_state.get("summary")
-    key_entries = ai_summary_state.get("key_entries", [])
+    insights = ai_summary_state.get("insights", [])
+    suggestions = ai_summary_state.get("suggestions", [])
 
     if not summary and results:
         summary = f"找到了 {total} 篇相关日志，但没有生成 AI 摘要。"
 
-    route_key_entries = []
+    # 构建结构化摘要HTML
+    summary_html = ""
+    if summary:
+        summary_html = f'<div class="mb-5 text-sm leading-7" style="color: var(--color-on-surface);">{escape(summary)}</div>'
+
+    # 核心洞察部分
+    insights_html = ""
+    if insights:
+        for insight in insights[:5]:
+            if isinstance(insight, dict):
+                theme = escape(str(insight.get("theme", "")))
+                quote = escape(str(insight.get("quote", "")))
+                date = escape(str(insight.get("date", "")))
+                insight_text = escape(str(insight.get("insight", "")))
+                insights_html += (
+                    f'<div class="mb-4 pb-4" style="border-bottom: 1px solid rgba(255,255,255,0.05);">'
+                    f'<p class="font-medium text-sm mb-2" style="color: var(--color-primary);">{theme}</p>'
+                    f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant); font-style: italic;">{quote}'
+                )
+                if date:
+                    insights_html += f' <span style="opacity: 0.6;">— {date}</span>'
+                insights_html += "</p>"
+                if insight_text:
+                    insights_html += f'<p class="text-sm" style="color: var(--color-on-surface);">{insight_text}</p>'
+                insights_html += "</div>"
+
+    # 建议部分
+    suggestions_html = ""
+    if suggestions:
+        suggestions_html = '<div class="mt-5 pt-5" style="border-top: 1px solid rgba(255,255,255,0.08);">'
+        for suggestion in suggestions[:3]:
+            suggestions_html += f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant);">· {escape(str(suggestion))}</p>'
+        suggestions_html += "</div>"
+
+    # 相关日志链接
     result_lookup: dict[tuple[str, str], dict[str, Any]] = {}
     for item in results:
         result_lookup[
@@ -381,28 +513,15 @@ async def ai_search(request: Request):
             )
         ] = item
 
-    for entry in key_entries[:5]:
-        if isinstance(entry, dict):
-            title = str(entry.get("title", "无标题"))
-            date = str(entry.get("date", ""))
-            matched = result_lookup.get((_normalize_result_title(title), date.strip()))
-            route_key_entries.append(
-                {
-                    "title": title,
-                    "date": date,
-                    "route_path": entry.get("journal_route_path", "")
-                    or (matched or {}).get("journal_route_path", ""),
-                }
-            )
-        elif isinstance(entry, str):
-            route_key_entries.append({"title": entry, "date": "", "route_path": ""})
-
     items_html = ""
-    for entry in route_key_entries:
-        href = f"/journal/{entry['route_path']}" if entry.get("route_path") else "#"
+    for item in results[:5]:
+        title = str(item.get("title", "无标题"))
+        date = str(item.get("date", ""))
+        route_path = item.get("journal_route_path", "")
+        href = f"/journal/{route_path}" if route_path else "#"
         items_html += (
-            f'<li><a href="{escape(href)}" class="text-sm hover:underline" style="color: var(--color-primary);">{escape(str(entry.get("title", "无标题")))}</a>'
-            f'<span class="text-xs ml-2" style="color: var(--color-on-surface-variant);">{escape(str(entry.get("date", "")))}</span></li>'
+            f'<li><a href="{escape(href)}" class="text-sm hover:underline" style="color: var(--color-primary);">{escape(title)}</a>'
+            f'<span class="text-xs ml-2" style="color: var(--color-on-surface-variant);">{escape(date)}</span></li>'
         )
 
     filters_html = "".join(
@@ -416,15 +535,20 @@ async def ai_search(request: Request):
         if v
     )
 
-    safe_summary = escape(summary or f"找到了 {total} 篇相关日志，但未能生成有效回答。")
     html = (
         '<article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">'
-        '<div class="flex items-start gap-3 mb-4"><span class="text-2xl">🤖</span><div>'
+        '<div class="flex items-start gap-4 mb-5">'
+        '<div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, rgba(255, 231, 146, 0.15), rgba(133, 255, 242, 0.1));">'
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-primary);"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'
+        "</div>"
+        "<div>"
         '<h3 class="font-display text-xl font-medium" style="color: var(--color-on-surface);">AI 回答</h3>'
         f'<p class="text-sm" style="color: var(--color-on-surface-variant);">基于搜索到的 {total} 篇相关日志</p>'
         "</div></div>"
-        f'<div class="flex flex-wrap gap-2 mb-4">{filters_html}</div>'
-        f'<div class="prose max-w-none text-sm leading-7" style="color: var(--color-on-surface); white-space: pre-wrap;">{safe_summary}</div>'
+        f'<div class="flex flex-wrap gap-2 mb-5">{filters_html}</div>'
+        f"{summary_html}"
+        f"{insights_html}"
+        f"{suggestions_html}"
         + (
             '<div class="mt-6 pt-6" style="border-top: 1px solid rgba(68, 72, 79, 0.15);">'
             '<h4 class="text-sm font-medium mb-3" style="color: var(--color-on-surface);">相关日志</h4>'

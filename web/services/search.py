@@ -4,12 +4,49 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from tools.search_journals.core import hierarchical_search
 
-from tools.lib.config import get_search_mode, get_search_weights
 from web.services.llm_provider import LLMProvider
+
+
+# =============================================================================
+# 搜索参数配置（开发层硬编码，不暴露给用户）
+# =============================================================================
+
+# 关键词搜索专用配置：严谨模式，最小化噪音
+KEYWORD_SEARCH_PARAMS = {
+    "semantic_top_k": 20,  # 减少候选池
+    "semantic_min_similarity": 0.25,  # 高阈值，仅保留强相关
+    "fts_min_relevance": 35,  # 高阈值，类似strict
+    "rrf_min_score": 0.015,  # 高RRF阈值
+    "non_rrf_min_score": 18,  # 高阈值
+    "fts_weight": 1.2,  # 略偏向关键词精确匹配
+    "semantic_weight": 0.8,
+}
+
+# AI 搜索专用配置：宽松模式，让 LLM 筛选
+AI_SEARCH_PARAMS = {
+    "semantic_top_k": 50,  # 更大候选池
+    "semantic_min_similarity": 0.12,  # 宽松
+    "fts_min_relevance": 20,  # 宽松
+    "rrf_min_score": 0.006,  # 宽松
+    "non_rrf_min_score": 8,  # 宽松
+    "fts_weight": 1.0,
+    "semantic_weight": 1.0,
+}
+
+# AI 搜索专用配置：偏宽松，让 LLM 筛选
+AI_SEARCH_PARAMS = {
+    "semantic_top_k": 50,  # 更大候选池
+    "semantic_min_similarity": 0.12,  # 更宽松
+    "fts_min_relevance": 20,  # 更宽松
+    "rrf_min_score": 0.006,  # 更宽松
+    "non_rrf_min_score": 8,  # 更宽松
+    "fts_weight": 1.0,
+    "semantic_weight": 1.0,
+}
 
 
 def _is_valid_journal_route_path(path: str | None) -> bool:
@@ -109,12 +146,8 @@ async def search_journals_web(
     limit: int = 20,
     provider: LLMProvider | None = None,
     enable_ai_summary: bool = True,
-    # Web-only recall overrides (CLI uses hardcoded defaults)
-    semantic_top_k: int = 50,
-    semantic_min_similarity: float = 0.15,
-    fts_min_relevance: int = 25,
-    rrf_min_score: float = 0.008,
-    non_rrf_min_score: float = 10,
+    # 搜索预设：keyword（严谨）或 ai（宽松）
+    search_preset: Literal["keyword", "ai"] = "keyword",
 ) -> dict[str, Any]:
     """Return a web-friendly search payload for templates and routes."""
 
@@ -147,7 +180,8 @@ async def search_journals_web(
         "ai_summary": {
             "state": "idle",
             "summary": None,
-            "key_entries": [],
+            "insights": [],
+            "suggestions": [],
             "time_span": None,
             "message": None,
         },
@@ -156,35 +190,14 @@ async def search_journals_web(
     if not _has_filters(normalized_params):
         return base_result
 
-    # 获取搜索权重和模式
-    fts_weight, semantic_weight = get_search_weights()
-    search_mode = get_search_mode()
+    # 根据搜索预设选择参数（硬编码，不从用户配置读取）
+    if search_preset == "ai":
+        params = AI_SEARCH_PARAMS
+    else:
+        params = KEYWORD_SEARCH_PARAMS
 
-    # 根据搜索模式调整参数
-    mode_params = {
-        "strict": {
-            "semantic_top_k": 20,
-            "semantic_min_similarity": 0.25,
-            "fts_min_relevance": 35,
-            "rrf_min_score": 0.016,
-            "non_rrf_min_score": 20,
-        },
-        "balanced": {
-            "semantic_top_k": 50,
-            "semantic_min_similarity": 0.15,
-            "fts_min_relevance": 25,
-            "rrf_min_score": 0.008,
-            "non_rrf_min_score": 10,
-        },
-        "loose": {
-            "semantic_top_k": 100,
-            "semantic_min_similarity": 0.10,
-            "fts_min_relevance": 15,
-            "rrf_min_score": 0.004,
-            "non_rrf_min_score": 5,
-        },
-    }
-    params = mode_params.get(search_mode, mode_params["balanced"])
+    fts_weight = params["fts_weight"]
+    semantic_weight = params["semantic_weight"]
 
     try:
         raw_result = hierarchical_search(
@@ -263,7 +276,8 @@ async def search_journals_web(
         result["ai_summary"] = {
             "state": "disabled",
             "summary": None,
-            "key_entries": [],
+            "insights": [],
+            "suggestions": [],
             "time_span": None,
             "message": None,
         }
@@ -271,7 +285,8 @@ async def search_journals_web(
         result["ai_summary"] = {
             "state": "unavailable",
             "summary": None,
-            "key_entries": [],
+            "insights": [],
+            "suggestions": [],
             "time_span": None,
             "message": "启用 AI 可获得智能搜索摘要",
         }
@@ -284,7 +299,8 @@ async def search_journals_web(
             result["ai_summary"] = {
                 "state": "failed",
                 "summary": None,
-                "key_entries": [],
+                "insights": [],
+                "suggestions": [],
                 "time_span": None,
                 "message": str(exc),
             }
@@ -293,7 +309,8 @@ async def search_journals_web(
                 result["ai_summary"] = {
                     "state": "ready",
                     "summary": ai_summary.get("summary"),
-                    "key_entries": list(ai_summary.get("key_entries") or []),
+                    "insights": list(ai_summary.get("insights") or []),
+                    "suggestions": list(ai_summary.get("suggestions") or []),
                     "time_span": ai_summary.get("time_span"),
                     "message": None,
                 }
@@ -301,7 +318,8 @@ async def search_journals_web(
                 result["ai_summary"] = {
                     "state": "failed",
                     "summary": None,
-                    "key_entries": [],
+                    "insights": [],
+                    "suggestions": [],
                     "time_span": None,
                     "message": "AI 归纳暂时不可用",
                 }
@@ -351,6 +369,7 @@ async def search_ai_journals_web(
         semantic=True,
         limit=limit,
         provider=provider,
+        search_preset="ai",  # AI 搜索使用宽松配置
     )
     result["effective_query"] = combined_query
     result["derived_queries"] = query_hints[1:]

@@ -313,8 +313,8 @@ class TestGetSearchConfig:
         monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
         result = get_search_config()
         assert result["default_level"] == 3
-        assert result["semantic_weight"] == 0.4
-        assert result["fts_weight"] == 0.6
+        assert result["semantic_weight"] == 1.0
+        assert result["fts_weight"] == 1.0
         assert result["default_limit"] == 10
 
     def test_config_override(self, monkeypatch):

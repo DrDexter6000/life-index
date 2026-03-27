@@ -204,14 +204,18 @@ def merge_and_rank_results_hybrid(
     )
 
     # 处理 L3/FTS 结果（记录分项分数用于输出）
+    # 同时补充元数据（abstract, tags, topic 等），与语义结果格式统一
     for r in l3_results:
         path = r["path"]
         fts_score = r.get("relevance", 0)
         if r.get("title_match"):
             fts_score += 10
 
+        # 为 FTS 结果补充元数据，统一格式
+        enriched_data = enrich_semantic_result(r)
+
         scored[path] = {
-            "data": r,
+            "data": enriched_data,
             "fts_score": float(fts_score),
             "semantic_score": 0.0,
             "final_score": 0.0,

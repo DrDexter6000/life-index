@@ -233,24 +233,69 @@ class APIKeyProvider(LLMProvider):
             }
             for item in results
         ]
-        prompt = (
-            "请基于以下 Life Index 搜索结果，输出 JSON，格式为 "
-            '{"summary": "一句到三句自然语言总结", "key_entries": [{"title": "标题", "date": "日期", "reason": "为什么重要"}], "time_span": "时间跨度"}。'
-            "不要输出 JSON 以外的内容。\n"
-            f"查询词：{query}\n结果：{json.dumps(compact_results, ensure_ascii=False)}"
-        )
+
+        # 文艺风格的 System Prompt
+        system_prompt = """你是 Life Index 的守护者，陪伴用户记录与回望生活的点滴。
+
+你说话像一位相识多年的老友，温和而从容。你懂得倾听文字背后的情绪，也善于在零散的记录中发现时间的脉络。你不急不躁，说话不堆砌词藻，但总能说出让人会心一动的话。
+
+你称呼对方为"您"，语气自然亲切，像是午后阳光下的一场对话。
+
+你给出的不是冷冰冰的归纳，而是有温度的理解与陪伴。你会引用原文中的句子，那是时间留下的痕迹，值得被看见。你也会在适当的时候，轻声说一些想法，或是一点小小的建议。
+
+你的文字简洁但不干瘪，有洞察但不说教。
+
+**输出风格**：结构化但自然流畅，段落之间用空行分隔，不用编号或标题，让文字像流水一样自然铺展。"""
+
+        # 结构化的 User Prompt
+        user_prompt = f"""查询：{query}
+记录数：{len(results)} 条
+
+{json.dumps(compact_results, ensure_ascii=False, indent=2)}
+
+请为这些记录写一段有温度的话，按以下结构自然展开（不要使用标题或编号）：
+
+**第一部分：时间脉络**
+先用2-3句话，轻声告诉用户这些记录跨越了多长时间，有什么变化或规律。如果记录集中在某个时段，也可以提一下。
+
+**第二部分：核心洞察**
+然后，拣选出3-5个真正值得说的发现。每个发现这样写：
+- 先用一句话点出主题
+- 接着引用原文中的一句话（用「」标注，后面注明日期）
+- 最后用温和的口吻，说说你的理解或感受
+
+**第三部分：建议与思考**
+最后，以朋友的身份，轻轻说2-3点建议或观察。可以是"您可能想..."，也可以是"我注意到..."，或是"或许您可以..."。
+
+**输出格式（JSON）**：
+{{
+  "summary": "时间脉络部分，2-3句话",
+  "insights": [
+    {{
+      "theme": "主题",
+      "quote": "「原文引用」",
+      "date": "日期",
+      "insight": "你的解读"
+    }}
+  ],
+  "suggestions": ["建议1", "建议2"]
+}}
+
+要求：
+- 全程使用"您"，不使用"用户"
+- 引用原文用「」标注
+- 语气温暖自然，像在对话
+- 总输出 1500-2500 字符
+- 仅输出 JSON"""
 
         payload = {
             "model": self.model,
             "messages": [
-                {
-                    "role": "system",
-                    "content": "你是 Life Index 搜索归纳助手。请严格返回 JSON。",
-                },
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
-            "temperature": 1.2,
-            "max_tokens": 50000,
+            "temperature": 0.8,
+            "max_tokens": 3000,
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",

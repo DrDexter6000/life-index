@@ -891,6 +891,7 @@ class TestSearchRoute:
             weather=None,
             semantic=True,
             provider=provider,
+            enable_ai_summary=False,
         )
 
     @patch("web.routes.search.search_journals_web")
@@ -937,6 +938,7 @@ class TestSearchRoute:
             weather=None,
             semantic=True,
             provider=provider,
+            enable_ai_summary=False,
         )
 
     @patch("web.routes.search.search_journals_web")
@@ -983,6 +985,7 @@ class TestSearchRoute:
             weather=None,
             semantic=True,
             provider=provider,
+            enable_ai_summary=False,
         )
 
     @patch("web.routes.search.search_journals_web")
@@ -1029,6 +1032,7 @@ class TestSearchRoute:
             weather=None,
             semantic=True,
             provider=provider,
+            enable_ai_summary=False,
         )
 
     @patch("web.routes.search.search_journals_web")
@@ -1068,6 +1072,7 @@ class TestSearchRoute:
             weather=None,
             semantic=True,
             provider=provider,
+            enable_ai_summary=False,
         )
 
     @patch("web.routes.search.search_journals_web")
@@ -1321,6 +1326,7 @@ class TestSearchPhase4:
 
     @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     @patch("web.routes.search.search_journals_web", new_callable=AsyncMock)
+    @pytest.mark.skip(reason="AI智能归纳功能已从关键词搜索移除，现仅在AI搜索tab中提供")
     def test_search_page_renders_htmx_ai_summary_loader_when_available(
         self,
         mock_search: AsyncMock,
@@ -1358,6 +1364,7 @@ class TestSearchPhase4:
 
     @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     @patch("web.routes.search.search_journals_web", new_callable=AsyncMock)
+    @pytest.mark.skip(reason="AI智能归纳功能已从关键词搜索移除，现仅在AI搜索tab中提供")
     def test_search_page_shows_ai_settings_prompt_when_unavailable(
         self,
         mock_search: AsyncMock,
@@ -1467,6 +1474,7 @@ class TestSearchPhase4:
             provider=provider,
         )
 
+    @pytest.mark.skip(reason="AI智能归纳功能已从关键词搜索移除，现仅在AI搜索tab中提供")
     def test_search_page_contains_htmx_summary_container_and_timeout_markers(
         self,
     ) -> None:

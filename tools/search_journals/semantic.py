@@ -145,6 +145,8 @@ def enrich_semantic_result(semantic_result: Dict) -> Dict:
                 result["tags"] = metadata["tags"]
             if metadata.get("topic"):
                 result["topic"] = metadata["topic"]
+            if metadata.get("mood"):
+                result["mood"] = metadata["mood"]
             if metadata.get("project"):
                 result["project"] = metadata["project"]
     except (OSError, IOError):
