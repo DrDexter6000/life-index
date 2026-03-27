@@ -21,13 +21,10 @@ from tools.lib.config import JOURNALS_DIR
 class DashboardStats:
     total_journals: int = 0
     total_words: int = 0
-    longest_streak: int = 0
-    current_streak: int = 0
     month_journals: int = 0
     most_frequent_mood: str = ""
     most_active_topic: str = ""
-    on_this_day: list[dict[str, Any]] = field(default_factory=list)
-    milestone: int = 0
+    recent_entries: list[dict[str, Any]] = field(default_factory=list)
     mood_frequency: list[dict[str, Any]] = field(default_factory=list)
     topic_distribution: list[dict[str, Any]] = field(default_factory=list)
     tag_cloud: list[dict[str, Any]] = field(default_factory=list)
@@ -35,6 +32,11 @@ class DashboardStats:
         default_factory=lambda: {"nodes": [], "edges": []}
     )
     heatmap: dict[str, int] = field(default_factory=dict)
+    # Legacy fields (kept for backward compatibility but not displayed)
+    longest_streak: int = 0
+    current_streak: int = 0
+    milestone: int = 0
+    on_this_day: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _today() -> date:
@@ -199,6 +201,22 @@ def _load_dashboard_entries() -> list[dict[str, Any]]:
     return cached_entries
 
 
+def _build_recent_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Get recent entries sorted by date descending."""
+    sorted_entries = sorted(entries, key=lambda e: str(e.get("date", "")), reverse=True)
+    recent = []
+    for entry in sorted_entries[:10]:  # Last 10 entries
+        recent.append(
+            {
+                "date": entry.get("date", ""),
+                "title": entry.get("title", "无标题"),
+                "abstract": entry.get("abstract", ""),
+                "journal_route_path": entry.get("journal_route_path", ""),
+            }
+        )
+    return recent
+
+
 def compute_dashboard_stats() -> DashboardStats:
     entries = _load_dashboard_entries()
 
@@ -206,9 +224,11 @@ def compute_dashboard_stats() -> DashboardStats:
     stats.total_journals = len(entries)
     stats.total_words = _compute_total_words(entries)
 
+    # Streaks computed but not displayed (anti-anxiety design)
     longest_streak, current_streak = _compute_streaks(entries)
     stats.longest_streak = longest_streak
     stats.current_streak = current_streak
+
     stats.month_journals = sum(
         1
         for entry in entries
@@ -243,6 +263,9 @@ def compute_dashboard_stats() -> DashboardStats:
     stats.tag_cloud = _counter_to_chart(tag_counter)
     stats.people_graph = _build_people_graph(entries)
     stats.heatmap = dict(heatmap_counter)
-    stats.on_this_day = _build_on_this_day(entries)
+
+    # Recent entries instead of "On This Day" (no nostalgia pressure)
+    stats.recent_entries = _build_recent_entries(entries)
+    stats.on_this_day = []  # Disabled
 
     return stats

@@ -12,22 +12,19 @@
         </p>
     </header>
 
-    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6 ring-1 ring-black/5" style="animation-delay: 0ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+    <!-- Key Numbers - Simplified, no streaks (anti-anxiety) -->
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6 transition-all duration-500 hover:shadow-[0_0_30px_rgba(255,231,146,0.25)]" style="animation-delay: 0ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(28, 32, 42, 0.9)'" onmouseout="this.style.background='rgba(18, 22, 30, 0.82)'">
             <p class="text-sm" style="color: var(--color-on-surface-variant);">总日志数</p>
-            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: var(--color-on-surface);">{{ stats.total_journals }}</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: #ffe792; text-shadow: 0 0 20px rgba(255, 231, 146, 0.3);">{{ stats.total_journals }}</p>
         </article>
-        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6" style="animation-delay: 40ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6 transition-all duration-500 hover:shadow-[0_0_30px_rgba(133,255,242,0.25)]" style="animation-delay: 40ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(28, 32, 42, 0.9)'" onmouseout="this.style.background='rgba(18, 22, 30, 0.82)'">
             <p class="text-sm" style="color: var(--color-on-surface-variant);">总字数</p>
-            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: var(--color-on-surface);">{{ stats.total_words }}</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: #85fff2; text-shadow: 0 0 20px rgba(133, 255, 242, 0.3);">{{ stats.total_words }}</p>
         </article>
-        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6" style="animation-delay: 80ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-            <p class="text-sm" style="color: var(--color-on-surface-variant);">最长连续记录</p>
-            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: var(--color-on-surface);">{{ stats.longest_streak }}</p>
-        </article>
-        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6" style="animation-delay: 120ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+        <article class="animate-fade-in-up rounded-2xl p-5 sm:p-6 transition-all duration-500 hover:shadow-[0_0_30px_rgba(255,180,166,0.25)]" style="animation-delay: 80ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(28, 32, 42, 0.9)'" onmouseout="this.style.background='rgba(18, 22, 30, 0.82)'">
             <p class="text-sm" style="color: var(--color-on-surface-variant);">本月日志</p>
-            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: var(--color-on-surface);">{{ stats.month_journals }}</p>
+            <p class="mt-2 text-3xl font-semibold tracking-tight font-display" style="color: #ffb4a6; text-shadow: 0 0 20px rgba(255, 180, 166, 0.3);">{{ stats.month_journals }}</p>
         </article>
     </section>
 
@@ -71,13 +68,14 @@
         </article>
     </section>
 
-    <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
-        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 200ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">那年今日</h2>
-            {% if stats.on_this_day %}
+    <!-- Recent Entries - Full width, no "On This Day" nostalgia pressure -->
+    <section class="animate-fade-in-up" style="animation-delay: 200ms; margin-bottom: 2rem;">
+        <article class="min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6 transition-all duration-500 hover:shadow-[0_0_30px_rgba(255,231,146,0.25)]" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(28, 32, 42, 0.9)'" onmouseout="this.style.background='rgba(18, 22, 30, 0.82)'">
+            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">最近记录</h2>
+            {% if stats.recent_entries %}
                 <div class="mt-4 space-y-3">
-                    {% for entry in stats.on_this_day %}
-                        <a href="/journal/{{ entry.journal_route_path }}" class="block rounded-xl p-4 transition-all hover:shadow-md" style="background: rgba(26, 30, 40, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);">
+                    {% for entry in stats.recent_entries[:5] %}
+                        <a href="/journal/{{ entry.journal_route_path }}" class="block rounded-xl p-4 transition-all duration-500 hover:shadow-[0_0_20px_rgba(133,255,242,0.2)]" style="background: rgba(26, 30, 40, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(36, 42, 56, 0.8)'" onmouseout="this.style.background='rgba(26, 30, 40, 0.6)'">
                             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                                 <h3 class="font-medium" style="color: var(--color-on-surface);">{{ entry.title }}</h3>
                                 <span class="text-sm sm:text-right" style="color: var(--color-on-surface-variant);">{{ entry.date }}</span>
@@ -89,19 +87,14 @@
                     {% endfor %}
                 </div>
             {% else %}
-                <p class="mt-4 text-sm" style="color: var(--color-on-surface-variant);">今天还没有历史同日记录，继续写下去，未来会很有意思。</p>
+                <p class="mt-4 text-sm" style="color: var(--color-on-surface-variant);">还没有记录，开始你的第一篇日志。</p>
+                <a href="/write" class="mt-2 inline-block text-sm transition-colors hover:opacity-80" style="color: var(--color-primary);">写一篇日志 →</a>
             {% endif %}
-        </article>
-
-        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 240ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-            <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">连续记录</h2>
-            <p class="mt-4 text-sm" style="color: var(--color-on-surface-variant);">当前连续：{{ stats.current_streak }} 天</p>
-            <p class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">里程碑：{{ stats.milestone or 0 }}</p>
         </article>
     </section>
 
     <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
-        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 280ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6 transition-all duration-500 hover:shadow-[0_0_30px_rgba(255,231,146,0.25)]" style="animation-delay: 280ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(28, 32, 42, 0.9)'" onmouseout="this.style.background='rgba(18, 22, 30, 0.82)'">
             <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">主题分布</h2>
             <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">7 个 Life Index 主题在最近日志中的分布。</p>
             {% if stats.topic_distribution %}
@@ -118,7 +111,7 @@
             {% endif %}
         </article>
 
-        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 320ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6 transition-all duration-500 hover:shadow-[0_0_30px_rgba(133,255,242,0.25)]" style="animation-delay: 320ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(28, 32, 42, 0.9)'" onmouseout="this.style.background='rgba(18, 22, 30, 0.82)'">
             <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">情绪频率</h2>
             <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">最常出现的情绪关键词（Top 10）。</p>
             {% if stats.mood_frequency %}
@@ -139,7 +132,7 @@
     </section>
 
     <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
-        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 360ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6 transition-all duration-500 hover:shadow-[0_0_30px_rgba(255,180,166,0.25)]" style="animation-delay: 360ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(28, 32, 42, 0.9)'" onmouseout="this.style.background='rgba(18, 22, 30, 0.82)'">
             <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">标签词云</h2>
             <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">高频标签会以更醒目的方式呈现。</p>
             {% if stats.tag_cloud|length >= 5 %}
@@ -168,7 +161,7 @@
             {% endif %}
         </article>
 
-        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6" style="animation-delay: 400ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+        <article class="animate-fade-in-up min-w-0 overflow-hidden rounded-2xl p-5 sm:p-6 transition-all duration-500 hover:shadow-[0_0_30px_rgba(196,182,254,0.25)]" style="animation-delay: 400ms; background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);" onmouseover="this.style.background='rgba(28, 32, 42, 0.9)'" onmouseout="this.style.background='rgba(18, 22, 30, 0.82)'">
             <h2 class="font-display text-2xl font-medium tracking-tight" style="color: var(--color-on-surface);">人物关系</h2>
             <p class="mt-1 text-sm" style="color: var(--color-on-surface-variant);">共同出现的人物会形成关系图谱。</p>
             {% if stats.people_graph.nodes|length >= 2 %}

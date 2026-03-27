@@ -178,6 +178,61 @@
 }
 
 /* ============================================
+   HOVER EFFECTS — Celestial Editorial Style
+   ============================================ */
+
+/* Card glow on hover — subtle amber aura */
+.cel-card-glow {
+  transition: all 0.3s ease;
+}
+
+.cel-card-glow:hover {
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 231, 146, 0.15),
+    0 0 32px rgba(255, 231, 146, 0.08);
+  transform: translateY(-2px);
+}
+
+/* Entry hover effect — gentle lift with border glow */
+.cel-entry-hover {
+  transition: all 0.25s ease;
+}
+
+.cel-entry-hover:hover {
+  background: rgba(35, 40, 55, 0.9);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(133, 255, 242, 0.35),
+    0 0 30px rgba(133, 255, 242, 0.12),
+    0 0 60px rgba(133, 255, 242, 0.06);
+  transform: translateX(6px);
+}
+
+/* Button hover — amber pulse */
+.cel-btn-hover {
+  transition: all 0.2s ease;
+}
+
+.cel-btn-hover:hover {
+  box-shadow:
+    0 4px 16px rgba(255, 231, 146, 0.25),
+    0 0 0 1px rgba(255, 231, 146, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Link hover — underline glow */
+.cel-link-hover {
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.cel-link-hover:hover {
+  color: var(--color-primary);
+  text-shadow: 0 0 12px rgba(255, 231, 146, 0.4);
+}
+
+/* ============================================
    G. UTILITY CLASSES
    ============================================ */
 
@@ -274,6 +329,144 @@
   50% {
     opacity: 0.3;
   }
+}
+
+/* Card hover breathing glow - color flow effect */
+@keyframes card-glow-breathe {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 231, 146, 0.2), 0 0 40px rgba(255, 231, 146, 0.1);
+  }
+  25% {
+    box-shadow: 0 0 30px rgba(255, 231, 146, 0.35), 0 0 60px rgba(255, 180, 166, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(255, 231, 146, 0.5), 0 0 80px rgba(133, 255, 242, 0.2);
+  }
+  75% {
+    box-shadow: 0 0 30px rgba(133, 255, 242, 0.35), 0 0 60px rgba(255, 231, 146, 0.15);
+  }
+}
+
+@keyframes card-glow-breathe-teal {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(133, 255, 242, 0.2), 0 0 40px rgba(133, 255, 242, 0.1);
+  }
+  25% {
+    box-shadow: 0 0 30px rgba(133, 255, 242, 0.35), 0 0 60px rgba(196, 182, 254, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(133, 255, 242, 0.5), 0 0 80px rgba(255, 231, 146, 0.2);
+  }
+  75% {
+    box-shadow: 0 0 30px rgba(255, 231, 146, 0.35), 0 0 60px rgba(133, 255, 242, 0.15);
+  }
+}
+
+@keyframes card-glow-breathe-coral {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 180, 166, 0.2), 0 0 40px rgba(255, 180, 166, 0.1);
+  }
+  25% {
+    box-shadow: 0 0 30px rgba(255, 180, 166, 0.35), 0 0 60px rgba(255, 231, 146, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(255, 180, 166, 0.5), 0 0 80px rgba(133, 255, 242, 0.2);
+  }
+  75% {
+    box-shadow: 0 0 30px rgba(133, 255, 242, 0.35), 0 0 60px rgba(255, 180, 166, 0.15);
+  }
+}
+
+@keyframes card-glow-breathe-purple {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(196, 182, 254, 0.2), 0 0 40px rgba(196, 182, 254, 0.1);
+  }
+  25% {
+    box-shadow: 0 0 30px rgba(196, 182, 254, 0.35), 0 0 60px rgba(133, 255, 242, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(196, 182, 254, 0.5), 0 0 80px rgba(255, 231, 146, 0.2);
+  }
+  75% {
+    box-shadow: 0 0 30px rgba(133, 255, 242, 0.35), 0 0 60px rgba(196, 182, 254, 0.15);
+  }
+}
+
+/* Card background brightness breathe - slow elegant pulsing */
+@keyframes card-breathe-amber {
+  0%, 100% {
+    background: rgba(22, 26, 35, 0.85);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 20px rgba(255, 231, 146, 0.15);
+  }
+  50% {
+    background: rgba(32, 38, 52, 0.95);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px rgba(255, 231, 146, 0.35);
+  }
+}
+
+@keyframes card-breathe-teal {
+  0%, 100% {
+    background: rgba(22, 26, 35, 0.85);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 20px rgba(133, 255, 242, 0.15);
+  }
+  50% {
+    background: rgba(32, 38, 52, 0.95);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px rgba(133, 255, 242, 0.35);
+  }
+}
+
+@keyframes card-breathe-coral {
+  0%, 100% {
+    background: rgba(22, 26, 35, 0.85);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 20px rgba(255, 180, 166, 0.15);
+  }
+  50% {
+    background: rgba(32, 38, 52, 0.95);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px rgba(255, 180, 166, 0.35);
+  }
+}
+
+@keyframes card-breathe-purple {
+  0%, 100% {
+    background: rgba(22, 26, 35, 0.85);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 20px rgba(196, 182, 254, 0.15);
+  }
+  50% {
+    background: rgba(32, 38, 52, 0.95);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px rgba(196, 182, 254, 0.35);
+  }
+}
+
+@keyframes card-breathe-teal-subtle {
+  0%, 100% {
+    background: rgba(28, 34, 46, 0.7);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 15px rgba(133, 255, 242, 0.1);
+  }
+  50% {
+    background: rgba(38, 46, 62, 0.85);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 30px rgba(133, 255, 242, 0.25);
+  }
+}
+
+/* Card hover breathing effect classes */
+.cel-card-breathe-amber:hover {
+  animation: card-breathe-amber 3s ease-in-out infinite;
+}
+
+.cel-card-breathe-teal:hover {
+  animation: card-breathe-teal 3s ease-in-out infinite;
+}
+
+.cel-card-breathe-coral:hover {
+  animation: card-breathe-coral 3s ease-in-out infinite;
+}
+
+.cel-card-breathe-purple:hover {
+  animation: card-breathe-purple 3s ease-in-out infinite;
+}
+
+.cel-card-breathe-teal-subtle:hover {
+  animation: card-breathe-teal-subtle 3s ease-in-out infinite;
 }
 
 /* Subtle ambient pulse for background glow — DRAMATICALLY ENHANCED +20% range */
@@ -524,10 +717,12 @@ body.celestial > nav {
 
 .cel-card-glow:hover {
   box-shadow:
-    0 0 30px rgba(255, 231, 146, 0.12),
-    0 0 60px rgba(255, 231, 146, 0.06),
-    0 4px 16px rgba(6, 8, 12, 0.4);
-  transform: translateY(-2px);
+    0 0 40px rgba(255, 231, 146, 0.25),
+    0 0 80px rgba(255, 231, 146, 0.15),
+    0 0 120px rgba(255, 231, 146, 0.08),
+    0 8px 32px rgba(6, 8, 12, 0.5);
+  transform: translateY(-4px);
+  border: 1px solid rgba(255, 231, 146, 0.2);
 }
 
 /* Tertiary glow variant (teal) */
