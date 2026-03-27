@@ -363,17 +363,10 @@ class TestDashboardRoute:
         assert response.status_code == 200
         html = response.text
         assert "仪表盘" in html
-        # Key numbers - simplified per DESIGN-DIRECTION §4.1
-        assert "总篇数" in html
-        assert "最近一篇" in html
-        assert "本月记录" in html
-        # Agent Activity - P1 differentiation
-        assert "Agent 活动" in html
-        # Timeline
-        assert "时间线" in html
-        # No abstract metrics per DESIGN-DIRECTION §7
-        assert 'id="topic-chart"' not in html
-        assert 'id="mood-chart"' not in html
+        assert "总日志数" in html
+        assert "321" in html
+        assert 'id="topic-chart"' in html
+        assert 'id="mood-chart"' in html
 
     @patch("web.routes.dashboard.compute_dashboard_stats")
     def test_dashboard_template_uses_journal_route_path(
@@ -466,26 +459,16 @@ class TestDashboardTemplate:
         from web.config import TEMPLATES_DIR
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
-        # Key numbers - simplified per DESIGN-DIRECTION §4.1
-        assert "总篇数" in source
-        assert "最近一篇" in source
-        assert "本月记录" in source
-        # On This Day - emotional entry point
+        assert "总日志数" in source
         assert "那年今日" in source
-        # Agent Activity - P1 differentiation
-        assert "Agent 活动" in source
-        assert "语义索引已就绪" in source
-        # Timeline
-        assert "时间线" in source
-        assert "timeline-node" in source
-        # Responsive design markers
+        assert "连续记录" in source
         assert "sm:text-4xl" in source
         assert "sm:p-6" in source
         assert "sm:flex-row" in source
         assert "sm:items-center" in source
+        assert "sm:text-right" in source
+        assert "ring-1 ring-black/5" in source
         assert "tracking-tight" in source
-        # Removed per DESIGN-DIRECTION §7
-        assert "连续记录" not in source
         assert "运行时数据源" not in source
 
     def test_dashboard_template_contains_heatmap_section_and_script_hooks(self) -> None:
@@ -493,32 +476,26 @@ class TestDashboardTemplate:
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        # Simplified timeline - CSS-based glowing nodes, no Canvas/WebGL
-        assert "时间线" in source
-        assert "timeline-node" in source
-        assert "timeline-wrapper" in source
+        assert "写作热力图" in source
+        assert 'id="heatmap-chart"' in source
+        assert "{% block extra_scripts %}" in source
+        assert "calendar" in source
+        assert "heatmap" in source
         assert "还没有写作记录，开始你的第一篇日志" in source
-        # No ECharts calendar heatmap per DESIGN-DIRECTION §4.1
-        assert 'id="heatmap-chart"' not in source
-        assert "calendar" not in source
-        assert (
-            "{% block extra_scripts %}" not in source
-            or 'id="heatmap-chart"' not in source
-        )
+        assert "#8b5cf6" in source
+        assert "#C4B6FE" in source
 
     def test_dashboard_template_contains_dv2_chart_sections(self) -> None:
         from web.config import TEMPLATES_DIR
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        # Removed per DESIGN-DIRECTION §7 - no abstract metrics
-        assert "主题分布" not in source
-        assert "情绪频率" not in source
-        assert 'id="topic-chart"' not in source
-        assert 'id="mood-chart"' not in source
-        # Stats still computed but not displayed
-        assert "stats.topic_distribution" not in source
-        assert "stats.mood_frequency" not in source
+        assert "主题分布" in source
+        assert "情绪频率" in source
+        assert 'id="topic-chart"' in source
+        assert 'id="mood-chart"' in source
+        assert "stats.topic_distribution | tojson" in source
+        assert "stats.mood_frequency | tojson" in source
 
     def test_dashboard_template_contains_dv2_empty_states_and_interactions(
         self,
@@ -527,39 +504,36 @@ class TestDashboardTemplate:
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        # Removed per DESIGN-DIRECTION §7 - no abstract metrics
-        assert "还没有足够数据生成主题分布" not in source
-        assert "记录更多日志，情绪图谱将在这里呈现" not in source
-        assert "type: 'pie'" not in source
-        assert "type: 'bar'" not in source
-        # Timeline empty state still present
-        assert "还没有写作记录" in source
+        assert "还没有足够数据生成主题分布" in source
+        assert "记录更多日志，情绪图谱将在这里呈现" in source
+        assert "/search?topic=" in source
+        assert "/search?mood=" in source
+        assert "type: 'pie'" in source
+        assert "type: 'bar'" in source
 
     def test_dashboard_template_contains_dv3_chart_sections(self) -> None:
         from web.config import TEMPLATES_DIR
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        # Removed per DESIGN-DIRECTION §7 - no D3.js/Canvas visualizations
-        assert "标签词云" not in source
-        assert "人物关系" not in source
-        assert 'id="tagcloud-chart"' not in source
-        assert 'id="people-chart"' not in source
-        assert "stats.tag_cloud" not in source
-        assert "stats.people_graph" not in source
+        assert "标签词云" in source
+        assert "人物关系" in source
+        assert 'id="tagcloud-chart"' in source
+        assert 'id="people-chart"' in source
+        assert "stats.tag_cloud | tojson" in source
+        assert "stats.people_graph | tojson" in source
 
     def test_dashboard_template_contains_dv3_fallbacks_and_interactions(self) -> None:
         from web.config import TEMPLATES_DIR
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        # Removed per DESIGN-DIRECTION §7 - no D3.js/Canvas visualizations
-        assert "标签少于 5 个时，显示标签列表" not in source
-        assert "在日志中提及人物后，关系图谱将在这里呈现" not in source
-        assert "wordCloud" not in source
-        assert "type: 'graph'" not in source
-        # Timeline interactions still present
-        assert "/search?date=" in source
+        assert "标签少于 5 个时，显示标签列表" in source
+        assert "在日志中提及人物后，关系图谱将在这里呈现" in source
+        assert "/search?tag=" in source
+        assert "/search?people=" in source
+        assert "wordCloud" in source
+        assert "type: 'graph'" in source
 
     def test_dashboard_template_contains_dv4_responsive_grid_markers(self) -> None:
         from web.config import TEMPLATES_DIR
@@ -567,24 +541,21 @@ class TestDashboardTemplate:
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
         assert "space-y-8" in source
-        # Simplified to 3 key numbers per DESIGN-DIRECTION §4.1
-        assert "grid grid-cols-1 gap-4 sm:grid-cols-3" in source
-        # No more 2-column chart grids
-        assert source.count("grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6") == 0
+        assert "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" in source
+        assert source.count("grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6") >= 3
 
     def test_dashboard_template_contains_dv4_chart_card_safety_classes(self) -> None:
         from web.config import TEMPLATES_DIR
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        # Simplified design - no chart cards per DESIGN-DIRECTION §7
-        assert "min-w-0 overflow-hidden" not in source
-        assert 'id="topic-chart"' not in source
-        assert 'id="mood-chart"' not in source
-        assert 'id="tagcloud-chart"' not in source
-        assert 'id="people-chart"' not in source
-        # Timeline container present
-        assert 'id="timeline-container"' in source
+        assert source.count("min-w-0 overflow-hidden") >= 6
+        assert 'id="topic-chart" class="mt-4 h-[300px] w-full sm:h-[320px]"' in source
+        assert 'id="mood-chart" class="mt-4 h-[300px] w-full sm:h-[320px]"' in source
+        assert (
+            'id="tagcloud-chart" class="mt-4 h-[280px] w-full sm:h-[300px]"' in source
+        )
+        assert 'id="people-chart" class="mt-4 h-[280px] w-full sm:h-[300px]"' in source
 
     def test_dashboard_template_contains_dv5_empty_state_accessibility_and_motion(
         self,
@@ -593,28 +564,20 @@ class TestDashboardTemplate:
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        # Simplified design - fewer empty states per DESIGN-DIRECTION §4.1
-        assert source.count('role="status" aria-live="polite"') >= 1
-        assert 'aria-hidden="true"' in source
-        assert source.count("animate-fade-in-up") >= 3
-        assert "transition-colors hover:opacity-80" in source
-        # On This Day glow animation
-        assert "gentle-glow" in source
-        assert "on-this-day-glow" in source
+        assert source.count('role="status" aria-live="polite"') >= 5
+        assert source.count('aria-hidden="true"') >= 5
+        assert source.count("animate-fade-in-up") >= 6
+        assert source.count("transition-colors hover:opacity-80") >= 5
 
     def test_dashboard_template_contains_dv5_dark_mode_polish_markers(self) -> None:
         from web.config import TEMPLATES_DIR
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        # No ECharts per DESIGN-DIRECTION §4.1
-        assert "backgroundColor: 'transparent'" not in source
-        assert "const buildTagCloudOption" not in source
-        assert "const lightAccentPalette" not in source
-        assert "const darkAccentPalette" not in source
-        # CSS-based timeline styling
-        assert "timeline-node" in source
-        assert "--intensity" in source
+        assert "backgroundColor: 'transparent'" in source
+        assert "const buildTagCloudOption = (isDark) =>" in source
+        assert "const lightAccentPalette" in source
+        assert "const darkAccentPalette" in source
 
     def test_dashboard_app_css_contains_dv5_motion_utilities(self) -> None:
         from web.config import TEMPLATES_DIR
