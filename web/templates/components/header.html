@@ -9,10 +9,10 @@
  #}
 <nav class="fixed top-0 left-0 right-0 z-50 px-4 pt-4" id="floating-header">
     <div class="max-w-7xl mx-auto rounded-2xl px-4 sm:px-6 py-3 flex justify-between items-center" 
-         style="background: rgba(18, 22, 30, 0.62); 
-                backdrop-filter: blur(14px); 
-                -webkit-backdrop-filter: blur(14px); 
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+         style="background: rgba(18, 22, 30, 0.15); 
+                backdrop-filter: blur(24px); 
+                -webkit-backdrop-filter: blur(24px); 
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.12);">
         <div class="flex items-center space-x-4 sm:space-x-8">
             <a href="/" class="text-lg sm:text-xl font-bold font-display hover-scale" 
                style="color: var(--color-primary); 
@@ -26,7 +26,7 @@
             <div class="flex space-x-1 sm:space-x-2">
                 {% for path, label in nav_items %}
                 <a href="{{ path }}" 
-                   class="inline-flex items-center justify-center min-h-[44px] sm:min-h-[44px] px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 {% if current_page|default('') == path %}text-[var(--color-background)]{% else %}text-[var(--color-on-surface-variant)] hover:text-[var(--color-on-surface)] hover:bg-[rgba(255,231,146,0.08)]{% endif %}" 
+                   class="inline-flex items-center justify-center min-h-[44px] sm:min-h-[44px] px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 {% if current_page|default('') == path %}text-[var(--color-background)]{% else %}text-[var(--color-on-surface-variant)] hover:text-[var(--color-on-surface)] hover:bg-[rgba(255,231,146,0.08)]{% endif %}" 
                    {% if current_page|default('') == path %}style="background-color: var(--color-primary); color: var(--color-background);"{% endif %}>
                     {{ label }}
                 </a>
@@ -36,7 +36,7 @@
         <div class="flex items-center">
             <button
                 type="button"
-                class="inline-flex items-center justify-center min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium"
+                class="inline-flex items-center justify-center min-h-[44px] px-3 py-2 rounded-xl text-sm font-medium"
                 style="color: var(--color-on-surface-variant); border: 1px solid rgba(255, 255, 255, 0.12);"
                 aria-label="切换深色模式"
                 title="切换浅色模式"

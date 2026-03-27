@@ -107,6 +107,22 @@ def get_journal(relative_path: str) -> dict[str, Any]:
     # Extract links from body content
     body_links = _extract_links_from_body(str(parsed.get("_body", "")))
 
+    # Data sovereignty visualization - full file path (DESIGN-DIRECTION §4.4, P0)
+    full_file_path = str(file_path)
+    # Convert to user-friendly path format
+    try:
+        from tools.lib.config import USER_DATA_DIR
+
+        user_data_path = str(USER_DATA_DIR)
+        if full_file_path.startswith(user_data_path):
+            display_path = (
+                "~/Documents/Life-Index" + full_file_path[len(user_data_path) :]
+            )
+        else:
+            display_path = full_file_path
+    except Exception:
+        display_path = full_file_path
+
     return {
         "metadata": metadata,
         "html_content": html_content,
@@ -114,4 +130,6 @@ def get_journal(relative_path: str) -> dict[str, Any]:
         "attachments": attachment_links,
         "links": body_links,
         "journal_route_path": relative_path,
+        "file_path": display_path,  # P0: Data sovereignty visualization
+        "file_path_full": full_file_path,
     }

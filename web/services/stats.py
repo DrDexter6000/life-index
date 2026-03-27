@@ -19,14 +19,22 @@ from tools.lib.config import JOURNALS_DIR
 
 @dataclass(slots=True)
 class DashboardStats:
+    # Key numbers - simplified per DESIGN-DIRECTION §4.1
     total_journals: int = 0
+    last_journal_date: str = ""
+    month_journals: int = 0
+    # On This Day - emotional entry point
+    on_this_day: list[dict[str, Any]] = field(default_factory=list)
+    # Timeline data - glowing nodes
+    heatmap: dict[str, int] = field(default_factory=dict)
+    # Agent Activity - transparency (P1 differentiation)
+    agent_activity: list[dict[str, Any]] = field(default_factory=list)
+    # Legacy fields (kept for backward compatibility but not displayed)
     total_words: int = 0
     longest_streak: int = 0
     current_streak: int = 0
-    month_journals: int = 0
     most_frequent_mood: str = ""
     most_active_topic: str = ""
-    on_this_day: list[dict[str, Any]] = field(default_factory=list)
     milestone: int = 0
     mood_frequency: list[dict[str, Any]] = field(default_factory=list)
     topic_distribution: list[dict[str, Any]] = field(default_factory=list)
@@ -34,7 +42,6 @@ class DashboardStats:
     people_graph: dict[str, list[dict[str, Any]]] = field(
         default_factory=lambda: {"nodes": [], "edges": []}
     )
-    heatmap: dict[str, int] = field(default_factory=dict)
 
 
 def _today() -> date:
@@ -199,21 +206,59 @@ def _load_dashboard_entries() -> list[dict[str, Any]]:
     return cached_entries
 
 
+def _get_last_journal_date(entries: list[dict[str, Any]]) -> str:
+    """Get the date of the most recent journal entry."""
+    if not entries:
+        return ""
+    dates = _parse_dates(entries)
+    if not dates:
+        return ""
+    return dates[-1].strftime("%Y-%m-%d")
+
+
+def _get_agent_activity() -> list[dict[str, Any]]:
+    """Get recent agent activity for transparency (P1 differentiation).
+
+    Returns recent operations like index updates, weather queries, etc.
+    In v1, this returns mock data. In v2, this should read from an activity log.
+    """
+    # TODO: In v2, read from actual activity log file
+    # For now, return empty list - the UI will show a placeholder
+    return []
+
+
 def compute_dashboard_stats() -> DashboardStats:
     entries = _load_dashboard_entries()
 
     stats = DashboardStats()
+    # Key numbers - simplified per DESIGN-DIRECTION §4.1
     stats.total_journals = len(entries)
-    stats.total_words = _compute_total_words(entries)
-
-    longest_streak, current_streak = _compute_streaks(entries)
-    stats.longest_streak = longest_streak
-    stats.current_streak = current_streak
+    stats.last_journal_date = _get_last_journal_date(entries)
     stats.month_journals = sum(
         1
         for entry in entries
         if str(entry.get("date", ""))[:7] == _today().strftime("%Y-%m")
     )
+
+    # On This Day - emotional entry point
+    stats.on_this_day = _build_on_this_day(entries)
+
+    # Timeline data - glowing nodes (CSS-based, not Canvas/WebGL)
+    heatmap_counter: Counter[str] = Counter()
+    for entry in entries:
+        raw_date = str(entry.get("date", ""))[:10]
+        if raw_date:
+            heatmap_counter[raw_date] += 1
+    stats.heatmap = dict(heatmap_counter)
+
+    # Agent Activity - P1 differentiation
+    stats.agent_activity = _get_agent_activity()
+
+    # Legacy fields (kept for backward compatibility but not displayed in v1)
+    stats.total_words = _compute_total_words(entries)
+    longest_streak, current_streak = _compute_streaks(entries)
+    stats.longest_streak = longest_streak
+    stats.current_streak = current_streak
     stats.milestone = max(
         (m for m in (7, 30, 100, 365) if longest_streak >= m), default=0
     )
@@ -221,7 +266,6 @@ def compute_dashboard_stats() -> DashboardStats:
     mood_counter: Counter[str] = Counter()
     topic_counter: Counter[str] = Counter()
     tag_counter: Counter[str] = Counter()
-    heatmap_counter: Counter[str] = Counter()
 
     for entry in entries:
         for mood in _normalize_text_list(entry.get("mood", [])):
@@ -230,9 +274,6 @@ def compute_dashboard_stats() -> DashboardStats:
             topic_counter[str(topic)] += 1
         for tag in _normalize_text_list(entry.get("tags", [])):
             tag_counter[str(tag)] += 1
-        raw_date = str(entry.get("date", ""))[:10]
-        if raw_date:
-            heatmap_counter[raw_date] += 1
 
     stats.most_frequent_mood = mood_counter.most_common(1)[0][0] if mood_counter else ""
     stats.most_active_topic = (
@@ -242,7 +283,5 @@ def compute_dashboard_stats() -> DashboardStats:
     stats.topic_distribution = _counter_to_chart(topic_counter)
     stats.tag_cloud = _counter_to_chart(tag_counter)
     stats.people_graph = _build_people_graph(entries)
-    stats.heatmap = dict(heatmap_counter)
-    stats.on_this_day = _build_on_this_day(entries)
 
     return stats

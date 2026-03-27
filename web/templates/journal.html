@@ -22,6 +22,16 @@
     </section>
     {% endif %}
 
+    <!-- Data Sovereignty Visualization - P0 Differentiation -->
+    <aside class="rounded-xl px-3 py-2 flex items-center gap-2" style="background: rgba(133, 255, 242, 0.08); box-shadow: 0 0 0 1px rgba(133, 255, 242, 0.2);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-tertiary); flex-shrink: 0;">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+            <polyline points="13 2 13 9 20 9"/>
+        </svg>
+        <span class="font-mono text-xs truncate" style="color: var(--color-on-surface-variant);">{{ journal.file_path }}</span>
+        <span class="text-xs flex-shrink-0" style="color: var(--color-tertiary);">· 本地文件</span>
+    </aside>
+
     <header class="rounded-2xl p-6 sm:p-8" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -30,14 +40,14 @@
                     <p class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">{{ journal.metadata.date }}</p>
                 {% endif %}
             </div>
-            <a href="/journal/{{ journal.journal_route_path }}/edit" class="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">编辑</a>
+            <a href="/journal/{{ journal.journal_route_path }}/edit" class="inline-flex min-h-[44px] items-center justify-center rounded-xl px-5 py-2 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">编辑</a>
         </div>
 
         <div class="mt-4 flex flex-wrap gap-2 text-sm">
-            {% for mood in journal.metadata.mood or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full px-3 py-2" style="background: rgba(255, 113, 108, 0.15); color: var(--color-error);">{{ mood }}</span>{% endfor %}
-            {% for tag in journal.metadata.tags or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full px-3 py-2" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">{{ tag }}</span>{% endfor %}
-            {% for topic in journal.metadata.topic or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full px-3 py-2" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">{{ topic }}</span>{% endfor %}
-            {% for person in journal.metadata.people or [] %}<span class="inline-flex min-h-[44px] items-center rounded-full px-3 py-2" style="background: rgba(249, 135, 62, 0.15); color: var(--color-secondary);">{{ person }}</span>{% endfor %}
+            {% for mood in journal.metadata.mood or [] %}<span class="inline-flex min-h-[44px] items-center rounded-xl px-3 py-2" style="background: rgba(255, 113, 108, 0.15); color: var(--color-error);">{{ mood }}</span>{% endfor %}
+            {% for tag in journal.metadata.tags or [] %}<span class="inline-flex min-h-[44px] items-center rounded-xl px-3 py-2" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">{{ tag }}</span>{% endfor %}
+            {% for topic in journal.metadata.topic or [] %}<span class="inline-flex min-h-[44px] items-center rounded-xl px-3 py-2" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">{{ topic }}</span>{% endfor %}
+            {% for person in journal.metadata.people or [] %}<span class="inline-flex min-h-[44px] items-center rounded-xl px-3 py-2" style="background: rgba(249, 135, 62, 0.15); color: var(--color-secondary);">{{ person }}</span>{% endfor %}
         </div>
 
         <dl class="mt-6 space-y-2 text-sm divide-y divide-gray-100">

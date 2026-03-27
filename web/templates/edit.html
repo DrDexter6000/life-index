@@ -3,7 +3,7 @@
 {% block title %}编辑日志 - Life Index{% endblock %}
 
 {% block content %}
-<section class="space-y-8">
+<section class="max-w-7xl mx-auto space-y-8" id="write-page">
     <header class="space-y-3">
         <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">Edit Journal</p>
         <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">编辑日志</h1>
@@ -30,23 +30,33 @@
             <input type="hidden" id="original-location" value="{{ location }}">
             <input type="hidden" id="original-date-raw" name="original_date_raw" value="{{ original_date_raw }}">
 
+            <!-- Content Textarea - matches write.html styling -->
             <div>
-                <label for="content" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">日志内容</label>
-                <textarea id="content" name="content" rows="12" class="w-full rounded-2xl px-4 py-3 font-mono text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface); resize: vertical;">{{ content }}</textarea>
+                <textarea
+                    id="content"
+                    name="content"
+                    rows="12"
+                    required
+                    placeholder="今天发生了什么？写下你的想法、感受、经历..."
+                    class="w-full rounded-2xl px-4 py-4 type-body"
+                    style="line-height: 1.8; resize: vertical; min-height: 280px; background: var(--color-surface-container-low); border: 1px solid rgba(68, 72, 79, 0.15); color: var(--color-on-surface);"
+                >{{ content }}</textarea>
             </div>
 
+            <!-- Zen Typing: Metadata fields that fade out during zen mode -->
+            <div id="metadata-section" class="zen-fade-target">
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                     <label for="title" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">标题</label>
-                    <input id="title" name="title" type="text" value="{{ title }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="title" name="title" type="text" value="{{ title }}" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="date" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">日期</label>
-                    <input id="date" name="date" type="datetime-local" value="{{ date }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="date" name="date" type="datetime-local" value="{{ date }}" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="topic" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">主题</label>
-                    <select id="topic" name="topic" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <select id="topic" name="topic" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                         <option value="">自动判断</option>
                         <option value="work" {% if topic == 'work' %}selected{% endif %}>工作</option>
                         <option value="learn" {% if topic == 'learn' %}selected{% endif %}>学习</option>
@@ -59,39 +69,39 @@
                 </div>
                 <div>
                     <label for="mood" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">心情</label>
-                    <input id="mood" name="mood" type="text" value="{{ mood }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="mood" name="mood" type="text" value="{{ mood }}" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="tags" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">标签</label>
-                    <input id="tags" name="tags" type="text" value="{{ tags }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="tags" name="tags" type="text" value="{{ tags }}" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="people" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">人物</label>
-                    <input id="people" name="people" type="text" value="{{ people }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="people" name="people" type="text" value="{{ people }}" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="location" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">地点</label>
                     <div class="flex flex-col gap-2 sm:flex-row">
-                        <input id="location" name="location" type="text" value="{{ location }}" placeholder="如：北京" class="block w-full flex-1 rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
-                        <button id="geolocation-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-lg text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
+                        <input id="location" name="location" type="text" value="{{ location }}" placeholder="如：北京" class="block w-full flex-1 rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                        <button id="geolocation-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-xl text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
                     </div>
                 </div>
                 <div>
                     <label for="weather" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">天气</label>
                     <div class="flex flex-col gap-2 sm:flex-row">
-                        <input id="weather" name="weather" type="text" value="{{ weather }}" placeholder="如：晴天 28°C" class="block w-full flex-1 rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
-                        <button id="weather-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-lg text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
+                        <input id="weather" name="weather" type="text" value="{{ weather }}" placeholder="如：晴天 28°C" class="block w-full flex-1 rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                        <button id="weather-btn" type="button" data-idle-text="<< 查询" class="px-3 py-2 rounded-xl text-sm font-medium transition-all" style="background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); height: 44px; white-space: nowrap;" onmouseover="this.style.background='var(--color-surface-bright)'; this.style.boxShadow='inset 0 0 0 1px var(--color-primary)'" onmouseout="this.style.background='var(--color-surface-container-high)'; this.style.boxShadow='inset 0 0 0 1px rgba(68, 72, 79, 0.15)'"><< 查询</button>
                     </div>
                     <p id="weather-status" class="mt-1 text-xs" style="color: var(--color-on-surface-variant);"></p>
                     <p id="weather-warning" class="mt-1 text-xs" style="color: var(--color-secondary);">修改地点后，保存前请先查询天气或手动填写天气。</p>
                 </div>
                 <div>
                     <label for="project" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">项目</label>
-                    <input id="project" name="project" type="text" value="{{ project }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="project" name="project" type="text" value="{{ project }}" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
                 <div>
                     <label for="abstract" class="block text-sm font-medium mb-2" style="color: var(--color-on-surface);">摘要</label>
-                    <input id="abstract" name="abstract" type="text" value="{{ abstract }}" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                    <input id="abstract" name="abstract" type="text" value="{{ abstract }}" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface-container-low); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                 </div>
             </div>
 
@@ -118,7 +128,7 @@
                         <!-- URL inputs -->
                         <div>
                             <div id="url-inputs" class="space-y-2">
-                                <input type="url" name="attachment_urls" placeholder="https://example.com/image.jpg" class="w-full rounded-lg px-4 py-2.5 text-sm" style="background: var(--color-surface); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
+                                <input type="url" name="attachment_urls" placeholder="https://example.com/image.jpg" class="w-full rounded-xl px-4 py-2.5 text-sm" style="background: var(--color-surface); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);">
                             </div>
                             <button id="add-url-btn" type="button" class="mt-2 type-label" style="color: var(--color-primary); background: none; border: none; cursor: pointer;">+ 添加更多</button>
                         </div>
@@ -134,16 +144,29 @@
                 </div>
             </div>
 
-            <div class="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:gap-4" style="border-top: 1px solid rgba(68, 72, 79, 0.1);">
-                <button id="submit-btn" type="submit" data-idle-text="保存修改" class="inline-flex min-h-[46px] items-center justify-center rounded-lg px-6 py-3 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">
+            </div><!-- /metadata-section -->
+
+            <!-- Submit Area -->
+            <div id="submit-section" class="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:gap-4 zen-fade-target" style="border-top: 1px solid rgba(68, 72, 79, 0.1);">
+                <button id="submit-btn" type="submit" data-idle-text="保存修改" class="inline-flex min-h-[46px] items-center justify-center rounded-xl px-6 py-3 text-sm font-medium transition-transform active:scale-95" style="background: var(--color-primary); color: var(--color-background); box-shadow: 0 12px 28px rgba(255, 231, 146, 0.18);">
                     保存修改
                 </button>
-                <p id="form-status" class="text-xs" style="color: var(--color-on-surface-variant);"></p>
+                <p id="form-status" class="type-label" style="color: var(--color-on-surface-variant);"></p>
                 <a href="/journal/{{ journal_route_path }}" class="text-sm transition-colors hover:opacity-80" style="color: var(--color-on-surface-variant);">取消</a>
             </div>
         </form>
     </article>
 </section>
+
+<!-- Save Toast - "已安全保存到本地" -->
+<div id="save-toast" class="save-toast">
+    <span class="flex items-center gap-2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-tertiary);">
+            <path d="M20 6L9 17l-5-5"/>
+        </svg>
+        <span>已安全保存到本地</span>
+    </span>
+</div>
 <style>
     /* Styled file input */
     .file-upload-styled::file-selector-button {
@@ -162,6 +185,17 @@
     .file-upload-styled::file-selector-button:hover {
         background-color: var(--color-surface-bright);
         box-shadow: inset 0 0 0 1px var(--color-primary);
+    }
+    
+    /* Zen Typing Mode - Fade out metadata sections */
+    body.zen-active .zen-fade-target {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+    
+    body.zen-active #content {
+        min-height: 60vh;
     }
 </style>
 
@@ -231,12 +265,12 @@
             input.type = 'url';
             input.name = 'attachment_urls';
             input.placeholder = 'https://example.com/image.jpg';
-            input.className = 'flex-1 rounded-lg px-4 py-2.5 text-sm';
+            input.className = 'flex-1 rounded-xl px-4 py-2.5 text-sm';
             input.style.cssText = 'background: var(--color-surface); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface);';
 
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
-            removeBtn.className = 'px-3 py-2 rounded-lg text-sm font-medium';
+            removeBtn.className = 'px-3 py-2 rounded-xl text-sm font-medium';
             removeBtn.style.cssText = 'background: var(--color-surface-container-high); border: none; box-shadow: inset 0 0 0 1px rgba(68, 72, 79, 0.15); color: var(--color-on-surface-variant); cursor: pointer;';
             removeBtn.textContent = '移除';
             removeBtn.addEventListener('click', () => {
@@ -364,6 +398,30 @@
             }
         });
 
+        // Save toast notification
+        const showSaveToast = () => {
+            const toast = document.getElementById('save-toast');
+            if (!toast) return;
+            
+            toast.classList.add('show');
+            
+            // Auto-hide after 2 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        };
+        
+        // Seal ceremony animation
+        const triggerSealCeremony = () => {
+            const article = document.querySelector('#write-page > article');
+            if (article) {
+                article.classList.add('seal-animation');
+                setTimeout(() => {
+                    article.classList.remove('seal-animation');
+                }, 600);
+            }
+        };
+
         if (editForm) {
             editForm.addEventListener('submit', (event) => {
                 const originalLocation = originalLocationField ? originalLocationField.value.trim() : '';
@@ -380,7 +438,73 @@
                     setButtonBusy(submitBtn, '正在保存...', true);
                 }
                 setFormStatus('正在保存...');
+                
+                // Trigger seal ceremony animation
+                triggerSealCeremony();
+                
+                // Show save toast after a short delay
+                setTimeout(() => {
+                    showSaveToast();
+                }, 500);
             });
+        }
+        
+        /* ============================
+           Zen Typing Mode (沉浸输入态)
+           DESIGN-DIRECTION §3.2
+           ============================ */
+        const zenEdgeThreshold = 20;
+        const contentField = document.getElementById('content');
+        const titleInput = document.getElementById('title');
+
+        const activateZenMode = () => {
+            document.body.classList.add('zen-active');
+        };
+
+        const deactivateZenMode = () => {
+            document.body.classList.remove('zen-active');
+        };
+
+        const handlePointerMove = (e) => {
+            const { clientX, clientY } = e;
+            const { innerWidth, innerHeight } = window;
+            const nearEdge =
+                clientX < zenEdgeThreshold ||
+                clientX > innerWidth - zenEdgeThreshold ||
+                clientY < zenEdgeThreshold ||
+                clientY > innerHeight - zenEdgeThreshold;
+            if (nearEdge) {
+                deactivateZenMode();
+            }
+        };
+
+        if (contentField) {
+            contentField.addEventListener('focus', () => {
+                activateZenMode();
+                window.addEventListener('pointermove', handlePointerMove);
+            });
+
+            const cleanup = () => {
+                deactivateZenMode();
+                window.removeEventListener('pointermove', handlePointerMove);
+            };
+
+            contentField.addEventListener('blur', cleanup);
+        }
+
+        // Title field also triggers zen mode for consistent experience
+        if (titleInput) {
+            titleInput.addEventListener('focus', () => {
+                activateZenMode();
+                window.addEventListener('pointermove', handlePointerMove);
+            });
+
+            const cleanupTitle = () => {
+                deactivateZenMode();
+                window.removeEventListener('pointermove', handlePointerMove);
+            };
+
+            titleInput.addEventListener('blur', cleanupTitle);
         }
     })();
 </script>

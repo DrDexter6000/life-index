@@ -11,33 +11,30 @@
         </div>
     </div>
 {% elif results is defined and results %}
+    <!-- Dual Pipeline Visualization - DESIGN-DIRECTION §4.3 -->
+    {% if dual_pipeline %}
+    <div class="pipeline-container">
+        <div class="pipeline-node">
+            <div class="pipeline-indicator keyword"></div>
+            <span class="pipeline-label">关键词</span>
+            <span class="pipeline-count">{{ dual_pipeline.keyword_count }}</span>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-node">
+            <div class="pipeline-indicator semantic"></div>
+            <span class="pipeline-label">语义</span>
+            <span class="pipeline-count">{{ dual_pipeline.semantic_count }}</span>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-node">
+            <div class="pipeline-indicator rrf"></div>
+            <span class="pipeline-label">RRF融合</span>
+            <span class="pipeline-count">{{ dual_pipeline.rrf_count }}</span>
+        </div>
+    </div>
+    {% endif %}
     <div class="space-y-4">
-        {% if llm_available and query %}
-            <section
-                id="search-ai-summary"
-                class="rounded-2xl p-5 sm:p-6"
-                style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);"
-                hx-get="/api/search/summarize?query={{ query | urlencode }}{% if topic %}&topic={{ topic | urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from | urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to | urlencode }}{% endif %}{% if mood %}&mood={{ mood | urlencode }}{% endif %}{% if tags %}&tags={{ tags | urlencode }}{% endif %}{% if people %}&people={{ people | urlencode }}{% endif %}{% if project %}&project={{ project | urlencode }}{% endif %}{% if location %}&location={{ location | urlencode }}{% endif %}"
-                hx-trigger="load"
-                hx-swap="innerHTML"
-                hx-indicator="#search-ai-summary-loading"
-                data-timeout-15-message="LLM 服务器或网络不稳定，还请耐心等待"
-                data-timeout-30-message="AI 归纳超时。"
-                data-retry-label="重试"
-            >
-                {% include "partials/search_summary_loading.html" %}
-            </section>
-        {% elif query %}
-            <section class="rounded-2xl p-5 sm:p-6" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">
-                <div class="flex items-start gap-3">
-                    <span class="text-xl" aria-hidden="true">🤖</span>
-                    <div class="min-w-0 flex-1">
-                        <h3 class="font-display text-xl font-medium tracking-tight" style="color: var(--color-on-surface);">AI 智能归纳</h3>
-                        <p class="mt-2 text-sm" style="color: var(--color-on-surface-variant);">启用 AI 可获得智能搜索摘要 <a href="/settings" style="color: var(--color-primary);">前往设置 →</a></p>
-                    </div>
-                </div>
-            </section>
-        {% endif %}
+        <!-- AI智能归纳功能已删除 -->
 
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p class="text-sm" style="color: var(--color-on-surface-variant);">
@@ -73,13 +70,13 @@
                         {% if item.mood or item.tags or item.topic %}
                             <div class="mt-3 flex flex-wrap gap-2">
                                 {% for mood in item.mood or [] %}
-                                    <span class="rounded-full px-2 py-1 text-xs" style="background: rgba(255, 113, 108, 0.15); color: var(--color-error);">{{ mood }}</span>
+                                    <span class="rounded-xl px-2 py-1 text-xs" style="background: rgba(255, 113, 108, 0.15); color: var(--color-error);">{{ mood }}</span>
                                 {% endfor %}
                                 {% for tag in item.tags or [] %}
-                                    <span class="rounded-full px-2 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">{{ tag }}</span>
+                                    <span class="rounded-xl px-2 py-1 text-xs" style="background: rgba(196, 182, 254, 0.15); color: #C4B6FE;">{{ tag }}</span>
                                 {% endfor %}
                                 {% for topic in item.topic or [] %}
-                                    <span class="rounded-full px-2 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">{{ topic }}</span>
+                                    <span class="rounded-xl px-2 py-1 text-xs" style="background: rgba(133, 255, 242, 0.15); color: var(--color-tertiary);">{{ topic }}</span>
                                 {% endfor %}
                             </div>
                         {% endif %}

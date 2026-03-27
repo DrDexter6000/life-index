@@ -264,6 +264,7 @@ async def search_page(request: Request) -> HTMLResponse:
                     "weather": "",
                     "has_active_filters": has_active_filters,
                     "llm_available": provider is not None,
+                    "dual_pipeline": search_result.get("dual_pipeline"),
                 },
             )
         return request.app.state.templates.TemplateResponse(
@@ -288,6 +289,7 @@ async def search_page(request: Request) -> HTMLResponse:
                 "weather": "",
                 "has_active_filters": has_active_filters,
                 "llm_available": provider is not None,
+                "dual_pipeline": None,
             },
         )
 
@@ -318,6 +320,9 @@ async def search_page(request: Request) -> HTMLResponse:
             "projects": projects,
             "locations": locations,
             "drilldown_links": _drilldown_links(),
+            "dual_pipeline": search_result.get("dual_pipeline")
+            if search_result
+            else None,
         },
     )
 
