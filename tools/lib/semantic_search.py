@@ -28,6 +28,7 @@ from config import (
     EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG,
     get_model_cache_dir,
 )
+from frontmatter import parse_frontmatter
 from path_contract import build_journal_path_fields
 
 # 索引存储目录
@@ -205,32 +206,11 @@ def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
         if not content.startswith("---"):
             return None
 
-        parts = content.split("---", 2)
-        if len(parts) < 3:
+        # 使用 SSOT frontmatter 解析
+        metadata, body = parse_frontmatter(content)
+
+        if not metadata:
             return None
-
-        fm_text = parts[1].strip()
-        body = parts[2].strip()
-
-        # 解析 frontmatter
-        metadata: Dict[str, Any] = {}
-        for line in fm_text.split("\n"):
-            line = line.strip()
-            if ":" in line and not line.startswith("#"):
-                key, raw_value = line.split(":", 1)
-                key = key.strip()
-                value_str = raw_value.strip()
-
-                if value_str.startswith("[") and value_str.endswith("]"):
-                    value: Any = [
-                        v.strip().strip("\"'")
-                        for v in value_str[1:-1].split(",")
-                        if v.strip()
-                    ]
-                else:
-                    value = value_str
-
-                metadata[key] = value
 
         # 组合用于向量化的文本（标题 + 正文 + 标签）
         text_parts = []
@@ -259,7 +239,7 @@ def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
         rel_path = build_journal_path_fields(
             file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
         )["rel_path"]
-        date_str = metadata.get("date", "")[:10]
+        date_str = str(metadata.get("date", ""))[:10]
 
         return (rel_path, combined_text, date_str)
 
