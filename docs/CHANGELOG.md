@@ -42,6 +42,17 @@
   - 删除 `server.log`, `tmp_*` 日志文件
   - 这些文件已被 `.gitignore` 覆盖
 
+#### 测试修复
+
+- **FIX-07**: 修复 FTS 搜索测试 mock 行数不匹配
+  - `test_search_filters_low_relevance_results_by_default` 和 `test_search_fts_accepts_custom_min_relevance` 的 mock 行仅有 5 列，但 `search_fts()` 的 SELECT 语句返回 12 列
+  - 补全 mock 行至 12 列（path, title, date, location, weather, topic, project, tags, mood, people, snippet, rank）
+  - 修正 `min_relevance` 参数与 mock BM25 分数的匹配关系
+
+- **FIX-08**: 修复语义搜索阈值测试参数过时
+  - `test_search_semantic_filters_low_similarity_and_uses_default_top_k` 和 `test_search_semantic_default_threshold_keeps_026_but_rejects_024` 使用的默认参数（`min_similarity=0.25`, `top_k=15`）与函数实际默认值（`min_similarity=0.15`, `top_k=50`）不一致
+  - 改为显式传参测试阈值过滤逻辑，不再依赖错误的默认值假设
+
 ### 用户影响 (User Impact)
 
 - **可选操作**: 运行 `life-index index --rebuild` 重建语义索引以获得最佳性能（FIX-04）

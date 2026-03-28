@@ -143,12 +143,13 @@ class TestSearchSemantic:
         mock_index.get.return_value = {"date": "2026-03-20"}
         mock_get_index.return_value = mock_index
 
-        results, _ = search_semantic("test query")
+        # Use explicit min_similarity=0.25 to reject 0.2; default top_k=50
+        results, _ = search_semantic("test query", min_similarity=0.25)
 
         assert len(results) == 2
         assert results[0]["similarity"] == 0.9
         assert results[1]["similarity"] == 0.4
-        assert mock_index.search.call_args.kwargs["top_k"] == 15
+        assert mock_index.search.call_args.kwargs["top_k"] == 50
 
     @patch("tools.lib.vector_index_simple.get_index")
     @patch("tools.lib.vector_index_simple.get_model")
@@ -236,7 +237,8 @@ class TestSearchSemantic:
         mock_index.get.return_value = {"date": "2026-03-20"}
         mock_get_index.return_value = mock_index
 
-        results, _ = search_semantic("test query")
+        # Use explicit min_similarity=0.25 to keep 0.26 but reject 0.24
+        results, _ = search_semantic("test query", min_similarity=0.25)
 
         assert len(results) == 1
         assert results[0]["similarity"] == 0.26

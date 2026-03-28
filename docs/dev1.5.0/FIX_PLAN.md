@@ -103,7 +103,7 @@
 **问题**: H2 - 查询时重复归一化  
 **影响**: 性能（当前无感知）  
 **工作量**: 1h  
-**状态**: ⬜ Pending
+**状态**: ✅ Completed (2026-03-28)
 
 **修复范围**:
 - `tools/lib/vector_index_simple.py` 的 `SimpleVectorIndex.add()` 方法
@@ -150,6 +150,30 @@
 - `server.log`, `tmp_*` 加入 `.gitignore`
 - 删除已存在的临时文件
 
+### FIX-07: 修复 FTS 搜索测试 mock 行数不匹配
+
+**问题**: 测试 mock 返回 5 列元组，但 `search_fts()` SELECT 语句返回 12 列，导致 `IndexError: tuple index out of range`  
+**影响**: 2 个测试持续失败  
+**工作量**: 15min  
+**状态**: ✅ Completed (2026-03-28)
+
+**修复范围**:
+- `tests/unit/test_search_index.py` — `test_search_filters_low_relevance_results_by_default`
+- `tests/unit/test_search_index.py` — `test_search_fts_accepts_custom_min_relevance`
+- 补全 mock 行至 12 列，修正 `min_relevance` 参数与 BM25 分数的测试逻辑
+
+### FIX-08: 修复语义搜索阈值测试参数过时
+
+**问题**: 测试假设 `min_similarity=0.25` 和 `top_k=15`，但函数实际默认值为 `min_similarity=0.15` 和 `top_k=50`  
+**影响**: 2 个测试持续失败  
+**工作量**: 15min  
+**状态**: ✅ Completed (2026-03-28)
+
+**修复范围**:
+- `tests/unit/test_search_semantic.py` — `test_search_semantic_filters_low_similarity_and_uses_default_top_k`
+- `tests/unit/test_search_semantic.py` — `test_search_semantic_default_threshold_keeps_026_but_rejects_024`
+- 改为显式传参测试阈值过滤逻辑
+
 ---
 
 ## 进度跟踪
@@ -161,6 +185,8 @@
 | 2026-03-28 | FIX-02 | 统一 frontmatter 解析为 SSOT (search_index, semantic_search, vector_index_simple) |
 | 2026-03-28 | FIX-03 | 时间衰减死代码已在 FIX-01 中删除 |
 | 2026-03-28 | FIX-04 | 预归一化向量存储，向后兼容旧索引 |
+| 2026-03-28 | FIX-07 | 修复 FTS 测试 mock 行数不匹配 (IndexError) |
+| 2026-03-28 | FIX-08 | 修复语义搜索阈值测试参数过时 |
 
 ---
 
