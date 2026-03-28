@@ -315,12 +315,25 @@ class SimpleVectorIndex:
             print(f"Warning: Failed to save vector index: {e}")
 
     def add(self, path: str, embedding: List[float], date: str, file_hash: str) -> None:
-        """添加或更新向量"""
+        """添加或更新向量（预归一化存储）"""
+        try:
+            import numpy as np
+
+            # 预归一化向量，避免搜索时重复归一化
+            vec = np.array(embedding, dtype=np.float32)
+            norm = np.linalg.norm(vec)
+            if norm > 1e-8:
+                vec = vec / norm
+            embedding = vec.tolist()
+        except ImportError:
+            pass  # numpy 不可用时保持原样
+
         self.vectors[path] = {
             "embedding": embedding,
             "date": date,
             "hash": file_hash,
             "added_at": datetime.now().isoformat(),
+            "normalized": True,  # 标记已归一化
         }
 
     def remove(self, path: str) -> None:
@@ -369,7 +382,11 @@ class SimpleVectorIndex:
 
             # 计算余弦相似度
             doc_vec = np.array(data["embedding"], dtype=np.float32)
-            doc_vec = doc_vec / (np.linalg.norm(doc_vec) + 1e-8)  # 归一化
+
+            # 向后兼容：仅对未标记归一化的旧向量进行归一化
+            # 新向量在 add() 时已预归一化
+            if not data.get("normalized", False):
+                doc_vec = doc_vec / (np.linalg.norm(doc_vec) + 1e-8)
 
             similarity = float(np.dot(query_vec, doc_vec))
 

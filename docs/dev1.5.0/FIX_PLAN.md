@@ -86,7 +86,7 @@
 **问题**: H3 - time_factor = 1.0 永远不衰减  
 **影响**: 认知负载  
 **工作量**: 30min  
-**状态**: ⬜ Pending
+**状态**: ✅ Completed (2026-03-28, with FIX-01)
 
 **修复范围**:
 - `tools/lib/semantic_search.py` 第 509-517 行的空实现
@@ -159,6 +159,8 @@
 | 2026-03-28 | 创建文档体系 | AUDIT_REPORT + FIX_PLAN |
 | 2026-03-28 | FIX-01 | 统一语义后端完成，删除 search_semantic/hybrid_search 死代码 |
 | 2026-03-28 | FIX-02 | 统一 frontmatter 解析为 SSOT (search_index, semantic_search, vector_index_simple) |
+| 2026-03-28 | FIX-03 | 时间衰减死代码已在 FIX-01 中删除 |
+| 2026-03-28 | FIX-04 | 预归一化向量存储，向后兼容旧索引 |
 
 ---
 
