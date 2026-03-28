@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import re
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from tools.lib.config import JOURNALS_DIR, USER_DATA_DIR
 from tools.lib.frontmatter import parse_journal_file
@@ -76,20 +76,28 @@ def _behavioral_query_expansions(user_query: str) -> list[str]:
 
 async def _derive_search_plan(provider: Any, user_query: str) -> dict[str, Any]:
     """
-    LLM 统一提取查询计划（日期范围 + 搜索关键词）
+    LLM 统一提取查询计划（日期范围 + 搜索关键词 + 元数据意图）
 
     Returns:
         {
             "date_from": "YYYY-MM-DD" | None,
             "date_to": "YYYY-MM-DD" | None,
-            "queries": ["keyword1", "keyword2", ...]
+            "queries": ["keyword1", "keyword2", ...],
+            "metadata_intent": "location" | "mood" | "people" | "weather" | None,
+            "metadata_filter": str | None  # 具体的元数据值
         }
     """
     api_key = getattr(provider, "api_key", "")
     base_url = getattr(provider, "base_url", "")
     model = getattr(provider, "model", "")
     if not (api_key and base_url and model):
-        return {"date_from": None, "date_to": None, "queries": []}
+        return {
+            "date_from": None,
+            "date_to": None,
+            "queries": [],
+            "metadata_intent": None,
+            "metadata_filter": None,
+        }
 
     import httpx
 
@@ -98,11 +106,12 @@ async def _derive_search_plan(provider: Any, user_query: str) -> dict[str, Any]:
 Today is {today}.
 
 Extract:
-1. Date range (if mentioned in the question)
-2. Search keywords (1-5 words or short phrases)
+1. Date range (if mentioned)
+2. Search keywords (1-5 words/phrases)
+3. Metadata intent (if user is asking about specific metadata types)
 
 Return JSON only:
-{{"date_from": "YYYY-MM-DD or null", "date_to": "YYYY-MM-DD or null", "queries": ["keyword1", "keyword2"]}}
+{{"date_from": "YYYY-MM-DD or null", "date_to": "YYYY-MM-DD or null", "queries": ["keyword1"], "metadata_intent": "location|mood|people|weather|null", "metadata_filter": "specific value or null"}}
 
 Date parsing rules:
 - "过去三天" / "last 3 days" → date_from = 3 days ago, date_to = today
@@ -114,6 +123,14 @@ Date parsing rules:
 Query extraction rules:
 - Extract 1-5 keywords likely to appear in journal text
 - Use the language the user used
+
+Metadata intent detection:
+- "去过哪些地方" / "where have I been" / "去了哪里" → metadata_intent = "location"
+- "心情怎么样" / "what mood" / "心情如何" → metadata_intent = "mood"
+- "和谁在一起" / "with whom" / "提到谁" → metadata_intent = "people"
+- "天气怎么样" / "what weather" → metadata_intent = "weather"
+- If asking about specific value: "去过北京吗" → metadata_intent = "location", metadata_filter = "北京"
+- If no metadata intent, return null for both
 
 User question: {user_query}"""
 
@@ -130,7 +147,7 @@ User question: {user_query}"""
                         },
                         {"role": "user", "content": prompt},
                     ],
-                    "max_tokens": 200,
+                    "max_tokens": 300,
                     "temperature": 0.3,
                 },
                 headers={
@@ -146,7 +163,13 @@ User question: {user_query}"""
                 .get("content", "")
             )
     except Exception:
-        return {"date_from": None, "date_to": None, "queries": []}
+        return {
+            "date_from": None,
+            "date_to": None,
+            "queries": [],
+            "metadata_intent": None,
+            "metadata_filter": None,
+        }
 
     # Parse JSON response
     try:
@@ -160,6 +183,8 @@ User question: {user_query}"""
         date_from = parsed.get("date_from")
         date_to = parsed.get("date_to")
         queries = parsed.get("queries", [])
+        metadata_intent = parsed.get("metadata_intent")
+        metadata_filter = parsed.get("metadata_filter")
 
         # Validate date format
         if date_from and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(date_from)):
@@ -172,13 +197,26 @@ User question: {user_query}"""
             queries = []
         queries = [str(q) for q in queries if q and len(str(q)) <= 40][:5]
 
+        # Validate metadata_intent
+        valid_intents = ["location", "mood", "people", "weather"]
+        if metadata_intent and metadata_intent not in valid_intents:
+            metadata_intent = None
+
         return {
             "date_from": date_from,
             "date_to": date_to,
             "queries": queries,
+            "metadata_intent": metadata_intent,
+            "metadata_filter": metadata_filter,
         }
     except (json.JSONDecodeError, TypeError):
-        return {"date_from": None, "date_to": None, "queries": []}
+        return {
+            "date_from": None,
+            "date_to": None,
+            "queries": [],
+            "metadata_intent": None,
+            "metadata_filter": None,
+        }
 
 
 # 保留旧函数作为 fallback
@@ -440,11 +478,13 @@ async def ai_search(request: Request):
             status_code=400,
         )
 
-    # 使用 LLM 统一提取查询计划（日期 + 关键词）
+    # 使用 LLM 统一提取查询计划（日期 + 关键词 + 元数据意图）
     search_plan = await _derive_search_plan(provider, user_query)
     date_from = search_plan.get("date_from")
     date_to = search_plan.get("date_to")
     derived_queries = search_plan.get("queries", [])
+    metadata_intent = search_plan.get("metadata_intent")
+    metadata_filter = search_plan.get("metadata_filter")
 
     ai_search_result = await search_ai_journals_web(
         user_query=user_query,
@@ -456,108 +496,300 @@ async def ai_search(request: Request):
         date_to=date_to,
         provider=provider,
         limit=15,
+        metadata_intent=metadata_intent,
+        metadata_filter=metadata_filter,
     )
 
     results = list(ai_search_result.get("results", []))
     total = int(ai_search_result.get("total_found", len(results)))
 
     ai_summary_state = dict(ai_search_result.get("ai_summary") or {})
+    mode = ai_summary_state.get("mode", "grounded")  # 默认 grounded（向后兼容）
     summary = ai_summary_state.get("summary")
     insights = ai_summary_state.get("insights", [])
     suggestions = ai_summary_state.get("suggestions", [])
+    # 新字段（partial/ungrounded 模式）
+    explanation = ai_summary_state.get("explanation")
+    related_findings = ai_summary_state.get("related_findings", [])
+    gap = ai_summary_state.get("gap")
+    what_was_found = ai_summary_state.get("what_was_found")
 
-    if not summary and results:
+    # 默认回退
+    if not summary and not explanation and results:
         summary = f"找到了 {total} 篇相关日志，但没有生成 AI 摘要。"
 
-    # 构建结构化摘要HTML
-    summary_html = ""
-    if summary:
-        summary_html = f'<div class="mb-5 text-sm leading-7" style="color: var(--color-on-surface);">{escape(summary)}</div>'
-
-    # 核心洞察部分
-    insights_html = ""
-    if insights:
-        for insight in insights[:5]:
-            if isinstance(insight, dict):
-                theme = escape(str(insight.get("theme", "")))
-                quote = escape(str(insight.get("quote", "")))
-                date = escape(str(insight.get("date", "")))
-                insight_text = escape(str(insight.get("insight", "")))
-                insights_html += (
-                    f'<div class="mb-4 pb-4" style="border-bottom: 1px solid rgba(255,255,255,0.05);">'
-                    f'<p class="font-medium text-sm mb-2" style="color: var(--color-primary);">{theme}</p>'
-                    f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant); font-style: italic;">{quote}'
-                )
-                if date:
-                    insights_html += f' <span style="opacity: 0.6;">— {date}</span>'
-                insights_html += "</p>"
-                if insight_text:
-                    insights_html += f'<p class="text-sm" style="color: var(--color-on-surface);">{insight_text}</p>'
-                insights_html += "</div>"
-
-    # 建议部分
-    suggestions_html = ""
-    if suggestions:
-        suggestions_html = '<div class="mt-5 pt-5" style="border-top: 1px solid rgba(255,255,255,0.08);">'
-        for suggestion in suggestions[:3]:
-            suggestions_html += f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant);">· {escape(str(suggestion))}</p>'
-        suggestions_html += "</div>"
-
-    # 相关日志链接
-    result_lookup: dict[tuple[str, str], dict[str, Any]] = {}
-    for item in results:
-        result_lookup[
-            (
-                _normalize_result_title(str(item.get("title") or "")),
-                str(item.get("date") or "").strip(),
+    # 根据 mode 构建不同的 HTML
+    if mode == "ungrounded":
+        # UNGROUNDED 模式
+        content_html = ""
+        if explanation:
+            content_html += f'<div class="mb-5 text-sm leading-7" style="color: var(--color-on-surface);">{escape(explanation)}</div>'
+        if what_was_found:
+            content_html += (
+                f'<div class="mb-5 p-4 rounded-xl" style="background: rgba(150, 180, 255, 0.08);">'
+                f'<p class="text-sm" style="color: var(--color-on-surface-variant);">实际找到的记录涉及：{escape(what_was_found)}</p>'
+                f"</div>"
             )
-        ] = item
+        if suggestions:
+            content_html += (
+                '<div class="mt-5 pt-5" style="border-top: 1px solid rgba(255,255,255,0.08);">'
+                '<p class="text-sm font-medium mb-3" style="color: var(--color-on-surface);">您可以尝试</p>'
+            )
+            for suggestion in suggestions[:3]:
+                content_html += f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant);">· {escape(str(suggestion))}</p>'
+            content_html += "</div>"
 
-    items_html = ""
-    for item in results[:5]:
-        title = str(item.get("title", "无标题"))
-        date = str(item.get("date", ""))
-        route_path = item.get("journal_route_path", "")
-        href = f"/journal/{route_path}" if route_path else "#"
-        items_html += (
-            f'<li><a href="{escape(href)}" class="text-sm hover:underline" style="color: var(--color-primary);">{escape(title)}</a>'
-            f'<span class="text-xs ml-2" style="color: var(--color-on-surface-variant);">{escape(date)}</span></li>'
-        )
-
-    filters_html = "".join(
-        f'<span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255,255,255,0.06); color: var(--color-on-surface-variant);">{escape(str(k))}: {escape(str(v))}</span>'
-        for k, v in {
-            "query": user_query,
-            "date_from": date_from,
-            "date_to": date_to,
-            "derived": ", ".join((ai_search_result.get("derived_queries") or [])[:3]),
-        }.items()
-        if v
-    )
-
-    html = (
-        '<article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">'
-        '<div class="flex items-start gap-4 mb-5">'
-        '<div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, rgba(255, 231, 146, 0.15), rgba(133, 255, 242, 0.1));">'
-        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-primary);"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'
-        "</div>"
-        "<div>"
-        '<h3 class="font-display text-xl font-medium" style="color: var(--color-on-surface);">AI 回答</h3>'
-        f'<p class="text-sm" style="color: var(--color-on-surface-variant);">基于搜索到的 {total} 篇相关日志</p>'
-        "</div></div>"
-        f'<div class="flex flex-wrap gap-2 mb-5">{filters_html}</div>'
-        f"{summary_html}"
-        f"{insights_html}"
-        f"{suggestions_html}"
-        + (
-            '<div class="mt-6 pt-6" style="border-top: 1px solid rgba(68, 72, 79, 0.15);">'
-            '<h4 class="text-sm font-medium mb-3" style="color: var(--color-on-surface);">相关日志</h4>'
-            f'<ul class="space-y-2">{items_html}</ul>'
+        html = (
+            '<article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">'
+            '<div class="flex items-start gap-4 mb-5">'
+            '<div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, rgba(150, 180, 255, 0.15), rgba(120, 160, 255, 0.1));">'
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: #96b4ff;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'
             "</div>"
-            if items_html
-            else ""
+            "<div>"
+            '<h3 class="font-display text-xl font-medium" style="color: var(--color-on-surface);">未找到相关记录</h3>'
+            '<p class="text-sm" style="color: var(--color-on-surface-variant);">您的日志中可能尚未记录相关内容</p>'
+            "</div></div>"
+            f"{content_html}"
+            "</article>"
         )
-        + "</article>"
-    )
+        return HTMLResponse(html)
+
+    elif mode == "partial":
+        # PARTIAL 模式
+        content_html = ""
+        if summary:
+            content_html += f'<div class="mb-5 text-sm leading-7" style="color: var(--color-on-surface);">{escape(summary)}</div>'
+        if related_findings:
+            content_html += '<div class="mb-5"><p class="text-sm font-medium mb-3" style="color: var(--color-primary);">间接相关的发现</p>'
+            for finding in related_findings[:4]:
+                content_html += f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant);">· {escape(str(finding))}</p>'
+            content_html += "</div>"
+        if gap:
+            content_html += (
+                f'<div class="mb-5 p-4 rounded-xl" style="background: rgba(255, 200, 100, 0.08); border-left: 3px solid #ffc864;">'
+                f'<p class="text-sm" style="color: var(--color-on-surface);">💡 {escape(gap)}</p>'
+                f"</div>"
+            )
+        if suggestions:
+            content_html += (
+                '<div class="mt-5 pt-5" style="border-top: 1px solid rgba(255,255,255,0.08);">'
+                '<p class="text-sm font-medium mb-3" style="color: var(--color-on-surface);">您可以尝试</p>'
+            )
+            for suggestion in suggestions[:3]:
+                content_html += f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant);">· {escape(str(suggestion))}</p>'
+            content_html += "</div>"
+
+        html = (
+            '<article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">'
+            '<div class="flex items-start gap-4 mb-5">'
+            '<div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, rgba(255, 200, 100, 0.15), rgba(255, 180, 80, 0.1));">'
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: #ffc864;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'
+            "</div>"
+            "<div>"
+            '<h3 class="font-display text-xl font-medium" style="color: var(--color-on-surface);">部分相关</h3>'
+            f'<p class="text-sm" style="color: var(--color-on-surface-variant);">找到 {total} 篇记录，但与您的查询只有部分关联</p>'
+            "</div></div>"
+            f"{content_html}"
+            "</article>"
+        )
+        return HTMLResponse(html)
+
+    else:
+        # GROUNDED 模式（默认）
+        # 构建结构化摘要HTML
+        summary_html = ""
+        if summary:
+            summary_html = f'<div class="mb-5 text-sm leading-7" style="color: var(--color-on-surface);">{escape(summary)}</div>'
+
+        # 核心洞察部分
+        insights_html = ""
+        if insights:
+            for insight in insights[:5]:
+                if isinstance(insight, dict):
+                    theme = escape(str(insight.get("theme", "")))
+                    quote = escape(str(insight.get("quote", "")))
+                    date = escape(str(insight.get("date", "")))
+                    insight_text = escape(str(insight.get("insight", "")))
+                    insights_html += (
+                        f'<div class="mb-4 pb-4" style="border-bottom: 1px solid rgba(255,255,255,0.05);">'
+                        f'<p class="font-medium text-sm mb-2" style="color: var(--color-primary);">{theme}</p>'
+                        f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant); font-style: italic;">{quote}'
+                    )
+                    if date:
+                        insights_html += f' <span style="opacity: 0.6;">— {date}</span>'
+                    insights_html += "</p>"
+                    if insight_text:
+                        insights_html += f'<p class="text-sm" style="color: var(--color-on-surface);">{insight_text}</p>'
+                    insights_html += "</div>"
+
+        # 建议部分
+        suggestions_html = ""
+        if suggestions:
+            suggestions_html = '<div class="mt-5 pt-5" style="border-top: 1px solid rgba(255,255,255,0.08);">'
+            for suggestion in suggestions[:3]:
+                suggestions_html += f'<p class="text-sm mb-2" style="color: var(--color-on-surface-variant);">· {escape(str(suggestion))}</p>'
+            suggestions_html += "</div>"
+
+        # 相关日志链接
+        result_lookup: dict[tuple[str, str], dict[str, Any]] = {}
+        for item in results:
+            result_lookup[
+                (
+                    _normalize_result_title(str(item.get("title") or "")),
+                    str(item.get("date") or "").strip(),
+                )
+            ] = item
+
+        items_html = ""
+        for item in results[:5]:
+            title = str(item.get("title", "无标题"))
+            date = str(item.get("date", ""))
+            route_path = item.get("journal_route_path", "")
+            href = f"/journal/{route_path}" if route_path else "#"
+            items_html += (
+                f'<li><a href="{escape(href)}" class="text-sm hover:underline" style="color: var(--color-primary);">{escape(title)}</a>'
+                f'<span class="text-xs ml-2" style="color: var(--color-on-surface-variant);">{escape(date)}</span></li>'
+            )
+
+        filters_html = "".join(
+            f'<span class="rounded-full px-3 py-1 text-xs" style="background: rgba(255,255,255,0.06); color: var(--color-on-surface-variant);">{escape(str(k))}: {escape(str(v))}</span>'
+            for k, v in {
+                "query": user_query,
+                "date_from": date_from,
+                "date_to": date_to,
+                "derived": ", ".join(
+                    (ai_search_result.get("derived_queries") or [])[:3]
+                ),
+            }.items()
+            if v
+        )
+
+        html = (
+            '<article class="rounded-2xl p-6 sm:p-7" style="background: rgba(18, 22, 30, 0.82); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.05);">'
+            '<div class="flex items-start gap-4 mb-5">'
+            '<div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, rgba(255, 231, 146, 0.15), rgba(133, 255, 242, 0.1));">'
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-primary);"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'
+            "</div>"
+            "<div>"
+            '<h3 class="font-display text-xl font-medium" style="color: var(--color-on-surface);">AI 回答</h3>'
+            f'<p class="text-sm" style="color: var(--color-on-surface-variant);">基于搜索到的 {total} 篇相关日志</p>'
+            "</div></div>"
+            f'<div class="flex flex-wrap gap-2 mb-5">{filters_html}</div>'
+            f"{summary_html}"
+            f"{insights_html}"
+            f"{suggestions_html}"
+            + (
+                '<div class="mt-6 pt-6" style="border-top: 1px solid rgba(68, 72, 79, 0.15);">'
+                '<h4 class="text-sm font-medium mb-3" style="color: var(--color-on-surface);">相关日志</h4>'
+                f'<ul class="space-y-2">{items_html}</ul>'
+                "</div>"
+                if items_html
+                else ""
+            )
+            + "</article>"
+        )
 
     return HTMLResponse(html)
+
+
+@router.post("/api/search/ai/stream")
+async def ai_search_stream(request: Request):
+    """SSE streaming endpoint for AI-powered search.
+
+    折中方案：流式传输文本 chunks，前端实时显示打字机效果；
+    流结束后解析完整 JSON 渲染结构化卡片。
+
+    SSE 事件格式：
+    - data: {"type": "results", "items": [...], "total": N}
+    - data: {"type": "meta", "total": N}
+    - data: {"type": "text", "content": "..."}
+    - data: {"type": "done"}
+    - data: {"type": "error", "message": "..."}
+    """
+    form = await request.form()
+    user_query = str(form.get("query", "")).strip()
+
+    if not user_query:
+        return StreamingResponse(
+            _sse_error("查询不能为空"),
+            media_type="text/event-stream",
+        )
+
+    provider = await get_provider()
+    if provider is None:
+        return StreamingResponse(
+            _sse_error("AI 不可用，请先在设置页配置 LLM API"),
+            media_type="text/event-stream",
+        )
+
+    async def generate_sse():
+        """SSE 事件生成器。"""
+        try:
+            # 1. 使用 LLM 提取查询计划
+            search_plan = await _derive_search_plan(provider, user_query)
+            date_from = search_plan.get("date_from")
+            date_to = search_plan.get("date_to")
+            derived_queries = search_plan.get("queries", [])
+            metadata_intent = search_plan.get("metadata_intent")
+            metadata_filter = search_plan.get("metadata_filter")
+
+            # 2. 执行搜索
+            ai_search_result = await search_ai_journals_web(
+                user_query=user_query,
+                derived_queries=[
+                    *_behavioral_query_expansions(user_query),
+                    *derived_queries,
+                ],
+                date_from=date_from,
+                date_to=date_to,
+                provider=None,  # 不在这里做 AI 归纳
+                limit=15,
+                metadata_intent=metadata_intent,
+                metadata_filter=metadata_filter,
+            )
+
+            results = list(ai_search_result.get("results", []))
+            if not results:
+                yield _sse_event("error", {"message": "没有找到相关日志"})
+                return
+
+            # 2.5 发送搜索结果供前端渲染 Reference 链接
+            # 提取必要的字段，避免传递过多数据
+            reference_items = [
+                {
+                    "title": r.get("title", "无标题"),
+                    "date": r.get("date", ""),
+                    "route_path": r.get("journal_route_path", ""),
+                }
+                for r in results[:10]  # 最多 10 条
+            ]
+            yield _sse_event(
+                "results", {"items": reference_items, "total": len(results)}
+            )
+
+            # 3. 流式 AI 归纳
+            async for chunk in provider.stream_summarize_search(user_query, results):
+                yield _sse_event(chunk.get("type", "text"), chunk)
+
+        except Exception as exc:
+            yield _sse_event("error", {"message": f"发生错误: {exc}"})
+
+    return StreamingResponse(
+        generate_sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲
+        },
+    )
+
+
+def _sse_event(event_type: str, data: dict[str, Any]) -> str:
+    """格式化 SSE 事件。"""
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+async def _sse_error(message: str):
+    """生成错误 SSE 事件。"""
+    yield _sse_event("error", {"message": message})

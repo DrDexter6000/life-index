@@ -88,6 +88,17 @@ def search_l3_content(
                         "match_count": len(body_matches) + (1 if title_match else 0),
                         "relevance": relevance,
                         "source": "content_search",
+                        # 补充元数据字段
+                        "location": metadata.get("location", ""),
+                        "weather": metadata.get("weather", ""),
+                        "mood": metadata.get("mood", []),
+                        "people": metadata.get("people", []),
+                        "tags": metadata.get("tags", []),
+                        "topic": metadata.get("topic", []),
+                        "abstract": metadata.get("abstract", ""),
+                        "project": metadata.get("project", ""),
+                        # 保留完整的 metadata 供后续使用
+                        "metadata": metadata,
                     }
                 )
 

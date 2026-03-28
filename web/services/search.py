@@ -37,17 +37,6 @@ AI_SEARCH_PARAMS = {
     "semantic_weight": 1.0,
 }
 
-# AI 搜索专用配置：偏宽松，让 LLM 筛选
-AI_SEARCH_PARAMS = {
-    "semantic_top_k": 50,  # 更大候选池
-    "semantic_min_similarity": 0.12,  # 更宽松
-    "fts_min_relevance": 20,  # 更宽松
-    "rrf_min_score": 0.006,  # 更宽松
-    "non_rrf_min_score": 8,  # 更宽松
-    "fts_weight": 1.0,
-    "semantic_weight": 1.0,
-}
-
 
 def _is_valid_journal_route_path(path: str | None) -> bool:
     if not path:
@@ -305,12 +294,24 @@ async def search_journals_web(
                 "message": str(exc),
             }
         else:
-            if ai_summary.get("summary"):
+            # 兼容三种模式的 AI 响应
+            has_content = (
+                ai_summary.get("summary")
+                or ai_summary.get("explanation")
+                or ai_summary.get("related_findings")
+            )
+            if has_content:
                 result["ai_summary"] = {
                     "state": "ready",
+                    "mode": ai_summary.get("mode", "grounded"),
                     "summary": ai_summary.get("summary"),
                     "insights": list(ai_summary.get("insights") or []),
                     "suggestions": list(ai_summary.get("suggestions") or []),
+                    # 新字段（partial/ungrounded 模式）
+                    "explanation": ai_summary.get("explanation"),
+                    "related_findings": list(ai_summary.get("related_findings") or []),
+                    "gap": ai_summary.get("gap"),
+                    "what_was_found": ai_summary.get("what_was_found"),
                     "time_span": ai_summary.get("time_span"),
                     "message": None,
                 }
@@ -358,13 +359,37 @@ async def search_ai_journals_web(
     date_to: str | None,
     provider: LLMProvider | None,
     limit: int = 15,
+    # 元数据意图过滤
+    metadata_intent: str | None = None,
+    metadata_filter: str | None = None,
 ) -> dict[str, Any]:
     query_hints = _dedupe_query_hints(user_query, list(derived_queries or []))
     combined_query = " ".join(query_hints)
+
+    # 根据元数据意图设置过滤参数
+    location = None
+    mood = None
+    people = None
+    weather = None
+
+    if metadata_intent and metadata_filter:
+        if metadata_intent == "location":
+            location = metadata_filter
+        elif metadata_intent == "mood":
+            mood = [metadata_filter]
+        elif metadata_intent == "people":
+            people = [metadata_filter]
+        elif metadata_intent == "weather":
+            weather = metadata_filter
+
     result = await search_journals_web(
         query=combined_query,
         date_from=date_from,
         date_to=date_to,
+        location=location,
+        mood=mood,
+        people=people,
+        weather=weather,
         level=3,
         semantic=True,
         limit=limit,
@@ -374,4 +399,8 @@ async def search_ai_journals_web(
     result["effective_query"] = combined_query
     result["derived_queries"] = query_hints[1:]
     result["display_query"] = user_query
+    if metadata_intent:
+        result["metadata_intent"] = metadata_intent
+    if metadata_filter:
+        result["metadata_filter"] = metadata_filter
     return result
