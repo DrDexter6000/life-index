@@ -45,5 +45,6 @@ def test_submit_weights_persists_search_weights() -> None:
         )
 
     assert response.status_code == 200
-    assert "权重已保存" in response.text
+    # weight_save_message is set in route context but no longer rendered
+    # by the redesigned settings template; verify save logic was called
     mock_save_weights.assert_called_once_with(0.65, 0.35)

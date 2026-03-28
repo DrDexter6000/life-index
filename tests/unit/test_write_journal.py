@@ -212,11 +212,11 @@ class TestIndexUpdaterPathSanitization:
         result = format_frontmatter(data)
         assert 'mood: ["happy"]' in result
 
-    def test_mood_empty_string_normalized_to_array(self):
-        """Test that empty mood string is normalized to single-element array"""
+    def test_mood_empty_string_normalized_to_empty_array(self):
+        """Test that empty mood string is normalized to empty array (filtered)"""
         data = {"date": "2026-03-10", "mood": ""}
         result = format_frontmatter(data)
-        assert 'mood: [""]' in result
+        assert "mood: []" in result
 
     def test_people_string_normalized_to_array(self):
         """Test that people as string is normalized to single-element array"""

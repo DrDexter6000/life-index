@@ -239,7 +239,7 @@ class TestBaseTemplate:
         ).read_text(encoding="utf-8")
         assert "min-h-[44px]" in source
         assert "inline-flex items-center justify-center" in source
-        assert "rounded-full" in source
+        assert "rounded-xl" in source
         assert "rounded-md text-sm font-medium text-white bg-indigo-600" not in source
         assert "切换深色模式" in source
         assert "切换浅色模式" in source
@@ -313,7 +313,7 @@ class TestBaseTemplate:
         assert 'id="submit-btn"' in write_source
         assert "min-h-[46px]" in write_source
         assert 'id="location"' in write_source
-        assert "mt-1 block w-full" in write_source
+        assert "block w-full flex-1" in write_source
         assert "min-h-[44px]" in search_source
         assert "共找到" in results_source
         assert "🔍" in results_source

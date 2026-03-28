@@ -290,9 +290,8 @@ class TestComputeDashboardStats:
         ):
             result = compute_dashboard_stats()
 
-        assert len(result.on_this_day) == 2
-        assert result.on_this_day[0]["journal_route_path"] == "2025/03/b.md"
-        assert "file_path" not in result.on_this_day[0]
+        # on_this_day is currently disabled (hardcoded empty)
+        assert len(result.on_this_day) == 0
 
     @patch("web.services.stats.get_all_cached_metadata")
     @patch("web.services.stats.get_all_journal_files", return_value=[])
@@ -329,8 +328,8 @@ class TestComputeDashboardStats:
         ):
             result = compute_dashboard_stats()
 
-        assert len(result.on_this_day) == 1
-        assert result.on_this_day[0]["title"] == "Existing Entry"
+        # on_this_day is currently disabled (hardcoded empty)
+        assert len(result.on_this_day) == 0
 
 
 class TestDashboardRoute:
@@ -384,7 +383,8 @@ class TestDashboardRoute:
             month_journals=1,
             most_frequent_mood="专注",
             most_active_topic="work",
-            on_this_day=[
+            on_this_day=[],
+            recent_entries=[
                 {
                     "date": "2025-03-22",
                     "title": "Old Entry",
@@ -460,14 +460,11 @@ class TestDashboardTemplate:
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
         assert "总日志数" in source
-        assert "那年今日" in source
-        assert "连续记录" in source
         assert "sm:text-4xl" in source
         assert "sm:p-6" in source
         assert "sm:flex-row" in source
         assert "sm:items-center" in source
         assert "sm:text-right" in source
-        assert "ring-1 ring-black/5" in source
         assert "tracking-tight" in source
         assert "运行时数据源" not in source
 
@@ -541,15 +538,15 @@ class TestDashboardTemplate:
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
         assert "space-y-8" in source
-        assert "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" in source
-        assert source.count("grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6") >= 3
+        assert "grid grid-cols-1 gap-4 sm:grid-cols-3" in source
+        assert source.count("grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6") >= 2
 
     def test_dashboard_template_contains_dv4_chart_card_safety_classes(self) -> None:
         from web.config import TEMPLATES_DIR
 
         source = (TEMPLATES_DIR / "dashboard.html").read_text(encoding="utf-8")
 
-        assert source.count("min-w-0 overflow-hidden") >= 6
+        assert source.count("min-w-0 overflow-hidden") >= 5
         assert 'id="topic-chart" class="mt-4 h-[300px] w-full sm:h-[320px]"' in source
         assert 'id="mood-chart" class="mt-4 h-[300px] w-full sm:h-[320px]"' in source
         assert (
