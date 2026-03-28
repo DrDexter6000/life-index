@@ -178,6 +178,7 @@ class TestWebE2ESmoke:
             weather=None,
             semantic=True,
             provider=provider,
+            enable_ai_summary=False,
         )
 
     def test_edit_blocks_location_change_without_weather_integration(self) -> None:

@@ -1271,21 +1271,25 @@ class TestSearchRouterRegistration:
 
 
 class TestSearchPhase4:
-    @patch("web.routes.search._derive_search_queries", new_callable=AsyncMock)
+    @patch("web.routes.search._derive_search_plan", new_callable=AsyncMock)
     @patch("web.routes.search.get_provider", new_callable=AsyncMock)
     @patch("web.routes.search.search_ai_journals_web", new_callable=AsyncMock)
     def test_ai_search_delegates_retrieval_to_canonical_ai_search_service(
         self,
         mock_ai_search: AsyncMock,
         mock_get_provider: AsyncMock,
-        mock_derive_queries: AsyncMock,
+        mock_derive_plan: AsyncMock,
     ) -> None:
         from fastapi.testclient import TestClient
         from web.app import create_app
 
         provider = AsyncMock()
         mock_get_provider.return_value = provider
-        mock_derive_queries.return_value = ["睡眠不足", "凌晨", "晚睡"]
+        mock_derive_plan.return_value = {
+            "date_from": "2026-02-26",
+            "date_to": "2026-03-28",
+            "queries": ["睡眠不足", "凌晨", "晚睡"],
+        }
         mock_ai_search.return_value = {
             "success": True,
             "results": [

@@ -913,8 +913,10 @@ class TestWriteRoutePhase3:
         response = client.get("/write")
 
         assert response.status_code == 200
-        assert "AI 辅助已就绪" in response.text
-        assert "留空的字段将由 AI 自动提炼" in response.text
+        # AI status is now detected client-side via JS /api/llm-status;
+        # server-rendered HTML shows initial detection text
+        assert "正在检测 AI 服务" in response.text
+        assert "ai-status-text" in response.text
 
     @patch("web.routes.write.write_journal_web", new_callable=AsyncMock)
     @patch("web.routes.write.prepare_journal_data", new_callable=AsyncMock)

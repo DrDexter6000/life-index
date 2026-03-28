@@ -31,8 +31,12 @@ def test_merge_and_rank_results_hybrid_filters_low_rrf_scores() -> None:
         [], [], l3_results, [{"path": "doc-0.md", "similarity": 0.9}]
     )
 
-    assert len(merged) == 3
-    assert all(item["relevance_score"] >= 0.016 for item in merged)
+    # With fts_weight=0.6, k=60, min_rrf_score=0.008:
+    # FTS-only items pass when 0.6/(60+rank) >= 0.008 → rank <= 15 (15 items)
+    # doc-0 has both FTS+semantic: (0.6+0.4)/(60+1) ≈ 0.0164 (also passes)
+    # Total: 16 items above threshold
+    assert len(merged) == 16
+    assert all(item["relevance_score"] >= 0.008 for item in merged)
     assert merged[0]["path"] == "doc-0.md"
 
 
