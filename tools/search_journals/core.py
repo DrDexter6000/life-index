@@ -344,6 +344,14 @@ def hierarchical_search(
                                 "match_count": 1,
                                 "source": "fts_index",
                                 "relevance": r.get("relevance", 50),
+                                # 元数据字段
+                                "location": r.get("location", ""),
+                                "weather": r.get("weather", ""),
+                                "topic": r.get("topic", []),
+                                "project": r.get("project", ""),
+                                "tags": r.get("tags", []),
+                                "mood": r.get("mood", []),
+                                "people": r.get("people", []),
                                 **merge_journal_path_fields(
                                     {},
                                     USER_DATA_DIR / r["path"],

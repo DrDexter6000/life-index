@@ -83,24 +83,25 @@ def search_semantic(
                         date_from=date_from,
                         date_to=date_to,
                     )
-                # 转换格式
+                # 转换格式并补充元数据
                 for path, score in semantic_raw:
                     if score < min_similarity:
                         continue
                     vec_data = index.get(path)
                     date_str = vec_data.get("date", "") if vec_data else ""
-                    results.append(
-                        merge_journal_path_fields(
-                            {
-                                "date": date_str,
-                                "similarity": round(score, 4),
-                                "source": "semantic",
-                            },
-                            USER_DATA_DIR / Path(path),
-                            journals_dir=JOURNALS_DIR,
-                            user_data_dir=USER_DATA_DIR,
-                        )
+                    base_result = merge_journal_path_fields(
+                        {
+                            "date": date_str,
+                            "similarity": round(score, 4),
+                            "source": "semantic",
+                        },
+                        USER_DATA_DIR / Path(path),
+                        journals_dir=JOURNALS_DIR,
+                        user_data_dir=USER_DATA_DIR,
                     )
+                    # 补充元数据（title, location, weather 等）
+                    enriched = enrich_semantic_result(base_result)
+                    results.append(enriched)
     except (OSError, IOError, ImportError):
         # 语义搜索失败时返回空列表（可能是模型未安装或文件读取失败）
         pass
@@ -149,6 +150,14 @@ def enrich_semantic_result(semantic_result: Dict) -> Dict:
                 result["mood"] = metadata["mood"]
             if metadata.get("project"):
                 result["project"] = metadata["project"]
+            if metadata.get("location"):
+                result["location"] = metadata["location"]
+            if metadata.get("weather"):
+                result["weather"] = metadata["weather"]
+            if metadata.get("people"):
+                result["people"] = metadata["people"]
+            # 保留完整的 metadata 供后续使用
+            result["metadata"] = metadata
     except (OSError, IOError):
         pass  # 读取失败时保持原样
 
