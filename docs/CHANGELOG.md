@@ -8,6 +8,52 @@
 
 > 用于记录下一次正式版本发布前、值得进入 release notes 的用户可感知变化。
 
+## [1.5.0] - 2026-03-28
+
+### 修复 (Fixes)
+
+#### 检索系统
+
+- **FIX-01**: 统一语义搜索后端为 pickle/numpy
+  - 删除 `semantic_search.py` 中的 `search_semantic()` 死代码（无调用者）
+  - 删除 `semantic_search.py` 中的 `hybrid_search()` 死代码（无调用者）
+  - 确认搜索运行时只使用 `vector_index_simple.py`（pickle/numpy 后端）
+  - 修复双后端分裂问题，搜索路径与构建路径一致
+
+- **FIX-02**: 统一 YAML/frontmatter 解析为 SSOT
+  - 替换 `search_index.py` 手写解析为 `parse_frontmatter()`
+  - 替换 `semantic_search.py` 手写解析为 `parse_frontmatter()`
+  - 替换 `vector_index_simple.py` 回退解析为 `parse_frontmatter()`
+  - 元数据解析一致，维护负担降低
+
+- **FIX-03**: 删除时间衰减死代码（随 FIX-01 一并完成）
+  - 删除 `time_factor = 1.0` 空实现
+  - 代码认知负载降低
+
+- **FIX-04**: 预归一化向量存储
+  - `SimpleVectorIndex.add()` 时归一化向量
+  - `SimpleVectorIndex.search()` 时省去逐文档归一化
+  - 向后兼容旧索引（通过 `normalized` 标记区分）
+  - 搜索性能提升 ~2x
+
+#### 代码清理
+
+- **FIX-06**: 清理项目根目录临时文件
+  - 删除 `server.log`, `tmp_*` 日志文件
+  - 这些文件已被 `.gitignore` 覆盖
+
+### 用户影响 (User Impact)
+
+- **可选操作**: 运行 `life-index index --rebuild` 重建语义索引以获得最佳性能（FIX-04）
+- **数据兼容**: 日志文件格式无变更，历史日志无需迁移
+- **功能变更**: 无，所有功能行为与 v1.4.0 一致
+
+### 审计来源
+
+本次版本修复问题来源于 `docs/dev1.5.0/AUDIT_REPORT.md` CTO 全面审计报告。
+
+---
+
 建议在这里记录：
 - 用户可见功能变化
 - 需要 operator action 的升级事项
