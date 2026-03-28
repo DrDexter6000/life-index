@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from .config import JOURNALS_DIR, USER_DATA_DIR
+from .frontmatter import parse_frontmatter
 from .path_contract import build_journal_path_fields
 
 # 索引存储目录
@@ -30,6 +31,19 @@ def get_file_hash(file_path: Path) -> str:
         return hashlib.md5(content).hexdigest()[:16]
     except (OSError, IOError):
         return ""
+
+
+def _parse_json_field(value: Any) -> List[str]:
+    """解析 JSON 字段（可能是 JSON 字符串或已经是列表）"""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.startswith("["):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
 
 
 def init_fts_db() -> sqlite3.Connection:
@@ -77,31 +91,11 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
         if not content.startswith("---"):
             return None
 
-        parts = content.split("---", 2)
-        if len(parts) < 3:
+        # 使用 SSOT frontmatter 解析
+        metadata, body = parse_frontmatter(content)
+
+        if not metadata:
             return None
-
-        fm_text = parts[1].strip()
-        body = parts[2].strip()
-
-        # 解析 frontmatter
-        metadata = {}
-        for line in fm_text.split("\n"):
-            line = line.strip()
-            if ":" in line and not line.startswith("#"):
-                key, value = line.split(":", 1)
-                key = key.strip()
-                value = value.strip()
-
-                # 处理列表格式
-                if value.startswith("[") and value.endswith("]"):
-                    value = [
-                        v.strip().strip("\"'")
-                        for v in value[1:-1].split(",")
-                        if v.strip()
-                    ]  # type: ignore
-
-                metadata[key] = value
 
         # 构建可索引文档
         path_fields = build_journal_path_fields(
@@ -305,54 +299,110 @@ def search_fts(
         conn = sqlite3.connect(str(FTS_DB_PATH))
         cursor = conn.cursor()
 
-        # 构建查询 - 使用 BM25 排序（分数越低越相关，所以用 ASC）
-        # bm25(journals, 1, 1, 1, 0.5) - 调整权重：title/content 权重更高
-        sql = """
-            SELECT path, title, date,
-                   snippet(journals, 2, '<mark>', '</mark>', '...', 32) as snippet,
-                   bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
-            FROM journals
-            WHERE journals MATCH ?
-        """
-        params = [query]
+        # 尝试使用新版本的完整查询（包含 mood/people 列）
+        # 如果旧索引缺少这些列，会抛出 sqlite3.OperationalError
+        try:
+            sql = """
+                SELECT path, title, date, location, weather, topic, project, tags, mood, people,
+                       snippet(journals, 2, '<mark>', '</mark>', '...', 32) as snippet,
+                       bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
+                FROM journals
+                WHERE journals MATCH ?
+            """
+            params = [query]
 
-        # 添加日期过滤
-        if date_from:
-            sql += " AND date >= ?"
-            params.append(date_from)
-        if date_to:
-            sql += " AND date <= ?"
-            params.append(date_to)
+            # 添加日期过滤
+            if date_from:
+                sql += " AND date >= ?"
+                params.append(date_from)
+            if date_to:
+                sql += " AND date <= ?"
+                params.append(date_to)
 
-        # 按 BM25 分数排序（分数越低表示越相关）
-        sql += " ORDER BY rank ASC"
-        sql += f" LIMIT {limit}"
+            # 按 BM25 分数排序（分数越低表示越相关）
+            sql += " ORDER BY rank ASC"
+            sql += f" LIMIT {limit}"
 
-        cursor.execute(sql, params)
+            cursor.execute(sql, params)
 
-        for row in cursor.fetchall():
-            # BM25 分数转换为匹配度百分比（分数越低越相关）
-            # 典型 BM25 分数范围：-10 到 10，负数表示高度相关
-            bm25_score = row[4] if row[4] is not None else 0
-            # 转换公式：将 BM25 分数映射到 0-100 的匹配度
-            # 分数 <= -5: 95-100% (高度相关)
-            # 分数 0: 70% (中等相关)
-            # 分数 >= 5: 30% (弱相关)
-            relevance = max(0, min(100, int(70 - bm25_score * 5)))
-            if relevance < min_relevance:
-                continue
+            for row in cursor.fetchall():
+                # BM25 分数转换为匹配度百分比（分数越低越相关）
+                # 典型 BM25 分数范围：-10 到 10，负数表示高度相关
+                bm25_score = row[11] if row[11] is not None else 0
+                # 转换公式：将 BM25 分数映射到 0-100 的匹配度
+                # 分数 <= -5: 95-100% (高度相关)
+                # 分数 0: 70% (中等相关)
+                # 分数 >= 5: 30% (弱相关)
+                relevance = max(0, min(100, int(70 - bm25_score * 5)))
+                if relevance < min_relevance:
+                    continue
 
-            results.append(
-                {
-                    "path": row[0],
-                    "title": row[1],
-                    "date": row[2],
-                    "snippet": row[3],
-                    "bm25_score": bm25_score,
-                    "relevance": relevance,
-                    "source": "fts",
-                }
-            )
+                results.append(
+                    {
+                        "path": row[0],
+                        "title": row[1],
+                        "date": row[2],
+                        "location": row[3] or "",
+                        "weather": row[4] or "",
+                        "topic": _parse_json_field(row[5]) if row[5] else [],
+                        "project": row[6] or "",
+                        "tags": _parse_json_field(row[7]) if row[7] else [],
+                        "mood": _parse_json_field(row[8]) if row[8] else [],
+                        "people": _parse_json_field(row[9]) if row[9] else [],
+                        "snippet": row[10],
+                        "bm25_score": bm25_score,
+                        "relevance": relevance,
+                        "source": "fts",
+                    }
+                )
+
+        except sqlite3.OperationalError:
+            # 旧索引缺少 mood/people 列，使用简化查询
+            sql = """
+                SELECT path, title, date, location, weather, topic, project, tags,
+                       snippet(journals, 2, '<mark>', '</mark>', '...', 32) as snippet,
+                       bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
+                FROM journals
+                WHERE journals MATCH ?
+            """
+            params = [query]
+
+            if date_from:
+                sql += " AND date >= ?"
+                params.append(date_from)
+            if date_to:
+                sql += " AND date <= ?"
+                params.append(date_to)
+
+            sql += " ORDER BY rank ASC"
+            sql += f" LIMIT {limit}"
+
+            cursor.execute(sql, params)
+
+            for row in cursor.fetchall():
+                bm25_score = row[9] if row[9] is not None else 0
+                relevance = max(0, min(100, int(70 - bm25_score * 5)))
+                if relevance < min_relevance:
+                    continue
+
+                results.append(
+                    {
+                        "path": row[0],
+                        "title": row[1],
+                        "date": row[2],
+                        "location": row[3] or "",
+                        "weather": row[4] or "",
+                        "topic": _parse_json_field(row[5]) if row[5] else [],
+                        "project": row[6] or "",
+                        "tags": _parse_json_field(row[7]) if row[7] else [],
+                        "mood": [],
+                        "people": [],
+                        "snippet": row[8],
+                        "bm25_score": bm25_score,
+                        "relevance": relevance,
+                        "source": "fts",
+                    }
+                )
 
         conn.close()
 

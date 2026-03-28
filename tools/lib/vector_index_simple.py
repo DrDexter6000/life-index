@@ -29,6 +29,7 @@ from config import (
     get_model_cache_dir,
     EMBEDDING_MODEL as MODEL_CONFIG,
 )
+from frontmatter import parse_frontmatter
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -165,17 +166,23 @@ class EmbeddingModel:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
             # 步骤 1: 验证模型完整性
-            is_valid, verify_msg = verify_model_integrity(EMBEDDING_MODEL_NAME, CACHE_DIR)
+            is_valid, verify_msg = verify_model_integrity(
+                EMBEDDING_MODEL_NAME, CACHE_DIR
+            )
             if not is_valid:
                 print(f"Warning: Model integrity check failed: {verify_msg}")
-                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
+                print(
+                    "Warning: Will proceed with loading, but embeddings may be inconsistent."
+                )
 
             # 步骤 2: 加载模型
             self._model = TextEmbedding(EMBEDDING_MODEL_NAME, cache_dir=str(CACHE_DIR))
             print(f"Model loaded successfully. (dimension={EMBEDDING_DIM})")
 
             # 步骤 3: 记录模型元数据（如果是首次使用）
-            meta_file = CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
+            meta_file = (
+                CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
+            )
             if not meta_file.exists():
                 record_model_metadata(EMBEDDING_MODEL_NAME, CACHE_DIR)
 
@@ -434,35 +441,18 @@ def update_vector_index_simple(
     try:
         from lib.semantic_search import parse_journal_for_vec, get_file_hash
     except ImportError:
-        # 如果无法导入，定义本地版本
+        # 如果无法导入，定义本地版本（使用 SSOT frontmatter 解析）
         def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
             try:
                 content = file_path.read_text(encoding="utf-8")
                 if not content.startswith("---"):
                     return None
-                parts = content.split("---", 2)
-                if len(parts) < 3:
+
+                # 使用 SSOT frontmatter 解析
+                metadata, body = parse_frontmatter(content)
+
+                if not metadata:
                     return None
-
-                fm_text = parts[1].strip()
-                body = parts[2].strip()
-
-                metadata: Dict[str, Any] = {}
-                for line in fm_text.split("\n"):
-                    line = line.strip()
-                    if ":" in line and not line.startswith("#"):
-                        key, raw_value = line.split(":", 1)
-                        key = key.strip()
-                        value_str = raw_value.strip()
-                        if value_str.startswith("[") and value_str.endswith("]"):
-                            value: Any = [
-                                v.strip().strip("\"'")
-                                for v in value_str[1:-1].split(",")
-                                if v.strip()
-                            ]
-                        else:
-                            value = value_str
-                        metadata[key] = value
 
                 text_parts = []
                 if metadata.get("title"):
@@ -477,7 +467,7 @@ def update_vector_index_simple(
 
                 combined_text = " ".join(text_parts)
                 rel_path = str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/")
-                date_str = metadata.get("date", "")[:10]
+                date_str = str(metadata.get("date", ""))[:10]
 
                 return (rel_path, combined_text, date_str)
             except Exception:

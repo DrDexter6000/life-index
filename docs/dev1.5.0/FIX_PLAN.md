@@ -65,7 +65,7 @@
 **问题**: S2 - 手写解析违反 SSOT  
 **影响**: 维护负担  
 **工作量**: 2-4h  
-**状态**: ⬜ Pending
+**状态**: ✅ Completed (2026-03-28)
 
 **修复范围**:
 - `tools/lib/search_index.py` 第 100-117 行的手写 frontmatter 解析
@@ -158,6 +158,7 @@
 |------|--------|------|
 | 2026-03-28 | 创建文档体系 | AUDIT_REPORT + FIX_PLAN |
 | 2026-03-28 | FIX-01 | 统一语义后端完成，删除 search_semantic/hybrid_search 死代码 |
+| 2026-03-28 | FIX-02 | 统一 frontmatter 解析为 SSOT (search_index, semantic_search, vector_index_simple) |
 
 ---
 
