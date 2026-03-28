@@ -820,23 +820,54 @@ class TestSearchFtsEdgeCases:
                 assert results == []
 
     def test_search_filters_low_relevance_results_by_default(self, tmp_path):
-        """Results below the default minimum relevance are discarded."""
+        """Results below the specified minimum relevance are discarded."""
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
         db_path.write_text("", encoding="utf-8")
 
         mock_cursor = MagicMock()
+        # Mock rows must match the 12-column SELECT:
+        # path, title, date, location, weather, topic, project, tags,
+        # mood, people, snippet, rank(bm25)
+        # bm25=7.0 → relevance=35;  bm25=5.0 → relevance=45
         mock_cursor.fetchall.return_value = [
-            ("low.md", "Low", "2026-03-10", "low snippet", 7.0),
-            ("high.md", "High", "2026-03-11", "high snippet", 5.0),
+            (
+                "low.md",
+                "Low",
+                "2026-03-10",
+                "",
+                "",
+                None,
+                "",
+                None,
+                None,
+                None,
+                "low snippet",
+                7.0,
+            ),
+            (
+                "high.md",
+                "High",
+                "2026-03-11",
+                "",
+                "",
+                None,
+                "",
+                None,
+                None,
+                None,
+                "high snippet",
+                5.0,
+            ),
         ]
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
         with patch.object(search_index, "FTS_DB_PATH", db_path):
             with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
-                results = search_index.search_fts("Python")
+                # min_relevance=40 keeps bm25=5.0 (relevance 45) but rejects bm25=7.0 (relevance 35)
+                results = search_index.search_fts("Python", min_relevance=40)
 
         assert [result["path"] for result in results] == ["high.md"]
         assert results[0]["relevance"] == 45
@@ -849,8 +880,24 @@ class TestSearchFtsEdgeCases:
         db_path.write_text("", encoding="utf-8")
 
         mock_cursor = MagicMock()
+        # Mock rows must match the 12-column SELECT:
+        # path, title, date, location, weather, topic, project, tags,
+        # mood, people, snippet, rank(bm25)
         mock_cursor.fetchall.return_value = [
-            ("low.md", "Low", "2026-03-10", "low snippet", 7.0),
+            (
+                "low.md",
+                "Low",
+                "2026-03-10",
+                "",
+                "",
+                None,
+                "",
+                None,
+                None,
+                None,
+                "low snippet",
+                7.0,
+            ),
         ]
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
