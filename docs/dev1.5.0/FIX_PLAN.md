@@ -145,7 +145,7 @@
 ### FIX-06: 清理项目根目录
 
 **工作量**: 15min  
-**状态**: ⬜ Pending
+**状态**: ✅ Completed (2026-03-28)
 
 - `server.log`, `tmp_*` 加入 `.gitignore`
 - 删除已存在的临时文件
