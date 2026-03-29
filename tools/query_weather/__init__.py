@@ -8,8 +8,9 @@ Usage:
     python -m tools.query_weather --lat 6.5244 --lon 3.3792 --date 2026-03-04
 
 Public API:
-    from tools.query_weather import query_weather, geocode_location
+    from tools.query_weather import query_weather, geocode_location, reverse_geocode_location
     result = query_weather(latitude=6.52, longitude=3.38, date="2026-03-04")
+    location = reverse_geocode_location(6.52, 3.38)
 """
 
 import json
@@ -28,6 +29,10 @@ logger = get_logger(__name__)
 GEOCODING_API = "https://geocoding-api.open-meteo.com/v1/search"
 WEATHER_API = "https://archive-api.open-meteo.com/v1/archive"
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
+
+# Nominatim reverse geocoding API
+REVERSE_GEOCODE_API = "https://nominatim.openstreetmap.org/reverse"
+USER_AGENT = "life-index/1.0"
 
 
 def _geocode_single(location: str) -> Optional[Dict[str, Any]]:
@@ -105,6 +110,128 @@ def geocode_location(location: str) -> Optional[Dict[str, Any]]:
             return result
 
     return None
+
+
+def parse_coordinate_location(value: str) -> tuple[float, float] | None:
+    """Parse a `lat, lon` text value to tuple.
+
+    Handles:
+    - "6.5244, 3.3792" (half-width comma)
+    - "6.5244，3.3792" (full-width comma)
+
+    Args:
+        value: Coordinate string in "lat, lon" format
+
+    Returns:
+        (latitude, longitude) tuple or None if parsing fails
+    """
+    normalized = value.replace("，", ",")
+    parts = [part.strip() for part in normalized.split(",")]
+    if len(parts) != 2:
+        return None
+    try:
+        latitude = float(parts[0])
+        longitude = float(parts[1])
+    except ValueError:
+        return None
+    return latitude, longitude
+
+
+def reverse_geocode_location(latitude: float, longitude: float) -> Dict[str, Any]:
+    """Resolve coordinates to a human-readable location string.
+
+    Uses Nominatim OpenStreetMap API for reverse geocoding.
+
+    Args:
+        latitude: Latitude coordinate
+        longitude: Longitude coordinate
+
+    Returns:
+        {
+            "success": bool,
+            "location": str | None,  # e.g., "Lagos, Nigeria"
+            "error": str | None,
+            "address": dict | None,  # Full address details
+        }
+
+    Example:
+        >>> result = reverse_geocode_location(6.5244, 3.3792)
+        >>> result["location"]
+        'Lagos, Nigeria'
+    """
+    params = urllib.parse.urlencode(
+        {
+            "lat": latitude,
+            "lon": longitude,
+            "format": "jsonv2",
+            "addressdetails": 1,
+            "accept-language": "en",
+        }
+    )
+    request = urllib.request.Request(
+        f"{REVERSE_GEOCODE_API}?{params}",
+        headers={"User-Agent": USER_AGENT},
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+        logger.warning(f"Reverse geocoding failed: {exc}")
+        return {
+            "success": False,
+            "location": None,
+            "error": f"地点解析失败：{exc}",
+            "address": None,
+        }
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "location": None,
+            "error": "地点解析失败：响应格式无效",
+            "address": None,
+        }
+
+    address = payload.get("address")
+    if not isinstance(address, dict):
+        return {
+            "success": False,
+            "location": None,
+            "error": "地点解析失败",
+            "address": None,
+        }
+
+    # Extract city and country
+    city = str(
+        address.get("city")
+        or address.get("town")
+        or address.get("village")
+        or address.get("municipality")
+        or address.get("state")
+        or ""
+    ).strip()
+    country = str(address.get("country") or "").strip()
+    parts = [part for part in [city, country] if part]
+    location = ", ".join(parts)
+
+    if not location:
+        location = str(payload.get("display_name") or "").strip()
+
+    if not location:
+        return {
+            "success": False,
+            "location": None,
+            "error": "地点解析失败",
+            "address": None,
+        }
+
+    logger.debug(f"Reverse geocoded ({latitude}, {longitude}) -> {location}")
+    return {
+        "success": True,
+        "location": location,
+        "error": None,
+        "address": address,
+    }
 
 
 def get_weather_code_description(code: int) -> str:
@@ -226,7 +353,9 @@ def query_weather(
         daily = data.get("daily", {})
 
         if not daily or not daily.get("weather_code"):
-            logger.warning(f"No weather data available for {date} at ({latitude}, {longitude})")
+            logger.warning(
+                f"No weather data available for {date} at ({latitude}, {longitude})"
+            )
             result["error"] = "No weather data available for this date"
             return result
 
@@ -283,6 +412,8 @@ def query_weather(
 __all__ = [
     "query_weather",
     "geocode_location",
+    "reverse_geocode_location",
+    "parse_coordinate_location",
     "get_weather_code_description",
     "simplify_weather",
     "main",
