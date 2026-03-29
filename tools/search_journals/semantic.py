@@ -13,6 +13,11 @@ from ..lib.config import USER_DATA_DIR
 from ..lib.config import JOURNALS_DIR
 from ..lib.path_contract import merge_journal_path_fields
 from ..lib.timing import Timer
+from ..lib.search_constants import (
+    SEMANTIC_MIN_SIMILARITY,
+    SEMANTIC_TOP_K_DEFAULT,
+    SEMANTIC_SNIPPET_LENGTH,
+)
 
 from .utils import parse_frontmatter
 
@@ -47,8 +52,8 @@ def search_semantic(
     query: str,
     date_from: str = "",
     date_to: str = "",
-    min_similarity: float = 0.15,
-    top_k: int = 50,
+    min_similarity: float = SEMANTIC_MIN_SIMILARITY,
+    top_k: int = SEMANTIC_TOP_K_DEFAULT,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
     """
     执行语义搜索
@@ -57,8 +62,8 @@ def search_semantic(
         query: 查询词
         date_from: 起始日期
         date_to: 结束日期
-        min_similarity: 最低语义相似度阈值
-        top_k: 最大语义召回量
+        min_similarity: 最低语义相似度阈值（默认 SEMANTIC_MIN_SIMILARITY）
+        top_k: 最大语义召回量（默认 SEMANTIC_TOP_K_DEFAULT）
 
     Returns:
         语义搜索结果列表与细粒度计时
@@ -132,10 +137,10 @@ def enrich_semantic_result(semantic_result: Dict) -> Dict:
             if not result.get("title") and metadata.get("title"):
                 result["title"] = metadata["title"]
 
-            # 生成摘要片段（前 200 字符）
+            # 生成摘要片段
             if not result.get("snippet") and body:
-                snippet = body[:200].replace("\n", " ").strip()
-                if len(body) > 200:
+                snippet = body[:SEMANTIC_SNIPPET_LENGTH].replace("\n", " ").strip()
+                if len(body) > SEMANTIC_SNIPPET_LENGTH:
                     snippet += "..."
                 result["snippet"] = snippet
 

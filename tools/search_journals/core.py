@@ -6,7 +6,7 @@ Life Index - Search Journals Tool - Core
 v1.2: 双管道并行搜索架构
   Pipeline A (关键词): L1 索引过滤 → L2 元数据过滤 → L3 FTS5 内容匹配
   Pipeline B (语义):   向量相似度搜索
-  融合: RRF (Reciprocal Rank Fusion, k=60)
+  融合: RRF (Reciprocal Rank Fusion, k=RRF_K)
 """
 
 import logging
@@ -16,6 +16,17 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
 from ..lib.path_contract import merge_journal_path_fields
+from ..lib.search_constants import (
+    SEMANTIC_TOP_K_DEFAULT,
+    SEMANTIC_MIN_SIMILARITY,
+    FTS_MIN_RELEVANCE,
+    RRF_MIN_SCORE,
+    NON_RRF_MIN_SCORE,
+    SEMANTIC_WEIGHT_DEFAULT,
+    FTS_WEIGHT_DEFAULT,
+    FTS_LIMIT,
+    FTS_FALLBACK_THRESHOLD,
+)
 
 # 导入子模块
 from .l1_index import scan_all_indices, search_l1_index
@@ -161,21 +172,21 @@ def hierarchical_search(
     level: int = 3,
     use_index: bool = True,
     semantic: bool = True,
-    semantic_weight: float = 0.4,
-    fts_weight: float = 1.0,
+    semantic_weight: float = SEMANTIC_WEIGHT_DEFAULT,
+    fts_weight: float = FTS_WEIGHT_DEFAULT,
     # Web-only recall overrides
-    semantic_top_k: int = 30,
-    semantic_min_similarity: float = 0.15,
-    fts_min_relevance: int = 25,
-    rrf_min_score: float = 0.008,
-    non_rrf_min_score: float = 10,
+    semantic_top_k: int = SEMANTIC_TOP_K_DEFAULT,
+    semantic_min_similarity: float = SEMANTIC_MIN_SIMILARITY,
+    fts_min_relevance: int = FTS_MIN_RELEVANCE,
+    rrf_min_score: float = RRF_MIN_SCORE,
+    non_rrf_min_score: float = NON_RRF_MIN_SCORE,
 ) -> Dict[str, Any]:
     """
     双管道并行搜索
 
     Pipeline A: L1 索引过滤 → L2 元数据过滤 → L3 FTS5 内容匹配
     Pipeline B: 语义向量搜索
-    融合: RRF (Reciprocal Rank Fusion, k=60)
+    融合: RRF (Reciprocal Rank Fusion, k=RRF_K)
 
     当 level=1 或 level=2 时，按原逻辑提前返回（向后兼容）。
     仅 level=3（默认）时启动双管道并行。
@@ -194,8 +205,8 @@ def hierarchical_search(
         level: 1=仅索引, 2=索引+元数据, 3=完整双管道并行
         use_index: 是否使用 FTS 索引加速 L3 搜索（默认 True）
         semantic: 是否启用语义搜索（默认 True）
-        semantic_weight: 语义搜索得分权重（默认 0.4）
-        fts_weight: FTS 搜索得分权重（默认 0.6）
+        semantic_weight: 语义搜索得分权重（默认 SEMANTIC_WEIGHT_DEFAULT）
+        fts_weight: FTS 搜索得分权重（默认 FTS_WEIGHT_DEFAULT）
     """
     result: Dict[str, Any] = {
         "success": True,
@@ -332,7 +343,7 @@ def hierarchical_search(
                         fts_query,
                         date_from,
                         date_to,
-                        limit=100,
+                        limit=FTS_LIMIT,
                         min_relevance=fts_min_relevance,
                     )
                     if fts_results:
@@ -365,7 +376,7 @@ def hierarchical_search(
                         # When FTS recall is suspiciously low, supplement with full-corpus
                         # content scan so body-only matches are not missed due to stale or
                         # incomplete index coverage.
-                        if query and len(l3_results) < 5:
+                        if query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
                             fallback_l3_results = search_l3_content(query, None)
                             seen_paths = {
                                 str(

@@ -18,6 +18,13 @@ from typing import Dict, List, Optional, Any, Tuple
 from .config import JOURNALS_DIR, USER_DATA_DIR
 from .frontmatter import parse_frontmatter
 from .path_contract import build_journal_path_fields
+from .search_constants import (
+    FTS_MIN_RELEVANCE,
+    FTS_SNIPPET_TOKENS,
+    FTS_LIMIT,
+    BM25_RELEVANCE_BASE,
+    BM25_RELEVANCE_MULTIPLIER,
+)
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -273,8 +280,8 @@ def search_fts(
     query: str,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    limit: int = 50,
-    min_relevance: int = 25,
+    limit: int = FTS_LIMIT,
+    min_relevance: int = FTS_MIN_RELEVANCE,
 ) -> List[Dict[str, Any]]:
     """
     使用 FTS5 搜索日志（带 BM25 相关性排序）
@@ -304,12 +311,12 @@ def search_fts(
         try:
             sql = """
                 SELECT path, title, date, location, weather, topic, project, tags, mood, people,
-                       snippet(journals, 2, '<mark>', '</mark>', '...', 32) as snippet,
+                       snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
                        bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
                 FROM journals
                 WHERE journals MATCH ?
             """
-            params = [query]
+            params = [FTS_SNIPPET_TOKENS, query]
 
             # 添加日期过滤
             if date_from:
@@ -330,10 +337,16 @@ def search_fts(
                 # 典型 BM25 分数范围：-10 到 10，负数表示高度相关
                 bm25_score = row[11] if row[11] is not None else 0
                 # 转换公式：将 BM25 分数映射到 0-100 的匹配度
-                # 分数 <= -5: 95-100% (高度相关)
-                # 分数 0: 70% (中等相关)
-                # 分数 >= 5: 30% (弱相关)
-                relevance = max(0, min(100, int(70 - bm25_score * 5)))
+                # 见 search_constants.py ADR-009
+                relevance = max(
+                    0,
+                    min(
+                        100,
+                        int(
+                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
+                        ),
+                    ),
+                )
                 if relevance < min_relevance:
                     continue
 
@@ -360,12 +373,12 @@ def search_fts(
             # 旧索引缺少 mood/people 列，使用简化查询
             sql = """
                 SELECT path, title, date, location, weather, topic, project, tags,
-                       snippet(journals, 2, '<mark>', '</mark>', '...', 32) as snippet,
+                       snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
                        bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
                 FROM journals
                 WHERE journals MATCH ?
             """
-            params = [query]
+            params = [FTS_SNIPPET_TOKENS, query]
 
             if date_from:
                 sql += " AND date >= ?"
@@ -381,7 +394,15 @@ def search_fts(
 
             for row in cursor.fetchall():
                 bm25_score = row[9] if row[9] is not None else 0
-                relevance = max(0, min(100, int(70 - bm25_score * 5)))
+                relevance = max(
+                    0,
+                    min(
+                        100,
+                        int(
+                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
+                        ),
+                    ),
+                )
                 if relevance < min_relevance:
                     continue
 
