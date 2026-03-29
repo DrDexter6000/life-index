@@ -10,24 +10,28 @@ Shared infrastructure library for all Life Index atomic tools.
 | Task | File | Notes |
 |------|------|-------|
 | Add new error code | `errors.py` | Follow E{module}{type} format, add recovery strategy |
-| Modify frontmatter format | `frontmatter.py` | SSOT: update FIELD_ORDER and type mappings |
+| Modify attachment handling | `attachment.py` | Normalize write-input and stored-metadata attachment entries |
+| Modify frontmatter format | `frontmatter.py` | SSOT: update FIELD_ORDER and type mappings (re-exports attachment + schema) |
 | Change data directory paths | `config.py` | Update USER_DATA_DIR, all other paths derive from it |
 | Debug concurrent write issues | `file_lock.py` | Cross-platform advisory locks for serialization |
 | Debug L2 search performance | `metadata_cache.py` | Check SQLite WAL mode, mtime/size detection |
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
 | Add semantic search feature | `semantic_search.py` | Uses fastembed (ONNX Runtime), multilingual embeddings |
 | Debug path normalization | `path_contract.py` | Canonical path normalization and route-safe path shaping |
+| Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
 | Debug URL download pipeline | `url_download.py` | Shared remote-file download helper used by write/web flows |
 | Vector index corruption | `vector_index_simple.py` | Pickle-based fallback when sqlite-vec unavailable |
 
 ## MODULES
 
+- **attachment.py**: Attachment normalization for write-input and stored-metadata modes. Extracted from frontmatter.py.
 - **config.py**: Centralized configuration, paths, templates. All paths use `pathlib.Path` for cross-platform compatibility.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
-- **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. All tools must use this, never duplicate logic.
+- **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
 - **metadata_cache.py**: SQLite-based L2 search cache. 50-100x performance improvement over file scanning.
 - **path_contract.py**: Shared path normalization helpers for route-safe, user-safe journal paths.
+- **schema.py**: Schema version management, metadata validation and migration. Extracted from frontmatter.py.
 - **search_index.py**: FTS5 full-text search with BM25 ranking, incremental updates.
 - **semantic_search.py**: Vector embedding search using paraphrase-multilingual-MiniLM-L12-v2, core dependency.
 - **timing.py**: Performance timing utility for metrics collection. Used in tool outputs for monitoring.
