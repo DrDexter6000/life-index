@@ -8,6 +8,76 @@
 
 > 用于记录下一次正式版本发布前、值得进入 release notes 的用户可感知变化。
 
+## [1.5.5] - 2026-03-29
+
+### 代码重构 (Refactoring)
+
+#### 搜索核心重构 [FIX-11, FIX-12, FIX-16]
+
+- **FIX-12**: 搜索常量集中管理
+  - 新建 `tools/lib/search_constants.py`，集中定义所有搜索算法常量
+  - RRF_K=60, SEMANTIC_TOP_K=30, SEMANTIC_MIN_SIMILARITY=0.15, FTS_MIN_RELEVANCE=25 等
+  - 每个常量附 ADR-style 选择理由，修改前需跑测试确认无回归
+
+- **FIX-11**: 搜索管道提取为模块级函数
+  - 新建 `tools/search_journals/keyword_pipeline.py` (222 lines)
+  - 新建 `tools/search_journals/semantic_pipeline.py` (110 lines)
+  - `pipeline_keyword()` 提取为 `run_keyword_pipeline()`
+  - `pipeline_semantic()` 提取为 `run_semantic_pipeline()`
+  - 参数显式化，支持独立测试
+
+- **FIX-16**: 搜索降级警告
+  - 搜索返回值添加 `warnings: List[str]` 字段
+  - 语义搜索降级时返回原因说明
+  - 用户使用 `--no-semantic` 时返回禁用提示
+
+#### 模块拆分 [FIX-13, FIX-14, FIX-15]
+
+- **FIX-13**: `config.py` 拆分 (prior session)
+  - 提取路径管理到 `tools/lib/paths.py` (~180 lines)
+  - 提取搜索配置到 `tools/lib/search_config.py` (~100 lines)
+  - 通过 re-export 保持向后兼容
+
+- **FIX-14**: `frontmatter.py` 拆分
+  - 新建 `tools/lib/attachment.py` (102 lines) — 附件规范化
+  - 新建 `tools/lib/schema.py` (109 lines) — 验证/迁移逻辑
+  - `frontmatter.py` 488→310 行 (目标≤300，超出10行因 re-exports)
+
+- **FIX-15**: `search_index.py` 拆分
+  - 新建 `tools/lib/fts_search.py` (191 lines) — FTS 搜索逻辑
+  - 新建 `tools/lib/fts_update.py` (222 lines) — 索引更新逻辑
+  - `search_index.py` 480→191 行 ✅
+
+#### CI 补强 [FIX-17, FIX-18]
+
+- **FIX-17**: 安全扫描
+  - CI lint job 添加 bandit 安全扫描
+  - 配置: `bandit -r tools/ -ll --skip B101,B311`
+
+- **FIX-18**: Windows CI
+  - 测试矩阵添加 `os: [ubuntu-latest, windows-latest]`
+  - Python 版本矩阵 `['3.11', '3.12']`
+  - `fail-fast: false` 避免单一失败阻塞全部
+
+#### 代码异味清理 [FIX-21]
+
+- **FIX-21**: Phase 5B 清理
+  - 移除 `vector_index_simple.py` 中的重复 `import hashlib`
+  - 新增 `sanitize_filename()` 函数用于文件名安全检查
+  - 更新 `get_next_sequence()` 使用安全的 glob pattern
+
+### 用户影响 (User Impact)
+
+- **功能变更**: 无，所有功能行为与 v1.5.0 一致
+- **数据兼容**: 日志文件格式无变更，历史日志无需迁移
+- **可选操作**: 无
+
+### 审计来源
+
+本次版本修复问题来源于 `docs/1.5.5/CTO_AUDIT_REPORT.md` CTO 全面审计报告。
+
+---
+
 ## [1.5.0] - 2026-03-28
 
 ### 修复 (Fixes)
