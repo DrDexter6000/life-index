@@ -2,8 +2,10 @@
 """
 文档同步检查脚本
 检查文档中的内部链接和引用是否有效
+检查版本号一致性（pyproject.toml vs bootstrap-manifest.json）
 """
 
+import json
 import os
 import re
 import sys
@@ -26,6 +28,38 @@ def find_markdown_links(content: str, base_dir: Path) -> list:
             links.append((text, path, line_num))
 
     return links
+
+
+def extract_pyproject_version(pyproject_path: Path) -> str | None:
+    """
+    从 pyproject.toml 提取 version
+    返回: 版本号字符串，如 "1.5.0"
+    """
+    if not pyproject_path.exists():
+        return None
+
+    content = pyproject_path.read_text(encoding="utf-8")
+    # 匹配 version = "X.Y.Z" 格式
+    match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+    if match:
+        return match.group(1)
+    return None
+
+
+def extract_bootstrap_version(bootstrap_path: Path) -> str | None:
+    """
+    从 bootstrap-manifest.json 提取 repo_version
+    返回: 版本号字符串，如 "1.5.0"
+    """
+    if not bootstrap_path.exists():
+        return None
+
+    content = bootstrap_path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(content)
+        return data.get("repo_version")
+    except json.JSONDecodeError:
+        return None
 
 
 def check_link_validity(link_path: str, base_dir: Path, source_file: Path) -> tuple:
@@ -107,7 +141,8 @@ def check_documentation_sync():
     agents_md = project_root / "AGENTS.md"
     if agents_md.exists():
         content = agents_md.read_text(encoding="utf-8")
-        if "最后更新:" in content:
+        # 兼容两种格式: "最后更新:" 和 "**最后更新**:"
+        if "最后更新" in content:
             print(f"\n[OK] AGENTS.md 包含最后更新日期标记")
         else:
             warnings.append("[WARN] AGENTS.md 缺少最后更新日期标记")
@@ -116,10 +151,43 @@ def check_documentation_sync():
     lib_agents_md = project_root / "tools/lib/AGENTS.md"
     if lib_agents_md.exists():
         content = lib_agents_md.read_text(encoding="utf-8")
-        if "最后更新:" in content:
+        # 兼容两种格式: "最后更新:" 和 "**最后更新**:"
+        if "最后更新" in content:
             print(f"[OK] tools/lib/AGENTS.md 包含最后更新日期标记")
         else:
             warnings.append("[WARN] tools/lib/AGENTS.md 缺少最后更新日期标记")
+
+    # 检查版本号一致性
+    print(f"\n[检查] 版本号一致性")
+    pyproject_path = project_root / "pyproject.toml"
+    bootstrap_path = project_root / "bootstrap-manifest.json"
+
+    pyproject_version = extract_pyproject_version(pyproject_path)
+    bootstrap_version = extract_bootstrap_version(bootstrap_path)
+
+    if pyproject_version and bootstrap_version:
+        if pyproject_version == bootstrap_version:
+            print(
+                f"   [OK] pyproject.toml: {pyproject_version} == bootstrap-manifest.json: {bootstrap_version}"
+            )
+        else:
+            errors.append(
+                f"[ERROR] 版本号不一致: pyproject.toml={pyproject_version}, bootstrap-manifest.json={bootstrap_version}"
+            )
+            print(
+                f"   [FAIL] pyproject.toml: {pyproject_version} != bootstrap-manifest.json: {bootstrap_version}"
+            )
+    elif pyproject_version:
+        errors.append("[ERROR] bootstrap-manifest.json 缺少 repo_version 或解析失败")
+        print(f"   [FAIL] bootstrap-manifest.json 缺少 repo_version")
+    elif bootstrap_version:
+        errors.append("[ERROR] pyproject.toml 缺少 version 或解析失败")
+        print(f"   [FAIL] pyproject.toml 缺少 version")
+    else:
+        errors.append(
+            "[ERROR] 无法从 pyproject.toml 和 bootstrap-manifest.json 提取版本号"
+        )
+        print(f"   [FAIL] 两个文件都无法提取版本号")
 
     # 汇总结果
     print("\n" + "=" * 60)

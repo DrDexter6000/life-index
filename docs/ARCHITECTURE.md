@@ -35,6 +35,30 @@
 宁可牺牲性能，不可牺牲可靠性
 ```
 
+### 1.5 交互范式：人-Agent-CLI 三层信息流
+
+Life Index 的用户界面架构基于一个核心认知：
+
+> **CLI 是 Agent 的母语，GUI 是人的母语。**
+
+#### 信息流分层
+
+| 层级 | 服务对象 | 最佳接口 | 设计意图 |
+|------|----------|----------|----------|
+| **CLI 层** | Agent | 命令行 | 结构化输入输出、可 pipe、自描述 |
+| **Agent 层** | 人 + CLI | 自然语言理解 | 翻译人语→CLI，解析 CLI→人语 |
+| **GUI 层** | 人 | 可视化界面 | 直观交互、表单触发、结果渲染 |
+
+#### 核心约束
+
+1. **CLI 是 SSOT**：所有能力以 CLI 暴露，Agent 和 GUI 只是 CLI 的不同"封装形态"
+2. **GUI 不绕过 CLI**：Web GUI 必须调用 CLI 工具，不得直接操作数据（详见 [AGENTS.md](../AGENTS.md) Web GUI 开发约束）
+3. **Agent 不替代 CLI**：Agent 负责理解意图，但执行必须通过 CLI
+
+#### 行业验证
+
+2026 年钉钉/飞书 CLI 化转型证明：Agent 操作软件的最佳方式是命令行（成本 17 倍低于 MCP）。Life Index 的设计与行业共识一致。
+
 ---
 
 ## 2. 双管道并行检索架构
@@ -168,7 +192,12 @@ tags: ["重构", "优化"]
 
 ## 相关文档
 
+- [bootstrap-manifest.json](../bootstrap-manifest.json) - Authority anchor；onboarding 必须先刷新此文件
+- [AGENT_ONBOARDING.md](../AGENT_ONBOARDING.md) - 基础版 Agent 安装与初始化流程
+- [AGENT_ONBOARDING_WEB.md](../AGENT_ONBOARDING_WEB.md) - Web GUI 版 Agent 安装与初始化流程
 - [API.md](./API.md) - 工具接口详细文档
 - [CHANGELOG.md](./CHANGELOG.md) - 版本变更历史
-- [PRODUCT_BOUNDARY.md](./PRODUCT_BOUNDARY.md) - 产品边界与三层模型
-- [AGENTS.md](../AGENTS.md) - 开发者上下文
+- [PRODUCT_BOUNDARY.md](./PRODUCT_BOUNDARY.md) - 产品边界与三层模型（产品能力分层，与 §1.5 信息流分层是不同视角）
+- [AGENTS.md](../AGENTS.md) - 开发者上下文；Web GUI 开发约束引用 §1.5 交互范式
+- [SKILL.md](../SKILL.md) - Agent 技能定义；相关文档引用 §1.5 交互范式
+- [web-gui/README.md](./web-gui/README.md) - Web GUI 文档索引；架构原则引用 §1.5 交互范式
