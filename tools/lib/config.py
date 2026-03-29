@@ -40,6 +40,8 @@ from .paths import (
     get_safe_path,
     get_index_prefixes,
     INDEX_PREFIXES,
+    resolve_user_data_dir,
+    resolve_journals_dir,
 )
 
 from .search_config import (
@@ -262,6 +264,8 @@ __all__ = [
     "get_safe_path",
     "get_index_prefixes",
     "INDEX_PREFIXES",
+    "resolve_user_data_dir",
+    "resolve_journals_dir",
     # Search config (re-exported from search_config.py)
     "get_search_config",
     "get_search_weights",

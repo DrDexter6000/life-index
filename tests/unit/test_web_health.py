@@ -16,9 +16,9 @@ class TestWebHealthRuntimeInfo:
         assert response.status_code == 200
         payload = response.json()
         assert payload["status"] == "ok"
-        assert payload["version"] == "1.4.0"
+        assert payload["version"] == "1.5.0"
         assert "bootstrap_manifest" in payload
-        assert payload["bootstrap_manifest"]["repo_version"] == "1.4.0"
+        assert payload["bootstrap_manifest"]["repo_version"] == "1.5.0"
         assert "runtime" in payload
         assert "user_data_dir" in payload["runtime"]
         assert "journals_dir" in payload["runtime"]
@@ -68,9 +68,9 @@ class TestWebRuntimeEndpoint:
 
         assert response.status_code == 200
         payload = response.json()
-        assert payload["package_version"] == "1.4.0"
+        assert payload["package_version"] == "1.5.0"
         assert "bootstrap_manifest" in payload
-        assert payload["bootstrap_manifest"]["repo_version"] == "1.4.0"
+        assert payload["bootstrap_manifest"]["repo_version"] == "1.5.0"
         assert "user_data_dir" in payload
         assert "journals_dir" in payload
         assert "life_index_data_dir_override" in payload

@@ -12,7 +12,7 @@ class TestCliVersion:
 
         manifest = read_bootstrap_manifest()
 
-        assert manifest["repo_version"] == "1.4.0"
+        assert manifest["repo_version"] == "1.5.0"
         assert manifest["onboarding_schema_version"]
         assert manifest["requires_checkout_sync"] is True
         assert "required_authority_docs" in manifest
@@ -22,8 +22,8 @@ class TestCliVersion:
 
         payload = get_version_info()
 
-        assert payload["package_version"] == "1.4.0"
-        assert payload["bootstrap_manifest"]["repo_version"] == "1.4.0"
+        assert payload["package_version"] == "1.5.0"
+        assert payload["bootstrap_manifest"]["repo_version"] == "1.5.0"
         assert payload["bootstrap_manifest"]["requires_checkout_sync"] is True
 
     def test_version_command_prints_json_payload(self, capsys) -> None:
@@ -34,5 +34,5 @@ class TestCliVersion:
 
         out = capsys.readouterr().out
         payload = json.loads(out)
-        assert payload["package_version"] == "1.4.0"
-        assert payload["bootstrap_manifest"]["repo_version"] == "1.4.0"
+        assert payload["package_version"] == "1.5.0"
+        assert payload["bootstrap_manifest"]["repo_version"] == "1.5.0"

@@ -337,26 +337,31 @@ class TestPrepareJournalData:
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
         # Mock CLI's LLM extraction to return specific values
-        with patch(
-            "tools.write_journal.prepare._extract_metadata_with_llm"
-        ) as mock_llm:
+        # Must patch at the consuming module (prepare.py imports from llm_extract)
+        with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_llm:
             mock_llm.return_value = {
                 "title": "LLM标题",
                 "topic": ["learn"],
                 "abstract": "LLM摘要",
                 "mood": ["专注"],
             }
-
-            result = await prepare_journal_data(
-                {
-                    "content": "这是正文内容",
-                    "title": "用户标题",
-                    "topic": ["work"],
-                    "date": "2026-03-22",
-                },
-                provider=None,
-                use_llm=True,
-            )
+            with patch(
+                "tools.write_journal.prepare.is_llm_available", return_value=True
+            ):
+                with patch(
+                    "tools.write_journal.prepare.query_weather_for_location",
+                    return_value="",
+                ):
+                    result = await prepare_journal_data(
+                        {
+                            "content": "这是正文内容",
+                            "title": "用户标题",
+                            "topic": ["work"],
+                            "date": "2026-03-22",
+                        },
+                        provider=None,
+                        use_llm=True,
+                    )
 
         assert result["title"] == "用户标题"
         assert result["topic"] == ["work"]
@@ -413,10 +418,9 @@ class TestPrepareJournalData:
 
     @pytest.mark.asyncio
     async def test_fallback_title_uses_empty_title_default(self) -> None:
-        module = importlib.import_module("web.services.write")
-        fallback_title = getattr(module, "_fallback_title")
+        from tools.write_journal.prepare import _fallback_title
 
-        assert fallback_title("") == "无标题日志"
+        assert _fallback_title("") == "无标题日志"
 
     @pytest.mark.asyncio
     async def test_fallback_abstract_skips_markdown_heading_lines(self) -> None:
@@ -441,20 +445,25 @@ class TestPrepareJournalData:
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
         # Mock CLI's LLM extraction to fail
-        with patch(
-            "tools.write_journal.prepare._extract_metadata_with_llm"
-        ) as mock_llm:
+        # Must patch at the consuming module (prepare.py imports from llm_extract)
+        with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_llm:
             mock_llm.side_effect = RuntimeError("provider failed")
-
-            result = await prepare_journal_data(
-                {
-                    "content": "第一行标题\n\n正文内容",
-                    "topic": ["life"],
-                    "date": "2026-03-22",
-                },
-                provider=None,
-                use_llm=True,
-            )
+            with patch(
+                "tools.write_journal.prepare.is_llm_available", return_value=True
+            ):
+                with patch(
+                    "tools.write_journal.prepare.query_weather_for_location",
+                    return_value="",
+                ):
+                    result = await prepare_journal_data(
+                        {
+                            "content": "第一行标题\n\n正文内容",
+                            "topic": ["life"],
+                            "date": "2026-03-22",
+                        },
+                        provider=None,
+                        use_llm=True,
+                    )
 
         assert result["title"] == "第一行标题"
         assert result["abstract"]
@@ -489,20 +498,25 @@ class TestPrepareJournalData:
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
         # Mock CLI's LLM extraction to return empty
-        with patch(
-            "tools.write_journal.prepare._extract_metadata_with_llm"
-        ) as mock_llm:
+        # Must patch at the consuming module (prepare.py imports from llm_extract)
+        with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_llm:
             mock_llm.return_value = {}
-
-            result = await prepare_journal_data(
-                {
-                    "content": "第一行标题\n\n正文内容",
-                    "topic": ["life"],
-                    "date": "2026-03-22",
-                },
-                provider=None,
-                use_llm=True,
-            )
+            with patch(
+                "tools.write_journal.prepare.is_llm_available", return_value=True
+            ):
+                with patch(
+                    "tools.write_journal.prepare.query_weather_for_location",
+                    return_value="",
+                ):
+                    result = await prepare_journal_data(
+                        {
+                            "content": "第一行标题\n\n正文内容",
+                            "topic": ["life"],
+                            "date": "2026-03-22",
+                        },
+                        provider=None,
+                        use_llm=True,
+                    )
 
         assert result["llm_status"]["state"] == "fallback"
         assert "未返回可用结果" in result["llm_status"]["message"]
@@ -513,28 +527,22 @@ class TestPrepareJournalData:
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
         with patch(
-            "web.services.write.get_default_location", return_value="Lagos, Nigeria"
+            "tools.write_journal.prepare.get_default_location",
+            return_value="Lagos, Nigeria",
         ):
-            with patch("web.services.write.geocode_location") as mock_geocode:
-                with patch("web.services.write.query_weather") as mock_weather:
-                    mock_geocode.return_value = {
-                        "latitude": 6.5244,
-                        "longitude": 3.3792,
-                    }
-                    mock_weather.return_value = {
-                        "success": True,
-                        "weather": {"simple": "晴天"},
-                    }
-
-                    result = await prepare_journal_data(
-                        {
-                            "content": "今天状态不错",
-                            "topic": ["life"],
-                            "date": "2026-03-22",
-                        },
-                        provider=None,
-                        use_llm=False,
-                    )
+            with patch(
+                "tools.write_journal.prepare.query_weather_for_location",
+                return_value="晴天",
+            ):
+                result = await prepare_journal_data(
+                    {
+                        "content": "今天状态不错",
+                        "topic": ["life"],
+                        "date": "2026-03-22",
+                    },
+                    provider=None,
+                    use_llm=False,
+                )
 
         assert result["location"] == "Lagos, Nigeria"
         assert result["weather"] == "晴天"
@@ -546,37 +554,32 @@ class TestPrepareJournalData:
         module = importlib.import_module("web.services.write")
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
+        # The web layer handles coordinate→location via reverse_geocode_location
+        # The CLI layer handles weather via query_weather_for_location
         with patch(
-            "web.services.write.reverse_geocode_coordinates"
+            "web.services.write.reverse_geocode_location"
         ) as mock_reverse_geocode:
-            with patch("web.services.write.geocode_location") as mock_geocode:
-                with patch("web.services.write.query_weather") as mock_weather:
-                    mock_reverse_geocode.return_value = {
-                        "success": True,
-                        "location": "Lagos, Nigeria",
-                    }
-                    mock_geocode.return_value = {
-                        "latitude": 6.5244,
-                        "longitude": 3.3792,
-                    }
-                    mock_weather.return_value = {
-                        "success": True,
-                        "weather": {"simple": "晴天"},
-                    }
+            with patch(
+                "tools.write_journal.prepare.query_weather_for_location",
+                return_value="晴天",
+            ):
+                mock_reverse_geocode.return_value = {
+                    "success": True,
+                    "location": "Lagos, Nigeria",
+                }
 
-                    result = await prepare_journal_data(
-                        {
-                            "content": "今天状态不错",
-                            "topic": ["life"],
-                            "date": "2026-03-22",
-                            "location": "6.5244, 3.3792",
-                        },
-                        provider=None,
-                        use_llm=False,
-                    )
+                result = await prepare_journal_data(
+                    {
+                        "content": "今天状态不错",
+                        "topic": ["life"],
+                        "date": "2026-03-22",
+                        "location": "6.5244, 3.3792",
+                    },
+                    provider=None,
+                    use_llm=False,
+                )
 
         mock_reverse_geocode.assert_called_once_with(6.5244, 3.3792)
-        mock_geocode.assert_called_once_with("Lagos, Nigeria")
         assert result["location"] == "Lagos, Nigeria"
         assert result["weather"] == "晴天"
 
@@ -606,27 +609,21 @@ class TestPrepareJournalData:
         module = importlib.import_module("web.services.write")
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
-        with patch("web.services.write.geocode_location") as mock_geocode:
-            with patch("web.services.write.query_weather") as mock_weather:
-                mock_geocode.return_value = {
-                    "latitude": 6.5244,
-                    "longitude": 3.3792,
-                }
-                mock_weather.return_value = {
-                    "success": False,
-                    "error": "weather failed",
-                }
-
-                result = await prepare_journal_data(
-                    {
-                        "content": "今天状态不错",
-                        "topic": ["life"],
-                        "date": "2026-03-22",
-                        "location": "Lagos, Nigeria",
-                    },
-                    provider=None,
-                    use_llm=False,
-                )
+        # When weather query returns empty, CLI pops weather key
+        with patch(
+            "tools.write_journal.prepare.query_weather_for_location",
+            return_value="",
+        ):
+            result = await prepare_journal_data(
+                {
+                    "content": "今天状态不错",
+                    "topic": ["life"],
+                    "date": "2026-03-22",
+                    "location": "Lagos, Nigeria",
+                },
+                provider=None,
+                use_llm=False,
+            )
 
         assert result["location"] == "Lagos, Nigeria"
         assert "weather" not in result
@@ -636,29 +633,23 @@ class TestPrepareJournalData:
         module = importlib.import_module("web.services.write")
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
-        with patch("web.services.write.geocode_location") as mock_geocode:
-            with patch("web.services.write.query_weather") as mock_weather:
-                mock_geocode.return_value = {
-                    "latitude": 6.5244,
-                    "longitude": 3.3792,
-                }
-                mock_weather.return_value = {
-                    "success": True,
-                    "weather": {"simple": "晴天"},
-                }
+        with patch(
+            "tools.write_journal.prepare.query_weather_for_location",
+            return_value="晴天",
+        ) as mock_weather:
+            result = await prepare_journal_data(
+                {
+                    "content": "今天状态不错",
+                    "topic": ["life"],
+                    "date": "2026-03-22T09:15:00",
+                    "location": "Lagos, Nigeria",
+                },
+                provider=None,
+                use_llm=False,
+            )
 
-                result = await prepare_journal_data(
-                    {
-                        "content": "今天状态不错",
-                        "topic": ["life"],
-                        "date": "2026-03-22T09:15:00",
-                        "location": "Lagos, Nigeria",
-                    },
-                    provider=None,
-                    use_llm=False,
-                )
-
-        mock_weather.assert_called_once_with(6.5244, 3.3792, "2026-03-22")
+        # CLI layer extracts date portion (first 10 chars) for weather query
+        mock_weather.assert_called_once_with("Lagos, Nigeria", "2026-03-22")
         assert result["weather"] == "晴天"
 
     @pytest.mark.asyncio

@@ -100,6 +100,7 @@ def _load_sqlite_vec_extension(conn: sqlite3.Connection) -> bool:
         True if loaded successfully
     """
     import platform
+    import sys
 
     try:
         conn.enable_load_extension(True)
