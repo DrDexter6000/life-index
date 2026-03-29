@@ -1,7 +1,7 @@
 # AGENTS.md - Life Index 项目开发指南
 
 > 本文档为 Life Index 项目开发、为 AI 编码代理提供项目上下文。  
-> **最后更新**: 2026-03-25 | **版本**: v1.2 | **状态**: 活跃维护
+> **最后更新**: 2026-03-29 | **版本**: v1.2 | **状态**: 活跃维护
 
 ## 项目概述
 
@@ -20,7 +20,8 @@
 **关键架构决策**:
 - **双管道并行检索架构** 关键词管道 ∥ 语义管道并行执行 + RRF 融合
 - **数据物理隔离**：用户数据在 `~/Documents/Life-Index/`，项目代码在仓库目录
-- **CLI 为 SSOT**：Web GUI 必须调用 CLI 工具，不得绕过
+- **CLI 为 SSOT**：Web GUI 必须调用 CLI 工具，不得绕过（详见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §1.5 交互范式）
+- **人-Agent-CLI 三层信息流**：CLI 是 Agent 的母语，GUI 是人的母语（详见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §1.5）
 
 ---
 
@@ -29,6 +30,8 @@
 ### 核心原则
 
 **CLI 是最高 SSOT，Web GUI 只是 CLI 的薄封装。**
+
+> 交互范式详见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §1.5 人-Agent-CLI 三层信息流。
 
 ```mermaid
 flowchart TB

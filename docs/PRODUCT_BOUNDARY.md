@@ -14,6 +14,8 @@
 
 ## 2. 三层模型
 
+> **注意**：本节定义的是**产品能力分层**（Layer A/B/C），与 [`ARCHITECTURE.md`](./ARCHITECTURE.md) §1.5 定义的信息流分层（CLI/Agent/GUI）是不同视角。前者区分"产品做什么 vs orchestration 做什么"，后者区分"谁调用谁"。
+
 ### 2.1 Layer A — Core Product
 
 Life Index 核心产品包含：

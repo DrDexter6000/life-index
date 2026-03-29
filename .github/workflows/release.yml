@@ -20,6 +20,25 @@ jobs:
     - name: Install build
       run: python -m pip install build
 
+    - name: Sync bootstrap-manifest.json version
+      run: |
+        # Extract version from pyproject.toml
+        VERSION=$(grep '^version =' pyproject.toml | sed 's/version = "//' | sed 's/"//')
+        echo "Version from pyproject.toml: $VERSION"
+        
+        # Update bootstrap-manifest.json
+        python -c "
+        import json
+        with open('bootstrap-manifest.json', 'r') as f:
+            data = json.load(f)
+        data['repo_version'] = '$VERSION'
+        with open('bootstrap-manifest.json', 'w') as f:
+            json.dump(data, f, indent=2)
+        "
+        
+        # Verify
+        echo "Updated bootstrap-manifest.json repo_version to: $VERSION"
+
     - name: Build
       run: python -m build
 

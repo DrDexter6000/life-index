@@ -1,6 +1,6 @@
 # AGENTS.md - tools/lib/
 
-> **最后更新**: 2026-03-25 | **版本**: v1.2 | **状态**: 活跃维护
+> **最后更新**: 2026-03-29 | **版本**: v1.2 | **状态**: 活跃维护
 
 ## OVERVIEW
 Shared infrastructure library for all Life Index atomic tools.

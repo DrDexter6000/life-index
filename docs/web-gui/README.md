@@ -3,6 +3,14 @@
 > **状态**: current-state index  
 > **适用范围**: 已发布 Web GUI 的当前参考文档入口
 
+## 架构原则
+
+Web GUI 是可选壳层，**必须遵循 CLI 为 SSOT 的交互范式**：
+
+> **CLI 是 Agent 的母语，GUI 是人的母语。**  
+> Web GUI 不绕过 CLI，只做表单收集与结果渲染。  
+> 详见 [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §1.5 人-Agent-CLI 三层信息流。
+
 ## 当前保留文档
 
 - [`design-spec.md`](./design-spec.md) — Web GUI 已发布设计参考与架构说明
