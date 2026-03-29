@@ -8,6 +8,7 @@ Fully independent - no circular imports with config.py.
 """
 
 import os
+from pathlib import Path
 from typing import Any, Dict
 
 import yaml
@@ -152,7 +153,7 @@ EMBEDDING_MODEL = {
 }
 
 
-def get_model_cache_dir():
+def get_model_cache_dir() -> Path:
     """
     获取模型缓存目录（跨平台兼容）
 
@@ -160,7 +161,6 @@ def get_model_cache_dir():
         Path: 模型缓存目录路径
     """
     import platform
-    from pathlib import Path
 
     system = platform.system()
 

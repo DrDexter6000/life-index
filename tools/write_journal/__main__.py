@@ -23,7 +23,7 @@ def _emit_json(payload: dict) -> None:
         print(fallback_text)
 
 
-def _cmd_write(args) -> int:
+def _cmd_write(args: argparse.Namespace) -> int:
     """Execute write command."""
     ensure_dirs()
 
@@ -52,7 +52,7 @@ def _cmd_write(args) -> int:
     return 0 if result["success"] else 1
 
 
-def _cmd_enrich(args) -> int:
+def _cmd_enrich(args: argparse.Namespace) -> int:
     """Execute enrich command - prepare metadata without writing.
 
     This command extracts/enriches metadata from content using:

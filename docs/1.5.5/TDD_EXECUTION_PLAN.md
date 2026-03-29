@@ -831,6 +831,37 @@ flake8 tools/ --count --max-complexity=40 --max-line-length=100
 
 ---
 
+## 附录 D: 遗留项与未来计划
+
+> **v1.5.5 已完成所有 P0-P2 任务。以下为 P3 遗留项，记录在此以便后续版本跟进。**
+
+### D.1 SKILL.md 精简 [FIX-19] — DEFERRED
+
+**原计划**: 将 SKILL.md 从 428 行精简至 ≤ 250 行，减少 Agent 上下文消耗。
+
+**暂缓原因**: 用户决定将此作为专题任务单独处理，不在 v1.5.5 中执行。
+
+**建议方向**:
+- 审查 SKILL.md 中是否有与 AGENTS.md / API.md 重复的内容
+- 将 Agent 不需要的详细说明移至 docs/ 子文档
+- 目标行数 ≤ 250 行，但以信息密度为准而非硬砍行数
+
+### D.2 Mypy 中等难度修复 (13 errors remaining)
+
+**v1.5.5 已修复**: 5 个 `no-untyped-def` 错误（18 → 13 errors）
+
+**剩余 13 个错误分 3 类**:
+
+| 类别 | 数量 | 文件 | 修复方案 |
+|------|------|------|----------|
+| `Dict[str, Any]` → `object` 推断 | 8 | `vector_index_simple.py`, `semantic_search.py` | 为 `MODEL_CONFIG` 引入 `TypedDict` 或在使用处 `cast(str, ...)` |
+| `list[dict]` vs `list[str]` 不变性 | 4 | `edit_journal/__init__.py` | 将 `attachments` 参数类型改为 `Sequence[Union[dict, str]]` |
+| `object * list[float]` 运算 | 2 | `vector_index_simple.py:619,621` | 为 `MODEL_CONFIG["dimension"]` 添加 `cast(int, ...)` |
+
+**建议**: 在下一版本中统一处理，优先修复 `edit_journal` 的 attachment 类型（与 Web GUI 编辑功能直接相关）。
+
+---
+
 > **文档结束**
 >
 > 本文档与 `CTO_AUDIT_REPORT.md` 共同构成 v1.5.5 改进的 authority anchor。

@@ -8,6 +8,7 @@ FTS5 全文搜索功能
 
 import json
 import sqlite3
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .search_constants import (
@@ -33,7 +34,7 @@ def _parse_json_field(value: Any) -> List[str]:
 
 
 def search_fts(
-    fts_db_path,
+    fts_db_path: Path,
     query: str,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,

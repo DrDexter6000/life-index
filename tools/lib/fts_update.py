@@ -10,7 +10,7 @@ import hashlib
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from .frontmatter import parse_frontmatter
 from .path_contract import build_journal_path_fields
@@ -90,7 +90,7 @@ def get_indexed_files(conn: sqlite3.Connection) -> Dict[str, Tuple[str, str]]:
 
 
 def update_index(
-    init_fts_db_func,
+    init_fts_db_func: Callable[[], sqlite3.Connection],
     fts_db_path: Path,
     journals_dir: Path,
     user_data_dir: Path,
