@@ -84,6 +84,42 @@ JOURNAL_FILENAME_PATTERN = "{project}_{date}_{seq:03d}.md"
 DATE_FORMAT = "%Y-%m-%d"
 DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 
+# Characters not allowed in filenames (Windows + Unix)
+_UNSAFE_FILENAME_CHARS = r'<>:"/\|?*'
+
+
+def sanitize_filename(name: str, replacement: str = "_") -> str:
+    """
+    Sanitize a string for use as a filename.
+
+    Replaces characters that are not allowed in filenames on Windows or Unix.
+
+    Args:
+        name: The string to sanitize
+        replacement: Character to replace unsafe characters with (default: "_")
+
+    Returns:
+        Sanitized string safe for use as a filename
+    """
+    if not name:
+        return "unnamed"
+
+    result = name.strip()
+
+    # Replace unsafe characters
+    for char in _UNSAFE_FILENAME_CHARS:
+        result = result.replace(char, replacement)
+
+    # Collapse multiple replacements into one
+    while replacement + replacement in result:
+        result = result.replace(replacement + replacement, replacement)
+
+    # Remove leading/trailing replacements
+    result = result.strip(replacement)
+
+    return result or "unnamed"
+
+
 # YAML Frontmatter template
 JOURNAL_TEMPLATE = """---
 date: {date}
@@ -143,6 +179,8 @@ def get_journal_dir(year: Optional[int] = None, month: Optional[int] = None) -> 
 
 def get_next_sequence(project: str, date_str: str) -> int:
     """Get next sequence number for a project on a given date."""
+    # Sanitize project name for filesystem safety
+    safe_project = sanitize_filename(project)
     year, month, _ = date_str.split("-")
     journal_dir = JOURNALS_DIR / year / month
 
@@ -150,7 +188,7 @@ def get_next_sequence(project: str, date_str: str) -> int:
         return 1
 
     # Find existing files for this project and date
-    pattern = f"{project}_{date_str}_*.md"
+    pattern = f"{safe_project}_{date_str}_*.md"
     existing = list(journal_dir.glob(pattern))
 
     if not existing:
@@ -316,6 +354,7 @@ __all__ = [
     # Utilities
     "get_journal_dir",
     "get_next_sequence",
+    "sanitize_filename",
     "get_path_mappings",
     "PATH_MAPPINGS",
     "normalize_path",

@@ -34,6 +34,7 @@ from .paths import (
     JOURNAL_TEMPLATE,
     get_journal_dir,
     get_next_sequence,
+    sanitize_filename,
     get_path_mappings,
     PATH_MAPPINGS,
     normalize_path,

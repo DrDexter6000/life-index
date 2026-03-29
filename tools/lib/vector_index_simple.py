@@ -48,8 +48,6 @@ def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     Returns:
         十六进制哈希字符串
     """
-    import hashlib
-
     hash_obj = hashlib.sha256()
     try:
         with open(file_path, "rb") as f:
