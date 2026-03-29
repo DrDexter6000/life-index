@@ -215,11 +215,11 @@ class TestWebCLIAlignment:
             "topic": "learn",
         }
 
-        # CLI 层（同步）
+        # CLI 层（同步）- 使用规则模式
         cli_result = prepare_journal_metadata(form_data, use_llm=False)
 
-        # Web 层（异步）
-        web_result = await prepare_journal_data(form_data)
+        # Web 层（异步）- 同样使用规则模式以确保一致性
+        web_result = await prepare_journal_data(form_data, use_llm=False)
 
         # 验证关键字段一致
         assert web_result["title"] == cli_result["title"], "title 不一致"

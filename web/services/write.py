@@ -110,7 +110,9 @@ def cleanup_staged_files(staged_attachments: list[dict[str, str]]) -> None:
 
 
 async def prepare_journal_data(
-    form_data: dict[str, Any], provider: Any = None
+    form_data: dict[str, Any],
+    provider: Any = None,
+    use_llm: bool | None = None,
 ) -> dict[str, Any]:
     """Prepare journal metadata from form data.
 
@@ -119,13 +121,24 @@ async def prepare_journal_data(
 
     Args:
         form_data: Raw form data from web request
-        provider: LLM provider instance (ignored - CLI handles LLM internally)
+        provider: LLM provider instance (DEPRECATED - ignored, CLI handles LLM internally)
+        use_llm: Whether to use LLM for metadata extraction. None = auto-detect
+                 based on availability. Tests can pass False to force rule-based.
 
     Returns:
         Prepared metadata dict with field_sources and llm_status
     """
+    # Determine whether to use LLM
+    if use_llm is None:
+        # Auto-detect based on availability
+        from tools.lib.llm_extract import is_llm_available
+
+        use_llm = is_llm_available()
+
     # Run CLI's prepare_journal_metadata in thread pool
-    prepared = await asyncio.to_thread(prepare_journal_metadata, form_data)
+    prepared = await asyncio.to_thread(
+        prepare_journal_metadata, form_data, use_llm=use_llm
+    )
 
     # Web-specific: handle coordinate-based location from browser geolocation
     location = str(prepared.get("location", "")).strip()

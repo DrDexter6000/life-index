@@ -329,30 +329,34 @@ class TestPrepareJournalData:
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
         with pytest.raises(ValueError, match="content"):
-            await prepare_journal_data({}, provider=None)
+            await prepare_journal_data({}, provider=None, use_llm=False)
 
     @pytest.mark.asyncio
     async def test_user_input_wins_over_llm(self) -> None:
         module = importlib.import_module("web.services.write")
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
-        provider = AsyncMock()
-        provider.extract_metadata.return_value = {
-            "title": "LLM标题",
-            "topic": ["learn"],
-            "abstract": "LLM摘要",
-            "mood": ["专注"],
-        }
+        # Mock CLI's LLM extraction to return specific values
+        with patch(
+            "tools.write_journal.prepare._extract_metadata_with_llm"
+        ) as mock_llm:
+            mock_llm.return_value = {
+                "title": "LLM标题",
+                "topic": ["learn"],
+                "abstract": "LLM摘要",
+                "mood": ["专注"],
+            }
 
-        result = await prepare_journal_data(
-            {
-                "content": "这是正文内容",
-                "title": "用户标题",
-                "topic": ["work"],
-                "date": "2026-03-22",
-            },
-            provider=provider,
-        )
+            result = await prepare_journal_data(
+                {
+                    "content": "这是正文内容",
+                    "title": "用户标题",
+                    "topic": ["work"],
+                    "date": "2026-03-22",
+                },
+                provider=None,
+                use_llm=True,
+            )
 
         assert result["title"] == "用户标题"
         assert result["topic"] == ["work"]
@@ -366,7 +370,9 @@ class TestPrepareJournalData:
 
         with pytest.raises(ValueError, match="topic"):
             await prepare_journal_data(
-                {"content": "今天写了一点东西", "date": "2026-03-22"}, provider=None
+                {"content": "今天写了一点东西", "date": "2026-03-22"},
+                provider=None,
+                use_llm=False,
             )
 
     @pytest.mark.asyncio
@@ -381,6 +387,7 @@ class TestPrepareJournalData:
                 "date": "2026-03-22",
             },
             provider=None,
+            use_llm=False,
         )
 
         assert result["title"]
@@ -399,6 +406,7 @@ class TestPrepareJournalData:
                 "date": "2026-03-22",
             },
             provider=None,
+            use_llm=False,
         )
 
         assert result["title"] == "第一行标题"
@@ -422,6 +430,7 @@ class TestPrepareJournalData:
                 "date": "2026-03-22",
             },
             provider=None,
+            use_llm=False,
         )
 
         assert result["abstract"].startswith("正文第一段 正文第二段")
@@ -431,17 +440,21 @@ class TestPrepareJournalData:
         module = importlib.import_module("web.services.write")
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
-        provider = AsyncMock()
-        provider.extract_metadata.side_effect = RuntimeError("provider failed")
+        # Mock CLI's LLM extraction to fail
+        with patch(
+            "tools.write_journal.prepare._extract_metadata_with_llm"
+        ) as mock_llm:
+            mock_llm.side_effect = RuntimeError("provider failed")
 
-        result = await prepare_journal_data(
-            {
-                "content": "第一行标题\n\n正文内容",
-                "topic": ["life"],
-                "date": "2026-03-22",
-            },
-            provider=provider,
-        )
+            result = await prepare_journal_data(
+                {
+                    "content": "第一行标题\n\n正文内容",
+                    "topic": ["life"],
+                    "date": "2026-03-22",
+                },
+                provider=None,
+                use_llm=True,
+            )
 
         assert result["title"] == "第一行标题"
         assert result["abstract"]
@@ -464,6 +477,7 @@ class TestPrepareJournalData:
                 "date": "2026-03-22",
             },
             provider=None,
+            use_llm=False,
         )
 
         assert result["llm_status"]["state"] == "unavailable"
@@ -474,17 +488,21 @@ class TestPrepareJournalData:
         module = importlib.import_module("web.services.write")
         prepare_journal_data = getattr(module, "prepare_journal_data")
 
-        provider = AsyncMock()
-        provider.extract_metadata.return_value = {}
+        # Mock CLI's LLM extraction to return empty
+        with patch(
+            "tools.write_journal.prepare._extract_metadata_with_llm"
+        ) as mock_llm:
+            mock_llm.return_value = {}
 
-        result = await prepare_journal_data(
-            {
-                "content": "第一行标题\n\n正文内容",
-                "topic": ["life"],
-                "date": "2026-03-22",
-            },
-            provider=provider,
-        )
+            result = await prepare_journal_data(
+                {
+                    "content": "第一行标题\n\n正文内容",
+                    "topic": ["life"],
+                    "date": "2026-03-22",
+                },
+                provider=None,
+                use_llm=True,
+            )
 
         assert result["llm_status"]["state"] == "fallback"
         assert "未返回可用结果" in result["llm_status"]["message"]
@@ -515,6 +533,7 @@ class TestPrepareJournalData:
                             "date": "2026-03-22",
                         },
                         provider=None,
+                        use_llm=False,
                     )
 
         assert result["location"] == "Lagos, Nigeria"
@@ -553,6 +572,7 @@ class TestPrepareJournalData:
                             "location": "6.5244, 3.3792",
                         },
                         provider=None,
+                        use_llm=False,
                     )
 
         mock_reverse_geocode.assert_called_once_with(6.5244, 3.3792)
@@ -575,6 +595,7 @@ class TestPrepareJournalData:
                     "weather": "用户手填天气",
                 },
                 provider=None,
+                use_llm=False,
             )
 
         mock_geocode.assert_not_called()
@@ -604,6 +625,7 @@ class TestPrepareJournalData:
                         "location": "Lagos, Nigeria",
                     },
                     provider=None,
+                    use_llm=False,
                 )
 
         assert result["location"] == "Lagos, Nigeria"
@@ -633,6 +655,7 @@ class TestPrepareJournalData:
                         "location": "Lagos, Nigeria",
                     },
                     provider=None,
+                    use_llm=False,
                 )
 
         mock_weather.assert_called_once_with(6.5244, 3.3792, "2026-03-22")
@@ -652,6 +675,7 @@ class TestPrepareJournalData:
                 "attachment_urls": ["https://example.com/file2.png"],
             },
             provider=None,
+            use_llm=False,
         )
 
         assert result["attachments"] == [

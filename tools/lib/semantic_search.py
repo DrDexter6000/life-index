@@ -15,21 +15,19 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
-import sys
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
 
-# 导入配置
-sys.path.insert(0, str(Path(__file__).parent))
-from config import (
+# 导入配置（使用相对导入）
+from .config import (
     JOURNALS_DIR,
     USER_DATA_DIR,
     EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG,
     get_model_cache_dir,
 )
-from frontmatter import parse_frontmatter
-from path_contract import build_journal_path_fields
+from .frontmatter import parse_frontmatter
+from .path_contract import build_journal_path_fields
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"

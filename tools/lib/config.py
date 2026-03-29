@@ -1,105 +1,63 @@
 """
 Life Index - Shared Configuration Module
-=======================================
-Centralized configuration for all atomic tools.
+=========================================
+Core configuration loading and accessors.
 
 Configuration Loading Priority:
 1. Environment variables: LIFE_INDEX_* (highest)
 2. User config file: ~/Documents/Life-Index/.life-index/config.yaml (middle)
 3. Code defaults (lowest)
+
+Note: Path definitions moved to paths.py, search config moved to search_config.py
+This module re-exports them for backward compatibility.
 """
 
 import os
 from pathlib import Path
-from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 import yaml
 
+from .paths import (
+    USER_DATA_DIR,
+    PROJECT_ROOT,
+    JOURNALS_DIR,
+    BY_TOPIC_DIR,
+    ATTACHMENTS_DIR,
+    ABSTRACTS_DIR,
+    CONFIG_DIR,
+    CONFIG_FILE,
+    ensure_dirs,
+    JOURNAL_FILENAME_PATTERN,
+    DATE_FORMAT,
+    DATETIME_FORMAT,
+    JOURNAL_TEMPLATE,
+    get_journal_dir,
+    get_next_sequence,
+    get_path_mappings,
+    PATH_MAPPINGS,
+    normalize_path,
+    get_safe_path,
+    get_index_prefixes,
+    INDEX_PREFIXES,
+)
 
-def resolve_user_data_dir() -> Path:
-    """Resolve active user data directory from env override or platform default.
-
-    Priority:
-    1. LIFE_INDEX_DATA_DIR environment variable
-    2. Path.home()/Documents/Life-Index
-    """
-    user_data_env = os.environ.get("LIFE_INDEX_DATA_DIR")
-    if user_data_env:
-        return Path(user_data_env)
-    return Path.home() / "Documents" / "Life-Index"
-
-
-def resolve_journals_dir() -> Path:
-    """Resolve active journals directory based on current data-dir resolution."""
-    return resolve_user_data_dir() / "Journals"
-
-
-# User data directory (OS standard user documents directory)
-# Uses Path.home() for cross-platform compatibility:
-#   Windows: C:\Users\<username>\Documents\Life-Index
-#   macOS:   ~/Documents/Life-Index
-#   Linux:   ~/Documents/Life-Index
-#
-# Can be overridden via LIFE_INDEX_DATA_DIR environment variable (for testing)
-USER_DATA_DIR = resolve_user_data_dir()
-
-# Project root (for reference only, not for data storage)
-PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
-
-# Directory structure - POINT TO USER DATA DIR
-JOURNALS_DIR = USER_DATA_DIR / "Journals"
-BY_TOPIC_DIR = USER_DATA_DIR / "by-topic"
-ATTACHMENTS_DIR = USER_DATA_DIR / "attachments"
-
-# Abstracts directory (stored within Journals for co-location)
-ABSTRACTS_DIR = JOURNALS_DIR
-
-# Config directory for user configuration
-CONFIG_DIR = USER_DATA_DIR / ".life-index"
-CONFIG_FILE = CONFIG_DIR / "config.yaml"
-
-# Note: Abstracts are stored within Journals directory structure:
-#   - Monthly: Journals/YYYY/MM/monthly_report_YYYY-MM.md
-#   - Yearly:  Journals/YYYY/yearly_report_YYYY.md
-# This keeps abstracts co-located with the journals they summarize.
+from .search_config import (
+    get_search_config,
+    get_search_weights,
+    save_search_weights,
+    get_search_mode,
+    save_search_mode,
+    FILE_LOCK_TIMEOUT_DEFAULT,
+    FILE_LOCK_TIMEOUT_REBUILD,
+    EMBEDDING_MODEL,
+    get_model_cache_dir,
+)
 
 
-def ensure_dirs() -> None:
-    """
-    确保所有必要的数据目录存在。
-
-    必须在工具的 main() 入口处显式调用，避免 import 时的副作用
-    （import 时创建目录会污染测试环境和 CI）。
-
-    各原子工具的 main() 应在执行任何操作前调用此函数。
-    """
-    for dir_path in [JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR, CONFIG_DIR]:
-        dir_path.mkdir(parents=True, exist_ok=True)
-
-
-# File naming patterns
-JOURNAL_FILENAME_PATTERN = "{project}_{date}_{seq:03d}.md"
-DATE_FORMAT = "%Y-%m-%d"
-DATETIME_FORMAT = "%Y-%m-%d %H:%M"
-
-# YAML Frontmatter template
-JOURNAL_TEMPLATE = """---
-date: {date}
-time: {time}
-location: {location}
-weather: {weather}
-topic: {topic}
-project: {project}
-tags: {tags}
-seq: {seq}
----
-
-{content}
-"""
-
-
-# ========== Configuration Loading ==========
+# =============================================================================
+# Configuration Loading (Core)
+# =============================================================================
 
 
 def _load_yaml_config(config_path: Path) -> Dict[str, Any]:
@@ -170,12 +128,16 @@ def reload_user_config() -> Dict[str, Any]:
     return USER_CONFIG
 
 
-# ========== Configuration Instance ==========
+# =============================================================================
+# Configuration Instance
+# =============================================================================
+
 USER_CONFIG = load_user_config()
 
 
-# ========== Default Values (from config or code) ==========
-# Note: topic and project have NO default - must be specified by user/Agent
+# =============================================================================
+# Default Values
+# =============================================================================
 
 
 def get_default_location() -> str:
@@ -188,11 +150,13 @@ def get_default_location() -> str:
 
 
 DEFAULT_LOCATION = get_default_location()
-# DEFAULT_TOPIC = None  # Removed - must be specified
-# DEFAULT_PROJECT = None  # Removed - must be specified
 
 
-# ========== Weather API Configuration ==========
+# =============================================================================
+# Weather API Configuration
+# =============================================================================
+
+
 def get_weather_config() -> Dict[str, Any]:
     """Get weather API configuration."""
     defaults = {
@@ -202,6 +166,15 @@ def get_weather_config() -> Dict[str, Any]:
         "allow_skip_on_failure": True,
     }
     return _deep_merge(defaults, USER_CONFIG.get("weather", {}))
+
+
+WEATHER_API_URL = get_weather_config()["api_url"]
+WEATHER_ARCHIVE_URL = get_weather_config()["archive_url"]
+
+
+# =============================================================================
+# LLM Configuration
+# =============================================================================
 
 
 def get_llm_config() -> Dict[str, str]:
@@ -245,277 +218,58 @@ def save_default_location(location: str) -> None:
     reload_user_config()
 
 
-WEATHER_API_URL = get_weather_config()["api_url"]
-WEATHER_ARCHIVE_URL = get_weather_config()["archive_url"]
+# =============================================================================
+# Re-exports for backward compatibility
+# =============================================================================
 
-
-# ========== Path Mappings Configuration ==========
-def get_path_mappings() -> Dict[str, str]:
-    """Get cross-platform path mappings from config."""
-    # Start with config file mappings
-    mappings: Dict[str, str] = USER_CONFIG.get("path_mappings", {})
-
-    # Example default mappings (disabled by default)
-    # mappings.update({
-    #     "C:\\Users\\{username}": "/home/{username}",
-    # })
-
-    return mappings
-
-
-PATH_MAPPINGS = get_path_mappings()
-
-
-# ========== Search Configuration ==========
-def get_search_config() -> Dict[str, Any]:
-    """Get search configuration."""
-    defaults = {
-        "default_level": 3,
-        "semantic_weight": 1.0,
-        "fts_weight": 1.0,
-        "default_limit": 10,
-    }
-    return _deep_merge(defaults, USER_CONFIG.get("search", {}))
-
-
-def get_search_weights() -> tuple[float, float]:
-    """Return (fts_weight, semantic_weight) from config."""
-    cfg = get_search_config()
-    return (
-        float(cfg.get("fts_weight", 1.0)),
-        float(cfg.get("semantic_weight", 1.0)),
-    )
-
-
-def save_search_weights(fts_weight: float, semantic_weight: float) -> None:
-    """Persist search weights into user config.yaml."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _load_yaml_config(CONFIG_FILE)
-    search_cfg = existing.get("search", {})
-    search_cfg["fts_weight"] = round(float(fts_weight), 2)
-    search_cfg["semantic_weight"] = round(float(semantic_weight), 2)
-    existing["search"] = search_cfg
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
-    reload_user_config()
-
-
-def get_search_mode() -> str:
-    """Return search mode from config (strict/balanced/loose)."""
-    cfg = get_search_config()
-    return str(cfg.get("mode", "balanced"))
-
-
-def save_search_mode(mode: str) -> None:
-    """Persist search mode into user config.yaml."""
-    valid_modes = ["strict", "balanced", "loose"]
-    if mode not in valid_modes:
-        mode = "balanced"
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _load_yaml_config(CONFIG_FILE)
-    search_cfg = existing.get("search", {})
-    search_cfg["mode"] = mode
-    existing["search"] = search_cfg
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
-    reload_user_config()
-
-
-# ========== Index Prefix Configuration ==========
-def get_index_prefixes() -> Dict[str, str]:
-    """
-    获取索引文件名前缀配置。
-
-    支持国际化配置，可通过 config.yaml 自定义前缀。
-    提供中文（默认）和英文选项。
-
-    Returns:
-        {
-            "topic": "主题_",      # 或 "topic_"
-            "project": "项目_",    # 或 "project_"
-            "tag": "标签_",        # 或 "tag_"
-        }
-    """
-    # 默认使用中文前缀
-    defaults = {
-        "topic": "主题_",
-        "project": "项目_",
-        "tag": "标签_",
-    }
-
-    # 从用户配置合并（如果存在）
-    return _deep_merge(defaults, USER_CONFIG.get("index_prefixes", {}))
-
-
-# 全局前缀配置实例（延迟加载）
-INDEX_PREFIXES = get_index_prefixes()
-
-
-# ========== File Lock Configuration ==========
-# 锁超时配置（秒）
-FILE_LOCK_TIMEOUT_DEFAULT = 30  # 正常操作（写日志等）
-FILE_LOCK_TIMEOUT_REBUILD = 120  # 索引重建（批量操作需要更长时间）
-
-# ========== Vector Embedding Model Configuration ==========
-# 固定模型版本以确保嵌入一致性
-# 模型文件约 80MB，首次使用会自动下载
-EMBEDDING_MODEL = {
-    "name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    "version": "2.0.0",  # 模型版本标识（递增触发自动重建）
-    "dimension": 384,  # 输出向量维度（与旧模型一致）
-    # SHA-256 哈希值（模型配置文件的预期哈希，用于完整性校验）
-    # 首次部署后填入
-    "config_hash": "",
-    # 模型元数据（用于追溯和日志记录）
-    "metadata": {
-        "description": "多语言 MiniLM-L12-v2 模型，支持 50+ 语言的语义相似度计算",
-        "max_seq_length": 128,  # 该模型推荐最大序列长度
-        "recommended_for": "多语言日志检索、中英文语义搜索",
-        "supported_languages": "50+ languages including zh, en, ja, ko, fr, de, es, etc.",
-    },
-}
-
-
-# 模型缓存目录（跨平台）
-# 使用 platform.system() 检测操作系统，选择合适的缓存路径
-def get_model_cache_dir() -> Path:
-    """
-    获取模型缓存目录（跨平台兼容）
-
-    Returns:
-        Path: 模型缓存目录路径
-    """
-    import platform
-
-    system = platform.system()
-
-    # Check if user specified a custom cache dir
-    custom_dir = USER_CONFIG.get("vector_index", {}).get("cache_dir")
-    if custom_dir:
-        cache_base = Path(custom_dir)
-    elif system == "Windows":
-        # Windows: %USERPROFILE%\.cache\life-index\models
-        cache_base = Path.home() / ".cache" / "life-index" / "models"
-    else:
-        # macOS/Linux: ~/.cache/life-index/models
-        cache_base = Path.home() / ".cache" / "life-index" / "models"
-
-    cache_base.mkdir(parents=True, exist_ok=True)
-    return cache_base
-
-
-def get_journal_dir(year: Optional[int] = None, month: Optional[int] = None) -> Path:
-    """Get journal directory for given year/month (defaults to current)."""
-    now = datetime.now()
-    year = year or now.year
-    month = month or now.month
-    return JOURNALS_DIR / str(year) / f"{month:02d}"
-
-
-def get_next_sequence(project: str, date_str: str) -> int:
-    """Get next sequence number for a project on a given date."""
-    year, month, _ = date_str.split("-")
-    journal_dir = JOURNALS_DIR / year / month
-
-    if not journal_dir.exists():
-        return 1
-
-    # Find existing files for this project and date
-    pattern = f"{project}_{date_str}_*.md"
-    existing = list(journal_dir.glob(pattern))
-
-    if not existing:
-        return 1
-
-    # Extract sequence numbers
-    seq_nums = []
-    for f in existing:
-        try:
-            seq_part = f.stem.split("_")[-1]
-            seq_nums.append(int(seq_part))
-        except (ValueError, IndexError):
-            continue
-
-    return max(seq_nums, default=0) + 1
-
-
-def normalize_path(path: str) -> str:
-    """
-    标准化路径表示（跨平台兼容）
-
-    功能：
-    1. 统一路径分隔符为 '/'
-    2. 处理 Windows 长路径前缀（\\\\?\\）
-    3. 应用 PATH_MAPPINGS 进行路径转换
-
-    Args:
-        path: 原始路径
-
-    Returns:
-        标准化后的路径（使用 '/' 分隔符）
-    """
-    if not path:
-        return ""
-
-    # 1. 处理 Windows 长路径前缀
-    if path.startswith("\\\\?\\"):
-        path = path[4:]
-
-    # 2. 统一分隔符
-    path = path.replace("\\", "/")
-
-    # 3. 应用路径映射（如果配置了）
-    for src_prefix, dst_prefix in PATH_MAPPINGS.items():
-        # 标准化映射配置中的分隔符
-        src_prefix = src_prefix.replace("\\", "/")
-        dst_prefix = dst_prefix.replace("\\", "/")
-
-        if path.startswith(src_prefix):
-            path = dst_prefix + path[len(src_prefix) :]
-            break
-
-    return path
-
-
-def get_safe_path(path: str, base_dir: Optional[Path] = None) -> Optional[Path]:
-    """
-    获取安全的路径（防止路径遍历攻击）
-
-    Args:
-        path: 相对路径或绝对路径
-        base_dir: 基础目录（如果 path 是相对路径）
-
-    Returns:
-        解析后的 Path 对象，如果路径不安全则返回 None
-    """
-    if not path:
-        return None
-
-    # 转换为 Path 对象
-    if Path(path).is_absolute():
-        result_path = Path(path)
-    elif base_dir:
-        result_path = base_dir / path
-    else:
-        result_path = Path(path)
-
-    # 解析路径（处理 .. 和符号链接）
-    try:
-        resolved = result_path.resolve()
-    except (OSError, ValueError):
-        return None
-
-    # 安全检查：确保解析后的路径在预期目录内
-    if base_dir:
-        try:
-            base_resolved = base_dir.resolve()
-            # 检查是否是子目录
-            if str(resolved) != str(base_resolved) and not str(resolved).startswith(
-                str(base_resolved) + os.sep
-            ):
-                # 路径不在 base_dir 内，不安全
-                return None
-        except (OSError, ValueError):
-            pass
-
-    return resolved
+__all__ = [
+    # Config loading
+    "load_user_config",
+    "reload_user_config",
+    "USER_CONFIG",
+    "_load_yaml_config",
+    "_deep_merge",
+    # Default values
+    "get_default_location",
+    "DEFAULT_LOCATION",
+    # Weather
+    "get_weather_config",
+    "WEATHER_API_URL",
+    "WEATHER_ARCHIVE_URL",
+    # LLM
+    "get_llm_config",
+    "save_llm_config",
+    "save_default_location",
+    # Paths (re-exported from paths.py)
+    "USER_DATA_DIR",
+    "PROJECT_ROOT",
+    "JOURNALS_DIR",
+    "BY_TOPIC_DIR",
+    "ATTACHMENTS_DIR",
+    "ABSTRACTS_DIR",
+    "CONFIG_DIR",
+    "CONFIG_FILE",
+    "ensure_dirs",
+    "JOURNAL_FILENAME_PATTERN",
+    "DATE_FORMAT",
+    "DATETIME_FORMAT",
+    "JOURNAL_TEMPLATE",
+    "get_journal_dir",
+    "get_next_sequence",
+    "get_path_mappings",
+    "PATH_MAPPINGS",
+    "normalize_path",
+    "get_safe_path",
+    "get_index_prefixes",
+    "INDEX_PREFIXES",
+    # Search config (re-exported from search_config.py)
+    "get_search_config",
+    "get_search_weights",
+    "save_search_weights",
+    "get_search_mode",
+    "save_search_mode",
+    "FILE_LOCK_TIMEOUT_DEFAULT",
+    "FILE_LOCK_TIMEOUT_REBUILD",
+    "EMBEDDING_MODEL",
+    "get_model_cache_dir",
+]

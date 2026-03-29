@@ -16,20 +16,14 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
-import sys
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
 
-# 导入配置
-sys.path.insert(0, str(Path(__file__).parent))
-from config import (
-    JOURNALS_DIR,
-    USER_DATA_DIR,
-    get_model_cache_dir,
-    EMBEDDING_MODEL as MODEL_CONFIG,
-)
-from frontmatter import parse_frontmatter
+# 导入配置 - 使用相对导入
+from .paths import JOURNALS_DIR, USER_DATA_DIR
+from .search_config import get_model_cache_dir, EMBEDDING_MODEL as MODEL_CONFIG
+from .frontmatter import parse_frontmatter
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
