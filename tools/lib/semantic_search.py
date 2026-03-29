@@ -12,7 +12,6 @@ RAG 语义检索模块（基于 sqlite-vec）
 import sqlite3
 import json
 import hashlib
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 

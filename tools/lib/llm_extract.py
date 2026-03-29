@@ -24,7 +24,7 @@ from typing import Any
 import httpx
 
 from .config import get_llm_config
-from .errors import ErrorCode, LifeIndexError
+from .errors import ErrorCode, LifeIndexError  # noqa: F401
 from .logger import get_logger
 
 logger = get_logger(__name__)

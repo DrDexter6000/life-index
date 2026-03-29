@@ -137,7 +137,10 @@ Examples:
     enrich_parser = subparsers.add_parser(
         "enrich",
         help="Extract/enrich metadata without writing",
-        description="Prepare journal metadata from content using LLM and rule-based extraction. Returns enriched data without writing a journal.",
+        description=(
+            "Prepare journal metadata from content using LLM and rule-based "
+            "extraction. Returns enriched data without writing a journal."
+        ),
     )
     enrich_parser.add_argument(
         "--data", required=True, help="JSON数据，或 @文件路径 (如 @input.json)"

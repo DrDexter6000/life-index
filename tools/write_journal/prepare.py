@@ -29,7 +29,6 @@ from typing import Any
 from tools.lib.config import get_default_location
 from tools.lib.text_normalize import normalize_text_list
 from tools.lib.llm_extract import extract_metadata_sync, is_llm_available, VALID_TOPICS
-from tools.query_weather import geocode_location, query_weather
 from tools.write_journal.weather import normalize_location
 
 from .weather import query_weather_for_location

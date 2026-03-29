@@ -315,7 +315,9 @@ def hierarchical_search(
     l3_time = result["performance"].get("l3_time_ms", 0)
     sem_time = result["performance"].get("semantic_time_ms", 0)
     logger.info(
-        f"[SearchPerf] Total: {total_time}ms (L1:{l1_time} L2:{l2_time} L3:{l3_time} Semantic:{sem_time}) | Results: {result['total_found']}"
+        f"[SearchPerf] Total: {total_time}ms "
+        f"(L1:{l1_time} L2:{l2_time} L3:{l3_time} Semantic:{sem_time}) "
+        f"| Results: {result['total_found']}"
     )
 
     return result

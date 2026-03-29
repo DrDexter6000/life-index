@@ -267,6 +267,7 @@ __all__ = [
     "INDEX_PREFIXES",
     "resolve_user_data_dir",
     "resolve_journals_dir",
+    "sanitize_filename",
     # Search config (re-exported from search_config.py)
     "get_search_config",
     "get_search_weights",

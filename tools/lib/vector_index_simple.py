@@ -12,6 +12,7 @@ Life Index - Simple Vector Index (Fallback)
 
 import json
 import pickle
+import sys
 import hashlib
 from datetime import datetime
 from pathlib import Path
