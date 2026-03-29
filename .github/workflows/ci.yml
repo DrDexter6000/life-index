@@ -54,6 +54,11 @@ jobs:
       run: |
         black --check --diff tools/
 
+    - name: Security scan with bandit
+      run: |
+        pip install bandit
+        bandit -r tools/ -ll --skip B101,B311
+
   typecheck:
     runs-on: ubuntu-latest
     name: Type Check
@@ -84,13 +89,15 @@ jobs:
         mypy tools/ --ignore-missing-imports
 
   tests:
-    runs-on: ubuntu-latest
-    name: Tests (${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
     needs:
     - lint
     - typecheck
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python-version: ['3.11', '3.12']
 
     steps:
