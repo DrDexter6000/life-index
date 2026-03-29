@@ -16,6 +16,8 @@ Shared infrastructure library for all Life Index atomic tools.
 | Debug concurrent write issues | `file_lock.py` | Cross-platform advisory locks for serialization |
 | Debug L2 search performance | `metadata_cache.py` | Check SQLite WAL mode, mtime/size detection |
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
+| Debug FTS search queries | `fts_search.py` | BM25 ranking, snippet extraction, JSON field parsing |
+| Debug FTS index updates | `fts_update.py` | Incremental/full rebuild, file hashing, journal parsing |
 | Add semantic search feature | `semantic_search.py` | Uses fastembed (ONNX Runtime), multilingual embeddings |
 | Debug path normalization | `path_contract.py` | Canonical path normalization and route-safe path shaping |
 | Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
@@ -29,10 +31,12 @@ Shared infrastructure library for all Life Index atomic tools.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
+- **fts_search.py**: FTS5 full-text search with BM25 ranking. Extracted from search_index.py.
+- **fts_update.py**: FTS5 index building/updating (incremental and full rebuild). Extracted from search_index.py.
 - **metadata_cache.py**: SQLite-based L2 search cache. 50-100x performance improvement over file scanning.
 - **path_contract.py**: Shared path normalization helpers for route-safe, user-safe journal paths.
 - **schema.py**: Schema version management, metadata validation and migration. Extracted from frontmatter.py.
-- **search_index.py**: FTS5 full-text search with BM25 ranking, incremental updates.
+- **search_index.py**: FTS5 index management (init, stats) + backward-compat wrappers for fts_search.py and fts_update.py.
 - **semantic_search.py**: Vector embedding search using paraphrase-multilingual-MiniLM-L12-v2, core dependency.
 - **timing.py**: Performance timing utility for metrics collection. Used in tool outputs for monitoring.
 - **url_download.py**: Shared URL download helper for attachment ingestion and related flows.

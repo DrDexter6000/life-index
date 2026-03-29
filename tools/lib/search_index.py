@@ -7,50 +7,24 @@ SQLite FTS5 全文索引管理
 - 增量更新：仅处理新增/修改的日志
 - 自动初始化：首次使用时自动创建索引
 - 降级路径：索引损坏时自动重建
+
+架构说明:
+- fts_search.py: 搜索功能
+- fts_update.py: 索引构建/更新
+- 本模块: 常量定义、初始化、统计、向后兼容包装器
 """
 
-import sqlite3
-import hashlib
 import json
-from datetime import datetime
+import sqlite3
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 from .config import JOURNALS_DIR, USER_DATA_DIR
-from .frontmatter import parse_frontmatter
-from .path_contract import build_journal_path_fields
-from .search_constants import (
-    FTS_MIN_RELEVANCE,
-    FTS_SNIPPET_TOKENS,
-    FTS_LIMIT,
-    BM25_RELEVANCE_BASE,
-    BM25_RELEVANCE_MULTIPLIER,
-)
+from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
 FTS_DB_PATH = INDEX_DIR / "journals_fts.db"
-
-
-def get_file_hash(file_path: Path) -> str:
-    """计算文件内容哈希，用于检测变更"""
-    try:
-        content = file_path.read_bytes()
-        return hashlib.md5(content).hexdigest()[:16]
-    except (OSError, IOError):
-        return ""
-
-
-def _parse_json_field(value: Any) -> List[str]:
-    """解析 JSON 字段（可能是 JSON 字符串或已经是列表）"""
-    if isinstance(value, list):
-        return value
-    if isinstance(value, str) and value.startswith("["):
-        try:
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, list) else []
-        except (json.JSONDecodeError, TypeError):
-            return []
-    return []
 
 
 def init_fts_db() -> sqlite3.Connection:
@@ -90,349 +64,6 @@ def init_fts_db() -> sqlite3.Connection:
     return conn
 
 
-def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
-    """解析日志文件，提取可索引内容"""
-    try:
-        content = file_path.read_text(encoding="utf-8")
-
-        if not content.startswith("---"):
-            return None
-
-        # 使用 SSOT frontmatter 解析
-        metadata, body = parse_frontmatter(content)
-
-        if not metadata:
-            return None
-
-        # 构建可索引文档
-        path_fields = build_journal_path_fields(
-            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
-        )
-        doc = {
-            "path": path_fields["rel_path"],
-            "title": metadata.get("title", ""),
-            "content": body,
-            "date": metadata.get("date", "")[:10],
-            "location": metadata.get("location", ""),
-            "weather": metadata.get("weather", ""),
-            "topic": _normalize_to_str(metadata.get("topic")),
-            "project": metadata.get("project", ""),
-            "tags": _normalize_to_str(metadata.get("tags")),
-            "file_hash": get_file_hash(file_path),
-            "modified_time": datetime.fromtimestamp(
-                file_path.stat().st_mtime
-            ).isoformat(),
-        }
-
-        return doc
-
-    except (OSError, IOError, ValueError) as e:
-        print(f"Warning: Failed to parse {file_path}: {e}")
-        return None
-
-
-def _normalize_to_str(value: Any) -> str:
-    """将值规范化为字符串"""
-    if not value:
-        return ""
-    if isinstance(value, list):
-        return ", ".join(str(v) for v in value)
-    return str(value)
-
-
-def get_indexed_files(conn: sqlite3.Connection) -> Dict[str, Tuple[str, str]]:
-    """获取已索引的文件列表（路径 -> (hash, modified_time)）"""
-    cursor = conn.cursor()
-    cursor.execute("SELECT path, file_hash, modified_time FROM journals")
-
-    result = {}
-    for row in cursor.fetchall():
-        result[row[0]] = (row[1], row[2])
-
-    return result
-
-
-def update_index(incremental: bool = True) -> Dict[str, Any]:
-    """
-    更新搜索索引
-
-    Args:
-        incremental: True=仅更新变更，False=全量重建
-
-    Returns:
-        {
-            "success": bool,
-            "added": int,
-            "updated": int,
-            "removed": int,
-            "total": int,
-            "error": str (optional)
-        }
-    """
-    result: Dict[str, Any] = {
-        "success": False,
-        "added": 0,
-        "updated": 0,
-        "removed": 0,
-        "total": 0,
-        "error": None,
-    }
-
-    try:
-        conn = init_fts_db()
-        cursor = conn.cursor()
-
-        # 获取当前已索引的文件
-        indexed_files = get_indexed_files(conn)
-
-        # 扫描所有日志文件
-        current_files = set()
-        files_to_update = []
-
-        if JOURNALS_DIR.exists():
-            for year_dir in JOURNALS_DIR.iterdir():
-                if not year_dir.is_dir() or not year_dir.name.isdigit():
-                    continue
-
-                for month_dir in year_dir.iterdir():
-                    if not month_dir.is_dir():
-                        continue
-
-                    for journal_file in month_dir.glob("life-index_*.md"):
-                        rel_path = str(journal_file.relative_to(USER_DATA_DIR)).replace(
-                            "\\", "/"
-                        )
-                        current_files.add(rel_path)
-
-                        # 检查是否需要更新
-                        file_hash = get_file_hash(journal_file)
-
-                        if rel_path not in indexed_files:
-                            # 新文件
-                            files_to_update.append(("add", journal_file, rel_path))
-                        elif indexed_files[rel_path][0] != file_hash:
-                            # 文件已修改
-                            files_to_update.append(("update", journal_file, rel_path))
-
-        # 找出需要删除的索引（文件已不存在）
-        files_to_remove = set(indexed_files.keys()) - current_files
-
-        # 如果不是增量模式，清空所有索引
-        if not incremental:
-            cursor.execute("DELETE FROM journals")
-            files_to_remove = set()
-            # p is already relative to USER_DATA_DIR, need to reconstruct full path correctly
-            files_to_update = [("add", USER_DATA_DIR / p, p) for p in current_files]
-            result["removed"] = len(indexed_files)
-
-        # 执行删除
-        for rel_path in files_to_remove:
-            cursor.execute("DELETE FROM journals WHERE path = ?", (rel_path,))
-            result["removed"] = (result["removed"] or 0) + 1
-
-        # 执行添加/更新
-        for action, file_path, rel_path in files_to_update:
-            doc = parse_journal(file_path)
-            if doc:
-                # 如果是更新，先删除旧记录
-                if action == "update":
-                    cursor.execute("DELETE FROM journals WHERE path = ?", (rel_path,))
-                    result["updated"] = (result["updated"] or 0) + 1
-                else:
-                    result["added"] = (result["added"] or 0) + 1
-
-                # 插入新记录
-                cursor.execute(
-                    """
-                    INSERT INTO journals (path, title, content, date, location, weather,
-                                        topic, project, tags, file_hash, modified_time)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        doc["path"],
-                        doc["title"],
-                        doc["content"],
-                        doc["date"],
-                        doc["location"],
-                        doc["weather"],
-                        doc["topic"],
-                        doc["project"],
-                        doc["tags"],
-                        doc["file_hash"],
-                        doc["modified_time"],
-                    ),
-                )
-
-        conn.commit()
-        conn.close()
-
-        # 更新总数
-        result["total"] = len(current_files)
-        result["success"] = True
-
-    except (OSError, IOError, sqlite3.Error) as e:
-        result["error"] = str(e)
-
-    return result
-
-
-def search_fts(
-    query: str,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    limit: int = FTS_LIMIT,
-    min_relevance: int = FTS_MIN_RELEVANCE,
-) -> List[Dict[str, Any]]:
-    """
-    使用 FTS5 搜索日志（带 BM25 相关性排序）
-
-    Args:
-        query: 搜索关键词（支持 FTS5 语法：AND, OR, NOT, * 通配符）
-        date_from: 起始日期 YYYY-MM-DD
-        date_to: 结束日期 YYYY-MM-DD
-        limit: 最大返回结果数
-        min_relevance: 最低相关性阈值（0-100）
-
-    Returns:
-        搜索结果列表（按 BM25 相关性排序，分数越高越相关）
-    """
-    results: List[Dict[str, Any]] = []
-
-    try:
-        if not FTS_DB_PATH.exists():
-            # 索引不存在，返回空结果（调用方应回退到文件系统扫描）
-            return results
-
-        conn = sqlite3.connect(str(FTS_DB_PATH))
-        cursor = conn.cursor()
-
-        # 尝试使用新版本的完整查询（包含 mood/people 列）
-        # 如果旧索引缺少这些列，会抛出 sqlite3.OperationalError
-        try:
-            sql = """
-                SELECT path, title, date, location, weather, topic, project, tags, mood, people,
-                       snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
-                       bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
-                FROM journals
-                WHERE journals MATCH ?
-            """
-            params = [FTS_SNIPPET_TOKENS, query]
-
-            # 添加日期过滤
-            if date_from:
-                sql += " AND date >= ?"
-                params.append(date_from)
-            if date_to:
-                sql += " AND date <= ?"
-                params.append(date_to)
-
-            # 按 BM25 分数排序（分数越低表示越相关）
-            sql += " ORDER BY rank ASC"
-            sql += f" LIMIT {limit}"
-
-            cursor.execute(sql, params)
-
-            for row in cursor.fetchall():
-                # BM25 分数转换为匹配度百分比（分数越低越相关）
-                # 典型 BM25 分数范围：-10 到 10，负数表示高度相关
-                bm25_score = row[11] if row[11] is not None else 0
-                # 转换公式：将 BM25 分数映射到 0-100 的匹配度
-                # 见 search_constants.py ADR-009
-                relevance = max(
-                    0,
-                    min(
-                        100,
-                        int(
-                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
-                        ),
-                    ),
-                )
-                if relevance < min_relevance:
-                    continue
-
-                results.append(
-                    {
-                        "path": row[0],
-                        "title": row[1],
-                        "date": row[2],
-                        "location": row[3] or "",
-                        "weather": row[4] or "",
-                        "topic": _parse_json_field(row[5]) if row[5] else [],
-                        "project": row[6] or "",
-                        "tags": _parse_json_field(row[7]) if row[7] else [],
-                        "mood": _parse_json_field(row[8]) if row[8] else [],
-                        "people": _parse_json_field(row[9]) if row[9] else [],
-                        "snippet": row[10],
-                        "bm25_score": bm25_score,
-                        "relevance": relevance,
-                        "source": "fts",
-                    }
-                )
-
-        except sqlite3.OperationalError:
-            # 旧索引缺少 mood/people 列，使用简化查询
-            sql = """
-                SELECT path, title, date, location, weather, topic, project, tags,
-                       snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
-                       bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
-                FROM journals
-                WHERE journals MATCH ?
-            """
-            params = [FTS_SNIPPET_TOKENS, query]
-
-            if date_from:
-                sql += " AND date >= ?"
-                params.append(date_from)
-            if date_to:
-                sql += " AND date <= ?"
-                params.append(date_to)
-
-            sql += " ORDER BY rank ASC"
-            sql += f" LIMIT {limit}"
-
-            cursor.execute(sql, params)
-
-            for row in cursor.fetchall():
-                bm25_score = row[9] if row[9] is not None else 0
-                relevance = max(
-                    0,
-                    min(
-                        100,
-                        int(
-                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
-                        ),
-                    ),
-                )
-                if relevance < min_relevance:
-                    continue
-
-                results.append(
-                    {
-                        "path": row[0],
-                        "title": row[1],
-                        "date": row[2],
-                        "location": row[3] or "",
-                        "weather": row[4] or "",
-                        "topic": _parse_json_field(row[5]) if row[5] else [],
-                        "project": row[6] or "",
-                        "tags": _parse_json_field(row[7]) if row[7] else [],
-                        "mood": [],
-                        "people": [],
-                        "snippet": row[8],
-                        "bm25_score": bm25_score,
-                        "relevance": relevance,
-                        "source": "fts",
-                    }
-                )
-
-        conn.close()
-
-    except (sqlite3.Error, OSError) as e:
-        print(f"FTS search error: {e}")
-
-    return results
-
-
 def get_stats() -> Dict[str, Any]:
     """获取索引统计信息"""
     stats: Dict[str, Any] = {
@@ -463,6 +94,86 @@ def get_stats() -> Dict[str, Any]:
         pass
 
     return stats
+
+
+# --- Backward-compatible wrappers (delegate to fts_* modules) ---
+
+
+def get_file_hash(file_path: Path) -> str:
+    """计算文件内容哈希，用于检测变更"""
+    from .fts_update import get_file_hash as _get_file_hash
+
+    return _get_file_hash(file_path)
+
+
+def _normalize_to_str(value: Any) -> str:
+    """将值规范化为字符串"""
+    from .fts_update import _normalize_to_str as _norm
+
+    return _norm(value)
+
+
+def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
+    """解析日志文件，提取可索引内容"""
+    from .fts_update import parse_journal as _parse_journal
+
+    return _parse_journal(file_path, JOURNALS_DIR, USER_DATA_DIR)
+
+
+def update_index(incremental: bool = True) -> Dict[str, Any]:
+    """
+    更新搜索索引
+
+    Args:
+        incremental: True=仅更新变更，False=全量重建
+
+    Returns:
+        {
+            "success": bool,
+            "added": int,
+            "updated": int,
+            "removed": int,
+            "total": int,
+            "error": str (optional)
+        }
+    """
+    from .fts_update import update_index as _update_index
+
+    return _update_index(
+        init_fts_db, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental
+    )
+
+
+def get_indexed_files(conn: sqlite3.Connection) -> Dict[str, Tuple[str, str]]:
+    """获取已索引的文件列表（路径 -> (hash, modified_time)）"""
+    from .fts_update import get_indexed_files as _get_indexed_files
+
+    return _get_indexed_files(conn)
+
+
+def search_fts(
+    query: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = FTS_LIMIT,
+    min_relevance: int = FTS_MIN_RELEVANCE,
+) -> List[Dict[str, Any]]:
+    """
+    使用 FTS5 搜索日志（带 BM25 相关性排序）
+
+    Args:
+        query: 搜索关键词（支持 FTS5 语法：AND, OR, NOT, * 通配符）
+        date_from: 起始日期 YYYY-MM-DD
+        date_to: 结束日期 YYYY-MM-DD
+        limit: 最大返回结果数
+        min_relevance: 最低相关性阈值（0-100）
+
+    Returns:
+        搜索结果列表（按 BM25 相关性排序，分数越高越相关）
+    """
+    from .fts_search import search_fts as _search_fts
+
+    return _search_fts(FTS_DB_PATH, query, date_from, date_to, limit, min_relevance)
 
 
 if __name__ == "__main__":
