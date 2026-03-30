@@ -153,3 +153,35 @@ async def llm_status_api() -> JSONResponse:
             "available": available,
         }
     )
+
+
+@router.post("/dashboard/refresh")
+async def dashboard_refresh_api() -> JSONResponse:
+    """Force rebuild metadata cache and return updated stats."""
+    from tools.lib.metadata_cache import init_metadata_cache, parse_and_cache_journal
+    from tools.lib.config import JOURNALS_DIR
+    from web.services.stats import compute_dashboard_stats, DashboardStats
+
+    journal_files = (
+        list(JOURNALS_DIR.rglob("life-index_*.md")) if JOURNALS_DIR.exists() else []
+    )
+
+    if journal_files:
+        conn = init_metadata_cache()
+        try:
+            for journal_file in journal_files:
+                parse_and_cache_journal(conn, journal_file)
+        finally:
+            conn.close()
+
+    stats = compute_dashboard_stats()
+
+    return JSONResponse(
+        {
+            "success": True,
+            "total_journals": stats.total_journals,
+            "total_words": stats.total_words,
+            "month_journals": stats.month_journals,
+            "message": f"已刷新 {stats.total_journals} 篇日志",
+        }
+    )
