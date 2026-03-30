@@ -57,7 +57,7 @@ jobs:
     - name: Security scan with bandit
       run: |
         pip install bandit
-        bandit -r tools/ -ll --skip B101,B311
+        bandit -r tools/ -ll -c pyproject.toml
 
   typecheck:
     runs-on: ubuntu-latest
@@ -122,6 +122,6 @@ jobs:
         pip install pytest pytest-cov pytest-timeout
         pip install -e ".[dev,web]"
 
-    - name: Test with pytest
+    - name: Test with pytest and coverage
       run: |
-        pytest tests/ -v --capture=tee-sys --durations=20 --timeout=300 --cov=tools --cov-report=term
+        pytest tests/ -v --capture=tee-sys --durations=20 --timeout=300 --cov=tools --cov=web --cov-report=term-missing --cov-fail-under=70

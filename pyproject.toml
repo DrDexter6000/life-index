@@ -204,3 +204,13 @@ fail_under = 70
 [tool.coverage.html]
 directory = "htmlcov"
 
+# Bandit security scanner configuration
+[tool.bandit]
+exclude_dirs = ["tests", "docs", "web"]
+skips = [
+    "B101",  # assert_used - assert statements are for tests/validation, not security
+    "B311",  # random - not used for security purposes (no crypto operations)
+    "B324",  # hashlib - MD5 used for file integrity, not security
+    "B108",  # hardcoded_tmp_directory - temp paths are for file identification
+]
+
