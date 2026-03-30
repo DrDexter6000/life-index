@@ -38,5 +38,61 @@
     </footer>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     {% block extra_scripts %}{% endblock %}
+    <script>
+        // Global refresh button handler (in header, available on all pages)
+        (() => {
+            const refreshBtn = document.getElementById('refresh-index-btn');
+            if (!refreshBtn) return;
+
+            const icon = refreshBtn.querySelector('svg');
+            const originalBtnStyle = refreshBtn.getAttribute('style');
+
+            refreshBtn.addEventListener('mouseenter', () => {
+                refreshBtn.style.boxShadow = '0 0 20px rgba(255, 231, 146, 0.25)';
+                refreshBtn.style.color = 'var(--color-primary)';
+            });
+
+            refreshBtn.addEventListener('mouseleave', () => {
+                if (!refreshBtn.dataset.loading) {
+                    refreshBtn.setAttribute('style', originalBtnStyle);
+                }
+            });
+
+            refreshBtn.addEventListener('click', async () => {
+                if (refreshBtn.dataset.loading === 'true') return;
+
+                refreshBtn.dataset.loading = 'true';
+                icon.style.animation = 'spin 1s linear infinite';
+                refreshBtn.style.color = 'var(--color-primary)';
+
+                try {
+                    const response = await fetch('/api/dashboard/refresh', { method: 'POST' });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        window.location.reload();
+                    } else {
+                        console.error('Refresh failed:', result);
+                        refreshBtn.removeAttribute('data-loading');
+                        icon.style.animation = '';
+                        refreshBtn.setAttribute('style', originalBtnStyle);
+                    }
+                } catch (error) {
+                    console.error('Refresh error:', error);
+                    refreshBtn.removeAttribute('data-loading');
+                    icon.style.animation = '';
+                    refreshBtn.setAttribute('style', originalBtnStyle);
+                }
+            });
+
+            // Add spin keyframes if not exists
+            if (!document.getElementById('refresh-spin-style')) {
+                const style = document.createElement('style');
+                style.id = 'refresh-spin-style';
+                style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+                document.head.appendChild(style);
+            }
+        })();
+    </script>
 </body>
 </html>
