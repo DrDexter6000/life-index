@@ -422,6 +422,42 @@ Agent：
 - **WSL 路径**：部署目录在 WSL 中，需要用 `wsl` 命令执行
 - **文件锁定**：如果 Web GUI 正在运行，先停止再部署
 - **Zone.Identifier 文件**：Windows 下载的文件会产生 `:Zone.Identifier` 后缀，git 会显示为未跟踪，可以忽略
+- **WSL 后台进程**：WSL 会话结束后后台进程会被终止。推荐以下方式持久化运行：
+  1. 在 WSL 终端中手动执行：`.venv/bin/life-index serve &`
+  2. 或使用 systemd 服务（见下方）
+  3. 或使用 tmux/screen：`tmux new -d -s life-web '.venv/bin/life-index serve'`
+
+### 创建 systemd 服务（推荐）
+
+创建服务文件实现开机自启和持久运行：
+
+```bash
+# 创建服务文件
+sudo tee /etc/systemd/system/life-index-web.service <<EOF
+[Unit]
+Description=Life Index Web GUI
+After=network.target
+
+[Service]
+Type=simple
+User=dexter
+WorkingDirectory=/home/dexter/.openclaw/workspace/skills/life-index
+ExecStart=/home/dexter/.openclaw/workspace/skills/life-index/.venv/bin/life-index serve
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 启用并启动服务
+sudo systemctl daemon-reload
+sudo systemctl enable life-index-web
+sudo systemctl start life-index-web
+
+# 检查状态
+sudo systemctl status life-index-web
+```
 
 ---
 
