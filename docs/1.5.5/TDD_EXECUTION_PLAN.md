@@ -179,9 +179,9 @@ def test_prepare_generates_fallback_abstract():
 **执行记录**:
 ```
 ✅ DONE — 2026-03-29
-Commit: ee2dcf7 (included in Phase 2B/2C batch commit)
-Files: tools/search_journals/semantic.py, tools/lib/search_index.py, tools/search_journals/l3_content.py
-验证: 全量搜索测试通过
+Commit: 502a298 (Phase 1A/1B)
+Files: tools/write_journal/prepare.py (新建), tools/lib/llm_extract.py (新建), tools/lib/text_normalize.py (新建), web/services/write.py (瘦身)
+验证: 全量测试通过
 ```
 
 ---
@@ -680,9 +680,12 @@ python -m pytest tests/ -v --timeout=300
 
 **执行记录**:
 ```
-❌ NOT STARTED — 2026-03-29
-状态: 可选任务，非阻塞
-备注: pytest-benchmark 测试可在后续版本添加
+✅ DONE — 2026-03-29
+Commit: 3d76931 (Phase 5A)
+Files: tests/benchmark/test_search_benchmark.py (新建, 470 lines), tests/benchmark/conftest.py (新建, 151 lines)
+新增: 16 个 benchmark 测试 (FTS5, RRF, keyword pipeline, semantic pipeline, hierarchical search)
+依赖: pyproject.toml 添加 pytest-benchmark>=4.0.0
+验证: pytest --benchmark-only 全部通过
 ```
 
 ---
