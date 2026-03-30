@@ -8,6 +8,10 @@ documented in docs/API.md:
 2. Field types match documentation
 3. Level-specific early-return contracts
 4. Empty results vs failure distinction
+
+Note: After Phase 2B refactoring, mock targets changed:
+- Level 1/2: patch at core module
+- Level 3: patch at keyword_pipeline and semantic_pipeline modules
 """
 
 import pytest
@@ -27,27 +31,50 @@ REQUIRED_RESPONSE_FIELDS = {
     "merged_results",
     "total_found",
     "performance",
+    "warnings",  # Phase 2C: added warnings field
 }
 
 
 @pytest.fixture(autouse=True)
 def mock_search_dependencies():
     """Mock all search dependencies to isolate contract testing."""
+    # Level 1/2 use core module directly
     with patch("tools.search_journals.core.search_l1_index", return_value=[]):
         with patch(
             "tools.search_journals.core.search_l2_metadata",
             return_value={"results": [], "truncated": False, "total_available": 0},
         ):
-            with patch("tools.search_journals.core.search_l3_content", return_value=[]):
+            with patch("tools.search_journals.core.scan_all_indices", return_value=[]):
+                # Level 3 uses keyword_pipeline and semantic_pipeline modules
                 with patch(
-                    "tools.search_journals.core.search_semantic",
-                    return_value=([], {}),
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.scan_all_indices",
-                        return_value=([], {}),
+                        "tools.search_journals.keyword_pipeline.search_l2_metadata",
+                        return_value={
+                            "results": [],
+                            "truncated": False,
+                            "total_available": 0,
+                        },
                     ):
-                        yield
+                        with patch(
+                            "tools.search_journals.keyword_pipeline.search_l1_index",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "tools.search_journals.semantic_pipeline.search_semantic",
+                                return_value=([], {}),
+                            ):
+                                with patch(
+                                    "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
+                                    return_value={
+                                        "available": True,
+                                        "reason": "",
+                                        "note": "",
+                                    },
+                                ):
+                                    yield
 
 
 class TestSearchResponseShape:
@@ -121,6 +148,11 @@ class TestSearchFieldTypes:
         assert result["query_params"]["topic"] == "work"
         assert result["query_params"]["level"] == 3
         assert result["query_params"]["semantic"] is True
+
+    def test_warnings_is_list(self):
+        """warnings field is a list."""
+        result = hierarchical_search(query="test", level=3)
+        assert isinstance(result["warnings"], list)
 
 
 class TestSearchEmptyVsFailure:

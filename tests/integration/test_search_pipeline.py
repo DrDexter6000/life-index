@@ -11,6 +11,10 @@ Tests cover the complete dual-pipeline search architecture:
 This module provides integration-level tests that verify the complete
 search pipeline from query input to merged results output.
 
+Note: After Phase 2B refactoring, mock targets changed:
+- Level 1/2: patch at core module (still correct)
+- Level 3: patch at keyword_pipeline and semantic_pipeline modules
+
 Usage:
     python -m pytest tests/integration/test_search_pipeline.py -v
 """
@@ -25,6 +29,31 @@ import time
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
+
+
+@pytest.fixture
+def mock_level3_pipelines():
+    """Mock Level 3 pipeline dependencies (keyword_pipeline + semantic_pipeline)."""
+    with patch(
+        "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+    ):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata",
+            return_value={"results": [], "truncated": False, "total_available": 0},
+        ):
+            with patch(
+                "tools.search_journals.keyword_pipeline.search_l3_content",
+                return_value=[],
+            ):
+                with patch(
+                    "tools.search_journals.semantic_pipeline.search_semantic",
+                    return_value=([], {}),
+                ):
+                    with patch(
+                        "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
+                        return_value={"available": True, "reason": "", "note": ""},
+                    ):
+                        yield
 
 
 class TestDualPipelineParallelExecution:
@@ -54,19 +83,24 @@ class TestDualPipelineParallelExecution:
             execution_log.append(("sem_end", time.perf_counter()))
             return [], {"semantic_encode_ms": 1.0, "semantic_search_ms": 1.0}
 
-        with patch("tools.search_journals.core.search_l1_index", side_effect=mock_l1):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index",
+            side_effect=mock_l1,
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata", side_effect=mock_l2
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
+                side_effect=mock_l2,
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", side_effect=mock_l3
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    side_effect=mock_l3,
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         side_effect=mock_semantic,
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": True,
@@ -105,20 +139,23 @@ class TestDualPipelineParallelExecution:
         def mock_l3(*args, **kwargs):
             return [{"path": "/test/doc.md", "title": "Test", "relevance": 80}]
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", side_effect=mock_l3
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    side_effect=mock_l3,
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -137,33 +174,21 @@ class TestDualPipelineParallelExecution:
         assert result["semantic_available"] is False
         assert "semantic_note" in result
 
-    def test_threadpool_executor_shutdown_clean(self):
+    def test_threadpool_executor_shutdown_clean(self, mock_level3_pipelines):
         """ThreadPoolExecutor should shut down cleanly after search."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
-            with patch(
-                "tools.search_journals.core.search_l2_metadata",
-                return_value={"results": [], "truncated": False},
-            ):
-                with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
-                ):
-                    with patch(
-                        "tools.search_journals.core.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "test",
-                                "note": "",
-                            }
+        with patch(
+            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
+        ) as mock_status:
+            mock_status.return_value = {
+                "available": False,
+                "reason": "test",
+                "note": "",
+            }
 
-                            # Should complete without hanging
-                            result = hierarchical_search(query="test", level=3)
+            # Should complete without hanging
+            result = hierarchical_search(query="test", level=3)
 
         assert result["success"] is True
 
@@ -215,24 +240,26 @@ class TestRRFFusion:
         """Core search falls back to pure keyword ranking when semantic is empty."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content",
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[
                         {"path": "/test/doc_a.md", "title": "Doc A", "relevance": 80},
                         {"path": "/test/doc_b.md", "title": "Doc B", "relevance": 60},
                     ],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -274,21 +301,23 @@ class TestSemanticSearchDegradation:
 
         l3_results = [{"path": "/test/doc.md", "title": "Test Doc", "relevance": 80}]
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content",
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=l3_results,
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -310,20 +339,23 @@ class TestSemanticSearchDegradation:
         """Search should degrade when fastembed is not installed."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -340,16 +372,19 @@ class TestSemanticSearchDegradation:
         """--no-semantic flag should disable semantic search entirely."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic"
+                        "tools.search_journals.semantic_pipeline.search_semantic"
                     ) as mock_semantic:
                         result = hierarchical_search(
                             query="test", level=3, semantic=False
@@ -368,20 +403,23 @@ class TestEndToEndSearch:
         """Full pipeline should return complete result structure."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -411,20 +449,23 @@ class TestEndToEndSearch:
         """Performance timings should be recorded for each pipeline stage."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -441,23 +482,26 @@ class TestEndToEndSearch:
         """Semantic pipeline should expose encode/search timing metrics."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=(
                             [],
                             {"semantic_encode_ms": 12.3, "semantic_search_ms": 4.5},
                         ),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": True,
@@ -519,18 +563,23 @@ class TestSearchWithFilters:
         """Search should filter by date range."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
-            with patch("tools.search_journals.core.search_l2_metadata") as mock_l2:
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
+            with patch(
+                "tools.search_journals.keyword_pipeline.search_l2_metadata"
+            ) as mock_l2:
                 mock_l2.return_value = {"results": [], "truncated": False}
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -554,21 +603,22 @@ class TestSearchWithFilters:
         """Search should filter by topic."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index") as mock_l1:
+        with patch("tools.search_journals.keyword_pipeline.search_l1_index") as mock_l1:
             mock_l1.return_value = []
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -584,21 +634,22 @@ class TestSearchWithFilters:
         """Search should handle multiple tags."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index") as mock_l1:
+        with patch("tools.search_journals.keyword_pipeline.search_l1_index") as mock_l1:
             mock_l1.return_value = []
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -623,20 +674,23 @@ class TestSearchWeights:
         """fts_weight parameter should be accepted."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -658,20 +712,23 @@ class TestSearchWeights:
         """semantic_weight parameter should be accepted."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_l3_content", return_value=[]
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.core.search_semantic",
+                        "tools.search_journals.semantic_pipeline.search_semantic",
                         return_value=([], {}),
                     ):
                         with patch(
-                            "tools.search_journals.core.get_semantic_runtime_status"
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
@@ -688,13 +745,15 @@ class TestSearchWeights:
     def test_low_fts_recall_supplements_with_full_corpus_scan(self):
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.core.search_l1_index", return_value=[]):
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]
+        ):
             with patch(
-                "tools.search_journals.core.search_l2_metadata",
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.core.search_fts",
+                    "tools.lib.search_index.search_fts",
                     return_value=[
                         {
                             "date": "2026-03-10",
@@ -706,7 +765,7 @@ class TestSearchWeights:
                     create=True,
                 ):
                     with patch(
-                        "tools.search_journals.core.search_l3_content",
+                        "tools.search_journals.keyword_pipeline.search_l3_content",
                         return_value=[
                             {
                                 "path": "Journals/2026/03/a.md",
@@ -721,11 +780,11 @@ class TestSearchWeights:
                         ],
                     ) as mock_l3:
                         with patch(
-                            "tools.search_journals.core.search_semantic",
+                            "tools.search_journals.semantic_pipeline.search_semantic",
                             return_value=([], {}),
                         ):
                             with patch(
-                                "tools.search_journals.core.get_semantic_runtime_status"
+                                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
                             ) as mock_status:
                                 mock_status.return_value = {
                                     "available": False,

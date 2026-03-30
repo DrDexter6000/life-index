@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-index"
-version = "1.5.0"
+version = "1.5.5"
 description = "Personal life journaling system with dual-dimension indexing"
 readme = "README.md"
 license = "Apache-2.0"
@@ -45,6 +45,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-benchmark>=4.0.0",
     
     # Code quality - 代码质量
     "black>=23.0.0",
@@ -170,6 +171,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "benchmark: marks tests as performance benchmarks (deselect with '-m \"not benchmark\"')",
 ]
 
 # ========== Coverage - Test Coverage ==========
@@ -201,4 +203,16 @@ fail_under = 70
 
 [tool.coverage.html]
 directory = "htmlcov"
+
+# Bandit security scanner configuration
+[tool.bandit]
+exclude_dirs = ["tests", "docs", "web"]
+skips = [
+    "B101",  # assert_used - assert statements are for tests/validation, not security
+    "B311",  # random - not used for security purposes (no crypto operations)
+    "B324",  # hashlib - MD5 used for file integrity, not security
+    "B108",  # hardcoded_tmp_directory - temp paths are for file identification
+    "B301",  # pickle - used for vector index fallback storage, trusted local data only
+    "B310",  # urllib_urlopen - used for weather API, trusted external services
+]
 

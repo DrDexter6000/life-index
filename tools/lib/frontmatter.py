@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """
 Life Index - Frontmatter Utilities
-统一 YAML frontmatter 解析/格式化模块（SSOT）
-
-所有工具应使用此模块处理 frontmatter，避免重复实现。
-使用 yaml.safe_load 确保完整 YAML 规范支持（多行字符串、嵌套、特殊字符等）。
+统一 YAML frontmatter 解析/格式化模块（SSOT）。
+附件处理和 schema 验证/迁移已提取到 attachment.py 和 schema.py，
+本模块保留 re-export 以保证向后兼容。
 """
 
-import mimetypes
 import re
 import yaml
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, Tuple
 
-# Schema 版本（用于未来格式变更的向后兼容）
-SCHEMA_VERSION = 1
+# --- Re-exports from attachment.py (backward compat) ---
+from tools.lib.attachment import normalize_attachment_entries  # noqa: F401
+
+# --- Re-exports from schema.py (backward compat) ---
+from tools.lib.schema import (  # noqa: F401
+    SCHEMA_VERSION,
+    validate_metadata,
+    migrate_metadata,
+    get_schema_version,
+    get_required_fields,
+    get_recommended_fields,
+)
 
 # 标准字段顺序（与历史日志保持一致）
 FIELD_ORDER = [
@@ -37,96 +45,6 @@ FIELD_ORDER = [
 # 字段类型定义
 LIST_FIELDS = {"mood", "people", "tags", "topic", "links", "attachments"}
 STRING_FIELDS = {"title", "date", "location", "weather", "project", "abstract"}
-
-
-def normalize_attachment_entries(
-    attachments: list[Any] | None,
-    *,
-    mode: Literal["write_input", "stored_metadata"],
-) -> list[dict[str, Any]]:
-    """Normalize attachment entries for shared write/read handling."""
-    normalized: list[dict[str, Any]] = []
-
-    for attachment in attachments or []:
-        if mode == "write_input":
-            entry = _normalize_attachment_write_input(attachment)
-        else:
-            entry = _normalize_attachment_stored_metadata(attachment)
-
-        if entry is not None:
-            normalized.append(entry)
-
-    return normalized
-
-
-def _normalize_attachment_write_input(attachment: Any) -> dict[str, Any] | None:
-    if isinstance(attachment, str):
-        source_path = attachment.strip()
-        if not source_path:
-            return None
-        return {"source_path": source_path, "description": ""}
-
-    if not isinstance(attachment, dict):
-        return None
-
-    source_path = str(attachment.get("source_path", "")).strip()
-    source_url = str(attachment.get("source_url", "")).strip()
-    if not source_path and not source_url:
-        return None
-
-    normalized: dict[str, Any] = {"description": str(attachment.get("description", ""))}
-    if source_path:
-        normalized["source_path"] = source_path
-    if source_url:
-        normalized["source_url"] = source_url
-    if attachment.get("content_type") is not None:
-        normalized["content_type"] = str(attachment.get("content_type"))
-    size_value = attachment.get("size")
-    if size_value is not None:
-        normalized["size"] = int(size_value)
-    return normalized
-
-
-def _guess_attachment_content_type(path: str) -> str | None:
-    content_type, _ = mimetypes.guess_type(path)
-    return content_type
-
-
-def _normalize_attachment_stored_metadata(attachment: Any) -> dict[str, Any] | None:
-    if isinstance(attachment, dict):
-        raw_path = str(
-            attachment.get("rel_path")
-            or attachment.get("path")
-            or attachment.get("source_path")
-            or ""
-        ).strip()
-        if not raw_path:
-            return None
-
-        return {
-            "raw_path": raw_path,
-            "path": raw_path,
-            "name": str(attachment.get("filename") or Path(raw_path).name),
-            "description": str(attachment.get("description", "")),
-            "source_url": attachment.get("source_url"),
-            "content_type": attachment.get("content_type")
-            or _guess_attachment_content_type(raw_path),
-            "size": attachment.get("size"),
-        }
-
-    raw_path = str(attachment).strip()
-    if not raw_path:
-        return None
-
-    return {
-        "raw_path": raw_path,
-        "path": raw_path,
-        "name": Path(raw_path).name,
-        "description": "",
-        "source_url": None,
-        "content_type": _guess_attachment_content_type(raw_path),
-        "size": None,
-    }
 
 
 def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
@@ -167,9 +85,7 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     return metadata, body
 
 
-def _recover_legacy_content_frontmatter(
-    fm_content: str, body: str
-) -> Tuple[Dict[str, Any], str]:
+def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dict[str, Any], str]:
     """Recover metadata/body from legacy malformed `content: "..."` frontmatter."""
     content_match = re.search(r'^content:\s*"', fm_content, re.MULTILINE)
     if not content_match:
@@ -189,9 +105,7 @@ def _recover_legacy_content_frontmatter(
     recovered_body = content_block.strip()
     trailing_body = body.strip()
     if trailing_body:
-        recovered_body = (
-            f"{recovered_body}\n\n{trailing_body}" if recovered_body else trailing_body
-        )
+        recovered_body = f"{recovered_body}\n\n{trailing_body}" if recovered_body else trailing_body
 
     return metadata, recovered_body
 
@@ -233,9 +147,7 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
         abstract_match = re.search(r"\n\n([^#\n].*?)(?=\n\n|\Z)", body, re.DOTALL)
         if abstract_match:
             abstract = abstract_match.group(1).strip()[:100]
-            metadata["_abstract"] = (
-                abstract + "..." if len(abstract) == 100 else abstract
-            )
+            metadata["_abstract"] = abstract + "..." if len(abstract) == 100 else abstract
         else:
             metadata["_abstract"] = "(无摘要)"
 
@@ -329,9 +241,7 @@ def format_journal_content(data: Dict[str, Any]) -> str:
         content_lines = content.splitlines()
         skip_first = False
         if title:
-            first_non_empty = next(
-                (line.strip() for line in content_lines if line.strip()), None
-            )
+            first_non_empty = next((line.strip() for line in content_lines if line.strip()), None)
             if first_non_empty:
                 # Strip leading '#' and whitespace for comparison
                 stripped = first_non_empty.lstrip("#").strip()
@@ -390,99 +300,3 @@ def update_frontmatter_fields(
         result["error"] = str(e)
 
     return result
-
-
-def get_required_fields() -> List[str]:
-    """获取必需字段列表"""
-    return ["title", "date"]
-
-
-def get_recommended_fields() -> List[str]:
-    """获取推荐字段列表"""
-    return ["location", "weather", "mood", "people", "abstract", "topic"]
-
-
-def validate_metadata(metadata: Dict[str, Any]) -> List[Dict[str, str]]:
-    """
-    验证元数据完整性
-
-    Returns:
-        问题列表，每项包含 level, field, message
-    """
-    issues = []
-    required = get_required_fields()
-
-    for field in required:
-        if field not in metadata or not metadata[field]:
-            issues.append(
-                {
-                    "level": "error",
-                    "field": field,
-                    "message": f"缺少必填字段: {field}",
-                }
-            )
-
-    # 日期格式验证
-    if "date" in metadata and metadata["date"]:
-        date_str = str(metadata["date"])
-        if not re.match(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$", date_str):
-            issues.append(
-                {
-                    "level": "warning",
-                    "field": "date",
-                    "message": f"日期格式可能不正确: {date_str}",
-                }
-            )
-
-    # Schema 版本验证
-    schema_version = metadata.get("schema_version")
-    if schema_version is not None and schema_version != SCHEMA_VERSION:
-        issues.append(
-            {
-                "level": "warning",
-                "field": "schema_version",
-                "message": f"Schema 版本不匹配: 文件={schema_version}, 当前={SCHEMA_VERSION}",
-            }
-        )
-
-    return issues
-
-
-def get_schema_version() -> int:
-    """获取当前 schema 版本"""
-    return SCHEMA_VERSION
-
-
-def migrate_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    迁移元数据到当前 schema 版本
-
-    当读取旧版本 frontmatter 时，自动应用必要的迁移转换。
-    这是为未来格式变更准备的迁移框架。
-
-    Args:
-        metadata: 从文件解析的元数据
-
-    Returns:
-        迁移后的元数据（添加 schema_version 等）
-    """
-    # 如果没有 schema_version，假设为版本 1（当前版本）
-    file_version = metadata.get("schema_version", 1)
-
-    if file_version == SCHEMA_VERSION:
-        # 版本匹配，无需迁移
-        return metadata
-
-    # 未来版本迁移逻辑将在此处添加
-    # 例如：
-    # if file_version < 2:
-    #     # 版本 1 -> 2 的迁移
-    #     metadata = _migrate_v1_to_v2(metadata)
-    # if file_version < 3:
-    #     # 版本 2 -> 3 的迁移
-    #     metadata = _migrate_v2_to_v3(metadata)
-
-    # 更新 schema_version 到当前版本
-    metadata["schema_version"] = SCHEMA_VERSION
-
-    return metadata

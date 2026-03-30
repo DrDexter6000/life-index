@@ -8,6 +8,21 @@ from typing import Any, Dict, List, Optional
 
 from .l2_metadata import _query_matches_tags, _query_matches_text
 from .semantic import enrich_semantic_result
+from ..lib.search_constants import (
+    RRF_K,
+    RRF_MIN_SCORE,
+    SCORE_L1_BASE,
+    SCORE_L2_BASE,
+    SCORE_TITLE_MATCH_BONUS,
+    SCORE_TITLE_MATCH_BONUS_L2,
+    SCORE_ABSTRACT_MATCH_BONUS,
+    SCORE_TAGS_MATCH_BONUS,
+    NON_RRF_MIN_SCORE,
+    MAX_RESULTS_DEFAULT,
+    FTS_WEIGHT_DEFAULT,
+    SEMANTIC_WEIGHT_DEFAULT,
+    FTS_MIN_RELEVANCE,
+)
 
 
 def _hybrid_priority(item: Dict[str, Any]) -> int:
@@ -44,9 +59,7 @@ def _hybrid_backfill_score(item: Dict[str, Any]) -> float:
     return final_score
 
 
-def reciprocal_rank_fusion(
-    ranked_lists: List[List[str]], k: int = 60
-) -> Dict[str, float]:
+def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = RRF_K) -> Dict[str, float]:
     """
     Reciprocal Rank Fusion (RRF)
 
@@ -55,7 +68,7 @@ def reciprocal_rank_fusion(
 
     Args:
         ranked_lists: 多个有序文档 ID 列表（rank 从 1 开始）
-        k: 平滑常数，业界常用 60
+        k: 平滑常数，默认 RRF_K=60（见 search_constants.py ADR-001）
 
     Returns:
         dict[path, rrf_score]
@@ -74,8 +87,8 @@ def merge_and_rank_results(
     l2_results: List[Dict],
     l3_results: List[Dict],
     query: Optional[str] = None,
-    min_score: float = 25,
-    max_results: int = 20,
+    min_score: float = FTS_MIN_RELEVANCE,
+    max_results: int = MAX_RESULTS_DEFAULT,
 ) -> List[Dict]:
     """
     合并三层搜索结果并按相关性排序
@@ -94,7 +107,7 @@ def merge_and_rank_results(
         base_score = r.get("relevance", 0)
         # 标题匹配额外加分
         if r.get("title_match"):
-            base_score += 10
+            base_score += SCORE_TITLE_MATCH_BONUS
         scored[path] = {"data": r, "score": base_score, "tier": 3}
 
     # L2: 元数据匹配（仅当不在 L3 中时添加）
@@ -105,27 +118,25 @@ def merge_and_rank_results(
 
         # L2 基础分必须低于 L3 最低分（L3 最低约 30-40）
         # 确保即使 L2 title 完全匹配，也不超过 L3 的 BM25 分数
-        score = 20  # L2 基础分（显著低于 L3 的最低分）
+        score = SCORE_L2_BASE  # L2 基础分（显著低于 L3 的最低分）
 
         if query:
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "")
-                if isinstance(metadata.get("abstract"), str)
-                else ""
+                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
 
-            # title 匹配 +8 分（限制上限，确保不超过 L3 内容匹配）
+            # title 匹配加分（限制上限，确保不超过 L3 内容匹配）
             if _query_matches_text(title, query):
-                score += 8
-            # abstract 匹配 +4 分（abstract-only 命中不应越过默认门槛）
+                score += SCORE_TITLE_MATCH_BONUS_L2
+            # abstract 匹配加分（abstract-only 命中不应越过默认门槛）
             if _query_matches_text(abstract, query):
-                score += 4
-            # tags 匹配 +1 分（仅作弱辅助信号）
+                score += SCORE_ABSTRACT_MATCH_BONUS
+            # tags 匹配加分（仅作弱辅助信号）
             if _query_matches_tags(tags, query):
-                score += 1
+                score += SCORE_TAGS_MATCH_BONUS
 
         scored[path] = {"data": r, "score": score, "tier": 2}
 
@@ -136,20 +147,16 @@ def merge_and_rank_results(
             continue
         scored[path] = {
             "data": r,
-            "score": 10,  # L1 基础分
+            "score": SCORE_L1_BASE,  # L1 基础分
             "tier": 1,
         }
 
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
-    sorted_results = sorted(
-        scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True
-    )
+    sorted_results = sorted(scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True)
     effective_min_score = min_score
-    if query and min_score == 25:
-        effective_min_score = 26
-    sorted_results = [
-        item for item in sorted_results if item["score"] >= effective_min_score
-    ]
+    if query and min_score == FTS_MIN_RELEVANCE:
+        effective_min_score = FTS_MIN_RELEVANCE + 1
+    sorted_results = [item for item in sorted_results if item["score"] >= effective_min_score]
     sorted_results = sorted_results[:max_results]
 
     # 提取数据并添加排名信息
@@ -169,11 +176,11 @@ def merge_and_rank_results_hybrid(
     l3_results: List[Dict],
     semantic_results: List[Dict],
     query: Optional[str] = None,
-    fts_weight: float = 0.6,
-    semantic_weight: float = 0.4,
-    min_rrf_score: float = 0.008,
-    min_non_rrf_score: float = 10,
-    max_results: int = 20,
+    fts_weight: float = FTS_WEIGHT_DEFAULT,
+    semantic_weight: float = SEMANTIC_WEIGHT_DEFAULT,
+    min_rrf_score: float = RRF_MIN_SCORE,
+    min_non_rrf_score: float = NON_RRF_MIN_SCORE,
+    max_results: int = MAX_RESULTS_DEFAULT,
 ) -> List[Dict]:
     """
     混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
@@ -184,20 +191,20 @@ def merge_and_rank_results_hybrid(
         l3_results: L3 内容层结果（FTS）
         semantic_results: 语义搜索结果
         query: 查询词
-        fts_weight: FTS 排名权重（默认 0.6，影响关键词命中在最终结果中的占比）
-        semantic_weight: 语义排名权重（默认 0.4，影响语义相似度在最终结果中的占比）
+        fts_weight: FTS 排名权重（默认 FTS_WEIGHT_DEFAULT，影响关键词命中在最终结果中的占比）
+        semantic_weight: 语义排名权重（默认 SEMANTIC_WEIGHT_DEFAULT，影响语义相似度在最终结果中的占比）
     """
 
-    scored: Dict[
-        str, Dict[str, Any]
-    ] = {}  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
+    scored: Dict[str, Dict[str, Any]] = (
+        {}
+    )  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
 
     # 先构建 FTS 排名（按 relevance + title_match bonus）
     fts_ranked_paths: List[str] = []
     fts_ordered = sorted(
         l3_results,
         key=lambda r: (
-            r.get("relevance", 0) + (10 if r.get("title_match") else 0),
+            r.get("relevance", 0) + (SCORE_TITLE_MATCH_BONUS if r.get("title_match") else 0),
             r.get("path", ""),
         ),
         reverse=True,
@@ -209,7 +216,7 @@ def merge_and_rank_results_hybrid(
         path = r["path"]
         fts_score = r.get("relevance", 0)
         if r.get("title_match"):
-            fts_score += 10
+            fts_score += SCORE_TITLE_MATCH_BONUS
 
         # 为 FTS 结果补充元数据，统一格式
         enriched_data = enrich_semantic_result(r)
@@ -260,7 +267,7 @@ def merge_and_rank_results_hybrid(
             semantic_ranked_paths.append(path)
 
     # RRF 融合分数（加权融合：FTS 管道 × fts_weight，语义管道 × semantic_weight）
-    k = 60
+    k = RRF_K
     scores: Dict[str, float] = {}
     for rank, doc_id in enumerate(fts_ranked_paths, start=1):
         if doc_id:
@@ -280,23 +287,21 @@ def merge_and_rank_results_hybrid(
         if path in scored:
             continue
 
-        score = 20  # L2 基础分
+        score = SCORE_L2_BASE  # L2 基础分
         if query:
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "")
-                if isinstance(metadata.get("abstract"), str)
-                else ""
+                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
 
             if _query_matches_text(title, query):
-                score += 8
+                score += SCORE_TITLE_MATCH_BONUS_L2
             if _query_matches_text(abstract, query):
-                score += 4
+                score += SCORE_ABSTRACT_MATCH_BONUS
             if _query_matches_tags(tags, query):
-                score += 1
+                score += SCORE_TAGS_MATCH_BONUS
 
         scored[path] = {
             "data": r,
@@ -316,7 +321,7 @@ def merge_and_rank_results_hybrid(
             "data": r,
             "fts_score": 0.0,
             "semantic_score": 0.0,
-            "final_score": 10.0,
+            "final_score": float(SCORE_L1_BASE),
             "tier": 1,
             "has_rrf": False,
         }
@@ -336,8 +341,8 @@ def merge_and_rank_results_hybrid(
         reverse=True,
     )
     effective_min_non_rrf_score = min_non_rrf_score
-    if query and min_non_rrf_score == 25:
-        effective_min_non_rrf_score = 26
+    if query and min_non_rrf_score == NON_RRF_MIN_SCORE:
+        effective_min_non_rrf_score = NON_RRF_MIN_SCORE + 1
     thresholded_results = [
         item
         for item in sorted_results

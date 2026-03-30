@@ -10,7 +10,7 @@ import shutil
 import asyncio
 import mimetypes
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from ..lib.config import ATTACHMENTS_DIR
 from ..lib.logger import get_logger
@@ -241,7 +241,7 @@ def _resolve_attachment_path(source_path: str, converted_path: str) -> Optional[
 
 
 def process_attachments(
-    attachments: List[Dict[str, str] | str],
+    attachments: Sequence[Dict[str, str] | str],
     date_str: str,
     dry_run: bool = False,
     auto_detected_paths: Optional[List[str]] = None,

@@ -67,7 +67,6 @@ class TestIndexRebuilder:
         assert result == {"title": "Test", "date": "2026-03-20"}
 
     @patch("tools.dev.rebuild_indices.parse_journal_file")
-    @pytest.mark.skip(reason="Windows console encoding issue with emoji in print")
     def test_parse_frontmatter_failure(self, mock_parse):
         """Test frontmatter parsing failure"""
         mock_parse.side_effect = Exception("Parse error")
@@ -112,10 +111,10 @@ class TestIndexRebuilder:
         # Create mock index file
         index_dir = tmp_path / "by-topic"
         index_dir.mkdir()
-        index_file = index_dir / "主题_work.md"
-        index_content = """# 主题: work
+        index_file = index_dir / "topic_work.md"
+        index_content = """# Topic: work
 
-## 日志列表
+## Journal List
 
 ### 2026-03
 
@@ -237,7 +236,7 @@ class TestWriteIndex:
             )
         ]
 
-        rebuilder._write_index("主题_work.md", "主题: work", entries)
+        rebuilder._write_index("topic_work.md", "Topic: work", entries)
 
         assert rebuilder.indices_updated == 0  # Dry run, no update
 

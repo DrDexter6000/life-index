@@ -119,7 +119,7 @@ class TestNormalizePath:
     def test_path_mapping_applied(self, monkeypatch):
         """Path mappings should be applied"""
         monkeypatch.setattr(
-            "tools.lib.config.PATH_MAPPINGS",
+            "tools.lib.paths.PATH_MAPPINGS",
             {"C:/Users/test": "/home/test"},
         )
         result = normalize_path("C:/Users/test/file.txt")
@@ -310,7 +310,7 @@ class TestGetSearchConfig:
 
     def test_default_values(self, monkeypatch):
         """Default search config should be returned"""
-        monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+        monkeypatch.setattr("tools.lib.search_config._SEARCH_USER_CONFIG", {})
         result = get_search_config()
         assert result["default_level"] == 3
         assert result["semantic_weight"] == 1.0
@@ -320,7 +320,7 @@ class TestGetSearchConfig:
     def test_config_override(self, monkeypatch):
         """Config overrides should work"""
         monkeypatch.setattr(
-            "tools.lib.config.USER_CONFIG",
+            "tools.lib.search_config._SEARCH_USER_CONFIG",
             {"search": {"default_level": 2, "custom_param": "test"}},
         )
         result = get_search_config()
@@ -329,7 +329,7 @@ class TestGetSearchConfig:
 
     def test_get_search_weights_returns_tuple(self, monkeypatch):
         monkeypatch.setattr(
-            "tools.lib.config.USER_CONFIG",
+            "tools.lib.search_config._SEARCH_USER_CONFIG",
             {"search": {"fts_weight": 0.75, "semantic_weight": 0.25}},
         )
 
@@ -338,9 +338,11 @@ class TestGetSearchConfig:
     def test_save_search_weights_persists_and_reloads(self, tmp_path, monkeypatch):
         config_dir = tmp_path / "config"
         config_file = config_dir / "config.yaml"
-        monkeypatch.setattr("tools.lib.config.CONFIG_DIR", config_dir)
-        monkeypatch.setattr("tools.lib.config.CONFIG_FILE", config_file)
-        monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+        monkeypatch.setattr("tools.lib.paths.CONFIG_DIR", config_dir)
+        monkeypatch.setattr("tools.lib.paths.CONFIG_FILE", config_file)
+        monkeypatch.setattr("tools.lib.search_config.CONFIG_DIR", config_dir)
+        monkeypatch.setattr("tools.lib.search_config.CONFIG_FILE", config_file)
+        monkeypatch.setattr("tools.lib.search_config._SEARCH_USER_CONFIG", {})
 
         save_search_weights(0.7, 0.3)
 
@@ -448,12 +450,21 @@ class TestGetIndexPrefixes:
         assert result["project"] == "项目_"
         assert result["tag"] == "标签_"
 
-    def test_custom_prefixes(self, monkeypatch):
+    def test_custom_prefixes(self, monkeypatch, tmp_path):
         """Custom English prefixes should work"""
-        monkeypatch.setattr(
-            "tools.lib.config.USER_CONFIG",
-            {"index_prefixes": {"topic": "topic_", "project": "project_"}},
+        # get_index_prefixes() reads config via paths._load_yaml_config(CONFIG_FILE),
+        # so we redirect CONFIG_FILE to a temp file with the desired content.
+        import yaml
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            yaml.safe_dump(
+                {"index_prefixes": {"topic": "topic_", "project": "project_"}},
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
         )
+        monkeypatch.setattr("tools.lib.paths.CONFIG_FILE", config_file)
         result = get_index_prefixes()
         assert result["topic"] == "topic_"
         assert result["project"] == "project_"
@@ -479,7 +490,7 @@ class TestGetModelCacheDir:
         """Custom cache directory from config should be used"""
         custom_dir = tmp_path / "custom_cache"
         monkeypatch.setattr(
-            "tools.lib.config.USER_CONFIG",
+            "tools.lib.search_config._SEARCH_USER_CONFIG",
             {"vector_index": {"cache_dir": str(custom_dir)}},
         )
         result = get_model_cache_dir()
@@ -501,7 +512,7 @@ class TestGetNextSequence:
 
     def test_existing_files_returns_next_seq(self, tmp_path, monkeypatch):
         """Existing files should return next sequence number"""
-        monkeypatch.setattr("tools.lib.config.JOURNALS_DIR", tmp_path)
+        monkeypatch.setattr("tools.lib.paths.JOURNALS_DIR", tmp_path)
         year_month = tmp_path / "2026" / "03"
         year_month.mkdir(parents=True)
 
@@ -515,7 +526,7 @@ class TestGetNextSequence:
 
     def test_malformed_filenames_skipped(self, tmp_path, monkeypatch):
         """Malformed filenames should be skipped"""
-        monkeypatch.setattr("tools.lib.config.JOURNALS_DIR", tmp_path)
+        monkeypatch.setattr("tools.lib.paths.JOURNALS_DIR", tmp_path)
         year_month = tmp_path / "2026" / "03"
         year_month.mkdir(parents=True)
 

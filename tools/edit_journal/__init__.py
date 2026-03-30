@@ -86,11 +86,7 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
             logger.debug(f"添加条目到索引：{index_file.name}")
     else:
         # 确定索引类型和名称
-        name = (
-            index_file.stem.replace("主题_", "")
-            .replace("项目_", "")
-            .replace("标签_", "")
-        )
+        name = index_file.stem.replace("主题_", "").replace("项目_", "").replace("标签_", "")
         if index_file.stem.startswith("主题_"):
             header = f"# 主题：{name}\n\n"
         elif index_file.stem.startswith("项目_"):
@@ -274,13 +270,12 @@ def edit_journal(
             raw_attachments = frontmatter_updates["attachments"]
             if raw_attachments:
                 # 分离已有附件和新附件
-                existing_attachments = []
-                new_attachments = []
+                # 附件可能是 dict (已有附件或新上传的) 或 str (已有附件路径)
+                existing_attachments: list[dict[str, Any] | str] = []
+                new_attachments: list[dict[str, Any] | str] = []
 
                 for att in (
-                    raw_attachments
-                    if isinstance(raw_attachments, list)
-                    else [raw_attachments]
+                    raw_attachments if isinstance(raw_attachments, list) else [raw_attachments]
                 ):
                     if isinstance(att, str):
                         # 字符串：检查是否是相对路径
@@ -290,9 +285,7 @@ def edit_journal(
                             existing_attachments.append(att)
                         else:
                             # 绝对路径，需要处理
-                            new_attachments.append(
-                                {"source_path": att, "description": ""}
-                            )
+                            new_attachments.append({"source_path": att, "description": ""})
                     elif isinstance(att, dict):
                         # 检查是否已经是处理过的格式
                         if "filename" in att and "rel_path" in att:
@@ -301,9 +294,7 @@ def edit_journal(
                         elif "source_path" in att:
                             # 检查 source_path 是否是绝对路径
                             source = att["source_path"]
-                            is_absolute = os.path.isabs(source) or source.startswith(
-                                "/tmp/"
-                            )
+                            is_absolute = os.path.isabs(source) or source.startswith("/tmp/")
                             if is_absolute:
                                 # 新上传的附件，需要处理
                                 new_attachments.append(att)
@@ -399,9 +390,7 @@ def edit_journal(
             result["success"] = True
             result["preview"] = {
                 "frontmatter": format_frontmatter(new_frontmatter),
-                "body_preview": new_body[:200] + "..."
-                if len(new_body) > 200
-                else new_body,
+                "body_preview": new_body[:200] + "..." if len(new_body) > 200 else new_body,
             }
             return result
 
