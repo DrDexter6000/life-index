@@ -72,3 +72,9 @@ credentials.json
 *.key
 .sisyphus/
 docs/archive/
+
+# ----- OpenCode 工具文件 -----
+.opencode/
+
+# ----- Windows 下载标记 -----
+*.Zone.Identifier
