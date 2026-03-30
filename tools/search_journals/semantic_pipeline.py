@@ -9,7 +9,6 @@ Life Index - Semantic Search Pipeline
 import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import Mock
 
 from ..lib.search_constants import SEMANTIC_TOP_K_DEFAULT, SEMANTIC_MIN_SIMILARITY
 
@@ -84,8 +83,7 @@ def run_semantic_pipeline(
         return [], {}, True, None
 
     runtime_status = get_semantic_runtime_status()
-    semantic_is_mocked = isinstance(search_semantic, Mock)
-    if not runtime_status["available"] and not semantic_is_mocked:
+    if not runtime_status["available"]:
         reason = str(runtime_status["reason"])
         note = str(runtime_status["note"])
         logger.info(f"语义搜索不可用，降级为纯关键词搜索: {reason}")
