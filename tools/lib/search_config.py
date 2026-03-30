@@ -135,7 +135,7 @@ FILE_LOCK_TIMEOUT_REBUILD = 120  # 索引重建（批量操作需要更长时间
 
 # 固定模型版本以确保嵌入一致性
 # 模型文件约 80MB，首次使用会自动下载
-EMBEDDING_MODEL = {
+EMBEDDING_MODEL: Dict[str, Any] = {
     "name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     "version": "2.0.0",  # 模型版本标识（递增触发自动重建）
     "dimension": 384,  # 输出向量维度（与旧模型一致）

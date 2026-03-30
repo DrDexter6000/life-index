@@ -10,9 +10,7 @@ Fully independent - no circular imports with config.py.
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any
-
-import yaml
+from typing import Optional
 
 from .yaml_utils import load_yaml_config, deep_merge
 
