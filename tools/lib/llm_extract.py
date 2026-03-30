@@ -292,9 +292,7 @@ def extract_metadata_sync(content: str, timeout: float = 30.0) -> dict[str, Any]
             )
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        logger.warning(
-            "%s: LLM request failed: %s", ErrorCode.LLM_EXTRACTION_FAILED, exc
-        )
+        logger.warning("%s: LLM request failed: %s", ErrorCode.LLM_EXTRACTION_FAILED, exc)
         return {}
 
     try:
@@ -302,9 +300,7 @@ def extract_metadata_sync(content: str, timeout: float = 30.0) -> dict[str, Any]
         content_text = response_json["choices"][0]["message"]["content"]
         parsed = _parse_json_object_from_text(content_text)
     except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
-        logger.warning(
-            "%s: LLM response parse failed: %s", ErrorCode.LLM_EXTRACTION_FAILED, exc
-        )
+        logger.warning("%s: LLM response parse failed: %s", ErrorCode.LLM_EXTRACTION_FAILED, exc)
         return {}
 
     if not isinstance(parsed, dict):

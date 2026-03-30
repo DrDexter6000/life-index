@@ -14,7 +14,6 @@ from typing import Optional
 
 from .yaml_utils import load_yaml_config, deep_merge
 
-
 # =============================================================================
 # Path Definitions
 # =============================================================================

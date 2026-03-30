@@ -139,9 +139,7 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     """
     from .fts_update import update_index as _update_index
 
-    return _update_index(
-        init_fts_db, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental
-    )
+    return _update_index(init_fts_db, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental)
 
 
 def get_indexed_files(conn: sqlite3.Connection) -> Dict[str, Tuple[str, str]]:

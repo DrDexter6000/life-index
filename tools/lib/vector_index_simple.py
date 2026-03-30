@@ -159,23 +159,17 @@ class EmbeddingModel:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
             # 步骤 1: 验证模型完整性
-            is_valid, verify_msg = verify_model_integrity(
-                EMBEDDING_MODEL_NAME, CACHE_DIR
-            )
+            is_valid, verify_msg = verify_model_integrity(EMBEDDING_MODEL_NAME, CACHE_DIR)
             if not is_valid:
                 print(f"Warning: Model integrity check failed: {verify_msg}")
-                print(
-                    "Warning: Will proceed with loading, but embeddings may be inconsistent."
-                )
+                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
 
             # 步骤 2: 加载模型
             self._model = TextEmbedding(EMBEDDING_MODEL_NAME, cache_dir=str(CACHE_DIR))
             print(f"Model loaded successfully. (dimension={EMBEDDING_DIM})")
 
             # 步骤 3: 记录模型元数据（如果是首次使用）
-            meta_file = (
-                CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
-            )
+            meta_file = CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
             if not meta_file.exists():
                 record_model_metadata(EMBEDDING_MODEL_NAME, CACHE_DIR)
 

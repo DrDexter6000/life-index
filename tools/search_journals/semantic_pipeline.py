@@ -97,9 +97,7 @@ def run_semantic_pipeline(
         min_similarity=semantic_min_similarity,
     )
     perf["semantic_time_ms"] = round((time.time() - sem_start) * 1000, 2)
-    logger.info(
-        f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms"
-    )
+    logger.info(f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms")
     status_perf, semantic_available, semantic_note = _build_semantic_status(
         runtime_status, sem_results
     )

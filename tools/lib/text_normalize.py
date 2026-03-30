@@ -48,9 +48,7 @@ def normalize_text_list(value: Any) -> list[str]:
             # Normalize full-width commas to half-width, then split
             normalized = item_str.replace("，", ",")
             if "," in normalized:
-                result.extend(
-                    [part.strip() for part in normalized.split(",") if part.strip()]
-                )
+                result.extend([part.strip() for part in normalized.split(",") if part.strip()])
             else:
                 result.append(item_str)
         return result

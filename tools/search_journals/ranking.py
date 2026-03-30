@@ -59,9 +59,7 @@ def _hybrid_backfill_score(item: Dict[str, Any]) -> float:
     return final_score
 
 
-def reciprocal_rank_fusion(
-    ranked_lists: List[List[str]], k: int = RRF_K
-) -> Dict[str, float]:
+def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = RRF_K) -> Dict[str, float]:
     """
     Reciprocal Rank Fusion (RRF)
 
@@ -126,9 +124,7 @@ def merge_and_rank_results(
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "")
-                if isinstance(metadata.get("abstract"), str)
-                else ""
+                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
 
@@ -156,15 +152,11 @@ def merge_and_rank_results(
         }
 
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
-    sorted_results = sorted(
-        scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True
-    )
+    sorted_results = sorted(scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True)
     effective_min_score = min_score
     if query and min_score == FTS_MIN_RELEVANCE:
         effective_min_score = FTS_MIN_RELEVANCE + 1
-    sorted_results = [
-        item for item in sorted_results if item["score"] >= effective_min_score
-    ]
+    sorted_results = [item for item in sorted_results if item["score"] >= effective_min_score]
     sorted_results = sorted_results[:max_results]
 
     # 提取数据并添加排名信息
@@ -203,17 +195,16 @@ def merge_and_rank_results_hybrid(
         semantic_weight: 语义排名权重（默认 SEMANTIC_WEIGHT_DEFAULT，影响语义相似度在最终结果中的占比）
     """
 
-    scored: Dict[
-        str, Dict[str, Any]
-    ] = {}  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
+    scored: Dict[str, Dict[str, Any]] = (
+        {}
+    )  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
 
     # 先构建 FTS 排名（按 relevance + title_match bonus）
     fts_ranked_paths: List[str] = []
     fts_ordered = sorted(
         l3_results,
         key=lambda r: (
-            r.get("relevance", 0)
-            + (SCORE_TITLE_MATCH_BONUS if r.get("title_match") else 0),
+            r.get("relevance", 0) + (SCORE_TITLE_MATCH_BONUS if r.get("title_match") else 0),
             r.get("path", ""),
         ),
         reverse=True,
@@ -301,9 +292,7 @@ def merge_and_rank_results_hybrid(
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "")
-                if isinstance(metadata.get("abstract"), str)
-                else ""
+                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
 

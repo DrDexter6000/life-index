@@ -104,9 +104,7 @@ def search_fts(
                     0,
                     min(
                         100,
-                        int(
-                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
-                        ),
+                        int(BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER),
                     ),
                 )
                 if relevance < min_relevance:
@@ -160,9 +158,7 @@ def search_fts(
                     0,
                     min(
                         100,
-                        int(
-                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
-                        ),
+                        int(BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER),
                     ),
                 )
                 if relevance < min_relevance:
