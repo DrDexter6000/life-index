@@ -57,22 +57,12 @@ from .search_config import (
     get_model_cache_dir,
 )
 
+from .yaml_utils import load_yaml_config, deep_merge
+
 
 # =============================================================================
 # Configuration Loading (Core)
 # =============================================================================
-
-
-def _load_yaml_config(config_path: Path) -> Dict[str, Any]:
-    """Load configuration from YAML file."""
-    if not config_path.exists():
-        return {}
-
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except (IOError, OSError, yaml.YAMLError):
-        return {}
 
 
 def _get_env_config() -> Dict[str, Any]:
@@ -99,17 +89,6 @@ def _get_env_config() -> Dict[str, Any]:
     return config
 
 
-def _deep_merge(base: Dict, override: Dict) -> Dict:
-    """Deep merge two dictionaries."""
-    result = base.copy()
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
 def load_user_config() -> Dict[str, Any]:
     """
     Load user configuration with priority:
@@ -118,10 +97,10 @@ def load_user_config() -> Dict[str, Any]:
     3. Code defaults (handled by callers)
     """
     # Start with file config, then override with environment variables
-    file_config = _load_yaml_config(CONFIG_FILE)
+    file_config = load_yaml_config(CONFIG_FILE)
     env_config = _get_env_config()
 
-    return _deep_merge(file_config, env_config)
+    return deep_merge(file_config, env_config)
 
 
 def reload_user_config() -> Dict[str, Any]:
@@ -168,7 +147,7 @@ def get_weather_config() -> Dict[str, Any]:
         "timeout_seconds": 15,
         "allow_skip_on_failure": True,
     }
-    return _deep_merge(defaults, USER_CONFIG.get("weather", {}))
+    return deep_merge(defaults, USER_CONFIG.get("weather", {}))
 
 
 WEATHER_API_URL = get_weather_config()["api_url"]
@@ -225,13 +204,19 @@ def save_default_location(location: str) -> None:
 # Re-exports for backward compatibility
 # =============================================================================
 
+# Backward-compatible aliases
+_load_yaml_config = load_yaml_config
+_deep_merge = deep_merge
+
 __all__ = [
     # Config loading
     "load_user_config",
     "reload_user_config",
     "USER_CONFIG",
-    "_load_yaml_config",
-    "_deep_merge",
+    "load_yaml_config",  # New name
+    "deep_merge",  # New name
+    "_load_yaml_config",  # Backward compat
+    "_deep_merge",  # Backward compat
     # Default values
     "get_default_location",
     "DEFAULT_LOCATION",

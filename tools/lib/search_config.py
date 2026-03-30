@@ -16,9 +16,8 @@ import yaml
 from .paths import (
     CONFIG_DIR,
     CONFIG_FILE,
-    _load_yaml_config,
-    _deep_merge,
 )
+from .yaml_utils import load_yaml_config, deep_merge
 
 
 # =============================================================================
@@ -45,9 +44,9 @@ def _get_env_config() -> Dict[str, Any]:
 
 def _get_user_config() -> Dict[str, Any]:
     """Load user configuration (local to this module)."""
-    file_config = _load_yaml_config(CONFIG_FILE)
+    file_config = load_yaml_config(CONFIG_FILE)
     env_config = _get_env_config()
-    return _deep_merge(file_config, env_config)
+    return deep_merge(file_config, env_config)
 
 
 # Local config instance for search module
@@ -73,7 +72,7 @@ def get_search_config() -> dict[str, Any]:
         "fts_weight": 1.0,
         "default_limit": 10,
     }
-    return _deep_merge(defaults, _SEARCH_USER_CONFIG.get("search", {}))
+    return deep_merge(defaults, _SEARCH_USER_CONFIG.get("search", {}))
 
 
 def get_search_weights() -> tuple[float, float]:
@@ -88,7 +87,7 @@ def get_search_weights() -> tuple[float, float]:
 def save_search_weights(fts_weight: float, semantic_weight: float) -> None:
     """Persist search weights into user config.yaml."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _load_yaml_config(CONFIG_FILE)
+    existing = load_yaml_config(CONFIG_FILE)
     search_cfg = existing.get("search", {})
     search_cfg["fts_weight"] = round(float(fts_weight), 2)
     search_cfg["semantic_weight"] = round(float(semantic_weight), 2)
@@ -111,7 +110,7 @@ def save_search_mode(mode: str) -> None:
     if mode not in valid_modes:
         mode = "balanced"
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _load_yaml_config(CONFIG_FILE)
+    existing = load_yaml_config(CONFIG_FILE)
     search_cfg = existing.get("search", {})
     search_cfg["mode"] = mode
     existing["search"] = search_cfg

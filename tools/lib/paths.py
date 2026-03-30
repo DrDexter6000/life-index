@@ -14,6 +14,8 @@ from typing import Optional, Dict, Any
 
 import yaml
 
+from .yaml_utils import load_yaml_config, deep_merge
+
 
 # =============================================================================
 # Path Definitions
@@ -137,34 +139,6 @@ seq: {seq}
 
 
 # =============================================================================
-# Internal Helpers (used by config.py)
-# =============================================================================
-
-
-def _load_yaml_config(config_path: Path) -> Dict[str, Any]:
-    """Load configuration from YAML file."""
-    if not config_path.exists():
-        return {}
-
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except (IOError, OSError, yaml.YAMLError):
-        return {}
-
-
-def _deep_merge(base: Dict, override: Dict) -> Dict:
-    """Deep merge two dictionaries."""
-    result = base.copy()
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
-
-
-# =============================================================================
 # Path Utilities
 # =============================================================================
 
@@ -209,7 +183,7 @@ def get_next_sequence(project: str, date_str: str) -> int:
 def get_path_mappings() -> dict[str, str]:
     """Get cross-platform path mappings from config."""
     # Load config directly to avoid circular import
-    user_config = _load_yaml_config(CONFIG_FILE)
+    user_config = load_yaml_config(CONFIG_FILE)
     mappings: dict[str, str] = user_config.get("path_mappings", {})
     return mappings
 
@@ -321,8 +295,8 @@ def get_index_prefixes() -> dict[str, str]:
     }
 
     # 从用户配置合并（如果存在）
-    user_config = _load_yaml_config(CONFIG_FILE)
-    return _deep_merge(defaults, user_config.get("index_prefixes", {}))
+    user_config = load_yaml_config(CONFIG_FILE)
+    return deep_merge(defaults, user_config.get("index_prefixes", {}))
 
 
 # 全局前缀配置实例（延迟加载）
@@ -362,7 +336,4 @@ __all__ = [
     # Index prefixes
     "get_index_prefixes",
     "INDEX_PREFIXES",
-    # Shared helpers (for config.py)
-    "_load_yaml_config",
-    "_deep_merge",
 ]
