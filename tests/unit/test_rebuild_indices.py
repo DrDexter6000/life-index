@@ -67,7 +67,6 @@ class TestIndexRebuilder:
         assert result == {"title": "Test", "date": "2026-03-20"}
 
     @patch("tools.dev.rebuild_indices.parse_journal_file")
-    @pytest.mark.skip(reason="Windows console encoding issue with emoji in print")
     def test_parse_frontmatter_failure(self, mock_parse):
         """Test frontmatter parsing failure"""
         mock_parse.side_effect = Exception("Parse error")

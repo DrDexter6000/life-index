@@ -44,16 +44,16 @@ class IndexRebuilder:
 
         # 收集所有日志
         self._collect_journals()
-        print(f"📁 发现 {len(self.journals)} 个日志文件")
+        print(f"[INFO] 发现 {len(self.journals)} 个日志文件")
 
         # 解析元数据
         self._parse_all_metadata()
-        print(f"📊 成功解析 {len(self.journal_metadata)} 个日志的元数据")
+        print(f"[INFO] 成功解析 {len(self.journal_metadata)} 个日志的元数据")
         print()
 
         # 清理死链
         self._clean_dead_links()
-        print(f"🧹 清理了 {self.dead_links_found} 个死链")
+        print(f"[INFO] 清理了 {self.dead_links_found} 个死链")
 
         # 重建索引
         self._rebuild_topic_indices()
@@ -62,7 +62,7 @@ class IndexRebuilder:
 
         print()
         print("=" * 60)
-        print(f"✅ 完成！更新了 {self.indices_updated} 个索引文件")
+        print(f"[OK] 完成！更新了 {self.indices_updated} 个索引文件")
         print("=" * 60)
 
     def _collect_journals(self) -> None:
@@ -73,7 +73,8 @@ class IndexRebuilder:
             self.journals = [
                 f
                 for f in self.journals
-                if not f.name.startswith("monthly_") and not f.name.startswith("yearly_")
+                if not f.name.startswith("monthly_")
+                and not f.name.startswith("yearly_")
             ]
             self.journals.sort()
 
@@ -121,7 +122,9 @@ class IndexRebuilder:
                         # 死链，跳过
                         self.dead_links_found += 1
                         if self.dry_run:
-                            print(f"🔍 [预览] 将删除死链: {link_path} in {index_file.name}")
+                            print(
+                                f"[PREVIEW] 将删除死链: {link_path} in {index_file.name}"
+                            )
                         continue
 
                 new_entries.append(entry)
@@ -160,7 +163,7 @@ class IndexRebuilder:
                     if not self.dry_run:
                         index_file.write_text(new_content, encoding="utf-8")
                         self.indices_updated += 1
-                        print(f"✅ 已清理: {index_file.name}")
+                        print(f"[OK] 已清理: {index_file.name}")
 
     def _resolve_link(self, from_file: Path, link: str) -> Optional[Path]:
         """解析相对链接"""
@@ -222,7 +225,9 @@ class IndexRebuilder:
         for tag, entries in tags.items():
             self._write_index(f"标签_{tag}.md", f"标签: {tag}", entries)
 
-    def _write_index(self, filename: str, title: str, entries: List[Tuple[str, dict]]) -> None:
+    def _write_index(
+        self, filename: str, title: str, entries: List[Tuple[str, dict]]
+    ) -> None:
         """写入索引文件"""
         index_file = BY_TOPIC_DIR / filename
 
@@ -280,11 +285,11 @@ class IndexRebuilder:
                 content += entry + "\n"
 
         if self.dry_run:
-            print(f"🔍 [预览] 将更新: {filename} ({len(entries)} 条记录)")
+            print(f"[PREVIEW] 将更新: {filename} ({len(entries)} 条记录)")
         else:
             index_file.write_text(content, encoding="utf-8")
             self.indices_updated += 1
-            print(f"✅ 已更新: {filename} ({len(entries)} 条记录)")
+            print(f"[OK] 已更新: {filename} ({len(entries)} 条记录)")
 
 
 def main() -> None:
