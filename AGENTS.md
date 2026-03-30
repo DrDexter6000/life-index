@@ -325,7 +325,41 @@ git log -1 --oneline
 - 自动同步所有变更
 - 有版本记录可追溯
 
-#### Step 3: 刷新虚拟环境（如需）
+#### Step 3: 检查关键文件（必须）
+
+```bash
+# 检查 Tailwind CSS 是否存在
+ls -la web/static/css/tailwind.min.css
+
+# 如果不存在，需要编译（见 Step 3.1）
+```
+
+**关键文件清单**：
+| 文件 | 必须 | 说明 |
+|------|------|------|
+| `web/static/css/tailwind.min.css` | ✅ | Web GUI 样式文件 |
+| `tailwind.config.js` | ✅ | Tailwind 配置 |
+| `src/input.css` | ✅ | Tailwind 入口 |
+| `tailwindcss.exe` | ❌ | 编译工具（部署时下载）|
+
+#### Step 3.1: 编译 Tailwind CSS（如需）
+
+如果 `web/static/css/tailwind.min.css` 不存在或模板有变更：
+
+```bash
+# 方式 A: 下载独立 CLI（推荐，无 npm 依赖）
+cd /home/dexter/.openclaw/workspace/skills/life-index
+curl -L -o tailwindcss.exe \
+  https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64
+chmod +x tailwindcss.exe
+./tailwindcss.exe --input ./src/input.css --output ./web/static/css/tailwind.min.css --minify
+
+# 方式 B: 使用 npm（需要 node 环境）
+npm install
+npm run build:css
+```
+
+#### Step 4: 刷新虚拟环境（如需）
 
 ```bash
 # 仅当 pyproject.toml 有变更时执行
@@ -337,7 +371,7 @@ cd /home/dexter/.openclaw/workspace/skills/life-index
 - `pyproject.toml` 有变更
 - 新增了依赖项
 
-#### Step 4: 重启 Web GUI
+#### Step 5: 重启 Web GUI
 
 ```bash
 # 停止旧进程
