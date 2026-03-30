@@ -476,7 +476,9 @@ class TestEndToEndSearch:
                             result = hierarchical_search(query="test", level=3)
 
         assert "total_time_ms" in result["performance"]
-        assert result["performance"]["total_time_ms"] > 0
+        # Note: total_time_ms can be 0 when all pipeline stages are mocked
+        # and execute instantly. The assertion checks for presence, not minimum value.
+        assert result["performance"]["total_time_ms"] >= 0
 
     def test_semantic_substep_timings_are_reported(self):
         """Semantic pipeline should expose encode/search timing metrics."""
