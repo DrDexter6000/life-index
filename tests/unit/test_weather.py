@@ -294,7 +294,9 @@ class TestQueryWeatherForLocation:
     @patch("tools.write_journal.weather.subprocess.run")
     def test_query_output_not_dict(self, mock_run):
         """Test when output is not a dict (edge case)"""
-        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps('"just a string"'))
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=json.dumps('"just a string"')
+        )
 
         result = query_weather_for_location("Edge Case Location")
 
@@ -304,7 +306,9 @@ class TestQueryWeatherForLocation:
     @patch("tools.write_journal.weather.subprocess.run")
     def test_query_non_zero_returncode(self, mock_run):
         """Test when subprocess returns non-zero exit code"""
-        mock_run.return_value = MagicMock(returncode=1, stdout=json.dumps({"error": "failed"}))
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout=json.dumps({"error": "failed"})
+        )
 
         result = query_weather_for_location("Failed Location")
 
@@ -313,7 +317,9 @@ class TestQueryWeatherForLocation:
     @patch("tools.write_journal.weather.subprocess.run")
     def test_query_with_none_weather(self, mock_run):
         """Test weather query when weather field is None"""
-        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps({"weather": None}))
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=json.dumps({"weather": None})
+        )
 
         result = query_weather_for_location("None Weather Location")
 
@@ -324,7 +330,9 @@ class TestQueryWeatherForLocation:
         """Test weather query with only max temperature (line 124)"""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout=json.dumps({"weather": {"description": "Sunny", "temperature_max": 30}}),
+            stdout=json.dumps(
+                {"weather": {"description": "Sunny", "temperature_max": 30}}
+            ),
         )
 
         result = query_weather_for_location("Guangzhou, China")
@@ -389,7 +397,9 @@ class TestQueryWeatherForLocation:
         assert call_kwargs["text"] is True
         assert call_kwargs["encoding"] == "utf-8"
         assert call_kwargs["errors"] == "replace"
-        assert call_kwargs["timeout"] == 15
+        assert (
+            call_kwargs["timeout"] == 30
+        )  # Increased from 15s to 30s for CI reliability
 
     @patch("tools.write_journal.weather.subprocess.run")
     def test_subprocess_command_format(self, mock_run):
