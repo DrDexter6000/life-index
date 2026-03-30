@@ -10,6 +10,35 @@
 
 ## [1.5.5] - 2026-03-29
 
+### 修复 (Fixes)
+
+#### CI 稳定性修复
+
+- **Windows 编码问题修复**
+  - `tools/dev/rebuild_indices/__init__.py`: 将所有中文/emoji 输出替换为 ASCII
+  - 文件名从 `主题_xxx.md` 改为 `topic_xxx.md` 格式
+  - 解决 Windows cp1252 控制台无法编码 Unicode 字符的问题
+
+- **天气 API 超时修复**
+  - `tools/write_journal/weather.py`: subprocess timeout 从 15s 增加到 30s
+  - 解决 CI 环境下 Python subprocess 启动 + 模块导入 + 网络延迟超时问题
+  - 移除 `conftest.py` 中的 `mock_weather_api` fixture（不再需要 mock）
+
+- **Flaky Test 修复**
+  - `tests/integration/test_search_pipeline.py`: `total_time_ms` 断言从 `> 0` 改为 `>= 0`
+  - 当所有 pipeline stages 被 mock 时，执行时间可能确实为 0
+
+#### 类型现代化 (Python 3.11+)
+
+- `tools/search_journals/semantic_pipeline.py`: `Dict/List/Tuple/Optional` → `dict/list/tuple/| None`
+- `tools/lib/fts_search.py`: 同上
+- `tools/lib/fts_update.py`: 同上
+
+#### 测试补建
+
+- 新建 `tests/unit/test_fts_logging.py` — FTS 日志回归测试
+- 扩展 `tests/unit/test_typing_modern.py` — 参数化测试覆盖 5 文件
+
 ### 代码重构 (Refactoring)
 
 #### Web SSOT 修复 + Metadata Enrichment [FIX-10]
