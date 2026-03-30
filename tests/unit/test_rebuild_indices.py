@@ -111,10 +111,10 @@ class TestIndexRebuilder:
         # Create mock index file
         index_dir = tmp_path / "by-topic"
         index_dir.mkdir()
-        index_file = index_dir / "主题_work.md"
-        index_content = """# 主题: work
+        index_file = index_dir / "topic_work.md"
+        index_content = """# Topic: work
 
-## 日志列表
+## Journal List
 
 ### 2026-03
 
@@ -236,7 +236,7 @@ class TestWriteIndex:
             )
         ]
 
-        rebuilder._write_index("主题_work.md", "主题: work", entries)
+        rebuilder._write_index("topic_work.md", "Topic: work", entries)
 
         assert rebuilder.indices_updated == 0  # Dry run, no update
 
