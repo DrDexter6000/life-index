@@ -7,23 +7,23 @@ Life Index - Schema & Validation Utilities
 """
 
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 # Schema 版本（用于未来格式变更的向后兼容）
 SCHEMA_VERSION = 1
 
 
-def get_required_fields() -> List[str]:
+def get_required_fields() -> list[str]:
     """获取必需字段列表"""
     return ["title", "date"]
 
 
-def get_recommended_fields() -> List[str]:
+def get_recommended_fields() -> list[str]:
     """获取推荐字段列表"""
     return ["location", "weather", "mood", "people", "abstract", "topic"]
 
 
-def validate_metadata(metadata: Dict[str, Any]) -> List[Dict[str, str]]:
+def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
     """
     验证元数据完整性
 
@@ -74,7 +74,7 @@ def get_schema_version() -> int:
     return SCHEMA_VERSION
 
 
-def migrate_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+def migrate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     """
     迁移元数据到当前 schema 版本
 

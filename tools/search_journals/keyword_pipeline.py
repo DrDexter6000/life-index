@@ -8,7 +8,7 @@ Life Index - Keyword Search Pipeline
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
 from ..lib.path_contract import merge_journal_path_fields
@@ -27,28 +27,28 @@ except ImportError:
     logger = logging.getLogger("search_journals")
 
 
-KeywordPipelineResult = Tuple[
-    List[Dict[str, Any]],  # l1_results
-    List[Dict[str, Any]],  # l2_results
-    List[Dict[str, Any]],  # l3_results
+KeywordPipelineResult = tuple[
+    list[dict[str, Any]],  # l1_results
+    list[dict[str, Any]],  # l2_results
+    list[dict[str, Any]],  # l3_results
     bool,  # l2_truncated
     int,  # l2_total_available
-    Dict[str, float],  # perf
+    dict[str, float],  # perf
 ]
 
 
 def run_keyword_pipeline(
     *,
-    query: Optional[str] = None,
-    topic: Optional[str] = None,
-    project: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    mood: Optional[List[str]] = None,
-    people: Optional[List[str]] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    location: Optional[str] = None,
-    weather: Optional[str] = None,
+    query: str | None = None,
+    topic: str | None = None,
+    project: str | None = None,
+    tags: list[str] | None = None,
+    mood: list[str] | None = None,
+    people: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    location: str | None = None,
+    weather: str | None = None,
     use_index: bool = True,
     fts_min_relevance: int = 50,
 ) -> KeywordPipelineResult:
@@ -72,11 +72,11 @@ def run_keyword_pipeline(
     Returns:
         (l1_results, l2_results, l3_results, l2_truncated, l2_total_available, perf)
     """
-    perf: Dict[str, float] = {}
+    perf: dict[str, float] = {}
 
     # L1: 索引过滤
     l1_start = time.time()
-    l1_results: List[Dict] = []
+    l1_results: list[dict] = []
     if topic:
         l1_results.extend(search_l1_index("topic", topic))
     if project:
@@ -120,7 +120,7 @@ def run_keyword_pipeline(
 
     # L3: FTS5 内容搜索
     l3_start = time.time()
-    l3_results: List[Dict] = []
+    l3_results: list[dict] = []
 
     if query:
         # 处理多关键词：将空格分隔转换为 FTS5 OR 语法
