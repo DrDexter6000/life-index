@@ -11,7 +11,7 @@ import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _normalize_to_str(value: Any) -> str:
 
 def parse_journal(
     file_path: Path, journals_dir: Path, user_data_dir: Path
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """解析日志文件，提取可索引内容"""
     try:
         content = file_path.read_text(encoding="utf-8")
@@ -80,7 +80,7 @@ def parse_journal(
         return None
 
 
-def get_indexed_files(conn: sqlite3.Connection) -> Dict[str, Tuple[str, str]]:
+def get_indexed_files(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     """获取已索引的文件列表（路径 -> (hash, modified_time)）"""
     cursor = conn.cursor()
     cursor.execute("SELECT path, file_hash, modified_time FROM journals")
@@ -98,7 +98,7 @@ def update_index(
     journals_dir: Path,
     user_data_dir: Path,
     incremental: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     更新搜索索引
 
@@ -119,7 +119,7 @@ def update_index(
             "error": str (optional)
         }
     """
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "success": False,
         "added": 0,
         "updated": 0,

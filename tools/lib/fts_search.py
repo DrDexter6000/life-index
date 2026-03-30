@@ -10,7 +10,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ from .search_constants import (
 )
 
 
-def _parse_json_field(value: Any) -> List[str]:
+def _parse_json_field(value: Any) -> list[str]:
     """解析 JSON 字段（可能是 JSON 字符串或已经是列表）"""
     if isinstance(value, list):
         return value
@@ -39,11 +39,11 @@ def _parse_json_field(value: Any) -> List[str]:
 def search_fts(
     fts_db_path: Path,
     query: str,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     limit: int = FTS_LIMIT,
     min_relevance: int = FTS_MIN_RELEVANCE,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     使用 FTS5 搜索日志（带 BM25 相关性排序）
 
@@ -58,7 +58,7 @@ def search_fts(
     Returns:
         搜索结果列表（按 BM25 相关性排序，分数越高越相关）
     """
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
 
     try:
         if not fts_db_path.exists():

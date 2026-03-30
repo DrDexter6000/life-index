@@ -8,7 +8,7 @@ Life Index - Semantic Search Pipeline
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from ..lib.search_constants import SEMANTIC_TOP_K_DEFAULT, SEMANTIC_MIN_SIMILARITY
 
@@ -23,21 +23,21 @@ except ImportError:
     logger = logging.getLogger("search_journals")
 
 
-SemanticPipelineResult = Tuple[
-    List[Dict[str, Any]],  # sem_results
-    Dict[str, Any],  # perf
+SemanticPipelineResult = tuple[
+    list[dict[str, Any]],  # sem_results
+    dict[str, Any],  # perf
     bool,  # semantic_available
-    Optional[str],  # semantic_note
+    str | None,  # semantic_note
 ]
 
 
 def _build_semantic_status(
-    runtime_status: Dict[str, Any], sem_results: List[Dict[str, Any]]
-) -> Tuple[Dict[str, Any], bool, Optional[str]]:
+    runtime_status: dict[str, Any], sem_results: list[dict[str, Any]]
+) -> tuple[dict[str, Any], bool, str | None]:
     """Build semantic pipeline status details without inflating main flow complexity."""
-    perf: Dict[str, Any] = {}
+    perf: dict[str, Any] = {}
     semantic_available = bool(runtime_status["available"])
-    semantic_note: Optional[str] = None
+    semantic_note: str | None = None
 
     if not semantic_available:
         reason = str(runtime_status["reason"])
@@ -54,9 +54,9 @@ def _build_semantic_status(
 
 def run_semantic_pipeline(
     *,
-    query: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
+    query: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     semantic: bool = True,
     semantic_top_k: int = SEMANTIC_TOP_K_DEFAULT,
     semantic_min_similarity: float = SEMANTIC_MIN_SIMILARITY,
