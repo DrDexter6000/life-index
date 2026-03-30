@@ -95,7 +95,7 @@ def query_weather_for_location(location: str, date_str: str = "") -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=15,
+            timeout=30,  # Increased from 15s to 30s for CI reliability
         )
 
         if proc.returncode == 0:
