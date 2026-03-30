@@ -110,33 +110,3 @@ def isolated_vector_index(isolated_data_dir: Path) -> Generator[None, None, None
 
     # 清理：重置全局实例
     vec_module._index_instance = None
-
-
-# ============================================================
-# 外部 API Mock Fixtures（防止网络依赖导致 flaky 测试）
-# ============================================================
-
-
-@pytest.fixture(scope="function", autouse=True)
-def mock_weather_api():
-    """
-    自动 mock query_weather_for_location，防止外部天气 API 超时导致 flaky 测试。
-
-    这是一个 autouse fixture，会自动应用到所有测试，无需手动指定。
-
-    Mock 返回一个固定的天气字符串，避免网络调用。
-    """
-    from unittest.mock import patch
-
-    # 需要 mock 两个路径，因为 core.py 和 prepare.py 都直接导入了 query_weather_for_location
-    with (
-        patch(
-            "tools.write_journal.prepare.query_weather_for_location",
-            return_value="Sunny 25°C",
-        ),
-        patch(
-            "tools.write_journal.core.query_weather_for_location",
-            return_value="Sunny 25°C",
-        ),
-    ):
-        yield
