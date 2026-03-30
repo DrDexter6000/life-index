@@ -12,6 +12,16 @@
 
 ### 代码重构 (Refactoring)
 
+#### Web SSOT 修复 + Metadata Enrichment [FIX-10]
+
+- **FIX-10**: Web 层业务逻辑清除
+  - 新建 `tools/write_journal/prepare.py` (376 lines) — CLI 层 metadata enrichment pipeline
+  - 新建 `tools/lib/llm_extract.py` — LLM 元数据提取
+  - 新建 `tools/lib/text_normalize.py` — 文本规范化工具
+  - `web/services/write.py` 341→186 行，移除所有业务逻辑（LLM 提取、天气查询、数据转换）
+  - 添加 `field_sources` 追踪机制（记录每个字段由用户/AI/规则填入）
+  - `tools/write_journal/__main__.py` 添加 `enrich` CLI 子命令
+
 #### 搜索核心重构 [FIX-11, FIX-12, FIX-16]
 
 - **FIX-12**: 搜索常量集中管理

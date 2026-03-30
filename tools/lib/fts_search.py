@@ -7,9 +7,12 @@ FTS5 全文搜索功能
 """
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from .search_constants import (
     FTS_LIMIT,
@@ -187,6 +190,6 @@ def search_fts(
         conn.close()
 
     except (sqlite3.Error, OSError) as e:
-        print(f"FTS search error: {e}")
+        logger.error("FTS search error: %s", e)
 
     return results

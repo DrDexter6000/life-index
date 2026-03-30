@@ -7,10 +7,13 @@ FTS5 索引更新功能
 """
 
 import hashlib
+import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from .frontmatter import parse_frontmatter
 from .path_contract import build_journal_path_fields
@@ -73,7 +76,7 @@ def parse_journal(
         return doc
 
     except (OSError, IOError, ValueError) as e:
-        print(f"Warning: Failed to parse {file_path}: {e}")
+        logger.warning("Failed to parse %s: %s", file_path, e)
         return None
 
 
