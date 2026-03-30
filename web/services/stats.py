@@ -185,7 +185,13 @@ def _load_dashboard_entries() -> list[dict[str, Any]]:
         cached_entries = []
 
     journal_files = get_all_journal_files()
-    if cached_entries and journal_files and len(cached_entries) < len(journal_files):
+
+    cached_paths = {e.get("file_path") for e in cached_entries if e.get("file_path")}
+    file_paths = {str(f) for f in journal_files}
+
+    needs_rebuild = not cached_entries or cached_paths != file_paths
+
+    if needs_rebuild and journal_files:
         conn = init_metadata_cache()
         try:
             rebuilt_entries: list[dict[str, Any]] = []
