@@ -73,8 +73,7 @@ class IndexRebuilder:
             self.journals = [
                 f
                 for f in self.journals
-                if not f.name.startswith("monthly_")
-                and not f.name.startswith("yearly_")
+                if not f.name.startswith("monthly_") and not f.name.startswith("yearly_")
             ]
             self.journals.sort()
 
@@ -122,9 +121,7 @@ class IndexRebuilder:
                         # 死链，跳过
                         self.dead_links_found += 1
                         if self.dry_run:
-                            print(
-                                f"[PREVIEW] 将删除死链: {link_path} in {index_file.name}"
-                            )
+                            print(f"[PREVIEW] 将删除死链: {link_path} in {index_file.name}")
                         continue
 
                 new_entries.append(entry)
@@ -225,9 +222,7 @@ class IndexRebuilder:
         for tag, entries in tags.items():
             self._write_index(f"标签_{tag}.md", f"标签: {tag}", entries)
 
-    def _write_index(
-        self, filename: str, title: str, entries: List[Tuple[str, dict]]
-    ) -> None:
+    def _write_index(self, filename: str, title: str, entries: List[Tuple[str, dict]]) -> None:
         """写入索引文件"""
         index_file = BY_TOPIC_DIR / filename
 
