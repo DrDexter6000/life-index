@@ -6,11 +6,14 @@ Life Index - Write Journal Tool - CLI Entry Point
 
 import argparse
 import json
+import logging
 import sys
 
 from .core import write_journal
 from .prepare import prepare_journal_metadata
 from ..lib.config import ensure_dirs
+
+logger = logging.getLogger(__name__)
 
 
 def _emit_json(payload: dict) -> None:
@@ -90,6 +93,7 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
         _emit_json({"success": False, "error": str(e)})
         return 1
     except Exception as e:
+        logger.exception("write_journal metadata preparation failed: %s", e)
         _emit_json({"success": False, "error": f"元数据准备失败: {e}"})
         return 1
 

@@ -24,10 +24,13 @@ Usage:
     })
 """
 
+import logging
 from typing import Any
 
 from tools.lib.config import get_default_location
 from tools.lib.text_normalize import normalize_text_list
+
+logger = logging.getLogger(__name__)
 from tools.lib.llm_extract import extract_metadata_sync, is_llm_available, VALID_TOPICS
 from tools.write_journal.weather import normalize_location
 
@@ -268,6 +271,7 @@ def prepare_journal_metadata(
         try:
             extracted = extract_metadata_sync(content)
         except Exception as exc:
+            logger.warning("LLM enrichment failed, continuing without: %s", exc)
             extracted = {}
             llm_status = {
                 "state": "failed",
