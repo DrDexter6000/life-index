@@ -431,8 +431,10 @@ Agent：
 
 创建服务文件实现开机自启和持久运行：
 
+**重要**：WSL环境需要设置 `LIFE_INDEX_DATA_DIR` 指向Windows用户数据目录，确保与开发环境使用同一份数据。
+
 ```bash
-# 创建服务文件
+# 创建服务文件（注意修改 LIFE_INDEX_DATA_DIR 为你的 Windows 用户目录）
 sudo tee /etc/systemd/system/life-index-web.service <<EOF
 [Unit]
 Description=Life Index Web GUI
@@ -442,6 +444,7 @@ After=network.target
 Type=simple
 User=dexter
 WorkingDirectory=/home/dexter/.openclaw/workspace/skills/life-index
+Environment=LIFE_INDEX_DATA_DIR=/mnt/c/Users/你的用户名/Documents/Life-Index
 ExecStart=/home/dexter/.openclaw/workspace/skills/life-index/.venv/bin/life-index serve
 Restart=always
 RestartSec=5
@@ -458,6 +461,11 @@ sudo systemctl start life-index-web
 # 检查状态
 sudo systemctl status life-index-web
 ```
+
+**环境变量说明**：
+- `LIFE_INDEX_DATA_DIR`：覆盖默认的数据目录路径
+- WSL中访问Windows文件系统：`/mnt/c/Users/<用户名>/...`
+- 如果不设置此变量，WSL会使用 `/home/<用户>/Documents/Life-Index`，导致数据不同步
 
 ---
 
