@@ -1,0 +1,10 @@
+{
+  "name": "life-index-web",
+  "version": "1.5.5",
+  "description": "Life Index Web GUI - Tailwind CSS build tools (standalone CLI)",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss.exe --input ./src/input.css --output ./web/static/css/tailwind.min.css --minify",
+    "watch:css": "tailwindcss.exe --input ./src/input.css --output ./web/static/css/tailwind.css --watch"
+  }
+}

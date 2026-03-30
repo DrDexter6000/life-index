@@ -78,3 +78,10 @@ docs/archive/
 
 # ----- Windows 下载标记 -----
 *.Zone.Identifier
+
+# ----- Tailwind CSS 构建工具 -----
+# tailwindcss.exe 是独立CLI工具（~40MB），不应提交到Git
+# 部署时从GitHub下载或使用npm安装
+tailwindcss.exe
+node_modules/
+package-lock.json

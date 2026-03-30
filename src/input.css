@@ -1,0 +1,36 @@
+/* Life Index Web GUI - Tailwind CSS Entry Point */
+/* This file is compiled to web/static/css/tailwind.min.css */
+
+/* Tailwind Base, Components, Utilities */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom animations from app.css */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.45s ease-out both;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up {
+    animation: none;
+    transform: none;
+    opacity: 1;
+    will-change: auto;
+  }
+}
+
+/* Note: celestial.css and app.css are loaded separately as static files */
+/* This file only contains Tailwind-generated utilities and minimal custom additions */
