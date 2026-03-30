@@ -128,8 +128,15 @@ def mock_weather_api():
     """
     from unittest.mock import patch
 
-    with patch(
-        "tools.write_journal.prepare.query_weather_for_location",
-        return_value="Sunny 25°C",
+    # 需要 mock 两个路径，因为 core.py 和 prepare.py 都直接导入了 query_weather_for_location
+    with (
+        patch(
+            "tools.write_journal.prepare.query_weather_for_location",
+            return_value="Sunny 25°C",
+        ),
+        patch(
+            "tools.write_journal.core.query_weather_for_location",
+            return_value="Sunny 25°C",
+        ),
     ):
         yield
