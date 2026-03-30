@@ -6,7 +6,10 @@ from tools.write_journal.prepare import prepare_journal_metadata
 
 def test_field_sources_user_provided_fields():
     """用户提供的字段应标记为 'user'"""
-    with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract:
+    with (
+        patch("tools.write_journal.prepare.is_llm_available", return_value=True),
+        patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract,
+    ):
         mock_extract.return_value = {}
         raw = {
             "title": "我的标题",
@@ -22,7 +25,10 @@ def test_field_sources_user_provided_fields():
 
 def test_field_sources_ai_generated_title():
     """AI 生成的字段应标记为 'ai'"""
-    with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract:
+    with (
+        patch("tools.write_journal.prepare.is_llm_available", return_value=True),
+        patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract,
+    ):
         mock_extract.return_value = {
             "title": "AI Generated Title",
             "abstract": "AI generated abstract",
@@ -36,7 +42,10 @@ def test_field_sources_ai_generated_title():
 
 def test_field_sources_default_location():
     """默认填充的字段应标记为 'auto'"""
-    with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract:
+    with (
+        patch("tools.write_journal.prepare.is_llm_available", return_value=True),
+        patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract,
+    ):
         mock_extract.return_value = {}
         raw = {"title": "Test", "content": "内容", "topic": "life"}
         result = prepare_journal_metadata(raw, use_llm=True)
@@ -46,7 +55,10 @@ def test_field_sources_default_location():
 
 def test_field_sources_completeness():
     """field_sources 应覆盖主要输出字段"""
-    with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract:
+    with (
+        patch("tools.write_journal.prepare.is_llm_available", return_value=True),
+        patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract,
+    ):
         mock_extract.return_value = {}
         raw = {"title": "Test", "content": "内容", "tags": "a, b", "topic": "work"}
         result = prepare_journal_metadata(raw, use_llm=True)
@@ -62,7 +74,10 @@ def test_field_sources_completeness():
 
 def test_field_sources_ai_extraction_with_mock():
     """使用 mock LLM 时，AI 提取的字段应标记为 'ai'"""
-    with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract:
+    with (
+        patch("tools.write_journal.prepare.is_llm_available", return_value=True),
+        patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract,
+    ):
         mock_extract.return_value = {
             "title": "AI Generated Title",
             "abstract": "AI generated abstract",
@@ -82,7 +97,10 @@ def test_field_sources_ai_extraction_with_mock():
 
 def test_field_sources_mixed_sources():
     """测试混合来源：部分用户、部分 AI、部分规则"""
-    with patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract:
+    with (
+        patch("tools.write_journal.prepare.is_llm_available", return_value=True),
+        patch("tools.write_journal.prepare.extract_metadata_sync") as mock_extract,
+    ):
         mock_extract.return_value = {
             "mood": ["calm"],
         }
