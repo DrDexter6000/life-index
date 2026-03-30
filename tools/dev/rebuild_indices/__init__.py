@@ -190,7 +190,7 @@ class IndexRebuilder:
                     topics[topic].append((rel_path, metadata))
 
         for topic, entries in topics.items():
-            self._write_index(f"主题_{topic}.md", f"主题: {topic}", entries)
+            self._write_index(f"topic_{topic}.md", f"Topic: {topic}", entries)
 
     def _rebuild_project_indices(self) -> None:
         """重建项目索引"""
@@ -204,7 +204,7 @@ class IndexRebuilder:
                 projects[project].append((rel_path, metadata))
 
         for project, entries in projects.items():
-            self._write_index(f"项目_{project}.md", f"项目: {project}", entries)
+            self._write_index(f"project_{project}.md", f"Project: {project}", entries)
 
     def _rebuild_tag_indices(self) -> None:
         """重建标签索引"""
@@ -222,7 +222,7 @@ class IndexRebuilder:
                     tags[tag].append((rel_path, metadata))
 
         for tag, entries in tags.items():
-            self._write_index(f"标签_{tag}.md", f"标签: {tag}", entries)
+            self._write_index(f"tag_{tag}.md", f"Tag: {tag}", entries)
 
     def _write_index(self, filename: str, title: str, entries: List[Tuple[str, dict]]) -> None:
         """写入索引文件"""
@@ -231,7 +231,7 @@ class IndexRebuilder:
         # 按日期排序（倒序）
         entries.sort(key=lambda x: x[1].get("date", ""), reverse=True)
 
-        content = f"# {title}\n\n## 日志列表\n\n"
+        content = f"# {title}\n\n## Journal List\n\n"
 
         # 按月份分组
         months: Dict[str, List[str]] = {}
