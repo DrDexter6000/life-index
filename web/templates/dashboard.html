@@ -6,22 +6,7 @@
 <section class="space-y-8">
     <header class="space-y-3">
         <p class="type-label uppercase tracking-[0.24em]" style="color: var(--color-tertiary);">Dashboard</p>
-        <div class="flex items-center justify-between gap-4">
-            <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">仪表盘</h1>
-            <button
-                id="refresh-dashboard-btn"
-                type="button"
-                class="inline-flex items-center justify-center rounded-xl p-2 transition-all duration-300"
-                style="color: var(--color-on-surface-variant); background: rgba(26, 30, 40, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05); min-width: 40px; min-height: 40px;"
-                title="刷新数据"
-                aria-label="刷新仪表盘数据"
-            >
-                <svg style="width: 20px; height: 20px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12a9 9 0 11-2.636-6.364" />
-                    <path d="M21 3v6h-6" />
-                </svg>
-            </button>
-        </div>
+        <h1 class="font-display text-3xl font-semibold tracking-tight sm:text-4xl" style="color: var(--color-on-surface);">仪表盘</h1>
         <p class="max-w-3xl text-sm sm:text-base" style="color: var(--color-on-surface-variant);">
             浏览你的 Life Index 统计概览，回顾人生轨迹。
         </p>
@@ -662,61 +647,6 @@
             renderDv3Charts();
         });
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    })();
-
-    // Refresh button handler
-    (() => {
-        const refreshBtn = document.getElementById('refresh-dashboard-btn');
-        if (!refreshBtn) return;
-
-        const icon = refreshBtn.querySelector('svg');
-        const originalBtnStyle = refreshBtn.getAttribute('style');
-
-        refreshBtn.addEventListener('mouseenter', () => {
-            refreshBtn.style.boxShadow = '0 0 20px rgba(255, 231, 146, 0.25)';
-            refreshBtn.style.color = 'var(--color-primary)';
-        });
-
-        refreshBtn.addEventListener('mouseleave', () => {
-            if (!refreshBtn.dataset.loading) {
-                refreshBtn.setAttribute('style', originalBtnStyle);
-            }
-        });
-
-        refreshBtn.addEventListener('click', async () => {
-            if (refreshBtn.dataset.loading === 'true') return;
-
-            refreshBtn.dataset.loading = 'true';
-            icon.style.animation = 'spin 1s linear infinite';
-            refreshBtn.style.color = 'var(--color-primary)';
-
-            try {
-                const response = await fetch('/api/dashboard/refresh', { method: 'POST' });
-                const result = await response.json();
-
-                if (result.success) {
-                    window.location.reload();
-                } else {
-                    console.error('Refresh failed:', result);
-                    refreshBtn.removeAttribute('data-loading');
-                    icon.style.animation = '';
-                    refreshBtn.setAttribute('style', originalBtnStyle);
-                }
-            } catch (error) {
-                console.error('Refresh error:', error);
-                refreshBtn.removeAttribute('data-loading');
-                icon.style.animation = '';
-                refreshBtn.setAttribute('style', originalBtnStyle);
-            }
-        });
-
-        // Add spin keyframes if not exists
-        if (!document.getElementById('refresh-spin-style')) {
-            const style = document.createElement('style');
-            style.id = 'refresh-spin-style';
-            style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
-            document.head.appendChild(style);
-        }
     })();
 </script>
 {% endblock %}
