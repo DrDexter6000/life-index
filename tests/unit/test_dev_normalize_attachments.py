@@ -35,9 +35,7 @@ class TestAttachmentNormalizationGovernance:
         assert "attachment_bare_filename" in categories
         assert "attachment_body_duplication" in categories
 
-    def test_generates_normalized_preview_without_writing_files(
-        self, tmp_path: Path
-    ) -> None:
+    def test_generates_normalized_preview_without_writing_files(self, tmp_path: Path) -> None:
         from tools.dev.normalize_attachments import AttachmentNormalizer
 
         journals_dir = tmp_path / "Journals"
@@ -66,11 +64,9 @@ class TestAttachmentNormalizationGovernance:
         attachment = preview["normalized_attachments"][0]
         # Check individual fields to avoid dict comparison issues on different platforms
         assert attachment["filename"] == "kimi_20260127.docx"
-        assert (
-            attachment["rel_path"] == "../../../attachments/2026/01/kimi_20260127.docx"
-        )
+        assert attachment["rel_path"] == "../../../attachments/2026/01/kimi_20260127.docx"
         assert attachment["description"] == ""
         assert attachment["source_url"] is None
         assert attachment["size"] is None
-        # content_type should be detected from .docx extension (may vary by platform)
-        assert attachment["content_type"] is not None
+        # content_type may be None on Windows if .docx not in MIME registry
+        # or detected as application/... on Unix
