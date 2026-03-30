@@ -54,9 +54,12 @@ def isolated_data_dir(tmp_path: Path) -> Generator[Path, None, None]:
 
     # 重新加载 config 模块以应用新的 USER_DATA_DIR
     # 这会影响所有依赖 config 的模块
+    # 注意: config.py 从 paths.py 重新导出，必须先 reload paths
     import importlib
+    import tools.lib.paths as paths_module
     import tools.lib.config as config_module
 
+    importlib.reload(paths_module)
     importlib.reload(config_module)
 
     # 同样需要重新加载依赖 config 的模块
@@ -76,6 +79,7 @@ def isolated_data_dir(tmp_path: Path) -> Generator[Path, None, None]:
             del os.environ["LIFE_INDEX_DATA_DIR"]
 
         # 重新加载模块以恢复原始状态
+        importlib.reload(paths_module)
         importlib.reload(config_module)
         importlib.reload(vec_module)
         importlib.reload(metadata_cache_module)

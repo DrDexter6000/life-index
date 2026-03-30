@@ -12,24 +12,21 @@ RAG 语义检索模块（基于 sqlite-vec）
 import sqlite3
 import json
 import hashlib
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
-import sys
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
 
-# 导入配置
-sys.path.insert(0, str(Path(__file__).parent))
-from config import (
+# 导入配置（使用相对导入）
+from .config import (
     JOURNALS_DIR,
     USER_DATA_DIR,
     EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG,
     get_model_cache_dir,
 )
-from frontmatter import parse_frontmatter
-from path_contract import build_journal_path_fields
+from .frontmatter import parse_frontmatter
+from .path_contract import build_journal_path_fields
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -102,6 +99,7 @@ def _load_sqlite_vec_extension(conn: sqlite3.Connection) -> bool:
         True if loaded successfully
     """
     import platform
+    import sys
 
     try:
         conn.enable_load_extension(True)
@@ -116,11 +114,7 @@ def _load_sqlite_vec_extension(conn: sqlite3.Connection) -> bool:
                 "vec0.dll",
                 "vec.dll",
                 # Python 包目录
-                Path(sys.executable).parent
-                / "Lib"
-                / "site-packages"
-                / "sqlite_vec"
-                / "vec0.dll",
+                Path(sys.executable).parent / "Lib" / "site-packages" / "sqlite_vec" / "vec0.dll",
                 # 用户数据目录
                 USER_DATA_DIR / ".bin" / "vec0.dll",
             ]
@@ -291,9 +285,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
     try:
         conn = init_vec_db()
         if conn is None:
-            result["error"] = (
-                "sqlite-vec extension not available. Vector search disabled."
-            )
+            result["error"] = "sqlite-vec extension not available. Vector search disabled."
             return result
         cursor = conn.cursor()
 
@@ -349,9 +341,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
             files_to_process = []
             for action, rel_path, text, date_str, file_hash in files_to_process:
                 if action in ("add", "update"):
-                    files_to_process.append(
-                        ("add", rel_path, text, date_str, file_hash)
-                    )
+                    files_to_process.append(("add", rel_path, text, date_str, file_hash))
             result["removed"] = len(indexed_files)
 
         # 批量处理（每批 10 个，避免内存问题）
@@ -379,9 +369,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                 # 如果是更新，先删除
                 if action == "update":
                     try:
-                        cursor.execute(
-                            "DELETE FROM journal_vectors WHERE path = ?", (rel_path,)
-                        )
+                        cursor.execute("DELETE FROM journal_vectors WHERE path = ?", (rel_path,))
                         result["updated"] += 1
                     except Exception:
                         pass
@@ -403,9 +391,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
         # 删除不存在的文件
         for rel_path in files_to_remove:
             try:
-                cursor.execute(
-                    "DELETE FROM journal_vectors WHERE path = ?", (rel_path,)
-                )
+                cursor.execute("DELETE FROM journal_vectors WHERE path = ?", (rel_path,))
                 result["removed"] += 1
             except Exception:
                 pass

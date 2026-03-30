@@ -224,6 +224,7 @@ class TestMergeAndRankResultsHybrid:
     def test_fts_results_use_rrf(self):
         """Test FTS-only hybrid ranking uses weighted RRF score."""
         from tools.search_journals.ranking import merge_and_rank_results_hybrid
+        from tools.lib.search_constants import FTS_WEIGHT_DEFAULT
 
         l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 80}]
 
@@ -232,7 +233,10 @@ class TestMergeAndRankResultsHybrid:
         )
 
         assert results[0]["fts_score"] == 80.0
-        assert results[0]["relevance_score"] == pytest.approx(0.6 / 61, rel=1e-6)
+        # Uses FTS_WEIGHT_DEFAULT (1.0) for weight
+        assert results[0]["relevance_score"] == pytest.approx(
+            FTS_WEIGHT_DEFAULT / 61, rel=1e-6
+        )
 
     def test_semantic_results_added(self):
         """Test semantic results are added with weighted RRF score."""

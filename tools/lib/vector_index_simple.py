@@ -12,24 +12,19 @@ Life Index - Simple Vector Index (Fallback)
 
 import json
 import pickle
+import sys
 import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
-import sys
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
 
-# 导入配置
-sys.path.insert(0, str(Path(__file__).parent))
-from config import (
-    JOURNALS_DIR,
-    USER_DATA_DIR,
-    get_model_cache_dir,
-    EMBEDDING_MODEL as MODEL_CONFIG,
-)
-from frontmatter import parse_frontmatter
+# 导入配置 - 使用相对导入
+from .paths import JOURNALS_DIR, USER_DATA_DIR
+from .search_config import get_model_cache_dir, EMBEDDING_MODEL as MODEL_CONFIG
+from .frontmatter import parse_frontmatter
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -54,8 +49,6 @@ def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     Returns:
         十六进制哈希字符串
     """
-    import hashlib
-
     hash_obj = hashlib.sha256()
     try:
         with open(file_path, "rb") as f:
@@ -166,23 +159,17 @@ class EmbeddingModel:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
             # 步骤 1: 验证模型完整性
-            is_valid, verify_msg = verify_model_integrity(
-                EMBEDDING_MODEL_NAME, CACHE_DIR
-            )
+            is_valid, verify_msg = verify_model_integrity(EMBEDDING_MODEL_NAME, CACHE_DIR)
             if not is_valid:
                 print(f"Warning: Model integrity check failed: {verify_msg}")
-                print(
-                    "Warning: Will proceed with loading, but embeddings may be inconsistent."
-                )
+                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
 
             # 步骤 2: 加载模型
             self._model = TextEmbedding(EMBEDDING_MODEL_NAME, cache_dir=str(CACHE_DIR))
             print(f"Model loaded successfully. (dimension={EMBEDDING_DIM})")
 
             # 步骤 3: 记录模型元数据（如果是首次使用）
-            meta_file = (
-                CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
-            )
+            meta_file = CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
             if not meta_file.exists():
                 record_model_metadata(EMBEDDING_MODEL_NAME, CACHE_DIR)
 

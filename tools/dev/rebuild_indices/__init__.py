@@ -37,23 +37,23 @@ class IndexRebuilder:
     def run(self) -> None:
         """执行重建"""
         print("=" * 60)
-        print("Life Index 索引重建工具")
+        print("Life Index - Index Rebuild Tool")
         print("=" * 60)
-        print(f"模式: {'预览' if self.dry_run else '执行'}")
+        print(f"Mode: {'preview' if self.dry_run else 'execute'}")
         print()
 
         # 收集所有日志
         self._collect_journals()
-        print(f"📁 发现 {len(self.journals)} 个日志文件")
+        print(f"[INFO] Found {len(self.journals)} journal files")
 
         # 解析元数据
         self._parse_all_metadata()
-        print(f"📊 成功解析 {len(self.journal_metadata)} 个日志的元数据")
+        print(f"[INFO] Parsed {len(self.journal_metadata)} journal metadata")
         print()
 
         # 清理死链
         self._clean_dead_links()
-        print(f"🧹 清理了 {self.dead_links_found} 个死链")
+        print(f"[INFO] Cleaned {self.dead_links_found} dead links")
 
         # 重建索引
         self._rebuild_topic_indices()
@@ -62,7 +62,7 @@ class IndexRebuilder:
 
         print()
         print("=" * 60)
-        print(f"✅ 完成！更新了 {self.indices_updated} 个索引文件")
+        print(f"[OK] Done! Updated {self.indices_updated} index files")
         print("=" * 60)
 
     def _collect_journals(self) -> None:
@@ -82,7 +82,7 @@ class IndexRebuilder:
         try:
             return parse_journal_file(file_path)
         except Exception as e:
-            print(f"⚠️ 无法解析 {file_path}: {e}")
+            print(f"[WARN] Cannot parse {file_path}: {e}")
             return {}
 
     # _simple_yaml_parse 和 _parse_yaml_value 已移至 lib.frontmatter 模块
@@ -121,7 +121,9 @@ class IndexRebuilder:
                         # 死链，跳过
                         self.dead_links_found += 1
                         if self.dry_run:
-                            print(f"🔍 [预览] 将删除死链: {link_path} in {index_file.name}")
+                            print(
+                                f"[PREVIEW] Will remove dead link: {link_path} in {index_file.name}"
+                            )
                         continue
 
                 new_entries.append(entry)
@@ -160,7 +162,7 @@ class IndexRebuilder:
                     if not self.dry_run:
                         index_file.write_text(new_content, encoding="utf-8")
                         self.indices_updated += 1
-                        print(f"✅ 已清理: {index_file.name}")
+                        print(f"[OK] Cleaned: {index_file.name}")
 
     def _resolve_link(self, from_file: Path, link: str) -> Optional[Path]:
         """解析相对链接"""
@@ -188,7 +190,7 @@ class IndexRebuilder:
                     topics[topic].append((rel_path, metadata))
 
         for topic, entries in topics.items():
-            self._write_index(f"主题_{topic}.md", f"主题: {topic}", entries)
+            self._write_index(f"topic_{topic}.md", f"Topic: {topic}", entries)
 
     def _rebuild_project_indices(self) -> None:
         """重建项目索引"""
@@ -202,7 +204,7 @@ class IndexRebuilder:
                 projects[project].append((rel_path, metadata))
 
         for project, entries in projects.items():
-            self._write_index(f"项目_{project}.md", f"项目: {project}", entries)
+            self._write_index(f"project_{project}.md", f"Project: {project}", entries)
 
     def _rebuild_tag_indices(self) -> None:
         """重建标签索引"""
@@ -220,7 +222,7 @@ class IndexRebuilder:
                     tags[tag].append((rel_path, metadata))
 
         for tag, entries in tags.items():
-            self._write_index(f"标签_{tag}.md", f"标签: {tag}", entries)
+            self._write_index(f"tag_{tag}.md", f"Tag: {tag}", entries)
 
     def _write_index(self, filename: str, title: str, entries: List[Tuple[str, dict]]) -> None:
         """写入索引文件"""
@@ -229,7 +231,7 @@ class IndexRebuilder:
         # 按日期排序（倒序）
         entries.sort(key=lambda x: x[1].get("date", ""), reverse=True)
 
-        content = f"# {title}\n\n## 日志列表\n\n"
+        content = f"# {title}\n\n## Journal List\n\n"
 
         # 按月份分组
         months: Dict[str, List[str]] = {}
@@ -280,11 +282,11 @@ class IndexRebuilder:
                 content += entry + "\n"
 
         if self.dry_run:
-            print(f"🔍 [预览] 将更新: {filename} ({len(entries)} 条记录)")
+            print(f"[PREVIEW] Will update: {filename} ({len(entries)} entries)")
         else:
             index_file.write_text(content, encoding="utf-8")
             self.indices_updated += 1
-            print(f"✅ 已更新: {filename} ({len(entries)} 条记录)")
+            print(f"[OK] Updated: {filename} ({len(entries)} entries)")
 
 
 def main() -> None:
