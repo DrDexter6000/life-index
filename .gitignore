@@ -61,6 +61,9 @@ fts_index/
 # ----- 开发阶段文档 -----
 docs/.dev-archive/
 
+# ----- 内部战略与开发文档（不公开）-----
+.strategy/
+
 # ----- 敏感文件 -----
 .env
 .env.local
