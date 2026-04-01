@@ -18,7 +18,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
 | Debug FTS search queries | `fts_search.py` | BM25 ranking, snippet extraction, JSON field parsing |
 | Debug FTS index updates | `fts_update.py` | Incremental/full rebuild, file hashing, journal parsing |
-| Add semantic search feature | `semantic_search.py` | Uses fastembed (ONNX Runtime), multilingual embeddings |
+| Add semantic search feature | `semantic_search.py` | Uses shared sentence-transformers backend for multilingual embeddings |
 | Debug path normalization | `path_contract.py` | Canonical path normalization and route-safe path shaping |
 | Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
 | Debug URL download pipeline | `url_download.py` | Shared remote-file download helper used by write/web flows |
@@ -37,7 +37,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **path_contract.py**: Shared path normalization helpers for route-safe, user-safe journal paths.
 - **schema.py**: Schema version management, metadata validation and migration. Extracted from frontmatter.py.
 - **search_index.py**: FTS5 index management (init, stats) + backward-compat wrappers for fts_search.py and fts_update.py.
-- **semantic_search.py**: Vector embedding search using paraphrase-multilingual-MiniLM-L12-v2, core dependency.
+- **semantic_search.py**: Vector embedding search using BAAI/bge-m3 via shared sentence-transformers backend.
 - **timing.py**: Performance timing utility for metrics collection. Used in tool outputs for monitoring.
 - **url_download.py**: Shared URL download helper for attachment ingestion and related flows.
 - **vector_index_simple.py**: Pure Python fallback vector index using numpy/pickle.
@@ -50,7 +50,7 @@ Shared infrastructure library for all Life Index atomic tools.
 
 **File Locking**: All write operations (journal, edit, index) use `FileLock` to prevent concurrent conflicts. Lock timeout defaults to 30s for journals, 60s for index operations.
 
-**Semantic Search**: Uses fastembed with ONNX Runtime for multilingual embeddings (50+ languages). Core feature, always available.
+**Semantic Search**: Uses sentence-transformers with BAAI/bge-m3 for multilingual embeddings. Core feature, always available.
 
 ## ANTI-PATTERNS
 
@@ -63,6 +63,6 @@ Shared infrastructure library for all Life Index atomic tools.
 
 ## DEPENDENCIES
 
-**This lib depends on**: Python 3.11+, pyyaml, fastembed>=0.5.1,<1.0, numpy>=1.24.0
+**This lib depends on**: Python 3.11+, pyyaml, numpy>=1.24.0, sentence-transformers>=2.6.0
 
 **Tools depend on this lib**: write_journal, search_journals, edit_journal, generate_abstract, build_index, query_weather, backup, dev/validate_data, dev/rebuild_indices, dev/run_with_temp_data_dir, Web GUI service layer helpers

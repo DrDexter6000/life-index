@@ -7,12 +7,13 @@ Life Index - Keyword Search Pipeline
 """
 
 import logging
+import re
 import time
 from typing import Any
 
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
 from ..lib.path_contract import merge_journal_path_fields
-from ..lib.search_constants import FTS_LIMIT, FTS_FALLBACK_THRESHOLD
+from ..lib.search_constants import FTS_LIMIT, FTS_FALLBACK_THRESHOLD, FTS_MIN_RELEVANCE
 
 from .l1_index import search_l1_index
 from .l2_metadata import search_l2_metadata
@@ -37,6 +38,43 @@ KeywordPipelineResult = tuple[
 ]
 
 
+def _has_explicit_fts_operator(query: str) -> bool:
+    """Return whether query already contains explicit FTS boolean operators."""
+    return bool(re.search(r"\b(AND|OR|NOT)\b", query, flags=re.IGNORECASE))
+
+
+def _build_fts_queries(query: str) -> tuple[str, str | None]:
+    """Build primary/fallback FTS queries for keyword pipeline.
+
+    Multi-word queries default to AND-first with OR fallback, unless the user
+    already supplied explicit boolean operators or quotes.
+    """
+    if '"' in query or _has_explicit_fts_operator(query) or " " not in query:
+        return query, None
+
+    keywords = [keyword.strip() for keyword in query.split() if keyword.strip()]
+    if len(keywords) <= 1:
+        return query, None
+
+    return " AND ".join(keywords), " OR ".join(keywords)
+
+
+def _merge_fts_results(
+    primary_results: list[dict[str, Any]], fallback_results: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge fallback FTS results while preserving primary-query priority."""
+    merged = list(primary_results)
+    seen_paths = {str(item.get("path", "")) for item in primary_results}
+
+    for item in fallback_results:
+        path = str(item.get("path", ""))
+        if path and path not in seen_paths:
+            merged.append(item)
+            seen_paths.add(path)
+
+    return merged
+
+
 def run_keyword_pipeline(
     *,
     query: str | None = None,
@@ -50,7 +88,7 @@ def run_keyword_pipeline(
     location: str | None = None,
     weather: str | None = None,
     use_index: bool = True,
-    fts_min_relevance: int = 50,
+    fts_min_relevance: int = FTS_MIN_RELEVANCE,
 ) -> KeywordPipelineResult:
     """
     关键词搜索管道: L1 索引 → L2 元数据 → L3 FTS5 内容
@@ -92,7 +130,9 @@ def run_keyword_pipeline(
         if r["path"] not in seen and not seen.add(r["path"])  # type: ignore[func-returns-value]
     ]
     perf["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms"
+    )
 
     # L2: 元数据过滤
     l2_start = time.time()
@@ -112,22 +152,16 @@ def run_keyword_pipeline(
     l2_truncated = l2_response.get("truncated", False)
     l2_total_available = l2_response.get("total_available", 0)
     perf["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms"
+    )
 
     # L3: FTS5 内容搜索
     l3_start = time.time()
     l3_results: list[dict] = []
 
     if query:
-        # 处理多关键词：将空格分隔转换为 FTS5 OR 语法
-        if query and " " in query and "OR" not in query.upper() and "AND" not in query.upper():
-            keywords = [k.strip() for k in query.split() if k.strip()]
-            if len(keywords) > 1:
-                fts_query = " OR ".join(keywords)
-            else:
-                fts_query = query
-        else:
-            fts_query = query
+        fts_query, fallback_fts_query = _build_fts_queries(query)
 
         # 尝试使用 FTS 索引（如果可用且启用）
         if use_index:
@@ -141,6 +175,17 @@ def run_keyword_pipeline(
                     limit=FTS_LIMIT,
                     min_relevance=fts_min_relevance,
                 )
+
+                if fallback_fts_query and len(fts_results) < 3:
+                    fallback_results = search_fts(
+                        fallback_fts_query,
+                        date_from,
+                        date_to,
+                        limit=FTS_LIMIT,
+                        min_relevance=fts_min_relevance,
+                    )
+                    fts_results = _merge_fts_results(fts_results, fallback_results)
+
                 if fts_results:
                     l3_results = [
                         {
@@ -174,11 +219,15 @@ def run_keyword_pipeline(
                     if query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
                         fallback_l3_results = search_l3_content(query, None)
                         seen_paths = {
-                            str(item.get("journal_route_path") or item.get("path") or "")
+                            str(
+                                item.get("journal_route_path") or item.get("path") or ""
+                            )
                             for item in l3_results
                         }
                         for item in fallback_l3_results:
-                            key = str(item.get("journal_route_path") or item.get("path") or "")
+                            key = str(
+                                item.get("journal_route_path") or item.get("path") or ""
+                            )
                             if key and key not in seen_paths:
                                 l3_results.append(item)
                                 seen_paths.add(key)
@@ -195,7 +244,9 @@ def run_keyword_pipeline(
             logger.debug(f"File scan found {len(l3_results)} results")
 
     perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms"
+    )
 
     return (
         l1_results,

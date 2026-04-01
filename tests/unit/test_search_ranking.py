@@ -5,6 +5,8 @@ from tools.search_journals.ranking import (
     merge_and_rank_results,
     merge_and_rank_results_hybrid,
 )
+from tools.lib.search_constants import FTS_MIN_RELEVANCE
+from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
 
 def test_merge_and_rank_results_filters_low_non_rrf_scores_and_caps_results() -> None:
@@ -80,6 +82,24 @@ def test_merge_and_rank_results_hybrid_default_keeps_single_semantic_hit() -> No
     assert merged[0]["path"] == "semantic.md"
 
 
+def test_merge_and_rank_results_hybrid_does_not_force_extra_backfill_when_one_strong_hit_exists() -> (
+    None
+):
+    merged = merge_and_rank_results_hybrid(
+        [],
+        [],
+        [{"path": "fts-hit.md", "relevance": 80, "title": "FTS Hit"}],
+        [
+            {"path": "semantic-noise-1.md", "similarity": 0.2},
+            {"path": "semantic-noise-2.md", "similarity": 0.19},
+        ],
+        query="小英雄",
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["path"] == "fts-hit.md"
+
+
 def test_merge_and_rank_results_hybrid_prefers_stronger_lexical_result_over_weaker_semantic_only() -> (
     None
 ):
@@ -95,8 +115,32 @@ def test_merge_and_rank_results_hybrid_prefers_stronger_lexical_result_over_weak
         [],
         [{"path": "semantic.md", "similarity": 0.36}],
         query="乐乐",
+        min_rrf_score=0,
         min_non_rrf_score=0,
     )
 
     assert len(merged) == 2
     assert merged[0]["path"] == "meta.md"
+
+
+def test_merge_and_rank_results_dynamic_fts_threshold_tightens_high_score_cluster() -> (
+    None
+):
+    merged = merge_and_rank_results(
+        [],
+        [],
+        [
+            {"path": "doc-1.md", "relevance": 90, "title": "Doc 1"},
+            {"path": "doc-2.md", "relevance": 86, "title": "Doc 2"},
+            {"path": "doc-3.md", "relevance": 82, "title": "Doc 3"},
+            {"path": "doc-4.md", "relevance": 20, "title": "Doc 4"},
+        ],
+        query="google stitch",
+    )
+
+    assert [item["path"] for item in merged] == ["doc-1.md", "doc-2.md", "doc-3.md"]
+
+
+def test_keyword_pipeline_default_uses_shared_fts_min_relevance_constant() -> None:
+    assert run_keyword_pipeline.__kwdefaults__ is not None
+    assert run_keyword_pipeline.__kwdefaults__["fts_min_relevance"] == FTS_MIN_RELEVANCE
