@@ -7,24 +7,21 @@ Life Index - Simple Vector Index (Fallback)
 - 使用 numpy 进行向量运算
 - 使用 pickle 持久化存储
 - 与 semantic_search.py 接口兼容
-- 使用 fastembed (ONNX Runtime) 进行推理
+- 使用共享 embedding backend 进行推理
 """
 
+import hashlib
 import json
 import pickle
-import sys
-import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from fastembed import TextEmbedding
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # 导入配置 - 使用相对导入
 from .paths import JOURNALS_DIR, USER_DATA_DIR
 from .search_config import get_model_cache_dir, EMBEDDING_MODEL as MODEL_CONFIG
 from .frontmatter import parse_frontmatter
+from .embedding_backends import SharedEmbeddingModel as EmbeddingModel
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -58,144 +55,6 @@ def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     except Exception as e:
         print(f"Warning: Failed to compute hash for {file_path}: {e}")
         return ""
-
-
-def verify_model_integrity(model_name: str, cache_dir: Path) -> Tuple[bool, str]:
-    """
-    验证模型完整性（如果存在元数据记录）
-
-    Args:
-        model_name: 模型名称
-        cache_dir: 模型缓存目录
-
-    Returns:
-        (是否验证通过，消息)
-    """
-    # 模型元数据文件路径
-    meta_file = cache_dir / model_name.replace("/", "_") / "model_meta.json"
-
-    if not meta_file.exists():
-        # 首次使用，记录元数据
-        return True, "首次使用，将记录模型元数据"
-
-    try:
-        meta = json.loads(meta_file.read_text(encoding="utf-8"))
-        expected_hash = meta.get("config_hash", "")
-        recorded_version = meta.get("version", "")
-
-        if expected_hash and expected_hash != MODEL_CONFIG.get("config_hash", ""):
-            expected = MODEL_CONFIG.get("config_hash", "")[:16]
-            return (
-                False,
-                f"模型配置哈希不匹配！预期：{expected}..., 实际：{expected_hash[:16]}...",
-            )
-
-        if recorded_version != MODEL_CONFIG["version"]:
-            return (
-                False,
-                f"模型版本不一致！已记录：{recorded_version}, 当前配置：{MODEL_CONFIG['version']}",
-            )
-
-        return True, "模型完整性验证通过"
-
-    except Exception as e:
-        return False, f"验证模型完整性失败：{e}"
-
-
-def record_model_metadata(model_name: str, cache_dir: Path) -> None:
-    """
-    记录模型元数据（首次使用时）
-
-    Args:
-        model_name: 模型名称
-        cache_dir: 模型缓存目录
-    """
-    try:
-        model_dir = cache_dir / model_name.replace("/", "_")
-        model_dir.mkdir(parents=True, exist_ok=True)
-
-        meta = {
-            "name": model_name,
-            "version": MODEL_CONFIG["version"],
-            "dimension": MODEL_CONFIG["dimension"],
-            "config_hash": MODEL_CONFIG.get("config_hash", ""),
-            "recorded_at": datetime.now().isoformat(),
-            "platform": sys.platform,
-        }
-
-        meta_file = model_dir / "model_meta.json"
-        with open(meta_file, "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2, ensure_ascii=False)
-
-        print(f"Model metadata recorded: {meta_file}")
-
-    except Exception as e:
-        print(f"Warning: Failed to record model metadata: {e}")
-
-
-class EmbeddingModel:
-    """嵌入模型管理器（单例模式）"""
-
-    _instance: Optional["EmbeddingModel"] = None
-    _model: Optional["TextEmbedding"] = None
-    _model_verified: bool = False  # 模型是否已通过完整性验证
-
-    def __new__(cls) -> "EmbeddingModel":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def load(self) -> bool:
-        """加载嵌入模型，返回是否成功"""
-        if self._model is not None:
-            return self._model_verified
-
-        try:
-            from fastembed import TextEmbedding
-
-            print(
-                f"Loading embedding model: {EMBEDDING_MODEL_NAME} (v{EMBEDDING_MODEL_VERSION})..."
-            )
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-            # 步骤 1: 验证模型完整性
-            is_valid, verify_msg = verify_model_integrity(EMBEDDING_MODEL_NAME, CACHE_DIR)
-            if not is_valid:
-                print(f"Warning: Model integrity check failed: {verify_msg}")
-                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
-
-            # 步骤 2: 加载模型
-            self._model = TextEmbedding(EMBEDDING_MODEL_NAME, cache_dir=str(CACHE_DIR))
-            print(f"Model loaded successfully. (dimension={EMBEDDING_DIM})")
-
-            # 步骤 3: 记录模型元数据（如果是首次使用）
-            meta_file = CACHE_DIR / EMBEDDING_MODEL_NAME.replace("/", "_") / "model_meta.json"
-            if not meta_file.exists():
-                record_model_metadata(EMBEDDING_MODEL_NAME, CACHE_DIR)
-
-            self._model_verified = True
-            return True
-
-        except Exception as e:
-            print(f"Warning: Failed to load embedding model: {e}")
-            return False
-
-    def encode(self, texts: List[str]) -> List[List[float]]:
-        """编码文本为向量"""
-        if not self.load():
-            return []
-
-        if self._model is None:
-            return []
-
-        try:
-            # fastembed 返回 generator，需要转换为 list
-            embeddings = list(self._model.embed(texts))
-            # Convert numpy arrays to lists
-            return [list(e) for e in embeddings]
-        except Exception as e:
-            print(f"Encoding error: {e}")
-            return []
 
 
 def get_model() -> EmbeddingModel:
@@ -303,18 +162,6 @@ class SimpleVectorIndex:
 
     def add(self, path: str, embedding: List[float], date: str, file_hash: str) -> None:
         """添加或更新向量（预归一化存储）"""
-        try:
-            import numpy as np
-
-            # 预归一化向量，避免搜索时重复归一化
-            vec = np.array(embedding, dtype=np.float32)
-            norm = np.linalg.norm(vec)
-            if norm > 1e-8:
-                vec = vec / norm
-            embedding = vec.tolist()
-        except ImportError:
-            pass  # numpy 不可用时保持原样
-
         self.vectors[path] = {
             "embedding": embedding,
             "date": date,
@@ -355,7 +202,6 @@ class SimpleVectorIndex:
             return []
 
         query_vec = np.array(query_embedding, dtype=np.float32)
-        query_vec = query_vec / (np.linalg.norm(query_vec) + 1e-8)  # 归一化
 
         results = []
 
@@ -443,7 +289,7 @@ def update_vector_index_simple(
     }
 
     try:
-        from lib.semantic_search import parse_journal_for_vec, get_file_hash
+        from .semantic_search import parse_journal_for_vec, get_file_hash
     except ImportError:
         # 如果无法导入，定义本地版本（使用 SSOT frontmatter 解析）
         def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
@@ -461,7 +307,7 @@ def update_vector_index_simple(
                 text_parts = []
                 if metadata.get("title"):
                     text_parts.append(metadata["title"])
-                text_parts.append(body[:1000])
+                text_parts.append(body)
                 if metadata.get("tags"):
                     tags = metadata["tags"]
                     if isinstance(tags, list):
@@ -489,8 +335,9 @@ def update_vector_index_simple(
 
         # 如果不是增量模式，清空索引
         if not incremental:
+            removed_count = len(index.vectors)
             index.clear()
-            result["removed"] = len(index.vectors)
+            result["removed"] = removed_count
 
         # 扫描所有日志文件
         current_files = set()

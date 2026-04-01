@@ -113,26 +113,26 @@ def _check_pyyaml() -> Tuple[Dict[str, Any], str, bool]:
         )
 
 
-def _check_fastembed() -> Tuple[Dict[str, Any], str]:
-    """检查 fastembed 依赖"""
+def _check_sentence_transformers() -> Tuple[Dict[str, Any], str]:
+    """检查 sentence-transformers 依赖"""
     try:
-        import fastembed
+        import sentence_transformers
 
-        fe_version = getattr(fastembed, "__version__", "unknown")
+        st_version = getattr(sentence_transformers, "__version__", "unknown")
         return {
-            "name": "fastembed",
+            "name": "sentence_transformers",
             "status": "ok",
-            "version": fe_version,
+            "version": st_version,
         }, ""
     except ImportError:
         return (
             {
-                "name": "fastembed",
+                "name": "sentence_transformers",
                 "status": "warning",
                 "version": None,
             },
-            "fastembed is not installed. Semantic search will be disabled. "
-            "To enable: pip install 'fastembed>=0.5.1'",
+            "sentence-transformers is not installed. Semantic search will be disabled. "
+            "To enable: pip install 'sentence-transformers>=2.6.0'",
         )
 
 
@@ -185,7 +185,7 @@ def _check_embedding_model() -> Dict[str, Any]:
     """检查嵌入模型缓存"""
     try:
         cache_dir = get_model_cache_dir()
-        model_files = list(cache_dir.rglob("*.onnx")) if cache_dir.exists() else []
+        model_files = [f for f in cache_dir.rglob("*") if f.is_file()] if cache_dir.exists() else []
         model_downloaded = len(model_files) > 0
         cache_size_mb = 0.0
         if cache_dir.exists():
@@ -201,7 +201,7 @@ def _check_embedding_model() -> Dict[str, Any]:
         if not model_downloaded:
             check["issue"] = (
                 "Embedding model not downloaded yet. "
-                "Run: life-index index (will download ~80MB model automatically)"
+                "Run: life-index index (will download model files automatically)"
             )
         return check
     except Exception:
@@ -221,7 +221,7 @@ def health_check() -> None:
     1. Python 版本 (>=3.11)
     2. 虚拟环境状态
     3. 核心依赖 (pyyaml)
-    4. 语义搜索依赖 (fastembed)
+    4. 语义搜索依赖 (sentence-transformers)
     5. 数据目录
     6. 索引状态
     7. 嵌入模型缓存
@@ -250,8 +250,8 @@ def health_check() -> None:
         issues.append(issue)
     has_critical = has_critical or critical
 
-    # 4. Semantic search dependency: fastembed
-    check, issue = _check_fastembed()
+    # 4. Semantic search dependency: sentence-transformers
+    check, issue = _check_sentence_transformers()
     checks.append(check)
     if issue:
         issues.append(issue)
