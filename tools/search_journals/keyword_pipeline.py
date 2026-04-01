@@ -7,6 +7,7 @@ Life Index - Keyword Search Pipeline
 """
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -35,6 +36,43 @@ KeywordPipelineResult = tuple[
     int,  # l2_total_available
     dict[str, float],  # perf
 ]
+
+
+def _has_explicit_fts_operator(query: str) -> bool:
+    """Return whether query already contains explicit FTS boolean operators."""
+    return bool(re.search(r"\b(AND|OR|NOT)\b", query, flags=re.IGNORECASE))
+
+
+def _build_fts_queries(query: str) -> tuple[str, str | None]:
+    """Build primary/fallback FTS queries for keyword pipeline.
+
+    Multi-word queries default to AND-first with OR fallback, unless the user
+    already supplied explicit boolean operators or quotes.
+    """
+    if '"' in query or _has_explicit_fts_operator(query) or " " not in query:
+        return query, None
+
+    keywords = [keyword.strip() for keyword in query.split() if keyword.strip()]
+    if len(keywords) <= 1:
+        return query, None
+
+    return " AND ".join(keywords), " OR ".join(keywords)
+
+
+def _merge_fts_results(
+    primary_results: list[dict[str, Any]], fallback_results: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge fallback FTS results while preserving primary-query priority."""
+    merged = list(primary_results)
+    seen_paths = {str(item.get("path", "")) for item in primary_results}
+
+    for item in fallback_results:
+        path = str(item.get("path", ""))
+        if path and path not in seen_paths:
+            merged.append(item)
+            seen_paths.add(path)
+
+    return merged
 
 
 def run_keyword_pipeline(
@@ -119,15 +157,7 @@ def run_keyword_pipeline(
     l3_results: list[dict] = []
 
     if query:
-        # 处理多关键词：将空格分隔转换为 FTS5 OR 语法
-        if query and " " in query and "OR" not in query.upper() and "AND" not in query.upper():
-            keywords = [k.strip() for k in query.split() if k.strip()]
-            if len(keywords) > 1:
-                fts_query = " OR ".join(keywords)
-            else:
-                fts_query = query
-        else:
-            fts_query = query
+        fts_query, fallback_fts_query = _build_fts_queries(query)
 
         # 尝试使用 FTS 索引（如果可用且启用）
         if use_index:
@@ -141,6 +171,17 @@ def run_keyword_pipeline(
                     limit=FTS_LIMIT,
                     min_relevance=fts_min_relevance,
                 )
+
+                if fallback_fts_query and len(fts_results) < 3:
+                    fallback_results = search_fts(
+                        fallback_fts_query,
+                        date_from,
+                        date_to,
+                        limit=FTS_LIMIT,
+                        min_relevance=fts_min_relevance,
+                    )
+                    fts_results = _merge_fts_results(fts_results, fallback_results)
+
                 if fts_results:
                     l3_results = [
                         {
