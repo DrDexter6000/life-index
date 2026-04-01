@@ -41,19 +41,20 @@ def mock_level3_pipelines():
             "tools.search_journals.keyword_pipeline.search_l2_metadata",
             return_value={"results": [], "truncated": False, "total_available": 0},
         ):
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l3_content",
-                return_value=[],
-            ):
+            with patch("tools.lib.search_index.search_fts", return_value=[]):
                 with patch(
-                    "tools.search_journals.semantic_pipeline.search_semantic",
-                    return_value=([], {}),
+                    "tools.search_journals.keyword_pipeline.search_l3_content",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
-                        return_value={"available": True, "reason": "", "note": ""},
+                        "tools.search_journals.semantic_pipeline.search_semantic",
+                        return_value=([], {}),
                     ):
-                        yield
+                        with patch(
+                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
+                            return_value={"available": True, "reason": "", "note": ""},
+                        ):
+                            yield
 
 
 class TestDualPipelineParallelExecution:
@@ -147,25 +148,29 @@ class TestDualPipelineParallelExecution:
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content",
-                    side_effect=mock_l3,
+                    "tools.lib.search_index.search_fts",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
+                        "tools.search_journals.keyword_pipeline.search_l3_content",
+                        side_effect=mock_l3,
                     ):
                         with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "vector index not found",
-                                "note": "向量索引未建立，请运行 life-index index",
-                            }
+                            "tools.search_journals.semantic_pipeline.search_semantic",
+                            return_value=([], {}),
+                        ):
+                            with patch(
+                                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
+                            ) as mock_status:
+                                mock_status.return_value = {
+                                    "available": False,
+                                    "reason": "vector index not found",
+                                    "note": "向量索引未建立，请运行 life-index index",
+                                }
 
-                            result = hierarchical_search(
-                                query="test", level=3, semantic=True
-                            )
+                                result = hierarchical_search(
+                                    query="test", level=3, semantic=True
+                                )
 
         # Should still return FTS results with graceful degradation
         assert result["success"] is True
@@ -248,25 +253,37 @@ class TestRRFFusion:
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content",
-                    return_value=[
-                        {"path": "/test/doc_a.md", "title": "Doc A", "relevance": 80},
-                        {"path": "/test/doc_b.md", "title": "Doc B", "relevance": 60},
-                    ],
+                    "tools.lib.search_index.search_fts",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
+                        "tools.search_journals.keyword_pipeline.search_l3_content",
+                        return_value=[
+                            {
+                                "path": "/test/doc_a.md",
+                                "title": "Doc A",
+                                "relevance": 80,
+                            },
+                            {
+                                "path": "/test/doc_b.md",
+                                "title": "Doc B",
+                                "relevance": 60,
+                            },
+                        ],
                     ):
                         with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "",
-                                "note": "",
-                            }
-                            result = hierarchical_search(query="test", level=3)
+                            "tools.search_journals.semantic_pipeline.search_semantic",
+                            return_value=([], {}),
+                        ):
+                            with patch(
+                                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
+                            ) as mock_status:
+                                mock_status.return_value = {
+                                    "available": False,
+                                    "reason": "",
+                                    "note": "",
+                                }
+                                result = hierarchical_search(query="test", level=3)
 
         merged = result["merged_results"]
         assert len(merged) == 2
@@ -309,25 +326,29 @@ class TestSemanticSearchDegradation:
                 return_value={"results": [], "truncated": False},
             ):
                 with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content",
-                    return_value=l3_results,
+                    "tools.lib.search_index.search_fts",
+                    return_value=[],
                 ):
                     with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
+                        "tools.search_journals.keyword_pipeline.search_l3_content",
+                        return_value=l3_results,
                     ):
                         with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "vector index not found",
-                                "note": "向量索引未建立，请运行 life-index index",
-                            }
+                            "tools.search_journals.semantic_pipeline.search_semantic",
+                            return_value=([], {}),
+                        ):
+                            with patch(
+                                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
+                            ) as mock_status:
+                                mock_status.return_value = {
+                                    "available": False,
+                                    "reason": "vector index not found",
+                                    "note": "向量索引未建立，请运行 life-index index",
+                                }
 
-                            result = hierarchical_search(
-                                query="test", level=3, semantic=True
-                            )
+                                result = hierarchical_search(
+                                    query="test", level=3, semantic=True
+                                )
 
         assert result["success"] is True
         assert len(result["l3_results"]) == 1
