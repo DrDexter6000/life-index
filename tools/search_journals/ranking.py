@@ -25,6 +25,72 @@ from ..lib.search_constants import (
 )
 
 
+def _dynamic_threshold_floor(base_threshold: float, dynamic_threshold: float) -> float:
+    """Keep dynamic thresholds from becoming more permissive than baseline."""
+    return max(base_threshold, dynamic_threshold)
+
+
+def _compute_dynamic_fts_threshold(
+    scored_results: list[dict[str, Any]],
+    *,
+    base_threshold: float,
+) -> float:
+    """Compute a stricter FTS threshold from score distribution when useful."""
+    scores = [
+        float(item["score"]) for item in scored_results if float(item["score"]) > 0
+    ]
+    if len(scores) < 3:
+        return base_threshold
+
+    mean_score = sum(scores) / len(scores)
+    variance = sum((score - mean_score) ** 2 for score in scores) / len(scores)
+    std_dev = variance**0.5
+    dynamic_threshold = mean_score - 1.5 * std_dev
+    return _dynamic_threshold_floor(base_threshold, dynamic_threshold)
+
+
+def _compute_dynamic_non_rrf_threshold(
+    ranked_results: list[dict[str, Any]],
+    *,
+    base_threshold: float,
+) -> float:
+    """Compute a stricter non-RRF threshold from lexical score distribution."""
+    scores = [
+        float(item["fts_score"])
+        for item in ranked_results
+        if float(item["fts_score"]) > 0
+    ]
+    if len(scores) < 3:
+        return base_threshold
+
+    mean_score = sum(scores) / len(scores)
+    variance = sum((score - mean_score) ** 2 for score in scores) / len(scores)
+    std_dev = variance**0.5
+    dynamic_threshold = mean_score - 1.5 * std_dev
+    return _dynamic_threshold_floor(base_threshold, dynamic_threshold)
+
+
+def _compute_dynamic_rrf_threshold(
+    ranked_results: list[dict[str, Any]],
+    *,
+    base_threshold: float,
+) -> float:
+    """Compute a stricter RRF threshold when enough fused results exist."""
+    scores = [
+        float(item["final_score"])
+        for item in ranked_results
+        if item.get("has_rrf") and float(item["final_score"]) > 0
+    ]
+    if len(scores) < 3:
+        return base_threshold
+
+    mean_score = sum(scores) / len(scores)
+    variance = sum((score - mean_score) ** 2 for score in scores) / len(scores)
+    std_dev = variance**0.5
+    dynamic_threshold = mean_score - 1.5 * std_dev
+    return _dynamic_threshold_floor(base_threshold, dynamic_threshold)
+
+
 def _hybrid_priority(item: Dict[str, Any]) -> int:
     """Priority bucket for hybrid result ordering.
 
@@ -59,7 +125,9 @@ def _hybrid_backfill_score(item: Dict[str, Any]) -> float:
     return final_score
 
 
-def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = RRF_K) -> Dict[str, float]:
+def reciprocal_rank_fusion(
+    ranked_lists: List[List[str]], k: int = RRF_K
+) -> Dict[str, float]:
     """
     Reciprocal Rank Fusion (RRF)
 
@@ -124,7 +192,9 @@ def merge_and_rank_results(
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
+                metadata.get("abstract", "")
+                if isinstance(metadata.get("abstract"), str)
+                else ""
             )
             tags = metadata.get("tags", [])
 
@@ -152,11 +222,18 @@ def merge_and_rank_results(
         }
 
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
-    sorted_results = sorted(scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True)
-    effective_min_score = min_score
+    sorted_results = sorted(
+        scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True
+    )
+    effective_min_score = _compute_dynamic_fts_threshold(
+        sorted_results,
+        base_threshold=min_score,
+    )
     if query and min_score == FTS_MIN_RELEVANCE:
         effective_min_score = FTS_MIN_RELEVANCE + 1
-    sorted_results = [item for item in sorted_results if item["score"] >= effective_min_score]
+    sorted_results = [
+        item for item in sorted_results if item["score"] >= effective_min_score
+    ]
     sorted_results = sorted_results[:max_results]
 
     # 提取数据并添加排名信息
@@ -195,16 +272,17 @@ def merge_and_rank_results_hybrid(
         semantic_weight: 语义排名权重（默认 SEMANTIC_WEIGHT_DEFAULT，影响语义相似度在最终结果中的占比）
     """
 
-    scored: Dict[str, Dict[str, Any]] = (
-        {}
-    )  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
+    scored: Dict[
+        str, Dict[str, Any]
+    ] = {}  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
 
     # 先构建 FTS 排名（按 relevance + title_match bonus）
     fts_ranked_paths: List[str] = []
     fts_ordered = sorted(
         l3_results,
         key=lambda r: (
-            r.get("relevance", 0) + (SCORE_TITLE_MATCH_BONUS if r.get("title_match") else 0),
+            r.get("relevance", 0)
+            + (SCORE_TITLE_MATCH_BONUS if r.get("title_match") else 0),
             r.get("path", ""),
         ),
         reverse=True,
@@ -292,7 +370,9 @@ def merge_and_rank_results_hybrid(
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
+                metadata.get("abstract", "")
+                if isinstance(metadata.get("abstract"), str)
+                else ""
             )
             tags = metadata.get("tags", [])
 
@@ -340,24 +420,32 @@ def merge_and_rank_results_hybrid(
         ),
         reverse=True,
     )
-    effective_min_non_rrf_score = min_non_rrf_score
+    effective_min_rrf_score = _compute_dynamic_rrf_threshold(
+        sorted_results,
+        base_threshold=min_rrf_score,
+    )
+    effective_min_non_rrf_score = _compute_dynamic_non_rrf_threshold(
+        sorted_results,
+        base_threshold=min_non_rrf_score,
+    )
     if query and min_non_rrf_score == NON_RRF_MIN_SCORE:
         effective_min_non_rrf_score = NON_RRF_MIN_SCORE + 1
     thresholded_results = [
         item
         for item in sorted_results
-        if (item["has_rrf"] and item["final_score"] >= min_rrf_score)
+        if (item["has_rrf"] and item["final_score"] >= effective_min_rrf_score)
         or (not item["has_rrf"] and item["final_score"] >= effective_min_non_rrf_score)
     ]
 
-    # Low-recall backfill: if thresholding leaves too few real retrieval hits,
-    # preserve a small amount of strong lexical/semantic evidence instead of
-    # returning an empty (or near-empty) hybrid result set.
+    # Low-recall backfill: if thresholding removes every retrieval hit,
+    # preserve a small amount of the strongest lexical/semantic evidence
+    # instead of returning an empty hybrid result set. Do not pad already
+    # useful result sets with extra semantic neighbors.
     has_retrieval_signal = any(
         item["fts_score"] > 0 or item["semantic_score"] > 0 for item in sorted_results
     )
     target_count = min(3, len(sorted_results), max_results)
-    if has_retrieval_signal and len(thresholded_results) < target_count:
+    if has_retrieval_signal and not thresholded_results:
         seen_paths = {
             str(item["data"].get("path", ""))
             for item in thresholded_results
