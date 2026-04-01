@@ -273,7 +273,7 @@ python3 -m venv .venv
 → 优先改用 `life-index write --data @first-entry.json`（该文件由 Agent 在安装流程中自动生成，非仓库自带；手动使用时需自行创建 JSON 文件）
 
 **语义搜索不可用**  
-→ 运行 `.venv/bin/life-index health` 检查 fastembed 是否已安装
+→ 运行 `.venv/bin/life-index health` 检查 sentence-transformers 是否已安装
 
 **venv 损坏（Python 升级后、迁移系统后）**  
 → 删除 `.venv` 目录，重新执行 `python3 -m venv .venv && .venv/bin/pip install -e .`

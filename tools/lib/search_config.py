@@ -133,20 +133,21 @@ FILE_LOCK_TIMEOUT_REBUILD = 120  # 索引重建（批量操作需要更长时间
 # =============================================================================
 
 # 固定模型版本以确保嵌入一致性
-# 模型文件约 80MB，首次使用会自动下载
+# bge-m3 由 sentence-transformers 加载，首次使用会自动下载模型缓存
 EMBEDDING_MODEL: Dict[str, Any] = {
-    "name": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    "version": "2.0.0",  # 模型版本标识（递增触发自动重建）
-    "dimension": 384,  # 输出向量维度（与旧模型一致）
+    "name": "BAAI/bge-m3",
+    "version": "3.0.0",  # 模型版本标识（递增触发自动重建）
+    "dimension": 1024,  # bge-m3 dense embedding dimension
     # SHA-256 哈希值（模型配置文件的预期哈希，用于完整性校验）
     # 首次部署后填入
     "config_hash": "",
     # 模型元数据（用于追溯和日志记录）
     "metadata": {
-        "description": "多语言 MiniLM-L12-v2 模型，支持 50+ 语言的语义相似度计算",
-        "max_seq_length": 128,  # 该模型推荐最大序列长度
-        "recommended_for": "多语言日志检索、中英文语义搜索",
-        "supported_languages": "50+ languages including zh, en, ja, ko, fr, de, es, etc.",
+        "description": "BAAI bge-m3 多语言长上下文 embedding 模型，支持长日志检索",
+        "max_seq_length": 8192,
+        "recommended_for": "长日志检索、中英文语义搜索、跨语言检索",
+        "supported_languages": "100+ languages including zh, en, ja, ko, fr, de, es, etc.",
+        "backend": "sentence-transformers",
     },
 }
 

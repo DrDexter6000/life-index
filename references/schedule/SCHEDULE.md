@@ -64,8 +64,9 @@ Life Index 是一个**个人生活日志系统**：
 |---|---------|---------|---------|------|
 | 4 | **日报** | 每天 22:00 | 汇总今日日志，生成摘要 | 推送消息 |
 | 5 | **周报** | 每周日 22:10 | 总结本周轨迹，含洞察 | 推送消息 |
+| 6 | **向量索引增量更新** | 每周 03:15（高频写入可改每日） | 增量刷新语义/关键词索引 | 静默执行 |
 
-> **注**: v1.2 起，日志写入时同步更新索引（Write-Through），不再需要每日增量任务。
+> **注**: v1.2 起，日志写入时同步更新索引（Write-Through），因此**不需要把“每日增量索引”当作默认必配任务**。但如果用户会手工编辑日志、批量导入旧记录、通过外部脚本写入，或怀疑语义索引与文件系统不同步，仍可额外启用下方“向量索引增量更新”作为低成本同步任务。
 
 > **用户选择原则**: 不要假设所有用户都需要全部自动化。允许用户选择：不启用 / 只启用推荐项 / 启用日报周报 / 自定义组合。
 
@@ -327,6 +328,49 @@ openclaw cron add \
 
 ---
 
+### 可选任务 3: 向量索引增量更新 (life-index-incremental-index)
+
+> **适用场景**：仅在用户存在 CLI 标准 write-through 之外的写入路径时启用，例如手工编辑 Markdown、批量导入历史日志、外部脚本直接写文件，或想定期低成本补刷语义索引。
+
+**推荐频率**：默认每周一次；如果日志写入非常频繁且经常绕过标准 CLI，可改为每日一次。
+
+**OpenClaw CLI 配置**:
+```bash
+openclaw cron add \
+  --name "Life Index 向量索引增量更新" \
+  --cron "15 3 * * 0" \
+  --tz "[YOUR_TIMEZONE]" \
+  --session isolated \
+  --message "执行 Life Index 增量索引同步：运行 life-index index 增量刷新索引，使语义搜索与新增/变更日志保持同步。此任务静默执行，无需推送。"
+```
+
+**或 JSON 配置**:
+```json
+{
+  "id": "life-index-incremental-index",
+  "name": "Life Index 向量索引增量更新",
+  "enabled": true,
+  "schedule": {
+    "kind": "cron",
+    "expr": "15 3 * * 0",
+    "tz": "[YOUR_TIMEZONE]"
+  },
+  "sessionTarget": "isolated",
+  "payload": {
+    "kind": "agentTurn",
+    "message": "执行 Life Index 增量索引同步任务：运行 life-index index 增量刷新关键词/语义索引，补齐标准 write-through 之外产生的新增或变更日志。此任务静默执行，无需输出。",
+    "timeoutSeconds": 600
+  },
+  "delivery": {
+    "mode": "none"
+  }
+}
+```
+
+> **边界说明**：此任务不会替代每月 `life-index index --rebuild`。前者是低成本同步，后者是低频维护/修复。
+
+---
+
 ## Step 3: 自我系统分析
 
 在配置前，请先确认你的 OpenClaw 版本和能力。
@@ -473,6 +517,7 @@ cd ~/.openclaw/skills/life-index
 
 - 日报
 - 周报
+- 向量索引增量更新（仅当存在非标准写入路径时）
 - 自定义组合
 
 **方式一：通过 CLI 创建所选任务（推荐）**
@@ -485,6 +530,9 @@ openclaw cron add --name "Life Index 日报" --cron "0 22 * * *" ...
 
 # 可选：周报
 openclaw cron add --name "Life Index 周报" --cron "10 22 * * 0" ...
+
+# 可选：向量索引增量更新（默认每周；高频非标准写入可改每日）
+openclaw cron add --name "Life Index 向量索引增量更新" --cron "15 3 * * 0" ...
 
 # 推荐：月报
 openclaw cron add --name "Life Index 月报" --cron "30 18 28-31 * *" ...
@@ -510,13 +558,16 @@ openclaw cron add --name "Life Index 每月索引重建" --cron "30 3 1 * *" ...
 2. 周报（可选）：每周日 22:10，isolated session，announce 推送
    任务内容：查询本周日志，生成 500 tokens 周报
 
-3. 月报（推荐）：每月最后一天 18:30，isolated session，announce 推送
+3. 向量索引增量更新（可选）：每周日 03:15，isolated session，无推送
+   任务内容：运行 life-index index 增量刷新索引，用于同步手工编辑、批量导入或外部脚本产生的新增/变更日志
+
+4. 月报（推荐）：每月最后一天 18:30，isolated session，announce 推送
    任务内容：生成本月摘要文件，推送约 1000 tokens
 
-4. 年报（推荐）：12月31日 19:15，isolated session，announce 推送
+5. 年报（推荐）：12月31日 19:15，isolated session，announce 推送
    任务内容：生成本年度摘要文件，推送约 3000 tokens
 
-5. 每月重建（推荐维护）：每月1日 03:30，isolated session，无推送
+6. 每月重建（推荐维护）：每月1日 03:30，isolated session，无推送
    任务内容：运行 python -m tools.build_index --rebuild 全量重建索引，用于低频维护/修复
 
 时区：Asia/Shanghai
@@ -638,11 +689,12 @@ openclaw gateway restart
 |------|------------|---------|----------|---------|
 | 日报 | `0 22 * * *` | isolated | announce | `search_journals --date TODAY` |
 | 周报 | `10 22 * * 0` | isolated | announce | `search_journals --date-from 周一 --date-to 今天` |
+| 向量索引增量更新 | `15 3 * * 0` | isolated | none | `life-index index` |
 | 月报 | `30 18 28-31 * *` | isolated | announce | `generate_abstract --month YYYY-MM` |
 | 年报 | `15 19 31 12 *` | isolated | announce | `generate_abstract --year YYYY` |
 | 每月重建 | `30 3 1 * *` | isolated | none | `build_index.py --rebuild` |
 
-> **注**: v1.2 起，日志写入时同步更新索引（Write-Through），不再需要每日增量任务。
+> **注**: v1.2 起，日志写入时同步更新索引（Write-Through），因此向量索引增量更新属于**可选补偿型任务**，而不是默认必配项；默认维护任务仍是低频的每月全量重建。
 
 ---
 

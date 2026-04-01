@@ -31,7 +31,11 @@ class TestHealthCheck:
         monkeypatch.setattr("tools.__main__.JOURNALS_DIR", journals_dir)
         monkeypatch.setattr("tools.__main__.get_model_cache_dir", lambda: cache_dir)
         monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
-        monkeypatch.setitem(sys.modules, "fastembed", types.SimpleNamespace(__version__="test"))
+        monkeypatch.setitem(
+            sys.modules,
+            "sentence_transformers",
+            types.SimpleNamespace(__version__="test"),
+        )
 
         health_check()
 
