@@ -46,7 +46,7 @@
 
 ```bash
 # Python 3.11+ (核心运行环境)
-pip install -e .  # 已包含语义搜索依赖（fastembed）
+pip install -e .  # 已包含语义搜索依赖（sentence-transformers）
 ```
 
 ### 核心工具命令

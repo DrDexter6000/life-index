@@ -4,19 +4,16 @@ Life Index - Semantic Search Module
 RAG 语义检索模块（基于 sqlite-vec）
 
 特性:
-- 本地嵌入模型（多语言 MiniLM，~420MB）
+- 本地嵌入模型（bge-m3）
 - 向量相似度搜索 + 时间衰减排序
-- 使用 fastembed (ONNX Runtime) 进行推理
+- 使用共享 embedding backend 进行推理
 """
 
-import sqlite3
-import json
 import hashlib
+import json
+import sqlite3
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from fastembed import TextEmbedding
+from typing import Any, Dict, Optional, Tuple
 
 # 导入配置（使用相对导入）
 from .config import (
@@ -26,6 +23,7 @@ from .config import (
     get_model_cache_dir,
 )
 from .frontmatter import parse_frontmatter
+from .embedding_backends import SharedEmbeddingModel as EmbeddingModel
 from .path_contract import build_journal_path_fields
 
 # 索引存储目录
@@ -36,54 +34,6 @@ CACHE_DIR = get_model_cache_dir()  # 跨平台缓存目录（与 vector_index_si
 # 嵌入模型配置（从 config.py 读取）
 EMBEDDING_MODEL = EMBEDDING_MODEL_CONFIG["name"]
 EMBEDDING_DIM = EMBEDDING_MODEL_CONFIG["dimension"]
-
-
-class EmbeddingModel:
-    """嵌入模型管理器（单例模式）"""
-
-    _instance: Optional["EmbeddingModel"] = None
-    _model: Optional["TextEmbedding"] = None
-
-    def __new__(cls) -> "EmbeddingModel":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def load(self) -> bool:
-        """加载嵌入模型，返回是否成功"""
-        if self._model is not None:
-            return True
-
-        try:
-            from fastembed import TextEmbedding
-
-            print(f"Loading embedding model: {EMBEDDING_MODEL}...")
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-            self._model = TextEmbedding(EMBEDDING_MODEL, cache_dir=str(CACHE_DIR))
-            print("Model loaded successfully.")
-            return True
-
-        except Exception as e:
-            print(f"Warning: Failed to load embedding model: {e}")
-            return False
-
-    def encode(self, texts: List[str]) -> List[List[float]]:
-        """编码文本为向量"""
-        if not self.load():
-            return []
-
-        if self._model is None:
-            return []
-
-        try:
-            # fastembed 返回 generator，需要转换为 list
-            embeddings = list(self._model.embed(texts))
-            # Convert numpy arrays to lists
-            return [list(e) for e in embeddings]
-        except Exception as e:
-            print(f"Encoding error: {e}")
-            return []
 
 
 def get_model() -> EmbeddingModel:
@@ -212,7 +162,7 @@ def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
         if metadata.get("title"):
             text_parts.append(metadata["title"])
 
-        text_parts.append(body[:1000])  # 限制正文长度，避免过长
+        text_parts.append(body)
 
         if metadata.get("tags"):
             tags = metadata["tags"]
@@ -337,11 +287,10 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
             except Exception:
                 pass
             files_to_remove = set()
-            # 重新收集所有文件
-            files_to_process = []
-            for action, rel_path, text, date_str, file_hash in files_to_process:
-                if action in ("add", "update"):
-                    files_to_process.append(("add", rel_path, text, date_str, file_hash))
+            files_to_process = [
+                ("add", rel_path, text, date_str, file_hash)
+                for _, rel_path, text, date_str, file_hash in files_to_process
+            ]
             result["removed"] = len(indexed_files)
 
         # 批量处理（每批 10 个，避免内存问题）

@@ -3,7 +3,7 @@
 Unit tests for tools/lib/semantic_search.py
 
 Tests cover:
-- EmbeddingModel singleton pattern
+- Shared EmbeddingModel singleton pattern
 - Model loading and encoding
 - SQLite extension loading
 - Vector database initialization
@@ -86,11 +86,11 @@ class TestEmbeddingModelLoad:
         EmbeddingModel._instance = None
         EmbeddingModel._model = None
 
-        mock_text_embedding = MagicMock()
+        mock_sentence_transformer = MagicMock()
 
         with patch.dict(
             "sys.modules",
-            {"fastembed": MagicMock(TextEmbedding=mock_text_embedding)},
+            {"sentence_transformers": MagicMock(SentenceTransformer=mock_sentence_transformer)},
         ):
             model = EmbeddingModel()
             model.load()
@@ -106,7 +106,7 @@ class TestEmbeddingModelLoad:
         EmbeddingModel._instance = None
         EmbeddingModel._model = None
 
-        with patch.dict("sys.modules", {"fastembed": None}):
+        with patch.dict("sys.modules", {"sentence_transformers": None}):
             model = EmbeddingModel()
             result = model.load()
 
@@ -120,10 +120,10 @@ class TestEmbeddingModelLoad:
         EmbeddingModel._instance = None
         EmbeddingModel._model = None
 
-        mock_fe = MagicMock()
-        mock_fe.TextEmbedding.side_effect = Exception("Model load failed")
+        mock_st = MagicMock()
+        mock_st.SentenceTransformer.side_effect = Exception("Model load failed")
 
-        with patch.dict("sys.modules", {"fastembed": mock_fe}):
+        with patch.dict("sys.modules", {"sentence_transformers": mock_st}):
             model = EmbeddingModel()
             result = model.load()
 
@@ -150,17 +150,17 @@ class TestEmbeddingModelEncode:
     def test_encode_success(self):
         """Test successful encoding"""
         from tools.lib.semantic_search import EmbeddingModel
-        import numpy as np
 
         # Reset singleton
         EmbeddingModel._instance = None
         EmbeddingModel._model = MagicMock()
-        EmbeddingModel._model.encode.return_value = np.array([[0.1, 0.2, 0.3]])
+        EmbeddingModel._backend = "sentence-transformers"
+        EmbeddingModel._model.encode.return_value = [[3.0, 4.0]]
 
         model = EmbeddingModel()
         result = model.encode(["test text"])
 
-        assert isinstance(result, list)
+        assert result == [[0.6, 0.8]]
 
     def test_encode_exception(self):
         """Test encode handles exceptions"""
@@ -215,9 +215,7 @@ class TestLoadSqliteVecExtension:
         mock_conn = MagicMock()
 
         with patch("platform.system", return_value="Windows"):
-            with patch.object(
-                mock_conn, "load_extension", side_effect=Exception("Not found")
-            ):
+            with patch.object(mock_conn, "load_extension", side_effect=Exception("Not found")):
                 result = _load_sqlite_vec_extension(mock_conn)
 
         # Should try multiple paths and eventually fail
@@ -243,9 +241,7 @@ class TestLoadSqliteVecExtension:
         mock_conn = MagicMock()
 
         with patch("platform.system", return_value="Linux"):
-            with patch.object(
-                mock_conn, "load_extension", side_effect=Exception("Not found")
-            ):
+            with patch.object(mock_conn, "load_extension", side_effect=Exception("Not found")):
                 _load_sqlite_vec_extension(mock_conn)
 
         # Should try multiple library names
@@ -321,9 +317,7 @@ class TestInitVecDb:
         """Test successful vector database initialization"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch(
-            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True
-        ):
+        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
@@ -338,9 +332,7 @@ class TestInitVecDb:
         """Test init when extension loading fails"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch(
-            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=False
-        ):
+        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=False):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_connect.return_value = mock_conn
@@ -353,9 +345,7 @@ class TestInitVecDb:
         """Test that init_vec_db creates INDEX_DIR if needed"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch(
-            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True
-        ):
+        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
@@ -372,9 +362,7 @@ class TestInitVecDb:
         """Test when table creation fails"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch(
-            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True
-        ):
+        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
@@ -391,9 +379,7 @@ class TestInitVecDb:
         """Test that init_vec_db returns connection on success"""
         from tools.lib.semantic_search import init_vec_db
 
-        with patch(
-            "tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True
-        ):
+        with patch("tools.lib.semantic_search._load_sqlite_vec_extension", return_value=True):
             with patch("sqlite3.connect") as mock_connect:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
@@ -556,9 +542,7 @@ Body content.
 """
 
         with patch("pathlib.Path.read_text", return_value=content):
-            with patch(
-                "pathlib.Path.relative_to", side_effect=ValueError("different drive")
-            ):
+            with patch("pathlib.Path.relative_to", side_effect=ValueError("different drive")):
                 result = parse_journal_for_vec(Path("/test/journal.md"))
 
         assert result is not None
@@ -763,9 +747,7 @@ Body content."""
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
                 # Return existing indexed file
-                mock_cursor.fetchall.return_value = [
-                    ("Journals/2026/03/test.md", "abc123")
-                ]
+                mock_cursor.fetchall.return_value = [("Journals/2026/03/test.md", "abc123")]
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
@@ -864,9 +846,7 @@ Body content."""
             with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
                 mock_conn = MagicMock()
                 mock_cursor = MagicMock()
-                mock_cursor.fetchall.return_value = [
-                    ("Journals/2026/03/gone.md", "abc123")
-                ]
+                mock_cursor.fetchall.return_value = [("Journals/2026/03/gone.md", "abc123")]
                 mock_cursor.execute.side_effect = [None, Exception("Delete failed")]
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn

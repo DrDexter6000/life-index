@@ -121,7 +121,7 @@ IF 重建失败:
 
 ### Step 4: 向量全量更新
 
-**前提条件**：已安装 `fastembed`
+**前提条件**：已安装 `sentence-transformers`
 
 **命令**：
 ```bash
@@ -134,8 +134,8 @@ python -m tools.build_index --rebuild
 
 **跳过条件**：
 ```
-IF fastembed 未安装:
-  → 记录 "向量索引跳过：未安装 fastembed"
+IF sentence-transformers 未安装:
+→ 记录 "向量索引跳过：未安装 sentence-transformers"
   → 继续执行 Step 5
 ```
 

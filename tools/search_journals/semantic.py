@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Tuple
 # 导入配置 (relative imports from tools/lib)
 from ..lib.config import USER_DATA_DIR
 from ..lib.config import JOURNALS_DIR
+from ..lib.config import EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG
+from ..lib.embedding_backends import get_backend_name
 from ..lib.path_contract import merge_journal_path_fields
 from ..lib.timing import Timer
 from ..lib.search_constants import (
@@ -27,11 +29,19 @@ SEMANTIC_MISSING_INDEX_NOTE = "向量索引未建立，请运行 life-index inde
 
 def get_semantic_runtime_status() -> Dict[str, str | bool]:
     """Return whether semantic search can run in the current environment."""
-    if importlib.util.find_spec("fastembed") is None:
+    backend = get_backend_name(EMBEDDING_MODEL_CONFIG)
+    if backend != "sentence-transformers":
         return {
             "available": False,
-            "reason": "fastembed dependency is not installed",
-            "note": "fastembed 未安装，当前已降级为关键词搜索。",
+            "reason": f"unsupported embedding backend: {backend}",
+            "note": f"不支持的 embedding backend：{backend}。",
+        }
+
+    if importlib.util.find_spec("sentence_transformers") is None:
+        return {
+            "available": False,
+            "reason": "sentence-transformers dependency is not installed",
+            "note": "sentence-transformers 未安装，当前已降级为关键词搜索。",
         }
 
     if not SEMANTIC_INDEX_PATH.exists():
