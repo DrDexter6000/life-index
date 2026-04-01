@@ -141,7 +141,7 @@ def build_all(
                         else:
                             logger.info(
                                 "  ⚠ Embedding model not available. "
-                                "Install: pip install fastembed"
+                                "Install: pip install sentence-transformers"
                             )
                     except (RuntimeError, IOError, OSError) as e:
                         logger.error(f"  ✗ Vector error: {e}")
@@ -191,7 +191,9 @@ def show_stats() -> None:
             logger.info("  Exists: Yes")
             logger.info(f"  Vectors: {vec_stats['total_vectors']}")
             logger.info(f"  Size: {vec_stats['db_size_mb']} MB")
-            logger.info(f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}")
+            logger.info(
+                f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}"
+            )
         else:
             # sqlite-vec exists but empty, try simple index
             raise ImportError("sqlite-vec empty, trying simple index")
@@ -207,7 +209,7 @@ def show_stats() -> None:
             logger.info(f"  Size: {simple_stats['index_size_mb']} MB")
         except (ImportError, RuntimeError):
             logger.info("  Status: Not available")
-            logger.info("  Note: Install fastembed for semantic search")
+            logger.info("  Note: Install sentence-transformers for semantic search")
 
     logger.info("\n💾 Cache Directory:")
     cache_dir = get_model_cache_dir()

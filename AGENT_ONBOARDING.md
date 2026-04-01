@@ -230,7 +230,7 @@ python3 -m venv .venv
 
 **Success Criteria**:
 - Installation completes with "Successfully installed life-index"
-- Dependencies installed (pyyaml, fastembed, numpy)
+- Dependencies installed (pyyaml, sentence-transformers, numpy)
 - No red error messages
 
 **Failure Handling**:
@@ -314,7 +314,7 @@ After the required verification flow is complete, an **optional customization st
 
 **Acceptable Warnings**:
 - `virtual_env: "warning"` — Expected if running via full path
-- `fastembed: "warning"` — Optional; search works without semantic features
+- `sentence_transformers: "warning"` — Optional; keyword search remains available when semantic dependencies are unavailable
 
 **Failure Handling**:
 - If `status: "unhealthy"`: Capture all issues and report to user
