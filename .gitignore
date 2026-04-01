@@ -78,6 +78,7 @@ docs/archive/
 
 # ----- OpenCode 工具文件 -----
 .opencode/
+.claude/
 
 # ----- Windows 下载标记 -----
 *.Zone.Identifier
