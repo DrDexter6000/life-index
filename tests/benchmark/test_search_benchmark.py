@@ -346,7 +346,7 @@ class TestSemanticPipelineBenchmark:
         mock_status.return_value = {
             "available": False,
             "reason": "model_not_loaded",
-            "note": "fastembed not available",
+            "note": "sentence-transformers not available",
         }
         # Even though unavailable, the Mock isinstance check lets it through
         mock_search.return_value = ([], {"semantic_time_ms": 0.0})
@@ -464,7 +464,7 @@ class TestHierarchicalSearchBenchmark:
             [],  # no semantic results
             {},
             False,
-            "fastembed not available",
+            "sentence-transformers not available",
         )
 
         benchmark(hierarchical_search, query="benchmark", level=3, semantic=False)

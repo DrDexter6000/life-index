@@ -356,8 +356,8 @@ class TestSemanticSearchDegradation:
         assert "semantic_note" in result
         assert "life-index index" in result["semantic_note"]
 
-    def test_search_degrades_when_fastembed_not_installed(self):
-        """Search should degrade when fastembed is not installed."""
+    def test_search_degrades_when_sentence_transformers_not_installed(self):
+        """Search should degrade when sentence-transformers is not installed."""
         from tools.search_journals.core import hierarchical_search
 
         with patch(
@@ -380,8 +380,8 @@ class TestSemanticSearchDegradation:
                         ) as mock_status:
                             mock_status.return_value = {
                                 "available": False,
-                                "reason": "fastembed dependency is not installed",
-                                "note": "fastembed 未安装，当前已降级为关键词搜索。",
+                                "reason": "sentence-transformers dependency is not installed",
+                                "note": "sentence-transformers 未安装，当前已降级为关键词搜索。",
                             }
 
                             result = hierarchical_search(query="test", level=3)
