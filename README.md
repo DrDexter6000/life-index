@@ -168,7 +168,7 @@ Toto, this one is for you.
 https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 要求：
-1. 先刷新并阅读最新 authority files，再开始执行：先刷新 `bootstrap-manifest.json`，再按其中 `required_authority_docs` 刷新并阅读 `AGENT_ONBOARDING.md`、`AGENT_ONBOARDING_WEB.md`、`SKILL.md`、`docs/API.md`、`docs/PRODUCT_BOUNDARY.md`、`tools/lib/AGENTS.md`、`docs/UPGRADE.md`、`README.md`
+1. 先刷新并阅读最新 authority files，再开始执行：先刷新 `bootstrap-manifest.json`，再按其中 `required_authority_docs` 刷新并阅读 `AGENT_ONBOARDING.md`、`SKILL.md`、`docs/API.md`、`docs/ARCHITECTURE.md`、`tools/lib/AGENTS.md`、`README.md`
 2. 如果本地已存在 canonical checkout，必须先同步 checkout 并重装到 `.venv`，再做 route 判断；不要因为文件存在或 `health` 正常就跳过同步
 3. route 判断必须发生在 authority refresh + checkout sync 之后，再决定 fresh install、upgrade 或 repair
 4. 所有 Python/CLI 命令都必须使用虚拟环境路径
@@ -177,35 +177,7 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 ```
 
-## 普通用户（Web GUI 可选版）
-
-**适用人群** —— 想让 Agent 不仅完成安装，还顺手把本地浏览器界面也装好、验好的人。
-
-> 如果你的 Agent 平台已经有自己的技能安装目录或 canonical checkout，请优先复用它，避免生成第二份重复 checkout。
-
-**复制给你的 Agent** —— 把下面这段话直接发给你的 Agent（OpenClaw、Claude Desktop、Cursor 等均可）：
-
-```text
-请阅读并严格按照这个仓库里的 `AGENT_ONBOARDING_WEB.md` 完成 Life Index（含可选 Web GUI）的安装、初始化、验证与本地 Web GUI 验证：
-https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING_WEB.md
-
-要求：
-1. 先刷新并阅读最新 authority files，再开始执行：先刷新 `bootstrap-manifest.json`，再按其中 `required_authority_docs` 刷新并阅读 `AGENT_ONBOARDING_WEB.md`、`AGENT_ONBOARDING.md`、`SKILL.md`、`docs/API.md`、`docs/PRODUCT_BOUNDARY.md`、`tools/lib/AGENTS.md`、`docs/UPGRADE.md`、`README.md`
-2. 如果本地已存在 canonical checkout，必须先同步 checkout 并重装到 `.venv`，再做 route 判断；不要因为文件存在或 `health` 正常就跳过同步
-3. route 判断必须发生在 authority refresh + checkout sync 之后，再决定 fresh install、upgrade、add-web 或 repair
-4. 所有 Python/CLI 命令都必须使用虚拟环境路径
-5. 如果任一步失败，立即停止并报告精确错误
-6. 最终请使用中文按文档要求向我汇报结果，并告诉我本地 Web GUI 访问地址
-7. 必须告诉我 Web GUI 在任务结束时是否仍然保持运行；如果没有继续运行，必须同时告诉我如何手动启动和停止
-
-```
-
-> **说明**：现在这两份 onboarding 文档都会先刷新 `bootstrap-manifest.json`，再按 manifest 刷新 authority files，然后同步 canonical checkout，最后才判断应走 fresh install、upgrade、补装 Web GUI，还是 repair 路径；普通用户不需要先自己判断。如果你的 Agent 平台已经管理了 canonical checkout，也会优先复用它，但复用前必须先同步。
-
-### Web GUI 常用一句话指令
-
-- 启动：**启动 Life Index Web GUI，确保可访问，告诉我地址**
-- 停止：**停止 Life Index Web GUI，并确认对应端口已释放**
+> **说明**：当前仓库以 CLI Core 为主。旧版本地 Web GUI 已退出 active onboarding / authority chain；如需历史材料，仅作为 archive 参考，不应再作为当前安装主路径。
 
 <details>
 <summary>🔧 开发者安装（点击展开）</summary>
@@ -235,18 +207,17 @@ python3 -m venv .venv
 | 搜索日志（关键词+语义） | `life-index search --query "关键词"` |
 | 仅关键词搜索 | `life-index search --query "关键词" --no-semantic` |
 | 备份数据 | `life-index backup --dest <backup-dir>` |
-| 启动 Web GUI | `life-index serve` |
 | 开发者调用 | `python -m tools.search_journals --query "关键词"` |
 | 运行单元测试 | `python -m pytest tests/unit/ -v` |
 
 > **提示**: 开发者可以先 `source .venv/bin/activate`，之后所有命令无需 `.venv/bin/` 前缀。
 
-> **安全调试提示**：手工 Web GUI 验收 / 调试时，优先使用隔离沙盒工具，而不是直接操作真实用户目录：
+> **安全调试提示**：手工调试 / 验收时，优先使用隔离沙盒工具，而不是直接操作真实用户目录：
 >
-> - `python -m tools.dev.run_with_temp_data_dir --for-web`
-> - `python -m tools.dev.run_with_temp_data_dir --for-web --seed`
+> - `python -m tools.dev.run_with_temp_data_dir`
+> - `python -m tools.dev.run_with_temp_data_dir --seed`
 
-> 其中 `--for-web --seed` 属于复制真实数据后的只读仿真验收，不会回写真实用户目录。
+> 其中 `--seed` 属于复制真实数据后的只读仿真验收，不会回写真实用户目录。
 >
 > 结构化输出字段契约见：`docs/API.md` → `dev helper: run_with_temp_data_dir`
 
@@ -279,7 +250,7 @@ python3 -m venv .venv
 → 删除 `.venv` 目录，重新执行 `python3 -m venv .venv && .venv/bin/pip install -e .`
 
 **升级到新版本**  
-→ 请参考 `docs/UPGRADE.md`（包含版本语义与兼容性承诺）
+→ 先同步 canonical checkout，再按 `AGENT_ONBOARDING.md` 的 freshness / sync / repair 规则执行
 
 **安装健康检查**  
 → 运行 `.venv/bin/life-index health` 查看所有检查项的状态
@@ -288,25 +259,6 @@ python3 -m venv .venv
 → Windows: 以管理员身份运行终端 | Linux/macOS: `chmod -R 755 ~/Documents/Life-Index`
 
 </details>
-
-## 🌐 可选的本地 Web GUI
-
-如果你更喜欢在浏览器里翻看、搜索、书写与修改自己的记录，v1.4.0 开始，Life Index 也提供一个**可选的本地 Web GUI**。
-
-它不是另一套系统，也不是取代 Agent 的第二产品线——只是为同一份本地人生档案，加上一层更直观的浏览器壳层。
-
-当前已包含：
-- dashboard（总览）
-- search（检索）
-- write（写日志）
-- journal（阅读）
-- edit（编辑）
-
-如果你想走这条路径，请直接使用上面的 **Web GUI 可选版** Agent prompt。
-
-当前 Web GUI 文档主入口：[`docs/web-gui/README.md`](./docs/web-gui/README.md)
-
----
 
 <a id="技术框架"></a>
 
@@ -443,9 +395,6 @@ Life Index 采用「本地优先」和「数据与程序分离」策略：
 | **[AGENTS.md](./AGENTS.md)** | AI 编码代理上下文 |
 | **[API.md](./docs/API.md)** | 工具参数和返回值 |
 | **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** | 架构设计与关键决策 |
-| **[CHANGELOG.md](./docs/CHANGELOG.md)** | 版本演进 |
-| **[UPGRADE.md](./docs/UPGRADE.md)** | 版本升级与兼容性承诺 |
-| **[PRODUCT_BOUNDARY.md](./docs/PRODUCT_BOUNDARY.md)** | 产品边界与执行优先级 |
 | **[SCHEDULE.md](./references/schedule/SCHEDULE.md)** | 定时任务配置 |
 
 ---

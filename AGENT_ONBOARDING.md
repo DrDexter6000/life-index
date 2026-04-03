@@ -2,8 +2,8 @@
 
 > **Document Purpose**: Step-by-step operational instructions for AI agents installing Life Index on behalf of users.
 > **Audience**: External AI agents (not humans)
-> **Scope**: Complete installation, initialization, and first-use verification
-> **SSOT References**: `SKILL.md`, `docs/API.md`, `docs/UPGRADE.md`
+> **Scope**: CLI installation, initialization, repair, and first-use verification
+> **SSOT References**: `bootstrap-manifest.json`, `SKILL.md`, `docs/API.md`, `docs/ARCHITECTURE.md`
 
 ---
 
@@ -12,8 +12,6 @@
 Install and initialize Life Index on the user's machine, verify the installation is functional, and complete the first write/search cycle to confirm end-to-end operation.
 
 This document is now a **smart entrypoint** rather than a fresh-install-only script. Your first job is to detect whether the machine is in a fresh install state, an upgrade state, or a partial/broken state.
-
-If the user explicitly wants the optional local browser interface (Web GUI), use `AGENT_ONBOARDING_WEB.md` as the primary operational guide instead of extending this base onboarding flow ad hoc.
 
 You are acting on behalf of a user. Your job is to execute the installation workflow safely, verify each stage, and report the result back clearly.
 
@@ -37,12 +35,10 @@ At minimum, the refreshed authority set must include:
 
 - `bootstrap-manifest.json`
 - `AGENT_ONBOARDING.md`
-- `AGENT_ONBOARDING_WEB.md`
 - `SKILL.md`
 - `docs/API.md`
-- `docs/PRODUCT_BOUNDARY.md`
+- `docs/ARCHITECTURE.md`
 - `tools/lib/AGENTS.md`
-- `docs/UPGRADE.md`
 - `README.md`
 
 You must treat local copies of these files as potentially stale.
@@ -121,7 +117,14 @@ Choose **Upgrade** if any of the following are true:
 - a canonical checkout exists and has just been successfully synced
 - an existing install was found and reinstalled after sync
 
-If Upgrade is selected, stop following this onboarding flow and switch to `docs/UPGRADE.md` as the primary operational guide.
+If Upgrade is selected, continue using this document as the operational guide.
+
+Upgrade handling rules:
+
+1. treat the existing checkout and user data as the baseline to preserve
+2. do not create a parallel clone if a canonical checkout already exists
+3. sync checkout → reinstall into `.venv` → rerun verification in this document
+4. do not claim success until freshness and health both pass
 
 #### Route C — Repair / Ambiguous State
 
@@ -134,7 +137,7 @@ Choose **Repair / Ambiguous** if signals conflict, for example:
 If Repair / Ambiguous is selected:
 
 1. do **not** pretend this is a clean fresh install
-2. use `docs/UPGRADE.md` as the repair baseline
+2. use this document's sync / reinstall / verification flow as the repair baseline
 3. if the state is still unclear after basic inspection, ask the user before doing destructive cleanup
 
 ---
@@ -694,4 +697,4 @@ Report back to the user using this exact structure:
 
 **Document Version**: 1.1
 **Last Updated**: 2026-03-26
-**Authority Chain**: `bootstrap-manifest.json` → `AGENT_ONBOARDING.md` / `AGENT_ONBOARDING_WEB.md` / `docs/UPGRADE.md` / `README.md` → domain SSOT docs such as `SKILL.md`, `docs/API.md`, `docs/PRODUCT_BOUNDARY.md`, `tools/lib/AGENTS.md`
+**Authority Chain**: `bootstrap-manifest.json` → `AGENT_ONBOARDING.md` / `README.md` → domain SSOT docs such as `SKILL.md`, `docs/API.md`, `docs/ARCHITECTURE.md`, `tools/lib/AGENTS.md`

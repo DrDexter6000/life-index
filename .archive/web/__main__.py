@@ -1,4 +1,4 @@
-"""CLI entry point for `life-index serve`."""
+"""Archived local web entry point kept for historical reference only."""
 
 import argparse
 import json
@@ -26,7 +26,7 @@ def check_deps() -> tuple[bool, Optional[dict[str, Any]]]:
     except ImportError:
         return False, create_error_response(
             ErrorCode.WEB_DEPS_MISSING,
-            "Web GUI dependencies not installed. Run: pip install life-index[web]",
+            "Archived web dependencies not installed.",
         )
 
 
@@ -43,7 +43,7 @@ def main() -> None:
 
     runtime = get_runtime_info()
     print(
-        "Life Index Web GUI starting: "
+        "Archived Life Index web shell starting: "
         f"http://{args.host}:{args.port} | "
         f"user_data_dir={runtime['user_data_dir']} | "
         f"journals_dir={runtime['journals_dir']} | "

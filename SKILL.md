@@ -73,35 +73,6 @@ triggers:
 - 完成 `index` 初始化后再次运行 `health`，预期应恢复为健康状态
 - Windows 首次 `write --data '{...}'` 如遇 JSON 转义麻烦，优先使用 `--data @file.json`
 
-### Web GUI Quick Operations
-
-仅当 Web GUI 依赖已安装时适用。
-
-**默认信息**：
-- 默认地址：`http://127.0.0.1:8765`
-- 默认健康检查：`http://127.0.0.1:8765/api/health`
-- 默认启动命令（Linux/macOS/WSL）：`.venv/bin/life-index serve --host 127.0.0.1 --port 8765`
-- 默认启动命令（Windows）：`.venv\Scripts\life-index serve --host 127.0.0.1 --port 8765`
-
-**高频用户意图**：
-- “给我 Life Index 的 Web GUI 地址”
-- “启动 Life Index Web GUI”
-- “停止 Life Index Web GUI”
-- “检查 Life Index Web GUI 是否正在运行”
-
-**响应优先级（很重要）**：
-1. 先检查默认地址的 `/api/health` 是否可达
-2. 若 `/api/health` 成功，再检查首页 `/` 是否可达
-3. 若两者都成功，直接报告地址：`http://127.0.0.1:8765`
-4. 若不可达，再说明 Web GUI 当前未运行，并提供启动方式
-5. 不要先做大范围目录搜索、配置考古或全仓库 grep，除非默认地址与默认启动方式都无法解释当前状态
-
-**简短控制指令（可直接建议给用户）**：
-- 启动：`启动 Life Index Web GUI，确保可访问，告诉我地址`
-- 停止：`停止 Life Index Web GUI，并确认对应端口已释放`
-
----
-
 ## Project Structure
 
 ```
@@ -115,7 +86,7 @@ life-index/                         # 技能根目录
 │   ├── build_index/               # 构建索引（FTS5 + 向量索引）
 │   ├── query_weather/             # 查询天气
 │   └── lib/                       # 共享库（SSOT）
-├── docs/                          # API.md, ARCHITECTURE.md, CHANGELOG.md
+├── docs/                          # API.md, ARCHITECTURE.md
 └── references/                    # WEATHER_FLOW.md, SCHEDULE.md
 ```
 
@@ -394,11 +365,8 @@ success: true, index_status: degraded
 |------|------|
 | [bootstrap-manifest.json](bootstrap-manifest.json) | authority / freshness 锚点；先刷新它，再按 `required_authority_docs` 获取当前权威文档 |
 | [AGENT_ONBOARDING.md](AGENT_ONBOARDING.md) | 基础安装、初始化、repair / route 判断入口 |
-| [AGENT_ONBOARDING_WEB.md](AGENT_ONBOARDING_WEB.md) | Web GUI 安装、add-web、Web 验证入口 |
-| [UPGRADE.md](docs/UPGRADE.md) | 升级 / 修复路径的权威操作说明 |
 | [API.md](docs/API.md) | 工具 API 接口、参数详情、错误码与恢复策略 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、核心原则、关键决策；**§1.5 定义人-Agent-CLI 三层信息流交互范式** |
-| [PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md) | 产品边界、三层模型、执行优先级与默认拒绝方向 |
 | [SCHEDULE.md](references/schedule/SCHEDULE.md) | 定时任务配置（日报/周报/月报） |
 | [WEATHER_FLOW.md](references/WEATHER_FLOW.md) | 天气处理详细流程与故障 Fallback |
 

@@ -168,7 +168,7 @@ Please read and follow `AGENT_ONBOARDING.md` in this repository to complete the 
 https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 Requirements:
-1. Read the full document before taking any action
+1. Refresh and read the current authority files first: `bootstrap-manifest.json`, then every path listed in `required_authority_docs`
 2. Start with the documented local-state detection step, then automatically follow the correct fresh-install, upgrade, or repair path
 3. Use the virtual environment path for all Python/CLI commands
 4. If any step fails, stop immediately and report the exact error
@@ -176,34 +176,7 @@ Requirements:
 
 ```
 
-## End Users (Optional Web GUI)
-
-**Who this is for** — Anyone who wants their Agent to install Life Index and also set up the local browser interface.
-
-> If your Agent platform already manages a canonical skill-install directory or checkout, prefer reusing it to avoid duplicate checkouts.
-
-**Copy this to your Agent** — Paste the prompt below into your Agent (OpenClaw, Claude Desktop, Cursor, etc.):
-
-```text
-Please read and follow `AGENT_ONBOARDING_WEB.md` in this repository to complete the full Life Index install, initialization, verification, and local Web GUI verification:
-https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING_WEB.md
-
-Requirements:
-1. Read the full document before taking any action
-2. Start with the documented local-state detection step, then automatically follow the correct fresh-install, upgrade, add-web, or repair path
-3. Use the virtual environment path for all Python/CLI commands
-4. If any step fails, stop immediately and report the exact error
-5. Report back in English using the format specified in the document, including the local Web GUI URL
-6. Tell me whether the Web GUI is still running when your task ends; if not, give me the exact commands to start and stop it manually
-
-```
-
-> **Note**: These onboarding documents now begin with local-state detection and will auto-route to the correct fresh-install, upgrade, add-web, or repair path. Ordinary users do not need to classify that manually first. If the host platform already manages a canonical checkout, the Agent should also prefer reusing it.
-
-### Quick Web GUI Prompts
-
-- Start: **Start Life Index Web GUI, make sure it is reachable, and tell me the address**
-- Stop: **Stop Life Index Web GUI and confirm the port has been released**
+> **Note**: This repository now treats the CLI core as the active product surface. Older local Web GUI materials are historical reference only and are no longer part of the active onboarding or authority chain.
 
 <details>
 <summary>🔧 Developer Setup (Click to expand)</summary>
@@ -265,7 +238,7 @@ python3 -m venv .venv
 → Delete the `.venv` directory, then re-run `python3 -m venv .venv && .venv/bin/pip install -e .`
 
 **Upgrading to a new version**  
-→ See `docs/UPGRADE.md` (covers version semantics and compatibility commitments)
+→ Sync the canonical checkout first, then follow the freshness / sync / repair rules in `AGENT_ONBOARDING.md`
 
 **Installation health check**  
 → Run `.venv/bin/life-index health` to view the status of all checks
@@ -274,23 +247,6 @@ python3 -m venv .venv
 → Windows: Run terminal as Administrator | Linux/macOS: `chmod -R 755 ~/Documents/Life-Index`
 
 </details>
-
-## 🌐 Optional Local Web GUI
-
-If you prefer to browse, search, write, and edit your records in a browser, Life Index also offers an **optional local Web GUI** starting from v1.4.0.
-
-It is not a separate product and it does not replace the Agent-first workflow — it is simply a more visual shell around the same local life archive.
-
-Current pages include:
-- dashboard
-- search
-- write
-- journal
-- edit
-
-If you want that path, use the **Optional Web GUI** Agent prompt above.
-
----
 
 <a id="under-the-hood"></a>
 
@@ -428,9 +384,6 @@ We deliberately don't do: ✕ Cloud sync · ✕ Rich text editing · ✕ Real-ti
 | **[AGENTS.md](./AGENTS.md)** | AI coding agent context |
 | **[API.md](./docs/API.md)** | Tool parameters and return values |
 | **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** | Architecture design and key decisions |
-| **[CHANGELOG.md](./docs/CHANGELOG.md)** | Version history |
-| **[UPGRADE.md](./docs/UPGRADE.md)** | Upgrade guide and compatibility commitments |
-| **[PRODUCT_BOUNDARY.md](./docs/PRODUCT_BOUNDARY.md)** | Product boundaries and execution priorities |
 | **[SCHEDULE.md](./references/schedule/SCHEDULE.md)** | Scheduled task configuration |
 
 ---
