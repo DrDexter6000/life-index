@@ -35,7 +35,9 @@ def build_index_filename(kind: str, value: str) -> str:
     return f"{prefix}{safe_value}.md"
 
 
-def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> List[Path]:
+def update_topic_index(
+    topic: Any, journal_path: Path, data: Dict[str, Any]
+) -> List[Path]:
     """更新主题索引文件 - 支持单个主题或主题列表"""
     if not topic:
         return []
@@ -77,7 +79,9 @@ def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> 
     return updated
 
 
-def update_project_index(project: str, journal_path: Path, data: Dict[str, Any]) -> Optional[Path]:
+def update_project_index(
+    project: str, journal_path: Path, data: Dict[str, Any]
+) -> Optional[Path]:
     """更新项目索引文件"""
     if not project:
         return None
@@ -105,7 +109,9 @@ def update_project_index(project: str, journal_path: Path, data: Dict[str, Any])
     return index_file
 
 
-def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]) -> List[Path]:
+def update_tag_indices(
+    tags: List[str], journal_path: Path, data: Dict[str, Any]
+) -> List[Path]:
     """更新标签索引文件"""
     updated = []
 
@@ -138,7 +144,9 @@ def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]
     return updated
 
 
-def update_monthly_abstract(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]:
+def update_monthly_abstract(
+    year: int, month: int, dry_run: bool = False
+) -> Dict[str, Any]:
     """
     更新月度摘要文件（调用 generate_abstract.py 工具）
 
@@ -196,7 +204,9 @@ def update_monthly_abstract(year: int, month: int, dry_run: bool = False) -> Dic
             except json.JSONDecodeError as e:
                 result["error"] = f"Invalid JSON output: {e}"
         else:
-            result["error"] = proc.stderr or f"Command failed with return code {proc.returncode}"
+            result["error"] = (
+                proc.stderr or f"Command failed with return code {proc.returncode}"
+            )
 
     except subprocess.TimeoutExpired:
         result["error"] = "Command timed out after 30 seconds"
@@ -220,39 +230,18 @@ def update_vector_index(journal_path: Path, data: Dict[str, Any]) -> bool:
     try:
         from ..lib.vector_index_simple import get_model, get_index
         from ..lib.config import USER_DATA_DIR
+        from ..lib.semantic_search import build_embedding_text
 
         model = get_model()
         if not model.load():
             return False
 
-        # 构建要嵌入的文本（与 semantic_search.py 的 parse_journal_for_vec 保持一致）
-        # 顺序：标题 + 正文前1000字 + 标签 + 主题
-        text_parts = []
-
-        title = data.get("title", "")
-        if title:
-            text_parts.append(title)
-
-        content = data.get("content", "")
-        if content:
-            # 限制正文长度，与 parse_journal_for_vec 保持一致
-            text_parts.append(content[:1000])
-
-        tags = data.get("tags", [])
-        if tags:
-            if isinstance(tags, list):
-                text_parts.extend(tags)
-            else:
-                text_parts.append(tags)
-
-        topic = data.get("topic")
-        if topic:
-            if isinstance(topic, list):
-                text_parts.extend(topic)
-            else:
-                text_parts.append(topic)
-
-        embed_text = " ".join(text_parts).strip()
+        embed_text = build_embedding_text(
+            title=data.get("title"),
+            body=data.get("content"),
+            tags=data.get("tags"),
+            topic=data.get("topic"),
+        ).strip()
         if not embed_text:
             return False
 

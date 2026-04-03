@@ -65,10 +65,13 @@ Life Index 是一个**个人生活日志系统**：
 | 4 | **日报** | 每天 22:00 | 汇总今日日志，生成摘要 | 推送消息 |
 | 5 | **周报** | 每周日 22:10 | 总结本周轨迹，含洞察 | 推送消息 |
 | 6 | **向量索引增量更新** | 每周 03:15（高频写入可改每日） | 增量刷新语义/关键词索引 | 静默执行 |
+| 7 | **实体图谱审阅** | 每月第一个周日 20:30 | 审阅 `new_entities_detected` 与 entity graph 草稿 | 推送消息 |
 
 > **注**: v1.2 起，日志写入时同步更新索引（Write-Through），因此**不需要把“每日增量索引”当作默认必配任务**。但如果用户会手工编辑日志、批量导入旧记录、通过外部脚本写入，或怀疑语义索引与文件系统不同步，仍可额外启用下方“向量索引增量更新”作为低成本同步任务。
 
 > **用户选择原则**: 不要假设所有用户都需要全部自动化。允许用户选择：不启用 / 只启用推荐项 / 启用日报周报 / 自定义组合。
+
+> **Phase 2 新增说明**: 如用户启用了 Entity Graph，建议增加“实体图谱审阅”任务，定期检查最近写入中出现的 `new_entities_detected`，决定是否正式纳入 `entity_graph.yaml`。
 
 ### 1.5 前置条件
 
@@ -690,9 +693,10 @@ openclaw gateway restart
 | 日报 | `0 22 * * *` | isolated | announce | `search_journals --date TODAY` |
 | 周报 | `10 22 * * 0` | isolated | announce | `search_journals --date-from 周一 --date-to 今天` |
 | 向量索引增量更新 | `15 3 * * 0` | isolated | none | `life-index index` |
+| 实体图谱审阅 | `30 20 1-7 * 0` | isolated | announce | 审阅 `new_entities_detected` + entity graph |
 | 月报 | `30 18 28-31 * *` | isolated | announce | `generate_abstract --month YYYY-MM` |
 | 年报 | `15 19 31 12 *` | isolated | announce | `generate_abstract --year YYYY` |
-| 每月重建 | `30 3 1 * *` | isolated | none | `build_index.py --rebuild` |
+| 每月重建 | `30 3 1 * *` | isolated | none | `life-index index --rebuild` |
 
 > **注**: v1.2 起，日志写入时同步更新索引（Write-Through），因此向量索引增量更新属于**可选补偿型任务**，而不是默认必配项；默认维护任务仍是低频的每月全量重建。
 

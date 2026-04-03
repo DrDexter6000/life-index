@@ -6,6 +6,7 @@ Life Index - Search Journals Tool - Ranking
 
 from typing import Any, Dict, List, Optional
 
+from ..lib.metadata_cache import get_backlinked_by, init_metadata_cache
 from .l2_metadata import _query_matches_tags, _query_matches_text
 from .semantic import enrich_semantic_result
 from ..lib.search_constants import (
@@ -125,6 +126,34 @@ def _hybrid_backfill_score(item: Dict[str, Any]) -> float:
     return final_score
 
 
+def _attach_relation_context(
+    data: Dict[str, Any], *, metadata_conn: Any | None = None
+) -> Dict[str, Any]:
+    """Attach related_entries and backlinked_by to final search result payload."""
+    enriched = data.copy()
+    metadata = enriched.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+        enriched["metadata"] = metadata
+
+    related_entries = metadata.get(
+        "related_entries", enriched.get("related_entries", [])
+    )
+    if not isinstance(related_entries, list):
+        related_entries = []
+
+    rel_path = enriched.get("rel_path")
+    backlinked_by: list[str] = []
+    if isinstance(rel_path, str) and rel_path and metadata_conn is not None:
+        backlinked_by = get_backlinked_by(metadata_conn, rel_path)
+
+    enriched["related_entries"] = related_entries
+    enriched["backlinked_by"] = backlinked_by
+    metadata.setdefault("related_entries", related_entries)
+    metadata["backlinked_by"] = backlinked_by
+    return enriched
+
+
 def reciprocal_rank_fusion(
     ranked_lists: List[List[str]], k: int = RRF_K
 ) -> Dict[str, float]:
@@ -238,11 +267,15 @@ def merge_and_rank_results(
 
     # 提取数据并添加排名信息
     merged = []
-    for rank, item in enumerate(sorted_results, 1):
-        data = item["data"].copy()
-        data["search_rank"] = rank
-        data["relevance_score"] = item["score"]
-        merged.append(data)
+    metadata_conn = init_metadata_cache()
+    try:
+        for rank, item in enumerate(sorted_results, 1):
+            data = _attach_relation_context(item["data"], metadata_conn=metadata_conn)
+            data["search_rank"] = rank
+            data["relevance_score"] = item["score"]
+            merged.append(data)
+    finally:
+        metadata_conn.close()
 
     return merged
 
@@ -467,12 +500,16 @@ def merge_and_rank_results_hybrid(
 
     # 提取数据并添加排名
     merged = []
-    for rank, item in enumerate(sorted_results, 1):
-        data = item["data"].copy()
-        data["search_rank"] = rank
-        data["relevance_score"] = item["final_score"]
-        data["fts_score"] = round(item["fts_score"], 2)
-        data["semantic_score"] = round(item["semantic_score"], 2)
-        merged.append(data)
+    metadata_conn = init_metadata_cache()
+    try:
+        for rank, item in enumerate(sorted_results, 1):
+            data = _attach_relation_context(item["data"], metadata_conn=metadata_conn)
+            data["search_rank"] = rank
+            data["relevance_score"] = item["final_score"]
+            data["fts_score"] = round(item["fts_score"], 2)
+            data["semantic_score"] = round(item["semantic_score"], 2)
+            merged.append(data)
+    finally:
+        metadata_conn.close()
 
     return merged

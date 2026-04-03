@@ -7,6 +7,70 @@ from tools.search_journals.ranking import (
 )
 from tools.lib.search_constants import FTS_MIN_RELEVANCE
 from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+from unittest.mock import MagicMock, patch
+
+
+def test_merge_and_rank_results_surfaces_related_entries_and_backlinked_by() -> None:
+    l2_results = [
+        {
+            "path": "doc.md",
+            "rel_path": "Journals/2026/03/doc.md",
+            "title": "Doc",
+            "metadata": {"related_entries": ["Journals/2026/03/other.md"]},
+        }
+    ]
+
+    merged = merge_and_rank_results([], l2_results, [], query="doc", min_score=0)
+
+    assert merged[0]["related_entries"] == ["Journals/2026/03/other.md"]
+    assert "backlinked_by" in merged[0]
+
+
+def test_merge_and_rank_results_hybrid_surfaces_related_entries_and_backlinked_by() -> (
+    None
+):
+    l2_results = [
+        {
+            "path": "doc.md",
+            "rel_path": "Journals/2026/03/doc.md",
+            "title": "Doc",
+            "metadata": {"related_entries": ["Journals/2026/03/other.md"]},
+        }
+    ]
+
+    merged = merge_and_rank_results_hybrid(
+        [], l2_results, [], [], query="doc", min_rrf_score=0, min_non_rrf_score=0
+    )
+
+    assert merged[0]["related_entries"] == ["Journals/2026/03/other.md"]
+    assert "backlinked_by" in merged[0]
+
+
+def test_merge_and_rank_results_reuses_single_metadata_cache_connection() -> None:
+    l2_results = [
+        {
+            "path": "doc-a.md",
+            "rel_path": "Journals/2026/03/doc-a.md",
+            "title": "Doc A",
+            "metadata": {},
+        },
+        {
+            "path": "doc-b.md",
+            "rel_path": "Journals/2026/03/doc-b.md",
+            "title": "Doc B",
+            "metadata": {},
+        },
+    ]
+
+    mock_conn = MagicMock()
+    with patch(
+        "tools.search_journals.ranking.init_metadata_cache", return_value=mock_conn
+    ) as mock_init:
+        with patch("tools.search_journals.ranking.get_backlinked_by", return_value=[]):
+            merge_and_rank_results([], l2_results, [], query="doc", min_score=0)
+
+    mock_init.assert_called_once()
+    mock_conn.close.assert_called_once()
 
 
 def test_merge_and_rank_results_filters_low_non_rrf_scores_and_caps_results() -> None:

@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "name": "confirm_journal",
+  "description": "应用写入后的确认更新，包括地点/天气修正与批准关联日志写回",
+  "version": "1.1.0",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "journal": {"type": "string"},
+      "location": {"type": "string"},
+      "weather": {"type": "string"},
+      "approve_related": {"type": "array", "items": {"type": "string"}},
+      "approve_related_id": {"type": "array", "items": {"type": "integer"}},
+      "reject_related": {
+        "type": "array",
+        "items": {"type": ["string", "integer"]}
+      },
+      "reject_related_id": {"type": "array", "items": {"type": "integer"}},
+      "candidate_context": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "candidate_id": {"type": "integer"},
+            "rel_path": {"type": "string"},
+            "title": {"type": "string"}
+          }
+        }
+      }
+    },
+    "required": ["journal"]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "success": {"type": "boolean"},
+      "confirm_status": {
+        "type": "string",
+        "enum": ["complete", "partial", "noop", "failed"]
+      },
+      "journal_path": {"type": "string"},
+      "applied_fields": {"type": "array", "items": {"type": "string"}},
+      "ignored_fields": {"type": "array", "items": {"type": "string"}},
+      "approved_related_entries": {"type": "array", "items": {"type": "string"}},
+      "requested_related_entries": {"type": "array", "items": {"type": "string"}},
+      "approved_candidate_ids": {"type": "array", "items": {"type": "integer"}},
+      "rejected_related_entries": {"type": "array", "items": {"type": "string"}},
+      "rejected_candidate_ids": {"type": "array", "items": {"type": "integer"}},
+      "approval_summary": {
+        "type": "object",
+        "properties": {
+          "approved": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "candidate_id": {"type": ["integer", "null"]},
+                "rel_path": {"type": "string"},
+                "title": {"type": "string"}
+              }
+            }
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "candidate_id": {"type": ["integer", "null"]},
+                "rel_path": {"type": "string"},
+                "title": {"type": "string"}
+              }
+            }
+          }
+        }
+      },
+      "relation_summary": {
+        "type": ["object", "null"],
+        "properties": {
+          "source_entry": {
+            "type": "object",
+            "properties": {
+              "rel_path": {"type": "string"},
+              "related_entries": {"type": "array", "items": {"type": "string"}},
+              "backlinked_by": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "approved_related_context": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rel_path": {"type": "string"},
+                "backlinked_by": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          }
+        }
+      },
+      "changes": {"type": "object"},
+      "error": {
+        "type": ["object", "null"],
+        "properties": {
+          "code": {"type": "string"},
+          "message": {"type": "string"},
+          "details": {"type": "object"},
+          "recovery_strategy": {"type": "string"},
+          "suggestion": {"type": "string"}
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "input": {
+        "journal": "Journals/2026/03/life-index_2026-03-10_001.md",
+        "location": "Beijing, China",
+        "weather": "Sunny 25°C",
+        "approve_related": ["Journals/2026/03/other.md"],
+        "approve_related_id": [1],
+        "reject_related_id": [2],
+        "candidate_context": [
+          {
+            "candidate_id": 1,
+            "rel_path": "Journals/2026/03/other.md",
+            "title": "Other"
+          },
+          {
+            "candidate_id": 2,
+            "rel_path": "Journals/2026/03/skip.md",
+            "title": "Skip"
+          }
+        ]
+      },
+      "output": {
+        "success": true,
+        "confirm_status": "complete",
+        "journal_path": "Journals/2026/03/life-index_2026-03-10_001.md",
+        "applied_fields": ["location", "weather", "related_entries"],
+        "ignored_fields": [],
+        "approved_related_entries": ["Journals/2026/03/other.md"],
+        "requested_related_entries": ["Journals/2026/03/other.md"],
+        "approved_candidate_ids": [1],
+        "rejected_related_entries": ["Journals/2026/03/skip.md"],
+        "rejected_candidate_ids": [2],
+        "approval_summary": {
+          "approved": [
+            {
+              "candidate_id": 1,
+              "rel_path": "Journals/2026/03/other.md",
+              "title": "Other"
+            }
+          ],
+          "rejected": [
+            {
+              "candidate_id": 2,
+              "rel_path": "Journals/2026/03/skip.md",
+              "title": "Skip"
+            }
+          ]
+        },
+        "relation_summary": {
+          "source_entry": {
+            "rel_path": "Journals/2026/03/life-index_2026-03-10_001.md",
+            "related_entries": ["Journals/2026/03/other.md"],
+            "backlinked_by": []
+          },
+          "approved_related_context": [
+            {
+              "rel_path": "Journals/2026/03/other.md",
+              "backlinked_by": ["Journals/2026/03/life-index_2026-03-10_001.md"]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": {
+        "journal": "Journals/2026/03/missing.md"
+      },
+      "output": {
+        "success": false,
+        "confirm_status": "failed",
+        "journal_path": "Journals/2026/03/missing.md",
+        "applied_fields": [],
+        "ignored_fields": [],
+        "approved_related_entries": [],
+        "requested_related_entries": [],
+        "approved_candidate_ids": [],
+        "rejected_related_entries": [],
+        "rejected_candidate_ids": [],
+        "approval_summary": {"approved": [], "rejected": []},
+        "relation_summary": null,
+        "error": {
+          "code": "E0500",
+          "message": "日志文件不存在：Journals/2026/03/missing.md",
+          "details": {"journal_path": "Journals/2026/03/missing.md"},
+          "recovery_strategy": "ask_user",
+          "suggestion": "请检查日志路径是否正确后重试"
+        }
+      }
+    }
+  ]
+}

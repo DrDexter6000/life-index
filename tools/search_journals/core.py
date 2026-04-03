@@ -12,8 +12,11 @@ v1.2: 双管道并行搜索架构
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..lib.entity_graph import load_entity_graph, resolve_entity
+from ..lib.entity_schema import EntityGraphValidationError
 from ..lib.search_constants import (
     SEMANTIC_TOP_K_DEFAULT,
     SEMANTIC_MIN_SIMILARITY,
@@ -38,6 +41,82 @@ try:
     logger = get_logger("search_journals")
 except ImportError:
     logger = logging.getLogger("search_journals")
+
+
+def expand_query_with_entity_graph(query: str) -> str:
+    # Read USER_DATA_DIR dynamically to support test isolation (fixture reloads paths module)
+    from ..lib.paths import USER_DATA_DIR as _current_data_dir
+
+    graph_path = _current_data_dir / "entity_graph.yaml"
+    try:
+        graph = load_entity_graph(graph_path)
+    except EntityGraphValidationError as exc:
+        logger.warning("Skipping entity graph expansion due to invalid graph: %s", exc)
+        return query
+    if not graph:
+        return query
+
+    whole_match = resolve_entity(query, graph)
+    if whole_match:
+        names = [whole_match["primary_name"], *whole_match.get("aliases", [])]
+        deduped: list[str] = []
+        for name in names:
+            if name not in deduped:
+                deduped.append(name)
+        return "(" + " OR ".join(deduped) + ")"
+
+    tokens = [token for token in query.split() if token.strip()]
+    expanded_tokens: list[str] = []
+
+    def expand_from_entity(entity: dict[str, Any]) -> str:
+        names = [entity["primary_name"], *entity.get("aliases", [])]
+        deduped: list[str] = []
+        for name in names:
+            if name not in deduped:
+                deduped.append(name)
+        return "(" + " OR ".join(deduped) + ")"
+
+    def expand_relationship_phrase(token: str) -> str | None:
+        if not token.endswith("的奶奶"):
+            return None
+
+        subject = token[: -len("的奶奶")].strip()
+        if not subject:
+            return None
+
+        source = resolve_entity(subject, graph)
+        if source is None:
+            return None
+
+        for relationship in source.get("relationships", []):
+            if relationship.get("relation") != "granddaughter_of":
+                continue
+            target = resolve_entity(relationship["target"], graph)
+            if target:
+                return expand_from_entity(target)
+        return None
+
+    for token in tokens:
+        relationship_expansion = expand_relationship_phrase(token)
+        if relationship_expansion:
+            expanded_tokens.append(relationship_expansion)
+            continue
+
+        matched_entity = resolve_entity(token, graph)
+        if matched_entity:
+            expanded_tokens.append(expand_from_entity(matched_entity))
+        else:
+            replacements = token
+            for entity in graph:
+                for alias in [entity["primary_name"], *entity.get("aliases", [])]:
+                    if alias in replacements:
+                        replacements = replacements.replace(
+                            alias, expand_from_entity(entity)
+                        )
+            expanded_tokens.append(replacements)
+
+    expanded = " ".join(expanded_tokens).strip()
+    return expanded or query
 
 
 def _search_level_1(
@@ -195,7 +274,14 @@ def hierarchical_search(
 
     if not semantic:
         result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
-        result["warnings"].append("semantic_disabled: 用户通过 --no-semantic 禁用语义搜索")
+        result["warnings"].append(
+            "semantic_disabled: 用户通过 --no-semantic 禁用语义搜索"
+        )
+
+    expanded_query = expand_query_with_entity_graph(query) if query else query
+    if expanded_query != query:
+        result["query_params"]["expanded_query"] = expanded_query
+    query = expanded_query
 
     start_time = time.time()
 
@@ -262,7 +348,9 @@ def hierarchical_search(
             l2_total_available,
             kw_perf,
         ) = future_keyword.result()
-        semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
+        semantic_results, sem_perf, semantic_available, semantic_note = (
+            future_semantic.result()
+        )
 
     # 填充结果
     result["l1_results"] = l1_results
@@ -297,7 +385,9 @@ def hierarchical_search(
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
+        result["merged_results"] = merge_and_rank_results(
+            l1_results, l2_results, l3_results, query
+        )
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)

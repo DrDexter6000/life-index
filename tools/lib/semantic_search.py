@@ -41,6 +41,37 @@ def get_model() -> EmbeddingModel:
     return EmbeddingModel()
 
 
+def build_embedding_text(
+    *,
+    title: str | None = None,
+    body: str | None = None,
+    tags: Any = None,
+    topic: Any = None,
+) -> str:
+    """Build embedding text consistently across incremental and rebuild paths."""
+    text_parts: list[str] = []
+
+    if title:
+        text_parts.append(title)
+
+    if body:
+        text_parts.append(body)
+
+    if tags:
+        if isinstance(tags, list):
+            text_parts.extend(str(tag) for tag in tags)
+        else:
+            text_parts.append(str(tags))
+
+    if topic:
+        if isinstance(topic, list):
+            text_parts.extend(str(item) for item in topic)
+        else:
+            text_parts.append(str(topic))
+
+    return " ".join(text_parts)
+
+
 def _load_sqlite_vec_extension(conn: sqlite3.Connection) -> bool:
     """
     加载 sqlite-vec 扩展（跨平台兼容）
@@ -64,7 +95,11 @@ def _load_sqlite_vec_extension(conn: sqlite3.Connection) -> bool:
                 "vec0.dll",
                 "vec.dll",
                 # Python 包目录
-                Path(sys.executable).parent / "Lib" / "site-packages" / "sqlite_vec" / "vec0.dll",
+                Path(sys.executable).parent
+                / "Lib"
+                / "site-packages"
+                / "sqlite_vec"
+                / "vec0.dll",
                 # 用户数据目录
                 USER_DATA_DIR / ".bin" / "vec0.dll",
             ]
@@ -156,29 +191,12 @@ def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
         if not metadata:
             return None
 
-        # 组合用于向量化的文本（标题 + 正文 + 标签）
-        text_parts = []
-
-        if metadata.get("title"):
-            text_parts.append(metadata["title"])
-
-        text_parts.append(body)
-
-        if metadata.get("tags"):
-            tags = metadata["tags"]
-            if isinstance(tags, list):
-                text_parts.extend(tags)
-            else:
-                text_parts.append(tags)
-
-        if metadata.get("topic"):
-            topic = metadata["topic"]
-            if isinstance(topic, list):
-                text_parts.extend(topic)
-            else:
-                text_parts.append(topic)
-
-        combined_text = " ".join(text_parts)
+        combined_text = build_embedding_text(
+            title=metadata.get("title"),
+            body=body,
+            tags=metadata.get("tags"),
+            topic=metadata.get("topic"),
+        )
 
         rel_path = build_journal_path_fields(
             file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
@@ -235,7 +253,9 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
     try:
         conn = init_vec_db()
         if conn is None:
-            result["error"] = "sqlite-vec extension not available. Vector search disabled."
+            result["error"] = (
+                "sqlite-vec extension not available. Vector search disabled."
+            )
             return result
         cursor = conn.cursor()
 
@@ -318,7 +338,9 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                 # 如果是更新，先删除
                 if action == "update":
                     try:
-                        cursor.execute("DELETE FROM journal_vectors WHERE path = ?", (rel_path,))
+                        cursor.execute(
+                            "DELETE FROM journal_vectors WHERE path = ?", (rel_path,)
+                        )
                         result["updated"] += 1
                     except Exception:
                         pass
@@ -340,7 +362,9 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
         # 删除不存在的文件
         for rel_path in files_to_remove:
             try:
-                cursor.execute("DELETE FROM journal_vectors WHERE path = ?", (rel_path,))
+                cursor.execute(
+                    "DELETE FROM journal_vectors WHERE path = ?", (rel_path,)
+                )
                 result["removed"] += 1
             except Exception:
                 pass

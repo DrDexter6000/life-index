@@ -23,6 +23,8 @@ from ..lib.search_index import (
 from ..lib.metadata_cache import (
     get_cache_stats,
     invalidate_cache,
+    init_metadata_cache,
+    rebuild_entry_relations,
     update_cache_for_all_journals,
 )
 from ..lib.file_lock import FileLock, LockTimeoutError, get_index_lock_path
@@ -68,6 +70,11 @@ def build_all(
             if not incremental:
                 invalidate_cache()
                 update_cache_for_all_journals()
+                relation_conn = init_metadata_cache()
+                try:
+                    rebuild_entry_relations(relation_conn)
+                finally:
+                    relation_conn.close()
 
             # 更新 FTS 索引
             if not vec_only:

@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "journal_path": "JOURNAL_PATH",
+  "revision_path": "REVISION_PATH",
+  "changes": {
+    "title": {
+      "old": "Original",
+      "new": "Updated"
+    }
+  },
+  "content_modified": true,
+  "indices_updated": [],
+  "error": null
+}

@@ -900,6 +900,53 @@ class TestEditJournal:
         assert result["success"] is False
         assert result["error"]["code"] == "E0005"  # LOCK_TIMEOUT
 
+    def test_edit_reloads_current_state_after_lock_acquisition(self, tmp_path):
+        """Edit should merge updates with the latest on-disk state acquired under lock."""
+        from tools.edit_journal import edit_journal
+        from tools.lib.frontmatter import parse_journal_file
+
+        journal = tmp_path / "test.md"
+        journal.write_text(
+            "---\n"
+            'title: "Old Title"\n'
+            "date: 2026-03-14\n"
+            'weather: "Rainy"\n'
+            "---\n\n"
+            "# Content\n",
+            encoding="utf-8",
+        )
+
+        external_content = (
+            "---\n"
+            'title: "External Title"\n'
+            "date: 2026-03-14\n"
+            'weather: "Rainy"\n'
+            "---\n\n"
+            "# Content\n"
+        )
+
+        class MutatingLock:
+            def __enter__(self):
+                journal.write_text(external_content, encoding="utf-8")
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("tools.edit_journal.FileLock", return_value=MutatingLock()):
+            result = edit_journal(journal, {"weather": "Sunny"})
+
+        assert result["success"] is True
+
+        metadata = parse_journal_file(journal)
+        assert metadata["title"] == "External Title"
+        assert metadata["weather"] == "Sunny"
+
+        revision_path = Path(result["revision_path"])
+        assert revision_path.exists()
+        revision_text = revision_path.read_text(encoding="utf-8")
+        assert 'title: "External Title"' in revision_text
+
     def test_update_indices_topic_already_in_updated(self, tmp_path):
         """Test topic index already in updated_indices"""
         from tools.edit_journal import update_indices_for_change

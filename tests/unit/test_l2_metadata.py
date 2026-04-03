@@ -259,6 +259,36 @@ class TestSearchWithCache:
         assert len(results) == 1
         assert results[0]["title"] == "Work Journal"
 
+    def test_search_with_cache_surfaces_related_entries_and_backlinks(self):
+        from tools.search_journals.l2_metadata import _search_with_cache
+
+        mock_entries = [
+            {
+                "file_path": "/test/journal.md",
+                "date": "2026-03-14",
+                "title": "Test Journal",
+                "topic": ["work"],
+                "related_entries": ["Journals/2026/03/other.md"],
+                "backlinked_by": ["Journals/2026/03/source.md"],
+                "metadata": {
+                    "title": "Test Journal",
+                    "related_entries": ["Journals/2026/03/other.md"],
+                    "backlinked_by": ["Journals/2026/03/source.md"],
+                },
+            }
+        ]
+
+        with patch(
+            "tools.search_journals.l2_metadata.get_all_cached_metadata",
+            return_value=mock_entries,
+        ):
+            results = _search_with_cache()
+
+        assert results[0]["metadata"]["related_entries"] == [
+            "Journals/2026/03/other.md"
+        ]
+        assert results[0]["metadata"]["backlinked_by"] == ["Journals/2026/03/source.md"]
+
     def test_search_with_cache_date_filter(self):
         """Test cache search with date filter"""
         from tools.search_journals.l2_metadata import _search_with_cache

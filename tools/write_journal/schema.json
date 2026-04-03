@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "name": "write_journal",
+  "description": "写入新日志条目",
+  "version": "1.0.0",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "date": {"type": "string"},
+      "title": {"type": "string"},
+      "content": {"type": "string"},
+      "location": {"type": "string"},
+      "mood": {"type": "array", "items": {"type": "string"}},
+      "people": {"type": "array", "items": {"type": "string"}},
+      "tags": {"type": "array", "items": {"type": "string"}},
+      "project": {"type": "string"},
+      "topic": {"type": "array", "items": {"type": "string"}},
+      "links": {"type": "array", "items": {"type": "string"}},
+      "related_entries": {"type": "array", "items": {"type": "string"}},
+      "attachments": {"type": "array"}
+    },
+    "required": ["date", "title", "content"]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "journal_path": {"type": ["string", "null"]},
+      "confirmation": {
+        "type": "object",
+        "properties": {
+          "location": {"type": "string"},
+          "weather": {"type": "string"},
+          "related_candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rel_path": {"type": "string"},
+                "title": {"type": "string"},
+                "date": {"type": "string"},
+                "abstract": {"type": "string"},
+                "score": {"type": "number"},
+                "match_reason": {"type": "string"},
+                "reasons": {"type": "array"},
+                "score_breakdown": {"type": "array"}
+              }
+            }
+          },
+          "journal_path": {"type": ["string", "null"]},
+          "supports_related_entry_approval": {"type": "boolean"}
+        }
+      },
+      "related_candidates": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "rel_path": {"type": "string"},
+            "title": {"type": "string"},
+            "date": {"type": "string"},
+            "abstract": {"type": "string"},
+            "score": {"type": "number"},
+            "match_reason": {"type": "string"},
+            "reasons": {"type": "array"},
+            "score_breakdown": {"type": "array"}
+          }
+        }
+      },
+      "prepared_metadata": {"type": "object"},
+      "new_entities_detected": {"type": "array"}
+    }
+  },
+  "examples": [
+    {
+      "input": {
+        "date": "2026-03-14",
+        "title": "测试日志",
+        "content": "今天整理了搜索相关改动。"
+      },
+      "output": {
+        "success": true,
+        "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-14_001.md",
+        "confirmation": {
+          "location": "Lagos, Nigeria",
+          "weather": "Sunny 25°C",
+          "related_candidates": [],
+          "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-14_001.md",
+          "supports_related_entry_approval": true
+        },
+        "related_candidates": []
+      }
+    }
+  ]
+}

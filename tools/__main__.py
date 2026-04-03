@@ -11,6 +11,7 @@ Commands:
     write     Write a journal entry
     search    Search journals
     edit      Edit a journal entry
+    entity    Manage entity graph
     weather   Query weather information
     index     Build/rebuild search index
     abstract  Generate monthly/yearly summaries
@@ -329,8 +330,10 @@ def main() -> None:
     # Each submodule has its own __main__.py with a main() function
     cmd_map = {
         "write": "tools.write_journal.__main__",
+        "confirm": "tools.write_journal.__main__",
         "search": "tools.search_journals.__main__",
         "edit": "tools.edit_journal.__main__",
+        "entity": "tools.entity.__main__",
         "weather": "tools.query_weather.__main__",
         "index": "tools.build_index.__main__",
         "abstract": "tools.generate_abstract.__main__",
@@ -361,8 +364,10 @@ def print_usage() -> None:
     print()
     print("Commands:")
     print("  write     Write a journal entry")
+    print("  confirm   Apply write confirmation updates")
     print("  search    Search journals")
     print("  edit      Edit a journal entry")
+    print("  entity    Manage entity graph")
     print("  weather   Query weather information")
     print("  index     Build/rebuild search index")
     print("  abstract  Generate monthly/yearly summaries")

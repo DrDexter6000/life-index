@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "name": "backup",
+  "description": "备份日志数据",
+  "version": "1.0.0",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target_dir": {"type": "string"},
+      "include_attachments": {"type": "boolean"}
+    },
+    "required": []
+  },
+  "returns": {"type": "object", "properties": {}},
+  "examples": []
+}

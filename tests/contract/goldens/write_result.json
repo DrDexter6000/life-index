@@ -1,0 +1,28 @@
+{
+  "success": true,
+  "journal_path": "JOURNAL_PATH",
+  "updated_indices": [],
+  "index_status": "complete",
+  "side_effects_status": "complete",
+  "attachments_processed": [],
+  "attachments_detected_count": 0,
+  "attachments_processed_count": 0,
+  "attachments_failed_count": 0,
+  "location_used": "Chongqing, China",
+  "location_auto_filled": true,
+  "weather_used": "Sunny 25°C",
+  "weather_auto_filled": true,
+  "needs_confirmation": true,
+  "confirmation_message": "日志已保存至：JOURNAL_PATH\n\n本次记录地点：Chongqing, China\n天气：Sunny 25°C\n请确认这个地点是否正确。如果不对，请告诉我正确地点。我会基于新地点更新地点和天气。",
+  "confirmation": {
+    "location": "Chongqing, China",
+    "weather": "Sunny 25°C",
+    "related_candidates": [],
+    "journal_path": "JOURNAL_PATH",
+    "supports_related_entry_approval": true
+  },
+  "related_candidates": [],
+  "new_entities_detected": [],
+  "error": null,
+  "metrics": {}
+}

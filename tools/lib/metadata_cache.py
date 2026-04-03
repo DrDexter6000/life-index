@@ -67,11 +67,25 @@ def init_metadata_cache() -> sqlite3.Connection:
             mood TEXT,   -- JSON数组
             people TEXT, -- JSON数组
             abstract TEXT,
+            links TEXT,  -- JSON数组
+            related_entries TEXT,  -- JSON数组
             file_mtime REAL,
             file_size INTEGER,
             cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS entry_relations (
+            source_path TEXT NOT NULL,
+            target_path TEXT NOT NULL,
+            PRIMARY KEY (source_path, target_path)
+        )
+        """
+    )
+
+    _ensure_metadata_cache_columns(conn)
 
     # 创建索引加速查询
     cursor.execute("""
@@ -106,6 +120,19 @@ def init_metadata_cache() -> sqlite3.Connection:
     return conn
 
 
+def _ensure_metadata_cache_columns(conn: sqlite3.Connection) -> None:
+    """Add newly introduced columns for existing cache databases."""
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(metadata_cache)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+
+    if "links" not in existing_columns:
+        cursor.execute("ALTER TABLE metadata_cache ADD COLUMN links TEXT")
+    if "related_entries" not in existing_columns:
+        cursor.execute("ALTER TABLE metadata_cache ADD COLUMN related_entries TEXT")
+    conn.commit()
+
+
 def get_file_signature(file_path: Path) -> Tuple[float, int]:
     """获取文件签名（mtime, size）用于检测变更"""
     try:
@@ -121,7 +148,9 @@ def is_cache_valid(file_path: Path, cached_mtime: float, cached_size: int) -> bo
     return current_mtime == cached_mtime and current_size == cached_size
 
 
-def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
+def parse_and_cache_journal(
+    conn: sqlite3.Connection, file_path: Path
+) -> Optional[Dict[str, Any]]:
     """解析日志并更新缓存"""
     try:
         # 解析日志文件
@@ -142,6 +171,10 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
         location = metadata.get("location", "")
         weather = metadata.get("weather", "")
         abstract = metadata.get("abstract", "")
+        links = json.dumps(metadata.get("links", []), ensure_ascii=False)
+        related_entries = json.dumps(
+            metadata.get("related_entries", []), ensure_ascii=False
+        )
 
         # 数组字段转为JSON
         topic = json.dumps(metadata.get("topic", []), ensure_ascii=False)
@@ -156,8 +189,8 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
             """
             INSERT OR REPLACE INTO metadata_cache
             (file_path, date, title, location, weather, topic, project,
-             tags, mood, people, abstract, file_mtime, file_size)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             tags, mood, people, abstract, links, related_entries, file_mtime, file_size)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 file_path_str,
@@ -171,6 +204,8 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
                 mood,
                 people,
                 abstract,
+                links,
+                related_entries,
                 mtime,
                 size,
             ),
@@ -192,6 +227,8 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
             "mood": json.loads(mood),
             "people": json.loads(people),
             "abstract": abstract,
+            "links": json.loads(links),
+            "related_entries": json.loads(related_entries),
             "metadata": metadata,
         }
 
@@ -199,13 +236,17 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
         return None
 
 
-def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
+def get_cached_metadata(
+    conn: sqlite3.Connection, file_path: Path
+) -> Optional[Dict[str, Any]]:
     """从缓存获取元数据（如果有效）"""
     cursor = conn.cursor()
     candidate_keys = _candidate_cache_keys(file_path)
 
     if len(candidate_keys) == 1:
-        cursor.execute("SELECT * FROM metadata_cache WHERE file_path = ?", (candidate_keys[0],))
+        cursor.execute(
+            "SELECT * FROM metadata_cache WHERE file_path = ?", (candidate_keys[0],)
+        )
     else:
         cursor.execute(
             "SELECT * FROM metadata_cache WHERE file_path IN (?, ?)",
@@ -237,6 +278,10 @@ def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[D
         "mood": json.loads(row["mood"]) if row["mood"] else [],
         "people": json.loads(row["people"]) if row["people"] else [],
         "abstract": row["abstract"],
+        "links": json.loads(row["links"]) if row["links"] else [],
+        "related_entries": json.loads(row["related_entries"])
+        if row["related_entries"]
+        else [],
         "metadata": {
             "date": row["date"],
             "title": row["title"],
@@ -248,6 +293,10 @@ def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[D
             "mood": json.loads(row["mood"]) if row["mood"] else [],
             "people": json.loads(row["people"]) if row["people"] else [],
             "abstract": row["abstract"],
+            "links": json.loads(row["links"]) if row["links"] else [],
+            "related_entries": json.loads(row["related_entries"])
+            if row["related_entries"]
+            else [],
         },
     }
 
@@ -309,6 +358,10 @@ def get_all_cached_metadata(
                     "mood": json.loads(row["mood"]) if row["mood"] else [],
                     "people": json.loads(row["people"]) if row["people"] else [],
                     "abstract": row["abstract"],
+                    "links": json.loads(row["links"]) if row["links"] else [],
+                    "related_entries": json.loads(row["related_entries"])
+                    if row["related_entries"]
+                    else [],
                     "metadata": {
                         "date": row["date"],
                         "title": row["title"],
@@ -320,6 +373,10 @@ def get_all_cached_metadata(
                         "mood": json.loads(row["mood"]) if row["mood"] else [],
                         "people": json.loads(row["people"]) if row["people"] else [],
                         "abstract": row["abstract"],
+                        "links": json.loads(row["links"]) if row["links"] else [],
+                        "related_entries": json.loads(row["related_entries"])
+                        if row["related_entries"]
+                        else [],
                     },
                 }
             )
@@ -353,6 +410,80 @@ def invalidate_cache(file_path: Optional[Path] = None) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def rebuild_entry_relations(conn: sqlite3.Connection) -> int:
+    """Rebuild relation table from cached related_entries metadata."""
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM entry_relations")
+    cursor.execute("SELECT file_path, related_entries FROM metadata_cache")
+
+    inserted = 0
+    for row in cursor.fetchall():
+        normalized_fields = build_journal_path_fields(
+            row["file_path"], journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        )
+        source_rel_path = normalized_fields["rel_path"]
+        raw_related_entries = row["related_entries"]
+        related_entries = json.loads(raw_related_entries) if raw_related_entries else []
+        if not isinstance(related_entries, list):
+            continue
+        for target_path in related_entries:
+            if not isinstance(target_path, str) or not target_path:
+                continue
+            cursor.execute(
+                "INSERT OR REPLACE INTO entry_relations (source_path, target_path) VALUES (?, ?)",
+                (source_rel_path, target_path),
+            )
+            inserted += 1
+
+    conn.commit()
+    return inserted
+
+
+def add_entry_relations(
+    conn: sqlite3.Connection, source_rel_path: str, target_paths: List[str]
+) -> int:
+    """Add incremental relations for a single source entry."""
+    cursor = conn.cursor()
+    inserted = 0
+    seen_targets: set[str] = set()
+    for target_path in target_paths:
+        if not isinstance(target_path, str):
+            continue
+        normalized_target = target_path.strip()
+        if not normalized_target or normalized_target in seen_targets:
+            continue
+        seen_targets.add(normalized_target)
+        cursor.execute(
+            "INSERT OR REPLACE INTO entry_relations (source_path, target_path) VALUES (?, ?)",
+            (source_rel_path, normalized_target),
+        )
+        inserted += 1
+    conn.commit()
+    return inserted
+
+
+def replace_entry_relations(
+    conn: sqlite3.Connection, source_rel_path: str, target_paths: List[str]
+) -> int:
+    """Replace all relations for a single source entry incrementally."""
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM entry_relations WHERE source_path = ?", (source_rel_path,)
+    )
+    conn.commit()
+    return add_entry_relations(conn, source_rel_path, target_paths)
+
+
+def get_backlinked_by(conn: sqlite3.Connection, target_path: str) -> List[str]:
+    """Return rel_paths that point to target_path."""
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT source_path FROM entry_relations WHERE target_path = ? ORDER BY source_path",
+        (target_path,),
+    )
+    return [row[0] for row in cursor.fetchall()]
 
 
 def get_cache_stats() -> Dict[str, Any]:
