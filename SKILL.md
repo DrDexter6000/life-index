@@ -29,7 +29,9 @@ triggers:
 | 记录日志 | "记日志"、"记录一下"、"写日记"、"记下来"、"log this"、"record this"、"write journal" | `write_journal` |
 | 搜索日志 | "查找日志"、"搜索记录"、"找一下关于...的日记"、"search journal"、"find log" | `search_journals` |
 | 编辑日志 | "修改日志"、"补充日记"、"更新记录"、"edit journal"、"update log" | `edit_journal` |
+| 实体图谱 | "列出实体"、"解析人物关系"、"entity graph"、"谁是谁的..." | `entity` |
 | 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary" | `generate_abstract` |
+| 情感回填/修订历史 | "查看修订历史"、"情感分析"、"回填 sentiment" | `edit_journal` / `tools.dev.backfill_sentiment` |
 | 定时报告 | 日报/周报/月报/年报 | 参考 [SCHEDULE.md](references/schedule/SCHEDULE.md) |
 
 ---
@@ -48,6 +50,8 @@ triggers:
 .venv/bin/life-index search --query "关键词" --topic work --level 3
 .venv/bin/life-index search --query "学习"  # 语义搜索默认启用
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
+.venv/bin/life-index entity --list
+.venv/bin/life-index entity --resolve "乐乐的奶奶"
 .venv/bin/life-index abstract --month 2026-03
 .venv/bin/life-index weather --location "Lagos,Nigeria"
 .venv/bin/life-index index           # 增量更新
@@ -82,6 +86,7 @@ life-index/                         # 技能根目录
 │   ├── write_journal/             # 写入日志（天气查询、附件处理、索引更新）
 │   ├── search_journals/           # 搜索日志（L1/L2/L3 + 语义搜索）
 │   ├── edit_journal/              # 编辑日志（修改元数据、追加内容）
+│   ├── entity/                    # 实体图谱（list/add/resolve/update）
 │   ├── generate_abstract/         # 生成摘要（月报/年报）
 │   ├── build_index/               # 构建索引（FTS5 + 向量索引）
 │   ├── query_weather/             # 查询天气
@@ -179,6 +184,31 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | project | string | ❌ | 关联项目，Agent语义提取，没有则留空 |
 | links | array | ❌ | 相关链接 |
 | attachments | array | ❌ | 附件（自动检测 content 中的本地文件路径；也可显式传递 `{"source_path":"...","description":"..."}` 对象） |
+| sentiment_score | float \| null | ❌ | 情感分数，范围 -1.0 ~ 1.0；离线时允许留空 |
+| themes | array | ❌ | 深层主题标签；离线时允许空数组 |
+| entities | array | ❌ | 已匹配的 entity graph ID 列表 |
+
+### 写入增强（v1.x Phase 3）
+
+- 写入结果现在可包含：`sentiment_score` / `themes` / `entities`
+- 当前策略：**在线优先，离线留空，不做规则降级**
+- 编辑日志时会自动写入 co-located `.revisions/`
+- 批量回填工具：`python -m tools.dev.backfill_sentiment`
+
+### Tool Schema（v1.x Phase 4）
+
+- 每个 CLI 工具目录下均已提供 `schema.json`
+- Agent Runtime 可读取 schema 发现参数/返回值契约
+- 高频意图："列出工具"、"工具参数"、"schema"
+
+### Entity Graph（v1.x Phase 2）
+
+- CLI：`life-index entity --list|--add|--resolve|--update`
+- 存储：`~/Documents/Life-Index/entity_graph.yaml`
+- 作用：
+  - 搜索时做 alias / relationship query expansion
+  - 写入时标记 `new_entities_detected`
+- 当前最小支持类型：`person` / `place` / `project` / `event` / `concept`
 
 ### Topic 分类（必填）
 

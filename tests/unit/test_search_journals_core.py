@@ -19,10 +19,267 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import importlib
 import sys
+import os
+
+
+DEFAULT_ENTITY_GRAPH = {
+    "entities": [
+        {
+            "id": "author-self",
+            "type": "person",
+            "primary_name": "我",
+            "aliases": ["作者", "自己"],
+            "attributes": {},
+            "relationships": [],
+        },
+        {
+            "id": "mama",
+            "type": "person",
+            "primary_name": "妈妈",
+            "aliases": ["老妈", "婆婆", "王阿姨"],
+            "attributes": {},
+            "relationships": [{"target": "author-self", "relation": "mother_of"}],
+        },
+        {
+            "id": "tuantuan",
+            "type": "person",
+            "primary_name": "乐乐",
+            "aliases": ["圆圆"],
+            "attributes": {},
+            "relationships": [{"target": "mama", "relation": "granddaughter_of"}],
+        },
+    ]
+}
 
 
 class TestHierarchicalSearch:
     """Tests for hierarchical_search function"""
+
+    @pytest.fixture(autouse=True)
+    def _entity_graph(self, tmp_path: Path, monkeypatch):
+        graph_path = tmp_path / "entity_graph.yaml"
+        graph_path.write_text(
+            __import__("yaml").safe_dump(
+                DEFAULT_ENTITY_GRAPH, allow_unicode=True, sort_keys=False
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+
+    def test_search_results_reflect_fresh_backlinks_after_incremental_write_and_edit(
+        self, tmp_path: Path
+    ):
+        import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
+        import tools.lib.config as config_module
+        import tools.write_journal.core as write_core
+        import tools.edit_journal as edit_module
+        from tools.search_journals.ranking import merge_and_rank_results
+
+        original_env = os.environ.get("LIFE_INDEX_DATA_DIR")
+        os.environ["LIFE_INDEX_DATA_DIR"] = str(tmp_path)
+        importlib.reload(paths_module)
+        importlib.reload(config_module)
+        importlib.reload(mc)
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True, exist_ok=True)
+        target_path = journals_dir / "2026" / "03" / "target.md"
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(
+            '---\ntitle: "Target"\ndate: 2026-03-13\n---\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        try:
+            with (
+                patch.object(write_core, "JOURNALS_DIR", journals_dir),
+                patch.object(
+                    write_core,
+                    "get_journals_lock_path",
+                    return_value=tmp_path / ".cache" / "journals.lock",
+                ),
+                patch.object(write_core, "get_year_month", return_value=(2026, 3)),
+                patch.object(write_core, "get_next_sequence", return_value=1),
+                patch.object(
+                    write_core, "query_weather_for_location", return_value="Sunny 25°C"
+                ),
+                patch.object(
+                    write_core, "normalize_location", return_value="Chongqing, China"
+                ),
+                patch.object(
+                    write_core, "extract_file_paths_from_content", return_value=[]
+                ),
+                patch.object(write_core, "process_attachments", return_value=[]),
+                patch.object(
+                    write_core,
+                    "update_monthly_abstract",
+                    return_value={"abstract_path": None, "updated": False},
+                ),
+                patch.object(write_core, "update_topic_index", return_value=[]),
+                patch.object(write_core, "update_project_index", return_value=None),
+                patch.object(write_core, "update_tag_indices", return_value=[]),
+                patch.object(write_core, "update_vector_index", return_value=False),
+            ):
+                (tmp_path / ".cache").mkdir(parents=True, exist_ok=True)
+                (tmp_path / ".cache" / "journals.lock").touch()
+                write_result = write_core.write_journal(
+                    {
+                        "date": "2026-03-14",
+                        "title": "Source",
+                        "content": "Body",
+                        "related_entries": ["Journals/2026/03/target.md"],
+                    },
+                    dry_run=False,
+                )
+
+            source_path = Path(write_result["journal_path"])
+            merged_after_write = merge_and_rank_results(
+                [],
+                [
+                    {
+                        "path": str(target_path).replace("\\", "/"),
+                        "rel_path": "Journals/2026/03/target.md",
+                        "title": "Target",
+                        "metadata": {"related_entries": []},
+                    }
+                ],
+                [],
+                query="Target",
+                min_score=0,
+            )
+
+            with (
+                patch.object(edit_module, "JOURNALS_DIR", journals_dir),
+                patch.object(edit_module, "update_vector_index", return_value=True),
+            ):
+                edit_module.edit_journal(
+                    journal_path=source_path,
+                    frontmatter_updates={
+                        "remove_related_entries": ["Journals/2026/03/target.md"]
+                    },
+                )
+
+            merged_after_edit = merge_and_rank_results(
+                [],
+                [
+                    {
+                        "path": str(target_path).replace("\\", "/"),
+                        "rel_path": "Journals/2026/03/target.md",
+                        "title": "Target",
+                        "metadata": {"related_entries": []},
+                    }
+                ],
+                [],
+                query="Target",
+                min_score=0,
+            )
+        finally:
+            if original_env is not None:
+                os.environ["LIFE_INDEX_DATA_DIR"] = original_env
+            else:
+                del os.environ["LIFE_INDEX_DATA_DIR"]
+            importlib.reload(paths_module)
+            importlib.reload(config_module)
+            importlib.reload(mc)
+
+        assert merged_after_write[0]["backlinked_by"] == [
+            "Journals/2026/03/life-index_2026-03-14_001.md"
+        ]
+        assert merged_after_edit[0]["backlinked_by"] == []
+
+    def test_search_level3_keyword_results_surface_related_entries_and_backlinks(self):
+        """Merged keyword search results should expose relation context."""
+        from tools.search_journals.core import hierarchical_search
+
+        merged_results = [
+            {
+                "path": "test.md",
+                "rel_path": "Journals/2026/03/test.md",
+                "title": "Test",
+                "related_entries": ["Journals/2026/03/other.md"],
+                "backlinked_by": ["Journals/2026/03/source.md"],
+                "score": 0.9,
+            }
+        ]
+
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l3_content"
+        ) as mock_l3:
+            with patch(
+                "tools.search_journals.keyword_pipeline.search_l2_metadata"
+            ) as mock_l2:
+                with patch(
+                    "tools.search_journals.core.merge_and_rank_results"
+                ) as mock_rank:
+                    mock_l2.return_value = {
+                        "results": [],
+                        "truncated": False,
+                        "total_available": 0,
+                    }
+                    mock_l3.return_value = [{"path": "test.md", "relevance": 0.9}]
+                    mock_rank.return_value = merged_results
+                    result = hierarchical_search(
+                        query="Python", level=3, semantic=False, use_index=False
+                    )
+
+        assert result["success"] is True
+        assert result["merged_results"][0]["related_entries"] == [
+            "Journals/2026/03/other.md"
+        ]
+        assert result["merged_results"][0]["backlinked_by"] == [
+            "Journals/2026/03/source.md"
+        ]
+
+    def test_search_hybrid_results_surface_related_entries_and_backlinks(self):
+        """Merged hybrid search results should expose relation context."""
+        from tools.search_journals.core import hierarchical_search
+
+        merged_results = [
+            {
+                "path": "test.md",
+                "rel_path": "Journals/2026/03/test.md",
+                "title": "Test",
+                "related_entries": ["Journals/2026/03/other.md"],
+                "backlinked_by": ["Journals/2026/03/source.md"],
+                "score": 0.8,
+            }
+        ]
+
+        with patch(
+            "tools.search_journals.semantic_pipeline.search_semantic"
+        ) as mock_sem:
+            with patch(
+                "tools.search_journals.keyword_pipeline.search_l3_content"
+            ) as mock_l3:
+                with patch(
+                    "tools.search_journals.keyword_pipeline.search_l2_metadata"
+                ) as mock_l2:
+                    with patch(
+                        "tools.search_journals.core.merge_and_rank_results_hybrid"
+                    ) as mock_rank:
+                        mock_sem.return_value = (
+                            [{"path": "test.md", "similarity": 0.8}],
+                            {"semantic_encode_ms": 1.0, "semantic_search_ms": 2.0},
+                        )
+                        mock_l2.return_value = {
+                            "results": [],
+                            "truncated": False,
+                            "total_available": 0,
+                        }
+                        mock_l3.return_value = []
+                        mock_rank.return_value = merged_results
+                        result = hierarchical_search(
+                            query="Python", level=3, semantic=True, use_index=False
+                        )
+
+        assert result["success"] is True
+        assert result["merged_results"][0]["related_entries"] == [
+            "Journals/2026/03/other.md"
+        ]
+        assert result["merged_results"][0]["backlinked_by"] == [
+            "Journals/2026/03/source.md"
+        ]
 
     def test_search_level1_no_filters_scans_all(self):
         """Level 1 without filters should scan all indices"""
@@ -357,6 +614,57 @@ class TestHierarchicalSearch:
         assert result["merged_results"] == [{"path": "keyword.md", "score": 0.88}]
         assert result["semantic_note"] == "向量索引未建立，请运行 life-index index"
         assert result["performance"]["semantic_degraded"] == "vector index not found"
+
+    def test_search_invalid_legacy_entity_graph_degrades_gracefully(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Legacy invalid entity graphs should not break search query expansion."""
+        from tools.search_journals.core import hierarchical_search
+
+        graph_path = tmp_path / "entity_graph.yaml"
+        legacy_graph = {
+            "entities": [
+                {
+                    "id": "mama",
+                    "type": "person",
+                    "primary_name": "妈妈",
+                    "aliases": ["老妈"],
+                    "attributes": {},
+                    "relationships": [{"target": "author", "relation": "mother_of"}],
+                }
+            ]
+        }
+        graph_path.write_text(
+            __import__("yaml").safe_dump(
+                legacy_graph, allow_unicode=True, sort_keys=False
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
+            with patch(
+                "tools.search_journals.keyword_pipeline.search_l3_content"
+            ) as mock_l3:
+                with patch(
+                    "tools.search_journals.core.merge_and_rank_results"
+                ) as mock_rank:
+                    mock_l2.return_value = {
+                        "results": [],
+                        "truncated": False,
+                        "total_available": 0,
+                    }
+                    mock_l3.return_value = [{"path": "test.md", "relevance": 0.9}]
+                    mock_rank.return_value = [{"path": "test.md", "score": 0.9}]
+
+                    result = hierarchical_search(
+                        query="Python", level=3, semantic=False, use_index=False
+                    )
+
+        assert result["success"] is True
+        assert result["query_params"]["query"] == "Python"
 
     def test_search_level3_fts_query_preprocessing_and_success(self):
         """Level 3 should preprocess multi-keyword query and use FTS index results"""

@@ -13,10 +13,13 @@ Tests cover:
 """
 
 import pytest
+import yaml
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+from tools.lib.errors import ErrorCode
 from tools.write_journal.core import write_journal
+from tools.write_journal.core import apply_confirmation_updates
 
 
 @pytest.fixture(autouse=True)
@@ -161,6 +164,632 @@ class TestWriteJournalBasic:
         assert "content_preview" in result
         # Dry run returns early without confirmation message
         assert result["needs_confirmation"] is False
+
+    def test_write_surfaces_related_candidates_in_dry_run(self, mock_deps, tmp_path):
+        data = {
+            "date": "2026-03-14",
+            "title": "Test Journal",
+            "content": "This is test content.",
+            "topic": ["work"],
+            "people": ["Alice"],
+            "project": "Life-Index",
+            "tags": ["search", "ranking"],
+        }
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=mock_deps["lock_path"],
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.query_weather_for_location",
+                            return_value="Sunny 25°C",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.normalize_location",
+                                return_value="Chongqing, China",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.suggest_related_entries",
+                                            return_value=[
+                                                {
+                                                    "rel_path": "Journals/2026/03/other.md",
+                                                    "title": "Other",
+                                                    "date": "2026-03-13",
+                                                    "abstract": "Related",
+                                                    "match_reason": "same people, same project",
+                                                }
+                                            ],
+                                        ):
+                                            result = write_journal(data, dry_run=True)
+
+        assert result["success"] is True
+        assert (
+            result["related_candidates"][0]["rel_path"] == "Journals/2026/03/other.md"
+        )
+
+    def test_write_confirmation_message_includes_related_candidates(
+        self, mock_deps, tmp_path
+    ):
+        data = {
+            "date": "2026-03-14",
+            "title": "Test Journal",
+            "content": "This is test content.",
+        }
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=mock_deps["lock_path"],
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.query_weather_for_location",
+                            return_value="Sunny 25°C",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.normalize_location",
+                                return_value="Chongqing, China",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={},
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=None,
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        return_value=[],
+                                                    ):
+                                                        with patch(
+                                                            "tools.write_journal.core.suggest_related_entries",
+                                                            return_value=[
+                                                                {
+                                                                    "rel_path": "Journals/2026/03/other.md",
+                                                                    "title": "Other",
+                                                                    "date": "2026-03-13",
+                                                                    "abstract": "Related",
+                                                                    "match_reason": "same topic",
+                                                                }
+                                                            ],
+                                                        ):
+                                                            result = write_journal(
+                                                                data, dry_run=False
+                                                            )
+
+        assert result["success"] is True
+        assert "Journals/2026/03/other.md" in result["confirmation_message"]
+
+    def test_write_returns_structured_confirmation_payload(self, mock_deps, tmp_path):
+        data = {
+            "date": "2026-03-14",
+            "title": "Test Journal",
+            "content": "This is test content.",
+        }
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=mock_deps["lock_path"],
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.query_weather_for_location",
+                            return_value="Sunny 25°C",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.normalize_location",
+                                return_value="Chongqing, China",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        result = write_journal(data, dry_run=True)
+
+        assert result["success"] is True
+        assert result["confirmation"]["location"] == result["location_used"]
+        assert result["confirmation"]["weather"] == "Sunny 25°C"
+        assert isinstance(result["confirmation"]["related_candidates"], list)
+
+    def test_write_legacy_invalid_entity_graph_degrades_gracefully(
+        self, mock_deps, tmp_path, monkeypatch
+    ):
+        legacy_graph = {
+            "entities": [
+                {
+                    "id": "mama",
+                    "type": "person",
+                    "primary_name": "妈妈",
+                    "aliases": ["老妈"],
+                    "relationships": [{"target": "author", "relation": "mother_of"}],
+                }
+            ]
+        }
+        (tmp_path / "entity_graph.yaml").write_text(
+            yaml.safe_dump(legacy_graph, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+
+        data = {
+            "date": "2026-03-14",
+            "title": "Test Journal",
+            "content": "This is test content.",
+        }
+
+        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=mock_deps["lock_path"],
+            ):
+                with patch(
+                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+                ):
+                    with patch(
+                        "tools.write_journal.core.get_next_sequence", return_value=1
+                    ):
+                        with patch(
+                            "tools.write_journal.core.query_weather_for_location",
+                            return_value="Sunny 25°C",
+                        ):
+                            with patch(
+                                "tools.write_journal.core.normalize_location",
+                                return_value="Chongqing, China",
+                            ):
+                                with patch(
+                                    "tools.write_journal.core.extract_file_paths_from_content",
+                                    return_value=[],
+                                ):
+                                    with patch(
+                                        "tools.write_journal.core.process_attachments",
+                                        return_value=[],
+                                    ):
+                                        with patch(
+                                            "tools.write_journal.core.update_monthly_abstract",
+                                            return_value={
+                                                "abstract_path": None,
+                                                "updated": False,
+                                            },
+                                        ):
+                                            with patch(
+                                                "tools.write_journal.core.update_topic_index",
+                                                return_value=[],
+                                            ):
+                                                with patch(
+                                                    "tools.write_journal.core.update_project_index",
+                                                    return_value=None,
+                                                ):
+                                                    with patch(
+                                                        "tools.write_journal.core.update_tag_indices",
+                                                        return_value=[],
+                                                    ):
+                                                        result = write_journal(
+                                                            data, dry_run=True
+                                                        )
+
+        assert result["success"] is True
+        assert result["new_entities_detected"] == []
+
+    def test_apply_confirmation_updates_can_write_back_location_and_candidates(
+        self, tmp_path
+    ):
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        fake_conn = MagicMock()
+
+        with (
+            patch("tools.edit_journal.edit_journal") as mock_edit,
+            patch(
+                "tools.write_journal.core.init_metadata_cache", return_value=fake_conn
+            ),
+            patch(
+                "tools.write_journal.core.build_journal_path_fields",
+                return_value={
+                    "path": "Journals/2026/03/source.md",
+                    "rel_path": "Journals/2026/03/source.md",
+                    "journal_route_path": "2026/03/source.md",
+                },
+            ),
+            patch(
+                "tools.write_journal.core.get_backlinked_by",
+                side_effect=[[], ["Journals/2026/03/source.md"]],
+                create=True,
+            ) as mock_backlinks,
+        ):
+            mock_edit.return_value = {
+                "success": True,
+                "changes": {
+                    "location": {"old": "Old City", "new": "New City"},
+                    "weather": {"old": "Old Weather", "new": "New Weather"},
+                    "related_entries": {
+                        "old": [],
+                        "new": ["Journals/2026/03/target.md"],
+                    },
+                },
+                "journal_path": str(journal_path),
+                "error": None,
+            }
+            result = apply_confirmation_updates(
+                journal_path=journal_path,
+                location="New City",
+                weather="New Weather",
+                approved_related_entries=["Journals/2026/03/target.md"],
+            )
+
+        assert result["success"] is True
+        mock_edit.assert_called_once()
+        assert (
+            mock_edit.call_args.kwargs["frontmatter_updates"]["location"] == "New City"
+        )
+        assert (
+            mock_edit.call_args.kwargs["frontmatter_updates"]["weather"]
+            == "New Weather"
+        )
+        assert mock_edit.call_args.kwargs["frontmatter_updates"][
+            "add_related_entries"
+        ] == ["Journals/2026/03/target.md"]
+        assert mock_backlinks.call_count == 2
+        assert result["confirm_status"] == "complete"
+        assert result["applied_fields"] == ["location", "weather", "related_entries"]
+        assert result["ignored_fields"] == []
+        assert result["approved_related_entries"] == ["Journals/2026/03/target.md"]
+        assert result["relation_summary"] == {
+            "source_entry": {
+                "rel_path": "Journals/2026/03/source.md",
+                "related_entries": ["Journals/2026/03/target.md"],
+                "backlinked_by": [],
+            },
+            "approved_related_context": [
+                {
+                    "rel_path": "Journals/2026/03/target.md",
+                    "backlinked_by": ["Journals/2026/03/source.md"],
+                }
+            ],
+        }
+
+    def test_apply_confirmation_updates_rejects_missing_journal_path(self, tmp_path):
+        missing_path = tmp_path / "missing.md"
+
+        result = apply_confirmation_updates(journal_path=missing_path)
+
+        assert result["success"] is False
+        assert result["confirm_status"] == "failed"
+        assert result["error"]["code"] == ErrorCode.JOURNAL_NOT_FOUND
+        assert "不存在" in result["error"]["message"]
+
+    def test_apply_confirmation_updates_reports_noop_fields(self, tmp_path):
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        with patch("tools.edit_journal.edit_journal") as mock_edit:
+            mock_edit.return_value = {
+                "success": True,
+                "changes": {},
+                "journal_path": str(journal_path),
+            }
+            result = apply_confirmation_updates(
+                journal_path=journal_path,
+                location="Old City",
+                weather="Old Weather",
+                approved_related_entries=[],
+            )
+
+        assert result["success"] is True
+        assert result["confirm_status"] == "noop"
+        assert result["applied_fields"] == []
+        assert result["ignored_fields"] == ["location", "weather"]
+        assert result["approved_related_entries"] == []
+
+    def test_apply_confirmation_updates_reports_partial_status(self, tmp_path):
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        with patch("tools.edit_journal.edit_journal") as mock_edit:
+            mock_edit.return_value = {
+                "success": True,
+                "changes": {
+                    "location": {"old": "Old City", "new": "New City"},
+                    "weather": {"old": "Same Weather", "new": "Same Weather"},
+                },
+                "journal_path": str(journal_path),
+            }
+            result = apply_confirmation_updates(
+                journal_path=journal_path,
+                location="New City",
+                weather="Same Weather",
+            )
+
+        assert result["success"] is True
+        assert result["confirm_status"] == "partial"
+        assert result["applied_fields"] == ["location"]
+        assert result["ignored_fields"] == ["weather"]
+
+    def test_apply_confirmation_updates_can_approve_candidates_by_id_with_context(
+        self, tmp_path
+    ):
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        fake_conn = MagicMock()
+        candidate_context = [
+            {
+                "candidate_id": 1,
+                "rel_path": "Journals/2026/03/first.md",
+                "title": "First",
+            },
+            {
+                "candidate_id": 2,
+                "rel_path": "Journals/2026/03/second.md",
+                "title": "Second",
+            },
+        ]
+
+        with (
+            patch("tools.edit_journal.edit_journal") as mock_edit,
+            patch(
+                "tools.write_journal.core.init_metadata_cache", return_value=fake_conn
+            ),
+            patch(
+                "tools.write_journal.core.build_journal_path_fields",
+                return_value={
+                    "path": "Journals/2026/03/source.md",
+                    "rel_path": "Journals/2026/03/source.md",
+                    "journal_route_path": "2026/03/source.md",
+                },
+            ),
+            patch(
+                "tools.write_journal.core.get_backlinked_by",
+                side_effect=[[], ["Journals/2026/03/source.md"]],
+            ),
+        ):
+            mock_edit.return_value = {
+                "success": True,
+                "changes": {
+                    "related_entries": {
+                        "old": [],
+                        "new": ["Journals/2026/03/second.md"],
+                    },
+                },
+                "journal_path": str(journal_path),
+                "error": None,
+            }
+            result = apply_confirmation_updates(
+                journal_path=journal_path,
+                approved_related_entries=[2],
+                candidate_context=candidate_context,
+            )
+
+        assert result["success"] is True
+        assert mock_edit.call_args.kwargs["frontmatter_updates"][
+            "add_related_entries"
+        ] == ["Journals/2026/03/second.md"]
+        assert result["approved_related_entries"] == ["Journals/2026/03/second.md"]
+        assert result["approved_candidate_ids"] == [2]
+        assert result["approval_summary"] == {
+            "approved": [
+                {
+                    "candidate_id": 2,
+                    "rel_path": "Journals/2026/03/second.md",
+                    "title": "Second",
+                }
+            ],
+            "rejected": [],
+        }
+
+    def test_apply_confirmation_updates_tracks_rejected_candidates_without_writing_them(
+        self, tmp_path
+    ):
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        candidate_context = [
+            {
+                "candidate_id": 1,
+                "rel_path": "Journals/2026/03/first.md",
+                "title": "First",
+            },
+            {
+                "candidate_id": 2,
+                "rel_path": "Journals/2026/03/second.md",
+                "title": "Second",
+            },
+        ]
+
+        with patch("tools.edit_journal.edit_journal") as mock_edit:
+            mock_edit.return_value = {
+                "success": True,
+                "changes": {},
+                "journal_path": str(journal_path),
+            }
+            result = apply_confirmation_updates(
+                journal_path=journal_path,
+                rejected_related_entries=[1, "Journals/2026/03/second.md"],
+                candidate_context=candidate_context,
+            )
+
+        assert result["success"] is True
+        assert (
+            "add_related_entries"
+            not in mock_edit.call_args.kwargs["frontmatter_updates"]
+        )
+        assert result["rejected_related_entries"] == [
+            "Journals/2026/03/first.md",
+            "Journals/2026/03/second.md",
+        ]
+        assert result["rejected_candidate_ids"] == [1, 2]
+        assert result["approval_summary"] == {
+            "approved": [],
+            "rejected": [
+                {
+                    "candidate_id": 1,
+                    "rel_path": "Journals/2026/03/first.md",
+                    "title": "First",
+                },
+                {
+                    "candidate_id": 2,
+                    "rel_path": "Journals/2026/03/second.md",
+                    "title": "Second",
+                },
+            ],
+        }
+
+    def test_apply_confirmation_updates_rejects_unknown_candidate_reference(
+        self, tmp_path
+    ):
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        result = apply_confirmation_updates(
+            journal_path=journal_path,
+            approved_related_entries=[99],
+            candidate_context=[
+                {
+                    "candidate_id": 1,
+                    "rel_path": "Journals/2026/03/first.md",
+                    "title": "First",
+                }
+            ],
+        )
+
+        assert result["success"] is False
+        assert result["confirm_status"] == "failed"
+        assert result["error"]["code"] == ErrorCode.INVALID_INPUT
+
+    def test_write_updates_relation_table_incrementally(self, mock_deps, tmp_path):
+        data = {
+            "date": "2026-03-14",
+            "title": "Source Journal",
+            "content": "This is test content.",
+            "related_entries": ["Journals/2026/03/target.md"],
+        }
+
+        target_path = mock_deps["journals_dir"] / "2026" / "03" / "target.md"
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(
+            '---\ntitle: "Target"\ndate: 2026-03-13\n---\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        import tools.lib.metadata_cache as mc
+
+        with (
+            patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]),
+            patch(
+                "tools.write_journal.core.resolve_user_data_dir",
+                return_value=mock_deps["user_data_dir"],
+            ),
+            patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=mock_deps["lock_path"],
+            ),
+            patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)),
+            patch("tools.write_journal.core.get_next_sequence", return_value=1),
+            patch(
+                "tools.write_journal.core.query_weather_for_location",
+                return_value="Sunny 25°C",
+            ),
+            patch(
+                "tools.write_journal.core.normalize_location",
+                return_value="Chongqing, China",
+            ),
+            patch(
+                "tools.write_journal.core.extract_file_paths_from_content",
+                return_value=[],
+            ),
+            patch("tools.write_journal.core.process_attachments", return_value=[]),
+            patch(
+                "tools.write_journal.core.update_monthly_abstract",
+                return_value={"abstract_path": None, "updated": False},
+            ),
+            patch("tools.write_journal.core.update_topic_index", return_value=[]),
+            patch("tools.write_journal.core.update_project_index", return_value=None),
+            patch("tools.write_journal.core.update_tag_indices", return_value=[]),
+            patch.object(mc, "USER_DATA_DIR", mock_deps["user_data_dir"]),
+            patch.object(mc, "JOURNALS_DIR", mock_deps["journals_dir"]),
+            patch.object(mc, "CACHE_DIR", mock_deps["cache_dir"]),
+            patch.object(
+                mc,
+                "METADATA_DB_PATH",
+                mock_deps["cache_dir"] / "metadata_cache.db",
+            ),
+        ):
+            result = write_journal(data, dry_run=False)
+            conn = mc.init_metadata_cache()
+            try:
+                backlinks = mc.get_backlinked_by(conn, "Journals/2026/03/target.md")
+            finally:
+                conn.close()
+
+        assert result["success"] is True
+        assert backlinks == ["Journals/2026/03/life-index_2026-03-14_001.md"]
 
 
 class TestWriteJournalValidation:

@@ -240,7 +240,19 @@ class TestIndexUpdaterPathSanitization:
         """Test that links as string is converted to list"""
         data = {"date": "2026-03-10", "links": "https://example.com"}
         result = format_frontmatter(data)
-        assert '"https://example.com"' in result
+        assert 'links: ["https://example.com"]' in result
+
+    def test_related_entries_string_converted_to_list(self):
+        """Test that related_entries as string is converted to list"""
+        data = {
+            "date": "2026-03-10",
+            "related_entries": "Journals/2026/03/a.md, Journals/2026/03/b.md",
+        }
+        result = format_frontmatter(data)
+        assert (
+            'related_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]'
+            in result
+        )
 
     def test_attachments_dict_with_rel_path(self):
         """Test attachments with dict containing rel_path"""
@@ -763,7 +775,7 @@ class TestFormatContent:
         result = format_content(data)
         # Lib version produces frontmatter with empty values
         assert "---" in result
-        assert "schema_version: 1" in result
+        assert "schema_version: 2" in result
         assert 'title: ""' in result
 
     def test_content_with_attachments_dicts(self):

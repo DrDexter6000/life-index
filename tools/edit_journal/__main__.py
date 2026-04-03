@@ -54,7 +54,9 @@ Examples:
         """,
     )
 
-    parser.add_argument("--journal", required=True, help="日志文件路径（相对或绝对路径）")
+    parser.add_argument(
+        "--journal", required=True, help="日志文件路径（相对或绝对路径）"
+    )
 
     # Frontmatter 字段设置
     parser.add_argument("--set-title", help="设置标题")
@@ -67,13 +69,33 @@ Examples:
     parser.add_argument("--set-project", help="设置项目")
     parser.add_argument("--set-topic", help="设置主题（逗号分隔多个）")
     parser.add_argument("--set-abstract", help="设置摘要")
+    parser.add_argument("--set-links", help="设置外部链接（逗号分隔多个）")
+    parser.add_argument(
+        "--set-related-entries", help="设置关联日志（逗号分隔多个 Journals/... 路径）"
+    )
+    parser.add_argument(
+        "--add-related-entry",
+        action="append",
+        dest="add_related_entries",
+        help="追加单个关联日志路径",
+    )
+    parser.add_argument(
+        "--remove-related-entry",
+        action="append",
+        dest="remove_related_entries",
+        help="移除单个关联日志路径",
+    )
 
     # 内容编辑
     content_group = parser.add_mutually_exclusive_group()
     content_group.add_argument("--append-content", help="追加内容到正文末尾")
-    content_group.add_argument("--replace-content", help="替换整个正文内容（保留 frontmatter）")
+    content_group.add_argument(
+        "--replace-content", help="替换整个正文内容（保留 frontmatter）"
+    )
 
-    parser.add_argument("--dry-run", action="store_true", help="模拟运行，不实际写入文件")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="模拟运行，不实际写入文件"
+    )
 
     parser.add_argument("--verbose", action="store_true", help="输出详细日志")
 
@@ -105,20 +127,46 @@ Examples:
         frontmatter_updates["weather"] = args.set_weather
     if args.set_mood is not None:
         normalized = args.set_mood.replace("，", ",")
-        frontmatter_updates["mood"] = [m.strip() for m in normalized.split(",") if m.strip()]
+        frontmatter_updates["mood"] = [
+            m.strip() for m in normalized.split(",") if m.strip()
+        ]
     if args.set_people is not None:
         normalized = args.set_people.replace("，", ",")
-        frontmatter_updates["people"] = [p.strip() for p in normalized.split(",") if p.strip()]
+        frontmatter_updates["people"] = [
+            p.strip() for p in normalized.split(",") if p.strip()
+        ]
     if args.set_tags is not None:
         normalized = args.set_tags.replace("，", ",")
-        frontmatter_updates["tags"] = [t.strip() for t in normalized.split(",") if t.strip()]
+        frontmatter_updates["tags"] = [
+            t.strip() for t in normalized.split(",") if t.strip()
+        ]
     if args.set_project is not None:
         frontmatter_updates["project"] = args.set_project
     if args.set_topic is not None:
         normalized = args.set_topic.replace("，", ",")
-        frontmatter_updates["topic"] = [t.strip() for t in normalized.split(",") if t.strip()]
+        frontmatter_updates["topic"] = [
+            t.strip() for t in normalized.split(",") if t.strip()
+        ]
     if args.set_abstract is not None:
         frontmatter_updates["abstract"] = args.set_abstract
+    if args.set_links is not None:
+        normalized = args.set_links.replace("，", ",")
+        frontmatter_updates["links"] = [
+            link.strip() for link in normalized.split(",") if link.strip()
+        ]
+    if args.set_related_entries is not None:
+        normalized = args.set_related_entries.replace("，", ",")
+        frontmatter_updates["related_entries"] = [
+            entry.strip() for entry in normalized.split(",") if entry.strip()
+        ]
+    if args.add_related_entries:
+        frontmatter_updates["add_related_entries"] = [
+            entry.strip() for entry in args.add_related_entries if str(entry).strip()
+        ]
+    if args.remove_related_entries:
+        frontmatter_updates["remove_related_entries"] = [
+            entry.strip() for entry in args.remove_related_entries if str(entry).strip()
+        ]
 
     logger.debug(f"Frontmatter 更新：{list(frontmatter_updates.keys())}")
 

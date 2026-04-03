@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "name": "query_weather",
+  "description": "查询天气",
+  "version": "1.0.0",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "location": {"type": "string"},
+      "date": {"type": "string"}
+    },
+    "required": ["location"]
+  },
+  "returns": {"type": "object", "properties": {}},
+  "examples": []
+}

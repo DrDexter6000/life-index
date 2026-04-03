@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "name": "edit_journal",
+  "description": "编辑已有日志",
+  "version": "1.0.0",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "journal": {"type": "string"},
+      "updates": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string"},
+          "date": {"type": "string"},
+          "location": {"type": "string"},
+          "weather": {"type": "string"},
+          "mood": {"type": "array", "items": {"type": "string"}},
+          "people": {"type": "array", "items": {"type": "string"}},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "project": {"type": "string"},
+          "topic": {"type": "array", "items": {"type": "string"}},
+          "abstract": {"type": "string"},
+          "links": {"type": "array", "items": {"type": "string"}},
+          "related_entries": {"type": "array", "items": {"type": "string"}},
+          "attachments": {"type": "array"}
+        }
+      },
+      "content": {"type": "string"}
+    },
+    "required": ["journal"]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "journal_path": {"type": "string"},
+      "changes": {"type": "object"},
+      "revision_path": {"type": ["string", "null"]}
+    }
+  },
+  "examples": []
+}

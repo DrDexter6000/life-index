@@ -1,0 +1,63 @@
+{
+  "success": true,
+  "query_params": {
+    "query": "golden",
+    "topic": null,
+    "project": null,
+    "tags": null,
+    "mood": null,
+    "people": null,
+    "date_from": null,
+    "date_to": null,
+    "level": 3,
+    "semantic": true
+  },
+  "l1_results": [
+    {
+      "path": "C:/tmp/a.md",
+      "title": "A"
+    }
+  ],
+  "l2_results": [
+    {
+      "path": "C:/tmp/a.md",
+      "metadata": {
+        "topic": [
+          "work"
+        ]
+      }
+    }
+  ],
+  "l3_results": [
+    {
+      "path": "C:/tmp/a.md",
+      "content": "Golden hit"
+    }
+  ],
+  "semantic_results": [
+    {
+      "path": "C:/tmp/a.md",
+      "score": 0.91,
+      "title": "A semantic"
+    }
+  ],
+  "merged_results": [
+    {
+      "path": "C:/tmp/a.md",
+      "rel_path": "Journals/2026/03/a.md",
+      "title": "A",
+      "date": "2026-03-14",
+      "rrf_score": 0.88
+    }
+  ],
+  "total_found": 1,
+  "semantic_available": true,
+  "performance": {
+    "l1_time_ms": 1.0,
+    "l2_time_ms": 2.0,
+    "l3_time_ms": 3.0,
+    "semantic_time_ms": 4.0,
+    "total_time_ms": 10.0
+  },
+  "warnings": []
+}

@@ -2,6 +2,7 @@
 """Regression tests for pytest fixture isolation."""
 
 import tools.lib.metadata_cache as metadata_cache
+import tools.search_journals.semantic as semantic_module
 
 
 class TestIsolatedDataDir:
@@ -11,3 +12,10 @@ class TestIsolatedDataDir:
         expected_cache_path = isolated_data_dir / ".cache" / "metadata_cache.db"
 
         assert metadata_cache.METADATA_DB_PATH == expected_cache_path
+
+    def test_reloads_semantic_module_for_temp_index_paths(
+        self, isolated_data_dir
+    ) -> None:
+        expected_index_path = isolated_data_dir / ".index" / "vectors_simple.pkl"
+
+        assert semantic_module.SEMANTIC_INDEX_PATH == expected_index_path

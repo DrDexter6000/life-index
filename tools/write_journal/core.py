@@ -5,11 +5,28 @@ Life Index - Write Journal Tool - Core
 """
 
 import re
-from typing import Any, Dict, Tuple
+from pathlib import Path
+from typing import Any, Dict, Sequence, Tuple
 
-from ..lib.config import JOURNALS_DIR, FILE_LOCK_TIMEOUT_DEFAULT, get_default_location
+from ..lib.config import (
+    JOURNALS_DIR,
+    FILE_LOCK_TIMEOUT_DEFAULT,
+    get_default_location,
+    resolve_user_data_dir,
+)
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
+from ..lib.entity_graph import load_entity_graph, resolve_entity
+from ..lib.entity_schema import EntityGraphValidationError
+from ..lib.metadata_cache import (
+    get_backlinked_by,
+    get_all_cached_metadata,
+    init_metadata_cache,
+    replace_entry_relations,
+)
+from ..lib.path_contract import build_journal_path_fields
+from ..lib.related_candidates import suggest_related_entries
+from ..lib import content_analysis
 from ..lib.timing import Timer
 from ..lib.logger import get_logger
 
@@ -30,6 +47,31 @@ from .index_updater import (
 )
 
 
+def _detect_new_entities(data: Dict[str, Any]) -> list[str]:
+    graph_path = resolve_user_data_dir() / "entity_graph.yaml"
+    try:
+        graph = load_entity_graph(graph_path)
+    except EntityGraphValidationError as exc:
+        logger.warning("Skipping entity detection due to invalid graph: %s", exc)
+        return []
+    if not graph:
+        return []
+
+    candidates: list[str] = []
+    for key in ("people", "location", "project"):
+        value = data.get(key)
+        if isinstance(value, list):
+            candidates.extend(str(item).strip() for item in value if str(item).strip())
+        elif isinstance(value, str) and value.strip():
+            candidates.append(value.strip())
+
+    new_entities: list[str] = []
+    for candidate in candidates:
+        if resolve_entity(candidate, graph) is None and candidate not in new_entities:
+            new_entities.append(candidate)
+    return new_entities
+
+
 def extract_explicit_metadata_from_content(content: str) -> Tuple[Dict[str, str], str]:
     """从正文中提取明确声明的元数据，并返回清理后的正文。"""
     extracted: Dict[str, str] = {}
@@ -37,8 +79,12 @@ def extract_explicit_metadata_from_content(content: str) -> Tuple[Dict[str, str]
         return extracted, content
 
     patterns = {
-        "location": re.compile(r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
-        "weather": re.compile(r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
+        "location": re.compile(
+            r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
+        ),
+        "weather": re.compile(
+            r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
+        ),
     }
 
     remaining_lines = []
@@ -64,6 +110,324 @@ def extract_explicit_metadata_from_content(content: str) -> Tuple[Dict[str, str]
         cleaned_content = cleaned_content.strip()
 
     return extracted, cleaned_content
+
+
+def _build_confirmation_payload(
+    *,
+    journal_path: str | None,
+    location: str,
+    weather: str,
+    related_candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "location": location,
+        "weather": weather,
+        "related_candidates": related_candidates,
+        "journal_path": journal_path,
+        "supports_related_entry_approval": True,
+    }
+
+
+def apply_confirmation_updates(
+    *,
+    journal_path: str | Any,
+    location: str | None = None,
+    weather: str | None = None,
+    approved_related_entries: list[str] | None = None,
+    approved_related_candidate_ids: list[int] | None = None,
+    rejected_related_entries: list[str | int] | None = None,
+    rejected_related_candidate_ids: list[int] | None = None,
+    candidate_context: list[dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    """Apply post-write confirmation decisions via edit_journal."""
+    from ..edit_journal import edit_journal
+
+    candidate_context = candidate_context or []
+
+    def _normalize_candidate_context(
+        candidates: list[dict[str, Any]],
+    ) -> tuple[dict[int, dict[str, Any]], dict[str, dict[str, Any]]]:
+        by_id: dict[int, dict[str, Any]] = {}
+        by_rel_path: dict[str, dict[str, Any]] = {}
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            rel_path = str(candidate.get("rel_path") or "").strip()
+            if not rel_path:
+                continue
+            candidate_id = candidate.get("candidate_id")
+            normalized_candidate = {
+                "candidate_id": candidate_id,
+                "rel_path": rel_path,
+                "title": str(candidate.get("title") or ""),
+            }
+            if isinstance(candidate_id, int):
+                by_id[candidate_id] = normalized_candidate
+            by_rel_path[rel_path] = normalized_candidate
+        return by_id, by_rel_path
+
+    def _resolve_candidate_refs(
+        refs: Sequence[str | int] | None,
+        *,
+        candidate_ids: Sequence[int] | None = None,
+    ) -> tuple[list[str], list[dict[str, Any]], list[int], dict[str, Any] | None]:
+        by_id, by_rel_path = _normalize_candidate_context(candidate_context)
+        resolved_rel_paths: list[str] = []
+        resolved_candidates: list[dict[str, Any]] = []
+        resolved_candidate_ids: list[int] = []
+        seen_rel_paths: set[str] = set()
+
+        combined_refs: list[str | int] = []
+        if refs:
+            combined_refs.extend(refs)
+        if candidate_ids:
+            combined_refs.extend(candidate_ids)
+
+        for ref in combined_refs:
+            candidate: dict[str, Any] | None = None
+            if isinstance(ref, int):
+                candidate = by_id.get(ref)
+            elif isinstance(ref, str):
+                normalized_ref = ref.strip()
+                if not normalized_ref:
+                    continue
+                candidate = by_rel_path.get(normalized_ref)
+                if candidate is None:
+                    candidate = {
+                        "candidate_id": None,
+                        "rel_path": normalized_ref,
+                        "title": "",
+                    }
+            if candidate is None:
+                return (
+                    [],
+                    [],
+                    [],
+                    create_error_response(
+                        ErrorCode.INVALID_INPUT,
+                        f"未知候选引用：{ref}",
+                        {"candidate_reference": ref},
+                        "请传入有效的 candidate_id 或 rel_path，并确保 candidate_context 与确认载荷一致",
+                    ),
+                )
+
+            rel_path = candidate["rel_path"]
+            if rel_path in seen_rel_paths:
+                continue
+            seen_rel_paths.add(rel_path)
+            resolved_rel_paths.append(rel_path)
+            resolved_candidates.append(candidate)
+            candidate_id = candidate.get("candidate_id")
+            if isinstance(candidate_id, int):
+                resolved_candidate_ids.append(candidate_id)
+
+        return resolved_rel_paths, resolved_candidates, resolved_candidate_ids, None
+
+    def _build_approval_summary(
+        *,
+        approved_candidates: list[dict[str, Any]],
+        rejected_candidates: list[dict[str, Any]],
+    ) -> dict[str, list[dict[str, Any]]]:
+        def _summary_rows(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return [
+                {
+                    "candidate_id": candidate.get("candidate_id"),
+                    "rel_path": candidate["rel_path"],
+                    "title": candidate.get("title") or "",
+                }
+                for candidate in candidates
+            ]
+
+        return {
+            "approved": _summary_rows(approved_candidates),
+            "rejected": _summary_rows(rejected_candidates),
+        }
+
+    def _build_relation_summary(
+        *,
+        source_path: Path,
+        approved_entries: list[str],
+        applied_fields: list[str],
+    ) -> dict[str, Any] | None:
+        if "related_entries" not in applied_fields:
+            return None
+
+        metadata_conn = init_metadata_cache()
+        try:
+            source_fields = build_journal_path_fields(
+                source_path,
+                journals_dir=JOURNALS_DIR,
+                user_data_dir=resolve_user_data_dir(),
+            )
+            source_rel_path = source_fields["rel_path"]
+            source_backlinks = get_backlinked_by(metadata_conn, source_rel_path)
+            approved_context = [
+                {
+                    "rel_path": rel_path,
+                    "backlinked_by": get_backlinked_by(metadata_conn, rel_path),
+                }
+                for rel_path in approved_entries
+            ]
+            return {
+                "source_entry": {
+                    "rel_path": source_rel_path,
+                    "related_entries": approved_entries,
+                    "backlinked_by": source_backlinks,
+                },
+                "approved_related_context": approved_context,
+            }
+        finally:
+            metadata_conn.close()
+
+    def _derive_confirm_status(
+        *, success: bool, requested_fields: list[str], applied_fields: list[str]
+    ) -> str:
+        if not success:
+            return "failed"
+        if not requested_fields or not applied_fields:
+            return "noop"
+        if len(applied_fields) == len(requested_fields):
+            return "complete"
+        return "partial"
+
+    journal_path_obj = Path(journal_path)
+    if not journal_path_obj.exists():
+        error_result = create_error_response(
+            ErrorCode.JOURNAL_NOT_FOUND,
+            f"日志文件不存在：{journal_path_obj}",
+            {"journal_path": str(journal_path_obj)},
+            "请检查日志路径是否正确后重试",
+        )
+        error_result.update(
+            {
+                "journal_path": str(journal_path_obj),
+                "confirm_status": "failed",
+                "applied_fields": [],
+                "ignored_fields": [],
+                "approved_related_entries": [],
+                "requested_related_entries": approved_related_entries or [],
+                "approved_candidate_ids": [],
+                "rejected_related_entries": [],
+                "rejected_candidate_ids": [],
+                "approval_summary": {"approved": [], "rejected": []},
+                "relation_summary": None,
+            }
+        )
+        return error_result
+
+    (
+        resolved_approved_entries,
+        approved_candidates,
+        approved_candidate_ids,
+        approval_error,
+    ) = _resolve_candidate_refs(
+        approved_related_entries,
+        candidate_ids=approved_related_candidate_ids,
+    )
+    if approval_error is not None:
+        approval_error.update(
+            {
+                "journal_path": str(journal_path_obj),
+                "confirm_status": "failed",
+                "applied_fields": [],
+                "ignored_fields": [],
+                "approved_related_entries": [],
+                "requested_related_entries": approved_related_entries or [],
+                "approved_candidate_ids": [],
+                "rejected_related_entries": [],
+                "rejected_candidate_ids": [],
+                "approval_summary": {"approved": [], "rejected": []},
+                "relation_summary": None,
+            }
+        )
+        return approval_error
+
+    (
+        resolved_rejected_entries,
+        rejected_candidates,
+        rejected_candidate_ids,
+        rejection_error,
+    ) = _resolve_candidate_refs(
+        rejected_related_entries,
+        candidate_ids=rejected_related_candidate_ids,
+    )
+    if rejection_error is not None:
+        rejection_error.update(
+            {
+                "journal_path": str(journal_path_obj),
+                "confirm_status": "failed",
+                "applied_fields": [],
+                "ignored_fields": [],
+                "approved_related_entries": [],
+                "requested_related_entries": approved_related_entries or [],
+                "approved_candidate_ids": [],
+                "rejected_related_entries": [],
+                "rejected_candidate_ids": [],
+                "approval_summary": {"approved": [], "rejected": []},
+                "relation_summary": None,
+            }
+        )
+        return rejection_error
+
+    frontmatter_updates: Dict[str, Any] = {}
+    requested_fields: list[str] = []
+    if location is not None:
+        frontmatter_updates["location"] = location
+        requested_fields.append("location")
+    if weather is not None:
+        frontmatter_updates["weather"] = weather
+        requested_fields.append("weather")
+    if resolved_approved_entries:
+        frontmatter_updates["add_related_entries"] = resolved_approved_entries
+        requested_fields.append("related_entries")
+
+    result = edit_journal(
+        journal_path=journal_path_obj,
+        frontmatter_updates=frontmatter_updates,
+    )
+
+    changes = result.get("changes", {}) if isinstance(result, dict) else {}
+
+    def _field_was_applied(field: str) -> bool:
+        if field not in changes:
+            return False
+        change = changes.get(field)
+        if not isinstance(change, dict):
+            return True
+        return change.get("old") != change.get("new")
+
+    applied_fields = [field for field in requested_fields if _field_was_applied(field)]
+    ignored_fields = [
+        field for field in requested_fields if not _field_was_applied(field)
+    ]
+
+    if isinstance(result, dict):
+        result["applied_fields"] = applied_fields
+        result["ignored_fields"] = ignored_fields
+        result["approved_related_entries"] = (
+            resolved_approved_entries if "related_entries" in applied_fields else []
+        )
+        result["requested_related_entries"] = resolved_approved_entries
+        approved_entries = result["approved_related_entries"]
+        result["approved_candidate_ids"] = approved_candidate_ids
+        result["rejected_related_entries"] = resolved_rejected_entries
+        result["rejected_candidate_ids"] = rejected_candidate_ids
+        result["approval_summary"] = _build_approval_summary(
+            approved_candidates=approved_candidates,
+            rejected_candidates=rejected_candidates,
+        )
+        result["confirm_status"] = _derive_confirm_status(
+            success=bool(result.get("success")),
+            requested_fields=requested_fields,
+            applied_fields=applied_fields,
+        )
+        result["relation_summary"] = _build_relation_summary(
+            source_path=journal_path_obj,
+            approved_entries=approved_entries,
+            applied_fields=applied_fields,
+        )
+
+    return result
 
 
 def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
@@ -107,6 +471,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         "weather_auto_filled": False,
         "needs_confirmation": False,
         "confirmation_message": "",
+        "confirmation": {},
+        "related_candidates": [],
+        "new_entities_detected": [],
         "error": None,
         "metrics": {},
     }
@@ -121,7 +488,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         logger.info(f"开始写入日志：date={date_str}, title={data.get('title', 'N/A')}")
 
         content = data.get("content", "")
-        explicit_metadata, cleaned_content = extract_explicit_metadata_from_content(content)
+        explicit_metadata, cleaned_content = extract_explicit_metadata_from_content(
+            content
+        )
         data["content"] = cleaned_content
 
         # ===== 第一层：用户提及为准 =====
@@ -148,7 +517,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             # 尝试获取天气（使用英文格式的地点）
             logger.debug(f"查询天气：location={location_for_weather}")
             with timer.measure("weather_query"):
-                queried_weather = query_weather_for_location(location_for_weather, date_str)
+                queried_weather = query_weather_for_location(
+                    location_for_weather, date_str
+                )
             if queried_weather:
                 weather = queried_weather
                 result["weather_used"] = weather
@@ -163,6 +534,50 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             logger.debug(f"使用用户提供的天气：{weather}")
 
         data["weather"] = weather
+        try:
+            entity_graph = load_entity_graph(
+                resolve_user_data_dir() / "entity_graph.yaml"
+            )
+        except EntityGraphValidationError as exc:
+            logger.warning(
+                "Skipping entity graph enrichment due to invalid graph: %s", exc
+            )
+            entity_graph = []
+        data["sentiment_score"] = content_analysis.generate_sentiment_score(
+            str(data.get("content", ""))
+        )
+        data["themes"] = content_analysis.extract_themes(str(data.get("content", "")))
+        data["entities"] = content_analysis.match_entities(
+            data.get("people"),
+            data.get("location"),
+            data.get("project"),
+            entity_graph,
+        )
+        result["new_entities_detected"] = _detect_new_entities(data)
+
+        metadata_conn = init_metadata_cache()
+        try:
+            candidate_entries = get_all_cached_metadata(metadata_conn)
+        finally:
+            metadata_conn.close()
+        current_entry = {
+            "date": data.get("date"),
+            "topic": data.get("topic"),
+            "people": data.get("people"),
+            "project": data.get("project"),
+            "tags": data.get("tags"),
+            "related_entries": data.get("related_entries", []),
+        }
+        result["related_candidates"] = suggest_related_entries(
+            current_entry, candidate_entries
+        )
+        result["confirmation"] = _build_confirmation_payload(
+            journal_path=None,
+            location=location,
+            weather=weather,
+            related_candidates=result["related_candidates"],
+        )
+        result["prepared_metadata"] = dict(data)
 
         # ===== 文件锁保护 =====
         # 使用文件锁保护序列号生成和写入操作，防止并发冲突
@@ -237,6 +652,12 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
 
                 if dry_run:
                     result["journal_path"] = str(journal_path)
+                    result["confirmation"] = _build_confirmation_payload(
+                        journal_path=str(journal_path),
+                        location=location,
+                        weather=weather,
+                        related_candidates=result["related_candidates"],
+                    )
                     result["content_preview"] = full_content[:500]
                     result["success"] = True
                     timer.stop()
@@ -264,7 +685,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         abstract_error = None
                         abstract_success = False
                         try:
-                            abstract_result = update_monthly_abstract(year, month, dry_run)
+                            abstract_result = update_monthly_abstract(
+                                year, month, dry_run
+                            )
                             abstract_success = True
                         except (OSError, IOError, RuntimeError) as e:
                             abstract_error = str(e)
@@ -295,7 +718,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                             except Exception as e:
                                 # 向量索引更新失败不阻塞写入
                                 vector_index_error = str(e)
-                                logger.warning(f"向量索引更新失败（不影响日志写入）：{e}")
+                                logger.warning(
+                                    f"向量索引更新失败（不影响日志写入）：{e}"
+                                )
 
                         except (OSError, IOError, RuntimeError) as e:
                             # 索引更新失败，清理临时文件
@@ -307,6 +732,21 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     # 5. 所有操作成功，原子性重命名临时文件
                     temp_path.replace(journal_path)
                     logger.info(f"日志文件写入成功：{journal_path}")
+
+                    metadata_conn = init_metadata_cache()
+                    try:
+                        source_rel_path = build_journal_path_fields(
+                            journal_path,
+                            journals_dir=JOURNALS_DIR,
+                            user_data_dir=resolve_user_data_dir(),
+                        )["rel_path"]
+                        replace_entry_relations(
+                            metadata_conn,
+                            source_rel_path,
+                            data.get("related_entries", []),
+                        )
+                    finally:
+                        metadata_conn.close()
 
                     # 记录结果
                     result["journal_path"] = str(journal_path)
@@ -351,6 +791,24 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         # ===== 第三层：写入后确认 =====
         result["needs_confirmation"] = True
         if result["needs_confirmation"]:
+            relation_lines = ""
+            if result["related_candidates"]:
+                candidate_lines = ["\n\n可考虑关联以下日志："]
+                for index, candidate in enumerate(
+                    result["related_candidates"], start=1
+                ):
+                    candidate_lines.append(
+                        f"{index}. {candidate['rel_path']} | {candidate['date']} | {candidate['title']}"
+                    )
+                relation_lines = "\n".join(candidate_lines)
+
+            result["confirmation"] = _build_confirmation_payload(
+                journal_path=str(journal_path),
+                location=location,
+                weather=weather,
+                related_candidates=result["related_candidates"],
+            )
+
             result["confirmation_message"] = (
                 f"日志已保存至：{journal_path}\n\n"
                 f"本次记录地点：{location}\n"
@@ -358,6 +816,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 f"请确认这个地点是否正确。"
                 f"如果不对，请告诉我正确地点。"
                 f"我会基于新地点更新地点和天气。"
+                f"{relation_lines}"
             )
 
     except (ValueError, IOError, RuntimeError, OSError) as e:

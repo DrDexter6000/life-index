@@ -1,0 +1,71 @@
+{
+  "success": true,
+  "changes": {
+    "location": {
+      "old": "Old City",
+      "new": "New City"
+    },
+    "related_entries": {
+      "old": [],
+      "new": [
+        "Journals/2026/03/approved.md"
+      ]
+    }
+  },
+  "journal_path": "JOURNAL_PATH",
+  "error": null,
+  "applied_fields": [
+    "location",
+    "related_entries"
+  ],
+  "ignored_fields": [],
+  "approved_related_entries": [
+    "Journals/2026/03/approved.md"
+  ],
+  "requested_related_entries": [
+    "Journals/2026/03/approved.md"
+  ],
+  "approved_candidate_ids": [
+    1
+  ],
+  "rejected_related_entries": [
+    "Journals/2026/03/rejected.md"
+  ],
+  "rejected_candidate_ids": [
+    2
+  ],
+  "approval_summary": {
+    "approved": [
+      {
+        "candidate_id": 1,
+        "rel_path": "Journals/2026/03/approved.md",
+        "title": "Approved"
+      }
+    ],
+    "rejected": [
+      {
+        "candidate_id": 2,
+        "rel_path": "Journals/2026/03/rejected.md",
+        "title": "Rejected"
+      }
+    ]
+  },
+  "confirm_status": "complete",
+  "relation_summary": {
+    "source_entry": {
+      "rel_path": "Journals/2026/03/source.md",
+      "related_entries": [
+        "Journals/2026/03/approved.md"
+      ],
+      "backlinked_by": []
+    },
+    "approved_related_context": [
+      {
+        "rel_path": "Journals/2026/03/approved.md",
+        "backlinked_by": [
+          "Journals/2026/03/source.md"
+        ]
+      }
+    ]
+  }
+}

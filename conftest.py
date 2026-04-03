@@ -58,9 +58,13 @@ def isolated_data_dir(tmp_path: Path) -> Generator[Path, None, None]:
     import importlib
     import tools.lib.paths as paths_module
     import tools.lib.config as config_module
+    import tools.search_journals.semantic as semantic_module
+    import tools.search_journals.semantic_pipeline as semantic_pipeline_module
 
     importlib.reload(paths_module)
     importlib.reload(config_module)
+    importlib.reload(semantic_module)
+    importlib.reload(semantic_pipeline_module)
 
     # 同样需要重新加载依赖 config 的模块
     import tools.lib.vector_index_simple as vec_module
@@ -81,6 +85,8 @@ def isolated_data_dir(tmp_path: Path) -> Generator[Path, None, None]:
         # 重新加载模块以恢复原始状态
         importlib.reload(paths_module)
         importlib.reload(config_module)
+        importlib.reload(semantic_module)
+        importlib.reload(semantic_pipeline_module)
         importlib.reload(vec_module)
         importlib.reload(metadata_cache_module)
 

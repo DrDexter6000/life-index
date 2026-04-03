@@ -12,10 +12,13 @@ documented in docs/API.md and SKILL.md:
 6. Validation rejects missing required fields
 """
 
-import pytest
+import json
+from pathlib import Path
 from unittest.mock import patch
 
-from tools.write_journal.core import write_journal
+import pytest
+
+from tools.write_journal.core import apply_confirmation_updates, write_journal
 
 # ── Documented field contracts ──
 
@@ -32,6 +35,9 @@ REQUIRED_SUCCESS_FIELDS = {
     "weather_auto_filled",
     "needs_confirmation",
     "confirmation_message",
+    "confirmation",
+    "related_candidates",
+    "new_entities_detected",
     "metrics",
 }
 
@@ -81,8 +87,12 @@ def _run_write(data: dict, writable_env: dict, dry_run: bool = False) -> dict:
             "tools.write_journal.core.get_journals_lock_path",
             return_value=writable_env["lock_path"],
         ):
-            with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
-                with patch("tools.write_journal.core.get_next_sequence", return_value=1):
+            with patch(
+                "tools.write_journal.core.get_year_month", return_value=(2026, 3)
+            ):
+                with patch(
+                    "tools.write_journal.core.get_next_sequence", return_value=1
+                ):
                     with patch(
                         "tools.write_journal.core.query_weather_for_location",
                         return_value="Sunny 25°C",
@@ -104,6 +114,63 @@ def _run_write(data: dict, writable_env: dict, dry_run: bool = False) -> dict:
                                         return_value="abstract.md",
                                     ):
                                         return write_journal(data, dry_run=dry_run)
+
+
+def _load_golden(name: str) -> dict:
+    return json.loads(
+        (Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8")
+    )
+
+
+def _normalize_write_snapshot(result: dict) -> dict:
+    normalized = json.loads(json.dumps(result))
+    allowed_fields = {
+        "success",
+        "journal_path",
+        "updated_indices",
+        "index_status",
+        "side_effects_status",
+        "attachments_processed",
+        "attachments_detected_count",
+        "attachments_processed_count",
+        "attachments_failed_count",
+        "location_used",
+        "location_auto_filled",
+        "weather_used",
+        "weather_auto_filled",
+        "needs_confirmation",
+        "confirmation_message",
+        "confirmation",
+        "related_candidates",
+        "new_entities_detected",
+        "error",
+        "metrics",
+    }
+    normalized = {
+        key: value for key, value in normalized.items() if key in allowed_fields
+    }
+    normalized["journal_path"] = "JOURNAL_PATH"
+    normalized["confirmation_message"] = (
+        f"日志已保存至：JOURNAL_PATH\n\n"
+        f"本次记录地点：{normalized['location_used']}\n"
+        f"天气：{normalized['weather_used']}\n"
+        "请确认这个地点是否正确。如果不对，请告诉我正确地点。"
+        "我会基于新地点更新地点和天气。"
+    )
+    confirmation = normalized.get("confirmation")
+    if isinstance(confirmation, dict):
+        confirmation["journal_path"] = "JOURNAL_PATH"
+    normalized["related_candidates"] = []
+    if isinstance(confirmation, dict):
+        confirmation["related_candidates"] = []
+    normalized["metrics"] = {}
+    return normalized
+
+
+def _normalize_confirm_snapshot(result: dict) -> dict:
+    normalized = json.loads(json.dumps(result))
+    normalized["journal_path"] = "JOURNAL_PATH"
+    return normalized
 
 
 class TestWriteJournalResponseShape:
@@ -151,6 +218,9 @@ class TestWriteJournalResponseShape:
         assert isinstance(result["weather_auto_filled"], bool)
         assert isinstance(result["needs_confirmation"], bool)
         assert isinstance(result["confirmation_message"], str)
+        assert isinstance(result["confirmation"], dict)
+        assert isinstance(result["related_candidates"], list)
+        assert isinstance(result["new_entities_detected"], list)
         assert isinstance(result["metrics"], dict)
 
 
@@ -255,6 +325,284 @@ class TestWriteJournalConfirmationContract:
             if result["success"]:
                 assert result["needs_confirmation"] is True
                 assert len(result["confirmation_message"]) > 0
+
+    def test_confirmation_payload_is_structured(self, writable_env):
+        data = {
+            "date": "2026-03-14",
+            "title": "Structured Confirmation",
+            "content": "Content.",
+            "topic": ["work"],
+            "abstract": "Abstract.",
+            "mood": [],
+            "tags": [],
+        }
+        result = _run_write(data, writable_env)
+
+        assert result["success"] is True
+        assert result["confirmation"]["location"] == result["location_used"]
+        assert result["confirmation"]["weather"] == result["weather_used"]
+        assert "related_candidates" in result["confirmation"]
+
+    def test_confirmation_payload_supports_related_entry_approval(self, writable_env):
+        data = {
+            "date": "2026-03-14",
+            "title": "Structured Confirmation",
+            "content": "Content.",
+            "topic": ["work"],
+            "abstract": "Abstract.",
+            "mood": [],
+            "tags": [],
+        }
+        result = _run_write(data, writable_env)
+
+        assert result["success"] is True
+        assert result["confirmation"]["supports_related_entry_approval"] is True
+
+    def test_related_candidates_have_structured_fields(self, writable_env):
+        data = {
+            "date": "2026-03-14",
+            "title": "Candidate Contract",
+            "content": "Content.",
+            "topic": ["work"],
+            "abstract": "Abstract.",
+            "mood": [],
+            "tags": [],
+        }
+        result = _run_write(data, writable_env)
+
+        assert result["success"] is True
+        for candidate in result["related_candidates"]:
+            assert "rel_path" in candidate
+            assert "score" in candidate
+            assert "match_reason" in candidate
+            assert "reasons" in candidate
+            assert "score_breakdown" in candidate
+
+
+class TestConfirmWorkflowContract:
+    def test_apply_confirmation_updates_returns_feedback_summary(self, tmp_path):
+        from tools.write_journal.core import apply_confirmation_updates
+
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        with (
+            patch("tools.edit_journal.edit_journal") as mock_edit,
+            patch("tools.write_journal.core.init_metadata_cache") as mock_cache,
+            patch(
+                "tools.write_journal.core.build_journal_path_fields",
+                return_value={
+                    "path": "Journals/2026/03/source.md",
+                    "rel_path": "Journals/2026/03/source.md",
+                    "journal_route_path": "2026/03/source.md",
+                },
+            ),
+            patch(
+                "tools.write_journal.core.get_backlinked_by",
+                side_effect=[[], []],
+            ),
+        ):
+            mock_cache.return_value.close = lambda: None
+            mock_edit.return_value = {
+                "success": True,
+                "changes": {
+                    "location": {"old": "Old City", "new": "New City"},
+                    "related_entries": {
+                        "old": [],
+                        "new": ["Journals/2026/03/target.md"],
+                    },
+                },
+                "journal_path": str(journal_path),
+            }
+            result = apply_confirmation_updates(
+                journal_path=journal_path,
+                location="New City",
+                approved_related_entries=["Journals/2026/03/target.md"],
+            )
+
+        assert result["success"] is True
+        assert result["confirm_status"] == "complete"
+        assert "applied_fields" in result
+        assert "ignored_fields" in result
+        assert "approved_related_entries" in result
+        assert result["requested_related_entries"] == ["Journals/2026/03/target.md"]
+        assert result["relation_summary"] == {
+            "source_entry": {
+                "rel_path": "Journals/2026/03/source.md",
+                "related_entries": ["Journals/2026/03/target.md"],
+                "backlinked_by": [],
+            },
+            "approved_related_context": [
+                {
+                    "rel_path": "Journals/2026/03/target.md",
+                    "backlinked_by": [],
+                }
+            ],
+        }
+
+    def test_apply_confirmation_updates_returns_candidate_approval_summary(
+        self, tmp_path
+    ):
+        from tools.write_journal.core import apply_confirmation_updates
+
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        candidate_context = [
+            {
+                "candidate_id": 1,
+                "rel_path": "Journals/2026/03/first.md",
+                "title": "First",
+            },
+            {
+                "candidate_id": 2,
+                "rel_path": "Journals/2026/03/second.md",
+                "title": "Second",
+            },
+        ]
+
+        with patch("tools.edit_journal.edit_journal") as mock_edit:
+            mock_edit.return_value = {
+                "success": True,
+                "changes": {
+                    "related_entries": {
+                        "old": [],
+                        "new": ["Journals/2026/03/first.md"],
+                    }
+                },
+                "journal_path": str(journal_path),
+            }
+            result = apply_confirmation_updates(
+                journal_path=journal_path,
+                approved_related_candidate_ids=[1],
+                rejected_related_candidate_ids=[2],
+                candidate_context=candidate_context,
+            )
+
+        assert result["success"] is True
+        assert result["approved_candidate_ids"] == [1]
+        assert result["rejected_candidate_ids"] == [2]
+        assert result["approval_summary"] == {
+            "approved": [
+                {
+                    "candidate_id": 1,
+                    "rel_path": "Journals/2026/03/first.md",
+                    "title": "First",
+                }
+            ],
+            "rejected": [
+                {
+                    "candidate_id": 2,
+                    "rel_path": "Journals/2026/03/second.md",
+                    "title": "Second",
+                }
+            ],
+        }
+
+
+class TestWriteJournalGoldenSnapshots:
+    def test_write_result_matches_golden_snapshot(self, writable_env):
+        data = {
+            "date": "2026-03-14",
+            "title": "Golden Write",
+            "content": "Golden body.",
+            "topic": ["work"],
+            "abstract": "Golden abstract.",
+            "mood": [],
+            "tags": [],
+        }
+
+        with (
+            patch(
+                "tools.write_journal.core.get_default_location",
+                return_value="Chongqing, China",
+            ),
+            patch(
+                "tools.write_journal.core.normalize_location",
+                return_value="Chongqing, China",
+            ),
+            patch(
+                "tools.write_journal.core.suggest_related_entries",
+                return_value=[],
+            ),
+            patch(
+                "tools.write_journal.core.load_entity_graph",
+                return_value=[],
+            ),
+        ):
+            result = _run_write(data, writable_env, dry_run=False)
+
+        assert _normalize_write_snapshot(result) == _load_golden("write_result.json")
+
+    def test_confirm_result_matches_golden_snapshot(self, tmp_path):
+        journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        candidate_context = [
+            {
+                "candidate_id": 1,
+                "rel_path": "Journals/2026/03/approved.md",
+                "title": "Approved",
+            },
+            {
+                "candidate_id": 2,
+                "rel_path": "Journals/2026/03/rejected.md",
+                "title": "Rejected",
+            },
+        ]
+
+        with (
+            patch("tools.edit_journal.edit_journal") as mock_edit,
+            patch("tools.write_journal.core.init_metadata_cache") as mock_cache,
+            patch(
+                "tools.write_journal.core.build_journal_path_fields",
+                return_value={
+                    "path": str(journal_path),
+                    "rel_path": "Journals/2026/03/source.md",
+                    "journal_route_path": "2026/03/source.md",
+                },
+            ),
+            patch(
+                "tools.write_journal.core.get_backlinked_by",
+                side_effect=[[], ["Journals/2026/03/source.md"]],
+            ),
+        ):
+            mock_cache.return_value.close = lambda: None
+            mock_edit.return_value = {
+                "success": True,
+                "changes": {
+                    "location": {"old": "Old City", "new": "New City"},
+                    "related_entries": {
+                        "old": [],
+                        "new": ["Journals/2026/03/approved.md"],
+                    },
+                },
+                "journal_path": str(journal_path),
+                "error": None,
+            }
+            result = apply_confirmation_updates(
+                journal_path=journal_path,
+                location="New City",
+                approved_related_candidate_ids=[1],
+                rejected_related_candidate_ids=[2],
+                candidate_context=candidate_context,
+            )
+
+        assert _normalize_confirm_snapshot(result) == _load_golden(
+            "confirm_result.json"
+        )
 
 
 class TestWriteJournalAttachmentResultContract:

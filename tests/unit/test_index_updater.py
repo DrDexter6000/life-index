@@ -964,15 +964,33 @@ class TestUpdateVectorIndex:
         call_args = mock_model.encode.call_args[0][0][0]
         assert "work" in call_args
 
-    def test_content_truncated_to_1000_chars(self, tmp_path):
-        """Content should be truncated to 1000 characters"""
+    def test_embedding_text_matches_rebuild_path_for_long_content(self, tmp_path):
+        """Write-through vector text should match rebuild parsing for the same journal."""
         from tools.write_journal.index_updater import update_vector_index
+        from tools.lib.semantic_search import parse_journal_for_vec
 
         journal_path = tmp_path / "journal.md"
-        journal_path.write_text("content")
-
         long_content = "x" * 2000
-        data = {"title": "Test", "content": long_content}
+        journal_path.write_text(
+            "---\n"
+            'title: "Test"\n'
+            "date: 2026-03-10\n"
+            "tags:\n"
+            "  - tag1\n"
+            "topic:\n"
+            "  - work\n"
+            "---\n\n"
+            f"{long_content}",
+            encoding="utf-8",
+        )
+
+        data = {
+            "title": "Test",
+            "date": "2026-03-10",
+            "content": long_content,
+            "tags": ["tag1"],
+            "topic": ["work"],
+        }
 
         mock_model = MagicMock()
         mock_model.load.return_value = True
@@ -988,9 +1006,12 @@ class TestUpdateVectorIndex:
                     result = update_vector_index(journal_path, data)
 
         assert result is True
-        call_args = mock_model.encode.call_args[0][0][0]
-        # Content should be truncated to 1000 chars + title + space
-        assert len(call_args) < len(long_content) + 10
+        write_text = mock_model.encode.call_args[0][0][0]
+        rebuild_triplet = parse_journal_for_vec(journal_path)
+
+        assert rebuild_triplet is not None
+        _, rebuild_text, _ = rebuild_triplet
+        assert write_text == rebuild_text
 
     def test_journal_path_outside_user_data_dir(self, tmp_path):
         """Journal path outside USER_DATA_DIR should use absolute path"""

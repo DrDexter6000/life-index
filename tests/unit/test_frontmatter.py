@@ -419,6 +419,42 @@ class TestValidateMetadata:
         assert any("schema_version" in w["field"] for w in warnings)
         assert any("Schema 版本不匹配" in w["message"] for w in warnings)
 
+    def test_links_must_be_list_of_strings(self):
+        """links should reject non-list values"""
+        metadata = {
+            "title": "Test",
+            "date": "2026-03-10",
+            "links": "https://example.com",
+        }
+
+        issues = validate_metadata(metadata)
+
+        assert any(issue["field"] == "links" for issue in issues)
+
+    def test_related_entries_must_be_list_of_strings(self):
+        """related_entries should reject non-list values"""
+        metadata = {
+            "title": "Test",
+            "date": "2026-03-10",
+            "related_entries": "Journals/2026/03/other.md",
+        }
+
+        issues = validate_metadata(metadata)
+
+        assert any(issue["field"] == "related_entries" for issue in issues)
+
+    def test_related_entries_reject_invalid_paths(self):
+        """related_entries should reject non journal-relative paths"""
+        metadata = {
+            "title": "Test",
+            "date": "2026-03-10",
+            "related_entries": ["notes/other.md"],
+        }
+
+        issues = validate_metadata(metadata)
+
+        assert any(issue["field"] == "related_entries" for issue in issues)
+
 
 class TestUpdateFrontmatterFields:
     """Tests for update_frontmatter_fields function (lines 223-252)"""
@@ -660,11 +696,11 @@ class TestMigrateMetadata:
 
         result = migrate_metadata(metadata)
 
-        assert result["schema_version"] == 1
+        assert result["schema_version"] == 2
         assert result["title"] == "Test"
 
     def test_no_schema_version(self):
-        """Test migration when no schema_version present (defaults to 1)"""
+        """Test migration when no schema_version present (defaults to 1, migrated to 2)"""
         metadata = {
             "title": "Test",
             "date": "2026-03-10",
@@ -672,9 +708,8 @@ class TestMigrateMetadata:
 
         result = migrate_metadata(metadata)
 
-        # When no schema_version, defaults to 1, which matches current
-        # So no migration happens, schema_version not added
-        assert "schema_version" not in result or result["schema_version"] == 1
+        # When no schema_version, defaults to 1, then migrated to current (2)
+        assert result["schema_version"] == 2
         assert result["title"] == "Test"
 
     def test_future_version(self):
@@ -688,7 +723,7 @@ class TestMigrateMetadata:
         result = migrate_metadata(metadata)
 
         # Should update to current version
-        assert result["schema_version"] == 1
+        assert result["schema_version"] == 2
 
 
 class TestFieldConstants:
@@ -700,6 +735,7 @@ class TestFieldConstants:
         assert "date" in FIELD_ORDER
         assert "location" in FIELD_ORDER
         assert "topic" in FIELD_ORDER
+        assert "links" in FIELD_ORDER
 
     def test_required_fields(self):
         """Required fields should be title and date"""
@@ -718,7 +754,7 @@ class TestFieldConstants:
     def test_get_schema_version(self):
         """Test get_schema_version function (line 313)"""
         version = get_schema_version()
-        assert version == 1
+        assert version == 2
         assert isinstance(version, int)
 
 

@@ -238,7 +238,9 @@ def prepare_journal_metadata(
     llm_available = use_llm and is_llm_available()
     llm_status: dict[str, str | None] = {
         "state": "unavailable" if not llm_available else "idle",
-        "message": "未配置 AI 服务，将使用规则补全或手动字段。" if not llm_available else None,
+        "message": "未配置 AI 服务，将使用规则补全或手动字段。"
+        if not llm_available
+        else None,
     }
 
     # Mark user-provided fields
@@ -248,6 +250,8 @@ def prepare_journal_metadata(
         "mood",
         "tags",
         "people",
+        "links",
+        "related_entries",
         "location",
         "weather",
         "project",
@@ -347,6 +351,8 @@ def prepare_journal_metadata(
     prepared["mood"] = normalize_text_list(prepared.get("mood"))
     prepared["tags"] = normalize_text_list(prepared.get("tags"))
     prepared["people"] = normalize_text_list(prepared.get("people"))
+    prepared["links"] = normalize_text_list(prepared.get("links"))
+    prepared["related_entries"] = normalize_text_list(prepared.get("related_entries"))
 
     # Default field sources
     field_sources.setdefault("title", "user")
@@ -355,6 +361,8 @@ def prepare_journal_metadata(
     field_sources.setdefault("mood", "rule")
     field_sources.setdefault("tags", "rule")
     field_sources.setdefault("people", "rule")
+    field_sources.setdefault("links", "rule")
+    field_sources.setdefault("related_entries", "rule")
     field_sources.setdefault("location", "user")
     field_sources.setdefault("date", "auto")
     if "weather" in prepared:

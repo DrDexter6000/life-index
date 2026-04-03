@@ -9,6 +9,7 @@ import json
 import logging
 import sys
 
+from .core import apply_confirmation_updates
 from .core import write_journal
 from .prepare import prepare_journal_metadata
 from ..lib.config import ensure_dirs
@@ -46,7 +47,9 @@ def _cmd_write(args: argparse.Namespace) -> int:
         return 1
 
     if args.verbose:
-        print(f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr)
+        print(
+            f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr
+        )
 
     result = write_journal(data, dry_run=args.dry_run)
     _emit_json(result)
@@ -79,7 +82,9 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
         return 1
 
     if args.verbose:
-        print(f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr)
+        print(
+            f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr
+        )
 
     try:
         result = prepare_journal_metadata(data, use_llm=not args.no_llm)
@@ -92,6 +97,23 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
         logger.exception("write_journal metadata preparation failed: %s", e)
         _emit_json({"success": False, "error": f"元数据准备失败: {e}"})
         return 1
+
+
+def _cmd_confirm(args: argparse.Namespace) -> int:
+    """Execute confirm command - apply post-write confirmation updates."""
+    ensure_dirs()
+
+    result = apply_confirmation_updates(
+        journal_path=args.journal,
+        location=args.location,
+        weather=args.weather,
+        approved_related_entries=args.approve_related,
+        approved_related_candidate_ids=args.approve_related_id,
+        rejected_related_entries=args.reject_related,
+        rejected_related_candidate_ids=args.reject_related_id,
+    )
+    _emit_json(result)
+    return 0 if result.get("success") else 1
 
 
 def main() -> None:
@@ -108,6 +130,7 @@ def main() -> None:
 Commands:
   write    Write a journal entry (default)
   enrich   Extract/enrich metadata without writing
+  confirm  Apply post-write confirmation updates
 
 Examples:
     # Write a journal
@@ -127,7 +150,9 @@ Examples:
     write_parser.add_argument(
         "--data", required=True, help="JSON数据，或 @文件路径 (如 @input.json)"
     )
-    write_parser.add_argument("--dry-run", action="store_true", help="模拟运行，不实际写入文件")
+    write_parser.add_argument(
+        "--dry-run", action="store_true", help="模拟运行，不实际写入文件"
+    )
     write_parser.add_argument("--verbose", action="store_true", help="输出详细日志")
     write_parser.set_defaults(func=_cmd_write)
 
@@ -143,9 +168,51 @@ Examples:
     enrich_parser.add_argument(
         "--data", required=True, help="JSON数据，或 @文件路径 (如 @input.json)"
     )
-    enrich_parser.add_argument("--no-llm", action="store_true", help="禁用 LLM 提取，仅使用规则")
+    enrich_parser.add_argument(
+        "--no-llm", action="store_true", help="禁用 LLM 提取，仅使用规则"
+    )
     enrich_parser.add_argument("--verbose", action="store_true", help="输出详细日志")
     enrich_parser.set_defaults(func=_cmd_enrich)
+
+    # Confirm command
+    confirm_parser = subparsers.add_parser(
+        "confirm",
+        help="Apply post-write confirmation updates",
+        description=(
+            "Apply confirmed location/weather corrections and approved related "
+            "entry selections to an existing journal."
+        ),
+    )
+    confirm_parser.add_argument("--journal", required=True, help="日志文件路径")
+    confirm_parser.add_argument("--location", help="确认后的地点")
+    confirm_parser.add_argument("--weather", help="确认后的天气")
+    confirm_parser.add_argument(
+        "--approve-related",
+        action="append",
+        default=[],
+        help="批准写回的关联日志路径（可重复多次）",
+    )
+    confirm_parser.add_argument(
+        "--approve-related-id",
+        action="append",
+        type=int,
+        default=[],
+        help="批准写回的关联候选 ID（可重复多次）",
+    )
+    confirm_parser.add_argument(
+        "--reject-related",
+        action="append",
+        default=[],
+        help="拒绝的关联日志路径（可重复多次）",
+    )
+    confirm_parser.add_argument(
+        "--reject-related-id",
+        action="append",
+        type=int,
+        default=[],
+        help="拒绝的关联候选 ID（可重复多次）",
+    )
+    confirm_parser.set_defaults(func=_cmd_confirm)
 
     args = parser.parse_args()
     sys.exit(args.func(args))

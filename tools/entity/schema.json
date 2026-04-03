@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "name": "entity",
+  "description": "管理实体图谱",
+  "version": "1.0.0",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {"type": "string"},
+      "data": {"type": "object"},
+      "query": {"type": "string"},
+      "id": {"type": "string"}
+    },
+    "required": []
+  },
+  "returns": {"type": "object", "properties": {}},
+  "examples": []
+}

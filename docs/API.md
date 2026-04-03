@@ -186,6 +186,7 @@ python -m tools.write_journal --data '<json>'
 | tags | array | ❌ | [] | 标签 |
 | abstract | string | ❌ | 调用方补齐/LLM 提炼 | 摘要（≤100字，**Agent生成**） |
 | links | array | ❌ | [] | 相关链接 |
+| related_entries | array | ❌ | [] | 关联日志相对路径（如 `Journals/2026/03/xxx.md`） |
 | attachments | array | ❌ | [] | 附件列表；输入阶段支持本地路径自动检测，也支持显式对象输入；写入后以 frontmatter `attachments` 作为唯一 SSOT |
 
 ### 附件对象格式
@@ -271,6 +272,15 @@ python -m tools.write_journal --data '<json>'
   "weather_used": "Sunny 25°C",
   "weather_auto_filled": true,
   "needs_confirmation": true,
+  "confirmation": {
+    "location": "Beijing, China",
+    "weather": "Sunny 25°C",
+    "related_candidates": [],
+    "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
+    "supports_related_entry_approval": true
+  },
+  "related_candidates": [],
+  "new_entities_detected": [],
   "confirmation_message": "日志已保存至：C:/Users/.../Documents/Life-Index/Journals/...",
   "error": null,
   "metrics": {"total_ms": 142.5}
@@ -290,6 +300,85 @@ python -m tools.write_journal --data '<json>'
 - 正文中明确写出的地点/天气优先级最高，Agent 不得再用默认地点或自动查询结果覆盖
 - `location_auto_filled` 用于解释地点来源，不再作为是否执行确认环节的决策条件
 - 如果用户要求修正地点/天气，后续应进入 correction flow，而不是把原写入描述为失败
+- `confirmation` 是 machine-readable 的确认载荷；`confirmation_message` 是面向人类的展示文本
+- `confirmation.supports_related_entry_approval: true` 表示调用方可在确认阶段直接批准候选 `related_candidates` 并写回 `related_entries`
+
+### confirm 子命令
+
+```bash
+python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_2026-03-10_001.md" --location "Beijing, China" --weather "Sunny 25°C" --approve-related "Journals/2026/03/other.md"
+```
+
+- `confirm` 会调用 `apply_confirmation_updates()`
+- 可同时修正 `location` / `weather`
+- 可通过重复 `--approve-related` 参数批准多个候选关联日志并写回
+- 可通过重复 `--approve-related-id` / `--reject-related-id` 传入候选 ID（需同时携带 `candidate_context` 才能稳定解析）
+- 可通过重复 `--reject-related` 参数显式标记拒绝的候选关联日志
+- 内部统一委托到 `edit_journal`，不另起一套写入逻辑
+
+### confirm 返回值
+
+```json
+{
+  "success": true,
+  "confirm_status": "complete",
+  "journal_path": "Journals/2026/03/life-index_2026-03-10_001.md",
+  "applied_fields": ["location", "weather", "related_entries"],
+  "ignored_fields": [],
+  "approved_related_entries": ["Journals/2026/03/other.md"],
+  "requested_related_entries": ["Journals/2026/03/other.md"],
+  "approved_candidate_ids": [1],
+  "rejected_related_entries": ["Journals/2026/03/skip.md"],
+  "rejected_candidate_ids": [2],
+  "approval_summary": {
+    "approved": [
+      {
+        "candidate_id": 1,
+        "rel_path": "Journals/2026/03/other.md",
+        "title": "Other"
+      }
+    ],
+    "rejected": [
+      {
+        "candidate_id": 2,
+        "rel_path": "Journals/2026/03/skip.md",
+        "title": "Skip"
+      }
+    ]
+  },
+  "relation_summary": {
+    "source_entry": {
+      "rel_path": "Journals/2026/03/life-index_2026-03-10_001.md",
+      "related_entries": ["Journals/2026/03/other.md"],
+      "backlinked_by": []
+    },
+    "approved_related_context": [
+      {
+        "rel_path": "Journals/2026/03/other.md",
+        "backlinked_by": ["Journals/2026/03/life-index_2026-03-10_001.md"]
+      }
+    ]
+  },
+  "changes": {},
+  "error": null
+}
+```
+
+- `confirm_status`：确认执行语义状态。`complete` = 全部请求字段都已写回；`partial` = 仅部分字段生效；`noop` = 请求已处理但没有实际变化；`failed` = 确认失败
+- `applied_fields`：这次确认中实际发生写回的字段
+- `ignored_fields`：本次请求里提供了，但最终未发生变化的字段（例如与原值相同）
+- `approved_related_entries`：本次真正写回成功的关联日志
+- `requested_related_entries`：调用方请求批准写回的关联日志列表
+- `approved_candidate_ids`：本次被成功解析并批准的候选 ID
+- `rejected_related_entries`：本次显式拒绝的候选关联日志列表
+- `rejected_candidate_ids`：本次被成功解析并拒绝的候选 ID
+- `approval_summary`：为 GUI/service 准备的批准/拒绝摘要；每项都包含 `candidate_id/rel_path/title`
+- `relation_summary`：确认完成后的新鲜关联关系摘要，避免调用方再额外跑一次 search 才知道 `related_entries/backlinked_by` 当前状态
+- `relation_summary.source_entry.backlinked_by`：有哪些日志当前指向本条日志
+- `relation_summary.approved_related_context[*].backlinked_by`：每个本次批准关联日志当前被哪些日志反向链接
+- `changes`：来自底层 `edit_journal` 的变更明细，结构类似 `{"location": {"old": "旧值", "new": "新值"}}`
+- `error`：失败时为结构化错误对象，格式与 `tools/lib/errors.py` 中的 `LifeIndexError.to_json()` 一致（含 `code/message/details/recovery_strategy/suggestion`）
+- 参数命名映射：CLI 使用 `--approve-related` / `--approve-related-id` / `--reject-related` / `--reject-related-id`，schema 使用 `approve_related` / `approve_related_id` / `reject_related` / `reject_related_id`，底层 helper 使用 `approved_related_entries` / `approved_related_candidate_ids` / `rejected_related_entries` / `rejected_related_candidate_ids`
 
 ### 附件检测与处理语义
 
@@ -425,6 +514,8 @@ python -m tools.edit_journal --journal "<path>" [options]
 | set-project | string | ❌ | - | 设置项目 |
 | set-topic | string | ❌ | - | 设置主题（逗号分隔） |
 | set-abstract | string | ❌ | - | 设置摘要 |
+| set-links | string | ❌ | - | 设置外部链接（逗号分隔） |
+| set-related-entries | string | ❌ | - | 设置关联日志相对路径（逗号分隔） |
 | append-content | string | ❌ | - | 追加内容到正文 |
 | replace-content | string | ❌ | - | 替换整个正文 |
 | dry-run | flag | ❌ | false | 模拟运行 |

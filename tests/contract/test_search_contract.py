@@ -14,8 +14,11 @@ Note: After Phase 2B refactoring, mock targets changed:
 - Level 3: patch at keyword_pipeline and semantic_pipeline modules
 """
 
-import pytest
+import json
+from pathlib import Path
 from unittest.mock import patch, MagicMock
+
+import pytest
 
 from tools.search_journals.core import hierarchical_search
 
@@ -33,6 +36,20 @@ REQUIRED_RESPONSE_FIELDS = {
     "performance",
     "warnings",  # Phase 2C: added warnings field
 }
+
+
+def _load_golden(name: str) -> dict:
+    return json.loads(
+        (Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8")
+    )
+
+
+def _normalize_search_snapshot(result: dict) -> dict:
+    normalized = json.loads(json.dumps(result))
+    performance = normalized.get("performance", {})
+    if isinstance(performance, dict):
+        performance["total_time_ms"] = 10.0
+    return normalized
 
 
 @pytest.fixture(autouse=True)
@@ -219,3 +236,52 @@ class TestSearchQueryParamsContract:
         assert qp["date_to"] == "2026-03-31"
         assert qp["level"] == 3
         assert qp["semantic"] is False
+
+
+class TestSearchGoldenSnapshots:
+    def test_search_result_matches_golden_snapshot(self):
+        l1_results = [{"path": "C:/tmp/a.md", "title": "A"}]
+        l2_results = [{"path": "C:/tmp/a.md", "metadata": {"topic": ["work"]}}]
+        l3_results = [{"path": "C:/tmp/a.md", "content": "Golden hit"}]
+        semantic_results = [
+            {"path": "C:/tmp/a.md", "score": 0.91, "title": "A semantic"}
+        ]
+        merged_results = [
+            {
+                "path": "C:/tmp/a.md",
+                "rel_path": "Journals/2026/03/a.md",
+                "title": "A",
+                "date": "2026-03-14",
+                "rrf_score": 0.88,
+            }
+        ]
+
+        with (
+            patch(
+                "tools.search_journals.core.run_keyword_pipeline",
+                return_value=(
+                    l1_results,
+                    l2_results,
+                    l3_results,
+                    False,
+                    0,
+                    {"l1_time_ms": 1.0, "l2_time_ms": 2.0, "l3_time_ms": 3.0},
+                ),
+            ),
+            patch(
+                "tools.search_journals.core.run_semantic_pipeline",
+                return_value=(
+                    semantic_results,
+                    {"semantic_time_ms": 4.0},
+                    True,
+                    "",
+                ),
+            ),
+            patch(
+                "tools.search_journals.core.merge_and_rank_results_hybrid",
+                return_value=merged_results,
+            ),
+        ):
+            result = hierarchical_search(query="golden", level=3)
+
+        assert _normalize_search_snapshot(result) == _load_golden("search_result.json")

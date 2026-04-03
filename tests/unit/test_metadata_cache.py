@@ -23,6 +23,10 @@ from tools.lib.metadata_cache import (
     invalidate_cache,
     update_cache_for_all_journals,
     METADATA_DB_PATH,
+    rebuild_entry_relations,
+    get_backlinked_by,
+    add_entry_relations,
+    replace_entry_relations,
 )
 from tools.lib.config import JOURNALS_DIR
 
@@ -82,7 +86,7 @@ class TestMetadataCache:
         """Test parsing and caching a journal file"""
         # Create a test journal file
         test_file = tmp_path / "test_journal.md"
-        test_content = '---\ntitle: "Test Journal"\ndate: 2026-03-13\nlocation: "Beijing"\nweather: "Sunny"\ntopic: ["work"]\nproject: "Test"\ntags: ["test", "example"]\nmood: ["happy"]\npeople: ["Alice"]\nabstract: "Test abstract"\n---\n\n# Test Journal\n\nThis is test content.\n'
+        test_content = '---\ntitle: "Test Journal"\ndate: 2026-03-13\nlocation: "Beijing"\nweather: "Sunny"\ntopic: ["work"]\nproject: "Test"\ntags: ["test", "example"]\nmood: ["happy"]\npeople: ["Alice"]\nabstract: "Test abstract"\nlinks: ["https://example.com/ref"]\nrelated_entries: ["Journals/2026/03/other.md"]\n---\n\n# Test Journal\n\nThis is test content.\n'
         test_file.write_text(test_content, encoding="utf-8")
 
         # Initialize cache
@@ -98,6 +102,8 @@ class TestMetadataCache:
             assert result["location"] == "Beijing"
             assert result["topic"] == ["work"]
             assert result["tags"] == ["test", "example"]
+            assert result["links"] == ["https://example.com/ref"]
+            assert result["related_entries"] == ["Journals/2026/03/other.md"]
 
             # Verify it's in the database
             cursor = conn.cursor()
@@ -116,7 +122,7 @@ class TestMetadataCache:
         # Create and cache a test file
         test_file = tmp_path / "test.md"
         test_file.write_text(
-            '---\ntitle: "Cached Test"\ndate: 2026-03-13\n---\n\nContent\n',
+            '---\ntitle: "Cached Test"\ndate: 2026-03-13\nlinks: ["https://example.com/cached"]\nrelated_entries: ["Journals/2026/03/source.md"]\n---\n\nContent\n',
             encoding="utf-8",
         )
 
@@ -131,8 +137,100 @@ class TestMetadataCache:
 
             assert cached is not None
             assert cached["title"] == "Cached Test"
+            assert cached["links"] == ["https://example.com/cached"]
+            assert cached["related_entries"] == ["Journals/2026/03/source.md"]
         finally:
             conn.close()
+
+    def test_rebuild_entry_relations_and_backlinks(self, tmp_path):
+        journals_dir = tmp_path / "Journals"
+        src = journals_dir / "2026" / "03" / "source.md"
+        dst = journals_dir / "2026" / "03" / "target.md"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text(
+            '---\ntitle: "Source"\ndate: 2026-03-13\nrelated_entries: ["Journals/2026/03/target.md"]\n---\n\nBody\n',
+            encoding="utf-8",
+        )
+        dst.write_text(
+            '---\ntitle: "Target"\ndate: 2026-03-13\n---\n\nBody\n',
+            encoding="utf-8",
+        )
+
+        import tools.lib.metadata_cache as mc
+
+        with (
+            patch.object(mc, "USER_DATA_DIR", tmp_path),
+            patch.object(mc, "JOURNALS_DIR", journals_dir),
+            patch.object(mc, "CACHE_DIR", tmp_path / ".cache"),
+            patch.object(
+                mc, "METADATA_DB_PATH", tmp_path / ".cache" / "metadata_cache.db"
+            ),
+        ):
+            conn = init_metadata_cache()
+            try:
+                parse_and_cache_journal(conn, src)
+                parse_and_cache_journal(conn, dst)
+                rebuild_entry_relations(conn)
+                backlinks = get_backlinked_by(conn, "Journals/2026/03/target.md")
+            finally:
+                conn.close()
+
+        assert backlinks == ["Journals/2026/03/source.md"]
+
+    def test_add_entry_relations_updates_backlinks_incrementally(self, tmp_path):
+        import tools.lib.metadata_cache as mc
+
+        with (
+            patch.object(mc, "USER_DATA_DIR", tmp_path),
+            patch.object(mc, "JOURNALS_DIR", tmp_path / "Journals"),
+            patch.object(mc, "CACHE_DIR", tmp_path / ".cache"),
+            patch.object(
+                mc, "METADATA_DB_PATH", tmp_path / ".cache" / "metadata_cache.db"
+            ),
+        ):
+            conn = init_metadata_cache()
+            try:
+                add_entry_relations(
+                    conn,
+                    "Journals/2026/03/source.md",
+                    ["Journals/2026/03/target.md"],
+                )
+                backlinks = get_backlinked_by(conn, "Journals/2026/03/target.md")
+            finally:
+                conn.close()
+
+        assert backlinks == ["Journals/2026/03/source.md"]
+
+    def test_replace_entry_relations_replaces_existing_backlinks(self, tmp_path):
+        import tools.lib.metadata_cache as mc
+
+        with (
+            patch.object(mc, "USER_DATA_DIR", tmp_path),
+            patch.object(mc, "JOURNALS_DIR", tmp_path / "Journals"),
+            patch.object(mc, "CACHE_DIR", tmp_path / ".cache"),
+            patch.object(
+                mc, "METADATA_DB_PATH", tmp_path / ".cache" / "metadata_cache.db"
+            ),
+        ):
+            conn = init_metadata_cache()
+            try:
+                add_entry_relations(
+                    conn,
+                    "Journals/2026/03/source.md",
+                    ["Journals/2026/03/old.md"],
+                )
+                replace_entry_relations(
+                    conn,
+                    "Journals/2026/03/source.md",
+                    ["Journals/2026/03/new.md"],
+                )
+                old_backlinks = get_backlinked_by(conn, "Journals/2026/03/old.md")
+                new_backlinks = get_backlinked_by(conn, "Journals/2026/03/new.md")
+            finally:
+                conn.close()
+
+        assert old_backlinks == []
+        assert new_backlinks == ["Journals/2026/03/source.md"]
 
     def test_get_cached_metadata_invalid(self, tmp_path):
         """Test cache invalidation when file changes"""

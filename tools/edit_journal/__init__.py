@@ -26,6 +26,8 @@ from ..lib.frontmatter import (
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.logger import get_logger
+from ..lib.metadata_cache import init_metadata_cache, replace_entry_relations
+from ..lib.revisions import save_revision
 from ..write_journal.index_updater import update_vector_index
 from ..write_journal.attachments import process_attachments
 
@@ -86,7 +88,11 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
             logger.debug(f"添加条目到索引：{index_file.name}")
     else:
         # 确定索引类型和名称
-        name = index_file.stem.replace("主题_", "").replace("项目_", "").replace("标签_", "")
+        name = (
+            index_file.stem.replace("主题_", "")
+            .replace("项目_", "")
+            .replace("标签_", "")
+        )
         if index_file.stem.startswith("主题_"):
             header = f"# 主题：{name}\n\n"
         elif index_file.stem.startswith("项目_"):
@@ -188,6 +194,241 @@ def _normalize_to_list(value: Any) -> List[str]:
     return []
 
 
+def _apply_edit_updates(
+    *,
+    journal_path: Path,
+    current_frontmatter: Dict[str, Any],
+    current_body: str,
+    frontmatter_updates: Dict[str, Any],
+    append_content: Optional[str],
+    replace_content: Optional[str],
+    dry_run: bool,
+) -> tuple[Dict[str, Any], Dict[str, Any], str, Dict[str, Any]]:
+    result: Dict[str, Any] = {
+        "changes": {},
+        "content_modified": False,
+    }
+
+    old_frontmatter = dict(current_frontmatter)
+    old_body = current_body
+
+    # ===== 处理附件更新 =====
+    # 如果 frontmatter_updates 包含附件，需要检查是否有需要处理的新附件
+    # 已有附件（含 filename/rel_path 或相对路径）直接保留
+    # 新附件（含 source_path 且是绝对路径）需要处理
+    if "attachments" in frontmatter_updates:
+        raw_attachments = frontmatter_updates["attachments"]
+        if raw_attachments:
+            # 分离已有附件和新附件
+            # 附件可能是 dict (已有附件或新上传的) 或 str (已有附件路径)
+            existing_attachments: list[dict[str, Any] | str] = []
+            new_attachments: list[dict[str, Any] | str] = []
+
+            for att in (
+                raw_attachments
+                if isinstance(raw_attachments, list)
+                else [raw_attachments]
+            ):
+                if isinstance(att, str):
+                    # 字符串：检查是否是相对路径
+                    # 相对路径（如 ../../../attachments/...）视为已有附件引用
+                    # 绝对路径（如 /tmp/... 或 C:\...）视为新上传的文件
+                    if att.startswith("../") or att.startswith("./"):
+                        existing_attachments.append(att)
+                    else:
+                        # 绝对路径，需要处理
+                        new_attachments.append({"source_path": att, "description": ""})
+                elif isinstance(att, dict):
+                    # 检查是否已经是处理过的格式
+                    if "filename" in att and "rel_path" in att:
+                        # 已经是完整格式，直接保留
+                        existing_attachments.append(att)
+                    elif "source_path" in att:
+                        # 检查 source_path 是否是绝对路径
+                        source = att["source_path"]
+                        is_absolute = os.path.isabs(source) or source.startswith(
+                            "/tmp/"
+                        )
+                        if is_absolute:
+                            # 新上传的附件，需要处理
+                            new_attachments.append(att)
+                        else:
+                            # 相对路径，视为已有附件
+                            existing_attachments.append(att)
+                    else:
+                        # 其他格式，直接保留
+                        existing_attachments.append(att)
+                else:
+                    existing_attachments.append(att)
+
+            # 如果有新附件需要处理
+            if new_attachments:
+                # 获取日期用于确定附件存储路径
+                date_str = None
+                if "date" in frontmatter_updates:
+                    date_str = frontmatter_updates["date"]
+                elif old_frontmatter.get("date"):
+                    date_str = old_frontmatter["date"]
+
+                # 解析日期字符串
+                if date_str:
+                    if isinstance(date_str, str):
+                        date_str = date_str[:10]
+                    else:
+                        date_str = str(date_str)[:10]
+                else:
+                    date_str = datetime.now().strftime("%Y-%m-%d")
+
+                logger.info(f"处理编辑中的新附件，日期: {date_str}")
+
+                # 调用 CLI 标准附件处理流程
+                processed_new = process_attachments(
+                    attachments=new_attachments,
+                    date_str=date_str,
+                    dry_run=dry_run,
+                )
+
+                # 合并已有附件和处理后的新附件
+                all_attachments = existing_attachments + processed_new
+                frontmatter_updates["attachments"] = all_attachments
+                logger.info(f"附件处理完成: {len(processed_new)} 个新附件")
+
+                result["attachments_processed"] = len(processed_new)
+            else:
+                # 只有已有附件，直接使用
+                frontmatter_updates["attachments"] = existing_attachments
+        else:
+            # 空附件列表，表示删除所有附件
+            frontmatter_updates["attachments"] = []
+
+    # 应用 frontmatter 更新
+    new_frontmatter = dict(old_frontmatter)
+
+    add_related_entries = frontmatter_updates.pop("add_related_entries", None)
+    remove_related_entries = frontmatter_updates.pop("remove_related_entries", None)
+
+    if add_related_entries or remove_related_entries:
+        current_entries = new_frontmatter.get("related_entries", [])
+        if isinstance(current_entries, str):
+            current_entries = [
+                item.strip() for item in current_entries.split(",") if item.strip()
+            ]
+        elif not isinstance(current_entries, list):
+            current_entries = []
+
+        current_rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace(
+            "\\", "/"
+        )
+        merged_entries: list[str] = []
+        seen_entries: set[str] = set()
+        for item in current_entries:
+            item_str = str(item).strip()
+            if not item_str:
+                continue
+            if item_str == current_rel_path:
+                continue
+            if not item_str.startswith("Journals/") or not item_str.endswith(".md"):
+                continue
+            if item_str not in seen_entries:
+                merged_entries.append(item_str)
+                seen_entries.add(item_str)
+
+        for item in add_related_entries or []:
+            item_str = str(item).strip()
+            if not item_str:
+                continue
+            if item_str == current_rel_path:
+                continue
+            if not item_str.startswith("Journals/") or not item_str.endswith(".md"):
+                continue
+            if item_str not in seen_entries:
+                merged_entries.append(item_str)
+                seen_entries.add(item_str)
+
+        remove_set = {
+            str(item).strip()
+            for item in (remove_related_entries or [])
+            if str(item).strip()
+        }
+        merged_entries = [item for item in merged_entries if item not in remove_set][
+            :10
+        ]
+
+        old_related_entries = new_frontmatter.get("related_entries")
+        new_frontmatter["related_entries"] = merged_entries
+        if old_related_entries != merged_entries:
+            result["changes"]["related_entries"] = {
+                "old": old_related_entries,
+                "new": merged_entries,
+            }
+
+    for key, value in frontmatter_updates.items():
+        old_value = new_frontmatter.get(key)
+
+        # 特殊处理：空字符串视为删除字段
+        if value == "" or value is None:
+            if key in new_frontmatter:
+                del new_frontmatter[key]
+                result["changes"][key] = {"old": old_value, "new": None}
+                logger.debug(f"删除字段：{key}")
+        else:
+            # 特殊处理：list 字段需要确保是数组格式
+            list_fields = {
+                "topic",
+                "mood",
+                "tags",
+                "people",
+                "links",
+                "related_entries",
+            }
+            if key in list_fields and isinstance(value, str):
+                # 按逗号分割
+                value = [item.strip() for item in value.split(",") if item.strip()]
+                logger.debug(f"分割 list 字段：{key} = {value}")
+
+            if key == "related_entries" and isinstance(value, list):
+                current_rel_path = os.path.relpath(
+                    journal_path, JOURNALS_DIR.parent
+                ).replace("\\", "/")
+                filtered_values: list[str] = []
+                seen_values: set[str] = set()
+                for item in value:
+                    item_str = str(item).strip()
+                    if not item_str:
+                        continue
+                    if not item_str.startswith("Journals/") or not item_str.endswith(
+                        ".md"
+                    ):
+                        continue
+                    if item_str == current_rel_path:
+                        continue
+                    if item_str not in seen_values:
+                        filtered_values.append(item_str)
+                        seen_values.add(item_str)
+                value = filtered_values[:10]
+
+            new_frontmatter[key] = value
+            if old_value != value:
+                result["changes"][key] = {"old": old_value, "new": value}
+                logger.debug(f"更新字段：{key} = {value}")
+
+    # 处理正文修改
+    new_body = old_body
+    if replace_content is not None:
+        new_body = replace_content
+        result["content_modified"] = True
+        logger.info("替换正文内容")
+    elif append_content is not None:
+        if old_body:
+            new_body = old_body + "\n\n" + append_content
+        else:
+            new_body = append_content
+        result["content_modified"] = True
+        logger.info("追加正文内容")
+
+    return old_frontmatter, new_frontmatter, new_body, result
+
+
 def edit_journal(
     journal_path: Path,
     frontmatter_updates: Dict[str, Any],
@@ -218,6 +459,7 @@ def edit_journal(
     result: Dict[str, Any] = {
         "success": False,
         "journal_path": str(journal_path),
+        "revision_path": None,
         "changes": {},
         "content_modified": False,
         "indices_updated": [],
@@ -256,141 +498,35 @@ def edit_journal(
                     "请先查询新地点的天气；如果 query_weather 失败，可手动提供天气后再一起修改",
                 )
 
-        # 使用 lib-frontmatter 更新
-        # 构建完整数据用于格式化
+        compute_updates = lambda current_frontmatter, current_body: _apply_edit_updates(
+            journal_path=journal_path,
+            current_frontmatter=current_frontmatter,
+            current_body=current_body,
+            frontmatter_updates=dict(frontmatter_updates),
+            append_content=append_content,
+            replace_content=replace_content,
+            dry_run=dry_run,
+        )
+
         metadata = parse_journal_file(journal_path)
-        old_frontmatter = {k: v for k, v in metadata.items() if not k.startswith("_")}
-        old_body = metadata.get("_body", "")
+        initial_frontmatter = {
+            k: v for k, v in metadata.items() if not k.startswith("_")
+        }
+        initial_body = metadata.get("_body", "")
 
-        # ===== 处理附件更新 =====
-        # 如果 frontmatter_updates 包含附件，需要检查是否有需要处理的新附件
-        # 已有附件（含 filename/rel_path 或相对路径）直接保留
-        # 新附件（含 source_path 且是绝对路径）需要处理
-        if "attachments" in frontmatter_updates:
-            raw_attachments = frontmatter_updates["attachments"]
-            if raw_attachments:
-                # 分离已有附件和新附件
-                # 附件可能是 dict (已有附件或新上传的) 或 str (已有附件路径)
-                existing_attachments: list[dict[str, Any] | str] = []
-                new_attachments: list[dict[str, Any] | str] = []
-
-                for att in (
-                    raw_attachments if isinstance(raw_attachments, list) else [raw_attachments]
-                ):
-                    if isinstance(att, str):
-                        # 字符串：检查是否是相对路径
-                        # 相对路径（如 ../../../attachments/...）视为已有附件引用
-                        # 绝对路径（如 /tmp/... 或 C:\...）视为新上传的文件
-                        if att.startswith("../") or att.startswith("./"):
-                            existing_attachments.append(att)
-                        else:
-                            # 绝对路径，需要处理
-                            new_attachments.append({"source_path": att, "description": ""})
-                    elif isinstance(att, dict):
-                        # 检查是否已经是处理过的格式
-                        if "filename" in att and "rel_path" in att:
-                            # 已经是完整格式，直接保留
-                            existing_attachments.append(att)
-                        elif "source_path" in att:
-                            # 检查 source_path 是否是绝对路径
-                            source = att["source_path"]
-                            is_absolute = os.path.isabs(source) or source.startswith("/tmp/")
-                            if is_absolute:
-                                # 新上传的附件，需要处理
-                                new_attachments.append(att)
-                            else:
-                                # 相对路径，视为已有附件
-                                existing_attachments.append(att)
-                        else:
-                            # 其他格式，直接保留
-                            existing_attachments.append(att)
-                    else:
-                        existing_attachments.append(att)
-
-                # 如果有新附件需要处理
-                if new_attachments:
-                    # 获取日期用于确定附件存储路径
-                    date_str = None
-                    if "date" in frontmatter_updates:
-                        date_str = frontmatter_updates["date"]
-                    elif old_frontmatter.get("date"):
-                        date_str = old_frontmatter["date"]
-
-                    # 解析日期字符串
-                    if date_str:
-                        if isinstance(date_str, str):
-                            date_str = date_str[:10]
-                        else:
-                            date_str = str(date_str)[:10]
-                    else:
-                        date_str = datetime.now().strftime("%Y-%m-%d")
-
-                    logger.info(f"处理编辑中的新附件，日期: {date_str}")
-
-                    # 调用 CLI 标准附件处理流程
-                    processed_new = process_attachments(
-                        attachments=new_attachments,
-                        date_str=date_str,
-                        dry_run=dry_run,
-                    )
-
-                    # 合并已有附件和处理后的新附件
-                    all_attachments = existing_attachments + processed_new
-                    frontmatter_updates["attachments"] = all_attachments
-                    logger.info(f"附件处理完成: {len(processed_new)} 个新附件")
-
-                    result["attachments_processed"] = len(processed_new)
-                else:
-                    # 只有已有附件，直接使用
-                    frontmatter_updates["attachments"] = existing_attachments
-            else:
-                # 空附件列表，表示删除所有附件
-                frontmatter_updates["attachments"] = []
-
-        # 应用 frontmatter 更新
-        new_frontmatter = dict(old_frontmatter)
-        for key, value in frontmatter_updates.items():
-            old_value = new_frontmatter.get(key)
-
-            # 特殊处理：空字符串视为删除字段
-            if value == "" or value is None:
-                if key in new_frontmatter:
-                    del new_frontmatter[key]
-                    result["changes"][key] = {"old": old_value, "new": None}
-                    logger.debug(f"删除字段：{key}")
-            else:
-                # 特殊处理：list 字段需要确保是数组格式
-                list_fields = {"topic", "mood", "tags", "people"}
-                if key in list_fields and isinstance(value, str):
-                    # 按逗号分割
-                    value = [item.strip() for item in value.split(",") if item.strip()]
-                    logger.debug(f"分割 list 字段：{key} = {value}")
-
-                new_frontmatter[key] = value
-                if old_value != value:
-                    result["changes"][key] = {"old": old_value, "new": value}
-                    logger.debug(f"更新字段：{key} = {value}")
-
-        # 处理正文修改
-        new_body = old_body
-        if replace_content is not None:
-            new_body = replace_content
-            result["content_modified"] = True
-            logger.info("替换正文内容")
-        elif append_content is not None:
-            if old_body:
-                new_body = old_body + "\n\n" + append_content
-            else:
-                new_body = append_content
-            result["content_modified"] = True
-            logger.info("追加正文内容")
+        old_frontmatter, new_frontmatter, new_body, computed_result = compute_updates(
+            initial_frontmatter, initial_body
+        )
+        result.update(computed_result)
 
         if dry_run:
             logger.info("模拟运行模式（dry-run）")
             result["success"] = True
             result["preview"] = {
                 "frontmatter": format_frontmatter(new_frontmatter),
-                "body_preview": new_body[:200] + "..." if len(new_body) > 200 else new_body,
+                "body_preview": new_body[:200] + "..."
+                if len(new_body) > 200
+                else new_body,
             }
             return result
 
@@ -401,10 +537,39 @@ def edit_journal(
         try:
             with lock:
                 logger.debug("获取文件锁成功")
+                original_content = journal_path.read_text(encoding="utf-8")
+                locked_metadata = parse_journal_file(journal_path)
+                locked_frontmatter = {
+                    k: v for k, v in locked_metadata.items() if not k.startswith("_")
+                }
+                locked_body = locked_metadata.get("_body", "")
+                old_frontmatter, new_frontmatter, new_body, computed_result = (
+                    compute_updates(locked_frontmatter, locked_body)
+                )
+                result.update(computed_result)
+                revision_path = save_revision(journal_path, original_content)
+                result["revision_path"] = str(revision_path)
                 # 写入文件
                 new_content = format_frontmatter(new_frontmatter) + "\n\n\n" + new_body
                 journal_path.write_text(new_content, encoding="utf-8")
                 logger.info(f"已写入文件：{journal_path.name}")
+
+                if (
+                    "related_entries" in new_frontmatter
+                    or "related_entries" in result["changes"]
+                ):
+                    metadata_conn = init_metadata_cache()
+                    try:
+                        source_rel_path = os.path.relpath(
+                            journal_path, JOURNALS_DIR.parent
+                        ).replace("\\", "/")
+                        replace_entry_relations(
+                            metadata_conn,
+                            source_rel_path,
+                            new_frontmatter.get("related_entries", []),
+                        )
+                    finally:
+                        metadata_conn.close()
 
                 # 更新索引（如果相关字段变更）
                 if any(k in result["changes"] for k in ["topic", "project", "tags"]):

@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 # Schema 版本（用于未来格式变更的向后兼容）
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def get_required_fields() -> list[str]:
@@ -66,6 +66,106 @@ def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
             }
         )
 
+    sentiment_score = metadata.get("sentiment_score")
+    if sentiment_score is not None:
+        try:
+            score = float(sentiment_score)
+        except (TypeError, ValueError):
+            issues.append(
+                {
+                    "level": "error",
+                    "field": "sentiment_score",
+                    "message": "sentiment_score 必须是数字",
+                }
+            )
+        else:
+            if score < -1.0 or score > 1.0:
+                issues.append(
+                    {
+                        "level": "error",
+                        "field": "sentiment_score",
+                        "message": "sentiment_score 必须位于 -1.0 到 1.0 之间",
+                    }
+                )
+
+    themes = metadata.get("themes")
+    if themes is not None and not (
+        isinstance(themes, list) and all(isinstance(item, str) for item in themes)
+    ):
+        issues.append(
+            {
+                "level": "error",
+                "field": "themes",
+                "message": "themes 必须是字符串列表",
+            }
+        )
+
+    entities = metadata.get("entities")
+    if entities is not None and not (
+        isinstance(entities, list) and all(isinstance(item, str) for item in entities)
+    ):
+        issues.append(
+            {
+                "level": "error",
+                "field": "entities",
+                "message": "entities 必须是字符串列表",
+            }
+        )
+
+    links = metadata.get("links")
+    if links is not None:
+        if not isinstance(links, list) or not all(
+            isinstance(item, str) for item in links
+        ):
+            issues.append(
+                {
+                    "level": "error",
+                    "field": "links",
+                    "message": "links 必须是字符串列表",
+                }
+            )
+        else:
+            for link in links:
+                if link and not re.match(r"^https?://", link):
+                    issues.append(
+                        {
+                            "level": "warning",
+                            "field": "links",
+                            "message": f"links 可能不是合法 URL: {link}",
+                        }
+                    )
+
+    related_entries = metadata.get("related_entries")
+    if related_entries is not None:
+        if not isinstance(related_entries, list) or not all(
+            isinstance(item, str) for item in related_entries
+        ):
+            issues.append(
+                {
+                    "level": "error",
+                    "field": "related_entries",
+                    "message": "related_entries 必须是字符串列表",
+                }
+            )
+        else:
+            if len(related_entries) > 10:
+                issues.append(
+                    {
+                        "level": "error",
+                        "field": "related_entries",
+                        "message": "related_entries 最多允许 10 项",
+                    }
+                )
+            for entry in related_entries:
+                if entry and not re.match(r"^Journals/.+\.md$", entry):
+                    issues.append(
+                        {
+                            "level": "error",
+                            "field": "related_entries",
+                            "message": f"related_entries 路径无效: {entry}",
+                        }
+                    )
+
     return issues
 
 
@@ -87,23 +187,13 @@ def migrate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     Returns:
         迁移后的元数据（添加 schema_version 等）
     """
-    # 如果没有 schema_version，假设为版本 1（当前版本）
-    file_version = metadata.get("schema_version", 1)
+    migrated = dict(metadata)
+    file_version = migrated.get("schema_version", 1)
 
-    if file_version == SCHEMA_VERSION:
-        # 版本匹配，无需迁移
-        return metadata
+    if file_version < 2:
+        migrated.setdefault("sentiment_score", None)
+        migrated.setdefault("themes", [])
+        migrated.setdefault("entities", [])
 
-    # 未来版本迁移逻辑将在此处添加
-    # 例如：
-    # if file_version < 2:
-    #     # 版本 1 -> 2 的迁移
-    #     metadata = _migrate_v1_to_v2(metadata)
-    # if file_version < 3:
-    #     # 版本 2 -> 3 的迁移
-    #     metadata = _migrate_v2_to_v3(metadata)
-
-    # 更新 schema_version 到当前版本
-    metadata["schema_version"] = SCHEMA_VERSION
-
-    return metadata
+    migrated["schema_version"] = SCHEMA_VERSION
+    return migrated
