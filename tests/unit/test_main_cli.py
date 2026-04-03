@@ -5,6 +5,8 @@ import json
 import sys
 import types
 
+import pytest
+
 from tools.__main__ import health_check
 
 
@@ -30,7 +32,9 @@ class TestHealthCheck:
         monkeypatch.setattr("tools.__main__.USER_DATA_DIR", data_dir)
         monkeypatch.setattr("tools.__main__.JOURNALS_DIR", journals_dir)
         monkeypatch.setattr("tools.__main__.get_model_cache_dir", lambda: cache_dir)
-        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
+        monkeypatch.setitem(
+            sys.modules, "yaml", types.SimpleNamespace(__version__="test")
+        )
         monkeypatch.setitem(
             sys.modules,
             "sentence_transformers",
@@ -45,12 +49,30 @@ class TestHealthCheck:
         assert payload["success"] is True
         assert payload["data"]["status"] in {"healthy", "degraded"}
         data_directory_check = next(
-            check for check in payload["data"]["checks"] if check["name"] == "data_directory"
+            check
+            for check in payload["data"]["checks"]
+            if check["name"] == "data_directory"
         )
         search_index_check = next(
-            check for check in payload["data"]["checks"] if check["name"] == "search_index"
+            check
+            for check in payload["data"]["checks"]
+            if check["name"] == "search_index"
         )
 
         assert data_directory_check["path"] == str(data_dir)
         assert data_directory_check["journal_count"] == 1
         assert search_index_check["path"] == str(index_dir)
+
+
+class TestMainCli:
+    def test_serve_command_is_not_available(self, monkeypatch, capsys) -> None:
+        from tools import __main__
+
+        monkeypatch.setattr(__main__.sys, "argv", ["life-index", "serve"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            __main__.main()
+
+        output = capsys.readouterr().out
+        assert exc_info.value.code == 1
+        assert "Unknown command: serve" in output

@@ -11,7 +11,7 @@
 
 - 能由 Agent 直接完成的操作，不开发专用工具
 - 专用工具仅在需要**原子性**、**高可靠性**或**复杂计算**时引入
-- Agent 使用通用文件操作工具直接管理数据
+- Agent 负责理解意图与编排流程；稳定读写能力通过 CLI 工具暴露
 
 ### 1.2 数据主权
 
@@ -22,10 +22,10 @@
 ### 1.3 单层透明
 
 ```
-用户 ↔ Agent ↔ 文件系统
+用户 ↔ Agent ↔ CLI ↔ 文件系统
 ```
 
-禁止引入中间层（数据库、服务进程、API 网关等）。
+禁止在 CLI SSOT 之外再引入额外的长期写入层（数据库、服务进程、API 网关等）。
 
 ### 1.4 设计底线
 
@@ -52,7 +52,7 @@ Life Index 的用户界面架构基于一个核心认知：
 #### 核心约束
 
 1. **CLI 是 SSOT**：所有能力以 CLI 暴露，Agent 和 GUI 只是 CLI 的不同"封装形态"
-2. **GUI 不绕过 CLI**：Web GUI 必须调用 CLI 工具，不得直接操作数据（详见 [AGENTS.md](../AGENTS.md) Web GUI 开发约束）
+2. **当前仓库以 CLI Core 为主**：任何未来 GUI / Experience Layer 都必须消费 CLI 契约，而不是成为当前仓库的并行 authority surface
 3. **Agent 不替代 CLI**：Agent 负责理解意图，但执行必须通过 CLI
 
 #### 行业验证
@@ -194,10 +194,7 @@ tags: ["重构", "优化"]
 
 - [bootstrap-manifest.json](../bootstrap-manifest.json) - Authority anchor；onboarding 必须先刷新此文件
 - [AGENT_ONBOARDING.md](../AGENT_ONBOARDING.md) - 基础版 Agent 安装与初始化流程
-- [AGENT_ONBOARDING_WEB.md](../AGENT_ONBOARDING_WEB.md) - Web GUI 版 Agent 安装与初始化流程
 - [API.md](./API.md) - 工具接口详细文档
-- [CHANGELOG.md](./CHANGELOG.md) - 版本变更历史
-- [PRODUCT_BOUNDARY.md](./PRODUCT_BOUNDARY.md) - 产品边界与三层模型（产品能力分层，与 §1.5 信息流分层是不同视角）
 - [AGENTS.md](../AGENTS.md) - 开发者上下文；Web GUI 开发约束引用 §1.5 交互范式
 - [SKILL.md](../SKILL.md) - Agent 技能定义；相关文档引用 §1.5 交互范式
-- [web-gui/README.md](./web-gui/README.md) - Web GUI 文档索引；架构原则引用 §1.5 交互范式
+- [README.md](../README.md) - 用户入口与安装提示

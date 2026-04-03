@@ -95,7 +95,6 @@ def check_documentation_sync():
         "README.md",
         "docs/API.md",
         "docs/ARCHITECTURE.md",
-        "docs/CHANGELOG.md",
         "tools/lib/AGENTS.md",
     ]
 
