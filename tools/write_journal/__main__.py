@@ -52,6 +52,24 @@ def _cmd_write(args: argparse.Namespace) -> int:
         )
 
     result = write_journal(data, dry_run=args.dry_run)
+
+    # Task 1.2.2: Auto-index after successful write
+    if result["success"] and args.auto_index and not args.dry_run:
+        from ..build_index import build_all
+
+        try:
+            index_result = build_all(incremental=True, fts_only=False)
+            result["index_result"] = index_result
+
+            # If index failed, add warning but keep write success
+            if not index_result.get("success"):
+                result["index_warning"] = index_result.get(
+                    "error", "Index update failed"
+                )
+        except Exception as exc:
+            result["index_result"] = {"success": False, "error": str(exc)}
+            result["index_warning"] = str(exc)
+
     _emit_json(result)
     return 0 if result["success"] else 1
 
@@ -152,6 +170,11 @@ Examples:
     )
     write_parser.add_argument(
         "--dry-run", action="store_true", help="模拟运行，不实际写入文件"
+    )
+    write_parser.add_argument(
+        "--auto-index",
+        action="store_true",
+        help="写入后自动更新搜索索引（Task 1.2.2）",
     )
     write_parser.add_argument("--verbose", action="store_true", help="输出详细日志")
     write_parser.set_defaults(func=_cmd_write)
