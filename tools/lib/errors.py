@@ -26,6 +26,8 @@ Usage:
 
 from typing import Dict, Any, Optional
 
+from .workflow_signals import RecoveryStrategy
+
 
 class ErrorCode:
     """
@@ -136,37 +138,37 @@ class LifeIndexError(Exception):
     # Error recovery strategies for Agent
     RECOVERY_STRATEGIES = {
         # Weather errors: Skip weather, continue
-        ErrorCode.WEATHER_API_FAILED: "skip_optional",
-        ErrorCode.WEATHER_TIMEOUT: "skip_optional",
-        ErrorCode.LOCATION_NOT_FOUND: "ask_user",
-        ErrorCode.WEATHER_PARSE_ERROR: "skip_optional",
+        ErrorCode.WEATHER_API_FAILED: RecoveryStrategy.SKIP_OPTIONAL,
+        ErrorCode.WEATHER_TIMEOUT: RecoveryStrategy.SKIP_OPTIONAL,
+        ErrorCode.LOCATION_NOT_FOUND: RecoveryStrategy.ASK_USER,
+        ErrorCode.WEATHER_PARSE_ERROR: RecoveryStrategy.SKIP_OPTIONAL,
         # File errors: Ask user or fail
-        ErrorCode.FILE_NOT_FOUND: "ask_user",
-        ErrorCode.PATH_INVALID: "fail",
-        ErrorCode.PATH_TRAVERSAL_DETECTED: "fail",
+        ErrorCode.FILE_NOT_FOUND: RecoveryStrategy.ASK_USER,
+        ErrorCode.PATH_INVALID: RecoveryStrategy.FAIL,
+        ErrorCode.PATH_TRAVERSAL_DETECTED: RecoveryStrategy.FAIL,
         # Input errors: Ask user
-        ErrorCode.INVALID_INPUT: "ask_user",
-        ErrorCode.CONTENT_EMPTY: "ask_user",
-        ErrorCode.DATE_INVALID: "ask_user",
+        ErrorCode.INVALID_INPUT: RecoveryStrategy.ASK_USER,
+        ErrorCode.CONTENT_EMPTY: RecoveryStrategy.ASK_USER,
+        ErrorCode.DATE_INVALID: RecoveryStrategy.ASK_USER,
         # Edit errors: Ask user
-        ErrorCode.JOURNAL_NOT_FOUND: "ask_user",
-        ErrorCode.NO_CHANGES_SPECIFIED: "ask_user",
-        ErrorCode.LOCATION_WEATHER_REQUIRED: "ask_user",
+        ErrorCode.JOURNAL_NOT_FOUND: RecoveryStrategy.ASK_USER,
+        ErrorCode.NO_CHANGES_SPECIFIED: RecoveryStrategy.ASK_USER,
+        ErrorCode.LOCATION_WEATHER_REQUIRED: RecoveryStrategy.ASK_USER,
         # Search errors: Return empty
-        ErrorCode.NO_RESULTS: "continue_empty",
-        ErrorCode.QUERY_EMPTY: "ask_user",
+        ErrorCode.NO_RESULTS: RecoveryStrategy.CONTINUE_EMPTY,
+        ErrorCode.QUERY_EMPTY: RecoveryStrategy.ASK_USER,
         # Lock errors: Retry or ask user
-        ErrorCode.LOCK_TIMEOUT: "retry",
-        ErrorCode.LOCK_ACQUISITION_FAILED: "retry",
+        ErrorCode.LOCK_TIMEOUT: RecoveryStrategy.RETRY,
+        ErrorCode.LOCK_ACQUISITION_FAILED: RecoveryStrategy.RETRY,
         # Web errors
-        ErrorCode.WEB_GENERAL_ERROR: "ask_user",
-        ErrorCode.URL_DOWNLOAD_FAILED: "skip_optional",
-        ErrorCode.URL_CONTENT_TYPE_REJECTED: "ask_user",
-        ErrorCode.LLM_PROVIDER_UNAVAILABLE: "skip_optional",
-        ErrorCode.LLM_EXTRACTION_FAILED: "skip_optional",
-        ErrorCode.GEOLOCATION_FAILED: "skip_optional",
-        ErrorCode.NOMINATIM_UNAVAILABLE: "skip_optional",
-        ErrorCode.WEB_DEPS_MISSING: "fail",
+        ErrorCode.WEB_GENERAL_ERROR: RecoveryStrategy.ASK_USER,
+        ErrorCode.URL_DOWNLOAD_FAILED: RecoveryStrategy.SKIP_OPTIONAL,
+        ErrorCode.URL_CONTENT_TYPE_REJECTED: RecoveryStrategy.ASK_USER,
+        ErrorCode.LLM_PROVIDER_UNAVAILABLE: RecoveryStrategy.SKIP_OPTIONAL,
+        ErrorCode.LLM_EXTRACTION_FAILED: RecoveryStrategy.SKIP_OPTIONAL,
+        ErrorCode.GEOLOCATION_FAILED: RecoveryStrategy.SKIP_OPTIONAL,
+        ErrorCode.NOMINATIM_UNAVAILABLE: RecoveryStrategy.SKIP_OPTIONAL,
+        ErrorCode.WEB_DEPS_MISSING: RecoveryStrategy.FAIL,
     }
 
     def __init__(
@@ -305,5 +307,5 @@ def is_recoverable(code: str) -> bool:
     - Path traversal
     - Write failures
     """
-    strategy = LifeIndexError.RECOVERY_STRATEGIES.get(code, "ask_user")
-    return strategy in ("skip_optional", "continue_empty")
+    strategy = LifeIndexError.RECOVERY_STRATEGIES.get(code, RecoveryStrategy.ASK_USER)
+    return strategy in (RecoveryStrategy.SKIP_OPTIONAL, RecoveryStrategy.CONTINUE_EMPTY)

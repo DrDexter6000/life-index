@@ -1,5 +1,6 @@
 {
   "success": true,
+  "write_outcome": "success_pending_confirmation",
   "journal_path": "JOURNAL_PATH",
   "updated_indices": [],
   "index_status": "complete",

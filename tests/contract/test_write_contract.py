@@ -24,6 +24,7 @@ from tools.write_journal.core import apply_confirmation_updates, write_journal
 
 REQUIRED_SUCCESS_FIELDS = {
     "success",
+    "write_outcome",
     "journal_path",
     "updated_indices",
     "index_status",
@@ -43,6 +44,12 @@ REQUIRED_SUCCESS_FIELDS = {
 
 VALID_INDEX_STATUS = {"complete", "degraded", "not_started"}
 VALID_SIDE_EFFECTS_STATUS = {"complete", "degraded", "not_started"}
+VALID_WRITE_OUTCOME = {
+    "success",
+    "success_pending_confirmation",
+    "success_degraded",
+    "failed",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -126,6 +133,7 @@ def _normalize_write_snapshot(result: dict) -> dict:
     normalized = json.loads(json.dumps(result))
     allowed_fields = {
         "success",
+        "write_outcome",
         "journal_path",
         "updated_indices",
         "index_status",
@@ -263,6 +271,42 @@ class TestWriteJournalStatusEnums:
         assert result["success"] is False
         assert result["index_status"] == "not_started"
         assert result["side_effects_status"] == "not_started"
+
+    def test_write_outcome_is_valid_enum(self, writable_env):
+        """write_outcome is one of the documented values."""
+        data = {
+            "date": "2026-03-14",
+            "title": "Outcome Test",
+            "content": "Content.",
+            "topic": ["work"],
+            "abstract": "Abstract.",
+            "mood": [],
+            "tags": [],
+        }
+        result = _run_write(data, writable_env)
+        assert result["write_outcome"] in VALID_WRITE_OUTCOME
+
+    def test_successful_write_outcome_is_pending_confirmation(self, writable_env):
+        """Successful write with needs_confirmation=True → success_pending_confirmation."""
+        data = {
+            "date": "2026-03-14",
+            "title": "Pending Test",
+            "content": "Content.",
+            "topic": ["work"],
+            "abstract": "Abstract.",
+            "mood": [],
+            "tags": [],
+        }
+        result = _run_write(data, writable_env)
+        if result["success"]:
+            assert result["write_outcome"] == "success_pending_confirmation"
+
+    def test_failed_write_outcome_is_failed(self, writable_env):
+        """Failed write → write_outcome is 'failed'."""
+        data = {}  # Missing required 'date' field
+        result = _run_write(data, writable_env)
+        assert result["success"] is False
+        assert result["write_outcome"] == "failed"
 
 
 class TestWriteJournalConfirmationContract:

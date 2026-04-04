@@ -16,6 +16,13 @@ from ..lib.config import (
 )
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
+from ..lib.workflow_signals import (
+    WriteOutcome,
+    IndexStatus,
+    SideEffectsStatus,
+    ConfirmStatus,
+    derive_write_outcome,
+)
 from ..lib.entity_graph import load_entity_graph, resolve_entity
 from ..lib.entity_schema import EntityGraphValidationError
 from ..lib.metadata_cache import (
@@ -283,12 +290,12 @@ def apply_confirmation_updates(
         *, success: bool, requested_fields: list[str], applied_fields: list[str]
     ) -> str:
         if not success:
-            return "failed"
+            return ConfirmStatus.FAILED
         if not requested_fields or not applied_fields:
-            return "noop"
+            return ConfirmStatus.NOOP
         if len(applied_fields) == len(requested_fields):
-            return "complete"
-        return "partial"
+            return ConfirmStatus.COMPLETE
+        return ConfirmStatus.PARTIAL
 
     journal_path_obj = Path(journal_path)
     if not journal_path_obj.exists():
@@ -301,7 +308,7 @@ def apply_confirmation_updates(
         error_result.update(
             {
                 "journal_path": str(journal_path_obj),
-                "confirm_status": "failed",
+                "confirm_status": ConfirmStatus.FAILED,
                 "applied_fields": [],
                 "ignored_fields": [],
                 "approved_related_entries": [],
@@ -328,7 +335,7 @@ def apply_confirmation_updates(
         approval_error.update(
             {
                 "journal_path": str(journal_path_obj),
-                "confirm_status": "failed",
+                "confirm_status": ConfirmStatus.FAILED,
                 "applied_fields": [],
                 "ignored_fields": [],
                 "approved_related_entries": [],
@@ -355,7 +362,7 @@ def apply_confirmation_updates(
         rejection_error.update(
             {
                 "journal_path": str(journal_path_obj),
-                "confirm_status": "failed",
+                "confirm_status": ConfirmStatus.FAILED,
                 "applied_fields": [],
                 "ignored_fields": [],
                 "approved_related_entries": [],
@@ -438,6 +445,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
     Returns:
         {
             "success": bool,
+            "write_outcome": str,  # success | success_pending_confirmation | success_degraded | failed
             "journal_path": str,
             "updated_indices": [str],
             "index_status": str,
@@ -457,10 +465,11 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
 
     result: Dict[str, Any] = {
         "success": False,
+        "write_outcome": WriteOutcome.FAILED,
         "journal_path": None,
         "updated_indices": [],
-        "index_status": "not_started",
-        "side_effects_status": "not_started",
+        "index_status": IndexStatus.NOT_STARTED,
+        "side_effects_status": SideEffectsStatus.NOT_STARTED,
         "attachments_processed": [],
         "attachments_detected_count": 0,
         "attachments_processed_count": 0,
@@ -758,14 +767,14 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     result["updated_indices"] = updated_indices
 
                     if vector_index_error:
-                        result["index_status"] = "degraded"
+                        result["index_status"] = IndexStatus.DEGRADED
                     else:
-                        result["index_status"] = "complete"
+                        result["index_status"] = IndexStatus.COMPLETE
 
                     if abstract_success and not vector_index_error:
-                        result["side_effects_status"] = "complete"
+                        result["side_effects_status"] = SideEffectsStatus.COMPLETE
                     else:
-                        result["side_effects_status"] = "degraded"
+                        result["side_effects_status"] = SideEffectsStatus.DEGRADED
 
                 except (OSError, IOError, RuntimeError):
                     # 确保临时文件被清理
@@ -822,12 +831,20 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
     except (ValueError, IOError, RuntimeError, OSError) as e:
         logger.error(f"写入日志失败：{e}", exc_info=True)
         result["error"] = str(e)
-        result["index_status"] = "not_started"
-        result["side_effects_status"] = "not_started"
+        result["index_status"] = IndexStatus.NOT_STARTED
+        result["side_effects_status"] = SideEffectsStatus.NOT_STARTED
 
     # 添加性能指标
     timer.stop()
     result["metrics"] = timer.to_dict()
+
+    # 推导 write_outcome（Agent 只需读这一个字段即可判断下一步）
+    result["write_outcome"] = derive_write_outcome(
+        success=result["success"],
+        needs_confirmation=result["needs_confirmation"],
+        index_status=result["index_status"],
+        side_effects_status=result["side_effects_status"],
+    )
 
     if result["success"]:
         logger.info(f"写入完成，总耗时：{result['metrics'].get('total_ms', 0):.2f}ms")

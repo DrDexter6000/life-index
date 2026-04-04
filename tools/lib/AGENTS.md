@@ -61,6 +61,44 @@ Shared infrastructure library for all Life Index atomic tools.
 - **Never** skip error handling for vector index operations. Always use try/except with logging.
 - **Never** write journals/indexes without acquiring the appropriate lock first.
 
+## MODULE REGISTRY
+
+> 本表记录每个 lib 模块的集成状态。任何新增模块必须登记；任何激活/弃用变更必须更新。
+
+| 模块 | 消费者 | 集成状态 | 备注 |
+|------|--------|---------|------|
+| attachment.py | write_journal, frontmatter | ✅ 活跃 | |
+| config.py | ALL tools | ✅ 活跃 | 路径 SSOT |
+| content_analysis.py | write_journal | ✅ 活跃 | |
+| embedding_backends.py | semantic_search | ✅ 活跃 | |
+| entity_cache.py | write_journal | ⚠️ 待审视 | Round 4 Direction 4 候选 |
+| entity_graph.py | write_journal, entity tool | ⚠️ 待审视 | Round 4 Direction 4 候选 |
+| entity_schema.py | write_journal, entity_graph | ⚠️ 待审视 | Round 4 Direction 4 候选 |
+| errors.py | write_journal(core), edit_journal, build_index | ⚠️ 部分集成 | Round 5 Task 3 将全面激活 |
+| file_lock.py | write_journal, edit_journal, build_index | ✅ 活跃 | |
+| frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |
+| fts_search.py | search_journals | ✅ 活跃 | |
+| fts_update.py | build_index | ✅ 活跃 | |
+| llm_extract.py | write_journal(prepare), content_analysis | ✅ 活跃 | |
+| logger.py | ALL tools | ✅ 活跃 | |
+| metadata_cache.py | search_journals, write_journal | ✅ 活跃 | |
+| path_contract.py | write_journal, edit_journal | ✅ 活跃 | |
+| paths.py | 多个 | ✅ 活跃 | |
+| related_candidates.py | write_journal | ✅ 活跃 | |
+| revisions.py | edit_journal | ✅ 活跃 | |
+| schema_validator.py | dev tools | ✅ 活跃 | |
+| schema.py | frontmatter | ✅ 活跃 | |
+| search_config.py | search_journals | ✅ 活跃 | |
+| search_constants.py | search_journals | ✅ 活跃 | |
+| search_index.py | build_index, search_journals | ✅ 活跃 | |
+| semantic_search.py | search_journals | ✅ 活跃 | |
+| text_normalize.py | search, fts | ✅ 活跃 | |
+| timing.py | ALL tools | ✅ 活跃 | Round 4 Direction 4 候选 |
+| url_download.py | write_journal | ✅ 活跃 | |
+| vector_index_simple.py | build_index | ✅ 活跃 | |
+| workflow_signals.py | write_journal, errors | ✅ 活跃 | Round 5 Task 1 新增 |
+| yaml_utils.py | frontmatter | ✅ 活跃 | |
+
 ## DEPENDENCIES
 
 **This lib depends on**: Python 3.11+, pyyaml, numpy>=1.24.0, sentence-transformers>=2.6.0

@@ -27,7 +27,7 @@ python -m tools.{tool_name} --data '{json_data}'
     "code": "E0000",
     "message": "错误信息",
     "details": { ... },
-    "recovery_strategy": "ask_user|skip_optional|continue_empty|fail"
+    "recovery_strategy": "ask_user|skip_optional|continue_empty|fail|retry"
   }
 }
 ```
@@ -72,6 +72,7 @@ python -m tools.{tool_name} --data '{json_data}'
 | `skip_optional` | 可跳过的可选功能 | 跳过该功能，继续执行 |
 | `continue_empty` | 无结果但可继续 | 返回空结果，不报错 |
 | `fail` | 不可恢复 | 停止操作，报告错误 |
+| `retry` | 可重试 | 自动重试一次，若仍失败则 `ask_user` |
 
 ## 错误码列表
 
@@ -261,6 +262,7 @@ python -m tools.write_journal --data '<json>'
 ```json
 {
   "success": true,
+  "write_outcome": "success_pending_confirmation",
   "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
   "updated_indices": ["C:/Users/.../Documents/Life-Index/by-topic/主题_work.md"],
   "attachments_processed": [...],
@@ -396,6 +398,23 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
   1. 写入失败
   2. 写入成功，但仍需 confirmation / correction
   3. 写入成功，但 side effects / index visibility 不完整
+
+### write_outcome 值定义
+
+`write_outcome` 是 Round 5 新增的顶层字段。Agent 只需读这一个字段即可判断下一步动作，无需组合检查 `success` + `needs_confirmation` + `index_status` + `side_effects_status`。
+
+| 值 | 含义 | Agent 应做什么 |
+|---|---|---|
+| `success` | 全部完成 | 告知用户成功 |
+| `success_pending_confirmation` | 日志已保存，地点/天气待确认 | 展示 `confirmation_message` 并等待用户回复 |
+| `success_degraded` | 日志已保存，但索引/附件等后续操作部分失败 | 告知用户已保存但存在降级，建议后续修复 |
+| `failed` | 写入失败 | 查看 `error` 字段的 `recovery_strategy` 决定下一步 |
+
+推导规则（`derive_write_outcome()`）：
+1. `success == false` → `failed`
+2. `needs_confirmation == true` → `success_pending_confirmation`（即使同时降级，确认优先）
+3. `index_status == "degraded"` 或 `side_effects_status == "degraded"` → `success_degraded`
+4. 以上均否 → `success`
 
 ### Tool hard-required vs workflow-required
 
@@ -545,6 +564,7 @@ python -m tools.edit_journal --journal "<path>" [options]
 ```json
 {
   "success": true,
+  "write_outcome": "success_pending_confirmation",
   "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
   "changes": {
     "location": {"old": "Chongqing, China", "new": "Beijing, China"},
