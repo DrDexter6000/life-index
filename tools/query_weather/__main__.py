@@ -11,6 +11,17 @@ from datetime import datetime
 
 import tools.query_weather as _qw
 from ..lib.config import ensure_dirs
+from ..lib.errors import ErrorCode, create_error_response
+
+
+def _emit_json(payload: dict) -> None:
+    """Print JSON safely across Windows console encodings."""
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        fallback_text = json.dumps(payload, ensure_ascii=True, indent=2)
+        print(fallback_text)
 
 
 def main() -> None:
@@ -49,11 +60,10 @@ Examples:
 
     # 验证参数
     if not args.location and (args.lat is None or args.lon is None):
-        print(
-            json.dumps(
-                {"success": False, "error": "必须提供 --location 或 --lat/--lon"},
-                ensure_ascii=False,
-                indent=2,
+        _emit_json(
+            create_error_response(
+                ErrorCode.INVALID_INPUT,
+                "必须提供 --location 或 --lat/--lon",
             )
         )
         sys.exit(1)
@@ -62,30 +72,31 @@ Examples:
     if args.location:
         geo_result = _qw.geocode_location(args.location)
         if geo_result is None:
-            print(
-                json.dumps(
-                    {"success": False, "error": f"无法找到地点: {args.location}"},
-                    ensure_ascii=False,
-                    indent=2,
+            _emit_json(
+                create_error_response(
+                    ErrorCode.LOCATION_NOT_FOUND,
+                    f"无法找到地点: {args.location}",
+                    details={"location": args.location},
                 )
             )
             sys.exit(1)
         if "error" in geo_result:
-            print(
-                json.dumps(
-                    {"success": False, "error": f"地理编码错误: {geo_result['error']}"},
-                    ensure_ascii=False,
-                    indent=2,
+            _emit_json(
+                create_error_response(
+                    ErrorCode.WEATHER_API_FAILED,
+                    f"地理编码错误: {geo_result['error']}",
+                    details={
+                        "location": args.location,
+                        "geo_error": geo_result["error"],
+                    },
                 )
             )
             sys.exit(1)
 
         latitude = geo_result["latitude"]
         longitude = geo_result["longitude"]
-        location_name = (
-            f"{geo_result['name']}, {geo_result.get('admin1', '')}, {geo_result['country']}".strip(
-                ", "
-            )
+        location_name = f"{geo_result['name']}, {geo_result.get('admin1', '')}, {geo_result['country']}".strip(
+            ", "
         )
     else:
         latitude = args.lat

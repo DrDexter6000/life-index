@@ -1,0 +1,205 @@
+# Agent Behavior Tests: write_journal
+# ====================================
+# Each scenario encodes an Agent-observable input→output contract.
+# The pytest runner loads this YAML, calls write_journal() with mocks,
+# and asserts the agent-critical fields that determine Agent next-action.
+#
+# Field semantics (from docs/API.md + workflow_signals.py):
+#   write_outcome:  success | success_pending_confirmation | success_degraded | failed
+#   needs_confirmation: bool — Agent must prompt user if true
+#   index_status:   complete | degraded | not_started
+#   side_effects_status: complete | degraded | not_started
+#   error:          null (success) | dict with code + recovery_strategy (failure)
+
+scenarios:
+
+  # ── Happy Path ──
+
+  - id: "WB-01"
+    name: "标准写入 - 用户提供地点和天气"
+    description: >
+      用户提供 content + location + weather，不需要自动填充。
+      core.py 写入后始终设置 needs_confirmation=true（Agent 需确认地点/天气），
+      因此 write_outcome=success_pending_confirmation。
+    input:
+      date: "2026-04-04"
+      title: "标准写入测试"
+      content: "这是一个标准写入测试"
+      topic: "test"
+      location: "Beijing, China"
+      weather: "Sunny 25°C"
+    mocks:
+      weather_return: "Sunny 25°C"
+      index_return: []
+      vector_return: true
+    assertions:
+      success: true
+      write_outcome: "success_pending_confirmation"
+      needs_confirmation: true
+      location_auto_filled: false
+      weather_auto_filled: false
+      index_status: "complete"
+      side_effects_status: "complete"
+      error_is_null: true
+
+  - id: "WB-02"
+    name: "自动填充地点 - 需要确认"
+    description: >
+      用户不提供 location，工具自动使用默认地点。
+      Agent 必须向用户展示 confirmation_message 并等待确认。
+    input:
+      date: "2026-04-04"
+      title: "自动填充测试"
+      content: "没有提供地点的日志"
+      topic: "test"
+    mocks:
+      weather_return: "Cloudy 20°C"
+      index_return: []
+      vector_return: false
+    assertions:
+      success: true
+      write_outcome: "success_pending_confirmation"
+      needs_confirmation: true
+      location_auto_filled: true
+      weather_auto_filled: true
+      confirmation_has_location: true
+      confirmation_has_weather: true
+      error_is_null: true
+
+  - id: "WB-03"
+    name: "用户提供地点但无天气 - 自动查询天气"
+    description: >
+      用户提供 location 但不提供 weather。工具自动查询天气。
+      此时地点非自动填充，但天气是自动填充的。
+      Agent 仍需确认（因为天气是查询来的）。
+    input:
+      date: "2026-04-04"
+      title: "天气自动查询"
+      content: "用户给了地点但没给天气"
+      topic: "test"
+      location: "Shanghai, China"
+    mocks:
+      weather_return: "Rainy 18°C"
+      index_return: []
+      vector_return: false
+    assertions:
+      success: true
+      write_outcome: "success_pending_confirmation"
+      needs_confirmation: true
+      location_auto_filled: false
+      weather_auto_filled: true
+      error_is_null: true
+
+  # ── Degraded Path ──
+
+  - id: "WB-04"
+    name: "索引更新失败 - 事务回滚"
+    description: >
+      日志写入后索引更新抛 RuntimeError。core.py 回滚事务（删除临时文件），
+      整体写入失败，error 为纯字符串（非结构化 dict）。
+      注意：core.py 的实际行为是索引失败=整体回滚，而非降级成功。
+    input:
+      date: "2026-04-04"
+      title: "索引失败测试"
+      content: "索引更新会失败的日志"
+      topic: "test"
+      location: "Lagos, Nigeria"
+      weather: "Hot 32°C"
+    mocks:
+      weather_return: "Hot 32°C"
+      index_raises: "RuntimeError('test failure')"
+      vector_return: false
+    assertions:
+      success: false
+      needs_confirmation: false
+      index_status: "not_started"
+      side_effects_status: "not_started"
+      error_is_string: true
+
+  - id: "WB-05"
+    name: "天气查询失败 - 降级继续"
+    description: >
+      天气查询返回 None。日志仍然写入成功，天气字段为空或"unknown"。
+      Agent 应看到需要确认（因为地点自动填充+天气缺失）。
+    input:
+      date: "2026-04-04"
+      title: "天气查询失败"
+      content: "天气API不可用时的日志"
+      topic: "test"
+    mocks:
+      weather_return: null
+      index_return: []
+      vector_return: false
+    assertions:
+      success: true
+      needs_confirmation: true
+      location_auto_filled: true
+      error_is_null: true
+
+  # ── Error Path ──
+
+  - id: "WB-06"
+    name: "content 为空 - 仍然写入成功"
+    description: >
+      content 字段为空字符串。core.py 不验证 content 是否非空，
+      因此写入成功。Agent 应看到 success_pending_confirmation。
+      注意：这是实际行为的如实记录，空内容校验不在 Round 5 范围内。
+    input:
+      date: "2026-04-04"
+      title: "空内容测试"
+      content: ""
+      topic: "test"
+    mocks:
+      weather_return: "Sunny 25°C"
+      index_return: []
+      vector_return: false
+    assertions:
+      success: true
+      write_outcome: "success_pending_confirmation"
+      needs_confirmation: true
+      location_auto_filled: true
+      error_is_null: true
+
+  - id: "WB-07"
+    name: "date 缺失 - 写入失败（纯字符串错误）"
+    description: >
+      缺少必填字段 date。core.py 抛出 ValueError，
+      catch 块将 str(e) 赋给 result["error"]——纯字符串，非结构化 dict。
+      注意：这是 pre-existing gap，date 校验的结构化错误改造不在 Round 5 范围内。
+    input:
+      title: "无日期测试"
+      content: "没有提供日期"
+      topic: "test"
+    mocks:
+      weather_return: "Sunny 25°C"
+      index_return: []
+      vector_return: false
+    assertions:
+      success: false
+      write_outcome: "failed"
+      error_is_string: true
+
+  # ── Dry Run ──
+
+  - id: "WB-08"
+    name: "dry-run 模式 - 不实际写入"
+    description: >
+      dry_run=true 时，工具验证输入但不写入文件。
+      Agent 用此预览写入结果。dry-run 在文件写入前提前返回，
+      此时 needs_confirmation 尚未被设置为 True（保持初始值 False）。
+    input:
+      date: "2026-04-04"
+      title: "Dry Run 测试"
+      content: "仅预览，不写入"
+      topic: "test"
+    options:
+      dry_run: true
+    mocks:
+      weather_return: "Sunny 25°C"
+      index_return: []
+      vector_return: false
+    assertions:
+      success: true
+      needs_confirmation: false
+      location_auto_filled: true
+      error_is_null: true

@@ -13,6 +13,7 @@ from .core import apply_confirmation_updates
 from .core import write_journal
 from .prepare import prepare_journal_metadata
 from ..lib.config import ensure_dirs
+from ..lib.errors import ErrorCode, create_error_response
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +41,22 @@ def _cmd_write(args: argparse.Namespace) -> int:
         else:
             data = json.loads(args.data)
     except json.JSONDecodeError as e:
-        _emit_json({"success": False, "error": f"JSON解析错误: {e}"})
+        _emit_json(
+            create_error_response(
+                ErrorCode.INVALID_INPUT,
+                f"JSON解析错误: {e}",
+                details={"raw_input": args.data[:200]},
+            )
+        )
         return 1
     except FileNotFoundError:
-        _emit_json({"success": False, "error": f"文件未找到: {args.data[1:]}"})
+        _emit_json(
+            create_error_response(
+                ErrorCode.FILE_NOT_FOUND,
+                f"文件未找到: {args.data[1:]}",
+                details={"path": args.data[1:]},
+            )
+        )
         return 1
 
     if args.verbose:
@@ -94,10 +107,22 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
         else:
             data = json.loads(args.data)
     except json.JSONDecodeError as e:
-        _emit_json({"success": False, "error": f"JSON解析错误: {e}"})
+        _emit_json(
+            create_error_response(
+                ErrorCode.INVALID_INPUT,
+                f"JSON解析错误: {e}",
+                details={"raw_input": args.data[:200]},
+            )
+        )
         return 1
     except FileNotFoundError:
-        _emit_json({"success": False, "error": f"文件未找到: {args.data[1:]}"})
+        _emit_json(
+            create_error_response(
+                ErrorCode.FILE_NOT_FOUND,
+                f"文件未找到: {args.data[1:]}",
+                details={"path": args.data[1:]},
+            )
+        )
         return 1
 
     if args.verbose:
@@ -110,11 +135,21 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
         _emit_json({"success": True, "data": result})
         return 0
     except ValueError as e:
-        _emit_json({"success": False, "error": str(e)})
+        _emit_json(
+            create_error_response(
+                ErrorCode.INVALID_INPUT,
+                str(e),
+            )
+        )
         return 1
     except Exception as e:
         logger.exception("write_journal metadata preparation failed: %s", e)
-        _emit_json({"success": False, "error": f"元数据准备失败: {e}"})
+        _emit_json(
+            create_error_response(
+                ErrorCode.WRITE_FAILED,
+                f"元数据准备失败: {e}",
+            )
+        )
         return 1
 
 
