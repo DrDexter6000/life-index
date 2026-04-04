@@ -291,6 +291,7 @@ def merge_and_rank_results_hybrid(
     min_rrf_score: float = RRF_MIN_SCORE,
     min_non_rrf_score: float = NON_RRF_MIN_SCORE,
     max_results: int = MAX_RESULTS_DEFAULT,
+    explain: bool = False,  # Task 2.1: explain mode
 ) -> List[Dict]:
     """
     混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
@@ -508,6 +509,26 @@ def merge_and_rank_results_hybrid(
             data["relevance_score"] = item["final_score"]
             data["fts_score"] = round(item["fts_score"], 2)
             data["semantic_score"] = round(item["semantic_score"], 2)
+
+            # Task 2.1: Add explain field
+            if explain:
+                data["explain"] = {
+                    "keyword_pipeline": {
+                        "fts_score": round(item["fts_score"], 2),
+                        "has_fts_match": item["fts_score"] > 0,
+                    },
+                    "semantic_pipeline": {
+                        "cosine_similarity": round(item["semantic_score"] / 100.0, 4)
+                        if item["semantic_score"] > 0
+                        else 0.0,
+                        "has_semantic_match": item["semantic_score"] > 0,
+                    },
+                    "fusion": {
+                        "rrf_score": round(item["final_score"], 4),
+                        "has_rrf": item["has_rrf"],
+                    },
+                }
+
             merged.append(data)
     finally:
         metadata_conn.close()
