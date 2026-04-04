@@ -109,9 +109,7 @@ def expand_query_with_entity_graph(query: str) -> str:
             for entity in graph:
                 for alias in [entity["primary_name"], *entity.get("aliases", [])]:
                     if alias in replacements:
-                        replacements = replacements.replace(
-                            alias, expand_from_entity(entity)
-                        )
+                        replacements = replacements.replace(alias, expand_from_entity(entity))
             expanded_tokens.append(replacements)
 
     expanded = " ".join(expanded_tokens).strip()
@@ -274,9 +272,7 @@ def hierarchical_search(
 
     if not semantic:
         result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
-        result["warnings"].append(
-            "semantic_disabled: 用户通过 --no-semantic 禁用语义搜索"
-        )
+        result["warnings"].append("semantic_disabled: 用户通过 --no-semantic 禁用语义搜索")
 
     expanded_query = expand_query_with_entity_graph(query) if query else query
     if expanded_query != query:
@@ -348,9 +344,7 @@ def hierarchical_search(
             l2_total_available,
             kw_perf,
         ) = future_keyword.result()
-        semantic_results, sem_perf, semantic_available, semantic_note = (
-            future_semantic.result()
-        )
+        semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
 
     # 填充结果
     result["l1_results"] = l1_results
@@ -386,9 +380,7 @@ def hierarchical_search(
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(
-            l1_results, l2_results, l3_results, query
-        )
+        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)

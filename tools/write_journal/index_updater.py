@@ -35,9 +35,7 @@ def build_index_filename(kind: str, value: str) -> str:
     return f"{prefix}{safe_value}.md"
 
 
-def update_topic_index(
-    topic: Any, journal_path: Path, data: Dict[str, Any]
-) -> List[Path]:
+def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> List[Path]:
     """更新主题索引文件 - 支持单个主题或主题列表"""
     if not topic:
         return []
@@ -79,9 +77,7 @@ def update_topic_index(
     return updated
 
 
-def update_project_index(
-    project: str, journal_path: Path, data: Dict[str, Any]
-) -> Optional[Path]:
+def update_project_index(project: str, journal_path: Path, data: Dict[str, Any]) -> Optional[Path]:
     """更新项目索引文件"""
     if not project:
         return None
@@ -109,9 +105,7 @@ def update_project_index(
     return index_file
 
 
-def update_tag_indices(
-    tags: List[str], journal_path: Path, data: Dict[str, Any]
-) -> List[Path]:
+def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]) -> List[Path]:
     """更新标签索引文件"""
     updated = []
 
@@ -144,9 +138,7 @@ def update_tag_indices(
     return updated
 
 
-def update_monthly_abstract(
-    year: int, month: int, dry_run: bool = False
-) -> Dict[str, Any]:
+def update_monthly_abstract(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]:
     """
     更新月度摘要文件（调用 generate_abstract.py 工具）
 
@@ -204,9 +196,7 @@ def update_monthly_abstract(
             except json.JSONDecodeError as e:
                 result["error"] = f"Invalid JSON output: {e}"
         else:
-            result["error"] = (
-                proc.stderr or f"Command failed with return code {proc.returncode}"
-            )
+            result["error"] = proc.stderr or f"Command failed with return code {proc.returncode}"
 
     except subprocess.TimeoutExpired:
         result["error"] = "Command timed out after 30 seconds"

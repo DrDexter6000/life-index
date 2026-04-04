@@ -238,9 +238,7 @@ def prepare_journal_metadata(
     llm_available = use_llm and is_llm_available()
     llm_status: dict[str, str | None] = {
         "state": "unavailable" if not llm_available else "idle",
-        "message": "未配置 AI 服务，将使用规则补全或手动字段。"
-        if not llm_available
-        else None,
+        "message": "未配置 AI 服务，将使用规则补全或手动字段。" if not llm_available else None,
     }
 
     # Mark user-provided fields

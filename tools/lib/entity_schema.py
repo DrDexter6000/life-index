@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 ENTITY_TYPES = {"person", "place", "project", "event", "concept"}
 RESERVED_RELATIONSHIP_TARGETS: set[str] = set()
 
@@ -60,9 +59,7 @@ def validate_entity_graph_payload(payload: dict[str, Any]) -> list[dict[str, Any
         for relationship in relationships:
             if not isinstance(relationship, dict):
                 raise EntityGraphValidationError("relationship must be an object")
-            target = _ensure_non_empty_string(
-                relationship.get("target"), "relationship.target"
-            )
+            target = _ensure_non_empty_string(relationship.get("target"), "relationship.target")
             relation = _ensure_non_empty_string(
                 relationship.get("relation"), "relationship.relation"
             )

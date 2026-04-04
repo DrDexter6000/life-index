@@ -75,15 +75,13 @@ def init_metadata_cache() -> sqlite3.Connection:
         )
     """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS entry_relations (
             source_path TEXT NOT NULL,
             target_path TEXT NOT NULL,
             PRIMARY KEY (source_path, target_path)
         )
-        """
-    )
+        """)
 
     _ensure_metadata_cache_columns(conn)
 
@@ -148,9 +146,7 @@ def is_cache_valid(file_path: Path, cached_mtime: float, cached_size: int) -> bo
     return current_mtime == cached_mtime and current_size == cached_size
 
 
-def parse_and_cache_journal(
-    conn: sqlite3.Connection, file_path: Path
-) -> Optional[Dict[str, Any]]:
+def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
     """解析日志并更新缓存"""
     try:
         # 解析日志文件
@@ -172,9 +168,7 @@ def parse_and_cache_journal(
         weather = metadata.get("weather", "")
         abstract = metadata.get("abstract", "")
         links = json.dumps(metadata.get("links", []), ensure_ascii=False)
-        related_entries = json.dumps(
-            metadata.get("related_entries", []), ensure_ascii=False
-        )
+        related_entries = json.dumps(metadata.get("related_entries", []), ensure_ascii=False)
 
         # 数组字段转为JSON
         topic = json.dumps(metadata.get("topic", []), ensure_ascii=False)
@@ -236,17 +230,13 @@ def parse_and_cache_journal(
         return None
 
 
-def get_cached_metadata(
-    conn: sqlite3.Connection, file_path: Path
-) -> Optional[Dict[str, Any]]:
+def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[Dict[str, Any]]:
     """从缓存获取元数据（如果有效）"""
     cursor = conn.cursor()
     candidate_keys = _candidate_cache_keys(file_path)
 
     if len(candidate_keys) == 1:
-        cursor.execute(
-            "SELECT * FROM metadata_cache WHERE file_path = ?", (candidate_keys[0],)
-        )
+        cursor.execute("SELECT * FROM metadata_cache WHERE file_path = ?", (candidate_keys[0],))
     else:
         cursor.execute(
             "SELECT * FROM metadata_cache WHERE file_path IN (?, ?)",
@@ -279,9 +269,7 @@ def get_cached_metadata(
         "people": json.loads(row["people"]) if row["people"] else [],
         "abstract": row["abstract"],
         "links": json.loads(row["links"]) if row["links"] else [],
-        "related_entries": json.loads(row["related_entries"])
-        if row["related_entries"]
-        else [],
+        "related_entries": json.loads(row["related_entries"]) if row["related_entries"] else [],
         "metadata": {
             "date": row["date"],
             "title": row["title"],
@@ -294,9 +282,7 @@ def get_cached_metadata(
             "people": json.loads(row["people"]) if row["people"] else [],
             "abstract": row["abstract"],
             "links": json.loads(row["links"]) if row["links"] else [],
-            "related_entries": json.loads(row["related_entries"])
-            if row["related_entries"]
-            else [],
+            "related_entries": json.loads(row["related_entries"]) if row["related_entries"] else [],
         },
     }
 
@@ -359,9 +345,9 @@ def get_all_cached_metadata(
                     "people": json.loads(row["people"]) if row["people"] else [],
                     "abstract": row["abstract"],
                     "links": json.loads(row["links"]) if row["links"] else [],
-                    "related_entries": json.loads(row["related_entries"])
-                    if row["related_entries"]
-                    else [],
+                    "related_entries": (
+                        json.loads(row["related_entries"]) if row["related_entries"] else []
+                    ),
                     "metadata": {
                         "date": row["date"],
                         "title": row["title"],
@@ -374,9 +360,9 @@ def get_all_cached_metadata(
                         "people": json.loads(row["people"]) if row["people"] else [],
                         "abstract": row["abstract"],
                         "links": json.loads(row["links"]) if row["links"] else [],
-                        "related_entries": json.loads(row["related_entries"])
-                        if row["related_entries"]
-                        else [],
+                        "related_entries": (
+                            json.loads(row["related_entries"]) if row["related_entries"] else []
+                        ),
                     },
                 }
             )
@@ -469,9 +455,7 @@ def replace_entry_relations(
 ) -> int:
     """Replace all relations for a single source entry incrementally."""
     cursor = conn.cursor()
-    cursor.execute(
-        "DELETE FROM entry_relations WHERE source_path = ?", (source_rel_path,)
-    )
+    cursor.execute("DELETE FROM entry_relations WHERE source_path = ?", (source_rel_path,))
     conn.commit()
     return add_entry_relations(conn, source_rel_path, target_paths)
 

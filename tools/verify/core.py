@@ -140,18 +140,14 @@ def run_verify() -> Dict[str, Any]:
             metadata = parse_journal_file(journal_file)
             if "_error" in metadata:
                 frontmatter_check.status = "error"
-                frontmatter_check.issues.append(
-                    f"{journal_file.name}: {metadata['_error']}"
-                )
+                frontmatter_check.issues.append(f"{journal_file.name}: {metadata['_error']}")
             else:
                 frontmatter_check.count += 1
                 # Check required fields
                 for req_field in required_fields:
                     if req_field not in metadata or not metadata[req_field]:
                         frontmatter_check.status = "warning"
-                        frontmatter_check.issues.append(
-                            f"{journal_file.name}: missing {req_field}"
-                        )
+                        frontmatter_check.issues.append(f"{journal_file.name}: missing {req_field}")
         except Exception as e:
             frontmatter_check.status = "error"
             frontmatter_check.issues.append(f"{journal_file.name}: {e}")
@@ -169,24 +165,18 @@ def run_verify() -> Dict[str, Any]:
             for req_field in required_fields:
                 if req_field not in metadata or not metadata[req_field]:
                     required_check.status = "warning"
-                    required_check.issues.append(
-                        f"{journal_file.name}: missing {req_field}"
-                    )
+                    required_check.issues.append(f"{journal_file.name}: missing {req_field}")
         except Exception:
             continue
 
     result["checks"].append(asdict(required_check))
 
     # Check 2: FTS index consistency
-    fts_check = CheckResult(
-        name="fts_consistency", status="ok", count=len(journal_files)
-    )
+    fts_check = CheckResult(name="fts_consistency", status="ok", count=len(journal_files))
     fts_paths = _load_fts_paths()
     if not fts_paths and journal_rel_paths:
         fts_check.status = "warning"
-        fts_check.issues.append(
-            f"missing: {len(journal_rel_paths)} journals not indexed"
-        )
+        fts_check.issues.append(f"missing: {len(journal_rel_paths)} journals not indexed")
     else:
         missing_fts = sorted(journal_rel_paths - fts_paths)
         orphan_fts = sorted(fts_paths - journal_rel_paths)
@@ -200,9 +190,7 @@ def run_verify() -> Dict[str, Any]:
     result["checks"].append(asdict(fts_check))
 
     # Check 3: Vector index consistency
-    vector_check = CheckResult(
-        name="vector_consistency", status="ok", count=len(journal_files)
-    )
+    vector_check = CheckResult(name="vector_consistency", status="ok", count=len(journal_files))
     vector_paths = _load_vector_paths()
     missing_vectors = sorted(journal_rel_paths - vector_paths)
     orphan_vectors = sorted(vector_paths - journal_rel_paths)
@@ -258,8 +246,6 @@ def run_verify() -> Dict[str, Any]:
 
     # Suggestion
     if total_issues > 0:
-        result["suggestion"] = (
-            "Run 'life-index index --rebuild' to fix index inconsistencies."
-        )
+        result["suggestion"] = "Run 'life-index index --rebuild' to fix index inconsistencies."
 
     return result

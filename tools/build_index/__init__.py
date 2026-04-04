@@ -205,9 +205,7 @@ def show_stats() -> None:
             logger.info("  Exists: Yes")
             logger.info(f"  Vectors: {vec_stats['total_vectors']}")
             logger.info(f"  Size: {vec_stats['db_size_mb']} MB")
-            logger.info(
-                f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}"
-            )
+            logger.info(f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}")
         else:
             # sqlite-vec exists but empty, try simple index
             raise ImportError("sqlite-vec empty, trying simple index")

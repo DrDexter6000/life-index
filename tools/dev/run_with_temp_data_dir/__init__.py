@@ -73,9 +73,7 @@ class TempDataDirSession:
             temp_root = Path(tempfile.mkdtemp(prefix=prefix))
         else:
             self.base_tmp_dir.mkdir(parents=True, exist_ok=True)
-            temp_root = Path(
-                tempfile.mkdtemp(prefix=prefix, dir=str(self.base_tmp_dir))
-            )
+            temp_root = Path(tempfile.mkdtemp(prefix=prefix, dir=str(self.base_tmp_dir)))
 
         data_dir = temp_root / "Life-Index"
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -173,9 +171,7 @@ def main() -> None:
     from ...lib.config import USER_DATA_DIR
 
     parser = argparse.ArgumentParser(description="Life Index 手工调试隔离目录工具")
-    parser.add_argument(
-        "--seed", action="store_true", help="复制当前用户数据到临时目录"
-    )
+    parser.add_argument("--seed", action="store_true", help="复制当前用户数据到临时目录")
     parser.add_argument("--name", help="为本次沙盒目录添加可读标签")
     parser.add_argument(
         "--cleanup-now",

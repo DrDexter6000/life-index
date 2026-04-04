@@ -95,11 +95,7 @@ def _load_sqlite_vec_extension(conn: sqlite3.Connection) -> bool:
                 "vec0.dll",
                 "vec.dll",
                 # Python 包目录
-                Path(sys.executable).parent
-                / "Lib"
-                / "site-packages"
-                / "sqlite_vec"
-                / "vec0.dll",
+                Path(sys.executable).parent / "Lib" / "site-packages" / "sqlite_vec" / "vec0.dll",
                 # 用户数据目录
                 USER_DATA_DIR / ".bin" / "vec0.dll",
             ]
@@ -272,9 +268,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                     f"Auto-rebuilding vector index..."
                 )
             except Exception:
-                print(
-                    f"Auto-rebuilding vector index due to: {integrity_result.message}"
-                )
+                print(f"Auto-rebuilding vector index due to: {integrity_result.message}")
         else:
             print("First-time use. Building initial vector index...")
 
@@ -287,9 +281,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
     try:
         conn = init_vec_db()
         if conn is None:
-            result["error"] = (
-                "sqlite-vec extension not available. Vector search disabled."
-            )
+            result["error"] = "sqlite-vec extension not available. Vector search disabled."
             return result
         cursor = conn.cursor()
 
@@ -372,9 +364,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                 # 如果是更新，先删除
                 if action == "update":
                     try:
-                        cursor.execute(
-                            "DELETE FROM journal_vectors WHERE path = ?", (rel_path,)
-                        )
+                        cursor.execute("DELETE FROM journal_vectors WHERE path = ?", (rel_path,))
                         result["updated"] += 1
                     except Exception:
                         pass
@@ -396,9 +386,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
         # 删除不存在的文件
         for rel_path in files_to_remove:
             try:
-                cursor.execute(
-                    "DELETE FROM journal_vectors WHERE path = ?", (rel_path,)
-                )
+                cursor.execute("DELETE FROM journal_vectors WHERE path = ?", (rel_path,))
                 result["removed"] += 1
             except Exception:
                 pass

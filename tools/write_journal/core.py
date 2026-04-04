@@ -86,12 +86,8 @@ def extract_explicit_metadata_from_content(content: str) -> Tuple[Dict[str, str]
         return extracted, content
 
     patterns = {
-        "location": re.compile(
-            r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
-        ),
-        "weather": re.compile(
-            r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
-        ),
+        "location": re.compile(r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
+        "weather": re.compile(r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
     }
 
     remaining_lines = []
@@ -404,9 +400,7 @@ def apply_confirmation_updates(
         return change.get("old") != change.get("new")
 
     applied_fields = [field for field in requested_fields if _field_was_applied(field)]
-    ignored_fields = [
-        field for field in requested_fields if not _field_was_applied(field)
-    ]
+    ignored_fields = [field for field in requested_fields if not _field_was_applied(field)]
 
     if isinstance(result, dict):
         result["applied_fields"] = applied_fields
@@ -498,9 +492,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         logger.info(f"开始写入日志：date={date_str}, title={data.get('title', 'N/A')}")
 
         content = data.get("content", "")
-        explicit_metadata, cleaned_content = extract_explicit_metadata_from_content(
-            content
-        )
+        explicit_metadata, cleaned_content = extract_explicit_metadata_from_content(content)
         data["content"] = cleaned_content
 
         # ===== 第一层：用户提及为准 =====
@@ -527,9 +519,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             # 尝试获取天气（使用英文格式的地点）
             logger.debug(f"查询天气：location={location_for_weather}")
             with timer.measure("weather_query"):
-                queried_weather = query_weather_for_location(
-                    location_for_weather, date_str
-                )
+                queried_weather = query_weather_for_location(location_for_weather, date_str)
             if queried_weather:
                 weather = queried_weather
                 result["weather_used"] = weather
@@ -545,13 +535,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
 
         data["weather"] = weather
         try:
-            entity_graph = load_entity_graph(
-                resolve_user_data_dir() / "entity_graph.yaml"
-            )
+            entity_graph = load_entity_graph(resolve_user_data_dir() / "entity_graph.yaml")
         except EntityGraphValidationError as exc:
-            logger.warning(
-                "Skipping entity graph enrichment due to invalid graph: %s", exc
-            )
+            logger.warning("Skipping entity graph enrichment due to invalid graph: %s", exc)
             entity_graph = []
         data["sentiment_score"] = content_analysis.generate_sentiment_score(
             str(data.get("content", ""))
@@ -578,9 +564,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             "tags": data.get("tags"),
             "related_entries": data.get("related_entries", []),
         }
-        result["related_candidates"] = suggest_related_entries(
-            current_entry, candidate_entries
-        )
+        result["related_candidates"] = suggest_related_entries(current_entry, candidate_entries)
         result["confirmation"] = _build_confirmation_payload(
             journal_path=None,
             location=location,
@@ -695,9 +679,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         abstract_error = None
                         abstract_success = False
                         try:
-                            abstract_result = update_monthly_abstract(
-                                year, month, dry_run
-                            )
+                            abstract_result = update_monthly_abstract(year, month, dry_run)
                             abstract_success = True
                         except (OSError, IOError, RuntimeError) as e:
                             abstract_error = str(e)
@@ -728,9 +710,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                             except Exception as e:
                                 # 向量索引更新失败不阻塞写入
                                 vector_index_error = str(e)
-                                logger.warning(
-                                    f"向量索引更新失败（不影响日志写入）：{e}"
-                                )
+                                logger.warning(f"向量索引更新失败（不影响日志写入）：{e}")
 
                         except (OSError, IOError, RuntimeError) as e:
                             # 索引更新失败，清理临时文件
@@ -804,9 +784,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             relation_lines = ""
             if result["related_candidates"]:
                 candidate_lines = ["\n\n可考虑关联以下日志："]
-                for index, candidate in enumerate(
-                    result["related_candidates"], start=1
-                ):
+                for index, candidate in enumerate(result["related_candidates"], start=1):
                     candidate_lines.append(
                         (
                             f"{index}. {candidate['rel_path']} | "
