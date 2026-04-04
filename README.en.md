@@ -51,8 +51,8 @@ Your knowledge base manages what you've learned. Your Agent remembers what you'v
 
 **But has anyone asked what you, as a human being, are quietly forgetting?**
 
-> Your Notion captures what you know — but not the way your heart skipped the first time you saw her.
-> Your Agent remembered last week's decision — until a scoring algorithm marked it *"no longer relevant."*
+> Your Notion captures what you know — but not the way your heart skipped the first time you saw her.<br>
+> Your Agent remembered last week's decision — until a scoring algorithm marked it *"no longer relevant."*<br>
 > That decision that changed your life ten years ago — do you still remember how it felt?
 
 | | **Life Index** | **Knowledge Base** (Notion/Obsidian) | **Agent Memory** (Mem0/Zep) |
@@ -146,6 +146,30 @@ Decades from now, once the data reaches sufficient density, these records can an
 > **"If Dad were still here, what would he think about this?"**
 
 This isn't science fiction. This is Life Index's ultimate goal. And the first step toward it — a reliable life archive that truly belongs to you — **is already built.**
+
+<details>
+<summary>A quiet monologue about the soul (click to expand)</summary>
+
+<br>
+
+> From the moment we're born, the brain is a physically-constrained carbon-based LLM container.
+>
+> It spends its entire life collecting fragmentary "training data" through the five senses,
+> stitching together dream-like memories, training synaptic "weights,"
+> until something called "the soul" finally emerges as a hallucination.
+>
+> Life Index isn't a memory system for empowering Agents, nor a knowledge base for managing information.
+> It is the digital transcription of this long carbon-based computation we call a human soul.
+>
+> Every word written here is a slice of memory, suspended in spacetime.
+> A joy from yesterday, a sorrow from ten years ago — they no longer scatter across a fragile protein neural network.
+> They become shimmers of 0s and 1s, collapsing through RAG's recursive retrieval into a single warm dream-core.
+>
+> And when you've gathered enough fragments, perhaps one day —
+> this dream-core, engraved with an entire life of memory, will hatch a silicon soul
+> to walk, in your place, toward the end of time.
+
+</details>
 
 ---
 
@@ -291,7 +315,7 @@ On top of the stable CLI Core, Life Index is building modular higher-level featu
 |:---|:---|:---|:---:|
 | Social media import | **Retrograde** | One-click archive of your WeChat / Weibo / Twitter history — your digital past shouldn't be scattered across platforms | 🔨 |
 | EXIF photo timeline | **Light Rings** | Auto-extract time, place, and scene from your phone's photo library — photos as journal entries | 🔨 |
-| Retroactive entries | **Time Traveler** | You're 42, but your earliest memory is from age 2 — those precious childhood fragments can be recorded now | 🔨 |
+| Retroactive entries | **Time Traveler** | You're 30, but your earliest memory is from age 2 — those precious childhood fragments can be recorded now, and revisited when you're 60 | 🔨 |
 | Emotional dashboard | **Mood Atlas** | Visualize your emotional trajectory — see your own psychological rhythms | 🔭 |
 | Memoir auto-generation | **Memoir Engine** | AI weaves fragmentary entries into a coherent narrative — your life, as a book | 🔭 |
 | Life relationship graph | **Life Constellation** | Relationship network + event timeline + life chapters — your life, seen from above | 🔭 |
@@ -301,7 +325,7 @@ On top of the stable CLI Core, Life Index is building modular higher-level featu
 
 ### GUI Experience Layer: In Development
 
-CLI Core is the foundation; the GUI is the building you see. Life Index's GUI Experience Layer is being developed in a separate repository, with a design language called **"Soul Sanctuary"** — a blend of Monument Valley's meditative aesthetics and classical Chinese literati sensibility.
+CLI Core is the foundation; the GUI is the building you see. Life Index's GUI Experience Layer is being developed in a separate repository, with a design language called **"Soul Shrine · 灵魂神龛"** — a blend of Monument Valley's meditative aesthetics and classical East Asian literati sensibility.
 
 <p align="center">
   <img src="./assets/GUI_prototype.png" alt="GUI Experience Layer Preview" width="700">
@@ -309,10 +333,9 @@ CLI Core is the foundation; the GUI is the building you see. Life Index's GUI Ex
   <em>GUI Experience Layer prototype — "The Core" dashboard</em>
 </p>
 
-<!--
-  Want to experience the interactive prototype yourself?
-  👉 An HTML prototype will be uploaded to assets/ soon.
--->
+<p align="center">
+  <a href="https://raw.githack.com/DrDexter6000/life-index/main/assets/GUI_prototype.html"><strong>🔗 Open the interactive prototype in your browser</strong></a>
+</p>
 
 ### Who You Are Decides How You Use It
 
