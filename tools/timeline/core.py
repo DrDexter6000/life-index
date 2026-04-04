@@ -3,9 +3,7 @@
 Life Index - Timeline Command Core Logic
 """
 
-import json
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..lib.config import JOURNALS_DIR

@@ -194,7 +194,7 @@ def _normalize_to_list(value: Any) -> List[str]:
     return []
 
 
-def _apply_edit_updates(
+def _apply_edit_updates(  # noqa: C901
     *,
     journal_path: Path,
     current_frontmatter: Dict[str, Any],
@@ -498,15 +498,16 @@ def edit_journal(
                     "请先查询新地点的天气；如果 query_weather 失败，可手动提供天气后再一起修改",
                 )
 
-        compute_updates = lambda current_frontmatter, current_body: _apply_edit_updates(
-            journal_path=journal_path,
-            current_frontmatter=current_frontmatter,
-            current_body=current_body,
-            frontmatter_updates=dict(frontmatter_updates),
-            append_content=append_content,
-            replace_content=replace_content,
-            dry_run=dry_run,
-        )
+        def compute_updates(current_frontmatter, current_body):
+            return _apply_edit_updates(
+                journal_path=journal_path,
+                current_frontmatter=current_frontmatter,
+                current_body=current_body,
+                frontmatter_updates=dict(frontmatter_updates),
+                append_content=append_content,
+                replace_content=replace_content,
+                dry_run=dry_run,
+            )
 
         metadata = parse_journal_file(journal_path)
         initial_frontmatter = {

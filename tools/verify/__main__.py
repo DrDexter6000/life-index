@@ -39,7 +39,7 @@ Examples:
         help="Output in JSON format (default)",
     )
 
-    args = parser.parse_args()
+    parser.parse_args()
     ensure_dirs()
 
     result = run_verify()
