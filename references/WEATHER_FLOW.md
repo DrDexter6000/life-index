@@ -162,7 +162,7 @@ python -m tools.edit_journal --journal "..." --set-location "Lagos, Nigeria" --s
 - 日志正常写入，weather 字段为空
 - 返回 `needs_confirmation: true`
 
-### 第二层：Agent 网络搜索 Fallback（**Agent-First 原则**）
+### 第二层：Agent 网络搜索 Fallback（**Agent-Native 原则**）
 
 **当工具返回天气查询失败时**，Agent 应利用自身能力进行 Fallback：
 
@@ -214,4 +214,4 @@ Agent：
 5. 告知用户：日志已保存。天气来源于网络搜索：Partly cloudy, 15°C。是否正确？
 ```
 
-**这体现了 Agent-First 原则**：工具提供基础能力，Agent 利用自身能力增强体验。
+**这体现了 Agent-Native 原则**：工具提供基础能力，Agent 利用自身能力增强体验。

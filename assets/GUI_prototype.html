@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life Index | 人生索引</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif; background: #0a0c12; color: #e8eaf0; min-height: 100vh; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+        
+        /* 噪点纹理 - 用于消除色阶断层 */
+        .noise-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            opacity: 0.04; pointer-events: none; z-index: 1000; 
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            mix-blend-mode: overlay;
+        }
+        
+        /* 呼吸背景 - 温暖太阳核心光晕效果 */
+        .dreamy-bg {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -2;
+            background: #0a0c12;
+            overflow: hidden;
+        }
+        
+        /* 太阳核心光晕 - PNG图片替代CSS渐变 */
+        .dreamy-blob {
+            position: absolute; 
+            top: 50%; left: 50%; 
+            width: 60vw; height: 60vw;
+            max-width: 800px; max-height: 800px;
+            border-radius: 50%;
+            /* CSS变量控制第二层动画 */
+            --blob-opacity: 0.25;
+            --blob-scale: 0.85;
+            opacity: var(--blob-opacity);
+            transform: translate(-50%, -50%) scale(var(--blob-scale));
+            will-change: transform;
+        }
+        
+        /* 金色PNG层 */
+        .dreamy-blob .gold-layer {
+            position: absolute;
+            top: -20%; left: -20%; right: -20%; bottom: -20%;
+            border-radius: 50%;
+            background-image: url('../../../assets/gold.png');
+            background-size: cover;
+            background-position: center;
+            filter: blur(60px);
+            pointer-events: none;
+        }
+        
+        /* 青色PNG层 */
+        .dreamy-blob .cyan-layer {
+            position: absolute;
+            top: -20%; left: -20%; right: -20%; bottom: -20%;
+            border-radius: 50%;
+            background-image: url('../../../assets/green.png');
+            background-size: cover;
+            background-position: center;
+            filter: blur(60px);
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        /* 总周期10秒 = 3秒金 + 3秒过渡 + 1秒青 + 3秒过渡 */
+        @keyframes gold-fade {
+            0%, 30% { opacity: 1; }
+            60% { opacity: 0; }
+            90% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        
+        @keyframes cyan-fade {
+            0%, 30% { opacity: 0; }
+            60% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        
+        /* 保留旧类名兼容 */
+        .blob-1, .blob-2, .blob-3 { display: none; }
+        /* 桌面全屏模式 */
+        @media (min-width: 1400px) and (min-height: 800px) {
+            .dreamy-blob::before { filter: blur(100px); }
+        }
+        /* 移动端 - 光晕半径扩大100%，明度提高50% */
+        @media (max-width: 900px) {
+            .dreamy-blob { 
+                left: 50%; 
+                width: 120vw; height: 120vw;
+                max-width: none; max-height: none;
+            }
+            .dreamy-blob::before { 
+                filter: blur(80px);
+                background: radial-gradient(circle at 45% 45%, rgba(255, 231, 146, 0.95) 0%, rgba(255, 231, 146, 0.6) 30%, rgba(255, 231, 146, 0.25) 50%, transparent 70%);
+            }
+            .dreamy-blob::after { 
+                filter: blur(80px);
+                background: radial-gradient(circle at 55% 48%, rgba(133, 255, 242, 0.9) 0%, rgba(133, 255, 242, 0.55) 30%, rgba(133, 255, 242, 0.2) 50%, transparent 70%);
+            }
+            .dreamy-bg::after {
+                width: 120vw; height: 120vw;
+                max-width: none; max-height: none;
+                filter: blur(80px);
+                background: radial-gradient(circle at 50% 58%, rgba(255, 140, 180, 0.9) 0%, rgba(255, 140, 180, 0.55) 30%, rgba(255, 140, 180, 0.2) 50%, transparent 70%);
+            }
+        }
+        
+        /* 粒子画布 */
+        #particle-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+        
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        
+        /* 玻璃卡片 - 深色磨砂玻璃 - 透明度再降低20% */
+        .glass-card {
+            background: linear-gradient(135deg, rgba(22, 25, 34, 0.81) 0%, rgba(12, 15, 22, 0.78) 100%);
+            backdrop-filter: blur(8px) saturate(180%); 
+            -webkit-backdrop-filter: blur(8px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.08); 
+            border-radius: 24px;
+            transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1); 
+            position: relative; 
+            overflow: hidden;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+        }
+        .glass-card::before { 
+            content: ''; 
+            position: absolute; 
+            top: 0; left: 0; right: 0; height: 1px; 
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent); 
+            z-index: 2;
+        }
+        .glass-card:hover { 
+            background: linear-gradient(135deg, rgba(26, 29, 38, 0.82) 0%, rgba(16, 19, 26, 0.79) 100%); 
+            border-color: rgba(255, 231, 146, 0.2); 
+            transform: translateY(-3px); 
+            box-shadow: 
+                0 24px 48px rgba(0, 0, 0, 0.5), 
+                0 0 60px rgba(255, 231, 146, 0.08), 
+                inset 0 1px 0 rgba(255, 255, 255, 0.15),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.2); 
+        }
+        
+        /* 卡片光效 - 强度降低50% */
+        .card-glow {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 24px;
+            pointer-events: none; opacity: 0; transition: opacity 0.4s ease; z-index: 1;
+            background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 231, 146, 0.06) 0%, transparent 50%);
+            box-shadow: inset 0 0 24px rgba(255, 231, 146, 0.02);
+        }
+        .glass-card:hover .card-glow { opacity: 1; }
+        /* 统计卡片特定颜色光效 */
+        .stat-card.gold .card-glow {
+            background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 231, 146, 0.06) 0%, transparent 50%);
+            box-shadow: inset 0 0 24px rgba(255, 231, 146, 0.02);
+        }
+        .stat-card.cyan .card-glow {
+            background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(133, 255, 242, 0.06) 0%, transparent 50%);
+            box-shadow: inset 0 0 24px rgba(133, 255, 242, 0.02);
+        }
+        .stat-card.coral .card-glow {
+            background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 140, 180, 0.06) 0%, transparent 50%);
+            box-shadow: inset 0 0 24px rgba(255, 140, 180, 0.02);
+        }
+        
+        /* 顶部导航 - V4版本，与内容区对齐 - 渐变黑色透明度降低20% */
+        .top-nav { 
+            position: fixed; top: 0; left: 0; right: 0; 
+            display: flex; justify-content: center; align-items: center; 
+            padding: 1.25rem 0; z-index: 100; 
+            background: linear-gradient(to bottom, rgba(5, 7, 10, 0.98) 0%, rgba(5, 7, 10, 0.92) 30%, rgba(5, 7, 10, 0.75) 60%, rgba(5, 7, 10, 0.47) 80%, transparent 100%); 
+        }
+        .nav-container {
+            width: 100%; max-width: 1200px;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 1.5rem;
+            box-sizing: border-box;
+        }
+        .brand { display: flex; align-items: center; gap: 0.75rem; cursor: pointer; transition: opacity 0.3s ease; }
+        .brand:hover { opacity: 0.8; }
+        .brand-logo { width: 32px; height: 32px; position: relative; flex-shrink: 0; }
+        .brand-logo::before { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; background: #ffe792; border-radius: 50%; box-shadow: 0 0 12px rgba(255, 231, 146, 0.6); }
+        .brand-logo::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 22px; height: 22px; border: 1.5px solid rgba(255, 231, 146, 0.25); border-radius: 50%; }
+        .brand-text { font-size: 1rem; font-weight: 700; color: #e8eaf0; letter-spacing: -0.01em; white-space: nowrap; }
+        .brand-text span { color: #ffe792; font-weight: 600; }
+        
+        /* V4导航样式 - 中英文 */
+        .nav-right { display: flex; align-items: center; gap: 0.75rem; }
+        .nav-links { display: flex; gap: 0.25rem; background: rgba(22, 25, 34, 0.34); backdrop-filter: blur(6px); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 100px; padding: 0.375rem; align-items: center; }
+        .nav-link { 
+            padding: 0.5rem 0.875rem; font-size: 0.8125rem; font-weight: 500; color: #8a8f9c; 
+            border-radius: 100px; cursor: pointer; transition: all 0.3s ease; 
+            display: flex; align-items: center; gap: 0.25rem; white-space: nowrap;
+        }
+        .nav-link:hover { color: #e8eaf0; background: rgba(255, 255, 255, 0.03); }
+        .nav-link.active { color: #ffe792; background: rgba(255, 231, 146, 0.1); }
+        .nav-link .cn { font-weight: 500; }
+        .nav-link .en { font-size: 0.6875rem; opacity: 0.6; margin-left: 0.25rem; }
+        
+        /* 导航栏分隔符 */
+        .nav-divider { width: 1px; height: 20px; background: rgba(255, 255, 255, 0.1); margin: 0 0.25rem; }
+        
+        /* 导航栏内的语言切换按钮 */
+        .nav-links .lang-toggle { 
+            height: auto; padding: 0.5rem 0.75rem; background: transparent;
+            border: none; border-radius: 100px;
+            font-size: 0.75rem; font-weight: 600; cursor: pointer;
+            transition: all 0.3s ease; display: flex; align-items: center; justify-content: center;
+            box-sizing: border-box;
+        }
+        .nav-links .lang-toggle:hover { background: rgba(255, 255, 255, 0.03); }
+        .lang-separator { color: #ffe792; margin: 0 0.125rem; }
+        .lang-option { color: #5a5f6c; transition: color 0.3s ease; }
+        .lang-option.active { color: #ffe792; }
+        
+        /* 菜单按钮 - 与右侧边缘距离加大到2倍 */
+        .menu-toggle { display: none; width: 40px; height: 40px; align-items: center; justify-content: center; background: rgba(22, 25, 34, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; cursor: pointer; flex-shrink: 0; margin-right: 1.5rem; }
+        .menu-toggle .material-symbols-outlined { font-size: 20px; color: #e8eaf0; }
+        
+        /* 全屏模糊遮罩 */
+        .blur-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(10, 12, 18, 0.2);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            z-index: 90; opacity: 0; visibility: hidden;
+            transition: all 0.4s ease;
+        }
+        .blur-overlay.active { opacity: 1; visibility: visible; }
+        
+        /* 下拉导航 */
+        .dropdown-nav {
+            position: fixed; top: 4.5rem; right: 1.5rem;
+            background: linear-gradient(180deg, rgba(35, 38, 48, 0.47) 0%, rgba(22, 25, 34, 0.47) 100%);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px;
+            padding: 0.625rem; z-index: 150; min-width: 200px;
+            box-shadow: 0 32px 64px rgba(0, 0, 0, 0.5), 0 0 80px rgba(255, 231, 146, 0.08);
+            opacity: 0; visibility: hidden; transform: translateY(-10px) scale(0.95);
+            transition: all 0.35s cubic-bezier(0.23, 1, 0.32, 1);
+            transform-origin: top right;
+        }
+        .dropdown-nav::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent); border-radius: 20px 20px 0 0; }
+        .dropdown-nav.active { opacity: 1; visibility: visible; transform: translateY(0) scale(1); }
+        .dropdown-item { display: flex; align-items: center; justify-content: space-between; padding: 0.875rem 1.125rem; border-radius: 14px; cursor: pointer; transition: all 0.25s ease; }
+        .dropdown-item:hover { background: rgba(255, 231, 146, 0.1); }
+        .dropdown-item.active { background: rgba(255, 231, 146, 0.15); }
+        .dropdown-item .main { display: flex; align-items: center; gap: 0.75rem; }
+        .dropdown-item .cn { font-size: 0.9375rem; font-weight: 600; color: #e8eaf0; }
+        .dropdown-item:hover .cn, .dropdown-item.active .cn { color: #ffe792; }
+        .dropdown-item .en { font-size: 0.6875rem; font-weight: 500; color: #5a5f6c; text-transform: uppercase; letter-spacing: 0.08em; }
+        .dropdown-item:hover .en, .dropdown-item.active .en { color: rgba(255, 231, 146, 0.6); }
+        .dropdown-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #ffe792; box-shadow: 0 0 10px #ffe792; opacity: 0; transition: opacity 0.25s ease; }
+        .dropdown-item.active .dot { opacity: 1; }
+        
+        /* 下拉菜单分隔线 */
+        .dropdown-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 0.5rem 0.625rem; }
+        
+        /* 下拉菜单语言切换 */
+        .dropdown-lang { display: flex; align-items: center; justify-content: center; padding: 0.75rem; gap: 0.5rem; }
+        .dropdown-lang-btn { 
+            padding: 0.375rem 0.75rem; font-size: 0.8125rem; font-weight: 500; 
+            color: #5a5f6c; background: transparent; border: none; cursor: pointer;
+            transition: all 0.25s ease; border-radius: 8px;
+        }
+        .dropdown-lang-btn:hover { color: #e8eaf0; background: rgba(255, 255, 255, 0.05); }
+        .dropdown-lang-btn.active { color: #ffe792; background: rgba(255, 231, 146, 0.1); }
+        .dropdown-lang-separator { color: #5a5f6c; font-size: 0.75rem; }
+        
+        /* 主内容 */
+        .main-content { padding: 7rem 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
+        .hero-section { margin-bottom: 2rem; }
+        .hero-title { font-size: 2rem; font-weight: 800; color: #e8eaf0; margin-bottom: 0.375rem; letter-spacing: -0.02em; }
+        .hero-title span { color: #ffe792; font-style: italic; font-weight: 700; }
+        .hero-subtitle { font-size: 0.9375rem; color: #5a5f6c; font-weight: 400; }
+        
+        /* 统计卡片 */
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.25rem; }
+        .stat-card { padding: 1.5rem; position: relative; overflow: hidden; }
+        .stat-card::after { content: ''; position: absolute; top: -50%; right: -30%; width: 150px; height: 150px; border-radius: 50%; opacity: 0.1; filter: blur(40px); }
+        .stat-card.gold::after { background: #ffe792; }
+        .stat-card.cyan::after { background: #85fff2; }
+        .stat-card.coral::after { background: #ffb4a6; }
+        .stat-header { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 1rem; }
+        .stat-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(255, 255, 255, 0.03); }
+        .stat-icon .material-symbols-outlined { font-size: 18px; }
+        .stat-card.gold .stat-icon { color: #ffe792; background: rgba(255, 231, 146, 0.1); }
+        .stat-card.cyan .stat-icon { color: #85fff2; background: rgba(133, 255, 242, 0.1); }
+        .stat-card.coral .stat-icon { color: #ffb4a6; background: rgba(255, 180, 166, 0.1); }
+        .stat-label { font-size: 0.625rem; font-weight: 600; color: #5a5f6c; text-transform: uppercase; letter-spacing: 0.1em; }
+        .stat-value { font-size: 3rem; font-weight: 800; line-height: 1; margin-bottom: 0.5rem; }
+        .stat-card.gold .stat-value { color: #ffe792; }
+        .stat-card.cyan .stat-value { color: #85fff2; }
+        .stat-card.coral .stat-value { color: #ffb4a6; }
+        .stat-desc { font-size: 0.75rem; color: #5a5f6c; line-height: 1.5; }
+        
+        /* 内容网格 */
+        .content-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+        
+        /* 光核可视化 - 3分类轨道系统 */
+        .core-visual-card { padding: 1.5rem; min-height: 320px; display: flex; flex-direction: column; }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; }
+        .card-title-group h3 { font-size: 1.125rem; font-weight: 700; color: #e8eaf0; margin-bottom: 0.25rem; }
+        .card-title-group p { font-size: 0.75rem; color: #5a5f6c; }
+        .card-action { padding: 0.5rem 0.875rem; background: rgba(255, 231, 146, 0.1); border: 1px solid rgba(255, 231, 146, 0.2); border-radius: 100px; font-size: 0.6875rem; font-weight: 600; color: #ffe792; cursor: pointer; transition: all 0.3s ease; }
+        .card-action:hover { background: rgba(255, 231, 146, 0.15); border-color: rgba(255, 231, 146, 0.3); }
+        .core-visual { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+        .solar-system { position: relative; width: 220px; height: 220px; }
+        .orbit-ring { position: absolute; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.04); top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        .orbit-ring-think { width: 80px; height: 80px; }
+        .orbit-ring-relation { width: 130px; height: 130px; }
+        .orbit-ring-work { width: 180px; height: 180px; }
+        .planet-orbit { position: absolute; top: 50%; left: 50%; width: 0; height: 0; }
+        .planet { position: absolute; border-radius: 50%; box-shadow: 0 0 12px currentColor; transform: translate(-50%, -50%); }
+        .sun { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 18px; height: 18px; 
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, #ffe792 35%, rgba(255, 231, 146, 0.5) 65%, transparent 90%);
+            border-radius: 50%; animation: sun-pulse 3s ease-in-out infinite;
+            box-shadow: 0 0 20px rgba(255, 231, 146, 0.5), 0 0 60px rgba(255, 231, 146, 0.3), 0 0 100px rgba(255, 231, 146, 0.15);
+        }
+        .sun-glow {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 200px; height: 200px;
+            background: radial-gradient(circle, rgba(255, 231, 146, 0.08) 0%, rgba(255, 231, 146, 0.04) 30%, rgba(255, 231, 146, 0.02) 50%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: sun-glow-pulse 4s ease-in-out infinite;
+        }
+        @keyframes sun-pulse { 0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; } 50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } }
+        @keyframes sun-glow-pulse { 0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } }
+        /* 3颗行星 - Think(青色,最内层,最快)、Relation(粉红,中间)、Work(金色,最外层,最慢) */
+        .planet-orbit-think { animation: orbit-rotate-think var(--think-speed, 4s) linear infinite; }
+        .planet-orbit-relation { animation: orbit-rotate-relation var(--relation-speed, 8s) linear infinite; }
+        .planet-orbit-work { animation: orbit-rotate-work var(--work-speed, 15s) linear infinite; }
+        .planet-think { width: 6px; height: 6px; background: #85fff2; color: #85fff2; top: -40px; left: 0; }
+        .planet-relation { width: 6px; height: 6px; background: #ffb4a6; color: #ffb4a6; top: -65px; left: 0; }
+        .planet-work { width: 6px; height: 6px; background: #ffe792; color: #ffe792; top: -90px; left: 0; }
+        @keyframes orbit-rotate-think { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes orbit-rotate-relation { from { transform: rotate(120deg); } to { transform: rotate(480deg); } }
+        @keyframes orbit-rotate-work { from { transform: rotate(240deg); } to { transform: rotate(600deg); } }
+        
+        /* 侧边栏 */
+        .sidebar { display: flex; flex-direction: column; gap: 1rem; }
+        .atmosphere-card { padding: 1.25rem; aspect-ratio: 1; display: flex; flex-direction: column; justify-content: flex-end; position: relative; overflow: hidden; }
+        .atmosphere-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 150%; height: 150%; background: radial-gradient(circle, rgba(255, 231, 146, 0.15) 0%, transparent 60%); animation: atmosphere-breathe 4s ease-in-out infinite; }
+        @keyframes atmosphere-breathe { 0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); } 50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); } }
+        .atmosphere-label { font-size: 0.625rem; font-weight: 600; color: #ffe792; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.25rem; position: relative; z-index: 1; }
+        .atmosphere-value { font-size: 0.875rem; font-weight: 500; color: #e8eaf0; position: relative; z-index: 1; }
+        .progress-card { padding: 1.25rem; }
+        .progress-card h4 { font-size: 0.9375rem; font-weight: 600; color: #e8eaf0; margin-bottom: 1rem; }
+        .progress-item { display: flex; align-items: center; gap: 0.875rem; margin-bottom: 0.875rem; }
+        .progress-item:last-child { margin-bottom: 0; }
+        .progress-ring { width: 44px; height: 44px; position: relative; flex-shrink: 0; }
+        .progress-ring svg { transform: rotate(-90deg); }
+        .progress-ring-bg { fill: none; stroke: rgba(255, 255, 255, 0.05); stroke-width: 4; }
+        .progress-ring-fill { fill: none; stroke-width: 4; stroke-linecap: round; }
+        .progress-ring-fill.cyan { stroke: #85fff2; }
+        .progress-ring-fill.coral { stroke: #ffb4a6; }
+        .progress-value { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.6875rem; font-weight: 700; }
+        .progress-ring.cyan .progress-value { color: #85fff2; }
+        .progress-ring.coral .progress-value { color: #ffb4a6; }
+        .progress-info h5 { font-size: 0.8125rem; font-weight: 600; color: #e8eaf0; margin-bottom: 0.125rem; }
+        .progress-info p { font-size: 0.6875rem; color: #5a5f6c; }
+        
+        /* 最近记录 */
+        .recent-section { margin-top: 1.25rem; }
+        .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.875rem; }
+        .section-header h3 { font-size: 1rem; font-weight: 700; color: #e8eaf0; }
+        .section-header .view-all { font-size: 0.75rem; font-weight: 500; color: rgba(255, 231, 146, 0.6); cursor: pointer; transition: color 0.3s ease; }
+        .section-header .view-all:hover { color: #ffe792; }
+        .recent-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.875rem; }
+        .recent-card { padding: 1.125rem; cursor: pointer; }
+        .recent-card .time { font-size: 0.625rem; font-weight: 600; color: #85fff2; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.375rem; }
+        .recent-card h4 { font-size: 0.9375rem; font-weight: 600; color: #e8eaf0; margin-bottom: 0.375rem; line-height: 1.4; }
+        .recent-card p { font-size: 0.75rem; color: #5a5f6c; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        
+        /* FAB */
+        .fab { position: fixed; bottom: 1.5rem; right: 1.5rem; padding: 0.875rem 1.5rem; background: linear-gradient(135deg, #ffe792, #ffd166); border: none; border-radius: 100px; font-size: 0.875rem; font-weight: 700; color: #0a0c12; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 8px 32px rgba(255, 231, 146, 0.35); display: flex; align-items: center; gap: 0.5rem; z-index: 50; }
+        .fab:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 12px 40px rgba(255, 231, 146, 0.45); }
+        .fab .material-symbols-outlined { font-size: 18px; }
+        
+        /* 页面切换 */
+        .page { position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow-y: auto; opacity: 0; visibility: hidden; transition: opacity 0.5s ease, visibility 0.5s ease; }
+        .page.active { opacity: 1; visibility: visible; }
+        
+        /* 铭记页面 - Zen模式 */
+        .write-page { padding: 5rem 1.5rem 2rem; max-width: 680px; margin: 0 auto; position: relative; }
+        .write-header { display: none; }
+        .write-title-input { 
+            width: 100%; background: transparent; border: none; font-size: 1.625rem; font-weight: 700; color: #e8eaf0; 
+            outline: none; margin-bottom: 0.875rem; letter-spacing: -0.01em;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        .write-title-input.zen-hidden { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+        .write-title-input::placeholder { color: #5a5f6c; opacity: 0.6; }
+        .write-meta { display: flex; gap: 1.25rem; margin-bottom: 1.25rem; font-size: 0.75rem; color: #5a5f6c; transition: opacity 0.5s ease; }
+        .write-meta.zen-hidden { opacity: 0; pointer-events: none; }
+        .write-meta span { display: flex; align-items: center; gap: 0.375rem; }
+        .write-editor { 
+            width: 100%; min-height: 320px; background: rgba(18, 21, 28, 0.54); backdrop-filter: blur(5px); 
+            border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 16px; padding: 1.25rem; 
+            font-size: 1rem; line-height: 1.8; color: #e8eaf0; resize: none; outline: none; 
+            transition: all 0.5s ease; font-family: inherit;
+            scrollbar-width: thin; scrollbar-color: rgba(255, 231, 146, 0.3) transparent;
+        }
+        .write-editor::-webkit-scrollbar { width: 4px; }
+        .write-editor::-webkit-scrollbar-track { background: transparent; }
+        .write-editor::-webkit-scrollbar-thumb { 
+            background: rgba(255, 231, 146, 0.3); 
+            border-radius: 2px; 
+            transition: background 0.3s ease;
+        }
+        .write-editor::-webkit-scrollbar-thumb:hover { background: rgba(255, 231, 146, 0.5); }
+        .write-editor::placeholder { color: #8a91a0; opacity: 0.7; }
+        .write-editor.zen-active {
+            border-color: rgba(255, 231, 146, 0.4);
+            box-shadow: 0 0 30px rgba(255, 231, 146, 0.15), inset 0 0 20px rgba(255, 231, 146, 0.05);
+            animation: zen-glow 3s ease-in-out infinite;
+        }
+        @keyframes zen-glow {
+            0%, 100% { box-shadow: 0 0 30px rgba(255, 231, 146, 0.15), inset 0 0 20px rgba(255, 231, 146, 0.05); }
+            50% { box-shadow: 0 0 50px rgba(255, 231, 146, 0.3), inset 0 0 30px rgba(255, 231, 146, 0.1); }
+        }
+        .write-actions { display: flex; gap: 0.875rem; margin-top: 1.25rem; transition: opacity 0.5s ease, transform 0.5s ease; }
+        .write-actions.zen-hidden { opacity: 0; transform: translateY(20px); pointer-events: none; }
+        .btn-primary { flex: 1; padding: 0.875rem 1.5rem; background: linear-gradient(135deg, #ffe792, #ffd166); border: none; border-radius: 12px; font-size: 0.875rem; font-weight: 700; color: #0a0c12; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 24px rgba(255, 231, 146, 0.3); display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(255, 231, 146, 0.4); }
+        .btn-secondary { padding: 0.875rem 1.25rem; background: rgba(22, 25, 34, 0.38); backdrop-filter: blur(5px); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; font-size: 0.875rem; font-weight: 500; color: #8a8f9c; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; gap: 0.5rem; }
+        .btn-secondary:hover { background: rgba(28, 31, 41, 0.38); border-color: rgba(255, 255, 255, 0.1); color: #e8eaf0; }
+        
+        /* 占位页面 - 改善可读性 */
+        .placeholder-page { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; text-align: center; }
+        .placeholder-icon { width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; background: rgba(255, 231, 146, 0.12); border-radius: 24px; margin-bottom: 1.5rem; box-shadow: 0 0 40px rgba(255, 231, 146, 0.15); }
+        .placeholder-icon .material-symbols-outlined { font-size: 36px; color: #ffe792; }
+        .placeholder-page h2 { font-size: 1.75rem; font-weight: 800; color: #ffe792; margin-bottom: 0.75rem; text-shadow: 0 0 30px rgba(255, 231, 146, 0.3); }
+        .placeholder-page p { color: #a0a5b0; font-size: 1rem; line-height: 1.6; margin-bottom: 2rem; max-width: 400px; }
+        .placeholder-page .back-btn { margin-top: 0.5rem; }
+        
+        /* 移动端适配 */
+        @media (max-width: 900px) {
+            .content-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .recent-grid { grid-template-columns: 1fr; }
+            .nav-links { display: none; }
+            .nav-right { display: none; }
+            .menu-toggle { display: flex; margin-left: auto; }
+            .hero-title { font-size: 1.75rem; }
+            .dropdown-nav { right: 1.5rem; }
+            .nav-container { padding: 0 1.5rem; justify-content: space-between; }
+            .brand { margin: 0; padding: 0; flex-shrink: 0; transform: translateX(-8px); }
+        }
+        @media (max-width: 640px) {
+            .fab { right: 1rem; padding: 0.75rem 1rem; }
+            .fab span:last-child { display: none; }
+            .top-nav { padding: 1rem 0; }
+            .nav-container { padding: 0 1.5rem; justify-content: space-between; }
+            .dropdown-nav { right: 1rem; }
+            .brand { margin: 0; padding: 0; flex-shrink: 0; transform: translateX(-8px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="noise-overlay"></div>
+    
+    <!-- SVG滤镜定义 - 扩大区域防止截断，增强噪点密度 -->
+    <svg width="0" height="0" aria-hidden="true" style="position: fixed; pointer-events: none;">
+        <filter id="smooth-gradient" color-interpolation-filters="sRGB" x="-50%" y="-50%" width="200%" height="200%">
+            <feTurbulence type="fractalNoise" baseFrequency="1.5" numOctaves="3" stitchTiles="stitch"/>
+            <feDisplacementMap in="SourceGraphic" scale="80" xChannelSelector="R" yChannelSelector="G"/>
+            <feBlend in2="SourceGraphic" mode="overlay"/>
+        </filter>
+        <filter id="gold-smooth" color-interpolation-filters="sRGB" x="-50%" y="-50%" width="200%" height="200%">
+            <feTurbulence type="fractalNoise" baseFrequency="2.0" numOctaves="2" stitchTiles="stitch"/>
+            <feDisplacementMap in="SourceGraphic" scale="60" xChannelSelector="R" yChannelSelector="G"/>
+            <feBlend in2="SourceGraphic" mode="overlay"/>
+        </filter>
+    </svg>
+    
+    <!-- 呼吸背景 -->
+    <div class="dreamy-bg">
+        <div class="dreamy-blob"></div>
+    </div>
+    
+    <!-- 粒子画布 -->
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- 全屏模糊遮罩 -->
+    <div class="blur-overlay" id="blurOverlay"></div>
+
+    <!-- 顶部导航 - V4版本，与内容区对齐 -->
+    <nav class="top-nav">
+        <div class="nav-container">
+            <div class="brand" onclick="goToPage('home')">
+                <div class="brand-logo"></div>
+                <div class="brand-text">Life <span>Index</span> | 人生索引</div>
+            </div>
+            <div class="nav-right">
+                <div class="nav-links">
+                    <div class="nav-link active" data-page="home" onclick="goToPage('home')">
+                        <span class="cn">归宿</span><span class="en">The Core</span>
+                    </div>
+                    <div class="nav-link" data-page="write" onclick="goToPage('write')">
+                        <span class="cn">铭记</span><span class="en">Remember</span>
+                    </div>
+                    <div class="nav-link" data-page="search" onclick="goToPage('search')">
+                        <span class="cn">唤回</span><span class="en">Recall</span>
+                    </div>
+                    <div class="nav-link" data-page="echoes" onclick="goToPage('echoes')">
+                        <span class="cn">回响</span><span class="en">Echoes</span>
+                    </div>
+                    <div class="nav-divider"></div>
+                    <button class="lang-toggle" onclick="toggleLanguage()" title="切换语言">
+                        <span class="lang-option" id="langEn-nav">ENG</span>
+                        <span class="lang-separator">/</span>
+                        <span class="lang-option active" id="langZh-nav">中</span>
+                    </button>
+                </div>
+            </div>
+            <button class="menu-toggle" onclick="toggleMenu(event)">
+                <span class="material-symbols-outlined">menu</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- 下拉导航 -->
+    <div class="dropdown-nav" id="dropdownNav">
+        <div class="dropdown-item active" data-page="home" onclick="goToPage('home');">
+            <div class="main"><span class="cn">归宿</span><span class="en">The Core</span></div>
+            <div class="dot"></div>
+        </div>
+        <div class="dropdown-item" data-page="write" onclick="goToPage('write');">
+            <div class="main"><span class="cn">铭记</span><span class="en">Remember</span></div>
+            <div class="dot"></div>
+        </div>
+        <div class="dropdown-item" data-page="search" onclick="goToPage('search');">
+            <div class="main"><span class="cn">唤回</span><span class="en">Recall</span></div>
+            <div class="dot"></div>
+        </div>
+        <div class="dropdown-item" data-page="echoes" onclick="goToPage('echoes');">
+            <div class="main"><span class="cn">回响</span><span class="en">Echoes</span></div>
+            <div class="dot"></div>
+        </div>
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-lang">
+            <button class="dropdown-lang-btn active" id="langZh-dd" onclick="setLanguage('zh')">中文</button>
+            <span class="dropdown-lang-separator">/</span>
+            <button class="dropdown-lang-btn" id="langEn-dd" onclick="setLanguage('en')">ENG</button>
+        </div>
+    </div>
+
+    <!-- 首页 -->
+    <div class="page active" id="page-home">
+        <div class="main-content">
+            <div class="hero-section">
+                <h1 class="hero-title">Welcome back, <span>Stargazer</span></h1>
+                <p class="hero-subtitle">Your Life, Indexed</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="glass-card stat-card gold" onmousemove="updateCardGlow(event, this)">
+                    <div class="card-glow"></div>
+                    <div class="stat-header">
+                        <div class="stat-icon"><span class="material-symbols-outlined">auto_stories</span></div>
+                        <span class="stat-label">Total Entries</span>
+                    </div>
+                    <div class="stat-value">47</div>
+                    <p class="stat-desc">每一段记录，都是时光留下的印记</p>
+                </div>
+                <div class="glass-card stat-card cyan" onmousemove="updateCardGlow(event, this)">
+                    <div class="card-glow"></div>
+                    <div class="stat-header">
+                        <div class="stat-icon"><span class="material-symbols-outlined">edit_note</span></div>
+                        <span class="stat-label">Words Written</span>
+                    </div>
+                    <div class="stat-value">12.5k</div>
+                    <p class="stat-desc">文字汇聚成河，流淌着你的思绪</p>
+                </div>
+                <div class="glass-card stat-card coral" onmousemove="updateCardGlow(event, this)">
+                    <div class="card-glow"></div>
+                    <div class="stat-header">
+                        <div class="stat-icon"><span class="material-symbols-outlined">calendar_month</span></div>
+                        <span class="stat-label">Days Active</span>
+                    </div>
+                    <div class="stat-value">89</div>
+                    <p class="stat-desc">持续的记录，见证着你的成长轨迹</p>
+                </div>
+            </div>
+
+            <div class="content-grid">
+                <div class="glass-card core-visual-card" onmousemove="updateCardGlow(event, this)">
+                    <div class="card-glow"></div>
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <h3>光核共振</h3>
+                            <p>你的生命能量在此汇聚</p>
+                        </div>
+                        <button class="card-action">展开光轨</button>
+                    </div>
+                    <div class="core-visual">
+                        <div class="solar-system">
+                            <div class="sun-glow"></div>
+                            <div class="orbit-ring orbit-ring-think"></div>
+                            <div class="orbit-ring orbit-ring-relation"></div>
+                            <div class="orbit-ring orbit-ring-work"></div>
+                            <div class="planet-orbit planet-orbit-think"><div class="planet planet-think"></div></div>
+                            <div class="planet-orbit planet-orbit-relation"><div class="planet planet-relation"></div></div>
+                            <div class="planet-orbit planet-orbit-work"><div class="planet planet-work"></div></div>
+                            <div class="sun"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar">
+                    <div class="glass-card atmosphere-card" onmousemove="updateCardGlow(event, this)">
+                        <div class="card-glow"></div>
+                        <div class="atmosphere-glow"></div>
+                        <div class="atmosphere-label">Current Atmosphere</div>
+                        <div class="atmosphere-value">内心平静 · 专注</div>
+                    </div>
+
+                    <div class="glass-card progress-card" onmousemove="updateCardGlow(event, this)">
+                        <div class="card-glow"></div>
+                        <h4>本周状态</h4>
+                        <div class="progress-item">
+                            <div class="progress-ring cyan">
+                                <svg width="44" height="44" viewBox="0 0 44 44">
+                                    <circle class="progress-ring-bg" cx="22" cy="22" r="18"/>
+                                    <circle class="progress-ring-fill cyan" cx="22" cy="22" r="18" stroke-dasharray="113" stroke-dashoffset="28"/>
+                                </svg>
+                                <span class="progress-value">75%</span>
+                            </div>
+                            <div class="progress-info">
+                                <h5>记录频率</h5>
+                                <p>本周高于平均水平</p>
+                            </div>
+                        </div>
+                        <div class="progress-item">
+                            <div class="progress-ring coral">
+                                <svg width="44" height="44" viewBox="0 0 44 44">
+                                    <circle class="progress-ring-bg" cx="22" cy="22" r="18"/>
+                                    <circle class="progress-ring-fill coral" cx="22" cy="22" r="18" stroke-dasharray="113" stroke-dashoffset="68"/>
+                                </svg>
+                                <span class="progress-value">40%</span>
+                            </div>
+                            <div class="progress-info">
+                                <h5>唤回深度</h5>
+                                <p>探索过去的记忆</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-section">
+                <div class="section-header">
+                    <h3>最近的微光</h3>
+                    <span class="view-all">查看全部</span>
+                </div>
+                <div class="recent-grid">
+                    <div class="glass-card recent-card" onmousemove="updateCardGlow(event, this)">
+                        <div class="card-glow"></div>
+                        <div class="time">2 小时前</div>
+                        <h4>团团的第一次走路</h4>
+                        <p>今天是个特别的日子，团团终于迈出了人生的第一步。看着她摇摇晃晃却坚定的样子...</p>
+                    </div>
+                    <div class="glass-card recent-card" onmousemove="updateCardGlow(event, this)">
+                        <div class="card-glow"></div>
+                        <div class="time">昨天</div>
+                        <h4>深夜的思考关于人生方向</h4>
+                        <p>凌晨两点，窗外的城市已经沉睡，而我的思绪却在翻涌。关于未来，关于选择...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="fab" onclick="goToPage('write')">
+            <span class="material-symbols-outlined">add</span>
+            <span>铭记此刻</span>
+        </button>
+    </div>
+
+    <!-- 铭记页面 - Zen模式 -->
+    <div class="page" id="page-write">
+        <div class="write-page">
+            <div class="write-header" id="writeHeader">
+                <button class="back-btn" onclick="goToPage('home')">
+                    <span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span>
+                    返回
+                </button>
+            </div>
+            <input type="text" class="write-title-input" id="writeTitle" placeholder="今天发生了什么？">
+            <div class="write-meta" id="writeMeta">
+                <span><span class="material-symbols-outlined" style="font-size: 14px;">calendar_today</span> <span id="writeDate">2024/03/15</span></span>
+                <span><span class="material-symbols-outlined" style="font-size: 14px;">schedule</span> 14:32</span>
+            </div>
+            <textarea class="write-editor" id="writeEditor" placeholder="让思绪自然流淌...
+
+记录下这一刻的感受、想法，或是任何你想记住的事情。
+
+每一个铭记的瞬间，都将成为未来唤回的珍贵回响。"></textarea>
+            <div class="write-actions" id="writeActions">
+                <button class="btn-primary">
+                    <span class="material-symbols-outlined" style="font-size: 18px;">auto_awesome</span>
+                    铭入光核
+                </button>
+                <button class="btn-secondary">
+                    <span class="material-symbols-outlined" style="font-size: 16px;">save</span>
+                    存为草稿
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 唤回页面 - 改善可读性 -->
+    <div class="page" id="page-search">
+        <div class="placeholder-page">
+            <div class="placeholder-icon"><span class="material-symbols-outlined">search</span></div>
+            <h2>唤回 Recall</h2>
+            <p>在时光的长河中，寻找那些珍贵的记忆碎片。输入关键词，让过去的微光重新闪耀。</p>
+            <button class="back-btn" onclick="goToPage('home')">
+                <span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span>
+                返回归宿
+            </button>
+        </div>
+    </div>
+
+    <!-- 回响页面 - 改善可读性 -->
+    <div class="page" id="page-echoes">
+        <div class="placeholder-page">
+            <div class="placeholder-icon"><span class="material-symbols-outlined">graphic_eq</span></div>
+            <h2>回响 Echoes</h2>
+            <p>深度洞察、数据可视化、数字人格——你的数字生命正在成形，即将与你对话。</p>
+            <button class="back-btn" onclick="goToPage('home')">
+                <span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span>
+                返回归宿
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 粒子系统
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [], mouseX = 0, mouseY = 0, isMouseMoving = false, mouseTimeout;
+
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+
+        class Particle {
+            constructor() { this.reset(); }
+            reset() {
+                this.x = Math.random() * canvas.width; this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 1.2 + 0.3;
+                this.speedX = (Math.random() - 0.5) * 0.2;
+                this.speedY = (Math.random() - 0.5) * 0.2;
+                this.opacity = Math.random() * 0.35 + 0.15;
+                const colors = ['255, 231, 146', '133, 255, 242', '255, 180, 166'];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+            }
+            update() {
+                this.x += this.speedX; this.y += this.speedY;
+                if (isMouseMoving) {
+                    const dx = this.x - mouseX, dy = this.y - mouseY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < 100) {
+                        const force = (100 - distance) / 100;
+                        this.x += (dx / distance) * force * 0.3;
+                        this.y += (dy / distance) * force * 0.3;
+                    }
+                }
+                if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) this.reset();
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color}, ${this.opacity})`;
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const count = Math.min(60, Math.floor((canvas.width * canvas.height) / 20000));
+            for (let i = 0; i < count; i++) particles.push(new Particle());
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animateParticles);
+        }
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX; mouseY = e.clientY; isMouseMoving = true;
+            clearTimeout(mouseTimeout);
+            mouseTimeout = setTimeout(() => { isMouseMoving = false; }, 100);
+        });
+
+        resizeCanvas(); initParticles(); animateParticles();
+        window.addEventListener('resize', () => { resizeCanvas(); initParticles(); });
+
+        // 卡片光效
+        function updateCardGlow(e, card) {
+            const rect = card.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width) * 100;
+            const y = ((e.clientY - rect.top) / rect.height) * 100;
+            const glow = card.querySelector('.card-glow');
+            if (glow) {
+                glow.style.setProperty('--mouse-x', x + '%');
+                glow.style.setProperty('--mouse-y', y + '%');
+            }
+        }
+
+        // Zen模式
+        const writeEditor = document.getElementById('writeEditor');
+        const writeHeader = document.getElementById('writeHeader');
+        const writeTitle = document.getElementById('writeTitle');
+        const writeMeta = document.getElementById('writeMeta');
+        const writeActions = document.getElementById('writeActions');
+
+        if (writeEditor) {
+            writeEditor.addEventListener('focus', () => {
+                writeEditor.classList.add('zen-active');
+                writeHeader.classList.add('zen-hidden');
+                writeTitle.classList.add('zen-hidden');
+                writeMeta.classList.add('zen-hidden');
+                writeActions.classList.add('zen-hidden');
+            });
+
+            writeEditor.addEventListener('blur', () => {
+                writeEditor.classList.remove('zen-active');
+                writeHeader.classList.remove('zen-hidden');
+                writeTitle.classList.remove('zen-hidden');
+                writeMeta.classList.remove('zen-hidden');
+                writeActions.classList.remove('zen-hidden');
+            });
+        }
+
+        // 导航功能
+        let menuOpen = false;
+        const dropdownNav = document.getElementById('dropdownNav');
+        const blurOverlay = document.getElementById('blurOverlay');
+
+        function toggleMenu(e) {
+            e.stopPropagation();
+            menuOpen = !menuOpen;
+            dropdownNav.classList.toggle('active', menuOpen);
+            blurOverlay.classList.toggle('active', menuOpen);
+        }
+
+        document.addEventListener('click', (e) => {
+            const toggle = document.querySelector('.menu-toggle');
+            if (menuOpen && !dropdownNav.contains(e.target) && !toggle.contains(e.target)) {
+                menuOpen = false;
+                dropdownNav.classList.remove('active');
+                blurOverlay.classList.remove('active');
+            }
+        });
+
+        function goToPage(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-' + page).classList.add('active');
+            document.querySelectorAll('[data-page]').forEach(el => {
+                el.classList.toggle('active', el.dataset.page === page);
+            });
+            menuOpen = false;
+            dropdownNav.classList.remove('active');
+            blurOverlay.classList.remove('active');
+            window.scrollTo(0, 0);
+        }
+
+        // 语言切换功能
+        let currentLang = 'zh';
+        const translations = {
+            zh: {
+                heroTitle: 'Welcome back, <span>Stargazer</span>',
+                heroSubtitle: 'Your Life, Indexed',
+                statDesc1: '每一段记录，都是时光留下的印记',
+                statDesc2: '文字汇聚成河，流淌着你的思绪',
+                statDesc3: '持续的记录，见证着你的成长轨迹',
+                coreTitle: '光核共振',
+                coreSubtitle: '你的生命能量在此汇聚',
+                coreAction: '展开光轨',
+                atmosphereLabel: 'Current Atmosphere',
+                atmosphereValue: '内心平静 · 专注',
+                progressTitle: '本周状态',
+                progressFreq: '记录频率',
+                progressFreqDesc: '本周高于平均水平',
+                progressRecall: '唤回深度',
+                progressRecallDesc: '探索过去的记忆',
+                recentTitle: '最近的微光',
+                viewAll: '查看全部',
+                fabText: '铭记此刻',
+                writePlaceholder: '让思绪自然流淌...\n\n记录下这一刻的感受、想法，或是任何你想记住的事情。\n\n每一个铭记的瞬间，都将成为未来唤回的珍贵回响。',
+                writeTitlePlaceholder: '今天发生了什么？',
+                btnSave: '铭入光核',
+                btnDraft: '存为草稿',
+                writeDate: '2024/03/15',
+                searchTitle: '唤回 Recall',
+                searchDesc: '在时光的长河中，寻找那些珍贵的记忆碎片。输入关键词，让过去的微光重新闪耀。',
+                searchBack: '返回归宿',
+                echoesTitle: '回响 Echoes',
+                echoesDesc: '深度洞察、数据可视化、数字人格——你的数字生命正在成形，即将与你对话。',
+                echoesBack: '返回归宿'
+            },
+            en: {
+                heroTitle: 'Welcome back, <span>Stargazer</span>',
+                heroSubtitle: 'Your Life, Indexed',
+                statDesc1: 'Every entry is a mark left by time',
+                statDesc2: 'Words flow like a river, carrying your thoughts',
+                statDesc3: 'Consistent records witness your growth journey',
+                coreTitle: 'Core Resonance',
+                coreSubtitle: 'Your life energy converges here',
+                coreAction: 'Expand Orbits',
+                atmosphereLabel: 'Current Atmosphere',
+                atmosphereValue: 'Inner Peace · Focused',
+                progressTitle: 'This Week',
+                progressFreq: 'Recording Frequency',
+                progressFreqDesc: 'Above average this week',
+                progressRecall: 'Recall Depth',
+                progressRecallDesc: 'Exploring past memories',
+                recentTitle: 'Recent Glimmers',
+                viewAll: 'View All',
+                fabText: 'Remember Now',
+                writePlaceholder: 'Let your thoughts flow naturally...\n\nRecord your feelings, ideas, or anything you want to remember.\n\nEvery remembered moment will become a precious echo for future recall.',
+                writeTitlePlaceholder: 'What happened today?',
+                btnSave: 'Save to Core',
+                btnDraft: 'Save Draft',
+                writeDate: '2024/03/15',
+                searchTitle: 'Recall',
+                searchDesc: 'In the river of time, search for those precious memory fragments. Enter keywords to let past glimmers shine again.',
+                searchBack: 'Back to Core',
+                echoesTitle: 'Echoes',
+                echoesDesc: 'Deep insights, data visualization, digital persona — your digital life is taking shape and will soon speak with you.',
+                echoesBack: 'Back to Core'
+            }
+        };
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'zh' ? 'en' : 'zh';
+            const t = translations[currentLang];
+            
+            // 更新首页内容
+            document.querySelector('.hero-title').innerHTML = t.heroTitle;
+            document.querySelector('.hero-subtitle').textContent = t.heroSubtitle;
+            
+            // 更新统计卡片描述
+            const statDescs = document.querySelectorAll('.stat-desc');
+            if (statDescs[0]) statDescs[0].textContent = t.statDesc1;
+            if (statDescs[1]) statDescs[1].textContent = t.statDesc2;
+            if (statDescs[2]) statDescs[2].textContent = t.statDesc3;
+            
+            // 更新光核共振卡片
+            const coreTitle = document.querySelector('.core-visual-card h3');
+            const coreSubtitle = document.querySelector('.core-visual-card .card-title-group p');
+            const coreAction = document.querySelector('.core-visual-card .card-action');
+            if (coreTitle) coreTitle.textContent = t.coreTitle;
+            if (coreSubtitle) coreSubtitle.textContent = t.coreSubtitle;
+            if (coreAction) coreAction.textContent = t.coreAction;
+            
+            // 更新氛围卡片
+            const atmoLabel = document.querySelector('.atmosphere-label');
+            const atmoValue = document.querySelector('.atmosphere-value');
+            if (atmoLabel) atmoLabel.textContent = t.atmosphereLabel;
+            if (atmoValue) atmoValue.textContent = t.atmosphereValue;
+            
+            // 更新进度卡片
+            const progressTitle = document.querySelector('.progress-card h4');
+            const progressInfos = document.querySelectorAll('.progress-info h5');
+            const progressDescs = document.querySelectorAll('.progress-info p');
+            if (progressTitle) progressTitle.textContent = t.progressTitle;
+            if (progressInfos[0]) progressInfos[0].textContent = t.progressFreq;
+            if (progressDescs[0]) progressDescs[0].textContent = t.progressFreqDesc;
+            if (progressInfos[1]) progressInfos[1].textContent = t.progressRecall;
+            if (progressDescs[1]) progressDescs[1].textContent = t.progressRecallDesc;
+            
+            // 更新最近记录
+            const recentTitle = document.querySelector('.section-header h3');
+            const viewAll = document.querySelector('.section-header .view-all');
+            if (recentTitle) recentTitle.textContent = t.recentTitle;
+            if (viewAll) viewAll.textContent = t.viewAll;
+            
+            // 更新FAB按钮
+            const fabText = document.querySelector('.fab span:last-child');
+            if (fabText) fabText.textContent = t.fabText;
+            
+            // 更新写日志页面
+            const writeEditor = document.getElementById('writeEditor');
+            const writeTitle = document.getElementById('writeTitle');
+            const btnSave = document.querySelector('.btn-primary');
+            const btnDraft = document.querySelector('.btn-secondary');
+            if (writeEditor) writeEditor.placeholder = t.writePlaceholder;
+            if (writeTitle) writeTitle.placeholder = t.writeTitlePlaceholder;
+            if (btnSave) btnSave.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">auto_awesome</span>${t.btnSave}`;
+            if (btnDraft) btnDraft.innerHTML = `<span class="material-symbols-outlined" style="font-size: 16px;">save</span>${t.btnDraft}`;
+            
+            // 更新占位页面
+            const searchTitle = document.querySelector('#page-search h2');
+            const searchDesc = document.querySelector('#page-search p');
+            const searchBack = document.querySelector('#page-search .back-btn');
+            if (searchTitle) searchTitle.textContent = t.searchTitle;
+            if (searchDesc) searchDesc.textContent = t.searchDesc;
+            if (searchBack) searchBack.innerHTML = `<span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span>${t.searchBack}`;
+            
+            const echoesTitle = document.querySelector('#page-echoes h2');
+            const echoesDesc = document.querySelector('#page-echoes p');
+            const echoesBack = document.querySelector('#page-echoes .back-btn');
+            if (echoesTitle) echoesTitle.textContent = t.echoesTitle;
+            if (echoesDesc) echoesDesc.textContent = t.echoesDesc;
+            if (echoesBack) echoesBack.innerHTML = `<span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span>${t.echoesBack}`;
+            
+            // 更新日期格式
+            const writeDate = document.getElementById('writeDate');
+            if (writeDate) writeDate.textContent = t.writeDate;
+            
+            // 更新下拉菜单语言按钮状态
+            updateDropdownLangButtons();
+            
+            // 更新桌面端语言切换按钮状态
+            updateDesktopLangButtons();
+        }
+        
+        function updateDesktopLangButtons() {
+            const langEn = document.getElementById('langEn-nav');
+            const langZh = document.getElementById('langZh-nav');
+            if (langEn && langZh) {
+                langEn.classList.toggle('active', currentLang === 'en');
+                langZh.classList.toggle('active', currentLang === 'zh');
+            }
+        }
+        
+        function setLanguage(lang) {
+            currentLang = lang;
+            const t = translations[currentLang];
+            
+            // 更新首页内容
+            document.querySelector('.hero-title').innerHTML = t.heroTitle;
+            document.querySelector('.hero-subtitle').textContent = t.heroSubtitle;
+            
+            // 更新统计卡片描述
+            const statDescs = document.querySelectorAll('.stat-desc');
+            if (statDescs[0]) statDescs[0].textContent = t.statDesc1;
+            if (statDescs[1]) statDescs[1].textContent = t.statDesc2;
+            if (statDescs[2]) statDescs[2].textContent = t.statDesc3;
+            
+            // 更新光核共振卡片
+            const coreTitle = document.querySelector('.core-visual-card h3');
+            const coreSubtitle = document.querySelector('.core-visual-card .card-title-group p');
+            const coreAction = document.querySelector('.core-visual-card .card-action');
+            if (coreTitle) coreTitle.textContent = t.coreTitle;
+            if (coreSubtitle) coreSubtitle.textContent = t.coreSubtitle;
+            if (coreAction) coreAction.textContent = t.coreAction;
+            
+            // 更新氛围卡片
+            const atmoLabel = document.querySelector('.atmosphere-label');
+            const atmoValue = document.querySelector('.atmosphere-value');
+            if (atmoLabel) atmoLabel.textContent = t.atmosphereLabel;
+            if (atmoValue) atmoValue.textContent = t.atmosphereValue;
+            
+            // 更新进度卡片
+            const progressTitle = document.querySelector('.progress-card h4');
+            const progressInfos = document.querySelectorAll('.progress-info h5');
+            const progressDescs = document.querySelectorAll('.progress-info p');
+            if (progressTitle) progressTitle.textContent = t.progressTitle;
+            if (progressInfos[0]) progressInfos[0].textContent = t.progressFreq;
+            if (progressDescs[0]) progressDescs[0].textContent = t.progressFreqDesc;
+            if (progressInfos[1]) progressInfos[1].textContent = t.progressRecall;
+            if (progressDescs[1]) progressDescs[1].textContent = t.progressRecallDesc;
+            
+            // 更新最近记录
+            const recentTitle = document.querySelector('.section-header h3');
+            const viewAll = document.querySelector('.section-header .view-all');
+            if (recentTitle) recentTitle.textContent = t.recentTitle;
+            if (viewAll) viewAll.textContent = t.viewAll;
+            
+            // 更新FAB按钮
+            const fabText = document.querySelector('.fab span:last-child');
+            if (fabText) fabText.textContent = t.fabText;
+            
+            // 更新写日志页面
+            const writeEditor = document.getElementById('writeEditor');
+            const writeTitle = document.getElementById('writeTitle');
+            const btnSave = document.querySelector('.btn-primary');
+            const btnDraft = document.querySelector('.btn-secondary');
+            if (writeEditor) writeEditor.placeholder = t.writePlaceholder;
+            if (writeTitle) writeTitle.placeholder = t.writeTitlePlaceholder;
+            if (btnSave) btnSave.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">auto_awesome</span>${t.btnSave}`;
+            if (btnDraft) btnDraft.innerHTML = `<span class="material-symbols-outlined" style="font-size: 16px;">save</span>${t.btnDraft}`;
+            
+            // 更新占位页面
+            const searchTitle = document.querySelector('#page-search h2');
+            const searchDesc = document.querySelector('#page-search p');
+            const searchBack = document.querySelector('#page-search .back-btn');
+            if (searchTitle) searchTitle.textContent = t.searchTitle;
+            if (searchDesc) searchDesc.textContent = t.searchDesc;
+            if (searchBack) searchBack.innerHTML = `<span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span>${t.searchBack}`;
+            
+            const echoesTitle = document.querySelector('#page-echoes h2');
+            const echoesDesc = document.querySelector('#page-echoes p');
+            const echoesBack = document.querySelector('#page-echoes .back-btn');
+            if (echoesTitle) echoesTitle.textContent = t.echoesTitle;
+            if (echoesDesc) echoesDesc.textContent = t.echoesDesc;
+            if (echoesBack) echoesBack.innerHTML = `<span class="material-symbols-outlined" style="font-size: 16px;">arrow_back</span>${t.echoesBack}`;
+            
+            // 更新日期格式
+            const writeDate = document.getElementById('writeDate');
+            if (writeDate) writeDate.textContent = t.writeDate;
+            
+            // 更新下拉菜单语言按钮状态
+            updateDropdownLangButtons();
+            
+            // 更新桌面端语言切换按钮状态
+            updateDesktopLangButtons();
+        }
+        
+        function updateDropdownLangButtons() {
+            const langZh = document.getElementById('langZh-dd');
+            const langEn = document.getElementById('langEn-dd');
+            if (langZh && langEn) {
+                langZh.classList.toggle('active', currentLang === 'zh');
+                langEn.classList.toggle('active', currentLang === 'en');
+            }
+        }
+        
+        // 初始化PNG层动画
+        (function() {
+            const blob = document.querySelector('.dreamy-blob');
+            if (!blob) return;
+            
+            // 创建单层金色PNG
+            const goldLayer = document.createElement('div');
+            goldLayer.className = 'gold-layer';
+            goldLayer.style.animation = 'gold-fade 10s ease-in-out infinite';
+            blob.appendChild(goldLayer);
+            
+            // 创建单层青色PNG
+            const cyanLayer = document.createElement('div');
+            cyanLayer.className = 'cyan-layer';
+            cyanLayer.style.animation = 'cyan-fade 10s ease-in-out infinite';
+            blob.appendChild(cyanLayer);
+        })();
+        
+        // 第二层动画：使用JS实现真正的并行明度和半径呼吸（降低更新频率至30fps）
+        (function() {
+            const blob = document.querySelector('.dreamy-blob');
+            if (!blob) return;
+            
+            let brightnessStart = performance.now();
+            let radiusStart = performance.now();
+            const radiusDuration = 7000;      // 半径：7秒 (0.60→0.80→0.60)
+            let lastUpdate = 0;
+            const frameInterval = 33; // 约30fps
+            
+            // 明度呼吸参数
+            let phaseStart = performance.now();
+            let currentPhase = 0; // 0:上升, 1:下降, 2:保持, 3:回升
+            const holdDuration = 2000; // 固定保持2秒
+            
+            function animate(now) {
+                // 限制更新频率
+                if (now - lastUpdate < frameInterval) {
+                    requestAnimationFrame(animate);
+                    return;
+                }
+                lastUpdate = now;
+                
+                // 明度呼吸：0.20 → 0.35 → 0.20 (6秒) → 0.10 (2秒) → 保持(固定2秒) → 0.20 (2秒)
+                const phaseElapsed = now - phaseStart;
+                let brightnessValue;
+                
+                if (currentPhase === 0) {
+                    // 阶段0: 0.20 → 0.35 → 0.20，6秒
+                    const duration = 6000;
+                    if (phaseElapsed >= duration) {
+                        currentPhase = 1;
+                        phaseStart = now;
+                    } else {
+                        const progress = phaseElapsed / duration;
+                        brightnessValue = 0.20 + Math.sin(progress * Math.PI * 2 - Math.PI/2) * 0.075 + 0.075;
+                    }
+                }
+                
+                if (currentPhase === 1) {
+                    // 阶段1: 0.20 → 0.10，2秒
+                    const duration = 2000;
+                    if (phaseElapsed >= duration) {
+                        currentPhase = 2;
+                        phaseStart = now;
+                    } else {
+                        const progress = phaseElapsed / duration;
+                        brightnessValue = 0.20 - progress * 0.10; // 线性下降
+                    }
+                }
+                
+                if (currentPhase === 2) {
+                    // 阶段2: 保持0.10，固定2秒
+                    if (phaseElapsed >= holdDuration) {
+                        currentPhase = 3;
+                        phaseStart = now;
+                    } else {
+                        brightnessValue = 0.10;
+                    }
+                }
+                
+                if (currentPhase === 3) {
+                    // 阶段3: 0.10 → 0.20，2秒
+                    const duration = 2000;
+                    if (phaseElapsed >= duration) {
+                        currentPhase = 0;
+                        phaseStart = now;
+                    } else {
+                        const progress = phaseElapsed / duration;
+                        brightnessValue = 0.10 + progress * 0.10; // 线性上升
+                    }
+                }
+                
+                // 半径呼吸：0.60 → 0.80 → 0.60，7秒
+                const radiusElapsed = (now - radiusStart) % radiusDuration;
+                const radiusProgress = radiusElapsed / radiusDuration;
+                const radiusValue = 0.60 + Math.sin(radiusProgress * Math.PI * 2 - Math.PI/2) * 0.1 + 0.1;
+                
+                blob.style.setProperty('--blob-opacity', brightnessValue);
+                blob.style.setProperty('--blob-scale', radiusValue);
+                
+                requestAnimationFrame(animate);
+            }
+            
+            requestAnimationFrame(animate);
+        })();
+    </script>
+</body>
+</html>

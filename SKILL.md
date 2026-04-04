@@ -271,7 +271,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - write succeeded 但用户拒绝自动补全值时，应进入 correction flow，不得把已成功写入重新表述为“写入失败”
 - 必须区分：未保存 / 已保存但待确认 / 已保存但存在降级 side effects
 
-### 安装后的可选个性化（Agent-first）
+### 安装后的可选个性化（Agent-Native）
 
 安装与首次验证完成后，Agent 可按 `AGENT_ONBOARDING.md` 的 optional customization step 询问用户是否要做两项个性化设置：
 
