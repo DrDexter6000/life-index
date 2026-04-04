@@ -338,6 +338,8 @@ def main() -> None:
         "index": "tools.build_index.__main__",
         "abstract": "tools.generate_abstract.__main__",
         "backup": "tools.backup.__main__",
+        "verify": "tools.verify.__main__",  # Task 1.3.2
+        "timeline": "tools.timeline.__main__",  # Task 3.2
     }
 
     if subcmd in cmd_map:
@@ -372,6 +374,8 @@ def print_usage() -> None:
     print("  index     Build/rebuild search index")
     print("  abstract  Generate monthly/yearly summaries")
     print("  backup    Backup journal data")
+    print("  verify    Verify data integrity")
+    print("  timeline  Output chronological summary stream")
     print("  health    Check installation health")
     print("  version   Show package and bootstrap manifest version info")
     print()
