@@ -1,0 +1,37 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    name: Benchmark (ubuntu-latest, Python 3.12)
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-timeout
+          pip install -e ".[dev]"
+
+      - name: Run benchmark tests
+        run: |
+          pytest tests/benchmark -v --capture=tee-sys --durations=20 --timeout=300
