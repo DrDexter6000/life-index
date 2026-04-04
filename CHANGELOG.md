@@ -18,7 +18,7 @@ This changelog records user-visible milestones for the v1.x CLI line.
 - **Release surface refinement**: aligned package version, bootstrap manifest version, and version-reporting tests for a clean v1.6.0 cut.
 - **Documentation refresh**: rewrote README / README.en narrative and positioning so the active CLI product surface is clearer to users and agents.
 
-## [1.5.5] - 2026-03-29
+## [1.5.5] - 2026-03-30
 
 ### Fixed
 - Stabilized CI on Windows by removing Unicode-sensitive console output and normalizing generated topic filenames.
@@ -29,7 +29,7 @@ This changelog records user-visible milestones for the v1.x CLI line.
 - Modernized Python 3.11+ typing across search and FTS modules.
 - Added regression coverage for FTS logging and typing modernization.
 
-## [1.5.0] - 2026-04-03
+## [1.5.0] - 2026-03-28
 
 ### What users get
 - Life Index is now positioned as an **Agent-Native CLI journal system** with a cleaned release surface.
@@ -42,13 +42,13 @@ This changelog records user-visible milestones for the v1.x CLI line.
 - **Tool schema standardization**: per-tool `schema.json` files and shared schema validation support.
 - **Release cleanup**: README alignment, schedule consolidation, and CLI-only release orientation.
 
-## [1.4.0] - 2026-03-28
+## [1.4.0] - 2026-03-22
 
 ### What users get
 - All core CLI tools now expose standardized machine-readable tool schemas.
 - Agents can integrate with the CLI more consistently because tool contracts are explicit instead of implicit.
 
-## [1.3.0] - 2026-04-03
+## [1.3.0] - 2026-03-22
 
 ### What users get
 - Journal writing now captures richer structure: `sentiment_score`, `themes`, `entities`, and revision history.
