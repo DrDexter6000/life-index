@@ -161,6 +161,7 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "benchmark: marks tests as performance benchmarks (deselect with '-m \"not benchmark\"')",
+    "critical: marks tests as critical path (write/search/index/edit core flows)",
 ]
 
 # ========== Coverage - Test Coverage ==========

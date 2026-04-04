@@ -29,6 +29,7 @@ def mock_vector_update_side_effect():
         yield
 
 
+@pytest.mark.critical
 class TestWriteJournalBasic:
     """Tests for basic write_journal functionality"""
 
