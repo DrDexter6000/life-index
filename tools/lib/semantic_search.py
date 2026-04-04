@@ -232,6 +232,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
             "updated": int,
             "removed": int,
             "total": int,
+            "auto_rebuild_triggered": bool (optional),
             "error": str (optional)
         }
     """
@@ -241,8 +242,41 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
         "updated": 0,
         "removed": 0,
         "total": 0,
+        "auto_rebuild_triggered": False,
         "error": None,
     }
+
+    # Import embedding_backends for version check
+    from .embedding_backends import verify_model_integrity, record_model_metadata
+
+    # Check if model version mismatch requires rebuild (Task 1.1.2)
+    model_name = str(EMBEDDING_MODEL)
+    cache_dir = CACHE_DIR
+
+    integrity_result = verify_model_integrity(model_name, cache_dir)
+
+    if incremental and integrity_result.needs_rebuild:
+        # Auto-trigger rebuild on version mismatch
+        incremental = False
+        result["auto_rebuild_triggered"] = True
+
+        # Extract version info for clear logging
+        meta_file = cache_dir / model_name.replace("/", "_") / "model_meta.json"
+        if meta_file.exists():
+            try:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                old_version = meta.get("version", "unknown")
+                new_version = EMBEDDING_MODEL_CONFIG["version"]
+                print(
+                    f"Embedding model version changed ({old_version} → {new_version}). "
+                    f"Auto-rebuilding vector index..."
+                )
+            except Exception:
+                print(
+                    f"Auto-rebuilding vector index due to: {integrity_result.message}"
+                )
+        else:
+            print("First-time use. Building initial vector index...")
 
     # 检查模型是否可用
     model = get_model()
@@ -374,6 +408,10 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
 
         result["total"] = len(current_files)
         result["success"] = True
+
+        # Update model metadata after successful rebuild (Task 1.1.2)
+        if result["auto_rebuild_triggered"] or not incremental:
+            record_model_metadata(model_name, cache_dir)
 
     except Exception as e:
         result["error"] = str(e)

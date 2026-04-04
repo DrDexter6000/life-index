@@ -55,6 +55,7 @@ def build_all(
         "vector": None,
         "duration_seconds": 0.0,
         "rebuild_hint": "",
+        "auto_rebuild_triggered": False,  # Task 1.1.2: version mismatch auto-rebuild flag
     }
 
     import time
@@ -113,6 +114,9 @@ def build_all(
                         vec_result = update_vector_index(incremental=incremental)
                         if vec_result.get("success"):
                             result["vector"] = vec_result
+                            # Propagate auto_rebuild_triggered flag (Task 1.1.2)
+                            if vec_result.get("auto_rebuild_triggered"):
+                                result["auto_rebuild_triggered"] = True
                             logger.info(
                                 f"  ✓ Vector (sqlite-vec): +{vec_result.get('added', 0)} added, "
                                 f"~{vec_result.get('updated', 0)} updated"
@@ -135,6 +139,9 @@ def build_all(
                                 simple_model.encode, incremental=incremental
                             )
                             result["vector"] = vec_result
+                            # Propagate auto_rebuild_triggered flag (Task 1.1.2)
+                            if vec_result.get("auto_rebuild_triggered"):
+                                result["auto_rebuild_triggered"] = True
                             if vec_result.get("success"):
                                 logger.info(
                                     f"  ✓ Vector (simple): +{vec_result.get('added', 0)} added, "
