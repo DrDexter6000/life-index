@@ -450,7 +450,7 @@ def add_entry_relations(
     seen_targets: set[str] = set()
     for target_path in target_paths:
         if not isinstance(target_path, str):
-            continue
+            continue  # type: ignore[unreachable]
         normalized_target = target_path.strip()
         if not normalized_target or normalized_target in seen_targets:
             continue

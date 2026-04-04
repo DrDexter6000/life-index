@@ -158,7 +158,7 @@ def apply_confirmation_updates(
         by_rel_path: dict[str, dict[str, Any]] = {}
         for candidate in candidates:
             if not isinstance(candidate, dict):
-                continue
+                continue  # type: ignore[unreachable]
             rel_path = str(candidate.get("rel_path") or "").strip()
             if not rel_path:
                 continue
@@ -445,7 +445,8 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
     Returns:
         {
             "success": bool,
-            "write_outcome": str,  # success | success_pending_confirmation | success_degraded | failed
+            "write_outcome": str,  # success | success_pending_confirmation |
+                                   # success_degraded | failed
             "journal_path": str,
             "updated_indices": [str],
             "index_status": str,

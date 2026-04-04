@@ -12,7 +12,6 @@ v1.2: 双管道并行搜索架构
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..lib.entity_graph import load_entity_graph, resolve_entity
