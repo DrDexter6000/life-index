@@ -82,6 +82,17 @@ Examples:
         default=None,
         help="返回结果数量限制",
     )
+    parser.add_argument(
+        "--read-top",
+        type=int,
+        default=0,
+        help="读取前 N 条结果的完整正文（Task 1.2.3，默认: 0 不读取）",
+    )
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="输出搜索评分详情（Task 2.1）",
+    )
 
     args = parser.parse_args()
     ensure_dirs()
@@ -120,12 +131,49 @@ Examples:
         semantic=not args.no_semantic,
         semantic_weight=args.semantic_weight,
         fts_weight=args.fts_weight,
+        explain=args.explain,  # Task 2.1
     )
 
     # 应用 limit
     if args.limit and "merged_results" in result:
         result["merged_results"] = result["merged_results"][: args.limit]
         result["total_found"] = len(result["merged_results"])
+
+    # Task 1.2.3: Read full content for top N results
+    if args.read_top > 0 and result.get("success") and result.get("merged_results"):
+        from pathlib import Path
+        from ..lib.config import JOURNALS_DIR
+
+        top_n = min(args.read_top, len(result["merged_results"]))
+        for i in range(top_n):
+            item = result["merged_results"][i]
+            path = item.get("path", "")
+
+            if path:
+                # Construct full path
+                if path.startswith("Journals/"):
+                    full_path = JOURNALS_DIR.parent / path
+                else:
+                    full_path = Path(path)
+
+                # Read full content
+                try:
+                    if full_path.exists():
+                        content = full_path.read_text(encoding="utf-8")
+                        # Extract body (after frontmatter)
+                        if content.startswith("---"):
+                            parts = content.split("---", 2)
+                            if len(parts) >= 3:
+                                item["full_content"] = parts[2].strip()
+                            else:
+                                item["full_content"] = content
+                        else:
+                            item["full_content"] = content
+                    else:
+                        item["full_content"] = None
+                except Exception as e:
+                    item["full_content"] = None
+                    item["read_error"] = str(e)
 
     # 输出结果
     _emit_json(result)

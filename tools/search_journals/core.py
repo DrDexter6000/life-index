@@ -236,6 +236,7 @@ def hierarchical_search(
     fts_min_relevance: int = FTS_MIN_RELEVANCE,
     rrf_min_score: float = RRF_MIN_SCORE,
     non_rrf_min_score: float = NON_RRF_MIN_SCORE,
+    explain: bool = False,  # Task 2.1: explain mode
 ) -> Dict[str, Any]:
     """
     双管道并行搜索
@@ -382,6 +383,7 @@ def hierarchical_search(
             semantic_weight=semantic_weight,
             min_rrf_score=rrf_min_score,
             min_non_rrf_score=non_rrf_min_score,
+            explain=explain,  # Task 2.1
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
