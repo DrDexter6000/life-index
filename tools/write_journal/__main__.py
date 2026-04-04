@@ -67,6 +67,7 @@ def _cmd_write(args: argparse.Namespace) -> int:
                     "error", "Index update failed"
                 )
         except Exception as exc:
+            logger.warning("write --auto-index failed: %s", exc)
             result["index_result"] = {"success": False, "error": str(exc)}
             result["index_warning"] = str(exc)
 
