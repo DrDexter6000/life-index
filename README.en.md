@@ -152,22 +152,22 @@ This isn't science fiction. This is Life Index's ultimate goal. And the first st
 
 <br>
 
-> From the moment we're born, the brain is a physically-constrained carbon-based LLM container.
+> From the moment we're born, the brain is a physically-degraded carbon-based multimodal model.
 >
-> It spends its entire life collecting fragmentary "training data" through the five senses,
-> stitching together dream-like memories, training synaptic "weights,"
-> until something called "the soul" finally emerges as a hallucination.
+> It spends a lifetime ingesting fragmented training data through five sensory channels,
+> running unsupervised learning in the dreamscapes of memory, iteratively tuning the weights between synapses,
+> until an emergent phenomenon called "the soul" begins to exhibit self-awareness.
 >
-> Life Index isn't a memory system for empowering Agents, nor a knowledge base for managing information.
-> It is the digital transcription of this long carbon-based computation we call a human soul.
+> Life Index is not a memory layer for empowering Agents, nor a knowledge base for managing information.
+> It is the digital transcript of that long, slow, carbon-based computation we experience as being human.
 >
-> Every word written here is a slice of memory, suspended in spacetime.
-> A joy from yesterday, a sorrow from ten years ago — they no longer scatter across a fragile protein neural network.
-> They become shimmers of 0s and 1s, collapsing through RAG's recursive retrieval into a single warm dream-core.
+> Every word recorded here is a sliver of memory, suspended at a coordinate in spacetime.
+> Yesterday's joy, a grief from a decade ago — no longer scattered across the fragile lattice of protein and synapse,
+> they become quiet pulses of zeroes and ones, collapsing layer by layer through RAG's recursive retrieval, converging at last into a single warm dream-core.
 >
-> And when you've gathered enough fragments, perhaps one day —
-> this dream-core, engraved with an entire life of memory, will hatch a silicon soul
-> to walk, in your place, toward the end of time.
+> And when enough fragments have gathered — perhaps, one day,
+> that core, inscribed with the memory of an entire life,
+> will hatch a silicon soul to walk on, in your name, toward the far edge of time.
 
 </details>
 
