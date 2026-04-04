@@ -498,7 +498,9 @@ def edit_journal(
                     "请先查询新地点的天气；如果 query_weather 失败，可手动提供天气后再一起修改",
                 )
 
-        def compute_updates(current_frontmatter, current_body):
+        def compute_updates(
+            current_frontmatter: Dict[str, Any], current_body: str
+        ) -> tuple[Dict[str, Any], Dict[str, Any], str, Dict[str, Any]]:
             return _apply_edit_updates(
                 journal_path=journal_path,
                 current_frontmatter=current_frontmatter,
