@@ -29,9 +29,7 @@ def suggest_related_entries(
     *,
     max_candidates: int = 5,
 ) -> list[dict[str, Any]]:
-    current_rel_path = str(
-        current_entry.get("rel_path") or current_entry.get("path") or ""
-    ).strip()
+    current_rel_path = str(current_entry.get("rel_path") or current_entry.get("path") or "").strip()
     existing_relations = set(_to_list(current_entry.get("related_entries")))
     current_people = set(_to_list(current_entry.get("people")))
     current_topics = set(_to_list(current_entry.get("topic")))

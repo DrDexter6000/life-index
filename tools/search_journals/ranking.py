@@ -37,9 +37,7 @@ def _compute_dynamic_fts_threshold(
     base_threshold: float,
 ) -> float:
     """Compute a stricter FTS threshold from score distribution when useful."""
-    scores = [
-        float(item["score"]) for item in scored_results if float(item["score"]) > 0
-    ]
+    scores = [float(item["score"]) for item in scored_results if float(item["score"]) > 0]
     if len(scores) < 3:
         return base_threshold
 
@@ -56,11 +54,7 @@ def _compute_dynamic_non_rrf_threshold(
     base_threshold: float,
 ) -> float:
     """Compute a stricter non-RRF threshold from lexical score distribution."""
-    scores = [
-        float(item["fts_score"])
-        for item in ranked_results
-        if float(item["fts_score"]) > 0
-    ]
+    scores = [float(item["fts_score"]) for item in ranked_results if float(item["fts_score"]) > 0]
     if len(scores) < 3:
         return base_threshold
 
@@ -136,9 +130,7 @@ def _attach_relation_context(
         metadata = {}
         enriched["metadata"] = metadata
 
-    related_entries = metadata.get(
-        "related_entries", enriched.get("related_entries", [])
-    )
+    related_entries = metadata.get("related_entries", enriched.get("related_entries", []))
     if not isinstance(related_entries, list):
         related_entries = []
 
@@ -154,9 +146,7 @@ def _attach_relation_context(
     return enriched
 
 
-def reciprocal_rank_fusion(
-    ranked_lists: List[List[str]], k: int = RRF_K
-) -> Dict[str, float]:
+def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = RRF_K) -> Dict[str, float]:
     """
     Reciprocal Rank Fusion (RRF)
 
@@ -221,9 +211,7 @@ def merge_and_rank_results(
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "")
-                if isinstance(metadata.get("abstract"), str)
-                else ""
+                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
 
@@ -251,18 +239,14 @@ def merge_and_rank_results(
         }
 
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
-    sorted_results = sorted(
-        scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True
-    )
+    sorted_results = sorted(scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True)
     effective_min_score = _compute_dynamic_fts_threshold(
         sorted_results,
         base_threshold=min_score,
     )
     if query and min_score == FTS_MIN_RELEVANCE:
         effective_min_score = FTS_MIN_RELEVANCE + 1
-    sorted_results = [
-        item for item in sorted_results if item["score"] >= effective_min_score
-    ]
+    sorted_results = [item for item in sorted_results if item["score"] >= effective_min_score]
     sorted_results = sorted_results[:max_results]
 
     # 提取数据并添加排名信息
@@ -306,17 +290,16 @@ def merge_and_rank_results_hybrid(
         semantic_weight: 语义排名权重（默认 SEMANTIC_WEIGHT_DEFAULT，影响语义相似度在最终结果中的占比）
     """
 
-    scored: Dict[
-        str, Dict[str, Any]
-    ] = {}  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
+    scored: Dict[str, Dict[str, Any]] = (
+        {}
+    )  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
 
     # 先构建 FTS 排名（按 relevance + title_match bonus）
     fts_ranked_paths: List[str] = []
     fts_ordered = sorted(
         l3_results,
         key=lambda r: (
-            r.get("relevance", 0)
-            + (SCORE_TITLE_MATCH_BONUS if r.get("title_match") else 0),
+            r.get("relevance", 0) + (SCORE_TITLE_MATCH_BONUS if r.get("title_match") else 0),
             r.get("path", ""),
         ),
         reverse=True,
@@ -404,9 +387,7 @@ def merge_and_rank_results_hybrid(
             title = r.get("title", "")
             metadata = r.get("metadata", {})
             abstract = (
-                metadata.get("abstract", "")
-                if isinstance(metadata.get("abstract"), str)
-                else ""
+                metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
 
@@ -518,9 +499,11 @@ def merge_and_rank_results_hybrid(
                         "has_fts_match": item["fts_score"] > 0,
                     },
                     "semantic_pipeline": {
-                        "cosine_similarity": round(item["semantic_score"] / 100.0, 4)
-                        if item["semantic_score"] > 0
-                        else 0.0,
+                        "cosine_similarity": (
+                            round(item["semantic_score"] / 100.0, 4)
+                            if item["semantic_score"] > 0
+                            else 0.0
+                        ),
                         "has_semantic_match": item["semantic_score"] > 0,
                     },
                     "fusion": {

@@ -24,7 +24,7 @@
 
 <!-- 技术指标 Badges -->
 <p align="center">
-  <a href="https://github.com/DrDexter6000/life-index/actions/workflows/ci.yml"><img src="https://github.com/DrDexter6000/life-index/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/DrDexter6000/life-index/actions/workflows/tests.yml"><img src="https://github.com/DrDexter6000/life-index/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
   <img src="https://img.shields.io/badge/python-≥3.11-3776AB?logo=python&logoColor=white" alt="Python ≥3.11">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
 </p>

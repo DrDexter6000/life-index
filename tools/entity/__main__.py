@@ -36,9 +36,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.list_entities:
         results = entities
         if args.entity_type:
-            results = [
-                entity for entity in entities if entity["type"] == args.entity_type
-            ]
+            results = [entity for entity in entities if entity["type"] == args.entity_type]
         _print({"success": True, "data": results, "error": None})
         return
 

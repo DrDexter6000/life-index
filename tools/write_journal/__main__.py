@@ -60,9 +60,7 @@ def _cmd_write(args: argparse.Namespace) -> int:
         return 1
 
     if args.verbose:
-        print(
-            f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr
-        )
+        print(f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr)
 
     result = write_journal(data, dry_run=args.dry_run)
 
@@ -76,9 +74,7 @@ def _cmd_write(args: argparse.Namespace) -> int:
 
             # If index failed, add warning but keep write success
             if not index_result.get("success"):
-                result["index_warning"] = index_result.get(
-                    "error", "Index update failed"
-                )
+                result["index_warning"] = index_result.get("error", "Index update failed")
         except Exception as exc:
             logger.warning("write --auto-index failed: %s", exc)
             result["index_result"] = {"success": False, "error": str(exc)}
@@ -126,9 +122,7 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
         return 1
 
     if args.verbose:
-        print(
-            f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr
-        )
+        print(f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr)
 
     try:
         result = prepare_journal_metadata(data, use_llm=not args.no_llm)
@@ -204,9 +198,7 @@ Examples:
     write_parser.add_argument(
         "--data", required=True, help="JSON数据，或 @文件路径 (如 @input.json)"
     )
-    write_parser.add_argument(
-        "--dry-run", action="store_true", help="模拟运行，不实际写入文件"
-    )
+    write_parser.add_argument("--dry-run", action="store_true", help="模拟运行，不实际写入文件")
     write_parser.add_argument(
         "--auto-index",
         action="store_true",
@@ -227,9 +219,7 @@ Examples:
     enrich_parser.add_argument(
         "--data", required=True, help="JSON数据，或 @文件路径 (如 @input.json)"
     )
-    enrich_parser.add_argument(
-        "--no-llm", action="store_true", help="禁用 LLM 提取，仅使用规则"
-    )
+    enrich_parser.add_argument("--no-llm", action="store_true", help="禁用 LLM 提取，仅使用规则")
     enrich_parser.add_argument("--verbose", action="store_true", help="输出详细日志")
     enrich_parser.set_defaults(func=_cmd_enrich)
 

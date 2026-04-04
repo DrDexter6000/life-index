@@ -114,9 +114,7 @@ def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
 
     links = metadata.get("links")
     if links is not None:
-        if not isinstance(links, list) or not all(
-            isinstance(item, str) for item in links
-        ):
+        if not isinstance(links, list) or not all(isinstance(item, str) for item in links):
             issues.append(
                 {
                     "level": "error",

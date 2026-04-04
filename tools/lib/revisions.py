@@ -17,9 +17,7 @@ def save_revision(original_path: Path, content: str) -> Path:
     revision_path = revision_dir / f"{original_path.stem}_{timestamp}.md"
     collision_index = 1
     while revision_path.exists():
-        revision_path = (
-            revision_dir / f"{original_path.stem}_{timestamp}_{collision_index}.md"
-        )
+        revision_path = revision_dir / f"{original_path.stem}_{timestamp}_{collision_index}.md"
         collision_index += 1
     revision_path.write_text(content, encoding="utf-8")
     return revision_path

@@ -316,9 +316,7 @@ def update_vector_index_simple(
                     f"Auto-rebuilding vector index..."
                 )
             except Exception:
-                print(
-                    f"Auto-rebuilding vector index due to: {integrity_result.message}"
-                )
+                print(f"Auto-rebuilding vector index due to: {integrity_result.message}")
         else:
             print("First-time use. Building initial vector index...")
 

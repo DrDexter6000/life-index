@@ -130,9 +130,7 @@ def run_keyword_pipeline(
         if r["path"] not in seen and not seen.add(r["path"])  # type: ignore[func-returns-value]
     ]
     perf["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
-    logger.info(
-        f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms"
-    )
+    logger.info(f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms")
 
     # L2: 元数据过滤
     l2_start = time.time()
@@ -152,9 +150,7 @@ def run_keyword_pipeline(
     l2_truncated = l2_response.get("truncated", False)
     l2_total_available = l2_response.get("total_available", 0)
     perf["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
-    logger.info(
-        f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms"
-    )
+    logger.info(f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms")
 
     # L3: FTS5 内容搜索
     l3_start = time.time()
@@ -219,15 +215,11 @@ def run_keyword_pipeline(
                     if query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
                         fallback_l3_results = search_l3_content(query, None)
                         seen_paths = {
-                            str(
-                                item.get("journal_route_path") or item.get("path") or ""
-                            )
+                            str(item.get("journal_route_path") or item.get("path") or "")
                             for item in l3_results
                         }
                         for item in fallback_l3_results:
-                            key = str(
-                                item.get("journal_route_path") or item.get("path") or ""
-                            )
+                            key = str(item.get("journal_route_path") or item.get("path") or "")
                             if key and key not in seen_paths:
                                 l3_results.append(item)
                                 seen_paths.add(key)
@@ -244,9 +236,7 @@ def run_keyword_pipeline(
             logger.debug(f"File scan found {len(l3_results)} results")
 
     perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)
-    logger.info(
-        f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms"
-    )
+    logger.info(f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms")
 
     return (
         l1_results,

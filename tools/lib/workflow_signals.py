@@ -72,9 +72,6 @@ def derive_write_outcome(
         return WriteOutcome.FAILED
     if needs_confirmation:
         return WriteOutcome.SUCCESS_PENDING_CONFIRMATION
-    if (
-        index_status == IndexStatus.DEGRADED
-        or side_effects_status == SideEffectsStatus.DEGRADED
-    ):
+    if index_status == IndexStatus.DEGRADED or side_effects_status == SideEffectsStatus.DEGRADED:
         return WriteOutcome.SUCCESS_DEGRADED
     return WriteOutcome.SUCCESS

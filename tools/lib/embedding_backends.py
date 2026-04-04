@@ -110,16 +110,12 @@ def record_model_metadata(model_name: str, cache_dir: Path) -> None:
         }
 
         meta_file = model_dir / "model_meta.json"
-        meta_file.write_text(
-            json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     except Exception as e:
         print(f"Warning: Failed to record model metadata: {e}")
 
 
-def load_backend_model(
-    model_config: dict[str, Any], cache_dir: Path
-) -> tuple[Any, str]:
+def load_backend_model(model_config: dict[str, Any], cache_dir: Path) -> tuple[Any, str]:
     backend = get_backend_name(model_config)
     model_name = str(model_config["name"])
 
@@ -173,9 +169,7 @@ class SharedEmbeddingModel:
             result = verify_model_integrity(model_name, cache_dir)
             if not result.is_valid:
                 print(f"Warning: Model integrity check failed: {result.message}")
-                print(
-                    "Warning: Will proceed with loading, but embeddings may be inconsistent."
-                )
+                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
                 if result.needs_rebuild:
                     print("Warning: Vector index needs rebuild to ensure consistency.")
 

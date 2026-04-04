@@ -88,11 +88,7 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
             logger.debug(f"添加条目到索引：{index_file.name}")
     else:
         # 确定索引类型和名称
-        name = (
-            index_file.stem.replace("主题_", "")
-            .replace("项目_", "")
-            .replace("标签_", "")
-        )
+        name = index_file.stem.replace("主题_", "").replace("项目_", "").replace("标签_", "")
         if index_file.stem.startswith("主题_"):
             header = f"# 主题：{name}\n\n"
         elif index_file.stem.startswith("项目_"):
@@ -225,9 +221,7 @@ def _apply_edit_updates(  # noqa: C901
             new_attachments: list[dict[str, Any] | str] = []
 
             for att in (
-                raw_attachments
-                if isinstance(raw_attachments, list)
-                else [raw_attachments]
+                raw_attachments if isinstance(raw_attachments, list) else [raw_attachments]
             ):
                 if isinstance(att, str):
                     # 字符串：检查是否是相对路径
@@ -246,9 +240,7 @@ def _apply_edit_updates(  # noqa: C901
                     elif "source_path" in att:
                         # 检查 source_path 是否是绝对路径
                         source = att["source_path"]
-                        is_absolute = os.path.isabs(source) or source.startswith(
-                            "/tmp/"
-                        )
+                        is_absolute = os.path.isabs(source) or source.startswith("/tmp/")
                         if is_absolute:
                             # 新上传的附件，需要处理
                             new_attachments.append(att)
@@ -310,15 +302,11 @@ def _apply_edit_updates(  # noqa: C901
     if add_related_entries or remove_related_entries:
         current_entries = new_frontmatter.get("related_entries", [])
         if isinstance(current_entries, str):
-            current_entries = [
-                item.strip() for item in current_entries.split(",") if item.strip()
-            ]
+            current_entries = [item.strip() for item in current_entries.split(",") if item.strip()]
         elif not isinstance(current_entries, list):
             current_entries = []
 
-        current_rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace(
-            "\\", "/"
-        )
+        current_rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
         merged_entries: list[str] = []
         seen_entries: set[str] = set()
         for item in current_entries:
@@ -346,13 +334,9 @@ def _apply_edit_updates(  # noqa: C901
                 seen_entries.add(item_str)
 
         remove_set = {
-            str(item).strip()
-            for item in (remove_related_entries or [])
-            if str(item).strip()
+            str(item).strip() for item in (remove_related_entries or []) if str(item).strip()
         }
-        merged_entries = [item for item in merged_entries if item not in remove_set][
-            :10
-        ]
+        merged_entries = [item for item in merged_entries if item not in remove_set][:10]
 
         old_related_entries = new_frontmatter.get("related_entries")
         new_frontmatter["related_entries"] = merged_entries
@@ -387,18 +371,16 @@ def _apply_edit_updates(  # noqa: C901
                 logger.debug(f"分割 list 字段：{key} = {value}")
 
             if key == "related_entries" and isinstance(value, list):
-                current_rel_path = os.path.relpath(
-                    journal_path, JOURNALS_DIR.parent
-                ).replace("\\", "/")
+                current_rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace(
+                    "\\", "/"
+                )
                 filtered_values: list[str] = []
                 seen_values: set[str] = set()
                 for item in value:
                     item_str = str(item).strip()
                     if not item_str:
                         continue
-                    if not item_str.startswith("Journals/") or not item_str.endswith(
-                        ".md"
-                    ):
+                    if not item_str.startswith("Journals/") or not item_str.endswith(".md"):
                         continue
                     if item_str == current_rel_path:
                         continue
@@ -512,9 +494,7 @@ def edit_journal(
             )
 
         metadata = parse_journal_file(journal_path)
-        initial_frontmatter = {
-            k: v for k, v in metadata.items() if not k.startswith("_")
-        }
+        initial_frontmatter = {k: v for k, v in metadata.items() if not k.startswith("_")}
         initial_body = metadata.get("_body", "")
 
         old_frontmatter, new_frontmatter, new_body, computed_result = compute_updates(
@@ -527,9 +507,7 @@ def edit_journal(
             result["success"] = True
             result["preview"] = {
                 "frontmatter": format_frontmatter(new_frontmatter),
-                "body_preview": new_body[:200] + "..."
-                if len(new_body) > 200
-                else new_body,
+                "body_preview": new_body[:200] + "..." if len(new_body) > 200 else new_body,
             }
             return result
 
@@ -546,8 +524,8 @@ def edit_journal(
                     k: v for k, v in locked_metadata.items() if not k.startswith("_")
                 }
                 locked_body = locked_metadata.get("_body", "")
-                old_frontmatter, new_frontmatter, new_body, computed_result = (
-                    compute_updates(locked_frontmatter, locked_body)
+                old_frontmatter, new_frontmatter, new_body, computed_result = compute_updates(
+                    locked_frontmatter, locked_body
                 )
                 result.update(computed_result)
                 revision_path = save_revision(journal_path, original_content)
@@ -557,10 +535,7 @@ def edit_journal(
                 journal_path.write_text(new_content, encoding="utf-8")
                 logger.info(f"已写入文件：{journal_path.name}")
 
-                if (
-                    "related_entries" in new_frontmatter
-                    or "related_entries" in result["changes"]
-                ):
+                if "related_entries" in new_frontmatter or "related_entries" in result["changes"]:
                     metadata_conn = init_metadata_cache()
                     try:
                         source_rel_path = os.path.relpath(
