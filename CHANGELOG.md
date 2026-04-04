@@ -20,7 +20,7 @@ This changelog records user-visible milestones for the v1.x CLI line.
 ## [1.5.0] - 2026-04-03
 
 ### What users get
-- Life Index is now positioned as an **agent-first CLI journal system** with a cleaned release surface.
+- Life Index is now positioned as an **Agent-Native CLI journal system** with a cleaned release surface.
 - Old Web GUI materials are preserved only as historical archive references, not as the active product path.
 
 ### Included in this release

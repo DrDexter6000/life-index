@@ -28,7 +28,7 @@ assignees: ''
 
 描述您考虑过的其他方案。
 
-## Agent-First 评估
+## Agent-Native 评估
 
 **重要**：请评估此功能是否需要开发专用工具，还是可以由 Agent 通过自然语言完成。
 

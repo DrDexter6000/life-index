@@ -5,13 +5,13 @@
 
 ## 项目概述
 
-**Life Index** 是一个 Agent-first、local-first 的个人人生日志与检索系统。
+**Life Index** 是一个 Agent-Native、local-first 的个人人生日志与检索系统。
 
 - **CLI 原子工具**：write / search / edit / abstract / weather / index / backup
 - 用户通过自然语言 + Agent 调用 Python CLI 工具
 
 **核心理念**:
-- **Agent-first**：CLI 是 Agent 的母语。发挥 Agent 自然语言理解能力，仅在需要原子性/准确性时开发专用工具
+- **Agent-Native**：CLI 是 Agent 的母语。发挥 Agent 自然语言理解能力，仅在需要原子性/准确性时开发专用工具
 - **本地优先**：所有数据存储在 `~/Documents/Life-Index/`
 - **纯文本格式**：Markdown + YAML Frontmatter，永不过时
 
