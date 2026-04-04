@@ -6,6 +6,18 @@ This changelog records user-visible milestones for the v1.x CLI line.
 
 - No unreleased user-facing changes recorded yet.
 
+## [1.6.0] - 2026-04-05
+
+### What users get
+- Life Index (CLI Core) reaches a cleaner stabilization point before the GUI line begins formal development.
+- The default repository health signal is now easier to trust: functional tests, benchmark checks, and quality gates are clearly separated.
+
+### Included in this release
+- **CLI Core stabilization**: hardened search-related test coverage for clean CI environments, especially around semantic search fallback behavior.
+- **CI reliability cleanup**: split tests, quality checks, and benchmark runs into clearer workflows so hosted-runner noise no longer obscures core correctness.
+- **Release surface refinement**: aligned package version, bootstrap manifest version, and version-reporting tests for a clean v1.6.0 cut.
+- **Documentation refresh**: rewrote README / README.en narrative and positioning so the active CLI product surface is clearer to users and agents.
+
 ## [1.5.5] - 2026-03-29
 
 ### Fixed
