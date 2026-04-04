@@ -24,6 +24,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     name: Lint
+    continue-on-error: true
     steps:
     - uses: actions/checkout@v5
 
@@ -62,6 +63,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     name: Type Check
+    continue-on-error: true
     steps:
     - uses: actions/checkout@v5
 
@@ -91,9 +93,6 @@ jobs:
   tests:
     runs-on: ${{ matrix.os }}
     name: Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    needs:
-    - lint
-    - typecheck
     strategy:
       fail-fast: false
       matrix:

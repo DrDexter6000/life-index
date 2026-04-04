@@ -808,7 +808,10 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     result["related_candidates"], start=1
                 ):
                     candidate_lines.append(
-                        f"{index}. {candidate['rel_path']} | {candidate['date']} | {candidate['title']}"
+                        (
+                            f"{index}. {candidate['rel_path']} | "
+                            f"{candidate['date']} | {candidate['title']}"
+                        )
                     )
                 relation_lines = "\n".join(candidate_lines)
 
