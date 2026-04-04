@@ -284,9 +284,43 @@ def update_vector_index_simple(
         "updated": 0,
         "removed": 0,
         "total": 0,
+        "auto_rebuild_triggered": False,  # Task 1.1.2: version mismatch auto-rebuild flag
         "error": None,
         "backend": "simple_numpy",
     }
+
+    # Check if model version mismatch requires rebuild (Task 1.1.2)
+    from .embedding_backends import verify_model_integrity
+
+    model_name = EMBEDDING_MODEL_NAME
+    cache_dir = CACHE_DIR
+
+    integrity_result = verify_model_integrity(model_name, cache_dir)
+
+    if incremental and integrity_result.needs_rebuild:
+        # Auto-trigger rebuild on version mismatch
+        incremental = False
+        result["auto_rebuild_triggered"] = True
+
+        # Extract version info for clear logging
+        meta_file = cache_dir / model_name.replace("/", "_") / "model_meta.json"
+        if meta_file.exists():
+            try:
+                import json
+
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                old_version = meta.get("version", "unknown")
+                new_version = EMBEDDING_MODEL_VERSION
+                print(
+                    f"Embedding model version changed ({old_version} → {new_version}). "
+                    f"Auto-rebuilding vector index..."
+                )
+            except Exception:
+                print(
+                    f"Auto-rebuilding vector index due to: {integrity_result.message}"
+                )
+        else:
+            print("First-time use. Building initial vector index...")
 
     try:
         from .semantic_search import parse_journal_for_vec, get_file_hash
@@ -401,6 +435,12 @@ def update_vector_index_simple(
 
         result["total"] = len(index.vectors)
         result["success"] = True
+
+        # Update model metadata after successful rebuild (Task 1.1.2)
+        if result["auto_rebuild_triggered"] or not incremental:
+            from .embedding_backends import record_model_metadata
+
+            record_model_metadata(model_name, cache_dir)
 
     except Exception as e:
         result["error"] = str(e)

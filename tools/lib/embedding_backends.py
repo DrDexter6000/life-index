@@ -5,10 +5,26 @@ from __future__ import annotations
 import json
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .config import EMBEDDING_MODEL as MODEL_CONFIG, get_model_cache_dir
+
+
+@dataclass
+class ModelIntegrityResult:
+    """Result of model integrity verification (Task 1.1.3).
+
+    Attributes:
+        is_valid: True if model can be loaded safely
+        needs_rebuild: True if vector index must be rebuilt
+        message: Human-readable status message
+    """
+
+    is_valid: bool
+    needs_rebuild: bool
+    message: str
 
 
 def get_backend_name(model_config: dict[str, Any]) -> str:
@@ -23,11 +39,30 @@ def _normalize_embedding(vector: list[float]) -> list[float]:
     return [value / norm for value in vector]
 
 
-def verify_model_integrity(model_name: str, cache_dir: Path) -> tuple[bool, str]:
+def verify_model_integrity(model_name: str, cache_dir: Path) -> ModelIntegrityResult:
+    """
+    Verify model integrity and determine if rebuild is needed (Task 1.1.2, Task 1.1.3).
+
+    Args:
+        model_name: Name of the embedding model
+        cache_dir: Directory where model cache is stored
+
+    Returns:
+        ModelIntegrityResult with is_valid, needs_rebuild, and message fields
+
+    Semantic changes (Task 1.1.2):
+        - Missing meta_file → needs_rebuild=True (first-time use)
+        - Version mismatch → needs_rebuild=True (incompatible vectors)
+        - Hash mismatch → needs_rebuild=True (config changed)
+        - Exception → needs_rebuild=True (conservative fallback)
+    """
     meta_file = cache_dir / model_name.replace("/", "_") / "model_meta.json"
 
     if not meta_file.exists():
-        return True, "首次使用，将记录模型元数据"
+        # First-time use: need to build initial index
+        return ModelIntegrityResult(
+            is_valid=True, needs_rebuild=True, message="首次使用，将记录模型元数据"
+        )
 
     try:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
@@ -36,20 +71,28 @@ def verify_model_integrity(model_name: str, cache_dir: Path) -> tuple[bool, str]
 
         if expected_hash and expected_hash != MODEL_CONFIG.get("config_hash", ""):
             expected = str(MODEL_CONFIG.get("config_hash", ""))[:16]
-            return (
-                False,
-                f"模型配置哈希不匹配！预期：{expected}..., 实际：{expected_hash[:16]}...",
+            return ModelIntegrityResult(
+                is_valid=False,
+                needs_rebuild=True,
+                message=f"模型配置哈希不匹配！预期：{expected}..., 实际：{expected_hash[:16]}...",
             )
 
         if recorded_version != MODEL_CONFIG["version"]:
-            return (
-                False,
-                f"模型版本不一致！已记录：{recorded_version}, 当前配置：{MODEL_CONFIG['version']}",
+            # Version mismatch: incompatible vectors, must rebuild
+            return ModelIntegrityResult(
+                is_valid=False,
+                needs_rebuild=True,
+                message=f"模型版本不一致！已记录：{recorded_version}, 当前配置：{MODEL_CONFIG['version']}",
             )
 
-        return True, "模型完整性验证通过"
+        return ModelIntegrityResult(
+            is_valid=True, needs_rebuild=False, message="模型完整性验证通过"
+        )
     except Exception as e:
-        return False, f"验证模型完整性失败：{e}"
+        # Exception: conservative strategy, trigger rebuild
+        return ModelIntegrityResult(
+            is_valid=False, needs_rebuild=True, message=f"验证模型完整性失败：{e}"
+        )
 
 
 def record_model_metadata(model_name: str, cache_dir: Path) -> None:
@@ -127,12 +170,14 @@ class SharedEmbeddingModel:
             print(f"Loading embedding model: {model_name} via {backend}...")
             cache_dir.mkdir(parents=True, exist_ok=True)
 
-            is_valid, verify_msg = verify_model_integrity(model_name, cache_dir)
-            if not is_valid:
-                print(f"Warning: Model integrity check failed: {verify_msg}")
+            result = verify_model_integrity(model_name, cache_dir)
+            if not result.is_valid:
+                print(f"Warning: Model integrity check failed: {result.message}")
                 print(
                     "Warning: Will proceed with loading, but embeddings may be inconsistent."
                 )
+                if result.needs_rebuild:
+                    print("Warning: Vector index needs rebuild to ensure consistency.")
 
             self._model, self._backend = load_backend_model(MODEL_CONFIG, cache_dir)
 
