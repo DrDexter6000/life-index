@@ -8,6 +8,9 @@ from tools.edit_journal import edit_journal
 from tools.edit_journal.__main__ import main
 
 
+pytestmark = pytest.mark.critical
+
+
 def test_edit_journal_writes_frontmatter_and_body_with_triple_newline(
     tmp_path: Path,
 ) -> None:

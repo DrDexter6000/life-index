@@ -10,6 +10,7 @@ from unittest.mock import patch, MagicMock
 from tools.build_index import build_all, show_stats
 
 
+@pytest.mark.critical
 class TestBuildAll:
     """Tests for build_all function"""
 

@@ -52,6 +52,7 @@ DEFAULT_ENTITY_GRAPH = {
 }
 
 
+@pytest.mark.critical
 class TestHierarchicalSearch:
     """Tests for hierarchical_search function"""
 
