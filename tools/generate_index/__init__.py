@@ -87,9 +87,7 @@ def _aggregate_counts(journals: list[Dict[str, Any]], field: str) -> Dict[str, i
     return dict(counter.most_common())
 
 
-def _aggregate_scalar_counts(
-    journals: list[Dict[str, Any]], field: str
-) -> Dict[str, int]:
+def _aggregate_scalar_counts(journals: list[Dict[str, Any]], field: str) -> Dict[str, int]:
     counter: Counter[str] = Counter()
     for journal in journals:
         value = journal.get(field)
@@ -144,9 +142,7 @@ def _parse_index_frontmatter(file_path: Path) -> Dict[str, Any]:
     return parse_frontmatter(file_path) or {}
 
 
-def _read_month_summary(
-    year: int, month_dir: Path
-) -> tuple[list[Dict[str, Any]], Dict[str, Any]]:
+def _read_month_summary(year: int, month_dir: Path) -> tuple[list[Dict[str, Any]], Dict[str, Any]]:
     month = month_dir.name
     index_path = month_dir / f"index_{year}-{month}.md"
     metadata = _parse_index_frontmatter(index_path)
@@ -296,9 +292,7 @@ def collect_year_journals(year: int) -> list[Dict[str, Any]]:
     return journals
 
 
-def generate_monthly_index_content(
-    year: int, month: int, journals: list[Dict[str, Any]]
-) -> str:
+def generate_monthly_index_content(year: int, month: int, journals: list[Dict[str, Any]]) -> str:
     """Generate monthly index markdown."""
     metadata = _aggregate_month_metadata(year, month, journals)
     lines = [
@@ -408,9 +402,7 @@ def generate_root_index_content(
         "| 年份 | 条目 | 全部地点 | 全部主题 |",
         "|------|------|---------|---------|",
     ]
-    for summary in sorted(
-        yearly_summaries, key=lambda item: item["year"], reverse=True
-    ):
+    for summary in sorted(yearly_summaries, key=lambda item: item["year"], reverse=True):
         locations = ", ".join(summary.get("locations", [])) or "—"
         topics = ", ".join(summary.get("topics", [])) or "—"
         lines.append(
@@ -435,9 +427,7 @@ def generate_root_index_content(
     return "\n".join(lines)
 
 
-def generate_monthly_index(
-    year: int, month: int, dry_run: bool = False
-) -> Dict[str, Any]:
+def generate_monthly_index(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]:
     """Generate monthly index file."""
     result: Dict[str, Any] = {
         "success": False,
@@ -512,9 +502,7 @@ def generate_yearly_index(year: int, dry_run: bool = False) -> Dict[str, Any]:
                 journals.extend(fallback_journals)
                 monthly_summaries.append(summary)
 
-        result["journal_count"] = sum(
-            summary["entries"] for summary in monthly_summaries
-        )
+        result["journal_count"] = sum(summary["entries"] for summary in monthly_summaries)
 
         if result["journal_count"] == 0:
             result["success"] = True
