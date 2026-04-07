@@ -10,7 +10,9 @@
     "date_from": null,
     "date_to": null,
     "level": 3,
-    "semantic": true
+    "semantic": true,
+    "year": null,
+    "month": null
   },
   "l1_results": [
     {
