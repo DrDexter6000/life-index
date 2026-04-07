@@ -61,29 +61,74 @@ Life Index 的用户界面架构基于一个核心认知：
 
 ---
 
-## 2. 双管道并行检索架构
+## 2. 分布式索引树架构
+
+### 2.1 索引树结构
+
+索引文件与数据物理共存，每层目录携带自己的索引：
+
+```
+~/Documents/Life-Index/
+├── INDEX.md                              ← 根锚点（系统地图，<2KB）
+├── Journals/
+│   ├── 2026/
+│   │   ├── index_2026.md                 ← 年度索引：全量元数据聚合 + 月份指针
+│   │   ├── 01/
+│   │   │   ├── index_2026-01.md          ← 月度索引：逐条全量元数据 + 回顾 placeholder
+│   │   │   └── life-index_2026-01-05_001.md
+│   │   └── 03/
+│   │       ├── index_2026-03.md
+│   │       ├── life-index_2026-03-04_001.md
+│   │       └── report_2026-03.md         ← 月度叙事报告（Agent 生成）
+│   └── 2025/
+│       └── index_2025.md
+├── by-topic/                             ← 主题维度索引
+│   ├── 主题_work.md
+│   └── ...
+└── .index/                               ← 机器检索层（FTS5 + 向量 DB）
+```
+
+### 2.2 确定性边界线
+
+| 内容类型 | 归属工具 | 所在层级 |
+|---------|---------|---------|
+| 条目表格行 + frontmatter 聚合 | `generate_index`（确定性） | CLI Core |
+| 年度/月度回顾段 | `generate_report`（Agent 驱动） | Intelligence Layer |
+| by-topic 摘要文字 | `generate_index`（确定性） | CLI Core |
+
+`generate_index` 生成的文件中，叙事区域留 placeholder。`generate_report` 是 Agent 编排任务，不是 Python CLI 工具。
+
+### 2.3 渐进式元数据披露
+
+INDEX.md < index_YYYY.md < index_YYYY-MM.md
+
+每层索引是其覆盖时间段的元数据聚合体，Agent 阅读一个索引文件即可了解该阶段内容，无需逐条阅读日志。
+
+---
+
+## 3. 双管道并行检索架构
 
 **核心目的**: 逐层缩小候选集以节省 Agent 上下文 token 消耗。
 
 ```
-            ┌─────────────────────────────────────┐
-            │            用户查询                   │
-            └─────────┬───────────────┬─────────────┘
-                      │               │
-                ┌─────▼──────┐  ┌─────▼──────┐
-                │ Pipeline A │  │ Pipeline B │
-                │   关键词    │  │   语义     │
-                │            │  │            │
-                │ L1 filter  │  │  向量搜索   │
-│ L2 filter  │  │ (bge-m3)    │
-                │ L3 FTS5    │  │            │
-                └─────┬──────┘  └─────┬──────┘
-                      │               │
-                ┌─────▼───────────────▼──────┐
-                │    RRF 融合 (k=60)          │
-                └────────────┬───────────────┘
-                             │
-                        最终排序结果
+                    用户查询
+                      │
+              L0: 索引树预过滤（可选）
+              --year / --month / --topic
+              缩小候选集为布尔集（不产生分数）
+                      │
+                   ┌──┴───┐
+            ┌──────▼──────┐  ┌──────▼──────┐
+            │ Pipeline A  │  │ Pipeline B  │
+            │   关键词     │  │   语义      │
+            │ L1 filter   │  │ (bge-m3)    │
+            │ L2 filter   │  │ 向量搜索    │
+            │ L3 FTS5     │  │             │
+            └──────┬──────┘  └──────┬──────┘
+                   └────┬────┘
+              RRF 融合 (k=60)
+                      │
+                 最终排序结果
 ```
 
 | 层级 | 数据来源 | 返回内容 | 设计意图 |
@@ -165,16 +210,20 @@ tags: ["重构", "优化"]
 
 ```
 ~/Documents/Life-Index/           # 用户数据目录
+├── INDEX.md                      # 根锚点（系统地图）
 ├── Journals/                     # 日志文件存储
-│   └── YYYY/MM/                  # 按年月分层
-│       ├── life-index_YYYY-MM-DD_XXX.md
-│       └── monthly_report_YYYY-MM.md
-├── by-topic/                     # 主题索引
+│   └── YYYY/                     # 按年分层
+│       ├── index_YYYY.md         # 年度索引
+│       └── MM/                   # 按月分层
+│           ├── index_YYYY-MM.md  # 月度索引
+│           └── life-index_*.md   # 日志原文
+├── by-topic/                     # 主题维度索引
 │   ├── 主题_work.md
 │   ├── 项目_Life-Index.md
 │   └── 标签_重构.md
-└── attachments/                  # 附件存储
-    └── YYYY/MM/
+├── attachments/                  # 附件存储
+│   └── YYYY/MM/
+└── .index/                       # 机器检索层（FTS5 + 向量 DB）
 ```
 
 ---

@@ -83,7 +83,7 @@ IF data.length > 0:
 
 **命令**：
 ```bash
-python -m tools.generate_abstract --year {CURRENT_YEAR}
+python -m tools.generate_index --year {CURRENT_YEAR}
 ```
 
 **说明**：

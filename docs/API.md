@@ -185,7 +185,7 @@ python -m tools.write_journal --data '<json>'
 | topic | array | ❌ | 调用方补齐/LLM 提炼 | 主题分类（7类之一） |
 | project | string | ❌ | "" | 关联项目 |
 | tags | array | ❌ | [] | 标签 |
-| abstract | string | ❌ | 调用方补齐/LLM 提炼 | 摘要（≤100字，**Agent生成**） |
+| summary | string | ❌ | 调用方补齐/LLM 提炼 | 摘要（≤100字，**Agent生成**）；`abstract` 为向后兼容别名 |
 | links | array | ❌ | [] | 相关链接 |
 | related_entries | array | ❌ | [] | 关联日志相对路径（如 `Journals/2026/03/xxx.md`） |
 | attachments | array | ❌ | [] | 附件列表；输入阶段支持本地路径自动检测，也支持显式对象输入；写入后以 frontmatter `attachments` 作为唯一 SSOT |

@@ -87,19 +87,19 @@ IF data.length > 0:
 
 **保存位置**：
 ```
-~/Documents/Life-Index/Journals/{YEAR}/{MONTH}/monthly_report_{YEAR}-{MONTH}.md
+~/Documents/Life-Index/Journals/{YEAR}/{MONTH}/report_{YEAR}-{MONTH}.md
 ```
 
 **示例**：
 ```
-~/Documents/Life-Index/Journals/2026/03/monthly_report_2026-03.md
+~/Documents/Life-Index/Journals/2026/03/report_2026-03.md
 ```
 
 **⛔ STOP. 保存前验证**：
 ```
 验证清单：
 - [ ] 文件路径正确：{YEAR}/{MONTH}/ ✓
-- [ ] 文件名格式：monthly_report_{YEAR}-{MONTH}.md ✓
+- [ ] 文件名格式：report_{YEAR}-{MONTH}.md ✓
 - [ ] 内容格式：Markdown，包含所有必填部分 ✓
 ```
 
