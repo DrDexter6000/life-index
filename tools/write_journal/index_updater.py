@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..lib.config import JOURNALS_DIR, BY_TOPIC_DIR, get_index_prefixes
+from ..lib.errors import ErrorCode, create_error_response
 from ..lib.frontmatter import get_summary
 
 
@@ -188,7 +189,14 @@ def update_index(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]
 
     except Exception as e:
         result["success"] = False
-        result["error"] = str(e)
+        result.update(
+            create_error_response(
+                ErrorCode.INDEX_BUILD_FAILED,
+                f"Index tree update failed: {e}",
+                {"year": year, "month": month},
+                "Index update is non-blocking; next write or rebuild will retry",
+            )
+        )
 
     return result
 
