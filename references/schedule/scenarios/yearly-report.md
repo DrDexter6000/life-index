@@ -143,19 +143,19 @@ IF data.length > 0:
 
 **保存位置**：
 ```
-~/Documents/Life-Index/Journals/{YEAR}/12/yearly_report_{YEAR}.md
+~/Documents/Life-Index/Journals/{YEAR}/report_{YEAR}.md
 ```
 
 **示例**：
 ```
-~/Documents/Life-Index/Journals/2026/12/yearly_report_2026.md
+~/Documents/Life-Index/Journals/2026/report_2026.md
 ```
 
 **⛔ STOP. 保存前验证**：
 ```
 验证清单：
-- [ ] 文件路径正确：{YEAR}/12/ ✓
-- [ ] 文件名格式：yearly_report_{YEAR}.md ✓
+- [ ] 文件路径正确：{YEAR}/ ✓
+- [ ] 文件名格式：report_{YEAR}.md ✓
 - [ ] 内容格式：Markdown，包含所有必填部分 ✓
 - [ ] Token 预算：~3000 tokens ✓
 ```
