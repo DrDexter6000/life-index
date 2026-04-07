@@ -9,6 +9,7 @@ Life Index - Keyword Search Pipeline
 import logging
 import re
 import time
+from pathlib import Path
 from typing import Any
 
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
@@ -89,6 +90,7 @@ def run_keyword_pipeline(
     weather: str | None = None,
     use_index: bool = True,
     fts_min_relevance: int = FTS_MIN_RELEVANCE,
+    candidate_paths: set[str] | None = None,
 ) -> KeywordPipelineResult:
     """
     关键词搜索管道: L1 索引 → L2 元数据 → L3 FTS5 内容
@@ -112,6 +114,23 @@ def run_keyword_pipeline(
     """
     perf: dict[str, float] = {}
 
+    def _normalize_path(path_value: str) -> str:
+        return str(Path(path_value).resolve()).replace("\\", "/")
+
+    def _filter_candidate_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if candidate_paths is None:
+            return items
+        filtered: list[dict[str, Any]] = []
+        for item in items:
+            path_value = (
+                item.get("path")
+                or item.get("journal_route_path")
+                or item.get("rel_path")
+            )
+            if path_value and _normalize_path(str(path_value)) in candidate_paths:
+                filtered.append(item)
+        return filtered
+
     # L1: 索引过滤
     l1_start = time.time()
     l1_results: list[dict] = []
@@ -129,8 +148,11 @@ def run_keyword_pipeline(
         for r in l1_results
         if r["path"] not in seen and not seen.add(r["path"])  # type: ignore[func-returns-value]
     ]
+    l1_results = _filter_candidate_items(l1_results)
     perf["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms"
+    )
 
     # L2: 元数据过滤
     l2_start = time.time()
@@ -147,10 +169,17 @@ def run_keyword_pipeline(
         query=query,
     )
     l2_results = l2_response["results"]
+    l2_results = _filter_candidate_items(l2_results)
     l2_truncated = l2_response.get("truncated", False)
-    l2_total_available = l2_response.get("total_available", 0)
+    l2_total_available = (
+        len(l2_results)
+        if candidate_paths is not None
+        else l2_response.get("total_available", 0)
+    )
     perf["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms"
+    )
 
     # L3: FTS5 内容搜索
     l3_start = time.time()
@@ -213,13 +242,22 @@ def run_keyword_pipeline(
                     # content scan so body-only matches are not missed due to stale or
                     # incomplete index coverage.
                     if query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
-                        fallback_l3_results = search_l3_content(query, None)
+                        fallback_l3_results = search_l3_content(
+                            query,
+                            sorted(candidate_paths)
+                            if candidate_paths is not None
+                            else None,
+                        )
                         seen_paths = {
-                            str(item.get("journal_route_path") or item.get("path") or "")
+                            str(
+                                item.get("journal_route_path") or item.get("path") or ""
+                            )
                             for item in l3_results
                         }
                         for item in fallback_l3_results:
-                            key = str(item.get("journal_route_path") or item.get("path") or "")
+                            key = str(
+                                item.get("journal_route_path") or item.get("path") or ""
+                            )
                             if key and key not in seen_paths:
                                 l3_results.append(item)
                                 seen_paths.add(key)
@@ -227,16 +265,23 @@ def run_keyword_pipeline(
             except (ImportError, OSError) as e:
                 logger.debug(f"FTS error: {e}")
 
+        l3_results = _filter_candidate_items(l3_results)
+
         # 如果没有 FTS 结果，使用传统文件系统扫描
         if not l3_results:
             # IMPORTANT: when FTS is unavailable, fallback must search full corpus.
             # Restricting to L2-filtered candidates causes body-only keyword matches
             # (e.g. names appearing only in content) to be lost before L3 sees them.
-            l3_results = search_l3_content(query, None)
+            l3_results = search_l3_content(
+                query,
+                sorted(candidate_paths) if candidate_paths is not None else None,
+            )
             logger.debug(f"File scan found {len(l3_results)} results")
 
     perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms"
+    )
 
     return (
         l1_results,

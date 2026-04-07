@@ -8,6 +8,7 @@ Life Index - Semantic Search Pipeline
 
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from ..lib.search_constants import SEMANTIC_TOP_K_DEFAULT, SEMANTIC_MIN_SIMILARITY
@@ -60,6 +61,7 @@ def run_semantic_pipeline(
     semantic: bool = True,
     semantic_top_k: int = SEMANTIC_TOP_K_DEFAULT,
     semantic_min_similarity: float = SEMANTIC_MIN_SIMILARITY,
+    candidate_paths: set[str] | None = None,
 ) -> SemanticPipelineResult:
     """
     语义搜索管道
@@ -96,8 +98,18 @@ def run_semantic_pipeline(
         top_k=semantic_top_k,
         min_similarity=semantic_min_similarity,
     )
+    if candidate_paths is not None:
+        sem_results = [
+            item
+            for item in sem_results
+            if item.get("path")
+            and str(Path(str(item["path"])).resolve()).replace("\\", "/")
+            in candidate_paths
+        ]
     perf["semantic_time_ms"] = round((time.time() - sem_start) * 1000, 2)
-    logger.info(f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms"
+    )
     status_perf, semantic_available, semantic_note = _build_semantic_status(
         runtime_status, sem_results
     )
