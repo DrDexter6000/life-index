@@ -293,7 +293,7 @@ class E2ETestRunner:
                     all_passed = False
                     errors.append(f"Step {step.get('step')}: {result.get('error')}")
 
-            elif action == "generate_abstract":
+            elif action in ("generate_abstract", "generate_index"):
                 result = self._test_generate_abstract(
                     step.get("period"), step.get("value"), step.get("expected", {})
                 )
@@ -481,8 +481,8 @@ class E2ETestRunner:
     def _test_generate_abstract(
         self, period: Optional[str], value: Optional[str], expected: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Test generate_abstract tool."""
-        cmd = [sys.executable, "-m", "tools.generate_abstract", "--json"]
+        """Test generate_index tool."""
+        cmd = [sys.executable, "-m", "tools.generate_index", "--json"]
 
         if period == "month" and value:
             cmd.extend(["--month", str(value)])

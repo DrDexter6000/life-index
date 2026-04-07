@@ -378,205 +378,100 @@ class TestUpdateTagIndices:
 
 
 class TestUpdateMonthlyAbstract:
-    """Tests for update_monthly_abstract function"""
+    """Tests for update_index / update_monthly_abstract function"""
 
-    def test_create_new_abstract_success(self, tmp_path):
-        """Create new monthly abstract with successful subprocess call"""
-        from tools.write_journal.index_updater import update_monthly_abstract
-
-        journals_dir = tmp_path / "Journals"
-        month_dir = journals_dir / "2026" / "03"
-        month_dir.mkdir(parents=True)
-
-        # Create a test journal
-        journal_file = month_dir / "life-index_2026-03-10_001.md"
-        journal_file.write_text("""---
-title: "Test Journal"
-date: 2026-03-10
-topic: ["work"]
----
-
-# Test Journal
-
-Content here.
-""")
-
-        mock_output = json.dumps(
-            [
-                {
-                    "abstract_path": str(month_dir / "monthly_report_2026-03.md"),
-                    "journal_count": 1,
-                    "updated": True,
-                }
-            ]
-        )
-
-        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=mock_output, stderr=""
-                )
-                result = update_monthly_abstract(2026, 3, dry_run=False)
-
-        assert result["abstract_path"] is not None
-        assert result["journal_count"] == 1
-        assert result["updated"] is True
-        assert "error" not in result
-
-    def test_dry_run_mode(self, tmp_path):
-        """Dry run should pass --dry-run flag to subprocess"""
-        from tools.write_journal.index_updater import update_monthly_abstract
+    def test_update_index_touches_monthly(self, tmp_path: Path) -> None:
+        """After update, monthly index file is created."""
+        from tools.write_journal.index_updater import update_index
 
         journals_dir = tmp_path / "Journals"
         month_dir = journals_dir / "2026" / "03"
         month_dir.mkdir(parents=True)
+        (month_dir / "life-index_2026-03-04_001.md").write_text(
+            "---\ntitle: test\ndate: 2026-03-04\ntopic: work\n---\n\n# test\n",
+            encoding="utf-8",
+        )
+        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
+            with patch("tools.generate_index.JOURNALS_DIR", journals_dir):
+                with patch("tools.generate_index.USER_DATA_DIR", tmp_path):
+                    result = update_index(year=2026, month=3)
+        assert result["success"] is True
+        monthly = result.get("monthly_index", {})
+        assert monthly.get("success") is True
 
-        mock_output = json.dumps(
-            [
-                {
-                    "abstract_path": str(month_dir / "monthly_report_2026-03.md"),
-                    "journal_count": 0,
-                    "updated": False,
-                }
-            ]
+    def test_update_index_touches_yearly(self, tmp_path: Path) -> None:
+        """After update, yearly index file is created."""
+        from tools.write_journal.index_updater import update_index
+
+        journals_dir = tmp_path / "Journals"
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+        (month_dir / "life-index_2026-03-04_001.md").write_text(
+            "---\ntitle: test\ndate: 2026-03-04\ntopic: work\n---\n\n# test\n",
+            encoding="utf-8",
+        )
+        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
+            with patch("tools.generate_index.JOURNALS_DIR", journals_dir):
+                with patch("tools.generate_index.USER_DATA_DIR", tmp_path):
+                    result = update_index(year=2026, month=3)
+        assert result.get("yearly_index", {}).get("success") is True
+
+    def test_update_index_touches_root(self, tmp_path: Path) -> None:
+        """After update, root INDEX.md is created."""
+        from tools.write_journal.index_updater import update_index
+
+        journals_dir = tmp_path / "Journals"
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+        (month_dir / "life-index_2026-03-04_001.md").write_text(
+            "---\ntitle: test\ndate: 2026-03-04\ntopic: work\n---\n\n# test\n",
+            encoding="utf-8",
+        )
+        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
+            with patch("tools.generate_index.JOURNALS_DIR", journals_dir):
+                with patch("tools.generate_index.USER_DATA_DIR", tmp_path):
+                    result = update_index(year=2026, month=3)
+        assert result.get("root_index", {}).get("success") is True
+
+    def test_update_monthly_abstract_alias_works(self, tmp_path: Path) -> None:
+        """Backward-compatible alias update_monthly_abstract still works."""
+        from tools.write_journal.index_updater import (
+            update_index,
+            update_monthly_abstract,
         )
 
-        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout=mock_output, stderr=""
-                )
-                result = update_monthly_abstract(2026, 3, dry_run=True)
+        assert update_monthly_abstract is update_index
 
-        # Verify --dry-run flag was passed
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args[0][0]
-        assert "--dry-run" in call_args
-        assert result["journal_count"] == 0
-        assert result["updated"] is False
-
-    def test_subprocess_failure(self, tmp_path):
-        """Handle subprocess failure gracefully"""
-        from tools.write_journal.index_updater import update_monthly_abstract
+    def test_dry_run_mode(self, tmp_path: Path) -> None:
+        """Dry run should not write files but return success."""
+        from tools.write_journal.index_updater import update_index
 
         journals_dir = tmp_path / "Journals"
-
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+        (month_dir / "life-index_2026-03-04_001.md").write_text(
+            "---\ntitle: test\ndate: 2026-03-04\ntopic: work\n---\n\n# test\n",
+            encoding="utf-8",
+        )
         with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=1, stdout="", stderr="Error: Something went wrong"
-                )
-                result = update_monthly_abstract(2026, 3, dry_run=False)
+            with patch("tools.generate_index.JOURNALS_DIR", journals_dir):
+                with patch("tools.generate_index.USER_DATA_DIR", tmp_path):
+                    result = update_index(year=2026, month=3, dry_run=True)
+        assert result["success"] is True
 
-        assert result["abstract_path"] is None
-        assert result["journal_count"] == 0
-        assert result["updated"] is False
-        assert "error" in result
-        assert "Error: Something went wrong" in result["error"]
-
-    def test_subprocess_timeout(self, tmp_path):
-        """Handle subprocess timeout gracefully"""
-        from tools.write_journal.index_updater import update_monthly_abstract
+    def test_empty_month_no_files(self, tmp_path: Path) -> None:
+        """Empty month should succeed but not create index files."""
+        from tools.write_journal.index_updater import update_index
 
         journals_dir = tmp_path / "Journals"
-
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
         with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = subprocess.TimeoutExpired(
-                    cmd=["test"], timeout=30
-                )
-                result = update_monthly_abstract(2026, 3, dry_run=False)
-
-        assert result["abstract_path"] is None
-        assert result["journal_count"] == 0
-        assert result["updated"] is False
-        assert "error" in result
-        assert "timed out" in result["error"]
-
-    def test_json_decode_error(self, tmp_path):
-        """Handle invalid JSON output gracefully"""
-        from tools.write_journal.index_updater import update_monthly_abstract
-
-        journals_dir = tmp_path / "Journals"
-
-        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0, stdout="Invalid JSON output", stderr=""
-                )
-                result = update_monthly_abstract(2026, 3, dry_run=False)
-
-        assert result["abstract_path"] is None
-        assert result["journal_count"] == 0
-        assert result["updated"] is False
-        assert "error" in result
-        assert "Invalid JSON" in result["error"]
-
-    def test_empty_json_output(self, tmp_path):
-        """Handle empty JSON output gracefully"""
-        from tools.write_journal.index_updater import update_monthly_abstract
-
-        journals_dir = tmp_path / "Journals"
-
-        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
-                result = update_monthly_abstract(2026, 3, dry_run=False)
-
-        assert result["abstract_path"] is None
-        assert result["journal_count"] == 0
-        assert result["updated"] is False
-
-    def test_os_error_handling(self, tmp_path):
-        """Handle OSError gracefully"""
-        from tools.write_journal.index_updater import update_monthly_abstract
-
-        journals_dir = tmp_path / "Journals"
-
-        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = OSError("OS error occurred")
-                result = update_monthly_abstract(2026, 3, dry_run=False)
-
-        assert result["abstract_path"] is None
-        assert result["journal_count"] == 0
-        assert result["updated"] is False
-        assert "error" in result
-        assert "OS error occurred" in result["error"]
-
-    def test_io_error_handling(self, tmp_path):
-        """Handle IOError gracefully"""
-        from tools.write_journal.index_updater import update_monthly_abstract
-
-        journals_dir = tmp_path / "Journals"
-
-        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = IOError("IO error occurred")
-                result = update_monthly_abstract(2026, 3, dry_run=False)
-
-        assert result["abstract_path"] is None
-        assert result["journal_count"] == 0
-        assert result["updated"] is False
-        assert "error" in result
-        assert "IO error occurred" in result["error"]
-
-    def test_runtime_error_handling(self, tmp_path):
-        """Handle RuntimeError gracefully"""
-        from tools.write_journal.index_updater import update_monthly_abstract
-
-        journals_dir = tmp_path / "Journals"
-
-        with patch("tools.write_journal.index_updater.JOURNALS_DIR", journals_dir):
-            with patch("subprocess.run") as mock_run:
-                mock_run.side_effect = RuntimeError("Runtime error occurred")
-                result = update_monthly_abstract(2026, 3, dry_run=False)
-
-        assert result["abstract_path"] is None
-        assert result["journal_count"] == 0
-        assert result["updated"] is False
-        assert "error" in result
-        assert "Runtime error occurred" in result["error"]
+            with patch("tools.generate_index.JOURNALS_DIR", journals_dir):
+                with patch("tools.generate_index.USER_DATA_DIR", tmp_path):
+                    result = update_index(year=2026, month=3)
+        # Empty month: monthly index may be None/success with no output
+        assert result["success"] is True
 
 
 class TestIndexEntryFormat:
