@@ -4,17 +4,23 @@ Life Index - Write Journal Tool - Index Updater
 索引更新模块
 """
 
-import json
 import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..lib.config import JOURNALS_DIR, BY_TOPIC_DIR, get_index_prefixes
+from ..lib.frontmatter import get_summary
 
-# Define write_journal directory for subprocess calls
-WRITE_JOURNAL_DIR = Path(__file__).parent
+
+def _build_entry(data: Dict[str, Any], journal_path: Path) -> str:
+    """Build a by-topic entry line with optional summary."""
+    date_str = data.get("date", "")[:10]
+    title = data.get("title", "无标题")
+    rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
+    summary = get_summary(data) or ""
+    if summary:
+        return f"- [{date_str}] [{title}]({rel_path}) — {summary}"
+    return f"- [{date_str}] [{title}]({rel_path})"
 
 
 def _sanitize_index_name(value: str) -> str:
@@ -35,7 +41,9 @@ def build_index_filename(kind: str, value: str) -> str:
     return f"{prefix}{safe_value}.md"
 
 
-def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> List[Path]:
+def update_topic_index(
+    topic: Any, journal_path: Path, data: Dict[str, Any]
+) -> List[Path]:
     """更新主题索引文件 - 支持单个主题或主题列表"""
     if not topic:
         return []
@@ -48,12 +56,7 @@ def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> 
     else:
         return []
 
-    # 获取可配置的前缀
-    date_str = data.get("date", "")[:10]
-    title = data.get("title", "无标题")
-    rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
-
-    entry = f"- [{date_str}] [{title}]({rel_path})"
+    entry = _build_entry(data, journal_path)
 
     updated = []
     for t in topics:
@@ -77,7 +80,9 @@ def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> 
     return updated
 
 
-def update_project_index(project: str, journal_path: Path, data: Dict[str, Any]) -> Optional[Path]:
+def update_project_index(
+    project: str, journal_path: Path, data: Dict[str, Any]
+) -> Optional[Path]:
     """更新项目索引文件"""
     if not project:
         return None
@@ -86,11 +91,7 @@ def update_project_index(project: str, journal_path: Path, data: Dict[str, Any])
     BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
     index_file = BY_TOPIC_DIR / build_index_filename("project", project)
 
-    date_str = data.get("date", "")[:10]
-    title = data.get("title", "无标题")
-    rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
-
-    entry = f"- [{date_str}] [{title}]({rel_path})"
+    entry = _build_entry(data, journal_path)
 
     if index_file.exists():
         content = index_file.read_text(encoding="utf-8")
@@ -105,7 +106,9 @@ def update_project_index(project: str, journal_path: Path, data: Dict[str, Any])
     return index_file
 
 
-def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]) -> List[Path]:
+def update_tag_indices(
+    tags: List[str], journal_path: Path, data: Dict[str, Any]
+) -> List[Path]:
     """更新标签索引文件"""
     updated = []
 
@@ -117,11 +120,7 @@ def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]
         BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
         index_file = BY_TOPIC_DIR / build_index_filename("tag", str(tag))
 
-        date_str = data.get("date", "")[:10]
-        title = data.get("title", "无标题")
-        rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
-
-        entry = f"- [{date_str}] [{title}]({rel_path})"
+        entry = _build_entry(data, journal_path)
 
         if index_file.exists():
             content = index_file.read_text(encoding="utf-8")
@@ -138,72 +137,64 @@ def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]
     return updated
 
 
-def update_monthly_abstract(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]:
+def update_index(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]:
     """
-    更新月度摘要文件（调用 generate_abstract.py 工具）
+    Update index tree after journal write.
+
+    Touches 3 files:
+    1. index_YYYY-MM.md — monthly index
+    2. index_YYYY.md — yearly index
+    3. INDEX.md — root anchor
 
     Args:
-        year: 年份
-        month: 月份
-        dry_run: 是否为模拟运行
+        year: Year
+        month: Month
+        dry_run: Preview mode
 
     Returns:
         {
-            "abstract_path": str,
-            "journal_count": int,
-            "updated": bool
+            "success": bool,
+            "monthly_index": dict,
+            "yearly_index": dict,
+            "root_index": dict,
         }
     """
-    result: Dict[str, Any] = {
-        "abstract_path": None,
-        "journal_count": 0,
-        "updated": False,
-    }
+    from ..generate_index import (
+        generate_monthly_index,
+        generate_yearly_index,
+        generate_root_index,
+    )
 
-    month_str = f"{year}-{month:02d}"
-
-    # 构建命令
-    cmd = [
-        sys.executable,
-        "-m",
-        "tools.generate_abstract",
-        "--month",
-        month_str,
-        "--json",
-    ]
-    if dry_run:
-        cmd.append("--dry-run")
+    result: Dict[str, Any] = {"success": True}
 
     try:
-        # 调用 generate_abstract 模块
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-        )
+        # 1. Monthly index
+        monthly = generate_monthly_index(year=year, month=month, dry_run=dry_run)
+        result["monthly_index"] = monthly
 
-        if proc.returncode == 0 and proc.stdout:
-            try:
-                output = json.loads(proc.stdout)
-                if output and len(output) > 0:
-                    data = output[0]
-                    result["abstract_path"] = data.get("abstract_path")
-                    result["journal_count"] = data.get("journal_count", 0)
-                    result["updated"] = data.get("updated", False)
-            except json.JSONDecodeError as e:
-                result["error"] = f"Invalid JSON output: {e}"
-        else:
-            result["error"] = proc.stderr or f"Command failed with return code {proc.returncode}"
+        # 2. Yearly index
+        yearly = generate_yearly_index(year=year, dry_run=dry_run)
+        result["yearly_index"] = yearly
 
-    except subprocess.TimeoutExpired:
-        result["error"] = "Command timed out after 30 seconds"
-    except (OSError, IOError, RuntimeError) as e:
+        # 3. Root index
+        root = generate_root_index(dry_run=dry_run)
+        result["root_index"] = root
+
+        # Mark degraded if any layer failed
+        if not all(
+            r.get("success", False) for r in [monthly, yearly, root] if r is not None
+        ):
+            result["success"] = False
+
+    except Exception as e:
+        result["success"] = False
         result["error"] = str(e)
 
     return result
+
+
+# Backward-compatible alias
+update_monthly_abstract = update_index
 
 
 def update_vector_index(journal_path: Path, data: Dict[str, Any]) -> bool:

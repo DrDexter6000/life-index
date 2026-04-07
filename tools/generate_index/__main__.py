@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Life Index - Abstract Generator - CLI Entry Point
-摘要生成工具（月度/年度）
+Life Index - Index Generator - CLI Entry Point
+索引生成工具（月度/年度）
 """
 
 import argparse
 import json
 import sys
 
-from . import generate_monthly_abstract, generate_yearly_abstract
+from . import generate_monthly_abstract, generate_yearly_abstract, rebuild_index_tree
 from ..lib.config import JOURNALS_DIR, ensure_dirs
 from ..lib.logger import get_logger
 
@@ -17,34 +17,36 @@ logger = get_logger(__name__)
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Life Index 摘要生成工具（月度/年度）",
+        description="Life Index 索引生成工具（月度/年度）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # 生成月度摘要
-    python -m tools.generate_abstract --month 2026-03
-    python -m tools.generate_abstract --month 2026-03 --dry-run
+    # 生成月度索引
+    python -m tools.generate_index --month 2026-03
+    python -m tools.generate_index --month 2026-03 --dry-run
 
-    # 生成年度摘要
-    python -m tools.generate_abstract --year 2026
-    python -m tools.generate_abstract --year 2026 --dry-run
+    # 生成年度索引
+    python -m tools.generate_index --year 2026
+    python -m tools.generate_index --year 2026 --dry-run
 
-    # 批量生成全年月度摘要
-    python -m tools.generate_abstract --year 2026 --all-months
+    # 批量生成全年月度索引
+    python -m tools.generate_index --year 2026 --all-months
 
-    # 同时生成年度和指定月度摘要
-    python -m tools.generate_abstract --year 2026 --month 2026-03
+    # 同时生成年度和指定月度索引
+    python -m tools.generate_index --year 2026 --month 2026-03
         """,
     )
 
-    parser.add_argument("--month", type=str, help="生成月度摘要，格式: YYYY-MM (如 2026-03)")
+    parser.add_argument(
+        "--month", type=str, help="生成月度索引，格式: YYYY-MM (如 2026-03)"
+    )
 
-    parser.add_argument("--year", type=int, help="生成年度摘要，格式: YYYY (如 2026)")
+    parser.add_argument("--year", type=int, help="生成年度索引，格式: YYYY (如 2026)")
 
     parser.add_argument(
         "--all-months",
         action="store_true",
-        help="与 --year 一起使用，批量生成全年各月的月度摘要",
+        help="与 --year 一起使用，批量生成全年各月的月度索引",
     )
 
     parser.add_argument(
@@ -52,15 +54,20 @@ Examples:
     )
 
     parser.add_argument("--json", action="store_true", help="输出结果为 JSON 格式")
+    parser.add_argument("--rebuild", action="store_true", help="重建全部索引树")
 
     args = parser.parse_args()
     ensure_dirs()
 
     # 验证参数
-    if not args.month and not args.year:
+    if not args.rebuild and not args.month and not args.year:
         parser.error("请指定 --month 或 --year 参数")
 
     results = []
+
+    if args.rebuild:
+        logger.info("重建全部索引树")
+        results.append(rebuild_index_tree(dry_run=args.dry_run))
 
     # 生成月度摘要
     if args.month:
