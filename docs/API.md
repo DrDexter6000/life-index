@@ -465,6 +465,8 @@ python -m tools.search_journals [options]
 | semantic-weight | float | ❌ | 0.4 | 语义搜索权重 (0-1) |
 | fts-weight | float | ❌ | 0.6 | FTS 搜索权重 (0-1) |
 | limit | int | ❌ | 10 | 返回结果数量限制 |
+| year | int | ❌ | - | L0 预过滤：限定年份（如 2026），先缩小候选集再进入搜索管道 |
+| month | int | ❌ | - | L0 预过滤：限定月份（需配合 --year） |
 
 ### 返回值
 
@@ -640,33 +642,52 @@ python -m tools.query_weather --location "<location>" [options]
 
 ---
 
-## generate_abstract
+## generate_index
+
+> ⚡ 别名：`life-index abstract`（向后兼容）
 
 ### 端点
 
 ```bash
-python -m tools.generate_abstract [options]
+python -m tools.generate_index [options]
+life-index generate-index [options]
 ```
 
 ### 参数
 
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| month | string | ❌ | - | 生成月度摘要 (YYYY-MM) |
-| year | int | ❌ | - | 生成年度摘要 (YYYY) |
-| all-months | flag | ❌ | false | 与 year 一起使用，批量生成全年 |
+| month | string | ❌ | - | 生成月度索引 (YYYY-MM)，输出 `index_YYYY-MM.md` |
+| year | int | ❌ | - | 生成年度索引 (YYYY)，输出 `index_YYYY.md` |
+| all-months | flag | ❌ | false | 与 year 一起使用，批量生成全年月度索引 |
+| rebuild | flag | ❌ | false | 全量重建三层索引树（月→年→根） |
 | dry-run | flag | ❌ | false | 预览模式 |
 
 ### 返回值
 
+月度索引：
+
 ```json
 {
+  "success": true,
   "type": "monthly",
   "year": 2026,
   "month": 3,
-  "updated": true,
+  "output_path": "~/Documents/Life-Index/Journals/2026/03/index_2026-03.md",
   "journal_count": 15,
-  "message": "月度摘要已生成"
+  "message": "月度索引已生成"
+}
+```
+
+全量重建：
+
+```json
+{
+  "success": true,
+  "monthly_indexes_rebuilt": 12,
+  "yearly_indexes_rebuilt": 1,
+  "root_index_rebuilt": true,
+  "errors": []
 }
 ```
 
