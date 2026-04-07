@@ -326,7 +326,8 @@ def generate_monthly_index_content(
             "> *(由月度报告填写——`generate_index` 不生成此段)*",
             "",
             "---",
-            f"*Total: {len(journals)} entries · Last updated: {datetime.now().strftime('%Y-%m-%d')}*",
+            f"*Total: {len(journals)} entries · "
+            f"Last updated: {datetime.now().strftime('%Y-%m-%d')}*",
         ]
     )
     return "\n".join(lines)
@@ -366,7 +367,8 @@ def generate_yearly_index_content(
         locations = ", ".join(summary.get("locations", [])) or "—"
         tags = ", ".join(summary.get("notable_tags", [])) or "—"
         lines.append(
-            f"| [{month}]({summary['relative_path']}) | {summary['entries']} | {moods} | {locations} | {tags} |"
+            f"| [{month}]({summary['relative_path']}) "
+            f"| {summary['entries']} | {moods} | {locations} | {tags} |"
         )
 
     if not monthly_summaries:
@@ -412,7 +414,8 @@ def generate_root_index_content(
         locations = ", ".join(summary.get("locations", [])) or "—"
         topics = ", ".join(summary.get("topics", [])) or "—"
         lines.append(
-            f"| [{summary['year']}]({summary['relative_path']}) | {summary['entries']} | {locations} | {topics} |"
+            f"| [{summary['year']}]({summary['relative_path']}) "
+            f"| {summary['entries']} | {locations} | {topics} |"
         )
 
     lines.extend(["", "## 主题维度", ""])
@@ -425,7 +428,8 @@ def generate_root_index_content(
         [
             "",
             "---",
-            f"*Last updated: {datetime.now().strftime('%Y-%m-%d')} · Total entries: {total_entries}*",
+            f"*Last updated: {datetime.now().strftime('%Y-%m-%d')} "
+            f"· Total entries: {total_entries}*",
         ]
     )
     return "\n".join(lines)
