@@ -39,6 +39,10 @@ Examples:
 
     parser.add_argument("--query", help="搜索关键词")
     parser.add_argument("--topic", help="按主题过滤 (如 work, learn, life)")
+    parser.add_argument("--year", type=int, help="L0 prefilter: restrict to year")
+    parser.add_argument(
+        "--month", type=int, help="L0 prefilter: restrict to month (requires --year)"
+    )
     parser.add_argument("--project", help="按项目过滤")
     parser.add_argument("--tags", help="按标签过滤（逗号分隔多个）")
     parser.add_argument("--mood", help="按心情过滤（逗号分隔多个）")
@@ -126,6 +130,8 @@ Examples:
         date_to=args.date_to,
         location=args.location,
         weather=args.weather,
+        year=args.year,
+        month=args.month,
         level=args.level,
         use_index=not args.no_index,
         semantic=not args.no_semantic,

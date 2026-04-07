@@ -10,8 +10,10 @@ v1.2: 双管道并行搜索架构
 """
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..lib.entity_graph import load_entity_graph, resolve_entity
@@ -40,6 +42,91 @@ try:
     logger = get_logger("search_journals")
 except ImportError:
     logger = logging.getLogger("search_journals")
+
+
+_MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+
+
+def _normalize_candidate_path(path: Path) -> str:
+    return str(path.resolve()).replace("\\", "/")
+
+
+def _extract_candidate_path(link_target: str) -> Path | None:
+    cleaned = link_target.strip()
+    if not cleaned or cleaned.startswith(("http://", "https://", "#")):
+        return None
+
+    candidate = Path(cleaned)
+    if not candidate.is_absolute():
+        from ..lib.config import USER_DATA_DIR
+
+        candidate = USER_DATA_DIR / cleaned
+
+    return candidate.resolve()
+
+
+def _topic_index_path(topic: str) -> Path:
+    from ..lib.config import USER_DATA_DIR
+
+    return USER_DATA_DIR / "by-topic" / f"主题_{topic}.md"
+
+
+def build_l0_candidate_set(
+    *, year: int | None = None, month: int | None = None, topic: str | None = None
+) -> set[str] | None:
+    from ..lib.config import JOURNALS_DIR
+
+    candidate_sets: list[set[str]] = []
+
+    if year is not None:
+        if month is not None:
+            journal_paths = (JOURNALS_DIR / str(year) / f"{month:02d}").glob(
+                "life-index_*.md"
+            )
+        else:
+            journal_paths = (JOURNALS_DIR / str(year)).glob("**/life-index_*.md")
+        candidate_sets.append(
+            {_normalize_candidate_path(path) for path in journal_paths}
+        )
+
+    if topic:
+        topic_index = _topic_index_path(topic)
+        if topic_index.exists():
+            topic_paths: set[str] = set()
+            for link_target in _MARKDOWN_LINK_RE.findall(
+                topic_index.read_text(encoding="utf-8")
+            ):
+                candidate_path = _extract_candidate_path(link_target)
+                if candidate_path and candidate_path.name.startswith("life-index_"):
+                    topic_paths.add(_normalize_candidate_path(candidate_path))
+            candidate_sets.append(topic_paths)
+
+    if not candidate_sets:
+        return None
+
+    intersection = set(candidate_sets[0])
+    for candidate_set in candidate_sets[1:]:
+        intersection &= candidate_set
+    return intersection
+
+
+def _filter_results_by_candidates(
+    results: list[dict[str, Any]], candidate_paths: set[str] | None
+) -> list[dict[str, Any]]:
+    if candidate_paths is None:
+        return results
+
+    filtered_results: list[dict[str, Any]] = []
+    for item in results:
+        path_value = (
+            item.get("path") or item.get("journal_route_path") or item.get("rel_path")
+        )
+        if not path_value:
+            continue
+        normalized = _normalize_candidate_path(Path(str(path_value)))
+        if normalized in candidate_paths:
+            filtered_results.append(item)
+    return filtered_results
 
 
 def expand_query_with_entity_graph(query: str) -> str:
@@ -109,7 +196,9 @@ def expand_query_with_entity_graph(query: str) -> str:
             for entity in graph:
                 for alias in [entity["primary_name"], *entity.get("aliases", [])]:
                     if alias in replacements:
-                        replacements = replacements.replace(alias, expand_from_entity(entity))
+                        replacements = replacements.replace(
+                            alias, expand_from_entity(entity)
+                        )
             expanded_tokens.append(replacements)
 
     expanded = " ".join(expanded_tokens).strip()
@@ -214,6 +303,8 @@ def _search_level_2(
 def hierarchical_search(
     query: Optional[str] = None,
     topic: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
     project: Optional[str] = None,
     tags: Optional[List[str]] = None,
     mood: Optional[List[str]] = None,
@@ -250,6 +341,8 @@ def hierarchical_search(
         "query_params": {
             "query": query,
             "topic": topic,
+            "year": year,
+            "month": month,
             "project": project,
             "tags": tags,
             "mood": mood,
@@ -272,7 +365,9 @@ def hierarchical_search(
 
     if not semantic:
         result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
-        result["warnings"].append("semantic_disabled: 用户通过 --no-semantic 禁用语义搜索")
+        result["warnings"].append(
+            "semantic_disabled: 用户通过 --no-semantic 禁用语义搜索"
+        )
 
     expanded_query = expand_query_with_entity_graph(query) if query else query
     if expanded_query != query:
@@ -280,6 +375,7 @@ def hierarchical_search(
     query = expanded_query
 
     start_time = time.time()
+    candidate_paths = build_l0_candidate_set(year=year, month=month, topic=topic)
 
     # ── Level 1: 索引层（向后兼容，提前返回） ──
     if level == 1:
@@ -324,6 +420,7 @@ def hierarchical_search(
             weather=weather,
             use_index=use_index,
             fts_min_relevance=fts_min_relevance,
+            candidate_paths=candidate_paths,
         )
         future_semantic = executor.submit(
             run_semantic_pipeline,
@@ -333,6 +430,7 @@ def hierarchical_search(
             semantic=semantic,
             semantic_top_k=semantic_top_k,
             semantic_min_similarity=semantic_min_similarity,
+            candidate_paths=candidate_paths,
         )
 
         # 收集结果
@@ -344,7 +442,14 @@ def hierarchical_search(
             l2_total_available,
             kw_perf,
         ) = future_keyword.result()
-        semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
+        semantic_results, sem_perf, semantic_available, semantic_note = (
+            future_semantic.result()
+        )
+
+    l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
+    l2_results = _filter_results_by_candidates(l2_results, candidate_paths)
+    l3_results = _filter_results_by_candidates(l3_results, candidate_paths)
+    semantic_results = _filter_results_by_candidates(semantic_results, candidate_paths)
 
     # 填充结果
     result["l1_results"] = l1_results
@@ -380,7 +485,9 @@ def hierarchical_search(
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
+        result["merged_results"] = merge_and_rank_results(
+            l1_results, l2_results, l3_results, query
+        )
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
