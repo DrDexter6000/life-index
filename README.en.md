@@ -270,13 +270,16 @@ Life Index follows a strict *local-first* policy, with complete separation betwe
 
 ### The Foundation, Already Built
 
-**CLI Core v1.5** is live, stable, and in real daily use — not a prototype, not a demo. It's a system with 1,200+ unit tests, green CI, and deliberate, disciplined engineering:
+**CLI Core v1.6** is live, stable, and in real daily use — not a prototype, not a demo. It's a system with 1,516+ unit tests, green CI, and deliberate, disciplined engineering:
 
 | Capability | Status | Notes |
 |:---|:---:|:---|
 | Journal write / edit | ✅ | Structured Markdown + YAML metadata, auto weather/sentiment/entity extraction |
 | Dual-pipeline search | ✅ | Keyword (FTS5) + semantic (bge-m3) in parallel, fused via RRF |
-| Entity graph | ✅ | Alias resolution for people/places/projects, relationship inference |
+| Entity graph + quality audit | ✅ | Alias resolution for people/places/projects, relationship inference, duplicate/orphan detection + Agent interview remediation |
+| Schema migration | ✅ | Chain migration framework, deterministic field backfill + Agent semantic enrichment collaboration |
+| Piggyback event notifications | ✅ | Zero cron, zero processes — event reminders attached to CLI responses (writing streak, missing monthly report, etc.) |
+| Per-operation observability | ✅ | Every CLI operation includes trace_id + step-level timing + status diagnostics |
 | Structured signal system | ✅ | Agent-programmable state machine: enum results + recovery strategies |
 | Backup / integrity verification | ✅ | Encrypted backup + data consistency checks |
 | Cross-platform | ✅ | Windows / macOS / Linux, Python 3.11+ |
@@ -467,6 +470,9 @@ python3 -m venv .venv
 | Search (keyword + semantic) | `life-index search --query "keyword"` |
 | Keyword-only search | `life-index search --query "keyword" --no-semantic` |
 | Backup data | `life-index backup --dest <backup-dir>` |
+| Schema migration (preview) | `life-index migrate --dry-run` |
+| Schema migration (execute) | `life-index migrate --apply` |
+| Entity quality audit | `life-index entity --audit` |
 | Dev-mode invocation | `python -m tools.search_journals --query "keyword"` |
 | Run unit tests | `python -m pytest tests/unit/ -v` |
 

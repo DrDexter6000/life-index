@@ -271,13 +271,16 @@ Life Index 采用「本地优先」和「数据与程序完全分离」策略：
 
 ### 已经建好的地基
 
-**CLI Core v1.5** 已稳定运行，不是原型，不是 demo——这是一个经过 1200+ 单元测试、CI 全绿、真实日常使用的系统：
+**CLI Core v1.6** 已稳定运行，不是原型，不是 demo——这是一个经过 1516+ 单元测试、CI 全绿、真实日常使用的系统：
 
 | 核心能力 | 状态 | 说明 |
 |:---|:---:|:---|
 | 日志写入 / 编辑 | ✅ | 结构化 Markdown + YAML 元数据，自动天气/情感/实体标注 |
 | 双管道检索 + L0 预过滤 | ✅ | 关键词 (FTS5) + 语义 (bge-m3) 并行，RRF 融合排序，索引树可选预过滤 |
-| 实体图谱 | ✅ | 人物/地点/项目别名消解，支持关系推理 |
+| 实体图谱 + 质量审计 | ✅ | 人物/地点/项目别名消解，关系推理，重复/孤立实体检测 + Agent 访谈修复 |
+| Schema 迁移 | ✅ | 链式迁移框架，确定性字段补齐 + Agent 语义回填协作 |
+| 搭便车事件通知 | ✅ | 零 cron、零进程，CLI 响应内附带事件提醒（连续未记日志、月报缺失等） |
+| 操作级可观测性 | ✅ | 每次 CLI 操作附带 trace_id + 分步耗时 + 状态诊断 |
 | 结构化信号系统 | ✅ | Agent 可编程的状态机：枚举式结果码 + 恢复策略 |
 | 数据备份 / 完整性验证 | ✅ | 加密备份 + 数据一致性校验 |
 | 跨平台 | ✅ | Windows / macOS / Linux，Python 3.11+ |
@@ -467,6 +470,9 @@ python3 -m venv .venv
 | 生成索引树（月/年/根） | `life-index generate-index --month 2026-03` |
 | 全量重建索引树 | `life-index generate-index --rebuild` |
 | 备份数据 | `life-index backup --dest <backup-dir>` |
+| Schema 迁移（预览） | `life-index migrate --dry-run` |
+| Schema 迁移（执行） | `life-index migrate --apply` |
+| Entity 质量审计 | `life-index entity --audit` |
 | 开发者调用 | `python -m tools.search_journals --query "关键词"` |
 | 运行单元测试 | `python -m pytest tests/unit/ -v` |
 
