@@ -11,6 +11,7 @@ import sys
 from .core import hierarchical_search
 from ..lib.config import ensure_dirs
 from ..lib.paths import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.trace import Trace
 
 
 def _emit_json(payload: dict) -> None:
@@ -129,26 +130,28 @@ Examples:
     )
 
     # 执行搜索
-    result = hierarchical_search(
-        query=args.query,
-        topic=args.topic,
-        project=args.project,
-        tags=tags,
-        mood=mood,
-        people=people,
-        date_from=args.date_from,
-        date_to=args.date_to,
-        location=args.location,
-        weather=args.weather,
-        year=args.year,
-        month=args.month,
-        level=args.level,
-        use_index=not args.no_index,
-        semantic=not args.no_semantic,
-        semantic_weight=args.semantic_weight,
-        fts_weight=args.fts_weight,
-        explain=args.explain,  # Task 2.1
-    )
+    with Trace("search") as trace:
+        with trace.step("hierarchical_search"):
+            result = hierarchical_search(
+                query=args.query,
+                topic=args.topic,
+                project=args.project,
+                tags=tags,
+                mood=mood,
+                people=people,
+                date_from=args.date_from,
+                date_to=args.date_to,
+                location=args.location,
+                weather=args.weather,
+                year=args.year,
+                month=args.month,
+                level=args.level,
+                use_index=not args.no_index,
+                semantic=not args.no_semantic,
+                semantic_weight=args.semantic_weight,
+                fts_weight=args.fts_weight,
+                explain=args.explain,  # Task 2.1
+            )
 
     # 应用 limit
     if args.limit and "merged_results" in result:
@@ -192,6 +195,7 @@ Examples:
                     item["read_error"] = str(e)
 
     # 输出结果
+    result["_trace"] = trace.to_dict()
     _emit_json(result)
 
     sys.exit(0 if result.get("success") else 1)
