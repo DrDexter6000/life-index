@@ -326,6 +326,20 @@ On top of the stable CLI Core, Life Index is building modular higher-level featu
 
 > 🔨 In development &nbsp; 🔭 Future roadmap
 
+### GUI Experience Layer: In Development
+
+CLI Core is the foundation; the GUI is the building you see. Life Index's GUI Experience Layer is being developed in a separate repository, with a design language called **"Soul Shrine · 灵魂神龛"** — a blend of Monument Valley's meditative aesthetics and classical East Asian literati sensibility.
+
+<p align="center">
+  <img src="./assets/GUI_prototype.png" alt="GUI Experience Layer Preview" width="700">
+  <br>
+  <em>GUI Experience Layer prototype — "The Core" dashboard</em>
+</p>
+
+<p align="center">
+  <a href="https://raw.githack.com/DrDexter6000/life-index/main/assets/GUI_prototype.html"><strong>🔗 Open the interactive prototype in your browser</strong></a>
+</p>
+
 ### Who You Are Decides How You Use It
 
 Life Index isn't one product with three "editions" — CLI, Agent, and GUI are three **interaction modes**, each for different people:

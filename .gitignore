@@ -60,6 +60,7 @@ fts_index/
 
 # ----- 开发阶段文档 -----
 docs/.dev-archive/
+/.archive/
 
 # ----- 内部战略与开发文档（不公开）-----
 .strategy/
@@ -74,6 +75,9 @@ credentials.json
 *.pem
 *.key
 .sisyphus/
+.sisyphus-runtime-check.json
+.sisyphus-verify-shot.json
+.sisyphus_inline_png_glows.py
 docs/archive/
 
 # ----- OpenCode 工具文件 -----
@@ -89,3 +93,6 @@ docs/archive/
 tailwindcss.exe
 node_modules/
 package-lock.json
+
+# ----- 本地备份 / 原型临时文件 -----
+*.backup
