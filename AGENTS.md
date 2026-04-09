@@ -2,6 +2,9 @@
 
 > 本文档为 Life Index 项目开发、为 AI 编码代理提供项目上下文。
 > **最后更新**: 2026-03-31 | **版本**: v2.0 | **状态**: 活跃维护
+> **任何 Agent 接手 CLI 开发时，必须先阅读 `.strategy/strategy.md` 与 `.strategy/ROADMAP.md`，禁止跳过共享战略文档直接开始开发。**
+
+> **CLI / GUI 共享规则**：所有高层战略、路线图、阶段进展统一记录在共享 `.strategy/` 中；CLI 侧不得维护一份独立平行战略文档。
 
 ## 项目概述
 
@@ -32,11 +35,15 @@
 | `AGENT_ONBOARDING.md` | 安装与初始化指南 | 面向 Agent 的安装流程 |
 | `docs/ARCHITECTURE.md` | 架构设计、核心原则 | 技术 SSOT |
 | `docs/API.md` | 工具 API 接口文档 | 参数、错误码、返回值 SSOT |
+| `.strategy/strategy.md` | 双产品线战略枢纽 | **任何 CLI / GUI 开发前优先阅读** |
+| `.strategy/ROADMAP.md` | CLI + GUI 综合路线图 | 双产品线统一规划与 progress 记录 |
 | `tools/lib/AGENTS.md` | 共享库开发指南 | `lib/` 模块约定 |
 | `pyproject.toml` | 项目配置 | 依赖、版本、入口点 |
 | `bootstrap-manifest.json` | Bootstrap authority | Onboarding 必须先刷新此文件 |
 | `references/schedule/SCHEDULE.md` | 定时任务规范 | Agent cron 任务指南 |
 | `docs/archive/` | 历史文档 | **不要主动阅读** |
+
+> **共享战略文档说明**：`.strategy/` 现为 Projects 级共享目录（canonical hub），通过 NTFS junction 挂载到 `life-index` 与 `life-index_gui`。CLI 与 GUI 两条线的战略、路线图、阶段进度统一在此管理，避免开发脱轨。
 
 ---
 
