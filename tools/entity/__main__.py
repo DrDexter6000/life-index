@@ -26,6 +26,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--add")
     parser.add_argument("--resolve")
     parser.add_argument("--update", action="store_true")
+    parser.add_argument("--audit", action="store_true")
     parser.add_argument("--id", dest="entity_id")
     parser.add_argument("--add-alias", dest="add_alias")
     args = parser.parse_args(argv)
@@ -36,7 +37,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.list_entities:
         results = entities
         if args.entity_type:
-            results = [entity for entity in entities if entity["type"] == args.entity_type]
+            results = [
+                entity for entity in entities if entity["type"] == args.entity_type
+            ]
         _print({"success": True, "data": results, "error": None})
         return
 
@@ -72,6 +75,17 @@ def main(argv: list[str] | None = None) -> None:
                 _print({"success": True, "data": entity, "error": None})
                 return
         _print({"success": False, "data": None, "error": "Entity not found"})
+        return
+
+    if args.audit:
+        from tools.entity.audit import audit_entity_graph
+        from tools.lib.paths import JOURNALS_DIR
+
+        report = audit_entity_graph(
+            graph_path,
+            journals_dir=JOURNALS_DIR if JOURNALS_DIR.exists() else None,
+        )
+        _print({"success": True, "data": report, "error": None})
         return
 
     parser.print_help()
