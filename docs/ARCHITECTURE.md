@@ -173,17 +173,25 @@ tags: ["重构", "优化"]
 
 ### ADR-004: MCP 迁移评估
 
-**决策**: 暂不迁移到 MCP，保持当前 CLI 架构。
+**决策**: 不迁移到 MCP，保持当前 CLI + SKILL.md 架构。
 
 **原因**:
-- 收益/成本比低：~10 小时工作量换取的体验提升对个人用户不显著
-- MCP 协议仍处于快速发展期
-- 当前 CLI 方案在低频场景下完全胜任
 
-**后续行动**:
-- 短期：保持 CLI 架构，关注 MCP 发展
-- 中期（6-12 月）：若 MCP 成为标准，考虑可选 MCP Server
-- 长期：若平台全面转向 MCP，再启动迁移
+1. **上下文经济性**：MCP 要求在连接建立时一次性向 Agent 暴露所有 tool schema（tool listing），这意味着即使 Agent 只想写一篇日记，也必须加载全部 12 个工具的完整参数定义。相比之下，当前 SKILL.md 方案支持**渐进式披露**——Agent 按需阅读对应 workflow 段落，仅加载当前任务所需的工具签名和约束，大幅降低上下文和 token 负载。
+2. **私人日志系统的场景适配**：Life Index 是单用户、低频调用的个人系统，MCP 的多客户端连接管理、工具发现协议等能力属于"大炮打蚊子"。当前 CLI JSON-in/JSON-out 的原子操作模式完全胜任。
+3. **收益/成本比低**：~10 小时工作量换取的体验提升对单用户不显著。
+4. **协议稳定性**：MCP 协议仍处于快速发展期，过早绑定可能引入不必要的迁移成本。
+
+**与 MCP 方案的对比**:
+
+| 维度 | MCP | 当前 CLI + SKILL.md |
+|------|-----|---------------------|
+| 工具发现 | 连接时全量暴露 | Agent 按需阅读，渐进披露 |
+| 上下文开销 | 高（全部 schema 常驻） | 低（仅加载当前 workflow） |
+| 适用场景 | 多客户端、高频、工具市场 | 单用户、低频、深度集成 |
+| 维护成本 | 需维护 MCP Server 进程 | 零额外进程 |
+
+**结论**: 对 Life Index 而言，渐进式披露的 token 节约 > MCP 的协议便利。除非出现强制要求 MCP 的 Agent 宿主（且无 CLI fallback），否则不迁移。
 
 ---
 
@@ -236,6 +244,37 @@ tags: ["重构", "优化"]
 | 项目代码目录 | 程序代码 | 工具、配置、文档 |
 
 **两者物理隔离，不可混淆。**
+
+---
+
+## 7. Round 6 基础设施增强
+
+### 7.1 Schema 迁移
+
+- `life-index migrate --dry-run` — 扫描 schema 版本分布
+- `life-index migrate --apply` — 确定性迁移（补字段 + bump version）+ needs_agent 输出
+- 迁移链框架：`register_migration(from, to)` 装饰器注册，`run_migration_chain()` 执行
+
+### 7.2 搭便车事件通知
+
+- 在 CLI 响应中增加 `events` 字段（零 cron、零进程、零外部依赖）
+- 5 个内置事件：`no_journal_streak`、`monthly_review_due`、`entity_audit_due`、`schema_migration_available`、`index_stale`
+- 检测总耗时 < 50ms（只做文件 stat，不读内容）
+
+### 7.3 Entity 质量审计
+
+- `life-index entity --audit` — CLI 检测 + Agent 访谈协作模式
+- 检测：重复实体、孤立实体、频繁共现无关系
+- Agent 逐项访谈用户决定 merge/archive/add_relationship
+
+### 7.4 操作级可观测性
+
+- 所有 CLI 响应中增加 `_trace` 字段（trace_id + command + total_ms + steps）
+- 上下文管理器模式：`with Trace("write") as t: t.step("validate")`
+
+### 7.5 不做什么
+
+- 不做 WAL/checkpoint、Vector 增量更新、Agent Memory、Multi-Agent、Plugin、MCP
 
 ---
 

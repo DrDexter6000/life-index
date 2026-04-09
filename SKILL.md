@@ -387,6 +387,23 @@ success: true, index_status: degraded
 | 首次安装 | `.venv/bin/life-index index` 初始化索引 |
 | 手动编辑过日志文件 | `.venv/bin/life-index index` 增量更新 |
 
+### 工作流6: Schema 迁移
+
+1. **扫描**：`life-index migrate --dry-run` 查看版本分布和缺失字段
+2. **执行**：`life-index migrate --apply` 自动迁移 + 获取 `needs_agent` 列表
+3. **语义回填**：Agent 逐条处理 `needs_agent`（读取正文 → LLM 提取 abstract/mood/themes → `life-index edit` 更新）
+
+### 工作流7: Entity 审计
+
+1. **检测**：`life-index entity --audit` 获取质量报告
+2. **访谈**：Agent 逐项询问用户（合并？归档？添加别名？添加关系？）
+3. **执行**：Agent 调用 `life-index entity --update` 应用用户决策
+
+### 响应中的 events 和 _trace
+
+- **events**：CLI 响应中的 `events` 字段包含搭便车事件通知（如"连续7天未记日志"）。Agent 自主决定是否向用户提及。
+- **_trace**：CLI 响应中的 `_trace` 字段包含操作级诊断数据（trace_id、耗时、步骤状态）。用于调试性能问题。
+
 ---
 
 ## Related Documentation
