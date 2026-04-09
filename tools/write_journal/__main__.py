@@ -15,6 +15,7 @@ from .prepare import prepare_journal_metadata
 from ..lib.config import ensure_dirs
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.paths import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.trace import Trace
 
 logger = logging.getLogger(__name__)
 
@@ -74,26 +75,33 @@ def _cmd_write(args: argparse.Namespace) -> int:
             f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr
         )
 
-    result = write_journal(data, dry_run=args.dry_run)
+    with Trace("write") as trace:
+        with trace.step("write_journal"):
+            result = write_journal(data, dry_run=args.dry_run)
 
-    # Task 1.2.2: Auto-index after successful write
-    if result["success"] and args.auto_index and not args.dry_run:
-        from ..build_index import build_all
+        # Task 1.2.2: Auto-index after successful write
+        if result["success"] and args.auto_index and not args.dry_run:
+            from ..build_index import build_all
 
-        try:
-            index_result = build_all(incremental=True, fts_only=False)
-            result["index_result"] = index_result
+            with trace.step("auto_index") as idx_step:
+                try:
+                    index_result = build_all(incremental=True, fts_only=False)
+                    result["index_result"] = index_result
 
-            # If index failed, add warning but keep write success
-            if not index_result.get("success"):
-                result["index_warning"] = index_result.get(
-                    "error", "Index update failed"
-                )
-        except Exception as exc:
-            logger.warning("write --auto-index failed: %s", exc)
-            result["index_result"] = {"success": False, "error": str(exc)}
-            result["index_warning"] = str(exc)
+                    if not index_result.get("success"):
+                        idx_step.set_status(
+                            "degraded", index_result.get("error", "Index update failed")
+                        )
+                        result["index_warning"] = index_result.get(
+                            "error", "Index update failed"
+                        )
+                except Exception as exc:
+                    logger.warning("write --auto-index failed: %s", exc)
+                    idx_step.set_status("error", str(exc))
+                    result["index_result"] = {"success": False, "error": str(exc)}
+                    result["index_warning"] = str(exc)
 
+    result["_trace"] = trace.to_dict()
     _emit_json(result)
     return 0 if result["success"] else 1
 

@@ -10,6 +10,7 @@ import sys
 
 from . import build_all, show_stats
 from ..lib.config import ensure_dirs
+from ..lib.trace import Trace
 
 
 def main() -> None:
@@ -40,7 +41,9 @@ Examples:
 
     parser.add_argument("--fts-only", action="store_true", help="Only update FTS index")
 
-    parser.add_argument("--vec-only", action="store_true", help="Only update vector index")
+    parser.add_argument(
+        "--vec-only", action="store_true", help="Only update vector index"
+    )
 
     parser.add_argument("--stats", action="store_true", help="Show index statistics")
 
@@ -54,8 +57,15 @@ Examples:
         return
 
     # 执行索引构建
-    result = build_all(incremental=not args.rebuild, fts_only=args.fts_only, vec_only=args.vec_only)
+    with Trace("index") as trace:
+        with trace.step("build_all"):
+            result = build_all(
+                incremental=not args.rebuild,
+                fts_only=args.fts_only,
+                vec_only=args.vec_only,
+            )
 
+    result["_trace"] = trace.to_dict()
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     elif not result["success"]:

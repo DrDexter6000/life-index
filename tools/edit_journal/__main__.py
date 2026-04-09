@@ -12,6 +12,7 @@ from pathlib import Path
 from . import edit_journal
 from ..lib.config import USER_DATA_DIR, ensure_dirs
 from ..lib.logger import get_logger
+from ..lib.trace import Trace
 
 logger = get_logger(__name__)
 
@@ -54,7 +55,9 @@ Examples:
         """,
     )
 
-    parser.add_argument("--journal", required=True, help="日志文件路径（相对或绝对路径）")
+    parser.add_argument(
+        "--journal", required=True, help="日志文件路径（相对或绝对路径）"
+    )
 
     # Frontmatter 字段设置
     parser.add_argument("--set-title", help="设置标题")
@@ -87,9 +90,13 @@ Examples:
     # 内容编辑
     content_group = parser.add_mutually_exclusive_group()
     content_group.add_argument("--append-content", help="追加内容到正文末尾")
-    content_group.add_argument("--replace-content", help="替换整个正文内容（保留 frontmatter）")
+    content_group.add_argument(
+        "--replace-content", help="替换整个正文内容（保留 frontmatter）"
+    )
 
-    parser.add_argument("--dry-run", action="store_true", help="模拟运行，不实际写入文件")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="模拟运行，不实际写入文件"
+    )
 
     parser.add_argument("--verbose", action="store_true", help="输出详细日志")
 
@@ -121,18 +128,26 @@ Examples:
         frontmatter_updates["weather"] = args.set_weather
     if args.set_mood is not None:
         normalized = args.set_mood.replace("，", ",")
-        frontmatter_updates["mood"] = [m.strip() for m in normalized.split(",") if m.strip()]
+        frontmatter_updates["mood"] = [
+            m.strip() for m in normalized.split(",") if m.strip()
+        ]
     if args.set_people is not None:
         normalized = args.set_people.replace("，", ",")
-        frontmatter_updates["people"] = [p.strip() for p in normalized.split(",") if p.strip()]
+        frontmatter_updates["people"] = [
+            p.strip() for p in normalized.split(",") if p.strip()
+        ]
     if args.set_tags is not None:
         normalized = args.set_tags.replace("，", ",")
-        frontmatter_updates["tags"] = [t.strip() for t in normalized.split(",") if t.strip()]
+        frontmatter_updates["tags"] = [
+            t.strip() for t in normalized.split(",") if t.strip()
+        ]
     if args.set_project is not None:
         frontmatter_updates["project"] = args.set_project
     if args.set_topic is not None:
         normalized = args.set_topic.replace("，", ",")
-        frontmatter_updates["topic"] = [t.strip() for t in normalized.split(",") if t.strip()]
+        frontmatter_updates["topic"] = [
+            t.strip() for t in normalized.split(",") if t.strip()
+        ]
     if args.set_abstract is not None:
         frontmatter_updates["abstract"] = args.set_abstract
     if args.set_links is not None:
@@ -157,15 +172,18 @@ Examples:
     logger.debug(f"Frontmatter 更新：{list(frontmatter_updates.keys())}")
 
     # 执行编辑
-    result = edit_journal(
-        journal_path=journal_path,
-        frontmatter_updates=frontmatter_updates,
-        append_content=args.append_content,
-        replace_content=args.replace_content,
-        dry_run=args.dry_run,
-    )
+    with Trace("edit") as trace:
+        with trace.step("edit_journal"):
+            result = edit_journal(
+                journal_path=journal_path,
+                frontmatter_updates=frontmatter_updates,
+                append_content=args.append_content,
+                replace_content=args.replace_content,
+                dry_run=args.dry_run,
+            )
 
     # 输出结果（保持 JSON 输出到 stdout）
+    result["_trace"] = trace.to_dict()
     _emit_json(result)
 
     if result["success"]:
