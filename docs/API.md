@@ -55,6 +55,7 @@ python -m tools.{tool_name} --data '{json_data}'
 | 天气 | E04xx | API 失败、超时 |
 | 编辑 | E05xx | 日志不存在、冲突 |
 | 索引 | E06xx | 构建失败、损坏 |
+| 迁移 | E08xx | Schema 迁移相关错误 |
 
 
 ## 错误码格式
@@ -912,4 +913,89 @@ life-index version
 ### 说明
 
 - `/api/health` 与 `/api/runtime` 现在都可用于 Web onboarding / acceptance 时确认运行实例对应的 package version 与 bootstrap authority
+
+---
+
+## Round 6 新增能力
+
+### `life-index migrate` — Schema 迁移工具
+
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `--dry-run` | flag | true | 扫描并报告，不修改文件 |
+| `--apply` | flag | false | 执行确定性迁移 |
+| `--version` | int | latest | 目标 schema 版本 |
+| `--json` | flag | true | JSON 输出 |
+
+**dry-run 输出**：
+
+```json
+{
+  "total_scanned": 42,
+  "version_distribution": {"1": 5, "2": 37},
+  "needs_migration": 5,
+  "outdated_files": [{"path": "...", "current_version": 1, "missing_fields": ["sentiment_score", "themes", "entities"]}]
+}
+```
+
+**apply 输出**：
+
+```json
+{
+  "migrated_count": 5,
+  "already_current": 37,
+  "failed_count": 0,
+  "failed_files": [],
+  "needs_agent": [{"path": "...", "items": ["abstract/summary missing — needs Agent extraction"]}],
+  "deterministic_changes": [{"path": "...", "changes": ["added sentiment_score: null", "added themes: []", "added entities: []"]}]
+}
+```
+
+**错误码**：E0800（迁移路径不存在）、E0801（文件解析失败）、E0802（迁移执行失败）、E0803（文件写入失败）
+
+### `life-index entity --audit` — Entity 质量审计
+
+输出：
+
+```json
+{
+  "audit_date": "2026-04-09",
+  "total_entities": 42,
+  "issues": [
+    {"type": "possible_duplicate", "severity": "high", "entities": ["妈妈", "母亲"], "confidence": 0.9, "suggested_action": "merge"},
+    {"type": "orphan_entity", "severity": "medium", "entity_id": "p003", "suggested_action": "archive"}
+  ],
+  "summary": {"high": 1, "medium": 1, "low": 0}
+}
+```
+
+### Response: `events` 字段
+
+所有 CLI 命令的 JSON 响应均可包含 `events` 字段（搭便车事件通知）。
+
+| 事件类型 | 触发条件 | 严重级 |
+|---------|---------|--------|
+| `no_journal_streak` | 连续 7+ 天未记日志 | info |
+| `monthly_review_due` | 上月 report 文件缺失 | info |
+| `entity_audit_due` | entity_graph.yaml 30+ 天未修改 | low |
+| `schema_migration_available` | 存在旧 schema 版本日志 | info |
+| `index_stale` | 日志比索引更新 | low |
+
+### Response: `_trace` 字段
+
+运行时诊断数据（下划线前缀表示内部字段）。
+
+```json
+{
+  "_trace": {
+    "trace_id": "a1b2c3d4",
+    "command": "write",
+    "total_ms": 1823.5,
+    "steps": [
+      {"step": "write_journal", "ms": 1340.2, "status": "ok"},
+      {"step": "auto_index", "ms": 483.3, "status": "degraded", "detail": "vector index skipped"}
+    ]
+  }
+}
+```
 - agent 仍需区分：runtime health ≠ checkout freshness；但 runtime API 现在会显式暴露 freshness 相关元数据
