@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Embedding version mismatch auto-rebuild tests (RED phase).
 
-Tests for Task 1.1.1 from .strategy/v1.x/TDD.md:
+Tests for Task 1.1.1 from .strategy/cli/TDD.md:
 When embedding model version changes, incremental index should auto-rebuild
 to prevent mixing incompatible old/new vectors.
 
