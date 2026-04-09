@@ -546,12 +546,8 @@ Life Index is in an early, personally-driven stage. If the "personal life archiv
 
 ---
 
-<div align="center">
-
 > *"I wish our family could stay frozen in time when she was two — and yet I hope she grows up to see an even more beautiful world.*
 > *Anyway, little one, Dad misses you. Tuantuan, this one is for you."*
 >
 > *— from the very first Life Index entry, March 4, 2026, Lagos.*
 > *Not a record of her growth — a record of my love for her.*
-
-</div>
