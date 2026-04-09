@@ -7,7 +7,7 @@
 
 **Life Index** 是一个 Agent-Native、local-first 的个人人生日志与检索系统。
 
-- **CLI 原子工具**：write / search / edit / abstract / weather / index / backup
+- **CLI 原子工具**：write / search / edit / abstract / weather / index / backup / migrate
 - 用户通过自然语言 + Agent 调用 Python CLI 工具
 
 **核心理念**:
@@ -60,6 +60,9 @@ life-index weather --location "Lagos,Nigeria"
 life-index backup --dest "D:/Backups/Life-Index"
 life-index index           # 增量更新
 life-index index --rebuild # 全量重建
+life-index migrate --dry-run  # Schema 迁移预览
+life-index migrate --apply    # Schema 迁移执行
+life-index entity --audit     # Entity 质量审计
 life-index health          # 安装健康检查
 
 # 开发者模式（无需安装）
@@ -76,10 +79,12 @@ tools/                         # Core CLI/tool layer
 ├── write_journal/
 ├── search_journals/
 ├── edit_journal/
+├── entity/                    # 实体图谱 + 质量审计
 ├── generate_abstract/
 ├── build_index/
 ├── query_weather/
 ├── backup/
+├── migrate/                   # Schema 链式迁移（Round 6）
 ├── dev/                       # 开发/验收辅助工具
 └── lib/                       # 共享库（SSOT）→ 详见 tools/lib/AGENTS.md
 ```
