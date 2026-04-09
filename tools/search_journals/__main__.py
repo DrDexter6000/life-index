@@ -10,10 +10,20 @@ import sys
 
 from .core import hierarchical_search
 from ..lib.config import ensure_dirs
+from ..lib.paths import JOURNALS_DIR, USER_DATA_DIR
 
 
 def _emit_json(payload: dict) -> None:
     """Print JSON safely across Windows console encodings."""
+    # Attach piggyback events before emitting
+    from ..lib.events import detect_events
+    from ..lib.event_detectors import register_all_detectors
+
+    register_all_detectors()
+    context = {"journals_dir": JOURNALS_DIR, "data_dir": USER_DATA_DIR}
+    events = detect_events(context=context)
+    payload["events"] = [e.to_dict() for e in events]
+
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
         print(text)

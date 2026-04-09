@@ -307,6 +307,16 @@ def health_check() -> None:
             "issue_count": len(issues),
         },
     }
+
+    # Attach piggyback events
+    from tools.lib.events import detect_events
+    from tools.lib.event_detectors import register_all_detectors
+
+    register_all_detectors()
+    context = {"journals_dir": JOURNALS_DIR, "data_dir": USER_DATA_DIR}
+    events = detect_events(context=context)
+    result["events"] = [e.to_dict() for e in events]
+
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
