@@ -123,8 +123,20 @@ Upgrade handling rules:
 
 1. treat the existing checkout and user data as the baseline to preserve
 2. do not create a parallel clone if a canonical checkout already exists
-3. sync checkout → reinstall into `.venv` → rerun verification in this document
+3. sync checkout → reinstall into `.venv` → **check for schema migration** → rerun verification in this document
 4. do not claim success until freshness and health both pass
+
+#### Post-upgrade schema migration check
+
+After reinstall, check whether existing journals need schema migration:
+
+```bash
+.venv/bin/life-index migrate --dry-run
+```
+
+If `needs_migration > 0`:
+- Run `life-index migrate --apply` to apply deterministic field backfill
+- If the output includes `needs_agent` items, report these to the user — they require Agent-driven semantic enrichment (extracting abstract/mood/themes from content)
 
 #### Route C — Repair / Ambiguous State
 
@@ -152,7 +164,7 @@ Before starting, verify these requirements are met:
 |:---|:---|:---|
 | Python | `python3 --version` or `python --version` | 3.11+ |
 | Git | `git --version` | Any recent |
-| Disk space | ~200MB available | For code, venv, and embedding model |
+| Disk space | ~700MB available | For code, venv, and embedding model (torch ~190MB CPU-only, model ~80MB) |
 | Network | Internet connection | For cloning and model download |
 
 **Action**: Run the verification commands. If any fail, stop and report the missing prerequisite to the user.
@@ -223,6 +235,13 @@ python3 -m venv .venv
 
 **Linux/macOS/WSL**:
 ```bash
+.venv/bin/pip install -e .
+```
+
+**⚠️ WSL / headless Linux CPU-only optimization**:
+If the target machine has no GPU (common for agent environments), install the CPU-only version of torch first to skip ~2GB of CUDA dependencies:
+```bash
+.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
 .venv/bin/pip install -e .
 ```
 
@@ -319,6 +338,9 @@ After the required verification flow is complete, an **optional customization st
 - `virtual_env: "warning"` — Expected if running via full path
 - `sentence_transformers: "warning"` — Optional; keyword search remains available when semantic dependencies are unavailable
 
+**Post-Round 6 Note**:
+The health response may include an `events` array with piggyback notifications (e.g., writing streak reminders, schema migration suggestions). These are informational and do not indicate errors. You may surface relevant events to the user at your discretion.
+
 **Failure Handling**:
 - If `status: "unhealthy"`: Capture all issues and report to user
 - If `ModuleNotFoundError`: Venv not being used, return to Step 5
@@ -346,7 +368,10 @@ TODAY=$(date +%F)
   \"tags\": [\"setup\"],
   \"people\": [],
   \"project\": \"\",
-  \"links\": []
+  \"links\": [],
+  \"sentiment_score\": null,
+  \"themes\": [],
+  \"entities\": []
 }"
 ```
 
@@ -366,7 +391,10 @@ $json = @"
   "tags": ["setup"],
   "people": [],
   "project": "",
-  "links": []
+  "links": [],
+  "sentiment_score": null,
+  "themes": [],
+  "entities": []
 }
 "@
 $json | Out-File -FilePath "first-entry.json" -Encoding utf8
@@ -526,7 +554,7 @@ When handing off to `SCHEDULE.md`, keep the following distinctions explicit:
 
 ---
 
-## 8. Success Criteria Summary
+## 9. Success Criteria Summary
 
 | Step | Success Indicator |
 |:---|:---|
@@ -535,6 +563,7 @@ When handing off to `SCHEDULE.md`, keep the following distinctions explicit:
 | Install | "Successfully installed life-index" message |
 | Index | Command completes, model downloaded |
 | Health | `success: true`, `status` not "unhealthy" |
+| Schema Migration (upgrade only) | `migrate --dry-run` shows `needs_migration: 0` or user acknowledged `needs_agent` items |
 | First Write | `success: true`, `journal_path` returned |
 | First Search | `success: true`, `total` >= 1, entry found |
 | Optional Customization | User-approved personalization applied or explicitly skipped |
@@ -542,7 +571,7 @@ When handing off to `SCHEDULE.md`, keep the following distinctions explicit:
 
 ---
 
-## 9. Common Failure Handling
+## 10. Common Failure Handling
 
 ### ModuleNotFoundError
 
@@ -574,9 +603,14 @@ When handing off to `SCHEDULE.md`, keep the following distinctions explicit:
 **Cause**: Python version change or interrupted install
 **Fix**: Delete `.venv/` directory, recreate with `python3 -m venv .venv`, reinstall with `pip install -e .`
 
+### CUDA Dependencies Bloat on WSL/Linux
+
+**Cause**: `pip install -e .` pulls full CUDA toolkit (~2GB) via torch dependency on Linux
+**Fix**: On CPU-only environments, pre-install CPU-only torch first: `pip install torch --index-url https://download.pytorch.org/whl/cpu`, then `pip install -e .`
+
 ---
 
-## 10. Final Report Format
+## 11. Final Report Format
 
 Report back to the user using this exact structure:
 
@@ -642,7 +676,7 @@ Report back to the user using this exact structure:
 
 ---
 
-## 11. Guardrails (Strict)
+## 12. Guardrails (Strict)
 
 ### Do NOT:
 - Modify any files outside the installation workflow
@@ -669,7 +703,7 @@ Report back to the user using this exact structure:
 
 ---
 
-## 12. Data Locations Reference
+## 13. Data Locations Reference
 
 | Location | Path |
 |:---|:---|
@@ -680,7 +714,7 @@ Report back to the user using this exact structure:
 
 ---
 
-## 13. CLI Quick Reference
+## 14. CLI Quick Reference
 
 | Command | Purpose |
 |:---|:---|
@@ -692,9 +726,12 @@ Report back to the user using this exact structure:
 | `life-index edit --journal "..." --set-weather "..."` | Edit existing entry |
 | `life-index abstract --month YYYY-MM` | Generate monthly summary |
 | `life-index weather --location "..."` | Query weather for location |
+| `life-index migrate --dry-run` | Preview schema migration |
+| `life-index migrate --apply` | Execute schema migration |
+| `life-index entity --audit` | Entity graph quality audit |
 
 ---
 
-**Document Version**: 1.1
-**Last Updated**: 2026-03-26
+**Document Version**: 2.0
+**Last Updated**: 2026-04-09
 **Authority Chain**: `bootstrap-manifest.json` → `AGENT_ONBOARDING.md` / `README.md` → domain SSOT docs such as `SKILL.md`, `docs/API.md`, `docs/ARCHITECTURE.md`, `tools/lib/AGENTS.md`
