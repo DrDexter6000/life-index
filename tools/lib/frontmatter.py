@@ -108,7 +108,9 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
     return metadata, body
 
 
-def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dict[str, Any], str]:
+def _recover_legacy_content_frontmatter(
+    fm_content: str, body: str
+) -> Tuple[Dict[str, Any], str]:
     """Recover metadata/body from legacy malformed `content: "..."` frontmatter."""
     content_match = re.search(r'^content:\s*"', fm_content, re.MULTILINE)
     if not content_match:
@@ -128,7 +130,9 @@ def _recover_legacy_content_frontmatter(fm_content: str, body: str) -> Tuple[Dic
     recovered_body = content_block.strip()
     trailing_body = body.strip()
     if trailing_body:
-        recovered_body = f"{recovered_body}\n\n{trailing_body}" if recovered_body else trailing_body
+        recovered_body = (
+            f"{recovered_body}\n\n{trailing_body}" if recovered_body else trailing_body
+        )
 
     return metadata, recovered_body
 
@@ -170,7 +174,9 @@ def parse_journal_file(file_path: Path) -> Dict[str, Any]:
         abstract_match = re.search(r"\n\n([^#\n].*?)(?=\n\n|\Z)", body, re.DOTALL)
         if abstract_match:
             abstract = abstract_match.group(1).strip()[:100]
-            metadata["_abstract"] = abstract + "..." if len(abstract) == 100 else abstract
+            metadata["_abstract"] = (
+                abstract + "..." if len(abstract) == 100 else abstract
+            )
         else:
             metadata["_abstract"] = "(无摘要)"
 
@@ -189,14 +195,14 @@ def format_frontmatter(data: Dict[str, Any]) -> str:
     """
     lines = ["---"]
 
-    # 自动添加 schema_version（如果未提供）
-    if "schema_version" not in data:
-        lines.append(_format_field("schema_version", SCHEMA_VERSION))
+    # schema_version is always first, whether provided or not
+    sv = data.get("schema_version", SCHEMA_VERSION)
+    lines.append(_format_field("schema_version", sv))
 
     # 按标准顺序输出已知字段
     for key in FIELD_ORDER:
         if key == "schema_version":
-            continue  # 已处理或跳过
+            continue  # already handled above
         if key in data and data[key] is not None:
             value = data[key]
             lines.append(_format_field(key, value))
@@ -273,7 +279,9 @@ def format_journal_content(data: Dict[str, Any]) -> str:
         content_lines = content.splitlines()
         skip_first = False
         if title:
-            first_non_empty = next((line.strip() for line in content_lines if line.strip()), None)
+            first_non_empty = next(
+                (line.strip() for line in content_lines if line.strip()), None
+            )
             if first_non_empty:
                 # Strip leading '#' and whitespace for comparison
                 stripped = first_non_empty.lstrip("#").strip()
