@@ -61,5 +61,6 @@
     "semantic_time_ms": 4.0,
     "total_time_ms": 10.0
   },
-  "warnings": []
+  "warnings": [],
+  "entity_hints": []
 }
