@@ -118,7 +118,5 @@ def resolve_entity_cached(
 
         return result
     except Exception as exc:
-        logger.warning(
-            "Entity resolution degraded, YAML fallback failed (E1001): %s", exc
-        )
+        logger.warning("Entity resolution degraded, YAML fallback failed (E1001): %s", exc)
         return None

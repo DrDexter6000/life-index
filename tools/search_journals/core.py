@@ -84,22 +84,16 @@ def build_l0_candidate_set(
 
     if year is not None:
         if month is not None:
-            journal_paths = (JOURNALS_DIR / str(year) / f"{month:02d}").glob(
-                "life-index_*.md"
-            )
+            journal_paths = (JOURNALS_DIR / str(year) / f"{month:02d}").glob("life-index_*.md")
         else:
             journal_paths = (JOURNALS_DIR / str(year)).glob("**/life-index_*.md")
-        candidate_sets.append(
-            {_normalize_candidate_path(path) for path in journal_paths}
-        )
+        candidate_sets.append({_normalize_candidate_path(path) for path in journal_paths})
 
     if topic:
         topic_index = _topic_index_path(topic)
         if topic_index.exists():
             topic_paths: set[str] = set()
-            for link_target in _MARKDOWN_LINK_RE.findall(
-                topic_index.read_text(encoding="utf-8")
-            ):
+            for link_target in _MARKDOWN_LINK_RE.findall(topic_index.read_text(encoding="utf-8")):
                 candidate_path = _extract_candidate_path(link_target)
                 if candidate_path and candidate_path.name.startswith("life-index_"):
                     topic_paths.add(_normalize_candidate_path(candidate_path))
@@ -122,9 +116,7 @@ def _filter_results_by_candidates(
 
     filtered_results: list[dict[str, Any]] = []
     for item in results:
-        path_value = (
-            item.get("path") or item.get("journal_route_path") or item.get("rel_path")
-        )
+        path_value = item.get("path") or item.get("journal_route_path") or item.get("rel_path")
         if not path_value:
             continue
         normalized = _normalize_candidate_path(Path(str(path_value)))
@@ -212,9 +204,7 @@ def expand_query_with_entity_graph(query: str) -> str:
             for entity in graph:
                 for name in [entity["primary_name"], *entity.get("aliases", [])]:
                     if name in replacements:
-                        replacements = replacements.replace(
-                            name, _expand_entity_names(entity)
-                        )
+                        replacements = replacements.replace(name, _expand_entity_names(entity))
             expanded_tokens.append(replacements)
 
     expanded = " ".join(expanded_tokens).strip()
@@ -275,9 +265,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
     whole_match = resolve_via_runtime(query.strip(), view)
     if whole_match:
         reason = (
-            "primary_name_match"
-            if query.strip() == whole_match["primary_name"]
-            else "alias_match"
+            "primary_name_match" if query.strip() == whole_match["primary_name"] else "alias_match"
         )
         _add_hint(whole_match, query.strip(), reason)
         return hints
@@ -308,11 +296,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
         # Direct entity match
         matched = resolve_via_runtime(token, view)
         if matched:
-            reason = (
-                "primary_name_match"
-                if token == matched["primary_name"]
-                else "alias_match"
-            )
+            reason = "primary_name_match" if token == matched["primary_name"] else "alias_match"
             _add_hint(matched, token, reason)
 
     return hints
@@ -479,9 +463,7 @@ def hierarchical_search(
 
     if not semantic:
         result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
-        result["warnings"].append(
-            "semantic_disabled: 用户通过 --no-semantic 禁用语义搜索"
-        )
+        result["warnings"].append("semantic_disabled: 用户通过 --no-semantic 禁用语义搜索")
 
     # Round 7 Phase 1: Resolve entity hints before expansion
     entity_hints = resolve_query_entities(query) if query else []
@@ -560,9 +542,7 @@ def hierarchical_search(
             l2_total_available,
             kw_perf,
         ) = future_keyword.result()
-        semantic_results, sem_perf, semantic_available, semantic_note = (
-            future_semantic.result()
-        )
+        semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
 
     l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
     l2_results = _filter_results_by_candidates(l2_results, candidate_paths)
@@ -603,9 +583,7 @@ def hierarchical_search(
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(
-            l1_results, l2_results, l3_results, query
-        )
+        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)

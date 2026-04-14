@@ -106,8 +106,7 @@ def run_check(
                         "target": target,
                         "relation": rel.get("relation", ""),
                         "description": (
-                            f"Entity {entity['id']} references "
-                            f"non-existent target {target}"
+                            f"Entity {entity['id']} references " f"non-existent target {target}"
                         ),
                     }
                 )
@@ -151,9 +150,7 @@ def run_check(
 
     # Summary
     summary = {
-        "dangling_relationships": sum(
-            1 for i in issues if i["type"] == "dangling_relationship"
-        ),
+        "dangling_relationships": sum(1 for i in issues if i["type"] == "dangling_relationship"),
         "duplicate_lookups": sum(1 for i in issues if i["type"] == "duplicate_lookup"),
         "schema_issues": sum(1 for i in issues if i["type"] == "schema_issue"),
     }

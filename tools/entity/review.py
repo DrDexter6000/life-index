@@ -83,9 +83,11 @@ def build_review_queue(
                 "category": issue_type,
                 "description": issue.get("evidence") or issue.get("message", ""),
                 "action_choices": action_map.get(issue_type, ["skip"]),
-                "entity_ids": issue.get("entities", [])
-                if isinstance(issue.get("entities"), list)
-                else [issue.get("entity_id", "")],
+                "entity_ids": (
+                    issue.get("entities", [])
+                    if isinstance(issue.get("entities"), list)
+                    else [issue.get("entity_id", "")]
+                ),
                 "suggested_action": issue.get("suggested_action", ""),
             }
         )
@@ -150,8 +152,7 @@ def generate_preview(
                                 source["primary_name"],
                                 *source.get("aliases", []),
                             ]
-                            if a not in target.get("aliases", [])
-                            and a != target["primary_name"]
+                            if a not in target.get("aliases", []) and a != target["primary_name"]
                         ],
                     },
                 }
