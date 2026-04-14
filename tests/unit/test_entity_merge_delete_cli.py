@@ -9,6 +9,8 @@ Validates that:
 """
 
 from pathlib import Path
+import io
+import sys
 
 import pytest
 
@@ -157,6 +159,25 @@ class TestDeleteCLI:
         person_c = next(e for e in graph if e["id"] == "person-c")
         targets = [r["target"] for r in person_c.get("relationships", [])]
         assert "person-a" not in targets
+
+    def test_delete_uses_ascii_safe_json_on_narrow_stdout(
+        self, isolated_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Delete output should not crash on Windows-style non-UTF-8 stdout."""
+        from tools.entity.__main__ import main
+
+        _save_graph(_sample_graph(), isolated_data_dir)
+
+        buffer = io.BytesIO()
+        fake_stdout = io.TextIOWrapper(buffer, encoding="cp1252", errors="strict")
+        monkeypatch.setattr(sys, "stdout", fake_stdout)
+
+        main(["--delete", "--id", "person-a"])
+
+        fake_stdout.flush()
+        output = buffer.getvalue().decode("ascii")
+        assert "\\u5f20" in output or "\\u674e" in output
+        assert '"success": true' in output
 
     def test_delete_nonexistent_returns_error(self, isolated_data_dir: Path) -> None:
         from tools.entity.__main__ import main
