@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 import uuid
+from types import TracebackType
+from typing import Literal
 
 
 class TraceStep:
@@ -20,7 +22,12 @@ class TraceStep:
         self._start = time.monotonic()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> Literal[False]:
         self._end = time.monotonic()
         if exc_type is not None:
             self.status = "error"
@@ -45,13 +52,18 @@ class TraceStep:
 class _NoopStep:
     """Null-object step used when tracing is disabled."""
 
-    def __enter__(self):
+    def __enter__(self) -> _NoopStep:
         return self
 
-    def __exit__(self, *args) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> Literal[False]:
         return False
 
-    def set_status(self, *args) -> None:
+    def set_status(self, status: str, detail: str | None = None) -> None:
         pass
 
 
@@ -71,7 +83,12 @@ class Trace:
             self._start = time.monotonic()
         return self
 
-    def __exit__(self, *args) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> Literal[False]:
         if self.enabled:
             self._end = time.monotonic()
         return False

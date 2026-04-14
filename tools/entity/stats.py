@@ -79,14 +79,15 @@ def compute_stats(
             if target:
                 incoming[target] = incoming.get(target, 0) + 1
 
-    top_referenced = sorted(
-        [
-            {"entity_id": eid, "incoming_count": count}
-            for eid, count in incoming.items()
-        ],
-        key=lambda x: x["incoming_count"],
-        reverse=True,
-    )[:10]
+    top_referenced_items: list[tuple[str, int]] = list(incoming.items())
+    top_referenced = [
+        {"entity_id": eid, "incoming_count": count}
+        for eid, count in sorted(
+            top_referenced_items,
+            key=lambda item: item[1],
+            reverse=True,
+        )[:10]
+    ]
 
     # Top co-occurrence pairs (entities that reference each other)
     pair_counts: dict[frozenset[str], int] = {}
@@ -97,14 +98,15 @@ def compute_stats(
                 pair = frozenset([entity["id"], target])
                 pair_counts[pair] = pair_counts.get(pair, 0) + 1
 
-    top_cooccurrence = sorted(
-        [
-            {"entities": sorted(list(pair)), "cooccurrence": count}
-            for pair, count in pair_counts.items()
-        ],
-        key=lambda x: x["cooccurrence"],
-        reverse=True,
-    )[:10]
+    top_cooccurrence_items: list[tuple[frozenset[str], int]] = list(pair_counts.items())
+    top_cooccurrence = [
+        {"entities": sorted(list(pair)), "cooccurrence": count}
+        for pair, count in sorted(
+            top_cooccurrence_items,
+            key=lambda item: item[1],
+            reverse=True,
+        )[:10]
+    ]
 
     return {
         "success": True,

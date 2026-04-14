@@ -26,10 +26,10 @@ class Event:
     type: str
     severity: EventSeverity
     message: str
-    data: dict = field(default_factory=dict)
+    data: dict[str, object] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
-        result = {
+    def to_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
             "type": self.type,
             "severity": self.severity.value,
             "message": self.message,

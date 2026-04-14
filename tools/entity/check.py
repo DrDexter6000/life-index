@@ -16,7 +16,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from tools.lib.entity_graph import load_entity_graph
 from tools.lib.paths import resolve_user_data_dir
 
 try:
@@ -106,7 +105,10 @@ def run_check(
                         "entity_id": entity["id"],
                         "target": target,
                         "relation": rel.get("relation", ""),
-                        "description": f"Entity {entity['id']} references non-existent target {target}",
+                        "description": (
+                            f"Entity {entity['id']} references "
+                            f"non-existent target {target}"
+                        ),
                     }
                 )
 
