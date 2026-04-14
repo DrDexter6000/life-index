@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,15 @@ def _graph_path() -> Path:
 
 
 def _print(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, ensure_ascii=True, indent=2))
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+
+    try:
+        text.encode(encoding)
+    except UnicodeEncodeError:
+        text = json.dumps(payload, ensure_ascii=True, indent=2)
+
+    print(text)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -56,7 +65,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.list_entities:
         results = entities
         if args.entity_type:
-            results = [entity for entity in entities if entity["type"] == args.entity_type]
+            results = [
+                entity for entity in entities if entity["type"] == args.entity_type
+            ]
         _print({"success": True, "data": results, "error": None})
         return
 
@@ -137,11 +148,15 @@ def main(argv: list[str] | None = None) -> None:
             if args.export_format == "csv":
                 from tools.entity.review_io import export_review_csv
 
-                result = export_review_csv(output_path=output_path, graph_path=graph_path)
+                result = export_review_csv(
+                    output_path=output_path, graph_path=graph_path
+                )
             else:
                 from tools.entity.review_io import export_review_xlsx
 
-                result = export_review_xlsx(output_path=output_path, graph_path=graph_path)
+                result = export_review_xlsx(
+                    output_path=output_path, graph_path=graph_path
+                )
             _print(result)
             return
 
@@ -227,7 +242,9 @@ def main(argv: list[str] | None = None) -> None:
         for entity in entities:
             for rel in entity.get("relationships", []):
                 if rel["target"] == entity_id:
-                    refs.append({"entity_id": entity["id"], "relation": rel["relation"]})
+                    refs.append(
+                        {"entity_id": entity["id"], "relation": rel["relation"]}
+                    )
 
         # Remove entity
         entities = [e for e in entities if e["id"] != entity_id]
