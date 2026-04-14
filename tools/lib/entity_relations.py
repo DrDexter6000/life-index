@@ -15,8 +15,6 @@ forcibly updated. The helper + check work together to gently encourage normaliza
 
 from __future__ import annotations
 
-from typing import Any
-
 # Canonical relation → list of known aliases (Chinese + English)
 CANONICAL_RELATIONS: dict[str, list[str]] = {
     "spouse_of": ["wife", "husband", "老婆", "丈夫", "妻子", "老公", "配偶", "爱人"],

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
 
 from tools.lib.config import JOURNALS_DIR
 

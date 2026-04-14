@@ -187,7 +187,10 @@ def export_review_xlsx(
         return {
             "success": False,
             "data": None,
-            "error": "openpyxl not installed. Install with: pip install openpyxl. CSV export is always available.",
+            "error": (
+                "openpyxl not installed. Install with: pip install openpyxl. "
+                "CSV export is always available."
+            ),
         }
 
     from tools.entity.review import build_review_queue

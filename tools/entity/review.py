@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from tools.lib.entity_graph import load_entity_graph, save_entity_graph
-from tools.lib.entity_runtime import build_runtime_view
 from tools.lib.paths import USER_DATA_DIR
 
 try:
@@ -62,12 +61,6 @@ def build_review_queue(
 
     queue: list[dict[str, Any]] = []
     item_counter = 0
-
-    risk_map = {
-        "possible_duplicate": "high",
-        "orphan_entity": "medium",
-        "incomplete_relationship": "low",
-    }
 
     action_map = {
         "possible_duplicate": ["merge_as_alias", "keep_separate", "skip"],

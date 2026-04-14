@@ -157,7 +157,7 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "entities": [name_a, name_b],
                         "entity_ids": [entity_a["id"], entity_b["id"]],
                         "confidence": 0.7,
-                        "evidence": f"similar names: edit distance ≤ 1",
+                        "evidence": "similar names: edit distance ≤ 1",
                         "suggested_action": "merge",
                     }
                 )

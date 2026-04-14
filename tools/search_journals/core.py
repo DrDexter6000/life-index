@@ -16,11 +16,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..lib.entity_graph import load_entity_graph, resolve_entity
+from ..lib.entity_graph import load_entity_graph
 from ..lib.entity_runtime import (
-    EntityRuntimeView,
-    RELATION_PHRASE_PATTERNS,
-    ROLE_LABELS,
     build_runtime_view,
     resolve_via_runtime,
 )

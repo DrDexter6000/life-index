@@ -14,12 +14,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from tools.lib.entity_graph import load_entity_graph
 from tools.lib.entity_runtime import (
     EntityRuntimeView,
     build_runtime_view,
 )
-from tools.lib.entity_schema import EntityGraphValidationError
 
 try:
     from tools.lib.logger import get_logger
