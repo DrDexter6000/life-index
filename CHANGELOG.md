@@ -6,6 +6,19 @@ This changelog records user-visible milestones for the v1.x CLI line.
 
 - No unreleased user-facing changes recorded yet.
 
+## [1.6.5] - 2026-04-14
+
+### What users get
+- The Entity Graph now participates in real CLI flows instead of staying as a passive registry.
+- Agents and users can review, merge, delete, and inspect entities with a more operational maintenance surface.
+
+### Included in this release
+- **Entity runtime serving layer**: added fast runtime views for entity lookup, reverse alias mapping, and phrase-pattern expansion so write/search flows can consume entity knowledge directly.
+- **Write-time entity assistance**: journal creation now extracts entity candidates during write flows, making downstream entity review easier and more grounded in actual entries.
+- **Search hints and expansion v2**: search can surface `entity_hints` and broader expansion signals so recall improves without requiring exact wording.
+- **Entity review hub and maintenance commands**: added risk-prioritized review workflows plus merge/delete/stats/check style maintenance operations for keeping the graph healthy over time.
+- **Round 7 hardening**: expanded entity-focused tests, aligned fixtures and documentation with the shipped behavior, and stabilized a flaky metadata cache timing assertion before release.
+
 ## [1.6.0] - 2026-04-05
 
 ### What users get
