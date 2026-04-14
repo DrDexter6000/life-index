@@ -1,7 +1,7 @@
 # AGENTS.md - Life Index 项目开发指南
 
 > 本文档为 Life Index 项目开发、为 AI 编码代理提供项目上下文。
-> **最后更新**: 2026-03-31 | **版本**: v2.0 | **状态**: 活跃维护
+> **最后更新**: 2026-04-14 | **版本**: v2.1 | **状态**: 活跃维护
 > **任何 Agent 接手 CLI 开发时，必须先阅读 `.strategy/strategy.md` 与 `.strategy/ROADMAP.md`，禁止跳过共享战略文档直接开始开发。**
 
 > **CLI / GUI 共享规则**：所有高层战略、路线图、阶段进展统一记录在共享 `.strategy/` 中；CLI 侧不得维护一份独立平行战略文档。
@@ -37,6 +37,7 @@
 | `docs/API.md` | 工具 API 接口文档 | 参数、错误码、返回值 SSOT |
 | `.strategy/strategy.md` | 双产品线战略枢纽 | **任何 CLI / GUI 开发前优先阅读** |
 | `.strategy/ROADMAP.md` | CLI + GUI 综合路线图 | 双产品线统一规划与 progress 记录 |
+| `.strategy/cli/Round_7_Audit.md` | Round 7 归档审计 | Round 7 完成状态与勘误归档 |
 | `tools/lib/AGENTS.md` | 共享库开发指南 | `lib/` 模块约定 |
 | `pyproject.toml` | 项目配置 | 依赖、版本、入口点 |
 | `bootstrap-manifest.json` | Bootstrap authority | Onboarding 必须先刷新此文件 |
@@ -70,6 +71,11 @@ life-index index --rebuild # 全量重建
 life-index migrate --dry-run  # Schema 迁移预览
 life-index migrate --apply    # Schema 迁移执行
 life-index entity --audit     # Entity 质量审计
+life-index entity --review    # Review hub（风险优先审订队列）
+life-index entity --merge --id SOURCE --target-id TARGET  # 合并实体
+life-index entity --delete --id ENTITY_ID                 # 删除实体
+life-index entity --stats     # 图谱统计（类型/引用/共现）
+life-index entity --check     # 图谱完整性检查
 life-index health          # 安装健康检查
 
 # 开发者模式（无需安装）
@@ -86,7 +92,7 @@ tools/                         # Core CLI/tool layer
 ├── write_journal/
 ├── search_journals/
 ├── edit_journal/
-├── entity/                    # 实体图谱 + 质量审计
+├── entity/                    # 实体图谱 + 质量审计 + review hub + merge/delete
 ├── generate_abstract/
 ├── build_index/
 ├── query_weather/

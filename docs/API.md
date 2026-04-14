@@ -284,11 +284,26 @@ python -m tools.write_journal --data '<json>'
   },
   "related_candidates": [],
   "new_entities_detected": [],
+  "entity_candidates": [
+    {
+      "text": "团团妈",
+      "source": "content",
+      "kind": "person",
+      "matched_entity_id": "wife-001",
+      "suggested_action": "confirm_match",
+      "risk_level": "low"
+    }
+  ],
   "confirmation_message": "日志已保存至：C:/Users/.../Documents/Life-Index/Journals/...",
   "error": null,
   "metrics": {"total_ms": 142.5}
 }
 ```
+
+### Round 7 新增返回字段
+
+- `entity_candidates`：write-time candidate layer 输出。来自 frontmatter + 正文中的实体候选匹配；只作为候选，不直接写回 `entity_graph.yaml`
+- `new_entities_detected`：向后兼容字段；语义比 `entity_candidates` 更粗糙，后续调用方应优先消费 `entity_candidates`
 
 ### 当前源码校验语义
 
@@ -488,11 +503,26 @@ python -m tools.search_journals [options]
       "rrf_score": 0.85
     }
   ],
+  "entity_hints": [
+    {
+      "matched_term": "老婆",
+      "entity_id": "wife-001",
+      "entity_type": "person",
+      "expansion_terms": ["王某某", "团团妈", "老婆"],
+      "reason": "alias_match"
+    }
+  ],
   "total_found": 5,
   "semantic_available": true,
   "performance": {"total_time_ms": 45}
 }
 ```
+
+### Round 7 新增返回字段
+
+- `entity_hints`：search 对 query 中实体命中结果的结构化解释字段
+- 每个 hint 包含：`matched_term` / `entity_id` / `entity_type` / `expansion_terms` / `reason`
+- `entity_hints` 属于 read-only suggestion layer，不会修改 query 语义本身；它与 `query_params.expanded_query` 互补存在
 
 > 当前搜索结果中的 `path` 经常是绝对路径；上层调用方不应直接把它拼进 Web 路由。
 
