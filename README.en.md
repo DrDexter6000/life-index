@@ -240,15 +240,20 @@ Life Index follows a strict *local-first* policy, with complete separation betwe
 
 ```
 ~/Documents/Life-Index/
+├── INDEX.md                     # Root index — your life map (system overview)
 ├── Journals/                    # Entries (by year/month)
-│   └── 2026/03/
-│       └── life-index_2026-03-04_002.md
+│   └── 2026/
+│       ├── index_2026.md        # Year index — the full picture of this year
+│       └── 03/
+│           ├── index_2026-03.md # Month index — every day in this month
+│           └── life-index_2026-03-04_002.md
 ├── attachments/                 # Photos, videos, voice memos
 │   └── 2026/03/
-└── by-topic/                    # Auto-generated indexes
-    ├── topic_think.md
-    ├── project_LifeIndex.md
-    └── tag_Parenthood.md
+├── by-topic/                    # Topic dimension index (orthogonal to time index tree)
+│   ├── topic_think.md
+│   ├── project_LifeIndex.md
+│   └── tag_Parenthood.md
+└── .index/                      # Machine retrieval layer (FTS5 + vector DB, not human-readable)
 ```
 
 **Twenty years from now, even if Life Index the software has vanished, your data will still be there — plain text, readable by any editor, crisp and intact.**
@@ -270,13 +275,13 @@ Life Index follows a strict *local-first* policy, with complete separation betwe
 
 ### The Foundation, Already Built
 
-**CLI Core v1.6** is live, stable, and in real daily use — not a prototype, not a demo. It's a system with 1,516+ unit tests, green CI, and deliberate, disciplined engineering:
+**CLI Core v1.6.5** is live, stable, and in real daily use — not a prototype, not a demo. It's a system with 1,460+ unit tests, green CI, and deliberate, disciplined engineering:
 
 | Capability | Status | Notes |
 |:---|:---:|:---|
 | Journal write / edit | ✅ | Structured Markdown + YAML metadata, auto weather/sentiment/entity extraction |
-| Dual-pipeline search | ✅ | Keyword (FTS5) + semantic (bge-m3) in parallel, fused via RRF |
-| Entity graph + quality audit | ✅ | Alias resolution for people/places/projects, relationship inference, duplicate/orphan detection + Agent interview remediation |
+| Dual-pipeline search + L0 pre-filter | ✅ | Keyword (FTS5) + semantic (bge-m3) in parallel, fused via RRF, with optional index-tree pre-filtering by time/topic |
+| Entity graph + quality audit + maintenance | ✅ | Alias resolution for people/places/projects, relationship inference, duplicate/orphan detection + Agent interview remediation; review hub + merge/delete/stats/check maintenance commands |
 | Schema migration | ✅ | Chain migration framework, deterministic field backfill + Agent semantic enrichment collaboration |
 | Piggyback event notifications | ✅ | Zero cron, zero processes — event reminders attached to CLI responses (writing streak, missing monthly report, etc.) |
 | Per-operation observability | ✅ | Every CLI operation includes trace_id + step-level timing + status diagnostics |
@@ -291,19 +296,23 @@ Agents don't need to read all 2,000 of your journals — **parallel dual-pipelin
 
 ```
                     User Query
-                   ┌────┴────┐
-            ┌──────▼──────┐  ┌──────▼──────┐
-            │ Pipeline A  │  │ Pipeline B  │
-            │  Keyword    │  │  Semantic   │
-            │             │  │             │
-            │ L1 Index    │  │ Vector      │
-            │ L2 Metadata │  │ similarity  │
-            │ L3 FTS5     │  │ (multilingual)│
-            └──────┬──────┘  └──────┬──────┘
-                   └────┬────┘
-              RRF Fusion (k=60)
-                      │
-                  Final Results
+                       │
+               L0 Index tree pre-filter (optional)
+               Narrow candidates by time/topic
+                       │
+                    ┌──┴───┐
+             ┌──────▼──────┐  ┌──────▼──────┐
+             │ Pipeline A  │  │ Pipeline B  │
+             │  Keyword    │  │  Semantic   │
+             │             │  │             │
+             │ L1 Index    │  │ Vector      │
+             │ L2 Metadata │  │ similarity  │
+             │ L3 FTS5     │  │ (multilingual)│
+             └──────┬──────┘  └──────┬──────┘
+                    └────┬────┘
+               RRF Fusion (k=60)
+                       │
+                   Final Results
 ```
 
 Brute-force reading 2,000 journals costs ~3M tokens; after retrieval, only ~5K — **99.8% saved**. You can even search "missing my daughter" in English and find Chinese entries — semantic search understands 50+ languages, including cross-language queries.
@@ -468,7 +477,10 @@ python3 -m venv .venv
 | Health check | `life-index health` |
 | Write journal | `life-index write --data '{...}'` |
 | Search (keyword + semantic) | `life-index search --query "keyword"` |
+| Search + time/topic pre-filter | `life-index search --query "keyword" --year 2026 --topic work` |
 | Keyword-only search | `life-index search --query "keyword" --no-semantic` |
+| Generate index tree (month/year/root) | `life-index generate-index --month 2026-03` |
+| Full rebuild index tree | `life-index generate-index --rebuild` |
 | Backup data | `life-index backup --dest <backup-dir>` |
 | Schema migration (preview) | `life-index migrate --dry-run` |
 | Schema migration (execute) | `life-index migrate --apply` |
