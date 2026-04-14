@@ -134,6 +134,29 @@ class TestMergeCLI:
 class TestDeleteCLI:
     """entity --delete removes entity and reports/cleans refs."""
 
+    class _TeeStdout:
+        """Simulate pytest tee-sys where reported encoding and write path diverge."""
+
+        encoding = "utf-8"
+
+        def __init__(self) -> None:
+            self.captured_buffer = io.BytesIO()
+            self.console_buffer = io.BytesIO()
+            self.captured = io.TextIOWrapper(
+                self.captured_buffer, encoding="utf-8", errors="strict"
+            )
+            self.console = io.TextIOWrapper(
+                self.console_buffer, encoding="cp1252", errors="strict"
+            )
+
+        def write(self, text: str) -> int:
+            self.captured.write(text)
+            return self.console.write(text)
+
+        def flush(self) -> None:
+            self.captured.flush()
+            self.console.flush()
+
     def test_delete_removes_entity(self, isolated_data_dir: Path) -> None:
         from tools.entity.__main__ import main
 
@@ -178,6 +201,27 @@ class TestDeleteCLI:
         output = buffer.getvalue().decode("ascii")
         assert "\\u5f20" in output or "\\u674e" in output
         assert '"success": true' in output
+
+    def test_delete_safe_when_stdout_encoding_and_write_path_diverge(
+        self, isolated_data_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Delete output should survive tee-style stdout on Windows CI."""
+        from tools.entity.__main__ import main
+
+        _save_graph(_sample_graph(), isolated_data_dir)
+
+        fake_stdout = self._TeeStdout()
+        monkeypatch.setattr(sys, "stdout", fake_stdout)
+
+        main(["--delete", "--id", "person-a"])
+
+        fake_stdout.flush()
+        captured_output = fake_stdout.captured_buffer.getvalue().decode("utf-8")
+        console_output = fake_stdout.console_buffer.getvalue().decode("ascii")
+
+        assert '"success": true' in captured_output
+        assert '"success": true' in console_output
+        assert "\\u5f20" in console_output or "\\u674e" in console_output
 
     def test_delete_nonexistent_returns_error(self, isolated_data_dir: Path) -> None:
         from tools.entity.__main__ import main
