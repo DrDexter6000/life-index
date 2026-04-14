@@ -16,7 +16,7 @@ def _graph_path() -> Path:
 
 
 def _print(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print(json.dumps(payload, ensure_ascii=True, indent=2))
 
 
 def main(argv: list[str] | None = None) -> None:
