@@ -100,12 +100,8 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
 
             # Exact alias overlap
-            names_a = {entity_a.get("primary_name", "")} | set(
-                entity_a.get("aliases", [])
-            )
-            names_b = {entity_b.get("primary_name", "")} | set(
-                entity_b.get("aliases", [])
-            )
+            names_a = {entity_a.get("primary_name", "")} | set(entity_a.get("aliases", []))
+            names_b = {entity_b.get("primary_name", "")} | set(entity_b.get("aliases", []))
             overlap = names_a & names_b - {""}
             if overlap:
                 seen_pairs.add(pair)
@@ -144,11 +140,7 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
 
             # Edit distance (Levenshtein ≤ 1, length > 2)
-            if (
-                len(name_a) > 2
-                and len(name_b) > 2
-                and _levenshtein(name_a, name_b) <= 1
-            ):
+            if len(name_a) > 2 and len(name_b) > 2 and _levenshtein(name_a, name_b) <= 1:
                 seen_pairs.add(pair)
                 issues.append(
                     {

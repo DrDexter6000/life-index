@@ -41,9 +41,7 @@ Examples:
 
     parser.add_argument("--fts-only", action="store_true", help="Only update FTS index")
 
-    parser.add_argument(
-        "--vec-only", action="store_true", help="Only update vector index"
-    )
+    parser.add_argument("--vec-only", action="store_true", help="Only update vector index")
 
     parser.add_argument("--stats", action="store_true", help="Show index statistics")
 

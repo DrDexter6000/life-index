@@ -29,9 +29,7 @@ from importlib.metadata import PackageNotFoundError, version as package_version
 
 from tools.lib.config import USER_DATA_DIR, JOURNALS_DIR, get_model_cache_dir
 
-BOOTSTRAP_MANIFEST_PATH = (
-    Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
-)
+BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
 
 
 def read_bootstrap_manifest() -> Dict[str, Any]:
@@ -65,9 +63,7 @@ def get_version_info() -> Dict[str, Any]:
 
 def _check_python_version() -> Tuple[Dict[str, Any], str, bool]:
     """检查 Python 版本"""
-    py_version = (
-        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    )
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     py_ok = sys.version_info >= (3, 11)
     check = {
         "name": "python_version",
@@ -198,17 +194,11 @@ def _check_embedding_model() -> Dict[str, Any]:
     """检查嵌入模型缓存"""
     try:
         cache_dir = get_model_cache_dir()
-        model_files = (
-            [f for f in cache_dir.rglob("*") if f.is_file()]
-            if cache_dir.exists()
-            else []
-        )
+        model_files = [f for f in cache_dir.rglob("*") if f.is_file()] if cache_dir.exists() else []
         model_downloaded = len(model_files) > 0
         cache_size_mb = 0.0
         if cache_dir.exists():
-            total_bytes = sum(
-                f.stat().st_size for f in cache_dir.rglob("*") if f.is_file()
-            )
+            total_bytes = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file())
             cache_size_mb = round(total_bytes / (1024 * 1024), 2)
         check = {
             "name": "embedding_model",
