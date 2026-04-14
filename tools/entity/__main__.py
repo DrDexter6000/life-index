@@ -65,9 +65,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.list_entities:
         results = entities
         if args.entity_type:
-            results = [
-                entity for entity in entities if entity["type"] == args.entity_type
-            ]
+            results = [entity for entity in entities if entity["type"] == args.entity_type]
         _print({"success": True, "data": results, "error": None})
         return
 
@@ -148,15 +146,11 @@ def main(argv: list[str] | None = None) -> None:
             if args.export_format == "csv":
                 from tools.entity.review_io import export_review_csv
 
-                result = export_review_csv(
-                    output_path=output_path, graph_path=graph_path
-                )
+                result = export_review_csv(output_path=output_path, graph_path=graph_path)
             else:
                 from tools.entity.review_io import export_review_xlsx
 
-                result = export_review_xlsx(
-                    output_path=output_path, graph_path=graph_path
-                )
+                result = export_review_xlsx(output_path=output_path, graph_path=graph_path)
             _print(result)
             return
 
@@ -242,9 +236,7 @@ def main(argv: list[str] | None = None) -> None:
         for entity in entities:
             for rel in entity.get("relationships", []):
                 if rel["target"] == entity_id:
-                    refs.append(
-                        {"entity_id": entity["id"], "relation": rel["relation"]}
-                    )
+                    refs.append({"entity_id": entity["id"], "relation": rel["relation"]})
 
         # Remove entity
         entities = [e for e in entities if e["id"] != entity_id]
