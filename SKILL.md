@@ -163,6 +163,20 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 → 等待用户回复
 ```
 
+**⚠️ 用户纠正地点时的完整流程（Correction Flow）**：
+
+当用户说"地点不对，应该是 XXX"时，**必须修改已保存的日志，不能重新调用 write_journal 创建新日志**。
+
+```
+❌ 错误：用户纠正地点 → Agent 重新调用 write_journal → 创建了第二篇日志
+
+✅ 正确：用户纠正地点
+→ Agent 查询新地点天气（query_weather --location "XXX"）
+→ Agent 调用 write_journal confirm --journal "<journal_path>" --location "XXX" --weather "新天气"
+  或调用 edit_journal --journal "<journal_path>" --set-location "XXX" --set-weather "新天气"
+→ 日志原地更新，不产生新文件
+```
+
 ---
 
 ## Required Metadata Fields
