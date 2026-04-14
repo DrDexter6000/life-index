@@ -80,8 +80,15 @@ jobs:
     - name: Create Release
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: >-
-        gh release create '${{ github.ref_name }}'
-        --repo '${{ github.repository }}'
-        --generate-notes
-        dist/*
+      run: |
+        if gh release view '${{ github.ref_name }}' --repo '${{ github.repository }}' > /dev/null 2>&1; then
+          gh release edit '${{ github.ref_name }}' \
+            --repo '${{ github.repository }}' \
+            --notes-file <(gh release view '${{ github.ref_name }}' --repo '${{ github.repository }}' --json body --jq '.body')
+          gh release upload '${{ github.ref_name }}' --repo '${{ github.repository }}' dist/* --clobber
+        else
+          gh release create '${{ github.ref_name }}' \
+            --repo '${{ github.repository }}' \
+            --generate-notes \
+            dist/*
+        fi
