@@ -159,7 +159,9 @@ class TestFormatFrontmatter:
         # Title should be quoted
         assert 'title: "' in result
 
-    def test_format_content_skips_duplicate_markdown_title_line(self):
+    def test_format_content_preserves_duplicate_markdown_title_line(self):
+        """After content-preservation fix, even if content starts with '# title',
+        the line is kept — we no longer do title dedup."""
         data = {
             "date": "2026-03-10",
             "title": "今天状态不错",
@@ -168,7 +170,8 @@ class TestFormatFrontmatter:
 
         result = format_content(data)
 
-        assert result.count("# 今天状态不错") == 1
+        # Both the frontmatter title line AND the content's first line should be present
+        assert result.count("# 今天状态不错") == 2
         assert "正文第一段" in result
         assert "正文第二段" in result
 
@@ -876,29 +879,29 @@ class TestFormatContent:
 
 
 class TestExtractExplicitMetadataFromContent:
-    def test_extracts_metadata_and_removes_lines_from_content(self):
+    def test_extracts_metadata_without_modifying_content(self):
         content = "地点：Lagos\n天气：晴天\n今天很开心"
 
-        extracted, cleaned_content = extract_explicit_metadata_from_content(content)
+        extracted = extract_explicit_metadata_from_content(content)
 
         assert extracted == {"location": "Lagos", "weather": "晴天"}
-        assert cleaned_content == "今天很开心"
+        # Content must NOT be modified — original is always preserved
+        # (The function now only returns metadata, not a cleaned version)
 
-    def test_returns_empty_metadata_and_original_content_when_no_match(self):
+    def test_returns_empty_metadata_when_no_match(self):
         content = "今天很开心\n继续努力"
 
-        extracted, cleaned_content = extract_explicit_metadata_from_content(content)
+        extracted = extract_explicit_metadata_from_content(content)
 
         assert extracted == {}
-        assert cleaned_content == content
 
-    def test_extracts_each_field_only_once_and_preserves_later_duplicates(self):
+    def test_extracts_each_field_only_once(self):
         content = "地点：A\n地点：B\n天气：晴天\n今天很开心"
 
-        extracted, cleaned_content = extract_explicit_metadata_from_content(content)
+        extracted = extract_explicit_metadata_from_content(content)
 
+        # Only the first match per field is extracted
         assert extracted == {"location": "A", "weather": "晴天"}
-        assert cleaned_content == "地点：B\n今天很开心"
 
 
 if __name__ == "__main__":
