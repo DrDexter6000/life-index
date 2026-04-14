@@ -1,6 +1,6 @@
 # AGENTS.md - tools/lib/
 
-> **最后更新**: 2026-03-29 | **版本**: v1.2 | **状态**: 活跃维护
+> **最后更新**: 2026-04-14 | **版本**: v1.3 | **状态**: 活跃维护
 
 ## OVERVIEW
 Shared infrastructure library for all Life Index atomic tools.
@@ -28,6 +28,12 @@ Shared infrastructure library for all Life Index atomic tools.
 
 - **attachment.py**: Attachment normalization for write-input and stored-metadata modes. Extracted from frontmatter.py.
 - **config.py**: Centralized configuration, paths, templates. All paths use `pathlib.Path` for cross-platform compatibility.
+- **entity_cache.py**: SQLite-backed lookup cache helper for entity graph. Round 7 Phase 1 提供 `is_cache_fresh()` + `resolve_entity_cached()`；当前 search/write 主热路径主要使用 `entity_runtime.py`。
+- **entity_candidates.py**: Write-time entity candidate extraction (Round 7 Phase 2). Covers frontmatter + content body alias matching via runtime view.
+- **entity_graph.py**: YAML entity graph load/save/resolve. Foundational module for entity operations.
+- **entity_relations.py**: Relation vocabulary normalization (Round 7 Phase 3). Canonical mapping + alias helper for search/review/check.
+- **entity_runtime.py**: Runtime serving layer for entity graph (Round 7 Phase 1). Provides `EntityRuntimeView` with O(1) by_lookup, reverse_relationships, and phrase pattern registry.
+- **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES, alias conflict detection, relationship target verification.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
@@ -71,10 +77,13 @@ Shared infrastructure library for all Life Index atomic tools.
 | config.py | ALL tools | ✅ 活跃 | 路径 SSOT |
 | content_analysis.py | write_journal | ✅ 活跃 | |
 | embedding_backends.py | semantic_search | ✅ 活跃 | |
-| entity_cache.py | write_journal | ⚠️ 待审视 | Round 4 Direction 4 候选 |
-| entity_graph.py | write_journal, entity tool | ⚠️ 待审视 | Round 4 Direction 4 候选 |
-| entity_schema.py | write_journal, entity_graph | ⚠️ 待审视 | Round 4 Direction 4 候选 |
-| errors.py | write_journal(core), edit_journal, build_index | ⚠️ 部分集成 | Round 5 Task 3 将全面激活 |
+| entity_cache.py | entity_runtime 相关 helper / tests | ✅ 活跃 | Round 7 Phase 1 已落地 cache-first helper，但不是当前 search/write 主热路径 |
+| entity_candidates.py | write_journal | ✅ 活跃 | Round 7 Phase 2 新增：write-time candidate extraction |
+| entity_graph.py | write_journal, entity tool, entity_runtime | ✅ 活跃 | Round 7 Phase 1 runtime view 底层 |
+| entity_relations.py | entity_runtime, check, review | ✅ 活跃 | Round 7 Phase 3 新增：relation vocabulary normalization |
+| entity_runtime.py | search_journals | ✅ 活跃 | Round 7 Phase 1 新增：runtime serving layer（by_lookup + reverse_relationships + phrase patterns） |
+| entity_schema.py | write_journal, entity_graph | ✅ 活跃 | Round 7 Phase 1 确认活跃 |
+| errors.py | write_journal(core), query_weather, generate_index | ⚠️ 部分集成 | Round 5 Task 3 将全面激活 |
 | file_lock.py | write_journal, edit_journal, build_index | ✅ 活跃 | |
 | frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |
 | fts_search.py | search_journals | ✅ 活跃 | |
@@ -93,7 +102,8 @@ Shared infrastructure library for all Life Index atomic tools.
 | search_index.py | build_index, search_journals | ✅ 活跃 | |
 | semantic_search.py | search_journals | ✅ 活跃 | |
 | text_normalize.py | search, fts | ✅ 活跃 | |
-| timing.py | ALL tools | ✅ 活跃 | Round 4 Direction 4 候选 |
+| timing.py | write_journal | ✅ 活跃 | write_journal 使用 Timer 做性能计时；其他工具使用 trace.py |
+| trace.py | search_journals, build_index, write_journal | ✅ 活跃 | Round 7 观测层：step-based context manager |
 | url_download.py | write_journal | ✅ 活跃 | |
 | vector_index_simple.py | build_index | ✅ 活跃 | |
 | workflow_signals.py | write_journal, errors | ✅ 活跃 | Round 5 Task 1 新增 |
