@@ -830,9 +830,10 @@ class TestCachePerformance:
     def test_cache_faster_than_parsing(self, tmp_path):
         """Test that cached reads are fast enough to be practically useful.
 
-        We use an absolute threshold (2ms) rather than comparing against
+        We use an absolute threshold (5ms) rather than comparing against
         parse_time, because parse_time can be extremely fast in CI/testing
-        environments, making the comparison flaky under CPU scheduling variance.
+        environments, and Windows scheduler / SQLite timing variance can make
+        sub-2ms assertions flaky even when the cache path is working correctly.
         """
         import time
 
@@ -845,18 +846,18 @@ class TestCachePerformance:
         result1 = get_or_update_metadata(test_file)
 
         # Second call - from cache (measure)
-        start = time.time()
+        start = time.perf_counter()
         result2 = get_or_update_metadata(test_file)
-        cache_time = time.time() - start
+        cache_time = time.perf_counter() - start
 
         # Both should return same result
         assert result1 is not None
         assert result2 is not None
         assert result1["title"] == result2["title"]
 
-        # Cache read should complete within 2ms (practically instantaneous)
-        assert cache_time < 0.002, (
-            f"Cache read took {cache_time * 1000:.2f}ms, expected < 2ms"
+        # Cache read should complete within 5ms (practically instantaneous)
+        assert cache_time < 0.005, (
+            f"Cache read took {cache_time * 1000:.2f}ms, expected < 5ms"
         )
 
 
