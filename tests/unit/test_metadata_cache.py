@@ -828,7 +828,12 @@ class TestCachePerformance:
     """Tests for cache performance characteristics"""
 
     def test_cache_faster_than_parsing(self, tmp_path):
-        """Test that cached reads are faster than parsing"""
+        """Test that cached reads are fast enough to be practically useful.
+
+        We use an absolute threshold (2ms) rather than comparing against
+        parse_time, because parse_time can be extremely fast in CI/testing
+        environments, making the comparison flaky under CPU scheduling variance.
+        """
         import time
 
         # Create a test file
@@ -837,11 +842,9 @@ class TestCachePerformance:
         test_file.write_text(test_content, encoding="utf-8")
 
         # First call - parse and cache
-        start = time.time()
         result1 = get_or_update_metadata(test_file)
-        parse_time = time.time() - start
 
-        # Second call - from cache
+        # Second call - from cache (measure)
         start = time.time()
         result2 = get_or_update_metadata(test_file)
         cache_time = time.time() - start
@@ -851,9 +854,10 @@ class TestCachePerformance:
         assert result2 is not None
         assert result1["title"] == result2["title"]
 
-        # Cache should be faster (typically 10-100x)
-        # Allow some margin for test environment variance
-        assert cache_time < parse_time or cache_time < 0.001  # 1ms threshold
+        # Cache read should complete within 2ms (practically instantaneous)
+        assert cache_time < 0.002, (
+            f"Cache read took {cache_time * 1000:.2f}ms, expected < 2ms"
+        )
 
 
 if __name__ == "__main__":
