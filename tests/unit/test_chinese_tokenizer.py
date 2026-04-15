@@ -12,6 +12,7 @@ from tools.lib.chinese_tokenizer import (
     get_dict_hash,
     is_cjk,
     load_entity_dict,
+    normalize_query,
     reset_tokenizer_state,
     segment_for_fts,
 )
@@ -194,6 +195,22 @@ class TestStopWordFiltering:
     def test_stopword_list_size(self):
         """Stop word list contains at least 40 common words."""
         assert len(CHINESE_STOP_WORDS) >= 40
+
+
+class TestNormalizeQuery:
+    """Tests for query normalization (Round 8 Phase 3 T3.2)."""
+
+    def test_strips_terminal_punctuation(self):
+        assert normalize_query("AI算力投资策略！") == "AI算力投资策略"
+
+    def test_strips_book_title_marks(self):
+        assert normalize_query("「团团」") == "团团"
+
+    def test_converts_fullwidth_space(self):
+        assert normalize_query("Life　Index") == "Life Index"
+
+    def test_collapses_multiple_spaces(self):
+        assert normalize_query("想 念   我 的 女 儿") == "想 念 我 的 女 儿"
 
 
 class TestEntityDictionary:

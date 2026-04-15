@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import re
 import tempfile
+import unicodedata
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -119,6 +121,34 @@ CHINESE_STOP_WORDS: frozenset[str] = frozenset(
         "再",
     }
 )
+
+
+def normalize_query(query: str) -> str:
+    """Normalize user query text before segmentation.
+
+    Round 8 Phase 3 T3.2:
+    - Fullwidth → halfwidth via NFKC
+    - Strip common book-title / quote punctuation wrappers
+    - Strip leading/trailing punctuation noise
+    - Collapse repeated whitespace
+    """
+    if not query:
+        return ""
+
+    normalized = unicodedata.normalize("NFKC", query)
+    normalized = normalized.strip()
+
+    if not normalized:
+        return ""
+
+    wrapper_chars = "“”‘’「」『』《》〈〉【】（）［］｛｝"
+    punctuation_chars = "!！?？,，.。;；:：、…·"
+
+    normalized = normalized.strip(wrapper_chars)
+    normalized = normalized.strip(punctuation_chars)
+    normalized = re.sub(r"\s+", " ", normalized)
+
+    return normalized.strip()
 
 
 def is_cjk(char: str) -> bool:
@@ -364,6 +394,7 @@ def reset_tokenizer_state() -> None:
 
 __all__ = [
     "is_cjk",
+    "normalize_query",
     "segment_for_fts",
     "_process_text",
     "load_entity_dict",
