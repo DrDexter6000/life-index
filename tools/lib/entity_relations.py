@@ -19,6 +19,8 @@ from __future__ import annotations
 CANONICAL_RELATIONS: dict[str, list[str]] = {
     "spouse_of": ["wife", "husband", "老婆", "丈夫", "妻子", "老公", "配偶", "爱人"],
     "parent_of": [
+        "mother_of",
+        "father_of",
         "mom",
         "mother",
         "dad",
@@ -31,13 +33,25 @@ CANONICAL_RELATIONS: dict[str, list[str]] = {
         "老妈",
         "家长",
     ],
-    "child_of": ["daughter", "son", "女儿", "儿子", "孩子", "小孩"],
+    "child_of": [
+        "daughter_of",
+        "son_of",
+        "daughter",
+        "son",
+        "女儿",
+        "儿子",
+        "孩子",
+        "小孩",
+    ],
+    "grandmother_of": ["grandmother", "grandma", "奶奶", "外婆"],
+    "grandfather_of": ["grandfather", "grandpa", "爷爷", "外公"],
     "sibling_of": ["sister", "brother", "姐妹", "兄弟", "哥哥", "弟弟", "姐姐", "妹妹"],
     "colleague_of": ["colleague", "coworker", "同事", "搭档", "合作者"],
     "friend_of": ["friend", "buddy", "朋友", "好友", "哥们"],
     "lives_in": ["resides", "居住", "住在", "生活在"],
     "works_at": ["employed_at", "工作于", "就职于", "任职"],
     "member_of": ["belongs_to", "属于", "成员"],
+    "hometown": ["hometown", "老家", "家乡", "故乡"],
 }
 
 # Build reverse lookup: alias (lowered) → canonical relation
