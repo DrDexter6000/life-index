@@ -217,6 +217,48 @@ SEARCH_TEST_CASES = [
         "Q29: CN+EN mixed (no single journal contains both)",
     ),
     ("AI 算力", 2, None, "mixed_regression", "Q30: CN+EN mixed"),
+    # ---------- Fuzzy Recall (Q31-Q36) ----------
+    ("那天团团哭了", 1, None, "fuzzy_recall", "Q31: Fuzzy memory around tuantuan"),
+    ("把她抱在怀里", 2, None, "fuzzy_recall", "Q32: Emotional memory phrase"),
+    ("小时候的照片", 2, None, "fuzzy_recall", "Q33: Childhood memory"),
+    ("生日歌", 1, None, "fuzzy_recall", "Q34: Event detail"),
+    ("个人知识管理", 1, None, "fuzzy_recall", "Q35: Project intent phrase"),
+    ("可解释性", 1, None, "fuzzy_recall", "Q36: Abstract policy term"),
+    # ---------- Emotional Terms (Q37-Q42) ----------
+    ("伤感", 1, None, "emotion_terms", "Q37: Sadness term"),
+    ("幸福", 1, None, "emotion_terms", "Q38: Happiness term"),
+    ("温暖", 1, None, "emotion_terms", "Q39: Warmth term"),
+    ("思念", 1, None, "emotion_terms", "Q40: Missing someone"),
+    ("怅然若失", 1, None, "emotion_terms", "Q41: Nuanced emotional phrase"),
+    ("兴奋", 0, 0, "emotion_terms", "Q42: Emotion absent from journals"),
+    # ---------- Time / Date Related (Q43-Q48) ----------
+    ("深夜", 1, None, "time_related", "Q43: Time-of-day term"),
+    ("今天", 2, None, "time_related", "Q44: Common temporal word"),
+    ("最近", 1, None, "time_related", "Q45: Recency term"),
+    ("3月", 0, 0, "time_related", "Q46: Date shorthand not indexed directly"),
+    ("上周", 0, 0, "time_related", "Q47: Relative date not present"),
+    ("凌晨", 0, 0, "time_related", "Q48: Time term absent from journals"),
+    # ---------- Location / Geography (Q49-Q54) ----------
+    ("重庆", 1, None, "location_related", "Q49: Chinese location"),
+    ("山城", 0, 0, "location_related", "Q50: Alias absent from journal content"),
+    ("Lagos", 0, 0, "location_related", "Q51: Foreign location absent"),
+    ("Port Harcourt", 0, 0, "location_related", "Q52: Foreign location absent"),
+    ("边缘计算", 1, None, "location_related", "Q53: Deployment locality concept"),
+    ("端侧部署", 1, None, "location_related", "Q54: Edge deployment phrase"),
+    # ---------- Cross-language / Long-tail (Q55-Q58) ----------
+    ("my daughter 团团", 1, None, "cross_language", "Q55: EN + entity mix"),
+    (
+        "investment strategy",
+        0,
+        0,
+        "cross_language",
+        "Q56: English paraphrase not present literally",
+    ),
+    ("dynamic loading", 1, None, "cross_language", "Q57: English technical phrase"),
+    ("兆瓦级液冷", 0, 0, "cross_language", "Q58: Long-tail phrase absent"),
+    # ---------- Boundary Cases (Q59-Q60) ----------
+    ("   ", 0, 0, "boundary_case", "Q59: Pure whitespace query"),
+    ("！！！", 0, 0, "boundary_case", "Q60: Pure punctuation query"),
 ]
 
 
