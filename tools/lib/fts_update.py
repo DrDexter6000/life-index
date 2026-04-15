@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
+from .chinese_tokenizer import segment_for_fts
 from .frontmatter import parse_frontmatter
 from .path_contract import build_journal_path_fields
 
@@ -57,10 +58,16 @@ def parse_journal(
         path_fields = build_journal_path_fields(
             file_path, journals_dir=journals_dir, user_data_dir=user_data_dir
         )
+
+        # MD3: Only segment title + content for FTS; metadata columns stay raw.
+        # file_hash is computed from original file content, NOT segmented text.
+        segmented_title = segment_for_fts(metadata.get("title", ""), mode="index")
+        segmented_content = segment_for_fts(body, mode="index")
+
         doc = {
             "path": path_fields["rel_path"],
-            "title": metadata.get("title", ""),
-            "content": body,
+            "title": segmented_title,
+            "content": segmented_content,
             "date": metadata.get("date", "")[:10],
             "location": metadata.get("location", ""),
             "weather": metadata.get("weather", ""),
@@ -68,7 +75,9 @@ def parse_journal(
             "project": metadata.get("project", ""),
             "tags": _normalize_to_str(metadata.get("tags")),
             "file_hash": get_file_hash(file_path),
-            "modified_time": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
+            "modified_time": datetime.fromtimestamp(
+                file_path.stat().st_mtime
+            ).isoformat(),
         }
 
         return doc
@@ -147,7 +156,9 @@ def update_index(
                         continue
 
                     for journal_file in month_dir.glob("life-index_*.md"):
-                        rel_path = str(journal_file.relative_to(user_data_dir)).replace("\\", "/")
+                        rel_path = str(journal_file.relative_to(user_data_dir)).replace(
+                            "\\", "/"
+                        )
                         current_files.add(rel_path)
 
                         # 检查是否需要更新
