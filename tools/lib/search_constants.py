@@ -91,6 +91,14 @@ ADR-010: Snippet length=32 tokens
 ---------------------------------
 FTS snippet uses 32 tokens context around match. This provides enough
 context to understand the match without overwhelming the UI.
+
+ADR-012: Entity hint ranking bonus=6
+------------------------------------
+When a query resolves to entity hints, results whose metadata people/tags fields
+contain one of the entity expansion terms receive a modest bonus.
+
+This bonus should break ties among weak L2/L1 matches without overtaking strong
+L3 lexical evidence.
 """
 
 # =============================================================================
@@ -152,6 +160,7 @@ SCORE_TITLE_MATCH_BONUS: int = 10
 SCORE_TITLE_MATCH_BONUS_L2: int = 8  # Slightly lower for L2
 SCORE_ABSTRACT_MATCH_BONUS: int = 4
 SCORE_TAGS_MATCH_BONUS: int = 1
+SCORE_ENTITY_BONUS: int = 6
 
 # Minimum score for non-RRF results (pure keyword/semantic)
 NON_RRF_MIN_SCORE: int = 10
@@ -218,6 +227,7 @@ __all__ = [
     "SCORE_TITLE_MATCH_BONUS_L2",
     "SCORE_ABSTRACT_MATCH_BONUS",
     "SCORE_TAGS_MATCH_BONUS",
+    "SCORE_ENTITY_BONUS",
     "NON_RRF_MIN_SCORE",
     # Limits
     "MAX_RESULTS_DEFAULT",
