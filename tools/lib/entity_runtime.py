@@ -30,12 +30,15 @@ RELATION_PHRASE_PATTERNS: list[dict[str, str]] = [
     {"suffix": "的妻子", "relation": "spouse_of"},
     {"suffix": "的老公", "relation": "spouse_of"},
     {"suffix": "的丈夫", "relation": "spouse_of"},
-    {"suffix": "的妈妈", "relation": "mother_of"},
-    {"suffix": "的母亲", "relation": "mother_of"},
-    {"suffix": "的爸爸", "relation": "father_of"},
-    {"suffix": "的父亲", "relation": "father_of"},
-    {"suffix": "的奶奶", "relation": "granddaughter_of"},
-    {"suffix": "的爷爷", "relation": "granddaughter_of"},
+    {"suffix": "的妈妈", "relation": "parent_of"},
+    {"suffix": "的母亲", "relation": "parent_of"},
+    {"suffix": "的爸爸", "relation": "parent_of"},
+    {"suffix": "的父亲", "relation": "parent_of"},
+    {"suffix": "的奶奶", "relation": "grandmother_of"},
+    {"suffix": "的爷爷", "relation": "grandfather_of"},
+    {"suffix": "的女儿", "relation": "child_of"},
+    {"suffix": "的儿子", "relation": "child_of"},
+    {"suffix": "的孩子", "relation": "child_of"},
     {"suffix": "的老家", "relation": "hometown"},
 ]
 
@@ -52,6 +55,9 @@ ROLE_LABELS: frozenset[str] = frozenset(
         "爸",
         "爸爸",
         "父亲",
+        "女儿",
+        "儿子",
+        "孩子",
         "奶奶",
         "爷爷",
         "老家",
@@ -72,7 +78,9 @@ class EntityRuntimeView:
 
     entities: list[dict[str, Any]]
     by_lookup: dict[str, dict[str, Any]] = field(default_factory=dict)
-    reverse_relationships: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    reverse_relationships: dict[str, list[tuple[str, str]]] = field(
+        default_factory=dict
+    )
     phrase_patterns: list[dict[str, str]] = field(default_factory=list)
 
 
