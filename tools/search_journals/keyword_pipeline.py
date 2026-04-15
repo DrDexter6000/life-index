@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.chinese_tokenizer import segment_for_fts
 from ..lib.path_contract import merge_journal_path_fields
 from ..lib.search_constants import FTS_LIMIT, FTS_FALLBACK_THRESHOLD, FTS_MIN_RELEVANCE
 
@@ -44,12 +45,82 @@ def _has_explicit_fts_operator(query: str) -> bool:
     return bool(re.search(r"\b(AND|OR|NOT)\b", query, flags=re.IGNORECASE))
 
 
+def _segment_query_for_fts(query: str, *, _is_segmented: bool = False) -> str:
+    """Segment Chinese text in a query for FTS5 matching.
+
+    Handles: pure Chinese, pure English, mixed, FTS operators, and quoted phrases.
+    - Quoted phrases are preserved (not segmented)
+    - FTS operators (AND/OR/NOT) are preserved
+    - Unquoted Chinese text is segmented in query mode (with stopword filtering)
+
+    MD5: Jieba runs before entity expansion in the query pipeline.
+    MD8: Does NOT handle FTS5 operators — they pass through unchanged.
+
+    Args:
+        _is_segmented: Internal flag — True if query was produced by jieba segmentation.
+                       When True, marks the output for OR-based FTS matching.
+    """
+    if not query or not query.strip():
+        return query
+
+    # If query already has FTS operators or is all ASCII, pass through
+    # (entity expansion may have added operators like "团团 OR 小疙瘩")
+    if _has_explicit_fts_operator(query):
+        return query
+
+    # Check if there's any CJK content to segment
+    has_cjk = any(
+        0x4E00 <= ord(c) <= 0x9FFF or 0x3400 <= ord(c) <= 0x4DBF for c in query
+    )
+    if not has_cjk:
+        return query
+
+    # Extract and preserve quoted phrases
+    quoted_parts: list[str] = []
+    cleaned_query = query
+    quote_pattern = re.compile(r'"([^"]*)"')
+    for i, match in enumerate(quote_pattern.finditer(query)):
+        placeholder = f"__QUOTED_{i}__"
+        quoted_parts.append(match.group(0))
+        cleaned_query = cleaned_query.replace(match.group(0), placeholder, 1)
+
+    # Segment the non-quoted part
+    segmented = segment_for_fts(cleaned_query, mode="query")
+
+    # Restore quoted phrases
+    for i, quoted in enumerate(quoted_parts):
+        segmented = segmented.replace(f"__QUOTED_{i}__", quoted)
+
+    result = segmented if segmented.strip() else query
+
+    # Mark segmented output so _build_fts_queries knows to use OR for Chinese tokens
+    # We prepend a sentinel that _build_fts_queries will recognize
+    if result != query and " " in result:
+        return f"__SEGMENTED__{result}"
+
+    return result
+
+
 def _build_fts_queries(query: str) -> tuple[str, str | None]:
     """Build primary/fallback FTS queries for keyword pipeline.
 
     Multi-word queries default to AND-first with OR fallback, unless the user
     already supplied explicit boolean operators or quotes.
+
+    For segmented Chinese queries (marked with __SEGMENTED__ prefix from
+    _segment_query_for_fts), we use OR matching for better recall — Chinese
+    natural language queries are conceptually cohesive, and strict AND matching
+    between jieba tokens produces zero results.
     """
+    # Handle segmented Chinese queries — use OR for better recall
+    is_segmented = query.startswith("__SEGMENTED__")
+    if is_segmented:
+        query = query[len("__SEGMENTED__") :]
+        keywords = [kw.strip() for kw in query.split() if kw.strip()]
+        if len(keywords) <= 1:
+            return query, None
+        return " OR ".join(keywords), None
+
     if '"' in query or _has_explicit_fts_operator(query) or " " not in query:
         return query, None
 
@@ -122,7 +193,11 @@ def run_keyword_pipeline(
             return items
         filtered: list[dict[str, Any]] = []
         for item in items:
-            path_value = item.get("path") or item.get("journal_route_path") or item.get("rel_path")
+            path_value = (
+                item.get("path")
+                or item.get("journal_route_path")
+                or item.get("rel_path")
+            )
             if path_value and _normalize_path(str(path_value)) in candidate_paths:
                 filtered.append(item)
         return filtered
@@ -146,7 +221,9 @@ def run_keyword_pipeline(
     ]
     l1_results = _filter_candidate_items(l1_results)
     perf["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L1 index: {len(l1_results)} results, {perf['l1_time_ms']}ms"
+    )
 
     # L2: 元数据过滤
     l2_start = time.time()
@@ -166,17 +243,23 @@ def run_keyword_pipeline(
     l2_results = _filter_candidate_items(l2_results)
     l2_truncated = l2_response.get("truncated", False)
     l2_total_available = (
-        len(l2_results) if candidate_paths is not None else l2_response.get("total_available", 0)
+        len(l2_results)
+        if candidate_paths is not None
+        else l2_response.get("total_available", 0)
     )
     perf["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L2 metadata: {len(l2_results)} results, {perf['l2_time_ms']}ms"
+    )
 
     # L3: FTS5 内容搜索
     l3_start = time.time()
     l3_results: list[dict] = []
 
     if query:
-        fts_query, fallback_fts_query = _build_fts_queries(query)
+        # Segment Chinese text in query before FTS matching (T1.3)
+        segmented_query = _segment_query_for_fts(query)
+        fts_query, fallback_fts_query = _build_fts_queries(segmented_query)
 
         # 尝试使用 FTS 索引（如果可用且启用）
         if use_index:
@@ -234,14 +317,20 @@ def run_keyword_pipeline(
                     if query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
                         fallback_l3_results = search_l3_content(
                             query,
-                            sorted(candidate_paths) if candidate_paths is not None else None,
+                            sorted(candidate_paths)
+                            if candidate_paths is not None
+                            else None,
                         )
                         seen_paths = {
-                            str(item.get("journal_route_path") or item.get("path") or "")
+                            str(
+                                item.get("journal_route_path") or item.get("path") or ""
+                            )
                             for item in l3_results
                         }
                         for item in fallback_l3_results:
-                            key = str(item.get("journal_route_path") or item.get("path") or "")
+                            key = str(
+                                item.get("journal_route_path") or item.get("path") or ""
+                            )
                             if key and key not in seen_paths:
                                 l3_results.append(item)
                                 seen_paths.add(key)
@@ -263,7 +352,9 @@ def run_keyword_pipeline(
             logger.debug(f"File scan found {len(l3_results)} results")
 
     perf["l3_time_ms"] = round((time.time() - l3_start) * 1000, 2)
-    logger.info(f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] L3 content: {len(l3_results)} results, {perf['l3_time_ms']}ms"
+    )
 
     return (
         l1_results,
