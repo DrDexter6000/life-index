@@ -184,6 +184,16 @@ SEMANTIC_SNIPPET_LENGTH: int = 200
 
 
 # =============================================================================
+# Tokenizer Version (Round 8 Phase 1)
+# =============================================================================
+
+# ADR-011: Tokenizer version for index freshness detection
+# v1 = no segmentation (pre-jieba), v2 = jieba Chinese segmentation
+# When this value changes, index must be rebuilt automatically.
+TOKENIZER_VERSION: int = 2
+
+
+# =============================================================================
 # Export all constants
 # =============================================================================
 
@@ -216,4 +226,6 @@ __all__ = [
     "BM25_RELEVANCE_MULTIPLIER",
     # Performance
     "SEMANTIC_SNIPPET_LENGTH",
+    # Tokenizer
+    "TOKENIZER_VERSION",
 ]
