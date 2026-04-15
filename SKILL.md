@@ -31,7 +31,7 @@ triggers:
 | 编辑日志 | "修改日志"、"补充日记"、"更新记录"、"edit journal"、"update log" | `edit_journal` |
 | 实体图谱 | "列出实体"、"解析人物关系"、"entity graph"、"谁是谁的..." | `entity` |
 | 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary" | `generate_abstract` |
-| 情感回填/修订历史 | "查看修订历史"、"情感分析"、"回填 sentiment" | `edit_journal` / `tools.dev.backfill_sentiment` |
+| 修订历史 | "查看修订历史"、"编辑记录" | `edit_journal` |
 | 定时报告 | 日报/周报/月报/年报 | 参考 [SCHEDULE.md](references/schedule/SCHEDULE.md) |
 
 ---
@@ -70,12 +70,10 @@ triggers:
 .venv/bin/python -m tools.build_index
 ```
 
-**故障恢复**: 如果命令报 `ModuleNotFoundError` 或 venv 异常，运行 `.venv/bin/life-index health` 诊断。若 health 命令本身失败，说明 venv 损坏，删除 `.venv/` 后重新创建：`python3 -m venv .venv && .venv/bin/pip install -e .`
-
-**Fresh install 提示**:
-- 如果在首次执行 `.venv/bin/life-index index` 之前先运行 `health`，看到 `status: "degraded"` 且数据目录/索引不存在，这是正常现象
-- 完成 `index` 初始化后再次运行 `health`，预期应恢复为健康状态
-- Windows 首次 `write --data '{...}'` 如遇 JSON 转义麻烦，优先使用 `--data @file.json`
+**安装 / 首次验证 / 故障恢复指针**：
+- 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`
+- `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先读 `AGENT_ONBOARDING.md`
+- 写入成功后的状态字段解释（`needs_confirmation` / `index_status` / `side_effects_status` / 附件处理计数）→ 读 `docs/API.md` 中 `write_journal` 返回语义
 
 ## Project Structure
 
@@ -198,16 +196,12 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | project | string | ❌ | 关联项目，Agent语义提取，没有则留空 |
 | links | array | ❌ | 相关链接 |
 | attachments | array | ❌ | 附件（自动检测 content 中的本地文件路径；也可显式传递 `{"source_path":"...","description":"..."}` 对象） |
-| sentiment_score | float \| null | ❌ | 情感分数，范围 -1.0 ~ 1.0；离线时允许留空 |
-| themes | array | ❌ | 深层主题标签；离线时允许空数组 |
 | entities | array | ❌ | 已匹配的 entity graph ID 列表 |
 
 ### 写入增强（v1.x Phase 3）
 
-- 写入结果现在可包含：`sentiment_score` / `themes` / `entities`
-- 当前策略：**在线优先，离线留空，不做规则降级**
+- 写入结果现在可包含：`entities`
 - 编辑日志时会自动写入 co-located `.revisions/`
-- 批量回填工具：`python -m tools.dev.backfill_sentiment`
 
 ### Tool Schema（v1.x Phase 4）
 
@@ -285,38 +279,11 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - write succeeded 但用户拒绝自动补全值时，应进入 correction flow，不得把已成功写入重新表述为“写入失败”
 - 必须区分：未保存 / 已保存但待确认 / 已保存但存在降级 side effects
 
-### 安装后的可选个性化（Agent-Native）
-
-安装与首次验证完成后，Agent 可按 `AGENT_ONBOARDING.md` 的 optional customization step 询问用户是否要做两项个性化设置：
-
-1. **专用触发词**：采用 `"/life-index" + "用户自定义触发词"` 的组合；如用户同意，Agent 可修改本文件中的 trigger 列表与对应示例
-2. **默认地址偏好**：如用户同意，Agent 可创建或更新 `~/Documents/Life-Index/.life-index/config.yaml` 中的 `defaults.location`
-
-约束：
-- 不得移除 `/life-index`
-- 不得重写与触发词无关的 workflow 段落
-- 默认地址配置必须诚实区分“已保存”与“已验证生效”
-
-**写入结果解读**：
-
-`write_journal` 返回以下状态字段，Agent必须正确解读：
-
-| 字段 | 值 | 含义 | Agent行为 |
-|:---|:---:|:---|:---|
-| `success` | true/false | 日志是否成功写入 | false → 告知用户写入失败 |
-| `needs_confirmation` | true/false | 是否需要用户确认地点/天气 | true → 展示确认信息，等待用户回复 |
-| `index_status` | complete/degraded/not_started | 索引更新状态 | degraded → 告知用户"已保存，但搜索可能暂时找不到" |
-| `side_effects_status` | complete/degraded/not_started | 附件/摘要等副作用状态 | degraded → 告知用户"已保存，但部分信息未更新" |
-| `weather_auto_filled` | true/false | 天气是否自动填充 | true → 在确认信息中标注"自动获取" |
-| `attachments_detected_count` | int | 从正文自动检测到的本地附件路径数量 | 向用户反馈检测结果 |
-| `attachments_processed_count` | int | 成功归档的附件数量 | 向用户反馈成功归档数量 |
-| `attachments_failed_count` | int | 检测到但处理失败的附件数量 | >0 时提示用户检查失败附件 |
-
-**降级状态处理示例**：
-```
-success: true, index_status: degraded
-→ "日志已保存，但索引更新遇到问题，新日志可能暂时无法被搜索到。"
-```
+**安装后可选个性化与写入状态指针**：
+- 安装完成后的专用触发词 / 默认地址偏好配置 → 读 `AGENT_ONBOARDING.md` 的 optional customization step
+- 场景：想调整 trigger、设置默认地址、区分“已保存”与“已验证生效” → 先读 `AGENT_ONBOARDING.md`
+- 场景：需要解释 `write_journal` 的 `needs_confirmation` / `index_status` / `side_effects_status` / 附件处理结果 → 先读 `docs/API.md` 的 `write_journal` 返回语义
+- `SKILL.md` 保留 workflow 与职责边界；安装细节和返回字段契约不在此重复展开
 
 ### 工作流2: 检索日志
 
@@ -368,6 +335,48 @@ success: true, index_status: degraded
 - 如果工具成功但无结果，应如实说明为空结果，并可建议用户缩小/放宽条件
 - 如果用户在搜索后其实想继续执行 edit / summarize / compare，Agent 必须显式切换到下一工作流，而不是默认混做
 
+### 工作流2.5: 聚合型自然语言查询
+
+**适用场景**：
+- “过去30天我有多少次晚于10点睡觉”
+- “上个月我写了多少篇关于工作的日志”
+- “最近两周我情绪低落的次数多吗”
+- “去年这个时候我主要在做什么”
+
+**核心原则**：
+- 聚合型问题不是单次 retrieval 的直接结果，而是 **检索 → 阅读证据 → 条件判定 → 聚合回答**
+- 不得把 `search_journals.total_found` 直接当作最终答案，除非用户问的就是“搜到了几条”
+- 优先使用确定性证据；启发式证据只能辅助判断，不能伪装成硬事实
+
+**步骤**：
+1. **识别问题类型**：判断用户要的是 count / compare / trend / summarize
+2. **提取时间窗与过滤条件**：优先形成 `date-from/date-to/topic/project/people/...`
+3. **优先找硬证据**：
+   - frontmatter 明确字段
+   - 正文明确陈述
+   - index / timeline / metadata 可直接回答的信息
+4. **必要时做候选检索**：调用 `search_journals`，必要时围绕同一用户问题做多轮 query expansion
+5. **逐条判定证据**：
+   - `MATCH`：明确满足
+   - `NO_MATCH`：明确不满足
+   - `UNCERTAIN`：存在相关线索，但证据不足
+6. **聚合输出**：count / compare / trend / summary，并明确区分确定结论与启发式推断
+
+**证据分层（强制）**：
+- **硬证据**：结构化字段或正文明确陈述
+- **软证据**：只能间接支持结论的 proxy signal（如日志写作时间很晚、正文出现“熬夜/很困/准备睡”）
+- **不确定证据**：不足以单独支撑结论，只能作为补充说明
+
+**启发式规则（强制）**：
+- Agent 可以使用软证据做推断，但必须降级表达为“高概率 / 可能 / 无法确认”
+- 不得把启发式结论写成 CLI 硬规则
+- 不得为某个具体问题发明专门 workflow 分支；应复用本工作流的证据分层与聚合步骤
+
+**职责边界（强制）**：
+- CLI 负责提供原始证据与检索结果
+- Agent 负责条件判定、聚合、解释不确定性
+- 如果结论高度依赖启发式，必须在最终回答中说明依据与局限
+
 ### 工作流3: 编辑日志
 
 1. **定位日志**：根据日期或标题找到目标文件
@@ -405,7 +414,7 @@ success: true, index_status: degraded
 
 1. **扫描**：`life-index migrate --dry-run` 查看版本分布和缺失字段
 2. **执行**：`life-index migrate --apply` 自动迁移 + 获取 `needs_agent` 列表
-3. **语义回填**：Agent 逐条处理 `needs_agent`（读取正文 → LLM 提取 abstract/mood/themes → `life-index edit` 更新）
+3. **语义回填**：Agent 逐条处理 `needs_agent`（读取正文 → LLM 提取 abstract/mood → `life-index edit` 更新）
 
 ### 工作流7: Entity 审计
 

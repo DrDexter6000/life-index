@@ -14,7 +14,7 @@ from dataclasses import field as _field
 from typing import Any, Callable
 
 # Schema 版本（用于未来格式变更的向后兼容）
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 # ---------------------------------------------------------------------------
@@ -55,16 +55,10 @@ def register_migration(
 
 @register_migration(1, 2)
 def _migrate_v1_to_v2(metadata: dict, content: str) -> MigrationResult:
-    """v1→v2: add sentiment_score, themes, entities fields."""
+    """v1→v2: add entities field."""
     changes: list[str] = []
     needs: list[str] = []
 
-    if "sentiment_score" not in metadata:
-        metadata["sentiment_score"] = None
-        changes.append("added sentiment_score: null")
-    if "themes" not in metadata:
-        metadata["themes"] = []
-        changes.append("added themes: []")
     if "entities" not in metadata:
         metadata["entities"] = []
         changes.append("added entities: []")
@@ -81,6 +75,24 @@ def _migrate_v1_to_v2(metadata: dict, content: str) -> MigrationResult:
         deterministic_changes=changes,
         needs_agent=needs,
     )
+
+
+@register_migration(2, 3)
+def _migrate_v2_to_v3(metadata: dict, content: str) -> MigrationResult:
+    """v2→v3: remove deprecated placeholder fields."""
+    del content  # unused in deterministic migration
+
+    changes: list[str] = []
+
+    if "sentiment_score" in metadata:
+        metadata.pop("sentiment_score", None)
+        changes.append("removed sentiment_score")
+    if "themes" in metadata:
+        metadata.pop("themes", None)
+        changes.append("removed themes")
+
+    metadata["schema_version"] = 3
+    return MigrationResult(metadata=metadata, deterministic_changes=changes)
 
 
 def get_migration_chain(
@@ -125,7 +137,9 @@ def run_migration_chain(metadata: dict, content: str = "") -> MigrationResult:
         working["schema_version"] = SCHEMA_VERSION
         return MigrationResult(
             metadata=working,
-            deterministic_changes=[f"pinned future v{current_ver} to v{SCHEMA_VERSION}"],
+            deterministic_changes=[
+                f"pinned future v{current_ver} to v{SCHEMA_VERSION}"
+            ],
         )
 
     chain = get_migration_chain(current_ver, SCHEMA_VERSION)
@@ -198,40 +212,6 @@ def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
             }
         )
 
-    sentiment_score = metadata.get("sentiment_score")
-    if sentiment_score is not None:
-        try:
-            score = float(sentiment_score)
-        except (TypeError, ValueError):
-            issues.append(
-                {
-                    "level": "error",
-                    "field": "sentiment_score",
-                    "message": "sentiment_score 必须是数字",
-                }
-            )
-        else:
-            if score < -1.0 or score > 1.0:
-                issues.append(
-                    {
-                        "level": "error",
-                        "field": "sentiment_score",
-                        "message": "sentiment_score 必须位于 -1.0 到 1.0 之间",
-                    }
-                )
-
-    themes = metadata.get("themes")
-    if themes is not None and not (
-        isinstance(themes, list) and all(isinstance(item, str) for item in themes)
-    ):
-        issues.append(
-            {
-                "level": "error",
-                "field": "themes",
-                "message": "themes 必须是字符串列表",
-            }
-        )
-
     entities = metadata.get("entities")
     if entities is not None and not (
         isinstance(entities, list) and all(isinstance(item, str) for item in entities)
@@ -246,7 +226,9 @@ def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
 
     links = metadata.get("links")
     if links is not None:
-        if not isinstance(links, list) or not all(isinstance(item, str) for item in links):
+        if not isinstance(links, list) or not all(
+            isinstance(item, str) for item in links
+        ):
             issues.append(
                 {
                     "level": "error",

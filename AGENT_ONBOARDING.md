@@ -119,8 +119,8 @@ After reinstall, check whether existing journals need schema migration:
 ```
 
 If `needs_migration > 0`:
-- Run `life-index migrate --apply` to apply deterministic field backfill
-- If the output includes `needs_agent` items, report these to the user — they require Agent-driven semantic enrichment (extracting abstract/mood/themes from content)
+- Run `life-index migrate --apply` to apply deterministic schema updates
+- If the output includes `needs_agent` items, report these to the user — they require Agent-driven semantic enrichment (extracting abstract/mood from content)
 
 #### Route C — Repair / Ambiguous State
 
@@ -251,6 +251,19 @@ Execute these steps in order. Each step must succeed before proceeding.
 
 After the required verification flow is complete, an **optional customization step** may follow. That step should follow the guardrails in this document plus the current configuration contracts in `docs/API.md` / `tools/lib/config.py`; the older review-scoped customization protocol is no longer the active reference.
 
+### Optional Customization Step (Post-Verification)
+
+After installation, first write, and first search verification all pass, the Agent may offer two optional customizations:
+
+1. **专用触发词**：采用 `"/life-index" + "用户自定义触发词"` 的组合；如用户同意，Agent 可修改 `SKILL.md` 中的 trigger 列表与对应示例
+2. **默认地址偏好**：如用户同意，Agent 可创建或更新 `~/Documents/Life-Index/.life-index/config.yaml` 中的 `defaults.location`
+
+**Guardrails**:
+- 不得移除 `/life-index`
+- 不得重写与触发词无关的 workflow 段落
+- 默认地址配置必须诚实区分“已保存”与“已验证生效”
+- 如用户未明确要求个性化，不要在安装主流程中强行插入该步骤
+
 ### Step 5.1: Build Index (Initialization)
 
 ```bash
@@ -331,8 +344,6 @@ TODAY=$(date +%F)
   \"people\": [],
   \"project\": \"\",
   \"links\": [],
-  \"sentiment_score\": null,
-  \"themes\": [],
   \"entities\": []
 }"
 ```
@@ -354,8 +365,6 @@ $json = @"
   "people": [],
   "project": "",
   "links": [],
-  "sentiment_score": null,
-  "themes": [],
   "entities": []
 }
 "@

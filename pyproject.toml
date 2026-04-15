@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-index"
-version = "1.6.5"
+version = "1.7.0"
 description = "Personal life journaling system with dual-dimension indexing"
 readme = "README.md"
 license = "Apache-2.0"

@@ -74,7 +74,7 @@ class TestMigrateScan:
         report = scan_journals(tmp_path / "Journals")
         assert len(report["outdated_files"]) == 1
         missing = report["outdated_files"][0]["missing_fields"]
-        assert "sentiment_score" in missing
+        assert "entities" in missing
 
     def test_scan_ignores_index_files(self, tmp_path: Path):
         """Non-journal files (index, report) should be ignored."""

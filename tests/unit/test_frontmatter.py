@@ -696,11 +696,11 @@ class TestMigrateMetadata:
 
         result = migrate_metadata(metadata)
 
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == 3
         assert result["title"] == "Test"
 
     def test_no_schema_version(self):
-        """Test migration when no schema_version present (defaults to 1, migrated to 2)"""
+        """Test migration when no schema_version present (defaults to 1, migrated to 3)"""
         metadata = {
             "title": "Test",
             "date": "2026-03-10",
@@ -708,8 +708,8 @@ class TestMigrateMetadata:
 
         result = migrate_metadata(metadata)
 
-        # When no schema_version, defaults to 1, then migrated to current (2)
-        assert result["schema_version"] == 2
+        # When no schema_version, defaults to 1, then migrated to current (3)
+        assert result["schema_version"] == 3
         assert result["title"] == "Test"
 
     def test_future_version(self):
@@ -723,7 +723,7 @@ class TestMigrateMetadata:
         result = migrate_metadata(metadata)
 
         # Should update to current version
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == 3
 
 
 class TestFieldConstants:
@@ -754,7 +754,7 @@ class TestFieldConstants:
     def test_get_schema_version(self):
         """Test get_schema_version function (line 313)"""
         version = get_schema_version()
-        assert version == 2
+        assert version == 3
         assert isinstance(version, int)
 
 
