@@ -45,7 +45,10 @@ def _sample_graph() -> list[dict]:
             "primary_name": "妈妈",
             "aliases": ["老妈", "婆婆"],
             "attributes": {},
-            "relationships": [{"target": "author-self", "relation": "mother_of"}],
+            "relationships": [
+                {"target": "author-self", "relation": "mother_of"},
+                {"target": "tuantuan", "relation": "grandmother_of"},
+            ],
         },
         {
             "id": "tuantuan",
@@ -53,7 +56,7 @@ def _sample_graph() -> list[dict]:
             "primary_name": "乐乐",
             "aliases": ["圆圆"],
             "attributes": {},
-            "relationships": [{"target": "mama", "relation": "granddaughter_of"}],
+            "relationships": [{"target": "author-self", "relation": "child_of"}],
         },
         {
             "id": "chongqing",
@@ -104,16 +107,16 @@ class TestBuildRuntimeView:
     def test_reverse_relationships_single_source(self) -> None:
         view = build_runtime_view(_sample_graph())
 
-        # mama is target of tuantuan's granddaughter_of
-        reverse = view.reverse_relationships["mama"]
+        # tuantuan is target of mama's grandmother_of
+        reverse = view.reverse_relationships["tuantuan"]
         assert len(reverse) == 1
-        assert reverse[0] == ("tuantuan", "granddaughter_of")
+        assert reverse[0] == ("mama", "grandmother_of")
 
     def test_reverse_relationships_empty_for_no_incoming(self) -> None:
         view = build_runtime_view(_sample_graph())
 
-        # tuantuan has no incoming relationships
-        assert view.reverse_relationships.get("tuantuan", []) == []
+        # wife-001 has no incoming relationships
+        assert view.reverse_relationships.get("wife-001", []) == []
 
     def test_entities_stored(self) -> None:
         view = build_runtime_view(_sample_graph())
@@ -134,6 +137,27 @@ class TestBuildRuntimeView:
 
         # Should have at least the default relationship phrase patterns
         assert len(view.phrase_patterns) > 0
+
+    def test_phrase_patterns_use_grandparent_relations(self) -> None:
+        view = build_runtime_view(_sample_graph())
+
+        assert {
+            pattern["suffix"]: pattern["relation"] for pattern in view.phrase_patterns
+        }["的奶奶"] == "grandmother_of"
+        assert {
+            pattern["suffix"]: pattern["relation"] for pattern in view.phrase_patterns
+        }["的爷爷"] == "grandfather_of"
+
+    def test_phrase_patterns_include_child_suffixes(self) -> None:
+        view = build_runtime_view(_sample_graph())
+
+        relation_by_suffix = {
+            pattern["suffix"]: pattern["relation"] for pattern in view.phrase_patterns
+        }
+
+        assert relation_by_suffix["的女儿"] == "child_of"
+        assert relation_by_suffix["的儿子"] == "child_of"
+        assert relation_by_suffix["的孩子"] == "child_of"
 
 
 class TestResolveViaRuntime:

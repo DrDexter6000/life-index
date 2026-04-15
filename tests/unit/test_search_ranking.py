@@ -208,3 +208,53 @@ def test_merge_and_rank_results_dynamic_fts_threshold_tightens_high_score_cluste
 def test_keyword_pipeline_default_uses_shared_fts_min_relevance_constant() -> None:
     assert run_keyword_pipeline.__kwdefaults__ is not None
     assert run_keyword_pipeline.__kwdefaults__["fts_min_relevance"] == FTS_MIN_RELEVANCE
+
+
+def test_merge_and_rank_results_applies_entity_hint_bonus_to_people_and_tags() -> None:
+    l2_results = [
+        {
+            "path": "with-entity.md",
+            "title": "With Entity",
+            "metadata": {"people": ["乐乐"], "tags": ["亲子"]},
+        },
+        {
+            "path": "without-entity.md",
+            "title": "Without Entity",
+            "metadata": {"people": ["别人"], "tags": ["其他"]},
+        },
+    ]
+    entity_hints = [
+        {
+            "matched_term": "我女儿",
+            "entity_id": "tuantuan",
+            "entity_type": "person",
+            "expansion_terms": ["乐乐", "小豆丁", "小英雄"],
+            "reason": "phrase_match",
+        }
+    ]
+
+    merged = merge_and_rank_results(
+        [], l2_results, [], query=None, min_score=0, entity_hints=entity_hints
+    )
+
+    assert merged[0]["path"] == "with-entity.md"
+    assert merged[0]["relevance_score"] > merged[1]["relevance_score"]
+
+
+def test_merge_and_rank_results_without_entity_hints_preserves_default_order() -> None:
+    l2_results = [
+        {
+            "path": "first.md",
+            "title": "First",
+            "metadata": {},
+        },
+        {
+            "path": "second.md",
+            "title": "Second",
+            "metadata": {},
+        },
+    ]
+
+    merged = merge_and_rank_results([], l2_results, [], query=None, min_score=0)
+
+    assert [item["path"] for item in merged] == ["first.md", "second.md"]

@@ -41,7 +41,10 @@ def _spouse_family_graph() -> list[dict]:
             "primary_name": "妈妈",
             "aliases": ["老妈", "婆婆"],
             "attributes": {},
-            "relationships": [{"target": "author-self", "relation": "mother_of"}],
+            "relationships": [
+                {"target": "author-self", "relation": "mother_of"},
+                {"target": "tuantuan", "relation": "grandmother_of"},
+            ],
         },
         {
             "id": "tuantuan",
@@ -49,7 +52,7 @@ def _spouse_family_graph() -> list[dict]:
             "primary_name": "乐乐",
             "aliases": ["圆圆"],
             "attributes": {},
-            "relationships": [{"target": "mama", "relation": "granddaughter_of"}],
+            "relationships": [{"target": "author-self", "relation": "child_of"}],
         },
         {
             "id": "chongqing",
@@ -130,6 +133,28 @@ class TestRelationshipPhrasePatterns:
 
         assert "老妈" in expanded
         assert "婆婆" in expanded
+
+    def test_x_daughter_phrase(self, isolated_data_dir: Path) -> None:
+        """我女儿 → expand child entity names via reverse relationship lookup."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+
+        expanded = expand_query_with_entity_graph("我女儿")
+
+        assert "乐乐" in expanded
+        assert "圆圆" in expanded
+
+    def test_x_child_phrase(self, isolated_data_dir: Path) -> None:
+        """我的孩子 → expand child entity names via reverse relationship lookup."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+
+        expanded = expand_query_with_entity_graph("我的孩子")
+
+        assert "乐乐" in expanded
+        assert "圆圆" in expanded
 
     def test_phrase_unknown_subject_passthrough(self, isolated_data_dir: Path) -> None:
         """X的老婆 where X is unknown → no crash, meaningful passthrough."""
