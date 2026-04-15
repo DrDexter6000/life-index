@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import JOURNALS_DIR, USER_DATA_DIR
-from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE
+from .chinese_tokenizer import get_dict_hash
+from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE, TOKENIZER_VERSION
 
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
@@ -62,6 +63,52 @@ def init_fts_db() -> sqlite3.Connection:
 
     conn.commit()
     return conn
+
+
+def write_index_meta(conn: sqlite3.Connection) -> None:
+    """Write tokenizer_version and dict_hash into index_meta table."""
+    cursor = conn.cursor()
+    dict_hash = get_dict_hash()
+    cursor.execute(
+        "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+        ("tokenizer_version", str(TOKENIZER_VERSION)),
+    )
+    cursor.execute(
+        "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+        ("dict_hash", dict_hash),
+    )
+    conn.commit()
+
+
+def check_needs_rebuild(conn: sqlite3.Connection) -> bool:
+    """Check if the FTS index needs rebuilding due to tokenizer or dict changes.
+
+    Returns True if:
+    - No tokenizer_version in index_meta (pre-v2 index)
+    - tokenizer_version doesn't match current TOKENIZER_VERSION
+    - dict_hash doesn't match current entity dictionary hash
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM index_meta WHERE key = 'tokenizer_version'")
+        row = cursor.fetchone()
+        if row is None:
+            return True  # Pre-v2 index, needs rebuild
+        if int(row[0]) != TOKENIZER_VERSION:
+            return True  # Tokenizer version changed
+
+        cursor.execute("SELECT value FROM index_meta WHERE key = 'dict_hash'")
+        row = cursor.fetchone()
+        if row is None:
+            return True  # No dict hash recorded
+
+        current_hash = get_dict_hash()
+        if row[0] != current_hash:
+            return True  # Entity dictionary changed since last index
+
+        return False
+    except sqlite3.Error:
+        return True  # Any DB error = rebuild safe default
 
 
 def get_stats() -> Dict[str, Any]:
@@ -134,12 +181,37 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
             "updated": int,
             "removed": int,
             "total": int,
+            "needs_rebuild": bool (if version mismatch detected),
             "error": str (optional)
         }
     """
     from .fts_update import update_index as _update_index
 
-    return _update_index(init_fts_db, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental)
+    # Check if index needs rebuild due to tokenizer/dict changes (T1.4)
+    if incremental and FTS_DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(str(FTS_DB_PATH))
+            needs = check_needs_rebuild(conn)
+            conn.close()
+            if needs:
+                incremental = False
+        except sqlite3.Error:
+            incremental = False
+
+    result = _update_index(
+        init_fts_db, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental
+    )
+
+    # After successful update, write version metadata (T1.4)
+    if result.get("success") and FTS_DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(str(FTS_DB_PATH))
+            write_index_meta(conn)
+            conn.close()
+        except sqlite3.Error:
+            pass  # Non-critical — index is still valid
+
+    return result
 
 
 def get_indexed_files(conn: sqlite3.Connection) -> Dict[str, Tuple[str, str]]:
