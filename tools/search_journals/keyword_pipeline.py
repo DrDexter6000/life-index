@@ -12,8 +12,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ..lib import chinese_tokenizer
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
-from ..lib.chinese_tokenizer import normalize_query, segment_for_fts
 from ..lib.path_contract import merge_journal_path_fields
 from ..lib.search_constants import FTS_LIMIT, FTS_FALLBACK_THRESHOLD, FTS_MIN_RELEVANCE
 
@@ -85,6 +85,7 @@ def _segment_query_for_fts(query: str, *, _is_segmented: bool = False) -> str:
         cleaned_query = cleaned_query.replace(match.group(0), placeholder, 1)
 
     # Segment the non-quoted part
+    segment_for_fts = getattr(chinese_tokenizer, "segment_for_fts")
     segmented = segment_for_fts(cleaned_query, mode="query")
 
     # Restore quoted phrases
@@ -184,6 +185,32 @@ def run_keyword_pipeline(
         (l1_results, l2_results, l3_results, l2_truncated, l2_total_available, perf)
     """
     perf: dict[str, float] = {}
+    normalize_query = getattr(chinese_tokenizer, "normalize_query")
+    normalized_query = normalize_query(query) if query is not None else None
+    has_effective_query = bool(normalized_query)
+    has_other_filters = any(
+        value
+        for value in (
+            topic,
+            project,
+            tags,
+            mood,
+            people,
+            date_from,
+            date_to,
+            location,
+            weather,
+        )
+    )
+
+    if not has_effective_query and not has_other_filters:
+        perf["l1_time_ms"] = 0.0
+        perf["l2_time_ms"] = 0.0
+        perf["l3_time_ms"] = 0.0
+        logger.info("[SearchPerf] L1 index: 0 results, 0.0ms")
+        logger.info("[SearchPerf] L2 metadata: 0 results, 0.0ms")
+        logger.info("[SearchPerf] L3 content: 0 results, 0.0ms")
+        return ([], [], [], False, 0, perf)
 
     def _normalize_path(path_value: str) -> str:
         return str(Path(path_value).resolve()).replace("\\", "/")
@@ -237,7 +264,7 @@ def run_keyword_pipeline(
         tags=tags,
         mood=mood,
         people=people,
-        query=query,
+        query=normalized_query if has_effective_query else None,
     )
     l2_results = l2_response["results"]
     l2_results = _filter_candidate_items(l2_results)
@@ -256,10 +283,9 @@ def run_keyword_pipeline(
     l3_start = time.time()
     l3_results: list[dict] = []
 
-    if query:
+    if has_effective_query and normalized_query:
         # Segment Chinese text in query before FTS matching (T1.3)
-        query = normalize_query(query)
-        segmented_query = _segment_query_for_fts(query)
+        segmented_query = _segment_query_for_fts(normalized_query)
         fts_query, fallback_fts_query = _build_fts_queries(segmented_query)
 
         # 尝试使用 FTS 索引（如果可用且启用）
@@ -315,9 +341,9 @@ def run_keyword_pipeline(
                     # When FTS recall is suspiciously low, supplement with full-corpus
                     # content scan so body-only matches are not missed due to stale or
                     # incomplete index coverage.
-                    if query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
+                    if normalized_query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
                         fallback_l3_results = search_l3_content(
-                            query,
+                            normalized_query,
                             sorted(candidate_paths)
                             if candidate_paths is not None
                             else None,
@@ -347,7 +373,7 @@ def run_keyword_pipeline(
             # Restricting to L2-filtered candidates causes body-only keyword matches
             # (e.g. names appearing only in content) to be lost before L3 sees them.
             l3_results = search_l3_content(
-                query,
+                normalized_query,
                 sorted(candidate_paths) if candidate_paths is not None else None,
             )
             logger.debug(f"File scan found {len(l3_results)} results")

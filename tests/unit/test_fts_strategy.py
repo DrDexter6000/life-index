@@ -7,6 +7,56 @@ from unittest.mock import patch
 
 
 class TestFTSStrategy:
+    def test_whitespace_query_skips_l3_search(self) -> None:
+        """纯空白查询应在进入 FTS/L3 前直接短路为空结果。"""
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
+            with patch("tools.lib.search_index.search_fts") as mock_fts:
+                with patch(
+                    "tools.search_journals.keyword_pipeline.search_l3_content"
+                ) as mock_l3:
+                    mock_l2.return_value = {
+                        "results": [],
+                        "truncated": False,
+                        "total_available": 0,
+                    }
+
+                    _, _, l3_results, _, _, _ = run_keyword_pipeline(
+                        query="   ", use_index=True
+                    )
+
+        assert mock_fts.call_count == 0
+        assert mock_l3.call_count == 0
+        assert l3_results == []
+
+    def test_punctuation_only_query_skips_l3_search(self) -> None:
+        """纯标点查询应视为无有效 query，而不是回退成全文扫描。"""
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
+            with patch("tools.lib.search_index.search_fts") as mock_fts:
+                with patch(
+                    "tools.search_journals.keyword_pipeline.search_l3_content"
+                ) as mock_l3:
+                    mock_l2.return_value = {
+                        "results": [],
+                        "truncated": False,
+                        "total_available": 0,
+                    }
+
+                    _, _, l3_results, _, _, _ = run_keyword_pipeline(
+                        query="！！！", use_index=True
+                    )
+
+        assert mock_fts.call_count == 0
+        assert mock_l3.call_count == 0
+        assert l3_results == []
+
     def test_query_normalization_applies_before_segmentation(self) -> None:
         """查询进入 FTS 前应先做标准化。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline

@@ -86,6 +86,23 @@ RELATION_TEST_CASES = [
 ]
 
 
+def test_natural_sentence_relation_phrase_does_not_break_fts(
+    _setup_relation_search_env,
+):
+    """自然句中的关系短语不应生成非法 FTS 查询。"""
+    from tools.search_journals import hierarchical_search
+
+    result = hierarchical_search(query="想念我的女儿", level=3, semantic=False)
+    merged_titles = {
+        "".join(str(item.get("title", "")).split())
+        for item in result.get("merged_results", [])
+    }
+    expanded_query = str(result.get("query_params", {}).get("expanded_query", ""))
+
+    assert "想念尿片侠" in merged_titles
+    assert "fts5: syntax error" not in expanded_query.lower()
+
+
 @pytest.fixture(scope="module")
 def _setup_relation_search_env(tmp_path_factory):
     tmp_dir = tmp_path_factory.mktemp("life_index_relation_e2e")
