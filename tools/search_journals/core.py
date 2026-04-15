@@ -21,6 +21,7 @@ from ..lib.entity_runtime import (
     build_runtime_view,
     resolve_via_runtime,
 )
+from ..lib.entity_relations import normalize_relation
 from ..lib.entity_schema import EntityGraphValidationError
 from ..lib.search_constants import (
     SEMANTIC_TOP_K_DEFAULT,
@@ -84,16 +85,22 @@ def build_l0_candidate_set(
 
     if year is not None:
         if month is not None:
-            journal_paths = (JOURNALS_DIR / str(year) / f"{month:02d}").glob("life-index_*.md")
+            journal_paths = (JOURNALS_DIR / str(year) / f"{month:02d}").glob(
+                "life-index_*.md"
+            )
         else:
             journal_paths = (JOURNALS_DIR / str(year)).glob("**/life-index_*.md")
-        candidate_sets.append({_normalize_candidate_path(path) for path in journal_paths})
+        candidate_sets.append(
+            {_normalize_candidate_path(path) for path in journal_paths}
+        )
 
     if topic:
         topic_index = _topic_index_path(topic)
         if topic_index.exists():
             topic_paths: set[str] = set()
-            for link_target in _MARKDOWN_LINK_RE.findall(topic_index.read_text(encoding="utf-8")):
+            for link_target in _MARKDOWN_LINK_RE.findall(
+                topic_index.read_text(encoding="utf-8")
+            ):
                 candidate_path = _extract_candidate_path(link_target)
                 if candidate_path and candidate_path.name.startswith("life-index_"):
                     topic_paths.add(_normalize_candidate_path(candidate_path))
@@ -116,7 +123,9 @@ def _filter_results_by_candidates(
 
     filtered_results: list[dict[str, Any]] = []
     for item in results:
-        path_value = item.get("path") or item.get("journal_route_path") or item.get("rel_path")
+        path_value = (
+            item.get("path") or item.get("journal_route_path") or item.get("rel_path")
+        )
         if not path_value:
             continue
         normalized = _normalize_candidate_path(Path(str(path_value)))
@@ -154,6 +163,51 @@ def expand_query_with_entity_graph(query: str) -> str:
                 deduped.append(name)
         return "(" + " OR ".join(deduped) + ")"
 
+    def _iter_subject_candidates(token: str, suffix: str) -> list[str]:
+        subjects: list[str] = []
+        if token.endswith(suffix):
+            subjects.append(token[: -len(suffix)].strip())
+
+        if suffix.startswith("的"):
+            bare_suffix = suffix[1:]
+            if bare_suffix and token.endswith(bare_suffix):
+                bare_subject = token[: -len(bare_suffix)].strip()
+                if bare_subject and bare_subject not in subjects:
+                    subjects.append(bare_subject)
+
+        return [subject for subject in subjects if subject]
+
+    def _match_relation(actual_relation: str, expected_relation: str) -> bool:
+        return normalize_relation(actual_relation) == normalize_relation(
+            expected_relation
+        )
+
+    def _expand_related_entities(
+        *, source: dict[str, Any], relation: str, view: Any
+    ) -> list[dict[str, Any]]:
+        related_entities: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        for rel in source.get("relationships", []):
+            if not _match_relation(str(rel.get("relation", "")), relation):
+                continue
+            target = resolve_via_runtime(rel["target"], view)
+            if target and target["id"] not in seen_ids:
+                related_entities.append(target)
+                seen_ids.add(target["id"])
+
+        for source_id, reverse_relation in view.reverse_relationships.get(
+            source["id"], []
+        ):
+            if not _match_relation(reverse_relation, relation):
+                continue
+            target = resolve_via_runtime(source_id, view)
+            if target and target["id"] not in seen_ids:
+                related_entities.append(target)
+                seen_ids.add(target["id"])
+
+        return related_entities
+
     # 1. Whole-query exact match (unchanged behavior)
     whole_match = resolve_via_runtime(query, view)
     if whole_match:
@@ -167,24 +221,25 @@ def expand_query_with_entity_graph(query: str) -> str:
         """Try to match a relationship phrase pattern like X的老婆, X的奶奶."""
         for pattern in view.phrase_patterns:
             suffix = pattern["suffix"]
-            if not token.endswith(suffix):
-                continue
-
-            subject = token[: -len(suffix)].strip()
-            if not subject:
-                continue
-
-            source = resolve_via_runtime(subject, view)
-            if source is None:
-                continue
-
             relation = pattern["relation"]
-            for rel in source.get("relationships", []):
-                if rel.get("relation") != relation:
+            related_entities: list[dict[str, Any]] = []
+            for subject in _iter_subject_candidates(token, suffix):
+                source = resolve_via_runtime(subject, view)
+                if source is None:
                     continue
-                target = resolve_via_runtime(rel["target"], view)
-                if target:
-                    return _expand_entity_names(target)
+                related_entities.extend(
+                    _expand_related_entities(
+                        source=source, relation=relation, view=view
+                    )
+                )
+
+            if related_entities:
+                deduped_names: list[str] = []
+                for entity in related_entities:
+                    for name in [entity["primary_name"], *entity.get("aliases", [])]:
+                        if name not in deduped_names:
+                            deduped_names.append(name)
+                return "(" + " OR ".join(deduped_names) + ")"
         return None
 
     for token in tokens:
@@ -204,7 +259,9 @@ def expand_query_with_entity_graph(query: str) -> str:
             for entity in graph:
                 for name in [entity["primary_name"], *entity.get("aliases", [])]:
                     if name in replacements:
-                        replacements = replacements.replace(name, _expand_entity_names(entity))
+                        replacements = replacements.replace(
+                            name, _expand_entity_names(entity)
+                        )
             expanded_tokens.append(replacements)
 
     expanded = " ".join(expanded_tokens).strip()
@@ -261,11 +318,32 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
             }
         )
 
+    def _iter_subject_candidates(token: str, suffix: str) -> list[str]:
+        subjects: list[str] = []
+        if token.endswith(suffix):
+            subjects.append(token[: -len(suffix)].strip())
+
+        if suffix.startswith("的"):
+            bare_suffix = suffix[1:]
+            if bare_suffix and token.endswith(bare_suffix):
+                bare_subject = token[: -len(bare_suffix)].strip()
+                if bare_subject and bare_subject not in subjects:
+                    subjects.append(bare_subject)
+
+        return [subject for subject in subjects if subject]
+
+    def _match_relation(actual_relation: str, expected_relation: str) -> bool:
+        return normalize_relation(actual_relation) == normalize_relation(
+            expected_relation
+        )
+
     # Check whole-query match first
     whole_match = resolve_via_runtime(query.strip(), view)
     if whole_match:
         reason = (
-            "primary_name_match" if query.strip() == whole_match["primary_name"] else "alias_match"
+            "primary_name_match"
+            if query.strip() == whole_match["primary_name"]
+            else "alias_match"
         )
         _add_hint(whole_match, query.strip(), reason)
         return hints
@@ -277,26 +355,40 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
         # Try phrase patterns
         for pattern in view.phrase_patterns:
             suffix = pattern["suffix"]
-            if not token.endswith(suffix):
-                continue
-            subject = token[: -len(suffix)].strip()
-            if not subject:
-                continue
-            source = resolve_via_runtime(subject, view)
-            if source is None:
-                continue
             relation = pattern["relation"]
-            for rel in source.get("relationships", []):
-                if rel.get("relation") == relation:
-                    target = resolve_via_runtime(rel["target"], view)
-                    if target:
-                        _add_hint(target, token, "phrase_match")
-            continue  # phrase matched, skip further checks for this token
+            matched_any = False
+            for subject in _iter_subject_candidates(token, suffix):
+                source = resolve_via_runtime(subject, view)
+                if source is None:
+                    continue
+
+                for rel in source.get("relationships", []):
+                    if _match_relation(str(rel.get("relation", "")), relation):
+                        target = resolve_via_runtime(rel["target"], view)
+                        if target:
+                            _add_hint(target, token, "phrase_match")
+                            matched_any = True
+
+                for source_id, reverse_relation in view.reverse_relationships.get(
+                    source["id"], []
+                ):
+                    if _match_relation(reverse_relation, relation):
+                        target = resolve_via_runtime(source_id, view)
+                        if target:
+                            _add_hint(target, token, "phrase_match")
+                            matched_any = True
+
+            if matched_any:
+                break
 
         # Direct entity match
         matched = resolve_via_runtime(token, view)
         if matched:
-            reason = "primary_name_match" if token == matched["primary_name"] else "alias_match"
+            reason = (
+                "primary_name_match"
+                if token == matched["primary_name"]
+                else "alias_match"
+            )
             _add_hint(matched, token, reason)
 
     return hints
@@ -463,7 +555,9 @@ def hierarchical_search(
 
     if not semantic:
         result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
-        result["warnings"].append("semantic_disabled: 用户通过 --no-semantic 禁用语义搜索")
+        result["warnings"].append(
+            "semantic_disabled: 用户通过 --no-semantic 禁用语义搜索"
+        )
 
     # Round 7 Phase 1: Resolve entity hints before expansion
     entity_hints = resolve_query_entities(query) if query else []
@@ -542,7 +636,9 @@ def hierarchical_search(
             l2_total_available,
             kw_perf,
         ) = future_keyword.result()
-        semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
+        semantic_results, sem_perf, semantic_available, semantic_note = (
+            future_semantic.result()
+        )
 
     l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
     l2_results = _filter_results_by_candidates(l2_results, candidate_paths)
@@ -580,10 +676,17 @@ def hierarchical_search(
             min_rrf_score=rrf_min_score,
             min_non_rrf_score=non_rrf_min_score,
             explain=explain,  # Task 2.1
+            entity_hints=entity_hints,
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(l1_results, l2_results, l3_results, query)
+        result["merged_results"] = merge_and_rank_results(
+            l1_results,
+            l2_results,
+            l3_results,
+            query,
+            entity_hints=entity_hints,
+        )
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)

@@ -18,12 +18,37 @@ from ..lib.search_constants import (
     SCORE_TITLE_MATCH_BONUS_L2,
     SCORE_ABSTRACT_MATCH_BONUS,
     SCORE_TAGS_MATCH_BONUS,
+    SCORE_ENTITY_BONUS,
     NON_RRF_MIN_SCORE,
     MAX_RESULTS_DEFAULT,
     FTS_WEIGHT_DEFAULT,
     SEMANTIC_WEIGHT_DEFAULT,
     FTS_MIN_RELEVANCE,
 )
+
+
+def _to_string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, str):
+        return [value]
+    return []
+
+
+def _entity_bonus(metadata: dict[str, Any], entity_hints: list[dict[str, Any]]) -> int:
+    if not entity_hints:
+        return 0
+
+    people = set(_to_string_list(metadata.get("people")))
+    tags = set(_to_string_list(metadata.get("tags")))
+    if not people and not tags:
+        return 0
+
+    expansion_terms: set[str] = set()
+    for hint in entity_hints:
+        expansion_terms.update(str(term) for term in hint.get("expansion_terms", []))
+
+    return SCORE_ENTITY_BONUS if (people | tags) & expansion_terms else 0
 
 
 def _dynamic_threshold_floor(base_threshold: float, dynamic_threshold: float) -> float:
@@ -186,6 +211,7 @@ def merge_and_rank_results(
     query: Optional[str] = None,
     min_score: float = FTS_MIN_RELEVANCE,
     max_results: int = MAX_RESULTS_DEFAULT,
+    entity_hints: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict]:
     """
     合并三层搜索结果并按相关性排序
@@ -236,6 +262,9 @@ def merge_and_rank_results(
             # tags 匹配加分（仅作弱辅助信号）
             if _query_matches_tags(tags, query):
                 score += SCORE_TAGS_MATCH_BONUS
+
+        if isinstance(r.get("metadata"), dict):
+            score += _entity_bonus(r["metadata"], entity_hints or [])
 
         scored[path] = {"data": r, "score": score, "tier": 2}
 
@@ -303,6 +332,7 @@ def merge_and_rank_results_hybrid(
     min_non_rrf_score: float = NON_RRF_MIN_SCORE,
     max_results: int = MAX_RESULTS_DEFAULT,
     explain: bool = False,  # Task 2.1: explain mode
+    entity_hints: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict]:
     """
     混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
@@ -427,6 +457,9 @@ def merge_and_rank_results_hybrid(
                 score += SCORE_ABSTRACT_MATCH_BONUS
             if _query_matches_tags(tags, query):
                 score += SCORE_TAGS_MATCH_BONUS
+
+        if isinstance(r.get("metadata"), dict):
+            score += _entity_bonus(r["metadata"], entity_hints or [])
 
         scored[path] = {
             "data": r,
