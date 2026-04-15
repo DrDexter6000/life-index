@@ -68,13 +68,15 @@ legitimate low-recall scenarios.
 ADR-008: Score weights
 ----------------------
 - L1 base score: 10 (presence indicator)
-- L2 base score: 20 (metadata match, higher than L1)
+- L2 base score: 30 (metadata match, must exceed FTS_MIN_RELEVANCE=25)
 - L3 base score: BM25 relevance (content match, highest)
 - Title match bonus: 10 (strong signal)
 - Abstract match bonus: 4 (moderate signal)
 - Tags match bonus: 1 (weak auxiliary signal)
 
 These ensure proper ordering: L3 > L2 > L1 for same-query scenarios.
+L2 base must exceed FTS_MIN_RELEVANCE so that L2-only results survive the
+non-hybrid merge_and_rank_results threshold (which uses FTS_MIN_RELEVANCE as floor).
 
 ADR-009: BM25 relevance formula
 -------------------------------
@@ -142,7 +144,7 @@ FTS_SNIPPET_TOKENS: int = 32
 
 # ADR-008: Base scores for each layer
 SCORE_L1_BASE: int = 10  # Index presence
-SCORE_L2_BASE: int = 20  # Metadata match
+SCORE_L2_BASE: int = 30  # Metadata match (must exceed FTS_MIN_RELEVANCE=25 to survive non-hybrid merge threshold)
 # L3 uses BM25 relevance directly
 
 # ADR-008: Match bonuses
