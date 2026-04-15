@@ -19,14 +19,17 @@ def _entity_graph_payload() -> list[dict]:
             "type": "person",
             "primary_name": "妈妈",
             "aliases": ["老妈", "婆婆", "王阿姨"],
-            "relationships": [{"target": "author-self", "relation": "mother_of"}],
+            "relationships": [
+                {"target": "author-self", "relation": "mother_of"},
+                {"target": "tuantuan", "relation": "grandmother_of"},
+            ],
         },
         {
             "id": "tuantuan",
             "type": "person",
             "primary_name": "团团",
             "aliases": ["圆圆"],
-            "relationships": [{"target": "mama", "relation": "granddaughter_of"}],
+            "relationships": [{"target": "author-self", "relation": "child_of"}],
         },
         {
             "id": "chongqing",
@@ -81,6 +84,7 @@ class TestEntityQueryExpansion:
 
         payload = _entity_graph_payload()
         payload[2]["id"] = "child-001"
+        payload[1]["relationships"][1]["target"] = "child-001"
 
         save_entity_graph(payload, USER_DATA_DIR / "entity_graph.yaml")
 
@@ -89,6 +93,18 @@ class TestEntityQueryExpansion:
         assert "妈妈" in expanded
         assert "婆婆" in expanded
         assert "王阿姨" in expanded
+
+    def test_child_relationship_resolution(self, isolated_data_dir: Path) -> None:
+        from tools.lib.entity_graph import save_entity_graph
+        from tools.lib.paths import USER_DATA_DIR
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+
+        expanded = expand_query_with_entity_graph("我女儿")
+
+        assert "团团" in expanded
+        assert "圆圆" in expanded
 
     def test_place_alias(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph

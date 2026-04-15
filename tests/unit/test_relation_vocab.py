@@ -36,6 +36,20 @@ class TestNormalizeRelation:
         assert normalize_relation("女儿") == "child_of"
         assert normalize_relation("son") == "child_of"
 
+    def test_normalize_directional_relations(self) -> None:
+        from tools.lib.entity_relations import normalize_relation
+
+        assert normalize_relation("mother_of") == "parent_of"
+        assert normalize_relation("father_of") == "parent_of"
+        assert normalize_relation("daughter_of") == "child_of"
+        assert normalize_relation("son_of") == "child_of"
+
+    def test_normalize_grandparent_relations(self) -> None:
+        from tools.lib.entity_relations import normalize_relation
+
+        assert normalize_relation("grandmother_of") == "grandmother_of"
+        assert normalize_relation("grandfather_of") == "grandfather_of"
+
     def test_normalize_colleague(self) -> None:
         from tools.lib.entity_relations import normalize_relation
 
@@ -107,3 +121,16 @@ class TestCanonicalRelations:
         for canonical, aliases in CANONICAL_RELATIONS.items():
             assert isinstance(aliases, list), f"{canonical} aliases must be a list"
             assert len(aliases) >= 1, f"{canonical} must have at least one alias"
+
+    def test_phrase_pattern_relations_exist_in_canonical_vocab(self) -> None:
+        from tools.lib.entity_relations import CANONICAL_RELATIONS
+        from tools.lib.entity_runtime import RELATION_PHRASE_PATTERNS
+
+        canonical_keys = set(CANONICAL_RELATIONS)
+        missing = {
+            pattern["relation"]
+            for pattern in RELATION_PHRASE_PATTERNS
+            if pattern["relation"] not in canonical_keys
+        }
+
+        assert missing == set()
