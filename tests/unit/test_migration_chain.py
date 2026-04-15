@@ -30,7 +30,7 @@ class TestMigrationChain:
             get_migration_chain(0, SCHEMA_VERSION)
 
     def test_run_chain_v1_to_v2(self):
-        """v1 metadata should be migrated to v2 format."""
+        """v1 metadata should be migrated to current format."""
         meta_v1 = {
             "schema_version": 1,
             "title": "测试",
@@ -42,10 +42,29 @@ class TestMigrationChain:
         result = run_migration_chain(meta_v1, content="测试正文")
         assert isinstance(result, MigrationResult)
         assert result.metadata["schema_version"] == SCHEMA_VERSION
-        assert "sentiment_score" in result.metadata
-        assert "themes" in result.metadata
         assert "entities" in result.metadata
+        assert "sentiment_score" not in result.metadata
+        assert "themes" not in result.metadata
         assert len(result.deterministic_changes) >= 1
+
+    def test_run_chain_v2_to_v3_strips_removed_fields(self):
+        meta_v2 = {
+            "schema_version": 2,
+            "title": "测试",
+            "date": "2026-01-01",
+            "sentiment_score": 0.5,
+            "themes": ["family"],
+            "entities": ["mama"],
+        }
+
+        result = run_migration_chain(meta_v2, content="")
+
+        assert result.metadata["schema_version"] == SCHEMA_VERSION
+        assert result.metadata["entities"] == ["mama"]
+        assert "sentiment_score" not in result.metadata
+        assert "themes" not in result.metadata
+        assert "removed sentiment_score" in result.deterministic_changes
+        assert "removed themes" in result.deterministic_changes
 
     def test_run_chain_already_current_is_noop(self):
         """Already-current metadata should not be modified."""
@@ -53,8 +72,6 @@ class TestMigrationChain:
             "schema_version": SCHEMA_VERSION,
             "title": "测试",
             "date": "2026-01-01",
-            "sentiment_score": 0.5,
-            "themes": [],
             "entities": [],
         }
         result = run_migration_chain(meta_current, content="")
@@ -65,11 +82,11 @@ class TestMigrationChain:
     def test_migration_result_dataclass(self):
         """MigrationResult should contain three fields."""
         r = MigrationResult(
-            metadata={"schema_version": 2},
-            deterministic_changes=["added sentiment_score"],
+            metadata={"schema_version": 3},
+            deterministic_changes=["removed sentiment_score"],
             needs_agent=["abstract missing"],
         )
-        assert r.metadata["schema_version"] == 2
+        assert r.metadata["schema_version"] == 3
         assert len(r.deterministic_changes) == 1
         assert len(r.needs_agent) == 1
 

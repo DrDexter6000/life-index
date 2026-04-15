@@ -545,10 +545,6 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 "Skipping entity graph enrichment due to invalid graph: %s", exc
             )
             entity_graph = []
-        data["sentiment_score"] = content_analysis.generate_sentiment_score(
-            str(data.get("content", ""))
-        )
-        data["themes"] = content_analysis.extract_themes(str(data.get("content", "")))
         data["entities"] = content_analysis.match_entities(
             data.get("people"),
             data.get("location"),

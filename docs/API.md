@@ -321,6 +321,32 @@ python -m tools.write_journal --data '<json>'
 - `confirmation` 是 machine-readable 的确认载荷；`confirmation_message` 是面向人类的展示文本
 - `confirmation.supports_related_entry_approval: true` 表示调用方可在确认阶段直接批准候选 `related_candidates` 并写回 `related_entries`
 
+### 写入结果解读（Agent / Web 调用方）
+
+| 字段 | 值 | 含义 | 调用方行为 |
+|:---|:---:|:---|:---|
+| `success` | true/false | 日志是否成功写入 | false → 告知用户写入失败 |
+| `needs_confirmation` | true/false | 是否需要用户确认地点/天气 | true → 展示确认信息，等待用户回复 |
+| `index_status` | complete/degraded/not_started | 索引更新状态 | degraded → 告知用户“已保存，但搜索可能暂时找不到” |
+| `side_effects_status` | complete/degraded/not_started | 附件/摘要等副作用状态 | degraded → 告知用户“已保存，但部分信息未更新” |
+| `weather_auto_filled` | true/false | 天气是否自动填充 | true → 在确认信息中标注“自动获取” |
+| `attachments_detected_count` | int | 从正文自动检测到的本地附件路径数量 | 向用户反馈检测结果 |
+| `attachments_processed_count` | int | 成功归档的附件数量 | 向用户反馈成功归档数量 |
+| `attachments_failed_count` | int | 检测到但处理失败的附件数量 | >0 时提示用户检查失败附件 |
+
+**降级状态处理示例**：
+
+```json
+{
+  "success": true,
+  "index_status": "degraded"
+}
+```
+
+建议调用方表述：
+
+> 日志已保存，但索引更新遇到问题，新日志可能暂时无法被搜索到。
+
 ### confirm 子命令
 
 ```bash
@@ -964,7 +990,7 @@ life-index version
   "total_scanned": 42,
   "version_distribution": {"1": 5, "2": 37},
   "needs_migration": 5,
-  "outdated_files": [{"path": "...", "current_version": 1, "missing_fields": ["sentiment_score", "themes", "entities"]}]
+  "outdated_files": [{"path": "...", "current_version": 2, "removed_fields": ["sentiment_score", "themes"]}]
 }
 ```
 
@@ -977,7 +1003,7 @@ life-index version
   "failed_count": 0,
   "failed_files": [],
   "needs_agent": [{"path": "...", "items": ["abstract/summary missing — needs Agent extraction"]}],
-  "deterministic_changes": [{"path": "...", "changes": ["added sentiment_score: null", "added themes: []", "added entities: []"]}]
+  "deterministic_changes": [{"path": "...", "changes": ["removed sentiment_score", "removed themes"]}]
 }
 ```
 

@@ -778,7 +778,7 @@ class TestFormatContent:
         result = format_content(data)
         # Lib version produces frontmatter with empty values
         assert "---" in result
-        assert "schema_version: 2" in result
+        assert "schema_version: 3" in result
         assert 'title: ""' in result
 
     def test_content_with_attachments_dicts(self):

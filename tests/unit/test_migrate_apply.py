@@ -40,12 +40,9 @@ class TestMigrateApply:
         file_content = journal.read_text(encoding="utf-8")
         meta, _body = parse_frontmatter(file_content)
         assert meta["schema_version"] == SCHEMA_VERSION
-        # themes and entities are [] (empty lists), so they are serialized
-        assert "themes" in meta
         assert "entities" in meta
-        # Note: sentiment_score is set to None by migration, and
-        # format_frontmatter skips None values. The field will be
-        # auto-filled by migrate_metadata() on next read.
+        assert "sentiment_score" not in meta
+        assert "themes" not in meta
 
     def test_apply_preserves_existing_content(self, tmp_path: Path):
         """Migration should not modify body content."""

@@ -32,9 +32,7 @@ FIELD_ORDER = [
     "date",
     "location",
     "weather",
-    "sentiment_score",
     "mood",
-    "themes",
     "entities",
     "people",
     "tags",
@@ -50,7 +48,6 @@ FIELD_ORDER = [
 # 字段类型定义
 LIST_FIELDS = {
     "mood",
-    "themes",
     "entities",
     "people",
     "tags",
@@ -224,7 +221,6 @@ def _format_field(key: str, value: Any) -> str:
         "topic",
         "tags",
         "mood",
-        "themes",
         "entities",
         "people",
         "links",

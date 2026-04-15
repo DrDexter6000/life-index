@@ -4,7 +4,8 @@ This changelog records user-visible milestones for the v1.x CLI line.
 
 ## [Unreleased]
 
-- No unreleased user-facing changes recorded yet.
+- Removed deprecated `sentiment_score` and `themes` fields across the CLI surface because they were undefined placeholders with no real consumers.
+- Added schema v2→v3 migration that strips those fields from existing journal frontmatter while preserving `entities`.
 
 ## [1.6.5] - 2026-04-14
 
@@ -51,7 +52,7 @@ This changelog records user-visible milestones for the v1.x CLI line.
 ### Included in this release
 - **Search quality upgrades**: stronger semantic retrieval, AND-first FTS behavior, and more reliable ranking thresholds.
 - **Entity Graph**: alias-aware entity resolution, relationship modeling, query expansion, and entity maintenance CLI.
-- **Write enhancements**: sentiment score, themes, entity extraction, revision history, and backfill tooling.
+- **Write enhancements**: metadata enrichment, entity extraction, and revision history.
 - **Tool schema standardization**: per-tool `schema.json` files and shared schema validation support.
 - **Release cleanup**: README alignment, schedule consolidation, and CLI-only release orientation.
 
@@ -64,8 +65,8 @@ This changelog records user-visible milestones for the v1.x CLI line.
 ## [1.3.0] - 2026-03-22
 
 ### What users get
-- Journal writing now captures richer structure: `sentiment_score`, `themes`, `entities`, and revision history.
-- Existing journals can be backfilled so older records benefit from the same metadata model.
+- Journal writing now captures richer structure around `entities` and revision history.
+- Existing journals can be migrated forward as the metadata model evolves.
 
 ## [1.2.0] - 2026-04-03
 

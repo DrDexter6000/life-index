@@ -5,27 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from tools.lib.entity_graph import resolve_entity
-from tools.lib.llm_extract import is_llm_available
-
-
-def generate_sentiment_score(content: str) -> float | None:
-    """Online-first placeholder.
-
-    When no LLM is available, return None per TDD decision.
-    """
-    if not is_llm_available():
-        return None
-    return None
-
-
-def extract_themes(content: str) -> list[str]:
-    """Online-first placeholder.
-
-    When no LLM is available, return [] per TDD decision.
-    """
-    if not is_llm_available():
-        return []
-    return []
 
 
 def match_entities(

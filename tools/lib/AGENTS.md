@@ -89,7 +89,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |
 | fts_search.py | search_journals | ✅ 活跃 | |
 | fts_update.py | build_index | ✅ 活跃 | |
-| llm_extract.py | write_journal(prepare), content_analysis | ✅ 活跃 | |
+| llm_extract.py | write_journal(prepare) | ✅ 活跃 | |
 | logger.py | ALL tools | ✅ 活跃 | |
 | metadata_cache.py | search_journals, write_journal | ✅ 活跃 | |
 | path_contract.py | write_journal, edit_journal | ✅ 活跃 | |
