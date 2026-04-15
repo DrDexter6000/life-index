@@ -258,6 +258,8 @@ def expand_query_with_entity_graph(query: str) -> str:
             replacements = token
             for entity in graph:
                 for name in [entity["primary_name"], *entity.get("aliases", [])]:
+                    if len(str(name).strip()) < 2:
+                        continue
                     if name in replacements:
                         replacements = replacements.replace(
                             name, _expand_entity_names(entity)
