@@ -76,8 +76,8 @@ class TestMergeAndRankResults:
 
         results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
-        # Base 20 + title match 8 = 28
-        assert results[0]["relevance_score"] == 28
+        # Base 30 + title match 8 = 38
+        assert results[0]["relevance_score"] == 38
 
     def test_l2_abstract_match_scoring(self):
         """Test L2 results scoring with abstract match"""
@@ -93,11 +93,11 @@ class TestMergeAndRankResults:
 
         results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
-        # Base 20 + abstract match 4 = 24
-        assert results[0]["relevance_score"] == 24
+        # Base 30 + abstract match 4 = 34
+        assert results[0]["relevance_score"] == 34
 
     def test_l2_abstract_only_match_does_not_clear_default_threshold(self):
-        """Weak metadata-only abstract hits should be dropped by default."""
+        """With tiered thresholds, L2 abstract-only survives (NON_RRF_MIN_SCORE=10 <= 34)."""
         from tools.search_journals.ranking import merge_and_rank_results
 
         l2 = [
@@ -110,7 +110,10 @@ class TestMergeAndRankResults:
 
         results = merge_and_rank_results([], l2, [], query="test")
 
-        assert results == []
+        # L2 uses NON_RRF_MIN_SCORE (=10) not FTS_MIN_RELEVANCE (=25).
+        # Base 30 + abstract 4 = 34 > 10, so it passes the tiered threshold.
+        assert len(results) == 1
+        assert results[0]["relevance_score"] == 34
 
     def test_l2_tags_match_scoring(self):
         """Test L2 results scoring with tags match"""
@@ -126,8 +129,8 @@ class TestMergeAndRankResults:
 
         results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
-        # Base 20 + tags match 1 = 21
-        assert results[0]["relevance_score"] == 21
+        # Base 30 + tags match 1 = 31
+        assert results[0]["relevance_score"] == 31
 
     def test_l2_combined_scoring(self):
         """Test L2 results with multiple matches"""
@@ -143,8 +146,8 @@ class TestMergeAndRankResults:
 
         results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
-        # Base 20 + title 8 + abstract 4 + tags 1 = 33
-        assert results[0]["relevance_score"] == 33
+        # Base 30 + title 8 + abstract 4 + tags 1 = 43
+        assert results[0]["relevance_score"] == 43
 
     def test_l1_results_added(self):
         """Test L1 results are added when not in L2/L3"""
@@ -206,8 +209,8 @@ class TestMergeAndRankResults:
 
         results = merge_and_rank_results([], l2, [], query=None, min_score=0)
 
-        # Should use base score 20 without query matching
-        assert results[0]["relevance_score"] == 20
+        # Should use base score 30 without query matching
+        assert results[0]["relevance_score"] == 30
 
 
 class TestMergeAndRankResultsHybrid:
@@ -338,7 +341,7 @@ class TestMergeAndRankResultsHybrid:
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/l2.md"
-        assert results[0]["relevance_score"] == 20
+        assert results[0]["relevance_score"] == 30
 
     def test_l2_hybrid_abstract_only_match_does_not_clear_default_threshold(self):
         """Weak L2-only matches should not survive hybrid fallback thresholds."""
@@ -356,7 +359,7 @@ class TestMergeAndRankResultsHybrid:
             [], l2, [], [], query="test", min_non_rrf_score=0
         )
 
-        assert results[0]["relevance_score"] == 24
+        assert results[0]["relevance_score"] == 34
 
     def test_l1_in_hybrid(self):
         """Test L1 results in hybrid mode"""
