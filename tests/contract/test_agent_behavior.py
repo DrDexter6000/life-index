@@ -252,14 +252,20 @@ def _run_search_scenario(scenario: dict) -> dict:
                             return_value=l1_return,
                         ):
                             with patch(
-                                "tools.search_journals.semantic_pipeline.search_semantic",
-                                return_value=(semantic_results, {}),
+                                "tools.lib.search_index.search_fts",
+                                return_value=[],
                             ):
                                 with patch(
-                                    "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
-                                    return_value=semantic_status,
+                                    "tools.search_journals.semantic_pipeline.search_semantic",
+                                    return_value=(semantic_results, {}),
                                 ):
-                                    return hierarchical_search(query=query, level=level)
+                                    with patch(
+                                        "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
+                                        return_value=semantic_status,
+                                    ):
+                                        return hierarchical_search(
+                                            query=query, level=level
+                                        )
 
 
 def _check_search_assertions(result: dict, assertions: dict, scenario_id: str) -> None:
