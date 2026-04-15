@@ -76,6 +76,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | attachment.py | write_journal, frontmatter | ✅ 活跃 | |
 | config.py | ALL tools | ✅ 活跃 | 路径 SSOT |
 | content_analysis.py | write_journal | ✅ 活跃 | |
+| chinese_tokenizer.py | search_journals (fts_search, fts_update, keyword_pipeline) | ✅ 活跃 | Round 8 Phase 1 新增：jieba 中文分词模块（index/query 双模式） |
 | embedding_backends.py | semantic_search | ✅ 活跃 | |
 | entity_cache.py | entity_runtime 相关 helper / tests | ✅ 活跃 | Round 7 Phase 1 已落地 cache-first helper，但不是当前 search/write 主热路径 |
 | entity_candidates.py | write_journal | ✅ 活跃 | Round 7 Phase 2 新增：write-time candidate extraction |
