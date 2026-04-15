@@ -909,6 +909,76 @@ class TestSearchFtsEdgeCases:
         assert [result["path"] for result in results] == ["low.md"]
         assert results[0]["relevance"] == 35
 
+    def test_search_fts_raises_threshold_for_high_frequency_terms(self, tmp_path):
+        """High-frequency project terms should use a stricter default threshold."""
+        from tools.lib import search_index
+
+        db_path = tmp_path / "test_fts.db"
+        db_path.write_text("", encoding="utf-8")
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            (
+                "mid.md",
+                "Mid",
+                "2026-03-10",
+                "",
+                "",
+                None,
+                "",
+                None,
+                None,
+                None,
+                "mid snippet",
+                5.0,
+            ),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
+                normal_results = search_index.search_fts("乐乐")
+                high_freq_results = search_index.search_fts("OpenClaw")
+
+        assert [result["path"] for result in normal_results] == ["mid.md"]
+        assert high_freq_results == []
+
+    def test_search_fts_custom_min_relevance_overrides_high_frequency_default(
+        self, tmp_path
+    ):
+        """Explicit min_relevance should still win over high-frequency defaults."""
+        from tools.lib import search_index
+
+        db_path = tmp_path / "test_fts.db"
+        db_path.write_text("", encoding="utf-8")
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            (
+                "mid.md",
+                "Mid",
+                "2026-03-10",
+                "",
+                "",
+                None,
+                "",
+                None,
+                None,
+                None,
+                "mid snippet",
+                5.0,
+            ),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
+                results = search_index.search_fts("OpenClaw", min_relevance=30)
+
+        assert [result["path"] for result in results] == ["mid.md"]
+
 
 class TestGetStatsEdgeCases:
     """Extended tests for get_stats (lines 378-383)"""

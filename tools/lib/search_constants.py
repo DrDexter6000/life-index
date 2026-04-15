@@ -99,6 +99,12 @@ contain one of the entity expansion terms receive a modest bonus.
 
 This bonus should break ties among weak L2/L1 matches without overtaking strong
 L3 lexical evidence.
+
+ADR-013: High-frequency term min_relevance=50
+---------------------------------------------
+Queries dominated by ubiquitous project terms like "Life Index" and "OpenClaw"
+produce many weak matches. For these terms, we apply a stricter default FTS
+relevance threshold while still allowing explicit `min_relevance` overrides.
 """
 
 # =============================================================================
@@ -144,6 +150,10 @@ FTS_FALLBACK_THRESHOLD: int = 5
 
 # ADR-010: Snippet token count for FTS highlights
 FTS_SNIPPET_TOKENS: int = 32
+
+# ADR-013: stricter defaults for noisy project terms
+HIGH_FREQUENCY_TERMS: frozenset[str] = frozenset({"life index", "openclaw"})
+HIGH_FREQUENCY_MIN_RELEVANCE: int = 50
 
 
 # =============================================================================
@@ -220,6 +230,8 @@ __all__ = [
     "FTS_LIMIT",
     "FTS_FALLBACK_THRESHOLD",
     "FTS_SNIPPET_TOKENS",
+    "HIGH_FREQUENCY_TERMS",
+    "HIGH_FREQUENCY_MIN_RELEVANCE",
     # Scoring
     "SCORE_L1_BASE",
     "SCORE_L2_BASE",
