@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
-from ..lib.chinese_tokenizer import segment_for_fts
+from ..lib.chinese_tokenizer import normalize_query, segment_for_fts
 from ..lib.path_contract import merge_journal_path_fields
 from ..lib.search_constants import FTS_LIMIT, FTS_FALLBACK_THRESHOLD, FTS_MIN_RELEVANCE
 
@@ -258,6 +258,7 @@ def run_keyword_pipeline(
 
     if query:
         # Segment Chinese text in query before FTS matching (T1.3)
+        query = normalize_query(query)
         segmented_query = _segment_query_for_fts(query)
         fts_query, fallback_fts_query = _build_fts_queries(segmented_query)
 

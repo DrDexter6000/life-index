@@ -7,11 +7,33 @@ from unittest.mock import patch
 
 
 class TestFTSStrategy:
+    def test_query_normalization_applies_before_segmentation(self) -> None:
+        """查询进入 FTS 前应先做标准化。"""
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
+            with patch("tools.lib.search_index.search_fts") as mock_fts:
+                mock_l2.return_value = {
+                    "results": [],
+                    "truncated": False,
+                    "total_available": 0,
+                }
+                mock_fts.return_value = []
+
+                run_keyword_pipeline(query="「乐乐」！", use_index=True)
+
+        assert mock_fts.call_count == 1
+        assert mock_fts.call_args.args[0] == "乐乐"
+
     def test_multi_word_and_first(self) -> None:
         """多词查询应优先使用 AND：'团队 建设' 先走 AND 查询。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -37,7 +59,9 @@ class TestFTSStrategy:
         """AND 结果过少（<3）时，自动降级为 OR。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -72,7 +96,9 @@ class TestFTSStrategy:
                     ],
                 ]
 
-                _, _, l3_results, _, _, _ = run_keyword_pipeline(query="团队 建设", use_index=True)
+                _, _, l3_results, _, _, _ = run_keyword_pipeline(
+                    query="团队 建设", use_index=True
+                )
 
         assert mock_fts.call_count == 2
         assert mock_fts.call_args_list[0].args[0] == "团队 AND 建设"
@@ -83,7 +109,9 @@ class TestFTSStrategy:
         """单词查询行为不变。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -101,7 +129,9 @@ class TestFTSStrategy:
         """中文多词查询：'春节 旅行' AND 优先。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -119,7 +149,9 @@ class TestFTSStrategy:
         """用户显式使用 OR 时，不覆盖为 AND。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -137,7 +169,9 @@ class TestFTSStrategy:
         """引号内的短语应做精确匹配。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
