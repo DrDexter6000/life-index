@@ -18,9 +18,25 @@ from .search_constants import (
     FTS_LIMIT,
     FTS_MIN_RELEVANCE,
     FTS_SNIPPET_TOKENS,
+    HIGH_FREQUENCY_MIN_RELEVANCE,
+    HIGH_FREQUENCY_TERMS,
     BM25_RELEVANCE_BASE,
     BM25_RELEVANCE_MULTIPLIER,
 )
+
+
+def _effective_min_relevance(query: str, min_relevance: int) -> int:
+    """Return the effective FTS threshold for a query.
+
+    High-frequency project terms use a stricter default threshold, but explicit
+    caller overrides still take precedence.
+    """
+    normalized_query = " ".join(str(query).lower().split())
+    if min_relevance != FTS_MIN_RELEVANCE:
+        return min_relevance
+    if normalized_query in HIGH_FREQUENCY_TERMS:
+        return HIGH_FREQUENCY_MIN_RELEVANCE
+    return min_relevance
 
 
 def _parse_json_field(value: Any) -> list[str]:
@@ -59,6 +75,7 @@ def search_fts(
         搜索结果列表（按 BM25 相关性排序，分数越高越相关）
     """
     results: list[dict[str, Any]] = []
+    effective_min_relevance = _effective_min_relevance(query, min_relevance)
 
     try:
         if not fts_db_path.exists():
@@ -104,10 +121,12 @@ def search_fts(
                     0,
                     min(
                         100,
-                        int(BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER),
+                        int(
+                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
+                        ),
                     ),
                 )
-                if relevance < min_relevance:
+                if relevance < effective_min_relevance:
                     continue
 
                 results.append(
@@ -158,10 +177,12 @@ def search_fts(
                     0,
                     min(
                         100,
-                        int(BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER),
+                        int(
+                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
+                        ),
                     ),
                 )
-                if relevance < min_relevance:
+                if relevance < effective_min_relevance:
                     continue
 
                 results.append(
