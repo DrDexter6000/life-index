@@ -979,6 +979,78 @@ class TestSearchFtsEdgeCases:
 
         assert [result["path"] for result in results] == ["mid.md"]
 
+    def test_high_freq_term_variant_triggers_strict_threshold(self, tmp_path):
+        """B-5: 'Life Index 2026' should trigger high-freq threshold via containment."""
+        from tools.lib import search_index
+
+        db_path = tmp_path / "test_fts.db"
+        db_path.write_text("", encoding="utf-8")
+
+        mock_cursor = MagicMock()
+        # bm25=5.0 → relevance=45, which passes normal threshold (25) but NOT
+        # the strict high-frequency threshold (50).
+        mock_cursor.fetchall.return_value = [
+            (
+                "mid.md",
+                "Mid",
+                "2026-03-10",
+                "",
+                "",
+                None,
+                "",
+                None,
+                None,
+                None,
+                "mid snippet",
+                5.0,
+            ),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
+                # "Life Index" alone is already in the frozenset
+                exact_results = search_index.search_fts("Life Index")
+                # "Life Index 2026" should also trigger via containment (B-5)
+                variant_results = search_index.search_fts("Life Index 2026")
+
+        assert exact_results == []
+        assert variant_results == []
+
+    def test_high_freq_term_openclaw_cron_triggers_strict(self, tmp_path):
+        """B-5: 'OpenClaw cron' should trigger high-freq threshold via containment."""
+        from tools.lib import search_index
+
+        db_path = tmp_path / "test_fts.db"
+        db_path.write_text("", encoding="utf-8")
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            (
+                "mid.md",
+                "Mid",
+                "2026-03-10",
+                "",
+                "",
+                None,
+                "",
+                None,
+                None,
+                None,
+                "mid snippet",
+                5.0,
+            ),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
+                results = search_index.search_fts("OpenClaw cron")
+
+        assert results == []
+
 
 class TestGetStatsEdgeCases:
     """Extended tests for get_stats (lines 378-383)"""

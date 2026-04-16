@@ -41,11 +41,15 @@ KeywordPipelineResult = tuple[
 
 
 def _has_explicit_fts_operator(query: str) -> bool:
-    """Return whether query already contains explicit FTS boolean operators."""
-    return bool(re.search(r"\b(AND|OR|NOT)\b", query, flags=re.IGNORECASE))
+    """Return whether query already contains explicit FTS boolean operators.
+
+    Only UPPER-CASE AND/OR/NOT are treated as FTS operators.  Natural-language
+    usage like "how and why" should NOT be intercepted (B-2).
+    """
+    return bool(re.search(r"\b(AND|OR|NOT)\b", query))
 
 
-def _segment_query_for_fts(query: str, *, _is_segmented: bool = False) -> str:
+def _segment_query_for_fts(query: str) -> tuple[str, bool]:
     """Segment Chinese text in a query for FTS5 matching.
 
     Handles: pure Chinese, pure English, mixed, FTS operators, and quoted phrases.
@@ -56,24 +60,25 @@ def _segment_query_for_fts(query: str, *, _is_segmented: bool = False) -> str:
     MD5: Jieba runs before entity expansion in the query pipeline.
     MD8: Does NOT handle FTS5 operators — they pass through unchanged.
 
-    Args:
-        _is_segmented: Internal flag — True if query was produced by jieba segmentation.
-                       When True, marks the output for OR-based FTS matching.
+    Returns:
+        Tuple of (segmented_query, was_segmented).  When was_segmented is True,
+        _build_fts_queries should use OR-based matching for better recall on
+        Chinese natural-language tokens.
     """
     if not query or not query.strip():
-        return query
+        return query, False
 
     # If query already has FTS operators or is all ASCII, pass through
     # (entity expansion may have added operators like "团团 OR 小疙瘩")
     if _has_explicit_fts_operator(query):
-        return query
+        return query, False
 
     # Check if there's any CJK content to segment
     has_cjk = any(
         0x4E00 <= ord(c) <= 0x9FFF or 0x3400 <= ord(c) <= 0x4DBF for c in query
     )
     if not has_cjk:
-        return query
+        return query, False
 
     # Extract and preserve quoted phrases
     quoted_parts: list[str] = []
@@ -94,29 +99,26 @@ def _segment_query_for_fts(query: str, *, _is_segmented: bool = False) -> str:
 
     result = segmented if segmented.strip() else query
 
-    # Mark segmented output so _build_fts_queries knows to use OR for Chinese tokens
-    # We prepend a sentinel that _build_fts_queries will recognize
-    if result != query and " " in result:
-        return f"__SEGMENTED__{result}"
-
-    return result
+    # B-3: Use structured return instead of in-band sentinel
+    was_segmented = result != query and " " in result
+    return result, was_segmented
 
 
-def _build_fts_queries(query: str) -> tuple[str, str | None]:
+def _build_fts_queries(
+    query: str, *, was_segmented: bool = False
+) -> tuple[str, str | None]:
     """Build primary/fallback FTS queries for keyword pipeline.
 
     Multi-word queries default to AND-first with OR fallback, unless the user
     already supplied explicit boolean operators or quotes.
 
-    For segmented Chinese queries (marked with __SEGMENTED__ prefix from
-    _segment_query_for_fts), we use OR matching for better recall — Chinese
-    natural language queries are conceptually cohesive, and strict AND matching
-    between jieba tokens produces zero results.
+    B-3: Uses was_segmented flag instead of in-band __SEGMENTED__ sentinel.
+    For segmented Chinese queries, we use OR matching for better recall —
+    Chinese natural language queries are conceptually cohesive, and strict AND
+    matching between jieba tokens produces zero results.
     """
     # Handle segmented Chinese queries — use OR for better recall
-    is_segmented = query.startswith("__SEGMENTED__")
-    if is_segmented:
-        query = query[len("__SEGMENTED__") :]
+    if was_segmented:
         keywords = [kw.strip() for kw in query.split() if kw.strip()]
         if len(keywords) <= 1:
             return query, None
@@ -285,8 +287,10 @@ def run_keyword_pipeline(
 
     if has_effective_query and normalized_query:
         # Segment Chinese text in query before FTS matching (T1.3)
-        segmented_query = _segment_query_for_fts(normalized_query)
-        fts_query, fallback_fts_query = _build_fts_queries(segmented_query)
+        segmented_query, was_segmented = _segment_query_for_fts(normalized_query)
+        fts_query, fallback_fts_query = _build_fts_queries(
+            segmented_query, was_segmented=was_segmented
+        )
 
         # 尝试使用 FTS 索引（如果可用且启用）
         if use_index:

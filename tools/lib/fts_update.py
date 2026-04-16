@@ -24,7 +24,7 @@ def get_file_hash(file_path: Path) -> str:
     """计算文件内容哈希，用于检测变更"""
     try:
         content = file_path.read_bytes()
-        return hashlib.md5(content).hexdigest()[:16]
+        return hashlib.md5(content, usedforsecurity=False).hexdigest()[:16]
     except (OSError, IOError):
         return ""
 
@@ -74,6 +74,8 @@ def parse_journal(
             "topic": _normalize_to_str(metadata.get("topic")),
             "project": metadata.get("project", ""),
             "tags": _normalize_to_str(metadata.get("tags")),
+            "mood": _normalize_to_str(metadata.get("mood")),
+            "people": _normalize_to_str(metadata.get("people")),
             "file_hash": get_file_hash(file_path),
             "modified_time": datetime.fromtimestamp(
                 file_path.stat().st_mtime
@@ -201,8 +203,8 @@ def update_index(
                 cursor.execute(
                     """
                     INSERT INTO journals (path, title, content, date, location, weather,
-                                        topic, project, tags, file_hash, modified_time)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        topic, project, tags, mood, people, file_hash, modified_time)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         doc["path"],
@@ -214,6 +216,8 @@ def update_index(
                         doc["topic"],
                         doc["project"],
                         doc["tags"],
+                        doc["mood"],
+                        doc["people"],
                         doc["file_hash"],
                         doc["modified_time"],
                     ),

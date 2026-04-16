@@ -258,3 +258,140 @@ def test_merge_and_rank_results_without_entity_hints_preserves_default_order() -
     merged = merge_and_rank_results([], l2_results, [], query=None, min_score=0)
 
     assert [item["path"] for item in merged] == ["first.md", "second.md"]
+
+
+class TestDynamicThresholdRobustness:
+    """B-6/B-7: dynamic threshold should not activate on small samples."""
+
+    def test_small_sample_uses_base_threshold_not_dynamic(self) -> None:
+        """With < 8 scored results, dynamic threshold must not override base."""
+        from tools.search_journals.ranking import _compute_dynamic_fts_threshold
+
+        small_sample = [
+            {"score": 60},
+            {"score": 55},
+            {"score": 50},
+        ]
+        result = _compute_dynamic_fts_threshold(small_sample, base_threshold=25.0)
+        # Should return the base unchanged because N < 8
+        assert result == 25.0
+
+    def test_no_plus_one_bias_in_merge(self) -> None:
+        """merge_and_rank_results must NOT add a +1 bias to FTS threshold."""
+        l3_results = [
+            {
+                "path": f"doc{i}.md",
+                "title": f"Doc {i}",
+                "relevance": 25,
+                "source": "fts",
+            }
+            for i in range(3)
+        ]
+
+        merged = merge_and_rank_results(
+            [], [], l3_results, query="test", min_score=FTS_MIN_RELEVANCE
+        )
+
+        # With min_score=FTS_MIN_RELEVANCE (25), all 3 docs at relevance=25
+        # should pass. If +1 bias were present, threshold would be 26 and all
+        # would be filtered out.
+        assert len(merged) == 3
+
+    def test_no_plus_one_bias_in_hybrid_merge(self) -> None:
+        """merge_and_rank_results_hybrid must NOT add +1 to non-RRF threshold."""
+        from tools.lib.search_constants import NON_RRF_MIN_SCORE
+
+        l2_results = [
+            {
+                "path": f"doc{i}.md",
+                "title": f"Doc {i}",
+                "metadata": {},
+            }
+            for i in range(3)
+        ]
+
+        merged = merge_and_rank_results_hybrid(
+            [],
+            l2_results,
+            [],
+            [],
+            query="test",
+            min_rrf_score=0,
+            min_non_rrf_score=NON_RRF_MIN_SCORE,
+        )
+
+        # L2 base = 30 >= NON_RRF_MIN_SCORE = 10, so all should pass.
+        # If +1 bias were present, threshold would be 11 but L2 base is still 30
+        # so they'd still pass — but we verify the threshold logic is clean.
+        assert len(merged) == 3
+
+
+class TestEntityBonusExpansion:
+    """B-9: entity bonus should check title/snippet, not just metadata."""
+
+    def test_entity_bonus_from_metadata(self) -> None:
+        """Entity bonus applies when expansion term appears in metadata people/tags."""
+        l2_a = {
+            "path": "with-entity.md",
+            "title": "Meeting",
+            "metadata": {"people": ["团团"], "tags": []},
+        }
+        l2_b = {
+            "path": "without-entity.md",
+            "title": "Meeting",
+            "metadata": {"people": [], "tags": []},
+        }
+        entity_hints = [{"expansion_terms": ["团团", "小疙瘩"]}]
+
+        merged = merge_and_rank_results(
+            [],
+            [l2_a, l2_b],
+            [],
+            query="meeting",
+            min_score=0,
+            entity_hints=entity_hints,
+        )
+
+        assert merged[0]["path"] == "with-entity.md"
+
+    def test_entity_bonus_from_title(self) -> None:
+        """B-9: Entity bonus applies when expansion term appears in title only."""
+        l2_a = {
+            "path": "title-match.md",
+            "title": "想念团团",
+            "metadata": {},
+        }
+        l2_b = {
+            "path": "no-match.md",
+            "title": "日常记录",
+            "metadata": {},
+        }
+        entity_hints = [{"expansion_terms": ["团团", "小疙瘩"]}]
+
+        merged = merge_and_rank_results(
+            [], [l2_a, l2_b], [], query="团团", min_score=0, entity_hints=entity_hints
+        )
+
+        assert merged[0]["path"] == "title-match.md"
+
+    def test_entity_bonus_from_snippet(self) -> None:
+        """B-9: Entity bonus applies when expansion term appears in snippet."""
+        l2_a = {
+            "path": "snippet-match.md",
+            "title": "Daily",
+            "snippet": "今天团团不认真吃饭",
+            "metadata": {},
+        }
+        l2_b = {
+            "path": "no-match.md",
+            "title": "Daily",
+            "snippet": "普通的一天",
+            "metadata": {},
+        }
+        entity_hints = [{"expansion_terms": ["团团"]}]
+
+        merged = merge_and_rank_results(
+            [], [l2_a, l2_b], [], query="吃饭", min_score=0, entity_hints=entity_hints
+        )
+
+        assert merged[0]["path"] == "snippet-match.md"

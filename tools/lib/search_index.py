@@ -48,6 +48,8 @@ def init_fts_db() -> sqlite3.Connection:
             topic,
             project,
             tags,
+            mood,
+            people,
             file_hash UNINDEXED,
             modified_time UNINDEXED
         )

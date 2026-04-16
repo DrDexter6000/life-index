@@ -172,11 +172,12 @@ class TestStopWordFiltering:
         assert "想念" in result
         assert "女儿" in result
 
-    def test_query_mode_filters_bu(self):
-        """Query mode filters '不' to prevent precision bomb (Metis Risk #2)."""
+    def test_query_mode_preserves_negation_intent(self):
+        """Query mode preserves '不' because it carries negation intent (B-4)."""
         result = _tokens(segment_for_fts("团团不认真吃饭", mode="query"))
 
-        assert "不" not in result
+        # B-4: '不' is intentionally kept — it carries query intent
+        assert "不" in result
         assert "团团" in result
         assert "认真" in result
         assert "吃饭" in result
@@ -193,8 +194,8 @@ class TestStopWordFiltering:
             assert word not in CHINESE_STOP_WORDS
 
     def test_stopword_list_size(self):
-        """Stop word list contains at least 40 common words."""
-        assert len(CHINESE_STOP_WORDS) >= 40
+        """Stop word list contains at least 35 common words (B-4: removed intent-bearing words)."""
+        assert len(CHINESE_STOP_WORDS) >= 35
 
 
 class TestNormalizeQuery:
@@ -361,3 +362,43 @@ class TestEntityDictionary:
             hash_b = get_dict_hash()
 
         assert hash_a != hash_b
+
+
+class TestStopwordPreservesIntent:
+    """B-4: stopword filtering must not strip intent-bearing words."""
+
+    def test_negation_not_stripped(self) -> None:
+        """'不' must survive stopword filtering in query mode."""
+        reset_tokenizer_state()
+        result = segment_for_fts("团团不认真吃饭", mode="query")
+        tokens = _tokens(result)
+        assert "不" in tokens
+
+    def test_absence_meiyou_not_stripped(self) -> None:
+        """'没有' must survive stopword filtering."""
+        reset_tokenizer_state()
+        result = segment_for_fts("没有反应", mode="query")
+        tokens = _tokens(result)
+        assert "没有" in tokens
+
+    def test_question_zenme_not_stripped(self) -> None:
+        """'怎么' must survive stopword filtering."""
+        reset_tokenizer_state()
+        result = segment_for_fts("怎么了", mode="query")
+        tokens = _tokens(result)
+        assert "怎么" in tokens
+
+    def test_question_shenme_not_stripped(self) -> None:
+        """'什么' must survive stopword filtering."""
+        reset_tokenizer_state()
+        result = segment_for_fts("什么意思", mode="query")
+        tokens = _tokens(result)
+        assert "什么" in tokens
+
+    def test_particle_still_filtered(self) -> None:
+        """Pure tone particles like '吗' should still be filtered."""
+        reset_tokenizer_state()
+        # '好吗' → '好' should remain, '吗' should be filtered
+        result = segment_for_fts("好吗", mode="query")
+        tokens = _tokens(result)
+        assert "吗" not in tokens

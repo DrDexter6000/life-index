@@ -95,5 +95,8 @@ tailwindcss.exe
 node_modules/
 package-lock.json
 
+# ----- 本地启动脚本 -----
+start-claude-here.bat
+
 # ----- 本地备份 / 原型临时文件 -----
 *.backup
