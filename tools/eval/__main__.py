@@ -20,7 +20,7 @@ def _emit_json(payload: dict[str, Any]) -> None:
         print(json.dumps(payload, ensure_ascii=True, indent=2))
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Life Index - Search evaluation")
     parser.add_argument("--data-dir", type=Path, help="Use a specific data directory")
     parser.add_argument(
@@ -41,7 +41,18 @@ def main() -> None:
         action="store_true",
         help="Disable semantic pipeline (default: disabled)",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--judge",
+        choices=("keyword", "llm"),
+        default="keyword",
+        help="Select keyword or llm judge mode",
+    )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Evaluate against real ~/Documents/Life-Index data",
+    )
+    args = parser.parse_args(argv)
 
     use_semantic = False
 
@@ -60,6 +71,7 @@ def main() -> None:
                     "diff_lines": comparison["diff_lines"],
                     "diff": comparison["diff"],
                     "current_metrics": comparison["current"]["metrics"],
+                    "recall_gaps": comparison["current"].get("recall_gaps", []),
                 },
             }
         _emit_json(payload)
@@ -69,6 +81,8 @@ def main() -> None:
         data_dir=args.data_dir,
         save_baseline=args.save_baseline,
         use_semantic=use_semantic,
+        judge=args.judge,
+        live=args.live,
     )
     if args.json:
         payload = {"success": True, "data": result}
