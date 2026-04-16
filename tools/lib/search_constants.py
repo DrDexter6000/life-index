@@ -140,7 +140,10 @@ The minimum sample size remains 8 — below this, the base threshold is used unc
 RRF_K: int = 60
 
 # ADR-004: Minimum RRF score for hybrid results
-RRF_MIN_SCORE: float = 0.008
+# Must be low enough for semantic-only results to survive: semantic_weight / (k+1) ≈ 0.4/61 = 0.0066
+# Previous value 0.008 was too aggressive — it filtered out ALL semantic-only results
+# because 0.4/61 = 0.0066 < 0.008.  Lowered to 0.003 so even rank-30 semantic results pass.
+RRF_MIN_SCORE: float = 0.003
 
 
 # =============================================================================

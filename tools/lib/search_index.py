@@ -23,20 +23,37 @@ from .config import JOURNALS_DIR, USER_DATA_DIR
 from .chinese_tokenizer import get_dict_hash
 from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE, TOKENIZER_VERSION
 
+# Bump this whenever the FTS table schema changes (columns added/removed).
+# Ensures incremental updates auto-trigger a full rebuild when needed.
+FTS_SCHEMA_VERSION: int = 1  # v1: includes mood, people columns
+
 # 索引存储目录
 INDEX_DIR = USER_DATA_DIR / ".index"
 FTS_DB_PATH = INDEX_DIR / "journals_fts.db"
 
 
-def init_fts_db() -> sqlite3.Connection:
-    """初始化 FTS5 数据库"""
+def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
+    """Initialize FTS5 database.
+
+    Args:
+        force_recreate: If True, DROP the existing journals table before
+            recreating it.  Needed when the schema has changed (e.g. new
+            columns like mood/people) because ``CREATE VIRTUAL TABLE IF NOT
+            EXISTS`` silently keeps the old schema.
+    """
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(str(FTS_DB_PATH))
-    conn.execute("PRAGMA journal_mode=WAL")  # 启用 WAL 模式提升并发性能
+    conn.execute("PRAGMA journal_mode=WAL")
     cursor = conn.cursor()
 
-    # 创建 FTS5 虚拟表（如果不存在）
+    if force_recreate:
+        try:
+            cursor.execute("DROP TABLE IF EXISTS journals")
+            conn.commit()
+        except sqlite3.Error:
+            pass
+
     cursor.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(
             path,
@@ -68,7 +85,7 @@ def init_fts_db() -> sqlite3.Connection:
 
 
 def write_index_meta(conn: sqlite3.Connection) -> None:
-    """Write tokenizer_version and dict_hash into index_meta table."""
+    """Write tokenizer_version, dict_hash, and schema_version into index_meta table."""
     cursor = conn.cursor()
     dict_hash = get_dict_hash()
     cursor.execute(
@@ -79,15 +96,20 @@ def write_index_meta(conn: sqlite3.Connection) -> None:
         "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
         ("dict_hash", dict_hash),
     )
+    cursor.execute(
+        "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+        ("schema_version", str(FTS_SCHEMA_VERSION)),
+    )
     conn.commit()
 
 
 def check_needs_rebuild(conn: sqlite3.Connection) -> bool:
-    """Check if the FTS index needs rebuilding due to tokenizer or dict changes.
+    """Check if the FTS index needs rebuilding due to schema/tokenizer/dict changes.
 
     Returns True if:
     - No tokenizer_version in index_meta (pre-v2 index)
     - tokenizer_version doesn't match current TOKENIZER_VERSION
+    - schema_version doesn't match current FTS_SCHEMA_VERSION
     - dict_hash doesn't match current entity dictionary hash
     """
     try:
@@ -98,6 +120,11 @@ def check_needs_rebuild(conn: sqlite3.Connection) -> bool:
             return True  # Pre-v2 index, needs rebuild
         if int(row[0]) != TOKENIZER_VERSION:
             return True  # Tokenizer version changed
+
+        cursor.execute("SELECT value FROM index_meta WHERE key = 'schema_version'")
+        row = cursor.fetchone()
+        if row is None or int(row[0]) != FTS_SCHEMA_VERSION:
+            return True  # Schema changed (new/removed columns)
 
         cursor.execute("SELECT value FROM index_meta WHERE key = 'dict_hash'")
         row = cursor.fetchone()
@@ -200,8 +227,13 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
         except sqlite3.Error:
             incremental = False
 
+    # Non-incremental (full rebuild) must force-recreate the FTS table
+    # so that schema changes (new columns like mood/people) take effect.
+    # CREATE VIRTUAL TABLE IF NOT EXISTS silently preserves old schema.
+    init_func = init_fts_db if incremental else lambda: init_fts_db(force_recreate=True)
+
     result = _update_index(
-        init_fts_db, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental
+        init_func, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental
     )
 
     # After successful update, write version metadata (T1.4)
