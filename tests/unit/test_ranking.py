@@ -431,25 +431,6 @@ class TestMergeAndRankResultsHybrid:
         assert results[2]["path"] == "/test/l1.md"
 
 
-class TestReciprocalRankFusion:
-    """Tests for reciprocal_rank_fusion helper"""
-
-    def test_overlap_document_gets_higher_score(self):
-        """Document present in two lists should rank first"""
-        from tools.search_journals.ranking import reciprocal_rank_fusion
-
-        scores = reciprocal_rank_fusion(
-            ranked_lists=[
-                ["doc_a", "doc_b", "doc_c"],
-                ["doc_x", "doc_a", "doc_y"],
-            ],
-            k=60,
-        )
-
-        assert scores["doc_a"] == pytest.approx(1 / 61 + 1 / 62, rel=1e-6)
-        assert scores["doc_a"] > scores["doc_b"]
-
-
 class TestTierPriority:
     """Tests for tier-based priority"""
 

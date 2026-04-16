@@ -215,31 +215,6 @@ def _attach_relation_context(
     return enriched
 
 
-def reciprocal_rank_fusion(
-    ranked_lists: List[List[str]], k: int = RRF_K
-) -> Dict[str, float]:
-    """
-    Reciprocal Rank Fusion (RRF)
-
-    论文：Cormack et al., SIGIR 2009
-    score(d) = Σ 1 / (k + rank_d)
-
-    Args:
-        ranked_lists: 多个有序文档 ID 列表（rank 从 1 开始）
-        k: 平滑常数，默认 RRF_K=60（见 search_constants.py ADR-001）
-
-    Returns:
-        dict[path, rrf_score]
-    """
-    scores: Dict[str, float] = {}
-    for ranked in ranked_lists:
-        for rank, doc_id in enumerate(ranked, start=1):
-            if not doc_id:
-                continue
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
-    return scores
-
-
 def merge_and_rank_results(
     l1_results: List[Dict],
     l2_results: List[Dict],

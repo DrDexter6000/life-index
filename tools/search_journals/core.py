@@ -3,7 +3,7 @@
 Life Index - Search Journals Tool - Core
 核心协调模块
 
-v1.2: 双管道并行搜索架构
+双管道并行搜索架构:
   Pipeline A (关键词): L1 索引过滤 → L2 元数据过滤 → L3 FTS5 内容匹配
   Pipeline B (语义):   向量相似度搜索
   融合: RRF (Reciprocal Rank Fusion, k=RRF_K)
@@ -12,6 +12,7 @@ v1.2: 双管道并行搜索架构
 import logging
 import re
 import time
+from importlib import import_module
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -50,6 +51,11 @@ except ImportError:
 
 
 _MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+
+
+def _emit_search_metrics(result: Dict[str, Any]) -> None:
+    metrics_module = import_module("tools.lib.search_metrics")
+    metrics_module.emit_search_metrics(result)
 
 
 def _normalize_candidate_path(path: Path) -> str:
@@ -575,17 +581,19 @@ def hierarchical_search(
 
     # ── Level 1: 索引层（向后兼容，提前返回） ──
     if level == 1:
-        return _search_level_1(
+        level_1_result = _search_level_1(
             result=result,
             topic=topic,
             project=project,
             tags=tags,
             start_time=start_time,
         )
+        _emit_search_metrics(level_1_result)
+        return level_1_result
 
     # ── Level 2: 索引 + 元数据（向后兼容，提前返回） ──
     if level == 2:
-        return _search_level_2(
+        level_2_result = _search_level_2(
             result=result,
             query=query,
             topic=topic,
@@ -599,6 +607,8 @@ def hierarchical_search(
             weather=weather,
             start_time=start_time,
         )
+        _emit_search_metrics(level_2_result)
+        return level_2_result
 
     # ── Level 3: 双管道并行搜索 ──
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -693,6 +703,8 @@ def hierarchical_search(
 
     result["total_found"] = len(result["merged_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+
+    _emit_search_metrics(result)
 
     # Log summary
     total_time = result["performance"]["total_time_ms"]
