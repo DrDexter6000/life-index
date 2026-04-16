@@ -9,11 +9,15 @@ FTS5 索引更新功能
 import hashlib
 import logging
 import sqlite3
+import time as _time_module
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
+
+_REBUILD_MARKER_NAME = ".rebuilding"
+_STALE_MARKER_TIMEOUT_S = 300
 
 from .chinese_tokenizer import segment_for_fts
 from .frontmatter import parse_frontmatter
@@ -101,6 +105,32 @@ def get_indexed_files(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     return result
 
 
+def _check_rebuild_marker(fts_db_path: Path) -> Path:
+    """Return marker path. Raise if active rebuild detected."""
+    marker = fts_db_path.parent / _REBUILD_MARKER_NAME
+    if marker.exists():
+        try:
+            mtime = marker.stat().st_mtime
+            age = _time_module.time() - mtime
+            if age >= _STALE_MARKER_TIMEOUT_S:
+                logger.warning("Removing stale rebuild marker (age=%.0fs)", age)
+                marker.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Failed to inspect rebuild marker %s: %s", marker, exc)
+    return marker
+
+
+def _write_rebuild_marker(marker: Path) -> None:
+    marker.write_text(f"{_time_module.time()}", encoding="utf-8")
+
+
+def _remove_rebuild_marker(marker: Path) -> None:
+    try:
+        marker.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Failed to remove rebuild marker %s: %s", marker, exc)
+
+
 def update_index(
     init_fts_db_func: Callable[[], sqlite3.Connection],
     fts_db_path: Path,
@@ -137,7 +167,19 @@ def update_index(
         "error": None,
     }
 
+    marker: Path | None = None
+    marker_written = False
+
     try:
+        if not incremental:
+            marker = _check_rebuild_marker(fts_db_path)
+            if marker.exists():
+                result["error"] = "rebuild already in progress"
+                result["rebuild_in_progress"] = True
+                return result
+            _write_rebuild_marker(marker)
+            marker_written = True
+
         conn = init_fts_db_func()
         cursor = conn.cursor()
 
@@ -232,5 +274,8 @@ def update_index(
 
     except (OSError, IOError, sqlite3.Error) as e:
         result["error"] = str(e)
+    finally:
+        if marker is not None and marker_written:
+            _remove_rebuild_marker(marker)
 
     return result
