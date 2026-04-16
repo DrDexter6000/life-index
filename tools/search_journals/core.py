@@ -577,6 +577,28 @@ def hierarchical_search(
     query = expanded_query
 
     start_time = time.time()
+
+    # Round 9: Check index freshness before searching
+    from ..lib.search_index import check_index_freshness as _check_index_freshness
+
+    index_status = _check_index_freshness()
+    result["index_status"] = index_status
+    if index_status.get("stale"):
+        reason = index_status.get("reason", "unknown")
+        result["warnings"].append(f"index_stale: {reason}")
+        # Trigger non-blocking incremental update
+        try:
+            from ..lib.search_index import update_index as _update_fts_index
+
+            _update_fts_index(incremental=True)
+            result["index_status"]["auto_updated"] = True
+            logger.info(
+                "Auto-triggered incremental FTS index update (reason: %s)", reason
+            )
+        except Exception as exc:
+            logger.warning("Auto FTS index update failed: %s", exc)
+            result["index_status"]["auto_updated"] = False
+
     candidate_paths = build_l0_candidate_set(year=year, month=month, topic=topic)
 
     # ── Level 1: 索引层（向后兼容，提前返回） ──

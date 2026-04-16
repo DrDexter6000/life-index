@@ -62,5 +62,11 @@
     "total_time_ms": 10.0
   },
   "warnings": [],
-  "entity_hints": []
+  "entity_hints": [],
+  "index_status": {
+    "stale": false,
+    "reason": null,
+    "fts_document_count": "__normalized__",
+    "last_updated": "__normalized__"
+  }
 }

@@ -52,6 +52,7 @@ from .index_updater import (
     update_tag_indices,
     update_monthly_abstract,
     update_vector_index,
+    update_fts_index,
 )
 
 
@@ -700,6 +701,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     # 4. 更新索引
                     updated_indices = []
                     vector_index_error = None
+                    fts_index_error = None
                     with timer.measure("index_update"):
                         try:
                             if topic:
@@ -725,6 +727,17 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                                 vector_index_error = str(e)
                                 logger.warning(
                                     f"向量索引更新失败（不影响日志写入）：{e}"
+                                )
+
+                            # 7. 更新 FTS 索引（Write-Through）
+                            try:
+                                fts_updated = update_fts_index(journal_path, data)
+                                if fts_updated:
+                                    logger.info("FTS 索引已同步更新")
+                            except Exception as e:
+                                fts_index_error = str(e)
+                                logger.warning(
+                                    f"FTS 索引更新失败（不影响日志写入）：{e}"
                                 )
 
                         except (OSError, IOError, RuntimeError) as e:
@@ -760,14 +773,20 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         result["monthly_abstract_error"] = abstract_error
                     if vector_index_error:
                         result["vector_index_error"] = vector_index_error
+                    if fts_index_error:
+                        result["fts_index_error"] = fts_index_error
                     result["updated_indices"] = updated_indices
 
-                    if vector_index_error:
+                    if vector_index_error or fts_index_error:
                         result["index_status"] = IndexStatus.DEGRADED
                     else:
                         result["index_status"] = IndexStatus.COMPLETE
 
-                    if abstract_success and not vector_index_error:
+                    if (
+                        abstract_success
+                        and not vector_index_error
+                        and not fts_index_error
+                    ):
                         result["side_effects_status"] = SideEffectsStatus.COMPLETE
                     else:
                         result["side_effects_status"] = SideEffectsStatus.DEGRADED

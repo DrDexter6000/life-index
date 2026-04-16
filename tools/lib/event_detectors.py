@@ -183,7 +183,13 @@ def check_schema_migration_available(context: dict) -> list[Event]:
 
 
 def check_index_stale(context: dict) -> list[Event]:
-    """Detect if journal files are newer than the search index."""
+    """Detect if search index is stale.
+
+    Checks three staleness signals:
+    1. Journal files newer than FTS index (mtime comparison)
+    2. Tokenizer/schema version mismatch in index_meta
+    3. Dictionary hash mismatch
+    """
     data_dir = context.get("data_dir")
     journals_dir = context.get("journals_dir")
     if not data_dir or not journals_dir:
@@ -196,12 +202,12 @@ def check_index_stale(context: dict) -> list[Event]:
     if not fts_db.exists():
         return []
 
+    # --- Signal 1: mtime comparison ---
     try:
         index_mtime = os.path.getmtime(fts_db)
     except OSError:
         return []
 
-    # Find newest journal file
     newest_journal_mtime = 0.0
     if journals_dir.exists():
         for md_file in journals_dir.rglob("*.md"):
@@ -220,8 +226,34 @@ def check_index_stale(context: dict) -> list[Event]:
                 type="index_stale",
                 severity=EventSeverity.LOW,
                 message="索引可能已过时，建议运行 life-index index",
+                data={"reason": "newer_journals"},
             )
         ]
+
+    # --- Signals 2 & 3: version / dict hash mismatch ---
+    try:
+        from tools.lib.search_index import check_needs_rebuild
+
+        import sqlite3
+
+        conn = sqlite3.connect(str(fts_db))
+        try:
+            needs_rebuild = check_needs_rebuild(conn)
+        finally:
+            conn.close()
+
+        if needs_rebuild:
+            return [
+                Event(
+                    type="index_stale",
+                    severity=EventSeverity.LOW,
+                    message="索引 schema/分词器已变更，建议运行 life-index index --rebuild",
+                    data={"reason": "version_mismatch"},
+                )
+            ]
+    except Exception:
+        pass  # Non-critical — don't block the event pipeline
+
     return []
 
 

@@ -49,6 +49,14 @@ def _normalize_search_snapshot(result: dict) -> dict:
     performance = normalized.get("performance", {})
     if isinstance(performance, dict):
         performance["total_time_ms"] = 10.0
+    # index_status is dynamic (fts_document_count, last_updated change per run).
+    # Normalize to a stable shape for snapshot comparison.
+    index_status = normalized.get("index_status")
+    if isinstance(index_status, dict):
+        normalized["index_status"] = {
+            k: ("__normalized__" if k in ("fts_document_count", "last_updated") else v)
+            for k, v in index_status.items()
+        }
     return normalized
 
 
