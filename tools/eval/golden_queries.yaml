@@ -1,0 +1,242 @@
+queries:
+  - id: "GQ01"
+    query: "想念我的女儿"
+    category: "chinese_recall"
+    description: "Natural Chinese sentence with stop words"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "想念我的女儿"
+        - "想念小英雄"
+    tags: ["recall", "chinese"]
+
+  - id: "GQ02"
+    query: "重庆过生日"
+    category: "chinese_recall"
+    description: "Location plus event phrase"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "重庆过生日"
+    tags: ["recall", "chinese", "location"]
+
+  - id: "GQ03"
+    query: "数字灵魂"
+    category: "chinese_recall"
+    description: "Abstract concept present in multiple journals"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "重庆过生日"
+        - "读《三体》有感"
+    tags: ["recall", "concept", "chinese"]
+
+  - id: "GQ04"
+    query: "边缘计算"
+    category: "chinese_recall"
+    description: "Technical term inside work journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Life Index 架构重构"
+    tags: ["recall", "tech", "chinese"]
+
+  - id: "GQ05"
+    query: "乐乐"
+    category: "entity_expansion"
+    description: "Primary entity name should match multiple family journals"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "乐乐不认真吃饭"
+        - "重庆过生日"
+        - "想念我的女儿"
+    tags: ["entity", "person", "expansion"]
+
+  - id: "GQ06"
+    query: "小英雄"
+    category: "entity_expansion"
+    description: "Alias should expand to the same child entity"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "想念小英雄"
+        - "想念我的女儿"
+    tags: ["entity", "alias", "expansion"]
+
+  - id: "GQ07"
+    query: "小豆丁"
+    category: "entity_expansion"
+    description: "Rare alias should still find the parent-child journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "想念小英雄"
+    tags: ["entity", "alias", "expansion"]
+
+  - id: "GQ08"
+    query: "想念小英雄"
+    category: "entity_expansion"
+    description: "Natural query containing entity alias"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "想念小英雄"
+        - "想念我的女儿"
+    tags: ["entity", "recall", "expansion"]
+
+  - id: "GQ09"
+    query: "人生碎片"
+    category: "noise_rejection"
+    description: "Absent abstract phrase should be rejected"
+    expected:
+      min_results: 0
+    tags: ["noise", "negative"]
+
+  - id: "GQ10"
+    query: "兴奋"
+    category: "noise_rejection"
+    description: "Emotion absent from journals should return nothing"
+    expected:
+      min_results: 0
+    tags: ["noise", "emotion", "negative"]
+
+  - id: "GQ11"
+    query: "investment strategy"
+    category: "noise_rejection"
+    description: "English paraphrase not present literally"
+    expected:
+      min_results: 0
+    tags: ["noise", "english", "negative"]
+
+  - id: "GQ12"
+    query: "！！！"
+    category: "noise_rejection"
+    description: "Pure punctuation boundary case should be empty"
+    expected:
+      min_results: 0
+    tags: ["noise", "boundary", "negative"]
+
+  - id: "GQ13"
+    query: "Google Stitch"
+    category: "english_regression"
+    description: "English phrase search should keep working"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Google Stitch 集成测试"
+    tags: ["english", "regression"]
+
+  - id: "GQ14"
+    query: "integration testing"
+    category: "english_regression"
+    description: "English phrase from body text"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Google Stitch 集成测试"
+    tags: ["english", "regression"]
+
+  - id: "GQ15"
+    query: "dynamic loading"
+    category: "english_regression"
+    description: "English technical phrase in deployment journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "OpenClaw 部署优化"
+    tags: ["english", "regression", "tech"]
+
+  - id: "GQ16"
+    query: "deployment"
+    category: "english_regression"
+    description: "Common English word shared by multiple journals"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Google Stitch 集成测试"
+        - "OpenClaw 部署优化"
+    tags: ["english", "regression", "tech"]
+
+  - id: "GQ17"
+    query: "AI 算力"
+    category: "cross_language"
+    description: "Mixed English acronym and Chinese term"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Life Index 架构重构"
+        - "人工智能伦理讨论"
+    tags: ["cross-language", "mixed"]
+
+  - id: "GQ18"
+    query: "my daughter 乐乐"
+    category: "cross_language"
+    description: "English phrase plus Chinese entity"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "想念我的女儿"
+        - "乐乐不认真吃饭"
+    tags: ["cross-language", "mixed", "entity"]
+
+  - id: "GQ19"
+    query: "OpenClaw deployment"
+    category: "cross_language"
+    description: "English entity plus deployment term"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "OpenClaw 部署优化"
+    tags: ["cross-language", "mixed", "english"]
+
+  - id: "GQ20"
+    query: "乐乐 OpenClaw"
+    category: "cross_language"
+    description: "Mixed query with no shared journal should be rejected"
+    expected:
+      min_results: 0
+    tags: ["cross-language", "mixed", "negative"]
+
+  - id: "GQ21"
+    query: "Life Index"
+    category: "high_frequency"
+    description: "High-frequency project name should still surface strongest hit"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Life Index 架构重构"
+    tags: ["high-frequency", "project"]
+
+  - id: "GQ22"
+    query: "OpenClaw"
+    category: "high_frequency"
+    description: "Project term shared by multiple work journals"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Google Stitch 集成测试"
+        - "OpenClaw 部署优化"
+    tags: ["high-frequency", "project"]
+
+  - id: "GQ23"
+    query: "LobsterAI"
+    category: "high_frequency"
+    description: "Product name should retrieve startup journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "LobsterAI 项目启动"
+    tags: ["high-frequency", "project"]
+
+  - id: "GQ24"
+    query: "AI算力投资策略"
+    category: "high_frequency"
+    description: "Repeated high-frequency strategy phrase across work/think journals"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Life Index 架构重构"
+        - "人工智能伦理讨论"
+        - "LobsterAI 项目启动"
+    tags: ["high-frequency", "project", "strategy"]
