@@ -41,7 +41,7 @@ _entity_dict_hash: str = ""
 
 CHINESE_STOP_WORDS: frozenset[str] = frozenset(
     {
-        # Structural particles
+        # Structural particles (high-frequency, low semantic content)
         "的",
         "了",
         "在",
@@ -50,7 +50,6 @@ CHINESE_STOP_WORDS: frozenset[str] = frozenset(
         "有",
         "和",
         "就",
-        "不",
         "人",
         "都",
         "一",
@@ -65,7 +64,6 @@ CHINESE_STOP_WORDS: frozenset[str] = frozenset(
         "你",
         "会",
         "着",
-        "没有",
         "看",
         "好",
         "自己",
@@ -86,7 +84,7 @@ CHINESE_STOP_WORDS: frozenset[str] = frozenset(
         "跟",
         "向",
         "过",
-        # Common high-frequency but low-signal words
+        # Sentence-final particles (pure tone markers, no semantic content)
         "吗",
         "呢",
         "吧",
@@ -94,10 +92,7 @@ CHINESE_STOP_WORDS: frozenset[str] = frozenset(
         "哦",
         "嗯",
         "呀",
-        "什么",
-        "怎么",
-        "这个",
-        "那个",
+        # Conjunctions that don't carry query intent
         "因为",
         "所以",
         "如果",
@@ -119,6 +114,13 @@ CHINESE_STOP_WORDS: frozenset[str] = frozenset(
         "还",
         "又",
         "再",
+        # NOTE (B-4): The following words were REMOVED from stopword list because
+        # they carry query intent and their removal was causing recall failures:
+        # - 不 (negation intent: 不吃饭, 不喜欢)
+        # - 没有 (absence intent: 没有反应, 没有结果)
+        # - 怎么 (question intent: 怎么了, 怎么办)
+        # - 什么 (question intent: 什么意思, 什么情况)
+        # - 这个/那个 (deictic intent: 这个问题, 那个人)
     }
 )
 
@@ -269,19 +271,24 @@ def load_entity_dict(graph_path: Path | None = None) -> None:
     # Write names to a temp file in jieba userdict format: word [freq] [tag]
     # We don't specify freq/tag — jieba will auto-calculate.
     jieba_module = _get_jieba_module()
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", encoding="utf-8", delete=False
-    ) as tmp:
-        for name in names:
-            tmp.write(f"{name}\n")
-        tmp_path = tmp.name
-
+    tmp_path: str = ""
     try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", encoding="utf-8", delete=False
+        ) as tmp:
+            for name in names:
+                tmp.write(f"{name}\n")
+            tmp_path = tmp.name
+
         jieba_module.load_userdict(tmp_path)
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
 
-    _entity_dict_hash = hashlib.md5("\n".join(sorted(names)).encode()).hexdigest()[:12]
+    # B-11: MD5 used for content hashing only, not security
+    _entity_dict_hash = hashlib.md5(
+        "\n".join(sorted(names)).encode(), usedforsecurity=False
+    ).hexdigest()[:12]
     _entity_dict_loaded = True
 
 

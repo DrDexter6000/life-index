@@ -35,20 +35,45 @@ def _to_string_list(value: Any) -> list[str]:
     return []
 
 
-def _entity_bonus(metadata: dict[str, Any], entity_hints: list[dict[str, Any]]) -> int:
-    if not entity_hints:
-        return 0
+def _entity_bonus(result: dict[str, Any], entity_hints: list[dict[str, Any]]) -> int:
+    """Return entity bonus if any expansion term appears in result signals.
 
-    people = set(_to_string_list(metadata.get("people")))
-    tags = set(_to_string_list(metadata.get("tags")))
-    if not people and not tags:
+    B-9: Checks metadata (people|tags) AND lightweight text signals (title,
+    snippet/abstract) so entity matching is not overly dependent on metadata
+    completeness.
+    """
+    if not entity_hints:
         return 0
 
     expansion_terms: set[str] = set()
     for hint in entity_hints:
         expansion_terms.update(str(term) for term in hint.get("expansion_terms", []))
 
-    return SCORE_ENTITY_BONUS if (people | tags) & expansion_terms else 0
+    if not expansion_terms:
+        return 0
+
+    # Check metadata signals (people, tags)
+    metadata = result.get("metadata", {})
+    if isinstance(metadata, dict):
+        people = set(_to_string_list(metadata.get("people")))
+        tags = set(_to_string_list(metadata.get("tags")))
+        if (people | tags) & expansion_terms:
+            return SCORE_ENTITY_BONUS
+
+    # B-9: Also check lightweight text signals (title, snippet)
+    title = str(result.get("title", ""))
+    snippet = str(result.get("snippet", ""))
+    # Also check abstract from metadata
+    abstract = ""
+    if isinstance(metadata, dict):
+        abstract = str(metadata.get("abstract", ""))
+
+    text_signals = f"{title} {snippet} {abstract}".lower()
+    for term in expansion_terms:
+        if term.lower() in text_signals:
+            return SCORE_ENTITY_BONUS
+
+    return 0
 
 
 def _dynamic_threshold_floor(base_threshold: float, dynamic_threshold: float) -> float:
@@ -65,7 +90,7 @@ def _compute_dynamic_fts_threshold(
     scores = [
         float(item["score"]) for item in scored_results if float(item["score"]) > 0
     ]
-    if len(scores) < 3:
+    if len(scores) < 8:
         return base_threshold
 
     mean_score = sum(scores) / len(scores)
@@ -86,7 +111,7 @@ def _compute_dynamic_non_rrf_threshold(
         for item in ranked_results
         if float(item["fts_score"]) > 0
     ]
-    if len(scores) < 3:
+    if len(scores) < 8:
         return base_threshold
 
     mean_score = sum(scores) / len(scores)
@@ -107,7 +132,7 @@ def _compute_dynamic_rrf_threshold(
         for item in ranked_results
         if item.get("has_rrf") and float(item["final_score"]) > 0
     ]
-    if len(scores) < 3:
+    if len(scores) < 8:
         return base_threshold
 
     mean_score = sum(scores) / len(scores)
@@ -263,8 +288,7 @@ def merge_and_rank_results(
             if _query_matches_tags(tags, query):
                 score += SCORE_TAGS_MATCH_BONUS
 
-        if isinstance(r.get("metadata"), dict):
-            score += _entity_bonus(r["metadata"], entity_hints or [])
+        score += _entity_bonus(r, entity_hints or [])
 
         scored[path] = {"data": r, "score": score, "tier": 2}
 
@@ -289,8 +313,6 @@ def merge_and_rank_results(
         sorted_results,
         base_threshold=min_score,
     )
-    if query and min_score == FTS_MIN_RELEVANCE:
-        effective_fts_threshold = FTS_MIN_RELEVANCE + 1
 
     def _passes_threshold(item: Dict[str, Any]) -> bool:
         tier = item.get("tier", 0)
@@ -458,8 +480,7 @@ def merge_and_rank_results_hybrid(
             if _query_matches_tags(tags, query):
                 score += SCORE_TAGS_MATCH_BONUS
 
-        if isinstance(r.get("metadata"), dict):
-            score += _entity_bonus(r["metadata"], entity_hints or [])
+        score += _entity_bonus(r, entity_hints or [])
 
         scored[path] = {
             "data": r,
@@ -506,8 +527,6 @@ def merge_and_rank_results_hybrid(
         sorted_results,
         base_threshold=min_non_rrf_score,
     )
-    if query and min_non_rrf_score == NON_RRF_MIN_SCORE:
-        effective_min_non_rrf_score = NON_RRF_MIN_SCORE + 1
     thresholded_results = [
         item
         for item in sorted_results

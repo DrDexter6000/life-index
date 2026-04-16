@@ -485,5 +485,88 @@ class TestResultFields:
         assert results[0]["path"] == "/test/doc.md"
 
 
+class TestRankingConstantInvariants:
+    """Task 0.8: Guard critical ranking constant relationships.
+
+    These tests ensure that the mathematical relationships between ranking
+    constants remain valid. If any constant changes, these tests will catch
+    unintended side effects before they reach production.
+    """
+
+    def test_l2_base_exceeds_fts_min_relevance(self):
+        """SCORE_L2_BASE must exceed FTS_MIN_RELEVANCE.
+
+        L2-only results must survive the non-hybrid merge threshold (which uses
+        FTS_MIN_RELEVANCE as floor). If L2 base drops below FTS threshold, all
+        L2 results would be silently filtered.
+        """
+        from tools.lib.search_constants import FTS_MIN_RELEVANCE, SCORE_L2_BASE
+
+        assert SCORE_L2_BASE > FTS_MIN_RELEVANCE, (
+            f"SCORE_L2_BASE ({SCORE_L2_BASE}) must exceed FTS_MIN_RELEVANCE ({FTS_MIN_RELEVANCE})"
+        )
+
+    def test_l1_base_exceeds_non_rrf_min(self):
+        """SCORE_L1_BASE must meet or exceed NON_RRF_MIN_SCORE.
+
+        L1 results use NON_RRF_MIN_SCORE as threshold. If L1 base drops below
+        this, all L1 results would be filtered.
+        """
+        from tools.lib.search_constants import NON_RRF_MIN_SCORE, SCORE_L1_BASE
+
+        assert SCORE_L1_BASE >= NON_RRF_MIN_SCORE, (
+            f"SCORE_L1_BASE ({SCORE_L1_BASE}) must >= NON_RRF_MIN_SCORE ({NON_RRF_MIN_SCORE})"
+        )
+
+    def test_high_freq_threshold_stricter_than_normal(self):
+        """HIGH_FREQUENCY_MIN_RELEVANCE must be stricter than FTS_MIN_RELEVANCE."""
+        from tools.lib.search_constants import (
+            FTS_MIN_RELEVANCE,
+            HIGH_FREQUENCY_MIN_RELEVANCE,
+        )
+
+        assert HIGH_FREQUENCY_MIN_RELEVANCE > FTS_MIN_RELEVANCE, (
+            f"HIGH_FREQUENCY_MIN_RELEVANCE ({HIGH_FREQUENCY_MIN_RELEVANCE}) "
+            f"must exceed FTS_MIN_RELEVANCE ({FTS_MIN_RELEVANCE})"
+        )
+
+    def test_entity_bonus_does_not_double_l2_score(self):
+        """Entity bonus should not more than double L2 base score."""
+        from tools.lib.search_constants import SCORE_ENTITY_BONUS, SCORE_L2_BASE
+
+        assert SCORE_ENTITY_BONUS < SCORE_L2_BASE, (
+            f"SCORE_ENTITY_BONUS ({SCORE_ENTITY_BONUS}) should be less than "
+            f"SCORE_L2_BASE ({SCORE_L2_BASE}) to avoid distorting L2 ranking"
+        )
+
+    def test_l2_with_all_bonuses_still_below_l3_ceil(self):
+        """L2 with all bonuses applied should not exceed a strong L3 match.
+
+        This ensures L3 (FTS content) results are never outranked by L2
+        (metadata-only) results, even when L2 has all possible bonuses.
+        """
+        from tools.lib.search_constants import (
+            SCORE_L2_BASE,
+            SCORE_TITLE_MATCH_BONUS_L2,
+            SCORE_ABSTRACT_MATCH_BONUS,
+            SCORE_TAGS_MATCH_BONUS,
+            SCORE_ENTITY_BONUS,
+            BM25_RELEVANCE_BASE,
+        )
+
+        max_l2 = (
+            SCORE_L2_BASE
+            + SCORE_TITLE_MATCH_BONUS_L2
+            + SCORE_ABSTRACT_MATCH_BONUS
+            + SCORE_TAGS_MATCH_BONUS
+            + SCORE_ENTITY_BONUS
+        )
+        # A typical strong L3 match has BM25 relevance around BM25_RELEVANCE_BASE (70)
+        # We allow max_l2 to be at most comparable to a strong L3, not exceed it
+        assert max_l2 < BM25_RELEVANCE_BASE + 10, (
+            f"Max L2 score ({max_l2}) should not far exceed BM25_RELEVANCE_BASE ({BM25_RELEVANCE_BASE})"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

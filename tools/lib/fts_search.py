@@ -30,11 +30,14 @@ def _effective_min_relevance(query: str, min_relevance: int) -> int:
 
     High-frequency project terms use a stricter default threshold, but explicit
     caller overrides still take precedence.
+
+    B-5: Uses substring containment instead of exact match, so queries like
+    "Life Index 2026" or "OpenClaw cron" also trigger the stricter threshold.
     """
     normalized_query = " ".join(str(query).lower().split())
     if min_relevance != FTS_MIN_RELEVANCE:
         return min_relevance
-    if normalized_query in HIGH_FREQUENCY_TERMS:
+    if any(term in normalized_query for term in HIGH_FREQUENCY_TERMS):
         return HIGH_FREQUENCY_MIN_RELEVANCE
     return min_relevance
 
@@ -49,6 +52,8 @@ def _parse_json_field(value: Any) -> list[str]:
             return parsed if isinstance(parsed, list) else []
         except (json.JSONDecodeError, TypeError):
             return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
     return []
 
 
@@ -91,7 +96,7 @@ def search_fts(
             sql = """
                 SELECT path, title, date, location, weather, topic, project, tags, mood, people,
                        snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
-                       bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
+                       bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
                 FROM journals
                 WHERE journals MATCH ?
             """
@@ -148,12 +153,15 @@ def search_fts(
                     }
                 )
 
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
             # 旧索引缺少 mood/people 列，使用简化查询
+            logger.warning(
+                "FTS primary query failed (old schema?), falling back: %s", e
+            )
             sql = """
                 SELECT path, title, date, location, weather, topic, project, tags,
                        snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
-                       bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
+                       bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
                 FROM journals
                 WHERE journals MATCH ?
             """

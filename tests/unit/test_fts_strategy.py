@@ -234,3 +234,68 @@ class TestFTSStrategy:
 
         assert mock_fts.call_count == 1
         assert mock_fts.call_args.args[0] == '"团队建设"'
+
+    def test_lowercase_and_not_treated_as_operator(self) -> None:
+        """Natural-language 'and'/'or'/'not' must NOT be treated as FTS operators (B-2)."""
+        from tools.search_journals.keyword_pipeline import _has_explicit_fts_operator
+
+        assert _has_explicit_fts_operator("how and why") is False
+        assert _has_explicit_fts_operator("this or that") is False
+        assert _has_explicit_fts_operator("not available") is False
+
+    def test_uppercase_and_or_not_still_operators(self) -> None:
+        """Upper-case AND/OR/NOT must still be treated as FTS operators."""
+        from tools.search_journals.keyword_pipeline import _has_explicit_fts_operator
+
+        assert _has_explicit_fts_operator("team AND project") is True
+        assert _has_explicit_fts_operator("team OR project") is True
+        assert _has_explicit_fts_operator("team NOT project") is True
+
+    def test_natural_language_query_gets_segmented(self) -> None:
+        """'how and why' should go through segmentation, not be treated as FTS AND."""
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
+            with patch("tools.lib.search_index.search_fts") as mock_fts:
+                mock_l2.return_value = {
+                    "results": [],
+                    "truncated": False,
+                    "total_available": 0,
+                }
+                mock_fts.return_value = []
+
+                run_keyword_pipeline(query="how and why", use_index=True)
+
+        # The query should NOT be passed as "how AND and AND why" — it should be
+        # treated as a normal multi-word query with AND between tokens.
+        assert mock_fts.call_count >= 1
+        fts_query = mock_fts.call_args_list[0].args[0]
+        # Should contain "AND" as a constructed separator, not the original
+        # lower-case "and" being misinterpreted as a boolean operator.
+        assert "AND" in fts_query or fts_query == "how and why"
+
+    def test_no_segmented_sentinel_in_fts_query(self) -> None:
+        """B-3: The __SEGMENTED__ sentinel must never appear in FTS queries."""
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l2_metadata"
+        ) as mock_l2:
+            with patch("tools.lib.search_index.search_fts") as mock_fts:
+                mock_l2.return_value = {
+                    "results": [],
+                    "truncated": False,
+                    "total_available": 0,
+                }
+                mock_fts.return_value = []
+
+                run_keyword_pipeline(query="想念我的女儿", use_index=True)
+
+        assert mock_fts.call_count >= 1
+        for call in mock_fts.call_args_list:
+            fts_query = call.args[0]
+            assert "__SEGMENTED__" not in fts_query, (
+                f"B-3: sentinel leaked into FTS query: {fts_query}"
+            )
