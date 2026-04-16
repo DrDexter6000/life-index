@@ -131,7 +131,11 @@ def _matches_filters(
     # Query 过滤：当指定 query 时，要求元数据包含该关键词
     if query:
         title = metadata.get("title", "")
-        abstract = metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
+        abstract = (
+            metadata.get("abstract", "")
+            if isinstance(metadata.get("abstract"), str)
+            else ""
+        )
         file_tags = metadata.get("tags", [])
 
         # 检查 title/abstract/tags 是否包含 query
@@ -419,10 +423,3 @@ def warm_cache(progress_callback: Optional[Callable] = None) -> Dict[str, int]:
 def get_l2_cache_stats() -> Dict[str, Any]:
     """获取L2缓存统计信息"""
     return get_cache_stats()
-
-
-def invalidate_l2_cache() -> None:
-    """使L2缓存失效（下次搜索将重新构建缓存）"""
-    from ..lib.metadata_cache import invalidate_cache
-
-    invalidate_cache()

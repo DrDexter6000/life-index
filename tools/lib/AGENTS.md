@@ -100,7 +100,9 @@ Shared infrastructure library for all Life Index atomic tools.
 | schema.py | frontmatter | ✅ 活跃 | |
 | search_config.py | search_journals | ✅ 活跃 | |
 | search_constants.py | search_journals | ✅ 活跃 | |
+| search_diagnose.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 指标聚合最近搜索诊断摘要 |
 | search_index.py | build_index, search_journals | ✅ 活跃 | |
+| search_metrics.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 追加搜索指标日志 |
 | semantic_search.py | search_journals | ✅ 活跃 | |
 | text_normalize.py | search, fts | ✅ 活跃 | |
 | timing.py | write_journal | ✅ 活跃 | write_journal 使用 Timer 做性能计时；其他工具使用 trace.py |

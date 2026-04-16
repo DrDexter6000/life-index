@@ -92,6 +92,13 @@ ADR-010: Snippet length=32 tokens
 FTS snippet uses 32 tokens context around match. This provides enough
 context to understand the match without overwhelming the UI.
 
+ADR-011: Tokenizer version for index freshness detection
+---------------------------------------------------------
+A TOKENIZER_VERSION integer is stored alongside the FTS index. When the
+Chinese tokenizer (jieba) configuration changes, bumping this version
+triggers an automatic full rebuild so that index tokens stay consistent
+with query-time segmentation.
+
 ADR-012: Entity hint ranking bonus=6
 ------------------------------------
 When a query resolves to entity hints, results whose metadata people/tags fields

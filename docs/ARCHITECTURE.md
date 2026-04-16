@@ -138,11 +138,11 @@ INDEX.md < index_YYYY.md < index_YYYY-MM.md
 | **L3 内容层** | FTS5 全文索引 | 匹配片段+上下文（~300字节/条） | 关键词精确匹配，返回段落而非全文 |
 | **语义层** | 向量嵌入（sentence-transformers / bge-m3） | 路径+相似度（~100字节/条） | 找到"意思相近"但关键词不同的日志，支持多语言长文本检索 |
 
-**核心原则**：每一层是过滤器，不是数据源。两条管道并行执行，RRF 融合排序。
+**核心原则**：每一层是过滤器，不是数据源。两条管道并行执行，RRF 融合排序。Pipeline A 内部执行三层递进过滤：L1 索引层快速预筛（by-topic 索引文件），L2 元数据层多维度过滤（YAML Frontmatter + SQLite 缓存），L3 FTS5 内容层精确匹配。Pipeline B 独立执行向量相似度搜索。两条管道结果经 RRF 融合后返回。
 
 ---
 
-## 3. 关键架构决策
+## 4. 关键架构决策
 
 ### ADR-001: Agent-Native 架构设计
 
@@ -195,9 +195,9 @@ tags: ["重构", "优化"]
 
 ---
 
-## 4. 系统边界
+## 5. 系统边界
 
-### 4.1 我们做什么
+### 5.1 我们做什么
 
 - ✅ 自然语言日志记录
 - ✅ 结构化元数据提取
@@ -205,7 +205,7 @@ tags: ["重构", "优化"]
 - ✅ 分层级日志检索
 - ✅ 附件管理
 
-### 4.2 我们不做什么
+### 5.2 我们不做什么
 
 - ❌ 云端同步（用户可自行用云盘备份）
 - ❌ 多人协作（当前单用户设计）
@@ -214,7 +214,7 @@ tags: ["重构", "优化"]
 
 ---
 
-## 5. 目录结构
+## 6. 目录结构
 
 ```
 ~/Documents/Life-Index/           # 用户数据目录
@@ -236,7 +236,7 @@ tags: ["重构", "优化"]
 
 ---
 
-## 6. 数据隔离原则
+## 7. 数据隔离原则
 
 | 存储位置 | 内容 | 说明 |
 |---------|------|------|
@@ -247,32 +247,42 @@ tags: ["重构", "优化"]
 
 ---
 
-## 7. Round 6 基础设施增强
+## 8. 基础设施增强
 
-### 7.1 Schema 迁移
+### 8.1 Schema 迁移（Round 6）
 
 - `life-index migrate --dry-run` — 扫描 schema 版本分布
 - `life-index migrate --apply` — 确定性迁移（补字段 + bump version）+ needs_agent 输出
 - 迁移链框架：`register_migration(from, to)` 装饰器注册，`run_migration_chain()` 执行
 
-### 7.2 搭便车事件通知
+### 8.2 搭便车事件通知（Round 6）
 
 - 在 CLI 响应中增加 `events` 字段（零 cron、零进程、零外部依赖）
 - 5 个内置事件：`no_journal_streak`、`monthly_review_due`、`entity_audit_due`、`schema_migration_available`、`index_stale`
 - 检测总耗时 < 50ms（只做文件 stat，不读内容）
 
-### 7.3 Entity 质量审计
+### 8.3 Entity 质量审计（Round 6）
 
 - `life-index entity --audit` — CLI 检测 + Agent 访谈协作模式
 - 检测：重复实体、孤立实体、频繁共现无关系
 - Agent 逐项访谈用户决定 merge/archive/add_relationship
 
-### 7.4 操作级可观测性
+### 8.4 操作级可观测性（Round 6）
 
 - 所有 CLI 响应中增加 `_trace` 字段（trace_id + command + total_ms + steps）
 - 上下文管理器模式：`with Trace("write") as t: t.step("validate")`
 
-### 7.5 不做什么
+### 8.5 搜索评估与可观测体系（Round 8）
+
+Round 8 在双管道并行检索架构之上，建立了完整的搜索质量保障闭环：
+
+- **结构化搜索指标落盘**：每次搜索自动写入 `~/.life-index/metrics/YYYY-MM.jsonl`，记录 query、latency、pipeline signal、result count 等关键字段
+- **搜索诊断入口**：`life-index search --diagnose` 聚合最近搜索行为，输出退化线索（zero-result queries、degraded searches、latency outliers）
+- **Eval 质量闸门**：CI 集成搜索 eval gate，验证 golden query 覆盖、噪声拒绝、正向召回、baseline 比较
+- **中文分词模块**：jieba 集成（index/query 双模式），支持 FTS5 中文精确匹配
+- **15 个 ADR 常量集中管理**：所有搜索参数（RRF k、min_relevance、score weights 等）通过 `search_constants.py` 集中管理，每个参数有 ADR 编号和决策记录
+
+### 8.6 不做什么
 
 - 不做 WAL/checkpoint、Vector 增量更新、Agent Memory、Multi-Agent、Plugin、MCP
 

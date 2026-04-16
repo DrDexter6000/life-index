@@ -7,6 +7,7 @@ Life Index - Search Journals Tool - CLI Entry Point
 import argparse
 import json
 import sys
+from importlib import import_module
 
 from .core import hierarchical_search
 from ..lib.config import ensure_dirs
@@ -14,16 +15,17 @@ from ..lib.paths import JOURNALS_DIR, USER_DATA_DIR
 from ..lib.trace import Trace
 
 
-def _emit_json(payload: dict) -> None:
+def _emit_json(payload: dict, *, include_events: bool = True) -> None:
     """Print JSON safely across Windows console encodings."""
-    # Attach piggyback events before emitting
-    from ..lib.events import detect_events
-    from ..lib.event_detectors import register_all_detectors
+    if include_events:
+        # Attach piggyback events before emitting
+        from ..lib.events import detect_events
+        from ..lib.event_detectors import register_all_detectors
 
-    register_all_detectors()
-    context = {"journals_dir": JOURNALS_DIR, "data_dir": USER_DATA_DIR}
-    events = detect_events(context=context)
-    payload["events"] = [e.to_dict() for e in events]
+        register_all_detectors()
+        context = {"journals_dir": JOURNALS_DIR, "data_dir": USER_DATA_DIR}
+        events = detect_events(context=context)
+        payload["events"] = [e.to_dict() for e in events]
 
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
@@ -108,9 +110,25 @@ Examples:
         action="store_true",
         help="输出搜索评分详情（Task 2.1）",
     )
+    parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="输出最近搜索行为诊断摘要并退出",
+    )
+    parser.add_argument(
+        "--diagnose-days",
+        type=int,
+        default=7,
+        help="诊断回看天数（默认: 7）",
+    )
 
     args = parser.parse_args()
     ensure_dirs()
+
+    if args.diagnose:
+        diagnose_search = import_module("tools.lib.search_diagnose").diagnose_search
+        _emit_json(diagnose_search(days=args.diagnose_days), include_events=False)
+        sys.exit(0)
 
     # 解析列表参数（支持全角逗号）
     tags = (
