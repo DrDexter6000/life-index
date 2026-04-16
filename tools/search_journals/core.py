@@ -627,6 +627,7 @@ def hierarchical_search(
             semantic_top_k=semantic_top_k,
             semantic_min_similarity=semantic_min_similarity,
             candidate_paths=candidate_paths,
+            entity_hints=entity_hints,
         )
 
         # 收集结果

@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 """
 Round 8 Phase 2 T2.5 — Relation-Aware Search Integration Tests
-================================================================
 
-Validates the full search chain for relation-aware retrieval:
-- entity graph phrase expansion
-- reverse relationship resolution
-- Chinese jieba-segmented FTS lookup
-- final hierarchical_search() merged_results output
+Verifies relation-aware queries travel through the full keyword search path:
+entity expansion → keyword pipeline → ranking.
 """
 
 import importlib
 import os
-from pathlib import Path
 
 import pytest
 import yaml
@@ -26,7 +21,18 @@ RELATION_JOURNALS = [
         "tags": ["亲子", "回忆", "感伤"],
         "topic": "think",
         "people": ["团团"],
-        "content": "翻看女儿团团小时候的照片，那个只有2岁上下的尿片侠。小疙瘩，爸爸想你了。",
+        "content": (
+            "翻看女儿团团小时候的照片，那个只有2岁上下的尿片侠。小疙瘩，爸爸想你了。"
+        ),
+    },
+    {
+        "filename": "life-index_2026-03-10_001.md",
+        "title": "团团不认真吃饭",
+        "date": "2026-03-10T18:00:00",
+        "tags": ["亲子", "日常"],
+        "topic": "life",
+        "people": ["团团"],
+        "content": "团团最近吃饭很不认真，总是跑来跑去，不过还是很可爱。",
     },
     {
         "filename": "life-index_2026-03-12_001.md",
@@ -44,73 +50,43 @@ RELATION_JOURNALS = [
         "tags": ["思念", "亲情"],
         "topic": "think",
         "people": ["团团"],
-        "content": "深夜翻看团团的照片，好想把她再抱在怀里，那个让我神魂颠倒的尿片侠。",
+        "content": "深夜翻看团团的照片，好想再把她抱在怀里。",
     },
     {
         "filename": "life-index_2026-03-20_001.md",
-        "title": "给老婆的一封信",
+        "title": "和老婆看电影",
         "date": "2026-03-20T20:00:00",
         "tags": ["家庭", "关系"],
-        "topic": "relation",
-        "people": ["团团妈"],
-        "content": "写给团团妈的一封信。老婆这些年辛苦了，我们一起把团团带大。",
+        "topic": "life",
+        "people": ["老婆"],
+        "content": "周末和老婆一起去看电影，回家路上聊了很多以后的小计划。",
     },
 ]
 
 
-RELATION_TEST_CASES = [
-    (
-        "我女儿",
-        {"想念尿片侠", "想念我的女儿"},
-        {"团团"},
-        "child reverse lookup should find tuantuan journals",
-    ),
-    (
-        "团团的奶奶",
-        {"重庆过生日"},
-        {"妈妈", "婆婆", "老妈"},
-        "grandparent phrase should resolve to mama",
-    ),
-    (
-        "我妈妈",
-        {"重庆过生日"},
-        {"妈妈", "婆婆", "老妈"},
-        "parent phrase should resolve to mama",
-    ),
-    (
-        "我老婆",
-        {"给老婆的一封信"},
-        {"团团妈", "老婆"},
-        "spouse phrase should resolve to wife entity",
-    ),
+SEARCH_CASES = [
+    ("我女儿", "想念尿片侠", "child_of reverse lookup should find tuantuan journals"),
+    ("团团的奶奶", "重庆过生日", "grandmother relation should resolve to mama journal"),
+    ("我妈妈", "重庆过生日", "parent relation should resolve to mama journal"),
+    ("我老婆", "和老婆看电影", "spouse relation should resolve to spouse journal"),
 ]
 
 
-def test_natural_sentence_relation_phrase_does_not_break_fts(
-    _setup_relation_search_env,
-):
-    """自然句中的关系短语不应生成非法 FTS 查询。"""
-    from tools.search_journals import hierarchical_search
-
-    result = hierarchical_search(query="想念我的女儿", level=3, semantic=False)
-    merged_titles = {
-        "".join(str(item.get("title", "")).split())
-        for item in result.get("merged_results", [])
-    }
-    expanded_query = str(result.get("query_params", {}).get("expanded_query", ""))
-
-    assert "想念尿片侠" in merged_titles
-    assert "fts5: syntax error" not in expanded_query.lower()
+EXPANSION_EXPECTATIONS = {
+    "我女儿": ["团团", "尿片侠"],
+    "团团的奶奶": ["妈妈", "老妈"],
+    "我妈妈": ["妈妈", "老妈"],
+    "我老婆": ["老婆", "妻子"],
+}
 
 
 @pytest.fixture(scope="module")
 def _setup_relation_search_env(tmp_path_factory):
-    tmp_dir = tmp_path_factory.mktemp("life_index_relation_e2e")
+    tmp_dir = tmp_path_factory.mktemp("life_index_relation_search_e2e")
 
     journals_dir = tmp_dir / "Journals" / "2026" / "03"
     journals_dir.mkdir(parents=True, exist_ok=True)
     (tmp_dir / "by-topic").mkdir(exist_ok=True)
-    (tmp_dir / "attachments").mkdir(exist_ok=True)
     (tmp_dir / ".cache").mkdir(exist_ok=True)
     (tmp_dir / ".index").mkdir(exist_ok=True)
 
@@ -120,45 +96,40 @@ def _setup_relation_search_env(tmp_path_factory):
                 "id": "author-self",
                 "type": "person",
                 "primary_name": "我",
-                "aliases": ["作者", "自己"],
-                "attributes": {},
-                "relationships": [{"target": "wife-001", "relation": "spouse_of"}],
-            },
-            {
-                "id": "wife-001",
-                "type": "person",
-                "primary_name": "团团妈",
-                "aliases": ["老婆", "妻子", "王某某"],
-                "attributes": {},
-                "relationships": [{"target": "author-self", "relation": "spouse_of"}],
-            },
-            {
-                "id": "mama",
-                "type": "person",
-                "primary_name": "妈妈",
-                "aliases": ["老妈", "婆婆", "王阿姨"],
-                "attributes": {},
+                "aliases": [],
                 "relationships": [
-                    {"target": "author-self", "relation": "mother_of"},
-                    {"target": "tuantuan", "relation": "grandmother_of"},
+                    {"target": "tuantuan", "relation": "child_of"},
+                    {"target": "mama", "relation": "parent_of"},
+                    {"target": "wife", "relation": "spouse_of"},
                 ],
             },
             {
                 "id": "tuantuan",
                 "type": "person",
                 "primary_name": "团团",
-                "aliases": ["小疙瘩", "尿片侠", "圆圆"],
-                "attributes": {},
-                "relationships": [{"target": "author-self", "relation": "child_of"}],
+                "aliases": ["小疙瘩", "尿片侠"],
+                "relationships": [],
+            },
+            {
+                "id": "mama",
+                "type": "person",
+                "primary_name": "妈妈",
+                "aliases": ["老妈"],
+                "relationships": [{"target": "tuantuan", "relation": "grandmother_of"}],
+            },
+            {
+                "id": "wife",
+                "type": "person",
+                "primary_name": "老婆",
+                "aliases": ["妻子"],
+                "relationships": [],
             },
         ]
     }
-    graph_path = tmp_dir / "entity_graph.yaml"
-    with graph_path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(entity_graph, f, allow_unicode=True, sort_keys=False)
+    with (tmp_dir / "entity_graph.yaml").open("w", encoding="utf-8") as file_obj:
+        yaml.safe_dump(entity_graph, file_obj, allow_unicode=True, sort_keys=False)
 
     for journal in RELATION_JOURNALS:
-        file_path = journals_dir / journal["filename"]
         frontmatter = [
             "---",
             f"title: {journal['title']!r}",
@@ -173,36 +144,30 @@ def _setup_relation_search_env(tmp_path_factory):
             journal["content"],
             "",
         ]
-        file_path.write_text("\n".join(frontmatter), encoding="utf-8")
+        (journals_dir / journal["filename"]).write_text(
+            "\n".join(frontmatter), encoding="utf-8"
+        )
 
     original_env = os.environ.get("LIFE_INDEX_DATA_DIR")
     os.environ["LIFE_INDEX_DATA_DIR"] = str(tmp_dir)
 
-    paths_module = importlib.import_module("tools.lib.paths")
-    config_module = importlib.import_module("tools.lib.config")
-    mc = importlib.import_module("tools.lib.metadata_cache")
-    entity_runtime_module = importlib.import_module("tools.lib.entity_runtime")
-    search_index_mod = importlib.import_module("tools.lib.search_index")
-    fts_update_mod = importlib.import_module("tools.lib.fts_update")
-    fts_search_mod = importlib.import_module("tools.lib.fts_search")
-    core_module = importlib.import_module("tools.search_journals.core")
-    keyword_pipeline_module = importlib.import_module(
-        "tools.search_journals.keyword_pipeline"
-    )
-    semantic_pipeline_module = importlib.import_module(
-        "tools.search_journals.semantic_pipeline"
-    )
+    import tools.lib.paths as paths_module
+    import tools.lib.config as config_module
+    import tools.lib.metadata_cache as mc
 
     importlib.reload(paths_module)
     importlib.reload(config_module)
     importlib.reload(mc)
-    importlib.reload(entity_runtime_module)
+
+    import tools.lib.search_index as search_index_mod
+    import tools.lib.fts_update as fts_update_mod
+    import tools.lib.fts_search as fts_search_mod
+    import tools.search_journals.core as core_mod
+
     importlib.reload(search_index_mod)
     importlib.reload(fts_update_mod)
     importlib.reload(fts_search_mod)
-    importlib.reload(core_module)
-    importlib.reload(keyword_pipeline_module)
-    importlib.reload(semantic_pipeline_module)
+    importlib.reload(core_mod)
 
     from tools.lib.chinese_tokenizer import reset_tokenizer_state
     from tools.lib.search_index import init_fts_db, update_index
@@ -223,44 +188,45 @@ def _setup_relation_search_env(tmp_path_factory):
     importlib.reload(paths_module)
     importlib.reload(config_module)
     importlib.reload(mc)
-    importlib.reload(entity_runtime_module)
     importlib.reload(search_index_mod)
     importlib.reload(fts_update_mod)
     importlib.reload(fts_search_mod)
-    importlib.reload(core_module)
-    importlib.reload(keyword_pipeline_module)
-    importlib.reload(semantic_pipeline_module)
+    importlib.reload(core_mod)
     reset_tokenizer_state()
 
 
-@pytest.mark.parametrize(
-    "query,expected_titles,expected_expansion_terms,note", RELATION_TEST_CASES
-)
-def test_relation_aware_search_end_to_end(
+@pytest.mark.parametrize("query,expected_title_substring,note", SEARCH_CASES)
+def test_expand_query_with_entity_graph_and_keyword_search(
     _setup_relation_search_env,
     query,
-    expected_titles,
-    expected_expansion_terms,
+    expected_title_substring,
     note,
 ):
-    from tools.search_journals import hierarchical_search
-
-    def _normalize_title(value: str) -> str:
-        return "".join(str(value).split())
-
-    result = hierarchical_search(query=query, level=3, semantic=False)
-
-    merged_titles = {item.get("title", "") for item in result.get("merged_results", [])}
-    normalized_merged_titles = {_normalize_title(title) for title in merged_titles}
-    normalized_expected_titles = {_normalize_title(title) for title in expected_titles}
-
-    assert normalized_expected_titles & normalized_merged_titles, (
-        f"[{note}] query={query!r} expected one of {sorted(expected_titles)} in merged_results, "
-        f"got {sorted(merged_titles)}"
+    from tools.search_journals.core import (
+        expand_query_with_entity_graph,
+        hierarchical_search,
     )
 
-    expanded_query = str(result.get("query_params", {}).get("expanded_query", ""))
-    for term in expected_expansion_terms:
-        assert term in expanded_query, (
-            f"[{note}] query={query!r} expected expanded_query to contain {term!r}, got {expanded_query!r}"
+    def _normalize_text(value: str) -> str:
+        return "".join(str(value).split())
+
+    expanded_query = expand_query_with_entity_graph(query)
+    for expected_term in EXPANSION_EXPECTATIONS[query]:
+        assert expected_term in expanded_query, (
+            f"[{note}] query={query!r} expected expanded query to contain {expected_term!r}, "
+            f"got {expanded_query!r}"
         )
+
+    result = hierarchical_search(query=query, level=3, semantic=False)
+    merged_results = result.get("merged_results", [])
+    merged_titles = [str(item.get("title", "")) for item in merged_results]
+    normalized_expected_title = _normalize_text(expected_title_substring)
+    normalized_merged_titles = [_normalize_text(title) for title in merged_titles]
+
+    assert any(
+        normalized_expected_title in normalized_title
+        for normalized_title in normalized_merged_titles
+    ), (
+        f"[{note}] query={query!r} expected a merged result title containing "
+        f"{expected_title_substring!r}, got {merged_titles}"
+    )

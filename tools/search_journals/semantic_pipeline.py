@@ -53,6 +53,34 @@ def _build_semantic_status(
     return perf, semantic_available, semantic_note
 
 
+def _build_entity_augmented_query(
+    query: str, entity_hints: list[dict[str, Any]] | None
+) -> str:
+    """Augment a semantic query with entity expansion terms.
+
+    Appends unique expansion terms from entity hints so the embedding model
+    captures entity context (e.g., "我女儿" → "我女儿 团团 小疙瘩 尿片侠").
+    Does NOT duplicate the keyword pipeline's OR-expression logic.
+    """
+    if not entity_hints:
+        return query
+
+    expansion_terms: list[str] = []
+    seen: set[str] = set()
+    for hint in entity_hints:
+        for term in hint.get("expansion_terms", []):
+            term_str = str(term)
+            # Skip terms already in the original query to avoid redundancy
+            if term_str not in seen and term_str not in query:
+                expansion_terms.append(term_str)
+                seen.add(term_str)
+
+    if not expansion_terms:
+        return query
+
+    return f"{query} {' '.join(expansion_terms)}"
+
+
 def run_semantic_pipeline(
     *,
     query: str | None = None,
@@ -62,6 +90,7 @@ def run_semantic_pipeline(
     semantic_top_k: int = SEMANTIC_TOP_K_DEFAULT,
     semantic_min_similarity: float = SEMANTIC_MIN_SIMILARITY,
     candidate_paths: set[str] | None = None,
+    entity_hints: list[dict[str, Any]] | None = None,
 ) -> SemanticPipelineResult:
     """
     语义搜索管道
@@ -73,6 +102,9 @@ def run_semantic_pipeline(
         semantic: 是否启用语义搜索
         semantic_top_k: 语义搜索返回数量
         semantic_min_similarity: 语义搜索最低相似度
+        entity_hints: Entity expansion hints from resolve_query_entities().
+            Used to augment the semantic query with entity names so vector
+            similarity captures relationship context.
 
     Returns:
         (sem_results, perf, semantic_available, semantic_note)
@@ -84,6 +116,11 @@ def run_semantic_pipeline(
     if not query:
         return [], {}, True, None
 
+    # Augment query with entity expansion terms for richer semantic embedding
+    semantic_query = _build_entity_augmented_query(query, entity_hints)
+    if semantic_query != query:
+        logger.debug(f"Semantic query augmented: '{query}' → '{semantic_query}'")
+
     runtime_status = get_semantic_runtime_status()
     if not runtime_status["available"]:
         reason = str(runtime_status["reason"])
@@ -92,7 +129,7 @@ def run_semantic_pipeline(
         return [], {"semantic_degraded": reason}, False, note
 
     sem_results, perf = search_semantic(
-        query,
+        semantic_query,
         date_from or "",
         date_to or "",
         top_k=semantic_top_k,
@@ -103,10 +140,13 @@ def run_semantic_pipeline(
             item
             for item in sem_results
             if item.get("path")
-            and str(Path(str(item["path"])).resolve()).replace("\\", "/") in candidate_paths
+            and str(Path(str(item["path"])).resolve()).replace("\\", "/")
+            in candidate_paths
         ]
     perf["semantic_time_ms"] = round((time.time() - sem_start) * 1000, 2)
-    logger.info(f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms")
+    logger.info(
+        f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms"
+    )
     status_perf, semantic_available, semantic_note = _build_semantic_status(
         runtime_status, sem_results
     )
