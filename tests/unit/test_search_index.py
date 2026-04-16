@@ -1109,5 +1109,135 @@ class TestGetStatsEdgeCases:
                 assert stats.get("last_updated") == "2026-03-14T10:00:00"
 
 
+class TestVersionMarker:
+    """T1.4: Tests for tokenizer version marker and auto-rebuild (Phase 1)."""
+
+    def test_new_index_has_tokenizer_version(self, tmp_path):
+        """Newly created index should have tokenizer_version in index_meta."""
+        from tools.lib import search_index
+        from tools.lib.search_constants import TOKENIZER_VERSION
+
+        db_path = tmp_path / "test_fts.db"
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index, "INDEX_DIR", tmp_path):
+                conn = search_index.init_fts_db()
+                search_index.write_index_meta(conn)
+
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT value FROM index_meta WHERE key = 'tokenizer_version'"
+                )
+                row = cursor.fetchone()
+                conn.close()
+
+                assert row is not None
+                assert int(row[0]) == TOKENIZER_VERSION
+
+    def test_version_mismatch_triggers_rebuild(self, tmp_path):
+        """Mismatched tokenizer_version causes needs_rebuild=True."""
+        from tools.lib import search_index
+        from tools.lib.search_constants import TOKENIZER_VERSION
+
+        db_path = tmp_path / "test_fts.db"
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index, "INDEX_DIR", tmp_path):
+                conn = search_index.init_fts_db()
+                cursor = conn.cursor()
+                # Write an old version number
+                cursor.execute(
+                    "INSERT INTO index_meta (key, value) VALUES (?, ?)",
+                    ("tokenizer_version", str(TOKENIZER_VERSION - 1)),
+                )
+                cursor.execute(
+                    "INSERT INTO index_meta (key, value) VALUES (?, ?)",
+                    ("dict_hash", "abc123"),
+                )
+                conn.commit()
+
+                assert search_index.check_needs_rebuild(conn) is True
+                conn.close()
+
+    def test_version_match_allows_incremental(self, tmp_path):
+        """Matching tokenizer_version + dict_hash means no rebuild needed."""
+        from tools.lib import search_index
+        from tools.lib.chinese_tokenizer import get_dict_hash, reset_tokenizer_state
+
+        reset_tokenizer_state()
+        db_path = tmp_path / "test_fts.db"
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index, "INDEX_DIR", tmp_path):
+                conn = search_index.init_fts_db()
+                # Write current version + current dict hash
+                search_index.write_index_meta(conn)
+
+                assert search_index.check_needs_rebuild(conn) is False
+                conn.close()
+
+    def test_no_version_record_triggers_rebuild(self, tmp_path):
+        """Old index without version record triggers rebuild."""
+        from tools.lib import search_index
+
+        db_path = tmp_path / "test_fts.db"
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index, "INDEX_DIR", tmp_path):
+                conn = search_index.init_fts_db()
+                # Don't write any meta — simulates pre-v2 index
+
+                assert search_index.check_needs_rebuild(conn) is True
+                conn.close()
+
+    def test_dict_hash_mismatch_triggers_rebuild(self, tmp_path):
+        """Changed dict_hash causes needs_rebuild=True."""
+        from tools.lib import search_index
+        from tools.lib.search_constants import TOKENIZER_VERSION
+        from tools.lib.chinese_tokenizer import reset_tokenizer_state
+
+        reset_tokenizer_state()
+        db_path = tmp_path / "test_fts.db"
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index, "INDEX_DIR", tmp_path):
+                conn = search_index.init_fts_db()
+                cursor = conn.cursor()
+                # Correct version but stale dict hash
+                cursor.execute(
+                    "INSERT INTO index_meta (key, value) VALUES (?, ?)",
+                    ("tokenizer_version", str(TOKENIZER_VERSION)),
+                )
+                cursor.execute(
+                    "INSERT INTO index_meta (key, value) VALUES (?, ?)",
+                    ("dict_hash", "stale_hash_12345"),
+                )
+                conn.commit()
+
+                # dict_hash won't match the current one from entity_graph
+                assert search_index.check_needs_rebuild(conn) is True
+                conn.close()
+
+    def test_dict_hash_match_allows_incremental(self, tmp_path):
+        """Matching dict_hash means no rebuild from dict changes."""
+        from tools.lib import search_index
+        from tools.lib.chinese_tokenizer import (
+            get_dict_hash,
+            load_entity_dict,
+            reset_tokenizer_state,
+        )
+
+        reset_tokenizer_state()
+        # Use a non-existent path so no entity dict is loaded (hash="")
+        graph_path = tmp_path / "nonexistent_entity_graph.yaml"
+        load_entity_dict(graph_path)
+        expected_hash = get_dict_hash()
+
+        db_path = tmp_path / "test_fts2.db"
+        with patch.object(search_index, "FTS_DB_PATH", db_path):
+            with patch.object(search_index, "INDEX_DIR", tmp_path):
+                conn = search_index.init_fts_db()
+                search_index.write_index_meta(conn)
+
+                # After write, check should pass
+                assert search_index.check_needs_rebuild(conn) is False
+                conn.close()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

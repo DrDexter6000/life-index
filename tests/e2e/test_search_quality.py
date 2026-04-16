@@ -420,8 +420,10 @@ def test_search_quality(
     )
 
     # Replicate the production code path: segment → build FTS query → search
-    segmented = _segment_query_for_fts(query)
-    fts_query, fallback_query = _build_fts_queries(segmented)
+    segmented_query, was_segmented = _segment_query_for_fts(query)
+    fts_query, fallback_query = _build_fts_queries(
+        segmented_query, was_segmented=was_segmented
+    )
 
     results = search_fts(fts_query)
 
