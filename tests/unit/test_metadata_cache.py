@@ -34,23 +34,26 @@ from tools.lib.config import JOURNALS_DIR
 class TestMetadataCache:
     """Tests for metadata cache functionality"""
 
-    def test_init_metadata_cache(self):
-        """Test cache database initialization"""
-        # Ensure clean state
-        if METADATA_DB_PATH.exists():
-            METADATA_DB_PATH.unlink()
+    def test_init_metadata_cache(self, tmp_path):
+        """Test cache database initialization (isolated temp dir)"""
+        from tools.lib import metadata_cache
 
-        conn = init_metadata_cache()
-        assert conn is not None
-        assert METADATA_DB_PATH.exists()
+        cache_dir = tmp_path / ".cache"
+        cache_db = cache_dir / "metadata_cache.db"
 
-        # Verify tables exist
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        assert "metadata_cache" in tables
-        assert "cache_meta" in tables
-        conn.close()
+        with patch.object(metadata_cache, "CACHE_DIR", cache_dir):
+            with patch.object(metadata_cache, "METADATA_DB_PATH", cache_db):
+                conn = metadata_cache.init_metadata_cache()
+                assert conn is not None
+                assert cache_db.exists()
+
+                # Verify tables exist
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [row[0] for row in cursor.fetchall()]
+                assert "metadata_cache" in tables
+                assert "cache_meta" in tables
+                conn.close()
 
     def test_get_file_signature(self, tmp_path):
         """Test file signature generation"""
