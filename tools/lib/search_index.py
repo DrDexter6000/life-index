@@ -85,7 +85,9 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
 
 
 def write_index_meta(conn: sqlite3.Connection) -> None:
-    """Write tokenizer_version, dict_hash, and schema_version into index_meta table."""
+    """Write tokenizer_version, dict_hash, schema_version, and last_updated into index_meta table."""
+    from datetime import datetime, timezone
+
     cursor = conn.cursor()
     dict_hash = get_dict_hash()
     cursor.execute(
@@ -100,7 +102,84 @@ def write_index_meta(conn: sqlite3.Connection) -> None:
         "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
         ("schema_version", str(FTS_SCHEMA_VERSION)),
     )
+    cursor.execute(
+        "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+        ("last_updated", datetime.now(timezone.utc).isoformat()),
+    )
     conn.commit()
+
+
+def check_index_freshness() -> Dict[str, Any]:
+    """Check FTS index freshness without requiring an open connection.
+
+    Returns a structured result:
+        stale: bool — whether the index is stale
+        reason: str | None — specific staleness reason
+        fts_document_count: int — number of documents in FTS index
+        last_updated: str | None — ISO timestamp of last index update
+    """
+    result: Dict[str, Any] = {
+        "stale": False,
+        "reason": None,
+        "fts_document_count": 0,
+        "last_updated": None,
+    }
+
+    if not FTS_DB_PATH.exists():
+        result["stale"] = True
+        result["reason"] = "no_fts_db"
+        return result
+
+    try:
+        conn = sqlite3.connect(str(FTS_DB_PATH))
+        try:
+            # Document count
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM journals")
+            result["fts_document_count"] = cursor.fetchone()[0]
+
+            # Last updated from index_meta
+            cursor.execute("SELECT value FROM index_meta WHERE key = 'last_updated'")
+            row = cursor.fetchone()
+            if row:
+                result["last_updated"] = row[0]
+
+            # Check freshness using existing logic
+            if check_needs_rebuild(conn):
+                result["stale"] = True
+                # Determine specific reason
+                cursor.execute(
+                    "SELECT value FROM index_meta WHERE key = 'tokenizer_version'"
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    result["reason"] = "no_meta"
+                elif int(row[0]) != TOKENIZER_VERSION:
+                    result["reason"] = "tokenizer_mismatch"
+                else:
+                    cursor.execute(
+                        "SELECT value FROM index_meta WHERE key = 'schema_version'"
+                    )
+                    row = cursor.fetchone()
+                    if row is None or int(row[0]) != FTS_SCHEMA_VERSION:
+                        result["reason"] = "schema_mismatch"
+                    else:
+                        cursor.execute(
+                            "SELECT value FROM index_meta WHERE key = 'dict_hash'"
+                        )
+                        row = cursor.fetchone()
+                        current_hash = get_dict_hash()
+                        if row is None or row[0] != current_hash:
+                            result["reason"] = "dict_hash_mismatch"
+                        else:
+                            result["reason"] = "unknown"
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        result["stale"] = True
+        result["reason"] = "db_error"
+
+    return result
 
 
 def check_needs_rebuild(conn: sqlite3.Connection) -> bool:

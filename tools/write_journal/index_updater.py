@@ -42,7 +42,9 @@ def build_index_filename(kind: str, value: str) -> str:
     return f"{prefix}{safe_value}.md"
 
 
-def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> List[Path]:
+def update_topic_index(
+    topic: Any, journal_path: Path, data: Dict[str, Any]
+) -> List[Path]:
     """更新主题索引文件 - 支持单个主题或主题列表"""
     if not topic:
         return []
@@ -79,7 +81,9 @@ def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> 
     return updated
 
 
-def update_project_index(project: str, journal_path: Path, data: Dict[str, Any]) -> Optional[Path]:
+def update_project_index(
+    project: str, journal_path: Path, data: Dict[str, Any]
+) -> Optional[Path]:
     """更新项目索引文件"""
     if not project:
         return None
@@ -103,7 +107,9 @@ def update_project_index(project: str, journal_path: Path, data: Dict[str, Any])
     return index_file
 
 
-def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]) -> List[Path]:
+def update_tag_indices(
+    tags: List[str], journal_path: Path, data: Dict[str, Any]
+) -> List[Path]:
     """更新标签索引文件"""
     updated = []
 
@@ -176,7 +182,9 @@ def update_index(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]
         result["root_index"] = root
 
         # Mark degraded if any layer failed
-        if not all(r.get("success", False) for r in [monthly, yearly, root] if r is not None):
+        if not all(
+            r.get("success", False) for r in [monthly, yearly, root] if r is not None
+        ):
             result["success"] = False
 
     except Exception as e:
@@ -195,6 +203,83 @@ def update_index(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]
 
 # Backward-compatible alias
 update_monthly_abstract = update_index
+
+
+def update_fts_index(journal_path: Path, data: Dict[str, Any]) -> bool:
+    """写入后同步更新 FTS 索引（Write-Through）
+
+    直接从内存中的 data 构建单条 FTS 文档并插入，无需重新读取文件。
+    幂等：若 rel_path 已存在则先删除再插入。
+
+    Args:
+        journal_path: 日志文件最终路径（用于计算 rel_path）
+        data: 日志数据（包含 title, content, date, tags, topic 等）
+
+    Returns:
+        True 如果更新成功，False 如果失败（不影响主流程）
+    """
+    try:
+        from ..lib.search_index import init_fts_db, write_index_meta
+        from ..lib.chinese_tokenizer import segment_for_fts
+        from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+        from ..lib.path_contract import build_journal_path_fields
+        from datetime import datetime
+
+        def _norm(value: Any) -> str:
+            if not value:
+                return ""
+            if isinstance(value, list):
+                return ", ".join(str(v) for v in value)
+            return str(value)
+
+        path_fields = build_journal_path_fields(
+            journal_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        )
+        rel_path = path_fields["rel_path"]
+
+        # Segment title + body using same pipeline as full index build
+        segmented_title = segment_for_fts(data.get("title", ""), mode="index")
+        segmented_content = segment_for_fts(data.get("content", ""), mode="index")
+
+        conn = init_fts_db()
+        cursor = conn.cursor()
+
+        # Idempotent: remove existing entry if present
+        cursor.execute("DELETE FROM journals WHERE path = ?", (rel_path,))
+
+        cursor.execute(
+            """INSERT INTO journals (path, title, content, date, location, weather,
+                                    topic, project, tags, mood, people, file_hash, modified_time)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                rel_path,
+                segmented_title,
+                segmented_content,
+                str(data.get("date", ""))[:10],
+                data.get("location", ""),
+                data.get("weather", ""),
+                _norm(data.get("topic")),
+                data.get("project", ""),
+                _norm(data.get("tags")),
+                _norm(data.get("mood")),
+                _norm(data.get("people")),
+                "",  # file_hash: will be corrected on next incremental scan
+                datetime.now().isoformat(),
+            ),
+        )
+
+        # Refresh last_updated in index_meta
+        write_index_meta(conn)
+
+        conn.commit()
+        conn.close()
+
+        return True
+
+    except Exception as e:
+        # FTS update failure should not block journal write
+        print(f"Warning: Failed to update FTS index: {e}")
+        return False
 
 
 def update_vector_index(journal_path: Path, data: Dict[str, Any]) -> bool:
