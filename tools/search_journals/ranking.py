@@ -81,23 +81,48 @@ def _dynamic_threshold_floor(base_threshold: float, dynamic_threshold: float) ->
     return max(base_threshold, dynamic_threshold)
 
 
+def _tukey_fence_threshold(
+    scores: list[float], *, base_threshold: float, k: float = 1.5
+) -> float:
+    """Compute a robust threshold using Tukey's IQR fence method.
+
+    More resistant to outliers than mean/stddev for small sample sizes.
+
+    Args:
+        scores: Non-zero score values from scored results.
+        base_threshold: Minimum floor — dynamic threshold never goes below this.
+        k: Tukey multiplier (1.5 = standard, 3.0 = far outliers).
+
+    Returns:
+        A threshold value ≥ base_threshold.
+    """
+    if len(scores) < 8:
+        return base_threshold
+
+    sorted_scores = sorted(scores)
+    n = len(sorted_scores)
+    q1 = sorted_scores[n // 4]
+    q3 = sorted_scores[3 * n // 4]
+    iqr = q3 - q1
+
+    if iqr <= 0:
+        # All scores very similar — no meaningful spread to exploit
+        return base_threshold
+
+    lower_fence = q1 - k * iqr
+    return _dynamic_threshold_floor(base_threshold, lower_fence)
+
+
 def _compute_dynamic_fts_threshold(
     scored_results: list[dict[str, Any]],
     *,
     base_threshold: float,
 ) -> float:
-    """Compute a stricter FTS threshold from score distribution when useful."""
+    """Compute a stricter FTS threshold from score distribution using Tukey IQR."""
     scores = [
         float(item["score"]) for item in scored_results if float(item["score"]) > 0
     ]
-    if len(scores) < 8:
-        return base_threshold
-
-    mean_score = sum(scores) / len(scores)
-    variance = sum((score - mean_score) ** 2 for score in scores) / len(scores)
-    std_dev = variance**0.5
-    dynamic_threshold = mean_score - 1.5 * std_dev
-    return _dynamic_threshold_floor(base_threshold, dynamic_threshold)
+    return _tukey_fence_threshold(scores, base_threshold=base_threshold)
 
 
 def _compute_dynamic_non_rrf_threshold(
@@ -105,20 +130,13 @@ def _compute_dynamic_non_rrf_threshold(
     *,
     base_threshold: float,
 ) -> float:
-    """Compute a stricter non-RRF threshold from lexical score distribution."""
+    """Compute a stricter non-RRF threshold from lexical score distribution using Tukey IQR."""
     scores = [
         float(item["fts_score"])
         for item in ranked_results
         if float(item["fts_score"]) > 0
     ]
-    if len(scores) < 8:
-        return base_threshold
-
-    mean_score = sum(scores) / len(scores)
-    variance = sum((score - mean_score) ** 2 for score in scores) / len(scores)
-    std_dev = variance**0.5
-    dynamic_threshold = mean_score - 1.5 * std_dev
-    return _dynamic_threshold_floor(base_threshold, dynamic_threshold)
+    return _tukey_fence_threshold(scores, base_threshold=base_threshold)
 
 
 def _compute_dynamic_rrf_threshold(
@@ -126,20 +144,13 @@ def _compute_dynamic_rrf_threshold(
     *,
     base_threshold: float,
 ) -> float:
-    """Compute a stricter RRF threshold when enough fused results exist."""
+    """Compute a stricter RRF threshold when enough fused results exist using Tukey IQR."""
     scores = [
         float(item["final_score"])
         for item in ranked_results
         if item.get("has_rrf") and float(item["final_score"]) > 0
     ]
-    if len(scores) < 8:
-        return base_threshold
-
-    mean_score = sum(scores) / len(scores)
-    variance = sum((score - mean_score) ** 2 for score in scores) / len(scores)
-    std_dev = variance**0.5
-    dynamic_threshold = mean_score - 1.5 * std_dev
-    return _dynamic_threshold_floor(base_threshold, dynamic_threshold)
+    return _tukey_fence_threshold(scores, base_threshold=base_threshold)
 
 
 def _hybrid_priority(item: Dict[str, Any]) -> int:
@@ -509,6 +520,13 @@ def merge_and_rank_results_hybrid(
     # 1) 真正的关键词命中（尤其 FTS）优先
     # 2) 结构化关键词命中（L2/L1）次之
     # 3) 纯语义结果作为补漏回填
+    #
+    # T3.8 (ADR-014): Note on score dimensions.
+    # _hybrid_priority() separates FTS (5), L2 (4), L1 (3), semantic (2) into
+    # distinct priority buckets. Within each bucket, scores come from the same
+    # source and are directly comparable. Cross-bucket ordering is handled by
+    # the priority function, not by score comparison. This design avoids the
+    # dimension mismatch problem by construction.
     sorted_results = sorted(
         scored.values(),
         key=lambda x: (

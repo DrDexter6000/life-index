@@ -10,6 +10,7 @@ Tests cover:
 - File hash computation
 """
 
+import os
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -619,6 +620,93 @@ Content.
 
                         assert result["success"] is True
                         assert result["total"] == 1
+
+    def test_full_rebuild_reports_active_marker(self, tmp_path):
+        """Active rebuild marker should block concurrent full rebuilds."""
+        from tools.lib import search_index
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        index_dir = tmp_path / ".index"
+        index_dir.mkdir(parents=True)
+        marker = index_dir / ".rebuilding"
+        marker.write_text("active", encoding="utf-8")
+
+        with patch.object(search_index, "JOURNALS_DIR", journals_dir):
+            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", index_dir / "test_fts.db"
+                ):
+                    with patch.object(search_index, "INDEX_DIR", index_dir):
+                        result = search_index.update_index(incremental=False)
+
+        assert result["success"] is False
+        assert result["rebuild_in_progress"] is True
+        assert result["error"] == "rebuild already in progress"
+        assert marker.exists()
+
+    def test_full_rebuild_removes_stale_marker(self, tmp_path):
+        """Stale rebuild marker should be cleaned before rebuild proceeds."""
+        from tools.lib import search_index
+
+        journals_dir = tmp_path / "Journals" / "2026" / "03"
+        journals_dir.mkdir(parents=True)
+        journal_file = journals_dir / "life-index_2026-03-14_001.md"
+        journal_file.write_text(
+            """---
+title: Fresh Rebuild
+date: 2026-03-14
+---
+
+Content.
+""",
+            encoding="utf-8",
+        )
+
+        index_dir = tmp_path / ".index"
+        index_dir.mkdir(parents=True)
+        marker = index_dir / ".rebuilding"
+        marker.write_text("stale", encoding="utf-8")
+
+        stale_time = marker.stat().st_mtime - 301
+        os.utime(marker, (stale_time, stale_time))
+
+        with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
+            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+                with patch.object(
+                    search_index, "FTS_DB_PATH", index_dir / "test_fts.db"
+                ):
+                    with patch.object(search_index, "INDEX_DIR", index_dir):
+                        result = search_index.update_index(incremental=False)
+
+        assert result["success"] is True
+        assert marker.exists() is False
+
+    def test_full_rebuild_failure_cleans_marker(self, tmp_path):
+        """Marker file should be removed even if rebuild fails."""
+        from tools.lib import search_index
+
+        journals_dir = tmp_path / "Journals"
+        journals_dir.mkdir(parents=True)
+        index_dir = tmp_path / ".index"
+        index_dir.mkdir(parents=True)
+        db_path = index_dir / "test_fts.db"
+        marker = index_dir / ".rebuilding"
+
+        with patch.object(search_index, "JOURNALS_DIR", journals_dir):
+            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+                with patch.object(search_index, "FTS_DB_PATH", db_path):
+                    with patch.object(search_index, "INDEX_DIR", index_dir):
+                        with patch.object(
+                            search_index,
+                            "init_fts_db",
+                            side_effect=sqlite3.Error("boom"),
+                        ):
+                            result = search_index.update_index(incremental=False)
+
+        assert result["success"] is False
+        assert result["error"] == "boom"
+        assert marker.exists() is False
 
 
 class TestSearchFtsEdgeCases:

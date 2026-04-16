@@ -105,6 +105,24 @@ ADR-013: High-frequency term min_relevance=50
 Queries dominated by ubiquitous project terms like "Life Index" and "OpenClaw"
 produce many weak matches. For these terms, we apply a stricter default FTS
 relevance threshold while still allowing explicit `min_relevance` overrides.
+
+ADR-014: Score dimension normalization in hybrid ranking
+--------------------------------------------------------
+Within each priority bucket, scores from different sources have different scales:
+- RRF scores: ~0.01-0.05 (rank-based, dimensionless)
+- L2 absolute scores: ~30-40 (metadata match bonuses)
+
+Without normalization, a single L2-only result with score 30+ would dominate
+all RRF results (max ~0.05) within the same priority bucket. Solution: normalize
+fts_score and semantic_score to [0, 1] per bucket, then combine with RRF
+contribution. Non-RRF items get their absolute score normalized to [0, 1] range
+as well, ensuring fair comparison.
+
+ADR-015: Tukey IQR fence for dynamic thresholds
+------------------------------------------------
+Dynamic thresholds use Tukey's IQR fence method instead of mean-1.5σ.
+IQR is more robust to outliers and small sample sizes than mean/stddev.
+The minimum sample size remains 8 — below this, the base threshold is used unchanged.
 """
 
 # =============================================================================
