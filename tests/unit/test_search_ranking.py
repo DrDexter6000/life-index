@@ -160,8 +160,11 @@ def test_merge_and_rank_results_hybrid_does_not_force_extra_backfill_when_one_st
         query="尿片侠",
     )
 
-    assert len(merged) == 1
+    # FTS result should be ranked first (priority=5), semantic results follow (priority=2)
+    assert len(merged) == 3
     assert merged[0]["path"] == "fts-hit.md"
+    assert merged[0]["fts_score"] > 0  # FTS result has lexical evidence
+    assert merged[1]["semantic_score"] > 0  # Semantic results preserved after fix
 
 
 def test_merge_and_rank_results_hybrid_prefers_stronger_lexical_result_over_weaker_semantic_only() -> (
