@@ -21,6 +21,8 @@ import importlib
 import sys
 import os
 
+from tools.lib.index_freshness import FreshnessReport
+
 
 DEFAULT_ENTITY_GRAPH = {
     "entities": [
@@ -67,6 +69,18 @@ class TestHierarchicalSearch:
         )
         monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
 
+    @pytest.fixture(autouse=True)
+    def _mock_fresh_index_state(self):
+        fresh_report = FreshnessReport(
+            fts_fresh=True,
+            vector_fresh=True,
+            overall_fresh=True,
+            issues=[],
+        )
+        with patch("tools.lib.index_freshness.check_full_freshness", return_value=fresh_report):
+            with patch("tools.lib.pending_writes.has_pending", return_value=False):
+                yield
+
     def test_search_results_reflect_fresh_backlinks_after_incremental_write_and_edit(
         self, tmp_path: Path
     ):
@@ -94,7 +108,7 @@ class TestHierarchicalSearch:
 
         try:
             with (
-                patch.object(write_core, "JOURNALS_DIR", journals_dir),
+                patch.object(write_core, "get_journals_dir", return_value=journals_dir),
                 patch.object(
                     write_core,
                     "get_journals_lock_path",
@@ -120,7 +134,7 @@ class TestHierarchicalSearch:
                 patch.object(write_core, "update_topic_index", return_value=[]),
                 patch.object(write_core, "update_project_index", return_value=None),
                 patch.object(write_core, "update_tag_indices", return_value=[]),
-                patch.object(write_core, "update_vector_index", return_value=False),
+                patch.object(write_core, "mark_pending"),
             ):
                 (tmp_path / ".cache").mkdir(parents=True, exist_ok=True)
                 (tmp_path / ".cache" / "journals.lock").touch()
@@ -151,8 +165,8 @@ class TestHierarchicalSearch:
             )
 
             with (
-                patch.object(edit_module, "JOURNALS_DIR", journals_dir),
-                patch.object(edit_module, "update_vector_index", return_value=True),
+                patch.object(edit_module, "get_journals_dir", return_value=journals_dir),
+                patch.object(edit_module, "mark_pending"),
             ):
                 edit_module.edit_journal(
                     journal_path=source_path,
@@ -231,6 +245,41 @@ class TestHierarchicalSearch:
         assert result["merged_results"][0]["backlinked_by"] == [
             "Journals/2026/03/source.md"
         ]
+
+    def test_search_level3_sets_no_confident_match_when_all_results_are_low(self):
+        """Top-level no_confident_match should be true when all results are low."""
+        from tools.search_journals.core import hierarchical_search
+
+        merged_results = [
+            {
+                "path": "test.md",
+                "rel_path": "Journals/2026/03/test.md",
+                "title": "Test",
+                "confidence": "low",
+            }
+        ]
+
+        with patch(
+            "tools.search_journals.keyword_pipeline.search_l3_content"
+        ) as mock_l3:
+            with patch(
+                "tools.search_journals.keyword_pipeline.search_l2_metadata"
+            ) as mock_l2:
+                with patch(
+                    "tools.search_journals.core.merge_and_rank_results"
+                ) as mock_rank:
+                    mock_l2.return_value = {
+                        "results": [],
+                        "truncated": False,
+                        "total_available": 0,
+                    }
+                    mock_l3.return_value = [{"path": "test.md", "relevance": 0.9}]
+                    mock_rank.return_value = merged_results
+                    result = hierarchical_search(
+                        query="Python", level=3, semantic=False, use_index=False
+                    )
+
+        assert result["no_confident_match"] is True
 
     def test_search_hybrid_results_surface_related_entries_and_backlinks(self):
         """Merged hybrid search results should expose relation context."""
@@ -644,7 +693,7 @@ class TestHierarchicalSearch:
         assert result["success"] is True
         assert result["semantic_results"] == []
         assert result["semantic_available"] is False
-        assert result["merged_results"] == [{"path": "keyword.md", "score": 0.88}]
+        assert result["merged_results"] == [{"path": "keyword.md", "score": 0.88, "title_promoted": False}]
         assert result["semantic_note"] == "向量索引未建立，请运行 life-index index"
         assert result["performance"]["semantic_degraded"] == "vector index not found"
 
@@ -862,7 +911,7 @@ class TestHierarchicalSearch:
 
         assert result["success"] is True
         assert result["l3_results"] == []
-        assert result["merged_results"] == [{"path": "meta.md", "score": 1.0}]
+        assert result["merged_results"] == [{"path": "meta.md", "score": 1.0, "title_promoted": False}]
 
     def test_search_level3_keyword_pipeline_project_and_tags(self):
         """Level 3 keyword pipeline should query project and tag indexes"""
@@ -996,7 +1045,13 @@ class TestSearchWarnings:
 
     def test_warnings_empty_when_all_pipelines_ok(self):
         """所有管道正常时，warnings 应为空列表"""
+        from tools.lib.index_freshness import FreshnessReport
         from tools.search_journals.core import hierarchical_search
+
+        # Mock freshness guard so real data staleness doesn't leak into warnings
+        fresh_report = FreshnessReport(
+            fts_fresh=True, vector_fresh=True, overall_fresh=True, issues=[]
+        )
 
         with patch(
             "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
@@ -1010,24 +1065,35 @@ class TestSearchWarnings:
                     with patch(
                         "tools.search_journals.keyword_pipeline.search_l3_content"
                     ) as mock_l3:
-                        mock_semantic_status.return_value = {
-                            "available": True,
-                            "reason": None,
-                            "note": None,
-                        }
-                        mock_sem.return_value = (
-                            [{"path": "test.md", "similarity": 0.8}],
-                            {"semantic_encode_ms": 1.0, "semantic_search_ms": 2.0},
-                        )
-                        mock_l2.return_value = {
-                            "results": [],
-                            "truncated": False,
-                            "total_available": 0,
-                        }
-                        mock_l3.return_value = []
-                        result = hierarchical_search(
-                            query="test", level=3, use_index=False
-                        )
+                        with patch(
+                            "tools.lib.index_freshness.check_full_freshness",
+                            return_value=fresh_report,
+                        ):
+                            with patch(
+                                "tools.lib.pending_writes.has_pending",
+                                return_value=False,
+                            ):
+                                mock_semantic_status.return_value = {
+                                    "available": True,
+                                    "reason": None,
+                                    "note": None,
+                                }
+                                mock_sem.return_value = (
+                                    [{"path": "test.md", "similarity": 0.8}],
+                                    {
+                                        "semantic_encode_ms": 1.0,
+                                        "semantic_search_ms": 2.0,
+                                    },
+                                )
+                                mock_l2.return_value = {
+                                    "results": [],
+                                    "truncated": False,
+                                    "total_available": 0,
+                                }
+                                mock_l3.return_value = []
+                                result = hierarchical_search(
+                                    query="test", level=3, use_index=False
+                                )
 
         assert result["warnings"] == []
 

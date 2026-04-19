@@ -11,10 +11,25 @@ Validates that:
 """
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from tools.lib.entity_graph import save_entity_graph
+from tools.lib.index_freshness import FreshnessReport
+
+
+@pytest.fixture(autouse=True)
+def _mock_fresh_index_state():
+    fresh_report = FreshnessReport(
+        fts_fresh=True,
+        vector_fresh=True,
+        overall_fresh=True,
+        issues=[],
+    )
+    with patch("tools.lib.index_freshness.check_full_freshness", return_value=fresh_report):
+        with patch("tools.lib.pending_writes.has_pending", return_value=False):
+            yield
 
 
 def _sample_entities() -> list[dict]:
@@ -47,9 +62,9 @@ def _sample_entities() -> list[dict]:
 
 
 def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
-    from tools.lib.paths import USER_DATA_DIR
+    from tools.lib.entity_graph import save_entity_graph
 
-    save_entity_graph(entities, USER_DATA_DIR / "entity_graph.yaml")
+    save_entity_graph(entities, isolated_data_dir / "entity_graph.yaml")
 
 
 class TestEntityHintsPresent:

@@ -51,10 +51,9 @@ def _entity_graph_payload() -> list[dict]:
 class TestEntityQueryExpansion:
     def test_alias_expansion(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.search_journals.core import expand_query_with_entity_graph
 
-        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
         expanded = expand_query_with_entity_graph("婆婆")
 
@@ -64,10 +63,9 @@ class TestEntityQueryExpansion:
 
     def test_relationship_resolution(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.search_journals.core import expand_query_with_entity_graph
 
-        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
         expanded = expand_query_with_entity_graph("团团的奶奶")
 
@@ -79,14 +77,13 @@ class TestEntityQueryExpansion:
         self, isolated_data_dir: Path
     ) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.search_journals.core import expand_query_with_entity_graph
 
         payload = _entity_graph_payload()
         payload[2]["id"] = "child-001"
         payload[1]["relationships"][1]["target"] = "child-001"
 
-        save_entity_graph(payload, USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(payload, isolated_data_dir / "entity_graph.yaml")
 
         expanded = expand_query_with_entity_graph("团团的奶奶")
 
@@ -96,10 +93,9 @@ class TestEntityQueryExpansion:
 
     def test_child_relationship_resolution(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.search_journals.core import expand_query_with_entity_graph
 
-        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
         expanded = expand_query_with_entity_graph("我女儿")
 
@@ -108,10 +104,9 @@ class TestEntityQueryExpansion:
 
     def test_place_alias(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.search_journals.core import expand_query_with_entity_graph
 
-        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
         expanded = expand_query_with_entity_graph("老家的照片")
 
@@ -120,10 +115,9 @@ class TestEntityQueryExpansion:
 
     def test_project_alias(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.search_journals.core import expand_query_with_entity_graph
 
-        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
         expanded = expand_query_with_entity_graph("LobsterAI Journal")
 
@@ -139,10 +133,9 @@ class TestEntityQueryExpansion:
 
     def test_expansion_merged_with_original(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.search_journals.core import expand_query_with_entity_graph
 
-        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
         expanded = expand_query_with_entity_graph("婆婆 照片")
 

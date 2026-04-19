@@ -200,7 +200,7 @@ class TestSearchSemantic:
 
     @patch("tools.lib.vector_index_simple.get_index")
     @patch("tools.lib.vector_index_simple.get_model")
-    def test_search_semantic_default_threshold_keeps_036_and_034_at_025_floor(
+    def test_search_semantic_default_threshold_rejects_036_and_034_below_040_floor(
         self, mock_get_model, mock_get_index
     ):
         mock_model = MagicMock()
@@ -218,9 +218,7 @@ class TestSearchSemantic:
 
         results, _ = search_semantic("test query")
 
-        assert len(results) == 2
-        assert results[0]["similarity"] == 0.36
-        assert results[1]["similarity"] == 0.34
+        assert results == []
 
     @patch("tools.lib.vector_index_simple.get_index")
     @patch("tools.lib.vector_index_simple.get_model")

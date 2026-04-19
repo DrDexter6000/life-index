@@ -347,7 +347,7 @@ class TestSearchFilesystem:
         """Test filesystem search when journals dir doesn't exist"""
         from tools.search_journals.l2_metadata import _search_filesystem
 
-        with patch("tools.search_journals.l2_metadata.JOURNALS_DIR") as mock_dir:
+        with patch("tools.search_journals.l2_metadata.get_journals_dir", return_value=Path("fake")) as mock_dir:
             mock_dir.exists.return_value = False
             results = _search_filesystem()
 
@@ -357,7 +357,7 @@ class TestSearchFilesystem:
         """Test filesystem search with empty directory"""
         from tools.search_journals.l2_metadata import _search_filesystem
 
-        with patch("tools.search_journals.l2_metadata.JOURNALS_DIR") as mock_dir:
+        with patch("tools.search_journals.l2_metadata.get_journals_dir", return_value=Path("fake")) as mock_dir:
             mock_dir.exists.return_value = True
             mock_dir.iterdir.return_value = []
             results = _search_filesystem()
@@ -381,7 +381,7 @@ class TestSearchFilesystem:
         mock_year.name = "2026"
         mock_year.iterdir.return_value = [mock_month]
 
-        with patch("tools.search_journals.l2_metadata.JOURNALS_DIR") as mock_dir:
+        with patch("tools.search_journals.l2_metadata.get_journals_dir", return_value=Path("fake")) as mock_dir:
             mock_dir.exists.return_value = True
             mock_dir.iterdir.return_value = [mock_year]
 
