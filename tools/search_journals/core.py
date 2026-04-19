@@ -58,6 +58,11 @@ def _emit_search_metrics(result: Dict[str, Any]) -> None:
     metrics_module.emit_search_metrics(result)
 
 
+def _compute_no_confident_match(results: list[dict[str, Any]]) -> bool:
+    confidence_module = import_module("tools.search_journals.confidence")
+    return confidence_module.compute_no_confident_match(results)
+
+
 def _normalize_candidate_path(path: Path) -> str:
     return str(path.resolve()).replace("\\", "/")
 
@@ -69,33 +74,52 @@ def _extract_candidate_path(link_target: str) -> Path | None:
 
     candidate = Path(cleaned)
     if not candidate.is_absolute():
-        from ..lib.config import USER_DATA_DIR
+        from ..lib.paths import get_user_data_dir
 
-        candidate = USER_DATA_DIR / cleaned
+        candidate = get_user_data_dir() / cleaned
 
     return candidate.resolve()
 
 
 def _topic_index_path(topic: str) -> Path:
-    from ..lib.config import USER_DATA_DIR
+    from ..lib.paths import get_user_data_dir
 
-    return USER_DATA_DIR / "by-topic" / f"主题_{topic}.md"
+    return get_user_data_dir() / "by-topic" / f"主题_{topic}.md"
+
+
+def _parse_journal_date(filename: str) -> str | None:
+    """Extract the date portion (YYYY-MM-DD) from a journal filename.
+
+    Filenames follow the pattern: life-index_YYYY-MM-DD_NNN.md
+    Returns None if the filename doesn't match the expected pattern.
+    """
+    import re as _re
+
+    m = _re.match(r"life-index_(\d{4}-\d{2}-\d{2})_\d+\.md", filename)
+    return m.group(1) if m else None
 
 
 def build_l0_candidate_set(
-    *, year: int | None = None, month: int | None = None, topic: str | None = None
+    *,
+    year: int | None = None,
+    month: int | None = None,
+    topic: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> set[str] | None:
-    from ..lib.config import JOURNALS_DIR
+    from ..lib.paths import get_journals_dir
+
+    _journals_dir = get_journals_dir()
 
     candidate_sets: list[set[str]] = []
 
     if year is not None:
         if month is not None:
-            journal_paths = (JOURNALS_DIR / str(year) / f"{month:02d}").glob(
+            journal_paths = (_journals_dir / str(year) / f"{month:02d}").glob(
                 "life-index_*.md"
             )
         else:
-            journal_paths = (JOURNALS_DIR / str(year)).glob("**/life-index_*.md")
+            journal_paths = (_journals_dir / str(year)).glob("**/life-index_*.md")
         candidate_sets.append(
             {_normalize_candidate_path(path) for path in journal_paths}
         )
@@ -111,6 +135,20 @@ def build_l0_candidate_set(
                 if candidate_path and candidate_path.name.startswith("life-index_"):
                     topic_paths.add(_normalize_candidate_path(candidate_path))
             candidate_sets.append(topic_paths)
+
+    # Phase 4 T4.1: date_from/date_to filtering via filename date extraction
+    if date_from is not None or date_to is not None:
+        date_filtered: set[str] = set()
+        for journal_path in _journals_dir.glob("**/life-index_*.md"):
+            journal_date = _parse_journal_date(journal_path.name)
+            if journal_date is None:
+                continue
+            if date_from is not None and journal_date < date_from:
+                continue
+            if date_to is not None and journal_date > date_to:
+                continue
+            date_filtered.add(_normalize_candidate_path(journal_path))
+        candidate_sets.append(date_filtered)
 
     if not candidate_sets:
         return None
@@ -147,10 +185,10 @@ def expand_query_with_entity_graph(query: str) -> str:
     Supports phrase patterns from the registry (e.g., X的老婆, X的奶奶, X的妈妈).
     Gracefully degrades if graph is missing or invalid.
     """
-    # Read USER_DATA_DIR dynamically to support test isolation (fixture reloads paths module)
-    from ..lib.paths import USER_DATA_DIR as _current_data_dir
+    # Read user data dir dynamically via lazy getter to support test isolation
+    from ..lib.paths import get_user_data_dir
 
-    graph_path = _current_data_dir / "entity_graph.yaml"
+    graph_path = get_user_data_dir() / "entity_graph.yaml"
     try:
         graph = load_entity_graph(graph_path)
     except EntityGraphValidationError as exc:
@@ -292,9 +330,9 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
     if not query or not query.strip():
         return []
 
-    from ..lib.paths import USER_DATA_DIR as _current_data_dir
+    from ..lib.paths import get_user_data_dir
 
-    graph_path = _current_data_dir / "entity_graph.yaml"
+    graph_path = get_user_data_dir() / "entity_graph.yaml"
     try:
         graph = load_entity_graph(graph_path)
     except EntityGraphValidationError:
@@ -559,7 +597,18 @@ def hierarchical_search(
         "performance": {},
         "warnings": [],  # Phase 2C: 降级警告收集
         "entity_hints": [],  # Round 7 Phase 1: structured entity suggestion hints
+        # Round 11 Phase 0: query understanding output placeholders
+        "search_plan": None,  # Phase 1 implementation: structured query understanding
+        "ambiguity": {"has_ambiguity": False, "items": []},  # Phase 2 implementation
+        "hints": [],  # Phase 2 implementation: invocation-time hints
     }
+
+    # Round 10 T1.2: Expose entity graph status
+    from ..lib.entity_graph import check_graph_status
+    from ..lib.paths import get_user_data_dir
+
+    graph_status = check_graph_status(get_user_data_dir() / "entity_graph.yaml")
+    result["entity_graph_status"] = graph_status
 
     if not semantic:
         result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
@@ -571,6 +620,24 @@ def hierarchical_search(
     entity_hints = resolve_query_entities(query) if query else []
     result["entity_hints"] = entity_hints
 
+    # Round 11 Phase 0→1: Query understanding via preprocessor
+    _plan = None
+    if query:
+        from .query_preprocessor import build_search_plan as _build_plan
+
+        _plan = _build_plan(query)
+        result["search_plan"] = _plan.to_dict()
+
+    # Round 11 Phase 2: Ambiguity detection + hints
+    if _plan is not None:
+        from .ambiguity_detector import detect_ambiguity as _detect_amb
+        from .hints_builder import build_hints as _build_hints
+
+        _ambiguity = _detect_amb(_plan, query or "", entity_hints)
+        result["ambiguity"] = _ambiguity.to_dict()
+        _hints = _build_hints(_plan, _ambiguity)
+        result["hints"] = [h.to_dict() for h in _hints]
+
     expanded_query = expand_query_with_entity_graph(query) if query else query
     if expanded_query != query:
         result["query_params"]["expanded_query"] = expanded_query
@@ -578,28 +645,56 @@ def hierarchical_search(
 
     start_time = time.time()
 
-    # Round 9: Check index freshness before searching
-    from ..lib.search_index import check_index_freshness as _check_index_freshness
+    # Round 12 Phase 3: Unified freshness guard + pending consumption
+    from ..lib.pending_writes import has_pending as _has_pending, clear_pending as _clear_pending
+    from ..lib.index_freshness import check_full_freshness as _check_full_freshness
+    from ..lib.paths import get_user_data_dir as _get_user_data_dir
 
-    index_status = _check_index_freshness()
-    result["index_status"] = index_status
-    if index_status.get("stale"):
-        reason = index_status.get("reason", "unknown")
-        result["warnings"].append(f"index_stale: {reason}")
-        # Trigger non-blocking incremental update
+    _index_dir = _get_user_data_dir() / ".index"
+    _needs_build = False
+
+    # Step 1: If pending writes, trigger build and consume
+    if _has_pending():
         try:
-            from ..lib.search_index import update_index as _update_fts_index
+            from ..build_index import build_all as _build_all
 
-            _update_fts_index(incremental=True)
-            result["index_status"]["auto_updated"] = True
-            logger.info(
-                "Auto-triggered incremental FTS index update (reason: %s)", reason
-            )
+            logger.info("Pending writes detected, triggering incremental index update")
+            _build_all(incremental=True)
+            _clear_pending()
+            result.setdefault("pending_consumed", True)
         except Exception as exc:
-            logger.warning("Auto FTS index update failed: %s", exc)
-            result["index_status"]["auto_updated"] = False
+            logger.warning("Pending index update failed, continuing with stale index: %s", exc)
+            result.setdefault("pending_consumed", False)
+    else:
+        # Step 2: Check full freshness (FTS + vector + manifest)
+        _freshness = _check_full_freshness(_index_dir)
+        result["index_status"] = {
+            "freshness": _freshness.to_dict(),
+        }
+        if not _freshness.overall_fresh:
+            for issue in _freshness.issues:
+                result["warnings"].append(f"index_stale: {issue}")
+            # Trigger incremental build to fix staleness
+            try:
+                from ..build_index import build_all as _build_all
 
-    candidate_paths = build_l0_candidate_set(year=year, month=month, topic=topic)
+                logger.info("Index stale, triggering incremental update: %s", ", ".join(_freshness.issues))
+                _build_all(incremental=True)
+                result.setdefault("index_status", {})["auto_updated"] = True
+            except Exception as exc:
+                logger.warning("Auto index update failed: %s", exc)
+                result.setdefault("index_status", {})["auto_updated"] = False
+
+    # Phase 4 T4.1: Consume search_plan.date_range when no explicit date params
+    if _plan and _plan.date_range and not date_from and not date_to:
+        if _plan.date_range.since:
+            date_from = _plan.date_range.since
+        if _plan.date_range.until:
+            date_to = _plan.date_range.until
+
+    candidate_paths = build_l0_candidate_set(
+        year=year, month=month, topic=topic, date_from=date_from, date_to=date_to
+    )
 
     # ── Level 1: 索引层（向后兼容，提前返回） ──
     if level == 1:
@@ -699,6 +794,9 @@ def hierarchical_search(
         result["performance"].update(sem_perf)
 
     # ── RRF 融合 ──
+    # Phase 4 T4.2: Extract topic_hints from search_plan for ranking boost
+    _topic_hints = _plan.topic_hints if _plan else None
+
     if semantic_results:
         result["merged_results"] = merge_and_rank_results_hybrid(
             l1_results,
@@ -712,6 +810,7 @@ def hierarchical_search(
             min_non_rrf_score=non_rrf_min_score,
             explain=explain,  # Task 2.1
             entity_hints=entity_hints,
+            topic_hints=_topic_hints,
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
@@ -721,9 +820,28 @@ def hierarchical_search(
             l3_results,
             query,
             entity_hints=entity_hints,
+            explain=explain,  # T3.4: forward explain to non-hybrid path
+            topic_hints=_topic_hints,
         )
 
     result["total_found"] = len(result["merged_results"])
+    result["no_confident_match"] = _compute_no_confident_match(result["merged_results"])
+
+    # T4.4: Title hard promotion (post-rank, post-confidence)
+    from .title_promotion import apply_title_promotion
+
+    result["merged_results"] = apply_title_promotion(result["merged_results"], query or "")
+
+    # T4.5: ranking_reason natural language explanation (--explain mode only)
+    if explain:
+        from .ranking_reason import compose as compose_reason
+
+        for r in result["merged_results"]:
+            r["query"] = query or ""
+            r["ranking_reason"] = compose_reason(r)
+            # Clean up transient field
+            del r["query"]
+
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
 
     _emit_search_metrics(result)

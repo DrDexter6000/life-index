@@ -114,6 +114,8 @@ CHINESE_STOP_WORDS: frozenset[str] = frozenset(
         "还",
         "又",
         "再",
+        # Round 13 Phase 3: Additional function word
+        "得",
         # NOTE (B-4): The following words were REMOVED from stopword list because
         # they carry query intent and their removal was causing recall failures:
         # - 不 (negation intent: 不吃饭, 不喜欢)
@@ -260,9 +262,9 @@ def load_entity_dict(graph_path: Path | None = None) -> None:
         return
 
     if graph_path is None:
-        from tools.lib.config import USER_DATA_DIR
+        from tools.lib.paths import get_user_data_dir
 
-        graph_path = USER_DATA_DIR / "entity_graph.yaml"
+        graph_path = get_user_data_dir() / "entity_graph.yaml"
 
     names = _extract_entity_names(graph_path)
 

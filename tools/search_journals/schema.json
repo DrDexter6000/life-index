@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "name": "search_journals",
   "description": "搜索日志",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "parameters": {
     "type": "object",
     "properties": {
@@ -22,7 +22,73 @@
     "properties": {
       "merged_results": {"type": "array"},
       "total_found": {"type": "integer"},
-      "performance": {"type": "object"}
+      "performance": {"type": "object"},
+      "entity_hints": {
+        "type": "array",
+        "description": "Round 7: 结构化实体命中建议，每条含 matched_term/entity_id/entity_type/expansion_terms/reason"
+      },
+      "search_plan": {
+        "type": ["object", "null"],
+        "description": "Round 11 L2 Deterministic Preprocessing: query 被如何结构化理解。caller-facing field，供 Agent/Web/上层 orchestrator 消费",
+        "properties": {
+          "raw_query": {"type": "string", "description": "原始查询文本"},
+          "normalized_query": {"type": "string", "description": "标准化后的查询"},
+          "intent_type": {"type": "string", "enum": ["recall", "count", "compare", "summarize", "unknown"], "description": "查询意图分类"},
+          "query_mode": {"type": "string", "enum": ["keyword", "natural_language", "mixed"], "description": "查询模式分类"},
+          "keywords": {"type": "array", "items": {"type": "string"}, "description": "提取的关键词列表"},
+          "date_range": {
+            "type": ["object", "null"],
+            "properties": {
+              "since": {"type": ["string", "null"]},
+              "until": {"type": ["string", "null"]},
+              "source": {"type": ["string", "null"]}
+            }
+          },
+          "topic_hints": {"type": "array", "items": {"type": "string"}, "description": "推断的主题 hint (work/health/learn/relation/think/create/life)"},
+          "entity_hints_used": {"type": "array", "description": "使用的实体 hint 列表"},
+          "expanded_query": {"type": "string", "description": "扩展后的查询文本"},
+          "pipelines": {
+            "type": "object",
+            "properties": {
+              "keyword": {"type": "boolean"},
+              "semantic": {"type": "boolean"}
+            }
+          }
+        },
+        "required": ["raw_query", "intent_type"]
+      },
+      "ambiguity": {
+        "type": "object",
+        "description": "Round 11: CLI 对歧义/需要上层 judgment 的结构化声明。报告 signal，不替 Agent 裁决",
+        "properties": {
+          "has_ambiguity": {"type": "boolean"},
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {"type": "string", "description": "歧义类型枚举"},
+                "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+                "reason": {"type": "string"},
+                "candidates": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          }
+        },
+        "required": ["has_ambiguity"]
+      },
+      "hints": {
+        "type": "array",
+        "description": "Round 11 L3 Invocation-Time Hints: 调用时局部提示，不变成长篇 prescriptive prompt",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {"type": "string"},
+            "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+            "message": {"type": "string"}
+          }
+        }
+      }
     }
   },
   "examples": []
