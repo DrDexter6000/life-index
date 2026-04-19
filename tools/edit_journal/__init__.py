@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
 # 导入配置 (relative imports from parent tools package)
-from ..lib.config import JOURNALS_DIR, BY_TOPIC_DIR
+from ..lib.paths import get_journals_dir, get_by_topic_dir, get_user_data_dir, resolve_user_data_dir
 from ..lib.frontmatter import (
     parse_journal_file,
     format_frontmatter,
@@ -28,7 +28,7 @@ from ..lib.errors import ErrorCode, create_error_response
 from ..lib.logger import get_logger
 from ..lib.metadata_cache import init_metadata_cache, replace_entry_relations
 from ..lib.revisions import save_revision
-from ..write_journal.index_updater import update_vector_index
+from ..lib.pending_writes import mark_pending
 from ..write_journal.attachments import process_attachments
 
 logger = get_logger(__name__)
@@ -74,11 +74,11 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
     """添加日志条目到索引文件"""
     date_str = data.get("date", "")[:10] if data.get("date") else ""
     title = data.get("title", "无标题")
-    rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
+    rel_path = os.path.relpath(journal_path, get_journals_dir().parent).replace("\\", "/")
 
     entry = f"- [{date_str}] [{title}]({rel_path})"
 
-    BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
+    get_by_topic_dir().mkdir(parents=True, exist_ok=True)
 
     if index_file.exists():
         content = index_file.read_text(encoding="utf-8")
@@ -120,7 +120,7 @@ def update_indices_for_change(
     # 移除旧 topic 索引
     for topic in old_topics:
         if topic and topic not in new_topics:
-            idx_file = BY_TOPIC_DIR / f"主题_{topic}.md"
+            idx_file = get_by_topic_dir() / f"主题_{topic}.md"
             logger.info(f"检测到 topic 变更：{topic} -> 移除")
             if remove_from_index(idx_file, journal_filename):
                 updated_indices.append(str(idx_file))
@@ -128,7 +128,7 @@ def update_indices_for_change(
     # 添加到新 topic 索引
     for topic in new_topics:
         if topic:
-            idx_file = BY_TOPIC_DIR / f"主题_{topic}.md"
+            idx_file = get_by_topic_dir() / f"主题_{topic}.md"
             logger.info(f"检测到 topic 变更：添加 {topic}")
             add_to_index(idx_file, journal_path, new_data)
             if str(idx_file) not in updated_indices:
@@ -142,14 +142,14 @@ def update_indices_for_change(
         logger.info(f"检测到 project 变更：{old_project} -> {new_project}")
         # 移除旧 project 索引
         if old_project:
-            idx_file = BY_TOPIC_DIR / f"项目_{old_project}.md"
+            idx_file = get_by_topic_dir() / f"项目_{old_project}.md"
             if remove_from_index(idx_file, journal_filename):
                 if str(idx_file) not in updated_indices:
                     updated_indices.append(str(idx_file))
 
         # 添加到新 project 索引
         if new_project:
-            idx_file = BY_TOPIC_DIR / f"项目_{new_project}.md"
+            idx_file = get_by_topic_dir() / f"项目_{new_project}.md"
             add_to_index(idx_file, journal_path, new_data)
             if str(idx_file) not in updated_indices:
                 updated_indices.append(str(idx_file))
@@ -161,7 +161,7 @@ def update_indices_for_change(
     # 移除旧 tag 索引
     for tag in old_tags - new_tags:
         if tag:
-            idx_file = BY_TOPIC_DIR / f"标签_{tag}.md"
+            idx_file = get_by_topic_dir() / f"标签_{tag}.md"
             logger.debug(f"检测到 tag 移除：{tag}")
             if remove_from_index(idx_file, journal_filename):
                 if str(idx_file) not in updated_indices:
@@ -170,7 +170,7 @@ def update_indices_for_change(
     # 添加新 tag 索引
     for tag in new_tags - old_tags:
         if tag:
-            idx_file = BY_TOPIC_DIR / f"标签_{tag}.md"
+            idx_file = get_by_topic_dir() / f"标签_{tag}.md"
             logger.debug(f"检测到 tag 添加：{tag}")
             add_to_index(idx_file, journal_path, new_data)
             if str(idx_file) not in updated_indices:
@@ -306,14 +306,19 @@ def _apply_edit_updates(  # noqa: C901
         elif not isinstance(current_entries, list):
             current_entries = []
 
-        current_rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
+        try:
+            current_rel_path = os.path.relpath(journal_path, get_user_data_dir()).replace(
+                "\\", "/"
+            )
+        except ValueError:
+            current_rel_path = None
         merged_entries: list[str] = []
         seen_entries: set[str] = set()
         for item in current_entries:
             item_str = str(item).strip()
             if not item_str:
                 continue
-            if item_str == current_rel_path:
+            if current_rel_path and item_str == current_rel_path:
                 continue
             if not item_str.startswith("Journals/") or not item_str.endswith(".md"):
                 continue
@@ -325,7 +330,7 @@ def _apply_edit_updates(  # noqa: C901
             item_str = str(item).strip()
             if not item_str:
                 continue
-            if item_str == current_rel_path:
+            if current_rel_path and item_str == current_rel_path:
                 continue
             if not item_str.startswith("Journals/") or not item_str.endswith(".md"):
                 continue
@@ -371,9 +376,12 @@ def _apply_edit_updates(  # noqa: C901
                 logger.debug(f"分割 list 字段：{key} = {value}")
 
             if key == "related_entries" and isinstance(value, list):
-                current_rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace(
-                    "\\", "/"
-                )
+                try:
+                    current_rel_path = os.path.relpath(
+                        journal_path, get_user_data_dir()
+                    ).replace("\\", "/")
+                except ValueError:
+                    current_rel_path = None
                 filtered_values: list[str] = []
                 seen_values: set[str] = set()
                 for item in value:
@@ -382,7 +390,7 @@ def _apply_edit_updates(  # noqa: C901
                         continue
                     if not item_str.startswith("Journals/") or not item_str.endswith(".md"):
                         continue
-                    if item_str == current_rel_path:
+                    if current_rel_path and item_str == current_rel_path:
                         continue
                     if item_str not in seen_values:
                         filtered_values.append(item_str)
@@ -538,14 +546,18 @@ def edit_journal(
                 if "related_entries" in new_frontmatter or "related_entries" in result["changes"]:
                     metadata_conn = init_metadata_cache()
                     try:
-                        source_rel_path = os.path.relpath(
-                            journal_path, JOURNALS_DIR.parent
-                        ).replace("\\", "/")
-                        replace_entry_relations(
-                            metadata_conn,
-                            source_rel_path,
-                            new_frontmatter.get("related_entries", []),
-                        )
+                        try:
+                            source_rel_path = os.path.relpath(
+                                journal_path, get_user_data_dir()
+                            ).replace("\\", "/")
+                        except ValueError:
+                            source_rel_path = None
+                        if source_rel_path:
+                            replace_entry_relations(
+                                metadata_conn,
+                                source_rel_path,
+                                new_frontmatter.get("related_entries", []),
+                            )
                     finally:
                         metadata_conn.close()
 
@@ -558,21 +570,17 @@ def edit_journal(
                     result["indices_updated"] = updated
                     logger.info(f"已更新 {len(updated)} 个索引文件")
 
-                # 更新向量索引（如果内容相关字段变更）
-                content_fields_changed = result["content_modified"] or any(
-                    k in result["changes"] for k in ["title", "tags", "topic"]
-                )
-                if content_fields_changed:
-                    try:
-                        # 构建更新数据（合并旧的和新的 frontmatter）
-                        update_data = dict(new_frontmatter)
-                        update_data["content"] = new_body
-                        vector_updated = update_vector_index(journal_path, update_data)
-                        if vector_updated:
-                            logger.info("向量索引已同步更新")
-                            result["vector_index_updated"] = True
-                    except Exception as e:
-                        logger.warning(f"向量索引更新失败（不影响编辑）：{e}")
+                # 标记待索引更新 (Round 12 Phase 1: Pending Queue)
+                # 所有编辑（内容或元数据）都可能影响 FTS/向量索引
+                try:
+                    rel_path = str(
+                        journal_path.relative_to(resolve_user_data_dir())
+                    ).replace("\\", "/")
+                    mark_pending(rel_path)
+                    logger.info(f"已标记待索引更新: {rel_path}")
+                    result["pending_marked"] = True
+                except Exception as e:
+                    logger.warning(f"标记 pending 失败（不影响编辑）：{e}")
 
         except LockTimeoutError as e:
             # 锁超时，返回结构化错误
