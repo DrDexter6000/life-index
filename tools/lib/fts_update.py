@@ -21,7 +21,7 @@ _STALE_MARKER_TIMEOUT_S = 300
 
 from .chinese_tokenizer import segment_for_fts
 from .frontmatter import parse_frontmatter
-from .path_contract import build_journal_path_fields
+from .path_contract import build_journal_path_fields, safe_relative_path
 
 
 def get_file_hash(file_path: Path) -> str:
@@ -65,12 +65,16 @@ def parse_journal(
 
         # MD3: Only segment title + content for FTS; metadata columns stay raw.
         # file_hash is computed from original file content, NOT segmented text.
-        segmented_title = segment_for_fts(metadata.get("title", ""), mode="index")
+        # R11 fix: 'title' stores raw original text (for display),
+        # 'title_segmented' stores jieba tokens (for FTS matching).
+        raw_title = metadata.get("title", "")
+        segmented_title = segment_for_fts(raw_title, mode="index")
         segmented_content = segment_for_fts(body, mode="index")
 
         doc = {
             "path": path_fields["rel_path"],
-            "title": segmented_title,
+            "title": raw_title,
+            "title_segmented": segmented_title,
             "content": segmented_content,
             "date": metadata.get("date", "")[:10],
             "location": metadata.get("location", ""),
@@ -119,6 +123,7 @@ def _check_rebuild_marker(fts_db_path: Path) -> Path:
 
 
 def _write_rebuild_marker(marker: Path) -> None:
+    marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(f"{_time_module.time()}", encoding="utf-8")
 
 
@@ -198,7 +203,7 @@ def update_index(
                         continue
 
                     for journal_file in month_dir.glob("life-index_*.md"):
-                        rel_path = str(journal_file.relative_to(user_data_dir)).replace("\\", "/")
+                        rel_path = safe_relative_path(journal_file, user_data_dir)
                         current_files.add(rel_path)
 
                         # 检查是否需要更新
@@ -241,15 +246,16 @@ def update_index(
                 cursor.execute(
                     """
                     INSERT INTO journals (
-                        path, title, content, date, location, weather,
+                        path, title, title_segmented, content, date, location, weather,
                         topic, project, tags, mood, people,
                         file_hash, modified_time
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         doc["path"],
                         doc["title"],
+                        doc["title_segmented"],
                         doc["content"],
                         doc["date"],
                         doc["location"],
