@@ -4,20 +4,21 @@ Life Index - Write Journal Tool - Index Updater
 索引更新模块
 """
 
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..lib.config import JOURNALS_DIR, BY_TOPIC_DIR, get_index_prefixes
+from ..lib.config import get_index_prefixes
+from ..lib.paths import get_journals_dir, get_by_topic_dir, get_user_data_dir
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.frontmatter import get_summary
+from ..lib.path_contract import build_journal_path_fields, safe_relative_path
 
 
 def _build_entry(data: Dict[str, Any], journal_path: Path) -> str:
     """Build a by-topic entry line with optional summary."""
     date_str = data.get("date", "")[:10]
     title = data.get("title", "无标题")
-    rel_path = os.path.relpath(journal_path, JOURNALS_DIR.parent).replace("\\", "/")
+    rel_path = safe_relative_path(journal_path, get_user_data_dir())
     summary = get_summary(data) or ""
     if summary:
         return f"- [{date_str}] [{title}]({rel_path}) — {summary}"
@@ -61,8 +62,8 @@ def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> 
     for t in topics:
         if not t:
             continue
-        BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-        index_file = BY_TOPIC_DIR / build_index_filename("topic", str(t))
+        get_by_topic_dir().mkdir(parents=True, exist_ok=True)
+        index_file = get_by_topic_dir() / build_index_filename("topic", str(t))
 
         if index_file.exists():
             content = index_file.read_text(encoding="utf-8")
@@ -85,8 +86,8 @@ def update_project_index(project: str, journal_path: Path, data: Dict[str, Any])
         return None
 
     # 获取可配置的前缀
-    BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-    index_file = BY_TOPIC_DIR / build_index_filename("project", project)
+    get_by_topic_dir().mkdir(parents=True, exist_ok=True)
+    index_file = get_by_topic_dir() / build_index_filename("project", project)
 
     entry = _build_entry(data, journal_path)
 
@@ -112,8 +113,8 @@ def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]
         if not tag:
             continue
 
-        BY_TOPIC_DIR.mkdir(parents=True, exist_ok=True)
-        index_file = BY_TOPIC_DIR / build_index_filename("tag", str(tag))
+        get_by_topic_dir().mkdir(parents=True, exist_ok=True)
+        index_file = get_by_topic_dir() / build_index_filename("tag", str(tag))
 
         entry = _build_entry(data, journal_path)
 
@@ -213,8 +214,6 @@ def update_fts_index(journal_path: Path, data: Dict[str, Any]) -> bool:
     try:
         from ..lib.search_index import init_fts_db, write_index_meta
         from ..lib.chinese_tokenizer import segment_for_fts
-        from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
-        from ..lib.path_contract import build_journal_path_fields
         from datetime import datetime
 
         def _norm(value: Any) -> str:
@@ -225,7 +224,7 @@ def update_fts_index(journal_path: Path, data: Dict[str, Any]) -> bool:
             return str(value)
 
         path_fields = build_journal_path_fields(
-            journal_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+            journal_path, journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
         )
         rel_path = path_fields["rel_path"]
 
@@ -287,7 +286,6 @@ def update_vector_index(journal_path: Path, data: Dict[str, Any]) -> bool:
     """
     try:
         from ..lib.vector_index_simple import get_model, get_index
-        from ..lib.config import USER_DATA_DIR
         from ..lib.semantic_search import build_embedding_text
 
         model = get_model()
@@ -309,10 +307,11 @@ def update_vector_index(journal_path: Path, data: Dict[str, Any]) -> bool:
             return False
 
         # 计算相对路径
-        try:
-            rel_path = str(journal_path.relative_to(USER_DATA_DIR)).replace("\\", "/")
-        except ValueError:
-            rel_path = str(journal_path).replace("\\", "/")
+        rel_path = build_journal_path_fields(
+            journal_path,
+            journals_dir=get_journals_dir(),
+            user_data_dir=get_user_data_dir(),
+        )["rel_path"]
 
         # 更新索引
         index = get_index()
