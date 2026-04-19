@@ -7,6 +7,7 @@ from typing import Any
 
 import yaml
 
+from tools.lib.entity_schema import EntityGraphValidationError
 from tools.lib.entity_schema import validate_entity_graph_payload
 
 
@@ -46,3 +47,47 @@ def resolve_relationship(
         if relationship.get("relation") == relation:
             return resolve_entity(relationship["target"], graph)
     return None
+
+
+def check_graph_status(graph_path: Path) -> dict[str, Any]:
+    """
+    Check entity graph initialization status.
+
+    Returns:
+        {
+            "status": "initialized" | "not_initialized" | "empty",
+            "entity_count": int,
+            "suggested_action": dict | None,
+        }
+    """
+    result: dict[str, Any] = {
+        "status": "not_initialized",
+        "entity_count": 0,
+        "suggested_action": {
+            "command": "life-index entity --seed",
+            "reason": "entity graph not found; search results may miss alias-based expansion",
+        },
+    }
+
+    if not graph_path.exists():
+        return result
+
+    try:
+        entities = load_entity_graph(graph_path)
+    except EntityGraphValidationError:
+        result["status"] = "not_initialized"
+        result["suggested_action"] = {
+            "command": "life-index entity --seed",
+            "reason": "entity graph is invalid or legacy; search will continue without graph expansion until it is repaired",
+        }
+        return result
+
+    result["entity_count"] = len(entities)
+
+    if len(entities) == 0:
+        result["status"] = "empty"
+        return result
+
+    result["status"] = "initialized"
+    result["suggested_action"] = None
+    return result
