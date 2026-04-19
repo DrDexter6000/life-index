@@ -7,15 +7,20 @@ Life Index - Keyword Search Pipeline
 """
 
 import logging
+import math
 import re
 import time
 from pathlib import Path
 from typing import Any
 
 from ..lib import chinese_tokenizer
-from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.paths import get_user_data_dir, get_journals_dir
 from ..lib.path_contract import merge_journal_path_fields
 from ..lib.search_constants import FTS_LIMIT, FTS_FALLBACK_THRESHOLD, FTS_MIN_RELEVANCE
+
+# Deprecated aliases — kept for monkeypatch compatibility (Round 13 lesson)
+USER_DATA_DIR = get_user_data_dir()
+JOURNALS_DIR = get_journals_dir()
 
 from .l1_index import search_l1_index
 from .l2_metadata import search_l2_metadata
@@ -112,6 +117,9 @@ def _build_fts_queries(query: str, *, was_segmented: bool = False) -> tuple[str,
     For segmented Chinese queries, we use OR matching for better recall —
     Chinese natural language queries are conceptually cohesive, and strict AND
     matching between jieba tokens produces zero results.
+
+    T3.3: English stopwords are filtered from non-segmented queries to prevent
+    noise tokens like 'my', 'the', 'is' from polluting FTS matches.
     """
     # Handle segmented Chinese queries — use OR for better recall
     if was_segmented:
@@ -124,6 +132,15 @@ def _build_fts_queries(query: str, *, was_segmented: bool = False) -> tuple[str,
         return query, None
 
     keywords = [keyword.strip() for keyword in query.split() if keyword.strip()]
+    if len(keywords) <= 1:
+        return query, None
+
+    # T3.3: Filter English stopwords from keyword list
+    from .stopwords import load_stopwords as _load_sw
+
+    en_sw = _load_sw("en")
+    if en_sw:
+        keywords = [kw for kw in keywords if kw.lower() not in en_sw]
     if len(keywords) <= 1:
         return query, None
 
@@ -144,6 +161,35 @@ def _merge_fts_results(
             seen_paths.add(path)
 
     return merged
+
+
+def _count_distinct_token_hits(text: str, tokens: list[str]) -> int:
+    """Count how many distinct tokens appear in the text (case-insensitive)."""
+    text_lower = text.lower()
+    count = 0
+    for token in set(tokens):
+        if token.lower() in text_lower:
+            count += 1
+    return count
+
+
+def _compute_min_required_hits(query_tokens: list[str]) -> tuple[int, list[str]]:
+    """Compute required distinct token hits based on D8 rule.
+
+    Rule: max(2, ceil(non_stopword_tokens × 0.4))
+    Single non-stopword token queries: return (0, []) meaning skip filter.
+
+    Returns:
+        (required_hits, non_stopword_tokens)
+        required_hits=0 means skip the filter (too few content tokens)
+    """
+    from .stopwords import filter_stopwords
+
+    non_stop = filter_stopwords(query_tokens)
+    if len(non_stop) < 2:
+        return 0, non_stop
+    required = max(2, math.ceil(len(non_stop) * 0.4))
+    return required, non_stop
 
 
 def run_keyword_pipeline(
@@ -320,31 +366,107 @@ def run_keyword_pipeline(
                             "people": r.get("people", []),
                             **merge_journal_path_fields(
                                 {},
-                                USER_DATA_DIR / r["path"],
-                                journals_dir=JOURNALS_DIR,
-                                user_data_dir=USER_DATA_DIR,
+                                get_user_data_dir() / r["path"],
+                                journals_dir=get_journals_dir(),
+                                user_data_dir=get_user_data_dir(),
                             ),
                         }
                         for r in fts_results
                     ]
 
+                    # T3.1 (D8): FTS min-hits post-filter for segmented queries.
+                    # Require results to hit ≥ max(2, ceil(non_stopword_tokens × 0.4))
+                    # distinct non-stopword tokens. Single-token queries skip this filter.
+                    if was_segmented and l3_results:
+                        query_tokens = segmented_query.split()
+                        required_hits, non_stop_tokens = _compute_min_required_hits(
+                            query_tokens
+                        )
+                        if required_hits > 0 and non_stop_tokens:
+                            before_count = len(l3_results)
+                            filtered = []
+                            for item in l3_results:
+                                searchable = " ".join(
+                                    [
+                                        str(item.get("title", "")),
+                                        str(item.get("snippet", "")),
+                                    ]
+                                ).lower()
+                                hits = _count_distinct_token_hits(
+                                    searchable, non_stop_tokens
+                                )
+                                if hits >= required_hits:
+                                    filtered.append(item)
+                                else:
+                                    logger.debug(
+                                        "FTS min-hits filter: removed '%s' "
+                                        "(hit %d/%d tokens)",
+                                        item.get("title", ""),
+                                        hits,
+                                        required_hits,
+                                    )
+                            l3_results = filtered
+                            if before_count != len(l3_results):
+                                logger.info(
+                                    "FTS min-hits filter: %d → %d results "
+                                    "(required ≥%d of %s)",
+                                    before_count,
+                                    len(l3_results),
+                                    required_hits,
+                                    non_stop_tokens,
+                                )
+
                     # When FTS recall is suspiciously low, supplement with full-corpus
                     # content scan so body-only matches are not missed due to stale or
                     # incomplete index coverage.
                     if normalized_query and len(l3_results) < FTS_FALLBACK_THRESHOLD:
-                        fallback_l3_results = search_l3_content(
-                            normalized_query,
-                            sorted(candidate_paths) if candidate_paths is not None else None,
+                        from ..lib.fs_consistency import (
+                            get_last_sync_ts,
+                            has_writes_since,
                         )
-                        seen_paths = {
-                            str(item.get("journal_route_path") or item.get("path") or "")
-                            for item in l3_results
-                        }
-                        for item in fallback_l3_results:
-                            key = str(item.get("journal_route_path") or item.get("path") or "")
-                            if key and key not in seen_paths:
-                                l3_results.append(item)
-                                seen_paths.add(key)
+                        from ..lib.paths import get_fts_db_path
+
+                        _journals_dir = get_journals_dir()
+                        last_sync = get_last_sync_ts(get_fts_db_path())
+                        should_fallback = last_sync is None or has_writes_since(
+                            last_sync, _journals_dir
+                        )
+
+                        if should_fallback:
+                            fallback_l3_results = search_l3_content(
+                                normalized_query,
+                                sorted(candidate_paths)
+                                if candidate_paths is not None
+                                else None,
+                            )
+                            seen_paths = {
+                                str(
+                                    item.get("journal_route_path")
+                                    or item.get("path")
+                                    or ""
+                                )
+                                for item in l3_results
+                            }
+                            for item in fallback_l3_results:
+                                key = str(
+                                    item.get("journal_route_path")
+                                    or item.get("path")
+                                    or ""
+                                )
+                                if key and key not in seen_paths:
+                                    l3_results.append(item)
+                                    seen_paths.add(key)
+                            logger.debug(
+                                "L3 fallback triggered (index stale: %s)",
+                                "missing_last_updated"
+                                if last_sync is None
+                                else "files_newer_than_last_sync",
+                            )
+                        else:
+                            logger.debug(
+                                "L3 fallback skipped (index fresh, %d FTS results authoritative)",
+                                len(l3_results),
+                            )
                     logger.debug(f"FTS found {len(l3_results)} results")
             except (ImportError, OSError) as e:
                 logger.debug(f"FTS error: {e}")
