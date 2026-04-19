@@ -51,9 +51,9 @@ def _conflict_graph() -> list[dict]:
 
 
 def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
-    from tools.lib.paths import USER_DATA_DIR
+    from tools.lib.entity_graph import save_entity_graph
 
-    save_entity_graph(entities, USER_DATA_DIR / "entity_graph.yaml")
+    save_entity_graph(entities, isolated_data_dir / "entity_graph.yaml")
 
 
 def _graph_path_for(isolated_data_dir: Path) -> Path:
@@ -124,20 +124,7 @@ class TestReviewQueueBuilding:
                     or "merge_as_alias" in item["action_choices"]
                 )
 
-    def test_high_risk_items_have_merge_action(self, isolated_data_dir: Path) -> None:
-        from tools.entity.review import build_review_queue
 
-        _save_graph(_conflict_graph(), isolated_data_dir)
-
-        queue = build_review_queue()
-        high_items = [i for i in queue if i["risk_level"] == "high"]
-
-        if high_items:
-            for item in high_items:
-                assert (
-                    "merge" in item["action_choices"]
-                    or "merge_as_alias" in item["action_choices"]
-                )
 
 
 class TestReviewPreview:

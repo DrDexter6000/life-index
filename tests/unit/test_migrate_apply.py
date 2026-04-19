@@ -110,3 +110,27 @@ class TestMigrateApply:
             "deterministic_changes",
         }
         assert required_keys.issubset(set(result.keys()))
+
+    def test_apply_preserves_original_when_replace_fails(self, tmp_path: Path, monkeypatch):
+        """Migration failure during replace should not delete the original file."""
+        from tools.migrate import apply_migrations
+
+        journal = tmp_path / "Journals" / "2025" / "06" / "life-index_2025-06-15_001.md"
+        self._create_v1_journal(journal)
+        original_content = journal.read_text(encoding="utf-8")
+
+        def fail_replace(self, target):
+            raise OSError("replace failed")
+
+        def fail_rename(self, target):
+            raise OSError("rename failed")
+
+        monkeypatch.setattr(Path, "replace", fail_replace)
+        monkeypatch.setattr(Path, "rename", fail_rename)
+
+        result = apply_migrations(tmp_path / "Journals")
+
+        assert result["migrated_count"] == 0
+        assert result["failed_count"] == 1
+        assert journal.exists(), "original file should still exist after replacement failure"
+        assert journal.read_text(encoding="utf-8") == original_content

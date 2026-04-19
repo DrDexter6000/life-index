@@ -142,9 +142,9 @@ class TestSaveBackupManifest:
 class TestCreateBackup:
     """Tests for create_backup function"""
 
-    @patch("tools.backup.JOURNALS_DIR")
-    @patch("tools.backup.BY_TOPIC_DIR")
-    @patch("tools.backup.ATTACHMENTS_DIR")
+    @patch("tools.backup.get_journals_dir")
+    @patch("tools.backup.get_by_topic_dir")
+    @patch("tools.backup.get_attachments_dir")
     def test_create_backup_dry_run(
         self, mock_attach, mock_topic, mock_journals, tmp_path
     ):
@@ -160,9 +160,9 @@ class TestCreateBackup:
         assert result["files_backed_up"] == 0
         assert result["files_skipped"] == 0
 
-    @patch("tools.backup.JOURNALS_DIR")
-    @patch("tools.backup.BY_TOPIC_DIR")
-    @patch("tools.backup.ATTACHMENTS_DIR")
+    @patch("tools.backup.get_journals_dir")
+    @patch("tools.backup.get_by_topic_dir")
+    @patch("tools.backup.get_attachments_dir")
     def test_create_backup_full_mode(
         self, mock_attach, mock_topic, mock_journals, tmp_path
     ):
@@ -176,9 +176,9 @@ class TestCreateBackup:
 
         assert result["success"] is True
 
-    @patch("tools.backup.JOURNALS_DIR")
-    @patch("tools.backup.BY_TOPIC_DIR")
-    @patch("tools.backup.ATTACHMENTS_DIR")
+    @patch("tools.backup.get_journals_dir")
+    @patch("tools.backup.get_by_topic_dir")
+    @patch("tools.backup.get_attachments_dir")
     def test_create_backup_with_exclude_patterns(
         self, mock_attach, mock_topic, mock_journals, tmp_path
     ):
@@ -215,9 +215,9 @@ class TestCreateBackup:
 
         # Patch config to use our temp directories
         with (
-            patch("tools.backup.JOURNALS_DIR", journals_src),
-            patch("tools.backup.BY_TOPIC_DIR", by_topic_src),
-            patch("tools.backup.ATTACHMENTS_DIR", attachments_src),
+            patch("tools.backup.get_journals_dir", return_value=journals_src),
+            patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
+            patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
             result = create_backup(str(backup_dest), dry_run=False)
 
@@ -253,9 +253,9 @@ class TestCreateBackup:
 
         # Use custom exclude pattern that will match via substring
         with (
-            patch("tools.backup.JOURNALS_DIR", journals_src),
-            patch("tools.backup.BY_TOPIC_DIR", by_topic_src),
-            patch("tools.backup.ATTACHMENTS_DIR", attachments_src),
+            patch("tools.backup.get_journals_dir", return_value=journals_src),
+            patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
+            patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
             result = create_backup(
                 str(backup_dest), dry_run=False, exclude_patterns=[".tmp"]
@@ -283,9 +283,9 @@ class TestCreateBackup:
         backup_dest = tmp_path / "backup_dest"
 
         with (
-            patch("tools.backup.JOURNALS_DIR", journals_src),
-            patch("tools.backup.BY_TOPIC_DIR", by_topic_src),
-            patch("tools.backup.ATTACHMENTS_DIR", attachments_src),
+            patch("tools.backup.get_journals_dir", return_value=journals_src),
+            patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
+            patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
             # First backup
             result1 = create_backup(str(backup_dest), dry_run=False)
@@ -314,9 +314,9 @@ class TestCreateBackup:
         backup_dest = tmp_path / "backup_dest"
 
         with (
-            patch("tools.backup.JOURNALS_DIR", journals_src),
-            patch("tools.backup.BY_TOPIC_DIR", by_topic_src),
-            patch("tools.backup.ATTACHMENTS_DIR", attachments_src),
+            patch("tools.backup.get_journals_dir", return_value=journals_src),
+            patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
+            patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
             # First backup
             result1 = create_backup(str(backup_dest), dry_run=False)
@@ -347,9 +347,9 @@ class TestCreateBackup:
         backup_dest = tmp_path / "backup_dest"
 
         with (
-            patch("tools.backup.JOURNALS_DIR", journals_src),
-            patch("tools.backup.BY_TOPIC_DIR", by_topic_src),
-            patch("tools.backup.ATTACHMENTS_DIR", attachments_src),
+            patch("tools.backup.get_journals_dir", return_value=journals_src),
+            patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
+            patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
             result = create_backup(str(backup_dest), dry_run=True)
 
@@ -376,9 +376,9 @@ class TestCreateBackup:
         backup_dest = tmp_path / "backup_dest"
 
         with (
-            patch("tools.backup.JOURNALS_DIR", journals_src),
-            patch("tools.backup.BY_TOPIC_DIR", by_topic_src),
-            patch("tools.backup.ATTACHMENTS_DIR", attachments_src),
+            patch("tools.backup.get_journals_dir", return_value=journals_src),
+            patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
+            patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
             result = create_backup(str(backup_dest), dry_run=False)
 
@@ -413,9 +413,9 @@ class TestCreateBackup:
         manifest_path.write_text('{"files": {}}', encoding="utf-8")
 
         with (
-            patch("tools.backup.JOURNALS_DIR", journals_src),
-            patch("tools.backup.BY_TOPIC_DIR", by_topic_src),
-            patch("tools.backup.ATTACHMENTS_DIR", attachments_src),
+            patch("tools.backup.get_journals_dir", return_value=journals_src),
+            patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
+            patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
             result = create_backup(str(backup_dest), dry_run=False)
 
@@ -442,9 +442,9 @@ class TestCreateBackup:
         backup_dest = tmp_path / "backup_dest"
 
         with (
-            patch("tools.backup.JOURNALS_DIR", journals_src),
-            patch("tools.backup.BY_TOPIC_DIR", by_topic_src),
-            patch("tools.backup.ATTACHMENTS_DIR", attachments_src),
+            patch("tools.backup.get_journals_dir", return_value=journals_src),
+            patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
+            patch("tools.backup.get_attachments_dir", return_value=attachments_src),
             patch("tools.backup.shutil.copy2", side_effect=IOError("Disk full")),
         ):
             result = create_backup(str(backup_dest), dry_run=False)

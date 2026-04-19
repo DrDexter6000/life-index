@@ -6,7 +6,7 @@ Life Index - Timeline Command Core Logic
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from ..lib.config import JOURNALS_DIR
+from ..lib.paths import get_journals_dir
 from ..lib.frontmatter import parse_journal_file
 
 
@@ -48,12 +48,13 @@ def run_timeline(
         return result
 
     # Scan journals
-    if not JOURNALS_DIR.exists():
+    _journals_dir = get_journals_dir()
+    if not _journals_dir.exists():
         return result
 
     entries: List[Dict] = []
 
-    for year_dir in JOURNALS_DIR.iterdir():
+    for year_dir in _journals_dir.iterdir():
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
 
@@ -90,7 +91,7 @@ def run_timeline(
                             "title": metadata.get("title", ""),
                             "mood": metadata.get("mood", []),
                             "abstract": metadata.get("abstract", ""),
-                            "path": str(journal_file.relative_to(JOURNALS_DIR.parent)),
+                            "path": str(journal_file.relative_to(_journals_dir.parent)),
                         }
                         entries.append(entry)
             except ValueError:

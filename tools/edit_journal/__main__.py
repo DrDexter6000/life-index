@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 
 from . import edit_journal
-from ..lib.config import USER_DATA_DIR, ensure_dirs
+from ..lib.paths import get_user_data_dir
+from ..lib.config import ensure_dirs
 from ..lib.logger import get_logger
 from ..lib.trace import Trace
 
@@ -104,7 +105,7 @@ Examples:
     journal_path = Path(args.journal)
     if not journal_path.is_absolute():
         # 尝试相对于用户数据目录解析
-        base_dir = USER_DATA_DIR
+        base_dir = get_user_data_dir()
         journal_path = base_dir / journal_path
 
     logger.debug(f"日志路径：{journal_path}")

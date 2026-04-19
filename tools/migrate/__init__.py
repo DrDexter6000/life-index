@@ -172,9 +172,7 @@ def apply_migrations(
             try:
                 with open(fd, "w", encoding="utf-8") as f:
                     f.write(new_content)
-                # On Windows, need to remove destination before rename
-                md_file.unlink()
-                Path(tmp_path).rename(md_file)
+                Path(tmp_path).replace(md_file)
             except BaseException:
                 Path(tmp_path).unlink(missing_ok=True)
                 raise

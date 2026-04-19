@@ -82,6 +82,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | entity_candidates.py | write_journal | ✅ 活跃 | Round 7 Phase 2 新增：write-time candidate extraction |
 | entity_graph.py | write_journal, entity tool, entity_runtime | ✅ 活跃 | Round 7 Phase 1 runtime view 底层 |
 | entity_relations.py | entity_runtime, check, review | ✅ 活跃 | Round 7 Phase 3 新增：relation vocabulary normalization |
+| index_manifest.py | build_index | ✅ 活跃 | Round 12 Phase 2 新增：索引构建状态 manifest（counts + checksums + partial flag） |
 | entity_runtime.py | search_journals | ✅ 活跃 | Round 7 Phase 1 新增：runtime serving layer（by_lookup + reverse_relationships + phrase patterns） |
 | entity_schema.py | write_journal, entity_graph | ✅ 活跃 | Round 7 Phase 1 确认活跃 |
 | errors.py | write_journal(core), query_weather, generate_index | ⚠️ 部分集成 | Round 5 Task 3 将全面激活 |
@@ -94,6 +95,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | metadata_cache.py | search_journals, write_journal | ✅ 活跃 | |
 | path_contract.py | write_journal, edit_journal | ✅ 活跃 | |
 | paths.py | 多个 | ✅ 活跃 | |
+| pending_writes.py | write_journal, edit_journal, search_journals | ✅ 活跃 | Round 12 Phase 1 新增：写入/编辑后标记 pending，搜索前消费 |
 | related_candidates.py | write_journal | ✅ 活跃 | |
 | revisions.py | edit_journal | ✅ 活跃 | |
 | schema_validator.py | dev tools | ✅ 活跃 | |

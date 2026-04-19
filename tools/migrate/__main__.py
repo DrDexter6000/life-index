@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from tools.lib.config import JOURNALS_DIR
+from tools.lib.paths import get_journals_dir
 
 
 def main() -> None:
@@ -44,9 +44,9 @@ def main() -> None:
     if args.apply:
         from tools.migrate import apply_migrations
 
-        report = apply_migrations(JOURNALS_DIR, target_version=args.version)
+        report = apply_migrations(get_journals_dir(), target_version=args.version)
     else:
-        report = scan_journals(JOURNALS_DIR)
+        report = scan_journals(get_journals_dir())
 
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

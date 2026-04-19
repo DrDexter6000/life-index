@@ -224,9 +224,8 @@ class TestEntityCli:
     ) -> None:
         from tools import __main__
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
 
-        graph_path = USER_DATA_DIR / "entity_graph.yaml"
+        graph_path = isolated_data_dir / "entity_graph.yaml"
         save_entity_graph(_sample_entity_graph()["entities"], graph_path)
 
         monkeypatch.setattr(__main__.sys, "argv", ["life-index", "entity", "--list"])
@@ -242,9 +241,8 @@ class TestEntityCli:
     ) -> None:
         from tools import __main__
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
 
-        graph_path = USER_DATA_DIR / "entity_graph.yaml"
+        graph_path = isolated_data_dir / "entity_graph.yaml"
         save_entity_graph(_sample_entity_graph()["entities"], graph_path)
 
         monkeypatch.setattr(

@@ -15,8 +15,8 @@ from tools.lib import fts_search, search_index
 def _init_test_db(tmp_path: Path) -> tuple[sqlite3.Connection, Path]:
     db_path = tmp_path / "journals_fts.db"
     with (
-        patch.object(search_index, "FTS_DB_PATH", db_path),
-        patch.object(search_index, "INDEX_DIR", tmp_path),
+    patch.object(search_index, "get_fts_db_path", lambda: db_path),
+    patch.object(search_index, "get_index_dir", lambda: tmp_path),
     ):
         conn = search_index.init_fts_db()
     return conn, db_path
@@ -97,10 +97,10 @@ Alice helped fix the FTS schema mismatch.
     )
 
     with (
-        patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"),
-        patch.object(search_index, "USER_DATA_DIR", tmp_path),
-        patch.object(search_index, "FTS_DB_PATH", tmp_path / "journals_fts.db"),
-        patch.object(search_index, "INDEX_DIR", tmp_path / ".index"),
+    patch.object(search_index, "get_journals_dir", lambda: tmp_path / "Journals"),
+    patch.object(search_index, "get_user_data_dir", lambda: tmp_path),
+    patch.object(search_index, "get_fts_db_path", lambda: tmp_path / "journals_fts.db"),
+    patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"),
     ):
         result = search_index.update_index(incremental=True)
         results = search_index.search_fts("schema")

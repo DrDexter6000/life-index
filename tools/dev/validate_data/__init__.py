@@ -20,7 +20,8 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Set, Tuple, Any
 
 # 导入配置 (relative imports from tools/lib)
-from ...lib.config import JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR, ensure_dirs
+from ...lib.config import ensure_dirs
+from ...lib.paths import get_journals_dir, get_by_topic_dir, get_attachments_dir, get_user_data_dir
 from ...lib.frontmatter import (
     parse_journal_file,
     get_required_fields,
@@ -106,8 +107,8 @@ class DataValidator:
     def _collect_files(self) -> None:
         """收集所有相关文件"""
         # 收集日志文件
-        if JOURNALS_DIR.exists():
-            self.journal_files = list(JOURNALS_DIR.rglob("life-index_*.md"))
+        if get_journals_dir().exists():
+            self.journal_files = list(get_journals_dir().rglob("life-index_*.md"))
             # 排除摘要文件
             self.journal_files = [
                 f
@@ -116,12 +117,12 @@ class DataValidator:
             ]
 
         # 收集索引文件
-        if BY_TOPIC_DIR.exists():
-            self.index_files = list(BY_TOPIC_DIR.glob("*.md"))
+        if get_by_topic_dir().exists():
+            self.index_files = list(get_by_topic_dir().glob("*.md"))
 
         # 收集附件文件
-        if ATTACHMENTS_DIR.exists():
-            self.attachment_files = list(ATTACHMENTS_DIR.rglob("*"))
+        if get_attachments_dir().exists():
+            self.attachment_files = list(get_attachments_dir().rglob("*"))
             self.attachment_files = [f for f in self.attachment_files if f.is_file()]
 
         self.result.total_journals = len(self.journal_files)
@@ -163,7 +164,7 @@ class DataValidator:
         sequences_by_date: Dict[str, List[Tuple[int, Path]]] = {}
 
         for journal_file in self.journal_files:
-            rel_path = journal_file.relative_to(JOURNALS_DIR.parent)
+            rel_path = journal_file.relative_to(get_user_data_dir())
             metadata = self._parse_frontmatter(journal_file)
 
             if metadata is None:
@@ -275,7 +276,7 @@ class DataValidator:
         """校验附件引用"""
         for rel_path, metadata in self.journal_entries.items():
             attachments = metadata.get("attachments", [])
-            journal_file = JOURNALS_DIR.parent / rel_path
+            journal_file = get_user_data_dir() / rel_path
 
             if isinstance(attachments, list):
                 for att in attachments:
@@ -286,16 +287,16 @@ class DataValidator:
                             att_path = (journal_file.parent / att).resolve()
                         elif att.startswith("/"):
                             # 绝对路径（相对于用户数据目录根）
-                            att_path = (JOURNALS_DIR.parent / att.lstrip("/")).resolve()
+                            att_path = (get_user_data_dir() / att.lstrip("/")).resolve()
                         else:
                             # 只有文件名，根据日志日期推断路径
                             # 从日志文件名提取日期: life-index_YYYY-MM-DD_NNN.md
                             date_match = re.search(r"(\d{4})-(\d{2})-\d{2}", journal_file.name)
                             if date_match:
                                 year, month = date_match.groups()
-                                att_path = ATTACHMENTS_DIR / year / month / att
+                                att_path = get_attachments_dir() / year / month / att
                             else:
-                                att_path = ATTACHMENTS_DIR / att
+                                att_path = get_attachments_dir() / att
 
                         if not att_path.exists():
                             self.result.issues.append(
@@ -322,7 +323,7 @@ class DataValidator:
                 resolved = self._resolve_link(index_file, link_path)
                 if resolved:
                     try:
-                        rel_path = resolved.relative_to(JOURNALS_DIR.parent)
+                        rel_path = resolved.relative_to(get_user_data_dir())
                         indexed_entries.add(str(rel_path))
                     except ValueError:
                         pass
@@ -342,7 +343,7 @@ class DataValidator:
             # 检查主题索引
             for topic in topics:
                 if topic:
-                    index_file = BY_TOPIC_DIR / f"主题_{topic}.md"
+                    index_file = get_by_topic_dir() / f"主题_{topic}.md"
                     if index_file.exists():
                         content = index_file.read_text(encoding="utf-8")
                         if rel_path.name not in content and str(rel_path) not in content:
@@ -364,7 +365,7 @@ class DataValidator:
 
         # 相对于用户数据目录根
         if link.startswith("/"):
-            return JOURNALS_DIR.parent / link.lstrip("/")
+            return get_user_data_dir() / link.lstrip("/")
 
         # 相对路径
         resolved = (from_file.parent / link).resolve()
