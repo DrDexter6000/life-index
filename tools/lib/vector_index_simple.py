@@ -12,21 +12,26 @@ Life Index - Simple Vector Index (Fallback)
 
 import hashlib
 import json
+import logging
 import pickle
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # 导入配置 - 使用相对导入
-from .paths import JOURNALS_DIR, USER_DATA_DIR
+from .paths import get_index_dir, get_vec_index_path, get_vec_meta_path, get_user_data_dir, get_journals_dir
 from .search_config import get_model_cache_dir, EMBEDDING_MODEL as MODEL_CONFIG
 from .frontmatter import parse_frontmatter
 from .embedding_backends import SharedEmbeddingModel as EmbeddingModel
 
-# 索引存储目录
-INDEX_DIR = USER_DATA_DIR / ".index"
-VEC_INDEX_PATH = INDEX_DIR / "vectors_simple.pkl"
-META_PATH = INDEX_DIR / "vectors_simple_meta.json"
+logger = logging.getLogger(__name__)
+
+# 索引存储目录 (deprecated: use getters)
+INDEX_DIR = get_index_dir()  # deprecated: use get_index_dir()
+VEC_INDEX_PATH = get_vec_index_path()  # deprecated: use get_vec_index_path()
+META_PATH = get_vec_meta_path()  # deprecated: use get_vec_meta_path()
+USER_DATA_DIR = get_user_data_dir()  # deprecated: use get_user_data_dir()
+JOURNALS_DIR = get_journals_dir()  # deprecated: use get_journals_dir()
 CACHE_DIR = get_model_cache_dir()  # 跨平台缓存目录
 
 # 嵌入模型配置（从 config.py 统一读取）
@@ -53,7 +58,7 @@ def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
                 hash_obj.update(chunk)
         return hash_obj.hexdigest()
     except Exception as e:
-        print(f"Warning: Failed to compute hash for {file_path}: {e}")
+        logger.warning("Failed to compute hash for %s: %s", file_path, e)
         return ""
 
 
@@ -99,14 +104,23 @@ class SimpleVectorIndex:
 
     def _load(self) -> None:
         """从磁盘加载索引"""
-        if VEC_INDEX_PATH.exists():
+        # Clean up stale tmp files from crashed saves
+        tmp_pkl = get_vec_index_path().with_suffix(".pkl.tmp")
+        if tmp_pkl.exists():
+            logger.warning("Found stale .pkl.tmp file, removing (likely from crashed save)")
             try:
-                with open(VEC_INDEX_PATH, "rb") as f:
+                tmp_pkl.unlink()
+            except OSError:
+                pass
+
+        if get_vec_index_path().exists():
+            try:
+                with open(get_vec_index_path(), "rb") as f:
                     self.vectors = pickle.load(f)
                 # 加载后自动清理陈旧向量
                 self._cleanup_stale_vectors()
             except Exception as e:
-                print(f"Warning: Failed to load vector index: {e}")
+                logger.warning("Failed to load vector index: %s", e)
                 self.vectors = {}
 
     def _cleanup_stale_vectors(self) -> int:
@@ -125,7 +139,7 @@ class SimpleVectorIndex:
             # 路径可能是相对路径（相对于 USER_DATA_DIR）或绝对路径
             file_path = Path(path)
             if not file_path.is_absolute():
-                file_path = USER_DATA_DIR / path
+                file_path = get_user_data_dir() / path
 
             if not file_path.exists():
                 stale_paths.append(path)
@@ -137,16 +151,19 @@ class SimpleVectorIndex:
         # 如果有清理，保存索引
         if stale_paths:
             self._save()
-            print(f"[INFO] Cleaned {len(stale_paths)} stale vectors from index")
+            logger.info("Cleaned %d stale vectors from index", len(stale_paths))
 
         return len(stale_paths)
 
     def _save(self) -> None:
-        """保存索引到磁盘"""
-        INDEX_DIR.mkdir(parents=True, exist_ok=True)
+        """保存索引到磁盘（原子写入：temp + rename）"""
+        get_index_dir().mkdir(parents=True, exist_ok=True)
         try:
-            with open(VEC_INDEX_PATH, "wb") as f:
+            # Atomic pickle write: temp file + rename
+            tmp_pkl = get_vec_index_path().with_suffix(".pkl.tmp")
+            with open(tmp_pkl, "wb") as f:
                 pickle.dump(self.vectors, f)
+            tmp_pkl.replace(get_vec_index_path())
 
             # 保存元数据
             meta = {
@@ -154,8 +171,10 @@ class SimpleVectorIndex:
                 "last_updated": datetime.now().isoformat(),
                 "version": "1.0",
             }
-            with open(META_PATH, "w", encoding="utf-8") as f:
+            tmp_meta = get_vec_meta_path().with_suffix(".json.tmp")
+            with open(tmp_meta, "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2)
+            tmp_meta.replace(get_vec_meta_path())
 
         except Exception as e:
             print(f"Warning: Failed to save vector index: {e}")
@@ -195,7 +214,7 @@ class SimpleVectorIndex:
         try:
             import numpy as np
         except ImportError:
-            print("Warning: numpy not installed. Cannot perform vector search.")
+            logger.warning("numpy not installed. Cannot perform vector search.")
             return []
 
         if not self.vectors:
@@ -241,11 +260,11 @@ class SimpleVectorIndex:
     def stats(self) -> Dict[str, Any]:
         """获取统计信息"""
         return {
-            "exists": VEC_INDEX_PATH.exists(),
+            "exists": get_vec_index_path().exists(),
             "total_vectors": len(self.vectors),
             "index_size_mb": (
-                round(VEC_INDEX_PATH.stat().st_size / (1024 * 1024), 2)
-                if VEC_INDEX_PATH.exists()
+                round(get_vec_index_path().stat().st_size / (1024 * 1024), 2)
+                if get_vec_index_path().exists()
                 else 0
             ),
             "backend": "simple_numpy",
@@ -311,14 +330,14 @@ def update_vector_index_simple(
                 meta = json.loads(meta_file.read_text(encoding="utf-8"))
                 old_version = meta.get("version", "unknown")
                 new_version = EMBEDDING_MODEL_VERSION
-                print(
-                    f"Embedding model version changed ({old_version} → {new_version}). "
-                    f"Auto-rebuilding vector index..."
+                logger.info(
+                    "Embedding model version changed (%s → %s). Auto-rebuilding vector index...",
+                    old_version, new_version,
                 )
             except Exception:
-                print(f"Auto-rebuilding vector index due to: {integrity_result.message}")
+                logger.info("Auto-rebuilding vector index due to: %s", integrity_result.message)
         else:
-            print("First-time use. Building initial vector index...")
+            logger.info("First-time use. Building initial vector index...")
 
     try:
         from .semantic_search import parse_journal_for_vec, get_file_hash
@@ -348,7 +367,9 @@ def update_vector_index_simple(
                         text_parts.append(tags)
 
                 combined_text = " ".join(text_parts)
-                rel_path = str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/")
+                from .path_contract import safe_relative_path
+
+                rel_path = safe_relative_path(file_path, get_user_data_dir())
                 date_str = str(metadata.get("date", ""))[:10]
 
                 return (rel_path, combined_text, date_str)
@@ -375,8 +396,8 @@ def update_vector_index_simple(
         current_files = set()
         files_to_process = []
 
-        if JOURNALS_DIR.exists():
-            for year_dir in JOURNALS_DIR.iterdir():
+        if get_journals_dir().exists():
+            for year_dir in get_journals_dir().iterdir():
                 if not year_dir.is_dir() or not year_dir.name.isdigit():
                     continue
 
