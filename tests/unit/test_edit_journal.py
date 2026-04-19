@@ -20,7 +20,7 @@ def test_edit_journal_writes_frontmatter_and_body_with_triple_newline(
         encoding="utf-8",
     )
 
-    with patch("tools.edit_journal.update_vector_index", return_value=True):
+    with patch("tools.edit_journal.mark_pending", return_value=True):
         result = edit_journal(
             journal_path=journal_path,
             frontmatter_updates={"title": "新标题"},
@@ -40,7 +40,7 @@ def test_edit_journal_normalizes_links_string_to_list(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("tools.edit_journal.update_vector_index", return_value=True):
+    with patch("tools.edit_journal.mark_pending", return_value=True):
         result = edit_journal(
             journal_path=journal_path,
             frontmatter_updates={"links": "https://a.com, https://b.com"},
@@ -98,7 +98,7 @@ def test_edit_journal_normalizes_related_entries_string_to_list(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    with patch("tools.edit_journal.update_vector_index", return_value=True):
+    with patch("tools.edit_journal.mark_pending", return_value=True):
         result = edit_journal(
             journal_path=journal_path,
             frontmatter_updates={
@@ -159,7 +159,7 @@ def test_edit_journal_add_related_entry(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("tools.edit_journal.update_vector_index", return_value=True):
+    with patch("tools.edit_journal.mark_pending", return_value=True):
         result = edit_journal(
             journal_path=journal_path,
             frontmatter_updates={"add_related_entries": ["Journals/2026/03/b.md"]},
@@ -179,7 +179,7 @@ def test_edit_journal_remove_related_entry(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("tools.edit_journal.update_vector_index", return_value=True):
+    with patch("tools.edit_journal.mark_pending", return_value=True):
         result = edit_journal(
             journal_path=journal_path,
             frontmatter_updates={"remove_related_entries": ["Journals/2026/03/a.md"]},
@@ -201,12 +201,13 @@ def test_edit_journal_updates_relation_table_incrementally(tmp_path: Path) -> No
     import tools.lib.metadata_cache as mc
 
     with (
-        patch("tools.edit_journal.update_vector_index", return_value=True),
-        patch("tools.edit_journal.JOURNALS_DIR", tmp_path / "Journals"),
-        patch.object(mc, "USER_DATA_DIR", tmp_path),
-        patch.object(mc, "JOURNALS_DIR", tmp_path / "Journals"),
-        patch.object(mc, "CACHE_DIR", tmp_path / ".cache"),
-        patch.object(mc, "METADATA_DB_PATH", tmp_path / ".cache" / "metadata_cache.db"),
+        patch("tools.edit_journal.mark_pending", return_value=True),
+        patch("tools.edit_journal.get_user_data_dir", return_value=tmp_path),
+        patch("tools.edit_journal.resolve_user_data_dir", return_value=tmp_path),
+        patch.object(mc, "get_user_data_dir", lambda: tmp_path),
+        patch.object(mc, "get_journals_dir", lambda: tmp_path / "Journals"),
+        patch.object(mc, "get_cache_dir", lambda: tmp_path / ".cache"),
+        patch.object(mc, "get_metadata_db_path", lambda: tmp_path / ".cache" / "metadata_cache.db"),
     ):
         conn = mc.init_metadata_cache()
         try:
