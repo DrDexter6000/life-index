@@ -42,6 +42,20 @@ from .paths import (
     INDEX_PREFIXES,
     resolve_user_data_dir,
     resolve_journals_dir,
+    # Round 13 Phase 0 lazy getters
+    reset_path_cache,
+    get_user_data_dir,
+    get_journals_dir,
+    get_index_dir,
+    get_fts_db_path,
+    get_vec_index_path,
+    get_vec_meta_path,
+    get_cache_dir,
+    get_metadata_db_path,
+    get_by_topic_dir,
+    get_attachments_dir,
+    get_config_dir,
+    get_config_file,
 )
 
 from .search_config import (
@@ -251,6 +265,20 @@ __all__ = [
     "resolve_user_data_dir",
     "resolve_journals_dir",
     "sanitize_filename",
+    # Lazy getters (Round 13 Phase 0, re-exported from paths.py)
+    "reset_path_cache",
+    "get_user_data_dir",
+    "get_journals_dir",
+    "get_index_dir",
+    "get_fts_db_path",
+    "get_vec_index_path",
+    "get_vec_meta_path",
+    "get_cache_dir",
+    "get_metadata_db_path",
+    "get_by_topic_dir",
+    "get_attachments_dir",
+    "get_config_dir",
+    "get_config_file",
     # Search config (re-exported from search_config.py)
     "get_search_config",
     "get_search_weights",

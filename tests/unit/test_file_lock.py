@@ -563,13 +563,18 @@ class TestGetJournalsLockPath:
         result = get_journals_lock_path()
         assert ".cache" in str(result)
 
-    @patch("tools.lib.config.USER_DATA_DIR", Path("/tmp/test_life_index"))
-    def test_returns_path_under_user_data_dir(self):
+    @patch("tools.lib.paths.get_user_data_dir", return_value=Path("/tmp/test_life_index"))
+    def test_returns_path_under_user_data_dir(self, mock_resolve):
         """Should return path under USER_DATA_DIR"""
-        result = get_journals_lock_path()
-        # Use Path comparison to handle Windows/Unix path differences
-        assert "tmp" in str(result)
-        assert "test_life_index" in str(result)
+        from tools.lib.paths import reset_path_cache
+        try:
+            reset_path_cache()
+            result = get_journals_lock_path()
+            # Use Path comparison to handle Windows/Unix path differences
+            assert "tmp" in str(result).lower() or "temp" in str(result).lower()
+            assert "test_life_index" in str(result)
+        finally:
+            reset_path_cache()
 
 
 class TestGetIndexLockPath:
@@ -590,13 +595,18 @@ class TestGetIndexLockPath:
         result = get_index_lock_path()
         assert ".cache" in str(result)
 
-    @patch("tools.lib.config.USER_DATA_DIR", Path("/tmp/test_life_index"))
-    def test_returns_path_under_user_data_dir(self):
+    @patch("tools.lib.paths.get_user_data_dir", return_value=Path("/tmp/test_life_index"))
+    def test_returns_path_under_user_data_dir(self, mock_resolve):
         """Should return path under USER_DATA_DIR"""
-        result = get_index_lock_path()
-        # Use Path comparison to handle Windows/Unix path differences
-        assert "tmp" in str(result)
-        assert "test_life_index" in str(result)
+        from tools.lib.paths import reset_path_cache
+        try:
+            reset_path_cache()
+            result = get_index_lock_path()
+            # Use Path comparison to handle Windows/Unix path differences
+            assert "tmp" in str(result).lower() or "temp" in str(result).lower()
+            assert "test_life_index" in str(result)
+        finally:
+            reset_path_cache()
 
 
 class TestWithJournalsLock:

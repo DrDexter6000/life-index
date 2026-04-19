@@ -502,19 +502,22 @@ class TestGetNextSequence:
 
     def test_no_existing_files_returns_one(self, tmp_path, monkeypatch):
         """No existing files should return 1"""
-        # Mock JOURNALS_DIR to use tmp_path
-        monkeypatch.setattr("tools.lib.config.JOURNALS_DIR", tmp_path)
-        year_month = tmp_path / "2026" / "03"
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        year_month = journals_dir / "2026" / "03"
         year_month.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
 
         result = get_next_sequence("LifeIndex", "2026-03-15")
         assert result == 1
 
     def test_existing_files_returns_next_seq(self, tmp_path, monkeypatch):
         """Existing files should return next sequence number"""
-        monkeypatch.setattr("tools.lib.paths.JOURNALS_DIR", tmp_path)
-        year_month = tmp_path / "2026" / "03"
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        year_month = journals_dir / "2026" / "03"
         year_month.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
 
         # Create existing files
         (year_month / "LifeIndex_2026-03-15_001.md").touch()
@@ -526,9 +529,11 @@ class TestGetNextSequence:
 
     def test_malformed_filenames_skipped(self, tmp_path, monkeypatch):
         """Malformed filenames should be skipped"""
-        monkeypatch.setattr("tools.lib.paths.JOURNALS_DIR", tmp_path)
-        year_month = tmp_path / "2026" / "03"
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        year_month = journals_dir / "2026" / "03"
         year_month.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
 
         # Create files with malformed sequence numbers
         (year_month / "LifeIndex_2026-03-15_001.md").touch()
@@ -540,8 +545,10 @@ class TestGetNextSequence:
 
     def test_nonexistent_dir_returns_one(self, tmp_path, monkeypatch):
         """Non-existent directory should return 1"""
-        monkeypatch.setattr("tools.lib.config.JOURNALS_DIR", tmp_path)
-        # Don't create the directory
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        journals_dir.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
 
         result = get_next_sequence("LifeIndex", "2026-03-15")
         assert result == 1

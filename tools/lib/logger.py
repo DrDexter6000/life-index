@@ -159,13 +159,10 @@ def get_default_log_file() -> Path:
     # 使用用户数据目录下的 .logs 目录
     from pathlib import Path
 
-    if sys.platform == "win32":
-        # Windows: %USERPROFILE%\\Documents\\Life-Index\\.logs
-        base_dir = Path.home() / "Documents" / "Life-Index"
-    else:
-        # macOS/Linux: ~/Documents/Life-Index/.logs
-        base_dir = Path.home() / "Documents" / "Life-Index"
+    # Respect LIFE_INDEX_DATA_DIR env override (same as paths.get_user_data_dir)
+    from .paths import resolve_user_data_dir
 
+    base_dir = resolve_user_data_dir()
     return base_dir / ".logs" / "life-index.log"
 
 

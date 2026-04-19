@@ -8,6 +8,7 @@ Fully independent - no circular imports with config.py.
 """
 
 import os
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -37,6 +38,81 @@ def resolve_journals_dir() -> Path:
     return resolve_user_data_dir() / "Journals"
 
 
+# ── Stateless Getter System (Round 15) ─────────────────────────────
+# No cache — reads env var every time. This prevents stale references
+# when tests change LIFE_INDEX_DATA_DIR per-test.
+
+_user_data_dir_cache: Path | None = None  # deprecated: kept for conftest compat, never read
+
+
+def reset_path_cache() -> None:
+    """No-op. Kept for backward compatibility with existing conftest."""
+    global _user_data_dir_cache
+    _user_data_dir_cache = None
+
+
+def get_user_data_dir() -> Path:
+    """Stateless user data directory. Reads LIFE_INDEX_DATA_DIR env var every call.
+
+    During pytest: crashes immediately if env var is unset, preventing
+    any accidental writes to the real ~/Documents/Life-Index/.
+    """
+    explicit = os.environ.get("LIFE_INDEX_DATA_DIR")
+    if explicit:
+        return Path(explicit)
+    if "pytest" in sys.modules:
+        raise RuntimeError(
+            "LIFE_INDEX_DATA_DIR not set during pytest — "
+            "refusing to use real data dir. "
+            "conftest.py must set this env var before importing tool modules."
+        )
+    return Path.home() / "Documents" / "Life-Index"
+
+
+def get_journals_dir() -> Path:
+    return get_user_data_dir() / "Journals"
+
+
+def get_index_dir() -> Path:
+    return get_user_data_dir() / ".index"
+
+
+def get_fts_db_path() -> Path:
+    return get_index_dir() / "journals_fts.db"
+
+
+def get_vec_index_path() -> Path:
+    return get_index_dir() / "vectors_simple.pkl"
+
+
+def get_vec_meta_path() -> Path:
+    return get_index_dir() / "vectors_simple_meta.json"
+
+
+def get_cache_dir() -> Path:
+    return get_user_data_dir() / ".cache"
+
+
+def get_metadata_db_path() -> Path:
+    return get_cache_dir() / "metadata_cache.db"
+
+
+def get_by_topic_dir() -> Path:
+    return get_user_data_dir() / "by-topic"
+
+
+def get_attachments_dir() -> Path:
+    return get_user_data_dir() / "attachments"
+
+
+def get_config_dir() -> Path:
+    return get_user_data_dir() / ".life-index"
+
+
+def get_config_file() -> Path:
+    return get_config_dir() / "config.yaml"
+
+
 # User data directory (OS standard user documents directory)
 # Uses Path.home() for cross-platform compatibility:
 #   Windows: C:\Users\<username>\Documents\Life-Index
@@ -44,22 +120,22 @@ def resolve_journals_dir() -> Path:
 #   Linux:   ~/Documents/Life-Index
 #
 # Can be overridden via LIFE_INDEX_DATA_DIR environment variable (for testing)
-USER_DATA_DIR = resolve_user_data_dir()
+USER_DATA_DIR = resolve_user_data_dir()  # deprecated: use get_user_data_dir()
 
 # Project root (for reference only, not for data storage)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 
 # Directory structure - POINT TO USER DATA DIR
-JOURNALS_DIR = USER_DATA_DIR / "Journals"
-BY_TOPIC_DIR = USER_DATA_DIR / "by-topic"
-ATTACHMENTS_DIR = USER_DATA_DIR / "attachments"
+JOURNALS_DIR = USER_DATA_DIR / "Journals"  # deprecated: use get_journals_dir()
+BY_TOPIC_DIR = USER_DATA_DIR / "by-topic"  # deprecated: use get_by_topic_dir()
+ATTACHMENTS_DIR = USER_DATA_DIR / "attachments"  # deprecated: use get_attachments_dir()
 
 # Abstracts directory (stored within Journals for co-location)
-ABSTRACTS_DIR = JOURNALS_DIR
+ABSTRACTS_DIR = JOURNALS_DIR  # deprecated: use get_journals_dir()
 
 # Config directory for user configuration
-CONFIG_DIR = USER_DATA_DIR / ".life-index"
-CONFIG_FILE = CONFIG_DIR / "config.yaml"
+CONFIG_DIR = USER_DATA_DIR / ".life-index"  # deprecated: use get_config_dir()
+CONFIG_FILE = CONFIG_DIR / "config.yaml"  # deprecated: use get_config_file()
 
 
 def ensure_dirs() -> None:
@@ -71,7 +147,7 @@ def ensure_dirs() -> None:
 
     各原子工具的 main() 应在执行任何操作前调用此函数。
     """
-    for dir_path in [JOURNALS_DIR, BY_TOPIC_DIR, ATTACHMENTS_DIR, CONFIG_DIR]:
+    for dir_path in [get_journals_dir(), get_by_topic_dir(), get_attachments_dir(), get_config_dir()]:
         dir_path.mkdir(parents=True, exist_ok=True)
 
 
@@ -145,7 +221,7 @@ def get_journal_dir(year: Optional[int] = None, month: Optional[int] = None) -> 
     now = datetime.now()
     year = year or now.year
     month = month or now.month
-    return JOURNALS_DIR / str(year) / f"{month:02d}"
+    return get_journals_dir() / str(year) / f"{month:02d}"
 
 
 def get_next_sequence(project: str, date_str: str) -> int:
@@ -153,7 +229,7 @@ def get_next_sequence(project: str, date_str: str) -> int:
     # Sanitize project name for filesystem safety
     safe_project = sanitize_filename(project)
     year, month, _ = date_str.split("-")
-    journal_dir = JOURNALS_DIR / year / month
+    journal_dir = get_journals_dir() / year / month
 
     if not journal_dir.exists():
         return 1
@@ -180,7 +256,7 @@ def get_next_sequence(project: str, date_str: str) -> int:
 def get_path_mappings() -> dict[str, str]:
     """Get cross-platform path mappings from config."""
     # Load config directly to avoid circular import
-    user_config = load_yaml_config(CONFIG_FILE)
+    user_config = load_yaml_config(get_config_file())
     mappings: dict[str, str] = user_config.get("path_mappings", {})
     return mappings
 
@@ -305,7 +381,7 @@ INDEX_PREFIXES = get_index_prefixes()
 # =============================================================================
 
 __all__ = [
-    # Paths
+    # Paths (legacy constants — import-time bindings)
     "USER_DATA_DIR",
     "PROJECT_ROOT",
     "JOURNALS_DIR",
@@ -317,6 +393,20 @@ __all__ = [
     "resolve_user_data_dir",
     "resolve_journals_dir",
     "ensure_dirs",
+    # Lazy Getters (Round 13 Phase 0)
+    "reset_path_cache",
+    "get_user_data_dir",
+    "get_journals_dir",
+    "get_index_dir",
+    "get_fts_db_path",
+    "get_vec_index_path",
+    "get_vec_meta_path",
+    "get_cache_dir",
+    "get_metadata_db_path",
+    "get_by_topic_dir",
+    "get_attachments_dir",
+    "get_config_dir",
+    "get_config_file",
     # Patterns
     "JOURNAL_FILENAME_PATTERN",
     "DATE_FORMAT",
