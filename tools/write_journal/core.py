@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any, Dict, Sequence
 
 from ..lib.config import (
-    JOURNALS_DIR,
     FILE_LOCK_TIMEOUT_DEFAULT,
     get_default_location,
     resolve_user_data_dir,
 )
+from ..lib.paths import get_journals_dir
 from ..lib.file_lock import FileLock, LockTimeoutError, get_journals_lock_path
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.workflow_signals import (
@@ -51,9 +51,8 @@ from .index_updater import (
     update_project_index,
     update_tag_indices,
     update_monthly_abstract,
-    update_vector_index,
-    update_fts_index,
 )
+from ..lib.pending_writes import mark_pending
 
 
 def _detect_new_entities(data: Dict[str, Any]) -> list[str]:
@@ -253,7 +252,7 @@ def apply_confirmation_updates(
         try:
             source_fields = build_journal_path_fields(
                 source_path,
-                journals_dir=JOURNALS_DIR,
+                journals_dir=get_journals_dir(),
                 user_data_dir=resolve_user_data_dir(),
             )
             source_rel_path = source_fields["rel_path"]
@@ -594,7 +593,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         sequence = get_next_sequence(date_str)
 
                         # 构建路径
-                        month_dir = JOURNALS_DIR / str(year) / f"{month:02d}"
+                        month_dir = get_journals_dir() / str(year) / f"{month:02d}"
                         filename = generate_filename(date_str, sequence)
                         journal_path = month_dir / filename
 
@@ -684,8 +683,6 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
 
                     # 4. 更新索引
                     updated_indices = []
-                    vector_index_error = None
-                    fts_index_error = None
                     with timer.measure("index_update"):
                         try:
                             if topic:
@@ -701,24 +698,8 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                                 indices = update_tag_indices(tags, journal_path, data)
                                 updated_indices.extend([str(i) for i in indices])
 
-                            # 6. 更新向量索引（Write-Through）
-                            try:
-                                vector_updated = update_vector_index(journal_path, data)
-                                if vector_updated:
-                                    logger.info("向量索引已同步更新")
-                            except Exception as e:
-                                # 向量索引更新失败不阻塞写入
-                                vector_index_error = str(e)
-                                logger.warning(f"向量索引更新失败（不影响日志写入）：{e}")
-
-                            # 7. 更新 FTS 索引（Write-Through）
-                            try:
-                                fts_updated = update_fts_index(journal_path, data)
-                                if fts_updated:
-                                    logger.info("FTS 索引已同步更新")
-                            except Exception as e:
-                                fts_index_error = str(e)
-                                logger.warning(f"FTS 索引更新失败（不影响日志写入）：{e}")
+                            # 6. 索引更新已移至 Pending Queue (Round 12 Phase 1)
+                            # write-through FTS/vector 已废弃，搜索前自动消费 pending
 
                         except (OSError, IOError, RuntimeError) as e:
                             # 索引更新失败，清理临时文件
@@ -733,11 +714,12 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
 
                     metadata_conn = init_metadata_cache()
                     try:
-                        source_rel_path = build_journal_path_fields(
+                        path_fields = build_journal_path_fields(
                             journal_path,
-                            journals_dir=JOURNALS_DIR,
+                            journals_dir=get_journals_dir(),
                             user_data_dir=resolve_user_data_dir(),
-                        )["rel_path"]
+                        )
+                        source_rel_path = path_fields["rel_path"]
                         replace_entry_relations(
                             metadata_conn,
                             source_rel_path,
@@ -746,23 +728,23 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     finally:
                         metadata_conn.close()
 
+                    # Mark journal as pending for index update (Round 12 Phase 1)
+                    try:
+                        mark_pending(source_rel_path)
+                        logger.info(f"已标记待索引更新: {source_rel_path}")
+                    except Exception as e:
+                        logger.warning(f"标记 pending 失败（不影响日志写入）：{e}")
+
                     # 记录结果
                     result["journal_path"] = str(journal_path)
                     result["monthly_abstract_updated"] = abstract_result
                     if abstract_error:
                         result["monthly_abstract_error"] = abstract_error
-                    if vector_index_error:
-                        result["vector_index_error"] = vector_index_error
-                    if fts_index_error:
-                        result["fts_index_error"] = fts_index_error
                     result["updated_indices"] = updated_indices
 
-                    if vector_index_error or fts_index_error:
-                        result["index_status"] = IndexStatus.DEGRADED
-                    else:
-                        result["index_status"] = IndexStatus.COMPLETE
+                    result["index_status"] = IndexStatus.COMPLETE
 
-                    if abstract_success and not vector_index_error and not fts_index_error:
+                    if abstract_success:
                         result["side_effects_status"] = SideEffectsStatus.COMPLETE
                     else:
                         result["side_effects_status"] = SideEffectsStatus.DEGRADED
