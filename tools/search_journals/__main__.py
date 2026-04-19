@@ -4,6 +4,14 @@ Life Index - Search Journals Tool - CLI Entry Point
 双管道并行检索日志（关键词管道 ∥ 语义管道 → RRF 融合）
 """
 
+# ── Encoding protection (R10 fix) ──────────────────────────────────────
+# MUST run before any imports that might trigger torch/transformers output.
+# On Windows, torch emits GBK-encoded bytes to stderr which corrupts
+# subprocess output when the parent process reads with encoding='utf-8'.
+from ._bootstrap import ensure_utf8_io
+
+ensure_utf8_io()
+
 import argparse
 import json
 import sys
@@ -11,7 +19,7 @@ from importlib import import_module
 
 from .core import hierarchical_search
 from ..lib.config import ensure_dirs
-from ..lib.paths import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.trace import Trace
 
 
@@ -23,7 +31,7 @@ def _emit_json(payload: dict, *, include_events: bool = True) -> None:
         from ..lib.event_detectors import register_all_detectors
 
         register_all_detectors()
-        context = {"journals_dir": JOURNALS_DIR, "data_dir": USER_DATA_DIR}
+        context = {"journals_dir": get_journals_dir(), "data_dir": get_user_data_dir()}
         events = detect_events(context=context)
         payload["events"] = [e.to_dict() for e in events]
 
@@ -179,7 +187,9 @@ Examples:
     # Task 1.2.3: Read full content for top N results
     if args.read_top > 0 and result.get("success") and result.get("merged_results"):
         from pathlib import Path
-        from ..lib.config import JOURNALS_DIR
+        from ..lib.paths import get_journals_dir
+
+        _journals_dir = get_journals_dir()
 
         top_n = min(args.read_top, len(result["merged_results"]))
         for i in range(top_n):
@@ -189,7 +199,7 @@ Examples:
             if path:
                 # Construct full path
                 if path.startswith("Journals/"):
-                    full_path = JOURNALS_DIR.parent / path
+                    full_path = _journals_dir.parent / path
                 else:
                     full_path = Path(path)
 

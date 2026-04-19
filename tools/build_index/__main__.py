@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 
-from . import build_all, show_stats
+from . import build_all, show_stats, check_index
 from ..lib.config import ensure_dirs
 from ..lib.trace import Trace
 
@@ -30,6 +30,9 @@ Examples:
 
     # View statistics
     python -m tools.build_index --stats
+
+    # Check index consistency (read-only diagnostic)
+    python -m tools.build_index --check
         """,
     )
 
@@ -47,7 +50,21 @@ Examples:
 
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
 
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check index consistency (read-only diagnostic)",
+    )
+
     args = parser.parse_args()
+
+    if args.check:
+        result = check_index()
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        if not result["healthy"]:
+            sys.exit(1)
+        return
+
     ensure_dirs()
 
     if args.stats:
