@@ -21,6 +21,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from tools.search_journals.core import hierarchical_search
+from tools.lib.index_freshness import FreshnessReport
 
 # ── Documented response fields ──
 
@@ -57,12 +58,50 @@ def _normalize_search_snapshot(result: dict) -> dict:
             k: ("__normalized__" if k in ("fts_document_count", "last_updated") else v)
             for k, v in index_status.items()
         }
+        # Normalize freshness sub-dict if present
+        freshness = index_status.get("freshness")
+        if isinstance(freshness, dict):
+            normalized["index_status"]["freshness"] = {
+                k: ("__normalized__" if k in ("fts_document_count", "last_updated", "fts_fresh_since", "vector_fresh_since") else v)
+                for k, v in freshness.items()
+            }
+    # entity_graph_status is dynamic (depends on whether graph file exists).
+    # Round 10 T1.2: normalize to stable shape for snapshot comparison.
+    graph_status = normalized.get("entity_graph_status")
+    if isinstance(graph_status, dict):
+        normalized["entity_graph_status"] = {
+            "status": "__normalized__",
+            "entity_count": "__normalized__",
+            "suggested_action": "__normalized__",
+        }
+    # Round 11: search_plan, ambiguity, hints are query-dependent.
+    # Normalize to stable shape for snapshot comparison.
+    if "search_plan" in normalized:
+        normalized["search_plan"] = "__normalized__"
+    if "ambiguity" in normalized:
+        normalized["ambiguity"] = "__normalized__"
+    if "hints" in normalized:
+        normalized["hints"] = "__normalized__"
+    # merged_results fields are dynamic (ranking adds many fields).
+    # Normalize each merged result to only keep identity fields.
+    merged = normalized.get("merged_results", [])
+    if isinstance(merged, list):
+        normalized["merged_results"] = [
+            {k: v for k, v in item.items() if k in ("path", "rel_path", "title", "date", "rrf_score")}
+            for item in merged
+        ]
     return normalized
 
 
 @pytest.fixture(autouse=True)
 def mock_search_dependencies():
     """Mock all search dependencies to isolate contract testing."""
+    fresh_report = FreshnessReport(
+        fts_fresh=True,
+        vector_fresh=True,
+        overall_fresh=True,
+        issues=[],
+    )
     # Level 1/2 use core module directly
     with patch("tools.search_journals.core.search_l1_index", return_value=[]):
         with patch(
@@ -99,7 +138,15 @@ def mock_search_dependencies():
                                         "note": "",
                                     },
                                 ):
-                                    yield
+                                    with patch(
+                                        "tools.lib.index_freshness.check_full_freshness",
+                                        return_value=fresh_report,
+                                    ):
+                                        with patch(
+                                            "tools.lib.pending_writes.has_pending",
+                                            return_value=False,
+                                        ):
+                                            yield
 
 
 class TestSearchResponseShape:

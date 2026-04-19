@@ -53,6 +53,7 @@
     }
   ],
   "total_found": 1,
+  "no_confident_match": true,
   "semantic_available": true,
   "performance": {
     "l1_time_ms": 1.0,
@@ -63,10 +64,20 @@
   },
   "warnings": [],
   "entity_hints": [],
+  "entity_graph_status": {
+    "status": "__normalized__",
+    "entity_count": "__normalized__",
+    "suggested_action": "__normalized__"
+  },
   "index_status": {
-    "stale": false,
-    "reason": null,
-    "fts_document_count": "__normalized__",
-    "last_updated": "__normalized__"
-  }
+    "freshness": {
+      "fts_fresh": true,
+      "issues": [],
+      "overall_fresh": true,
+      "vector_fresh": true
+    }
+  },
+  "search_plan": "__normalized__",
+  "ambiguity": "__normalized__",
+  "hints": "__normalized__"
 }

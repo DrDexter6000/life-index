@@ -32,7 +32,7 @@ def test_edit_response_has_all_required_fields(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("tools.edit_journal.update_vector_index", return_value=False):
+    with patch("tools.edit_journal.mark_pending"):
         result = edit_journal(
             journal_path=journal_path,
             frontmatter_updates={"title": "Updated"},
@@ -50,7 +50,7 @@ def test_edit_result_matches_golden_snapshot(tmp_path: Path) -> None:
     )
 
     with (
-        patch("tools.edit_journal.update_vector_index", return_value=False),
+        patch("tools.edit_journal.mark_pending"),
         patch("tools.edit_journal.save_revision", return_value="REVISION_PATH"),
     ):
         result = edit_journal(
