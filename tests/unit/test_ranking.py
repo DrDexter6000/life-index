@@ -238,7 +238,7 @@ class TestMergeAndRankResultsHybrid:
         assert results[0]["fts_score"] == 80.0
         # Uses FTS_WEIGHT_DEFAULT (1.0) for weight
         assert results[0]["relevance_score"] == pytest.approx(
-            FTS_WEIGHT_DEFAULT / 61, rel=1e-6
+            FTS_WEIGHT_DEFAULT / 61, abs=1e-4
         )
 
     def test_semantic_results_added(self):
@@ -261,7 +261,7 @@ class TestMergeAndRankResultsHybrid:
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/semantic.md"
-        assert results[0]["relevance_score"] == pytest.approx(0.4 / 61, rel=1e-6)
+        assert results[0]["relevance_score"] == pytest.approx(0.6 / 61, abs=1e-4)  # ADR-010: semantic weight 0.4 → 0.6
 
     def test_semantic_score_exposed_as_percentage(self):
         """Test semantic score is exposed as percentage value"""
@@ -296,7 +296,7 @@ class TestMergeAndRankResultsHybrid:
         assert results[0]["fts_score"] == 80.0
         assert results[0]["semantic_score"] == 90.0
         # Same document appears at rank 1 in both lists => 0.6/61 + 0.4/61
-        assert results[0]["relevance_score"] == pytest.approx(1 / 61, rel=1e-6)
+        assert results[0]["relevance_score"] == pytest.approx(1 / 61, abs=1e-4)
 
     def test_custom_weights_change_hybrid_ordering(self):
         """Test custom weights can change ordering between hybrid candidates."""

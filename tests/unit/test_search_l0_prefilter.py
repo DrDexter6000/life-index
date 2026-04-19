@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.lib.index_freshness import FreshnessReport
+
 
 def _write_journal(
     path: Path, *, title: str, date: str, body: str, topic: str = "work"
@@ -18,6 +20,7 @@ def _write_journal(
 
 def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import tools.lib.config as config_module
+    import tools.lib.paths as paths_module
     import tools.search_journals.core as core_module
     import tools.search_journals.keyword_pipeline as keyword_pipeline
     import tools.search_journals.l2_metadata as l2_metadata
@@ -26,9 +29,9 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
 
     journals_dir = tmp_path / "Journals"
 
-    monkeypatch.setattr(config_module, "JOURNALS_DIR", journals_dir, raising=False)
-    monkeypatch.setattr(config_module, "USER_DATA_DIR", tmp_path, raising=False)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
 
+    # Patch getter functions on each module
     for module in (
         core_module,
         keyword_pipeline,
@@ -36,8 +39,8 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         l3_content,
         semantic_module,
     ):
-        monkeypatch.setattr(module, "JOURNALS_DIR", journals_dir, raising=False)
-        monkeypatch.setattr(module, "USER_DATA_DIR", tmp_path, raising=False)
+        monkeypatch.setattr(module, "get_user_data_dir", lambda _t=tmp_path: _t, raising=False)
+        monkeypatch.setattr(module, "get_journals_dir", lambda _j=journals_dir: _j, raising=False)
 
     monkeypatch.setattr(l2_metadata, "ENABLE_CACHE", False)
     monkeypatch.setattr(
@@ -45,6 +48,20 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         "SEMANTIC_INDEX_PATH",
         tmp_path / ".index" / "vectors_simple.pkl",
         raising=False,
+    )
+    fresh_report = FreshnessReport(
+        fts_fresh=True,
+        vector_fresh=True,
+        overall_fresh=True,
+        issues=[],
+    )
+    monkeypatch.setattr(
+        "tools.lib.index_freshness.check_full_freshness",
+        lambda *_args, **_kwargs: fresh_report,
+    )
+    monkeypatch.setattr(
+        "tools.lib.pending_writes.has_pending",
+        lambda *_args, **_kwargs: False,
     )
 
 

@@ -22,7 +22,7 @@ from tools.lib.metadata_cache import (
     get_cache_stats,
     invalidate_cache,
     update_cache_for_all_journals,
-    METADATA_DB_PATH,
+    get_metadata_db_path,
     rebuild_entry_relations,
     get_backlinked_by,
     add_entry_relations,
@@ -41,8 +41,8 @@ class TestMetadataCache:
         cache_dir = tmp_path / ".cache"
         cache_db = cache_dir / "metadata_cache.db"
 
-        with patch.object(metadata_cache, "CACHE_DIR", cache_dir):
-            with patch.object(metadata_cache, "METADATA_DB_PATH", cache_db):
+        with patch.object(metadata_cache, "get_cache_dir", lambda: cache_dir):
+            with patch.object(metadata_cache, "get_metadata_db_path", lambda: cache_db):
                 conn = metadata_cache.init_metadata_cache()
                 assert conn is not None
                 assert cache_db.exists()
@@ -162,11 +162,11 @@ class TestMetadataCache:
         import tools.lib.metadata_cache as mc
 
         with (
-            patch.object(mc, "USER_DATA_DIR", tmp_path),
-            patch.object(mc, "JOURNALS_DIR", journals_dir),
-            patch.object(mc, "CACHE_DIR", tmp_path / ".cache"),
+            patch.object(mc, "get_user_data_dir", lambda: tmp_path),
+            patch.object(mc, "get_journals_dir", lambda: journals_dir),
+            patch.object(mc, "get_cache_dir", lambda: tmp_path / ".cache"),
             patch.object(
-                mc, "METADATA_DB_PATH", tmp_path / ".cache" / "metadata_cache.db"
+                mc, "get_metadata_db_path", lambda: tmp_path / ".cache" / "metadata_cache.db"
             ),
         ):
             conn = init_metadata_cache()
@@ -184,11 +184,11 @@ class TestMetadataCache:
         import tools.lib.metadata_cache as mc
 
         with (
-            patch.object(mc, "USER_DATA_DIR", tmp_path),
-            patch.object(mc, "JOURNALS_DIR", tmp_path / "Journals"),
-            patch.object(mc, "CACHE_DIR", tmp_path / ".cache"),
+            patch.object(mc, "get_user_data_dir", lambda: tmp_path),
+            patch.object(mc, "get_journals_dir", lambda: tmp_path / "Journals"),
+            patch.object(mc, "get_cache_dir", lambda: tmp_path / ".cache"),
             patch.object(
-                mc, "METADATA_DB_PATH", tmp_path / ".cache" / "metadata_cache.db"
+                mc, "get_metadata_db_path", lambda: tmp_path / ".cache" / "metadata_cache.db"
             ),
         ):
             conn = init_metadata_cache()
@@ -208,11 +208,11 @@ class TestMetadataCache:
         import tools.lib.metadata_cache as mc
 
         with (
-            patch.object(mc, "USER_DATA_DIR", tmp_path),
-            patch.object(mc, "JOURNALS_DIR", tmp_path / "Journals"),
-            patch.object(mc, "CACHE_DIR", tmp_path / ".cache"),
+            patch.object(mc, "get_user_data_dir", lambda: tmp_path),
+            patch.object(mc, "get_journals_dir", lambda: tmp_path / "Journals"),
+            patch.object(mc, "get_cache_dir", lambda: tmp_path / ".cache"),
             patch.object(
-                mc, "METADATA_DB_PATH", tmp_path / ".cache" / "metadata_cache.db"
+                mc, "get_metadata_db_path", lambda: tmp_path / ".cache" / "metadata_cache.db"
             ),
         ):
             conn = init_metadata_cache()
@@ -471,8 +471,10 @@ class TestInvalidateCacheSpecificFile:
         finally:
             conn.close()
 
-    def test_get_cached_metadata_reads_legacy_backslash_path_row(self, tmp_path):
+    def test_get_cached_metadata_reads_legacy_backslash_path_row(self, monkeypatch, tmp_path):
         """Legacy Windows-style cache rows remain readable after normalization rollout."""
+        import tools.lib.paths as paths_module
+
         journals_dir = tmp_path / "Journals"
         journal_file = journals_dir / "2026" / "03" / "legacy.md"
         journal_file.parent.mkdir(parents=True)
@@ -481,43 +483,40 @@ class TestInvalidateCacheSpecificFile:
             encoding="utf-8",
         )
 
-        with (
-            patch("tools.lib.metadata_cache.USER_DATA_DIR", tmp_path),
-            patch("tools.lib.metadata_cache.JOURNALS_DIR", journals_dir),
-        ):
-            conn = init_metadata_cache()
-            try:
-                mtime, size = get_file_signature(journal_file)
-                legacy_path = str(journal_file)
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO metadata_cache
-                    (file_path, date, title, location, weather, topic, project,
-                     tags, mood, people, abstract, file_mtime, file_size)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        legacy_path,
-                        "2026-03-13",
-                        "Legacy Row",
-                        "",
-                        "",
-                        "[]",
-                        "",
-                        "[]",
-                        "[]",
-                        "[]",
-                        "",
-                        mtime,
-                        size,
-                    ),
-                )
-                conn.commit()
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        conn = init_metadata_cache()
+        try:
+            mtime, size = get_file_signature(journal_file)
+            legacy_path = str(journal_file)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO metadata_cache
+                (file_path, date, title, location, weather, topic, project,
+                 tags, mood, people, abstract, file_mtime, file_size)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    legacy_path,
+                    "2026-03-13",
+                    "Legacy Row",
+                    "",
+                    "",
+                    "[]",
+                    "",
+                    "[]",
+                    "[]",
+                    "[]",
+                    "",
+                    mtime,
+                    size,
+                ),
+            )
+            conn.commit()
 
-                result = get_cached_metadata(conn, journal_file)
-            finally:
-                conn.close()
+            result = get_cached_metadata(conn, journal_file)
+        finally:
+            conn.close()
 
         assert result is not None
         assert result["title"] == "Legacy Row"
@@ -598,8 +597,11 @@ class TestUpdateCacheForAllJournals:
         """Test update_cache_for_all_journals with empty JOURNALS_DIR"""
         # Mock JOURNALS_DIR to empty temp directory
         import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
 
-        monkeypatch.setattr(mc, "JOURNALS_DIR", tmp_path)
+        # Redirect getter chain so get_journals_dir() returns tmp_path
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        # env-driven now; no need to patch resolver
 
         # Clean cache
         invalidate_cache()
@@ -612,6 +614,7 @@ class TestUpdateCacheForAllJournals:
     def test_update_cache_for_all_journals_with_journals(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals with actual journal files"""
         import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -632,8 +635,9 @@ class TestUpdateCacheForAllJournals:
             encoding="utf-8",
         )
 
-        # Mock JOURNALS_DIR
-        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+        # Redirect getter chain: get_journals_dir() = tmp_path / "Journals"
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        # env-driven now; no need to patch resolver
 
         # Clean cache
         invalidate_cache()
@@ -646,6 +650,7 @@ class TestUpdateCacheForAllJournals:
     def test_update_cache_for_all_journals_skips_cached(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals skips already cached files"""
         import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -659,7 +664,9 @@ class TestUpdateCacheForAllJournals:
             encoding="utf-8",
         )
 
-        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+        # Redirect getter chain: get_journals_dir() = tmp_path / "Journals"
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        # env-driven now; no need to patch resolver
 
         # Clean cache and run once
         invalidate_cache()
@@ -676,6 +683,7 @@ class TestUpdateCacheForAllJournals:
     ):
         """Test update_cache_for_all_journals with progress callback"""
         import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -689,7 +697,9 @@ class TestUpdateCacheForAllJournals:
             encoding="utf-8",
         )
 
-        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+        # Redirect getter chain: get_journals_dir() = tmp_path / "Journals"
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        # env-driven now; no need to patch resolver
 
         # Track callback invocations
         callback_calls = []
@@ -706,6 +716,7 @@ class TestUpdateCacheForAllJournals:
     def test_update_cache_for_all_journals_error_handling(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals handles errors during journal iteration"""
         import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -727,7 +738,9 @@ class TestUpdateCacheForAllJournals:
             encoding="utf-8",
         )
 
-        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+        # Redirect getter chain: get_journals_dir() = tmp_path / "Journals"
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        # env-driven now; no need to patch resolver
 
         # Mock parse_and_cache_journal to raise an exception for journal2
         original_parse = mc.parse_and_cache_journal
@@ -752,6 +765,7 @@ class TestUpdateCacheForAllJournals:
     ):
         """Test update_cache_for_all_journals skips non-year directories"""
         import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -771,7 +785,9 @@ class TestUpdateCacheForAllJournals:
             encoding="utf-8",
         )
 
-        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+        # Redirect getter chain: get_journals_dir() = tmp_path / "Journals"
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        # env-driven now; no need to patch resolver
 
         invalidate_cache()
         result = update_cache_for_all_journals()
@@ -781,9 +797,12 @@ class TestUpdateCacheForAllJournals:
     def test_update_cache_for_all_journals_nonexistent_dir(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals when JOURNALS_DIR doesn't exist"""
         import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
 
+        # Redirect getter chain - nonexistent path (doesn't exist, but we set it)
         nonexistent = tmp_path / "nonexistent"
-        monkeypatch.setattr(mc, "JOURNALS_DIR", nonexistent)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(nonexistent))
+        # env-driven now; no need to patch resolver
 
         invalidate_cache()
         result = update_cache_for_all_journals()
@@ -797,6 +816,7 @@ class TestUpdateCacheForAllJournals:
     ):
         """Test update_cache_for_all_journals skips non-directory items in year dir (line 362)"""
         import tools.lib.metadata_cache as mc
+        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -817,7 +837,9 @@ class TestUpdateCacheForAllJournals:
             encoding="utf-8",
         )
 
-        monkeypatch.setattr(mc, "JOURNALS_DIR", journals_dir)
+        # Redirect getter chain: get_journals_dir() = tmp_path / "Journals"
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        # env-driven now; no need to patch resolver
 
         invalidate_cache()
         result = update_cache_for_all_journals()
