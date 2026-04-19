@@ -4,6 +4,7 @@ Life Index - Search Journals Tool - Ranking
 结果排序算法模块
 """
 
+from importlib import import_module
 from typing import Any, Dict, List, Optional
 
 from ..lib.metadata_cache import get_backlinked_by, init_metadata_cache
@@ -37,6 +38,7 @@ from ..lib.search_constants import (
     SCORE_ABSTRACT_MATCH_BONUS,
     SCORE_TAGS_MATCH_BONUS,
     SCORE_ENTITY_BONUS,
+    TOPIC_HINT_BOOST,
     NON_RRF_MIN_SCORE,
     MAX_RESULTS_DEFAULT,
     FTS_WEIGHT_DEFAULT,
@@ -92,6 +94,38 @@ def _entity_bonus(result: dict[str, Any], entity_hints: list[dict[str, Any]]) ->
             return SCORE_ENTITY_BONUS
 
     return 0
+
+
+def _topic_boost_multiplier(result: dict[str, Any], topic_hints: list[str] | None) -> float:
+    """Return TOPIC_HINT_BOOST if result's topic matches any topic_hints.
+
+    Phase 4 T4.2: Conservative boost — only 1.1x, not enough to override
+    large FTS/RRF score gaps.
+    """
+    if not topic_hints:
+        return 1.0
+
+    result_topics: set[str] = set()
+
+    # Check top-level topic field
+    topic = result.get("topic")
+    if isinstance(topic, list):
+        result_topics.update(str(t) for t in topic)
+    elif isinstance(topic, str):
+        result_topics.add(topic)
+
+    # Check metadata.topic
+    metadata = result.get("metadata", {})
+    if isinstance(metadata, dict):
+        meta_topic = metadata.get("topic")
+        if isinstance(meta_topic, list):
+            result_topics.update(str(t) for t in meta_topic)
+        elif isinstance(meta_topic, str):
+            result_topics.add(meta_topic)
+
+    if result_topics & set(topic_hints):
+        return TOPIC_HINT_BOOST
+    return 1.0
 
 
 def _dynamic_threshold_floor(base_threshold: float, dynamic_threshold: float) -> float:
@@ -233,6 +267,10 @@ def _attach_relation_context(
     return enriched
 
 
+def _classify_confidence(**kwargs: Any) -> str:
+    return import_module("tools.search_journals.confidence").classify_confidence(**kwargs)
+
+
 def merge_and_rank_results(
     l1_results: List[Dict],
     l2_results: List[Dict],
@@ -241,6 +279,8 @@ def merge_and_rank_results(
     min_score: float = FTS_MIN_RELEVANCE,
     max_results: int = MAX_RESULTS_DEFAULT,
     entity_hints: Optional[List[Dict[str, Any]]] = None,
+    explain: bool = False,
+    topic_hints: Optional[List[str]] = None,
 ) -> List[Dict]:
     """
     合并三层搜索结果并按相关性排序
@@ -307,6 +347,13 @@ def merge_and_rank_results(
             "tier": 1,
         }
 
+    # Phase 4 T4.2: Apply topic hint boost (conservative multiplier)
+    if topic_hints:
+        for path, entry in scored.items():
+            boost = _topic_boost_multiplier(entry["data"], topic_hints)
+            if boost > 1.0:
+                entry["score"] = entry["score"] * boost
+
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
     sorted_results = sorted(
         scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True
@@ -338,7 +385,35 @@ def merge_and_rank_results(
         for rank, item in enumerate(sorted_results, 1):
             data = _attach_relation_context(item["data"], metadata_conn=metadata_conn)
             data["search_rank"] = rank
-            data["relevance_score"] = item["score"]
+            # T4.2: Unified score fields (non-hybrid path)
+            data["rrf_score"] = 0.0  # Non-hybrid has no RRF fusion
+            data["final_score"] = round(float(item["score"]), 2)
+            data["relevance_score"] = data["final_score"]  # backward-compat alias
+            data["fts_score"] = round(float(item["score"]), 2)
+            data["semantic_score"] = 0.0
+            # T4.3: Source field (non-hybrid: all results are FTS-tier, no semantic)
+            data["source"] = "fts" if item.get("tier", 0) >= 3 else "none"
+            data["confidence"] = _classify_confidence(
+                fts_score=float(item["score"]),
+                semantic_score=0.0,
+                rrf_score=0.0,
+            )
+            # T3.4: Explain support for non-hybrid path
+            if explain:
+                data["explain"] = {
+                    "keyword_pipeline": {
+                        "fts_score": round(float(item["score"]), 2),
+                        "has_fts_match": item.get("tier", 0) >= 3,
+                    },
+                    "semantic_pipeline": {
+                        "cosine_similarity": 0.0,
+                        "has_semantic_match": False,
+                    },
+                    "fusion": {
+                        "rrf_score": 0.0,
+                        "has_rrf": False,
+                    },
+                }
             merged.append(data)
     finally:
         metadata_conn.close()
@@ -359,6 +434,7 @@ def merge_and_rank_results_hybrid(
     max_results: int = MAX_RESULTS_DEFAULT,
     explain: bool = False,  # Task 2.1: explain mode
     entity_hints: Optional[List[Dict[str, Any]]] = None,
+    topic_hints: Optional[List[str]] = None,
 ) -> List[Dict]:
     """
     混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
@@ -375,7 +451,7 @@ def merge_and_rank_results_hybrid(
 
     scored: Dict[
         str, Dict[str, Any]
-    ] = {}  # path -> {data, fts_score, semantic_score, final_score, tier, has_rrf}
+    ] = {}  # path -> {data, fts_score, semantic_score, final_score, rrf_score, tier, has_rrf}
 
     # 先构建 FTS 排名（按 relevance + title_match bonus）
     fts_ranked_paths: List[str] = []
@@ -405,6 +481,7 @@ def merge_and_rank_results_hybrid(
             "fts_score": float(fts_score),
             "semantic_score": 0.0,
             "final_score": 0.0,
+            "rrf_score": 0.0,
             "tier": 3,
             "has_rrf": False,
         }
@@ -436,6 +513,7 @@ def merge_and_rank_results_hybrid(
                 "fts_score": 0.0,
                 "semantic_score": semantic_score,
                 "final_score": 0.0,
+                "rrf_score": 0.0,
                 "tier": 4,  # 语义层
                 "has_rrf": False,
             }
@@ -458,6 +536,7 @@ def merge_and_rank_results_hybrid(
     for path, score in rrf_scores.items():
         if path in scored:
             scored[path]["final_score"] = score
+            scored[path]["rrf_score"] = score
             scored[path]["has_rrf"] = True
 
     # 处理 L2 结果（仅当不在 L3/语义中时）
@@ -491,6 +570,7 @@ def merge_and_rank_results_hybrid(
             "fts_score": 0.0,
             "semantic_score": 0.0,
             "final_score": float(score),
+            "rrf_score": 0.0,
             "tier": 2,
             "has_rrf": False,
         }
@@ -505,9 +585,17 @@ def merge_and_rank_results_hybrid(
             "fts_score": 0.0,
             "semantic_score": 0.0,
             "final_score": float(SCORE_L1_BASE),
+            "rrf_score": 0.0,
             "tier": 1,
             "has_rrf": False,
         }
+
+    # Phase 4 T4.2: Apply topic hint boost (conservative multiplier) to final_score
+    if topic_hints:
+        for path, entry in scored.items():
+            boost = _topic_boost_multiplier(entry["data"], topic_hints)
+            if boost > 1.0:
+                entry["final_score"] = entry["final_score"] * boost
 
     # 按混合检索意图排序：
     # 1) 真正的关键词命中（尤其 FTS）优先
@@ -530,14 +618,19 @@ def merge_and_rank_results_hybrid(
         ),
         reverse=True,
     )
-    effective_min_rrf_score = _compute_dynamic_rrf_threshold(
+    # Dynamic threshold via Tukey IQR, floored by the base constant (ADR-004).
+    # max() ensures the A/B-selected floor is never violated, even if the
+    # dynamic calculation returns a lower value due to score distribution.
+    _dynamic_rrf = _compute_dynamic_rrf_threshold(
         sorted_results,
         base_threshold=min_rrf_score,
     )
-    effective_min_non_rrf_score = _compute_dynamic_non_rrf_threshold(
+    effective_min_rrf_score = max(_dynamic_rrf, min_rrf_score)
+    _dynamic_non_rrf = _compute_dynamic_non_rrf_threshold(
         sorted_results,
         base_threshold=min_non_rrf_score,
     )
+    effective_min_non_rrf_score = max(_dynamic_non_rrf, min_non_rrf_score)
     thresholded_results = [
         item
         for item in sorted_results
@@ -580,9 +673,25 @@ def merge_and_rank_results_hybrid(
         for rank, item in enumerate(sorted_results, 1):
             data = _attach_relation_context(item["data"], metadata_conn=metadata_conn)
             data["search_rank"] = rank
-            data["relevance_score"] = item["final_score"]
+            # T4.2: Unified score fields (hybrid path)
+            data["rrf_score"] = round(float(item["rrf_score"]), 4)
+            data["final_score"] = round(float(item["final_score"]), 4)
+            data["relevance_score"] = data["rrf_score"] if item["has_rrf"] else data["final_score"]
             data["fts_score"] = round(item["fts_score"], 2)
             data["semantic_score"] = round(item["semantic_score"], 2)
+            # T4.3: Source field reflecting actual pipeline hits
+            _sources = []
+            if item["fts_score"] > 0:
+                _sources.append("fts")
+            if item["semantic_score"] > 0:
+                _sources.append("semantic")
+            data["source"] = ",".join(_sources) if _sources else "none"
+
+            data["confidence"] = _classify_confidence(
+                fts_score=float(item["fts_score"]),
+                semantic_score=float(item["semantic_score"]),
+                rrf_score=float(item["rrf_score"]),
+            )
 
             # Task 2.1: Add explain field
             if explain:
@@ -600,7 +709,7 @@ def merge_and_rank_results_hybrid(
                         "has_semantic_match": item["semantic_score"] > 0,
                     },
                     "fusion": {
-                        "rrf_score": round(item["final_score"], 4),
+                        "rrf_score": round(item["rrf_score"], 4),
                         "has_rrf": item["has_rrf"],
                     },
                 }

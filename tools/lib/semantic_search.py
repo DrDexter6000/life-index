@@ -11,14 +11,14 @@ RAG 语义检索模块（基于 sqlite-vec）
 
 import hashlib
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 # 导入配置（使用相对导入）
+from .paths import get_index_dir, get_user_data_dir, get_journals_dir
 from .config import (
-    JOURNALS_DIR,
-    USER_DATA_DIR,
     EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG,
     get_model_cache_dir,
 )
@@ -26,9 +26,11 @@ from .frontmatter import parse_frontmatter
 from .embedding_backends import SharedEmbeddingModel as EmbeddingModel
 from .path_contract import build_journal_path_fields
 
-# 索引存储目录
-INDEX_DIR = USER_DATA_DIR / ".index"
-VEC_DB_PATH = INDEX_DIR / "journals_vec.db"
+logger = logging.getLogger(__name__)
+
+# 索引存储目录 (deprecated: use getters)
+INDEX_DIR = get_index_dir()  # deprecated: use get_index_dir()
+VEC_DB_PATH = get_index_dir() / "journals_vec.db"  # deprecated
 CACHE_DIR = get_model_cache_dir()  # 跨平台缓存目录（与 vector_index_simple.py 统一）
 
 # 嵌入模型配置（从 config.py 读取）
@@ -97,7 +99,7 @@ def _load_sqlite_vec_extension(conn: sqlite3.Connection) -> bool:
                 # Python 包目录
                 Path(sys.executable).parent / "Lib" / "site-packages" / "sqlite_vec" / "vec0.dll",
                 # 用户数据目录
-                USER_DATA_DIR / ".bin" / "vec0.dll",
+                get_user_data_dir() / ".bin" / "vec0.dll",
             ]
 
             for path in possible_paths:
@@ -138,9 +140,9 @@ def init_vec_db() -> Optional[sqlite3.Connection]:
     Returns:
         Connection if successful, None if sqlite-vec not available
     """
-    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    get_index_dir().mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(VEC_DB_PATH))
+    conn = sqlite3.connect(str(get_index_dir() / "journals_vec.db"))
 
     # 尝试加载 sqlite-vec 扩展
     if not _load_sqlite_vec_extension(conn):
@@ -161,7 +163,7 @@ def init_vec_db() -> Optional[sqlite3.Connection]:
         """)
         conn.commit()
     except Exception as e:
-        print(f"Warning: Failed to create vector table: {e}")
+        logger.warning("Failed to create vector table: %s", e)
         conn.close()
         return None
 
@@ -195,7 +197,7 @@ def parse_journal_for_vec(file_path: Path) -> Optional[Tuple[str, str, str]]:
         )
 
         rel_path = build_journal_path_fields(
-            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+            file_path, journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
         )["rel_path"]
         date_str = str(metadata.get("date", ""))[:10]
 
@@ -263,14 +265,14 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                 meta = json.loads(meta_file.read_text(encoding="utf-8"))
                 old_version = meta.get("version", "unknown")
                 new_version = EMBEDDING_MODEL_CONFIG["version"]
-                print(
-                    f"Embedding model version changed ({old_version} → {new_version}). "
-                    f"Auto-rebuilding vector index..."
+                logger.info(
+                    "Embedding model version changed (%s → %s). Auto-rebuilding vector index...",
+                    old_version, new_version,
                 )
             except Exception:
-                print(f"Auto-rebuilding vector index due to: {integrity_result.message}")
+                logger.info("Auto-rebuilding vector index due to: %s", integrity_result.message)
         else:
-            print("First-time use. Building initial vector index...")
+            logger.info("First-time use. Building initial vector index...")
 
     # 检查模型是否可用
     model = get_model()
@@ -298,8 +300,8 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
         current_files = set()
         files_to_process = []
 
-        if JOURNALS_DIR.exists():
-            for year_dir in JOURNALS_DIR.iterdir():
+        if get_journals_dir().exists():
+            for year_dir in get_journals_dir().iterdir():
                 if not year_dir.is_dir() or not year_dir.name.isdigit():
                     continue
 
@@ -381,7 +383,7 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                         (rel_path, embedding_bytes, date_str, file_hash),
                     )
                 except Exception as e:
-                    print(f"Insert error for {rel_path}: {e}")
+                    logger.warning("Insert error for %s: %s", rel_path, e)
 
         # 删除不存在的文件
         for rel_path in files_to_remove:
@@ -412,16 +414,17 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
 
 def get_stats() -> Dict[str, Any]:
     """获取向量索引统计信息"""
+    vec_db_path = get_index_dir() / "journals_vec.db"
     stats: Dict[str, Any] = {
-        "exists": VEC_DB_PATH.exists(),
+        "exists": vec_db_path.exists(),
         "total_vectors": 0,
         "db_size_mb": 0.0,
         "model_loaded": get_model().load(),
     }
 
     try:
-        if VEC_DB_PATH.exists():
-            stats["db_size_mb"] = round(VEC_DB_PATH.stat().st_size / (1024 * 1024), 2)
+        if vec_db_path.exists():
+            stats["db_size_mb"] = round(vec_db_path.stat().st_size / (1024 * 1024), 2)
 
             conn = init_vec_db()
             if conn is not None:

@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 # 导入配置 (relative imports from tools/lib)
-from ..lib.config import USER_DATA_DIR
-from ..lib.config import JOURNALS_DIR
+from ..lib.paths import get_user_data_dir, get_journals_dir, get_vec_index_path
 from ..lib.config import EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG
 from ..lib.embedding_backends import get_backend_name
 from ..lib.path_contract import merge_journal_path_fields
@@ -23,7 +22,8 @@ from ..lib.search_constants import (
 
 from .utils import parse_frontmatter
 
-SEMANTIC_INDEX_PATH = USER_DATA_DIR / ".index" / "vectors_simple.pkl"
+SEMANTIC_INDEX_PATH = get_vec_index_path()  # deprecated: use get_vec_index_path()
+USER_DATA_DIR = get_user_data_dir()  # deprecated: use get_user_data_dir()
 SEMANTIC_MISSING_INDEX_NOTE = "向量索引未建立，请运行 life-index index"
 
 
@@ -44,10 +44,10 @@ def get_semantic_runtime_status() -> Dict[str, str | bool]:
             "note": "sentence-transformers 未安装，当前已降级为关键词搜索。",
         }
 
-    if not SEMANTIC_INDEX_PATH.exists():
+    if not get_vec_index_path().exists():
         return {
             "available": False,
-            "reason": f"vector index not found: {SEMANTIC_INDEX_PATH}",
+            "reason": f"vector index not found: {get_vec_index_path()}",
             "note": SEMANTIC_MISSING_INDEX_NOTE,
         }
 
@@ -104,15 +104,20 @@ def search_semantic(
                         continue
                     vec_data = index.get(path)
                     date_str = vec_data.get("date", "") if vec_data else ""
+                    if Path(path).is_absolute():
+                        resolved_path = Path(path)
+                    else:
+                        resolved_path = get_user_data_dir() / Path(path)
+
                     base_result = merge_journal_path_fields(
                         {
                             "date": date_str,
                             "similarity": round(score, 4),
                             "source": "semantic",
                         },
-                        USER_DATA_DIR / Path(path),
-                        journals_dir=JOURNALS_DIR,
-                        user_data_dir=USER_DATA_DIR,
+                        resolved_path,
+                        journals_dir=get_journals_dir(),
+                        user_data_dir=get_user_data_dir(),
                     )
                     # 补充元数据（title, location, weather 等）
                     enriched = enrich_semantic_result(base_result)

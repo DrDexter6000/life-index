@@ -50,7 +50,7 @@ class TestCheckIndexFreshness:
     def test_no_fts_db(self, tmp_path: Path) -> None:
         from tools.lib.search_index import check_index_freshness
 
-        with patch("tools.lib.search_index.FTS_DB_PATH", tmp_path / "nonexistent.db"):
+        with patch("tools.lib.search_index.get_fts_db_path", lambda: tmp_path / "nonexistent.db"):
             result = check_index_freshness()
         assert result["stale"] is True
         assert result["reason"] == "no_fts_db"
@@ -59,7 +59,7 @@ class TestCheckIndexFreshness:
     def test_no_meta(self, fts_db: Path) -> None:
         from tools.lib.search_index import check_index_freshness
 
-        with patch("tools.lib.search_index.FTS_DB_PATH", fts_db):
+        with patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db):
             result = check_index_freshness()
         assert result["stale"] is True
         assert result["reason"] == "no_meta"
@@ -76,7 +76,7 @@ class TestCheckIndexFreshness:
                 "dict_hash": "fake",
             },
         )
-        with patch("tools.lib.search_index.FTS_DB_PATH", fts_db):
+        with patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db):
             result = check_index_freshness()
         assert result["stale"] is True
         assert result["reason"] == "tokenizer_mismatch"
@@ -93,7 +93,7 @@ class TestCheckIndexFreshness:
                 "dict_hash": "fake",
             },
         )
-        with patch("tools.lib.search_index.FTS_DB_PATH", fts_db):
+        with patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db):
             result = check_index_freshness()
         assert result["stale"] is True
         assert result["reason"] == "schema_mismatch"
@@ -111,7 +111,7 @@ class TestCheckIndexFreshness:
                 "dict_hash": "definitely_wrong_hash",
             },
         )
-        with patch("tools.lib.search_index.FTS_DB_PATH", fts_db):
+        with patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db):
             result = check_index_freshness()
         # dict_hash mismatch may or may not be detected depending on
         # whether entity_graph.yaml exists — but staleness should be True
@@ -122,15 +122,15 @@ class TestCheckIndexFreshness:
             check_index_freshness,
             init_fts_db,
             write_index_meta,
-            FTS_DB_PATH,
         )
 
         # Properly initialize with current version
-        with patch("tools.lib.search_index.FTS_DB_PATH", fts_db):
-            conn = init_fts_db()
-            write_index_meta(conn)
-            conn.close()
-            result = check_index_freshness()
+        with patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db):
+            with patch("tools.lib.search_index.get_index_dir", lambda: fts_db.parent):
+                conn = init_fts_db()
+                write_index_meta(conn)
+                conn.close()
+                result = check_index_freshness()
 
         assert result["stale"] is False
         assert result["reason"] is None
@@ -139,24 +139,23 @@ class TestCheckIndexFreshness:
 
     def test_freshness_in_search_result(self, tmp_path: Path) -> None:
         """Test that hierarchical_search includes index_status in result."""
-        from tools.lib.search_index import (
-            init_fts_db,
-            write_index_meta,
+        from tools.lib.index_freshness import FreshnessReport
+
+        # Mock the freshness guard so we don't touch real data / trigger auto-index
+        fresh_report = FreshnessReport(
+            fts_fresh=True, vector_fresh=True, overall_fresh=True, issues=[]
         )
 
-        fts_path = tmp_path / ".index" / "journals_fts.db"
-        fts_path.parent.mkdir(parents=True, exist_ok=True)
+        with patch(
+            "tools.lib.index_freshness.check_full_freshness", return_value=fresh_report
+        ):
+            with patch("tools.lib.pending_writes.has_pending", return_value=False):
+                from tools.search_journals.core import hierarchical_search
 
-        # Properly init FTS so freshness check doesn't trigger auto-index
-        conn = init_fts_db()
-        write_index_meta(conn)
-        conn.close()
-
-        with patch("tools.lib.search_index.FTS_DB_PATH", fts_path):
-            from tools.search_journals.core import hierarchical_search
-
-            result = hierarchical_search(query="test", level=3, semantic=False)
+                result = hierarchical_search(query="test", level=3, semantic=False)
 
         assert "index_status" in result
-        assert "stale" in result["index_status"]
-        assert isinstance(result["index_status"]["fts_document_count"], int)
+        # Phase 3 contract: freshness sub-dict, not flat "stale" key
+        assert "freshness" in result["index_status"]
+        assert "overall_fresh" in result["index_status"]["freshness"]
+        assert isinstance(result["index_status"]["freshness"]["overall_fresh"], bool)

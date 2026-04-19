@@ -7,11 +7,18 @@ Life Index - Semantic Search Pipeline
 """
 
 import logging
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any
 
-from ..lib.search_constants import SEMANTIC_TOP_K_DEFAULT, SEMANTIC_MIN_SIMILARITY
+from ..lib.search_constants import (
+    SEMANTIC_ABSOLUTE_FLOOR,
+    SEMANTIC_BASELINE_OFFSET,
+    SEMANTIC_MIN_SIMILARITY,
+    SEMANTIC_TOP_K_DEFAULT,
+)
+from ..lib.search_index import get_fts_db_path
 
 from .semantic import get_semantic_runtime_status, search_semantic
 
@@ -30,6 +37,43 @@ SemanticPipelineResult = tuple[
     bool,  # semantic_available
     str | None,  # semantic_note
 ]
+
+
+def _load_semantic_baseline() -> float | None:
+    """Load semantic_baseline_p25 from index_meta SQLite table."""
+    if not get_fts_db_path().exists():
+        return None
+
+    try:
+        conn = sqlite3.connect(str(get_fts_db_path()))
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT value FROM index_meta WHERE key = 'semantic_baseline_p25'"
+            )
+            row = cursor.fetchone()
+        finally:
+            conn.close()
+    except (sqlite3.Error, ValueError):
+        return None
+
+    if row is None:
+        return None
+
+    try:
+        return float(row[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def get_effective_semantic_threshold(
+    absolute_floor: float = SEMANTIC_MIN_SIMILARITY,
+) -> float:
+    """Compute effective semantic threshold: max(floor, baseline_p25 + offset)."""
+    baseline_p25 = _load_semantic_baseline()
+    if baseline_p25 is None:
+        return absolute_floor
+    return max(absolute_floor, baseline_p25 + SEMANTIC_BASELINE_OFFSET)
 
 
 def _build_semantic_status(
@@ -88,7 +132,7 @@ def run_semantic_pipeline(
     date_to: str | None = None,
     semantic: bool = True,
     semantic_top_k: int = SEMANTIC_TOP_K_DEFAULT,
-    semantic_min_similarity: float = SEMANTIC_MIN_SIMILARITY,
+    semantic_min_similarity: float | None = None,
     candidate_paths: set[str] | None = None,
     entity_hints: list[dict[str, Any]] | None = None,
 ) -> SemanticPipelineResult:
@@ -115,6 +159,10 @@ def run_semantic_pipeline(
         return [], {}, False, "语义搜索已通过 --no-semantic 禁用。"
     if not query:
         return [], {}, True, None
+    if semantic_min_similarity is None:
+        semantic_min_similarity = get_effective_semantic_threshold(
+            absolute_floor=SEMANTIC_ABSOLUTE_FLOOR
+        )
 
     # Augment query with entity expansion terms for richer semantic embedding
     semantic_query = _build_entity_augmented_query(query, entity_hints)

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
-from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.paths import get_user_data_dir, get_journals_dir
 from ..lib.metadata_cache import (
     get_or_update_metadata,
     get_all_cached_metadata,
@@ -20,6 +20,10 @@ from ..lib.metadata_cache import (
     get_cache_stats,
 )
 from ..lib.path_contract import build_journal_path_fields
+
+# Deprecated aliases — kept for monkeypatch compatibility (Round 13 lesson)
+USER_DATA_DIR = get_user_data_dir()
+JOURNALS_DIR = get_journals_dir()
 
 # 是否启用缓存（可通过环境变量控制）
 ENABLE_CACHE = os.environ.get("LIFE_INDEX_L2_CACHE", "1") == "1"
@@ -187,7 +191,7 @@ def _search_with_cache(
         # 匹配成功
         file_path = Path(entry["file_path"])
         path_fields = build_journal_path_fields(
-            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+            file_path, journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
         )
 
         results.append(
@@ -218,11 +222,12 @@ def _search_filesystem(
     """使用文件系统扫描搜索（Fallback路径）"""
     results: List[Dict[str, Any]] = []
 
-    if not JOURNALS_DIR.exists():
+    _journals_dir = get_journals_dir()
+    if not _journals_dir.exists():
         return results
 
     # 遍历所有日志文件
-    for year_dir in JOURNALS_DIR.iterdir():
+    for year_dir in _journals_dir.iterdir():
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
 
@@ -256,8 +261,8 @@ def _search_filesystem(
                     # 匹配成功
                     path_fields = build_journal_path_fields(
                         journal_file,
-                        journals_dir=JOURNALS_DIR,
-                        user_data_dir=USER_DATA_DIR,
+                        journals_dir=get_journals_dir(),
+                        user_data_dir=get_user_data_dir(),
                     )
 
                     results.append(
