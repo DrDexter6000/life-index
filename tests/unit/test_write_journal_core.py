@@ -25,7 +25,7 @@ from tools.write_journal.core import apply_confirmation_updates
 @pytest.fixture(autouse=True)
 def mock_vector_update_side_effect():
     """Keep write_journal unit tests isolated from vector index/model loading."""
-    with patch("tools.write_journal.core.update_vector_index", return_value=False):
+    with patch("tools.write_journal.core.mark_pending"):
         yield
 
 
@@ -68,7 +68,7 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -131,7 +131,7 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -177,7 +177,7 @@ class TestWriteJournalBasic:
             "tags": ["search", "ranking"],
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -232,7 +232,7 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -301,7 +301,7 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -361,7 +361,7 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -616,7 +616,7 @@ class TestWriteJournalBasic:
             }
             result = apply_confirmation_updates(
                 journal_path=journal_path,
-                approved_related_entries=[2],
+                approved_related_entries=["Journals/2026/03/second.md"],
                 candidate_context=candidate_context,
             )
 
@@ -710,7 +710,7 @@ class TestWriteJournalBasic:
 
         result = apply_confirmation_updates(
             journal_path=journal_path,
-            approved_related_entries=[99],
+            approved_related_entries=["99"],
             candidate_context=[
                 {
                     "candidate_id": 1,
@@ -742,11 +742,7 @@ class TestWriteJournalBasic:
         import tools.lib.metadata_cache as mc
 
         with (
-            patch("tools.write_journal.core.JOURNALS_DIR", mock_deps["journals_dir"]),
-            patch(
-                "tools.write_journal.core.resolve_user_data_dir",
-                return_value=mock_deps["user_data_dir"],
-            ),
+            patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]),
             patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -773,13 +769,13 @@ class TestWriteJournalBasic:
             patch("tools.write_journal.core.update_topic_index", return_value=[]),
             patch("tools.write_journal.core.update_project_index", return_value=None),
             patch("tools.write_journal.core.update_tag_indices", return_value=[]),
-            patch.object(mc, "USER_DATA_DIR", mock_deps["user_data_dir"]),
-            patch.object(mc, "JOURNALS_DIR", mock_deps["journals_dir"]),
-            patch.object(mc, "CACHE_DIR", mock_deps["cache_dir"]),
+            patch.object(mc, "get_user_data_dir", lambda: mock_deps["user_data_dir"]),
+            patch.object(mc, "get_journals_dir", lambda: mock_deps["journals_dir"]),
+            patch.object(mc, "get_cache_dir", lambda: mock_deps["cache_dir"]),
             patch.object(
                 mc,
-                "METADATA_DB_PATH",
-                mock_deps["cache_dir"] / "metadata_cache.db",
+                "get_metadata_db_path",
+                lambda: mock_deps["cache_dir"] / "metadata_cache.db",
             ),
         ):
             result = write_journal(data, dry_run=False)
@@ -790,7 +786,10 @@ class TestWriteJournalBasic:
                 conn.close()
 
         assert result["success"] is True
-        assert backlinks == ["Journals/2026/03/life-index_2026-03-14_001.md"]
+        assert len(backlinks) == 1
+        assert backlinks[0].replace("\\", "/").endswith(
+            "Journals/2026/03/life-index_2026-03-14_001.md"
+        )
 
 
 class TestWriteJournalValidation:
@@ -833,7 +832,7 @@ class TestWriteJournalLocation:
             "content": "Test content",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -902,7 +901,7 @@ class TestWriteJournalLocation:
             "content": "Test content",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -970,7 +969,7 @@ class TestWriteJournalLocation:
             "location": "Beijing, China",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1033,7 +1032,7 @@ class TestWriteJournalLocation:
             "content": "地点：Beijing, China\n今天过得不错。",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1106,7 +1105,7 @@ class TestWriteJournalWeather:
             "content": "Test content",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1171,7 +1170,7 @@ class TestWriteJournalWeather:
             "weather": "Rainy",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1236,7 +1235,7 @@ class TestWriteJournalWeather:
             "content": "天气：Rainy\n今天一直在下雨。",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1304,7 +1303,7 @@ class TestWriteJournalWeather:
             "content": "Test content",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1382,7 +1381,7 @@ class TestWriteJournalLockTimeout:
         )
         mock_lock.__exit__ = MagicMock(return_value=None)
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / "test.lock",
@@ -1423,7 +1422,7 @@ class TestWriteJournalAttachments:
             }
         ]
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1495,7 +1494,7 @@ class TestWriteJournalAttachments:
             }
         ]
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1565,7 +1564,7 @@ class TestWriteJournalIndexUpdates:
 
         mock_topic_indices = [tmp_path / "by-topic" / "主题_work.md"]
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1631,7 +1630,7 @@ class TestWriteJournalIndexUpdates:
 
         mock_project_index = tmp_path / "by-topic" / "项目_Life-Index.md"
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1700,7 +1699,7 @@ class TestWriteJournalIndexUpdates:
             tmp_path / "by-topic" / "标签_testing.md",
         ]
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1767,7 +1766,7 @@ class TestWriteJournalMetrics:
             "content": "Test content",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1836,7 +1835,7 @@ class TestWriteJournalConfirmation:
             "location": "Beijing, China",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1902,7 +1901,7 @@ class TestWriteJournalConfirmation:
             "weather": "Sunny",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -1966,7 +1965,7 @@ class TestWriteJournalConfirmation:
             "content": "Test content",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -2042,7 +2041,7 @@ class TestWriteJournalWorkflowChains:
             "content": "Test content",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -2107,7 +2106,7 @@ class TestWriteJournalWorkflowChains:
 
         journal_path = Path(write_result["journal_path"])
 
-        with patch("tools.edit_journal.update_vector_index", return_value=False):
+        with patch("tools.edit_journal.mark_pending", return_value=False):
             edit_result = edit_journal(
                 journal_path,
                 {"location": "Beijing, China", "weather": "Cloudy 18°C"},
@@ -2128,7 +2127,7 @@ class TestWriteJournalWorkflowChains:
             "content": "Test content",
         }
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
@@ -2194,7 +2193,7 @@ class TestWriteJournalWorkflowChains:
 
         journal_path = Path(write_result["journal_path"])
 
-        with patch("tools.edit_journal.update_vector_index", return_value=False):
+        with patch("tools.edit_journal.mark_pending", return_value=False):
             edit_result = edit_journal(
                 journal_path,
                 {
@@ -2229,7 +2228,7 @@ class TestWriteJournalTransactionRollback:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch()
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2291,7 +2290,7 @@ class TestWriteJournalTransactionRollback:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch()
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2350,7 +2349,7 @@ class TestWriteJournalTransactionRollback:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch()
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2416,7 +2415,7 @@ class TestWriteJournalTransactionRollback:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch()
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2482,7 +2481,7 @@ class TestWriteJournalTransactionRollback:
         # Track temp file operations
         temp_file_path = month_dir / "life-index_2026-03-14_001.md.tmp"
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2545,7 +2544,7 @@ class TestWriteJournalAbstractUpdate:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch()
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2613,7 +2612,7 @@ class TestWriteJournalAbstractUpdate:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch()
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2692,7 +2691,7 @@ class TestWriteJournalSequenceRetry:
         def mock_get_next_sequence(date_str):
             return sequence_calls.pop(0)
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2763,7 +2762,7 @@ class TestWriteJournalSequenceRetry:
         lock_path.touch()
 
         # Always return 1 (simulating race condition where file keeps existing)
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2836,7 +2835,7 @@ class TestWriteJournalProjectIndexUpdate:
         by_topic_dir = tmp_path / "by-topic"
         project_index = by_topic_dir / "项目_Life-Index.md"
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2902,7 +2901,7 @@ class TestWriteJournalProjectIndexUpdate:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         lock_path.touch()
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", journals_dir):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=journals_dir):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -2971,7 +2970,7 @@ class TestWriteJournalLockTimeoutDetails:
         )
         mock_lock.__exit__ = MagicMock(return_value=None)
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -3009,7 +3008,7 @@ class TestWriteJournalLockTimeoutDetails:
         )
         mock_lock.__exit__ = MagicMock(return_value=None)
 
-        with patch("tools.write_journal.core.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,

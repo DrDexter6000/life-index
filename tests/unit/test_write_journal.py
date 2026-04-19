@@ -6,7 +6,7 @@ Unit tests for write_journal.py core functions
 import pytest
 from pathlib import Path
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from tools.write_journal.utils import (
     generate_filename,
@@ -190,20 +190,21 @@ class TestFormatFrontmatter:
 
 class TestIndexUpdaterPathSanitization:
     def test_update_tag_indices_sanitizes_path_separators_in_tag_names(
-        self, tmp_path: Path
+        self, tmp_path: Path, monkeypatch
     ) -> None:
+        data_dir = tmp_path / "Life-Index"
         journal_path = (
-            tmp_path / "Journals" / "2026" / "03" / "life-index_2026-03-25_001.md"
+            data_dir / "Journals" / "2026" / "03" / "life-index_2026-03-25_001.md"
         )
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text("body", encoding="utf-8")
+        (data_dir / "by-topic").mkdir(parents=True, exist_ok=True)
 
-        with patch(
-            "tools.write_journal.index_updater.BY_TOPIC_DIR", tmp_path / "by-topic"
-        ):
-            updated = update_tag_indices(
-                ["UI/UX设计"], journal_path, {"date": "2026-03-25"}
-            )
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+        updated = update_tag_indices(
+            ["UI/UX设计"], journal_path, {"date": "2026-03-25"}
+        )
 
         assert len(updated) == 1
         assert updated[0].exists()
@@ -449,7 +450,7 @@ class TestAttachmentNormalization:
 
 class TestWriteJournalAttachmentContract:
     def test_chat_style_local_path_still_auto_detects_attachment(
-        self, isolated_data_dir: Path
+        self, isolated_data_dir: Path, monkeypatch
     ) -> None:
         from tools.write_journal.core import write_journal
 
@@ -473,11 +474,6 @@ class TestWriteJournalAttachmentContract:
         }
 
         with (
-            patch("tools.write_journal.core.JOURNALS_DIR", journals_dir),
-            patch(
-                "tools.write_journal.attachments.ATTACHMENTS_DIR",
-                isolated_data_dir / "attachments",
-            ),
             patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
@@ -493,7 +489,7 @@ class TestWriteJournalAttachmentContract:
             patch("tools.write_journal.core.update_topic_index", return_value=[]),
             patch("tools.write_journal.core.update_project_index", return_value=None),
             patch("tools.write_journal.core.update_tag_indices", return_value=[]),
-            patch("tools.write_journal.core.update_vector_index", return_value=False),
+            patch("tools.write_journal.core.mark_pending"),
         ):
             result = write_journal(data)
 
@@ -643,109 +639,91 @@ class TestConvertPathForPlatform:
 class TestGetNextSequence:
     """Tests for get_next_sequence function - lines 71-93"""
 
-    @patch("tools.write_journal.utils.JOURNALS_DIR")
-    def test_nonexistent_directory_returns_one(self, mock_journals_dir):
+    def test_nonexistent_directory_returns_one(self, tmp_path, monkeypatch):
         """Non-existent directory should return sequence 1"""
-        mock_month_dir = MagicMock()
-        mock_month_dir.exists.return_value = False
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        journals_dir.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
         result = get_next_sequence("2026-03-15")
         assert result == 1
 
-    @patch("tools.write_journal.utils.JOURNALS_DIR")
-    def test_empty_directory_returns_one(self, mock_journals_dir):
+    def test_empty_directory_returns_one(self, tmp_path, monkeypatch):
         """Empty directory should return sequence 1"""
-        mock_month_dir = MagicMock()
-        mock_month_dir.exists.return_value = True
-        mock_month_dir.glob.return_value = []
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
         result = get_next_sequence("2026-03-15")
         assert result == 1
 
-    @patch("tools.write_journal.utils.JOURNALS_DIR")
-    def test_existing_files_increment(self, mock_journals_dir):
+    def test_existing_files_increment(self, tmp_path, monkeypatch):
         """Existing files should increment max sequence"""
-        mock_month_dir = MagicMock()
-        mock_month_dir.exists.return_value = True
-        mock_file1 = MagicMock()
-        mock_file1.name = "life-index_2026-03-15_001.md"
-        mock_file2 = MagicMock()
-        mock_file2.name = "life-index_2026-03-15_003.md"
-        mock_file3 = MagicMock()
-        mock_file3.name = "life-index_2026-03-15_002.md"
-        mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+        (month_dir / "life-index_2026-03-15_001.md").touch()
+        (month_dir / "life-index_2026-03-15_003.md").touch()
+        (month_dir / "life-index_2026-03-15_002.md").touch()
+
         result = get_next_sequence("2026-03-15")
         assert result == 4
 
-    @patch("tools.write_journal.utils.JOURNALS_DIR")
-    def test_mismatched_dates_ignored(self, mock_journals_dir):
+    def test_mismatched_dates_ignored(self, tmp_path, monkeypatch):
         """Files with different dates should be ignored"""
-        mock_month_dir = MagicMock()
-        mock_month_dir.exists.return_value = True
-        mock_file1 = MagicMock()
-        mock_file1.name = "life-index_2026-03-14_001.md"
-        mock_file2 = MagicMock()
-        mock_file2.name = "life-index_2026-03-15_002.md"
-        mock_file3 = MagicMock()
-        mock_file3.name = "life-index_2026-03-16_001.md"
-        mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+        (month_dir / "life-index_2026-03-14_001.md").touch()
+        (month_dir / "life-index_2026-03-15_002.md").touch()
+        (month_dir / "life-index_2026-03-16_001.md").touch()
+
         result = get_next_sequence("2026-03-15")
         assert result == 3
 
-    @patch("tools.write_journal.utils.JOURNALS_DIR")
-    def test_large_sequence_number(self, mock_journals_dir):
+    def test_large_sequence_number(self, tmp_path, monkeypatch):
         """Test with large sequence numbers"""
-        mock_month_dir = MagicMock()
-        mock_month_dir.exists.return_value = True
-        mock_file = MagicMock()
-        mock_file.name = "life-index_2026-03-15_999.md"
-        mock_month_dir.glob.return_value = [mock_file]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+        (month_dir / "life-index_2026-03-15_999.md").touch()
+
         result = get_next_sequence("2026-03-15")
         assert result == 1000
 
-    @patch("tools.write_journal.utils.JOURNALS_DIR")
-    def test_malformed_filenames_ignored(self, mock_journals_dir):
+    def test_malformed_filenames_ignored(self, tmp_path, monkeypatch):
         """Malformed filenames should be ignored"""
-        mock_month_dir = MagicMock()
-        mock_month_dir.exists.return_value = True
-        mock_file1 = MagicMock()
-        mock_file1.name = "life-index_2026-03-15_001.md"
-        mock_file2 = MagicMock()
-        mock_file2.name = "invalid_filename.md"
-        mock_file3 = MagicMock()
-        mock_file3.name = "life-index_2026-03-15_.md"
-        mock_month_dir.glob.return_value = [mock_file1, mock_file2, mock_file3]
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        month_dir = journals_dir / "2026" / "03"
+        month_dir.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+        (month_dir / "life-index_2026-03-15_001.md").touch()
+        (month_dir / "invalid_filename.md").touch()
+        (month_dir / "life-index_2026-03-15_.md").touch()
+
         result = get_next_sequence("2026-03-15")
         assert result == 2
 
-    @patch("tools.write_journal.utils.JOURNALS_DIR")
-    def test_date_with_time_component(self, mock_journals_dir):
+    def test_date_with_time_component(self, tmp_path, monkeypatch):
         """Test date string with time component"""
-        mock_month_dir = MagicMock()
-        mock_month_dir.exists.return_value = True
-        mock_month_dir.glob.return_value = []
-        mock_journals_dir.__truediv__.return_value.__truediv__.return_value = (
-            mock_month_dir
-        )
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals"
+        journals_dir.mkdir(parents=True)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
         result = get_next_sequence("2026-03-15T14:30:00")
         assert result == 1
-        mock_journals_dir.__truediv__.assert_called_with("2026")
 
 
 class TestFormatContent:
