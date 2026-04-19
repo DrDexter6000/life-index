@@ -16,8 +16,9 @@ def _write_journal(path: Path, *, title: str, date: str, topic: str = "work") ->
 def _patch_index_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import tools.generate_index as generate_index_module
 
-    monkeypatch.setattr(generate_index_module, "JOURNALS_DIR", tmp_path / "Journals")
-    monkeypatch.setattr(generate_index_module, "USER_DATA_DIR", tmp_path)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(generate_index_module, "get_journals_dir", lambda _j=tmp_path / "Journals": _j, raising=False)
+    monkeypatch.setattr(generate_index_module, "get_user_data_dir", lambda _t=tmp_path: _t, raising=False)
 
 
 def test_rebuild_fixes_stale_counter_in_existing_monthly_index(

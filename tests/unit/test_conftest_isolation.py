@@ -11,11 +11,11 @@ class TestIsolatedDataDir:
     ) -> None:
         expected_cache_path = isolated_data_dir / ".cache" / "metadata_cache.db"
 
-        assert metadata_cache.METADATA_DB_PATH == expected_cache_path
+        assert metadata_cache.get_metadata_db_path() == expected_cache_path
 
     def test_reloads_semantic_module_for_temp_index_paths(
         self, isolated_data_dir
     ) -> None:
         expected_index_path = isolated_data_dir / ".index" / "vectors_simple.pkl"
 
-        assert semantic_module.SEMANTIC_INDEX_PATH == expected_index_path
+        assert semantic_module.get_vec_index_path() == expected_index_path

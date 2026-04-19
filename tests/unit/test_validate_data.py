@@ -122,14 +122,14 @@ class TestDataValidator:
         fields = validator.RECOMMENDED_FIELDS
         assert isinstance(fields, list)
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    @patch("tools.dev.validate_data.BY_TOPIC_DIR")
-    @patch("tools.dev.validate_data.ATTACHMENTS_DIR")
+    @patch("tools.dev.validate_data.get_journals_dir")
+    @patch("tools.dev.validate_data.get_by_topic_dir")
+    @patch("tools.dev.validate_data.get_attachments_dir")
     def test_collect_files_empty(self, mock_attach, mock_topic, mock_journals):
         """Test collecting files when directories are empty"""
-        mock_journals.exists.return_value = False
-        mock_topic.exists.return_value = False
-        mock_attach.exists.return_value = False
+        mock_journals.return_value.exists.return_value = False
+        mock_topic.return_value.exists.return_value = False
+        mock_attach.return_value.exists.return_value = False
 
         validator = DataValidator()
         validator._collect_files()
@@ -138,7 +138,7 @@ class TestDataValidator:
         assert validator.index_files == []
         assert validator.attachment_files == []
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_journals_dir")
     def test_collect_files_with_journals(self, mock_journals, tmp_path):
         """Test collecting journal files"""
         journals_dir = tmp_path / "Journals" / "2026" / "03"
@@ -146,8 +146,8 @@ class TestDataValidator:
         journal = journals_dir / "life-index_2026-03-20_001.md"
         journal.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.exists.return_value = True
-        mock_journals.rglob.return_value = [journal]
+        mock_journals.return_value.exists.return_value = True
+        mock_journals.return_value.rglob.return_value = [journal]
 
         validator = DataValidator()
         validator._collect_files()
@@ -197,10 +197,10 @@ class TestDataValidator:
         result = validator._resolve_link(Path("/some/file.md"), "https://example.com")
         assert result is None
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    def test_resolve_link_absolute(self, mock_journals):
+    @patch("tools.dev.validate_data.get_user_data_dir")
+    def test_resolve_link_absolute(self, mock_user_data_dir):
         """Test resolving absolute paths"""
-        mock_journals.parent = Path("/data")
+        mock_user_data_dir.return_value = Path("/data")
         validator = DataValidator()
         result = validator._resolve_link(Path("/some/file.md"), "/Journals/test.md")
         assert result == Path("/data/Journals/test.md")
@@ -209,16 +209,16 @@ class TestDataValidator:
 class TestDataValidatorValidateJournals:
     """Tests for _validate_journals method"""
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
     @patch("tools.dev.validate_data.parse_journal_file")
     def test_validate_journals_missing_required_field(
-        self, mock_parse, mock_journals, tmp_path
+        self, mock_parse, mock_user_data_dir, tmp_path
     ):
         """Test validation catches missing required fields"""
         journal = tmp_path / "test.md"
         journal.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_user_data_dir.return_value = tmp_path
         mock_parse.return_value = {"title": "Test"}  # Missing date
 
         validator = DataValidator()
@@ -228,14 +228,14 @@ class TestDataValidatorValidateJournals:
         # Should have issues for missing required fields
         assert len(validator.result.issues) > 0
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
     @patch("tools.dev.validate_data.parse_journal_file")
-    def test_validate_journals_invalid_date(self, mock_parse, mock_journals, tmp_path):
+    def test_validate_journals_invalid_date(self, mock_parse, mock_user_data_dir, tmp_path):
         """Test validation catches invalid date format"""
         journal = tmp_path / "test.md"
         journal.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_user_data_dir.return_value = tmp_path
         mock_parse.return_value = {"title": "Test", "date": "invalid-date"}
 
         validator = DataValidator()
@@ -252,7 +252,7 @@ class TestDataValidatorValidateJournals:
 class TestDataValidatorValidateIndices:
     """Tests for _validate_indices method"""
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_journals_dir")
     def test_validate_indices_dead_link(self, mock_journals, tmp_path):
         """Test validation catches dead links"""
         index_dir = tmp_path / "by-topic"
@@ -264,7 +264,7 @@ class TestDataValidatorValidateIndices:
 """
         index_file.write_text(index_content, encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_journals.return_value.parent = tmp_path
 
         validator = DataValidator()
         validator.index_files = [index_file]
@@ -403,10 +403,10 @@ class TestGenerateStats:
 class TestValidateAttachments:
     """Tests for _validate_attachments method"""
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    @patch("tools.dev.validate_data.ATTACHMENTS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
+    @patch("tools.dev.validate_data.get_attachments_dir")
     def test_validate_attachments_existing_file(
-        self, mock_attach_dir, mock_journals, tmp_path
+        self, mock_attach_dir, mock_user_data_dir, tmp_path
     ):
         """Test validation when attachment exists"""
         journals_dir = tmp_path / "Journals"
@@ -421,14 +421,8 @@ class TestValidateAttachments:
         journal_file = journals_dir / "life-index_2026-03-20_001.md"
         journal_file.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
-        mock_journals.__truediv__ = lambda self, x: tmp_path / x
-        # Set ATTACHMENTS_DIR to the attachments folder
-        mock_attach_dir.__str__ = lambda self: str(
-            attachments_dir.parent.parent
-        )  # attachments/
-        # Make the path operations work
-        mock_attach_dir.__truediv__ = lambda self, x: attachments_dir.parent.parent / x
+        mock_user_data_dir.return_value = tmp_path
+        mock_attach_dir.return_value = tmp_path / "attachments"
 
         validator = DataValidator()
         validator.journal_entries = {
@@ -443,7 +437,7 @@ class TestValidateAttachments:
         # The exact behavior depends on path resolution
         assert True
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_journals_dir")
     def test_validate_attachments_not_list(self, mock_journals, tmp_path):
         """Test validation when attachments is not a list"""
         journals_dir = tmp_path / "Journals"
@@ -452,7 +446,7 @@ class TestValidateAttachments:
         journal_file = journals_dir / "test.md"
         journal_file.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_journals.return_value.parent = tmp_path
 
         validator = DataValidator()
         validator.journal_entries = {
@@ -470,10 +464,10 @@ class TestValidateAttachments:
 class TestValidateCrossReferences:
     """Tests for _validate_cross_references method"""
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    @patch("tools.dev.validate_data.BY_TOPIC_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
+    @patch("tools.dev.validate_data.get_by_topic_dir")
     def test_validate_cross_references_orphan_journal(
-        self, mock_topic_dir, mock_journals, tmp_path
+        self, mock_topic_dir, mock_user_data_dir, tmp_path
     ):
         """Test detection of journal not indexed in topic file"""
         journals_dir = tmp_path / "Journals" / "2026" / "03"
@@ -490,8 +484,8 @@ class TestValidateCrossReferences:
         journal_file = journals_dir / "life-index_2026-03-20_001.md"
         journal_file.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
-        mock_topic_dir.__truediv__ = lambda self, x: topic_dir / x
+        mock_user_data_dir.return_value = tmp_path
+        mock_topic_dir.return_value = topic_dir
 
         validator = DataValidator()
         validator.index_files = [index_file]
@@ -508,10 +502,10 @@ class TestValidateCrossReferences:
         assert validator.result.issues[0].category == "orphan_index"
         assert validator.result.issues[0].auto_fixable is True
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    @patch("tools.dev.validate_data.BY_TOPIC_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
+    @patch("tools.dev.validate_data.get_by_topic_dir")
     def test_validate_cross_references_topic_as_string(
-        self, mock_topic_dir, mock_journals, tmp_path
+        self, mock_topic_dir, mock_user_data_dir, tmp_path
     ):
         """Test cross reference validation when topic is a string"""
         journals_dir = tmp_path / "Journals" / "2026" / "03"
@@ -525,8 +519,8 @@ class TestValidateCrossReferences:
         journal_file = journals_dir / "life-index_2026-03-20_001.md"
         journal_file.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
-        mock_topic_dir.__truediv__ = lambda self, x: topic_dir / x
+        mock_user_data_dir.return_value = tmp_path
+        mock_topic_dir.return_value = topic_dir
 
         validator = DataValidator()
         validator.index_files = [index_file]
@@ -541,8 +535,8 @@ class TestValidateCrossReferences:
         # Should have warning for orphan journal
         assert len(validator.result.issues) == 1
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    @patch("tools.dev.validate_data.BY_TOPIC_DIR")
+    @patch("tools.dev.validate_data.get_journals_dir")
+    @patch("tools.dev.validate_data.get_by_topic_dir")
     def test_validate_cross_references_tags_as_string(
         self, mock_topic_dir, mock_journals, tmp_path
     ):
@@ -552,7 +546,7 @@ class TestValidateCrossReferences:
         topic_dir = tmp_path / "by-topic"
         topic_dir.mkdir()
 
-        mock_journals.parent = tmp_path
+        mock_journals.return_value.parent = tmp_path
 
         validator = DataValidator()
         validator.index_files = []
@@ -568,10 +562,10 @@ class TestValidateCrossReferences:
         # Should not crash
         assert True
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    @patch("tools.dev.validate_data.BY_TOPIC_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
+    @patch("tools.dev.validate_data.get_by_topic_dir")
     def test_validate_cross_references_indexed_correctly(
-        self, mock_topic_dir, mock_journals, tmp_path
+        self, mock_topic_dir, mock_user_data_dir, tmp_path
     ):
         """Test when journal is correctly indexed"""
         journals_dir = tmp_path / "Journals" / "2026" / "03"
@@ -589,8 +583,8 @@ class TestValidateCrossReferences:
         journal_file = journals_dir / journal_name
         journal_file.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
-        mock_topic_dir.__truediv__ = lambda self, x: topic_dir / x
+        mock_user_data_dir.return_value = tmp_path
+        mock_topic_dir.return_value = topic_dir
 
         validator = DataValidator()
         validator.index_files = [index_file]
@@ -605,10 +599,10 @@ class TestValidateCrossReferences:
         # Should have no issues
         assert len(validator.result.issues) == 0
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    @patch("tools.dev.validate_data.BY_TOPIC_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
+    @patch("tools.dev.validate_data.get_by_topic_dir")
     def test_validate_cross_references_no_topic_index_file(
-        self, mock_topic_dir, mock_journals, tmp_path
+        self, mock_topic_dir, mock_user_data_dir, tmp_path
     ):
         """Test when topic index file doesn't exist"""
         journals_dir = tmp_path / "Journals"
@@ -616,8 +610,8 @@ class TestValidateCrossReferences:
         topic_dir = tmp_path / "by-topic"
         topic_dir.mkdir()
 
-        mock_journals.parent = tmp_path
-        mock_topic_dir.__truediv__ = lambda self, x: topic_dir / x
+        mock_user_data_dir.return_value = tmp_path
+        mock_topic_dir.return_value = topic_dir
 
         validator = DataValidator()
         validator.index_files = []
@@ -636,14 +630,14 @@ class TestValidateCrossReferences:
 class TestValidateJournalsExtended:
     """Extended tests for _validate_journals method"""
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
     @patch("tools.dev.validate_data.parse_journal_file")
-    def test_validate_journals_metadata_none(self, mock_parse, mock_journals, tmp_path):
+    def test_validate_journals_metadata_none(self, mock_parse, mock_user_data_dir, tmp_path):
         """Test validation when metadata parsing returns None"""
         journal = tmp_path / "test.md"
         journal.write_text("---\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_user_data_dir.return_value = tmp_path
         mock_parse.return_value = None
 
         validator = DataValidator()
@@ -653,14 +647,14 @@ class TestValidateJournalsExtended:
         # Should not add to journal_entries
         assert len(validator.journal_entries) == 0
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
     @patch("tools.dev.validate_data.parse_journal_file")
-    def test_validate_journals_date_with_t(self, mock_parse, mock_journals, tmp_path):
+    def test_validate_journals_date_with_t(self, mock_parse, mock_user_data_dir, tmp_path):
         """Test validation of ISO 8601 date with T separator"""
         journal = tmp_path / "test.md"
         journal.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_user_data_dir.return_value = tmp_path
         mock_parse.return_value = {
             "title": "Test",
             "date": "2026-03-20T14:30:00",  # ISO 8601 with T
@@ -676,14 +670,14 @@ class TestValidateJournalsExtended:
         ]
         assert len(date_errors) == 0
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
     @patch("tools.dev.validate_data.parse_journal_file")
-    def test_validate_journals_date_with_z(self, mock_parse, mock_journals, tmp_path):
+    def test_validate_journals_date_with_z(self, mock_parse, mock_user_data_dir, tmp_path):
         """Test validation of ISO 8601 date with Z suffix"""
         journal = tmp_path / "test.md"
         journal.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_user_data_dir.return_value = tmp_path
         mock_parse.return_value = {
             "title": "Test",
             "date": "2026-03-20T14:30:00Z",  # ISO 8601 with Z
@@ -699,16 +693,16 @@ class TestValidateJournalsExtended:
         ]
         assert len(date_errors) == 0
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
     @patch("tools.dev.validate_data.parse_journal_file")
     def test_validate_journals_missing_recommended_field(
-        self, mock_parse, mock_journals, tmp_path
+        self, mock_parse, mock_user_data_dir, tmp_path
     ):
         """Test validation catches missing recommended fields"""
         journal = tmp_path / "test.md"
         journal.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_user_data_dir.return_value = tmp_path
         mock_parse.return_value = {
             "title": "Test",
             "date": "2026-03-20",
@@ -723,9 +717,9 @@ class TestValidateJournalsExtended:
         warnings = [i for i in validator.result.issues if i.level == "warning"]
         assert len(warnings) > 0
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
     @patch("tools.dev.validate_data.parse_journal_file")
-    def test_validate_journals_sequence_gap(self, mock_parse, mock_journals, tmp_path):
+    def test_validate_journals_sequence_gap(self, mock_parse, mock_user_data_dir, tmp_path):
         """Test detection of sequence number gaps"""
         journals_dir = tmp_path / "Journals" / "2026" / "03"
         journals_dir.mkdir(parents=True)
@@ -736,7 +730,7 @@ class TestValidateJournalsExtended:
         journal3 = journals_dir / "life-index_2026-03-20_003.md"
         journal3.write_text("---\ntitle: Test 3\n---\nContent", encoding="utf-8")
 
-        mock_journals.parent = tmp_path
+        mock_user_data_dir.return_value = tmp_path
         mock_parse.side_effect = [
             {"title": "Test 1", "date": "2026-03-20"},
             {"title": "Test 3", "date": "2026-03-20"},
@@ -756,11 +750,12 @@ class TestValidateJournalsExtended:
 class TestRunMethod:
     """Tests for the run() method"""
 
-    @patch("tools.dev.validate_data.JOURNALS_DIR")
-    @patch("tools.dev.validate_data.BY_TOPIC_DIR")
-    @patch("tools.dev.validate_data.ATTACHMENTS_DIR")
+    @patch("tools.dev.validate_data.get_user_data_dir")
+    @patch("tools.dev.validate_data.get_journals_dir")
+    @patch("tools.dev.validate_data.get_by_topic_dir")
+    @patch("tools.dev.validate_data.get_attachments_dir")
     def test_run_full_validation(
-        self, mock_attach, mock_topic, mock_journals, tmp_path
+        self, mock_attach, mock_topic, mock_journals, mock_user_data_dir, tmp_path
     ):
         """Test full validation run"""
         # Setup directories
@@ -785,13 +780,10 @@ Content here
             encoding="utf-8",
         )
 
-        mock_journals.exists.return_value = True
-        mock_journals.rglob.return_value = [journal]
-        mock_journals.parent = tmp_path
-        mock_topic.exists.return_value = True
-        mock_topic.glob.return_value = []
-        mock_attach.exists.return_value = True
-        mock_attach.rglob.return_value = []
+        mock_user_data_dir.return_value = tmp_path
+        mock_journals.return_value = tmp_path / "Journals"
+        mock_topic.return_value = topic_dir
+        mock_attach.return_value = attach_dir
 
         validator = DataValidator()
         result = validator.run()

@@ -25,10 +25,9 @@ def _entity_graph_payload() -> list[dict]:
 class TestEntityDetectionOnWrite:
     def test_new_entity_detected_on_write(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.write_journal.core import write_journal
 
-        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
         result = write_journal(
             {
@@ -46,10 +45,9 @@ class TestEntityDetectionOnWrite:
 
     def test_known_entity_no_alert(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import save_entity_graph
-        from tools.lib.paths import USER_DATA_DIR
         from tools.write_journal.core import write_journal
 
-        save_entity_graph(_entity_graph_payload(), USER_DATA_DIR / "entity_graph.yaml")
+        save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
         result = write_journal(
             {

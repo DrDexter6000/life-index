@@ -12,7 +12,7 @@ import mimetypes
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from ..lib.config import ATTACHMENTS_DIR
+from ..lib.paths import get_attachments_dir
 from ..lib.logger import get_logger
 from ..lib.url_download import download_url
 
@@ -260,7 +260,7 @@ def process_attachments(
     """
     processed = []
     year, month = get_year_month(date_str)
-    att_dir = ATTACHMENTS_DIR / str(year) / f"{month:02d}"
+    att_dir = get_attachments_dir() / str(year) / f"{month:02d}"
 
     # 合并显式附件和自动检测的附件
     all_attachments = []

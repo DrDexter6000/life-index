@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
-from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.frontmatter import parse_journal_file
 from ..lib.logger import get_logger
@@ -215,7 +215,7 @@ def _read_year_summary(year_dir: Path) -> tuple[list[Dict[str, Any]], Dict[str, 
 
 def _count_topic_entries(topic_name: str) -> int:
     count = 0
-    for year_dir in sorted(JOURNALS_DIR.iterdir()) if JOURNALS_DIR.exists() else []:
+    for year_dir in sorted(get_journals_dir().iterdir()) if get_journals_dir().exists() else []:
         if not year_dir.is_dir():
             continue
         year = int(year_dir.name)
@@ -229,7 +229,7 @@ def _count_topic_entries(topic_name: str) -> int:
 def collect_month_journals(year: int, month: int) -> list[Dict[str, Any]]:
     """Collect all journals in a given month."""
     journals: list[Dict[str, Any]] = []
-    month_dir = JOURNALS_DIR / str(year) / f"{month:02d}"
+    month_dir = get_journals_dir() / str(year) / f"{month:02d}"
 
     if not month_dir.exists():
         logger.debug(f"目录不存在：{month_dir}")
@@ -260,7 +260,7 @@ def collect_month_journals(year: int, month: int) -> list[Dict[str, Any]]:
 def collect_year_journals(year: int) -> list[Dict[str, Any]]:
     """Collect all journals in a given year."""
     journals: list[Dict[str, Any]] = []
-    year_dir = JOURNALS_DIR / str(year)
+    year_dir = get_journals_dir() / str(year)
 
     if not year_dir.exists():
         logger.debug(f"目录不存在：{year_dir}")
@@ -441,7 +441,7 @@ def generate_monthly_index(year: int, month: int, dry_run: bool = False) -> Dict
     }
 
     try:
-        month_dir = JOURNALS_DIR / str(year) / f"{month:02d}"
+        month_dir = get_journals_dir() / str(year) / f"{month:02d}"
         output_path = month_dir / f"index_{year}-{month:02d}.md"
         journals = collect_month_journals(year, month)
         result["journal_count"] = len(journals)
@@ -489,7 +489,7 @@ def generate_yearly_index(year: int, dry_run: bool = False) -> Dict[str, Any]:
     }
 
     try:
-        year_dir = JOURNALS_DIR / str(year)
+        year_dir = get_journals_dir() / str(year)
         output_path = year_dir / f"index_{year}.md"
         journals: list[Dict[str, Any]] = []
         monthly_summaries: list[Dict[str, Any]] = []
@@ -548,12 +548,12 @@ def generate_root_index(dry_run: bool = False) -> Dict[str, Any]:
     }
 
     try:
-        output_path = USER_DATA_DIR / "INDEX.md"
+        output_path = get_user_data_dir() / "INDEX.md"
         yearly_summaries: list[Dict[str, Any]] = []
         fallback_journals: list[Dict[str, Any]] = []
 
-        if JOURNALS_DIR.exists():
-            for year_dir in sorted(JOURNALS_DIR.iterdir(), reverse=True):
+        if get_journals_dir().exists():
+            for year_dir in sorted(get_journals_dir().iterdir(), reverse=True):
                 if not year_dir.is_dir() or not year_dir.name.isdigit():
                     continue
                 journals, summary = _read_year_summary(year_dir)
@@ -571,7 +571,7 @@ def generate_root_index(dry_run: bool = False) -> Dict[str, Any]:
         date_range = f"{years[0]}-01 — {years[-1]}-12"
         if years:
             latest_year = years[-1]
-            latest_year_dir = JOURNALS_DIR / str(latest_year)
+            latest_year_dir = get_journals_dir() / str(latest_year)
             month_names = (
                 sorted(
                     month_dir.name
@@ -584,7 +584,7 @@ def generate_root_index(dry_run: bool = False) -> Dict[str, Any]:
             if month_names:
                 date_range = f"{years[0]}-01 — {latest_year}-{month_names[-1]}"
 
-        by_topic_dir = USER_DATA_DIR / "by-topic"
+        by_topic_dir = get_user_data_dir() / "by-topic"
         topic_summaries: list[Dict[str, Any]] = []
         if by_topic_dir.exists():
             for topic_file in sorted(by_topic_dir.glob("主题_*.md")):
@@ -633,7 +633,7 @@ def rebuild_index_tree(dry_run: bool = False) -> Dict[str, Any]:
         "errors": [],
     }
 
-    if not JOURNALS_DIR.exists():
+    if not get_journals_dir().exists():
         root_result = generate_root_index(dry_run=dry_run)
         report["root_index_rebuilt"] = bool(root_result.get("success"))
         if not root_result.get("success"):
@@ -642,7 +642,7 @@ def rebuild_index_tree(dry_run: bool = False) -> Dict[str, Any]:
 
     years_with_journals: set[int] = set()
 
-    for year_dir in sorted(JOURNALS_DIR.iterdir()):
+    for year_dir in sorted(get_journals_dir().iterdir()):
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
 
