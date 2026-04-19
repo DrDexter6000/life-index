@@ -153,7 +153,7 @@ def _write_eval_fixture_data(data_dir: Path) -> None:
             },
             {
                 "id": "openclaw",
-                "type": "organization",
+                "type": "project",
                 "primary_name": "OpenClaw",
                 "aliases": [],
                 "attributes": {},
@@ -161,7 +161,7 @@ def _write_eval_fixture_data(data_dir: Path) -> None:
             },
             {
                 "id": "lobsterai",
-                "type": "organization",
+                "type": "project",
                 "primary_name": "LobsterAI",
                 "aliases": [],
                 "attributes": {},
@@ -454,7 +454,8 @@ def test_keyword_judge_mode_unchanged(isolated_data_dir: Path) -> None:
     assert "llm_scores" not in result["per_query"][0]
 
 
-def test_recall_gap_detection_with_mock(monkeypatch) -> None:
+def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
     from tools.eval.run_eval import run_evaluation
     from tools.search_journals import core as search_core
 
