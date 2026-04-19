@@ -55,7 +55,7 @@ VALID_WRITE_OUTCOME = {
 @pytest.fixture(autouse=True)
 def mock_vector_update():
     """Isolate from vector index/model loading."""
-    with patch("tools.write_journal.core.update_vector_index", return_value=False):
+    with patch("tools.write_journal.core.mark_pending"):
         yield
 
 
@@ -89,7 +89,7 @@ def writable_env(tmp_path):
 
 def _run_write(data: dict, writable_env: dict, dry_run: bool = False) -> dict:
     """Helper: run write_journal with all necessary mocks."""
-    with patch("tools.write_journal.core.JOURNALS_DIR", writable_env["journals_dir"]):
+    with patch("tools.write_journal.core.get_journals_dir", return_value=writable_env["journals_dir"]):
         with patch(
             "tools.write_journal.core.get_journals_lock_path",
             return_value=writable_env["lock_path"],

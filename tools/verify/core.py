@@ -10,8 +10,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ..lib.config import ATTACHMENTS_DIR, BY_TOPIC_DIR, JOURNALS_DIR, USER_DATA_DIR
+from ..lib.paths import get_attachments_dir, get_by_topic_dir, get_journals_dir, get_user_data_dir
 from ..lib.frontmatter import get_required_fields, parse_journal_file
+from ..lib.path_contract import build_journal_path_fields
 
 
 @dataclass
@@ -32,21 +33,25 @@ TOPIC_LINK_PATTERN = re.compile(r"\((?P<path>Journals/[^)]+\.md)\)")
 
 
 def _collect_journal_files() -> List[Path]:
-    if not JOURNALS_DIR.exists():
+    if not get_journals_dir().exists():
         return []
     return [
         f
-        for f in JOURNALS_DIR.rglob("life-index_*.md")
+        for f in get_journals_dir().rglob("life-index_*.md")
         if not f.name.startswith("monthly_") and not f.name.startswith("yearly_")
     ]
 
 
 def _rel_path(file_path: Path) -> str:
-    return str(file_path.relative_to(USER_DATA_DIR)).replace("\\", "/")
+    return build_journal_path_fields(
+        file_path,
+        journals_dir=get_journals_dir(),
+        user_data_dir=get_user_data_dir(),
+    )["rel_path"]
 
 
 def _load_fts_paths() -> set[str]:
-    db_path = USER_DATA_DIR / ".index" / "journals_fts.db"
+    db_path = get_user_data_dir() / ".index" / "journals_fts.db"
     if not db_path.exists():
         return set()
     conn = sqlite3.connect(db_path)
@@ -59,8 +64,8 @@ def _load_fts_paths() -> set[str]:
 
 
 def _load_vector_paths() -> set[str]:
-    sqlite_db_path = USER_DATA_DIR / ".index" / "journals_vec.db"
-    simple_index_path = USER_DATA_DIR / ".index" / "vectors_simple.pkl"
+    sqlite_db_path = get_user_data_dir() / ".index" / "journals_vec.db"
+    simple_index_path = get_user_data_dir() / ".index" / "vectors_simple.pkl"
 
     if sqlite_db_path.exists():
         db_path = sqlite_db_path
@@ -89,16 +94,16 @@ def _load_vector_paths() -> set[str]:
 def _resolve_attachment_path(raw_path: str) -> Path:
     normalized = raw_path.strip().replace("\\", "/")
     if normalized.startswith("attachments/"):
-        return USER_DATA_DIR / normalized
-    return ATTACHMENTS_DIR / normalized
+        return get_user_data_dir() / normalized
+    return get_attachments_dir() / normalized
 
 
 def _collect_topic_links() -> list[str]:
-    if not BY_TOPIC_DIR.exists():
+    if not get_by_topic_dir().exists():
         return []
 
     links: list[str] = []
-    for index_file in BY_TOPIC_DIR.glob("*.md"):
+    for index_file in get_by_topic_dir().glob("*.md"):
         content = index_file.read_text(encoding="utf-8")
         for match in TOPIC_LINK_PATTERN.finditer(content):
             links.append(match.group("path"))
