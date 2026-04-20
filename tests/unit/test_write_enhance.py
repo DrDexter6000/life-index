@@ -118,7 +118,6 @@ def test_write_preserves_entities_without_sentiment_or_themes(
 
 def test_write_populates_entities_from_people_location(isolated_data_dir: Path) -> None:
     from tools.lib.entity_graph import save_entity_graph
-    from tools.lib.paths import USER_DATA_DIR
     from tools.write_journal.core import write_journal
 
     save_entity_graph(
@@ -138,7 +137,7 @@ def test_write_populates_entities_from_people_location(isolated_data_dir: Path) 
                 "relationships": [],
             },
         ],
-        USER_DATA_DIR / "entity_graph.yaml",
+        isolated_data_dir / "entity_graph.yaml",
     )
 
     result = write_journal(

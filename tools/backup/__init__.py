@@ -20,12 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, cast
 
-from ..lib.config import (
-    JOURNALS_DIR,
-    BY_TOPIC_DIR,
-    ATTACHMENTS_DIR,
-    USER_DATA_DIR,
-)
+from ..lib.paths import get_journals_dir, get_by_topic_dir, get_attachments_dir, get_user_data_dir
 from ..lib.logger import get_logger
 
 logger = get_logger(__name__)
@@ -115,7 +110,7 @@ def create_backup(
         result["backup_path"] = str(backup_subdir)
 
         # 加载之前的备份清单（用于增量备份）
-        manifest = load_backup_manifest(dest) if not full else {"files": {}}
+        manifest: Dict[str, Any] = load_backup_manifest(dest) if not full else {"files": {}}
 
         # 默认排除模式
         exclude_patterns = exclude_patterns or []
@@ -181,13 +176,13 @@ def create_backup(
 
         # 备份各个目录
         logger.info("备份日志文件...")
-        backup_directory(JOURNALS_DIR, "Journals")
+        backup_directory(get_journals_dir(), "Journals")
 
         logger.info("备份索引文件...")
-        backup_directory(BY_TOPIC_DIR, "by-topic")
+        backup_directory(get_by_topic_dir(), "by-topic")
 
         logger.info("备份附件文件...")
-        backup_directory(ATTACHMENTS_DIR, "attachments")
+        backup_directory(get_attachments_dir(), "attachments")
 
         # 保存备份清单
         if not dry_run:
@@ -236,7 +231,7 @@ def restore_backup(
 
     Args:
         backup_path: 备份目录路径
-        dest_path: 恢复目标路径（默认 USER_DATA_DIR）
+        dest_path: 恢复目标路径（默认 get_user_data_dir()）
         dry_run: 模拟运行
 
     Returns:
@@ -250,7 +245,7 @@ def restore_backup(
 
     try:
         backup = Path(backup_path)
-        dest = Path(dest_path) if dest_path else USER_DATA_DIR
+        dest = Path(dest_path) if dest_path else get_user_data_dir()
 
         if not backup.exists():
             cast(List[str], result["errors"]).append(f"备份目录不存在: {backup}")

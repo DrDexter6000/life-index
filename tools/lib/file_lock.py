@@ -347,9 +347,9 @@ def get_journals_lock_path() -> Path:
     Returns:
         Path to the journals.lock file in the Life-Index data directory.
     """
-    from .config import USER_DATA_DIR
+    from .paths import get_user_data_dir
 
-    return USER_DATA_DIR / ".cache" / "journals.lock"
+    return get_user_data_dir() / ".cache" / "journals.lock"
 
 
 def get_index_lock_path() -> Path:
@@ -359,9 +359,9 @@ def get_index_lock_path() -> Path:
     Returns:
         Path to the index.lock file in the Life-Index data directory.
     """
-    from .config import USER_DATA_DIR
+    from .paths import get_user_data_dir
 
-    return USER_DATA_DIR / ".cache" / "index.lock"
+    return get_user_data_dir() / ".cache" / "index.lock"
 
 
 # Convenience functions for common use cases

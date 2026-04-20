@@ -44,8 +44,8 @@ class TestL1IndexPathContract:
         )
 
         with (
-            patch.object(l1_index, "BY_TOPIC_DIR", index_dir),
-            patch.object(l1_index, "USER_DATA_DIR", tmp_path),
+            patch.object(l1_index, "get_by_topic_dir", return_value=index_dir),
+            patch.object(l1_index, "get_user_data_dir", return_value=tmp_path),
         ):
             results = l1_index.search_l1_index("topic", "work")
 
@@ -78,12 +78,12 @@ class TestL2MetadataPathContract:
                 return_value=cached_entries,
             ),
             patch(
-                "tools.search_journals.l2_metadata.USER_DATA_DIR",
-                user_data_dir,
+                "tools.search_journals.l2_metadata.get_user_data_dir",
+                return_value=user_data_dir,
             ),
             patch(
-                "tools.search_journals.l2_metadata.JOURNALS_DIR",
-                journals_dir,
+                "tools.search_journals.l2_metadata.get_journals_dir",
+                return_value=journals_dir,
             ),
         ):
             results = _search_with_cache()
@@ -108,8 +108,8 @@ class TestL3ContentPathContract:
         )
 
         with (
-            patch("tools.search_journals.l3_content.USER_DATA_DIR", tmp_path),
-            patch("tools.search_journals.l3_content.JOURNALS_DIR", journals_dir),
+            patch("tools.search_journals.l3_content.get_user_data_dir", return_value=tmp_path),
+            patch("tools.search_journals.l3_content.get_journals_dir", return_value=journals_dir),
         ):
             results = search_l3_content("Python", paths=[str(journal_file)])
 
@@ -129,8 +129,8 @@ class TestL3ContentPathContract:
         )
 
         with (
-            patch("tools.search_journals.l3_content.USER_DATA_DIR", tmp_path),
-            patch("tools.search_journals.l3_content.JOURNALS_DIR", journals_dir),
+            patch("tools.search_journals.l3_content.get_user_data_dir", return_value=tmp_path),
+            patch("tools.search_journals.l3_content.get_journals_dir", return_value=journals_dir),
         ):
             results = search_l3_content("Python", paths=[str(journal_file)])
 
@@ -154,8 +154,14 @@ class TestMetadataCachePathContract:
         )
 
         with (
-            patch.object(metadata_cache, "USER_DATA_DIR", tmp_path),
-            patch.object(metadata_cache, "JOURNALS_DIR", journals_dir),
+            patch.object(metadata_cache, "get_user_data_dir", lambda: tmp_path),
+            patch.object(metadata_cache, "get_journals_dir", lambda: journals_dir),
+            patch.object(metadata_cache, "get_cache_dir", lambda: tmp_path / ".cache"),
+            patch.object(
+                metadata_cache,
+                "get_metadata_db_path",
+                lambda: tmp_path / ".cache" / "metadata_cache.db",
+            ),
         ):
             conn = metadata_cache.init_metadata_cache()
             try:

@@ -185,8 +185,10 @@ def _run_production_fts_query(query: str) -> list[dict[str, object]]:
 
     normalize_query = getattr(chinese_tokenizer, "normalize_query")
     normalized = normalize_query(query)
-    segmented = _segment_query_for_fts(normalized)
-    fts_query, fallback_query = _build_fts_queries(segmented)
+    segmented_query, was_segmented = _segment_query_for_fts(normalized)
+    fts_query, fallback_query = _build_fts_queries(
+        segmented_query, was_segmented=was_segmented
+    )
 
     results = search_fts(fts_query)
     if fallback_query and len(results) < 3:

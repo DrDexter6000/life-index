@@ -29,8 +29,7 @@ class TestHealthCheck:
         cache_dir.mkdir(parents=True)
         (cache_dir / "model.onnx").write_text("model", encoding="utf-8")
 
-        monkeypatch.setattr("tools.__main__.USER_DATA_DIR", data_dir)
-        monkeypatch.setattr("tools.__main__.JOURNALS_DIR", journals_dir)
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
         monkeypatch.setattr("tools.__main__.get_model_cache_dir", lambda: cache_dir)
         monkeypatch.setitem(
             sys.modules, "yaml", types.SimpleNamespace(__version__="test")

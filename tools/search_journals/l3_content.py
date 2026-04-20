@@ -8,10 +8,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
-from ..lib.config import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.paths import get_user_data_dir, get_journals_dir
 from ..lib.path_contract import build_journal_path_fields
 
 from .utils import parse_frontmatter
+
+# Deprecated aliases — kept for monkeypatch compatibility (Round 13 lesson)
+USER_DATA_DIR = get_user_data_dir()
+JOURNALS_DIR = get_journals_dir()
 
 
 def _compute_fallback_relevance(title_match: bool, body_match_count: int) -> int:
@@ -38,8 +42,9 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
         files_to_search = [Path(p) for p in paths if Path(p).exists()]
     else:
         files_to_search = []
-        if JOURNALS_DIR.exists():
-            for year_dir in JOURNALS_DIR.iterdir():
+        _journals_dir = get_journals_dir()
+        if _journals_dir.exists():
+            for year_dir in _journals_dir.iterdir():
                 if year_dir.is_dir() and year_dir.name.isdigit():
                     for month_dir in year_dir.iterdir():
                         if month_dir.is_dir():
@@ -72,8 +77,8 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
             if relevance >= 15:
                 path_fields = build_journal_path_fields(
                     journal_file,
-                    journals_dir=JOURNALS_DIR,
-                    user_data_dir=USER_DATA_DIR,
+                    journals_dir=get_journals_dir(),
+                    user_data_dir=get_user_data_dir(),
                 )
 
                 results.append(

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .paths import resolve_user_data_dir
+from .paths import get_user_data_dir as _get_user_data_dir
 
 logger = logging.getLogger("search_diagnose")
 
@@ -62,7 +62,7 @@ def _iter_month_keys(start: datetime, end: datetime) -> Iterable[str]:
 
 def _candidate_metrics_paths(days: int, now: datetime) -> list[Path]:
     cutoff = now - timedelta(days=max(days, 0))
-    metrics_dir = resolve_user_data_dir() / ".life-index" / "metrics"
+    metrics_dir = _get_user_data_dir() / ".life-index" / "metrics"
     return [metrics_dir / f"{month_key}.jsonl" for month_key in _iter_month_keys(cutoff, now)]
 
 

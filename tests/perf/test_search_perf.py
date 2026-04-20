@@ -74,7 +74,7 @@ def _setup_search_env(tmp_path_factory):
             },
             {
                 "id": "openclaw",
-                "type": "organization",
+                "type": "project",
                 "primary_name": "OpenClaw",
                 "aliases": [],
                 "attributes": {},
@@ -82,7 +82,7 @@ def _setup_search_env(tmp_path_factory):
             },
             {
                 "id": "lobsterai",
-                "type": "organization",
+                "type": "project",
                 "primary_name": "LobsterAI",
                 "aliases": [],
                 "attributes": {},
@@ -167,6 +167,11 @@ def _setup_search_env(tmp_path_factory):
 @pytest.mark.perf
 def test_chinese_query_under_200ms(_setup_search_env):
     import tools.search_journals.core as core_mod
+
+    # Warmup: first query triggers SQLite WAL init + metadata cache cold start,
+    # which can take 400ms+. The perf regression gate should measure steady-state,
+    # not one-time initialization cost.
+    core_mod.hierarchical_search(query="团团", level=3, semantic=False)
 
     result = core_mod.hierarchical_search(
         query="想念我的女儿",

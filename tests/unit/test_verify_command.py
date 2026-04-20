@@ -91,10 +91,11 @@ def verify_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, P
     journals_dir = tmp_path / "Journals"
     by_topic_dir = tmp_path / "by-topic"
     attachments_dir = tmp_path / "attachments"
-    monkeypatch.setattr("tools.verify.core.JOURNALS_DIR", journals_dir)
-    monkeypatch.setattr("tools.verify.core.BY_TOPIC_DIR", by_topic_dir)
-    monkeypatch.setattr("tools.verify.core.ATTACHMENTS_DIR", attachments_dir)
-    monkeypatch.setattr("tools.verify.core.USER_DATA_DIR", tmp_path, raising=False)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("tools.verify.core.get_journals_dir", lambda: journals_dir)
+    monkeypatch.setattr("tools.verify.core.get_by_topic_dir", lambda: by_topic_dir)
+    monkeypatch.setattr("tools.verify.core.get_attachments_dir", lambda: attachments_dir)
+    monkeypatch.setattr("tools.verify.core.get_user_data_dir", lambda: tmp_path, raising=False)
     return {
         "base_dir": tmp_path,
         "journals_dir": journals_dir,

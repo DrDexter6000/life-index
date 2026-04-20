@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
 # 导入配置 (relative imports from tools/lib)
-from ...lib.config import JOURNALS_DIR, BY_TOPIC_DIR, ensure_dirs
+from ...lib.config import ensure_dirs
+from ...lib.paths import get_journals_dir, get_by_topic_dir, get_user_data_dir
 from ...lib.frontmatter import parse_journal_file
 
 
@@ -67,8 +68,8 @@ class IndexRebuilder:
 
     def _collect_journals(self) -> None:
         """收集所有日志文件"""
-        if JOURNALS_DIR.exists():
-            self.journals = list(JOURNALS_DIR.rglob("life-index_*.md"))
+        if get_journals_dir().exists():
+            self.journals = list(get_journals_dir().rglob("life-index_*.md"))
             # 排除摘要文件
             self.journals = [
                 f
@@ -90,17 +91,17 @@ class IndexRebuilder:
     def _parse_all_metadata(self) -> None:
         """解析所有日志的元数据"""
         for journal in self.journals:
-            rel_path = journal.relative_to(JOURNALS_DIR.parent)
+            rel_path = journal.relative_to(get_user_data_dir())
             metadata = self._parse_frontmatter(journal)
             if metadata:
                 self.journal_metadata[str(rel_path)] = metadata
 
     def _clean_dead_links(self) -> None:
         """清理索引文件中的死链"""
-        if not BY_TOPIC_DIR.exists():
+        if not get_by_topic_dir().exists():
             return
 
-        index_files = list(BY_TOPIC_DIR.glob("*.md"))
+        index_files = list(get_by_topic_dir().glob("*.md"))
 
         for index_file in index_files:
             content = index_file.read_text(encoding="utf-8")
@@ -170,7 +171,7 @@ class IndexRebuilder:
             return None
 
         if link.startswith("/"):
-            return JOURNALS_DIR.parent / link.lstrip("/")
+            return get_user_data_dir() / link.lstrip("/")
 
         return (from_file.parent / link).resolve()
 
@@ -226,7 +227,7 @@ class IndexRebuilder:
 
     def _write_index(self, filename: str, title: str, entries: List[Tuple[str, dict]]) -> None:
         """写入索引文件"""
-        index_file = BY_TOPIC_DIR / filename
+        index_file = get_by_topic_dir() / filename
 
         # 按日期排序（倒序）
         entries.sort(key=lambda x: x[1].get("date", ""), reverse=True)
@@ -247,7 +248,7 @@ class IndexRebuilder:
 
             # 构建相对路径
             rel_path_obj = Path(rel_path)
-            depth = len(index_file.parent.parts) - len(JOURNALS_DIR.parent.parts)
+            depth = len(index_file.parent.parts) - len(get_user_data_dir().parts)
             prefix = "../" * depth
             link_path = f"{prefix}{rel_path}"
 

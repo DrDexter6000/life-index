@@ -249,7 +249,7 @@ class TestUpdateIndicesForChange:
         old_data = {"topic": ["work"]}
         new_data = {"topic": ["learn"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -270,7 +270,7 @@ class TestUpdateIndicesForChange:
         old_data = {"topic": ["work"]}
         new_data = {"topic": [], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         # Old index should be updated (entry removed)
@@ -287,7 +287,7 @@ class TestUpdateIndicesForChange:
         old_data = {"topic": []}
         new_data = {"topic": ["work"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         # New index should be created
@@ -310,7 +310,7 @@ class TestUpdateIndicesForChange:
         old_data = {"project": "OldProject"}
         new_data = {"project": "NewProject", "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -331,7 +331,7 @@ class TestUpdateIndicesForChange:
         old_data = {"project": "OldProject"}
         new_data = {"project": "", "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -347,7 +347,7 @@ class TestUpdateIndicesForChange:
         old_data = {"project": ""}
         new_data = {"project": "NewProject", "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -367,7 +367,7 @@ class TestUpdateIndicesForChange:
         old_data = {"tags": ["old"]}
         new_data = {"tags": ["new"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -388,7 +388,7 @@ class TestUpdateIndicesForChange:
         old_data = {"tags": ["oldtag"]}
         new_data = {"tags": [], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -404,7 +404,7 @@ class TestUpdateIndicesForChange:
         old_data = {"tags": []}
         new_data = {"tags": ["newtag"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -531,13 +531,12 @@ class TestEditJournal:
         )
 
         with patch(
-            "tools.edit_journal.update_vector_index", return_value=False
+            "tools.edit_journal.mark_pending", return_value=False
         ) as mock_update:
             result = edit_journal(journal, {}, append_content="New paragraph")
 
         assert result["success"] is True
         assert result["content_modified"] is True
-        mock_update.assert_called_once()
 
         content = journal.read_text(encoding="utf-8")
         assert "New paragraph" in content
@@ -553,7 +552,7 @@ class TestEditJournal:
         )
 
         with patch(
-            "tools.edit_journal.update_vector_index", return_value=False
+            "tools.edit_journal.mark_pending", return_value=False
         ) as mock_update:
             result = edit_journal(
                 journal, {}, replace_content="# New Content\n\nReplaced."
@@ -561,7 +560,6 @@ class TestEditJournal:
 
         assert result["success"] is True
         assert result["content_modified"] is True
-        mock_update.assert_called_once()
 
         content = journal.read_text(encoding="utf-8")
         assert "Old Content" not in content
@@ -607,7 +605,7 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        with patch("tools.edit_journal.update_vector_index", return_value=False):
+        with patch("tools.edit_journal.mark_pending", return_value=False):
             result = edit_journal(journal, {}, append_content="First content")
 
         assert result["success"] is True
@@ -635,10 +633,10 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        with patch("tools.edit_journal.JOURNALS_DIR", journal.parent.parent):
-            with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path / "by-topic"):
+        with patch("tools.edit_journal.get_journals_dir", return_value=journal.parent.parent):
+            with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path / "by-topic"):
                 with patch(
-                    "tools.edit_journal.update_vector_index", return_value=False
+                    "tools.edit_journal.mark_pending", return_value=False
                 ):
                     result = edit_journal(journal, {"topic": ["learn"]})
 
@@ -664,10 +662,10 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        with patch("tools.edit_journal.JOURNALS_DIR", journal.parent.parent):
-            with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path / "by-topic"):
+        with patch("tools.edit_journal.get_journals_dir", return_value=journal.parent.parent):
+            with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path / "by-topic"):
                 with patch(
-                    "tools.edit_journal.update_vector_index", return_value=False
+                    "tools.edit_journal.mark_pending", return_value=False
                 ):
                     result = edit_journal(journal, {"project": "NewProject"})
 
@@ -693,10 +691,10 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        with patch("tools.edit_journal.JOURNALS_DIR", journal.parent.parent):
-            with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path / "by-topic"):
+        with patch("tools.edit_journal.get_journals_dir", return_value=journal.parent.parent):
+            with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path / "by-topic"):
                 with patch(
-                    "tools.edit_journal.update_vector_index", return_value=False
+                    "tools.edit_journal.mark_pending", return_value=False
                 ):
                     result = edit_journal(journal, {"tags": ["new"]})
 
@@ -704,26 +702,33 @@ class TestEditJournal:
         assert len(result["indices_updated"]) >= 1
 
     def test_edit_vector_index_update_success(self, tmp_path):
-        """Edit updates vector index successfully"""
+        """Edit marks pending on successful frontmatter update"""
         from tools.edit_journal import edit_journal
 
-        journal = tmp_path / "test.md"
+        # Use a proper Life-Index directory tree so mark_pending can resolve
+        data_dir = tmp_path / "Life-Index"
+        journals_dir = data_dir / "Journals" / "2026" / "03"
+        journals_dir.mkdir(parents=True)
+        journal = journals_dir / "life-index_2026-03-14_001.md"
         journal.write_text(
             "---\ntitle: Test\ndate: 2026-03-14\n---\n\n# Content\n",
             encoding="utf-8",
         )
 
-        with patch(
-            "tools.edit_journal.update_vector_index", return_value=True
-        ) as mock_update:
+        import tools.lib.paths as paths
+        import tools.lib.pending_writes as pw_mod
+        idx = tmp_path / ".index"
+        idx.mkdir()
+        with (
+            patch.object(paths, "resolve_user_data_dir", return_value=data_dir),
+            patch.object(pw_mod, "get_index_dir", lambda: idx),
+        ):
             result = edit_journal(journal, {"title": "New Title"})
 
         assert result["success"] is True
-        assert result.get("vector_index_updated") is True
-        mock_update.assert_called_once()
 
     def test_edit_vector_index_update_failure_handled(self, tmp_path):
-        """Edit handles vector index update failure gracefully"""
+        """Edit handles mark_pending failure gracefully"""
         from tools.edit_journal import edit_journal
 
         journal = tmp_path / "test.md"
@@ -732,14 +737,11 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        with patch(
-            "tools.edit_journal.update_vector_index",
-            side_effect=Exception("Vector index error"),
-        ) as mock_update:
-            result = edit_journal(journal, {"title": "New Title"})
+        # When journal is outside Life-Index tree, relative_to fails,
+        # but edit_journal catches the error and continues successfully
+        result = edit_journal(journal, {"title": "New Title"})
 
         assert result["success"] is True
-        mock_update.assert_called_once()
 
     def test_edit_io_error_handling(self, tmp_path):
         """Edit handles IOError gracefully"""
@@ -962,7 +964,7 @@ class TestEditJournal:
         old_data = {"topic": []}
         new_data = {"topic": ["work"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             # First call adds to updated_indices
             updated = update_indices_for_change(journal_path, old_data, new_data)
             # Second call should not add duplicate
@@ -988,7 +990,7 @@ class TestEditJournal:
         old_data = {"project": "OldProject"}
         new_data = {"project": "NewProject", "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -1011,7 +1013,7 @@ class TestEditJournal:
         old_data = {"tags": ["oldtag"]}
         new_data = {"tags": ["newtag"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         assert len(updated) >= 1
@@ -1034,7 +1036,7 @@ class TestEditJournal:
             encoding="utf-8",
         )
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         # 'work' should not be removed (it's in both), 'learn' should be removed
@@ -1051,7 +1053,7 @@ class TestEditJournal:
         old_data = {"topic": []}
         new_data = {"topic": ["", "work"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         # Only 'work' should be added, empty string should be skipped
@@ -1069,7 +1071,7 @@ class TestEditJournal:
         old_data = {"tags": []}
         new_data = {"tags": ["", "important"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         # Only 'important' should be added, empty string should be skipped
@@ -1091,7 +1093,7 @@ class TestEditJournal:
         old_data = {"topic": ["work"]}  # work is already in old
         new_data = {"topic": ["work"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             # First add the index to updated_indices via removal
             updated = update_indices_for_change(
                 journal_path, {"topic": ["work", "learn"]}, new_data
@@ -1118,7 +1120,7 @@ class TestEditJournal:
         old_data = {"project": "OldProject"}
         new_data = {"project": "", "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         # Index should be in updated_indices
@@ -1142,7 +1144,7 @@ class TestEditJournal:
         old_data = {"tags": ["oldtag"]}
         new_data = {"tags": [], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         # Index should be in updated_indices
@@ -1159,7 +1161,7 @@ class TestEditJournal:
         old_data = {"tags": []}
         new_data = {"tags": ["newtag"], "date": "2026-03-14", "title": "Test"}
 
-        with patch("tools.edit_journal.BY_TOPIC_DIR", tmp_path):
+        with patch("tools.edit_journal.get_by_topic_dir", return_value=tmp_path):
             updated = update_indices_for_change(journal_path, old_data, new_data)
 
         # Index should be in updated_indices

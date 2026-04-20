@@ -14,6 +14,8 @@ Tests cover:
 - Stats retrieval
 """
 
+import tempfile
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -647,7 +649,7 @@ class TestUpdateVectorIndex:
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
-                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                with patch("tools.lib.semantic_search.get_journals_dir") as mock_dir:
                     mock_dir.exists.return_value = True
                     mock_dir.iterdir.return_value = []
 
@@ -672,7 +674,7 @@ class TestUpdateVectorIndex:
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
-                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                with patch("tools.lib.semantic_search.get_journals_dir") as mock_dir:
                     mock_dir.exists.return_value = True
                     mock_dir.iterdir.return_value = []
 
@@ -698,7 +700,7 @@ class TestUpdateVectorIndex:
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
-                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                with patch("tools.lib.semantic_search.get_journals_dir") as mock_dir:
                     mock_dir.exists.return_value = True
 
                     # Mock a journal file
@@ -746,7 +748,7 @@ Body content."""
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
-                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                with patch("tools.lib.semantic_search.get_journals_dir") as mock_dir:
                     mock_dir.exists.return_value = True
                     mock_dir.iterdir.return_value = []
 
@@ -775,7 +777,7 @@ Body content."""
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
-                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                with patch("tools.lib.semantic_search.get_journals_dir") as mock_dir:
                     mock_dir.exists.return_value = True
                     mock_dir.iterdir.return_value = []
 
@@ -800,7 +802,7 @@ Body content."""
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
-                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                with patch("tools.lib.semantic_search.get_journals_dir") as mock_dir:
                     mock_dir.exists.return_value = True
                     mock_dir.iterdir.return_value = []
 
@@ -811,6 +813,7 @@ Body content."""
     def test_update_insert_exception(self):
         """Test update tolerates insert failures"""
         from tools.lib.semantic_search import update_vector_index
+        import tools.lib.paths as paths_module
 
         with patch("tools.lib.semantic_search.get_model") as mock_get_model:
             mock_model = MagicMock()
@@ -829,8 +832,8 @@ Body content."""
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
-                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
-                    mock_dir.exists.return_value = True
+                with patch("tools.lib.semantic_search.get_journals_dir") as mock_dir:
+                    mock_dir.return_value.exists.return_value = True
 
                     mock_year_dir = MagicMock()
                     mock_year_dir.is_dir.return_value = True
@@ -842,7 +845,7 @@ Body content."""
                     mock_journal = MagicMock()
                     mock_journal.name = "life-index_2026-03-14_001.md"
                     mock_journal.read_text.return_value = """---
-title: \"Test\"
+title: "Test"
 date: 2026-03-14
 ---
 Body content."""
@@ -850,7 +853,7 @@ Body content."""
 
                     mock_month_dir.glob.return_value = [mock_journal]
                     mock_year_dir.iterdir.return_value = [mock_month_dir]
-                    mock_dir.iterdir.return_value = [mock_year_dir]
+                    mock_dir.return_value.iterdir.return_value = [mock_year_dir]
 
                     result = update_vector_index(incremental=True)
 
@@ -877,7 +880,7 @@ Body content."""
                 mock_conn.cursor.return_value = mock_cursor
                 mock_init_db.return_value = mock_conn
 
-                with patch("tools.lib.semantic_search.JOURNALS_DIR") as mock_dir:
+                with patch("tools.lib.semantic_search.get_journals_dir") as mock_dir:
                     mock_dir.exists.return_value = True
                     mock_dir.iterdir.return_value = []
 
@@ -893,15 +896,15 @@ class TestGetStats:
         """Test stats when DB doesn't exist"""
         from tools.lib.semantic_search import get_stats
 
-        with patch("tools.lib.semantic_search.VEC_DB_PATH") as mock_db_path:
-            mock_db_path.exists.return_value = False
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("tools.lib.semantic_search.get_index_dir", return_value=tmp_path):
+                with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+                    mock_model = MagicMock()
+                    mock_model.load.return_value = True
+                    mock_get_model.return_value = mock_model
 
-            with patch("tools.lib.semantic_search.get_model") as mock_get_model:
-                mock_model = MagicMock()
-                mock_model.load.return_value = True
-                mock_get_model.return_value = mock_model
-
-                stats = get_stats()
+                    stats = get_stats()
 
         assert stats["exists"] is False
         assert stats["total_vectors"] == 0
@@ -910,26 +913,26 @@ class TestGetStats:
         """Test stats when DB exists"""
         from tools.lib.semantic_search import get_stats
 
-        with patch("tools.lib.semantic_search.VEC_DB_PATH") as mock_db_path:
-            mock_db_path.exists.return_value = True
-            mock_stat = MagicMock()
-            mock_stat.st_size = 1024 * 1024 * 5  # 5 MB
-            mock_db_path.stat.return_value = mock_stat
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            vec_db_file = tmp_path / "journals_vec.db"
+            vec_db_file.write_bytes(b"x" * (5 * 1024 * 1024))  # 5MB
 
-            with patch("tools.lib.semantic_search.get_model") as mock_get_model:
-                mock_model = MagicMock()
-                mock_model.load.return_value = True
-                mock_get_model.return_value = mock_model
+            with patch("tools.lib.semantic_search.get_index_dir", return_value=tmp_path):
+                with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+                    mock_model = MagicMock()
+                    mock_model.load.return_value = True
+                    mock_get_model.return_value = mock_model
 
-                with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
-                    mock_conn = MagicMock()
-                    mock_cursor = MagicMock()
-                    mock_cursor.fetchone.return_value = (100,)
-                    mock_conn.cursor.return_value = mock_cursor
-                    mock_conn.close.return_value = None
-                    mock_init_db.return_value = mock_conn
+                    with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
+                        mock_conn = MagicMock()
+                        mock_cursor = MagicMock()
+                        mock_cursor.fetchone.return_value = (100,)
+                        mock_conn.cursor.return_value = mock_cursor
+                        mock_conn.close.return_value = None
+                        mock_init_db.return_value = mock_conn
 
-                    stats = get_stats()
+                        stats = get_stats()
 
         if stats["exists"]:
             assert stats["db_size_mb"] == 5.0
@@ -939,25 +942,25 @@ class TestGetStats:
         """Test stats when count query fails"""
         from tools.lib.semantic_search import get_stats
 
-        with patch("tools.lib.semantic_search.VEC_DB_PATH") as mock_db_path:
-            mock_db_path.exists.return_value = True
-            mock_stat = MagicMock()
-            mock_stat.st_size = 1024 * 1024 * 2  # 2 MB
-            mock_db_path.stat.return_value = mock_stat
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            vec_db_file = tmp_path / "journals_vec.db"
+            vec_db_file.write_bytes(b"x" * (2 * 1024 * 1024))  # 2MB
 
-            with patch("tools.lib.semantic_search.get_model") as mock_get_model:
-                mock_model = MagicMock()
-                mock_model.load.return_value = True
-                mock_get_model.return_value = mock_model
+            with patch("tools.lib.semantic_search.get_index_dir", return_value=tmp_path):
+                with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+                    mock_model = MagicMock()
+                    mock_model.load.return_value = True
+                    mock_get_model.return_value = mock_model
 
-                with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
-                    mock_conn = MagicMock()
-                    mock_cursor = MagicMock()
-                    mock_cursor.fetchone.side_effect = Exception("Query failed")
-                    mock_conn.cursor.return_value = mock_cursor
-                    mock_init_db.return_value = mock_conn
+                    with patch("tools.lib.semantic_search.init_vec_db") as mock_init_db:
+                        mock_conn = MagicMock()
+                        mock_cursor = MagicMock()
+                        mock_cursor.fetchone.side_effect = Exception("Query failed")
+                        mock_conn.cursor.return_value = mock_cursor
+                        mock_init_db.return_value = mock_conn
 
-                    stats = get_stats()
+                        stats = get_stats()
 
         assert stats["exists"] is True
         assert stats["total_vectors"] == 0  # Should default to 0 on error
@@ -966,15 +969,15 @@ class TestGetStats:
         """Test stats when model cannot be loaded"""
         from tools.lib.semantic_search import get_stats
 
-        with patch("tools.lib.semantic_search.VEC_DB_PATH") as mock_db_path:
-            mock_db_path.exists.return_value = True
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            with patch("tools.lib.semantic_search.get_index_dir", return_value=tmp_path):
+                with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+                    mock_model = MagicMock()
+                    mock_model.load.return_value = False
+                    mock_get_model.return_value = mock_model
 
-            with patch("tools.lib.semantic_search.get_model") as mock_get_model:
-                mock_model = MagicMock()
-                mock_model.load.return_value = False
-                mock_get_model.return_value = mock_model
-
-                stats = get_stats()
+                    stats = get_stats()
 
         assert stats["model_loaded"] is False
 
@@ -982,20 +985,22 @@ class TestGetStats:
         """Test stats handles exceptions gracefully"""
         from tools.lib.semantic_search import get_stats
 
-        with patch("tools.lib.semantic_search.VEC_DB_PATH") as mock_db_path:
-            mock_db_path.exists.return_value = True
-            mock_db_path.stat.side_effect = Exception("Stat failed")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            vec_db_file = tmp_path / "journals_vec.db"
+            vec_db_file.write_bytes(b"some data")
+            with patch("tools.lib.semantic_search.get_index_dir", return_value=tmp_path):
+                with patch("tools.lib.semantic_search.init_vec_db", side_effect=Exception("Init failed")):
+                    with patch("tools.lib.semantic_search.get_model") as mock_get_model:
+                        mock_model = MagicMock()
+                        mock_model.load.return_value = True
+                        mock_get_model.return_value = mock_model
 
-            with patch("tools.lib.semantic_search.get_model") as mock_get_model:
-                mock_model = MagicMock()
-                mock_model.load.return_value = True
-                mock_get_model.return_value = mock_model
-
-                stats = get_stats()
+                        stats = get_stats()
 
         # Should handle exception and return defaults
         assert stats["exists"] is True
-        assert stats["db_size_mb"] == 0
+        assert stats["total_vectors"] == 0
 
 
 if __name__ == "__main__":

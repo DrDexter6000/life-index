@@ -28,18 +28,19 @@ class TestIndexRebuilder:
         rebuilder = IndexRebuilder(dry_run=True)
         assert rebuilder.dry_run is True
 
-    @patch("tools.dev.rebuild_indices.JOURNALS_DIR")
-    def test_collect_journals_empty(self, mock_journals_dir):
+    def test_collect_journals_empty(self, monkeypatch, tmp_path) -> None:
         """Test collecting journals when directory is empty"""
-        mock_journals_dir.exists.return_value = False
+        from tools.dev import rebuild_indices as ri_mod
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(ri_mod, "get_journals_dir", lambda: tmp_path / "Journals")
         rebuilder = IndexRebuilder()
         rebuilder._collect_journals()
 
         assert rebuilder.journals == []
 
-    @patch("tools.dev.rebuild_indices.JOURNALS_DIR")
-    def test_collect_journals_with_files(self, mock_journals_dir, tmp_path):
+    def test_collect_journals_with_files(self, monkeypatch, tmp_path) -> None:
         """Test collecting journals with actual files"""
+        from tools.dev import rebuild_indices as ri_mod
         # Create mock journal files
         journals_dir = tmp_path / "Journals" / "2026" / "03"
         journals_dir.mkdir(parents=True)
@@ -48,8 +49,8 @@ class TestIndexRebuilder:
         journal1.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
         journal2.write_text("---\ntitle: Test2\n---\nContent", encoding="utf-8")
 
-        mock_journals_dir.exists.return_value = True
-        mock_journals_dir.rglob.return_value = [journal1, journal2]
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(ri_mod, "get_journals_dir", lambda: tmp_path / "Journals")
 
         rebuilder = IndexRebuilder()
         rebuilder._collect_journals()
@@ -88,26 +89,28 @@ class TestIndexRebuilder:
         result = rebuilder._resolve_link(Path("/some/file.md"), "https://example.com")
         assert result is None
 
-    @patch("tools.dev.rebuild_indices.JOURNALS_DIR")
-    def test_resolve_link_absolute(self, mock_journals_dir):
+    def test_resolve_link_absolute(self, monkeypatch, tmp_path) -> None:
         """Test resolving absolute paths"""
-        mock_journals_dir.parent = Path("/data")
+        from tools.dev import rebuild_indices as ri_mod
+        fake_data_dir = Path("/data")
+        monkeypatch.setattr(ri_mod, "get_user_data_dir", lambda: fake_data_dir)
         rebuilder = IndexRebuilder()
         result = rebuilder._resolve_link(Path("/some/file.md"), "/Journals/test.md")
         assert result == Path("/data/Journals/test.md")
 
-    @patch("tools.dev.rebuild_indices.BY_TOPIC_DIR")
-    def test_clean_dead_links_empty_dir(self, mock_topic_dir):
+    def test_clean_dead_links_empty_dir(self, monkeypatch, tmp_path) -> None:
         """Test cleaning dead links when directory doesn't exist"""
-        mock_topic_dir.exists.return_value = False
+        from tools.dev import rebuild_indices as ri_mod
+        nonexist = tmp_path / "nonexistent-by-topic"
+        monkeypatch.setattr(ri_mod, "get_by_topic_dir", lambda: nonexist)
         rebuilder = IndexRebuilder()
         rebuilder._clean_dead_links()
 
         assert rebuilder.dead_links_found == 0
 
-    @patch("tools.dev.rebuild_indices.BY_TOPIC_DIR")
-    def test_clean_dead_links_with_files(self, mock_topic_dir, tmp_path):
+    def test_clean_dead_links_with_files(self, monkeypatch, tmp_path) -> None:
         """Test cleaning dead links with actual index files"""
+        from tools.dev import rebuild_indices as ri_mod
         # Create mock index file
         index_dir = tmp_path / "by-topic"
         index_dir.mkdir()
@@ -122,8 +125,8 @@ class TestIndexRebuilder:
 """
         index_file.write_text(index_content, encoding="utf-8")
 
-        mock_topic_dir.exists.return_value = True
-        mock_topic_dir.glob.return_value = [index_file]
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(ri_mod, "get_by_topic_dir", lambda: index_dir)
 
         rebuilder = IndexRebuilder(dry_run=True)
         rebuilder._clean_dead_links()
@@ -131,13 +134,13 @@ class TestIndexRebuilder:
         # Dead link found because the target doesn't exist
         assert rebuilder.dead_links_found >= 0
 
-    @patch("tools.dev.rebuild_indices.JOURNALS_DIR")
-    @patch("tools.dev.rebuild_indices.BY_TOPIC_DIR")
-    @patch("tools.dev.rebuild_indices.ensure_dirs")
-    def test_run_dry_run(self, mock_ensure, mock_topic, mock_journals):
+    def test_run_dry_run(self, monkeypatch, tmp_path) -> None:
         """Test run method in dry-run mode"""
-        mock_journals.exists.return_value = False
-        mock_topic.exists.return_value = False
+        from tools.dev import rebuild_indices as ri_mod
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(ri_mod, "get_journals_dir", lambda: tmp_path / "Journals")
+        monkeypatch.setattr(ri_mod, "get_by_topic_dir", lambda: tmp_path / "by-topic")
+        monkeypatch.setattr(ri_mod, "ensure_dirs", lambda: None)
 
         rebuilder = IndexRebuilder(dry_run=True)
         rebuilder.run()
@@ -219,14 +222,14 @@ class TestRebuildTagIndices:
 class TestWriteIndex:
     """Tests for _write_index method"""
 
-    @patch("tools.dev.rebuild_indices.BY_TOPIC_DIR")
-    @patch("tools.dev.rebuild_indices.JOURNALS_DIR")
-    def test_write_index_dry_run(self, mock_journals, mock_topic, tmp_path):
+    def test_write_index_dry_run(self, monkeypatch, tmp_path) -> None:
         """Test writing index in dry-run mode"""
+        from tools.dev import rebuild_indices as ri_mod
         index_dir = tmp_path / "by-topic"
         index_dir.mkdir()
-        mock_topic.__truediv__ = lambda self, other: index_dir / other
-        mock_journals.parent = tmp_path
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(ri_mod, "get_by_topic_dir", lambda: index_dir)
+        monkeypatch.setattr(ri_mod, "get_journals_dir", lambda: tmp_path / "Journals")
 
         rebuilder = IndexRebuilder(dry_run=True)
         entries = [

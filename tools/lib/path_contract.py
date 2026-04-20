@@ -9,6 +9,16 @@ def _normalize_slashes(path: Path | str) -> str:
     return str(path).replace("\\", "/")
 
 
+def safe_relative_path(path: Path | str, base: Path | str) -> str:
+    """Return a normalized relative path when possible, else normalized absolute path."""
+    path_obj = Path(path)
+    base_obj = Path(base)
+    try:
+        return _normalize_slashes(path_obj.relative_to(base_obj))
+    except ValueError:
+        return _normalize_slashes(path_obj)
+
+
 def build_journal_path_fields(
     file_path: Path | str, *, journals_dir: Path, user_data_dir: Path
 ) -> Dict[str, str]:
@@ -17,10 +27,7 @@ def build_journal_path_fields(
 
     absolute_path = _normalize_slashes(path_obj)
 
-    try:
-        rel_path = _normalize_slashes(path_obj.relative_to(user_data_dir))
-    except ValueError:
-        rel_path = _normalize_slashes(path_obj)
+    rel_path = safe_relative_path(path_obj, user_data_dir)
 
     try:
         journal_route_path = _normalize_slashes(path_obj.relative_to(journals_dir))

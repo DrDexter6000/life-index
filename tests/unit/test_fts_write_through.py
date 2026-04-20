@@ -64,8 +64,8 @@ class TestUpdateFtsIndex:
         with (
             patch("tools.lib.config.JOURNALS_DIR", journals_dir),
             patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
-            patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path),
-            patch("tools.lib.search_index.INDEX_DIR", index_dir),
+            patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
+            patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
             result = update_fts_index(journal_path, data)
 
@@ -101,8 +101,8 @@ class TestUpdateFtsIndex:
         with (
             patch("tools.lib.config.JOURNALS_DIR", journals_dir),
             patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
-            patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path),
-            patch("tools.lib.search_index.INDEX_DIR", index_dir),
+            patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
+            patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
             update_fts_index(journal_path, data)
 
@@ -137,8 +137,8 @@ class TestUpdateFtsIndex:
         with (
             patch("tools.lib.config.JOURNALS_DIR", journals_dir),
             patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
-            patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path),
-            patch("tools.lib.search_index.INDEX_DIR", index_dir),
+            patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
+            patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
             result = update_fts_index(journal_path, data)
 
@@ -176,8 +176,8 @@ class TestUpdateFtsIndex:
         with (
             patch("tools.lib.config.JOURNALS_DIR", journals_dir),
             patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
-            patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path),
-            patch("tools.lib.search_index.INDEX_DIR", index_dir),
+            patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
+            patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
             result = update_fts_index(journal_path, data)
 
@@ -210,8 +210,8 @@ class TestUpdateFtsIndex:
         with (
             patch("tools.lib.config.JOURNALS_DIR", journals_dir),
             patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
-            patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path),
-            patch("tools.lib.search_index.INDEX_DIR", index_dir),
+            patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
+            patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
             result = update_fts_index(journal_path, data)
 
@@ -239,8 +239,8 @@ class TestUpdateFtsIndex:
         with (
             patch("tools.lib.config.JOURNALS_DIR", journals_dir),
             patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
-            patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path),
-            patch("tools.lib.search_index.INDEX_DIR", index_dir),
+            patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
+            patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
             patch(
                 "tools.lib.search_index.init_fts_db",
                 side_effect=sqlite3.Error("DB broken"),
@@ -264,8 +264,8 @@ class TestUpdateFtsIndex:
         with (
             patch("tools.lib.config.JOURNALS_DIR", journals_dir),
             patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
-            patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path),
-            patch("tools.lib.search_index.INDEX_DIR", index_dir),
+            patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
+            patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
             result = update_fts_index(journal_path, data)
 
@@ -297,15 +297,15 @@ class TestUpdateFtsIndex:
         with (
             patch("tools.lib.config.JOURNALS_DIR", journals_dir),
             patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
-            patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path),
-            patch("tools.lib.search_index.INDEX_DIR", index_dir),
+            patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
+            patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
             result = update_fts_index(journal_path, data)
 
         assert result is True
 
         # Search using the same patched DB path
-        with patch("tools.lib.search_index.FTS_DB_PATH", fts_db_path):
+        with patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path):
             results = search_fts("重构")
 
         assert len(results) >= 1

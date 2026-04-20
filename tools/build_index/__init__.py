@@ -13,12 +13,21 @@ Public API:
 """
 
 from typing import Dict, Any
+from pathlib import Path
 
 # 导入配置 (relative imports from parent tools package)
 from ..lib.config import get_model_cache_dir, FILE_LOCK_TIMEOUT_REBUILD
+from ..lib.paths import get_user_data_dir
 from ..lib.search_index import (
     update_index as update_fts_index,
     get_stats as get_fts_stats,
+)
+from ..lib.index_manifest import (
+    IndexManifest,
+    write_manifest,
+    read_manifest,
+    compute_fts_checksum,
+    compute_vector_checksum,
 )
 from ..lib.metadata_cache import (
     get_cache_stats,
@@ -161,6 +170,62 @@ def build_all(
                         logger.error(f"  ✗ Vector error: {e}")
                         result["vector"] = {"success": False, "error": str(e)}
 
+                vector_result = result.get("vector") or {}
+                if not fts_only and vector_result.get("success"):
+                    try:
+                        import sqlite3
+
+                        from ..lib.semantic_baseline import compute_semantic_baseline
+                        from ..lib.search_index import write_index_meta
+                        from ..lib.paths import get_fts_db_path
+                        from ..lib.vector_index_simple import get_index
+
+                        index = get_index()
+                        baseline_p25 = compute_semantic_baseline(index.vectors)
+                        if baseline_p25 > 0 and get_fts_db_path().exists():
+                            conn = sqlite3.connect(str(get_fts_db_path()))
+                            try:
+                                write_index_meta(conn, semantic_baseline_p25=baseline_p25)
+                            finally:
+                                conn.close()
+                            result["semantic_baseline_p25"] = baseline_p25
+                            logger.info(f"  ✓ Semantic baseline P25: {baseline_p25:.4f}")
+                    except Exception as e:
+                        logger.warning(f"  ⚠ Semantic baseline computation skipped: {e}")
+
+            # Round 12 Phase 2: Write manifest after both phases complete
+            from datetime import datetime as _dt
+            from ..lib.paths import get_fts_db_path, get_vec_index_path
+
+            fts_success = (result.get("fts") or {}).get("success", False)
+            vec_success = (result.get("vector") or {}).get("success", False)
+            partial = not (fts_success and vec_success)
+
+            if fts_success or vec_success:
+                try:
+                    fts_data = result.get("fts") or {}
+                    vec_data = result.get("vector") or {}
+                    manifest = IndexManifest(
+                        fts_count=fts_data.get(
+                            "total", fts_data.get("total_documents", fts_data.get("added", 0))
+                        ),
+                        vector_count=vec_data.get(
+                            "total", vec_data.get("total_vectors", vec_data.get("added", 0))
+                        ),
+                        file_count=0,  # Will be filled by check_index
+                        fts_checksum=compute_fts_checksum(get_fts_db_path()),
+                        vector_checksum=compute_vector_checksum(get_vec_index_path()),
+                        build_timestamp=_dt.now().isoformat(),
+                        build_version="2.0.0",
+                        partial=partial,
+                    )
+                    index_dir = get_user_data_dir() / ".index"
+                    write_manifest(manifest, index_dir)
+                    result["manifest_written"] = True
+                    logger.info(f"  ✓ Manifest written (partial={partial})")
+                except Exception as e:
+                    logger.warning(f"  ⚠ Manifest write failed: {e}")
+
     except LockTimeoutError as e:
         # 锁超时，返回结构化错误
         return create_error_response(
@@ -245,4 +310,64 @@ def show_stats() -> None:
     logger.info("=" * 50)
 
 
-__all__ = ["build_all", "show_stats"]
+def check_index(data_dir: Path | None = None) -> Dict[str, Any]:
+    """Run index consistency check and return structured result.
+
+    This is a read-only operation — it never modifies any index or data file.
+
+    Args:
+        data_dir: Root data directory (defaults to USER_DATA_DIR).
+
+    Returns:
+        Dict with keys: healthy, fts_count, vector_count, file_count, issues.
+    """
+    from .diagnostics import check_index_health
+
+    if data_dir is None:
+        data_dir = get_user_data_dir()
+
+    report = check_index_health(data_dir)
+
+    # Convert report to JSON-friendly dict
+    issues: list[str] = list(report.issues) if not report.consistency_ok else []
+
+    # Round 12 Phase 3: Enhanced check with manifest + freshness
+    index_dir = data_dir / ".index"
+    manifest = read_manifest(index_dir)
+    healthy = report.consistency_ok
+
+    # Manifest info
+    manifest_info: dict[str, object] = {"exists": manifest is not None}
+    if manifest is not None:
+        manifest_info["fts_count"] = manifest.fts_count
+        manifest_info["vector_count"] = manifest.vector_count
+        manifest_info["partial"] = manifest.partial
+        if manifest.partial:
+            issues.append("partial_build: Last index build was incomplete (vector or FTS missing)")
+            healthy = False
+    else:
+        issues.append("no_manifest: No index manifest found, run 'life-index index --rebuild'")
+        healthy = False
+
+    # Freshness info
+    from ..lib.index_freshness import check_full_freshness
+
+    freshness = check_full_freshness(index_dir)
+    if not freshness.overall_fresh:
+        healthy = False
+        for issue in freshness.issues:
+            if issue not in issues:
+                issues.append(issue)
+
+    return {
+        "healthy": healthy,
+        "fts_count": report.fts_count,
+        "vector_count": report.vector_count,
+        "file_count": report.file_count,
+        "manifest": manifest_info,
+        "freshness": freshness.to_dict(),
+        "issues": issues,
+    }
+
+
+__all__ = ["build_all", "show_stats", "check_index"]

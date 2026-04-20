@@ -70,7 +70,7 @@ class TestTimeline:
             mood="happy",
             filename="life-index_2026-03-10_001.md",
         )
-        monkeypatch.setattr("tools.timeline.core.JOURNALS_DIR", journals_dir)
+        monkeypatch.setattr("tools.timeline.core.get_journals_dir", lambda: journals_dir)
 
         result = run_timeline(range_start="2026-01", range_end="2026-02")
 
@@ -108,7 +108,7 @@ class TestTimeline:
             mood="calm",
             filename="life-index_2026-02-10_001.md",
         )
-        monkeypatch.setattr("tools.timeline.core.JOURNALS_DIR", journals_dir)
+        monkeypatch.setattr("tools.timeline.core.get_journals_dir", lambda: journals_dir)
 
         result = run_timeline(range_start="2026-01", range_end="2026-03")
 
@@ -128,7 +128,7 @@ class TestTimeline:
             mood="focused",
             filename="life-index_2026-01-05_001.md",
         )
-        monkeypatch.setattr("tools.timeline.core.JOURNALS_DIR", journals_dir)
+        monkeypatch.setattr("tools.timeline.core.get_journals_dir", lambda: journals_dir)
 
         result = run_timeline(range_start="2026-01", range_end="2026-01")
 
@@ -140,7 +140,7 @@ class TestTimeline:
     ) -> None:
         journals_dir = tmp_path / "Journals"
         journals_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr("tools.timeline.core.JOURNALS_DIR", journals_dir)
+        monkeypatch.setattr("tools.timeline.core.get_journals_dir", lambda: journals_dir)
 
         result = run_timeline(range_start="2099-01", range_end="2099-12")
 
@@ -168,7 +168,7 @@ class TestTimeline:
             mood="calm",
             filename="life-index_2026-01-06_001.md",
         )
-        monkeypatch.setattr("tools.timeline.core.JOURNALS_DIR", journals_dir)
+        monkeypatch.setattr("tools.timeline.core.get_journals_dir", lambda: journals_dir)
 
         result = run_timeline(range_start="2026-01", range_end="2026-01", topic="work")
 

@@ -14,13 +14,15 @@ import sqlite3
 import json
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from .config import JOURNALS_DIR, USER_DATA_DIR
+from .paths import get_cache_dir, get_metadata_db_path, get_journals_dir, get_user_data_dir
 from .frontmatter import parse_journal_file
 from .path_contract import build_journal_path_fields
 
-# 缓存存储目录
-CACHE_DIR = USER_DATA_DIR / ".cache"
-METADATA_DB_PATH = CACHE_DIR / "metadata_cache.db"
+# 缓存存储目录 (deprecated: use getters)
+CACHE_DIR = get_cache_dir()  # deprecated: use get_cache_dir()
+METADATA_DB_PATH = get_metadata_db_path()  # deprecated: use get_metadata_db_path()
+USER_DATA_DIR = get_user_data_dir()  # deprecated: use get_user_data_dir()
+JOURNALS_DIR = get_journals_dir()  # deprecated: use get_journals_dir()
 METADATA_CACHE_REBUILD_HINT = (
     "如发现旧缓存路径格式导致的异常，可执行 `life-index index --rebuild` 进行重建。"
 )
@@ -34,7 +36,7 @@ _memory_cache_ttl: int = 60  # 内存缓存TTL（秒）
 def _candidate_cache_keys(file_path: Path) -> List[str]:
     """Return normalized and legacy cache keys for backward compatibility."""
     normalized = build_journal_path_fields(
-        file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        file_path, journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
     )["path"]
     legacy = str(file_path)
 
@@ -46,9 +48,9 @@ def _candidate_cache_keys(file_path: Path) -> List[str]:
 
 def init_metadata_cache() -> sqlite3.Connection:
     """初始化元数据缓存数据库"""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    get_cache_dir().mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(METADATA_DB_PATH))
+    conn = sqlite3.connect(str(get_metadata_db_path()))
     conn.execute("PRAGMA journal_mode=WAL")  # 启用 WAL 模式提升并发性能
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -159,7 +161,7 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
 
         # 提取可过滤字段
         path_fields = build_journal_path_fields(
-            file_path, journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+            file_path, journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
         )
         file_path_str = path_fields["path"]
         date = metadata.get("date", "")[:10] if metadata.get("date") else ""
@@ -253,7 +255,7 @@ def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[D
 
     # 转换为字典
     normalized_fields = build_journal_path_fields(
-        row["file_path"], journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+        row["file_path"], journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
     )
     return {
         "file_path": normalized_fields["path"],
@@ -327,8 +329,8 @@ def get_all_cached_metadata(
         for row in cursor.fetchall():
             normalized_fields = build_journal_path_fields(
                 row["file_path"],
-                journals_dir=JOURNALS_DIR,
-                user_data_dir=USER_DATA_DIR,
+                journals_dir=get_journals_dir(),
+                user_data_dir=get_user_data_dir(),
             )
             results.append(
                 {
@@ -407,7 +409,7 @@ def rebuild_entry_relations(conn: sqlite3.Connection) -> int:
     inserted = 0
     for row in cursor.fetchall():
         normalized_fields = build_journal_path_fields(
-            row["file_path"], journals_dir=JOURNALS_DIR, user_data_dir=USER_DATA_DIR
+            row["file_path"], journals_dir=get_journals_dir(), user_data_dir=get_user_data_dir()
         )
         source_rel_path = normalized_fields["rel_path"]
         raw_related_entries = row["related_entries"]
@@ -481,7 +483,7 @@ def get_cache_stats() -> Dict[str, Any]:
         total_entries = cursor.fetchone()[0]
 
         # 缓存大小
-        db_size = METADATA_DB_PATH.stat().st_size if METADATA_DB_PATH.exists() else 0
+        db_size = get_metadata_db_path().stat().st_size if get_metadata_db_path().exists() else 0
 
         # 最后更新时间
         cursor.execute("SELECT MAX(cached_at) FROM metadata_cache")
@@ -491,7 +493,7 @@ def get_cache_stats() -> Dict[str, Any]:
             "total_entries": total_entries,
             "db_size_mb": round(db_size / (1024 * 1024), 2),
             "last_update": last_update,
-            "cache_path": str(METADATA_DB_PATH),
+            "cache_path": str(get_metadata_db_path()),
             "rebuild_hint": METADATA_CACHE_REBUILD_HINT,
         }
     finally:
@@ -509,8 +511,8 @@ def update_cache_for_all_journals(
         errors = 0
 
         # 遍历所有日志文件
-        if JOURNALS_DIR.exists():
-            for year_dir in JOURNALS_DIR.iterdir():
+        if get_journals_dir().exists():
+            for year_dir in get_journals_dir().iterdir():
                 if not year_dir.is_dir() or not year_dir.name.isdigit():
                     continue
 

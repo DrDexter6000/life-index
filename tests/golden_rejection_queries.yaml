@@ -1,0 +1,119 @@
+# Golden rejection queries — these should return 0 results or no_confident_match=true
+# Pass-rate target: ≥ 90% (≥ 18 of 20)
+queries:
+  # Category: completely unrelated topics
+  - id: "RJ01"
+    query: "马达加斯加狐猴保护区"
+    expected:
+      max_results: 0
+  - id: "RJ02"
+    query: "马达加斯加首都风景"
+    expected:
+      max_results: 0
+  - id: "RJ03"
+    query: "我去过火星的那次"
+    expected:
+      max_results: 2
+      require_no_confident_match: true
+  - id: "RJ04"
+    query: "量子力学基本原理"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+
+  # Category: fictional/unrelated people
+  - id: "RJ05"
+    query: "张伟的电话号码"
+    expected:
+      max_results: 0
+  - id: "RJ06"
+    query: "马斯克的SpaceX最新发射"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+  - id: "RJ07"
+    query: "我的朋友小明"
+    expected:
+      max_results: 3
+      require_no_confident_match: true
+
+  # Category: counterfactual questions
+  - id: "RJ08"
+    query: "2025年圣诞节在巴黎"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+  - id: "RJ09"
+    query: "去年在上海买房的经历"
+    expected:
+      max_results: 0
+  - id: "RJ10"
+    query: "我的大学毕业典礼"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+
+  # Category: absent emotions and states
+  - id: "RJ11"
+    query: "焦虑症药物副作用"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+  - id: "RJ12"
+    query: "失眠的治疗方法"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+
+  # Category: professional topics not in corpus
+  - id: "RJ13"
+    query: "Kubernetes集群迁移"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+  - id: "RJ14"
+    query: "Rust语言所有权系统"
+    expected:
+      max_results: 0
+  - id: "RJ15"
+    query: "CUDA张量并行训练优化"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+
+  # Category: Chinese medicine and cuisine
+  - id: "RJ16"
+    query: "红烧肉做法"
+    expected:
+      max_results: 0
+  - id: "RJ17"
+    query: "针灸治疗颈椎病"
+    expected:
+      max_results: 0
+
+  # Category: random noise / gibberish
+  - id: "RJ18"
+    query: "asdfghjkl"
+    expected:
+      max_results: 0
+  - id: "RJ19"
+    query: "1234567890"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+  - id: "RJ20"
+    query: "！！！？？？"
+    expected:
+      max_results: 0
+
+  # Category: very specific unrelated locations
+  - id: "RJ21"
+    query: "北极光冰岛旅行"
+    expected:
+      max_results: 1
+      require_no_confident_match: true
+  - id: "RJ22"
+    query: "东京奥运会观后感"
+    expected:
+      max_results: 3
+      require_no_confident_match: true

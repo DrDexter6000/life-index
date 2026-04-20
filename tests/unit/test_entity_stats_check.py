@@ -83,10 +83,9 @@ def _graph_with_issues() -> list[dict]:
 
 
 def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
-    """Save graph via validated save_entity_graph."""
-    from tools.lib.paths import USER_DATA_DIR
+    from tools.lib.entity_graph import save_entity_graph
 
-    save_entity_graph(entities, USER_DATA_DIR / "entity_graph.yaml")
+    save_entity_graph(entities, isolated_data_dir / "entity_graph.yaml")
 
 
 def _save_graph_raw(entities: list[dict], path: Path) -> None:

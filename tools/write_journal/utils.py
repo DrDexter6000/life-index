@@ -10,7 +10,8 @@ import re
 from datetime import datetime
 from typing import Tuple
 
-from ..lib.config import JOURNALS_DIR, PATH_MAPPINGS
+from ..lib.config import PATH_MAPPINGS
+from ..lib.paths import get_journals_dir
 
 
 def get_year_month(date_str: str) -> Tuple[int, int]:
@@ -96,7 +97,7 @@ def generate_filename(date_str: str, sequence: int = 1) -> str:
 def get_next_sequence(date_str: str) -> int:
     """获取指定日期的下一个序列号"""
     year, month = get_year_month(date_str)
-    month_dir = JOURNALS_DIR / str(year) / f"{month:02d}"
+    month_dir = get_journals_dir() / str(year) / f"{month:02d}"
 
     if not month_dir.exists():
         return 1

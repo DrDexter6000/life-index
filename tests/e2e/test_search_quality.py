@@ -299,7 +299,7 @@ def _setup_search_env(tmp_path_factory):
             },
             {
                 "id": "openclaw",
-                "type": "organization",
+                "type": "project",
                 "primary_name": "OpenClaw",
                 "aliases": [],
                 "attributes": {},
@@ -307,7 +307,7 @@ def _setup_search_env(tmp_path_factory):
             },
             {
                 "id": "lobsterai",
-                "type": "organization",
+                "type": "project",
                 "primary_name": "LobsterAI",
                 "aliases": [],
                 "attributes": {},

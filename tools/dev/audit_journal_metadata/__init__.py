@@ -136,9 +136,9 @@ def print_report(result: MetadataAuditResult, *, use_json: bool = False) -> None
 
 
 def main() -> None:
-    from ...lib.config import JOURNALS_DIR
+    from ...lib.paths import get_journals_dir
 
-    auditor = JournalMetadataAuditor(journals_dir=JOURNALS_DIR, dry_run=True)
+    auditor = JournalMetadataAuditor(journals_dir=get_journals_dir(), dry_run=True)
     result = auditor.run()
     print_report(result, use_json=False)
 

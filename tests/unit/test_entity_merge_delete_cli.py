@@ -54,9 +54,7 @@ def _sample_graph() -> list[dict]:
 
 
 def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
-    from tools.lib.paths import USER_DATA_DIR
-
-    save_entity_graph(entities, USER_DATA_DIR / "entity_graph.yaml")
+    save_entity_graph(entities, isolated_data_dir / "entity_graph.yaml")
 
 
 def _graph_path_for(isolated_data_dir: Path) -> Path:

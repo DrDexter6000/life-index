@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from ...lib.config import JOURNALS_DIR
+from ...lib.paths import get_journals_dir
 from . import AttachmentNormalizer
 
 
@@ -16,7 +16,7 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="输出 JSON 结果")
     args = parser.parse_args()
 
-    result = AttachmentNormalizer(journals_dir=JOURNALS_DIR, dry_run=True).run()
+    result = AttachmentNormalizer(journals_dir=get_journals_dir(), dry_run=True).run()
 
     if args.json:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))

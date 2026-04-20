@@ -30,7 +30,7 @@ class TestSearchL1Index:
             encoding="utf-8",
         )
 
-        with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
+        with patch.object(l1_index, "get_by_topic_dir", return_value=index_dir):
             results = l1_index.search_l1_index("topic", "work")
 
         assert len(results) >= 1
@@ -51,7 +51,7 @@ class TestSearchL1Index:
             encoding="utf-8",
         )
 
-        with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
+        with patch.object(l1_index, "get_by_topic_dir", return_value=index_dir):
             results = l1_index.search_l1_index("project", "Life-Index")
 
         assert len(results) >= 1
@@ -72,7 +72,7 @@ class TestSearchL1Index:
             encoding="utf-8",
         )
 
-        with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
+        with patch.object(l1_index, "get_by_topic_dir", return_value=index_dir):
             results = l1_index.search_l1_index("tag", "python")
 
         assert len(results) >= 1
@@ -93,7 +93,7 @@ class TestSearchL1Index:
             encoding="utf-8",
         )
 
-        with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
+        with patch.object(l1_index, "get_by_topic_dir", return_value=index_dir):
             results = l1_index.search_l1_index("tag", "UI/UX设计")
 
         assert len(results) >= 1
@@ -105,7 +105,7 @@ class TestSearchL1Index:
         index_dir = tmp_path / "by-topic"
         index_dir.mkdir(parents=True)
 
-        with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
+        with patch.object(l1_index, "get_by_topic_dir", return_value=index_dir):
             results = l1_index.search_l1_index("topic", "nonexistent")
 
         assert results == []
@@ -124,7 +124,7 @@ class TestScanAllIndices:
         (index_dir / "主题_work.md").write_text("- [2026-03-14] [A](path/a.md)", encoding="utf-8")
         (index_dir / "主题_learn.md").write_text("- [2026-03-14] [B](path/b.md)", encoding="utf-8")
 
-        with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
+        with patch.object(l1_index, "get_by_topic_dir", return_value=index_dir):
             results = l1_index.scan_all_indices()
 
         assert len(results) >= 1
@@ -136,7 +136,7 @@ class TestScanAllIndices:
         index_dir = tmp_path / "by-topic"
         index_dir.mkdir(parents=True)
 
-        with patch.object(l1_index, "BY_TOPIC_DIR", index_dir):
+        with patch.object(l1_index, "get_by_topic_dir", return_value=index_dir):
             results = l1_index.scan_all_indices()
 
         assert results == []
