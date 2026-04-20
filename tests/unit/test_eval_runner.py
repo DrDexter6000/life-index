@@ -457,7 +457,6 @@ def test_keyword_judge_mode_unchanged(isolated_data_dir: Path) -> None:
 def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
     from tools.eval.run_eval import run_evaluation
-    from tools.search_journals import core as search_core
 
     queries = [
         {
@@ -469,18 +468,25 @@ def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
     ]
     monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: queries)
     monkeypatch.setattr(
-        search_core,
-        "hierarchical_search",
-        lambda query, level, semantic: {
-            "merged_results": [
+        "tools.eval.run_eval._evaluate_queries",
+        lambda *args, **kwargs: (
+            [
                 {
-                    "title": "团团不认真吃饭",
-                    "date": "2026-03-10",
-                    "abstract": "亲子日常",
-                    "snippet": "团团最近吃饭不认真。",
+                    "id": "Q1",
+                    "query": "团团",
+                    "category": "family",
+                    "results_found": 1,
+                    "expected_min_results": 1,
+                    "top_titles": ["团团不认真吃饭"],
+                    "precision_at_5": 0.2,
+                    "reciprocal_rank": 1.0,
+                    "first_relevant_rank": 1,
+                    "llm_scores": [3],
+                    "ndcg_at_5": 1.0,
                 }
-            ]
-        },
+            ],
+            [],
+        ),
     )
     monkeypatch.setattr(
         "tools.eval.run_eval._collect_all_journal_titles",
@@ -492,7 +498,6 @@ def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
         live=True,
         llm_client=_load_eval_llm_module().MockLLMClient(
             responses=[
-                '{"score": 3, "reason": "直接相关"}',
                 '{"expected_hits": ["想念我的女儿", "重庆过生日", "团团不认真吃饭"], "reason": "都和团团相关"}',
             ]
         ),

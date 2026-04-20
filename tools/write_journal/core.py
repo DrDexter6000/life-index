@@ -187,13 +187,16 @@ def apply_confirmation_updates(
                 normalized_ref = ref.strip()
                 if not normalized_ref:
                     continue
-                candidate = by_rel_path.get(normalized_ref)
-                if candidate is None:
-                    candidate = {
-                        "candidate_id": None,
-                        "rel_path": normalized_ref,
-                        "title": "",
-                    }
+                if normalized_ref.isdigit():
+                    candidate = by_id.get(int(normalized_ref))
+                else:
+                    candidate = by_rel_path.get(normalized_ref)
+                    if candidate is None:
+                        candidate = {
+                            "candidate_id": None,
+                            "rel_path": normalized_ref,
+                            "title": "",
+                        }
             if candidate is None:
                 return (
                     [],

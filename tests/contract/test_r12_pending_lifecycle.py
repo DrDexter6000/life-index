@@ -30,8 +30,6 @@ from tools.lib.pending_writes import (
 @pytest.fixture(autouse=True)
 def _isolate_env(tmp_path: Path, monkeypatch):
     """Isolate all path-dependent modules to tmp_path."""
-    import tools.lib.pending_writes as pw_mod
-
     idx = tmp_path / ".index"
     idx.mkdir()
     d = tmp_path / "Life-Index"
@@ -41,7 +39,6 @@ def _isolate_env(tmp_path: Path, monkeypatch):
     (d / ".cache").mkdir(parents=True)
     (d / ".cache" / "journals.lock").touch()
 
-    monkeypatch.setattr(pw_mod, "INDEX_DIR", idx)
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(d))
 
 

@@ -19,7 +19,6 @@ from tools.lib.index_manifest import IndexManifest, write_manifest
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch):
     """Isolate all paths to tmp_path."""
-    import tools.lib.pending_writes as pw_mod
     import tools.lib.vector_index_simple as vi_mod
 
     idx = tmp_path / ".index"
@@ -30,7 +29,6 @@ def _isolate(tmp_path: Path, monkeypatch):
     (d / ".cache").mkdir(parents=True)
     (d / ".cache" / "journals.lock").touch()
 
-    monkeypatch.setattr(pw_mod, "INDEX_DIR", idx)
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(d))
     monkeypatch.setattr(vi_mod, "INDEX_DIR", idx)
     monkeypatch.setattr(vi_mod, "VEC_INDEX_PATH", idx / "vectors_simple.pkl")
