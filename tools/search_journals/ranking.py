@@ -8,6 +8,24 @@ from typing import Any, Dict, List, Optional
 
 from ..lib.metadata_cache import get_backlinked_by, init_metadata_cache
 from .l2_metadata import _query_matches_tags, _query_matches_text
+
+
+def reciprocal_rank_fusion(
+    ranked_lists: List[List[str]], k: int = 60
+) -> Dict[str, float]:
+    """Compute RRF scores for items across multiple ranked lists.
+
+    Each list is a sequence of document identifiers ordered by relevance.
+    Returns a dict mapping each identifier to its fused RRF score.
+    """
+    scores: Dict[str, float] = {}
+    for lst in ranked_lists:
+        for rank_minus_one, doc_id in enumerate(lst):
+            rank = rank_minus_one + 1
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
 from .semantic import enrich_semantic_result
 from ..lib.search_constants import (
     RRF_K,
@@ -301,8 +319,8 @@ def merge_and_rank_results(
     )
 
     def _passes_threshold(item: Dict[str, Any]) -> bool:
-        tier = item.get("tier", 0)
-        score = item["score"]
+        tier: int = int(item.get("tier", 0))
+        score: float = float(item["score"])
         if tier >= 3:
             # L3 (FTS content match) uses FTS threshold
             return score >= effective_fts_threshold
