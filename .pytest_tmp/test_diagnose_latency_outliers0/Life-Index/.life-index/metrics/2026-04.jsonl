@@ -1,0 +1,3 @@
+{"ts": "2026-04-20T12:05:08Z", "query": "slow-old", "expanded_query": "slow-old", "latency_ms": 250.0, "result_count": 1, "pipeline_signal": "hybrid", "fts_results": 1, "semantic_results": 1, "warnings": [], "entity_hints_count": 0, "trace_id": "trace123"}
+{"ts": "2026-04-20T13:05:08Z", "query": "slow-new", "expanded_query": "slow-new", "latency_ms": 450.2, "result_count": 1, "pipeline_signal": "hybrid", "fts_results": 1, "semantic_results": 1, "warnings": [], "entity_hints_count": 0, "trace_id": "trace123"}
+{"ts": "2026-04-20T14:05:08Z", "query": "fast", "expanded_query": "fast", "latency_ms": 120.0, "result_count": 1, "pipeline_signal": "hybrid", "fts_results": 1, "semantic_results": 1, "warnings": [], "entity_hints_count": 0, "trace_id": "trace123"}

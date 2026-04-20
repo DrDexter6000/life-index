@@ -1,0 +1,424 @@
+{
+  "timestamp": "2026-04-20T14:04:41.268121+00:00",
+  "commit": "17dee06",
+  "python_version": "3.12.10",
+  "tokenizer_version": 2,
+  "judge_mode": "keyword",
+  "live_mode": false,
+  "semantic_enabled": false,
+  "total_queries": 24,
+  "metrics": {
+    "mrr_at_5": 0.6667,
+    "recall_at_5": 0.8947,
+    "precision_at_5": 0.798
+  },
+  "by_category": {
+    "chinese_recall": {
+      "mrr_at_5": 1.0,
+      "recall_at_5": 1.0,
+      "precision_at_5": 1.0,
+      "query_count": 4
+    },
+    "entity_expansion": {
+      "mrr_at_5": 0.625,
+      "recall_at_5": 0.75,
+      "precision_at_5": 0.4,
+      "query_count": 4
+    },
+    "noise_rejection": {
+      "mrr_at_5": 0.0,
+      "recall_at_5": 0.0,
+      "precision_at_5": 0.0,
+      "query_count": 4
+    },
+    "english_regression": {
+      "mrr_at_5": 1.0,
+      "recall_at_5": 1.0,
+      "precision_at_5": 1.0,
+      "query_count": 4
+    },
+    "cross_language": {
+      "mrr_at_5": 0.375,
+      "recall_at_5": 0.6667,
+      "precision_at_5": 0.5834,
+      "query_count": 4
+    },
+    "high_frequency": {
+      "mrr_at_5": 1.0,
+      "recall_at_5": 1.0,
+      "precision_at_5": 0.8,
+      "query_count": 4
+    }
+  },
+  "per_query": [
+    {
+      "id": "GQ01",
+      "query": "想念我的女儿",
+      "category": "chinese_recall",
+      "results_found": 2,
+      "top_titles": [
+        "想念我的女儿",
+        "想念尿片侠"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ02",
+      "query": "重庆过生日",
+      "category": "chinese_recall",
+      "results_found": 1,
+      "top_titles": [
+        "重庆过生日"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ03",
+      "query": "数字灵魂",
+      "category": "chinese_recall",
+      "results_found": 2,
+      "top_titles": [
+        "读《三体》有感",
+        "重庆过生日"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ04",
+      "query": "边缘计算",
+      "category": "chinese_recall",
+      "results_found": 1,
+      "top_titles": [
+        "Life Index 架构重构"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ05",
+      "query": "团团",
+      "category": "entity_expansion",
+      "results_found": 5,
+      "top_titles": [
+        "想念尿片侠",
+        "想念我的女儿",
+        "团团不认真吃饭",
+        "LobsterAI 项目启动",
+        "重庆过生日"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.6,
+      "expected_min_results": 3,
+      "pass": true
+    },
+    {
+      "id": "GQ06",
+      "query": "尿片侠",
+      "category": "entity_expansion",
+      "results_found": 5,
+      "top_titles": [
+        "想念尿片侠",
+        "想念我的女儿",
+        "团团不认真吃饭",
+        "LobsterAI 项目启动",
+        "重庆过生日"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.4,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ07",
+      "query": "小疙瘩",
+      "category": "entity_expansion",
+      "results_found": 5,
+      "top_titles": [
+        "想念尿片侠",
+        "想念我的女儿",
+        "团团不认真吃饭",
+        "LobsterAI 项目启动",
+        "重庆过生日"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.2,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ08",
+      "query": "想念尿片侠",
+      "category": "entity_expansion",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ09",
+      "query": "人生碎片",
+      "category": "noise_rejection",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ10",
+      "query": "兴奋",
+      "category": "noise_rejection",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ11",
+      "query": "investment strategy",
+      "category": "noise_rejection",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ12",
+      "query": "！！！",
+      "category": "noise_rejection",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ13",
+      "query": "Google Stitch",
+      "category": "english_regression",
+      "results_found": 1,
+      "top_titles": [
+        "Google Stitch 集成测试"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ14",
+      "query": "integration testing",
+      "category": "english_regression",
+      "results_found": 1,
+      "top_titles": [
+        "Google Stitch 集成测试"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ15",
+      "query": "dynamic loading",
+      "category": "english_regression",
+      "results_found": 1,
+      "top_titles": [
+        "OpenClaw 部署优化"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ16",
+      "query": "deployment",
+      "category": "english_regression",
+      "results_found": 2,
+      "top_titles": [
+        "OpenClaw 部署优化",
+        "Google Stitch 集成测试"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ17",
+      "query": "AI 算力",
+      "category": "cross_language",
+      "results_found": 3,
+      "top_titles": [
+        "LobsterAI 项目启动",
+        "人工智能伦理讨论",
+        "Life Index 架构重构"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.6667,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ18",
+      "query": "my daughter 团团",
+      "category": "cross_language",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ19",
+      "query": "OpenClaw deployment",
+      "category": "cross_language",
+      "results_found": 2,
+      "top_titles": [
+        "OpenClaw 部署优化",
+        "Google Stitch 集成测试"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.5,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ20",
+      "query": "团团 OpenClaw",
+      "category": "cross_language",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ21",
+      "query": "Life Index",
+      "category": "high_frequency",
+      "results_found": 10,
+      "top_titles": [
+        "Life Index 架构重构",
+        "团团不认真吃饭",
+        "重庆过生日",
+        "OpenClaw 部署优化",
+        "LobsterAI 项目启动"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.2,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ22",
+      "query": "OpenClaw",
+      "category": "high_frequency",
+      "results_found": 2,
+      "top_titles": [
+        "OpenClaw 部署优化",
+        "Google Stitch 集成测试"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ23",
+      "query": "LobsterAI",
+      "category": "high_frequency",
+      "results_found": 1,
+      "top_titles": [
+        "LobsterAI 项目启动"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ24",
+      "query": "AI算力投资策略",
+      "category": "high_frequency",
+      "results_found": 3,
+      "top_titles": [
+        "LobsterAI 项目启动",
+        "人工智能伦理讨论",
+        "Life Index 架构重构"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 2,
+      "pass": true
+    }
+  ],
+  "failures": [
+    {
+      "id": "GQ08",
+      "query": "想念尿片侠",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ18",
+      "query": "my daughter 团团",
+      "reason": "Expected >= 1 results, got 0"
+    }
+  ],
+  "recall_gaps": [],
+  "summary_lines": [
+    "Queries: 24",
+    "MRR@5: 0.6667",
+    "Recall@5: 0.8947",
+    "Precision@5: 0.7980",
+    "Failures: 2",
+    "FAIL GQ08 \"想念尿片侠\" — Expected >= 2 results, got 0",
+    "FAIL GQ18 \"my daughter 团团\" — Expected >= 1 results, got 0"
+  ]
+}

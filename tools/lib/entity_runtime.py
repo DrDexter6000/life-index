@@ -78,9 +78,7 @@ class EntityRuntimeView:
 
     entities: list[dict[str, Any]]
     by_lookup: dict[str, dict[str, Any]] = field(default_factory=dict)
-    reverse_relationships: dict[str, list[tuple[str, str]]] = field(
-        default_factory=dict
-    )
+    reverse_relationships: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     phrase_patterns: list[dict[str, str]] = field(default_factory=list)
 
 

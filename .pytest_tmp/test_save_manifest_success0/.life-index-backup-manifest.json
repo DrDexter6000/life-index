@@ -1,0 +1,12 @@
+{
+  "backups": [
+    {
+      "timestamp": "20260320_120000"
+    }
+  ],
+  "files": {
+    "test.txt": {
+      "hash": "abc123"
+    }
+  }
+}

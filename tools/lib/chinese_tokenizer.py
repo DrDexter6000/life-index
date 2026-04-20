@@ -28,7 +28,6 @@ from typing import Any
 
 import yaml
 
-
 _jieba_initialized = False
 _jieba_module: Any | None = None
 _entity_dict_loaded: bool = False
@@ -198,7 +197,10 @@ def _ensure_jieba_initialized() -> Any:
 
 
 def _keep_token(token: str) -> bool:
-    """Return True when a token contains searchable content (at least one alphanumeric or CJK char)."""
+    """Return True when a token contains searchable content.
+
+    At least one alphanumeric or CJK char required.
+    """
     stripped = token.strip()
     if not stripped:
         return False

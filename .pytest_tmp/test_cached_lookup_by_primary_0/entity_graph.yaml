@@ -1,0 +1,17 @@
+entities:
+- id: wife-001
+  type: person
+  primary_name: 王某某
+  aliases:
+  - 团团妈
+  - 老婆
+  attributes: {}
+  relationships:
+  - target: author-self
+    relation: spouse_of
+- id: author-self
+  type: person
+  primary_name: 我
+  aliases: []
+  attributes: {}
+  relationships: []

@@ -1,0 +1,1 @@
+{"ts": "2026-04-20T14:06:08Z", "query": "test", "expanded_query": "", "latency_ms": 0.0, "result_count": 1, "pipeline_signal": "degraded", "fts_results": 1, "semantic_results": 0, "warnings": ["semantic_unavailable: 向量索引未建立，请运行 life-index index"], "entity_hints_count": 0, "trace_id": "e530729a"}

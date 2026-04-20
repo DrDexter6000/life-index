@@ -1,0 +1,11 @@
+entities:
+- aliases: []
+  id: p1
+  primary_name: 妈妈
+  relationships: []
+  type: person
+- aliases: []
+  id: p2
+  primary_name: 母亲
+  relationships: []
+  type: person

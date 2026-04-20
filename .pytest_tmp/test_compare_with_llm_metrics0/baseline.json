@@ -1,0 +1,1 @@
+{"metrics": {"mrr_at_5": 0.85, "recall_at_5": 0.9, "precision_at_5": 0.75, "ndcg_at_5": 0.8}, "per_query": [{"id": "Q1", "query": "团团", "pass": true, "first_relevant_rank": 1}], "recall_gaps": [{"query_id": "Q1", "expected_but_missed": ["想念我的女儿"]}]}

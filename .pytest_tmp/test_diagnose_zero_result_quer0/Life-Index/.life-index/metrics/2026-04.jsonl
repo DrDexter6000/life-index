@@ -1,0 +1,3 @@
+{"ts": "2026-04-20T14:05:08Z", "query": "人生碎片", "expanded_query": "人生碎片", "latency_ms": 30.0, "result_count": 0, "pipeline_signal": "hybrid", "fts_results": 1, "semantic_results": 1, "warnings": [], "entity_hints_count": 0, "trace_id": "trace123"}
+{"ts": "2026-04-19T14:05:08Z", "query": "兴奋", "expanded_query": "兴奋", "latency_ms": 40.0, "result_count": 0, "pipeline_signal": "hybrid", "fts_results": 1, "semantic_results": 1, "warnings": [], "entity_hints_count": 0, "trace_id": "trace123"}
+{"ts": "2026-04-18T14:05:08Z", "query": "人生碎片", "expanded_query": "人生碎片", "latency_ms": 50.0, "result_count": 0, "pipeline_signal": "hybrid", "fts_results": 1, "semantic_results": 1, "warnings": [], "entity_hints_count": 0, "trace_id": "trace123"}
