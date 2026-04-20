@@ -1,0 +1,4 @@
+llm:
+  api_key: saved-key
+  base_url: https://saved.example/v1
+  model: saved-model

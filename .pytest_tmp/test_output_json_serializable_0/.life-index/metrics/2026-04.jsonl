@@ -1,0 +1,1 @@
+{"ts": "2026-04-20T14:00:12Z", "query": "过去60天我有多少次晚于10点睡觉？", "expanded_query": "", "latency_ms": 135.56, "result_count": 0, "pipeline_signal": "hybrid", "fts_results": 0, "semantic_results": 0, "warnings": ["index_stale: no_manifest: No index manifest found, run 'life-index index'"], "entity_hints_count": 0, "trace_id": "80b06c14"}

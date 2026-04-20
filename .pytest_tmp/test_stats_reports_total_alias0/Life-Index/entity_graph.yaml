@@ -1,0 +1,36 @@
+entities:
+- id: person-a
+  type: person
+  primary_name: 张三
+  aliases:
+  - 老张
+  - 张哥
+  attributes: {}
+  relationships:
+  - target: person-b
+    relation: colleague_of
+  - target: place-001
+    relation: lives_in
+- id: person-b
+  type: person
+  primary_name: 李四
+  aliases: []
+  attributes: {}
+  relationships:
+  - target: person-a
+    relation: colleague_of
+- id: place-001
+  type: place
+  primary_name: 拉各斯
+  aliases:
+  - Lagos
+  attributes: {}
+  relationships: []
+- id: project-001
+  type: project
+  primary_name: LifeIndex
+  aliases:
+  - LI
+  - life-index
+  attributes: {}
+  relationships: []

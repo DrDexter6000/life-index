@@ -1,0 +1,13 @@
+entities:
+- id: mama
+  type: person
+  primary_name: 妈妈
+  aliases: []
+  attributes: {}
+  relationships: []
+- id: cq
+  type: place
+  primary_name: 重庆
+  aliases: []
+  attributes: {}
+  relationships: []

@@ -9,7 +9,6 @@ import math
 import os
 import platform
 import subprocess
-import sys
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -176,13 +175,14 @@ def _llm_first_relevant_rank(llm_scores: list[int]) -> int | None:
 def _build_precision_prompt(query: str, result: dict[str, Any]) -> str:
     abstract = str(result.get("abstract", ""))
     snippet = str(result.get("snippet", result.get("content", abstract)))[:200]
-    return _get_prompts_module().PRECISION_JUDGE_PROMPT.format(
+    result_str: str = _get_prompts_module().PRECISION_JUDGE_PROMPT.format(
         query=query,
         title=str(result.get("title", "")),
         date=str(result.get("date", "")),
         abstract=abstract,
         snippet=snippet,
     )
+    return result_str
 
 
 def _llm_score_result(
@@ -626,7 +626,10 @@ def generate_summary_lines(diff: dict[str, Any]) -> list[str]:
         delta = float(payload["delta"])
         arrow = "▲" if delta > 0 else "▼" if delta < 0 else "→"
         lines.append(
-            f"  {metric_labels[metric_name]:<14}{float(payload['baseline']):.4f} → {float(payload['current']):.4f}  ({arrow} {delta:+.4f})"
+            f"  {metric_labels[metric_name]:<14}"
+            f"{float(payload['baseline']):.4f} → "
+            f"{float(payload['current']):.4f}  "
+            f"({arrow} {delta:+.4f})"
         )
 
     recall_gap_changes = diff.get("recall_gap_changes", [])
@@ -645,7 +648,10 @@ def generate_summary_lines(diff: dict[str, Any]) -> list[str]:
                 item.get("current_expected_total", len(current_missed))
             )
             lines.append(
-                f'  {item.get("query_id", "")} "{item.get("query", "")}": 漏检 {len(current_missed)}/{expected_total} expected ({", ".join(current_missed)})'
+                f'  {item.get("query_id", "")} '
+                f'"{item.get("query", "")}": '
+                f"漏检 {len(current_missed)}/{expected_total} "
+                f"expected ({', '.join(current_missed)})"
             )
 
     lines.extend(["", f"Regressions: {len(diff.get('regressions', []))}"])

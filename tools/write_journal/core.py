@@ -6,7 +6,7 @@ Life Index - Write Journal Tool - Core
 
 import re
 from pathlib import Path
-from typing import Any, Dict, Sequence, Tuple
+from typing import Any, Dict, Sequence
 
 from ..lib.config import (
     JOURNALS_DIR,
@@ -431,7 +431,7 @@ def apply_confirmation_updates(
     return result
 
 
-def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
+def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:  # noqa: C901
     """
     写入日志的主函数
     自动处理默认值和天气查询

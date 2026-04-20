@@ -1,0 +1,10 @@
+{
+  "fts_count": 0,
+  "vector_count": 0,
+  "file_count": 0,
+  "fts_checksum": "3ea65372531edd29e87e822409f0448c",
+  "vector_checksum": "9d1bcb3ae163fa48c36932b978ab99c9",
+  "build_timestamp": "2026-04-20T15:00:08.869837",
+  "build_version": "2.0.0",
+  "partial": false
+}

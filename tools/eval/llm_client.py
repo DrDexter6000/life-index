@@ -9,10 +9,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from anthropic import Anthropic
-from openai import OpenAI
-
-
 LLM_TIMEOUT_SECONDS = 30.0
 
 
@@ -94,16 +90,20 @@ def parse_json_response(raw: str) -> dict[str, Any]:
 
 
 def _query_openai(prompt: str, model: str, temperature: float) -> str:
+    from openai import OpenAI
+
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=LLM_TIMEOUT_SECONDS)
     response = client.responses.create(
         model=model,
         temperature=temperature,
         input=prompt,
     )
-    return response.output_text
+    return str(response.output_text)
 
 
 def _query_anthropic(prompt: str, model: str, temperature: float) -> str:
+    from anthropic import Anthropic
+
     anthropic_model = model if model.startswith("claude") else "claude-3-5-haiku-latest"
     client = Anthropic(
         api_key=os.environ["ANTHROPIC_API_KEY"], timeout=LLM_TIMEOUT_SECONDS

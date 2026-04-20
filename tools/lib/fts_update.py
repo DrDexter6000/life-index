@@ -244,8 +244,11 @@ def update_index(
                 # 插入新记录
                 cursor.execute(
                     """
-                    INSERT INTO journals (path, title, content, date, location, weather,
-                                        topic, project, tags, mood, people, file_hash, modified_time)
+                    INSERT INTO journals (
+                        path, title, content, date, location, weather,
+                        topic, project, tags, mood, people,
+                        file_hash, modified_time
+                    )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (

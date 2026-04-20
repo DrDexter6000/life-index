@@ -1,0 +1,18 @@
+{
+  "files": {
+    "Journals/2026\\03\\test.md": {
+      "hash": "9a0364b9e99bb480dd25e1f0284c8555",
+      "mtime": 1776693793.1838782,
+      "size": 7
+    }
+  },
+  "backups": [
+    {
+      "timestamp": "20260420_150313",
+      "type": "incremental",
+      "path": "D:\\Loster AI\\Projects\\life-index\\.pytest_tmp\\test_create_backup_manifest_wi0\\backup_dest\\life-index-backup-20260420_150313",
+      "files_backed_up": 1,
+      "files_skipped": 0
+    }
+  ]
+}

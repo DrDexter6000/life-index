@@ -1,0 +1,33 @@
+entities:
+- id: author-self
+  type: person
+  primary_name: 我
+  aliases: []
+  relationships:
+  - target: tuantuan
+    relation: child_of
+  - target: mama
+    relation: parent_of
+  - target: wife
+    relation: spouse_of
+- id: tuantuan
+  type: person
+  primary_name: 团团
+  aliases:
+  - 小疙瘩
+  - 尿片侠
+  relationships: []
+- id: mama
+  type: person
+  primary_name: 妈妈
+  aliases:
+  - 老妈
+  relationships:
+  - target: tuantuan
+    relation: grandmother_of
+- id: wife
+  type: person
+  primary_name: 老婆
+  aliases:
+  - 妻子
+  relationships: []

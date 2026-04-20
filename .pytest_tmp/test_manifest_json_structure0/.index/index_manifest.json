@@ -1,0 +1,10 @@
+{
+  "fts_count": 3,
+  "vector_count": 3,
+  "file_count": 3,
+  "fts_checksum": "sha_fts",
+  "vector_checksum": "sha_vec",
+  "build_timestamp": "2026-04-18T15:00:00",
+  "build_version": "2.0.0",
+  "partial": false
+}

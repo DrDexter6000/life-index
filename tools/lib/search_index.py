@@ -85,7 +85,10 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
 
 
 def write_index_meta(conn: sqlite3.Connection) -> None:
-    """Write tokenizer_version, dict_hash, schema_version, and last_updated into index_meta table."""
+    """Write tokenizer_version, dict_hash, schema_version, and last_updated.
+
+    These values are written into the index_meta table.
+    """
     from datetime import datetime, timezone
 
     cursor = conn.cursor()

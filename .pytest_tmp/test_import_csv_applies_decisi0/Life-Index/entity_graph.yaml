@@ -1,0 +1,25 @@
+entities:
+- id: person-a
+  type: person
+  primary_name: 王晓丽
+  aliases:
+  - 小王
+  attributes: {}
+  relationships:
+  - target: person-c
+    relation: colleague_of
+- id: person-b
+  type: person
+  primary_name: 王晓里
+  aliases:
+  - 老王
+  attributes: {}
+  relationships:
+  - target: person-c
+    relation: friend_of
+- id: person-c
+  type: person
+  primary_name: 李四
+  aliases: []
+  attributes: {}
+  relationships: []

@@ -1,0 +1,17 @@
+entities:
+- id: mama
+  type: person
+  primary_name: 妈妈
+  aliases:
+  - 老妈
+  - 婆婆
+  attributes: {}
+  relationships: []
+- id: chongqing
+  type: place
+  primary_name: 重庆
+  aliases:
+  - 老家
+  - 山城
+  attributes: {}
+  relationships: []

@@ -1,0 +1,19 @@
+entities:
+- id: seed_person_团团
+  type: person
+  primary_name: 团团
+  aliases: []
+  attributes:
+    seed_source: frontmatter
+    seed_field: people
+    occurrence_count: 2
+  relationships: []
+- id: seed_person_妈妈
+  type: person
+  primary_name: 妈妈
+  aliases: []
+  attributes:
+    seed_source: frontmatter
+    seed_field: people
+    occurrence_count: 2
+  relationships: []
