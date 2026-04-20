@@ -22,9 +22,7 @@ def _emit_json(payload: dict[str, Any]) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Life Index - Search evaluation")
     parser.add_argument("--data-dir", type=Path, help="Use a specific data directory")
-    parser.add_argument(
-        "--save-baseline", type=Path, help="Save current evaluation result to JSON"
-    )
+    parser.add_argument("--save-baseline", type=Path, help="Save current evaluation result to JSON")
     parser.add_argument(
         "--compare-baseline",
         type=Path,
