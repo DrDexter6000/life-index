@@ -398,10 +398,11 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     # CREATE VIRTUAL TABLE IF NOT EXISTS silently preserves old schema.
     from typing import Callable
 
+    def _recreate() -> sqlite3.Connection:
+        return init_fts_db(force_recreate=True)
+
     init_func: Callable[[], sqlite3.Connection] = (
-        init_fts_db
-        if incremental
-        else lambda: init_fts_db(force_recreate=True)  # type: ignore[misc]
+        init_fts_db if incremental else _recreate
     )
 
     result = _update_index(

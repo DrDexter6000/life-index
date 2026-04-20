@@ -210,5 +210,6 @@ skips = [
     "B108",  # hardcoded_tmp_directory - temp paths are for file identification
     "B301",  # pickle - used for vector index fallback storage, trusted local data only
     "B310",  # urllib_urlopen - used for weather API, trusted external services
+    "B608",  # hardcoded_sql_expressions - all SQL uses hardcoded table/column names, no user input
 ]
 
