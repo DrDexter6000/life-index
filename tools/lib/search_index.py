@@ -401,9 +401,7 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     def _recreate() -> sqlite3.Connection:
         return init_fts_db(force_recreate=True)
 
-    init_func: Callable[[], sqlite3.Connection] = (
-        init_fts_db if incremental else _recreate
-    )
+    init_func: Callable[[], sqlite3.Connection] = init_fts_db if incremental else _recreate
 
     result = _update_index(
         init_func, get_fts_db_path(), get_journals_dir(), get_user_data_dir(), incremental
