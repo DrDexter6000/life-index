@@ -92,8 +92,8 @@ class TestIndexRebuilder:
     def test_resolve_link_absolute(self, monkeypatch, tmp_path) -> None:
         """Test resolving absolute paths"""
         from tools.dev import rebuild_indices as ri_mod
-        fake_journals = Path("/data")
-        monkeypatch.setattr(ri_mod, "get_journals_dir", lambda: fake_journals)
+        fake_data_dir = Path("/data")
+        monkeypatch.setattr(ri_mod, "get_user_data_dir", lambda: fake_data_dir)
         rebuilder = IndexRebuilder()
         result = rebuilder._resolve_link(Path("/some/file.md"), "/Journals/test.md")
         assert result == Path("/data/Journals/test.md")
