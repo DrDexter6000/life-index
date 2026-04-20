@@ -168,7 +168,7 @@ def print_report(result: TempDataDirResult, *, use_json: bool = False) -> None:
 
 
 def main() -> None:
-    from ...lib.config import USER_DATA_DIR
+    from ...lib.paths import get_user_data_dir
 
     parser = argparse.ArgumentParser(description="Life Index 手工调试隔离目录工具")
     parser.add_argument("--seed", action="store_true", help="复制当前用户数据到临时目录")
@@ -182,7 +182,7 @@ def main() -> None:
     args = parser.parse_args()
 
     session = TempDataDirSession(
-        source_data_dir=USER_DATA_DIR,
+        source_data_dir=get_user_data_dir(),
         seed=args.seed,
         name=args.name,
     )

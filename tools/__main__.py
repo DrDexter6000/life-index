@@ -27,7 +27,8 @@ from typing import Any, Dict, List, Tuple, cast
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 
-from tools.lib.config import USER_DATA_DIR, JOURNALS_DIR, get_model_cache_dir
+from tools.lib.config import get_model_cache_dir  # noqa: F401 — used via monkeypatch in tests
+from tools.lib.paths import get_user_data_dir, get_journals_dir
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
 
@@ -147,8 +148,8 @@ def _check_sentence_transformers() -> Tuple[Dict[str, Any], str]:
 
 def _check_data_dir() -> Tuple[Dict[str, Any], str]:
     """检查数据目录"""
-    data_dir = USER_DATA_DIR
-    journals_dir = JOURNALS_DIR
+    data_dir = get_user_data_dir()
+    journals_dir = get_journals_dir()
     data_exists = data_dir.exists()
     journal_count = 0
     if journals_dir.exists():
@@ -172,12 +173,12 @@ def _check_data_dir() -> Tuple[Dict[str, Any], str]:
 
 def _check_index() -> Tuple[Dict[str, Any], str]:
     """检查索引状态"""
-    data_dir = USER_DATA_DIR
+    data_dir = get_user_data_dir()
     index_dir = data_dir / ".index"
     fts_db = index_dir / "journals_fts.db"
     vec_db = index_dir / "journals_vec.db"
     vec_pkl = index_dir / "vectors_simple.pkl"
-    data_exists = USER_DATA_DIR.exists()
+    data_exists = get_user_data_dir().exists()
     check = {
         "name": "search_index",
         "status": "ok" if fts_db.exists() else "info",
@@ -191,27 +192,28 @@ def _check_index() -> Tuple[Dict[str, Any], str]:
 
 
 def _check_embedding_model() -> Dict[str, Any]:
-    """检查嵌入模型缓存"""
     try:
-        cache_dir = get_model_cache_dir()
-        model_files = [f for f in cache_dir.rglob("*") if f.is_file()] if cache_dir.exists() else []
-        model_downloaded = len(model_files) > 0
-        cache_size_mb = 0.0
-        if cache_dir.exists():
-            total_bytes = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file())
-            cache_size_mb = round(total_bytes / (1024 * 1024), 2)
-        check = {
+        from tools.lib.paths import get_user_data_dir
+
+        model_dir = get_user_data_dir() / ".index" / "models"
+        check: Dict[str, Any] = {
             "name": "embedding_model",
-            "status": "ok" if model_downloaded else "info",
-            "downloaded": model_downloaded,
-            "cache_dir": str(cache_dir),
-            "cache_size_mb": cache_size_mb,
+            "status": "ok",
+            "downloaded": False,
         }
-        if not model_downloaded:
-            check["issue"] = (
-                "Embedding model not downloaded yet. "
-                "Run: life-index index (will download model files automatically)"
-            )
+
+        if model_dir.exists() and any(model_dir.iterdir()):
+            check["downloaded"] = True
+        else:
+            # Check HuggingFace cache as fallback
+            hf_cache = Path.home() / ".cache" / "huggingface"
+            if hf_cache.exists():
+                check["downloaded"] = True
+            else:
+                check["status"] = "warning"
+                check["issue"] = (
+                    "Embedding model not cached — first semantic search will download (~2GB)"
+                )
         return check
     except Exception:
         return {
@@ -220,6 +222,38 @@ def _check_embedding_model() -> Dict[str, Any]:
             "downloaded": False,
             "error": "Could not check model cache (config import failed)",
         }
+
+
+def _check_entity_graph(graph_path: Path) -> Dict[str, Any]:
+    """Check if entity graph exists and is populated (Round 10, T1.3)."""
+    check: Dict[str, Any] = {
+        "name": "entity_graph",
+        "status": "ok",
+        "entity_count": 0,
+        "suggested_command": None,
+    }
+
+    if not graph_path.exists():
+        check["status"] = "warning"
+        check["issue"] = "Entity graph not found — search may miss alias-based expansion"
+        check["suggested_command"] = "life-index entity --seed"
+        return check
+
+    try:
+        from tools.lib.entity_graph import load_entity_graph
+
+        entities = load_entity_graph(graph_path)
+        check["entity_count"] = len(entities)
+
+        if len(entities) == 0:
+            check["status"] = "warning"
+            check["issue"] = "Entity graph is empty — run seed to create initial graph"
+            check["suggested_command"] = "life-index entity --seed"
+    except Exception as e:
+        check["status"] = "warning"
+        check["issue"] = f"Entity graph error: {e}"
+
+    return check
 
 
 def health_check() -> None:
@@ -283,6 +317,15 @@ def health_check() -> None:
     if check.get("issue"):
         issues.append(check["issue"])
 
+    # 8. Entity graph (Round 10, T1.3)
+    from tools.lib.paths import resolve_user_data_dir
+
+    graph_path = resolve_user_data_dir() / "entity_graph.yaml"
+    check = _check_entity_graph(graph_path)
+    checks.append(check)
+    if check.get("issue"):
+        issues.append(check["issue"])
+
     # Build result
     overall = "healthy" if not has_critical else "unhealthy"
     if not has_critical and issues:
@@ -303,10 +346,34 @@ def health_check() -> None:
     from tools.lib.event_detectors import register_all_detectors
 
     register_all_detectors()
-    context = {"journals_dir": JOURNALS_DIR, "data_dir": USER_DATA_DIR}
+    context = {"journals_dir": get_journals_dir(), "data_dir": get_user_data_dir()}
     events = detect_events(context=context)
     result["events"] = [e.to_dict() for e in events]
 
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _run_data_audit() -> None:
+    """Run data directory audit and print JSON result."""
+    from tools.lib.data_audit import audit_data_directory
+
+    report = audit_data_directory(get_user_data_dir())
+    result = {
+        "success": True,
+        "data": {
+            "file_count": report.file_count,
+            "anomalies": [
+                {
+                    "type": a.type,
+                    "severity": a.severity,
+                    "description": a.description,
+                    "path": a.path,
+                }
+                for a in report.anomalies
+            ],
+            "distribution": report.distribution,
+        },
+    }
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
@@ -320,7 +387,11 @@ def main() -> None:
 
     # Handle health check directly (no submodule import needed)
     if subcmd == "health":
-        health_check()
+        # Check for --data-audit flag
+        if "--data-audit" in sys.argv[2:]:
+            _run_data_audit()
+        else:
+            health_check()
         return
 
     if subcmd == "--version":
@@ -384,6 +455,7 @@ def print_usage() -> None:
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")
     print("  health    Check installation health")
+    print("            --data-audit  Audit data directory for anomalies")
     print("  version   Show package and bootstrap manifest version info")
     print()
     print("Run 'life-index <command> --help' for command-specific options.")

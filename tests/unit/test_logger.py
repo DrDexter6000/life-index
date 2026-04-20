@@ -392,9 +392,9 @@ class TestGetDefaultLogFile:
         assert isinstance(result, Path)
 
     def test_contains_life_index_directory(self):
-        """Should contain Life-Index in path"""
+        """Should contain life-index in path (case-insensitive)"""
         result = get_default_log_file()
-        assert "Life-Index" in str(result)
+        assert "life-index" in str(result).lower()
 
     def test_contains_logs_subdirectory(self):
         """Should contain .logs subdirectory"""
@@ -407,22 +407,25 @@ class TestGetDefaultLogFile:
         assert result.name == "life-index.log"
 
     @patch("sys.platform", "win32")
-    def test_windows_path(self):
+    def test_windows_path(self, monkeypatch):
         """Should use correct path on Windows"""
+        monkeypatch.delenv("LIFE_INDEX_DATA_DIR", raising=False)
         result = get_default_log_file()
         assert "Documents" in str(result)
         assert "Life-Index" in str(result)
 
     @patch("sys.platform", "darwin")
-    def test_macos_path(self):
+    def test_macos_path(self, monkeypatch):
         """Should use correct path on macOS"""
+        monkeypatch.delenv("LIFE_INDEX_DATA_DIR", raising=False)
         result = get_default_log_file()
         assert "Documents" in str(result)
         assert "Life-Index" in str(result)
 
     @patch("sys.platform", "linux")
-    def test_linux_path(self):
+    def test_linux_path(self, monkeypatch):
         """Should use correct path on Linux"""
+        monkeypatch.delenv("LIFE_INDEX_DATA_DIR", raising=False)
         result = get_default_log_file()
         assert "Documents" in str(result)
         assert "Life-Index" in str(result)

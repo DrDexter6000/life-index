@@ -172,14 +172,14 @@ def print_report(result: TopicTaxonomyResult, *, use_json: bool = False) -> None
 
 
 def main() -> None:
-    from ...lib.config import JOURNALS_DIR
+    from ...lib.paths import get_journals_dir
 
     parser = argparse.ArgumentParser(description="Life Index Topic Taxonomy 治理工具")
     parser.add_argument("--fix", action="store_true", help="应用安全的标准主题映射")
     parser.add_argument("--json", action="store_true", help="JSON 格式输出")
     args = parser.parse_args()
 
-    result = TopicTaxonomyNormalizer(journals_dir=JOURNALS_DIR, dry_run=not args.fix).run()
+    result = TopicTaxonomyNormalizer(journals_dir=get_journals_dir(), dry_run=not args.fix).run()
     print_report(result, use_json=args.json)
 
 

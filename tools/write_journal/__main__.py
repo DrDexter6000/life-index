@@ -14,7 +14,7 @@ from .core import write_journal
 from .prepare import prepare_journal_metadata
 from ..lib.config import ensure_dirs
 from ..lib.errors import ErrorCode, create_error_response
-from ..lib.paths import JOURNALS_DIR, USER_DATA_DIR
+from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.trace import Trace
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ def _emit_json(payload: dict) -> None:
     from ..lib.event_detectors import register_all_detectors
 
     register_all_detectors()
-    context = {"journals_dir": JOURNALS_DIR, "data_dir": USER_DATA_DIR}
+    context = {"journals_dir": get_journals_dir(), "data_dir": get_user_data_dir()}
     events = detect_events(context=context)
     payload["events"] = [e.to_dict() for e in events]
 

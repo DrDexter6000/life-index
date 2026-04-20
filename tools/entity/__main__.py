@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from tools.lib.entity_graph import load_entity_graph, resolve_entity, save_entity_graph
-from tools.lib.paths import resolve_user_data_dir
+from tools.lib.paths import get_user_data_dir
 
 
 def _graph_path() -> Path:
-    return resolve_user_data_dir() / "entity_graph.yaml"
+    return get_user_data_dir() / "entity_graph.yaml"
 
 
 def _print(payload: dict[str, Any]) -> None:
@@ -53,6 +53,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--export", dest="export_format", choices=["csv", "xlsx"])
     parser.add_argument("--import", dest="import_file")
     parser.add_argument("--output", dest="output_file")
+    parser.add_argument(
+        "--seed", action="store_true", help="Cold-start graph from journal frontmatter"
+    )
     args = parser.parse_args(argv)
 
     graph_path = _graph_path()
@@ -101,11 +104,12 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.audit:
         from tools.entity.audit import audit_entity_graph
-        from tools.lib.paths import JOURNALS_DIR
+        from tools.lib.paths import get_journals_dir
 
+        _journals_dir = get_journals_dir()
         report = audit_entity_graph(
             graph_path,
-            journals_dir=JOURNALS_DIR if JOURNALS_DIR.exists() else None,
+            journals_dir=_journals_dir if _journals_dir.exists() else None,
         )
         _print({"success": True, "data": report, "error": None})
         return
@@ -136,7 +140,7 @@ def main(argv: list[str] | None = None) -> None:
             output_path = (
                 Path(args.output_file)
                 if args.output_file
-                else resolve_user_data_dir() / f"review_queue.{args.export_format}"
+                else get_user_data_dir() / f"review_queue.{args.export_format}"
             )
 
             if args.export_format == "csv":
@@ -255,6 +259,14 @@ def main(argv: list[str] | None = None) -> None:
                 "error": None,
             }
         )
+        return
+
+    if args.seed:
+        from tools.entity.seed import seed_entity_graph
+        from tools.lib.paths import get_journals_dir
+
+        result = seed_entity_graph(graph_path, get_journals_dir())
+        _print(result)
         return
 
     parser.print_help()

@@ -198,6 +198,33 @@ class TestStopWordFiltering:
         assert len(CHINESE_STOP_WORDS) >= 35
 
 
+# ── Round 13 Phase 3 T3.4: Stopword system synchronization ──────────
+
+
+class TestStopwordSync:
+    """Tests for consistency between CHINESE_STOP_WORDS and stopwords_zh.txt."""
+
+    def test_fts_query_mode_filters_function_word_de(self) -> None:
+        """'得' should be filtered in FTS query mode."""
+        result = _tokens(segment_for_fts("跑得快", mode="query"))
+        assert "得" not in result
+
+    def test_chinese_stop_words_includes_de(self) -> None:
+        """'得' should be in CHINESE_STOP_WORDS."""
+        assert "得" in CHINESE_STOP_WORDS
+
+    def test_key_function_words_in_both_systems(self) -> None:
+        """Critical high-frequency function words should be in both stopword sets."""
+        from tools.search_journals.stopwords import load_stopwords
+
+        zh_sw = load_stopwords("zh")
+        # These words must be in BOTH systems for consistency
+        critical_words = ["的", "了", "在", "是", "有", "和", "就", "也"]
+        for word in critical_words:
+            assert word in CHINESE_STOP_WORDS, f"'{word}' missing from CHINESE_STOP_WORDS"
+            assert word in zh_sw, f"'{word}' missing from stopwords_zh.txt"
+
+
 class TestNormalizeQuery:
     """Tests for query normalization (Round 8 Phase 3 T3.2)."""
 

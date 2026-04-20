@@ -9,9 +9,14 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 # 导入配置 (relative imports from tools/lib)
-from ..lib.config import BY_TOPIC_DIR, USER_DATA_DIR, JOURNALS_DIR
+from ..lib.paths import get_user_data_dir, get_journals_dir, get_by_topic_dir
 from ..lib.path_contract import merge_journal_path_fields
 from ..write_journal.index_updater import build_index_filename
+
+# Deprecated aliases — kept for monkeypatch compatibility (Round 13 lesson)
+BY_TOPIC_DIR = get_by_topic_dir()
+USER_DATA_DIR = get_user_data_dir()
+JOURNALS_DIR = get_journals_dir()
 
 
 def scan_all_indices() -> List[Dict[str, Any]]:
@@ -24,11 +29,12 @@ def scan_all_indices() -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     seen_paths: set[str] = set()
 
-    if not BY_TOPIC_DIR.exists():
+    _by_topic_dir = get_by_topic_dir()
+    if not _by_topic_dir.exists():
         return results
 
     # 扫描所有索引文件
-    for index_file in BY_TOPIC_DIR.glob("*.md"):
+    for index_file in _by_topic_dir.glob("*.md"):
         try:
             content = index_file.read_text(encoding="utf-8")
             # 解析索引条目: - [YYYY-MM-DD 标题](路径)
@@ -36,15 +42,17 @@ def scan_all_indices() -> List[Dict[str, Any]]:
             matches = re.findall(pattern, content)
 
             for date_str, title, path in matches:
+                _user_data_dir = get_user_data_dir()
+                _journals_dir = get_journals_dir()
                 normalized = merge_journal_path_fields(
                     {
                         "date": date_str,
                         "title": title,
                         "source": "index:all",
                     },
-                    USER_DATA_DIR / Path(path),
-                    journals_dir=JOURNALS_DIR,
-                    user_data_dir=USER_DATA_DIR,
+                    _user_data_dir / Path(path),
+                    journals_dir=_journals_dir,
+                    user_data_dir=_user_data_dir,
                 )
                 if normalized["path"] not in seen_paths:
                     seen_paths.add(normalized["path"])
@@ -65,8 +73,9 @@ def search_l1_index(query_type: str, query_value: str) -> List[Dict[str, Any]]:
     """
     results: List[Dict[str, Any]] = []
 
+    _by_topic_dir = get_by_topic_dir()
     if query_type in {"topic", "project", "tag"}:
-        index_file = BY_TOPIC_DIR / build_index_filename(query_type, query_value)
+        index_file = _by_topic_dir / build_index_filename(query_type, query_value)
     else:
         return results
 
@@ -80,6 +89,8 @@ def search_l1_index(query_type: str, query_value: str) -> List[Dict[str, Any]]:
     matches = re.findall(pattern, content)
 
     for date_str, title, path in matches:
+        _user_data_dir = get_user_data_dir()
+        _journals_dir = get_journals_dir()
         results.append(
             merge_journal_path_fields(
                 {
@@ -87,9 +98,9 @@ def search_l1_index(query_type: str, query_value: str) -> List[Dict[str, Any]]:
                     "title": title,
                     "source": f"index:{query_type}={query_value}",
                 },
-                USER_DATA_DIR / Path(path),
-                journals_dir=JOURNALS_DIR,
-                user_data_dir=USER_DATA_DIR,
+                _user_data_dir / Path(path),
+                journals_dir=_journals_dir,
+                user_data_dir=_user_data_dir,
             )
         )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import sys
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from .config import EMBEDDING_MODEL as MODEL_CONFIG, get_model_cache_dir
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -112,7 +115,7 @@ def record_model_metadata(model_name: str, cache_dir: Path) -> None:
         meta_file = model_dir / "model_meta.json"
         meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     except Exception as e:
-        print(f"Warning: Failed to record model metadata: {e}")
+        logger.warning("Failed to record model metadata: %s", e)
 
 
 def load_backend_model(model_config: dict[str, Any], cache_dir: Path) -> tuple[Any, str]:
@@ -163,15 +166,15 @@ class SharedEmbeddingModel:
 
         try:
             backend = get_backend_name(MODEL_CONFIG)
-            print(f"Loading embedding model: {model_name} via {backend}...")
+            logger.info("Loading embedding model: %s via %s...", model_name, backend)
             cache_dir.mkdir(parents=True, exist_ok=True)
 
             result = verify_model_integrity(model_name, cache_dir)
             if not result.is_valid:
-                print(f"Warning: Model integrity check failed: {result.message}")
-                print("Warning: Will proceed with loading, but embeddings may be inconsistent.")
+                logger.warning("Model integrity check failed: %s", result.message)
+                logger.warning("Will proceed with loading, but embeddings may be inconsistent.")
                 if result.needs_rebuild:
-                    print("Warning: Vector index needs rebuild to ensure consistency.")
+                    logger.warning("Vector index needs rebuild to ensure consistency.")
 
             self._model, self._backend = load_backend_model(MODEL_CONFIG, cache_dir)
 
@@ -180,10 +183,10 @@ class SharedEmbeddingModel:
                 record_model_metadata(model_name, cache_dir)
 
             self._model_verified = True
-            print("Model loaded successfully.")
+            logger.info("Model loaded successfully.")
             return True
         except Exception as e:
-            print(f"Warning: Failed to load embedding model: {e}")
+            logger.warning("Failed to load embedding model: %s", e)
             self._model = None
             self._backend = None
             self._model_verified = False
@@ -197,7 +200,7 @@ class SharedEmbeddingModel:
             backend = self._backend or get_backend_name(MODEL_CONFIG)
             return encode_texts(self._model, texts, backend)
         except Exception as e:
-            print(f"Encoding error: {e}")
+            logger.error("Encoding error: %s", e)
             return []
 
 

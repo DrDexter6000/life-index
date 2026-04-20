@@ -14,7 +14,11 @@
 #   1 — quality gate failed
 #
 # Usage:
-#   bash scripts/run_eval_gate.sh
+#   bash scripts/run_eval_gate.sh [--snapshot=phase2]
+#
+# Options:
+#   --snapshot=PHASE   Freeze eval metrics as baseline snapshot
+#                      (e.g. --snapshot=phase2 writes .strategy/cli/Round_10_baselines/phase2.json)
 
 set -euo pipefail
 
@@ -23,8 +27,42 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-# Run the eval gate tests (isolated data, no LLM, no semantic)
-python -m pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py tests/unit/test_eval_llm.py -v --timeout=120
+# Parse --snapshot=PHASE argument
+SNAPSHOT_PHASE=""
+for arg in "$@"; do
+  case "$arg" in
+    --snapshot=*)
+      SNAPSHOT_PHASE="${arg#--snapshot=}"
+      ;;
+  esac
+done
 
-echo ""
-echo "✅ Search eval quality gate passed"
+if [ -n "$SNAPSHOT_PHASE" ]; then
+  echo "Freezing baseline snapshot for '$SNAPSHOT_PHASE'..."
+  python scripts/freeze_baseline.py --phase "$SNAPSHOT_PHASE"
+  echo ""
+  echo "✅ Baseline snapshot frozen: .strategy/cli/Round_10_baselines/${SNAPSHOT_PHASE}.json"
+else
+  # ── Section 1: Eval infrastructure tests ──
+  echo "=== Section 1: Eval infrastructure ==="
+  python -m pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py tests/unit/test_eval_llm.py -v --timeout=120
+  echo ""
+  echo "✅ Eval infrastructure passed"
+
+  # ── Section 2: Rejection gate (D15, ≥90% pass-rate) ──
+  echo "=== Section 2: Rejection quality gate (≥90% pass-rate) ==="
+  python -m pytest tests/integration/test_golden_rejection.py -v --timeout=120
+  echo ""
+  echo "✅ Rejection quality gate passed"
+
+  # ── Section 3: Full unit regression ──
+  echo "=== Section 3: Full unit regression ==="
+  python -m pytest tests/unit/ -q --timeout=300
+  echo ""
+  echo "✅ Full unit regression passed"
+
+  echo ""
+  echo "========================================="
+  echo "✅ All search eval quality gates passed"
+  echo "========================================="
+fi

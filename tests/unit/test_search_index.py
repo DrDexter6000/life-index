@@ -77,8 +77,8 @@ class TestInitFtsDb:
         """Database is created successfully"""
         from tools.lib import search_index
 
-        with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: tmp_path / "test_fts.db"):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
 
         assert conn is not None
@@ -89,8 +89,8 @@ class TestInitFtsDb:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
 
         cursor = conn.cursor()
@@ -107,8 +107,8 @@ class TestInitFtsDb:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
 
         cursor = conn.cursor()
@@ -142,7 +142,7 @@ This is the body.
         )
 
         # Mock USER_DATA_DIR to allow relative_to to work
-        with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+        with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
             result = search_index.parse_journal(journal)
 
         assert result is not None
@@ -205,7 +205,7 @@ Body paragraph.
         )
 
         # Mock USER_DATA_DIR to allow relative_to to work
-        with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+        with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
             result = search_index.parse_journal(journal)
 
         assert result is not None
@@ -230,7 +230,7 @@ Content.
             encoding="utf-8",
         )
 
-        with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+        with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
             result = search_index.parse_journal(journal)
 
             assert result is not None
@@ -254,7 +254,7 @@ Body.
             encoding="utf-8",
         )
 
-        with patch.object(search_index, "USER_DATA_DIR", tmp_path / "other-root"):
+        with patch.object(search_index, "get_user_data_dir", lambda: tmp_path / "other-root"):
             result = search_index.parse_journal(journal)
 
         assert result is not None
@@ -298,8 +298,8 @@ class TestGetIndexedFiles:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 result = search_index.get_indexed_files(conn)
                 conn.close()
@@ -311,8 +311,8 @@ class TestGetIndexedFiles:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
 
@@ -370,12 +370,12 @@ class TestUpdateIndex:
         journals_dir = tmp_path / "Journals"
         journals_dir.mkdir(parents=True)
 
-        with patch.object(search_index, "JOURNALS_DIR", journals_dir):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+        with patch.object(search_index, "get_journals_dir", lambda: journals_dir):
+            with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
                 with patch.object(
                     search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
                 ):
-                    with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
+                    with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         result = search_index.update_index(incremental=False)
 
                         assert result["success"] is True
@@ -406,12 +406,12 @@ This is new content.
             encoding="utf-8",
         )
 
-        with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+        with patch.object(search_index, "get_journals_dir", lambda: tmp_path / "Journals"):
+            with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
                 with patch.object(
                     search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
                 ):
-                    with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
+                    with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         result = search_index.update_index(incremental=True)
 
                         assert result["success"] is True
@@ -421,6 +421,7 @@ This is new content.
     def test_incremental_update_modified_file(self, tmp_path):
         """Incremental update detects modified files"""
         from tools.lib import search_index
+        import tools.lib.paths as paths_module
 
         # Setup directory structure
         journals_dir = tmp_path / "Journals" / "2026" / "03"
@@ -439,37 +440,40 @@ Original content.
             encoding="utf-8",
         )
 
-        with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
-                ):
-                    with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
-                        # First update - add file
-                        result1 = search_index.update_index(incremental=True)
-                        assert result1["success"] is True
-                        assert result1["added"] == 1
+        # Redirect getter chain in paths module
+        with patch.dict("os.environ", {"LIFE_INDEX_DATA_DIR": str(tmp_path)}):
+            with patch.object(search_index, "get_journals_dir", lambda: tmp_path / "Journals"):
+                with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
+                    with patch.object(
+                        search_index, "get_fts_db_path", lambda: tmp_path / "test_fts.db"
+                    ):
+                        with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
+                            # First update - add file
+                            result1 = search_index.update_index(incremental=True)
+                            assert result1["success"] is True
+                            assert result1["added"] == 1
 
-                        # Modify file
-                        journal_file.write_text(
-                            """---
+                            # Modify file
+                            journal_file.write_text(
+                                """---
 title: Modified
 date: 2026-03-14
 ---
 
 Modified content.
 """,
-                            encoding="utf-8",
-                        )
+                                encoding="utf-8",
+                            )
 
-                        # Second update - should detect modification
-                        result2 = search_index.update_index(incremental=True)
-                        assert result2["success"] is True
-                        assert result2["updated"] == 1
+                            # Second update - should detect modification
+                            result2 = search_index.update_index(incremental=True)
+                            assert result2["success"] is True
+                            assert result2["updated"] == 1
 
     def test_incremental_remove_deleted_file(self, tmp_path):
         """Incremental update removes deleted files from index"""
         from tools.lib import search_index
+        import tools.lib.paths as paths_module
 
         # Setup directory structure
         journals_dir = tmp_path / "Journals" / "2026" / "03"
@@ -488,23 +492,25 @@ Content to delete.
             encoding="utf-8",
         )
 
-        with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
-                ):
-                    with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
-                        # Add file
-                        result1 = search_index.update_index(incremental=True)
-                        assert result1["added"] == 1
+        # Redirect getter chain in paths module
+        with patch.dict("os.environ", {"LIFE_INDEX_DATA_DIR": str(tmp_path)}):
+            with patch.object(search_index, "get_journals_dir", lambda: tmp_path / "Journals"):
+                with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
+                    with patch.object(
+                        search_index, "get_fts_db_path", lambda: tmp_path / "test_fts.db"
+                    ):
+                        with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
+                            # Add file
+                            result1 = search_index.update_index(incremental=True)
+                            assert result1["added"] == 1
 
-                        # Delete file
-                        journal_file.unlink()
+                            # Delete file
+                            journal_file.unlink()
 
-                        # Update - should remove from index
-                        result2 = search_index.update_index(incremental=True)
-                        assert result2["success"] is True
-                        assert result2["removed"] == 1
+                            # Update - should remove from index
+                            result2 = search_index.update_index(incremental=True)
+                            assert result2["success"] is True
+                            assert result2["removed"] == 1
 
     def test_full_rebuild_with_files(self, tmp_path):
         """Full rebuild clears and reindexes all files"""
@@ -527,12 +533,12 @@ Content {i + 1}.
                 encoding="utf-8",
             )
 
-        with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+        with patch.object(search_index, "get_journals_dir", lambda: tmp_path / "Journals"):
+            with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
                 with patch.object(
                     search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
                 ):
-                    with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
+                    with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         # Incremental add
                         result1 = search_index.update_index(incremental=True)
                         assert result1["added"] == 2
@@ -570,12 +576,12 @@ Valid content.
         invalid = month_dir / "life-index_2026-03-14_002.md"
         invalid.write_text("# No Frontmatter\n\nJust content.", encoding="utf-8")
 
-        with patch.object(search_index, "JOURNALS_DIR", journals_dir):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+        with patch.object(search_index, "get_journals_dir", lambda: journals_dir):
+            with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
                 with patch.object(
                     search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
                 ):
-                    with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
+                    with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         result = search_index.update_index(incremental=True)
 
                         assert result["success"] is True
@@ -610,12 +616,12 @@ Content.
             encoding="utf-8",
         )
 
-        with patch.object(search_index, "JOURNALS_DIR", journals_dir):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
+        with patch.object(search_index, "get_journals_dir", lambda: journals_dir):
+            with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
                 with patch.object(
                     search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
                 ):
-                    with patch.object(search_index, "INDEX_DIR", tmp_path / ".index"):
+                    with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         result = search_index.update_index(incremental=False)
 
                         assert result["success"] is True
@@ -624,6 +630,7 @@ Content.
     def test_full_rebuild_reports_active_marker(self, tmp_path):
         """Active rebuild marker should block concurrent full rebuilds."""
         from tools.lib import search_index
+        import tools.lib.paths as paths_module
 
         journals_dir = tmp_path / "Journals"
         journals_dir.mkdir(parents=True)
@@ -632,13 +639,15 @@ Content.
         marker = index_dir / ".rebuilding"
         marker.write_text("active", encoding="utf-8")
 
-        with patch.object(search_index, "JOURNALS_DIR", journals_dir):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", index_dir / "test_fts.db"
-                ):
-                    with patch.object(search_index, "INDEX_DIR", index_dir):
-                        result = search_index.update_index(incremental=False)
+        # Redirect getter chain in paths module
+        with patch.dict("os.environ", {"LIFE_INDEX_DATA_DIR": str(tmp_path)}):
+            with patch.object(search_index, "get_journals_dir", lambda: journals_dir):
+                with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
+                    with patch.object(
+                        search_index, "get_fts_db_path", lambda: index_dir / "test_fts.db"
+                    ):
+                        with patch.object(search_index, "get_index_dir", lambda: index_dir):
+                            result = search_index.update_index(incremental=False)
 
         assert result["success"] is False
         assert result["rebuild_in_progress"] is True
@@ -648,6 +657,7 @@ Content.
     def test_full_rebuild_removes_stale_marker(self, tmp_path):
         """Stale rebuild marker should be cleaned before rebuild proceeds."""
         from tools.lib import search_index
+        import tools.lib.paths as paths_module
 
         journals_dir = tmp_path / "Journals" / "2026" / "03"
         journals_dir.mkdir(parents=True)
@@ -671,13 +681,15 @@ Content.
         stale_time = marker.stat().st_mtime - 301
         os.utime(marker, (stale_time, stale_time))
 
-        with patch.object(search_index, "JOURNALS_DIR", tmp_path / "Journals"):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", index_dir / "test_fts.db"
-                ):
-                    with patch.object(search_index, "INDEX_DIR", index_dir):
-                        result = search_index.update_index(incremental=False)
+        # Redirect getter chain in paths module
+        with patch.dict("os.environ", {"LIFE_INDEX_DATA_DIR": str(tmp_path)}):
+            with patch.object(search_index, "get_journals_dir", lambda: tmp_path / "Journals"):
+                with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
+                    with patch.object(
+                        search_index, "get_fts_db_path", lambda: index_dir / "test_fts.db"
+                    ):
+                        with patch.object(search_index, "get_index_dir", lambda: index_dir):
+                            result = search_index.update_index(incremental=False)
 
         assert result["success"] is True
         assert marker.exists() is False
@@ -693,10 +705,10 @@ Content.
         db_path = index_dir / "test_fts.db"
         marker = index_dir / ".rebuilding"
 
-        with patch.object(search_index, "JOURNALS_DIR", journals_dir):
-            with patch.object(search_index, "USER_DATA_DIR", tmp_path):
-                with patch.object(search_index, "FTS_DB_PATH", db_path):
-                    with patch.object(search_index, "INDEX_DIR", index_dir):
+        with patch.object(search_index, "get_journals_dir", lambda: journals_dir):
+            with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
+                with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+                    with patch.object(search_index, "get_index_dir", lambda: index_dir):
                         with patch.object(
                             search_index,
                             "init_fts_db",
@@ -717,8 +729,8 @@ class TestSearchFtsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
 
@@ -753,8 +765,8 @@ class TestSearchFtsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
 
@@ -777,8 +789,8 @@ class TestSearchFtsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
 
@@ -808,8 +820,8 @@ class TestSearchFtsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
 
@@ -833,8 +845,8 @@ class TestSearchFtsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
 
@@ -858,8 +870,8 @@ class TestSearchFtsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
 
@@ -895,8 +907,8 @@ class TestSearchFtsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 conn.close()
 
@@ -952,7 +964,7 @@ class TestSearchFtsEdgeCases:
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
             with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
                 # min_relevance=40 keeps bm25=5.0 (relevance 45) but rejects bm25=7.0 (relevance 35)
                 results = search_index.search_fts("Python", min_relevance=40)
@@ -990,7 +1002,7 @@ class TestSearchFtsEdgeCases:
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
             with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
                 results = search_index.search_fts("Python", min_relevance=30)
 
@@ -1024,7 +1036,7 @@ class TestSearchFtsEdgeCases:
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
             with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
                 normal_results = search_index.search_fts("乐乐")
                 high_freq_results = search_index.search_fts("OpenClaw")
@@ -1061,7 +1073,7 @@ class TestSearchFtsEdgeCases:
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
             with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
                 results = search_index.search_fts("OpenClaw", min_relevance=30)
 
@@ -1096,7 +1108,7 @@ class TestSearchFtsEdgeCases:
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
             with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
                 # "Life Index" alone is already in the frozenset
                 exact_results = search_index.search_fts("Life Index")
@@ -1133,7 +1145,7 @@ class TestSearchFtsEdgeCases:
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
             with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
                 results = search_index.search_fts("OpenClaw cron")
 
@@ -1150,7 +1162,7 @@ class TestGetStatsEdgeCases:
         db_path = tmp_path / "corrupted.db"
         db_path.write_bytes(b"not a sqlite database")
 
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
             stats = search_index.get_stats()
 
             assert stats.get("exists") is True
@@ -1161,8 +1173,8 @@ class TestGetStatsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 conn.close()
 
@@ -1177,8 +1189,8 @@ class TestGetStatsEdgeCases:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
 
@@ -1206,8 +1218,8 @@ class TestVersionMarker:
         from tools.lib.search_constants import TOKENIZER_VERSION
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 search_index.write_index_meta(conn)
 
@@ -1227,8 +1239,8 @@ class TestVersionMarker:
         from tools.lib.search_constants import TOKENIZER_VERSION
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
                 # Write an old version number
@@ -1252,8 +1264,8 @@ class TestVersionMarker:
 
         reset_tokenizer_state()
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 # Write current version + current dict hash
                 search_index.write_index_meta(conn)
@@ -1266,8 +1278,8 @@ class TestVersionMarker:
         from tools.lib import search_index
 
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 # Don't write any meta — simulates pre-v2 index
 
@@ -1282,8 +1294,8 @@ class TestVersionMarker:
 
         reset_tokenizer_state()
         db_path = tmp_path / "test_fts.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 cursor = conn.cursor()
                 # Correct version but stale dict hash
@@ -1317,8 +1329,8 @@ class TestVersionMarker:
         expected_hash = get_dict_hash()
 
         db_path = tmp_path / "test_fts2.db"
-        with patch.object(search_index, "FTS_DB_PATH", db_path):
-            with patch.object(search_index, "INDEX_DIR", tmp_path):
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
                 conn = search_index.init_fts_db()
                 search_index.write_index_meta(conn)
 

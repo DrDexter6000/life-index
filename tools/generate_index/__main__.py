@@ -9,7 +9,8 @@ import json
 import sys
 
 from . import generate_monthly_abstract, generate_yearly_abstract, rebuild_index_tree
-from ..lib.config import JOURNALS_DIR, ensure_dirs
+from ..lib.config import ensure_dirs
+from ..lib.paths import get_journals_dir
 from ..lib.logger import get_logger
 
 logger = get_logger(__name__)
@@ -87,7 +88,7 @@ Examples:
     # 批量生成全年月度摘要
     if args.year and args.all_months:
         logger.info(f"批量生成{args.year}年全年月度摘要")
-        year_dir = JOURNALS_DIR / str(args.year)
+        year_dir = get_journals_dir() / str(args.year)
         if year_dir.exists():
             for month_dir in sorted(year_dir.iterdir()):
                 if month_dir.is_dir() and month_dir.name.isdigit():

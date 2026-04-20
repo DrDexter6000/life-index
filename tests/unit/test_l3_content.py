@@ -23,7 +23,7 @@ class TestSearchL3Content:
         """Test search when journals directory is empty"""
         from tools.search_journals.l3_content import search_l3_content
 
-        with patch("tools.search_journals.l3_content.JOURNALS_DIR") as mock_dir:
+        with patch("tools.search_journals.l3_content.get_journals_dir") as mock_dir:
             mock_dir.exists.return_value = True
             mock_dir.iterdir.return_value = []
             results = search_l3_content("test")
@@ -34,7 +34,7 @@ class TestSearchL3Content:
         """Test search when journals directory doesn't exist"""
         from tools.search_journals.l3_content import search_l3_content
 
-        with patch("tools.search_journals.l3_content.JOURNALS_DIR") as mock_dir:
+        with patch("tools.search_journals.l3_content.get_journals_dir") as mock_dir:
             mock_dir.exists.return_value = False
             results = search_l3_content("test")
 
@@ -53,7 +53,7 @@ date: 2026-03-14
 
 Today I learned about Python."""
 
-        with patch("tools.search_journals.l3_content.JOURNALS_DIR") as mock_dir:
+        with patch("tools.search_journals.l3_content.get_journals_dir") as mock_dir:
             mock_dir.exists.return_value = True
 
             mock_file = MagicMock()
@@ -72,7 +72,7 @@ Today I learned about Python."""
 
             mock_dir.iterdir.return_value = [mock_year]
 
-            with patch("tools.search_journals.l3_content.USER_DATA_DIR", Path("/test")):
+            with patch("tools.search_journals.l3_content.get_user_data_dir", return_value=Path("/test")):
                 results = search_l3_content("Python")
 
         assert len(results) >= 0  # May vary based on path handling
@@ -110,7 +110,7 @@ It is very interesting to learn Python."""
                     "I am working on Python programming today.\nIt is very interesting to learn Python.",
                 )
 
-                with patch("tools.search_journals.l3_content.JOURNALS_DIR") as mock_dir:
+                with patch("tools.search_journals.l3_content.get_journals_dir") as mock_dir:
                     mock_dir.exists.return_value = True
                     mock_year = MagicMock()
                     mock_year.is_dir.return_value = True
@@ -122,7 +122,7 @@ It is very interesting to learn Python."""
                     mock_dir.iterdir.return_value = [mock_year]
 
                     with patch(
-                        "tools.search_journals.l3_content.USER_DATA_DIR", Path("/test")
+                        "tools.search_journals.l3_content.get_user_data_dir", return_value=Path("/test")
                     ):
                         results = search_l3_content("Python")
 
@@ -179,7 +179,7 @@ date: 2026-03-14
 
 This is about something else."""
 
-        with patch("tools.search_journals.l3_content.JOURNALS_DIR") as mock_dir:
+        with patch("tools.search_journals.l3_content.get_journals_dir") as mock_dir:
             mock_dir.exists.return_value = True
             mock_dir.iterdir.return_value = []
             results = search_l3_content("nonexistent")

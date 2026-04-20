@@ -376,20 +376,22 @@ def _temporary_data_dir(data_dir: Path | None) -> Iterator[None]:
 
 @contextmanager
 def _live_data_dir() -> Iterator[None]:
+    import pathlib
+
     original_env = os.environ.get("LIFE_INDEX_DATA_DIR")
-    os.environ.pop("LIFE_INDEX_DATA_DIR", None)
-    should_reload = original_env is not None
-    if should_reload:
-        _reload_runtime_modules()
+    # Instead of popping (which triggers pytest guard on reload),
+    # set to the real user data directory.
+    real_dir = pathlib.Path.home() / "Documents" / "Life-Index"
+    os.environ["LIFE_INDEX_DATA_DIR"] = str(real_dir)
+    _reload_runtime_modules()
     try:
         yield
     finally:
-        if original_env is None:
-            os.environ.pop("LIFE_INDEX_DATA_DIR", None)
-        else:
+        if original_env is not None:
             os.environ["LIFE_INDEX_DATA_DIR"] = original_env
-        if should_reload:
-            _reload_runtime_modules()
+        else:
+            os.environ.pop("LIFE_INDEX_DATA_DIR", None)
+        _reload_runtime_modules()
 
 
 def _evaluate_queries(

@@ -93,9 +93,17 @@ def search_fts(
         # 尝试使用新版本的完整查询（包含 mood/people 列）
         # 如果旧索引缺少这些列，会抛出 sqlite3.OperationalError
         try:
+            # Column layout (v2 schema): path(0), title(1/UNINDEXED),
+            # title_segmented(2), content(3), date(4), location(5),
+            # weather(6), topic(7), project(8), tags(9), mood(10), people(11)
+            # BM25 weights: path=1.0, title_segmented=1.0, content=1.0,
+            #   date=0.5, location=0.5, weather=0.5, topic=0.5,
+            #   project=0.5, tags=0.5, mood=0.5, people=0.5
+            # Note: UNINDEXED columns (title, file_hash, modified_time)
+            #   are excluded from BM25 weight list.
             sql = """
                 SELECT path, title, date, location, weather, topic, project, tags, mood, people,
-                       snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
+                       snippet(journals, 3, '<mark>', '</mark>', '...', ?) as snippet,
                        bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
                 FROM journals
                 WHERE journals MATCH ?
@@ -156,7 +164,7 @@ def search_fts(
             logger.warning("FTS primary query failed (old schema?), falling back: %s", e)
             sql = """
                 SELECT path, title, date, location, weather, topic, project, tags,
-                       snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
+                       snippet(journals, 3, '<mark>', '</mark>', '...', ?) as snippet,
                        bm25(journals, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) as rank
                 FROM journals
                 WHERE journals MATCH ?

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Entity Candidate Extraction — Round 7 Phase 2 Task 6.
+Entity Candidate Extraction — Round 7 Phase 2 Task 6 + Round 10 T1.4.
 
 Extracts structured entity candidates from frontmatter and content body.
 Does NOT write to entity_graph.yaml — candidates are returned for review.
@@ -8,10 +8,16 @@ Does NOT write to entity_graph.yaml — candidates are returned for review.
 Candidate layer design:
 - truth layer: entity_graph.yaml (confirmed entities)
 - candidate layer: write/search/audit output (unconfirmed candidates, not persisted)
+
+Round 10 T1.4: When graph is empty/missing, falls back to extracting candidates
+directly from frontmatter fields (no EntityRuntimeView needed). Fallback candidates
+include a suggested_command field for Agent one-click entity creation.
 """
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from tools.lib.entity_runtime import (
@@ -29,6 +35,43 @@ except ImportError:
     logger = logging.getLogger("entity_candidates")
 
 
+# ── Type inference (shared with seed.py) ────────────────────────────────
+
+_TOOL_PATTERN = re.compile(r"^[A-Z][a-zA-Z0-9 ]+$")
+
+
+def _infer_type_from_source(source_field: str, value: str) -> str:
+    """Infer entity type from the frontmatter field it came from.
+
+    Rules:
+    - people → person
+    - location → place
+    - tags + matches TOOL_PATTERN → tool
+    - tags + doesn't match → concept
+    - project → project
+    """
+    if source_field == "people":
+        return "person"
+    if source_field == "location":
+        return "place"
+    if source_field == "tags":
+        if _TOOL_PATTERN.match(value):
+            return "tool"
+        return "concept"
+    if source_field == "project":
+        return "project"
+    return "concept"
+
+
+def _build_suggested_command(text: str, entity_type: str) -> str:
+    """Build a valid `life-index entity --add` command for fallback candidates."""
+    entity_data = json.dumps(
+        {"primary_name": text, "type": entity_type},
+        ensure_ascii=False,
+    )
+    return f"life-index entity --add '{entity_data}'"
+
+
 def extract_entity_candidates(
     *,
     metadata: dict[str, Any],
@@ -40,14 +83,16 @@ def extract_entity_candidates(
     Args:
         metadata: Journal data dict with people/location/project fields.
         content: Journal body text.
-        graph: Loaded entity graph list.
+        graph: Loaded entity graph list. When empty, falls back to
+               extracting candidates directly from metadata fields.
 
     Returns:
         List of candidate dicts, each with:
             text, source, kind, matched_entity_id, suggested_action, risk_level
+            When graph is empty (fallback mode), also includes suggested_command.
     """
     if not graph:
-        return []
+        return _extract_frontmatter_fallback(metadata)
 
     view = build_runtime_view(graph)
     candidates: list[dict[str, Any]] = []
@@ -87,6 +132,53 @@ def extract_entity_candidates(
 
     # 2. Content body: scan for entity alias/name mentions
     _extract_from_content(content, view, _add_candidate)
+
+    return candidates
+
+
+def _extract_frontmatter_fallback(
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Extract candidates directly from metadata when no entity graph exists.
+
+    This is the D5/D17 fallback: always return useful data so the Agent
+    can present entity suggestions to the user even on first use.
+    """
+    field_to_source: dict[str, str] = {
+        "people": "frontmatter_fallback",
+        "location": "frontmatter_fallback",
+        "tags": "frontmatter_fallback",
+        "project": "frontmatter_fallback",
+    }
+
+    candidates: list[dict[str, Any]] = []
+    seen_texts: set[str] = set()
+
+    for field, source in field_to_source.items():
+        value = metadata.get(field)
+        items: list[str] = []
+        if isinstance(value, list):
+            items = [str(item).strip() for item in value if str(item).strip()]
+        elif isinstance(value, str) and value.strip():
+            items = [value.strip()]
+
+        for item in items:
+            if item in seen_texts:
+                continue
+            seen_texts.add(item)
+
+            kind = _infer_type_from_source(field, item)
+            candidates.append(
+                {
+                    "text": item,
+                    "source": source,
+                    "kind": kind,
+                    "matched_entity_id": None,
+                    "suggested_action": "add_entity",
+                    "risk_level": "medium",
+                    "suggested_command": _build_suggested_command(item, kind),
+                }
+            )
 
     return candidates
 

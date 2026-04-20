@@ -19,17 +19,19 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .config import JOURNALS_DIR, USER_DATA_DIR
+from .paths import get_index_dir, get_fts_db_path, get_journals_dir, get_user_data_dir
 from .chinese_tokenizer import get_dict_hash
 from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE, TOKENIZER_VERSION
 
 # Bump this whenever the FTS table schema changes (columns added/removed).
 # Ensures incremental updates auto-trigger a full rebuild when needed.
-FTS_SCHEMA_VERSION: int = 1  # v1: includes mood, people columns
+FTS_SCHEMA_VERSION: int = 2  # v2: title split into raw (UNINDEXED) + title_segmented (indexed)
 
-# 索引存储目录
-INDEX_DIR = USER_DATA_DIR / ".index"
-FTS_DB_PATH = INDEX_DIR / "journals_fts.db"
+# 索引存储目录 (deprecated: use get_index_dir() / get_fts_db_path())
+INDEX_DIR = get_index_dir()  # deprecated: use get_index_dir()
+FTS_DB_PATH = get_fts_db_path()  # deprecated: use get_fts_db_path()
+USER_DATA_DIR = get_user_data_dir()  # deprecated: use get_user_data_dir()
+JOURNALS_DIR = get_journals_dir()  # deprecated: use get_journals_dir()
 
 
 def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
@@ -41,9 +43,9 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
             columns like mood/people) because ``CREATE VIRTUAL TABLE IF NOT
             EXISTS`` silently keeps the old schema.
     """
-    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    get_index_dir().mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(FTS_DB_PATH))
+    conn = sqlite3.connect(str(get_fts_db_path()))
     conn.execute("PRAGMA journal_mode=WAL")
     cursor = conn.cursor()
 
@@ -57,7 +59,8 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
     cursor.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(
             path,
-            title,
+            title UNINDEXED,
+            title_segmented,
             content,
             date,
             location,
@@ -84,7 +87,89 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
     return conn
 
 
-def write_index_meta(conn: sqlite3.Connection) -> None:
+def ensure_fts_schema() -> Dict[str, Any]:
+    """Check FTS schema version and auto-migrate if needed (D13).
+
+    Detects old schema (v1: no title_segmented column) and triggers
+    a full rebuild to v2 schema. Called automatically when the CLI
+    or search tools open the FTS database.
+
+    Migration strategy:
+    1. PRAGMA table_info to check for title_segmented column
+    2. If missing → drop old table → init v2 schema → rebuild from files
+    3. Record migration in index_meta.migration_log
+
+    Returns:
+        dict with 'migrated': True/False and optional migration details.
+    """
+    result: Dict[str, Any] = {"migrated": False}
+
+    if not get_fts_db_path().exists():
+        return result
+
+    try:
+        conn = sqlite3.connect(str(get_fts_db_path()))
+        cursor = conn.cursor()
+
+        # Check if title_segmented column exists
+        cursor.execute("PRAGMA table_info(journals)")
+        columns = {row[1] for row in cursor.fetchall()}
+
+        if "title_segmented" in columns:
+            # Already v2 schema, no migration needed
+            conn.close()
+            return result
+
+        # v1 schema detected — need migration
+        import logging
+        from datetime import datetime, timezone
+
+        logger = logging.getLogger(__name__)
+        logger.info("[migration] FTS schema upgrade: title column split (v1 → v2)")
+
+        # Record migration log before destructive operation
+        migration_log = {
+            "from": "v1_title_only",
+            "to": "v2_title_split",
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        cursor.execute(
+            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+            ("migration_log", json.dumps(migration_log, ensure_ascii=False)),
+        )
+        conn.commit()
+
+        # Drop old table and recreate with v2 schema
+        cursor.execute("DROP TABLE IF EXISTS journals")
+        conn.commit()
+        conn.close()
+
+        # Re-init with v2 schema + rebuild from files
+        conn = init_fts_db(force_recreate=True)
+        conn.close()
+
+        # Rebuild index from journal files
+        rebuild_result = update_index(incremental=False)
+        logger.info(
+            "[migration] FTS rebuild complete: added=%d, total=%d",
+            rebuild_result.get("added", 0),
+            rebuild_result.get("total", 0),
+        )
+
+        result["migrated"] = True
+        result["migration_log"] = migration_log
+        result["rebuild_result"] = rebuild_result
+
+    except (sqlite3.Error, OSError) as e:
+        import logging
+
+        logging.getLogger(__name__).error("[migration] FTS schema migration failed: %s", e)
+        result["error"] = str(e)
+
+    return result
+
+
+def write_index_meta(conn: sqlite3.Connection, semantic_baseline_p25: float | None = None) -> None:
     """Write tokenizer_version, dict_hash, schema_version, and last_updated.
 
     These values are written into the index_meta table.
@@ -109,6 +194,11 @@ def write_index_meta(conn: sqlite3.Connection) -> None:
         "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
         ("last_updated", datetime.now(timezone.utc).isoformat()),
     )
+    if semantic_baseline_p25 is not None:
+        cursor.execute(
+            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+            ("semantic_baseline_p25", f"{semantic_baseline_p25:.6f}"),
+        )
     conn.commit()
 
 
@@ -128,13 +218,13 @@ def check_index_freshness() -> Dict[str, Any]:
         "last_updated": None,
     }
 
-    if not FTS_DB_PATH.exists():
+    if not get_fts_db_path().exists():
         result["stale"] = True
         result["reason"] = "no_fts_db"
         return result
 
     try:
-        conn = sqlite3.connect(str(FTS_DB_PATH))
+        conn = sqlite3.connect(str(get_fts_db_path()))
         try:
             # Document count
             cursor = conn.cursor()
@@ -219,17 +309,17 @@ def check_needs_rebuild(conn: sqlite3.Connection) -> bool:
 def get_stats() -> Dict[str, Any]:
     """获取索引统计信息"""
     stats: Dict[str, Any] = {
-        "exists": FTS_DB_PATH.exists(),
+        "exists": get_fts_db_path().exists(),
         "total_documents": 0,
         "db_size_mb": 0.0,
         "last_updated": None,
     }
 
     try:
-        if FTS_DB_PATH.exists():
-            stats["db_size_mb"] = round(FTS_DB_PATH.stat().st_size / (1024 * 1024), 2)
+        if get_fts_db_path().exists():
+            stats["db_size_mb"] = round(get_fts_db_path().stat().st_size / (1024 * 1024), 2)
 
-            conn = sqlite3.connect(str(FTS_DB_PATH))
+            conn = sqlite3.connect(str(get_fts_db_path()))
             cursor = conn.cursor()
 
             cursor.execute("SELECT COUNT(*) FROM journals")
@@ -269,7 +359,7 @@ def parse_journal(file_path: Path) -> Optional[Dict[str, Any]]:
     """解析日志文件，提取可索引内容"""
     from .fts_update import parse_journal as _parse_journal
 
-    return _parse_journal(file_path, JOURNALS_DIR, USER_DATA_DIR)
+    return _parse_journal(file_path, get_journals_dir(), get_user_data_dir())
 
 
 def update_index(incremental: bool = True) -> Dict[str, Any]:
@@ -293,9 +383,9 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     from .fts_update import update_index as _update_index
 
     # Check if index needs rebuild due to tokenizer/dict changes (T1.4)
-    if incremental and FTS_DB_PATH.exists():
+    if incremental and get_fts_db_path().exists():
         try:
-            conn = sqlite3.connect(str(FTS_DB_PATH))
+            conn = sqlite3.connect(str(get_fts_db_path()))
             needs = check_needs_rebuild(conn)
             conn.close()
             if needs:
@@ -306,14 +396,21 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     # Non-incremental (full rebuild) must force-recreate the FTS table
     # so that schema changes (new columns like mood/people) take effect.
     # CREATE VIRTUAL TABLE IF NOT EXISTS silently preserves old schema.
-    init_func = init_fts_db if incremental else lambda: init_fts_db(force_recreate=True)
+    from typing import Callable
 
-    result = _update_index(init_func, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental)
+    def _recreate() -> sqlite3.Connection:
+        return init_fts_db(force_recreate=True)
+
+    init_func: Callable[[], sqlite3.Connection] = init_fts_db if incremental else _recreate
+
+    result = _update_index(
+        init_func, get_fts_db_path(), get_journals_dir(), get_user_data_dir(), incremental
+    )
 
     # After successful update, write version metadata (T1.4)
-    if result.get("success") and FTS_DB_PATH.exists():
+    if result.get("success") and get_fts_db_path().exists():
         try:
-            conn = sqlite3.connect(str(FTS_DB_PATH))
+            conn = sqlite3.connect(str(get_fts_db_path()))
             write_index_meta(conn)
             conn.close()
         except sqlite3.Error:
@@ -351,7 +448,7 @@ def search_fts(
     """
     from .fts_search import search_fts as _search_fts
 
-    return _search_fts(FTS_DB_PATH, query, date_from, date_to, limit, min_relevance)
+    return _search_fts(get_fts_db_path(), query, date_from, date_to, limit, min_relevance)
 
 
 if __name__ == "__main__":

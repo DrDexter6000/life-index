@@ -73,7 +73,10 @@ def _run_write_scenario(scenario: dict, writable_env: dict) -> dict:
     index_raises = mocks.get("index_raises")
     vector_return = mocks.get("vector_return", False)
 
-    with patch("tools.write_journal.core.JOURNALS_DIR", writable_env["journals_dir"]):
+    with patch(
+        "tools.write_journal.core.get_journals_dir",
+        return_value=writable_env["journals_dir"],
+    ):
         with patch(
             "tools.write_journal.core.get_journals_lock_path",
             return_value=writable_env["lock_path"],
@@ -113,8 +116,7 @@ def _run_write_scenario(scenario: dict, writable_env: dict) -> dict:
                                         return_value="abstract.md",
                                     ):
                                         with patch(
-                                            "tools.write_journal.core.update_vector_index",
-                                            return_value=vector_return,
+                                            "tools.write_journal.core.mark_pending",
                                         ):
                                             return write_journal(data, dry_run=dry_run)
 
@@ -230,6 +232,10 @@ def _run_search_scenario(scenario: dict) -> dict:
     semantic_status = semantic_cfg.get(
         "status", {"available": True, "reason": "", "note": ""}
     )
+    freshness = MagicMock()
+    freshness.overall_fresh = True
+    freshness.issues = []
+    freshness.to_dict.return_value = {"overall_fresh": True, "issues": []}
 
     with patch("tools.search_journals.core.search_l1_index", return_value=l1_return):
         with patch(
@@ -263,9 +269,19 @@ def _run_search_scenario(scenario: dict) -> dict:
                                         "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
                                         return_value=semantic_status,
                                     ):
-                                        return hierarchical_search(
-                                            query=query, level=level
-                                        )
+                                        with patch(
+                                            "tools.lib.pending_writes.has_pending",
+                                            return_value=False,
+                                        ):
+                                            with patch("tools.lib.pending_writes.clear_pending"):
+                                                with patch(
+                                                    "tools.lib.index_freshness.check_full_freshness",
+                                                    return_value=freshness,
+                                                ):
+                                                    with patch("tools.build_index.build_all"):
+                                                        return hierarchical_search(
+                                                            query=query, level=level
+                                                        )
 
 
 def _check_search_assertions(result: dict, assertions: dict, scenario_id: str) -> None:

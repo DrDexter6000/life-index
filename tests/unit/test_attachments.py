@@ -171,7 +171,8 @@ class TestProcessAttachments:
         source_file.write_text("test content")
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             result = process_attachments(
                 attachments=[str(source_file)],
@@ -187,7 +188,8 @@ class TestProcessAttachments:
         from tools.write_journal.attachments import process_attachments
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             assert process_attachments([], "2026-03-10", dry_run=True) == []
 
@@ -199,7 +201,8 @@ class TestProcessAttachments:
         source_file.write_text("test")
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             result = process_attachments(
                 attachments=[
@@ -222,7 +225,8 @@ class TestProcessAttachments:
         source_file.write_text("test content")
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             result = process_attachments(
                 attachments=[
@@ -240,7 +244,8 @@ class TestProcessAttachments:
         from tools.write_journal.attachments import process_attachments
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             result = process_attachments(
                 attachments=[
@@ -278,8 +283,8 @@ class TestProcessAttachments:
             new=fake_download,
         ):
             with patch(
-                "tools.write_journal.attachments.ATTACHMENTS_DIR",
-                tmp_path / "attachments",
+                "tools.write_journal.attachments.get_attachments_dir",
+                return_value=tmp_path / "attachments",
             ):
                 result = process_attachments(
                     attachments=[
@@ -321,8 +326,8 @@ class TestProcessAttachments:
             new=fake_download,
         ):
             with patch(
-                "tools.write_journal.attachments.ATTACHMENTS_DIR",
-                tmp_path / "attachments",
+                "tools.write_journal.attachments.get_attachments_dir",
+                return_value=tmp_path / "attachments",
             ):
                 result = process_attachments(
                     attachments=[
@@ -356,7 +361,8 @@ class TestProcessAttachments:
         auto_file.write_text("test")
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
@@ -375,7 +381,8 @@ class TestProcessAttachments:
         source_file.write_text("test")
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
@@ -395,7 +402,8 @@ class TestProcessAttachments:
         source_file.write_text("test")
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
@@ -416,7 +424,8 @@ class TestProcessAttachments:
         source_dir.mkdir()
 
         with patch(
-            "tools.write_journal.attachments.ATTACHMENTS_DIR", tmp_path / "attachments"
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=tmp_path / "attachments",
         ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_dir), "description": ""}],
@@ -435,7 +444,10 @@ class TestProcessAttachments:
         source_file.write_text("test")
 
         att_dir = tmp_path / "attachments"
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", att_dir):
+        with patch(
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=att_dir,
+        ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",
@@ -453,7 +465,10 @@ class TestProcessAttachments:
         source_file.write_text("test content")
 
         att_dir = tmp_path / "attachments"
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", att_dir):
+        with patch(
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=att_dir,
+        ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",
@@ -479,7 +494,10 @@ class TestProcessAttachments:
         existing_dir.mkdir(parents=True)
         (existing_dir / "source.mp4").write_text("existing")
 
-        with patch("tools.write_journal.attachments.ATTACHMENTS_DIR", att_dir):
+        with patch(
+            "tools.write_journal.attachments.get_attachments_dir",
+            return_value=att_dir,
+        ):
             result = process_attachments(
                 attachments=[{"source_path": str(source_file), "description": ""}],
                 date_str="2026-03-10",

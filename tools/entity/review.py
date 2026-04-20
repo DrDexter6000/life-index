@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from tools.lib.entity_graph import load_entity_graph, save_entity_graph
-from tools.lib.paths import USER_DATA_DIR
+from tools.lib.paths import get_user_data_dir
+
+# Deprecated alias — kept for monkeypatch compatibility (Round 13 lesson)
+USER_DATA_DIR = get_user_data_dir()
 
 try:
     from tools.lib.logger import get_logger
@@ -27,7 +30,7 @@ except ImportError:
 
 
 def _graph_path() -> Path:
-    return USER_DATA_DIR / "entity_graph.yaml"
+    return get_user_data_dir() / "entity_graph.yaml"
 
 
 def build_review_queue(

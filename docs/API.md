@@ -550,6 +550,69 @@ python -m tools.search_journals [options]
 - 每个 hint 包含：`matched_term` / `entity_id` / `entity_type` / `expansion_terms` / `reason`
 - `entity_hints` 属于 read-only suggestion layer，不会修改 query 语义本身；它与 `query_params.expanded_query` 互补存在
 
+### Round 11 新增返回字段
+
+#### `search_plan` — 结构化查询理解
+
+L2 Deterministic Preprocessing 的输出，描述 query 在进入检索之前被 CLI 如何结构化理解。**caller-facing field**，供 Agent / Web / 上层 orchestrator 消费。
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `raw_query` | string | 原始查询文本 |
+| `normalized_query` | string | 标准化后查询（去标点、trim、全角转半角） |
+| `intent_type` | string enum | 查询意图：`recall` / `count` / `compare` / `summarize` / `unknown` |
+| `query_mode` | string enum | 查询模式：`keyword` / `natural_language` / `mixed` |
+| `keywords` | string[] | 从 query 提取的关键词列表 |
+| `date_range` | object \| null | 解析出的时间范围：`{since, until, source}` |
+| `topic_hints` | string[] | 推断的主题映射（work/health/learn 等） |
+| `entity_hints_used` | array | 使用的实体 hint 列表 |
+| `expanded_query` | string | 扩展后的查询文本 |
+| `pipelines` | object | 启用的管道：`{keyword: bool, semantic: bool}` |
+
+> `search_plan` 不替用户下最终结论，只记录 query 被如何理解。
+
+#### `ambiguity` — 歧义信号报告
+
+CLI 对"存在多个合理解释 / 需要上层 judgment"的结构化声明。**报告 signal，不替 Agent 裁决**。
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `has_ambiguity` | boolean | 是否存在歧义信号 |
+| `items` | array | 歧义信号列表 |
+| `items[].type` | string | 歧义类型枚举（见下表） |
+| `items[].severity` | string | `low` / `medium` / `high` |
+| `items[].reason` | string | 为什么认为这里有歧义 |
+| `items[].candidates` | string[] | 可选的多种解释 |
+
+歧义类型枚举：
+
+| type | severity | 说明 |
+|------|----------|------|
+| `aggregation_requires_agent_judgement` | high | count/compare/summarize 需要 Agent 判断最终答案 |
+| `time_range_interpretation` | medium | 相对时间表达存在多种解释窗口 |
+| `entity_resolution_multiple_candidates` | medium | 实体解析返回多个候选 |
+| `query_too_broad` | low | query 过宽，结果可能不可信 |
+
+#### `hints` — 调用时局部提示
+
+L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变成长篇 prescriptive prompt，不替代 SKILL.md**。
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `type` | string | 提示类型（如 `retrieval_boundary`、`refinement_suggestion`、`time_range_parsed`） |
+| `severity` | string | `low` / `medium` / `high` |
+| `message` | string | 提示内容（≤ 120 字符） |
+
+> 单次调用 hints ≤ 5 条。
+
+#### 三者边界
+
+| 字段 | 所属层 | 作用 | 不做什么 |
+|------|--------|------|----------|
+| `search_plan` | L2 | 记录 query 被如何结构化理解 | 不替用户下最终结论 |
+| `ambiguity` | L2→L4 边界 | 报告歧义信号 | 不替 Agent 裁决 |
+| `hints` | L3 | 提供调用时局部提示 | 不变成长篇 prescriptive prompt |
+
 > 当前搜索结果中的 `path` 经常是绝对路径；上层调用方不应直接把它拼进 Web 路由。
 
 ### 错误码
@@ -764,8 +827,15 @@ python -m tools.build_index [options]
 |------|------|------|--------|------|
 | rebuild | flag | ❌ | false | 全量重建索引 |
 | validate | flag | ❌ | false | 验证索引完整性 |
+| check | flag | ❌ | false | 索引一致性诊断（只读，不修改任何文件） |
+| fts-only | flag | ❌ | false | 仅更新 FTS 索引 |
+| vec-only | flag | ❌ | false | 仅更新向量索引 |
+| stats | flag | ❌ | false | 显示索引统计信息 |
+| json | flag | ❌ | false | 以 JSON 格式输出结果 |
 
 ### 返回值
+
+**构建/重建模式**：
 
 ```json
 {
@@ -784,6 +854,86 @@ python -m tools.build_index [options]
   "duration_seconds": 1.2
 }
 ```
+
+**`--check` 模式**：
+
+```json
+{
+  "healthy": true,
+  "fts_count": 53,
+  "vector_count": 53,
+  "file_count": 53,
+  "issues": []
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| healthy | bool | 三者（FTS/向量/文件）完全一致时为 true |
+| fts_count | int | FTS 索引中的条目数 |
+| vector_count | int | 向量索引中的条目数 |
+| file_count | int | Journals/ 下实际日志文件数 |
+| issues | string[] | 不一致描述列表；空列表表示健康 |
+
+退出码：healthy → 0, unhealthy → 1（便于 CI 集成）
+
+---
+
+## health
+
+### 端点
+
+```bash
+python -m tools health [options]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| data-audit | flag | ❌ | false | 数据目录清洁度审计 |
+
+### 返回值
+
+**标准模式**：
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy|degraded|unhealthy",
+    "checks": [ ... ],
+    "issues": [ ... ]
+  },
+  "events": [ ... ]
+}
+```
+
+**`--data-audit` 模式**：
+
+```json
+{
+  "success": true,
+  "data": {
+    "file_count": 53,
+    "anomalies": [
+      {
+        "type": "revision_file",
+        "severity": "warning",
+        "description": "Revision file found outside .revisions/: ...",
+        "path": "Journals/2026/03/life-index_2026-03-01_001_20260418_120000_000000.md"
+      }
+    ],
+    "distribution": {"2026-03": 12, "2026-04": 8}
+  }
+}
+```
+
+| 异常类型 | 严重级 | 说明 |
+|---------|--------|------|
+| revision_file | warning | 编辑修订文件遗留在 Journals/ 目录（非 .revisions/） |
+| naming | info | 非 `life-index_`/`index_`/`monthly_report_` 开头的 .md 文件 |
+| distribution | info | 某月日志数 > 3x 月均值 |
 
 ---
 

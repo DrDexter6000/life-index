@@ -146,6 +146,19 @@ def test_merge_and_rank_results_hybrid_default_keeps_single_semantic_hit() -> No
     assert merged[0]["path"] == "semantic.md"
 
 
+def test_merge_and_rank_results_hybrid_semantic_only_result_uses_semantic_thresholds_for_confidence() -> None:
+    merged = merge_and_rank_results_hybrid(
+        [],
+        [],
+        [],
+        [{"path": "semantic.md", "similarity": 0.43}],
+    )
+
+    assert len(merged) == 1
+    assert merged[0]["path"] == "semantic.md"
+    assert merged[0]["confidence"] == "low"
+
+
 def test_merge_and_rank_results_hybrid_does_not_force_extra_backfill_when_one_strong_hit_exists() -> (
     None
 ):
@@ -160,11 +173,13 @@ def test_merge_and_rank_results_hybrid_does_not_force_extra_backfill_when_one_st
         query="小英雄",
     )
 
-    # FTS result should be ranked first (priority=5), semantic results follow (priority=2)
-    assert len(merged) == 3
+    # With RRF_MIN_SCORE=0.008 (ADR-004) and SEMANTIC_WEIGHT_DEFAULT=0.6 (ADR-010),
+    # weak semantic results (0.2/0.19 similarity) now survive the RRF threshold
+    # because 0.6/(60+1) = 0.00984 > 0.008. This is expected — they enter results
+    # but get low confidence. The FTS hit is still Top-1.
+    assert len(merged) == 3  # 1 FTS + 2 semantic (passed RRF threshold)
     assert merged[0]["path"] == "fts-hit.md"
     assert merged[0]["fts_score"] > 0  # FTS result has lexical evidence
-    assert merged[1]["semantic_score"] > 0  # Semantic results preserved after fix
 
 
 def test_merge_and_rank_results_hybrid_prefers_stronger_lexical_result_over_weaker_semantic_only() -> (
@@ -398,3 +413,262 @@ class TestEntityBonusExpansion:
         )
 
         assert merged[0]["path"] == "snippet-match.md"
+
+
+# ── T3.1: L2 weak metadata match deprioritization ──
+
+
+class TestL2WeakMetadataDeprioritization:
+    """Round 11 Phase 3 T3.1: L2 weak metadata matches (source='none')
+    must not outrank L3 FTS strong matches.
+
+    The ranking should apply a source-aware penalty so that within each
+    priority bucket, results with source='none' (pure metadata, no FTS)
+    are ranked below results with actual content matches.
+    """
+
+    def test_fts_strong_beats_l2_weak_metadata(self) -> None:
+        """L2 weak match (score=30, source='none') should not beat
+        L3 FTS strong match (score=80)."""
+        l2_weak = {
+            "path": "l2-weak.md",
+            "title": "Some Doc",
+            "metadata": {},
+        }
+        l3_strong = {
+            "path": "l3-strong.md",
+            "relevance": 80,
+            "title": "Strong FTS Match",
+        }
+
+        merged = merge_and_rank_results(
+            [], [l2_weak], [l3_strong], query="test", min_score=0
+        )
+
+        assert len(merged) == 2
+        assert merged[0]["path"] == "l3-strong.md"
+        assert merged[0]["source"] == "fts"
+        assert merged[1]["source"] == "none"
+
+    def test_l2_with_title_match_can_rank_above_l3_weak(self) -> None:
+        """L2 with title_match (strong metadata signal) may rank above
+        a very weak L3 FTS result — title match is a valid signal."""
+        l2_title_match = {
+            "path": "l2-title.md",
+            "title": "乐乐日记",
+            "metadata": {},
+        }
+        l3_weak = {
+            "path": "l3-weak.md",
+            "relevance": 26,
+            "title": "Unrelated",
+        }
+
+        merged = merge_and_rank_results(
+            [],
+            [l2_title_match],
+            [l3_weak],
+            query="乐乐",
+            min_score=0,
+        )
+
+        assert len(merged) == 2
+        # L2 with title match can outrank a barely-threshold L3
+        # (L2 gets base + title bonus = 30 + 8 = 38 > L3's 26)
+        assert merged[0]["path"] == "l2-title.md"
+
+    def test_hybrid_fts_strong_beats_l2_weak_metadata(self) -> None:
+        """In hybrid mode, L3 FTS result should outrank L2 weak match."""
+        l2_weak = {
+            "path": "l2-weak.md",
+            "title": "Some Doc",
+            "metadata": {},
+        }
+        l3_strong = {
+            "path": "l3-strong.md",
+            "relevance": 80,
+            "title": "Strong FTS Match",
+        }
+        semantic = [
+            {"path": "l3-strong.md", "similarity": 0.85},
+        ]
+
+        merged = merge_and_rank_results_hybrid(
+            [],
+            [l2_weak],
+            [l3_strong],
+            semantic,
+            query="test",
+            min_rrf_score=0,
+            min_non_rrf_score=0,
+        )
+
+        fts_result = next(
+            (r for r in merged if r["path"] == "l3-strong.md"), None
+        )
+        l2_result = next(
+            (r for r in merged if r["path"] == "l2-weak.md"), None
+        )
+        assert fts_result is not None
+        assert l2_result is not None
+        assert fts_result["search_rank"] < l2_result["search_rank"]
+
+    def test_hybrid_source_none_penalty_in_l2_bucket(self) -> None:
+        """Within L2 bucket, results with source='none' get a penalty
+        so they rank below L2 results with entity bonus."""
+        l2_with_entity = {
+            "path": "l2-entity.md",
+            "title": "Doc",
+            "metadata": {"people": ["乐乐"], "tags": ["亲子"]},
+        }
+        l2_weak = {
+            "path": "l2-weak.md",
+            "title": "Other Doc",
+            "metadata": {},
+        }
+        entity_hints = [
+            {
+                "matched_term": "乐乐",
+                "entity_id": "tuantuan",
+                "entity_type": "person",
+                "expansion_terms": ["乐乐", "小豆丁"],
+                "reason": "alias_match",
+            }
+        ]
+
+        merged = merge_and_rank_results_hybrid(
+            [],
+            [l2_with_entity, l2_weak],
+            [],
+            [],
+            query="乐乐",
+            min_rrf_score=0,
+            min_non_rrf_score=0,
+            entity_hints=entity_hints,
+        )
+
+        assert len(merged) == 2
+        assert merged[0]["path"] == "l2-entity.md"
+
+    def test_existing_ranking_tests_not_regressed(self) -> None:
+        """T3.1 changes must not break existing ranking behavior:
+        title-match L2 still surfaces for single-result queries."""
+        merged = merge_and_rank_results(
+            [],
+            [{"path": "meta.md", "title": "乐乐日记", "metadata": {}}],
+            [],
+            query="乐乐",
+        )
+        assert len(merged) == 1
+        assert merged[0]["path"] == "meta.md"
+
+    def test_non_hybrid_source_field_correct(self) -> None:
+        """Verify source field is set correctly in non-hybrid path."""
+        l2_result = {"path": "meta.md", "title": "Doc", "metadata": {}}
+        l3_result = {"path": "fts.md", "relevance": 50, "title": "FTS Doc"}
+
+        merged = merge_and_rank_results(
+            [], [l2_result], [l3_result], query="doc", min_score=0
+        )
+
+        fts_entry = next(r for r in merged if r["path"] == "fts.md")
+        meta_entry = next(r for r in merged if r["path"] == "meta.md")
+        assert fts_entry["source"] == "fts"
+        assert meta_entry["source"] == "none"
+
+
+# ── T3.2: Same-path deduplication ──
+
+
+class TestSamePathDeduplication:
+    """Round 11 Phase 3 T3.2: Same journal should not appear multiple times
+    in merged results due to multi-segment matches."""
+
+    def test_non_hybrid_dedup_keeps_higher_score(self) -> None:
+        """When same path appears in both L2 and L3, keep only the higher-ranked."""
+        l2_result = {
+            "path": "same-doc.md",
+            "title": "Shared Doc",
+            "metadata": {},
+        }
+        l3_result = {
+            "path": "same-doc.md",
+            "relevance": 85,
+            "title": "Shared Doc",
+        }
+
+        merged = merge_and_rank_results(
+            [], [l2_result], [l3_result], query="shared", min_score=0
+        )
+
+        # Same path should appear only once
+        path_counts = [r["path"] for r in merged].count("same-doc.md")
+        assert path_counts == 1
+        # L3 FTS match should be the one kept (higher score)
+        assert merged[0]["path"] == "same-doc.md"
+        assert merged[0]["source"] == "fts"
+
+    def test_hybrid_dedup_keeps_highest_ranked(self) -> None:
+        """In hybrid mode, same path from multiple sources appears only once."""
+        l3_result = {
+            "path": "same-doc.md",
+            "relevance": 85,
+            "title": "Shared Doc",
+        }
+        semantic_result = {
+            "path": "same-doc.md",
+            "similarity": 0.90,
+        }
+
+        merged = merge_and_rank_results_hybrid(
+            [],
+            [],
+            [l3_result],
+            [semantic_result],
+            query="shared",
+            min_rrf_score=0,
+            min_non_rrf_score=0,
+        )
+
+        path_counts = [r["path"] for r in merged].count("same-doc.md")
+        assert path_counts == 1
+        # The single result should have both FTS and semantic scores
+        assert merged[0]["fts_score"] > 0
+        assert merged[0]["semantic_score"] > 0
+
+    def test_different_paths_not_deduplicated(self) -> None:
+        """Different paths should never be deduplicated."""
+        l3_a = {"path": "doc-a.md", "relevance": 80, "title": "Doc A"}
+        l3_b = {"path": "doc-b.md", "relevance": 60, "title": "Doc B"}
+
+        merged = merge_and_rank_results(
+            [], [], [l3_a, l3_b], query="doc", min_score=0
+        )
+
+        assert len(merged) == 2
+
+    def test_dedup_preserves_relative_order(self) -> None:
+        """After dedup, remaining results maintain their relative order."""
+        l3_results = [
+            {"path": f"doc-{i}.md", "relevance": 90 - i * 5, "title": f"Doc {i}"}
+            for i in range(5)
+        ]
+
+        merged = merge_and_rank_results(
+            [], [], l3_results, query="doc", min_score=0
+        )
+
+        paths = [r["path"] for r in merged]
+        assert paths == sorted(paths, key=lambda p: int(p.split("-")[1].split(".")[0]))
+
+    def test_total_found_counts_unique_paths(self) -> None:
+        """total_found should reflect unique results, not raw count."""
+        l2_result = {"path": "overlap.md", "title": "Overlap", "metadata": {}}
+        l3_result = {"path": "overlap.md", "relevance": 80, "title": "Overlap"}
+        l3_unique = {"path": "unique.md", "relevance": 60, "title": "Unique"}
+
+        merged = merge_and_rank_results(
+            [], [l2_result], [l3_result, l3_unique], query="test", min_score=0
+        )
+
+        assert len(merged) == 2  # overlap.md deduped + unique.md

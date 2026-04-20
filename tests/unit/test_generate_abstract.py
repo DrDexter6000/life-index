@@ -92,7 +92,7 @@ class TestCollectJournals:
             tags='["亲子", "回忆"]',
         )
 
-        with patch("tools.generate_index.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.generate_index.get_journals_dir", return_value=tmp_path / "Journals"):
             result = collect_month_journals(2026, 3)
 
         assert len(result) == 1
@@ -111,7 +111,7 @@ class TestCollectJournals:
                 topic='["work"]',
             )
 
-        with patch("tools.generate_index.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.generate_index.get_journals_dir", return_value=tmp_path / "Journals"):
             result = collect_year_journals(2026)
 
         assert len(result) == 2
@@ -191,7 +191,7 @@ class TestRenamedExportsAndMonthlyIndex:
             tags='["亲子"]',
         )
 
-        with patch("tools.generate_index.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.generate_index.get_journals_dir", return_value=tmp_path / "Journals"):
             result = generate_monthly_index(2026, 3)
 
         output_path = month_dir / "index_2026-03.md"
@@ -295,7 +295,7 @@ class TestYearlyIndex:
             tags='["迁移"]',
         )
 
-        with patch("tools.generate_index.JOURNALS_DIR", tmp_path / "Journals"):
+        with patch("tools.generate_index.get_journals_dir", return_value=tmp_path / "Journals"):
             result = generate_yearly_index(2026)
 
         output_path = year_dir / "index_2026.md"
@@ -412,8 +412,8 @@ class TestRootIndex:
         (by_topic_dir / "主题_life.md").write_text("# life\n", encoding="utf-8")
 
         with (
-            patch("tools.generate_index.USER_DATA_DIR", user_data_dir),
-            patch("tools.generate_index.JOURNALS_DIR", journals_dir),
+            patch("tools.generate_index.get_user_data_dir", return_value=user_data_dir),
+            patch("tools.generate_index.get_journals_dir", return_value=journals_dir),
         ):
             result = generate_root_index()
 

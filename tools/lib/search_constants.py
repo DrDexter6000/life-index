@@ -16,13 +16,14 @@ Lower values (k=20-40) give more weight to top-ranked items.
 Higher values (k=80-100) flatten the score distribution.
 k=60 is the industry standard that works well for most hybrid search scenarios.
 
-ADR-002: Semantic min_similarity=0.15
---------------------------------------
-Vector similarity threshold for semantic results. Values below 0.15 are
-typically low-quality matches that introduce noise without adding signal.
+ADR-002 / ADR-006: Semantic threshold floor + adaptive baseline
+---------------------------------------------------------------
+Semantic search now uses an absolute floor of 0.40 plus an adaptive layer:
+`max(0.40, semantic_baseline_p25 + 0.02)`.
 
-empirical observation: with MiniLM-L12-v2, similarities < 0.15 are often
-topic-drifted or tangentially related. This threshold balances recall vs precision.
+ADR-006 records the rationale: the old 0.15 floor was too permissive and let
+semantic noise leak into results. Rebuild-time corpus calibration persists the
+baseline P25 into `index_meta`, allowing future corpus growth to auto-adjust.
 
 ADR-003: FTS min_relevance=25
 ----------------------------
@@ -139,25 +140,36 @@ The minimum sample size remains 8 — below this, the base threshold is used unc
 # ADR-001: Industry standard RRF smoothing constant
 RRF_K: int = 60
 
-# ADR-004: Minimum RRF score for hybrid results
-# Must be low enough for semantic-only results to survive: semantic_weight / (k+1) ≈ 0.4/61 = 0.0066
-# Previous value 0.008 was too aggressive — it filtered out ALL semantic-only results
-# because 0.4/61 = 0.0066 < 0.008.  Lowered to 0.003 so even rank-30 semantic results pass.
-RRF_MIN_SCORE: float = 0.003
+# ADR-004: Minimum RRF score for hybrid results (Round 10 Phase 2 T2.0 A/B experiment)
+# Selected via A/B experiment on {0.005, 0.008, 0.012}:
+#   - 0.005: P@5=0.3158 (too permissive, 10.2 avg results)
+#   - 0.008: P@5=0.7342 (+132% precision, 3.0 avg results) [SELECTED]
+#   - 0.012: identical to 0.008 (no marginal benefit)
+# See docs/adr/ADR-004-rrf-min-score.md for full experiment data.
+RRF_MIN_SCORE: float = 0.008
 
 
 # =============================================================================
 # Semantic Pipeline Constants
 # =============================================================================
 
-# ADR-002: Minimum cosine similarity for semantic results
-SEMANTIC_MIN_SIMILARITY: float = 0.15
+# ADR-002 / ADR-006: Minimum cosine similarity floor for semantic results
+SEMANTIC_MIN_SIMILARITY: float = 0.40
+
+# ADR-006: Adaptive baseline threshold tuning
+SEMANTIC_BASELINE_OFFSET: float = 0.02
+SEMANTIC_ABSOLUTE_FLOOR: float = 0.40
 
 # ADR-005: Maximum semantic candidates to retrieve
 SEMANTIC_TOP_K_DEFAULT: int = 30
 
-# Semantic weight in hybrid ranking (vs FTS)
-SEMANTIC_WEIGHT_DEFAULT: float = 0.4
+# ADR-010: Semantic weight in hybrid RRF ranking (Round 10 Phase 4 T4.1)
+# Raised from 0.4 to 0.6 to reduce FTS weak-hit dominance over semantic strong-hits.
+# R4 root cause: FTS weight 1.0 vs semantic 0.4 caused semantically relevant results
+# (e.g. "想起女儿" → "想念小英雄") to be outranked by FTS noise.
+# Rollback window: before Phase 5 completion.
+# See docs/adr/ADR-010-rrf-weight-tuning.md for rationale.
+SEMANTIC_WEIGHT_DEFAULT: float = 0.6
 
 
 # =============================================================================
@@ -200,6 +212,11 @@ SCORE_TITLE_MATCH_BONUS_L2: int = 8  # Slightly lower for L2
 SCORE_ABSTRACT_MATCH_BONUS: int = 4
 SCORE_TAGS_MATCH_BONUS: int = 1
 SCORE_ENTITY_BONUS: int = 6
+
+# ADR-016: Topic hint ranking boost (Phase 4 T4.2)
+# Conservative 1.1x multiplier applied to results whose topic matches search_plan.topic_hints.
+# Must not override large FTS/RRF score gaps — only breaks close ties.
+TOPIC_HINT_BOOST: float = 1.1
 
 # Minimum score for non-RRF results (pure keyword/semantic)
 NON_RRF_MIN_SCORE: int = 10
@@ -251,6 +268,8 @@ __all__ = [
     "RRF_MIN_SCORE",
     # Semantic
     "SEMANTIC_MIN_SIMILARITY",
+    "SEMANTIC_BASELINE_OFFSET",
+    "SEMANTIC_ABSOLUTE_FLOOR",
     "SEMANTIC_TOP_K_DEFAULT",
     "SEMANTIC_WEIGHT_DEFAULT",
     # FTS
@@ -269,6 +288,7 @@ __all__ = [
     "SCORE_ABSTRACT_MATCH_BONUS",
     "SCORE_TAGS_MATCH_BONUS",
     "SCORE_ENTITY_BONUS",
+    "TOPIC_HINT_BOOST",
     "NON_RRF_MIN_SCORE",
     # Limits
     "MAX_RESULTS_DEFAULT",
