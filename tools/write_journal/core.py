@@ -93,12 +93,8 @@ def extract_explicit_metadata_from_content(content: str) -> Dict[str, str]:
         return extracted
 
     patterns = {
-        "location": re.compile(
-            r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
-        ),
-        "weather": re.compile(
-            r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE
-        ),
+        "location": re.compile(r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
+        "weather": re.compile(r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
     }
 
     for line in content.splitlines():
@@ -398,9 +394,7 @@ def apply_confirmation_updates(
         return change.get("old") != change.get("new")
 
     applied_fields = [field for field in requested_fields if _field_was_applied(field)]
-    ignored_fields = [
-        field for field in requested_fields if not _field_was_applied(field)
-    ]
+    ignored_fields = [field for field in requested_fields if not _field_was_applied(field)]
 
     if isinstance(result, dict):
         result["applied_fields"] = applied_fields
@@ -520,9 +514,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             # 尝试获取天气（使用英文格式的地点）
             logger.debug(f"查询天气：location={location_for_weather}")
             with timer.measure("weather_query"):
-                queried_weather = query_weather_for_location(
-                    location_for_weather, date_str
-                )
+                queried_weather = query_weather_for_location(location_for_weather, date_str)
             if queried_weather:
                 weather = queried_weather
                 result["weather_used"] = weather
@@ -538,13 +530,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
 
         data["weather"] = weather
         try:
-            entity_graph = load_entity_graph(
-                resolve_user_data_dir() / "entity_graph.yaml"
-            )
+            entity_graph = load_entity_graph(resolve_user_data_dir() / "entity_graph.yaml")
         except EntityGraphValidationError as exc:
-            logger.warning(
-                "Skipping entity graph enrichment due to invalid graph: %s", exc
-            )
+            logger.warning("Skipping entity graph enrichment due to invalid graph: %s", exc)
             entity_graph = []
         data["entities"] = content_analysis.match_entities(
             data.get("people"),
@@ -574,9 +562,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             "tags": data.get("tags"),
             "related_entries": data.get("related_entries", []),
         }
-        result["related_candidates"] = suggest_related_entries(
-            current_entry, candidate_entries
-        )
+        result["related_candidates"] = suggest_related_entries(current_entry, candidate_entries)
         result["confirmation"] = _build_confirmation_payload(
             journal_path=None,
             location=location,
@@ -691,9 +677,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                         abstract_error = None
                         abstract_success = False
                         try:
-                            abstract_result = update_monthly_abstract(
-                                year, month, dry_run
-                            )
+                            abstract_result = update_monthly_abstract(year, month, dry_run)
                             abstract_success = True
                         except (OSError, IOError, RuntimeError) as e:
                             abstract_error = str(e)
@@ -725,9 +709,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                             except Exception as e:
                                 # 向量索引更新失败不阻塞写入
                                 vector_index_error = str(e)
-                                logger.warning(
-                                    f"向量索引更新失败（不影响日志写入）：{e}"
-                                )
+                                logger.warning(f"向量索引更新失败（不影响日志写入）：{e}")
 
                             # 7. 更新 FTS 索引（Write-Through）
                             try:
@@ -736,9 +718,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                                     logger.info("FTS 索引已同步更新")
                             except Exception as e:
                                 fts_index_error = str(e)
-                                logger.warning(
-                                    f"FTS 索引更新失败（不影响日志写入）：{e}"
-                                )
+                                logger.warning(f"FTS 索引更新失败（不影响日志写入）：{e}")
 
                         except (OSError, IOError, RuntimeError) as e:
                             # 索引更新失败，清理临时文件
@@ -782,11 +762,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     else:
                         result["index_status"] = IndexStatus.COMPLETE
 
-                    if (
-                        abstract_success
-                        and not vector_index_error
-                        and not fts_index_error
-                    ):
+                    if abstract_success and not vector_index_error and not fts_index_error:
                         result["side_effects_status"] = SideEffectsStatus.COMPLETE
                     else:
                         result["side_effects_status"] = SideEffectsStatus.DEGRADED
@@ -818,9 +794,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             relation_lines = ""
             if result["related_candidates"]:
                 candidate_lines = ["\n\n可考虑关联以下日志："]
-                for index, candidate in enumerate(
-                    result["related_candidates"], start=1
-                ):
+                for index, candidate in enumerate(result["related_candidates"], start=1):
                     candidate_lines.append(
                         (
                             f"{index}. {candidate['rel_path']} | "

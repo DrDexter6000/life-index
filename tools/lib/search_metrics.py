@@ -11,17 +11,11 @@ from typing import Any
 
 from .paths import resolve_user_data_dir
 
-
 logger = logging.getLogger("search_metrics")
 
 
 def _utc_timestamp() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _current_metrics_path() -> Path:
@@ -51,9 +45,7 @@ def _pipeline_signal(
     semantic_enabled: bool,
     warnings: list[str],
 ) -> str:
-    has_semantic_warning = any(
-        warning.startswith("semantic_unavailable:") for warning in warnings
-    )
+    has_semantic_warning = any(warning.startswith("semantic_unavailable:") for warning in warnings)
 
     if semantic_enabled and has_semantic_warning:
         return "degraded"
@@ -74,9 +66,7 @@ def _build_metrics_record(result: dict[str, Any]) -> dict[str, Any]:
     warnings = _warning_list(result)
     fts_results = len(_as_list(result.get("l3_results")))
     semantic_results = len(_as_list(result.get("semantic_results")))
-    semantic_enabled = bool(
-        query_params.get("semantic", result.get("semantic_available"))
-    )
+    semantic_enabled = bool(query_params.get("semantic", result.get("semantic_available")))
 
     return {
         "ts": _utc_timestamp(),

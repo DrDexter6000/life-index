@@ -81,9 +81,7 @@ def parse_journal(
             "mood": _normalize_to_str(metadata.get("mood")),
             "people": _normalize_to_str(metadata.get("people")),
             "file_hash": get_file_hash(file_path),
-            "modified_time": datetime.fromtimestamp(
-                file_path.stat().st_mtime
-            ).isoformat(),
+            "modified_time": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
         }
 
         return doc
@@ -200,9 +198,7 @@ def update_index(
                         continue
 
                     for journal_file in month_dir.glob("life-index_*.md"):
-                        rel_path = str(journal_file.relative_to(user_data_dir)).replace(
-                            "\\", "/"
-                        )
+                        rel_path = str(journal_file.relative_to(user_data_dir)).replace("\\", "/")
                         current_files.add(rel_path)
 
                         # 检查是否需要更新

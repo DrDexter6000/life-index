@@ -28,7 +28,6 @@ from typing import Any
 
 import yaml
 
-
 _jieba_initialized = False
 _jieba_module: Any | None = None
 _entity_dict_loaded: bool = False

@@ -126,9 +126,7 @@ def search_fts(
                     0,
                     min(
                         100,
-                        int(
-                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
-                        ),
+                        int(BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER),
                     ),
                 )
                 if relevance < effective_min_relevance:
@@ -155,9 +153,7 @@ def search_fts(
 
         except sqlite3.OperationalError as e:
             # 旧索引缺少 mood/people 列，使用简化查询
-            logger.warning(
-                "FTS primary query failed (old schema?), falling back: %s", e
-            )
+            logger.warning("FTS primary query failed (old schema?), falling back: %s", e)
             sql = """
                 SELECT path, title, date, location, weather, topic, project, tags,
                        snippet(journals, 2, '<mark>', '</mark>', '...', ?) as snippet,
@@ -185,9 +181,7 @@ def search_fts(
                     0,
                     min(
                         100,
-                        int(
-                            BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER
-                        ),
+                        int(BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER),
                     ),
                 )
                 if relevance < effective_min_relevance:

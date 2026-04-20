@@ -53,9 +53,7 @@ def _build_semantic_status(
     return perf, semantic_available, semantic_note
 
 
-def _build_entity_augmented_query(
-    query: str, entity_hints: list[dict[str, Any]] | None
-) -> str:
+def _build_entity_augmented_query(query: str, entity_hints: list[dict[str, Any]] | None) -> str:
     """Augment a semantic query with entity expansion terms.
 
     Appends unique expansion terms from entity hints so the embedding model
@@ -140,13 +138,10 @@ def run_semantic_pipeline(
             item
             for item in sem_results
             if item.get("path")
-            and str(Path(str(item["path"])).resolve()).replace("\\", "/")
-            in candidate_paths
+            and str(Path(str(item["path"])).resolve()).replace("\\", "/") in candidate_paths
         ]
     perf["semantic_time_ms"] = round((time.time() - sem_start) * 1000, 2)
-    logger.info(
-        f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms"
-    )
+    logger.info(f"[SearchPerf] Semantic: {len(sem_results)} results, {perf['semantic_time_ms']}ms")
     status_perf, semantic_available, semantic_note = _build_semantic_status(
         runtime_status, sem_results
     )

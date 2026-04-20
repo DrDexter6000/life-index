@@ -75,9 +75,7 @@ def parse_json_response(raw: str) -> dict[str, Any]:
             fallback["reason"] = text
         return fallback
 
-    expected_hits_match = re.search(
-        r'"?expected_hits"?\s*[:=]\s*\[(.*?)\]', text, flags=re.DOTALL
-    )
+    expected_hits_match = re.search(r'"?expected_hits"?\s*[:=]\s*\[(.*?)\]', text, flags=re.DOTALL)
     if expected_hits_match:
         titles = [
             item.strip().strip('"').strip("'")
@@ -105,9 +103,7 @@ def _query_anthropic(prompt: str, model: str, temperature: float) -> str:
     from anthropic import Anthropic
 
     anthropic_model = model if model.startswith("claude") else "claude-3-5-haiku-latest"
-    client = Anthropic(
-        api_key=os.environ["ANTHROPIC_API_KEY"], timeout=LLM_TIMEOUT_SECONDS
-    )
+    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=LLM_TIMEOUT_SECONDS)
     response = client.messages.create(
         model=anthropic_model,
         max_tokens=512,
@@ -115,9 +111,7 @@ def _query_anthropic(prompt: str, model: str, temperature: float) -> str:
         messages=[{"role": "user", "content": prompt}],
     )
     parts = [
-        text
-        for block in response.content
-        if (text := getattr(block, "text", None)) is not None
+        text for block in response.content if (text := getattr(block, "text", None)) is not None
     ]
     return "".join(parts)
 
@@ -131,6 +125,4 @@ def query_llm(
         return _query_openai(prompt, model=model, temperature=temperature)
     if os.environ.get("ANTHROPIC_API_KEY"):
         return _query_anthropic(prompt, model=model, temperature=temperature)
-    raise RuntimeError(
-        "No LLM provider configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY."
-    )
+    raise RuntimeError("No LLM provider configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.")

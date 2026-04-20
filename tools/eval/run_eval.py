@@ -16,7 +16,6 @@ from typing import Any, Iterator
 
 import yaml
 
-
 GOLDEN_QUERIES_PATH = Path(__file__).with_name("golden_queries.yaml")
 TOP_K = 5
 MODULES_TO_RELOAD = (
@@ -45,9 +44,7 @@ def _get_prompts_module() -> Any:
 
 def load_golden_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
     """Load the golden query set from YAML."""
-    payload = yaml.safe_load(
-        (file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8")
-    )
+    payload = yaml.safe_load((file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8"))
     queries = payload.get("queries", []) if isinstance(payload, dict) else []
     if not isinstance(queries, list):
         raise ValueError("golden_queries.yaml must contain a 'queries' list")
@@ -97,9 +94,7 @@ def _min_results(query_case: dict[str, Any]) -> int:
     return int(_query_expected(query_case).get("min_results", 0))
 
 
-def _effective_expected_min_results(
-    query_case: dict[str, Any], *, judge: str, live: bool
-) -> int:
+def _effective_expected_min_results(query_case: dict[str, Any], *, judge: str, live: bool) -> int:
     if judge == "llm" and live:
         return 1
     return _min_results(query_case)
@@ -122,9 +117,7 @@ def _first_relevant_rank(
     return None
 
 
-def _query_precision_at_5(
-    top_results: list[dict[str, Any]], query_case: dict[str, Any]
-) -> float:
+def _query_precision_at_5(top_results: list[dict[str, Any]], query_case: dict[str, Any]) -> float:
     if not top_results:
         return 0.0
 
@@ -132,9 +125,7 @@ def _query_precision_at_5(
     if not must_contain_titles:
         return 1.0 if _min_results(query_case) > 0 else 0.0
 
-    relevant_count = sum(
-        1 for result in top_results if _result_is_relevant(result, query_case)
-    )
+    relevant_count = sum(1 for result in top_results if _result_is_relevant(result, query_case))
     return relevant_count / min(len(top_results), TOP_K)
 
 
@@ -218,10 +209,7 @@ def _query_passes(
     if results_found < expected_min_results:
         return False, f"Expected >= {expected_min_results} results, got {results_found}"
 
-    if (
-        _must_contain_titles(query_case)
-        and _first_relevant_rank(top_results, query_case) is None
-    ):
+    if _must_contain_titles(query_case) and _first_relevant_rank(top_results, query_case) is None:
         return (
             False,
             "Expected one of must_contain_title within top 5, but none matched",
@@ -232,24 +220,14 @@ def _query_passes(
 
 def _collect_metrics(per_query: list[dict[str, Any]]) -> dict[str, float]:
     mrr_total = sum(float(item["reciprocal_rank"]) for item in per_query)
-    recall_candidates = [
-        item for item in per_query if int(item["expected_min_results"]) > 0
-    ]
-    recall_hits = [
-        item for item in recall_candidates if item["first_relevant_rank"] is not None
-    ]
-    precision_candidates = [
-        item for item in per_query if int(item["results_found"]) > 0
-    ]
-    precision_total = sum(
-        float(item["precision_at_5"]) for item in precision_candidates
-    )
+    recall_candidates = [item for item in per_query if int(item["expected_min_results"]) > 0]
+    recall_hits = [item for item in recall_candidates if item["first_relevant_rank"] is not None]
+    precision_candidates = [item for item in per_query if int(item["results_found"]) > 0]
+    precision_total = sum(float(item["precision_at_5"]) for item in precision_candidates)
 
     return {
         "mrr_at_5": _round_metric(_safe_float_divide(mrr_total, len(per_query))),
-        "recall_at_5": _round_metric(
-            _safe_float_divide(len(recall_hits), len(recall_candidates))
-        ),
+        "recall_at_5": _round_metric(_safe_float_divide(len(recall_hits), len(recall_candidates))),
         "precision_at_5": _round_metric(
             _safe_float_divide(precision_total, len(precision_candidates))
         ),
@@ -258,30 +236,20 @@ def _collect_metrics(per_query: list[dict[str, Any]]) -> dict[str, float]:
 
 def _collect_llm_metrics(per_query: list[dict[str, Any]]) -> dict[str, float]:
     mrr_total = sum(float(item["reciprocal_rank"]) for item in per_query)
-    recall_candidates = [
-        item for item in per_query if int(item["expected_min_results"]) > 0
-    ]
-    recall_hits = [
-        item for item in recall_candidates if item["first_relevant_rank"] is not None
-    ]
+    recall_candidates = [item for item in per_query if int(item["expected_min_results"]) > 0]
+    recall_hits = [item for item in recall_candidates if item["first_relevant_rank"] is not None]
     precision_total = sum(float(item["precision_at_5"]) for item in per_query)
     ndcg_total = sum(float(item.get("ndcg_at_5", 0.0)) for item in per_query)
 
     return {
         "mrr_at_5": _round_metric(_safe_float_divide(mrr_total, len(per_query))),
-        "recall_at_5": _round_metric(
-            _safe_float_divide(len(recall_hits), len(recall_candidates))
-        ),
-        "precision_at_5": _round_metric(
-            _safe_float_divide(precision_total, len(per_query))
-        ),
+        "recall_at_5": _round_metric(_safe_float_divide(len(recall_hits), len(recall_candidates))),
+        "precision_at_5": _round_metric(_safe_float_divide(precision_total, len(per_query))),
         "ndcg_at_5": _round_metric(_safe_float_divide(ndcg_total, len(per_query))),
     }
 
 
-def _compute_recall_ratio(
-    expected_hits: list[str], returned_titles: list[str]
-) -> float:
+def _compute_recall_ratio(expected_hits: list[str], returned_titles: list[str]) -> float:
     if not expected_hits:
         return 0.0
     matched = sum(1 for title in returned_titles if title in set(expected_hits))
@@ -341,9 +309,7 @@ def _detect_recall_gaps(
         query_result = per_query_by_id.get(str(query_case["id"]), {})
         returned_titles = [str(title) for title in query_result.get("top_titles", [])]
         returned_set = set(returned_titles)
-        expected_but_missed = [
-            title for title in expected_hits if title not in returned_set
-        ]
+        expected_but_missed = [title for title in expected_hits if title not in returned_set]
         if not expected_but_missed:
             continue
 
@@ -373,9 +339,7 @@ def _build_summary_lines(result: dict[str, Any]) -> list[str]:
     if result["failures"]:
         lines.append(f"Failures: {len(result['failures'])}")
         for failure in result["failures"][:5]:
-            lines.append(
-                f'FAIL {failure["id"]} "{failure["query"]}" — {failure["reason"]}'
-            )
+            lines.append(f'FAIL {failure["id"]} "{failure["query"]}" — {failure["reason"]}')
     else:
         lines.append("Failures: 0")
     return lines
@@ -469,9 +433,7 @@ def _evaluate_queries(
             precision_at_5 = _query_precision_at_5(top_results, query_case)
             ndcg_at_5 = None
 
-        reciprocal_rank = (
-            0.0 if first_relevant_rank is None else 1.0 / first_relevant_rank
-        )
+        reciprocal_rank = 0.0 if first_relevant_rank is None else 1.0 / first_relevant_rank
 
         effective_expected_min_results = _effective_expected_min_results(
             query_case, judge=judge, live=live
@@ -488,9 +450,7 @@ def _evaluate_queries(
             else:
                 passed = first_relevant_rank is not None
                 failure_reason = (
-                    None
-                    if passed
-                    else "Expected at least one relevant result under LLM judge"
+                    None if passed else "Expected at least one relevant result under LLM judge"
                 )
         else:
             passed, failure_reason = _query_passes(
@@ -571,9 +531,7 @@ def run_evaluation(
         "semantic_enabled": use_semantic,
         "total_queries": len(per_query),
         "metrics": (
-            _collect_llm_metrics(per_query)
-            if judge == "llm"
-            else _collect_metrics(per_query)
+            _collect_llm_metrics(per_query) if judge == "llm" else _collect_metrics(per_query)
         ),
         "by_category": {},
         "per_query": per_query,
@@ -583,11 +541,7 @@ def run_evaluation(
 
     for category, items in by_category.items():
         result["by_category"][category] = {
-            **(
-                _collect_llm_metrics(items)
-                if judge == "llm"
-                else _collect_metrics(items)
-            ),
+            **(_collect_llm_metrics(items) if judge == "llm" else _collect_metrics(items)),
             "query_count": len(items),
         }
 
@@ -644,9 +598,7 @@ def generate_summary_lines(diff: dict[str, Any]) -> list[str]:
             current_missed = [str(title) for title in item.get("current_missed", [])]
             if not current_missed:
                 continue
-            expected_total = int(
-                item.get("current_expected_total", len(current_missed))
-            )
+            expected_total = int(item.get("current_expected_total", len(current_missed)))
             lines.append(
                 f'  {item.get("query_id", "")} '
                 f'"{item.get("query", "")}": '
@@ -675,9 +627,9 @@ def compare_against_baseline(
 
     metric_deltas: dict[str, dict[str, float]] = {}
     for metric_name in ("mrr_at_5", "recall_at_5", "precision_at_5", "ndcg_at_5"):
-        if metric_name not in baseline.get(
+        if metric_name not in baseline.get("metrics", {}) and metric_name not in current.get(
             "metrics", {}
-        ) and metric_name not in current.get("metrics", {}):
+        ):
             continue
         before = float(baseline.get("metrics", {}).get(metric_name, 0.0))
         after = float(current.get("metrics", {}).get(metric_name, 0.0))
@@ -720,9 +672,7 @@ def compare_against_baseline(
             regressions.append(
                 {
                     "id": query_id,
-                    "query": current_query.get(
-                        "query", baseline_query.get("query", "")
-                    ),
+                    "query": current_query.get("query", baseline_query.get("query", "")),
                     "reason": reason,
                 }
             )
@@ -735,9 +685,7 @@ def compare_against_baseline(
             regressions.append(
                 {
                     "id": query_id,
-                    "query": current_query.get(
-                        "query", baseline_query.get("query", "")
-                    ),
+                    "query": current_query.get("query", baseline_query.get("query", "")),
                     "reason": f"was rank {baseline_rank}, now rank {current_rank}",
                 }
             )
@@ -759,12 +707,8 @@ def compare_against_baseline(
     for query_id in sorted(set(baseline_recall_gaps) | set(current_recall_gaps)):
         baseline_gap = baseline_recall_gaps.get(query_id, {})
         current_gap = current_recall_gaps.get(query_id, {})
-        baseline_missed = [
-            str(title) for title in baseline_gap.get("expected_but_missed", [])
-        ]
-        current_missed = [
-            str(title) for title in current_gap.get("expected_but_missed", [])
-        ]
+        baseline_missed = [str(title) for title in baseline_gap.get("expected_but_missed", [])]
+        current_missed = [str(title) for title in current_gap.get("expected_but_missed", [])]
         if baseline_missed == current_missed:
             continue
         recall_gap_changes.append(
