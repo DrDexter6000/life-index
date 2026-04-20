@@ -307,9 +307,7 @@ def _apply_edit_updates(  # noqa: C901
             current_entries = []
 
         try:
-            current_rel_path = os.path.relpath(journal_path, get_user_data_dir()).replace(
-                "\\", "/"
-            )
+            current_rel_path = os.path.relpath(journal_path, get_user_data_dir()).replace("\\", "/")
         except ValueError:
             current_rel_path = None
         merged_entries: list[str] = []
@@ -377,9 +375,9 @@ def _apply_edit_updates(  # noqa: C901
 
             if key == "related_entries" and isinstance(value, list):
                 try:
-                    current_rel_path = os.path.relpath(
-                        journal_path, get_user_data_dir()
-                    ).replace("\\", "/")
+                    current_rel_path = os.path.relpath(journal_path, get_user_data_dir()).replace(
+                        "\\", "/"
+                    )
                 except ValueError:
                     current_rel_path = None
                 filtered_values: list[str] = []
@@ -573,9 +571,9 @@ def edit_journal(
                 # 标记待索引更新 (Round 12 Phase 1: Pending Queue)
                 # 所有编辑（内容或元数据）都可能影响 FTS/向量索引
                 try:
-                    rel_path = str(
-                        journal_path.relative_to(resolve_user_data_dir())
-                    ).replace("\\", "/")
+                    rel_path = str(journal_path.relative_to(resolve_user_data_dir())).replace(
+                        "\\", "/"
+                    )
                     mark_pending(rel_path)
                     logger.info(f"已标记待索引更新: {rel_path}")
                     result["pending_marked"] = True

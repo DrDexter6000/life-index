@@ -267,7 +267,8 @@ def update_vector_index(incremental: bool = True) -> Dict[str, Any]:
                 new_version = EMBEDDING_MODEL_CONFIG["version"]
                 logger.info(
                     "Embedding model version changed (%s → %s). Auto-rebuilding vector index...",
-                    old_version, new_version,
+                    old_version,
+                    new_version,
                 )
             except Exception:
                 logger.info("Auto-rebuilding vector index due to: %s", integrity_result.message)

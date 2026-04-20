@@ -31,22 +31,17 @@ def has_writes_since(ts: float, root: Path) -> bool:
                 for sub_entry in os.scandir(entry.path):
                     if sub_entry.is_dir(follow_symlinks=False):
                         for file_entry in os.scandir(sub_entry.path):
-                            if file_entry.name.endswith(
-                                ".md"
-                            ) and file_entry.is_file(follow_symlinks=False):
+                            if file_entry.name.endswith(".md") and file_entry.is_file(
+                                follow_symlinks=False
+                            ):
                                 try:
-                                    if (
-                                        file_entry.stat(
-                                            follow_symlinks=False
-                                        ).st_mtime
-                                        > ts
-                                    ):
+                                    if file_entry.stat(follow_symlinks=False).st_mtime > ts:
                                         return True
                                 except OSError:
                                     continue
-                    elif sub_entry.name.endswith(
-                        ".md"
-                    ) and sub_entry.is_file(follow_symlinks=False):
+                    elif sub_entry.name.endswith(".md") and sub_entry.is_file(
+                        follow_symlinks=False
+                    ):
                         try:
                             if sub_entry.stat(follow_symlinks=False).st_mtime > ts:
                                 return True

@@ -49,9 +49,7 @@ def compute_no_confident_match(results: list[dict]) -> bool:
         return True
 
     # Check if FTS has any results (any fts_score > 0)
-    has_fts = any(
-        float(r.get("fts_score", 0.0)) > 0 for r in results
-    )
+    has_fts = any(float(r.get("fts_score", 0.0)) > 0 for r in results)
 
     # If FTS has results, use per-result confidence (old logic)
     if has_fts:

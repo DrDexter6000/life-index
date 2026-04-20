@@ -379,9 +379,7 @@ def run_keyword_pipeline(
                     # distinct non-stopword tokens. Single-token queries skip this filter.
                     if was_segmented and l3_results:
                         query_tokens = segmented_query.split()
-                        required_hits, non_stop_tokens = _compute_min_required_hits(
-                            query_tokens
-                        )
+                        required_hits, non_stop_tokens = _compute_min_required_hits(query_tokens)
                         if required_hits > 0 and non_stop_tokens:
                             before_count = len(l3_results)
                             filtered = []
@@ -392,15 +390,12 @@ def run_keyword_pipeline(
                                         str(item.get("snippet", "")),
                                     ]
                                 ).lower()
-                                hits = _count_distinct_token_hits(
-                                    searchable, non_stop_tokens
-                                )
+                                hits = _count_distinct_token_hits(searchable, non_stop_tokens)
                                 if hits >= required_hits:
                                     filtered.append(item)
                                 else:
                                     logger.debug(
-                                        "FTS min-hits filter: removed '%s' "
-                                        "(hit %d/%d tokens)",
+                                        "FTS min-hits filter: removed '%s' " "(hit %d/%d tokens)",
                                         item.get("title", ""),
                                         hits,
                                         required_hits,
@@ -408,8 +403,7 @@ def run_keyword_pipeline(
                             l3_results = filtered
                             if before_count != len(l3_results):
                                 logger.info(
-                                    "FTS min-hits filter: %d → %d results "
-                                    "(required ≥%d of %s)",
+                                    "FTS min-hits filter: %d → %d results " "(required ≥%d of %s)",
                                     before_count,
                                     len(l3_results),
                                     required_hits,
@@ -435,32 +429,24 @@ def run_keyword_pipeline(
                         if should_fallback:
                             fallback_l3_results = search_l3_content(
                                 normalized_query,
-                                sorted(candidate_paths)
-                                if candidate_paths is not None
-                                else None,
+                                sorted(candidate_paths) if candidate_paths is not None else None,
                             )
                             seen_paths = {
-                                str(
-                                    item.get("journal_route_path")
-                                    or item.get("path")
-                                    or ""
-                                )
+                                str(item.get("journal_route_path") or item.get("path") or "")
                                 for item in l3_results
                             }
                             for item in fallback_l3_results:
-                                key = str(
-                                    item.get("journal_route_path")
-                                    or item.get("path")
-                                    or ""
-                                )
+                                key = str(item.get("journal_route_path") or item.get("path") or "")
                                 if key and key not in seen_paths:
                                     l3_results.append(item)
                                     seen_paths.add(key)
                             logger.debug(
                                 "L3 fallback triggered (index stale: %s)",
-                                "missing_last_updated"
-                                if last_sync is None
-                                else "files_newer_than_last_sync",
+                                (
+                                    "missing_last_updated"
+                                    if last_sync is None
+                                    else "files_newer_than_last_sync"
+                                ),
                             )
                         else:
                             logger.debug(

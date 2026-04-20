@@ -377,6 +377,7 @@ def _temporary_data_dir(data_dir: Path | None) -> Iterator[None]:
 @contextmanager
 def _live_data_dir() -> Iterator[None]:
     import pathlib
+
     original_env = os.environ.get("LIFE_INDEX_DATA_DIR")
     # Instead of popping (which triggers pytest guard on reload),
     # set to the real user data directory.

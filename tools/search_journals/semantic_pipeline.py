@@ -48,9 +48,7 @@ def _load_semantic_baseline() -> float | None:
         conn = sqlite3.connect(str(get_fts_db_path()))
         try:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT value FROM index_meta WHERE key = 'semantic_baseline_p25'"
-            )
+            cursor.execute("SELECT value FROM index_meta WHERE key = 'semantic_baseline_p25'")
             row = cursor.fetchone()
         finally:
             conn.close()

@@ -25,9 +25,7 @@ from .search_constants import FTS_LIMIT, FTS_MIN_RELEVANCE, TOKENIZER_VERSION
 
 # Bump this whenever the FTS table schema changes (columns added/removed).
 # Ensures incremental updates auto-trigger a full rebuild when needed.
-FTS_SCHEMA_VERSION: int = (
-    2  # v2: title split into raw (UNINDEXED) + title_segmented (indexed)
-)
+FTS_SCHEMA_VERSION: int = 2  # v2: title split into raw (UNINDEXED) + title_segmented (indexed)
 
 # 索引存储目录 (deprecated: use get_index_dir() / get_fts_db_path())
 INDEX_DIR = get_index_dir()  # deprecated: use get_index_dir()
@@ -165,17 +163,13 @@ def ensure_fts_schema() -> Dict[str, Any]:
     except (sqlite3.Error, OSError) as e:
         import logging
 
-        logging.getLogger(__name__).error(
-            "[migration] FTS schema migration failed: %s", e
-        )
+        logging.getLogger(__name__).error("[migration] FTS schema migration failed: %s", e)
         result["error"] = str(e)
 
     return result
 
 
-def write_index_meta(
-    conn: sqlite3.Connection, semantic_baseline_p25: float | None = None
-) -> None:
+def write_index_meta(conn: sqlite3.Connection, semantic_baseline_p25: float | None = None) -> None:
     """Write tokenizer_version, dict_hash, schema_version, and last_updated.
 
     These values are written into the index_meta table.
@@ -402,8 +396,12 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     # Non-incremental (full rebuild) must force-recreate the FTS table
     # so that schema changes (new columns like mood/people) take effect.
     # CREATE VIRTUAL TABLE IF NOT EXISTS silently preserves old schema.
-    init_func = (  # type: ignore[misc]
-        init_fts_db if incremental else lambda: init_fts_db(force_recreate=True)
+    from typing import Callable
+
+    init_func: Callable[[], sqlite3.Connection] = (
+        init_fts_db
+        if incremental
+        else lambda: init_fts_db(force_recreate=True)  # type: ignore[misc]
     )
 
     result = _update_index(

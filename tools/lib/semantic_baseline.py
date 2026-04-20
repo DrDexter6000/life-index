@@ -53,9 +53,7 @@ def compute_semantic_baseline(
 
     embedding_matrix = np.vstack(normalized_embeddings)
     rng = np.random.default_rng(seed)
-    sample_indices = rng.choice(
-        total_docs, size=min(sample_size, total_docs), replace=False
-    )
+    sample_indices = rng.choice(total_docs, size=min(sample_size, total_docs), replace=False)
 
     max_scores: list[float] = []
     for index in sample_indices:

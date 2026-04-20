@@ -15,8 +15,8 @@ from typing import Dict, List
 class Anomaly:
     """A single detected anomaly in the data directory."""
 
-    type: str          # e.g. "revision_file", "naming", "distribution"
-    severity: str      # "warning" or "info"
+    type: str  # e.g. "revision_file", "naming", "distribution"
+    severity: str  # "warning" or "info"
     description: str
     path: str
 
@@ -70,22 +70,26 @@ def audit_data_directory(data_dir: Path) -> DataAuditReport:
 
         # Check for revision files loose in Journals/ (not inside .revisions/)
         if _REVISION_PATTERN.search(basename):
-            report.anomalies.append(Anomaly(
-                type="revision_file",
-                severity="warning",
-                description=f"Revision file found outside .revisions/: {basename}",
-                path=rel_path,
-            ))
+            report.anomalies.append(
+                Anomaly(
+                    type="revision_file",
+                    severity="warning",
+                    description=f"Revision file found outside .revisions/: {basename}",
+                    path=rel_path,
+                )
+            )
             continue  # Don't count as a journal
 
         # Check for non-standard naming
         if not basename.startswith(_ALLOWED_PREFIXES):
-            report.anomalies.append(Anomaly(
-                type="naming",
-                severity="info",
-                description=f"Non-standard file name: {basename}",
-                path=rel_path,
-            ))
+            report.anomalies.append(
+                Anomaly(
+                    type="naming",
+                    severity="info",
+                    description=f"Non-standard file name: {basename}",
+                    path=rel_path,
+                )
+            )
             continue  # Don't count as a journal
 
         # Only count actual journal files (life-index_*)
@@ -109,9 +113,7 @@ def audit_data_directory(data_dir: Path) -> DataAuditReport:
     return report
 
 
-def _check_distribution_anomaly(
-    report: DataAuditReport, month_counts: Dict[str, int]
-) -> None:
+def _check_distribution_anomaly(report: DataAuditReport, month_counts: Dict[str, int]) -> None:
     """Flag months with journal count > 3x the monthly average."""
     if len(month_counts) < 2:
         return  # Need at least 2 months to compare
@@ -121,12 +123,14 @@ def _check_distribution_anomaly(
 
     for month, count in month_counts.items():
         if count > threshold and count > 5:  # Minimum 5 to avoid noise
-            report.anomalies.append(Anomaly(
-                type="distribution",
-                severity="info",
-                description=(
-                    f"Month {month} has {count} journals "
-                    f"(avg={avg:.1f}, threshold={threshold:.1f})"
-                ),
-                path=f"Journals/{month.replace('-', '/')}",
-            ))
+            report.anomalies.append(
+                Anomaly(
+                    type="distribution",
+                    severity="info",
+                    description=(
+                        f"Month {month} has {count} journals "
+                        f"(avg={avg:.1f}, threshold={threshold:.1f})"
+                    ),
+                    path=f"Journals/{month.replace('-', '/')}",
+                )
+            )

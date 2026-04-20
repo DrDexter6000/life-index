@@ -6,7 +6,6 @@ import functools
 from pathlib import Path
 from typing import Iterable
 
-
 _STOPWORDS_DIR = Path(__file__).parent
 
 

@@ -63,10 +63,7 @@ def _iter_month_keys(start: datetime, end: datetime) -> Iterable[str]:
 def _candidate_metrics_paths(days: int, now: datetime) -> list[Path]:
     cutoff = now - timedelta(days=max(days, 0))
     metrics_dir = _get_user_data_dir() / ".life-index" / "metrics"
-    return [
-        metrics_dir / f"{month_key}.jsonl"
-        for month_key in _iter_month_keys(cutoff, now)
-    ]
+    return [metrics_dir / f"{month_key}.jsonl" for month_key in _iter_month_keys(cutoff, now)]
 
 
 def _safe_warning_list(value: object) -> list[str]:

@@ -434,9 +434,9 @@ def merge_and_rank_results_hybrid(
         semantic_weight: 语义排名权重（默认 SEMANTIC_WEIGHT_DEFAULT，影响语义相似度在最终结果中的占比）
     """
 
-    scored: Dict[
-        str, Dict[str, Any]
-    ] = {}  # path -> {data, fts_score, semantic_score, final_score, rrf_score, tier, has_rrf}
+    scored: Dict[str, Dict[str, Any]] = (
+        {}
+    )  # path -> {data, fts_score, semantic_score, final_score, rrf_score, tier, has_rrf}
 
     # 先构建 FTS 排名（按 relevance + title_match bonus）
     fts_ranked_paths: List[str] = []
