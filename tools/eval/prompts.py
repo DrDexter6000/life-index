@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-
 PRECISION_JUDGE_PROMPT = """你是一个个人日志搜索引擎的相关性评判器。
 
 用户搜索: {query}

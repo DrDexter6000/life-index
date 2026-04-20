@@ -11,7 +11,6 @@ from typing import Any, Iterable
 
 from .paths import resolve_user_data_dir
 
-
 logger = logging.getLogger("search_diagnose")
 
 _PIPELINE_KEYS = ("hybrid", "fts_only", "semantic_only", "degraded")
@@ -40,9 +39,7 @@ def _parse_timestamp(value: object) -> datetime | None:
         return None
 
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
-            timezone.utc
-        )
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
     except ValueError:
         return None
 
@@ -66,10 +63,7 @@ def _iter_month_keys(start: datetime, end: datetime) -> Iterable[str]:
 def _candidate_metrics_paths(days: int, now: datetime) -> list[Path]:
     cutoff = now - timedelta(days=max(days, 0))
     metrics_dir = resolve_user_data_dir() / ".life-index" / "metrics"
-    return [
-        metrics_dir / f"{month_key}.jsonl"
-        for month_key in _iter_month_keys(cutoff, now)
-    ]
+    return [metrics_dir / f"{month_key}.jsonl" for month_key in _iter_month_keys(cutoff, now)]
 
 
 def _safe_warning_list(value: object) -> list[str]:
@@ -116,9 +110,7 @@ def _load_filtered_records(days: int, now: datetime) -> list[dict[str, Any]]:
                     try:
                         payload = json.loads(line)
                     except json.JSONDecodeError:
-                        logger.warning(
-                            "Skipping malformed metrics line in %s", metrics_path
-                        )
+                        logger.warning("Skipping malformed metrics line in %s", metrics_path)
                         continue
 
                     if not isinstance(payload, dict):
@@ -179,10 +171,7 @@ def diagnose_search(*, days: int = 7) -> dict[str, Any]:
                 warning_counts[warning] = warning_counts.get(warning, 0) + 1
 
             query = str(record.get("query") or "")
-            if (
-                _safe_int(record.get("result_count")) == 0
-                and query not in seen_zero_result_queries
-            ):
+            if _safe_int(record.get("result_count")) == 0 and query not in seen_zero_result_queries:
                 seen_zero_result_queries.add(query)
                 zero_result_queries.append(query)
 

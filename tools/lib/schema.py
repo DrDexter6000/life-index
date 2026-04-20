@@ -137,9 +137,7 @@ def run_migration_chain(metadata: dict, content: str = "") -> MigrationResult:
         working["schema_version"] = SCHEMA_VERSION
         return MigrationResult(
             metadata=working,
-            deterministic_changes=[
-                f"pinned future v{current_ver} to v{SCHEMA_VERSION}"
-            ],
+            deterministic_changes=[f"pinned future v{current_ver} to v{SCHEMA_VERSION}"],
         )
 
     chain = get_migration_chain(current_ver, SCHEMA_VERSION)
@@ -226,9 +224,7 @@ def validate_metadata(metadata: dict[str, Any]) -> list[dict[str, str]]:
 
     links = metadata.get("links")
     if links is not None:
-        if not isinstance(links, list) or not all(
-            isinstance(item, str) for item in links
-        ):
+        if not isinstance(links, list) or not all(isinstance(item, str) for item in links):
             issues.append(
                 {
                     "level": "error",

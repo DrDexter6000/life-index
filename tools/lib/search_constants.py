@@ -190,7 +190,8 @@ HIGH_FREQUENCY_MIN_RELEVANCE: int = 50
 
 # ADR-008: Base scores for each layer
 SCORE_L1_BASE: int = 10  # Index presence
-SCORE_L2_BASE: int = 30  # Metadata match (must exceed FTS_MIN_RELEVANCE=25 to survive non-hybrid merge threshold)
+# Metadata match (must exceed FTS_MIN_RELEVANCE=25 to survive non-hybrid merge threshold)
+SCORE_L2_BASE: int = 30
 # L3 uses BM25 relevance directly
 
 # ADR-008: Match bonuses

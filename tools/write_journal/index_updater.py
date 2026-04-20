@@ -42,9 +42,7 @@ def build_index_filename(kind: str, value: str) -> str:
     return f"{prefix}{safe_value}.md"
 
 
-def update_topic_index(
-    topic: Any, journal_path: Path, data: Dict[str, Any]
-) -> List[Path]:
+def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> List[Path]:
     """更新主题索引文件 - 支持单个主题或主题列表"""
     if not topic:
         return []
@@ -81,9 +79,7 @@ def update_topic_index(
     return updated
 
 
-def update_project_index(
-    project: str, journal_path: Path, data: Dict[str, Any]
-) -> Optional[Path]:
+def update_project_index(project: str, journal_path: Path, data: Dict[str, Any]) -> Optional[Path]:
     """更新项目索引文件"""
     if not project:
         return None
@@ -107,9 +103,7 @@ def update_project_index(
     return index_file
 
 
-def update_tag_indices(
-    tags: List[str], journal_path: Path, data: Dict[str, Any]
-) -> List[Path]:
+def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]) -> List[Path]:
     """更新标签索引文件"""
     updated = []
 
@@ -182,9 +176,7 @@ def update_index(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]
         result["root_index"] = root
 
         # Mark degraded if any layer failed
-        if not all(
-            r.get("success", False) for r in [monthly, yearly, root] if r is not None
-        ):
+        if not all(r.get("success", False) for r in [monthly, yearly, root] if r is not None):
             result["success"] = False
 
     except Exception as e:

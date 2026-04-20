@@ -85,7 +85,10 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
 
 
 def write_index_meta(conn: sqlite3.Connection) -> None:
-    """Write tokenizer_version, dict_hash, schema_version, and last_updated into index_meta table."""
+    """Write tokenizer_version, dict_hash, schema_version, and last_updated.
+
+    These values are written into the index_meta table.
+    """
     from datetime import datetime, timezone
 
     cursor = conn.cursor()
@@ -148,25 +151,19 @@ def check_index_freshness() -> Dict[str, Any]:
             if check_needs_rebuild(conn):
                 result["stale"] = True
                 # Determine specific reason
-                cursor.execute(
-                    "SELECT value FROM index_meta WHERE key = 'tokenizer_version'"
-                )
+                cursor.execute("SELECT value FROM index_meta WHERE key = 'tokenizer_version'")
                 row = cursor.fetchone()
                 if row is None:
                     result["reason"] = "no_meta"
                 elif int(row[0]) != TOKENIZER_VERSION:
                     result["reason"] = "tokenizer_mismatch"
                 else:
-                    cursor.execute(
-                        "SELECT value FROM index_meta WHERE key = 'schema_version'"
-                    )
+                    cursor.execute("SELECT value FROM index_meta WHERE key = 'schema_version'")
                     row = cursor.fetchone()
                     if row is None or int(row[0]) != FTS_SCHEMA_VERSION:
                         result["reason"] = "schema_mismatch"
                     else:
-                        cursor.execute(
-                            "SELECT value FROM index_meta WHERE key = 'dict_hash'"
-                        )
+                        cursor.execute("SELECT value FROM index_meta WHERE key = 'dict_hash'")
                         row = cursor.fetchone()
                         current_hash = get_dict_hash()
                         if row is None or row[0] != current_hash:
@@ -311,9 +308,7 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     # CREATE VIRTUAL TABLE IF NOT EXISTS silently preserves old schema.
     init_func = init_fts_db if incremental else lambda: init_fts_db(force_recreate=True)
 
-    result = _update_index(
-        init_func, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental
-    )
+    result = _update_index(init_func, FTS_DB_PATH, JOURNALS_DIR, USER_DATA_DIR, incremental)
 
     # After successful update, write version metadata (T1.4)
     if result.get("success") and FTS_DB_PATH.exists():
