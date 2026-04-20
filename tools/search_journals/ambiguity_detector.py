@@ -13,7 +13,6 @@ from .query_types import (
     AmbiguityItem,
     AmbiguityReport,
     AmbiguityType,
-    DateRange,
     IntentType,
     SearchPlan,
 )
@@ -45,13 +44,20 @@ def detect_ambiguity(
             AmbiguityItem(
                 type=AmbiguityType.AGGREGATION_REQUIRES_AGENT_JUDGEMENT,
                 severity="high",
-                reason=f"intent_type={search_plan.intent_type.value}: search can retrieve evidence but cannot derive the final answer deterministically",
+                reason=(
+                    f"intent_type={search_plan.intent_type.value}: "
+                    "search can retrieve evidence but cannot derive "
+                    "the final answer deterministically"
+                ),
                 candidates=[],
             )
         )
 
     # Rule 2: Relative time range may have multiple interpretations
-    if search_plan.date_range is not None and search_plan.date_range.source == "relative_time_parse":
+    if (
+        search_plan.date_range is not None
+        and search_plan.date_range.source == "relative_time_parse"
+    ):
         candidates = []
         # Provide alternative interpretations
         if "过去" in (query or "") and "天" in (query or ""):
@@ -67,7 +73,10 @@ def detect_ambiguity(
             AmbiguityItem(
                 type=AmbiguityType.TIME_RANGE_INTERPRETATION,
                 severity="medium",
-                reason=f"time range was parsed from relative expression: {search_plan.date_range.since} to {search_plan.date_range.until}",
+                reason=(
+                    f"time range was parsed from relative expression: "
+                    f"{search_plan.date_range.since} to {search_plan.date_range.until}"
+                ),
                 candidates=candidates,
             )
         )

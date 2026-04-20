@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Diagnose FTS index pollution - the real database."""
-import sqlite3, os, json
+
+import sqlite3
+import os
+import json
 
 idx_dir = os.path.expanduser("~/Documents/Life-Index/.index/")
 
@@ -32,7 +35,7 @@ for tbl in tables:
     cur.execute(f"PRAGMA table_info([{tbl}])")
     cols = [c[1] for c in cur.fetchall()]
     print(f"Table {tbl}: columns = {cols}")
-    
+
     # Check each column for pytest paths
     for col in cols:
         try:
@@ -43,11 +46,11 @@ for tbl in tables:
                 cur.execute(f"SELECT [{col}] FROM [{tbl}] WHERE [{col}] LIKE '%pytest%' LIMIT 3")
                 for r in cur.fetchall():
                     print(f"    POLLUTED: {str(r[0])[:150]}")
-        except:
+        except BaseException:
             pass
 
 # FTS5 search test
-print(f"\n=== FTS5 SEARCH TESTS ===")
+print("\n=== FTS5 SEARCH TESTS ===")
 for tbl in tables:
     if "fts" in tbl.lower() or "content" in tbl.lower():
         try:
@@ -66,11 +69,15 @@ manifest_path = os.path.join(idx_dir, "index_manifest.json")
 if os.path.exists(manifest_path):
     with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
-    print(f"\n=== index_manifest.json ===")
+    print("\n=== index_manifest.json ===")
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
 
 # Real journal count
 journals_dir = os.path.expanduser("~/Documents/Life-Index/Journals/")
-real_count = sum(1 for root, dirs, files in os.walk(journals_dir) 
-                 for f in files if f.endswith(".md") and "life-index_" in f)
+real_count = sum(
+    1
+    for root, dirs, files in os.walk(journals_dir)
+    for f in files
+    if f.endswith(".md") and "life-index_" in f
+)
 print(f"\n=== Real journal files on disk: {real_count} ===")

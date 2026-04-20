@@ -256,7 +256,8 @@ def _attach_relation_context(
 
 
 def _classify_confidence(**kwargs: Any) -> str:
-    return import_module("tools.search_journals.confidence").classify_confidence(**kwargs)
+    result: str = import_module("tools.search_journals.confidence").classify_confidence(**kwargs)
+    return result
 
 
 def merge_and_rank_results(

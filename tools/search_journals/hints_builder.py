@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from .query_types import (
     AmbiguityReport,
-    AmbiguityType,
     HintItem,
     IntentType,
     SearchPlan,
@@ -42,7 +41,10 @@ def build_hints(
             HintItem(
                 type="retrieval_boundary",
                 severity="high",
-                message="Search returns an evidence set, not the final answer, for count/compare queries.",
+                message=(
+                    "Search returns an evidence set, not the final answer, "
+                    "for count/compare queries."
+                ),
             )
         )
         hints.append(
@@ -54,12 +56,15 @@ def build_hints(
         )
 
     # Hint 2: Time range was parsed
-    if search_plan.date_range is not None and search_plan.date_range.source == "relative_time_parse":
+    if (
+        search_plan.date_range is not None
+        and search_plan.date_range.source == "relative_time_parse"
+    ):
         since = search_plan.date_range.since or "?"
         until = search_plan.date_range.until or "?"
         msg = f"Query time range was parsed as {since} to {until}."
         if len(msg) > _MAX_MESSAGE_LEN:
-            msg = msg[:_MAX_MESSAGE_LEN - 3] + "..."
+            msg = msg[: _MAX_MESSAGE_LEN - 3] + "..."
         hints.append(
             HintItem(
                 type="time_range_parsed",
@@ -84,7 +89,7 @@ def build_hints(
         topics = ", ".join(search_plan.topic_hints)
         msg = f"Detected topic hints: {topics}. Results may be filtered accordingly."
         if len(msg) > _MAX_MESSAGE_LEN:
-            msg = msg[:_MAX_MESSAGE_LEN - 3] + "..."
+            msg = msg[: _MAX_MESSAGE_LEN - 3] + "..."
         hints.append(
             HintItem(
                 type="topic_detected",

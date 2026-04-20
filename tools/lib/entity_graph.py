@@ -78,7 +78,10 @@ def check_graph_status(graph_path: Path) -> dict[str, Any]:
         result["status"] = "not_initialized"
         result["suggested_action"] = {
             "command": "life-index entity --seed",
-            "reason": "entity graph is invalid or legacy; search will continue without graph expansion until it is repaired",
+            "reason": (
+                "entity graph is invalid or legacy; "
+                "search will continue without graph expansion until it is repaired"
+            ),
         }
         return result
 

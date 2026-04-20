@@ -157,8 +157,6 @@ def get_default_log_file() -> Path:
         日志文件路径（跨平台）
     """
     # 使用用户数据目录下的 .logs 目录
-    from pathlib import Path
-
     # Respect LIFE_INDEX_DATA_DIR env override (same as paths.get_user_data_dir)
     from .paths import resolve_user_data_dir
 

@@ -402,7 +402,9 @@ def update_index(incremental: bool = True) -> Dict[str, Any]:
     # Non-incremental (full rebuild) must force-recreate the FTS table
     # so that schema changes (new columns like mood/people) take effect.
     # CREATE VIRTUAL TABLE IF NOT EXISTS silently preserves old schema.
-    init_func = init_fts_db if incremental else lambda: init_fts_db(force_recreate=True)
+    init_func = (  # type: ignore[misc]
+        init_fts_db if incremental else lambda: init_fts_db(force_recreate=True)
+    )
 
     result = _update_index(
         init_func, get_fts_db_path(), get_journals_dir(), get_user_data_dir(), incremental

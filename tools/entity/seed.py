@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -128,9 +128,7 @@ def collect_candidates(
     return candidates
 
 
-def _extract_frontmatter_entities(
-    md_file: Path, counter: Counter[tuple[str, str]]
-) -> None:
+def _extract_frontmatter_entities(md_file: Path, counter: Counter[tuple[str, str]]) -> None:
     """Parse a single journal file and accumulate entity counts."""
     try:
         content = md_file.read_text(encoding="utf-8")

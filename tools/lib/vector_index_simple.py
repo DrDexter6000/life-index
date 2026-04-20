@@ -19,7 +19,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # 导入配置 - 使用相对导入
-from .paths import get_index_dir, get_vec_index_path, get_vec_meta_path, get_user_data_dir, get_journals_dir
+from .paths import (
+    get_index_dir,
+    get_vec_index_path,
+    get_vec_meta_path,
+    get_user_data_dir,
+    get_journals_dir,
+)
 from .search_config import get_model_cache_dir, EMBEDDING_MODEL as MODEL_CONFIG
 from .frontmatter import parse_frontmatter
 from .embedding_backends import SharedEmbeddingModel as EmbeddingModel
@@ -332,7 +338,8 @@ def update_vector_index_simple(
                 new_version = EMBEDDING_MODEL_VERSION
                 logger.info(
                     "Embedding model version changed (%s → %s). Auto-rebuilding vector index...",
-                    old_version, new_version,
+                    old_version,
+                    new_version,
                 )
             except Exception:
                 logger.info("Auto-rebuilding vector index due to: %s", integrity_result.message)

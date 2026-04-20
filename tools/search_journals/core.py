@@ -60,7 +60,8 @@ def _emit_search_metrics(result: Dict[str, Any]) -> None:
 
 def _compute_no_confident_match(results: list[dict[str, Any]]) -> bool:
     confidence_module = import_module("tools.search_journals.confidence")
-    return confidence_module.compute_no_confident_match(results)
+    result: bool = confidence_module.compute_no_confident_match(results)
+    return result
 
 
 def _normalize_candidate_path(path: Path) -> str:
@@ -115,14 +116,10 @@ def build_l0_candidate_set(
 
     if year is not None:
         if month is not None:
-            journal_paths = (_journals_dir / str(year) / f"{month:02d}").glob(
-                "life-index_*.md"
-            )
+            journal_paths = (_journals_dir / str(year) / f"{month:02d}").glob("life-index_*.md")
         else:
             journal_paths = (_journals_dir / str(year)).glob("**/life-index_*.md")
-        candidate_sets.append(
-            {_normalize_candidate_path(path) for path in journal_paths}
-        )
+        candidate_sets.append({_normalize_candidate_path(path) for path in journal_paths})
 
     if topic:
         topic_index = _topic_index_path(topic)
@@ -627,7 +624,6 @@ def hierarchical_search(
     from ..lib.paths import get_user_data_dir as _get_user_data_dir
 
     _index_dir = _get_user_data_dir() / ".index"
-    _needs_build = False
 
     # Step 1: If pending writes, trigger build and consume
     if _has_pending():
@@ -654,7 +650,9 @@ def hierarchical_search(
             try:
                 from ..build_index import build_all as _build_all
 
-                logger.info("Index stale, triggering incremental update: %s", ", ".join(_freshness.issues))
+                logger.info(
+                    "Index stale, triggering incremental update: %s", ", ".join(_freshness.issues)
+                )
                 _build_all(incremental=True)
                 result.setdefault("index_status", {})["auto_updated"] = True
             except Exception as exc:

@@ -26,7 +26,6 @@ from ..lib.index_manifest import (
     IndexManifest,
     write_manifest,
     read_manifest,
-    is_manifest_valid,
     compute_fts_checksum,
     compute_vector_checksum,
 )
@@ -207,8 +206,12 @@ def build_all(
                     fts_data = result.get("fts") or {}
                     vec_data = result.get("vector") or {}
                     manifest = IndexManifest(
-                        fts_count=fts_data.get("total", fts_data.get("total_documents", fts_data.get("added", 0))),
-                        vector_count=vec_data.get("total", vec_data.get("total_vectors", vec_data.get("added", 0))),
+                        fts_count=fts_data.get(
+                            "total", fts_data.get("total_documents", fts_data.get("added", 0))
+                        ),
+                        vector_count=vec_data.get(
+                            "total", vec_data.get("total_vectors", vec_data.get("added", 0))
+                        ),
                         file_count=0,  # Will be filled by check_index
                         fts_checksum=compute_fts_checksum(get_fts_db_path()),
                         vector_checksum=compute_vector_checksum(get_vec_index_path()),
@@ -348,6 +351,7 @@ def check_index(data_dir: Path | None = None) -> Dict[str, Any]:
 
     # Freshness info
     from ..lib.index_freshness import check_full_freshness
+
     freshness = check_full_freshness(index_dir)
     if not freshness.overall_fresh:
         healthy = False

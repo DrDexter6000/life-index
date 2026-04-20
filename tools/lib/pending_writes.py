@@ -12,8 +12,10 @@ from typing import List
 
 from .paths import get_index_dir
 
+
 # Module-level helper for testability
-_pending_file = lambda: get_index_dir() / "pending_writes.json"
+def _pending_file() -> Path:
+    return get_index_dir() / "pending_writes.json"
 
 
 def _ensure_index_dir() -> None:

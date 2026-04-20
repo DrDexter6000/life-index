@@ -147,7 +147,12 @@ def ensure_dirs() -> None:
 
     各原子工具的 main() 应在执行任何操作前调用此函数。
     """
-    for dir_path in [get_journals_dir(), get_by_topic_dir(), get_attachments_dir(), get_config_dir()]:
+    for dir_path in [
+        get_journals_dir(),
+        get_by_topic_dir(),
+        get_attachments_dir(),
+        get_config_dir(),
+    ]:
         dir_path.mkdir(parents=True, exist_ok=True)
 
 

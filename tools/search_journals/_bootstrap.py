@@ -12,10 +12,8 @@ any other imports that might trigger torch/transformers output.
 
 from __future__ import annotations
 
-import contextlib
 import sys
 import tempfile
-import os
 
 
 def _maybe_reconfigure(stream: object) -> None:
@@ -51,11 +49,7 @@ def ensure_utf8_io() -> None:
     _suppress_st_stdout()
 
     # Protection 3: Windows non-TTY torch stderr redirect
-    if (
-        sys.platform == "win32"
-        and hasattr(sys.stderr, "isatty")
-        and not sys.stderr.isatty()
-    ):
+    if sys.platform == "win32" and hasattr(sys.stderr, "isatty") and not sys.stderr.isatty():
         _redirect_torch_stderr_windows()
 
 
@@ -105,9 +99,9 @@ def _suppress_st_stdout() -> None:
             @functools.wraps(_orig_init)
             def _quiet_init(self: object, *args: object, **kwargs: object) -> None:
                 with contextlib.redirect_stdout(io.StringIO()):
-                    _orig_init(self, *args, **kwargs)  # type: ignore[arg-type]
+                    _orig_init(self, *args, **kwargs)
 
-            st_mod.SentenceTransformer.__init__ = _quiet_init  # type: ignore[assignment]
+            st_mod.SentenceTransformer.__init__ = _quiet_init
     except Exception:
         pass
 
@@ -130,7 +124,7 @@ def _redirect_torch_stderr_windows() -> None:
             _original_stderr = sys.stderr
             tmp = tempfile.TemporaryFile(mode="w", encoding="utf-8", errors="replace")
             try:
-                sys.stderr = tmp  # type: ignore[assignment]
+                sys.stderr = tmp
             except Exception:
                 # If redirect fails, restore and move on
                 sys.stderr = _original_stderr

@@ -20,10 +20,10 @@ class IndexHealthReport:
     fts_count: int = 0
     vector_count: int = 0
     file_count: int = 0
-    fts_orphans: Set[str] = field(default_factory=set)   # in FTS but not on disk
-    fts_missing: Set[str] = field(default_factory=set)    # on disk but not in FTS
-    vec_orphans: Set[str] = field(default_factory=set)    # in vectors but not on disk
-    vec_missing: Set[str] = field(default_factory=set)    # on disk but not in vectors
+    fts_orphans: Set[str] = field(default_factory=set)  # in FTS but not on disk
+    fts_missing: Set[str] = field(default_factory=set)  # on disk but not in FTS
+    vec_orphans: Set[str] = field(default_factory=set)  # in vectors but not on disk
+    vec_missing: Set[str] = field(default_factory=set)  # on disk but not in vectors
     issues: list[str] = field(default_factory=list)
 
     @property
@@ -109,7 +109,9 @@ def check_index_health(data_dir: Path) -> IndexHealthReport:
 
     issues: list[str] = []
     if fts_orphans:
-        issues.append(f"FTS has {len(fts_orphans)} orphan(s): entries indexed but file missing on disk")
+        issues.append(
+            f"FTS has {len(fts_orphans)} orphan(s): entries indexed but file missing on disk"
+        )
     if fts_missing:
         issues.append(f"FTS missing {len(fts_missing)} file(s): on disk but not indexed")
     if vec_orphans:

@@ -40,6 +40,7 @@ def get_fts_count(index_dir: Path) -> int:
         return 0
     try:
         import sqlite3
+
         conn = sqlite3.connect(str(fts_db))
         try:
             cursor = conn.execute("SELECT COUNT(*) FROM journals")
@@ -54,6 +55,7 @@ def get_fts_count(index_dir: Path) -> int:
 def get_vector_count(index_dir: Path) -> int:
     """Get vector count from the simple vector index."""
     import pickle
+
     vec_pkl = index_dir / "vectors_simple.pkl"
     if not vec_pkl.exists():
         return 0
@@ -106,7 +108,8 @@ def check_full_freshness(index_dir: Path) -> FreshnessReport:
         )
     if not vector_fresh:
         issues.append(
-            f"vector_stale: Vector has {actual_vector} entries, manifest expects {manifest.vector_count}"
+            f"vector_stale: Vector has {actual_vector} entries, "
+            f"manifest expects {manifest.vector_count}"
         )
 
     # Check pending queue

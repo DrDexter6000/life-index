@@ -27,7 +27,6 @@ from typing import Any, Dict, List, Tuple, cast
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 
-from tools.lib.config import get_model_cache_dir
 from tools.lib.paths import get_user_data_dir, get_journals_dir
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
@@ -194,7 +193,6 @@ def _check_index() -> Tuple[Dict[str, Any], str]:
 def _check_embedding_model() -> Dict[str, Any]:
     try:
         from tools.lib.paths import get_user_data_dir
-        import os
 
         model_dir = get_user_data_dir() / ".index" / "models"
         check: Dict[str, Any] = {
@@ -236,9 +234,7 @@ def _check_entity_graph(graph_path: Path) -> Dict[str, Any]:
 
     if not graph_path.exists():
         check["status"] = "warning"
-        check["issue"] = (
-            "Entity graph not found — search may miss alias-based expansion"
-        )
+        check["issue"] = "Entity graph not found — search may miss alias-based expansion"
         check["suggested_command"] = "life-index entity --seed"
         return check
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import re
 from datetime import date, timedelta
-from typing import Sequence
 
 from .query_types import DateRange, IntentType, QueryMode, SearchPlan
 
@@ -40,7 +39,24 @@ _COUNT_SIGNALS = ["多少次", "多久", "几次", "有没有变多", "频率", 
 _COMPARE_SIGNALS = ["哪个多", "对比", "比较", "vs", "区别", "差异"]
 _SUMMARIZE_SIGNALS = ["进展", "总结", "概述", "什么变化", "趋势", "梳理"]
 _QUESTION_WORDS = {"什么", "哪些", "怎么", "怎么样", "有没有", "是否", "如何", "多少", "为什么"}
-_PRONOUNS = {"我", "你", "他", "她", "它", "我们", "你们", "他们", "的", "了", "吗", "呢", "啊", "吧", "呀", "么"}
+_PRONOUNS = {
+    "我",
+    "你",
+    "他",
+    "她",
+    "它",
+    "我们",
+    "你们",
+    "他们",
+    "的",
+    "了",
+    "吗",
+    "呢",
+    "啊",
+    "吧",
+    "呀",
+    "么",
+}
 
 # ── Topic keyword mapping ─────────────────────────────────────────────
 
@@ -92,9 +108,7 @@ def extract_time_expression(query: str) -> str | None:
     return normalize_chinese_time(query)
 
 
-def parse_time_range(
-    expr: str | None, *, reference_date: date | None = None
-) -> DateRange | None:
+def parse_time_range(expr: str | None, *, reference_date: date | None = None) -> DateRange | None:
     """Parse a Chinese time expression into a concrete date range.
 
     Args:
@@ -114,38 +128,50 @@ def parse_time_range(
     if m:
         n = int(m.group(1))
         since = ref - timedelta(days=n)
-        return DateRange(since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse"
+        )
 
     # 过去N周
     m = re.match(r"过去(\d+)周", expr)
     if m:
         n = int(m.group(1))
         since = ref - timedelta(weeks=n)
-        return DateRange(since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse"
+        )
 
     # 过去N.N个月 (fractional months, e.g. from "半个月" → "过去0.5个月")
     m = re.match(r"过去(\d+\.\d+)个?月", expr)
     if m:
-        n = float(m.group(1))
-        since = ref - timedelta(days=int(n * 30))
-        return DateRange(since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse")
+        n_months = float(m.group(1))
+        since = ref - timedelta(days=int(n_months * 30))
+        return DateRange(
+            since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse"
+        )
 
     # 过去N个月
     m = re.match(r"过去(\d+)个?月", expr)
     if m:
         n = int(m.group(1))
         since = _subtract_months(ref, n)
-        return DateRange(since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse"
+        )
 
     # 过去一年
     if "过去一年" in expr:
         since = ref - timedelta(days=365)
-        return DateRange(since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse"
+        )
 
     # 过去一周
     if "过去一周" in expr:
         since = ref - timedelta(weeks=1)
-        return DateRange(since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse"
+        )
 
     # 上个月
     if "上个" in expr and "月" in expr:
@@ -163,7 +189,9 @@ def parse_time_range(
         # Roughly same period last year: same month ±15 days
         since = ref.replace(year=ref.year - 1) - timedelta(days=15)
         until = ref.replace(year=ref.year - 1) + timedelta(days=15)
-        return DateRange(since=since.isoformat(), until=until.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=since.isoformat(), until=until.isoformat(), source="relative_time_parse"
+        )
 
     # 去年
     if expr == "去年" or (expr.startswith("去年") and "这个时候" not in expr):
@@ -175,12 +203,16 @@ def parse_time_range(
 
     # 今年
     if expr == "今年":
-        return DateRange(since=f"{ref.year}-01-01", until=ref.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=f"{ref.year}-01-01", until=ref.isoformat(), source="relative_time_parse"
+        )
 
     # 最近
     if expr == "最近":
         since = ref - timedelta(days=30)
-        return DateRange(since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse"
+        )
 
     # N月份
     m = re.match(r"(\d{1,2})月份?", expr)
@@ -195,21 +227,27 @@ def parse_time_range(
             until = date(year, 12, 31)
         else:
             until = date(year, month + 1, 1) - timedelta(days=1)
-        return DateRange(since=since.isoformat(), until=until.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=since.isoformat(), until=until.isoformat(), source="relative_time_parse"
+        )
 
     # N天前
     m = re.match(r"(\d+)天前", expr)
     if m:
         n = int(m.group(1))
         target = ref - timedelta(days=n)
-        return DateRange(since=target.isoformat(), until=target.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=target.isoformat(), until=target.isoformat(), source="relative_time_parse"
+        )
 
     # N周前
     m = re.match(r"(\d+)周前", expr)
     if m:
         n = int(m.group(1))
         target = ref - timedelta(weeks=n)
-        return DateRange(since=target.isoformat(), until=target.isoformat(), source="relative_time_parse")
+        return DateRange(
+            since=target.isoformat(), until=target.isoformat(), source="relative_time_parse"
+        )
 
     return None
 
@@ -264,7 +302,8 @@ def extract_keywords(query: str, *, time_expr: str | None = None) -> list[str]:
 
     # Filter out stop words (Chinese question words, pronouns, particles)
     filtered = [
-        t for t in tokens
+        t
+        for t in tokens
         if t not in _QUESTION_WORDS
         and t not in _PRONOUNS
         and len(t) >= 1
@@ -276,10 +315,7 @@ def extract_keywords(query: str, *, time_expr: str | None = None) -> list[str]:
 
     en_stopwords = _load_sw("en")
     if en_stopwords:
-        filtered = [
-            t for t in filtered
-            if not (t.isascii() and t.lower() in en_stopwords)
-        ]
+        filtered = [t for t in filtered if not (t.isascii() and t.lower() in en_stopwords)]
 
     # Round 13 Phase 3: Filter Chinese stopwords from CJK tokens
     zh_stopwords = _load_sw("zh")
@@ -352,9 +388,7 @@ def classify_query_mode(query: str) -> QueryMode:
     return QueryMode.MIXED
 
 
-def build_search_plan(
-    query: str, *, reference_date: date | None = None
-) -> SearchPlan:
+def build_search_plan(query: str, *, reference_date: date | None = None) -> SearchPlan:
     """Build a complete SearchPlan from a raw query string.
 
     Orchestrates all sub-functions: normalize → extract time → classify intent
