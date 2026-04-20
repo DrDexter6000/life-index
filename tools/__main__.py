@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Tuple, cast
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 
+from tools.lib.config import get_model_cache_dir  # noqa: F401 — used via monkeypatch in tests
 from tools.lib.paths import get_user_data_dir, get_journals_dir
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
