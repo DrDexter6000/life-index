@@ -756,7 +756,8 @@ def hierarchical_search(
     if semantic_note:
         result["semantic_note"] = semantic_note
         # Phase 2C: 语义搜索降级时添加警告
-        if not semantic_available:
+        # Skip if user explicitly disabled semantic (line 589 already added semantic_disabled)
+        if not semantic_available and semantic:
             result["warnings"].append(f"semantic_unavailable: {semantic_note}")
     if l2_truncated:
         result["l2_truncated"] = True

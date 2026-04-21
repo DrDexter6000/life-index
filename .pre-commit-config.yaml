@@ -1,0 +1,84 @@
+# Life Index - Pre-commit Hooks
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+#
+# Pinned versions — bump intentionally, not blindly.
+# Exclude rationale documented in comments below.
+
+repos:
+  # ── Black: code formatter ──────────────────────────────────────
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        name: black (formatter)
+        args: ["--line-length=100"]
+        # black reads [tool.black] from pyproject.toml; --line-length is
+        # explicit here so the hook works even without pyproject.toml in cwd.
+
+  # ── Flake8: linter ─────────────────────────────────────────────
+  # Uses flake8 (not ruff) to match existing CI quality.yml.
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        name: flake8 (linter)
+        args:
+          - "--max-complexity=40"
+          - "--max-line-length=100"
+          - "--count"
+          - "--show-source"
+          - "--statistics"
+        exclude: |
+          (?x)^(
+            docs/archive/.*\.py
+            | references/.*
+            | tools/lib/vector_index_simple\.py
+          )$
+
+  # ── Mypy: type checker ─────────────────────────────────────────
+  # Reads [tool.mypy] from pyproject.toml (ignore-missing-imports per module, etc.)
+  # CI runs: mypy tools/ --ignore-missing-imports
+  # We pass --ignore-missing-imports as fallback for untyped stubs.
+  # Tests excluded from pre-commit mypy — mypy's `tests.*` glob does NOT match
+  # nested packages like tests.unit.*, and adding per-subpackage overrides is
+  # fragile. Test type coverage is enforced via CI's separate mypy pass.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        name: mypy (type checker)
+        args: ["--ignore-missing-imports"]
+        additional_dependencies:
+          - types-PyYAML
+        exclude: |
+          (?x)^(
+            docs/archive/.*
+            | references/.*
+            | tests/.*
+            | scripts/.*
+            | tools/lib/vector_index_simple\.py
+          )$
+
+# ── Global exclude ────────────────────────────────────────────────
+# These paths are never checked by ANY hook above.
+exclude: |
+  (?x)^(
+    \.venv/.*
+    | build/.*
+    | dist/.*
+    | \.eggs/.*
+    | \.mypy_cache/.*
+    | \.tox/.*
+    | node_modules/.*
+  )$
+
+# ── Exclude rationale (quantified) ────────────────────────────────
+# As of 2026-04-21:
+#   - docs/archive/ — historical dev docs, read-only reference (~15 files)
+#   - references/   — external reference material, not project code (~5 files)
+#   - tools/lib/vector_index_simple.py — optional module, excluded from coverage
+#   - tests/sanity/_trap_* — trap files for pre-commit validation only
+#
+# All new code MUST pass all three hooks. Excludes are for legacy/optional only.
+# History lint debt cleanup is tracked as Round 17 work.
