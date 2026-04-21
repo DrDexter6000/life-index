@@ -4,11 +4,6 @@ Unit tests for L2 metadata cache module
 """
 
 import pytest
-import os
-import tempfile
-import sqlite3
-from pathlib import Path
-from datetime import datetime
 from unittest.mock import patch
 
 from tools.lib.metadata_cache import (
@@ -22,13 +17,11 @@ from tools.lib.metadata_cache import (
     get_cache_stats,
     invalidate_cache,
     update_cache_for_all_journals,
-    get_metadata_db_path,
     rebuild_entry_relations,
     get_backlinked_by,
     add_entry_relations,
     replace_entry_relations,
 )
-from tools.lib.config import JOURNALS_DIR
 
 
 class TestMetadataCache:
@@ -89,7 +82,24 @@ class TestMetadataCache:
         """Test parsing and caching a journal file"""
         # Create a test journal file
         test_file = tmp_path / "test_journal.md"
-        test_content = '---\ntitle: "Test Journal"\ndate: 2026-03-13\nlocation: "Beijing"\nweather: "Sunny"\ntopic: ["work"]\nproject: "Test"\ntags: ["test", "example"]\nmood: ["happy"]\npeople: ["Alice"]\nabstract: "Test abstract"\nlinks: ["https://example.com/ref"]\nrelated_entries: ["Journals/2026/03/other.md"]\n---\n\n# Test Journal\n\nThis is test content.\n'
+        test_content = (
+            "---\n"
+            'title: "Test Journal"\n'
+            "date: 2026-03-13\n"
+            'location: "Beijing"\n'
+            'weather: "Sunny"\n'
+            'topic: ["work"]\n'
+            'project: "Test"\n'
+            'tags: ["test", "example"]\n'
+            'mood: ["happy"]\n'
+            'people: ["Alice"]\n'
+            'abstract: "Test abstract"\n'
+            'links: ["https://example.com/ref"]\n'
+            'related_entries: ["Journals/2026/03/other.md"]\n'
+            "---\n\n"
+            "# Test Journal\n\n"
+            "This is test content.\n"
+        )
         test_file.write_text(test_content, encoding="utf-8")
 
         # Initialize cache
@@ -125,7 +135,12 @@ class TestMetadataCache:
         # Create and cache a test file
         test_file = tmp_path / "test.md"
         test_file.write_text(
-            '---\ntitle: "Cached Test"\ndate: 2026-03-13\nlinks: ["https://example.com/cached"]\nrelated_entries: ["Journals/2026/03/source.md"]\n---\n\nContent\n',
+            "---\n"
+            'title: "Cached Test"\n'
+            "date: 2026-03-13\n"
+            'links: ["https://example.com/cached"]\n'
+            'related_entries: ["Journals/2026/03/source.md"]\n'
+            "---\n\nContent\n",
             encoding="utf-8",
         )
 
@@ -151,7 +166,11 @@ class TestMetadataCache:
         dst = journals_dir / "2026" / "03" / "target.md"
         src.parent.mkdir(parents=True, exist_ok=True)
         src.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-13\nrelated_entries: ["Journals/2026/03/target.md"]\n---\n\nBody\n',
+            "---\n"
+            'title: "Source"\n'
+            "date: 2026-03-13\n"
+            'related_entries: ["Journals/2026/03/target.md"]\n'
+            "---\n\nBody\n",
             encoding="utf-8",
         )
         dst.write_text(
@@ -359,7 +378,8 @@ class TestParseAndCacheJournalEdgeCases:
     def test_parse_and_cache_journal_preserves_string_topic_for_safe_upstream_normalization(
         self, tmp_path
     ):
-        """Legacy scalar topic values remain readable without breaking callers that normalize them."""
+        """Legacy scalar topic values remain readable without
+        breaking callers that normalize them."""
         test_file = tmp_path / "string_topic.md"
         test_file.write_text(
             '---\ntitle: "String Topic"\ndate: 2026-03-13\ntopic: "think"\n---\n\nContent\n',
@@ -473,7 +493,6 @@ class TestInvalidateCacheSpecificFile:
 
     def test_get_cached_metadata_reads_legacy_backslash_path_row(self, monkeypatch, tmp_path):
         """Legacy Windows-style cache rows remain readable after normalization rollout."""
-        import tools.lib.paths as paths_module
 
         journals_dir = tmp_path / "Journals"
         journal_file = journals_dir / "2026" / "03" / "legacy.md"
@@ -596,8 +615,6 @@ class TestUpdateCacheForAllJournals:
     def test_update_cache_for_all_journals_empty_dir(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals with empty JOURNALS_DIR"""
         # Mock JOURNALS_DIR to empty temp directory
-        import tools.lib.metadata_cache as mc
-        import tools.lib.paths as paths_module
 
         # Redirect getter chain so get_journals_dir() returns tmp_path
         monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
@@ -613,8 +630,6 @@ class TestUpdateCacheForAllJournals:
 
     def test_update_cache_for_all_journals_with_journals(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals with actual journal files"""
-        import tools.lib.metadata_cache as mc
-        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -649,8 +664,6 @@ class TestUpdateCacheForAllJournals:
 
     def test_update_cache_for_all_journals_skips_cached(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals skips already cached files"""
-        import tools.lib.metadata_cache as mc
-        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -678,12 +691,8 @@ class TestUpdateCacheForAllJournals:
         assert result2["updated"] == 0
         assert result2["skipped"] == 1
 
-    def test_update_cache_for_all_journals_progress_callback(
-        self, monkeypatch, tmp_path
-    ):
+    def test_update_cache_for_all_journals_progress_callback(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals with progress callback"""
-        import tools.lib.metadata_cache as mc
-        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -716,7 +725,6 @@ class TestUpdateCacheForAllJournals:
     def test_update_cache_for_all_journals_error_handling(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals handles errors during journal iteration"""
         import tools.lib.metadata_cache as mc
-        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -760,12 +768,8 @@ class TestUpdateCacheForAllJournals:
         assert result["updated"] == 1
         assert result["errors"] == 1
 
-    def test_update_cache_for_all_journals_skips_non_year_dirs(
-        self, monkeypatch, tmp_path
-    ):
+    def test_update_cache_for_all_journals_skips_non_year_dirs(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals skips non-year directories"""
-        import tools.lib.metadata_cache as mc
-        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -796,8 +800,6 @@ class TestUpdateCacheForAllJournals:
 
     def test_update_cache_for_all_journals_nonexistent_dir(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals when JOURNALS_DIR doesn't exist"""
-        import tools.lib.metadata_cache as mc
-        import tools.lib.paths as paths_module
 
         # Redirect getter chain - nonexistent path (doesn't exist, but we set it)
         nonexistent = tmp_path / "nonexistent"
@@ -811,12 +813,8 @@ class TestUpdateCacheForAllJournals:
         assert result["skipped"] == 0
         assert result["errors"] == 0
 
-    def test_update_cache_for_all_journals_skips_non_dir_months(
-        self, monkeypatch, tmp_path
-    ):
+    def test_update_cache_for_all_journals_skips_non_dir_months(self, monkeypatch, tmp_path):
         """Test update_cache_for_all_journals skips non-directory items in year dir (line 362)"""
-        import tools.lib.metadata_cache as mc
-        import tools.lib.paths as paths_module
 
         # Create mock journal directory structure
         journals_dir = tmp_path / "Journals"
@@ -864,7 +862,27 @@ class TestCachePerformance:
 
         # Create a test file
         test_file = tmp_path / "perf_test.md"
-        test_content = '---\ntitle: "Performance Test"\ndate: 2026-03-13\nlocation: "Beijing"\nweather: "Sunny"\ntopic: ["work", "life"]\nproject: "Test"\ntags: ["tag1", "tag2", "tag3"]\nmood: ["happy", "productive"]\npeople: ["Alice", "Bob"]\nabstract: "This is a test abstract for performance testing"\n---\n\n# Performance Test\n\nThis is the content of the performance test file.\nIt has multiple lines to simulate a real journal entry.\n\n## Section 1\n\nSome content here.\n\n## Section 2\n\nMore content here.\n'
+        test_content = (
+            "---\n"
+            'title: "Performance Test"\n'
+            "date: 2026-03-13\n"
+            'location: "Beijing"\n'
+            'weather: "Sunny"\n'
+            'topic: ["work", "life"]\n'
+            'project: "Test"\n'
+            'tags: ["tag1", "tag2", "tag3"]\n'
+            'mood: ["happy", "productive"]\n'
+            'people: ["Alice", "Bob"]\n'
+            'abstract: "This is a test abstract for performance testing"\n'
+            "---\n\n"
+            "# Performance Test\n\n"
+            "This is the content of the performance test file.\n"
+            "It has multiple lines to simulate a real journal entry.\n\n"
+            "## Section 1\n\n"
+            "Some content here.\n\n"
+            "## Section 2\n\n"
+            "More content here.\n"
+        )
         test_file.write_text(test_content, encoding="utf-8")
 
         # First call - parse and cache
@@ -881,9 +899,7 @@ class TestCachePerformance:
         assert result1["title"] == result2["title"]
 
         # Cache read should complete within 8ms (practically instantaneous)
-        assert cache_time < 0.008, (
-            f"Cache read took {cache_time * 1000:.2f}ms, expected < 8ms"
-        )
+        assert cache_time < 0.008, f"Cache read took {cache_time * 1000:.2f}ms, expected < 8ms"
 
 
 if __name__ == "__main__":

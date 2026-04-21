@@ -621,9 +621,13 @@ def hierarchical_search(
     # Round 12 Phase 3: Unified freshness guard + pending consumption
     from ..lib.pending_writes import has_pending as _has_pending, clear_pending as _clear_pending
     from ..lib.index_freshness import check_full_freshness as _check_full_freshness
+    from ..lib.index_freshness import check_tokenizer_freshness as _check_tokenizer_freshness
     from ..lib.paths import get_user_data_dir as _get_user_data_dir
 
     _index_dir = _get_user_data_dir() / ".index"
+
+    # Phase 2b-4: Tokenizer freshness observability (jieba version + dict hash)
+    _check_tokenizer_freshness(_index_dir / "journals_fts.db")
 
     # Step 1: If pending writes, trigger build and consume
     if _has_pending():
@@ -670,164 +674,191 @@ def hierarchical_search(
         year=year, month=month, topic=topic, date_from=date_from, date_to=date_to
     )
 
-    # ── Level 1: 索引层（向后兼容，提前返回） ──
-    if level == 1:
-        level_1_result = _search_level_1(
-            result=result,
-            topic=topic,
-            project=project,
-            tags=tags,
-            start_time=start_time,
+    # ── Index read lock: prevent concurrent rebuild from corrupting reads ──
+    from ..lib.file_lock import FileLock, LockTimeoutError as _LockTimeoutError, get_index_lock_path
+    from ..lib.search_config import FILE_LOCK_TIMEOUT_SEARCH
+    from ..lib.errors import ErrorCode, create_error_response
+
+    _lock_path = get_index_lock_path()
+    _lock = FileLock(_lock_path, timeout=FILE_LOCK_TIMEOUT_SEARCH)
+    _lock_wait_start = time.time()
+    try:
+        _lock.acquire()
+    except _LockTimeoutError:
+        logger.warning(
+            "Index lock timeout after %.1fs for query=%r", FILE_LOCK_TIMEOUT_SEARCH, query
         )
-        _emit_search_metrics(level_1_result)
-        return level_1_result
-
-    # ── Level 2: 索引 + 元数据（向后兼容，提前返回） ──
-    if level == 2:
-        level_2_result = _search_level_2(
-            result=result,
-            query=query,
-            topic=topic,
-            project=project,
-            tags=tags,
-            mood=mood,
-            people=people,
-            date_from=date_from,
-            date_to=date_to,
-            location=location,
-            weather=weather,
-            start_time=start_time,
+        return create_error_response(
+            ErrorCode.INDEX_LOCK_TIMEOUT,
+            f"Index lock acquisition timed out after {FILE_LOCK_TIMEOUT_SEARCH}s during search",
+            {"lock_path": str(_lock_path), "timeout": FILE_LOCK_TIMEOUT_SEARCH, "query": query},
+            "Retry the search or wait for the ongoing index rebuild to finish",
         )
-        _emit_search_metrics(level_2_result)
-        return level_2_result
+    _lock_wait_ms = round((time.time() - _lock_wait_start) * 1000, 2)
+    result["performance"]["lock_wait_ms"] = _lock_wait_ms
+    logger.debug("Index lock acquired in %.1fms for query=%r", _lock_wait_ms, query)
 
-    # ── Level 3: 双管道并行搜索 ──
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_keyword = executor.submit(
-            run_keyword_pipeline,
-            query=query,
-            topic=topic,
-            project=project,
-            tags=tags,
-            mood=mood,
-            people=people,
-            date_from=date_from,
-            date_to=date_to,
-            location=location,
-            weather=weather,
-            use_index=use_index,
-            fts_min_relevance=fts_min_relevance,
-            candidate_paths=candidate_paths,
+    try:
+        # ── Level 1: 索引层（向后兼容，提前返回） ──
+        if level == 1:
+            level_1_result = _search_level_1(
+                result=result,
+                topic=topic,
+                project=project,
+                tags=tags,
+                start_time=start_time,
+            )
+            _emit_search_metrics(level_1_result)
+            return level_1_result
+
+        # ── Level 2: 索引 + 元数据（向后兼容，提前返回） ──
+        if level == 2:
+            level_2_result = _search_level_2(
+                result=result,
+                query=query,
+                topic=topic,
+                project=project,
+                tags=tags,
+                mood=mood,
+                people=people,
+                date_from=date_from,
+                date_to=date_to,
+                location=location,
+                weather=weather,
+                start_time=start_time,
+            )
+            _emit_search_metrics(level_2_result)
+            return level_2_result
+
+        # ── Level 3: 双管道并行搜索 ──
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_keyword = executor.submit(
+                run_keyword_pipeline,
+                query=query,
+                topic=topic,
+                project=project,
+                tags=tags,
+                mood=mood,
+                people=people,
+                date_from=date_from,
+                date_to=date_to,
+                location=location,
+                weather=weather,
+                use_index=use_index,
+                fts_min_relevance=fts_min_relevance,
+                candidate_paths=candidate_paths,
+            )
+            future_semantic = executor.submit(
+                run_semantic_pipeline,
+                query=query,
+                date_from=date_from,
+                date_to=date_to,
+                semantic=semantic,
+                semantic_top_k=semantic_top_k,
+                semantic_min_similarity=semantic_min_similarity,
+                candidate_paths=candidate_paths,
+                entity_hints=entity_hints,
+            )
+
+            # 收集结果
+            (
+                l1_results,
+                l2_results,
+                l3_results,
+                l2_truncated,
+                l2_total_available,
+                kw_perf,
+            ) = future_keyword.result()
+            semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
+
+        l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
+        l2_results = _filter_results_by_candidates(l2_results, candidate_paths)
+        l3_results = _filter_results_by_candidates(l3_results, candidate_paths)
+        semantic_results = _filter_results_by_candidates(semantic_results, candidate_paths)
+
+        # 填充结果
+        result["l1_results"] = l1_results
+        result["l2_results"] = l2_results
+        result["l3_results"] = l3_results
+        result["semantic_results"] = semantic_results
+        result["semantic_available"] = semantic_available
+        if semantic_note:
+            result["semantic_note"] = semantic_note
+            # Phase 2C: 语义搜索降级时添加警告
+            if not semantic_available:
+                result["warnings"].append(f"semantic_unavailable: {semantic_note}")
+        if l2_truncated:
+            result["l2_truncated"] = True
+            result["l2_total_available"] = l2_total_available
+        result["performance"].update(kw_perf)
+        if sem_perf:
+            result["performance"].update(sem_perf)
+
+        # ── RRF 融合 ──
+        # Phase 4 T4.2: Extract topic_hints from search_plan for ranking boost
+        _topic_hints = _plan.topic_hints if _plan else None
+
+        if semantic_results:
+            result["merged_results"] = merge_and_rank_results_hybrid(
+                l1_results,
+                l2_results,
+                l3_results,
+                semantic_results,
+                query,
+                fts_weight=fts_weight,
+                semantic_weight=semantic_weight,
+                min_rrf_score=rrf_min_score,
+                min_non_rrf_score=non_rrf_min_score,
+                explain=explain,  # Task 2.1
+                entity_hints=entity_hints,
+                topic_hints=_topic_hints,
+            )
+        else:
+            # 语义搜索无结果时退化为纯关键词排序
+            result["merged_results"] = merge_and_rank_results(
+                l1_results,
+                l2_results,
+                l3_results,
+                query,
+                entity_hints=entity_hints,
+                explain=explain,  # T3.4: forward explain to non-hybrid path
+                topic_hints=_topic_hints,
+            )
+
+        result["total_found"] = len(result["merged_results"])
+        result["no_confident_match"] = _compute_no_confident_match(result["merged_results"])
+
+        # T4.4: Title hard promotion (post-rank, post-confidence)
+        from .title_promotion import apply_title_promotion
+
+        result["merged_results"] = apply_title_promotion(result["merged_results"], query or "")
+
+        # T4.5: ranking_reason natural language explanation (--explain mode only)
+        if explain:
+            from .ranking_reason import compose as compose_reason
+
+            for r in result["merged_results"]:
+                r["query"] = query or ""
+                r["ranking_reason"] = compose_reason(r)
+                # Clean up transient field
+                del r["query"]
+
+        result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+
+        _emit_search_metrics(result)
+
+        # Log summary
+        total_time = result["performance"]["total_time_ms"]
+        l1_time = result["performance"].get("l1_time_ms", 0)
+        l2_time = result["performance"].get("l2_time_ms", 0)
+        l3_time = result["performance"].get("l3_time_ms", 0)
+        sem_time = result["performance"].get("semantic_time_ms", 0)
+        logger.info(
+            f"[SearchPerf] Total: {total_time}ms "
+            f"(L1:{l1_time} L2:{l2_time} L3:{l3_time} Semantic:{sem_time}) "
+            f"| Results: {result['total_found']}"
         )
-        future_semantic = executor.submit(
-            run_semantic_pipeline,
-            query=query,
-            date_from=date_from,
-            date_to=date_to,
-            semantic=semantic,
-            semantic_top_k=semantic_top_k,
-            semantic_min_similarity=semantic_min_similarity,
-            candidate_paths=candidate_paths,
-            entity_hints=entity_hints,
-        )
 
-        # 收集结果
-        (
-            l1_results,
-            l2_results,
-            l3_results,
-            l2_truncated,
-            l2_total_available,
-            kw_perf,
-        ) = future_keyword.result()
-        semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
-
-    l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
-    l2_results = _filter_results_by_candidates(l2_results, candidate_paths)
-    l3_results = _filter_results_by_candidates(l3_results, candidate_paths)
-    semantic_results = _filter_results_by_candidates(semantic_results, candidate_paths)
-
-    # 填充结果
-    result["l1_results"] = l1_results
-    result["l2_results"] = l2_results
-    result["l3_results"] = l3_results
-    result["semantic_results"] = semantic_results
-    result["semantic_available"] = semantic_available
-    if semantic_note:
-        result["semantic_note"] = semantic_note
-        # Phase 2C: 语义搜索降级时添加警告
-        if not semantic_available:
-            result["warnings"].append(f"semantic_unavailable: {semantic_note}")
-    if l2_truncated:
-        result["l2_truncated"] = True
-        result["l2_total_available"] = l2_total_available
-    result["performance"].update(kw_perf)
-    if sem_perf:
-        result["performance"].update(sem_perf)
-
-    # ── RRF 融合 ──
-    # Phase 4 T4.2: Extract topic_hints from search_plan for ranking boost
-    _topic_hints = _plan.topic_hints if _plan else None
-
-    if semantic_results:
-        result["merged_results"] = merge_and_rank_results_hybrid(
-            l1_results,
-            l2_results,
-            l3_results,
-            semantic_results,
-            query,
-            fts_weight=fts_weight,
-            semantic_weight=semantic_weight,
-            min_rrf_score=rrf_min_score,
-            min_non_rrf_score=non_rrf_min_score,
-            explain=explain,  # Task 2.1
-            entity_hints=entity_hints,
-            topic_hints=_topic_hints,
-        )
-    else:
-        # 语义搜索无结果时退化为纯关键词排序
-        result["merged_results"] = merge_and_rank_results(
-            l1_results,
-            l2_results,
-            l3_results,
-            query,
-            entity_hints=entity_hints,
-            explain=explain,  # T3.4: forward explain to non-hybrid path
-            topic_hints=_topic_hints,
-        )
-
-    result["total_found"] = len(result["merged_results"])
-    result["no_confident_match"] = _compute_no_confident_match(result["merged_results"])
-
-    # T4.4: Title hard promotion (post-rank, post-confidence)
-    from .title_promotion import apply_title_promotion
-
-    result["merged_results"] = apply_title_promotion(result["merged_results"], query or "")
-
-    # T4.5: ranking_reason natural language explanation (--explain mode only)
-    if explain:
-        from .ranking_reason import compose as compose_reason
-
-        for r in result["merged_results"]:
-            r["query"] = query or ""
-            r["ranking_reason"] = compose_reason(r)
-            # Clean up transient field
-            del r["query"]
-
-    result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
-
-    _emit_search_metrics(result)
-
-    # Log summary
-    total_time = result["performance"]["total_time_ms"]
-    l1_time = result["performance"].get("l1_time_ms", 0)
-    l2_time = result["performance"].get("l2_time_ms", 0)
-    l3_time = result["performance"].get("l3_time_ms", 0)
-    sem_time = result["performance"].get("semantic_time_ms", 0)
-    logger.info(
-        f"[SearchPerf] Total: {total_time}ms "
-        f"(L1:{l1_time} L2:{l2_time} L3:{l3_time} Semantic:{sem_time}) "
-        f"| Results: {result['total_found']}"
-    )
-
-    return result
+        return result
+    finally:
+        _lock.release()

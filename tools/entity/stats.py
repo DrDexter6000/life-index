@@ -5,6 +5,9 @@ Entity graph statistics — Round 7 Phase 3 Task 9.
 Provides `entity --stats` CLI command with structured graph statistics.
 
 CLI entry: `life-index entity --stats`
+
+Round 16 Task D.2: Migrated to unified success envelope (ADR-018).
+Return shape is now ``{ok, data, _trace, events}`` via ``tools.lib.envelope``.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.lib.entity_graph import load_entity_graph
+from tools.lib.envelope import success
 from tools.lib.paths import resolve_user_data_dir
 
 try:
@@ -46,9 +50,8 @@ def compute_stats(
     entities = load_entity_graph(graph_path)
 
     if not entities:
-        return {
-            "success": True,
-            "data": {
+        return success(
+            {
                 "total_entities": 0,
                 "by_type": {},
                 "total_aliases": 0,
@@ -56,8 +59,7 @@ def compute_stats(
                 "top_referenced": [],
                 "top_cooccurrence": [],
             },
-            "error": None,
-        }
+        )
 
     # Type breakdown
     by_type: dict[str, int] = {}
@@ -108,9 +110,8 @@ def compute_stats(
         )[:10]
     ]
 
-    return {
-        "success": True,
-        "data": {
+    return success(
+        {
             "total_entities": len(entities),
             "by_type": by_type,
             "total_aliases": total_aliases,
@@ -118,5 +119,4 @@ def compute_stats(
             "top_referenced": top_referenced,
             "top_cooccurrence": top_cooccurrence,
         },
-        "error": None,
-    }
+    )

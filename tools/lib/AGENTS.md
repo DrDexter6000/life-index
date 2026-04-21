@@ -23,6 +23,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
 | Debug URL download pipeline | `url_download.py` | Shared remote-file download helper used by write/web flows |
 | Vector index corruption | `vector_index_simple.py` | Pickle-based fallback when sqlite-vec unavailable |
+| Unified success envelope | `envelope.py` | ADR-018 success wrapper: `success(data, trace, events)` → `{ok, data, _trace, events}` |
 
 ## MODULES
 
@@ -35,6 +36,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **entity_runtime.py**: Runtime serving layer for entity graph (Round 7 Phase 1). Provides `EntityRuntimeView` with O(1) by_lookup, reverse_relationships, and phrase pattern registry.
 - **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES, alias conflict detection, relationship target verification.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
+- **envelope.py**: Unified success envelope (ADR-018). Provides `success(data, trace, events)` helper returning `{ok, data, _trace, events}`. Pilot consumer: `entity/stats.py`.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
 - **fts_search.py**: FTS5 full-text search with BM25 ranking. Extracted from search_index.py.
@@ -86,6 +88,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | entity_runtime.py | search_journals | ✅ 活跃 | Round 7 Phase 1 新增：runtime serving layer（by_lookup + reverse_relationships + phrase patterns） |
 | entity_schema.py | write_journal, entity_graph | ✅ 活跃 | Round 7 Phase 1 确认活跃 |
 | errors.py | write_journal(core), query_weather, generate_index | ⚠️ 部分集成 | Round 5 Task 3 将全面激活 |
+| envelope.py | entity/stats (pilot) | ✅ 活跃 | Round 16 Task D.2 新增：ADR-018 统一成功 envelope helper |
 | file_lock.py | write_journal, edit_journal, build_index | ✅ 活跃 | |
 | frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |
 | fts_search.py | search_journals | ✅ 活跃 | |

@@ -1,2 +1,0 @@
-phase=5
-status=static stabilization complete; mixed runtime path/freshness risks reduced; shell-based broad pytest remains environment-blocked due to repeated OpenCode freezes during shell execution

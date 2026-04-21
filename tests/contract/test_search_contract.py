@@ -16,7 +16,7 @@ Note: After Phase 2B refactoring, mock targets changed:
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -40,9 +40,7 @@ REQUIRED_RESPONSE_FIELDS = {
 
 
 def _load_golden(name: str) -> dict:
-    return json.loads(
-        (Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8")
-    )
+    return json.loads((Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8"))
 
 
 def _normalize_search_snapshot(result: dict) -> dict:
@@ -50,6 +48,10 @@ def _normalize_search_snapshot(result: dict) -> dict:
     performance = normalized.get("performance", {})
     if isinstance(performance, dict):
         performance["total_time_ms"] = 10.0
+        # lock_wait_ms is non-deterministic (depends on FileLock timing).
+        # Normalize to 0.0 for snapshot stability (B.1 Round 16).
+        if "lock_wait_ms" in performance:
+            performance["lock_wait_ms"] = 0.0
     # index_status is dynamic (fts_document_count, last_updated change per run).
     # Normalize to a stable shape for snapshot comparison.
     index_status = normalized.get("index_status")
@@ -62,7 +64,17 @@ def _normalize_search_snapshot(result: dict) -> dict:
         freshness = index_status.get("freshness")
         if isinstance(freshness, dict):
             normalized["index_status"]["freshness"] = {
-                k: ("__normalized__" if k in ("fts_document_count", "last_updated", "fts_fresh_since", "vector_fresh_since") else v)
+                k: (
+                    "__normalized__"
+                    if k
+                    in (
+                        "fts_document_count",
+                        "last_updated",
+                        "fts_fresh_since",
+                        "vector_fresh_since",
+                    )
+                    else v
+                )
                 for k, v in freshness.items()
             }
     # entity_graph_status is dynamic (depends on whether graph file exists).
@@ -87,7 +99,11 @@ def _normalize_search_snapshot(result: dict) -> dict:
     merged = normalized.get("merged_results", [])
     if isinstance(merged, list):
         normalized["merged_results"] = [
-            {k: v for k, v in item.items() if k in ("path", "rel_path", "title", "date", "rrf_score")}
+            {
+                k: v
+                for k, v in item.items()
+                if k in ("path", "rel_path", "title", "date", "rrf_score")
+            }
             for item in merged
         ]
     return normalized
@@ -131,7 +147,8 @@ def mock_search_dependencies():
                                 return_value=([], {}),
                             ):
                                 with patch(
-                                    "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
+                                    "tools.search_journals.semantic_pipeline"
+                                    ".get_semantic_runtime_status",
                                     return_value={
                                         "available": True,
                                         "reason": "",
@@ -298,9 +315,7 @@ class TestSearchGoldenSnapshots:
         l1_results = [{"path": "C:/tmp/a.md", "title": "A"}]
         l2_results = [{"path": "C:/tmp/a.md", "metadata": {"topic": ["work"]}}]
         l3_results = [{"path": "C:/tmp/a.md", "content": "Golden hit"}]
-        semantic_results = [
-            {"path": "C:/tmp/a.md", "score": 0.91, "title": "A semantic"}
-        ]
+        semantic_results = [{"path": "C:/tmp/a.md", "score": 0.91, "title": "A semantic"}]
         merged_results = [
             {
                 "path": "C:/tmp/a.md",

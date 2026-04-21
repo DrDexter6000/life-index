@@ -3,12 +3,11 @@
 Shared utilities for Life Index atomic tools.
 """
 
-from .config import (
-    USER_DATA_DIR,
-    JOURNALS_DIR,
-    BY_TOPIC_DIR,
-    ATTACHMENTS_DIR,
-    ABSTRACTS_DIR,
+from .paths import (
+    get_user_data_dir,
+    get_journals_dir,
+    get_by_topic_dir,
+    get_attachments_dir,
 )
 
 # Import submodules for mock patchability (tests use patch("tools.lib.semantic_search"))
@@ -25,9 +24,8 @@ from . import text_normalize  # noqa: F401
 from . import llm_extract  # noqa: F401
 
 __all__ = [
-    "USER_DATA_DIR",
-    "JOURNALS_DIR",
-    "BY_TOPIC_DIR",
-    "ATTACHMENTS_DIR",
-    "ABSTRACTS_DIR",
+    "get_user_data_dir",
+    "get_journals_dir",
+    "get_by_topic_dir",
+    "get_attachments_dir",
 ]

@@ -1,9 +1,0 @@
-entities:
-- id: mama
-  type: person
-  primary_name: 妈妈
-  aliases:
-  - 老妈
-  relationships:
-  - target: author
-    relation: mother_of

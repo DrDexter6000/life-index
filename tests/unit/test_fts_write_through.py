@@ -12,7 +12,7 @@ Tests cover:
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from contextlib import ExitStack
 
 import pytest
@@ -43,9 +43,7 @@ class TestUpdateFtsIndex:
         """Basic FTS write-through inserts a row."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
@@ -62,8 +60,8 @@ class TestUpdateFtsIndex:
         }
 
         with (
-            patch("tools.lib.config.JOURNALS_DIR", journals_dir),
-            patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
+            patch("tools.lib.paths.get_journals_dir", lambda: journals_dir),
+            patch("tools.lib.paths.get_user_data_dir", lambda: user_data_dir),
             patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
             patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
@@ -87,9 +85,7 @@ class TestUpdateFtsIndex:
         """Calling twice with same path should not duplicate rows."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
@@ -99,8 +95,8 @@ class TestUpdateFtsIndex:
         }
 
         with (
-            patch("tools.lib.config.JOURNALS_DIR", journals_dir),
-            patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
+            patch("tools.lib.paths.get_journals_dir", lambda: journals_dir),
+            patch("tools.lib.paths.get_user_data_dir", lambda: user_data_dir),
             patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
             patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
@@ -123,9 +119,7 @@ class TestUpdateFtsIndex:
         """Chinese text should be segmented for FTS."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
@@ -135,8 +129,8 @@ class TestUpdateFtsIndex:
         }
 
         with (
-            patch("tools.lib.config.JOURNALS_DIR", journals_dir),
-            patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
+            patch("tools.lib.paths.get_journals_dir", lambda: journals_dir),
+            patch("tools.lib.paths.get_user_data_dir", lambda: user_data_dir),
             patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
             patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
@@ -158,9 +152,7 @@ class TestUpdateFtsIndex:
         """Topic/tags/mood/people as lists should be normalized to comma-joined strings."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
@@ -174,8 +166,8 @@ class TestUpdateFtsIndex:
         }
 
         with (
-            patch("tools.lib.config.JOURNALS_DIR", journals_dir),
-            patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
+            patch("tools.lib.paths.get_journals_dir", lambda: journals_dir),
+            patch("tools.lib.paths.get_user_data_dir", lambda: user_data_dir),
             patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
             patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
@@ -200,16 +192,14 @@ class TestUpdateFtsIndex:
         """write_index_meta should be called, refreshing last_updated."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {"title": "Test", "content": "Content", "date": "2026-03-04"}
 
         with (
-            patch("tools.lib.config.JOURNALS_DIR", journals_dir),
-            patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
+            patch("tools.lib.paths.get_journals_dir", lambda: journals_dir),
+            patch("tools.lib.paths.get_user_data_dir", lambda: user_data_dir),
             patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
             patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
@@ -229,16 +219,14 @@ class TestUpdateFtsIndex:
         """Database error should return False, never raise."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {"title": "Test", "content": "Content", "date": "2026-03-04"}
 
         with (
-            patch("tools.lib.config.JOURNALS_DIR", journals_dir),
-            patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
+            patch("tools.lib.paths.get_journals_dir", lambda: journals_dir),
+            patch("tools.lib.paths.get_user_data_dir", lambda: user_data_dir),
             patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
             patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
             patch(
@@ -254,16 +242,14 @@ class TestUpdateFtsIndex:
         """Missing/empty data fields should not crash."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {"date": "2026-03-04"}
 
         with (
-            patch("tools.lib.config.JOURNALS_DIR", journals_dir),
-            patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
+            patch("tools.lib.paths.get_journals_dir", lambda: journals_dir),
+            patch("tools.lib.paths.get_user_data_dir", lambda: user_data_dir),
             patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
             patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
@@ -282,9 +268,7 @@ class TestUpdateFtsIndex:
         from tools.write_journal.index_updater import update_fts_index
         from tools.lib.search_index import search_fts
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
@@ -295,8 +279,8 @@ class TestUpdateFtsIndex:
         }
 
         with (
-            patch("tools.lib.config.JOURNALS_DIR", journals_dir),
-            patch("tools.lib.config.USER_DATA_DIR", user_data_dir),
+            patch("tools.lib.paths.get_journals_dir", lambda: journals_dir),
+            patch("tools.lib.paths.get_user_data_dir", lambda: user_data_dir),
             patch("tools.lib.search_index.get_fts_db_path", lambda: fts_db_path),
             patch("tools.lib.search_index.get_index_dir", lambda: index_dir),
         ):
@@ -309,10 +293,7 @@ class TestUpdateFtsIndex:
             results = search_fts("重构")
 
         assert len(results) >= 1
-        found = any(
-            "重构" in r.get("title", "") or "重构" in r.get("content", "")
-            for r in results
-        )
+        found = any("重构" in r.get("title", "") or "重构" in r.get("content", "") for r in results)
         assert found
 
 

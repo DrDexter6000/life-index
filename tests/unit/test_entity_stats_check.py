@@ -9,9 +9,6 @@ Validates that:
 
 from pathlib import Path
 
-import pytest
-
-from tools.lib.entity_graph import load_entity_graph, save_entity_graph
 import yaml
 
 
@@ -96,9 +93,7 @@ def _save_graph_raw(entities: list[dict], path: Path) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
-        yaml.dump(
-            {"entities": entities}, f, allow_unicode=True, default_flow_style=False
-        )
+        yaml.dump({"entities": entities}, f, allow_unicode=True, default_flow_style=False)
 
 
 def _graph_path_for(isolated_data_dir: Path) -> Path:
@@ -115,7 +110,7 @@ class TestEntityStats:
 
         result = compute_stats(graph_path=_graph_path_for(isolated_data_dir))
 
-        assert result["success"] is True
+        assert result["ok"] is True
         assert result["data"]["total_entities"] == 4
 
     def test_stats_reports_by_type_breakdown(self, isolated_data_dir: Path) -> None:
@@ -155,7 +150,7 @@ class TestEntityStats:
         # No graph file → should return gracefully
         result = compute_stats(graph_path=_graph_path_for(isolated_data_dir))
 
-        assert result["success"] is True
+        assert result["ok"] is True
         assert result["data"]["total_entities"] == 0
 
     def test_stats_top_referenced(self, isolated_data_dir: Path) -> None:
@@ -175,9 +170,7 @@ class TestEntityStats:
 class TestEntityCheck:
     """entity --check reports integrity issues."""
 
-    def test_check_reports_dangling_relationships(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_check_reports_dangling_relationships(self, isolated_data_dir: Path) -> None:
         from tools.entity.check import run_check
 
         # Must bypass validation — save_entity_graph rejects dangling refs

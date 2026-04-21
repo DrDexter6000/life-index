@@ -1,1 +1,0 @@
-{"ts": "2026-04-20T14:06:08Z", "query": "override", "expanded_query": "展开后查询", "latency_ms": 42.5, "result_count": 5, "pipeline_signal": "hybrid", "fts_results": 3, "semantic_results": 2, "warnings": [], "entity_hints_count": 1, "trace_id": "3ad6cd1a"}

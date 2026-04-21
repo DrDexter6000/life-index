@@ -32,7 +32,7 @@ dependencies = [
     "pyyaml>=6.0",
     "numpy>=1.24.0",
     "sentence-transformers>=2.6.0",
-    "jieba>=0.42.1",
+    "jieba==0.42.1",
 ]
 
 [project.optional-dependencies]
@@ -127,6 +127,10 @@ show_column_numbers = true
 show_error_context = true
 
 # Module-specific settings - 模块特定设置
+[[tool.mypy.overrides]]
+module = "tests.*"  # matches tests.unit.*, tests.contract.*, etc.
+disallow_untyped_defs = false
+
 [[tool.mypy.overrides]]
 module = "numpy.*"
 ignore_missing_imports = true

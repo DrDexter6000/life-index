@@ -1,6 +1,0 @@
-entities:
-- aliases: []
-  id: p1
-  primary_name: 测试人
-  relationships: []
-  type: person

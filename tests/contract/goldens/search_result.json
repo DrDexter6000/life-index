@@ -59,6 +59,7 @@
     "l1_time_ms": 1.0,
     "l2_time_ms": 2.0,
     "l3_time_ms": 3.0,
+    "lock_wait_ms": 0.0,
     "semantic_time_ms": 4.0,
     "total_time_ms": 10.0
   },

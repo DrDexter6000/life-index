@@ -1,1 +1,0 @@
-{"metrics": {"mrr_at_5": 1.0, "recall_at_5": 1.0, "precision_at_5": 1.0}, "per_query": [{"id": "Q1", "query": "团团", "pass": true, "first_relevant_rank": 1}], "recall_gaps": []}

@@ -43,6 +43,7 @@ coverage*.xml
 htmlcov/
 cov_report/
 .ruff_cache/
+.mypy_cache/
 .benchmarks/
 .recovery/
 

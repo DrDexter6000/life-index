@@ -1,0 +1,108 @@
+{
+  "description": "Fixed corpus for measuring jieba cut() vs cut_for_search() asymmetry baseline (r₀).",
+  "round": 16,
+  "phase": 0,
+  "purpose": "Synthesis §10.2 (R1) — baseline measurement for jieba dual-mode tokenization safety",
+  "entries": [
+    {
+      "id": "family-01",
+      "category": "family",
+      "text": "今天带团团去了公园，她在滑梯上玩得很开心，还交了一个新朋友"
+    },
+    {
+      "id": "family-02",
+      "category": "family",
+      "text": "妈妈打电话来说老家房子需要修缮，我打算下个月回去看看情况"
+    },
+    {
+      "id": "family-03",
+      "category": "family",
+      "text": "和老婆商量了一下暑假的旅行计划，准备带孩子去海边玩一周"
+    },
+    {
+      "id": "family-04",
+      "category": "family",
+      "text": "团团今天学会了一首新儿歌，唱得不太准但是特别认真特别可爱"
+    },
+    {
+      "id": "work-01",
+      "category": "work",
+      "text": "今天完成了搜索模块的重构，把关键词管道和语义管道的代码彻底分离了"
+    },
+    {
+      "id": "work-02",
+      "category": "work",
+      "text": "和团队讨论了新产品方向，决定先把核心功能打磨好再考虑扩展"
+    },
+    {
+      "id": "work-03",
+      "category": "work",
+      "text": "部署优化做了一整天，把加载时间从三秒压到了五百毫秒以内"
+    },
+    {
+      "id": "work-04",
+      "category": "work",
+      "text": "参加了人工智能伦理讨论会，关于数据隐私和算法透明度的辩论很有启发"
+    },
+    {
+      "id": "health-01",
+      "category": "health",
+      "text": "今天去跑了五公里，配速比上个月快了三十秒，感觉体能慢慢在恢复"
+    },
+    {
+      "id": "health-02",
+      "category": "health",
+      "text": "体检报告出来了，胆固醇偏高，医生建议控制饮食增加有氧运动"
+    },
+    {
+      "id": "health-03",
+      "category": "health",
+      "text": "连续加班一周之后颈椎又疼了，需要调整工作姿势和休息节奏"
+    },
+    {
+      "id": "health-04",
+      "category": "health",
+      "text": "开始尝试冥想练习，每天十五分钟，希望能改善睡眠质量"
+    },
+    {
+      "id": "emotion-01",
+      "category": "emotion",
+      "text": "看到女儿小时候的照片突然很感慨，时间过得太快了有点舍不得"
+    },
+    {
+      "id": "emotion-02",
+      "category": "emotion",
+      "text": "今天心情不太好，可能是天气阴沉的原因，什么都不太想做"
+    },
+    {
+      "id": "emotion-03",
+      "category": "emotion",
+      "text": "读了一篇关于存在主义的文章，对自己的选择有了新的理解和释然"
+    },
+    {
+      "id": "emotion-04",
+      "category": "emotion",
+      "text": "收到了一个意想不到的好消息，激动得差点从椅子上跳起来"
+    },
+    {
+      "id": "location-01",
+      "category": "location",
+      "text": "拉各斯的雨季终于来了，每天都有一场暴雨持续约一个小时"
+    },
+    {
+      "id": "location-02",
+      "category": "location",
+      "text": "怀念重庆的火锅和小面，在尼日利亚很难找到正宗的中国味道"
+    },
+    {
+      "id": "location-03",
+      "category": "location",
+      "text": "搬进了新公寓，窗外能看到大西洋的海岸线，视野非常开阔"
+    },
+    {
+      "id": "location-04",
+      "category": "location",
+      "text": "周末去了当地的集市逛了逛，热带水果种类丰富而且价格很便宜"
+    }
+  ]
+}

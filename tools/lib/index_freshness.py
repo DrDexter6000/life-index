@@ -2,8 +2,11 @@
 
 Round 12 Phase 3 Task 3.1: Checks manifest counts against actual index counts
 and pending queue status to determine whether indexes are up-to-date.
+
+Phase 2b-4: Also checks jieba_version and dict_hash staleness for observability.
 """
 
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
@@ -124,3 +127,62 @@ def check_full_freshness(index_dir: Path) -> FreshnessReport:
         overall_fresh=overall_fresh,
         issues=issues,
     )
+
+
+def check_tokenizer_freshness(fts_db_path: Path) -> None:
+    """Check jieba version and entity dict hash staleness; log suggestions.
+
+    Reads jieba_version and dict_hash from index_meta, compares with current
+    runtime values, and emits INFO-level log messages when they differ.
+
+    Phase 2b-4: Observability — only logs, never forces rebuild.
+
+    Args:
+        fts_db_path: Path to the FTS SQLite database (journals_fts.db).
+    """
+    if not fts_db_path.exists():
+        return
+
+    try:
+        conn = sqlite3.connect(str(fts_db_path))
+        try:
+            cursor = conn.cursor()
+
+            # Check jieba version
+            cursor.execute("SELECT value FROM index_meta WHERE key = 'jieba_version'")
+            row = cursor.fetchone()
+            if row is not None:
+                stored_version = row[0]
+                try:
+                    import jieba
+
+                    current_version = jieba.__version__
+                except (ImportError, AttributeError):
+                    current_version = None
+
+                if current_version is not None and stored_version != current_version:
+                    logger.info(
+                        "jieba %s differs from index's %s; consider rebuild to refresh tokens",
+                        current_version,
+                        stored_version,
+                    )
+
+            # Check dict hash (entity dictionary)
+            cursor.execute("SELECT value FROM index_meta WHERE key = 'dict_hash'")
+            row = cursor.fetchone()
+            if row is not None:
+                stored_hash = row[0]
+                from .chinese_tokenizer import get_dict_hash
+
+                current_hash = get_dict_hash()
+                if current_hash and stored_hash != current_hash:
+                    logger.info(
+                        "entity dict hash %s differs from index's %s;"
+                        " consider rebuild to refresh tokens",
+                        current_hash,
+                        stored_hash,
+                    )
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        pass  # Non-critical — DB access failure should not block search

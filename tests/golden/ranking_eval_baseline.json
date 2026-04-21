@@ -1,0 +1,15 @@
+{
+  "metric_name": "mrr_at_5",
+  "baseline_score": 0.3125,
+  "mrr_at_5": 0.3125,
+  "recall_at_5": 0.4211,
+  "precision_at_5": 0.1907,
+  "total_queries": 24,
+  "failures_count": 15,
+  "jieba_version": "0.42.1",
+  "measured_at": "2026-04-21T12:29:58.728154+00:00",
+  "eval_fixture": "tools/eval/golden_queries.yaml",
+  "judge_mode": "keyword",
+  "semantic_enabled": false,
+  "regression_threshold": "abs(delta) <= 0.02 (2%)"
+}

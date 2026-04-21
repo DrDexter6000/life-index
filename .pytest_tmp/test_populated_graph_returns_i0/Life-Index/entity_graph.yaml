@@ -1,7 +1,0 @@
-entities:
-  - id: e1
-    type: person
-    primary_name: 团团
-    aliases: []
-    attributes: {}
-    relationships: []

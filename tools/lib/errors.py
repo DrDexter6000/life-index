@@ -94,6 +94,8 @@ class ErrorCode:
     INDEX_CORRUPTED = "E0601"
     VECTOR_STORE_ERROR = "E0602"
     FTS_INDEX_ERROR = "E0603"
+    VECTOR_NOT_NORMALIZED = "E0605"
+    INDEX_LOCK_TIMEOUT = "E0604"
 
     # ========== Web Module (07xx) ==========
     WEB_GENERAL_ERROR = "E0700"
@@ -160,6 +162,10 @@ class LifeIndexError(Exception):
         # Lock errors: Retry or ask user
         ErrorCode.LOCK_TIMEOUT: RecoveryStrategy.RETRY,
         ErrorCode.LOCK_ACQUISITION_FAILED: RecoveryStrategy.RETRY,
+        # Index errors: vector normalization requires rebuild
+        ErrorCode.VECTOR_NOT_NORMALIZED: RecoveryStrategy.FAIL,
+        # Index lock errors: Retry
+        ErrorCode.INDEX_LOCK_TIMEOUT: RecoveryStrategy.RETRY,
         # Web errors
         ErrorCode.WEB_GENERAL_ERROR: RecoveryStrategy.ASK_USER,
         ErrorCode.URL_DOWNLOAD_FAILED: RecoveryStrategy.SKIP_OPTIONAL,
@@ -253,6 +259,10 @@ ERROR_DESCRIPTIONS = {
     ErrorCode.INDEX_CORRUPTED: "Index is corrupted",
     ErrorCode.VECTOR_STORE_ERROR: "Vector store error",
     ErrorCode.FTS_INDEX_ERROR: "FTS index error",
+    ErrorCode.VECTOR_NOT_NORMALIZED: (
+        "Stored vectors are not unit-normalized; index rebuild required"
+    ),
+    ErrorCode.INDEX_LOCK_TIMEOUT: "Index lock acquisition timed out during search",
     # Web
     ErrorCode.WEB_GENERAL_ERROR: "Web GUI general error",
     ErrorCode.URL_DOWNLOAD_FAILED: "URL attachment download failed",

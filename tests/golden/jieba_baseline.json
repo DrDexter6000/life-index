@@ -1,0 +1,195 @@
+{
+  "r0_mean": 0.900782,
+  "r0_std": 0.094801,
+  "r0_min": 0.705882,
+  "r0_max": 1.0,
+  "threshold": 0.850782,
+  "jieba_version": "0.42.1",
+  "measured_at": "2026-04-21T12:29:56.903527+00:00",
+  "corpus_file": "tests/golden/jieba_asymmetry_corpus.json",
+  "entries_count": 20,
+  "threshold_formula": "max(0.5, r0 - 0.05)",
+  "drift_alert_formula": "r < (r0 - 0.10) → alert; r < (r0 - 0.05) → note",
+  "per_entry_ratios": [
+    {
+      "id": "family-01",
+      "category": "family",
+      "ratio": 1.0,
+      "index_token_count": 19,
+      "query_token_count": 19,
+      "intersection_count": 19,
+      "union_count": 19
+    },
+    {
+      "id": "family-02",
+      "category": "family",
+      "ratio": 0.933333,
+      "index_token_count": 14,
+      "query_token_count": 15,
+      "intersection_count": 14,
+      "union_count": 15
+    },
+    {
+      "id": "family-03",
+      "category": "family",
+      "ratio": 1.0,
+      "index_token_count": 17,
+      "query_token_count": 17,
+      "intersection_count": 17,
+      "union_count": 17
+    },
+    {
+      "id": "family-04",
+      "category": "family",
+      "ratio": 1.0,
+      "index_token_count": 14,
+      "query_token_count": 14,
+      "intersection_count": 14,
+      "union_count": 14
+    },
+    {
+      "id": "work-01",
+      "category": "work",
+      "ratio": 0.941176,
+      "index_token_count": 16,
+      "query_token_count": 17,
+      "intersection_count": 16,
+      "union_count": 17
+    },
+    {
+      "id": "work-02",
+      "category": "work",
+      "ratio": 1.0,
+      "index_token_count": 18,
+      "query_token_count": 18,
+      "intersection_count": 18,
+      "union_count": 18
+    },
+    {
+      "id": "work-03",
+      "category": "work",
+      "ratio": 0.882353,
+      "index_token_count": 15,
+      "query_token_count": 17,
+      "intersection_count": 15,
+      "union_count": 17
+    },
+    {
+      "id": "work-04",
+      "category": "work",
+      "ratio": 0.772727,
+      "index_token_count": 17,
+      "query_token_count": 22,
+      "intersection_count": 17,
+      "union_count": 22
+    },
+    {
+      "id": "health-01",
+      "category": "health",
+      "ratio": 0.8,
+      "index_token_count": 16,
+      "query_token_count": 20,
+      "intersection_count": 16,
+      "union_count": 20
+    },
+    {
+      "id": "health-02",
+      "category": "health",
+      "ratio": 0.933333,
+      "index_token_count": 14,
+      "query_token_count": 15,
+      "intersection_count": 14,
+      "union_count": 15
+    },
+    {
+      "id": "health-03",
+      "category": "health",
+      "ratio": 0.882353,
+      "index_token_count": 15,
+      "query_token_count": 17,
+      "intersection_count": 15,
+      "union_count": 17
+    },
+    {
+      "id": "health-04",
+      "category": "health",
+      "ratio": 0.705882,
+      "index_token_count": 12,
+      "query_token_count": 17,
+      "intersection_count": 12,
+      "union_count": 17
+    },
+    {
+      "id": "emotion-01",
+      "category": "emotion",
+      "ratio": 0.833333,
+      "index_token_count": 15,
+      "query_token_count": 18,
+      "intersection_count": 15,
+      "union_count": 18
+    },
+    {
+      "id": "emotion-02",
+      "category": "emotion",
+      "ratio": 1.0,
+      "index_token_count": 14,
+      "query_token_count": 14,
+      "intersection_count": 14,
+      "union_count": 14
+    },
+    {
+      "id": "emotion-03",
+      "category": "emotion",
+      "ratio": 0.888889,
+      "index_token_count": 16,
+      "query_token_count": 18,
+      "intersection_count": 16,
+      "union_count": 18
+    },
+    {
+      "id": "emotion-04",
+      "category": "emotion",
+      "ratio": 0.789474,
+      "index_token_count": 15,
+      "query_token_count": 19,
+      "intersection_count": 15,
+      "union_count": 19
+    },
+    {
+      "id": "location-01",
+      "category": "location",
+      "ratio": 1.0,
+      "index_token_count": 16,
+      "query_token_count": 16,
+      "intersection_count": 16,
+      "union_count": 16
+    },
+    {
+      "id": "location-02",
+      "category": "location",
+      "ratio": 0.875,
+      "index_token_count": 14,
+      "query_token_count": 16,
+      "intersection_count": 14,
+      "union_count": 16
+    },
+    {
+      "id": "location-03",
+      "category": "location",
+      "ratio": 0.777778,
+      "index_token_count": 14,
+      "query_token_count": 18,
+      "intersection_count": 14,
+      "union_count": 18
+    },
+    {
+      "id": "location-04",
+      "category": "location",
+      "ratio": 1.0,
+      "index_token_count": 16,
+      "query_token_count": 16,
+      "intersection_count": 16,
+      "union_count": 16
+    }
+  ]
+}

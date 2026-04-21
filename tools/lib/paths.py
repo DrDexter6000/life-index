@@ -113,29 +113,8 @@ def get_config_file() -> Path:
     return get_config_dir() / "config.yaml"
 
 
-# User data directory (OS standard user documents directory)
-# Uses Path.home() for cross-platform compatibility:
-#   Windows: C:\Users\<username>\Documents\Life-Index
-#   macOS:   ~/Documents/Life-Index
-#   Linux:   ~/Documents/Life-Index
-#
-# Can be overridden via LIFE_INDEX_DATA_DIR environment variable (for testing)
-USER_DATA_DIR = resolve_user_data_dir()  # deprecated: use get_user_data_dir()
-
 # Project root (for reference only, not for data storage)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
-
-# Directory structure - POINT TO USER DATA DIR
-JOURNALS_DIR = USER_DATA_DIR / "Journals"  # deprecated: use get_journals_dir()
-BY_TOPIC_DIR = USER_DATA_DIR / "by-topic"  # deprecated: use get_by_topic_dir()
-ATTACHMENTS_DIR = USER_DATA_DIR / "attachments"  # deprecated: use get_attachments_dir()
-
-# Abstracts directory (stored within Journals for co-location)
-ABSTRACTS_DIR = JOURNALS_DIR  # deprecated: use get_journals_dir()
-
-# Config directory for user configuration
-CONFIG_DIR = USER_DATA_DIR / ".life-index"  # deprecated: use get_config_dir()
-CONFIG_FILE = CONFIG_DIR / "config.yaml"  # deprecated: use get_config_file()
 
 
 def ensure_dirs() -> None:
@@ -373,7 +352,7 @@ def get_index_prefixes() -> dict[str, str]:
     }
 
     # 从用户配置合并（如果存在）
-    user_config = load_yaml_config(CONFIG_FILE)
+    user_config = load_yaml_config(get_config_file())
     return deep_merge(defaults, user_config.get("index_prefixes", {}))
 
 
@@ -386,15 +365,8 @@ INDEX_PREFIXES = get_index_prefixes()
 # =============================================================================
 
 __all__ = [
-    # Paths (legacy constants — import-time bindings)
-    "USER_DATA_DIR",
+    # Paths (non-deprecated constants)
     "PROJECT_ROOT",
-    "JOURNALS_DIR",
-    "BY_TOPIC_DIR",
-    "ATTACHMENTS_DIR",
-    "ABSTRACTS_DIR",
-    "CONFIG_DIR",
-    "CONFIG_FILE",
     "resolve_user_data_dir",
     "resolve_journals_dir",
     "ensure_dirs",

@@ -1,9 +1,0 @@
-entities:
-- id: tuantuan
-  type: person
-  primary_name: 团团
-  aliases:
-  - 小疙瘩
-  - 尿片侠
-  attributes: {}
-  relationships: []

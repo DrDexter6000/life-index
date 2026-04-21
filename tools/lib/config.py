@@ -18,14 +18,7 @@ from typing import Dict, Any
 import yaml
 
 from .paths import (
-    USER_DATA_DIR,
     PROJECT_ROOT,
-    JOURNALS_DIR,
-    BY_TOPIC_DIR,
-    ATTACHMENTS_DIR,
-    ABSTRACTS_DIR,
-    CONFIG_DIR,
-    CONFIG_FILE,
     ensure_dirs,
     JOURNAL_FILENAME_PATTERN,
     DATE_FORMAT,
@@ -66,6 +59,7 @@ from .search_config import (
     save_search_mode,
     FILE_LOCK_TIMEOUT_DEFAULT,
     FILE_LOCK_TIMEOUT_REBUILD,
+    FILE_LOCK_TIMEOUT_SEARCH,
     EMBEDDING_MODEL,
     get_model_cache_dir,
 )
@@ -109,7 +103,7 @@ def load_user_config() -> Dict[str, Any]:
     3. Code defaults (handled by callers)
     """
     # Start with file config, then override with environment variables
-    file_config = load_yaml_config(CONFIG_FILE)
+    file_config = load_yaml_config(get_config_file())
     env_config = _get_env_config()
 
     return deep_merge(file_config, env_config)
@@ -188,26 +182,30 @@ def get_llm_config() -> Dict[str, str]:
 
 def save_llm_config(*, api_key: str, base_url: str, model: str) -> None:
     """Persist LLM configuration into user config.yaml."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _load_yaml_config(CONFIG_FILE)
+    config_dir = get_config_dir()
+    config_file = get_config_file()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    existing = _load_yaml_config(config_file)
     existing["llm"] = {
         "api_key": str(api_key).strip(),
         "base_url": str(base_url).strip(),
         "model": str(model).strip(),
     }
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
     reload_user_config()
 
 
 def save_default_location(location: str) -> None:
     """Persist default location into user config.yaml."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = _load_yaml_config(CONFIG_FILE)
+    config_dir = get_config_dir()
+    config_file = get_config_file()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    existing = _load_yaml_config(config_file)
     defaults = existing.get("defaults", {})
     defaults["location"] = str(location).strip()
     existing["defaults"] = defaults
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
     reload_user_config()
 
@@ -240,15 +238,8 @@ __all__ = [
     "get_llm_config",
     "save_llm_config",
     "save_default_location",
-    # Paths (re-exported from paths.py)
-    "USER_DATA_DIR",
+    # Paths (re-exported from paths.py — getters only, no deprecated constants)
     "PROJECT_ROOT",
-    "JOURNALS_DIR",
-    "BY_TOPIC_DIR",
-    "ATTACHMENTS_DIR",
-    "ABSTRACTS_DIR",
-    "CONFIG_DIR",
-    "CONFIG_FILE",
     "ensure_dirs",
     "JOURNAL_FILENAME_PATTERN",
     "DATE_FORMAT",
@@ -287,6 +278,7 @@ __all__ = [
     "save_search_mode",
     "FILE_LOCK_TIMEOUT_DEFAULT",
     "FILE_LOCK_TIMEOUT_REBUILD",
+    "FILE_LOCK_TIMEOUT_SEARCH",
     "EMBEDDING_MODEL",
     "get_model_cache_dir",
 ]

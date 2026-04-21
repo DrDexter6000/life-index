@@ -1,2 +1,0 @@
-﻿item_id,risk_level,category,description,action_choices,entity_ids,suggested_action,decision,source_id,target_id
-review-1,medium,possible_duplicate,similar names: edit distance ≤ 1,merge_as_alias|keep_separate|skip,王晓丽|王晓里,merge,skip,,

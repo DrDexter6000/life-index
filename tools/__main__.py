@@ -18,6 +18,8 @@ Commands:
     abstract  (alias for generate-index)
     backup    Backup journal data
     health    Check installation health
+    stats     Dashboard statistics
+    get       Retrieve a single journal entry
 """
 
 import json
@@ -415,6 +417,9 @@ def main() -> None:
         "timeline": "tools.timeline.__main__",  # Task 3.2
         "migrate": "tools.migrate.__main__",  # Round 6 Phase 1
         "eval": "tools.eval.__main__",
+        # Added for v2.0 GUI backend (Phase 1.9 SSOT fix)
+        "stats": "tools.stats.__main__",
+        "get": "tools.get.__main__",
     }
 
     if subcmd in cmd_map:
@@ -454,6 +459,8 @@ def print_usage() -> None:
     print("  timeline  Output chronological summary stream")
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")
+    print("  stats     Dashboard statistics")
+    print("  get       Retrieve a single journal entry")
     print("  health    Check installation health")
     print("            --data-audit  Audit data directory for anomalies")
     print("  version   Show package and bootstrap manifest version info")

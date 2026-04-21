@@ -13,10 +13,7 @@ from typing import Any, Dict
 
 import yaml
 
-from .paths import (
-    CONFIG_DIR,
-    CONFIG_FILE,
-)
+from .paths import get_config_dir, get_config_file
 from .yaml_utils import load_yaml_config, deep_merge
 
 # =============================================================================
@@ -43,7 +40,7 @@ def _get_env_config() -> Dict[str, Any]:
 
 def _get_user_config() -> Dict[str, Any]:
     """Load user configuration (local to this module)."""
-    file_config = load_yaml_config(CONFIG_FILE)
+    file_config = load_yaml_config(get_config_file())
     env_config = _get_env_config()
     return deep_merge(file_config, env_config)
 
@@ -85,14 +82,16 @@ def get_search_weights() -> tuple[float, float]:
 
 def save_search_weights(fts_weight: float, semantic_weight: float) -> None:
     """Persist search weights into user config.yaml."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = load_yaml_config(CONFIG_FILE)
+    config_dir = get_config_dir()
+    config_file = get_config_file()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    existing = load_yaml_config(config_file)
     search_cfg = existing.get("search", {})
     search_cfg["fts_weight"] = round(float(fts_weight), 2)
     search_cfg["semantic_weight"] = round(float(semantic_weight), 2)
     existing["search"] = search_cfg
 
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
     _reload_search_config()
 
@@ -108,13 +107,15 @@ def save_search_mode(mode: str) -> None:
     valid_modes = ["strict", "balanced", "loose"]
     if mode not in valid_modes:
         mode = "balanced"
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    existing = load_yaml_config(CONFIG_FILE)
+    config_dir = get_config_dir()
+    config_file = get_config_file()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    existing = load_yaml_config(config_file)
     search_cfg = existing.get("search", {})
     search_cfg["mode"] = mode
     existing["search"] = search_cfg
 
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(existing, f, allow_unicode=True, sort_keys=False)
     _reload_search_config()
 
@@ -126,6 +127,7 @@ def save_search_mode(mode: str) -> None:
 # 锁超时配置（秒）
 FILE_LOCK_TIMEOUT_DEFAULT = 30  # 正常操作（写日志等）
 FILE_LOCK_TIMEOUT_REBUILD = 120  # 索引重建（批量操作需要更长时间）
+FILE_LOCK_TIMEOUT_SEARCH = 5  # 搜索读操作（短超时，快速失败）
 
 
 # =============================================================================
@@ -192,6 +194,7 @@ __all__ = [
     # File lock
     "FILE_LOCK_TIMEOUT_DEFAULT",
     "FILE_LOCK_TIMEOUT_REBUILD",
+    "FILE_LOCK_TIMEOUT_SEARCH",
     # Vector model
     "EMBEDDING_MODEL",
     "get_model_cache_dir",

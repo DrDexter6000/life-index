@@ -4,11 +4,14 @@ Life Index - Search Journals Tool - Ranking
 结果排序算法模块
 """
 
+import logging
 from importlib import import_module
 from typing import Any, Dict, List, Optional
 
 from ..lib.metadata_cache import get_backlinked_by, init_metadata_cache
 from .l2_metadata import _query_matches_tags, _query_matches_text
+
+logger = logging.getLogger(__name__)
 
 
 def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = 60) -> Dict[str, float]:
@@ -406,40 +409,19 @@ def merge_and_rank_results(
     return merged
 
 
-def merge_and_rank_results_hybrid(
-    l1_results: List[Dict],
-    l2_results: List[Dict],
+def _build_hybrid_candidates(
     l3_results: List[Dict],
     semantic_results: List[Dict],
-    query: Optional[str] = None,
-    fts_weight: float = FTS_WEIGHT_DEFAULT,
-    semantic_weight: float = SEMANTIC_WEIGHT_DEFAULT,
-    min_rrf_score: float = RRF_MIN_SCORE,
-    min_non_rrf_score: float = NON_RRF_MIN_SCORE,
-    max_results: int = MAX_RESULTS_DEFAULT,
-    explain: bool = False,  # Task 2.1: explain mode
-    entity_hints: Optional[List[Dict[str, Any]]] = None,
-    topic_hints: Optional[List[str]] = None,
-) -> List[Dict]:
+) -> tuple[Dict[str, Dict[str, Any]], List[str], List[str]]:
+    """Merge FTS (L3) and semantic pipeline results into a unified candidate dict.
+
+    Returns:
+        (scored, fts_ranked_paths, semantic_ranked_paths) where scored maps
+        path -> candidate dict with fts_score, semantic_score, etc.
     """
-    混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
+    scored: Dict[str, Dict[str, Any]] = {}
 
-    Args:
-        l1_results: L1 索引层结果
-        l2_results: L2 元数据层结果
-        l3_results: L3 内容层结果（FTS）
-        semantic_results: 语义搜索结果
-        query: 查询词
-        fts_weight: FTS 排名权重（默认 FTS_WEIGHT_DEFAULT，影响关键词命中在最终结果中的占比）
-        semantic_weight: 语义排名权重（默认 SEMANTIC_WEIGHT_DEFAULT，影响语义相似度在最终结果中的占比）
-    """
-
-    scored: Dict[str, Dict[str, Any]] = (
-        {}
-    )  # path -> {data, fts_score, semantic_score, final_score, rrf_score, tier, has_rrf}
-
-    # 先构建 FTS 排名（按 relevance + title_match bonus）
-    fts_ranked_paths: List[str] = []
+    # FTS ranked order (by relevance + title_match bonus)
     fts_ordered = sorted(
         l3_results,
         key=lambda r: (
@@ -449,17 +431,13 @@ def merge_and_rank_results_hybrid(
         reverse=True,
     )
 
-    # 处理 L3/FTS 结果（记录分项分数用于输出）
-    # 同时补充元数据（abstract, tags, topic 等），与语义结果格式统一
+    # Process L3/FTS results
     for r in l3_results:
         path = r["path"]
         fts_score = r.get("relevance", 0)
         if r.get("title_match"):
             fts_score += SCORE_TITLE_MATCH_BONUS
-
-        # 为 FTS 结果补充元数据，统一格式
         enriched_data = enrich_semantic_result(r)
-
         scored[path] = {
             "data": enriched_data,
             "fts_score": float(fts_score),
@@ -470,24 +448,21 @@ def merge_and_rank_results_hybrid(
             "has_rrf": False,
         }
 
-    for r in fts_ordered:
-        path = r.get("path")
-        if path:
-            fts_ranked_paths.append(path)
+    fts_ranked_paths = [r["path"] for r in fts_ordered if r.get("path")]
 
-    # 构建语义排名（按 similarity 降序）
-    semantic_ranked_paths: List[str] = []
+    # Semantic ranked order (by similarity descending)
     semantic_ordered = sorted(
         semantic_results,
         key=lambda r: (r.get("similarity", 0), r.get("path", "")),
         reverse=True,
     )
 
-    # 处理语义结果（记录分项分数用于输出）
+    # Process semantic results
     for r in semantic_results:
-        path = r["path"]
+        path = r.get("path")
+        if not path:
+            continue
         semantic_score = float(r.get("similarity", 0)) * 100.0
-
         if path in scored:
             scored[path]["semantic_score"] = semantic_score
         else:
@@ -498,16 +473,26 @@ def merge_and_rank_results_hybrid(
                 "semantic_score": semantic_score,
                 "final_score": 0.0,
                 "rrf_score": 0.0,
-                "tier": 4,  # 语义层
+                "tier": 4,
                 "has_rrf": False,
             }
 
-    for r in semantic_ordered:
-        path = r.get("path")
-        if path:
-            semantic_ranked_paths.append(path)
+    semantic_ranked_paths = [r["path"] for r in semantic_ordered if r.get("path")]
+    return scored, fts_ranked_paths, semantic_ranked_paths
 
-    # RRF 融合分数（加权融合：FTS 管道 × fts_weight，语义管道 × semantic_weight）
+
+def _compute_weighted_rrf_scores(
+    fts_ranked_paths: List[str],
+    semantic_ranked_paths: List[str],
+    *,
+    fts_weight: float,
+    semantic_weight: float,
+) -> tuple[Dict[str, float], dict[str, Any] | None]:
+    """Compute weighted RRF fusion scores and emit small-n observability event.
+
+    Returns:
+        (rrf_scores, rrf_small_n_event) where rrf_small_n_event is None when n >= 8.
+    """
     k = RRF_K
     scores: Dict[str, float] = {}
     for rank, doc_id in enumerate(fts_ranked_paths, start=1):
@@ -516,20 +501,53 @@ def merge_and_rank_results_hybrid(
     for rank, doc_id in enumerate(semantic_ranked_paths, start=1):
         if doc_id:
             scores[doc_id] = scores.get(doc_id, 0.0) + semantic_weight / (k + rank)
-    rrf_scores = scores
+
+    # Phase 2b-4: RRF small-n observability
+    rrf_small_n_event: dict[str, Any] | None = None
+    n = len(scores)
+    if n > 0 and n < 8:
+        _rrf_values = list(scores.values())
+        logger.info("RRF small-n fallback: n=%d < threshold=8", n)
+        rrf_small_n_event = {
+            "event": "rrf_small_n_fallback",
+            "n": n,
+            "fallback_threshold": 8,
+            "score_stats": {
+                "min": round(min(_rrf_values), 4),
+                "max": round(max(_rrf_values), 4),
+                "mean": round(sum(_rrf_values) / len(_rrf_values), 4),
+                "count": n,
+            },
+        }
+    return scores, rrf_small_n_event
+
+
+def _add_non_rrf_candidates(
+    scored: Dict[str, Dict[str, Any]],
+    l1_results: List[Dict],
+    l2_results: List[Dict],
+    rrf_scores: Dict[str, float],
+    query: Optional[str],
+    entity_hints: Optional[List[Dict[str, Any]]],
+    topic_hints: Optional[List[str]],
+) -> None:
+    """Apply RRF scores to existing candidates and add L2/L1 non-RRF candidates.
+
+    Mutates scored dict in-place: updates RRF fields and adds L1/L2 entries.
+    """
+    # Apply RRF fusion scores
     for path, score in rrf_scores.items():
         if path in scored:
             scored[path]["final_score"] = score
             scored[path]["rrf_score"] = score
             scored[path]["has_rrf"] = True
 
-    # 处理 L2 结果（仅当不在 L3/语义中时）
+    # Process L2 results (only when not in L3/semantic)
     for r in l2_results:
         path = r["path"]
         if path in scored:
             continue
-
-        score = SCORE_L2_BASE  # L2 基础分
+        score = SCORE_L2_BASE
         if query:
             title = r.get("title", "")
             metadata = r.get("metadata", {})
@@ -537,16 +555,13 @@ def merge_and_rank_results_hybrid(
                 metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
-
             if _query_matches_text(title, query):
                 score += SCORE_TITLE_MATCH_BONUS_L2
             if _query_matches_text(abstract, query):
                 score += SCORE_ABSTRACT_MATCH_BONUS
             if _query_matches_tags(tags, query):
                 score += SCORE_TAGS_MATCH_BONUS
-
         score += _entity_bonus(r, entity_hints or [])
-
         scored[path] = {
             "data": r,
             "fts_score": 0.0,
@@ -557,7 +572,7 @@ def merge_and_rank_results_hybrid(
             "has_rrf": False,
         }
 
-    # 处理 L1 结果
+    # Process L1 results
     for r in l1_results:
         path = r["path"]
         if path in scored:
@@ -572,24 +587,26 @@ def merge_and_rank_results_hybrid(
             "has_rrf": False,
         }
 
-    # Phase 4 T4.2: Apply topic hint boost (conservative multiplier) to final_score
+    # Phase 4 T4.2: Apply topic hint boost
     if topic_hints:
-        for path, entry in scored.items():
+        for _path, entry in scored.items():
             boost = _topic_boost_multiplier(entry["data"], topic_hints)
             if boost > 1.0:
                 entry["final_score"] = entry["final_score"] * boost
 
-    # 按混合检索意图排序：
-    # 1) 真正的关键词命中（尤其 FTS）优先
-    # 2) 结构化关键词命中（L2/L1）次之
-    # 3) 纯语义结果作为补漏回填
-    #
-    # T3.8 (ADR-014): Note on score dimensions.
-    # _hybrid_priority() separates FTS (5), L2 (4), L1 (3), semantic (2) into
-    # distinct priority buckets. Within each bucket, scores come from the same
-    # source and are directly comparable. Cross-bucket ordering is handled by
-    # the priority function, not by score comparison. This design avoids the
-    # dimension mismatch problem by construction.
+
+def _apply_hybrid_thresholds(
+    scored: Dict[str, Dict[str, Any]],
+    *,
+    min_rrf_score: float,
+    min_non_rrf_score: float,
+    max_results: int,
+) -> List[Dict[str, Any]]:
+    """Sort candidates, apply dynamic thresholds, and handle low-recall backfill.
+
+    Returns the thresholded (and possibly backfilled) result list.
+    """
+    # T3.8 (ADR-014): Priority buckets avoid cross-dimension score comparison.
     sorted_results = sorted(
         scored.values(),
         key=lambda x: (
@@ -600,9 +617,8 @@ def merge_and_rank_results_hybrid(
         ),
         reverse=True,
     )
-    # Dynamic threshold via Tukey IQR, floored by the base constant (ADR-004).
-    # max() ensures the A/B-selected floor is never violated, even if the
-    # dynamic calculation returns a lower value due to score distribution.
+
+    # Dynamic threshold via Tukey IQR, floored by base constant (ADR-004).
     _dynamic_rrf = _compute_dynamic_rrf_threshold(
         sorted_results,
         base_threshold=min_rrf_score,
@@ -620,10 +636,7 @@ def merge_and_rank_results_hybrid(
         or (not item["has_rrf"] and item["final_score"] >= effective_min_non_rrf_score)
     ]
 
-    # Low-recall backfill: if thresholding removes every retrieval hit,
-    # preserve a small amount of the strongest lexical/semantic evidence
-    # instead of returning an empty hybrid result set. Do not pad already
-    # useful result sets with extra semantic neighbors.
+    # Low-recall backfill (B.4)
     has_retrieval_signal = any(
         item["fts_score"] > 0 or item["semantic_score"] > 0 for item in sorted_results
     )
@@ -646,16 +659,25 @@ def merge_and_rank_results_hybrid(
             if len(thresholded_results) >= target_count:
                 break
 
-    sorted_results = thresholded_results[:max_results]
+    return thresholded_results[:max_results]
 
-    # 提取数据并添加排名
-    merged = []
+
+def _finalize_hybrid_results(
+    sorted_results: List[Dict[str, Any]],
+    *,
+    explain: bool,
+    rrf_small_n_event: dict[str, Any] | None,
+) -> List[Dict]:
+    """Attach rank, score fields, confidence, explain, and events to results.
+
+    Returns the final list ready for return to caller.
+    """
+    merged: List[Dict] = []
     metadata_conn = init_metadata_cache()
     try:
         for rank, item in enumerate(sorted_results, 1):
             data = _attach_relation_context(item["data"], metadata_conn=metadata_conn)
             data["search_rank"] = rank
-            # T4.2: Unified score fields (hybrid path)
             data["rrf_score"] = round(float(item["rrf_score"]), 4)
             data["final_score"] = round(float(item["final_score"]), 4)
             data["relevance_score"] = data["rrf_score"] if item["has_rrf"] else data["final_score"]
@@ -668,14 +690,11 @@ def merge_and_rank_results_hybrid(
             if item["semantic_score"] > 0:
                 _sources.append("semantic")
             data["source"] = ",".join(_sources) if _sources else "none"
-
             data["confidence"] = _classify_confidence(
                 fts_score=float(item["fts_score"]),
                 semantic_score=float(item["semantic_score"]),
                 rrf_score=float(item["rrf_score"]),
             )
-
-            # Task 2.1: Add explain field
             if explain:
                 data["explain"] = {
                     "keyword_pipeline": {
@@ -695,9 +714,74 @@ def merge_and_rank_results_hybrid(
                         "has_rrf": item["has_rrf"],
                     },
                 }
-
+            if rrf_small_n_event is not None:
+                if "events" not in data:
+                    data["events"] = []
+                data["events"].append(rrf_small_n_event)
             merged.append(data)
     finally:
         metadata_conn.close()
-
     return merged
+
+
+def merge_and_rank_results_hybrid(
+    l1_results: List[Dict],
+    l2_results: List[Dict],
+    l3_results: List[Dict],
+    semantic_results: List[Dict],
+    query: Optional[str] = None,
+    fts_weight: float = FTS_WEIGHT_DEFAULT,
+    semantic_weight: float = SEMANTIC_WEIGHT_DEFAULT,
+    min_rrf_score: float = RRF_MIN_SCORE,
+    min_non_rrf_score: float = NON_RRF_MIN_SCORE,
+    max_results: int = MAX_RESULTS_DEFAULT,
+    explain: bool = False,
+    entity_hints: Optional[List[Dict[str, Any]]] = None,
+    topic_hints: Optional[List[str]] = None,
+) -> List[Dict]:
+    """
+    混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
+
+    Args:
+        l1_results: L1 索引层结果
+        l2_results: L2 元数据层结果
+        l3_results: L3 内容层结果（FTS）
+        semantic_results: 语义搜索结果
+        query: 查询词
+        fts_weight: FTS 排名权重（默认 FTS_WEIGHT_DEFAULT，影响关键词命中在最终结果中的占比）
+        semantic_weight: 语义排名权重（默认 SEMANTIC_WEIGHT_DEFAULT，影响语义相似度在最终结果中的占比）
+    """
+    scored, fts_ranked_paths, semantic_ranked_paths = _build_hybrid_candidates(
+        l3_results,
+        semantic_results,
+    )
+
+    rrf_scores, rrf_small_n_event = _compute_weighted_rrf_scores(
+        fts_ranked_paths,
+        semantic_ranked_paths,
+        fts_weight=fts_weight,
+        semantic_weight=semantic_weight,
+    )
+
+    _add_non_rrf_candidates(
+        scored,
+        l1_results,
+        l2_results,
+        rrf_scores,
+        query,
+        entity_hints,
+        topic_hints,
+    )
+
+    sorted_results = _apply_hybrid_thresholds(
+        scored,
+        min_rrf_score=min_rrf_score,
+        min_non_rrf_score=min_non_rrf_score,
+        max_results=max_results,
+    )
+
+    return _finalize_hybrid_results(
+        sorted_results,
+        explain=explain,
+        rrf_small_n_event=rrf_small_n_event,
+    )

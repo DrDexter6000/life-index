@@ -16,9 +16,9 @@ class TestGettersBasic:
     """Verify each getter returns the expected sub-path of user data dir."""
 
     def test_get_user_data_dir_default(self) -> None:
-        """get_user_data_dir() returns same path as USER_DATA_DIR constant."""
+        """get_user_data_dir() returns resolved user data dir."""
         result = paths_module.get_user_data_dir()
-        assert result == paths_module.USER_DATA_DIR
+        assert result == paths_module.resolve_user_data_dir()
 
     def test_get_journals_dir(self) -> None:
         result = paths_module.get_journals_dir()

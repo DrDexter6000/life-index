@@ -5,6 +5,7 @@ Life Index - Search Journals Tool - Semantic
 """
 
 import importlib.util
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -12,6 +13,7 @@ from typing import Any, Dict, List, Tuple
 from ..lib.paths import get_user_data_dir, get_journals_dir, get_vec_index_path
 from ..lib.config import EMBEDDING_MODEL as EMBEDDING_MODEL_CONFIG
 from ..lib.embedding_backends import get_backend_name
+from ..lib.errors import ErrorCode, create_error_response
 from ..lib.path_contract import merge_journal_path_fields
 from ..lib.timing import Timer
 from ..lib.search_constants import (
@@ -19,6 +21,7 @@ from ..lib.search_constants import (
     SEMANTIC_TOP_K_DEFAULT,
     SEMANTIC_SNIPPET_LENGTH,
 )
+from ..lib.vector_guards import VectorNotNormalizedError, check_vector_index_normalized
 
 from .utils import parse_frontmatter
 
@@ -80,6 +83,7 @@ def search_semantic(
     """
     results: List[Dict[str, Any]] = []
     timer = Timer()
+    _logger = logging.getLogger(__name__)
 
     try:
         # 尝试使用简单向量索引（Windows 兼容）
@@ -91,6 +95,26 @@ def search_semantic(
                 query_embeddings = model.encode([query])
             if query_embeddings:
                 index = get_index()
+
+                # --- Vector normalization guard (E0605) ---
+                try:
+                    check_vector_index_normalized(index.vectors)
+                except VectorNotNormalizedError as exc:
+                    _logger.error(
+                        "E0605 VECTOR_NOT_NORMALIZED: %s. "
+                        "Run 'life-index index --rebuild' to regenerate normalized vectors.",
+                        exc,
+                    )
+                    error_resp = create_error_response(
+                        ErrorCode.VECTOR_NOT_NORMALIZED,
+                        message=str(exc),
+                        details={"bad_samples": exc.details},
+                        suggestion=(
+                            "Run 'life-index index --rebuild'" " to regenerate normalized vectors"
+                        ),
+                    )
+                    return [error_resp], timer.to_dict()
+
                 with timer.measure("semantic_search"):
                     semantic_raw = index.search(
                         query_embeddings[0],

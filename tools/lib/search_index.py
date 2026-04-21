@@ -56,7 +56,8 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
         except sqlite3.Error:
             pass
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(
             path,
             title UNINDEXED,
@@ -73,15 +74,18 @@ def init_fts_db(*, force_recreate: bool = False) -> sqlite3.Connection:
             file_hash UNINDEXED,
             modified_time UNINDEXED
         )
-    """)
+    """
+    )
 
     # 创建元数据表（记录索引状态）
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS index_meta (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """)
+    """
+    )
 
     conn.commit()
     return conn
@@ -170,7 +174,7 @@ def ensure_fts_schema() -> Dict[str, Any]:
 
 
 def write_index_meta(conn: sqlite3.Connection, semantic_baseline_p25: float | None = None) -> None:
-    """Write tokenizer_version, dict_hash, schema_version, and last_updated.
+    """Write tokenizer_version, dict_hash, schema_version, jieba_version, and last_updated.
 
     These values are written into the index_meta table.
     """
@@ -190,6 +194,16 @@ def write_index_meta(conn: sqlite3.Connection, semantic_baseline_p25: float | No
         "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
         ("schema_version", str(FTS_SCHEMA_VERSION)),
     )
+    # Phase 2b-4: Store jieba version for freshness observability
+    try:
+        import jieba
+
+        cursor.execute(
+            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+            ("jieba_version", jieba.__version__),
+        )
+    except (ImportError, AttributeError):
+        pass  # Non-critical — jieba may not be installed in minimal environments
     cursor.execute(
         "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
         ("last_updated", datetime.now(timezone.utc).isoformat()),

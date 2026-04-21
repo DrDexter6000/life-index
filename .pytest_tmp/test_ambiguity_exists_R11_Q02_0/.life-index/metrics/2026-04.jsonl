@@ -1,1 +1,0 @@
-{"ts": "2026-04-20T14:00:10Z", "query": "上个月在工作中取得了什么进展？", "expanded_query": "", "latency_ms": 143.81, "result_count": 0, "pipeline_signal": "hybrid", "fts_results": 0, "semantic_results": 0, "warnings": ["index_stale: no_manifest: No index manifest found, run 'life-index index'"], "entity_hints_count": 0, "trace_id": "d247b889"}

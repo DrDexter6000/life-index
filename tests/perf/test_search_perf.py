@@ -3,9 +3,7 @@
 
 import importlib
 import os
-import sys
 import time
-import types
 
 import pytest
 import yaml
@@ -13,47 +11,10 @@ import yaml
 from tests.e2e.test_search_quality import JOURNALS
 
 
-def _install_ranking_stub() -> types.ModuleType:
-    """Install a lightweight ranking stub for perf tests.
-
-    The workspace currently has a syntax error in tools.search_journals.ranking,
-    but these perf regressions only need hierarchical_search timing and success.
-    """
-
-    def _merge_unique(*groups):
-        seen = set()
-        merged = []
-        for group in groups:
-            for item in group:
-                path = item.get("path")
-                if path in seen:
-                    continue
-                seen.add(path)
-                merged.append(item)
-        return merged
-
-    ranking_stub = types.ModuleType("tools.search_journals.ranking")
-    setattr(
-        ranking_stub,
-        "merge_and_rank_results",
-        lambda l1, l2, l3, query, **kwargs: _merge_unique(l3, l2, l1),
-    )
-    setattr(
-        ranking_stub,
-        "merge_and_rank_results_hybrid",
-        lambda l1, l2, l3, semantic_results, query, **kwargs: _merge_unique(
-            l3, semantic_results, l2, l1
-        ),
-    )
-    sys.modules["tools.search_journals.ranking"] = ranking_stub
-    return ranking_stub
-
-
 @pytest.fixture(scope="module")
 def _setup_search_env(tmp_path_factory):
     """Build a temp Life Index environment with an FTS index."""
     tmp_dir = tmp_path_factory.mktemp("life_index_search_perf")
-    original_ranking_module = sys.modules.get("tools.search_journals.ranking")
 
     journals_dir = tmp_dir / "Journals" / "2026" / "03"
     journals_dir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +94,6 @@ def _setup_search_env(tmp_path_factory):
     from tools.lib.chinese_tokenizer import reset_tokenizer_state
 
     reset_tokenizer_state()
-    _install_ranking_stub()
 
     import tools.search_journals.core as core_mod
 
@@ -158,10 +118,6 @@ def _setup_search_env(tmp_path_factory):
     importlib.reload(fts_update_mod)
     importlib.reload(fts_search_mod)
     reset_tokenizer_state()
-    if original_ranking_module is not None:
-        sys.modules["tools.search_journals.ranking"] = original_ranking_module
-    else:
-        sys.modules.pop("tools.search_journals.ranking", None)
 
 
 @pytest.mark.perf
