@@ -354,6 +354,19 @@
 ：
 得
 
+# Round 15 — Colloquial noise words from NL query diagnostics (I-3)
+# These appear in natural language queries but carry no search value.
+好不好
+有没有
+做
+吗
+呢
+吧
+啊
+呀
+么
+多久
+
 # Minimal English stopwords for mixed-language queries
 the
 a
