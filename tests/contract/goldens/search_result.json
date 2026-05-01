@@ -53,6 +53,8 @@
     }
   ],
   "total_found": 1,
+  "total_available": 1,
+  "has_more": false,
   "no_confident_match": true,
   "semantic_available": true,
   "performance": {

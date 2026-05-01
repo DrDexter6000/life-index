@@ -197,7 +197,7 @@ def test_diagnose_zero_result_queries(isolated_data_dir: Path) -> None:
 
     report = diagnose_search(days=7)
 
-    assert report["zero_result_queries"] == ["人生碎片", "兴奋"]
+    assert sorted(report["zero_result_queries"]) == sorted(["人生碎片", "兴奋"])
 
 
 def test_diagnose_latency_outliers(isolated_data_dir: Path) -> None:

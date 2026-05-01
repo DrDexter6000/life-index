@@ -99,6 +99,7 @@ package-lock.json
 
 # ----- 本地启动脚本 -----
 start-claude-here.bat
+Kimi_here.bat
 
 # ----- 会话交接文件 -----
 .handoff.md

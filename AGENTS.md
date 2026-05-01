@@ -150,8 +150,8 @@ tools/                         # Core CLI/tool layer
 | 🏛️ L0 | [`CHARTER.md`](CHARTER.md) | **最高治理文件**（项目宪章） | 仅经 §5 RFC 流程修订；所有文档冲突以此为准 |
 | 📐 L1 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **技术实现 SSOT** | 架构变更必同步；参数/计数/模块结构须准确 |
 | 📡 L1 | [`docs/API.md`](docs/API.md) | **接口契约 SSOT** | 新增/变更 CLI 参数、返回字段、错误码必同步 |
-| 🗺️ L2 | [`.strategy/strategy.md`](.strategy/strategy.md) | **战略枢纽** | 阶段进度、版本号、Round 状态必准确 |
-| 🗺️ L2 | [`.strategy/ROADMAP.md`](.strategy/ROADMAP.md) | **路线图** | Round 状态、版本引用、完成标记必准确 |
+| 🗺️ L2 | `.strategy/strategy.md` | **战略枢纽** | 阶段进度、版本号、Round 状态必准确 |
+| 🗺️ L2 | `.strategy/ROADMAP.md` | **路线图** | Round 状态、版本引用、完成标记必准确 |
 | 📖 L3 | [`AGENTS.md`](AGENTS.md) | **Agent 开发上下文** | 命令列表、模块结构、治理规范（本节） |
 | 📖 L3 | [`SKILL.md`](SKILL.md) | **Agent 技能入口** | 触发词、工作流、CLI 快速参考 |
 | 📖 L3 | [`AGENT_ONBOARDING.md`](AGENT_ONBOARDING.md) | **安装指南** | 安装/验证流程、CLI 快速参考 |

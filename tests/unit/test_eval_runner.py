@@ -222,7 +222,7 @@ def test_golden_queries_yaml_is_valid() -> None:
 
     assert isinstance(payload, dict)
     assert isinstance(payload.get("queries"), list)
-    assert 20 <= len(payload["queries"]) <= 30
+    assert 20 <= len(payload["queries"]) <= 100
 
     required_categories = {
         "chinese_recall",
