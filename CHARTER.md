@@ -398,6 +398,30 @@ CHARTER.md（本文件，最高权威）
 
 **冲突仲裁**：上层文档覆盖下层。CHARTER 是最高。
 
+## 附录 D：工程纪律与仓库卫生
+
+### D.1 设计底线
+
+```
+宁可功能简单，不可系统复杂
+宁可人工维护，不可自动化陷阱
+宁可牺牲性能，不可牺牲可靠性
+```
+
+### D.2 仓库卫生规则（强制）
+
+1. **`.gitignore` 不是后悔药**：新增 `.gitignore` 条目后，必须同步检查并清理已被 git 追踪的历史文件。
+   ```bash
+   # Push 前必做检查：输出应为空
+   git ls-files | git check-ignore --stdin
+   ```
+2. **禁止提交过程性/会话性文件**：`.handoff.md`、recovery patch、调试标记、临时日志等不得进入 git。
+3. **禁止提交测试运行时产物**：`.pytest_tmp/`、`.pytest_cache/`、`.mypy_cache/`、锁文件、pickle、模型缓存等。CI 运行产物由 CI 环境自行清理，不得带回仓库。
+4. **禁止提交个人环境配置**：虚拟环境目录、IDE 配置、本地部署脚本中的用户名/路径等。
+5. **Commit 前自查**：`git status` 中出现 `.pytest_tmp`、`.recovery`、`.handoff.md` 等条目时，禁止直接 `git add -A`。
+
+---
+
 ## 附录 C：签署
 
 > Life Index 是一位父亲写给女儿的数字家书。这份宪章是这份家书的**架构承诺**。

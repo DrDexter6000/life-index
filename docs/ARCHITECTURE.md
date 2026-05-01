@@ -247,6 +247,91 @@ CHARTER §1.5 定义了"确定性 vs 智能"的边界：CLI Core 层（`tools/se
 
 ---
 
+## 6. 工程规范
+
+### 6.1 代码风格指南
+
+**命名约定**: 函数/变量 `snake_case` | 常量 `UPPER_SNAKE_CASE` | 类 `PascalCase`
+
+**类型注解**: 必须使用
+
+**路径处理**: 统一使用 `pathlib.Path`
+
+**编码**: UTF-8
+
+**JSON 输出格式**:
+```json
+{
+  "success": true,
+  "data": { ... },
+  "error": "错误信息（如有）"
+}
+```
+
+### 6.2 模块结构
+
+```
+tools/                         # Core CLI/tool layer
+├── write_journal/
+├── search_journals/
+├── edit_journal/
+├── entity/                    # 实体图谱 + 质量审计 + review hub + merge/delete
+├── generate_abstract/
+├── build_index/
+├── query_weather/
+├── backup/
+├── migrate/                   # Schema 链式迁移
+├── dev/                       # 开发/验收辅助工具
+├── smart_search/              # LLM 编排智能搜索
+├── eval/                      # 搜索质量评估
+└── lib/                       # 共享库（SSOT）
+```
+
+### 6.3 日志文件格式
+
+#### 目录结构
+
+```
+~/Documents/Life-Index/
+├── Journals/                    # 日志主目录
+│   └── YYYY/MM/                 # 按年月组织
+├── by-topic/                    # 主题索引
+└── attachments/                 # 附件存储
+```
+
+#### Markdown 格式
+
+```yaml
+---
+title: "日志标题"
+date: 2026-03-07T14:30:00
+location: "Lagos, Nigeria"
+weather: "晴天 28°C"
+mood: ["专注", "充实"]
+tags: ["重构", "优化"]
+topic: ["work", "create"]
+abstract: "100字内摘要"
+---
+
+# 日志标题
+
+正文内容...
+```
+
+#### Topic 分类（必填）
+
+| Topic | 含义 |
+|-------|------|
+| `work` | 工作/职业 |
+| `learn` | 学习/成长 |
+| `health` | 健康/身体 |
+| `relation` | 关系/社交 |
+| `think` | 思考/反思 |
+| `create` | 创作/产出 |
+| `life` | 生活/日常 |
+
+---
+
 ## 相关文档
 
 - [CHARTER.md](../CHARTER.md) — **项目宪章**（本文档从属于此；不变量与治理规则在此）

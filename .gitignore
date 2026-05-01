@@ -104,5 +104,8 @@ Kimi_here.bat
 # ----- 会话交接文件 -----
 .handoff.md
 
+# ----- 本地 Agent 专属配置 -----
+.agents.local.md
+
 # ----- 本地备份 / 原型临时文件 -----
 *.backup
