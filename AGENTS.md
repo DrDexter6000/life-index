@@ -164,6 +164,7 @@ tools/                         # Core CLI/tool layer
 3. **去重原则**：同一信息仅在一个文档中作为 SSOT 维护，其他文档引用之。例外：命令列表允许多处出现（面向不同读者），但参数细节仅 `API.md` 维护。
 4. **冲突仲裁**：文档间内容冲突时，以更高层级文档为准；同层级冲突以 L0 `CHARTER.md` 为最终仲裁源。
 5. **版本连锁**：`CHARTER.md` 版本号变更时，所有引用该版本的文档（`strategy.md`、`ROADMAP.md`、`ARCHITECTURE.md`）必须在同一提交中同步更新。
+6. **Push 前全量审核（强制）**：每次向远端 push 前，必须完成一次 SSOT 文档全量审核校验。审核范围：所有 L0-L2 文档（CHARTER、ARCHITECTURE、API、strategy、ROADMAP）的关键字段与代码/配置实际状态的一致性。审核结果须记录在 commit message 或 PR 描述中（如 `SSOT-audit: checked <date>`）。未经审核不得 push。
 
 ### 违规判断
 
