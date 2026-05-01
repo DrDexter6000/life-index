@@ -1,76 +1,98 @@
 {
-  "timestamp": "2026-05-01T01:36:05.809284+00:00",
-  "commit": "53428b1",
+  "timestamp": "2026-05-01T20:47:51.561863+00:00",
+  "commit": "7484ad4",
   "python_version": "3.12.10",
   "tokenizer_version": 2,
   "judge_mode": "keyword",
-  "live_mode": true,
+  "live_mode": false,
   "semantic_enabled": false,
   "total_queries": 85,
   "metrics": {
     "mrr_at_5": 0.2716,
     "recall_at_5": 0.3836,
-    "precision_at_5": 0.3565
+    "recall_at_10": 0.3973,
+    "precision_at_5": 0.3565,
+    "ndcg_at_5": 0.2877
   },
   "by_category": {
     "chinese_recall": {
       "mrr_at_5": 0.0,
       "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "query_count": 4
     },
     "entity_expansion": {
       "mrr_at_5": 0.7083,
       "recall_at_5": 0.8125,
+      "recall_at_10": 0.8125,
       "precision_at_5": 0.5511,
+      "ndcg_at_5": 0.7379,
       "query_count": 16
     },
     "noise_rejection": {
       "mrr_at_5": 0.0,
       "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "query_count": 4
     },
     "english_regression": {
       "mrr_at_5": 0.0,
       "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "query_count": 4
     },
     "cross_language": {
       "mrr_at_5": 0.0,
       "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "query_count": 4
     },
     "high_frequency": {
       "mrr_at_5": 0.0,
       "recall_at_5": 0.0,
+      "recall_at_10": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "query_count": 4
     },
     "semantic_recall": {
       "mrr_at_5": 0.1538,
       "recall_at_5": 0.1538,
+      "recall_at_10": 0.1538,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 0.1538,
       "query_count": 13
     },
     "time_range": {
       "mrr_at_5": 0.25,
       "recall_at_5": 0.3636,
+      "recall_at_10": 0.3636,
       "precision_at_5": 0.52,
+      "ndcg_at_5": 0.277,
       "query_count": 12
     },
     "complex_query": {
       "mrr_at_5": 0.4167,
       "recall_at_5": 0.5,
+      "recall_at_10": 0.5,
       "precision_at_5": 0.4,
+      "ndcg_at_5": 0.4385,
       "query_count": 12
     },
     "edge_case": {
       "mrr_at_5": 0.1458,
       "recall_at_5": 0.5,
+      "recall_at_10": 0.6667,
       "precision_at_5": 0.2333,
+      "ndcg_at_5": 0.1718,
       "query_count": 12
     }
   },
@@ -82,8 +104,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -97,8 +121,10 @@
         "归家之旅一半喜一半忧"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -112,8 +138,10 @@
         "凌晨的数据丢失惨剧"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -124,8 +152,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -142,8 +172,10 @@
         "家庭会议：确立乐乐教育第一责任人原则"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 3,
       "pass": false
     },
@@ -157,8 +189,10 @@
         "凌晨的数据丢失惨剧"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.5,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 2,
       "pass": true
     },
@@ -171,8 +205,10 @@
         "想念小英雄"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -186,8 +222,10 @@
         "凌晨的数据丢失惨剧"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.5,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 2,
       "pass": true
     },
@@ -198,8 +236,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": true
     },
@@ -216,8 +256,10 @@
         "Carloha Wiki AI Chat Bot 调试"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": false
     },
@@ -231,8 +273,10 @@
         "为 Life Index 2.0 充值 Claude Code"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": false
     },
@@ -243,8 +287,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": true
     },
@@ -260,8 +306,10 @@
         "Life Index Web GUI 开发日志#2"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -272,8 +320,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -284,8 +334,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -296,8 +348,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -313,8 +367,10 @@
         "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -331,8 +387,10 @@
         "家庭会议：确立乐乐教育第一责任人原则"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -349,8 +407,10 @@
         "凌晨的数据丢失惨剧"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -367,8 +427,10 @@
         "和妈妈吵架与自我反思"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": false
     },
@@ -385,8 +447,10 @@
         "Life Index Web GUI 开发日志#2"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -403,8 +467,10 @@
         "凌晨的数据丢失惨剧"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -421,8 +487,10 @@
         "OpenClaw Skills 调研分析"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -436,8 +504,10 @@
         "智算中心迈入兆瓦级时代——算力投资思考"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -451,8 +521,10 @@
         "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 3,
       "pass": false
     },
@@ -466,8 +538,10 @@
         "想念小英雄"
       ],
       "first_relevant_rank": 2,
+      "first_relevant_rank_at_10": 2,
       "reciprocal_rank": 0.5,
       "precision_at_5": 0.5,
+      "ndcg_at_5": 0.6309,
       "expected_min_results": 1,
       "pass": true
     },
@@ -480,8 +554,10 @@
         "硅基生命崛起：与发小周渝的深度辩论"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -495,8 +571,10 @@
         "Carloha Wiki诞生记：AI赋能的一天"
       ],
       "first_relevant_rank": 2,
+      "first_relevant_rank_at_10": 2,
       "reciprocal_rank": 0.5,
       "precision_at_5": 0.5,
+      "ndcg_at_5": 0.6309,
       "expected_min_results": 1,
       "pass": true
     },
@@ -509,8 +587,10 @@
         "关于乐乐的事"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -523,8 +603,10 @@
         "关于乐乐的事"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -539,8 +621,10 @@
         "早起验收编码成果与今日Carloha工作要务"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.6667,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 2,
       "pass": true
     },
@@ -557,8 +641,10 @@
         "人类 vs AI"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.2,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -575,8 +661,10 @@
         "硅基生命崛起：与发小周渝的深度辩论"
       ],
       "first_relevant_rank": 3,
+      "first_relevant_rank_at_10": 3,
       "reciprocal_rank": 0.3333,
       "precision_at_5": 0.4,
+      "ndcg_at_5": 0.5438,
       "expected_min_results": 2,
       "pass": true
     },
@@ -587,8 +675,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -602,8 +692,10 @@
         "和妈妈吵架与自我反思"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.5,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -617,8 +709,10 @@
         "家庭会议：确立乐乐教育第一责任人原则"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.5,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -629,8 +723,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -641,8 +737,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -653,8 +751,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -665,8 +765,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -677,8 +779,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -689,8 +793,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -701,8 +807,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -715,8 +823,10 @@
         "乐乐最爱的玩具陪我继续睡觉"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -727,8 +837,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -739,8 +851,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -753,8 +867,10 @@
         "US blockade of Iran takes effect — Iran threatens retaliation"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 3,
       "pass": false
     },
@@ -765,8 +881,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -777,8 +895,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -795,8 +915,10 @@
         "看到“年仅41岁”后的恐惧与决心"
       ],
       "first_relevant_rank": 2,
+      "first_relevant_rank_at_10": 2,
       "reciprocal_rank": 0.5,
       "precision_at_5": 0.4,
+      "ndcg_at_5": 0.6934,
       "expected_min_results": 5,
       "pass": true
     },
@@ -807,8 +929,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -819,8 +943,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 3,
       "pass": false
     },
@@ -833,8 +959,10 @@
         "LobsterAI 日志自动化与项目管理整合"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -851,8 +979,10 @@
         "中年人的第一个GitHub仓库"
       ],
       "first_relevant_rank": 2,
+      "first_relevant_rank_at_10": 2,
       "reciprocal_rank": 0.5,
       "precision_at_5": 0.2,
+      "ndcg_at_5": 0.6309,
       "expected_min_results": 2,
       "pass": true
     },
@@ -863,8 +993,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -877,8 +1009,10 @@
         "Digital-self 项目迁移与创业思考"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -889,8 +1023,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 3,
       "pass": false
     },
@@ -903,8 +1039,10 @@
         "智算中心迈入兆瓦级时代——算力投资思考"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -915,8 +1053,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -927,8 +1067,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": true
     },
@@ -939,8 +1081,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -953,8 +1097,10 @@
         "和妈妈吵架与自我反思"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -965,8 +1111,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -979,8 +1127,10 @@
         "特朗普病危与美国衰败的思考"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -991,8 +1141,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 3,
       "pass": false
     },
@@ -1009,8 +1161,10 @@
         "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
       ],
       "first_relevant_rank": 2,
+      "first_relevant_rank_at_10": 2,
       "reciprocal_rank": 0.5,
       "precision_at_5": 0.2,
+      "ndcg_at_5": 0.6309,
       "expected_min_results": 2,
       "pass": true
     },
@@ -1024,8 +1178,10 @@
         "智算中心迈入兆瓦级时代——算力投资思考"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.5,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -1036,8 +1192,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 3,
       "pass": false
     },
@@ -1048,8 +1206,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 3,
       "pass": false
     },
@@ -1062,8 +1222,10 @@
         "家庭会议：确立乐乐教育第一责任人原则"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -1077,8 +1239,10 @@
         "人类 vs AI"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.5,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 2,
       "pass": true
     },
@@ -1093,8 +1257,10 @@
         "归家之旅一半喜一半忧"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 0.6667,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 2,
       "pass": true
     },
@@ -1109,8 +1275,10 @@
         "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
       ],
       "first_relevant_rank": 2,
+      "first_relevant_rank_at_10": 2,
       "reciprocal_rank": 0.5,
       "precision_at_5": 0.3333,
+      "ndcg_at_5": 0.6309,
       "expected_min_results": 2,
       "pass": true
     },
@@ -1121,8 +1289,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": true
     },
@@ -1133,8 +1303,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": true
     },
@@ -1145,8 +1317,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": true
     },
@@ -1159,8 +1333,10 @@
         "AI算力国资股长线投资研究（Kimi辅助）"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": false
     },
@@ -1171,8 +1347,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": true
     },
@@ -1183,8 +1361,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 0,
       "pass": true
     },
@@ -1201,8 +1381,10 @@
         "Life Index Web GUI 开发日志#2"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": 8,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -1219,8 +1401,10 @@
         "家庭会议：确立乐乐教育第一责任人原则"
       ],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 1,
       "pass": false
     },
@@ -1231,8 +1415,10 @@
       "results_found": 0,
       "top_titles": [],
       "first_relevant_rank": null,
+      "first_relevant_rank_at_10": null,
       "reciprocal_rank": 0.0,
       "precision_at_5": 0.0,
+      "ndcg_at_5": 0.0,
       "expected_min_results": 2,
       "pass": false
     },
@@ -1249,8 +1435,10 @@
         "LobsterAI 日志自动化与项目管理整合"
       ],
       "first_relevant_rank": 2,
+      "first_relevant_rank_at_10": 2,
       "reciprocal_rank": 0.5,
       "precision_at_5": 0.2,
+      "ndcg_at_5": 0.6309,
       "expected_min_results": 2,
       "pass": true
     },
@@ -1263,8 +1451,10 @@
         "计划回重庆给小朋友过生日与生活反思"
       ],
       "first_relevant_rank": 1,
+      "first_relevant_rank_at_10": 1,
       "reciprocal_rank": 1.0,
       "precision_at_5": 1.0,
+      "ndcg_at_5": 1.0,
       "expected_min_results": 1,
       "pass": true
     },
@@ -1281,8 +1471,10 @@
         "记录应该是习惯，不应该是负担"
       ],
       "first_relevant_rank": 4,
+      "first_relevant_rank_at_10": 4,
       "reciprocal_rank": 0.25,
       "precision_at_5": 0.2,
+      "ndcg_at_5": 0.4307,
       "expected_min_results": 3,
       "pass": true
     }
@@ -1560,6 +1752,7 @@
     "MRR@5: 0.2716",
     "Recall@5: 0.3836",
     "Precision@5: 0.3565",
+    "nDCG@5: 0.2877",
     "Failures: 53",
     "FAIL GQ01 \"想念我的女儿\" — Expected >= 1 results, got 0",
     "FAIL GQ02 \"重庆过生日\" — Expected one of must_contain_title within top 5, but none matched",

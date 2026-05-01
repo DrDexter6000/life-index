@@ -221,15 +221,30 @@ def _query_passes(
 def _collect_metrics(per_query: list[dict[str, Any]]) -> dict[str, float]:
     mrr_total = sum(float(item["reciprocal_rank"]) for item in per_query)
     recall_candidates = [item for item in per_query if int(item["expected_min_results"]) > 0]
-    recall_hits = [item for item in recall_candidates if item["first_relevant_rank"] is not None]
+    recall_hits_5 = [item for item in recall_candidates if item["first_relevant_rank"] is not None]
+    recall_hits_10 = [
+        item for item in recall_candidates if item.get("first_relevant_rank_at_10") is not None
+    ]
     precision_candidates = [item for item in per_query if int(item["results_found"]) > 0]
     precision_total = sum(float(item["precision_at_5"]) for item in precision_candidates)
+    ndcg_total = sum(
+        float(item["ndcg_at_5"]) for item in per_query if item.get("ndcg_at_5") is not None
+    )
+    ndcg_count = sum(1 for item in per_query if item.get("ndcg_at_5") is not None)
 
     return {
         "mrr_at_5": _round_metric(_safe_float_divide(mrr_total, len(per_query))),
-        "recall_at_5": _round_metric(_safe_float_divide(len(recall_hits), len(recall_candidates))),
+        "recall_at_5": _round_metric(
+            _safe_float_divide(len(recall_hits_5), len(recall_candidates))
+        ),
+        "recall_at_10": _round_metric(
+            _safe_float_divide(len(recall_hits_10), len(recall_candidates))
+        ),
         "precision_at_5": _round_metric(
             _safe_float_divide(precision_total, len(precision_candidates))
+        ),
+        "ndcg_at_5": (
+            _round_metric(_safe_float_divide(ndcg_total, ndcg_count)) if ndcg_count > 0 else 0.0
         ),
     }
 
@@ -237,13 +252,21 @@ def _collect_metrics(per_query: list[dict[str, Any]]) -> dict[str, float]:
 def _collect_llm_metrics(per_query: list[dict[str, Any]]) -> dict[str, float]:
     mrr_total = sum(float(item["reciprocal_rank"]) for item in per_query)
     recall_candidates = [item for item in per_query if int(item["expected_min_results"]) > 0]
-    recall_hits = [item for item in recall_candidates if item["first_relevant_rank"] is not None]
+    recall_hits_5 = [item for item in recall_candidates if item["first_relevant_rank"] is not None]
+    recall_hits_10 = [
+        item for item in recall_candidates if item.get("first_relevant_rank_at_10") is not None
+    ]
     precision_total = sum(float(item["precision_at_5"]) for item in per_query)
     ndcg_total = sum(float(item.get("ndcg_at_5", 0.0)) for item in per_query)
 
     return {
         "mrr_at_5": _round_metric(_safe_float_divide(mrr_total, len(per_query))),
-        "recall_at_5": _round_metric(_safe_float_divide(len(recall_hits), len(recall_candidates))),
+        "recall_at_5": _round_metric(
+            _safe_float_divide(len(recall_hits_5), len(recall_candidates))
+        ),
+        "recall_at_10": _round_metric(
+            _safe_float_divide(len(recall_hits_10), len(recall_candidates))
+        ),
         "precision_at_5": _round_metric(_safe_float_divide(precision_total, len(per_query))),
         "ndcg_at_5": _round_metric(_safe_float_divide(ndcg_total, len(per_query))),
     }
@@ -415,6 +438,7 @@ def _evaluate_queries(
         )
         merged_results = list(raw_result.get("merged_results", []))
         top_results = merged_results[:TOP_K]
+        top_results_10 = merged_results[:10]
         results_found = len(merged_results)
         llm_scores: list[int] = []
 
@@ -428,12 +452,17 @@ def _evaluate_queries(
                 for result in top_results
             ]
             first_relevant_rank = _llm_first_relevant_rank(llm_scores)
+            first_relevant_rank_at_10 = first_relevant_rank  # LLM scores only computed on top 5
             precision_at_5 = _llm_query_precision_at_5(llm_scores)
             ndcg_at_5 = _compute_ndcg_at_5(llm_scores)
         else:
             first_relevant_rank = _first_relevant_rank(top_results, query_case)
+            first_relevant_rank_at_10 = _first_relevant_rank(top_results_10, query_case)
             precision_at_5 = _query_precision_at_5(top_results, query_case)
-            ndcg_at_5 = None
+            keyword_relevance_scores = [
+                1 if _result_is_relevant(r, query_case) else 0 for r in top_results
+            ]
+            ndcg_at_5 = _compute_ndcg_at_5(keyword_relevance_scores)
 
         reciprocal_rank = 0.0 if first_relevant_rank is None else 1.0 / first_relevant_rank
 
@@ -468,14 +497,15 @@ def _evaluate_queries(
             "results_found": results_found,
             "top_titles": [str(item.get("title", "")) for item in top_results],
             "first_relevant_rank": first_relevant_rank,
+            "first_relevant_rank_at_10": first_relevant_rank_at_10,
             "reciprocal_rank": _round_metric(reciprocal_rank),
             "precision_at_5": _round_metric(precision_at_5),
+            "ndcg_at_5": _round_metric(ndcg_at_5) if ndcg_at_5 is not None else None,
             "expected_min_results": effective_expected_min_results,
             "pass": passed,
         }
         if judge == "llm":
             entry["llm_scores"] = llm_scores
-            entry["ndcg_at_5"] = ndcg_at_5
         per_query.append(entry)
 
         if failure_reason:
