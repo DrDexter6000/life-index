@@ -16,7 +16,12 @@ from typing import Any
 from ..lib import chinese_tokenizer
 from ..lib.paths import get_user_data_dir, get_journals_dir
 from ..lib.path_contract import merge_journal_path_fields
-from ..lib.search_constants import FTS_LIMIT, FTS_FALLBACK_THRESHOLD, FTS_MIN_RELEVANCE
+from ..lib.search_constants import (
+    FTS_LIMIT,
+    FTS_FALLBACK_THRESHOLD,
+    FTS_MIN_RELEVANCE,
+    KEYWORD_TOKEN_HIT_RATIO,
+)
 
 # Deprecated aliases — kept for monkeypatch compatibility (Round 13 lesson)
 USER_DATA_DIR = get_user_data_dir()
@@ -176,7 +181,7 @@ def _count_distinct_token_hits(text: str, tokens: list[str]) -> int:
 def _compute_min_required_hits(query_tokens: list[str]) -> tuple[int, list[str]]:
     """Compute required distinct token hits based on D8 rule.
 
-    Rule: max(2, ceil(non_stopword_tokens × 0.4))
+    Rule: max(2, ceil(non_stopword_tokens × KEYWORD_TOKEN_HIT_RATIO))
     Single non-stopword token queries: return (0, []) meaning skip filter.
 
     Returns:
@@ -188,7 +193,7 @@ def _compute_min_required_hits(query_tokens: list[str]) -> tuple[int, list[str]]
     non_stop = filter_stopwords(query_tokens)
     if len(non_stop) < 2:
         return 0, non_stop
-    required = max(2, math.ceil(len(non_stop) * 0.4))
+    required = max(2, math.ceil(len(non_stop) * KEYWORD_TOKEN_HIT_RATIO))
     return required, non_stop
 
 
@@ -375,8 +380,9 @@ def run_keyword_pipeline(
                     ]
 
                     # T3.1 (D8): FTS min-hits post-filter for segmented queries.
-                    # Require results to hit ≥ max(2, ceil(non_stopword_tokens × 0.4))
-                    # distinct non-stopword tokens. Single-token queries skip this filter.
+                    # Require results to hit ≥ max(2, ceil(non_stopword_tokens ×
+                    # KEYWORD_TOKEN_HIT_RATIO)) distinct non-stopword tokens.
+                    # Single-token queries skip this filter.
                     if was_segmented and l3_results:
                         query_tokens = segmented_query.split()
                         required_hits, non_stop_tokens = _compute_min_required_hits(query_tokens)

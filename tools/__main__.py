@@ -9,7 +9,8 @@ Usage:
 
 Commands:
     write     Write a journal entry
-    search    Search journals
+    search    Search journals (pure dual-pipeline)
+    smart-search  Smart search with LLM orchestration
     edit      Edit a journal entry
     entity    Manage entity graph
     weather   Query weather information
@@ -415,6 +416,7 @@ def main() -> None:
         "timeline": "tools.timeline.__main__",  # Task 3.2
         "migrate": "tools.migrate.__main__",  # Round 6 Phase 1
         "eval": "tools.eval.__main__",
+        "smart-search": "tools.smart_search.__main__",
     }
 
     if subcmd in cmd_map:

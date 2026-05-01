@@ -9,6 +9,15 @@ from __future__ import annotations
 
 from typing import Literal
 
+from ..lib.search_constants import (
+    CONFIDENCE_HIGH_FTS,
+    CONFIDENCE_HIGH_SEMANTIC,
+    CONFIDENCE_HIGH_RRF,
+    CONFIDENCE_MEDIUM_FTS,
+    CONFIDENCE_MEDIUM_SEMANTIC,
+    CONFIDENCE_MEDIUM_RRF,
+)
+
 ConfidenceLevel = Literal["high", "medium", "low"]
 
 
@@ -28,9 +37,15 @@ def classify_confidence(
     Returns:
         "high", "medium", or "low"
     """
-    if (fts_score >= 70 and semantic_score >= 55) or rrf_score >= 0.018:
+    if (
+        fts_score >= CONFIDENCE_HIGH_FTS and semantic_score >= CONFIDENCE_HIGH_SEMANTIC
+    ) or rrf_score >= CONFIDENCE_HIGH_RRF:
         return "high"
-    if fts_score >= 50 or semantic_score >= 45 or rrf_score >= 0.010:
+    if (
+        fts_score >= CONFIDENCE_MEDIUM_FTS
+        or semantic_score >= CONFIDENCE_MEDIUM_SEMANTIC
+        or rrf_score >= CONFIDENCE_MEDIUM_RRF
+    ):
         return "medium"
     return "low"
 

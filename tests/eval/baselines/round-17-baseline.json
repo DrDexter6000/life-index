@@ -1,0 +1,1570 @@
+{
+  "timestamp": "2026-05-01T01:36:05.809284+00:00",
+  "commit": "53428b1",
+  "python_version": "3.12.10",
+  "tokenizer_version": 2,
+  "judge_mode": "keyword",
+  "live_mode": true,
+  "semantic_enabled": false,
+  "total_queries": 85,
+  "metrics": {
+    "mrr_at_5": 0.2716,
+    "recall_at_5": 0.3836,
+    "precision_at_5": 0.3565
+  },
+  "by_category": {
+    "chinese_recall": {
+      "mrr_at_5": 0.0,
+      "recall_at_5": 0.0,
+      "precision_at_5": 0.0,
+      "query_count": 4
+    },
+    "entity_expansion": {
+      "mrr_at_5": 0.7083,
+      "recall_at_5": 0.8125,
+      "precision_at_5": 0.5511,
+      "query_count": 16
+    },
+    "noise_rejection": {
+      "mrr_at_5": 0.0,
+      "recall_at_5": 0.0,
+      "precision_at_5": 0.0,
+      "query_count": 4
+    },
+    "english_regression": {
+      "mrr_at_5": 0.0,
+      "recall_at_5": 0.0,
+      "precision_at_5": 0.0,
+      "query_count": 4
+    },
+    "cross_language": {
+      "mrr_at_5": 0.0,
+      "recall_at_5": 0.0,
+      "precision_at_5": 0.0,
+      "query_count": 4
+    },
+    "high_frequency": {
+      "mrr_at_5": 0.0,
+      "recall_at_5": 0.0,
+      "precision_at_5": 0.0,
+      "query_count": 4
+    },
+    "semantic_recall": {
+      "mrr_at_5": 0.1538,
+      "recall_at_5": 0.1538,
+      "precision_at_5": 1.0,
+      "query_count": 13
+    },
+    "time_range": {
+      "mrr_at_5": 0.25,
+      "recall_at_5": 0.3636,
+      "precision_at_5": 0.52,
+      "query_count": 12
+    },
+    "complex_query": {
+      "mrr_at_5": 0.4167,
+      "recall_at_5": 0.5,
+      "precision_at_5": 0.4,
+      "query_count": 12
+    },
+    "edge_case": {
+      "mrr_at_5": 0.1458,
+      "recall_at_5": 0.5,
+      "precision_at_5": 0.2333,
+      "query_count": 12
+    }
+  },
+  "per_query": [
+    {
+      "id": "GQ01",
+      "query": "想念我的女儿",
+      "category": "chinese_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ02",
+      "query": "重庆过生日",
+      "category": "chinese_recall",
+      "results_found": 2,
+      "top_titles": [
+        "计划回重庆给小朋友过生日与生活反思",
+        "归家之旅一半喜一半忧"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ03",
+      "query": "数字灵魂",
+      "category": "chinese_recall",
+      "results_found": 2,
+      "top_titles": [
+        "真正的第一步",
+        "凌晨的数据丢失惨剧"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ04",
+      "query": "边缘计算",
+      "category": "chinese_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ05",
+      "query": "乐乐",
+      "category": "entity_expansion",
+      "results_found": 7,
+      "top_titles": [
+        "乐乐最爱的玩具陪我继续睡觉",
+        "关于乐乐的事",
+        "和妈妈吵架与自我反思",
+        "想念小英雄",
+        "家庭会议：确立乐乐教育第一责任人原则"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 3,
+      "pass": false
+    },
+    {
+      "id": "GQ06",
+      "query": "小英雄",
+      "category": "entity_expansion",
+      "results_found": 2,
+      "top_titles": [
+        "想念小英雄",
+        "凌晨的数据丢失惨剧"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.5,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ07",
+      "query": "小豆丁",
+      "category": "entity_expansion",
+      "results_found": 1,
+      "top_titles": [
+        "想念小英雄"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ08",
+      "query": "想念小英雄",
+      "category": "entity_expansion",
+      "results_found": 2,
+      "top_titles": [
+        "想念小英雄",
+        "凌晨的数据丢失惨剧"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.5,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ09",
+      "query": "人生碎片",
+      "category": "noise_rejection",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ10",
+      "query": "兴奋",
+      "category": "noise_rejection",
+      "results_found": 10,
+      "top_titles": [
+        "今天又开了一个新Github仓库 —— LLM Smash Bros横空出世！",
+        "观看OpenClaw相关视频有感",
+        "Life Index Web GUI 功能开发完成",
+        "试用 Google Stitch - 前端设计革命性工具",
+        "Carloha Wiki AI Chat Bot 调试"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": false
+    },
+    {
+      "id": "GQ11",
+      "query": "investment strategy",
+      "category": "noise_rejection",
+      "results_found": 2,
+      "top_titles": [
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审",
+        "为 Life Index 2.0 充值 Claude Code"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": false
+    },
+    {
+      "id": "GQ12",
+      "query": "！！！",
+      "category": "noise_rejection",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ13",
+      "query": "Google Stitch",
+      "category": "english_regression",
+      "results_found": 4,
+      "top_titles": [
+        "试用 Google Stitch - 前端设计革命性工具",
+        "Agents Epiphany - 打破工具边界",
+        "LobsterAI 日志自动化与项目管理整合",
+        "Life Index Web GUI 开发日志#2"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ14",
+      "query": "integration testing",
+      "category": "english_regression",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ15",
+      "query": "dynamic loading",
+      "category": "english_regression",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ16",
+      "query": "deployment",
+      "category": "english_regression",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ17",
+      "query": "AI 算力",
+      "category": "cross_language",
+      "results_found": 4,
+      "top_titles": [
+        "AI算力国资股长线投资研究（Kimi辅助）",
+        "智算中心迈入兆瓦级时代——算力投资思考",
+        "硅基生命崛起：与发小周渝的深度辩论",
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ18",
+      "query": "my daughter 乐乐",
+      "category": "cross_language",
+      "results_found": 7,
+      "top_titles": [
+        "乐乐最爱的玩具陪我继续睡觉",
+        "关于乐乐的事",
+        "和妈妈吵架与自我反思",
+        "想念小英雄",
+        "家庭会议：确立乐乐教育第一责任人原则"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ19",
+      "query": "OpenClaw deployment",
+      "category": "cross_language",
+      "results_found": 9,
+      "top_titles": [
+        "观看OpenClaw相关视频有感",
+        "OpenClaw Skills 调研分析",
+        "计划回重庆给小朋友过生日与生活反思",
+        "Life Index 项目重构启动",
+        "凌晨的数据丢失惨剧"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ20",
+      "query": "乐乐 OpenClaw",
+      "category": "cross_language",
+      "results_found": 15,
+      "top_titles": [
+        "观看OpenClaw相关视频有感",
+        "OpenClaw Skills 调研分析",
+        "乐乐最爱的玩具陪我继续睡觉",
+        "关于乐乐的事",
+        "和妈妈吵架与自我反思"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": false
+    },
+    {
+      "id": "GQ21",
+      "query": "Life Index",
+      "category": "high_frequency",
+      "results_found": 20,
+      "top_titles": [
+        "为 Life Index 2.0 充值 Claude Code",
+        "Life Index 获得第一颗 GitHub Star 🎉",
+        "First Journal Entry",
+        "Life Index Web GUI 功能开发完成",
+        "Life Index Web GUI 开发日志#2"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ22",
+      "query": "OpenClaw",
+      "category": "high_frequency",
+      "results_found": 9,
+      "top_titles": [
+        "观看OpenClaw相关视频有感",
+        "OpenClaw Skills 调研分析",
+        "计划回重庆给小朋友过生日与生活反思",
+        "Life Index 项目重构启动",
+        "凌晨的数据丢失惨剧"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ23",
+      "query": "LobsterAI",
+      "category": "high_frequency",
+      "results_found": 10,
+      "top_titles": [
+        "LobsterAI Journal 双维度索引上线",
+        "LobsterAI 日志自动化与项目管理整合",
+        "LobsterAI Journal 臃肿危机",
+        "回归 LobsterAI",
+        "OpenClaw Skills 调研分析"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ24",
+      "query": "AI算力投资策略",
+      "category": "high_frequency",
+      "results_found": 2,
+      "top_titles": [
+        "AI算力国资股长线投资研究（Kimi辅助）",
+        "智算中心迈入兆瓦级时代——算力投资思考"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ25",
+      "query": "我的女儿",
+      "category": "entity_expansion",
+      "results_found": 2,
+      "top_titles": [
+        "Life Index 获得第一颗 GitHub Star 🎉",
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 3,
+      "pass": false
+    },
+    {
+      "id": "GQ26",
+      "query": "Toto",
+      "category": "entity_expansion",
+      "results_found": 2,
+      "top_titles": [
+        "关于乐乐的事",
+        "想念小英雄"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.5,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ27",
+      "query": "周渝",
+      "category": "entity_expansion",
+      "results_found": 1,
+      "top_titles": [
+        "硅基生命崛起：与发小周渝的深度辩论"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ28",
+      "query": "Jordan",
+      "category": "entity_expansion",
+      "results_found": 2,
+      "top_titles": [
+        "SkyVision 无人机项目周会",
+        "Carloha Wiki诞生记：AI赋能的一天"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.5,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ29",
+      "query": "婆婆",
+      "category": "entity_expansion",
+      "results_found": 1,
+      "top_titles": [
+        "关于乐乐的事"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ30",
+      "query": "乐乐和外婆",
+      "category": "entity_expansion",
+      "results_found": 1,
+      "top_titles": [
+        "关于乐乐的事"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ31",
+      "query": "Carloha Wiki",
+      "category": "entity_expansion",
+      "results_found": 3,
+      "top_titles": [
+        "Carloha Wiki诞生记：AI赋能的一天",
+        "Carloha Wiki AI Chat Bot 调试",
+        "早起验收编码成果与今日Carloha工作要务"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.6667,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ32",
+      "query": "LLM Smash Bros",
+      "category": "entity_expansion",
+      "results_found": 5,
+      "top_titles": [
+        "今天又开了一个新Github仓库 —— LLM Smash Bros横空出世！",
+        "Carloha Wiki AI Chat Bot 调试",
+        "Life Index 搜索功能优化",
+        "真正的第一步",
+        "人类 vs AI"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.2,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ33",
+      "query": "Kimi",
+      "category": "entity_expansion",
+      "results_found": 7,
+      "top_titles": [
+        "AI算力国资股长线投资研究（Kimi辅助）",
+        "Carloha Wiki诞生记：AI赋能的一天",
+        "真正的第一步",
+        "人类 vs AI",
+        "硅基生命崛起：与发小周渝的深度辩论"
+      ],
+      "first_relevant_rank": 3,
+      "reciprocal_rank": 0.3333,
+      "precision_at_5": 0.4,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ34",
+      "query": "CEO任务",
+      "category": "entity_expansion",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ35",
+      "query": "乐乐妈",
+      "category": "entity_expansion",
+      "results_found": 2,
+      "top_titles": [
+        "家庭会议：确立乐乐教育第一责任人原则",
+        "和妈妈吵架与自我反思"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.5,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ36",
+      "query": "爷爷保护乐乐",
+      "category": "entity_expansion",
+      "results_found": 2,
+      "top_titles": [
+        "和妈妈吵架与自我反思",
+        "家庭会议：确立乐乐教育第一责任人原则"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.5,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ37",
+      "query": "我什么时候感到孤独",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ38",
+      "query": "让我鼻子一酸的瞬间",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ39",
+      "query": "熬夜导致数据丢失那次崩溃经历",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ40",
+      "query": "和家人发生争吵后我很后悔",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ41",
+      "query": "对自己寿命的恐惧",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ42",
+      "query": "那些让我觉得技术改变生活的时刻",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ43",
+      "query": "后悔没有听劝的教训",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ44",
+      "query": "父女之间最温暖的片段",
+      "category": "semantic_recall",
+      "results_found": 1,
+      "top_titles": [
+        "乐乐最爱的玩具陪我继续睡觉"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ45",
+      "query": "中年危机的自我剖析",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ46",
+      "query": "让我觉得人生值得的瞬间",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ47",
+      "query": "对世界格局的忧虑",
+      "category": "semantic_recall",
+      "results_found": 1,
+      "top_titles": [
+        "US blockade of Iran takes effect — Iran threatens retaliation"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 3,
+      "pass": false
+    },
+    {
+      "id": "GQ48",
+      "query": "女儿小的时候让我怀念的那些日子",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ49",
+      "query": "missing my daughter",
+      "category": "semantic_recall",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ50",
+      "query": "2026年3月",
+      "category": "time_range",
+      "results_found": 13,
+      "top_titles": [
+        "Anthropic 3000文件泄露事件观察：PR自导自演质疑 + AI安全悖论深思",
+        "凌晨的数据丢失惨剧",
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审",
+        "早起验收编码成果与今日Carloha工作要务",
+        "看到“年仅41岁”后的恐惧与决心"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.4,
+      "expected_min_results": 5,
+      "pass": true
+    },
+    {
+      "id": "GQ51",
+      "query": "今年一月份发生了什么",
+      "category": "time_range",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ52",
+      "query": "春天的记录",
+      "category": "time_range",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 3,
+      "pass": false
+    },
+    {
+      "id": "GQ53",
+      "query": "三月份的工作日志",
+      "category": "time_range",
+      "results_found": 1,
+      "top_titles": [
+        "LobsterAI 日志自动化与项目管理整合"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ54",
+      "query": "2026年3月中旬发生了什么",
+      "category": "time_range",
+      "results_found": 5,
+      "top_titles": [
+        "Anthropic 3000文件泄露事件观察：PR自导自演质疑 + AI安全悖论深思",
+        "凌晨的数据丢失惨剧",
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审",
+        "看到“年仅41岁”后的恐惧与决心",
+        "中年人的第一个GitHub仓库"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.2,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ55",
+      "query": "最近的技术开发进展",
+      "category": "time_range",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ56",
+      "query": "最早的创业想法",
+      "category": "time_range",
+      "results_found": 1,
+      "top_titles": [
+        "Digital-self 项目迁移与创业思考"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ57",
+      "query": "四月初的国际新闻",
+      "category": "time_range",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 3,
+      "pass": false
+    },
+    {
+      "id": "GQ58",
+      "query": "三月下旬到四月的投资思考",
+      "category": "time_range",
+      "results_found": 1,
+      "top_titles": [
+        "智算中心迈入兆瓦级时代——算力投资思考"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ59",
+      "query": "二月下旬的项目重组",
+      "category": "time_range",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ60",
+      "query": "去年的冬天发生了什么",
+      "category": "time_range",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ61",
+      "query": "最近一周的生活",
+      "category": "time_range",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ62",
+      "query": "乐乐让我感动的瞬间",
+      "category": "complex_query",
+      "results_found": 1,
+      "top_titles": [
+        "和妈妈吵架与自我反思"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ63",
+      "query": "三月份的 Life Index 开发进展",
+      "category": "complex_query",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ64",
+      "query": "在重庆发生过的事",
+      "category": "complex_query",
+      "results_found": 1,
+      "top_titles": [
+        "特朗普病危与美国衰败的思考"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ65",
+      "query": "中东局势的深度分析",
+      "category": "complex_query",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 3,
+      "pass": false
+    },
+    {
+      "id": "GQ66",
+      "query": "AI编程工具的体验对比",
+      "category": "complex_query",
+      "results_found": 6,
+      "top_titles": [
+        "Carloha Wiki诞生记：AI赋能的一天",
+        "回归 LobsterAI",
+        "Life Index Web GUI 开发日志#2",
+        "硅基生命崛起：与发小周渝的深度辩论",
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.2,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ67",
+      "query": "为女儿未来存钱的投资策略",
+      "category": "complex_query",
+      "results_found": 2,
+      "top_titles": [
+        "AI算力国资股长线投资研究（Kimi辅助）",
+        "智算中心迈入兆瓦级时代——算力投资思考"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.5,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ68",
+      "query": "四月份的地缘政治分析",
+      "category": "complex_query",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 3,
+      "pass": false
+    },
+    {
+      "id": "GQ69",
+      "query": "陪伴女儿成长的苦与乐",
+      "category": "complex_query",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 3,
+      "pass": false
+    },
+    {
+      "id": "GQ70",
+      "query": "跨国家庭教育的反思",
+      "category": "complex_query",
+      "results_found": 1,
+      "top_titles": [
+        "家庭会议：确立乐乐教育第一责任人原则"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ71",
+      "query": "AI创业路上的迷茫和坚持",
+      "category": "complex_query",
+      "results_found": 2,
+      "top_titles": [
+        "Digital-self 项目迁移与创业思考",
+        "人类 vs AI"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.5,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ72",
+      "query": "Vibe Coding 的真实体验",
+      "category": "complex_query",
+      "results_found": 3,
+      "top_titles": [
+        "OpenCode Vibe Coding 工具探索",
+        "中年人的第一个GitHub仓库",
+        "归家之旅一半喜一半忧"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 0.6667,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ73",
+      "query": "算力投资的底层逻辑",
+      "category": "complex_query",
+      "results_found": 3,
+      "top_titles": [
+        "AI算力国资股长线投资研究（Kimi辅助）",
+        "智算中心迈入兆瓦级时代——算力投资思考",
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.3333,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ74",
+      "query": "日本旅行攻略",
+      "category": "edge_case",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ75",
+      "query": "菜谱推荐",
+      "category": "edge_case",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ76",
+      "query": "健身减肥计划",
+      "category": "edge_case",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ77",
+      "query": "区块链技术投资",
+      "category": "edge_case",
+      "results_found": 1,
+      "top_titles": [
+        "AI算力国资股长线投资研究（Kimi辅助）"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": false
+    },
+    {
+      "id": "GQ78",
+      "query": "养猫的经历",
+      "category": "edge_case",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ79",
+      "query": "巴黎铁塔旅游",
+      "category": "edge_case",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 0,
+      "pass": true
+    },
+    {
+      "id": "GQ80",
+      "query": "life indx",
+      "category": "edge_case",
+      "results_found": 20,
+      "top_titles": [
+        "为 Life Index 2.0 充值 Claude Code",
+        "Life Index 获得第一颗 GitHub Star 🎉",
+        "First Journal Entry",
+        "Life Index Web GUI 功能开发完成",
+        "Life Index Web GUI 开发日志#2"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ81",
+      "query": "乐乐 birthday",
+      "category": "edge_case",
+      "results_found": 7,
+      "top_titles": [
+        "乐乐最爱的玩具陪我继续睡觉",
+        "关于乐乐的事",
+        "和妈妈吵架与自我反思",
+        "想念小英雄",
+        "家庭会议：确立乐乐教育第一责任人原则"
+      ],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 1,
+      "pass": false
+    },
+    {
+      "id": "GQ82",
+      "query": "我什么时候最不开心",
+      "category": "edge_case",
+      "results_found": 0,
+      "top_titles": [],
+      "first_relevant_rank": null,
+      "reciprocal_rank": 0.0,
+      "precision_at_5": 0.0,
+      "expected_min_results": 2,
+      "pass": false
+    },
+    {
+      "id": "GQ83",
+      "query": "团",
+      "category": "edge_case",
+      "results_found": 9,
+      "top_titles": [
+        "关于乐乐的事",
+        "乐乐最爱的玩具陪我继续睡觉",
+        "家庭会议：确立乐乐教育第一责任人原则",
+        "内驱力与家庭：写在Life Index启航时",
+        "LobsterAI 日志自动化与项目管理整合"
+      ],
+      "first_relevant_rank": 2,
+      "reciprocal_rank": 0.5,
+      "precision_at_5": 0.2,
+      "expected_min_results": 2,
+      "pass": true
+    },
+    {
+      "id": "GQ84",
+      "query": "我记得好像是三月份的时候，要回重庆给小朋友过生日，当时还担心中东局势和睡眠不足的问题",
+      "category": "edge_case",
+      "results_found": 1,
+      "top_titles": [
+        "计划回重庆给小朋友过生日与生活反思"
+      ],
+      "first_relevant_rank": 1,
+      "reciprocal_rank": 1.0,
+      "precision_at_5": 1.0,
+      "expected_min_results": 1,
+      "pass": true
+    },
+    {
+      "id": "GQ85",
+      "query": "AI",
+      "category": "edge_case",
+      "results_found": 20,
+      "top_titles": [
+        "外媒的中国AI叙事：政治滤镜下的龙虾隐喻",
+        "人类 vs AI",
+        "Carloha Wiki AI Chat Bot 调试",
+        "硅基生命崛起：与发小周渝的深度辩论",
+        "记录应该是习惯，不应该是负担"
+      ],
+      "first_relevant_rank": 4,
+      "reciprocal_rank": 0.25,
+      "precision_at_5": 0.2,
+      "expected_min_results": 3,
+      "pass": true
+    }
+  ],
+  "failures": [
+    {
+      "id": "GQ01",
+      "query": "想念我的女儿",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ02",
+      "query": "重庆过生日",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ03",
+      "query": "数字灵魂",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ04",
+      "query": "边缘计算",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ05",
+      "query": "乐乐",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ10",
+      "query": "兴奋",
+      "reason": "Expected 0 results, got 10"
+    },
+    {
+      "id": "GQ11",
+      "query": "investment strategy",
+      "reason": "Expected 0 results, got 2"
+    },
+    {
+      "id": "GQ13",
+      "query": "Google Stitch",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ14",
+      "query": "integration testing",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ15",
+      "query": "dynamic loading",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ16",
+      "query": "deployment",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ17",
+      "query": "AI 算力",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ18",
+      "query": "my daughter 乐乐",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ19",
+      "query": "OpenClaw deployment",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ20",
+      "query": "乐乐 OpenClaw",
+      "reason": "Expected 0 results, got 15"
+    },
+    {
+      "id": "GQ21",
+      "query": "Life Index",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ22",
+      "query": "OpenClaw",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ23",
+      "query": "LobsterAI",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ24",
+      "query": "AI算力投资策略",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ25",
+      "query": "我的女儿",
+      "reason": "Expected >= 3 results, got 2"
+    },
+    {
+      "id": "GQ34",
+      "query": "CEO任务",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ37",
+      "query": "我什么时候感到孤独",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ38",
+      "query": "让我鼻子一酸的瞬间",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ39",
+      "query": "熬夜导致数据丢失那次崩溃经历",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ40",
+      "query": "和家人发生争吵后我很后悔",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ41",
+      "query": "对自己寿命的恐惧",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ42",
+      "query": "那些让我觉得技术改变生活的时刻",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ43",
+      "query": "后悔没有听劝的教训",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ44",
+      "query": "父女之间最温暖的片段",
+      "reason": "Expected >= 2 results, got 1"
+    },
+    {
+      "id": "GQ45",
+      "query": "中年危机的自我剖析",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ46",
+      "query": "让我觉得人生值得的瞬间",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ47",
+      "query": "对世界格局的忧虑",
+      "reason": "Expected >= 3 results, got 1"
+    },
+    {
+      "id": "GQ48",
+      "query": "女儿小的时候让我怀念的那些日子",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ49",
+      "query": "missing my daughter",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ51",
+      "query": "今年一月份发生了什么",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ52",
+      "query": "春天的记录",
+      "reason": "Expected >= 3 results, got 0"
+    },
+    {
+      "id": "GQ53",
+      "query": "三月份的工作日志",
+      "reason": "Expected >= 2 results, got 1"
+    },
+    {
+      "id": "GQ55",
+      "query": "最近的技术开发进展",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ57",
+      "query": "四月初的国际新闻",
+      "reason": "Expected >= 3 results, got 0"
+    },
+    {
+      "id": "GQ58",
+      "query": "三月下旬到四月的投资思考",
+      "reason": "Expected >= 2 results, got 1"
+    },
+    {
+      "id": "GQ59",
+      "query": "二月下旬的项目重组",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ61",
+      "query": "最近一周的生活",
+      "reason": "Expected >= 1 results, got 0"
+    },
+    {
+      "id": "GQ62",
+      "query": "乐乐让我感动的瞬间",
+      "reason": "Expected >= 2 results, got 1"
+    },
+    {
+      "id": "GQ63",
+      "query": "三月份的 Life Index 开发进展",
+      "reason": "Expected >= 2 results, got 0"
+    },
+    {
+      "id": "GQ64",
+      "query": "在重庆发生过的事",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ65",
+      "query": "中东局势的深度分析",
+      "reason": "Expected >= 3 results, got 0"
+    },
+    {
+      "id": "GQ68",
+      "query": "四月份的地缘政治分析",
+      "reason": "Expected >= 3 results, got 0"
+    },
+    {
+      "id": "GQ69",
+      "query": "陪伴女儿成长的苦与乐",
+      "reason": "Expected >= 3 results, got 0"
+    },
+    {
+      "id": "GQ70",
+      "query": "跨国家庭教育的反思",
+      "reason": "Expected >= 2 results, got 1"
+    },
+    {
+      "id": "GQ77",
+      "query": "区块链技术投资",
+      "reason": "Expected 0 results, got 1"
+    },
+    {
+      "id": "GQ80",
+      "query": "life indx",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ81",
+      "query": "乐乐 birthday",
+      "reason": "Expected one of must_contain_title within top 5, but none matched"
+    },
+    {
+      "id": "GQ82",
+      "query": "我什么时候最不开心",
+      "reason": "Expected >= 2 results, got 0"
+    }
+  ],
+  "recall_gaps": [],
+  "summary_lines": [
+    "Queries: 85",
+    "MRR@5: 0.2716",
+    "Recall@5: 0.3836",
+    "Precision@5: 0.3565",
+    "Failures: 53",
+    "FAIL GQ01 \"想念我的女儿\" — Expected >= 1 results, got 0",
+    "FAIL GQ02 \"重庆过生日\" — Expected one of must_contain_title within top 5, but none matched",
+    "FAIL GQ03 \"数字灵魂\" — Expected one of must_contain_title within top 5, but none matched",
+    "FAIL GQ04 \"边缘计算\" — Expected >= 1 results, got 0",
+    "FAIL GQ05 \"乐乐\" — Expected one of must_contain_title within top 5, but none matched"
+  ]
+}

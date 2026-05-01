@@ -1,8 +1,36 @@
 # AGENTS.md - Life Index 项目开发指南
 
 > 本文档为 Life Index 项目开发、为 AI 编码代理提供项目上下文。
-> **最后更新**: 2026-04-14 | **版本**: v2.1 | **状态**: 活跃维护
-> **任何 Agent 接手 CLI 开发时，必须先阅读 `.strategy/strategy.md` 与 `.strategy/ROADMAP.md`，禁止跳过共享战略文档直接开始开发。**
+> **最后更新**: 2026-04-23 | **版本**: v2.2 | **状态**: 活跃维护
+
+---
+
+## 🏛️ 宪章优先（Charter First）—— 必读
+
+**[`CHARTER.md`](CHARTER.md) 是 Life Index 项目的最高治理文件**。其效力高于本 AGENTS.md、`docs/ARCHITECTURE.md`、`docs/API.md`、`SKILL.md` 以及所有 ADR。任何文档（包括本文件）与 CHARTER.md 冲突时，以 CHARTER.md 为准。
+
+### Agent 必须阅读 CHARTER.md 的场景（强制）
+
+凡属以下任一情况，Agent **必须在动手写代码之前通读 CHARTER.md** —— 不得跳过、不得只读摘要：
+
+1. **触及 L2/L3 边界**：涉及 `tools/` 内任何模块新增/修改 LLM 调用、Agent 调度、语义推理逻辑（CHARTER §1.5 确定性 vs 智能硬线）
+2. **新增搜索参数/阈值**：修改 `search_constants.py`、`orchestrator.py`、`rerank.py`、RRF 权重、相似度阈值、结果数上限（CHARTER §3 搜索子系统）
+3. **任何架构层面变更**：新增模块、调整目录结构、引入新依赖、改动 CLI 契约（CHARTER §1.3 + 第二章分层宪章）
+4. **数据读写路径变更**：新增持久化层、修改 YAML Frontmatter schema、改动用户数据目录结构（CHARTER §1.1 + §1.2 + §1.6）
+5. **准备提交 PR / 发 Release**：PR 描述必须声明"与 CHARTER 无冲突"或引用豁免决议
+6. **文档之间冲突**：当 ARCHITECTURE.md / API.md / SKILL.md / ADR 之间出现不一致时，先读 CHARTER.md 做仲裁
+
+### 违章后果
+
+**任何违反 CHARTER.md 的变更不得被接受** —— 即使它通过了测试、修复了用户 bug、或看起来"性价比极高"。需求合理不等于路径合宪；合规的路径必须经 CHARTER 第五章修订流程。
+
+### 修订宪章的正确姿势
+
+若发现某条宪章条款确实需要修改，**不要直接改 CHARTER.md**。遵循 CHARTER §5「宪章修订流程」：发起 RFC → Gold Set 回归 → 24h 冷静期 → 作者签字 → 版本号 bump → 级联更新下游文档。非不变量章节才可修订；§1.1、§1.2、§1.6、§5.3 受保护或只能更严。
+
+---
+
+> **战略文档协同规则**：任何 Agent 接手 CLI 开发时，必须先阅读 `.strategy/strategy.md` 与 `.strategy/ROADMAP.md`，禁止跳过共享战略文档直接开始开发。
 
 > **CLI / GUI 共享规则**：所有高层战略、路线图、阶段进展统一记录在共享 `.strategy/` 中；CLI 侧不得维护一份独立平行战略文档。
 
@@ -21,7 +49,7 @@
 **关键架构决策**:
 - **双管道并行检索架构**：关键词管道 ∥ 语义管道并行执行 + RRF 融合
 - **数据物理隔离**：用户数据在 `~/Documents/Life-Index/`，项目代码在仓库目录
-- **CLI 为 SSOT**：所有写入/读取操作通过 CLI（详见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)）
+- **CLI 为 SSOT**：所有写入/读取操作通过 CLI（不变量详见 [`CHARTER.md`](CHARTER.md) §1.3；实现细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)）
 
 ---
 
@@ -29,20 +57,22 @@
 
 > **重要**：`docs/archive/` 目录包含历史开发文档，仅供考古参考。除非用户明确要求，Agent 不应阅读该目录内的文件，以避免浪费上下文和 token。
 
-| 文档 | 内容 | 说明 |
-|------|------|------|
-| `SKILL.md` | Agent 技能定义、触发词、工具接口 | Agent 调用入口 |
-| `AGENT_ONBOARDING.md` | 安装与初始化指南 | 面向 Agent 的安装流程 |
-| `docs/ARCHITECTURE.md` | 架构设计、核心原则 | 技术 SSOT |
-| `docs/API.md` | 工具 API 接口文档 | 参数、错误码、返回值 SSOT |
-| `.strategy/strategy.md` | 双产品线战略枢纽 | **任何 CLI / GUI 开发前优先阅读** |
-| `.strategy/ROADMAP.md` | CLI + GUI 综合路线图 | 双产品线统一规划与 progress 记录 |
-| `.strategy/cli/Round_7_Audit.md` | Round 7 归档审计 | Round 7 完成状态与勘误归档 |
-| `tools/lib/AGENTS.md` | 共享库开发指南 | `lib/` 模块约定 |
-| `pyproject.toml` | 项目配置 | 依赖、版本、入口点 |
-| `bootstrap-manifest.json` | Bootstrap authority | Onboarding 必须先刷新此文件 |
-| `references/schedule/SCHEDULE.md` | 定时任务规范 | Agent cron 任务指南 |
-| `docs/archive/` | 历史文档 | **不要主动阅读** |
+| 权威层级 | 文档 | 内容 | 说明 |
+|------|------|------|------|
+| 🏛️ **最高权威** | [`CHARTER.md`](CHARTER.md) | **项目宪章：不变量、分层宪章、反模式黑名单、修订流程** | **所有文档的仲裁源。触及 L2/L3 边界、搜索参数、架构变更前必读** |
+| 技术文档 | `docs/ARCHITECTURE.md` | 架构实现细节、参数快照、基础设施演进 | 从属于 CHARTER.md |
+| 技术文档 | `docs/API.md` | 工具 API 接口文档 | 参数、错误码、返回值 SSOT |
+| Agent 入口 | `SKILL.md` | Agent 技能定义、触发词、工具接口 | Agent 调用入口 |
+| Agent 入口 | `AGENT_ONBOARDING.md` | 安装与初始化指南 | 面向 Agent 的安装流程 |
+| 战略文档 | `.strategy/strategy.md` | 双产品线战略枢纽 | **任何 CLI / GUI 开发前优先阅读** |
+| 战略文档 | `.strategy/ROADMAP.md` | CLI + GUI 综合路线图 | 双产品线统一规划与 progress 记录 |
+| 战略文档 | `.strategy/cli/Round_7_Audit.md` | Round 7 归档审计 | Round 7 完成状态与勘误归档 |
+| PRD | `.strategy/cli/round-17-prd.md` | Round 17 治理与分层重构 PRD | 当前 Round 的执行蓝图（位于共享 .strategy/ 中） |
+| 子模块 | `tools/lib/AGENTS.md` | 共享库开发指南 | `lib/` 模块约定 |
+| 配置 | `pyproject.toml` | 项目配置 | 依赖、版本、入口点 |
+| 配置 | `bootstrap-manifest.json` | Bootstrap authority | Onboarding 必须先刷新此文件 |
+| 规范 | `references/schedule/SCHEDULE.md` | 定时任务规范 | Agent cron 任务指南 |
+| 历史 | `docs/archive/` | 历史文档 | **不要主动阅读** |
 
 > **共享战略文档说明**：`.strategy/` 现为 Projects 级共享目录（canonical hub），通过 NTFS junction 挂载到 `life-index` 与 `life-index_gui`。CLI 与 GUI 两条线的战略、路线图、阶段进度统一在此管理，避免开发脱轨。
 

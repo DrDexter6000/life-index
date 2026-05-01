@@ -26,9 +26,7 @@ def test_merge_and_rank_results_surfaces_related_entries_and_backlinked_by() -> 
     assert "backlinked_by" in merged[0]
 
 
-def test_merge_and_rank_results_hybrid_surfaces_related_entries_and_backlinked_by() -> (
-    None
-):
+def test_merge_and_rank_results_hybrid_surfaces_related_entries_and_backlinked_by() -> None:
     l2_results = [
         {
             "path": "doc.md",
@@ -75,22 +73,23 @@ def test_merge_and_rank_results_reuses_single_metadata_cache_connection() -> Non
 
 def test_merge_and_rank_results_filters_low_non_rrf_scores_and_caps_results() -> None:
     l3_results = [
-        {"path": f"doc-{index}.md", "relevance": 80, "title": f"Doc {index}"}
-        for index in range(25)
+        {"path": f"doc-{index}.md", "relevance": 80, "title": f"Doc {index}"} for index in range(25)
     ]
     l2_results = [{"path": "weak-meta.md", "title": "Weak", "metadata": {}}]
 
     merged = merge_and_rank_results([], l2_results, l3_results, query="python")
 
-    assert len(merged) == 20
-    assert all(item["relevance_score"] >= 25 for item in merged)
-    assert all(item["path"] != "weak-meta.md" for item in merged)
+    # Phase 2 (Task 3): ranking returns ALL filtered results (no internal truncation).
+    # Truncation to MAX_RESULTS_DEFAULT happens in core.py (presentation layer).
+    assert len(merged) == 26  # 25 L3 + 1 L2 (passes NON_RRF_MIN_SCORE threshold)
+    assert all(
+        item["relevance_score"] >= 25 for item in merged if item.get("source") != "metadata_search"
+    )
 
 
 def test_merge_and_rank_results_hybrid_filters_low_rrf_scores() -> None:
     l3_results = [
-        {"path": f"doc-{index}.md", "relevance": 80, "title": f"Doc {index}"}
-        for index in range(80)
+        {"path": f"doc-{index}.md", "relevance": 80, "title": f"Doc {index}"} for index in range(80)
     ]
 
     merged = merge_and_rank_results_hybrid(
@@ -99,8 +98,9 @@ def test_merge_and_rank_results_hybrid_filters_low_rrf_scores() -> None:
 
     # With fts_weight=1.0 (FTS_WEIGHT_DEFAULT), k=60 (RRF_K), min_rrf_score=0.008 (RRF_MIN_SCORE):
     # FTS-only items pass when 1.0/(60+rank) >= 0.008 → rank <= 65
-    # But MAX_RESULTS_DEFAULT=20 caps the output
-    assert len(merged) == 20  # Capped by MAX_RESULTS_DEFAULT
+    # Phase 2 (Task 3): ranking returns ALL results (no truncation to MAX_RESULTS_DEFAULT).
+    # Truncation now happens in core.py (presentation layer).
+    assert len(merged) == 66  # 66 results pass threshold (no truncation in ranking)
     assert all(item["relevance_score"] >= 0.008 for item in merged)
     # Verify doc-0 (hybrid match) is in results and has semantic_score > 0
     doc0_result = next((item for item in merged if item["path"] == "doc-0.md"), None)
@@ -108,9 +108,7 @@ def test_merge_and_rank_results_hybrid_filters_low_rrf_scores() -> None:
     assert doc0_result["semantic_score"] > 0  # Has semantic signal
 
 
-def test_merge_and_rank_results_hybrid_default_threshold_rejects_single_low_rrf_hit() -> (
-    None
-):
+def test_merge_and_rank_results_hybrid_default_threshold_rejects_single_low_rrf_hit() -> None:
     merged = merge_and_rank_results_hybrid(
         [],
         [],
@@ -146,7 +144,9 @@ def test_merge_and_rank_results_hybrid_default_keeps_single_semantic_hit() -> No
     assert merged[0]["path"] == "semantic.md"
 
 
-def test_merge_and_rank_results_hybrid_semantic_only_result_uses_semantic_thresholds_for_confidence() -> None:
+def test_merge_and_rank_results_hybrid_semantic_only_result_uses_semantic_thresholds_for_confidence() -> (  # noqa: E501
+    None
+):
     merged = merge_and_rank_results_hybrid(
         [],
         [],
@@ -159,7 +159,7 @@ def test_merge_and_rank_results_hybrid_semantic_only_result_uses_semantic_thresh
     assert merged[0]["confidence"] == "low"
 
 
-def test_merge_and_rank_results_hybrid_does_not_force_extra_backfill_when_one_strong_hit_exists() -> (
+def test_merge_and_rank_results_hybrid_does_not_force_extra_backfill_when_one_strong_hit_exists() -> (  # noqa: E501
     None
 ):
     merged = merge_and_rank_results_hybrid(
@@ -182,7 +182,7 @@ def test_merge_and_rank_results_hybrid_does_not_force_extra_backfill_when_one_st
     assert merged[0]["fts_score"] > 0  # FTS result has lexical evidence
 
 
-def test_merge_and_rank_results_hybrid_prefers_stronger_lexical_result_over_weaker_semantic_only() -> (
+def test_merge_and_rank_results_hybrid_prefers_stronger_lexical_result_over_weaker_semantic_only() -> (  # noqa: E501
     None
 ):
     merged = merge_and_rank_results_hybrid(
@@ -205,9 +205,7 @@ def test_merge_and_rank_results_hybrid_prefers_stronger_lexical_result_over_weak
     assert merged[0]["path"] == "meta.md"
 
 
-def test_merge_and_rank_results_dynamic_fts_threshold_tightens_high_score_cluster() -> (
-    None
-):
+def test_merge_and_rank_results_dynamic_fts_threshold_tightens_high_score_cluster() -> None:
     merged = merge_and_rank_results(
         [],
         [],
@@ -441,9 +439,7 @@ class TestL2WeakMetadataDeprioritization:
             "title": "Strong FTS Match",
         }
 
-        merged = merge_and_rank_results(
-            [], [l2_weak], [l3_strong], query="test", min_score=0
-        )
+        merged = merge_and_rank_results([], [l2_weak], [l3_strong], query="test", min_score=0)
 
         assert len(merged) == 2
         assert merged[0]["path"] == "l3-strong.md"
@@ -503,12 +499,8 @@ class TestL2WeakMetadataDeprioritization:
             min_non_rrf_score=0,
         )
 
-        fts_result = next(
-            (r for r in merged if r["path"] == "l3-strong.md"), None
-        )
-        l2_result = next(
-            (r for r in merged if r["path"] == "l2-weak.md"), None
-        )
+        fts_result = next((r for r in merged if r["path"] == "l3-strong.md"), None)
+        l2_result = next((r for r in merged if r["path"] == "l2-weak.md"), None)
         assert fts_result is not None
         assert l2_result is not None
         assert fts_result["search_rank"] < l2_result["search_rank"]
@@ -567,9 +559,7 @@ class TestL2WeakMetadataDeprioritization:
         l2_result = {"path": "meta.md", "title": "Doc", "metadata": {}}
         l3_result = {"path": "fts.md", "relevance": 50, "title": "FTS Doc"}
 
-        merged = merge_and_rank_results(
-            [], [l2_result], [l3_result], query="doc", min_score=0
-        )
+        merged = merge_and_rank_results([], [l2_result], [l3_result], query="doc", min_score=0)
 
         fts_entry = next(r for r in merged if r["path"] == "fts.md")
         meta_entry = next(r for r in merged if r["path"] == "meta.md")
@@ -597,9 +587,7 @@ class TestSamePathDeduplication:
             "title": "Shared Doc",
         }
 
-        merged = merge_and_rank_results(
-            [], [l2_result], [l3_result], query="shared", min_score=0
-        )
+        merged = merge_and_rank_results([], [l2_result], [l3_result], query="shared", min_score=0)
 
         # Same path should appear only once
         path_counts = [r["path"] for r in merged].count("same-doc.md")
@@ -641,22 +629,17 @@ class TestSamePathDeduplication:
         l3_a = {"path": "doc-a.md", "relevance": 80, "title": "Doc A"}
         l3_b = {"path": "doc-b.md", "relevance": 60, "title": "Doc B"}
 
-        merged = merge_and_rank_results(
-            [], [], [l3_a, l3_b], query="doc", min_score=0
-        )
+        merged = merge_and_rank_results([], [], [l3_a, l3_b], query="doc", min_score=0)
 
         assert len(merged) == 2
 
     def test_dedup_preserves_relative_order(self) -> None:
         """After dedup, remaining results maintain their relative order."""
         l3_results = [
-            {"path": f"doc-{i}.md", "relevance": 90 - i * 5, "title": f"Doc {i}"}
-            for i in range(5)
+            {"path": f"doc-{i}.md", "relevance": 90 - i * 5, "title": f"Doc {i}"} for i in range(5)
         ]
 
-        merged = merge_and_rank_results(
-            [], [], l3_results, query="doc", min_score=0
-        )
+        merged = merge_and_rank_results([], [], l3_results, query="doc", min_score=0)
 
         paths = [r["path"] for r in merged]
         assert paths == sorted(paths, key=lambda p: int(p.split("-")[1].split(".")[0]))

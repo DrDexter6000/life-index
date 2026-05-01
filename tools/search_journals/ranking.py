@@ -131,7 +131,9 @@ def _dynamic_threshold_floor(base_threshold: float, dynamic_threshold: float) ->
     return max(base_threshold, dynamic_threshold)
 
 
-def _tukey_fence_threshold(scores: list[float], *, base_threshold: float, k: float = 1.5) -> float:
+def _tukey_fence_threshold(
+    scores: list[float], *, base_threshold: float, k: float = 1.5
+) -> float:  # Tukey standard k=1.5 (mild outliers)
     """Compute a robust threshold using Tukey's IQR fence method.
 
     More resistant to outliers than mean/stddev for small sample sizes.
@@ -361,7 +363,8 @@ def merge_and_rank_results(
             return score >= NON_RRF_MIN_SCORE
 
     sorted_results = [item for item in sorted_results if _passes_threshold(item)]
-    sorted_results = sorted_results[:max_results]
+    # NOTE: Truncation removed per Phase 2 (Task 3) — ranking returns ALL results.
+    # Truncation now happens in core.py (presentation concern, not ranking concern).
 
     # 提取数据并添加排名信息
     merged = []
@@ -646,7 +649,9 @@ def merge_and_rank_results_hybrid(
             if len(thresholded_results) >= target_count:
                 break
 
-    sorted_results = thresholded_results[:max_results]
+    sorted_results = thresholded_results
+    # NOTE: Truncation removed per Phase 2 (Task 3) — ranking returns ALL results.
+    # Truncation now happens in core.py (presentation concern, not ranking concern).
 
     # 提取数据并添加排名
     merged = []

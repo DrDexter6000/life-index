@@ -240,3 +240,653 @@ queries:
         - "人工智能伦理讨论"
         - "LobsterAI 项目启动"
     tags: ["high-frequency", "project", "strategy"]
+
+  # ═══════════════════════════════════════════════════════
+  # GQ25-GQ85: Round 17 补充（2026-05-01）
+  # ═══════════════════════════════════════════════════════
+
+  # ── A. entity_expansion (≥12) ──
+  - id: "GQ25"
+    query: "我的女儿"
+    category: "entity_expansion"
+    description: "Alternative way to refer to 乐乐, should expand to same entity"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "想念小英雄"
+        - "关于乐乐的事"
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["entity", "person", "expansion"]
+
+  - id: "GQ26"
+    query: "Toto"
+    category: "entity_expansion"
+    description: "English name of 乐乐 should match Chinese journals"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "想念小英雄"
+    tags: ["entity", "expansion", "cross-language"]
+
+  - id: "GQ27"
+    query: "周渝"
+    category: "entity_expansion"
+    description: "Person entity search for a friend named in debate journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "硅基生命崛起：与发小周渝的深度辩论"
+    tags: ["entity", "person", "expansion"]
+
+  - id: "GQ28"
+    query: "Jordan"
+    category: "entity_expansion"
+    description: "Colleague entity from Carloha Wiki journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Carloha Wiki诞生记：AI赋能的一天"
+    tags: ["entity", "person", "expansion"]
+
+  - id: "GQ29"
+    query: "婆婆"
+    category: "entity_expansion"
+    description: "Family member entity (grandmother) should find child-related journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "关于乐乐的事"
+    tags: ["entity", "family", "expansion"]
+
+  - id: "GQ30"
+    query: "乐乐和外婆"
+    category: "entity_expansion"
+    description: "Mixed entity query: child + grandmother"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "关于乐乐的事"
+    tags: ["entity", "family", "expansion"]
+
+  - id: "GQ31"
+    query: "Carloha Wiki"
+    category: "entity_expansion"
+    description: "Project name entity should surface Carloha-related journals"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Carloha Wiki诞生记：AI赋能的一天"
+        - "Carloha Wiki AI Chat Bot 调试"
+    tags: ["entity", "project", "expansion"]
+
+  - id: "GQ32"
+    query: "LLM Smash Bros"
+    category: "entity_expansion"
+    description: "Project entity with English acronym"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "今天又开了一个新Github仓库 —— LLM Smash Bros横空出世！"
+    tags: ["entity", "project", "expansion"]
+
+  - id: "GQ33"
+    query: "Kimi"
+    category: "entity_expansion"
+    description: "AI assistant entity referenced across multiple journals"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "真正的第一步"
+        - "硅基生命崛起：与发小周渝的深度辩论"
+    tags: ["entity", "ai-tool", "expansion"]
+
+  - id: "GQ34"
+    query: "CEO任务"
+    category: "entity_expansion"
+    description: "Role-based entity reference should find Carloha Wiki journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Carloha Wiki诞生记：AI赋能的一天"
+    tags: ["entity", "role", "expansion"]
+
+  - id: "GQ35"
+    query: "乐乐妈"
+    category: "entity_expansion"
+    description: "Family role entity (乐乐's mom) should match family meeting journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "家庭会议：确立乐乐教育第一责任人原则"
+    tags: ["entity", "family", "expansion"]
+
+  - id: "GQ36"
+    query: "爷爷保护乐乐"
+    category: "entity_expansion"
+    description: "Multi-entity query with action context"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "和妈妈吵架与自我反思"
+    tags: ["entity", "family", "expansion"]
+
+  # ── B. semantic_recall (≥12) ──
+  - id: "GQ37"
+    query: "我什么时候感到孤独"
+    category: "semantic_recall"
+    description: "Pure semantic: emotion 'lonely', tests semantic matching without exact keyword"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "归家之旅一半喜一半忧"
+    tags: ["semantic", "emotion", "chinese"]
+
+  - id: "GQ38"
+    query: "让我鼻子一酸的瞬间"
+    category: "semantic_recall"
+    description: "Pure semantic: emotional moments, should match 想念小英雄 and 乐乐玩具"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "想念小英雄"
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["semantic", "emotion", "chinese"]
+
+  - id: "GQ39"
+    query: "熬夜导致数据丢失那次崩溃经历"
+    category: "semantic_recall"
+    description: "Scenario-based semantic: describes the data loss event without using title keywords"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "凌晨的数据丢失惨剧"
+    tags: ["semantic", "scenario", "chinese"]
+
+  - id: "GQ40"
+    query: "和家人发生争吵后我很后悔"
+    category: "semantic_recall"
+    description: "Scenario+emotion semantic: describes arguing with family"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "和妈妈吵架与自我反思"
+    tags: ["semantic", "emotion", "family"]
+
+  - id: "GQ41"
+    query: "对自己寿命的恐惧"
+    category: "semantic_recall"
+    description: "Abstract concept: fear of death/mortality, matches 年仅41岁 journal"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "年仅41岁"
+        - "内驱力与家庭：写在Life Index启航时"
+    tags: ["semantic", "emotion", "abstract"]
+
+  - id: "GQ42"
+    query: "那些让我觉得技术改变生活的时刻"
+    category: "semantic_recall"
+    description: "Abstract concept: technology's meaningful impact"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Carloha Wiki诞生记：AI赋能的一天"
+        - "试用 Google Stitch - 前端设计革命性工具"
+    tags: ["semantic", "abstract", "tech"]
+
+  - id: "GQ43"
+    query: "后悔没有听劝的教训"
+    category: "semantic_recall"
+    description: "Semantic: regret + lesson, should match data loss journal"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "凌晨的数据丢失惨剧"
+    tags: ["semantic", "emotion", "lesson"]
+
+  - id: "GQ44"
+    query: "父女之间最温暖的片段"
+    category: "semantic_recall"
+    description: "Semantic: father-daughter warmth without using exact title keywords"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "乐乐最爱的玩具陪我继续睡觉"
+        - "想念小英雄"
+    tags: ["semantic", "emotion", "family"]
+
+  - id: "GQ45"
+    query: "中年危机的自我剖析"
+    category: "semantic_recall"
+    description: "Abstract concept: midlife crisis self-analysis"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "内驱力与家庭：写在Life Index启航时"
+        - "归家之旅一半喜一半忧"
+    tags: ["semantic", "abstract", "chinese"]
+
+  - id: "GQ46"
+    query: "让我觉得人生值得的瞬间"
+    category: "semantic_recall"
+    description: "Semantic: moments that make life feel worthwhile"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Life Index 获得第一颗 GitHub Star 🎉"
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["semantic", "emotion", "chinese"]
+
+  - id: "GQ47"
+    query: "对世界格局的忧虑"
+    category: "semantic_recall"
+    description: "Semantic: concern about world order, matches geopolitics journals"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "特朗普病危与美国衰败的思考"
+        - "以色列大规模空袭黎巴嫩——冲突螺旋升级"
+        - "US blockade of Iran takes effect — Iran threatens retaliation"
+    tags: ["semantic", "geopolitics", "abstract"]
+
+  - id: "GQ48"
+    query: "女儿小的时候让我怀念的那些日子"
+    category: "semantic_recall"
+    description: "Pure semantic: describes missing childhood without '小英雄' or '小豆丁' keywords"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "想念小英雄"
+    tags: ["semantic", "emotion", "challenge"]
+
+  - id: "GQ49"
+    query: "missing my daughter"
+    category: "semantic_recall"
+    description: "English semantic query about missing daughter, should match Chinese journals"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "想念小英雄"
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["semantic", "cross-language", "english"]
+
+  # ── C. time_range (≥12) ──
+  - id: "GQ50"
+    query: "2026年3月"
+    category: "time_range"
+    description: "Month-level time filter for March 2026"
+    expected:
+      min_results: 5
+      must_contain_title:
+        - "想念小英雄"
+        - "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
+        - "关于乐乐的事"
+        - "中年人的第一个GitHub仓库"
+        - "凌晨的数据丢失惨剧"
+    tags: ["time", "month", "chinese"]
+
+  - id: "GQ51"
+    query: "今年一月份发生了什么"
+    category: "time_range"
+    description: "Relative time query for January 2026"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "真正的第一步"
+    tags: ["time", "month", "chinese"]
+
+  - id: "GQ52"
+    query: "春天的记录"
+    category: "time_range"
+    description: "Seasonal time query (spring = March-April)"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "想念小英雄"
+        - "内驱力与家庭：写在Life Index启航时"
+        - "Carloha Wiki诞生记：AI赋能的一天"
+    tags: ["time", "seasonal", "chinese"]
+
+  - id: "GQ53"
+    query: "三月份的工作日志"
+    category: "time_range"
+    description: "Month + topic combination: work-related journals in March"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Carloha Wiki AI Chat Bot 调试"
+        - "Life Index 搜索功能优化"
+    tags: ["time", "topic", "chinese"]
+
+  - id: "GQ54"
+    query: "2026年3月中旬发生了什么"
+    category: "time_range"
+    description: "Specific time range: mid-March 2026"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Carloha Wiki诞生记：AI赋能的一天"
+        - "凌晨的数据丢失惨剧"
+    tags: ["time", "range", "chinese"]
+
+  - id: "GQ55"
+    query: "最近的技术开发进展"
+    category: "time_range"
+    description: "Relative time query for recent tech development"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Life Index 搜索功能优化"
+        - "试用 Google Stitch - 前端设计革命性工具"
+    tags: ["time", "relative", "tech"]
+
+  - id: "GQ56"
+    query: "最早的创业想法"
+    category: "time_range"
+    description: "Relative time for earliest entrepreneurship thoughts"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Digital-self 项目迁移与创业思考"
+    tags: ["time", "relative", "chinese"]
+
+  - id: "GQ57"
+    query: "四月初的国际新闻"
+    category: "time_range"
+    description: "Time + topic: international news in early April"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "特朗普病危与美国衰败的思考"
+        - "以色列大规模空袭黎巴嫩——冲突螺旋升级"
+        - "US blockade of Iran takes effect — Iran threatens retaliation"
+    tags: ["time", "geopolitics", "chinese"]
+
+  - id: "GQ58"
+    query: "三月下旬到四月的投资思考"
+    category: "time_range"
+    description: "Time range + topic: investment thoughts across months"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "AI算力国资股长线投资研究（Kimi辅助）"
+        - "智算中心迈入兆瓦级时代——算力投资思考"
+    tags: ["time", "investment", "range"]
+
+  - id: "GQ59"
+    query: "二月下旬的项目重组"
+    category: "time_range"
+    description: "Time range: late February project restructuring"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Life Index 项目重构启动"
+    tags: ["time", "project", "chinese"]
+
+  - id: "GQ60"
+    query: "去年的冬天发生了什么"
+    category: "time_range"
+    description: "Out-of-range time query — no journals from 2025"
+    expected:
+      min_results: 0
+    tags: ["time", "negative", "out-of-range"]
+
+  - id: "GQ61"
+    query: "最近一周的生活"
+    category: "time_range"
+    description: "Relative time for the most recent week's life events"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["time", "relative", "life"]
+
+  # ── D. complex_query (≥12) ──
+  - id: "GQ62"
+    query: "乐乐让我感动的瞬间"
+    category: "complex_query"
+    description: "Person + emotion: 乐乐's heartwarming moments"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "想念小英雄"
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["complex", "person", "emotion"]
+
+  - id: "GQ63"
+    query: "三月份的 Life Index 开发进展"
+    category: "complex_query"
+    description: "Project + time: Life Index development in March"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
+        - "Life Index 搜索功能优化"
+    tags: ["complex", "project", "time"]
+
+  - id: "GQ64"
+    query: "在重庆发生过的事"
+    category: "complex_query"
+    description: "Location + event: things that happened in Chongqing"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["complex", "location", "event"]
+
+  - id: "GQ65"
+    query: "中东局势的深度分析"
+    category: "complex_query"
+    description: "Geopolitics + depth: Middle East analysis"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "特朗普病危与美国衰败的思考"
+        - "以色列大规模空袭黎巴嫩——冲突螺旋升级"
+        - "US blockade of Iran takes effect — Iran threatens retaliation"
+    tags: ["complex", "geopolitics", "analysis"]
+
+  - id: "GQ66"
+    query: "AI编程工具的体验对比"
+    category: "complex_query"
+    description: "Topic + comparison: AI coding tool comparisons"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "回归 LobsterAI"
+        - "Agents Epiphany - 打破工具边界"
+    tags: ["complex", "tools", "comparison"]
+
+  - id: "GQ67"
+    query: "为女儿未来存钱的投资策略"
+    category: "complex_query"
+    description: "Person + investment: saving for daughter's future"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "AI算力国资股长线投资研究（Kimi辅助）"
+    tags: ["complex", "family", "investment"]
+
+  - id: "GQ68"
+    query: "四月份的地缘政治分析"
+    category: "complex_query"
+    description: "Time + geopolitics: April geopolitical events"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "特朗普病危与美国衰败的思考"
+        - "US blockade of Iran takes effect — Iran threatens retaliation"
+        - "以色列大规模空袭黎巴嫩——冲突螺旋升级"
+    tags: ["complex", "time", "geopolitics"]
+
+  - id: "GQ69"
+    query: "陪伴女儿成长的苦与乐"
+    category: "complex_query"
+    description: "Person + emotion: bittersweet parenting experience"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "想念小英雄"
+        - "关于乐乐的事"
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["complex", "family", "emotion"]
+
+  - id: "GQ70"
+    query: "跨国家庭教育的反思"
+    category: "complex_query"
+    description: "Topic + self-reflection: cross-border family education"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "家庭会议：确立乐乐教育第一责任人原则"
+        - "关于乐乐的事"
+    tags: ["complex", "family", "education"]
+
+  - id: "GQ71"
+    query: "AI创业路上的迷茫和坚持"
+    category: "complex_query"
+    description: "Topic + emotion: confusion and persistence in AI entrepreneurship"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "Digital-self 项目迁移与创业思考"
+        - "硅基生命崛起：与发小周渝的深度辩论"
+    tags: ["complex", "startup", "emotion"]
+
+  - id: "GQ72"
+    query: "Vibe Coding 的真实体验"
+    category: "complex_query"
+    description: "Concept + experience: vibe coding hands-on experience"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "中年人的第一个GitHub仓库"
+        - "OpenCode Vibe Coding 工具探索"
+    tags: ["complex", "tech", "experience"]
+
+  - id: "GQ73"
+    query: "算力投资的底层逻辑"
+    category: "complex_query"
+    description: "Topic + reasoning: fundamental logic of compute investment"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "硅基生命崛起：与发小周渝的深度辩论"
+        - "智算中心迈入兆瓦级时代——算力投资思考"
+    tags: ["complex", "investment", "reasoning"]
+
+  # ── E. edge_case (≥12) ──
+
+  # Edge: 0-result queries
+  - id: "GQ74"
+    query: "日本旅行攻略"
+    category: "edge_case"
+    description: "Rejection: never traveled to Japan, should return 0 results"
+    expected:
+      min_results: 0
+    tags: ["edge", "negative", "travel"]
+
+  - id: "GQ75"
+    query: "菜谱推荐"
+    category: "edge_case"
+    description: "Rejection: never wrote about recipes or cooking, should return 0"
+    expected:
+      min_results: 0
+    tags: ["edge", "negative", "irrelevant"]
+
+  - id: "GQ76"
+    query: "健身减肥计划"
+    category: "edge_case"
+    description: "Rejection: never documented fitness or weight loss plans"
+    expected:
+      min_results: 0
+    tags: ["edge", "negative", "health"]
+
+  - id: "GQ77"
+    query: "区块链技术投资"
+    category: "edge_case"
+    description: "Rejection: blockchain never mentioned in any journal"
+    expected:
+      min_results: 0
+    tags: ["edge", "negative", "irrelevant"]
+
+  - id: "GQ78"
+    query: "养猫的经历"
+    category: "edge_case"
+    description: "Rejection: never owned a cat, no cat-related entries"
+    expected:
+      min_results: 0
+    tags: ["edge", "negative", "irrelevant"]
+
+  - id: "GQ79"
+    query: "巴黎铁塔旅游"
+    category: "edge_case"
+    description: "Rejection: never traveled to France, pure noise query"
+    expected:
+      min_results: 0
+    tags: ["edge", "negative", "travel"]
+
+  # Edge: challenging queries with results
+  - id: "GQ80"
+    query: "life indx"
+    category: "edge_case"
+    description: "Typo: misspelled 'Life Index', tests fuzzy matching"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "Life Index 项目重构启动"
+    tags: ["edge", "typo", "fuzzy"]
+
+  - id: "GQ81"
+    query: "乐乐 birthday"
+    category: "edge_case"
+    description: "Mixed language: Chinese entity + English event term"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "计划回重庆给小朋友过生日与生活反思"
+    tags: ["edge", "mixed-language", "entity"]
+
+  - id: "GQ82"
+    query: "我什么时候最不开心"
+    category: "edge_case"
+    description: "Adversarial: negative emotions scattered across multiple journals, tests ranking quality"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "凌晨的数据丢失惨剧"
+        - "和妈妈吵架与自我反思"
+    tags: ["edge", "adversarial", "emotion"]
+
+  - id: "GQ83"
+    query: "团"
+    category: "edge_case"
+    description: "Ultra-short query: single Chinese character, tests minimum query handling"
+    expected:
+      min_results: 2
+      must_contain_title:
+        - "想念小英雄"
+        - "乐乐最爱的玩具陪我继续睡觉"
+    tags: ["edge", "short", "boundary"]
+
+  - id: "GQ84"
+    query: "我记得好像是三月份的时候，要回重庆给小朋友过生日，当时还担心中东局势和睡眠不足的问题"
+    category: "edge_case"
+    description: "Ultra-long query: verbose natural language with multiple contextual cues"
+    expected:
+      min_results: 1
+      must_contain_title:
+        - "计划回重庆给小朋友过生日与生活反思"
+    tags: ["edge", "long", "natural-language"]
+
+  - id: "GQ85"
+    query: "AI"
+    category: "edge_case"
+    description: "High-frequency trap: 'AI' appears in 30+ journals, tests if top results are most relevant"
+    expected:
+      min_results: 3
+      must_contain_title:
+        - "硅基生命崛起：与发小周渝的深度辩论"
+        - "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审"
+        - "AI算力国资股长线投资研究（Kimi辅助）"
+    tags: ["edge", "high-frequency", "ranking"]

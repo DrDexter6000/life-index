@@ -1,69 +1,35 @@
 # Life Index Architecture
 
-> **本文档职责**: 项目架构设计与关键决策记录
+> **本文档职责**: 架构实现细节、参数快照、基础设施演进记录
 > **目标读者**: 开发者、架构师、贡献者
+> **权威层级**: 本文档从属于 [`CHARTER.md`](../CHARTER.md)。若本文档与宪章冲突，以宪章为准。
 
 ---
 
-## 1. 核心原则
+## 0. 读前必读：宪章关系
 
-### 1.1 Agent-Native
+**本文档不再重复以下不变量** — 请直接读 [`CHARTER.md`](../CHARTER.md)：
 
-- 能由 Agent 直接完成的操作，不开发专用工具
-- 专用工具仅在需要**原子性**、**高可靠性**或**复杂计算**时引入
-- Agent 负责理解意图与编排流程；稳定读写能力通过 CLI 工具暴露
+| 原则 | 归属位置 |
+|------|----------|
+| Agent-Native、CLI 作为 SSOT | CHARTER §1.3、§2.3 |
+| 数据主权（100% 本地） | CHARTER §1.1 |
+| 纯文本永久性（Markdown + YAML） | CHARTER §1.2 |
+| 层级隔离（L1-L4 四层模型） | CHARTER §1.4、第二章 |
+| 确定性 vs 智能边界（L2 不得调 LLM） | CHARTER §1.5 |
+| 向后兼容性（50 年数据读取保证） | CHARTER §1.6 |
+| 设计三底线（简单/人工/可靠） | CHARTER §1.7 |
+| 交互范式（人-Agent-CLI 三层信息流） | CHARTER §1.3 + §2 |
+| 系统边界（做什么 / 不做什么） | CHARTER §1.7 + 第四章反模式黑名单 |
+| 数据隔离（用户数据 vs 代码） | CHARTER §1.1 |
 
-### 1.2 数据主权
-
-- 100% 本地存储，用户拥有绝对数字主权
-- 数据格式为人可读（Markdown + YAML），不依赖特定软件
-- 目录结构清晰，便于人工浏览和维护
-
-### 1.3 单层透明
-
-```
-用户 ↔ Agent ↔ CLI ↔ 文件系统
-```
-
-禁止在 CLI SSOT 之外再引入额外的长期写入层（数据库、服务进程、API 网关等）。
-
-### 1.4 设计底线
-
-```
-宁可功能简单，不可系统复杂
-宁可人工维护，不可自动化陷阱
-宁可牺牲性能，不可牺牲可靠性
-```
-
-### 1.5 交互范式：人-Agent-CLI 三层信息流
-
-Life Index 的用户界面架构基于一个核心认知：
-
-> **CLI 是 Agent 的母语，GUI 是人的母语。**
-
-#### 信息流分层
-
-| 层级 | 服务对象 | 最佳接口 | 设计意图 |
-|------|----------|----------|----------|
-| **CLI 层** | Agent | 命令行 | 结构化输入输出、可 pipe、自描述 |
-| **Agent 层** | 人 + CLI | 自然语言理解 | 翻译人语→CLI，解析 CLI→人语 |
-| **GUI 层** | 人 | 可视化界面 | 直观交互、表单触发、结果渲染 |
-
-#### 核心约束
-
-1. **CLI 是 SSOT**：所有能力以 CLI 暴露，Agent 和 GUI 只是 CLI 的不同"封装形态"
-2. **当前仓库以 CLI Core 为主**：任何未来 GUI / Experience Layer 都必须消费 CLI 契约，而不是成为当前仓库的并行 authority surface
-3. **Agent 不替代 CLI**：Agent 负责理解意图，但执行必须通过 CLI
-
-#### 行业验证
-
-2026 年钉钉/飞书 CLI 化转型证明：Agent 操作软件的最佳方式是命令行（成本 17 倍低于 MCP）。Life Index 的设计与行业共识一致。
+**本文档聚焦可演化的实现细节** — 索引树结构、双管道参数、ADR-003/004 等可演化决策、目录快照、基础设施增量记录。这些随实现版本迭代，不属于宪章不变量。
 
 ---
 
-## 2. 分布式索引树架构
+## 1. 分布式索引树架构
 
-### 2.1 索引树结构
+### 1.1 索引树结构
 
 索引文件与数据物理共存，每层目录携带自己的索引：
 
@@ -88,7 +54,7 @@ Life Index 的用户界面架构基于一个核心认知：
 └── .index/                               ← 机器检索层（FTS5 + 向量 DB）
 ```
 
-### 2.2 确定性边界线
+### 1.2 确定性边界线
 
 | 内容类型 | 归属工具 | 所在层级 |
 |---------|---------|---------|
@@ -96,9 +62,9 @@ Life Index 的用户界面架构基于一个核心认知：
 | 年度/月度回顾段 | `generate_report`（Agent 驱动） | Intelligence Layer |
 | by-topic 摘要文字 | `generate_index`（确定性） | CLI Core |
 
-`generate_index` 生成的文件中，叙事区域留 placeholder。`generate_report` 是 Agent 编排任务，不是 Python CLI 工具。
+`generate_index` 生成的文件中，叙事区域留 placeholder。`generate_report` 是 Agent 编排任务，不是 Python CLI 工具。此划分对应 CHARTER §1.5 的「确定性 vs 智能」硬线。
 
-### 2.3 渐进式元数据披露
+### 1.3 渐进式元数据披露
 
 INDEX.md < index_YYYY.md < index_YYYY-MM.md
 
@@ -106,7 +72,7 @@ INDEX.md < index_YYYY.md < index_YYYY-MM.md
 
 ---
 
-## 3. 双管道并行检索架构
+## 2. 双管道并行检索架构
 
 **核心目的**: 逐层缩小候选集以节省 Agent 上下文 token 消耗。
 
@@ -140,20 +106,13 @@ INDEX.md < index_YYYY.md < index_YYYY-MM.md
 
 **核心原则**：每一层是过滤器，不是数据源。两条管道并行执行，RRF 融合排序。Pipeline A 内部执行三层递进过滤：L1 索引层快速预筛（by-topic 索引文件），L2 元数据层多维度过滤（YAML Frontmatter + SQLite 缓存），L3 FTS5 内容层精确匹配。Pipeline B 独立执行向量相似度搜索。两条管道结果经 RRF 融合后返回。
 
+> 本双管道是 **确定性检索原语**，零 LLM 依赖。Agent 编排层（query understanding、result filtering）仅可在 `tools/search_journals/orchestrator.py` 内出现 —— 详见 CHARTER §3。
+
 ---
 
-## 4. 关键架构决策
+## 3. 关键架构决策（可演化）
 
-### ADR-001: Agent-Native 架构设计
-
-**决策**: 仅开发必要的原子工具，其他由 Agent 完成。
-
-**原因**: Life Index v2 版本因过度工程化导致系统失效。Agent-Native 方案最能发挥 Agent 能力同时保持系统简洁。
-
-**收益**:
-- 减少代码量，降低维护成本
-- 充分利用 Agent 的自然语言能力
-- 系统架构简洁透明
+> Agent-Native 架构原则已提升为宪章 §1.3 不变量（见 CHARTER.md）。本节仅保留**可演化的**架构决策 ADR。
 
 ### ADR-003: YAML Frontmatter 格式选择
 
@@ -195,26 +154,7 @@ tags: ["重构", "优化"]
 
 ---
 
-## 5. 系统边界
-
-### 5.1 我们做什么
-
-- ✅ 自然语言日志记录
-- ✅ 结构化元数据提取
-- ✅ 多维度索引维护（时间、主题、项目、标签）
-- ✅ 分层级日志检索
-- ✅ 附件管理
-
-### 5.2 我们不做什么
-
-- ❌ 云端同步（用户可自行用云盘备份）
-- ❌ 多人协作（当前单用户设计）
-- ❌ 富文本编辑（纯 Markdown）
-- ❌ 实时分析仪表盘（定期摘要替代）
-
----
-
-## 6. 目录结构
+## 4. 目录结构
 
 ```
 ~/Documents/Life-Index/           # 用户数据目录
@@ -234,45 +174,36 @@ tags: ["重构", "优化"]
 └── .index/                       # 机器检索层（FTS5 + 向量 DB）
 ```
 
----
-
-## 7. 数据隔离原则
-
-| 存储位置 | 内容 | 说明 |
-|---------|------|------|
-| `~/Documents/Life-Index/` | 用户数据 | 日志、附件、索引 |
-| 项目代码目录 | 程序代码 | 工具、配置、文档 |
-
-**两者物理隔离，不可混淆。**
+> 数据隔离（用户数据 vs 项目代码物理隔离）已提升为宪章 §1.1 不变量，见 CHARTER.md。
 
 ---
 
-## 8. 基础设施增强
+## 5. 基础设施增强
 
-### 8.1 Schema 迁移（Round 6）
+### 5.1 Schema 迁移（Round 6）
 
 - `life-index migrate --dry-run` — 扫描 schema 版本分布
 - `life-index migrate --apply` — 确定性迁移（补字段 + bump version）+ needs_agent 输出
 - 迁移链框架：`register_migration(from, to)` 装饰器注册，`run_migration_chain()` 执行
 
-### 8.2 搭便车事件通知（Round 6）
+### 5.2 搭便车事件通知（Round 6）
 
 - 在 CLI 响应中增加 `events` 字段（零 cron、零进程、零外部依赖）
 - 5 个内置事件：`no_journal_streak`、`monthly_review_due`、`entity_audit_due`、`schema_migration_available`、`index_stale`
 - 检测总耗时 < 50ms（只做文件 stat，不读内容）
 
-### 8.3 Entity 质量审计（Round 6）
+### 5.3 Entity 质量审计（Round 6）
 
 - `life-index entity --audit` — CLI 检测 + Agent 访谈协作模式
 - 检测：重复实体、孤立实体、频繁共现无关系
 - Agent 逐项访谈用户决定 merge/archive/add_relationship
 
-### 8.4 操作级可观测性（Round 6）
+### 5.4 操作级可观测性（Round 6）
 
 - 所有 CLI 响应中增加 `_trace` 字段（trace_id + command + total_ms + steps）
 - 上下文管理器模式：`with Trace("write") as t: t.step("validate")`
 
-### 8.5 搜索评估与可观测体系（Round 8）
+### 5.5 搜索评估与可观测体系（Round 8）
 
 Round 8 在双管道并行检索架构之上，建立了完整的搜索质量保障闭环：
 
@@ -280,19 +211,58 @@ Round 8 在双管道并行检索架构之上，建立了完整的搜索质量保
 - **搜索诊断入口**：`life-index search --diagnose` 聚合最近搜索行为，输出退化线索（zero-result queries、degraded searches、latency outliers）
 - **Eval 质量闸门**：CI 集成搜索 eval gate，验证 golden query 覆盖、噪声拒绝、正向召回、baseline 比较
 - **中文分词模块**：jieba 集成（index/query 双模式），支持 FTS5 中文精确匹配
-- **15 个 ADR 常量集中管理**：所有搜索参数（RRF k、min_relevance、score weights 等）通过 `search_constants.py` 集中管理，每个参数有 ADR 编号和决策记录
+- **17 个 ADR 常量集中管理**：所有搜索参数（RRF k、min_relevance、score weights 等）通过 `search_constants.py` 集中管理，每个参数有 ADR 编号和决策记录
 
-### 8.6 不做什么
+### 5.6 不做什么（本轮实现层约束）
 
 - 不做 WAL/checkpoint、Vector 增量更新、Agent Memory、Multi-Agent、Plugin、MCP
+
+> 更宽泛的"我们不做什么"系统边界已由 CHARTER §1.7 与第四章反模式黑名单承担。
+
+### 5.7 自动索引重建与新鲜度检查（Round 8 Phase 1 + Round 12）
+
+搜索索引（FTS5 + 向量）通过 `tools/build_index/` 模块管理，支持自动新鲜度检测和增量重建：
+
+- **TOKENIZER_VERSION 机制**：`search_constants.py` 中的 `TOKENIZER_VERSION` 整数与 FTS 索引一起存储。当 jieba 分词器配置变更时，bump 版本号触发自动全量重建，确保索引 token 与查询时一致（ADR-011）
+- **Index Manifest**：`tools/lib/index_manifest.py` 管理索引构建状态（counts + checksums + partial flag），支持增量更新的原子性和恢复
+- **Pending Queue**：`tools/lib/pending_writes.py` 实现写入穿透缓存，写入/编辑后标记 pending，搜索前消费，确保搜索结果包含最新数据（ADR-017）
+
+### 5.8 搜索编排器（Round 17 Phase 5 — 待实现）
+
+> ⚠️ 本章节描述的是 Round 17 PRD Task 4 的设计目标。代码尚未实现。
+
+CHARTER §1.5 定义了"确定性 vs 智能"的边界：CLI Core 层（`tools/search_journals/`）执行纯确定性搜索，Intelligence Layer 的编排器负责 LLM 调用。
+
+规划中的编排器架构：
+- **位置**：`tools/search_journals/orchestrator.py`（新建）
+- **CLI 入口**：`life-index smart-search`
+- **三段式流程**：前置改写（LLM 拆解 query）→ 中间调用（按意图调 search 原语）→ 后置筛选 + 摘要（LLM 精筛）
+- **降级策略**：LLM 超时/失败时自动回退到纯双管道
+- **Data Minimization**：候选仅送 title + abstract + snippet（≤200 chars），最多 15 条，禁止送 full_content
+
+### 5.9 常量集中管理（Round 17 Phase 1-A）
+
+`search_constants.py` 作为搜索子系统所有阈值的唯一来源（CHARTER §4.3 合规）：
+
+- 42 个导出常量（`__all__` 已补齐），涵盖 RRF、语义、FTS、评分、置信度、标题加权、L3 回退、关键词管道等全部参数
+- 每个常量带 ADR 编号和决策 rationale
+- 散落在 `confidence.py`、`title_promotion.py`、`l3_content.py`、`keyword_pipeline.py` 中的 14 个裸字面量已于 Round 17 Phase 1-A 迁移完毕
 
 ---
 
 ## 相关文档
 
+- [CHARTER.md](../CHARTER.md) — **项目宪章**（本文档从属于此；不变量与治理规则在此）
 - [bootstrap-manifest.json](../bootstrap-manifest.json) - Authority anchor；onboarding 必须先刷新此文件
 - [AGENT_ONBOARDING.md](../AGENT_ONBOARDING.md) - 基础版 Agent 安装与初始化流程
 - [API.md](./API.md) - 工具接口详细文档
-- [AGENTS.md](../AGENTS.md) - 开发者上下文；Web GUI 开发约束引用 §1.5 交互范式
-- [SKILL.md](../SKILL.md) - Agent 技能定义；相关文档引用 §1.5 交互范式
-- [README.md](../README.md) - 用户入口与安装提示
+- [AGENTS.md](../AGENTS.md) - 开发者上下文；交互范式已迁至 CHARTER §1.3 + §2
+- [SKILL.md](../SKILL.md) — Agent 技能定义
+- [README.md](../README.md) — 用户入口与安装提示
+- [ADR Index](./adr/INDEX.md) — ADR 分类索引（🔒 Invariant / 📋 Decision）
+
+---
+
+> **校对日期**: 2026-05-01
+> **校对人**: Sisyphus (GLM-5.1) / Round 17 Phase 4-B
+> **对应状态**: Round 17 Phase 0-4-B 已完成；Phase 5（编排器）待实现

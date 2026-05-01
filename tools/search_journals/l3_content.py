@@ -10,6 +10,12 @@ from typing import Any, Dict, List, Optional
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
 from ..lib.path_contract import build_journal_path_fields
+from ..lib.search_constants import (
+    L3_TITLE_MATCH_BONUS,
+    L3_BODY_MATCH_PER_HIT,
+    L3_MAX_FALLBACK_SCORE,
+    L3_MIN_FALLBACK_RELEVANCE,
+)
 
 from .utils import parse_frontmatter
 
@@ -22,9 +28,9 @@ def _compute_fallback_relevance(title_match: bool, body_match_count: int) -> int
     """Estimate fallback search relevance conservatively for file-scan results."""
     score = 0
     if title_match:
-        score += 40
-    score += min(body_match_count, 3) * 10
-    return min(score, 80)
+        score += L3_TITLE_MATCH_BONUS
+    score += min(body_match_count, 3) * L3_BODY_MATCH_PER_HIT
+    return min(score, L3_MAX_FALLBACK_SCORE)
 
 
 def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -74,7 +80,7 @@ def search_l3_content(query: str, paths: Optional[List[str]] = None) -> List[Dic
 
             relevance = _compute_fallback_relevance(title_match, len(body_matches))
 
-            if relevance >= 15:
+            if relevance >= L3_MIN_FALLBACK_RELEVANCE:
                 path_fields = build_journal_path_fields(
                     journal_file,
                     journals_dir=get_journals_dir(),

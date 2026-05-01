@@ -154,11 +154,14 @@ RRF_MIN_SCORE: float = 0.008
 # =============================================================================
 
 # ADR-002 / ADR-006: Minimum cosine similarity floor for semantic results
+# SEMANTIC_MIN_SIMILARITY is the canonical name; SEMANTIC_ABSOLUTE_FLOOR is a deprecated alias.
 SEMANTIC_MIN_SIMILARITY: float = 0.40
 
-# ADR-006: Adaptive baseline threshold tuning
+# ADR-006: Adaptive baseline offset (added to corpus P25 to compute dynamic threshold)
 SEMANTIC_BASELINE_OFFSET: float = 0.02
-SEMANTIC_ABSOLUTE_FLOOR: float = 0.40
+
+# [DEPRECATED] Use SEMANTIC_MIN_SIMILARITY instead. Kept for backward compat.
+SEMANTIC_ABSOLUTE_FLOOR: float = SEMANTIC_MIN_SIMILARITY  # synonym since Round 17 Phase 6-A
 
 # ADR-005: Maximum semantic candidates to retrieve
 SEMANTIC_TOP_K_DEFAULT: int = 30
@@ -259,6 +262,61 @@ TOKENIZER_VERSION: int = 2
 
 
 # =============================================================================
+# Confidence Thresholds (migrated from confidence.py)
+# =============================================================================
+
+# Confidence classification thresholds for search results.
+# Migrated from confidence.py bare literals per CHARTER §4.3 compliance.
+CONFIDENCE_HIGH_FTS: float = 70
+CONFIDENCE_HIGH_SEMANTIC: float = 55
+CONFIDENCE_HIGH_RRF: float = 0.018
+CONFIDENCE_MEDIUM_FTS: float = 50
+CONFIDENCE_MEDIUM_SEMANTIC: float = 45
+CONFIDENCE_MEDIUM_RRF: float = 0.010
+
+
+# =============================================================================
+# Title Promotion Constants (migrated from title_promotion.py)
+# =============================================================================
+
+# Title hard promotion: post-rank multiplier for title-matching results.
+# Migrated from title_promotion.py per CHARTER §4.3 compliance.
+TITLE_PROMOTION_MULTIPLIER: float = 1.5
+TITLE_PROMOTION_COVERAGE_THRESHOLD: float = 0.60
+TITLE_PROMOTION_MIN_QUERY_CHARS: int = 3
+
+
+# =============================================================================
+# L3 Fallback Scoring (migrated from l3_content.py)
+# =============================================================================
+
+# Fallback search relevance scoring for file-scan results.
+# Migrated from l3_content.py per CHARTER §4.3 compliance.
+L3_TITLE_MATCH_BONUS: int = 40
+L3_BODY_MATCH_PER_HIT: int = 10
+L3_MAX_FALLBACK_SCORE: int = 80
+L3_MIN_FALLBACK_RELEVANCE: int = 15
+
+
+# =============================================================================
+# Keyword Pipeline Constants (migrated from keyword_pipeline.py)
+# =============================================================================
+
+# Token hit ratio for minimum required hits calculation.
+# Migrated from keyword_pipeline.py per CHARTER §4.3 compliance.
+KEYWORD_TOKEN_HIT_RATIO: float = 0.4
+
+
+# =============================================================================
+# Orchestrator Constants (Round 17 Phase 5)
+# =============================================================================
+
+# Maximum candidates sent to LLM for post-filtering and summarization.
+# 15 × ~200 chars ≈ 3000 tokens — keeps LLM context manageable.
+ORCHESTRATOR_MAX_LLM_CANDIDATES: int = 15
+
+
+# =============================================================================
 # Export all constants
 # =============================================================================
 
@@ -299,4 +357,24 @@ __all__ = [
     "SEMANTIC_SNIPPET_LENGTH",
     # Tokenizer
     "TOKENIZER_VERSION",
+    # Confidence Thresholds
+    "CONFIDENCE_HIGH_FTS",
+    "CONFIDENCE_HIGH_SEMANTIC",
+    "CONFIDENCE_HIGH_RRF",
+    "CONFIDENCE_MEDIUM_FTS",
+    "CONFIDENCE_MEDIUM_SEMANTIC",
+    "CONFIDENCE_MEDIUM_RRF",
+    # Title Promotion
+    "TITLE_PROMOTION_MULTIPLIER",
+    "TITLE_PROMOTION_COVERAGE_THRESHOLD",
+    "TITLE_PROMOTION_MIN_QUERY_CHARS",
+    # L3 Fallback Scoring
+    "L3_TITLE_MATCH_BONUS",
+    "L3_BODY_MATCH_PER_HIT",
+    "L3_MAX_FALLBACK_SCORE",
+    "L3_MIN_FALLBACK_RELEVANCE",
+    # Keyword Pipeline
+    "KEYWORD_TOKEN_HIT_RATIO",
+    # Orchestrator
+    "ORCHESTRATOR_MAX_LLM_CANDIDATES",
 ]

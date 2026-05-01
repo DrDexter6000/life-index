@@ -6,9 +6,11 @@ Does not change confidence labels — only adjusts final_score for ranking.
 
 from __future__ import annotations
 
-TITLE_PROMOTION_MULTIPLIER: float = 1.5
-TITLE_PROMOTION_COVERAGE_THRESHOLD: float = 0.60
-TITLE_PROMOTION_MIN_QUERY_CHARS: int = 3
+from ..lib.search_constants import (
+    TITLE_PROMOTION_MULTIPLIER,
+    TITLE_PROMOTION_COVERAGE_THRESHOLD,
+    TITLE_PROMOTION_MIN_QUERY_CHARS,
+)
 
 
 def should_promote(query: str, title: str, stopwords: frozenset[str] | None = None) -> bool:

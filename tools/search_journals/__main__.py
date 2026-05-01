@@ -108,6 +108,12 @@ Examples:
         help="返回结果数量限制",
     )
     parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="结果偏移量（分页起始位置，默认: 0）",
+    )
+    parser.add_argument(
         "--read-top",
         type=int,
         default=0,
@@ -179,10 +185,23 @@ Examples:
                 explain=args.explain,  # Task 2.1
             )
 
-    # 应用 limit
-    if args.limit and "merged_results" in result:
-        result["merged_results"] = result["merged_results"][: args.limit]
-        result["total_found"] = len(result["merged_results"])
+    # Phase 2 (Task 3): Presentation-layer slicing with offset + limit
+    if "merged_results" in result:
+        all_results = result["merged_results"]
+        total_available = result.get("total_available", len(all_results))
+
+        # Apply offset
+        if args.offset and args.offset > 0:
+            all_results = all_results[args.offset :]
+
+        # Apply limit (if specified, overrides the default MAX_RESULTS_DEFAULT truncation)
+        if args.limit:
+            all_results = all_results[: args.limit]
+
+        result["merged_results"] = all_results
+        result["total_found"] = len(all_results)
+        result["total_available"] = total_available
+        result["has_more"] = (args.offset + len(all_results)) < total_available
 
     # Task 1.2.3: Read full content for top N results
     if args.read_top > 0 and result.get("success") and result.get("merged_results"):

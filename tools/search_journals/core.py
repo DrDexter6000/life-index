@@ -32,6 +32,7 @@ from ..lib.search_constants import (
     NON_RRF_MIN_SCORE,
     SEMANTIC_WEIGHT_DEFAULT,
     FTS_WEIGHT_DEFAULT,
+    MAX_RESULTS_DEFAULT,
 )
 
 # 导入子模块
@@ -796,6 +797,18 @@ def hierarchical_search(
             explain=explain,  # T3.4: forward explain to non-hybrid path
             topic_hints=_topic_hints,
         )
+
+    result["total_found"] = len(result["merged_results"])
+    result["total_available"] = len(result["merged_results"])
+
+    # Phase 2 (Task 3): Presentation-layer truncation for backward compat.
+    # ranking now returns ALL results; we truncate here to MAX_RESULTS_DEFAULT
+    # so that existing callers (tests, GUI) are not affected.
+    if len(result["merged_results"]) > MAX_RESULTS_DEFAULT:
+        result["has_more"] = True
+        result["merged_results"] = result["merged_results"][:MAX_RESULTS_DEFAULT]
+    else:
+        result["has_more"] = False
 
     result["total_found"] = len(result["merged_results"])
     result["no_confident_match"] = _compute_no_confident_match(result["merged_results"])
