@@ -588,9 +588,11 @@ Keep it concise — this is a welcome message, not a manual.>
 | `life-index migrate --dry-run` | Preview schema migration |
 | `life-index migrate --apply` | Execute schema migration |
 | `life-index entity --audit` | Entity graph quality audit |
+| `life-index smart-search --query "..."` | Smart search with LLM orchestration |
+| `life-index smart-search --query "..." --no-llm` | Smart search (degraded, no LLM) |
 
 ---
 
-**Document Version**: 2.0
-**Last Updated**: 2026-04-09
+**Document Version**: 2.1
+**Last Updated**: 2026-05-01
 **Authority Chain**: `bootstrap-manifest.json` → `AGENT_ONBOARDING.md` / `README.md` → domain SSOT docs such as `SKILL.md`, `docs/API.md`, `docs/ARCHITECTURE.md`, `tools/lib/AGENTS.md`

@@ -38,7 +38,7 @@
 
 **Life Index** 是一个 Agent-Native、local-first 的个人人生日志与检索系统。
 
-- **CLI 原子工具**：write / search / edit / abstract / weather / index / backup / migrate
+- **CLI 原子工具**：write / search / smart-search / edit / abstract / weather / index / backup / migrate
 - 用户通过自然语言 + Agent 调用 Python CLI 工具
 
 **核心理念**:
@@ -107,6 +107,8 @@ life-index entity --delete --id ENTITY_ID                 # 删除实体
 life-index entity --stats     # 图谱统计（类型/引用/共现）
 life-index entity --check     # 图谱完整性检查
 life-index health          # 安装健康检查
+life-index smart-search --query "自然语言查询"  # LLM 编排智能搜索
+life-index eval             # 搜索质量评估门控
 
 # 开发者模式（无需安装）
 python -m tools.write_journal --data '{...}'
@@ -130,7 +132,46 @@ tools/                         # Core CLI/tool layer
 ├── migrate/                   # Schema 链式迁移（Round 6）
 ├── dev/                       # 开发/验收辅助工具
 └── lib/                       # 共享库（SSOT）→ 详见 tools/lib/AGENTS.md
+├── smart_search/            # LLM 编排智能搜索（Round 17 Phase 5）
+├── eval/                    # 搜索质量评估（Round 17 Phase 6）
 ```
+
+---
+
+## SSOT 文档治理规范
+
+> **适用范围**：Agent 在开发、维护、更新项目文档时必须遵守本规范。
+> **生效日期**：2026-05-01（Round 17 SSOT 审计后建立）
+
+### 文档权威层级（高→低）
+
+| 层级 | 文档 | 角色 | 更新规则 |
+|:---:|------|------|----------|
+| 🏛️ L0 | [`CHARTER.md`](CHARTER.md) | **最高治理文件**（项目宪章） | 仅经 §5 RFC 流程修订；所有文档冲突以此为准 |
+| 📐 L1 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **技术实现 SSOT** | 架构变更必同步；参数/计数/模块结构须准确 |
+| 📡 L1 | [`docs/API.md`](docs/API.md) | **接口契约 SSOT** | 新增/变更 CLI 参数、返回字段、错误码必同步 |
+| 🗺️ L2 | [`.strategy/strategy.md`](.strategy/strategy.md) | **战略枢纽** | 阶段进度、版本号、Round 状态必准确 |
+| 🗺️ L2 | [`.strategy/ROADMAP.md`](.strategy/ROADMAP.md) | **路线图** | Round 状态、版本引用、完成标记必准确 |
+| 📖 L3 | [`AGENTS.md`](AGENTS.md) | **Agent 开发上下文** | 命令列表、模块结构、治理规范（本节） |
+| 📖 L3 | [`SKILL.md`](SKILL.md) | **Agent 技能入口** | 触发词、工作流、CLI 快速参考 |
+| 📖 L3 | [`AGENT_ONBOARDING.md`](AGENT_ONBOARDING.md) | **安装指南** | 安装/验证流程、CLI 快速参考 |
+| 🌐 L3 | [`README.md`](README.md) | **用户入口** | 功能概览、架构图、命令表 |
+
+### 强制规则
+
+1. **实时同步**：任何功能性变更（新命令、新参数、架构变更、版本变更）必须同步更新对应的 L1+ 文档。不得以"稍后补"为由跳过。
+2. **权威归源**：低层级文档不得重复高层级文档的完整内容，应使用引用。例如：搜索架构图仅在 `ARCHITECTURE.md` 完整呈现，`README.md`/`SKILL.md` 仅保留简化版 + 引用链接。
+3. **去重原则**：同一信息仅在一个文档中作为 SSOT 维护，其他文档引用之。例外：命令列表允许多处出现（面向不同读者），但参数细节仅 `API.md` 维护。
+4. **冲突仲裁**：文档间内容冲突时，以更高层级文档为准；同层级冲突以 L0 `CHARTER.md` 为最终仲裁源。
+5. **版本连锁**：`CHARTER.md` 版本号变更时，所有引用该版本的文档（`strategy.md`、`ROADMAP.md`、`ARCHITECTURE.md`）必须在同一提交中同步更新。
+
+### 违规判断
+
+以下情况属于 SSOT 违规，必须在提交前修复：
+- 代码已实现但文档仍标注"待实现"/"规划中"
+- 版本号引用与实际不一致（如 CHARTER v1.1.0 但某文档仍写 v1.0.0）
+- CLI 命令已存在但 `print_usage()` 或 `API.md` 中缺失
+- 架构/参数在两处描述不一致且无引用关系
 
 ---
 

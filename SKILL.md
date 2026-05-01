@@ -28,6 +28,7 @@ triggers:
 |:---:|:---|:---|
 | 记录日志 | "记日志"、"记录一下"、"写日记"、"记下来"、"log this"、"record this"、"write journal" | `write_journal` |
 | 搜索日志 | "查找日志"、"搜索记录"、"找一下关于...的日记"、"search journal"、"find log" | `search_journals` |
+| 智能搜索 | "帮我回忆..."、"我和女儿之间有哪些珍贵的回忆？"、"smart search" | `smart_search` |
 | 编辑日志 | "修改日志"、"补充日记"、"更新记录"、"edit journal"、"update log" | `edit_journal` |
 | 实体图谱 | "列出实体"、"解析人物关系"、"entity graph"、"谁是谁的..." | `entity` |
 | 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary" | `generate_abstract` |
@@ -49,6 +50,9 @@ triggers:
 .venv/bin/life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
 .venv/bin/life-index search --query "关键词" --topic work --level 3
 .venv/bin/life-index search --query "学习"  # 语义搜索默认启用
+.venv/bin/life-index smart-search --query "我和女儿之间有哪些珍贵的回忆？"  # LLM 编排搜索
+.venv/bin/life-index smart-search --query "..." --no-llm  # 强制降级为纯双管道
+.venv/bin/life-index smart-search --query "..." --explain  # 展示 Agent 决策详情
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
 .venv/bin/life-index entity --list
 .venv/bin/life-index entity --resolve "乐乐的奶奶"
@@ -287,24 +291,25 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 ### 工作流2: 检索日志
 
-**双管道并行检索架构**:
+**检索架构**:
+
+> 检索管道与编排器架构的完整细节见 [ARCHITECTURE.md §5](docs/ARCHITECTURE.md)。
+> 以下为简化概览：
 
 ```
-            用户查询
-         ┌────┴────┐
-  ┌──────▼──────┐  ┌──────▼──────┐
-  │ Pipeline A  │  │ Pipeline B  │
-  │  关键词管道  │  │  语义管道   │
-  │             │  │             │
-  │ L1 索引过滤  │  │ 向量相似度   │
-  │ L2 元数据过滤│  │ (多语言嵌入) │
-  │ L3 FTS5 匹配 │  │             │
-  └──────┬──────┘  └──────┬──────┘
-         └────┬────┘
-    RRF 融合排序 (k=60)
-            │
-        最终结果
+             用户查询
+          ┌────┴────┐
+   ┌──────▼──────┐  ┌──────▼──────┐
+   │ Pipeline A  │  │ Pipeline B  │
+   │  关键词管道  │  │  语义管道   │
+   └──────┬──────┘  └──────┬──────┘
+          └────┬────┘
+     RRF 融合排序 (k=60)
+             │
+         最终结果
 ```
+
+对于复杂自然语言查询，`smart-search` 在双管道之上增加 LLM 编排层（改写→检索→精筛），详见 [ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
 
 **查询意图 → 参数映射**:
 

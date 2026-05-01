@@ -456,6 +456,7 @@ def print_usage() -> None:
     print("  timeline  Output chronological summary stream")
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")
+    print("  smart-search  Smart search with LLM orchestration")
     print("  health    Check installation health")
     print("            --data-audit  Audit data directory for anomalies")
     print("  version   Show package and bootstrap manifest version info")

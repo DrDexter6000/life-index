@@ -227,24 +227,21 @@ Round 8 在双管道并行检索架构之上，建立了完整的搜索质量保
 - **Index Manifest**：`tools/lib/index_manifest.py` 管理索引构建状态（counts + checksums + partial flag），支持增量更新的原子性和恢复
 - **Pending Queue**：`tools/lib/pending_writes.py` 实现写入穿透缓存，写入/编辑后标记 pending，搜索前消费，确保搜索结果包含最新数据（ADR-017）
 
-### 5.8 搜索编排器（Round 17 Phase 5 — 待实现）
-
-> ⚠️ 本章节描述的是 Round 17 PRD Task 4 的设计目标。代码尚未实现。
+### 5.8 搜索编排器（Round 17 Phase 5 — 已实现）
 
 CHARTER §1.5 定义了"确定性 vs 智能"的边界：CLI Core 层（`tools/search_journals/`）执行纯确定性搜索，Intelligence Layer 的编排器负责 LLM 调用。
 
-规划中的编排器架构：
-- **位置**：`tools/search_journals/orchestrator.py`（新建）
-- **CLI 入口**：`life-index smart-search`
+编排器架构（`tools/search_journals/orchestrator.py`）：
+- **CLI 入口**：`life-index smart-search`（注册于 `tools/__main__.py`，实现于 `tools/smart_search/__main__.py`）
 - **三段式流程**：前置改写（LLM 拆解 query）→ 中间调用（按意图调 search 原语）→ 后置筛选 + 摘要（LLM 精筛）
 - **降级策略**：LLM 超时/失败时自动回退到纯双管道
-- **Data Minimization**：候选仅送 title + abstract + snippet（≤200 chars），最多 15 条，禁止送 full_content
+- **Data Minimization**：候选仅送 title + abstract + snippet（≤200 chars），最多 `ORCHESTRATOR_MAX_LLM_CANDIDATES`（15）条，禁止送 full_content
 
 ### 5.9 常量集中管理（Round 17 Phase 1-A）
 
 `search_constants.py` 作为搜索子系统所有阈值的唯一来源（CHARTER §4.3 合规）：
 
-- 42 个导出常量（`__all__` 已补齐），涵盖 RRF、语义、FTS、评分、置信度、标题加权、L3 回退、关键词管道等全部参数
+- 43 个导出常量（`__all__` 已补齐），涵盖 RRF、语义、FTS、评分、置信度、标题加权、L3 回退、关键词管道、编排器等全部参数
 - 每个常量带 ADR 编号和决策 rationale
 - 散落在 `confidence.py`、`title_promotion.py`、`l3_content.py`、`keyword_pipeline.py` 中的 14 个裸字面量已于 Round 17 Phase 1-A 迁移完毕
 
@@ -264,5 +261,5 @@ CHARTER §1.5 定义了"确定性 vs 智能"的边界：CLI Core 层（`tools/se
 ---
 
 > **校对日期**: 2026-05-01
-> **校对人**: Sisyphus (GLM-5.1) / Round 17 Phase 4-B
-> **对应状态**: Round 17 Phase 0-4-B 已完成；Phase 5（编排器）待实现
+> **校对人**: Sisyphus (GLM-5.1) / Round 17 全 Phase 完成
+> **对应状态**: Round 17 全部 Phase 0-7 已完成（含编排器 Phase 5、SLO Phase 6-B、Gold Set Phase 1-B）

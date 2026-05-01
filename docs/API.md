@@ -507,6 +507,7 @@ python -m tools.search_journals [options]
 | semantic-weight | float | ❌ | 0.4 | 语义搜索权重 (0-1) |
 | fts-weight | float | ❌ | 0.6 | FTS 搜索权重 (0-1) |
 | limit | int | ❌ | 10 | 返回结果数量限制 |
+| offset | int | ❌ | 0 | 结果偏移量（分页起始位置） |
 | year | int | ❌ | - | L0 预过滤：限定年份（如 2026），先缩小候选集再进入搜索管道 |
 | month | int | ❌ | - | L0 预过滤：限定月份（需配合 --year） |
 
@@ -539,6 +540,8 @@ python -m tools.search_journals [options]
     }
   ],
   "total_found": 5,
+  "total_available": 56,
+  "has_more": true,
   "semantic_available": true,
   "performance": {"total_time_ms": 45}
 }
@@ -629,6 +632,45 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 - `E0303` 或空结果应解释为“执行成功但没有匹配结果”，不应解释为执行失败
 - 工具 failure 与空结果必须在调用方叙述中严格区分
 - Web / Agent 调用方如需做自然语言总结，应基于**同一次 retrieval 返回的结果集**进行解释；不应在上层路由中再维护第二套并行检索 / merge / ranking 真相
+
+---
+
+## smart_search
+
+### 端点
+
+```bash
+life-index smart-search --query "..." [options]
+python -m tools.smart_search --query "..." [options]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| query | string | ✅ | - | 自然语言搜索查询 |
+| no-llm | flag | ❌ | false | 强制降级模式（纯双管道，不调用 LLM） |
+| explain | flag | ❌ | false | 在输出中包含 Agent 决策详情 |
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "query": "我和女儿之间有哪些珍贵的回忆？",
+  "results": [...],
+  "total_found": 3,
+  "agent_decisions_summary": "5 decisions made",
+  "mode": "llm_orchestrated"
+}
+```
+
+### 说明
+
+- `SmartSearchOrchestrator` 三段式流程：前置改写 → 中间调用 search 原语 → 后置筛选 + 摘要
+- 降级模式 (`--no-llm` 或 LLM 不可用) 下等价于 `search --level 3`
+- Data Minimization：候选仅送 title + abstract + snippet（≤200 chars），最多 15 条
+- 实现详见 `docs/ARCHITECTURE.md` §5.8
 
 ---
 
