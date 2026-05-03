@@ -231,7 +231,7 @@ def parse_time_range(  # noqa: C901
             if cn_month == 12:
                 until = date(year, 12, 31)
             else:
-                until = date(year, month + 1, 1) - timedelta(days=1)
+                until = date(year, cn_month + 1, 1) - timedelta(days=1)
             return DateRange(
                 since=since.isoformat(),
                 until=until.isoformat(),
@@ -248,7 +248,7 @@ def parse_time_range(  # noqa: C901
             if cn_month == 12:
                 until = date(year, 12, 31)
             else:
-                until = date(year, month + 1, 1) - timedelta(days=1)
+                until = date(year, cn_month + 1, 1) - timedelta(days=1)
             return DateRange(
                 since=since.isoformat(),
                 until=until.isoformat(),

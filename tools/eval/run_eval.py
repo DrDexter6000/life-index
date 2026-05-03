@@ -10,7 +10,7 @@ import os
 import platform
 import subprocess
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -64,6 +64,60 @@ def _get_git_commit() -> str:
     except (FileNotFoundError, subprocess.CalledProcessError):
         return "unknown"
     return completed.stdout.strip() or "unknown"
+
+
+def _find_latest_baseline() -> Path | None:
+    """Locate the most recent baseline file in the standard directories."""
+    candidate_dirs = [
+        Path(__file__).parent / "baselines",
+        Path(__file__).parent.parent.parent / "tests" / "eval" / "baselines",
+    ]
+    candidates: list[Path] = []
+    for d in candidate_dirs:
+        if d.exists():
+            candidates.extend(d.glob("round-*-baseline*.json"))
+    if not candidates:
+        return None
+    # Sort by mtime descending
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def _get_eval_anchor_date() -> date:
+    """Return the deterministic anchor date for evaluation.
+
+    Priority:
+      1. ``LIFE_INDEX_TIME_ANCHOR`` environment variable.
+      2. ``frozen_at`` field from the latest baseline file.
+      3. ``date.today()`` (with a warning).
+    """
+    env = os.environ.get("LIFE_INDEX_TIME_ANCHOR")
+    if env:
+        return date.fromisoformat(env)
+
+    baseline_path = _find_latest_baseline()
+    if baseline_path is not None:
+        try:
+            baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+            frozen_at = baseline.get("frozen_at") or baseline.get("anchor_date")
+            if frozen_at:
+                return date.fromisoformat(frozen_at)
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+
+    import warnings
+
+    warnings.warn(
+        "LIFE_INDEX_TIME_ANCHOR not set and no baseline frozen_at found. "
+        "Falling back to date.today() — eval results will drift across runs.",
+        stacklevel=2,
+    )
+    return date.today()
+
+
+def _inject_eval_anchor(anchor: date) -> None:
+    """Pin the evaluation anchor in the process environment."""
+    os.environ["LIFE_INDEX_TIME_ANCHOR"] = anchor.isoformat()
 
 
 def _round_metric(value: float) -> float:
@@ -533,6 +587,10 @@ def run_evaluation(
     phase: int = 2,
 ) -> dict[str, Any]:
     """Run the search evaluation suite and optionally persist a baseline."""
+    # F1: Deterministic eval anchor injection
+    _anchor = _get_eval_anchor_date()
+    _inject_eval_anchor(_anchor)
+
     all_queries = load_golden_queries(queries_path)
     queries = []
     skipped_queries: list[dict[str, Any]] = []
@@ -563,6 +621,8 @@ def run_evaluation(
 
     result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "frozen_at": _anchor.isoformat(),
+        "anchor_date": _anchor.isoformat(),
         "commit": _get_git_commit(),
         "python_version": platform.python_version(),
         "tokenizer_version": importlib.import_module(
@@ -662,6 +722,10 @@ def compare_against_baseline(
 ) -> dict[str, Any]:
     """Run evaluation and compare current results against a saved baseline."""
     baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+    # F1: Pin current eval to the same anchor as the baseline
+    _baseline_anchor = baseline.get("frozen_at") or baseline.get("anchor_date")
+    if _baseline_anchor:
+        os.environ["LIFE_INDEX_TIME_ANCHOR"] = _baseline_anchor
     current = run_evaluation(
         data_dir=data_dir,
         use_semantic=use_semantic,

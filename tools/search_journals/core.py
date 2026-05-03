@@ -10,8 +10,10 @@ Life Index - Search Journals Tool - Core
 """
 
 import logging
+import os
 import re
 import time
+from datetime import date
 from importlib import import_module
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -511,6 +513,14 @@ def _search_level_2(
     return result
 
 
+def _eval_anchor() -> date | None:
+    """Return the eval anchor date from the environment, or None."""
+    env = os.environ.get("LIFE_INDEX_TIME_ANCHOR")
+    if env:
+        return date.fromisoformat(env)
+    return None
+
+
 def hierarchical_search(
     query: Optional[str] = None,
     topic: Optional[str] = None,
@@ -590,6 +600,10 @@ def hierarchical_search(
         result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
         result["warnings"].append("semantic_disabled: 用户通过 --no-semantic 禁用语义搜索")
 
+    # F1: Eval anchor deterministic injection
+    # Resolve a single anchor date for all time-dependent subsystems.
+    _now = _eval_anchor() or date.today()
+
     # Round 7 Phase 1: Resolve entity hints before expansion
     entity_hints = resolve_query_entities(query) if query else []
     result["entity_hints"] = entity_hints
@@ -599,7 +613,7 @@ def hierarchical_search(
     if query:
         from .query_preprocessor import build_search_plan as _build_plan
 
-        _plan = _build_plan(query)
+        _plan = _build_plan(query, reference_date=_now)
         result["search_plan"] = _plan.to_dict()
 
     # Round 11 Phase 2: Ambiguity detection + hints
@@ -677,7 +691,7 @@ def hierarchical_search(
     if query and not date_from and not date_to:
         from ..lib.time_parser import parse_time_expression
 
-        _time_filter = parse_time_expression(query)
+        _time_filter = parse_time_expression(query, now=_now)
         if _time_filter:
             date_from = _time_filter.date_range.start.isoformat()
             date_to = _time_filter.date_range.end.isoformat()
