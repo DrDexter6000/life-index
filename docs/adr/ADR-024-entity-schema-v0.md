@@ -31,7 +31,7 @@ Entity graph 当前处于"工具完备、数据为零"状态（65/65 日志 `ent
 - ✅ 在上下文中以"人"的身份被提及的存在（如历史人物在反思中被引用）
 - ❌ 宠物（狗、猫）→ edge case，见 §4
 - ❌ 虚构角色（孙悟空、哈利·波特）→ 若作为"文化参照"出现，归 concept
-- ❌ AI 模型/工具（Claude、Kimi、ChatGPT）→ 虽常被拟人化称呼（"大哥"、"和Kimi聊天"），但本质是技术工具/概念，归 concept（见 §4 edge case #7）
+- ✅ AI 模型 / AI 助手 / AI 工具（如 Claude、Opus 4.6、Kimi、GPT-4 等）。判定标准：在日志中作为对话对象、生成内容的主体、或被以"对话/合作"语态引用时，归 person。必填 `subtype=ai`，必填 `role=ai_assistant`。
 
 **必填字段**
 - `id`, `type`, `primary_name`
@@ -121,6 +121,7 @@ Entity graph 当前处于"工具完备、数据为零"状态（65/65 日志 `ent
 - ✅ 抽象概念、技术术语、情感状态、文化参照、方法论
 - ✅ 当其他 4 类无法容纳时的"兜底"类型
 - ✅ 品牌/产品名（iPhone、MacBook、Notion）作为"被使用的工具/概念"
+- ✅ 地理-政治区域（如"中东"、"东亚"、"北美"、"欧盟"等）。判定标准：当区域作为讨论对象 / 话题引用 / 局势主语出现，而非作者物理所在地时，归 concept。物理所在地由 frontmatter.location 字段承载（write 工作流强制 agent 二次确认 + 支持历史天气回溯 + 支持 edit 修正），不在 entity graph 索引范围内。
 - ❌ 不应滥用：如果某个概念在多篇日志中以"项目"形态出现（如"Life Index 方法论"），优先归 project
 
 **必填字段**
@@ -176,9 +177,9 @@ aliases:
 
 ### 3.4 ROLE_LABELS（Person 子类参考）
 
-Person 的 `attributes.role` 使用如下标签（15 个，已审计确认）：
+Person 的 `attributes.role` 使用如下标签（16 个，已审计确认）：
 
-`self`, `spouse`, `child`, `parent`, `sibling`, `grandparent`, `grandchild`, `colleague`, `friend`, `mentor`, `mentee`, `acquaintance`, `public_figure`, `historical_figure`, `fictional_character`
+`self`, `spouse`, `child`, `parent`, `sibling`, `grandparent`, `grandchild`, `colleague`, `friend`, `mentor`, `mentee`, `acquaintance`, `public_figure`, `historical_figure`, `fictional_character`, `ai_assistant`
 
 > 注：`fictional_character` 仅当虚构角色在日志中被当作"真实对话对象"或"思想实验参与者"时使用（如"如果孙悟空做产品经理"）。否则归 concept。
 
@@ -210,16 +211,17 @@ Person 的 `attributes.role` 使用如下标签（15 个，已审计确认）：
 6. **品牌/产品作为被动消费对象**："买了 iPhone"中的 iPhone 是 `concept`，但"iPhone 摄影项目"中的 iPhone 是 `project` 还是 `concept`？
    - 当前策略：产品名作为工具/概念，`concept`。只有围绕该产品构建的独立努力才归 `project`
 
-7. **AI 模型/工具**：Claude、Kimi、ChatGPT、Opus 4.6 等 AI 系统
-   - **待用户 ack**: 当前提议归入 `concept`（技术工具/概念）
-   - 理由：虽常被拟人化称呼（"大哥Opus 4.6"、"和Kimi聊天"），但本质是软件/模型，非真实人类
-   - 例外：若日志明确将 AI 当作"真实对话对象"进行深度情感投射（如"Claude 是我最好的朋友"），可标为 `person`，`attributes.role = "acquaintance"`，但需在 `audit_note` 中说明
-   - 未来可能新增 `ai_agent` 类型，若 corpus 中 AI 实体出现 ≥10 次
+7. **AI 模型归属（已解决）**: Block 4 Pilot 中"Opus 4.6"、"Sonnet 4.6"、"Kimi"等 AI 模型/助手被拟人化称呼（"大哥"、"和 Kimi 聊天"），在 v0 中无明确归属，触发 S1。
+   - **v1 冻结决策**: 归 `person`，新增 `subtype=ai` + `role=ai_assistant`。
+   - **理由**: 在 corpus 中 AI 是 actor（对话对象 / 内容生成主体），与 `person` 的功能定位一致。`subtype=ai` 区分于真实人类，`role=ai_assistant` 标注其交互角色。
+   - **示例**: `{"id": "person-claude-opus-4-6", "type": "person", "primary_name": "Claude Opus 4.6", "aliases": ["Claude Opus 4.6", "Opus 4.6", "大哥Opus 4.6"], "attributes": {"role": "ai_assistant", "subtype": "ai"}}`
 
-8. **Region（地理区域）**：中东、东南亚、北美
-   - **待用户 ack**: 当前提议归入 `concept`（政治地理概念）
-   - 理由：ADR-024 v1 无 `region` 类型，`place` 要求具体城市/场所/国家
-   - 未来可能新增 `region` 类型，若 corpus 中区域实体出现 ≥5 次
+8. **地理-政治区域归属（已解决）**: Block 4 Pilot 中"中东"作为政治地理区域无法直接归入 5 类，触发 S1。
+   - **v1 冻结决策**: 归 `concept`（不新增 Region 类）。
+   - **理由**:
+     1. 物理位置由 frontmatter.location 字段承载，已有可靠工作流（write 时强制 agent 与用户确认地理位置 + 支持历史天气回溯 + edit 修正路径），无需 entity graph 二次索引；
+     2. "中东"等区域在个人日志 corpus 中只作 topical reference，与 `concept` 的功能定位一致；
+     3. 新增 Region 类会引入死字段（region_type / contains 在个人日志中无稳定取值），违反 CHARTER §1.8 长期主义原则。
 
 ---
 
@@ -304,29 +306,29 @@ Pilot 完成后，若满足以下全部条件，schema 冻结为 v1：
 
 - **标注者**: Kimi
 - **日志数**: 7 篇（覆盖 5 类 entity × 7 个 topic）
-- **Entity 总数**: 53 个（person 18, place 11, project 7, event 2, concept 15）
+- **Entity 总数**: 53 个（person 21, place 11, project 7, event 2, concept 12）
 - **Ambiguities**: 12 个（平均 1.7/篇，≤3/篇阈值）
-- **Stop-the-line**: 未触发
+- **Stop-the-line**: S1 触发（AI 模型 + 地理-政治区域两类边界 case 共出现于 ≥2 篇日志），通过 v0→v1 边界扩展解决，未引入新类型。S2/S3/S4 未触发。
 
 ### 8.2 发现的关键边界 case
 
 | # | Case | 处理 | 状态 |
 |---|------|------|------|
-| 1 | AI 模型归属（Opus 4.6、Kimi、Claude） | 按 concept 处理（技术工具），但用户可能期望 person（对话对象） | 文档已补充说明 |
+| 1 | AI 模型归属（Opus 4.6、Sonnet 4.6、Kimi） | v1 冻结决策：归 person（subtype=ai, role=ai_assistant） | 已解决 |
 | 2 | 未命名 person（老板、CEO、老婆） | 有职位/关系的标 person；无具体名称的亲属不标 | 策略已确认 |
-| 3 | Region 类型缺失（中东） | 按 concept 处理，长期可能需要新增 `region` | 已记入 edge cases |
-| 4 | Pilot 格式缺少 relationships | 建议在 v1 格式中增加可选 `relationships` 字段 | 非阻塞，格式扩展 |
+| 3 | 地理-政治区域归属（中东） | v1 冻结决策：归 concept（不新增 Region 类） | 已解决 |
+| 4 | Pilot 格式缺少 relationships | v1 增加可选 `relationships` 字段（冻结状态: tentative） | 格式扩展 |
 
 ### 8.3 v0→v1 改动清单
 
 | # | 改动 | 类型 | 位置 |
 |---|------|------|------|
-| 1 | 增加 AI 模型/工具归属说明 | 文档补充 | §2.1 Person 边界 |
-| 2 | 增加 "AI 模型/工具" edge case | 文档补充 | §4 Edge Cases |
-| 3 | 增加 "region" edge case 说明 | 文档补充 | §2.2 Place 边界 + §4 |
+| 1 | ADR-024 §2.1 Person 边界扩展：AI 模型/助手归 person | 边界扩展 | §2.1 |
+| 2 | ADR-024 §3.1 ROLE_LABELS 扩展为 16 类（+ai_assistant） | 枚举扩展 | §3.1 |
+| 3 | ADR-024 §2.5 concept 边界增补：地理-政治区域归 concept | 边界澄清 | §2.5 |
 | 4 | Pilot 输出格式增加可选 `relationships` | 格式扩展（tentative，未 Pilot 验证） | §6.2 |
 
-**所有改动均为文档补充/格式扩展，不涉及类型边界修改或新增类型，符合 v1 冻结原则。**
+**以上改动涉及 Person 边界扩展（接纳 AI 作为 person 子类），但未引入新类型，属于既有类型的语义边界微调（subtype + role 组合即可表达），符合 v1 冻结原则。**
 
 ---
 
@@ -335,4 +337,4 @@ Pilot 完成后，若满足以下全部条件，schema 冻结为 v1：
 | 版本 | 日期 | 变更 | 作者 |
 |------|------|------|------|
 | v0 Draft | 2026-05-02 | 初始起草，基于 5 类体系 | Kimi |
-| v0 → v1 | 2026-05-03 | Pilot 验证后冻结，7 篇日志无 stop-the-line，文档补充 4 项 | Kimi |
+| v0 → v1 | 2026-05-03 | Pilot 验证后冻结，7 篇日志 S1 触发但通过边界扩展解决，文档补充 4 项 | Kimi |
