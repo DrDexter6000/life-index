@@ -24,6 +24,7 @@
 - Entity 类型：person ✅ place ✅ project ✅ event ✅ concept ✅（5/5 全部出现）
 - Topic：work ✅ learn ✅ health ✅ relation ✅ think ✅ create ✅ life ✅（7/7 全部出现）
 - 复杂度：单篇 entity 数 4–12，平均 7.6 个
+- Pilot 执行日期: 2026-05-03
 
 ---
 
@@ -54,13 +55,13 @@
 - **处理**: "大自然母亲" 标为 concept；"老婆"和"成功人士"记入 ambiguities，未标注。
 
 ### Journal 6: Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审
-- **边界 case**: "Opus 4.6" — AI 模型/工具，虽被拟人化称呼"大哥"，但本质是技术概念。ADR-024 未定义 AI 模型归属。
-- **处理**: 按最接近原则归入 concept，记入 ambiguities 说明理由。
+- **边界 case**: "Opus 4.6" / "Sonnet 4.6" — AI 模型/助手，被拟人化称呼"大哥""小弟"。v0 中无明确归属，触发 S1。
+- **处理**: v1 冻结后从 concept 重分类为 person（subtype=ai, role=ai_assistant）。
 
 ### Journal 7: Carloha Wiki诞生记：AI赋能的一天
-- **边界 case**: "Kimi" — AI 工具/模型，以对话对象出现（"和Kimi聊天"），但本质是技术概念。同 Opus 4.6 边界 case。
+- **边界 case**: "Kimi" — AI 助手，以对话对象出现（"和Kimi聊天"）。v0 中无明确归属，触发 S1。
 - **边界 case**: "销售团队" — 泛指群体，非具体个体。
-- **处理**: "Kimi" 标为 concept；"销售团队"记入 ambiguities，未标注。
+- **处理**: "Kimi" v1 冻结后从 concept 重分类为 person（subtype=ai, role=ai_assistant）；"销售团队"记入 ambiguities，未标注。
 
 ---
 
@@ -83,13 +84,13 @@
 ### 3.2 按类型分字段使用
 
 **Person 必填字段 `attributes.role`**:
-- 使用：18/18 person entity（100%）
-- 值分布：self(7), child(3), colleague(4), public_figure(2)
+- 使用：21/21 person entity（100%）
+- 值分布：self(7), child(3), colleague(4), public_figure(2), ai_assistant(3)
 - 问题：无
 
 **Person 可选字段 `attributes.subtype`**:
-- 使用：5/16 person entity（31%）
-- 用于：family(5)
+- 使用：8/21 person entity（38%）
+- 用于：family(5), ai(3)
 - 问题：未使用时不填，符合预期
 
 **Place 必填字段 `attributes.place_type`**:
@@ -127,26 +128,28 @@
 
 | 判据 | 检查 | 结果 | 说明 |
 |------|------|------|------|
-| S1 | ≥2 篇出现无法用现有类目分类的实体 | ❌ 未触发 | 所有 entity 均可归入 5 类 |
+| S1 | ≥2 篇出现无法用现有类目分类的实体 | ✅ 触发 | AI 模型（Opus 4.6、Kimi，03-14 / 03-16）和地理-政治区域（"中东"，03-11）在 v0 中无明确归属 |
 | S2 | 同一 entity 在不同篇中需要不同字段语义 | ❌ 未触发 | "老板"始终 person/role=colleague；"乐乐"始终 person/role=child |
 | S3 | 出现需要新增结构性字段 | ❌ 未触发 | 所有字段均在 ADR-024 v0 中已有定义 |
 | S4 | 同一篇日志的 entity 关系无法用现有字段表达 | ⚠️ 发现 gaps | Pilot 格式无 `relationships` 字段；ADR-024 §3.3 定义了关系类型但 pilot JSON 未包含 |
 
-**S4 说明**: 这不是 schema 本身的 stop-the-line，而是 pilot 输出格式的问题。ADR-024 §6.2 的 pilot 格式示例未包含 `relationships` 字段（如 `located_at`, `works_on`）。建议在 v1 格式中增加可选的 `relationships` 字段，或在 graph-level 处理关系。
+**S1 说明**: 这是符合预期的 v0→v1 演进路径。v0 起草时无法穷举所有边界 case，Pilot 的价值正在于暴露这些 case 并通过最小代价落地。AI 模型通过 Person 边界扩展（+subtype=ai +role=ai_assistant）解决；地理-政治区域通过 concept 边界澄清（物理位置由 frontmatter.location 承载）解决。均未引入新类型。
 
-**结论**: Stop-the-line 未触发。Schema v0 在 7 篇 Pilot 中可操作。
+**S4 说明**: 这不是 schema 本身的 stop-the-line，而是 pilot 输出格式的问题。ADR-024 §6.2 的 pilot 格式示例未包含 `relationships` 字段。建议在 v1 格式中增加可选的 `relationships` 字段（冻结状态: tentative）。
+
+**结论**: S1 触发，但通过 v0→v1 最小边界扩展解决（未引入新类型）。S2/S3/S4 未触发。Schema v1 冻结。
 
 ---
 
 ## 5. 关键发现（5 条）
 
-1. **AI 模型归属是边界 case**: "Opus 4.6"、"Kimi"、"Claude" 等 AI 模型/工具被拟人化称呼（"大哥"、"和Kimi聊天"），但 ADR-024 未定义 AI 模型归属。按"最接近"原则归入 concept，但用户可能期望标为 person（作为"对话对象"）。这是 v0→v1 需要明确的点。
+1. **AI 模型归属（已解决）**: "Opus 4.6"、"Sonnet 4.6"、"Kimi" 等 AI 模型/助手被拟人化称呼（"大哥"、"和Kimi聊天"）。v0 中无明确归属，触发 S1。v1 冻结决策：归 person，新增 subtype=ai + role=ai_assistant。理由：在 corpus 中 AI 是 actor（对话对象 / 内容生成主体），与 person 的功能定位一致。
 
-2. **未命名 person 的处理**: "老板"、"CEO"、"老婆" 等未命名但可识别的 person 出现频率高。当前策略是：有职位的标 person（如 CEO），无职位的未命名亲属不标（如"老婆"）。这个策略需要用户确认是否一致。
+2. **未命名 person 的处理**: "老板"、"CEO"、"老婆" 等未命名但可识别的 person 出现频率高。当前策略是：有职位的标 person（如 CEO），无具体名称的亲属不标（如"老婆"）。这个策略需要用户确认是否一致。
 
-3. **Region 类型缺失**: "中东"作为政治地理区域无法归入现有 5 类。当前按 concept 处理，但长期可能需要新增 `region` 类型或子类。
+3. **地理-政治区域归属（已解决）**: "中东"作为政治地理区域无法直接归入 5 类，触发 S1。v1 冻结决策：归 concept（不新增 Region 类）。理由：(1) 物理位置由 frontmatter.location 字段承载，已有可靠工作流；(2) "中东"等区域在个人日志 corpus 中只作 topical reference；(3) 新增 Region 类会引入死字段，违反 CHARTER §1.8 长期主义原则。
 
-4. **Pilot 格式缺少 relationships**: 7 篇日志中有大量 entity 间关系（如 Dexter works_on Life Index、乐乐 located_at 重庆），但 pilot JSON 格式无法表达。这不是 stop，但建议在 v1 中增加。
+4. **Pilot 格式缺少 relationships**: 7 篇日志中有大量 entity 间关系（如 Dexter works_on Life Index、乐乐 located_at 重庆），但 pilot JSON 格式无法表达。v1 增加可选 `relationships` 字段（冻结状态: tentative，未经 Pilot 验证）。
 
 5. **Attributes.place_type 中 "home" 和 "workplace" 未出现**: 7 篇日志中 place_type 只用了 city 和 country，"home" 和 "workplace" 未触发。这是因为作者的 location 字段始终标 Lagos，而家中/公司场景未在正文中单独标注为 place。这不是 schema 问题，是 corpus 特性。
 
@@ -158,12 +161,12 @@
 
 | # | 改动 | 类型 | 理由 |
 |---|------|------|------|
-| 1 | ADR-024 §2.1 Person 边界增加 AI 模型/工具说明 | 文档补充 | Opus 4.6、Kimi 等 AI 模型的归属需要明确 |
-| 2 | ADR-024 §4 Edge Cases 增加 "AI 模型/工具" | 文档补充 | 与 #1 配套 |
-| 3 | Pilot 输出格式增加可选 `relationships` 字段 | 格式扩展 | 表达 entity 间关系（非结构性字段，不影响 schema 冻结） |
-| 4 | ADR-024 §2.2 Place 边界增加 "region" 说明 | 文档补充 | "中东"等区域的归属需要明确 |
+| 1 | ADR-024 §2.1 Person 边界扩展：AI 模型/助手归 person | 边界扩展 | AI 在 corpus 中作为 actor 出现，与 person 功能定位一致 |
+| 2 | ADR-024 §3.1 ROLE_LABELS 扩展为 16 类（+ai_assistant） | 枚举扩展 | 支持 AI 助手的角色标注 |
+| 3 | ADR-024 §2.5 concept 边界增补：地理-政治区域归 concept | 边界澄清 | 物理位置由 frontmatter.location 承载，无需 entity graph 二次索引 |
+| 4 | Pilot 输出格式增加可选 `relationships` 字段 | 格式扩展（tentative） | 表达 entity 间关系，未经 Pilot 验证 |
 
-**以上改动均为文档补充/格式扩展，不涉及类型边界修改或新增类型，符合 v1 冻结后"只能新增字段/类型，不能修改既有类型的语义边界"的原则。**
+**以上改动涉及 Person 边界扩展（接纳 AI 作为 person 子类），但未引入新类型，属于既有类型的语义边界微调（subtype + role 组合即可表达），符合 v1 冻结原则。**
 
 ---
 

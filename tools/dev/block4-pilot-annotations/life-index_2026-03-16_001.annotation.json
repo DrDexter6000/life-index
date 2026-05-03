@@ -108,16 +108,19 @@
       "audit_note": ""
     },
     {
-      "id": "concept-kimi",
-      "type": "concept",
+      "id": "person-kimi",
+      "type": "person",
       "primary_name": "Kimi",
       "aliases": [
         "Kimi",
         "kimi"
       ],
-      "attributes": {},
+      "attributes": {
+        "role": "ai_assistant",
+        "subtype": "ai"
+      },
       "confidence": "high",
-      "audit_note": ""
+      "audit_note": "v1 冻结后从 concept 重分类为 person/ai_assistant，依据 ADR-024 §2.1 边界扩展"
     },
     {
       "id": "place-lagos",

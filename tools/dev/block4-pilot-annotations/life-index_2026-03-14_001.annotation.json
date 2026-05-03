@@ -5,8 +5,8 @@
   "annotated_by": "kimi",
   "entities": [
     {
-      "id": "concept-claude-opus-4-6",
-      "type": "concept",
+      "id": "person-claude-opus-4-6",
+      "type": "person",
       "primary_name": "Claude Opus 4.6",
       "aliases": [
         "Claude Opus 4.6",
@@ -14,21 +14,27 @@
         "大哥Opus 4.6",
         "Claude"
       ],
-      "attributes": {},
+      "attributes": {
+        "role": "ai_assistant",
+        "subtype": "ai"
+      },
       "confidence": "high",
-      "audit_note": ""
+      "audit_note": "v1 冻结后从 concept 重分类为 person/ai_assistant，依据 ADR-024 §2.1 边界扩展"
     },
     {
-      "id": "concept-claude-sonnet-4-6",
-      "type": "concept",
+      "id": "person-claude-sonnet-4-6",
+      "type": "person",
       "primary_name": "Claude Sonnet 4.6",
       "aliases": [
         "Sonnet 4.6",
         "小弟Sonnet 4.6"
       ],
-      "attributes": {},
+      "attributes": {
+        "role": "ai_assistant",
+        "subtype": "ai"
+      },
       "confidence": "high",
-      "audit_note": ""
+      "audit_note": "v1 冻结后从 concept 重分类为 person/ai_assistant，依据 ADR-024 §2.1 边界扩展"
     },
     {
       "id": "concept-anthropic",
