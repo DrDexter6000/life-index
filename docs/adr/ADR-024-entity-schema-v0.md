@@ -1,6 +1,8 @@
-# ADR-024: Entity Schema v0
+# ADR-024: Entity Schema v0 — PENDING_PILOT_VALIDATION
 
-> **状态**: Draft → 待 Pilot 验证后冻结为 v1
+> **状态**: v0 — pending pilot validation（未经 Pilot 验证，非冻结 schema）
+> **冻结路径**: 5–10 篇 Pilot 标注 → schema 迭代 → v1 frozen
+> **当前阻塞**: Block 4 Pilot 标注未执行，Track A 未完成
 > **日期**: 2026-05-02
 > **决策**: 采用 5 类实体体系（person / place / project / event / concept），显式定义边界、ID 规则、aliases 策略，拒绝子类拆分到类型层级（子类用 `attributes.subtype` 表达）。
 > **来源**: Round 19 Phase 1-C Track A
