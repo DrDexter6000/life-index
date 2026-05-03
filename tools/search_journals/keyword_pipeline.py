@@ -59,6 +59,21 @@ def _has_explicit_fts_operator(query: str) -> bool:
     return bool(re.search(r"\b(AND|OR|NOT)\b", query))
 
 
+def _quote_fts_token(token: str) -> str:
+    """Quote a bare token if it contains characters that FTS5 treats as operators.
+
+    FTS5 interprets '-' as the prefix NOT operator.  A query like
+    ``2026-01-28`` becomes ``2026 NOT 01 NOT 28``, producing
+    ``no such column: 01``.  Wrapping the token in double quotes forces
+    FTS5 to treat it as a literal phrase.
+    """
+    if not token or token.startswith('"'):
+        return token
+    if "-" in token:
+        return f'"{token}"'
+    return token
+
+
 def _segment_query_for_fts(query: str) -> tuple[str, bool]:
     """Segment Chinese text in a query for FTS5 matching.
 
@@ -130,14 +145,21 @@ def _build_fts_queries(query: str, *, was_segmented: bool = False) -> tuple[str,
     if was_segmented:
         keywords = [kw.strip() for kw in query.split() if kw.strip()]
         if len(keywords) <= 1:
+            if keywords:
+                return _quote_fts_token(keywords[0]), None
             return query, None
+        keywords = [_quote_fts_token(kw) for kw in keywords]
         return " OR ".join(keywords), None
 
     if '"' in query or _has_explicit_fts_operator(query) or " " not in query:
+        if " " not in query and not _has_explicit_fts_operator(query) and '"' not in query:
+            return _quote_fts_token(query), None
         return query, None
 
     keywords = [keyword.strip() for keyword in query.split() if keyword.strip()]
     if len(keywords) <= 1:
+        if keywords:
+            return _quote_fts_token(keywords[0]), None
         return query, None
 
     # T3.3: Filter English stopwords from keyword list
@@ -147,8 +169,11 @@ def _build_fts_queries(query: str, *, was_segmented: bool = False) -> tuple[str,
     if en_sw:
         keywords = [kw for kw in keywords if kw.lower() not in en_sw]
     if len(keywords) <= 1:
+        if keywords:
+            return _quote_fts_token(keywords[0]), None
         return query, None
 
+    keywords = [_quote_fts_token(kw) for kw in keywords]
     return " AND ".join(keywords), " OR ".join(keywords)
 
 
@@ -383,7 +408,9 @@ def run_keyword_pipeline(
                     # Require results to hit ≥ max(2, ceil(non_stopword_tokens ×
                     # KEYWORD_TOKEN_HIT_RATIO)) distinct non-stopword tokens.
                     # Single-token queries skip this filter.
-                    if was_segmented and l3_results:
+                    # Also skip when date range filters are active — L2 metadata
+                    # already constrains results to the target period.
+                    if was_segmented and l3_results and not date_from and not date_to:
                         query_tokens = segmented_query.split()
                         required_hits, non_stop_tokens = _compute_min_required_hits(query_tokens)
                         if required_hits > 0 and non_stop_tokens:

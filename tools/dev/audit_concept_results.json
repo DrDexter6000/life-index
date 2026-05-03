@@ -1,0 +1,122 @@
+[
+  {
+    "query": "数字灵魂",
+    "mode": "exact",
+    "total_journals": 70,
+    "hits": [],
+    "hit_count": 0
+  },
+  {
+    "query": "数字灵魂",
+    "mode": "keyword",
+    "total_journals": 70,
+    "hits": [],
+    "tokens": [
+      "数",
+      "字",
+      "灵",
+      "魂"
+    ],
+    "token_hits": {
+      "数": {
+        "count": 21,
+        "titles": [
+          "",
+          "真正的第一步",
+          "人类 vs AI",
+          "Windows 实验启动日",
+          ""
+        ]
+      },
+      "字": {
+        "count": 12,
+        "titles": [
+          "",
+          "真正的第一步",
+          "现实与理想的平衡",
+          "Windows 实验启动日",
+          "OpenCode Vibe Coding 工具探索"
+        ]
+      },
+      "灵": {
+        "count": 6,
+        "titles": [
+          "",
+          "真正的第一步",
+          "",
+          "Carloha Wiki诞生记：AI赋能的一天",
+          "凌晨的数据丢失惨剧"
+        ]
+      },
+      "魂": {
+        "count": 5,
+        "titles": [
+          "",
+          "真正的第一步",
+          "想念小英雄",
+          "凌晨的数据丢失惨剧",
+          "想念小英雄"
+        ]
+      }
+    }
+  },
+  {
+    "query": "边缘计算",
+    "mode": "exact",
+    "total_journals": 70,
+    "hits": [],
+    "hit_count": 0
+  },
+  {
+    "query": "边缘计算",
+    "mode": "keyword",
+    "total_journals": 70,
+    "hits": [],
+    "tokens": [
+      "边",
+      "缘",
+      "计",
+      "算"
+    ],
+    "token_hits": {
+      "边": {
+        "count": 10,
+        "titles": [
+          "",
+          "凌晨的数据丢失惨剧",
+          "Life Index Web GUI 开发日志#2",
+          "Life Index 搜索功能优化",
+          ""
+        ]
+      },
+      "缘": {
+        "count": 3,
+        "titles": [
+          "",
+          "真正的第一步",
+          "外媒的中国AI叙事：政治滤镜下的龙虾隐喻"
+        ]
+      },
+      "计": {
+        "count": 14,
+        "titles": [
+          "",
+          "人类 vs AI",
+          "SkyVision 无人机项目周会",
+          "",
+          "想念小英雄"
+        ]
+      },
+      "算": {
+        "count": 21,
+        "titles": [
+          "",
+          "人类 vs AI",
+          "现实与理想的平衡",
+          "SkyVision 无人机项目周会",
+          "Life Index 项目重构启动"
+        ]
+      }
+    }
+  }
+]

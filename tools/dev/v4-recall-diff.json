@@ -1,0 +1,15 @@
+{
+  "diffs": [
+    {
+      "id": "GQ61",
+      "query": "最近一周的生活",
+      "category": "time_range",
+      "v3_rec": 1.0,
+      "cur_rec": 0.0,
+      "delta": -1.0
+    }
+  ],
+  "total_delta": -1.0,
+  "v3_recall": 0.914,
+  "current_recall": 0.9032
+}

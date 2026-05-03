@@ -1,0 +1,170 @@
+[
+  {
+    "id": "GQ01",
+    "query": "想念我的女儿",
+    "missing_title": "想念我的女儿",
+    "category": "chinese_recall"
+  },
+  {
+    "id": "GQ02",
+    "query": "重庆过生日",
+    "missing_title": "重庆过生日",
+    "category": "chinese_recall"
+  },
+  {
+    "id": "GQ03",
+    "query": "数字灵魂",
+    "missing_title": "重庆过生日",
+    "category": "chinese_recall"
+  },
+  {
+    "id": "GQ03",
+    "query": "数字灵魂",
+    "missing_title": "读《三体》有感",
+    "category": "chinese_recall"
+  },
+  {
+    "id": "GQ04",
+    "query": "边缘计算",
+    "missing_title": "Life Index 架构重构",
+    "category": "chinese_recall"
+  },
+  {
+    "id": "GQ05",
+    "query": "乐乐",
+    "missing_title": "乐乐不认真吃饭",
+    "category": "entity_expansion"
+  },
+  {
+    "id": "GQ05",
+    "query": "乐乐",
+    "missing_title": "重庆过生日",
+    "category": "entity_expansion"
+  },
+  {
+    "id": "GQ05",
+    "query": "乐乐",
+    "missing_title": "想念我的女儿",
+    "category": "entity_expansion"
+  },
+  {
+    "id": "GQ06",
+    "query": "小英雄",
+    "missing_title": "想念我的女儿",
+    "category": "entity_expansion"
+  },
+  {
+    "id": "GQ08",
+    "query": "想念小英雄",
+    "missing_title": "想念我的女儿",
+    "category": "entity_expansion"
+  },
+  {
+    "id": "GQ13",
+    "query": "Google Stitch",
+    "missing_title": "Google Stitch 集成测试",
+    "category": "english_regression"
+  },
+  {
+    "id": "GQ14",
+    "query": "integration testing",
+    "missing_title": "Google Stitch 集成测试",
+    "category": "english_regression"
+  },
+  {
+    "id": "GQ15",
+    "query": "dynamic loading",
+    "missing_title": "OpenClaw 部署优化",
+    "category": "english_regression"
+  },
+  {
+    "id": "GQ16",
+    "query": "deployment",
+    "missing_title": "Google Stitch 集成测试",
+    "category": "english_regression"
+  },
+  {
+    "id": "GQ16",
+    "query": "deployment",
+    "missing_title": "OpenClaw 部署优化",
+    "category": "english_regression"
+  },
+  {
+    "id": "GQ17",
+    "query": "AI 算力",
+    "missing_title": "Life Index 架构重构",
+    "category": "cross_language"
+  },
+  {
+    "id": "GQ17",
+    "query": "AI 算力",
+    "missing_title": "人工智能伦理讨论",
+    "category": "cross_language"
+  },
+  {
+    "id": "GQ18",
+    "query": "my daughter 乐乐",
+    "missing_title": "想念我的女儿",
+    "category": "cross_language"
+  },
+  {
+    "id": "GQ18",
+    "query": "my daughter 乐乐",
+    "missing_title": "乐乐不认真吃饭",
+    "category": "cross_language"
+  },
+  {
+    "id": "GQ19",
+    "query": "OpenClaw deployment",
+    "missing_title": "OpenClaw 部署优化",
+    "category": "cross_language"
+  },
+  {
+    "id": "GQ21",
+    "query": "Life Index",
+    "missing_title": "Life Index 架构重构",
+    "category": "high_frequency"
+  },
+  {
+    "id": "GQ22",
+    "query": "OpenClaw",
+    "missing_title": "Google Stitch 集成测试",
+    "category": "high_frequency"
+  },
+  {
+    "id": "GQ22",
+    "query": "OpenClaw",
+    "missing_title": "OpenClaw 部署优化",
+    "category": "high_frequency"
+  },
+  {
+    "id": "GQ23",
+    "query": "LobsterAI",
+    "missing_title": "LobsterAI 项目启动",
+    "category": "high_frequency"
+  },
+  {
+    "id": "GQ24",
+    "query": "AI算力投资策略",
+    "missing_title": "Life Index 架构重构",
+    "category": "high_frequency"
+  },
+  {
+    "id": "GQ24",
+    "query": "AI算力投资策略",
+    "missing_title": "人工智能伦理讨论",
+    "category": "high_frequency"
+  },
+  {
+    "id": "GQ24",
+    "query": "AI算力投资策略",
+    "missing_title": "LobsterAI 项目启动",
+    "category": "high_frequency"
+  },
+  {
+    "id": "GQ41",
+    "query": "对自己寿命的恐惧",
+    "missing_title": "年仅41岁",
+    "category": "semantic_recall"
+  }
+]

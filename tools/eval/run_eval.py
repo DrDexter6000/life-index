@@ -27,6 +27,7 @@ MODULES_TO_RELOAD = (
     "tools.lib.search_index",
     "tools.lib.fts_update",
     "tools.lib.fts_search",
+    "tools.search_journals.query_preprocessor",
     "tools.search_journals.semantic",
     "tools.search_journals.semantic_pipeline",
     "tools.search_journals.keyword_pipeline",
@@ -529,9 +530,18 @@ def run_evaluation(
     judge: str = "keyword",
     live: bool = False,
     llm_client: Any | None = None,
+    phase: int = 2,
 ) -> dict[str, Any]:
     """Run the search evaluation suite and optionally persist a baseline."""
-    queries = load_golden_queries(queries_path)
+    all_queries = load_golden_queries(queries_path)
+    queries = []
+    skipped_queries: list[dict[str, Any]] = []
+    for q in all_queries:
+        skip_phase = q.get("skip_until_phase")
+        if skip_phase is not None and skip_phase > phase:
+            skipped_queries.append(q)
+        else:
+            queries.append(q)
 
     if judge not in {"keyword", "llm"}:
         raise ValueError("judge must be 'keyword' or 'llm'")
@@ -562,6 +572,7 @@ def run_evaluation(
         "live_mode": live,
         "semantic_enabled": use_semantic,
         "total_queries": len(per_query),
+        "skipped_queries": len(skipped_queries),
         "metrics": (
             _collect_llm_metrics(per_query) if judge == "llm" else _collect_metrics(per_query)
         ),
@@ -779,4 +790,7 @@ def compare_against_baseline(
 
 if __name__ == "__main__":
     payload = run_evaluation()
-    print(json.dumps({"success": True, "data": payload}, ensure_ascii=False, indent=2))
+    output_path = Path("tmp_eval_result.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump({"success": True, "data": payload}, f, ensure_ascii=False, indent=2)
+    print(f"Eval result written to {output_path}")

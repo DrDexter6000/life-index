@@ -1,0 +1,161 @@
+[
+  {
+    "mrr": 0.5949,
+    "recall": 0.9032,
+    "failures": 9,
+    "time": 35.2140748500824,
+    "failures_detail": [
+      {
+        "id": "GQ52",
+        "query": "春天的记录",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ53",
+        "query": "三月份的工作日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ55",
+        "query": "最近的技术开发进展",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ61",
+        "query": "最近一周的生活",
+        "reason": "Expected >= 1 results, got 0"
+      },
+      {
+        "id": "GQ64",
+        "query": "在重庆发生过的事",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ80",
+        "query": "life indx",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ81",
+        "query": "乐乐 birthday",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ090",
+        "query": "2026年03月的日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ092",
+        "query": "2026年04月的日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      }
+    ]
+  },
+  {
+    "mrr": 0.5949,
+    "recall": 0.9032,
+    "failures": 9,
+    "time": 16.916491746902466,
+    "failures_detail": [
+      {
+        "id": "GQ52",
+        "query": "春天的记录",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ53",
+        "query": "三月份的工作日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ55",
+        "query": "最近的技术开发进展",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ61",
+        "query": "最近一周的生活",
+        "reason": "Expected >= 1 results, got 0"
+      },
+      {
+        "id": "GQ64",
+        "query": "在重庆发生过的事",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ80",
+        "query": "life indx",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ81",
+        "query": "乐乐 birthday",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ090",
+        "query": "2026年03月的日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ092",
+        "query": "2026年04月的日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      }
+    ]
+  },
+  {
+    "mrr": 0.5949,
+    "recall": 0.9032,
+    "failures": 9,
+    "time": 14.995530128479004,
+    "failures_detail": [
+      {
+        "id": "GQ52",
+        "query": "春天的记录",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ53",
+        "query": "三月份的工作日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ55",
+        "query": "最近的技术开发进展",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ61",
+        "query": "最近一周的生活",
+        "reason": "Expected >= 1 results, got 0"
+      },
+      {
+        "id": "GQ64",
+        "query": "在重庆发生过的事",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ80",
+        "query": "life indx",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ81",
+        "query": "乐乐 birthday",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ090",
+        "query": "2026年03月的日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      },
+      {
+        "id": "GQ092",
+        "query": "2026年04月的日志",
+        "reason": "Expected one of must_contain_title within top 5, but none matched"
+      }
+    ]
+  }
+]

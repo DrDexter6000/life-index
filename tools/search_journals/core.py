@@ -617,6 +617,18 @@ def hierarchical_search(
         result["query_params"]["expanded_query"] = expanded_query
     query = expanded_query
 
+    # Phase 2-B: Use preprocessor expanded_query for cleaner keyword search
+    # when entity expansion did not modify the query.
+    # Only use when it's a single token (no spaces) to avoid breaking
+    # _segment_query_for_fts was_segmented detection.
+    if (
+        _plan
+        and _plan.expanded_query
+        and expanded_query == _plan.raw_query
+        and " " not in _plan.expanded_query
+    ):
+        query = _plan.expanded_query
+
     start_time = time.time()
 
     # Round 12 Phase 3: Unified freshness guard + pending consumption
@@ -659,6 +671,25 @@ def hierarchical_search(
             except Exception as exc:
                 logger.warning("Auto index update failed: %s", exc)
                 result.setdefault("index_status", {})["auto_updated"] = False
+
+    # Round 19 Phase 1-C Track B: Time expression parsing
+    _time_filter = None
+    if query and not date_from and not date_to:
+        from ..lib.time_parser import parse_time_expression
+
+        _time_filter = parse_time_expression(query)
+        if _time_filter:
+            date_from = _time_filter.date_range.start.isoformat()
+            date_to = _time_filter.date_range.end.isoformat()
+            result["time_parsed"] = {
+                "matched_span": _time_filter.matched_span,
+                "date_from": date_from,
+                "date_to": date_to,
+            }
+            # NOTE: Topic inference from cleaned query was attempted but
+            # reverted because keyword-based topic matching is unreliable
+            # (e.g. "开发" maps to "create" but user intent may be "work").
+            # GQ53 remains a failure due to ranking, not time parsing.
 
     # Phase 4 T4.1: Consume search_plan.date_range when no explicit date params
     if _plan and _plan.date_range and not date_from and not date_to:
@@ -703,6 +734,37 @@ def hierarchical_search(
         return level_2_result
 
     # ── Level 3: 双管道并行搜索 ──
+    # Round 18 Phase 3: Noise gate — skip semantic pipeline for noise queries
+    # Round 19 Phase 1 B2: For OOD/noise queries, bypass both pipelines entirely
+    # to prevent keyword-pipeline leakage (e.g. GQ77 "区块链技术投资" matching
+    # on "投资" alone after semantic bypass).
+    _noise_blocked = False
+    _noise_reason = None
+    if semantic and query:
+        from .noise_gate import is_noise_query
+
+        _noise_blocked, _noise_reason = is_noise_query(query)
+        if _noise_blocked:
+            semantic = False
+            result["semantic_note"] = f"语义搜索被 noise gate 拦截（{_noise_reason}）"
+            result["warnings"].append(
+                f"noise_gate: semantic bypassed for '{query}' ({_noise_reason})"
+            )
+
+    # Phase 1 B2: Full pipeline bypass for OOD/negation-intent queries only.
+    # Conservative: too_short and other original rules only bypass semantic
+    # pipeline to avoid keyword-regression on legitimate short queries
+    # (GQ10 '吃饭', GQ85 'AI', GQ126 '投资', etc.).
+    if _noise_blocked and _noise_reason in ("ood_topic", "negation_intent"):
+        result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+        _emit_search_metrics(result)
+        logger.info(
+            f"[SearchPerf] Total: {result['performance']['total_time_ms']}ms "
+            f"(L1:0.0 L2:0.0 L3:0.0 Semantic:0.0) "
+            f"| Results: 0 (noise_gate full bypass)"
+        )
+        return result
+
     with ThreadPoolExecutor(max_workers=2) as executor:
         future_keyword = executor.submit(
             run_keyword_pipeline,

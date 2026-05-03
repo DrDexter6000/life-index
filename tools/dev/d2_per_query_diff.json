@@ -1,0 +1,16 @@
+{
+  "regressed": [
+    {
+      "id": "GQ61",
+      "query": "最近一周的生活",
+      "v3_mrr": 1.0,
+      "current_mrr": 0.0,
+      "delta": -1.0,
+      "category": "time_range"
+    }
+  ],
+  "improved": [],
+  "unchanged_count": 103,
+  "v3_mrr": 0.6093,
+  "current_mrr": 0.5997
+}

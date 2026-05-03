@@ -34,6 +34,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Output the full JSON result instead of summary lines",
     )
     parser.add_argument(
+        "--semantic",
+        action="store_true",
+        help="Enable semantic pipeline (default: disabled)",
+    )
+    parser.add_argument(
         "--no-semantic",
         action="store_true",
         help="Disable semantic pipeline (default: disabled)",
@@ -51,7 +56,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    use_semantic = False
+    use_semantic = args.semantic
 
     if args.compare_baseline:
         comparison = compare_against_baseline(
