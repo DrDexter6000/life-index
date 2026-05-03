@@ -1,0 +1,99 @@
+{
+  "source_journal_path": "Journals/2026/03/life-index_2026-03-11_001.md",
+  "annotated_at": "2026-04-21T00:59:41+01:00",
+  "schema_version": "v0",
+  "annotated_by": "kimi",
+  "entities": [
+    {
+      "id": "person-wang-lele",
+      "type": "person",
+      "primary_name": "乐乐",
+      "aliases": [
+        "乐乐",
+        "小朋友",
+        "两个小娃娃",
+        "小娃娃"
+      ],
+      "attributes": {
+        "role": "child",
+        "subtype": "family"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-chongqing",
+      "type": "place",
+      "primary_name": "重庆",
+      "aliases": [
+        "重庆",
+        "Chongqing"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-cairo",
+      "type": "place",
+      "primary_name": "开罗",
+      "aliases": [
+        "开罗",
+        "Cairo"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-openclaw",
+      "type": "concept",
+      "primary_name": "OpenClaw",
+      "aliases": [
+        "OpenClaw",
+        "openclaw",
+        "小龙虾"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "event-birthday-tuantuan",
+      "type": "event",
+      "primary_name": "乐乐生日",
+      "aliases": [
+        "生日",
+        "小朋友过生日"
+      ],
+      "attributes": {
+        "event_date": "2026-04-22"
+      },
+      "confidence": "medium",
+      "audit_note": "正文中提到4月22日回重庆给小朋友过生日"
+    }
+  ],
+  "ambiguities": [
+    {
+      "text_span": "中东",
+      "candidate_types": [
+        "place",
+        "concept"
+      ],
+      "resolution": "concept",
+      "reason": "文中指政治地理区域/局势，非具体城市或场所；ADR-024 无 region 类型，最接近 concept"
+    },
+    {
+      "text_span": "两个小娃娃",
+      "candidate_types": [
+        "person"
+      ],
+      "resolution": "person-wang-lele",
+      "reason": "指乐乐和另一个孩子，但另一个孩子未命名，只标注已命名的乐乐"
+    }
+  ]
+}

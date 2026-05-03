@@ -1,0 +1,143 @@
+{
+  "source_journal_path": "Journals/2026/04/life-index_2026-04-20_001.md",
+  "annotated_at": "2026-04-21T00:59:41+01:00",
+  "schema_version": "v0",
+  "annotated_by": "kimi",
+  "entities": [
+    {
+      "id": "person-wang-lele",
+      "type": "person",
+      "primary_name": "乐乐",
+      "aliases": [
+        "乐乐"
+      ],
+      "attributes": {
+        "role": "child",
+        "subtype": "family"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-andy-lau",
+      "type": "person",
+      "primary_name": "刘德华",
+      "aliases": [
+        "刘德华",
+        "Andy Lau"
+      ],
+      "attributes": {
+        "role": "public_figure"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-zhang-xue",
+      "type": "person",
+      "primary_name": "张雪",
+      "aliases": [
+        "张雪",
+        "张雪摩托"
+      ],
+      "attributes": {
+        "role": "public_figure"
+      },
+      "confidence": "medium",
+      "audit_note": "文中称'张雪摩托'，指摩托车创业者张雪"
+    },
+    {
+      "id": "project-life-index",
+      "type": "project",
+      "primary_name": "Life Index",
+      "aliases": [
+        "Life Index"
+      ],
+      "attributes": {
+        "project_type": "personal"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-inner-drive",
+      "type": "concept",
+      "primary_name": "内驱力",
+      "aliases": [
+        "内驱力",
+        "内驱动力"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-testosterone",
+      "type": "concept",
+      "primary_name": "睾丸素",
+      "aliases": [
+        "睾丸素",
+        "testosterone",
+        "睾酮"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-lagos",
+      "type": "place",
+      "primary_name": "Lagos",
+      "aliases": [
+        "Lagos",
+        "拉各斯"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-dexter",
+      "type": "person",
+      "primary_name": "Dexter",
+      "aliases": [
+        "我"
+      ],
+      "attributes": {
+        "role": "self"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    }
+  ],
+  "ambiguities": [
+    {
+      "text_span": "大自然母亲",
+      "candidate_types": [
+        "concept",
+        "person"
+      ],
+      "resolution": "concept",
+      "reason": "拟人化修辞，非真实对话对象；作为自然力量的抽象概念归入 concept"
+    },
+    {
+      "text_span": "老婆",
+      "candidate_types": [
+        "person"
+      ],
+      "resolution": "未标注",
+      "reason": "未命名，仅称'老婆'，无具体名称"
+    },
+    {
+      "text_span": "成功人士",
+      "candidate_types": [
+        "person",
+        "concept"
+      ],
+      "resolution": "未标注",
+      "reason": "泛指群体，非具体个体"
+    }
+  ]
+}

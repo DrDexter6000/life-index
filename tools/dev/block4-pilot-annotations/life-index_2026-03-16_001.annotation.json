@@ -1,0 +1,183 @@
+{
+  "source_journal_path": "Journals/2026/03/life-index_2026-03-16_001.md",
+  "annotated_at": "2026-04-21T00:59:41+01:00",
+  "schema_version": "v0",
+  "annotated_by": "kimi",
+  "entities": [
+    {
+      "id": "person-ceo",
+      "type": "person",
+      "primary_name": "CEO",
+      "aliases": [
+        "CEO",
+        "老板"
+      ],
+      "attributes": {
+        "role": "colleague"
+      },
+      "confidence": "medium",
+      "audit_note": "未命名，只以职位称呼"
+    },
+    {
+      "id": "person-morgan",
+      "type": "person",
+      "primary_name": "Jordan",
+      "aliases": [
+        "Jordan"
+      ],
+      "attributes": {
+        "role": "colleague"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-david",
+      "type": "person",
+      "primary_name": "David",
+      "aliases": [
+        "David"
+      ],
+      "attributes": {
+        "role": "colleague"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-bruce",
+      "type": "person",
+      "primary_name": "Bruce",
+      "aliases": [
+        "Bruce"
+      ],
+      "attributes": {
+        "role": "colleague"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "project-carloha-wiki",
+      "type": "project",
+      "primary_name": "Carloha Wiki",
+      "aliases": [
+        "Carloha Wiki",
+        "维基百科知识库"
+      ],
+      "attributes": {
+        "project_type": "work"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "project-drone",
+      "type": "project",
+      "primary_name": "无人机项目",
+      "aliases": [
+        "无人机项目"
+      ],
+      "attributes": {
+        "project_type": "work"
+      },
+      "confidence": "medium",
+      "audit_note": "文中仅提及'讨论了一下有关无人机项目的安排'，无更多细节"
+    },
+    {
+      "id": "concept-vercel",
+      "type": "concept",
+      "primary_name": "Vercel",
+      "aliases": [
+        "Vercel"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-openclaw",
+      "type": "concept",
+      "primary_name": "OpenClaw",
+      "aliases": [
+        "OpenClaw",
+        "Openclaw"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-kimi",
+      "type": "concept",
+      "primary_name": "Kimi",
+      "aliases": [
+        "Kimi",
+        "kimi"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-lagos",
+      "type": "place",
+      "primary_name": "Lagos",
+      "aliases": [
+        "Lagos",
+        "拉各斯"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-nigeria",
+      "type": "place",
+      "primary_name": "尼日利亚",
+      "aliases": [
+        "尼日利亚",
+        "Nigeria"
+      ],
+      "attributes": {
+        "place_type": "country"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-dexter",
+      "type": "person",
+      "primary_name": "Dexter",
+      "aliases": [
+        "我"
+      ],
+      "attributes": {
+        "role": "self"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    }
+  ],
+  "ambiguities": [
+    {
+      "text_span": "Kimi",
+      "candidate_types": [
+        "concept",
+        "person"
+      ],
+      "resolution": "concept",
+      "reason": "AI 工具/模型。虽以对话对象出现（'和Kimi聊天'），但本质是技术概念；同 Opus 4.6 边界 case"
+    },
+    {
+      "text_span": "销售团队",
+      "candidate_types": [
+        "person"
+      ],
+      "resolution": "未标注",
+      "reason": "泛指群体，非具体个体"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "source_journal_path": "Journals/2026/04/life-index_2026-04-25_001.md",
+  "annotated_at": "2026-04-21T00:59:41+01:00",
+  "schema_version": "v0",
+  "annotated_by": "kimi",
+  "entities": [
+    {
+      "id": "person-wang-lele",
+      "type": "person",
+      "primary_name": "乐乐",
+      "aliases": [
+        "乐乐",
+        "Toto",
+        "女儿"
+      ],
+      "attributes": {
+        "role": "child",
+        "subtype": "family"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-dexter",
+      "type": "person",
+      "primary_name": "Dexter",
+      "aliases": [
+        "我",
+        "老爸",
+        "父亲"
+      ],
+      "attributes": {
+        "role": "self",
+        "subtype": "family"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-chongqing",
+      "type": "place",
+      "primary_name": "重庆",
+      "aliases": [
+        "重庆",
+        "Chongqing",
+        "山城"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-plush-toy",
+      "type": "concept",
+      "primary_name": "毛绒玩具",
+      "aliases": [
+        "毛绒玩具",
+        "玩具"
+      ],
+      "attributes": {},
+      "confidence": "medium",
+      "audit_note": ""
+    }
+  ],
+  "ambiguities": [
+    {
+      "text_span": "母女俩",
+      "candidate_types": [
+        "person"
+      ],
+      "resolution": "未标注",
+      "reason": "母亲未在 people 列表中 named，只有'乐乐'被命名"
+    }
+  ]
+}

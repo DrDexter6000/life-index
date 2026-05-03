@@ -1,0 +1,166 @@
+{
+  "source_journal_path": "Journals/2026/04/life-index_2026-04-05_002.md",
+  "annotated_at": "2026-04-21T00:59:41+01:00",
+  "schema_version": "v0",
+  "annotated_by": "kimi",
+  "entities": [
+    {
+      "id": "person-boss",
+      "type": "person",
+      "primary_name": "老板",
+      "aliases": [
+        "老板"
+      ],
+      "attributes": {
+        "role": "colleague"
+      },
+      "confidence": "medium",
+      "audit_note": "未命名，只以职位称呼"
+    },
+    {
+      "id": "person-sun",
+      "type": "person",
+      "primary_name": "Sun",
+      "aliases": [
+        "Sun"
+      ],
+      "attributes": {
+        "role": "colleague"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-wang-lele-and-sibling",
+      "type": "person",
+      "primary_name": "两头小驴",
+      "aliases": [
+        "两头小驴",
+        "宝宝",
+        "小驴"
+      ],
+      "attributes": {
+        "role": "child",
+        "subtype": "family"
+      },
+      "confidence": "medium",
+      "audit_note": "指作者的孩子们，用'生产队的驴'比喻家庭负担"
+    },
+    {
+      "id": "place-beijing",
+      "type": "place",
+      "primary_name": "北京",
+      "aliases": [
+        "北京",
+        "Beijing"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-chongqing",
+      "type": "place",
+      "primary_name": "重庆",
+      "aliases": [
+        "重庆",
+        "Chongqing"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-lagos",
+      "type": "place",
+      "primary_name": "Lagos",
+      "aliases": [
+        "Lagos",
+        "拉各斯"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "project-life-index",
+      "type": "project",
+      "primary_name": "Life Index",
+      "aliases": [
+        "Life Index"
+      ],
+      "attributes": {
+        "project_type": "personal"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-vibe-coding",
+      "type": "concept",
+      "primary_name": "Vibe Coding",
+      "aliases": [
+        "Vibe Coding",
+        "vibe coding"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-ai",
+      "type": "concept",
+      "primary_name": "AI",
+      "aliases": [
+        "AI",
+        "人工智能"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "event-beijing-auto-show",
+      "type": "event",
+      "primary_name": "北京车展",
+      "aliases": [
+        "北京车展"
+      ],
+      "attributes": {
+        "event_date": "2026-04-24"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-dexter",
+      "type": "person",
+      "primary_name": "Dexter",
+      "aliases": [
+        "我"
+      ],
+      "attributes": {
+        "role": "self"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    }
+  ],
+  "ambiguities": [
+    {
+      "text_span": "生产队的驴",
+      "candidate_types": [
+        "person",
+        "concept"
+      ],
+      "resolution": "concept",
+      "reason": "修辞比喻（自嘲），非稳定 entity 名称；指代作者自己（person-dexter），但作为比喻归入 concept"
+    }
+  ]
+}

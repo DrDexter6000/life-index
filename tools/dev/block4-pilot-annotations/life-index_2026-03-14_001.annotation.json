@@ -1,0 +1,107 @@
+{
+  "source_journal_path": "Journals/2026/03/life-index_2026-03-14_001.md",
+  "annotated_at": "2026-04-21T00:59:41+01:00",
+  "schema_version": "v0",
+  "annotated_by": "kimi",
+  "entities": [
+    {
+      "id": "concept-claude-opus-4-6",
+      "type": "concept",
+      "primary_name": "Claude Opus 4.6",
+      "aliases": [
+        "Claude Opus 4.6",
+        "Opus 4.6",
+        "大哥Opus 4.6",
+        "Claude"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-claude-sonnet-4-6",
+      "type": "concept",
+      "primary_name": "Claude Sonnet 4.6",
+      "aliases": [
+        "Sonnet 4.6",
+        "小弟Sonnet 4.6"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-anthropic",
+      "type": "concept",
+      "primary_name": "Anthropic",
+      "aliases": [
+        "Anthropic"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-openrouter",
+      "type": "concept",
+      "primary_name": "Openrouter",
+      "aliases": [
+        "Openrouter"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "project-life-index",
+      "type": "project",
+      "primary_name": "Life Index",
+      "aliases": [
+        "Life Index"
+      ],
+      "attributes": {
+        "project_type": "personal"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-lagos",
+      "type": "place",
+      "primary_name": "Lagos",
+      "aliases": [
+        "Lagos",
+        "拉各斯"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-dexter",
+      "type": "person",
+      "primary_name": "Dexter",
+      "aliases": [
+        "我"
+      ],
+      "attributes": {
+        "role": "self"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    }
+  ],
+  "ambiguities": [
+    {
+      "text_span": "Opus 4.6",
+      "candidate_types": [
+        "concept",
+        "person"
+      ],
+      "resolution": "concept",
+      "reason": "AI 模型/工具。虽被拟人化称呼'大哥'，但本质是技术概念；ADR-024 未定义 AI 模型归属，按最接近原则归入 concept"
+    }
+  ]
+}

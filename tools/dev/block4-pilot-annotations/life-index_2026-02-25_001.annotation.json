@@ -1,0 +1,107 @@
+{
+  "source_journal_path": "Journals/2026/02/life-index_2026-02-25_001.md",
+  "annotated_at": "2026-04-21T00:59:41+01:00",
+  "schema_version": "v0",
+  "annotated_by": "kimi",
+  "entities": [
+    {
+      "id": "project-life-index",
+      "type": "project",
+      "primary_name": "Life Index",
+      "aliases": [
+        "Life Index",
+        "life-index",
+        "Life Index | 人生索引"
+      ],
+      "attributes": {
+        "project_type": "personal"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "project-lobsterai-journal",
+      "type": "project",
+      "primary_name": "LobsterAI Journal",
+      "aliases": [
+        "LobsterAI Journal"
+      ],
+      "attributes": {
+        "project_type": "personal"
+      },
+      "confidence": "high",
+      "audit_note": "文中称旧项目已'没救了'，Life Index 是替代项目"
+    },
+    {
+      "id": "concept-openclaw",
+      "type": "concept",
+      "primary_name": "OpenClaw",
+      "aliases": [
+        "OpenClaw",
+        "Openclaw",
+        "openclaw"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "concept-git",
+      "type": "concept",
+      "primary_name": "Git",
+      "aliases": [
+        "Git",
+        "git"
+      ],
+      "attributes": {},
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "person-dexter",
+      "type": "person",
+      "primary_name": "Dexter",
+      "aliases": [
+        "我"
+      ],
+      "attributes": {
+        "role": "self"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    },
+    {
+      "id": "place-lagos",
+      "type": "place",
+      "primary_name": "Lagos",
+      "aliases": [
+        "Lagos",
+        "拉各斯"
+      ],
+      "attributes": {
+        "place_type": "city"
+      },
+      "confidence": "high",
+      "audit_note": ""
+    }
+  ],
+  "ambiguities": [
+    {
+      "text_span": "X平台",
+      "candidate_types": [
+        "concept"
+      ],
+      "resolution": "未标注",
+      "reason": "社交平台引用模糊，未明确 name（可能是 Twitter/X）"
+    },
+    {
+      "text_span": "大神",
+      "candidate_types": [
+        "person",
+        "concept"
+      ],
+      "resolution": "未标注",
+      "reason": "泛指匿名技术博主，无具体名称"
+    }
+  ]
+}
