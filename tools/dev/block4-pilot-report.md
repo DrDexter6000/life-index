@@ -1,6 +1,6 @@
 # Block 4 Pilot 标注报告
 
-> **日期**: 2026-04-21
+> **日期**: 2026-05-03
 > **标注者**: Kimi
 > **Schema 版本**: v0
 > **日志总数**: 7 篇
@@ -83,7 +83,7 @@
 ### 3.2 按类型分字段使用
 
 **Person 必填字段 `attributes.role`**:
-- 使用：16/16 person entity（100%）
+- 使用：18/18 person entity（100%）
 - 值分布：self(7), child(3), colleague(4), public_figure(2)
 - 问题：无
 
@@ -93,12 +93,12 @@
 - 问题：未使用时不填，符合预期
 
 **Place 必填字段 `attributes.place_type`**:
-- 使用：9/9 place entity（100%）
+- 使用：11/11 place entity（100%）
 - 值分布：city(7), country(1)
 - 问题："home" 和 "workplace" 未在 Pilot 中出现（因为作者是海外独居，家中场景未单独标注为 place）
 
 **Project 必填字段 `attributes.project_type`**:
-- 使用：5/5 project entity（100%）
+- 使用：7/7 project entity（100%）
 - 值分布：personal(3), work(2)
 - 问题：无
 
