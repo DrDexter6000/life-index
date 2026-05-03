@@ -109,4 +109,8 @@ Kimi_here.bat
 
 # ----- 本地备份 / 原型临时文件 -----
 *.backup
-`n.kimi-learnings/
+.kimi-learnings/
+
+# ----- 临时调试文件 -----
+tmp_*
+!tmp_*.md
