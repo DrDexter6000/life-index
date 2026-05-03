@@ -1,9 +1,11 @@
-# ADR-024: Entity Schema v0 — PENDING_PILOT_VALIDATION
+# ADR-024: Entity Schema v1 — FROZEN
 
-> **状态**: v0 — pending pilot validation（未经 Pilot 验证，非冻结 schema）
-> **冻结路径**: 5–10 篇 Pilot 标注 → schema 迭代 → v1 frozen
-> **当前阻塞**: Block 4 Pilot 标注未执行，Track A 未完成
+> **状态**: v1 — frozen（经 7 篇 Pilot 验证，schema 边界可操作，字段无死字段）
+> **冻结日期**: 2026-04-21
+> **Pilot 验证**: 7 篇日志，53 entity，12 ambiguities，无 stop-the-line
+> **冻结后原则**: 只能新增字段/类型，不能修改既有类型的语义边界（CHARTER.md §1.8）
 > **日期**: 2026-05-02
+> **决策**: 采用 5 类实体体系（person / place / project / event / concept），显式定义边界、ID 规则、aliases 策略，拒绝子类拆分到类型层级（子类用 `attributes.subtype` 表达）。
 > **决策**: 采用 5 类实体体系（person / place / project / event / concept），显式定义边界、ID 规则、aliases 策略，拒绝子类拆分到类型层级（子类用 `attributes.subtype` 表达）。
 > **来源**: Round 19 Phase 1-C Track A
 > **前置**: `round-19-internal-evidence.md` §4 Schema 审计
@@ -30,6 +32,7 @@ Entity graph 当前处于"工具完备、数据为零"状态（65/65 日志 `ent
 - ✅ 在上下文中以"人"的身份被提及的存在（如历史人物在反思中被引用）
 - ❌ 宠物（狗、猫）→ edge case，见 §4
 - ❌ 虚构角色（孙悟空、哈利·波特）→ 若作为"文化参照"出现，归 concept
+- ❌ AI 模型/工具（Claude、Kimi、ChatGPT）→ 虽常被拟人化称呼（"大哥"、"和Kimi聊天"），但本质是技术工具/概念，归 concept（见 §4 edge case #7）
 
 **必填字段**
 - `id`, `type`, `primary_name`
@@ -208,6 +211,17 @@ Person 的 `attributes.role` 使用如下标签（15 个，已审计确认）：
 6. **品牌/产品作为被动消费对象**："买了 iPhone"中的 iPhone 是 `concept`，但"iPhone 摄影项目"中的 iPhone 是 `project` 还是 `concept`？
    - 当前策略：产品名作为工具/概念，`concept`。只有围绕该产品构建的独立努力才归 `project`
 
+7. **AI 模型/工具**：Claude、Kimi、ChatGPT、Opus 4.6 等 AI 系统
+   - 当前策略：归入 `concept`（技术工具/概念）
+   - 理由：虽常被拟人化称呼（"大哥Opus 4.6"、"和Kimi聊天"），但本质是软件/模型，非真实人类
+   - 例外：若日志明确将 AI 当作"真实对话对象"进行深度情感投射（如"Claude 是我最好的朋友"），可标为 `person`，`attributes.role = "acquaintance"`，但需在 `audit_note` 中说明
+   - 未来可能新增 `ai_agent` 类型，若 corpus 中 AI 实体出现 ≥10 次
+
+8. **Region（地理区域）**：中东、东南亚、北美
+   - 当前策略：归入 `concept`（政治地理概念）
+   - 理由：ADR-024 v1 无 `region` 类型，`place` 要求具体城市/场所/国家
+   - 未来可能新增 `region` 类型，若 corpus 中区域实体出现 ≥5 次
+
 ---
 
 ## 5. 与现有代码的兼容性
@@ -260,9 +274,19 @@ Person 的 `attributes.role` 使用如下标签（15 个，已审计确认）：
       "resolution": "place",
       "reason": "上下文为物理地址"
     }
+  ],
+  "relationships": [
+    {
+      "from_entity": "person-dexter",
+      "to_entity": "project-life-index",
+      "relation": "works_on",
+      "evidence": "为开源做准备"
+    }
   ]
 }
 ```
+
+> **v1 新增**: `relationships` 字段为可选，用于表达同一篇日志内 entity 之间的关系。关系类型见 §3.3。Pilot 阶段可不填，但建议记录以供 graph-level 验证。
 
 ### 6.3 冻结标准
 
@@ -273,6 +297,36 @@ Pilot 完成后，若满足以下全部条件，schema 冻结为 v1：
 
 若发现"需要新增类型"或"某类型边界完全无法操作"，触发 stop-the-line，schema 退回修订。
 
+## 8. Pilot 反馈与 v0→v1 改动
+
+### 8.1 Pilot 执行摘要
+
+- **标注者**: Kimi
+- **日志数**: 7 篇（覆盖 5 类 entity × 7 个 topic）
+- **Entity 总数**: 53 个（person 16, place 9, project 5, event 2, concept 21）
+- **Ambiguities**: 12 个（平均 1.7/篇，≤3/篇阈值）
+- **Stop-the-line**: 未触发
+
+### 8.2 发现的关键边界 case
+
+| # | Case | 处理 | 状态 |
+|---|------|------|------|
+| 1 | AI 模型归属（Opus 4.6、Kimi、Claude） | 按 concept 处理（技术工具），但用户可能期望 person（对话对象） | 文档已补充说明 |
+| 2 | 未命名 person（老板、CEO、老婆） | 有职位/关系的标 person；无具体名称的亲属不标 | 策略已确认 |
+| 3 | Region 类型缺失（中东） | 按 concept 处理，长期可能需要新增 `region` | 已记入 edge cases |
+| 4 | Pilot 格式缺少 relationships | 建议在 v1 格式中增加可选 `relationships` 字段 | 非阻塞，格式扩展 |
+
+### 8.3 v0→v1 改动清单
+
+| # | 改动 | 类型 | 位置 |
+|---|------|------|------|
+| 1 | 增加 AI 模型/工具归属说明 | 文档补充 | §2.1 Person 边界 |
+| 2 | 增加 "AI 模型/工具" edge case | 文档补充 | §4 Edge Cases |
+| 3 | 增加 "region" edge case 说明 | 文档补充 | §2.2 Place 边界 + §4 |
+| 4 | Pilot 输出格式增加可选 `relationships` | 格式扩展 | §6.2 |
+
+**所有改动均为文档补充/格式扩展，不涉及类型边界修改或新增类型，符合 v1 冻结原则。**
+
 ---
 
 ## 7. 修订记录
@@ -280,4 +334,4 @@ Pilot 完成后，若满足以下全部条件，schema 冻结为 v1：
 | 版本 | 日期 | 变更 | 作者 |
 |------|------|------|------|
 | v0 Draft | 2026-05-02 | 初始起草，基于 5 类体系 | Kimi |
-| v0 → v1 | TBD | Pilot 验证后冻结 | TBD |
+| v0 → v1 | 2026-04-21 | Pilot 验证后冻结，7 篇日志无 stop-the-line，文档补充 4 项 | Kimi |
