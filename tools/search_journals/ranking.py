@@ -293,15 +293,10 @@ def merge_and_rank_results(
             base_score += SCORE_TITLE_MATCH_BONUS
         scored[path] = {"data": r, "score": base_score, "tier": 3}
 
-    # L2: 元数据匹配（仅当不在 L3 中时添加）
+    # L2: 元数据匹配（当不在 L3 中时添加；当已在 L3 中时叠加 bonus）
     for r in l2_results:
         path = r["path"]
-        if path in scored:
-            continue  # L3 已覆盖，跳过
-
-        # L2 基础分必须低于 L3 最低分（L3 最低约 30-40）
-        # 确保即使 L2 title 完全匹配，也不超过 L3 的 BM25 分数
-        score = SCORE_L2_BASE  # L2 基础分（显著低于 L3 的最低分）
+        bonus = 0
 
         if query:
             title = r.get("title", "")
@@ -311,18 +306,36 @@ def merge_and_rank_results(
             )
             tags = metadata.get("tags", [])
 
-            # title 匹配加分（限制上限，确保不超过 L3 内容匹配）
-            if _query_matches_text(title, query):
-                score += SCORE_TITLE_MATCH_BONUS_L2
-            # abstract 匹配加分（abstract-only 命中不应越过默认门槛）
-            if _query_matches_text(abstract, query):
-                score += SCORE_ABSTRACT_MATCH_BONUS
-            # tags 匹配加分（仅作弱辅助信号）
-            if _query_matches_tags(tags, query):
-                score += SCORE_TAGS_MATCH_BONUS
+            # Multi-token query: OR semantics for metadata matching (C1-b alias support)
+            query_tokens = query.split()
+            tokens = query_tokens if len(query_tokens) > 1 else [query]
+            for token in tokens:
+                if _query_matches_text(title, token):
+                    bonus += SCORE_TITLE_MATCH_BONUS_L2
+                if _query_matches_text(abstract, token):
+                    bonus += SCORE_ABSTRACT_MATCH_BONUS
+                if _query_matches_tags(tags, token):
+                    bonus += SCORE_TAGS_MATCH_BONUS
 
-        score += _entity_bonus(r, entity_hints or [])
+            # Extra bonus for title containing the full query phrase
+            if len(query_tokens) > 1:
+                title_lower = title.lower()
+                query_lower = query.lower()
+                if title_lower.startswith(query_lower):
+                    bonus += 10
+                elif query_lower in title_lower:
+                    bonus += 3
 
+        bonus += _entity_bonus(r, entity_hints or [])
+
+        if path in scored:
+            if bonus > 0:
+                scored[path]["score"] += bonus
+            continue
+
+        # L2 基础分必须低于 L3 最低分（L3 最低约 30-40）
+        # 确保即使 L2 title 完全匹配，也不超过 L3 的 BM25 分数
+        score = SCORE_L2_BASE + bonus
         scored[path] = {"data": r, "score": score, "tier": 2}
 
     # L1: 索引匹配（最低优先级）
@@ -343,8 +356,22 @@ def merge_and_rank_results(
             if boost > 1.0:
                 entry["score"] = entry["score"] * boost
 
-    # 按分数降序排序，分数相同按 tier 排序（高 tier 优先）
-    sorted_results = sorted(scored.values(), key=lambda x: (x["score"], x["tier"]), reverse=True)
+    # 按分数降序排序，分数相同按 tier 排序（高 tier 优先），
+    # 再按 title 中完整短语出现位置排序（越靠前越优先，C1-a/b）
+    def _title_phrase_position(data: dict, q: str) -> int:
+        title = data.get("title", "").lower()
+        pos = title.find(q.lower()) if q else -1
+        return pos if pos != -1 else 9999
+
+    sorted_results = sorted(
+        scored.values(),
+        key=lambda x: (
+            x["score"],
+            x["tier"],
+            -_title_phrase_position(x["data"], query or ""),
+        ),
+        reverse=True,
+    )
 
     # 分层阈值：L3 (FTS) 使用 FTS_MIN_RELEVANCE，L2/L1 使用更宽松的 NON_RRF_MIN_SCORE
     effective_fts_threshold = _compute_dynamic_fts_threshold(

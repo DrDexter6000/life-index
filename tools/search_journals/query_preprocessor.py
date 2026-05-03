@@ -108,6 +108,21 @@ _PRONOUNS = {
     "么",
 }
 
+# ── Typo corrections (exact-match) ────────────────────────────────────
+
+_TYPO_CORRECTIONS: dict[str, str] = {
+    "life indx": "life index",
+}
+
+
+# ── Bilingual alias map ───────────────────────────────────────────────
+
+_ALIAS_MAP: dict[str, str] = {
+    "birthday": "生日",
+    "生日": "birthday",
+}
+
+
 # ── Topic keyword mapping ─────────────────────────────────────────────
 
 _TOPIC_KEYWORD_MAP: dict[str, list[str]] = {
@@ -776,11 +791,24 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
         )
 
     normalized = normalize_query(query)
-    time_expr = extract_time_expression(query)
+    # C1-a: typo correction
+    _corrected = _TYPO_CORRECTIONS.get(normalized.lower().strip())
+    if _corrected:
+        normalized = _corrected
+    time_expr = extract_time_expression(normalized)
     date_range = parse_time_range(time_expr, reference_date=reference_date) if time_expr else None
-    intent = classify_intent(query)
-    keywords = extract_keywords(query, time_expr=time_expr)
-    topic_hints = extract_topic_hints(query)
+    intent = classify_intent(normalized)
+    keywords = extract_keywords(normalized, time_expr=time_expr)
+    # C1-b: bilingual alias expansion (keywords + normalized for L2 matching)
+    _alias_tokens = [
+        _ALIAS_MAP[t.lower()]
+        for t in normalized.split()
+        if t.lower() in _ALIAS_MAP and _ALIAS_MAP[t.lower()] not in normalized
+    ]
+    if _alias_tokens:
+        normalized = normalized + " " + " ".join(_alias_tokens)
+    keywords = list(dict.fromkeys(keywords + _alias_tokens))  # de-dupe, preserve order
+    topic_hints = extract_topic_hints(normalized)
 
     # Phase 2-B: For topic-only queries like "work相关的日志", drop generic nouns
     # that are part of the query template rather than content filters.
@@ -795,7 +823,7 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
         if not meaningful:
             keywords = [kw for kw in keywords if kw not in _GENERIC_NOUNS and kw not in particles]
 
-    query_mode = classify_query_mode(query)
+    query_mode = classify_query_mode(normalized)
 
     # Only use keyword-joined expanded_query when keywords were actually modified
     if keywords != original_keywords:

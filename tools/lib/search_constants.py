@@ -213,7 +213,7 @@ SCORE_L2_BASE: int = 30
 SCORE_TITLE_MATCH_BONUS: int = 10
 SCORE_TITLE_MATCH_BONUS_L2: int = 8  # Slightly lower for L2
 SCORE_ABSTRACT_MATCH_BONUS: int = 4
-SCORE_TAGS_MATCH_BONUS: int = 1
+SCORE_TAGS_MATCH_BONUS: int = 3
 SCORE_ENTITY_BONUS: int = 6
 
 # ADR-016: Topic hint ranking boost (Phase 4 T4.2)

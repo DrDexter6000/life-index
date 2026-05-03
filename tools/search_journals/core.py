@@ -615,6 +615,9 @@ def hierarchical_search(
 
         _plan = _build_plan(query, reference_date=_now)
         result["search_plan"] = _plan.to_dict()
+        # C1-a/b: Propagate typo-corrected / alias-expanded query into pipeline
+        if _plan.normalized_query and _plan.normalized_query != query:
+            query = _plan.normalized_query
 
     # Round 11 Phase 2: Ambiguity detection + hints
     if _plan is not None:

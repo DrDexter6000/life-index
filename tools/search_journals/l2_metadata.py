@@ -138,12 +138,22 @@ def _matches_filters(
         abstract = metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
         file_tags = metadata.get("tags", [])
 
-        # 检查 title/abstract/tags 是否包含 query
-        if (
-            not _query_matches_text(title, query)
-            and not _query_matches_text(abstract, query)
-            and not _query_matches_tags(file_tags, query)
-        ):
+        # Multi-token query: OR semantics for metadata matching (C1-b alias support)
+        query_tokens = query.split()
+        if len(query_tokens) > 1:
+            matched = any(
+                _query_matches_text(title, token)
+                or _query_matches_text(abstract, token)
+                or _query_matches_tags(file_tags, token)
+                for token in query_tokens
+            )
+        else:
+            matched = (
+                _query_matches_text(title, query)
+                or _query_matches_text(abstract, query)
+                or _query_matches_tags(file_tags, query)
+            )
+        if not matched:
             return False
 
     return True
