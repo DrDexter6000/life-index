@@ -111,6 +111,31 @@ python tools/write_journal.py --data '{...}'
 - 项目代码: 仓库目录
 - 两者物理隔离，不可混淆
 
+### ⚠️ 本地目录 Junction 警告（ critical ）
+
+`life-index/.strategy/` 是 **NTFS junction**，实际指向 `D:\Loster AI\Projects\.strategy\`（与 `life-index_gui/.strategy/` 共享同一目标）。
+
+**后果**：在此目录下的任何删除、移动、覆盖操作会同时影响两个仓库可见的文件。历史上已发生误删 Round 19 研究文档的事故。
+
+**操作规则**：
+- 删除 `.strategy/` 下任何文件前，必须先用 `fsutil reparsepoint query` 或 `Get-Item .strategy` 确认是否为 reparse point
+- 若需清理 CLI 专属文件，只操作 `.strategy/cli/` 子目录，绝不触碰 `.strategy/` 根目录下的 `strategy.md`、`ROADMAP.md`、`v1.x.zip`
+- 优先使用 `git` 管理文档版本，避免手动删除
+
+### ⚠️ Windows 终端 + 中文输出 = 不可信（ critical ）
+
+PowerShell 默认代码页 **936 (GBK)**，会把 Python UTF-8 stdout 中的中文渲染为 `����` 乱码。
+**永远不要根据 PowerShell 终端中看到的中文字符串做判断。**
+
+**历史事故**：Round 19 Phase 1 inspect 中，终端乱码导致将 "想念小英雄" 误读为 "人生碎片"、将 "CTO 级别技术评审" 误读为 "投资决策"，进而做出了错误的 Gold Set 修正判定。
+
+**正确做法**：
+- 用 `ReadFile` / `Read` 工具读文件 / JSON / YAML —— 工具层做了 UTF-8 解码
+- 写 Python 脚本时把结果 `json.dump(..., ensure_ascii=False)` 到文件，再用 `ReadFile` 读
+- 必要时在脚本顶部 `sys.stdout.reconfigure(encoding='utf-8')` —— 但这只解决显示，不改变审计员看到的内容
+
+**任何"我在终端看到 X，所以判定 Y"的论证，必须先回答"X 是怎么从字节读到我眼里的"。经过 PowerShell stdout 的中文，等于经过一道有损压缩。**
+
 ### 测试防污染规则（强制）
 
 - **严禁**向真实用户数据目录写入测试数据
@@ -124,6 +149,18 @@ python tools/write_journal.py --data '{...}'
 - Push 前执行 `git ls-files | git check-ignore --stdin`，输出必须为空
 - 禁止提交 `.handoff.md`、`.pytest_tmp/`、`.recovery/`、调试标记等过程性/临时文件
 - 禁止提交个人环境配置（用户名、本地路径等）
+
+### 审计-代码耦合规则（强制）
+
+> **来源**: Round 19 Plan B+ Step 4 流程安全杠
+> **根因**: Round 18 commit `f13ff93` 写了 audit.md 却未改 golden_queries.yaml，导致 18 条应删除 query 全部存活到 Round 19
+
+**规则**: 任何声称修改代码 artifact（YAML/JSON/Python/config）的审计/ADR 文档，**必须在同一 commit 内包含该 artifact 的实际 diff**。只改 docs 不改 yaml/code 的 commit 应被 review 拒绝。
+
+**执行方式**:
+- PR review checklist 加一项："若 ADR/审计文档声称修改了数据/schema/config，请出示对应 artifact 的 diff"
+- 临时例外：若文档先行、代码后续，必须在文档中明确标注 `PENDING_IMPLEMENTATION: 代码变更将在 commit X 中完成`
+- 禁止状态：文档写"已删除"但代码未删 → 视为流程违规
 
 ---
 
