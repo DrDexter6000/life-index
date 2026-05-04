@@ -74,7 +74,11 @@ def add_to_index(index_file: Path, journal_path: Path, data: Dict[str, Any]) -> 
     """添加日志条目到索引文件"""
     date_str = data.get("date", "")[:10] if data.get("date") else ""
     title = data.get("title", "无标题")
-    rel_path = os.path.relpath(journal_path, get_journals_dir().parent).replace("\\", "/")
+    try:
+        rel_path = os.path.relpath(journal_path, get_journals_dir().parent).replace("\\", "/")
+    except ValueError:
+        # Cross-drive on Windows: fallback to absolute path
+        rel_path = str(journal_path).replace("\\", "/")
 
     entry = f"- [{date_str}] [{title}]({rel_path})"
 

@@ -48,7 +48,7 @@ class TestCrashRecovery:
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
         monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
 
-        result = search_core.hierarchical_search(query="test", level=3)
+        result = search_core.hierarchical_search(query="test", level=3, semantic=False)
         assert result["success"] is True
         # Should not crash; vector results may be empty
 
@@ -63,7 +63,7 @@ class TestCrashRecovery:
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
         monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
 
-        result = search_core.hierarchical_search(query="test", level=3)
+        result = search_core.hierarchical_search(query="test", level=3, semantic=False)
         assert result["success"] is True  # Search doesn't crash
         assert any("index_stale" in w for w in result.get("warnings", []))
 
@@ -87,7 +87,7 @@ class TestCrashRecovery:
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
         monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
 
-        search_core.hierarchical_search(query="test", level=3)
+        search_core.hierarchical_search(query="test", level=3, semantic=False)
         assert not has_pending(), "Pending should be consumed by search"
         assert len(build_calls) == 1
 
