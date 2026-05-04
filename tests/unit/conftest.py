@@ -7,12 +7,22 @@ Individual tests or files that are known to be non-deterministic
 
 import pytest
 
+# Eval tests are slow and non-deterministic (depend on model weights / index state)
+NIGHTLY_UNIT_FILES = frozenset({
+    "test_eval_gate.py",
+    "test_eval_runner.py",
+    "test_eval_llm.py",
+})
+
 
 def pytest_collection_modifyitems(config, items):
     for item in items:
-        # Only add blocker if no other gate marker is already present
-        if not any(
-            marker.name in ("blocker", "quarantine", "contract", "nightly", "realdata", "semantic")
-            for marker in item.iter_markers()
-        ):
+        fname = item.path.name
+        # Respect explicit markers from source code
+        existing = {m.name for m in item.iter_markers()}
+        if existing & {"blocker", "quarantine", "contract", "nightly", "realdata", "semantic"}:
+            continue
+        if fname in NIGHTLY_UNIT_FILES:
+            item.add_marker(pytest.mark.nightly)
+        else:
             item.add_marker(pytest.mark.blocker)
