@@ -35,6 +35,7 @@ from ..lib.search_constants import (
     SEMANTIC_WEIGHT_DEFAULT,
     FTS_WEIGHT_DEFAULT,
     MAX_RESULTS_DEFAULT,
+    STRUCTURED_RETRIEVAL_ENABLED,
 )
 
 # 导入子模块
@@ -825,6 +826,34 @@ def hierarchical_search(
             kw_perf,
         ) = future_keyword.result()
         semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
+
+    # R1-Prep: Structured metadata retrieval
+    # When search_plan has both date_range and topic_hints, supplement L2
+    # with pure metadata matches (no keyword filtering) so that logs matching
+    # the structured intent but lacking query keywords in body can still enter
+    # the candidate set. Source is marked for explainability.
+    _structured_l2_added: list[str] = []
+    if STRUCTURED_RETRIEVAL_ENABLED and _plan and _plan.date_range and _plan.topic_hints:
+        for hint in _plan.topic_hints:
+            _structured = search_l2_metadata(
+                date_from=date_from,
+                date_to=date_to,
+                topic=hint,
+                query=None,  # No keyword filtering — pure metadata match
+            )
+            for r in _structured["results"]:
+                r["source"] = "structured_metadata"
+                if r["path"] not in {x["path"] for x in l2_results}:
+                    l2_results.append(r)
+                    _structured_l2_added.append(r["path"])
+                    # Ensure the path is in candidate_paths so it survives filtering
+                    if candidate_paths is not None:
+                        candidate_paths.add(r["path"])
+        if _structured_l2_added:
+            result["warnings"].append(
+                "structured_metadata: added "
+                f"{len(_structured_l2_added)} candidates from date_range+topic_hints"
+            )
 
     l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
     l2_results = _filter_results_by_candidates(l2_results, candidate_paths)

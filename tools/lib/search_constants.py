@@ -224,6 +224,12 @@ TOPIC_HINT_BOOST: float = 1.1
 # Minimum score for non-RRF results (pure keyword/semantic)
 NON_RRF_MIN_SCORE: int = 10
 
+# R1-Prep: Enable structured metadata retrieval when search_plan provides
+# both date_range and topic_hints. This supplements the keyword pipeline
+# with pure metadata matches (no keyword filtering) to recall logs whose
+# body lacks query keywords but whose topic/date align with user intent.
+STRUCTURED_RETRIEVAL_ENABLED: bool = True
+
 
 # =============================================================================
 # Result Limits
@@ -404,4 +410,9 @@ __all__ = [
     "FUZZY_TYPO_RATIO_THRESHOLD",
     "FUZZY_TYPO_LEN_DIFF_MAX",
     "NOISE_GATE_TYPO_NEAR_LOW",
+    # Structured Metadata Retrieval (R1-Prep)
+    # When search_plan has both date_range and topic_hints, supplement
+    # keyword pipeline with pure metadata matches to recall logs whose
+    # body lacks query keywords but whose topic/date match the intent.
+    "STRUCTURED_RETRIEVAL_ENABLED",
 ]
