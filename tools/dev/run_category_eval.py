@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run eval and report category failure rates."""
+
 from __future__ import annotations
 
 import sys

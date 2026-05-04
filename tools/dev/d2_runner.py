@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """D2: Per-query MRR diff between v3 baseline and current code."""
+
 import json
 from pathlib import Path
 from tools.eval.run_eval import run_evaluation

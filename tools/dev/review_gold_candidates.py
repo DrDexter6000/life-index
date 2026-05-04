@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Review and fix generated Gold Set candidates."""
+
 from __future__ import annotations
 
 import yaml

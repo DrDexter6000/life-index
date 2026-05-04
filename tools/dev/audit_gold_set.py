@@ -6,6 +6,7 @@
     python -m tools.dev.audit_gold_set --check-concept "数字灵魂" --mode exact
     python -m tools.dev.audit_gold_set --check-concept "边缘计算" --mode keyword
 """
+
 from __future__ import annotations
 
 import argparse

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Per-query Recall@5 diff between v3 baseline and current code."""
+
 import json
 from pathlib import Path
 from tools.eval.run_eval import run_evaluation

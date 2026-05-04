@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Extract journal metadata for Gold Set generation."""
+
 from __future__ import annotations
 
 import json

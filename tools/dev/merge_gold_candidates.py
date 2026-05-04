@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Merge reviewed candidates into golden_queries.yaml."""
+
 from __future__ import annotations
 
 import yaml

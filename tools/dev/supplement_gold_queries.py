@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Supplement additional Gold Set queries to reach 150+."""
+
 from __future__ import annotations
 
 import yaml

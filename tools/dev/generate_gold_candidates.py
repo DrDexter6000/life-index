@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Generate Gold Set query candidates from real journal metadata."""
+
 from __future__ import annotations
 
 import json
