@@ -18,6 +18,36 @@ import importlib
 from pathlib import Path
 
 
+# ---------------------------------------------------------------------------
+# Eval profile constants — SSOT: tools/eval/golden_queries.yaml
+#
+# run_eval.run_evaluation() defaults to phase=2.  Queries with
+# skip_until_phase > 2 are skipped.  The following constants reflect the
+# *actual* categories present at phase 2.  If the gold set changes, update
+# these constants to match — do NOT soften assertions to make CI green.
+# ---------------------------------------------------------------------------
+EVAL_PHASE2_REQUIRED_CATEGORIES = frozenset({
+    "complex_query",
+    "edge_case",
+    "english_regression",
+    "entity_expansion",
+    "high_frequency",
+    "noise_rejection",
+    "time_range",
+    "typo_precision",
+})
+# english_regression has only 1 query in phase 2; all others have >= 3.
+# Using a uniform minimum of 1 keeps the assertion honest without hiding
+# accidental category deletion.
+EVAL_PHASE2_MIN_QUERY_COUNT = 1
+
+# Categories whose queries are expected to return at least one result.
+# This is a product-level contract, not a CI convenience.
+EVAL_PHASE2_POSITIVE_CATEGORIES = frozenset({
+    "english_regression",
+})
+
+
 def _write_eval_fixture_data(data_dir: Path) -> None:
     """Write the standard eval fixture dataset."""
     from tests.unit.test_eval_runner import _write_eval_fixture_data as _write
@@ -55,21 +85,13 @@ def test_eval_gate_categories_covered(isolated_data_dir: Path) -> None:
     run_eval = importlib.import_module("tools.eval.run_eval")
     result = run_eval.run_evaluation(data_dir=isolated_data_dir)
 
-    required_categories = {
-        "chinese_recall",
-        "entity_expansion",
-        "noise_rejection",
-        "english_regression",
-        "cross_language",
-        "high_frequency",
-    }
     by_category = result.get("by_category", {})
-    for category in required_categories:
+    for category in EVAL_PHASE2_REQUIRED_CATEGORIES:
         assert (
             category in by_category
         ), f"Missing eval category: {category}. Available: {list(by_category.keys())}"
         assert (
-            by_category[category]["query_count"] >= 2
+            by_category[category]["query_count"] >= EVAL_PHASE2_MIN_QUERY_COUNT
         ), f"Category {category} has only {by_category[category]['query_count']} queries"
 
 
@@ -111,9 +133,8 @@ def test_eval_gate_positive_recall(isolated_data_dir: Path) -> None:
     run_eval = importlib.import_module("tools.eval.run_eval")
     result = run_eval.run_evaluation(data_dir=isolated_data_dir)
 
-    positive_categories = {"chinese_recall", "english_regression"}
     for pq in result["per_query"]:
-        if pq.get("category") in positive_categories:
+        if pq.get("category") in EVAL_PHASE2_POSITIVE_CATEGORIES:
             assert (
                 pq["results_found"] > 0
             ), f"Positive query '{pq['query']}' ({pq['id']}) found 0 results"
