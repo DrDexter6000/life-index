@@ -31,7 +31,12 @@ import os
 import re
 import unicodedata
 
-from rapidfuzz import fuzz
+from tools.lib.search_constants import (
+    FUZZY_TYPO_CANONICALS,
+    FUZZY_TYPO_LEN_DIFF_MAX,
+    FUZZY_TYPO_RATIO_THRESHOLD,
+    NOISE_GATE_TYPO_NEAR_LOW,
+)
 
 # Regex for recognizable English words (≥3 letters)
 _ENGLISH_WORD_RE = re.compile(r"[a-zA-Z]{3,}")
@@ -136,18 +141,16 @@ def is_noise_query(query: str | None) -> tuple[bool, str | None]:
     # Rule 8: typo_near_noise — mid-similarity to canonical terms but below
     # fuzzy correction threshold. Prevents OR-token leakage on near-typo
     # queries (e.g. "life indxxx", "lyf index").
-    # Only for ASCII queries with len-diff <= 2 against known canonicals.
-    _TYPO_FUZZY_CANONICALS = ("life index",)
-    _FUZZY_RATIO_THRESHOLD = 85
-    _FUZZY_LEN_DIFF_MAX = 2
-    _RULE8_LOW = 65
+    # Only for ASCII queries with len-diff <= max against known canonicals.
     if stripped.isascii():
         q = stripped.lower()
-        for canonical in _TYPO_FUZZY_CANONICALS:
-            if abs(len(q) - len(canonical)) > _FUZZY_LEN_DIFF_MAX:
+        for canonical in FUZZY_TYPO_CANONICALS:
+            if abs(len(q) - len(canonical)) > FUZZY_TYPO_LEN_DIFF_MAX:
                 continue
-            ratio = fuzz.ratio(q, canonical)
-            if _RULE8_LOW <= ratio < _FUZZY_RATIO_THRESHOLD:
+            from rapidfuzz.distance import Levenshtein
+
+            sim = Levenshtein.normalized_similarity(q, canonical)
+            if sim is not None and NOISE_GATE_TYPO_NEAR_LOW <= sim < FUZZY_TYPO_RATIO_THRESHOLD:
                 return True, "typo_near_noise"
 
     return False, None

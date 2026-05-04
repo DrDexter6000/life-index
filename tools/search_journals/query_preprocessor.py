@@ -13,6 +13,11 @@ import re
 from datetime import date, timedelta
 
 from .query_types import DateRange, IntentType, QueryMode, SearchPlan
+from tools.lib.search_constants import (
+    FUZZY_TYPO_CANONICALS,
+    FUZZY_TYPO_LEN_DIFF_MAX,
+    FUZZY_TYPO_RATIO_THRESHOLD,
+)
 
 # Chinese numerals for month parsing
 _CN_NUMERALS: dict[str, int] = {
@@ -114,31 +119,27 @@ _TYPO_CORRECTIONS: dict[str, str] = {
     "life indx": "life index",
 }
 
-# Fuzzy typo canonicals (fallback when exact-match misses)
-_TYPO_FUZZY_CANONICALS: tuple[str, ...] = ("life index",)
-
-_FUZZY_RATIO_THRESHOLD = 85
-_FUZZY_LEN_DIFF_MAX = 2
-
 
 def _fuzzy_correct_typo(query: str) -> str | None:
-    """Fuzzy typo correction fallback using rapidfuzz.
+    """Fuzzy typo correction fallback using standard Levenshtein similarity.
 
     Only activates for ASCII queries against the canonical list.
-    Requires ratio >= 85 and len-diff <= 2.
+    Requires normalized Levenshtein similarity >= threshold and len-diff <= max.
     Exact canonical match returns None (fast-path dict handles it).
     Returns the canonical string if matched, else None.
     """
     if not query or not query.isascii():
         return None
     q = query.lower().strip()
-    for canonical in _TYPO_FUZZY_CANONICALS:
+    for canonical in FUZZY_TYPO_CANONICALS:
         if q == canonical:
             return None
-        if abs(len(q) - len(canonical)) > _FUZZY_LEN_DIFF_MAX:
+        if abs(len(q) - len(canonical)) > FUZZY_TYPO_LEN_DIFF_MAX:
             continue
-        ratio = __import__("rapidfuzz").fuzz.ratio(q, canonical)
-        if ratio >= _FUZZY_RATIO_THRESHOLD:
+        from rapidfuzz.distance import Levenshtein
+
+        sim = Levenshtein.normalized_similarity(q, canonical)
+        if sim is not None and sim >= FUZZY_TYPO_RATIO_THRESHOLD:
             return canonical
     return None
 

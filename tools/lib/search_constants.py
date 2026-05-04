@@ -317,6 +317,28 @@ ORCHESTRATOR_MAX_LLM_CANDIDATES: int = 15
 
 
 # =============================================================================
+# Fuzzy Typo Correction Constants (Round 19 Phase 1-D C1-fuzzy)
+# =============================================================================
+
+# Canonical strings for fuzzy typo correction fallback.
+# Only "life index" is in scope per plan §3.C1a.1; expansion is R1+ territory.
+FUZZY_TYPO_CANONICALS: tuple[str, ...] = ("life index",)
+
+# Standard Levenshtein normalized similarity threshold for fuzzy correction.
+# Queries with similarity >= this value are auto-corrected to the canonical.
+# Per plan §3.C1a.1 and Mode A Option B (exchange no.11 audit).
+FUZZY_TYPO_RATIO_THRESHOLD: float = 0.85
+
+# Maximum allowed length difference between query and canonical.
+# Prevents false corrections on extended phrases (e.g. "Life Index 2.0").
+FUZZY_TYPO_LEN_DIFF_MAX: int = 2
+
+# Lower bound for Rule 8 typo_near_noise gate.
+# Mid-similarity queries in [LOW, THRESHOLD) are blocked as near-typo noise.
+NOISE_GATE_TYPO_NEAR_LOW: float = 0.65
+
+
+# =============================================================================
 # Export all constants
 # =============================================================================
 
@@ -377,4 +399,9 @@ __all__ = [
     "KEYWORD_TOKEN_HIT_RATIO",
     # Orchestrator
     "ORCHESTRATOR_MAX_LLM_CANDIDATES",
+    # Fuzzy Typo Correction
+    "FUZZY_TYPO_CANONICALS",
+    "FUZZY_TYPO_RATIO_THRESHOLD",
+    "FUZZY_TYPO_LEN_DIFF_MAX",
+    "NOISE_GATE_TYPO_NEAR_LOW",
 ]

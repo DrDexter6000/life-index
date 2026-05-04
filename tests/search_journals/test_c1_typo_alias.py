@@ -109,9 +109,8 @@ class TestFuzzyTypoCorrection:
         assert _fuzzy_correct_typo("lif index") == "life index"
 
     def test_fuzzy_rejects_life_indxxx_below_threshold(self) -> None:
-        # Brief spec: ratio ≈ 0.818 < 0.85 → should return None (leave to Rule 8).
-        # REPL实测: ratio = 85.7 ≥ 85. This test asserts the brief-specified
-        # behavior; if it fails, the red signal is surfaced correctly.
+        # Standard Levenshtein normalized_similarity = 0.818 < 0.85
+        # → should return None (leave to Rule 8).
         assert _fuzzy_correct_typo("life indxxx") is None
 
     def test_fuzzy_rejects_extended_query_by_len_guard(self) -> None:
@@ -135,9 +134,8 @@ class TestNoiseGateRule8:
     """Rule 8: typo_near_noise blocks mid-similarity queries."""
 
     def test_rule8_blocks_life_indxxx(self) -> None:
-        # Brief spec: ratio in [65, 85) → should be blocked by Rule 8.
-        # REPL实测: ratio = 85.7 (above 85 upper bound). This test asserts
-        # the brief-specified behavior; failure surfaces the red signal.
+        # Standard Levenshtein normalized_similarity = 0.818 in [0.65, 0.85)
+        # → should be blocked by Rule 8.
         blocked, reason = is_noise_query("life indxxx")
         assert blocked
         assert reason == "typo_near_noise"
