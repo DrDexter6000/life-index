@@ -1,6 +1,6 @@
 # ADR Index — Architecture Decision Records
 
-> **最后更新**: 2026-05-01 (Round 17 Phase 4-A)
+> **最后更新**: 2026-05-04 (Round 19 Phase 1-D，新增 ADR-025)
 > **分类标准**: 🔒 Invariant = 不变量级（不可违反，违反需走 CHARTER 修订流程）；📋 Decision = 决策级（可随参数调优而变化）
 
 ---
@@ -26,6 +26,13 @@
 | ADR-015 | Tukey IQR Fence for Dynamic Thresholds | 📋 Decision | 内容在 `search_constants.py` + `ranking.py` 注释中；文件缺失 |
 | ADR-016 | Query Preprocessor | 📋 Decision | 确定性查询理解层；文件存在 |
 | ADR-017 | Write-Through Pending Queue | 📋 Decision | 写入穿透缓存队列；文件存在 |
+| ADR-021 | Round 17 Phase 6-A Param Slim Deviation | 📋 Decision | Round 17 deviation；文件存在；本表未及时回填 |
+| ADR-022 | Round 17 Phase 5 Orchestrator MVP Deviation | 📋 Decision | Round 17 deviation；文件存在；本表未及时回填 |
+| ADR-023 | Round 17 Baseline 5 Metrics Completion | 📋 Decision | Round 17 baseline；文件存在；本表未及时回填 |
+| ADR-024 | Entity Schema v0 | 📋 Decision | Pilot 实体标注 schema 冻结；文件存在 |
+| ADR-025 | Phase 1-D Baseline v3 → v4 Migration | 📋 Decision | Round 19 Phase 1-D baseline rebaseline；文件存在 |
+
+> **注**：ADR-018/019/020 编号被预留但未使用；ADR-021~024 来自 Round 17/18，文件已落库但本 INDEX 表先前未及时回填，本次随 ADR-025 一并补登。
 
 ---
 
@@ -59,8 +66,8 @@
 
 ## 统计
 
-- **总计**: 17 条 ADR (ADR-001 ~ ADR-017)
-- **文件存在**: 10 条
+- **总计**: 22 条 ADR (ADR-001 ~ ADR-017, ADR-021 ~ ADR-025；ADR-018/019/020 编号未使用)
+- **文件存在**: 15 条
 - **文件缺失**: 7 条（内容在 search_constants.py 注释中）
 - **🔒 Invariant**: 1 条 (ADR-008)
-- **📋 Decision**: 16 条
+- **📋 Decision**: 21 条
