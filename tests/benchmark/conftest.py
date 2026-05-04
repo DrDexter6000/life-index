@@ -149,4 +149,3 @@ def l2_metadata_100(
         }
         for j in synthetic_journals_100
     ]
-
