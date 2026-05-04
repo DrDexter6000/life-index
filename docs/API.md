@@ -1019,6 +1019,245 @@ python -m tools.backup [options]
 
 ---
 
+## entity
+
+### 端点
+
+```bash
+python -m tools.entity [options]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--list` | flag | ❌ | false | 列出实体图谱中的所有实体 |
+| `--type` | string | ❌ | - | 按类型过滤（如 `person`, `place`, `concept`） |
+| `--add` | string | ❌ | - | 添加新实体（JSON 格式） |
+| `--resolve` | string | ❌ | - | 解析实体名称歧义 |
+| `--update` | flag | ❌ | false | 更新实体属性（需 `--id` 和 `--add-alias`） |
+| `--audit` | flag | ❌ | false | 执行实体质量审计 |
+| `--stats` | flag | ❌ | false | 输出图谱统计 |
+| `--check` | flag | ❌ | false | 执行图谱完整性检查 |
+| `--review` | flag | ❌ | false | 打开 Review Hub（风险优先审订队列） |
+| `--merge` | string | ❌ | - | 合并实体（需 `--id` 和 `--target-id`） |
+| `--delete` | flag | ❌ | false | 删除指定实体（需 `--id`） |
+| `--id` | string | 条件必填 | - | 源实体 ID |
+| `--target-id` | string | 条件必填 | - | 目标实体 ID（用于 merge） |
+| `--add-alias` | string | ❌ | - | 为实体添加别名（配合 `--update`） |
+| `--action` | enum | ❌ | - | `merge_as_alias` / `keep_separate` / `skip` / `preview` |
+| `--export` | enum | ❌ | - | 导出格式：`csv` / `xlsx`（配合 `--review`） |
+| `--import` | string | ❌ | - | 从文件导入审订结果（配合 `--review`） |
+| `--output` | string | ❌ | - | 指定输出文件路径（配合 `--review --export`） |
+| `--seed` | flag | ❌ | false | 从 journal frontmatter 冷启动图谱 |
+
+### 主要操作模式
+
+#### `entity --audit`
+
+执行实体质量审计：
+
+```bash
+life-index entity --audit
+```
+
+返回（标准 envelope）：
+
+```json
+{
+  "success": true,
+  "data": {
+    "audit_date": "2026-04-09",
+    "total_entities": 42,
+    "issues": [
+      {
+        "type": "possible_duplicate",
+        "severity": "high",
+        "entities": ["妈妈", "母亲"],
+        "entity_ids": ["p001", "p002"],
+        "confidence": 0.9,
+        "evidence": "alias overlap: ...",
+        "suggested_action": "merge"
+      },
+      {
+        "type": "orphan_entity",
+        "severity": "medium",
+        "entity_id": "p003",
+        "primary_name": "旧同事A",
+        "message": "实体 '旧同事A' 在日志中零引用",
+        "suggested_action": "archive"
+      }
+    ],
+    "summary": {"high": 1, "medium": 1, "low": 0}
+  },
+  "error": null
+}
+```
+
+#### `entity --stats`
+
+输出图谱统计：
+
+```bash
+life-index entity --stats
+```
+
+返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "total_entities": 42,
+    "by_type": {"person": 15, "place": 8, "concept": 19},
+    "total_aliases": 23,
+    "total_relationships": 56,
+    "top_referenced": [
+      {"entity_id": "p001", "incoming_count": 12}
+    ],
+    "top_cooccurrence": [
+      {"entities": ["p001", "p002"], "cooccurrence": 5}
+    ]
+  },
+  "error": null
+}
+```
+
+#### `entity --check`
+
+执行图谱完整性检查：
+
+```bash
+life-index entity --check
+```
+
+返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "total_entities": 42,
+    "issues": [
+      {
+        "type": "dangling_relationship",
+        "severity": "high",
+        "entity_id": "p001",
+        "target": "p999",
+        "relation": "friend",
+        "description": "Entity p001 references non-existent target p999"
+      },
+      {
+        "type": "duplicate_lookup",
+        "severity": "medium",
+        "name": "小明",
+        "entity_ids": ["p001", "p002"],
+        "description": "Name '小明' resolves to multiple entities: ['p001', 'p002']"
+      }
+    ],
+    "summary": {
+      "dangling_relationships": 1,
+      "duplicate_lookups": 1,
+      "schema_issues": 0
+    }
+  },
+  "error": null
+}
+```
+
+#### `entity --review`
+
+打开 Review Hub，返回风险优先审订队列：
+
+```bash
+life-index entity --review
+```
+
+返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "queue": [
+      {
+        "item_id": "review-1",
+        "risk_level": "high",
+        "category": "possible_duplicate",
+        "description": "alias overlap: ...",
+        "action_choices": ["merge_as_alias", "keep_separate", "skip"],
+        "entity_ids": ["p001", "p002"],
+        "suggested_action": "merge"
+      }
+    ],
+    "total": 1
+  },
+  "error": null
+}
+```
+
+#### `entity --merge`
+
+合并实体。`--merge` 需要一个参数值（当前实现中该值未被使用，实际 source 以 `--id` 为准）：
+
+```bash
+life-index entity --merge p001 --id p001 --target-id p002
+```
+
+返回：
+
+```json
+{
+  "success": true,
+  "action": "merge_as_alias",
+  "source_id": "p001",
+  "target_id": "p002",
+  "transferred_names": ["旧名字", "别名A"]
+}
+```
+
+#### `entity --delete --id ENTITY_ID`
+
+删除实体。执行前会报告引用该实体的其他实体：
+
+```bash
+life-index entity --delete --id p003
+```
+
+返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "deleted_id": "p003",
+    "deleted_name": "旧同事A",
+    "cleaned_refs": [
+      {"entity_id": "p001", "relation": "colleague"}
+    ]
+  },
+  "error": null
+}
+```
+
+#### `entity --seed`
+
+从现有 journal frontmatter 中冷启动实体图谱：
+
+```bash
+life-index entity --seed
+```
+
+### Agent 使用约束
+
+- **review / merge / delete 是高风险操作**，必须在调用前明确目标实体和确认策略
+- `--audit` 结果中的 `suggested_action` 仅为建议，最终合并/删除决策需用户确认
+- `--seed` 会从 journal frontmatter 冷启动/补充 `entity_graph.yaml`；已有实体不会被修改。首次启用或批量补充前建议备份现有图谱
+- `--check` 应在 `--audit` 之前运行，作为快速健康检查
+- `--merge` 的接口设计有历史包袱：必须传一个参数值，但实际 source 由 `--id` 指定
+
+---
+
 ## Topic 分类定义
 
 | Topic | 含义 | 示例场景 |
@@ -1201,21 +1440,9 @@ life-index version
 
 **错误码**：E0800（迁移路径不存在）、E0801（文件解析失败）、E0802（迁移执行失败）、E0803（文件写入失败）
 
-### `life-index entity --audit` — Entity 质量审计
+### `life-index entity` — 实体图谱管理
 
-输出：
-
-```json
-{
-  "audit_date": "2026-04-09",
-  "total_entities": 42,
-  "issues": [
-    {"type": "possible_duplicate", "severity": "high", "entities": ["妈妈", "母亲"], "confidence": 0.9, "suggested_action": "merge"},
-    {"type": "orphan_entity", "severity": "medium", "entity_id": "p003", "suggested_action": "archive"}
-  ],
-  "summary": {"high": 1, "medium": 1, "low": 0}
-}
-```
+Entity 管理工具在 Round 6 引入，现已成为独立一级命令。完整参数、操作模式、返回值结构和 Agent 约束见上文 `## entity` 章节。
 
 ### Response: `events` 字段
 

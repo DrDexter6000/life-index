@@ -1,7 +1,7 @@
 <!-- AGENTS.md - Life Index Agent 导航入口 -->
 
 > 本文档为 AI 编码代理提供**快速导航入口**。详细规范已归源到 SSOT 文档，本文件仅保留指引与 Agent 行为约束。
-> **最后更新**: 2026-04-23 | **版本**: v3.0 | **状态**: 活跃维护
+> **最后更新**: 2026-05-04 | **AGENTS.md 文档版本**: v3.0 | **状态**: 活跃维护
 >
 > 本地专属配置（含部署路径）见 `.agents.local.md`（已 gitignored，仅本地可用）。
 
@@ -21,7 +21,7 @@
 
 **Life Index** 是一个 Agent-Native、local-first 的个人人生日志与检索系统。
 
-- **CLI 原子工具**：write / search / smart-search / edit / abstract / weather / index / backup / migrate
+- **CLI 原子工具**：write / confirm / search / smart-search / edit / abstract / weather / index / generate-index / backup / verify / timeline / migrate / eval / entity / health / version / --data-audit
 - 用户通过自然语言 + Agent 调用 Python CLI 工具
 
 **核心理念**:
@@ -68,17 +68,28 @@
 
 ```bash
 life-index write --data '{"title":"...","content":"...","date":"2026-03-07","topic":"work"}'
+life-index confirm                          # 应用 write 确认更新
 life-index search --query "关键词" --level 3
+life-index smart-search --query "自然语言查询"
 life-index edit --journal "Journals/2026/03/life-index_2026-03-07_001.md" --set-weather "晴天"
-life-index abstract --month 2026-03
+life-index abstract --month 2026-03         # 别名：generate-index
 life-index weather --location "Lagos,Nigeria"
-life-index backup --dest "D:/Backups/Life-Index"
 life-index index           # 增量更新
 life-index index --rebuild # 全量重建
+life-index generate-index  # 生成索引树（monthly/yearly/root）
+life-index backup --dest "D:/Backups/Life-Index"
+life-index verify          # 数据完整性校验
+life-index timeline        # 输出时序摘要流
 life-index migrate --dry-run
+life-index migrate --apply
 life-index entity --audit
-life-index smart-search --query "自然语言查询"
-life-index eval
+life-index entity --stats
+life-index entity --check
+life-index entity --review
+life-index eval            # 搜索评估门
+life-index health          # 安装健康检查
+life-index version         # 显示版本信息
+life-index --data-audit    # 审计数据目录异常
 
 # 开发者模式（无需安装）
 python -m tools.write_journal --data '{...}'
