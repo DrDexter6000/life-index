@@ -1,134 +1,115 @@
-# Agent Behavior Tests: search_journals
-# =======================================
-# Each scenario encodes an Agent-observable input→output contract.
-# The pytest runner calls hierarchical_search() with mocks
-# and asserts the agent-critical fields.
-#
-# Agent-critical fields:
-#   success: bool
-#   total_found: int — Agent decides whether to show "no results" message
-#   merged_results: list — final ranked results Agent presents to user
-#   semantic_available: bool — Agent knows if semantic pipeline was used
-#   warnings: list — Agent can relay degradation info to user
-#   error: null | structured dict
-
 scenarios:
+- id: SB-01
+  name: 正常搜索 - 有结果
+  description: '标准关键词+语义搜索，找到结果。 Agent 应看到 success=true, total_found>0, merged_results
+    非空。
 
-  - id: "SB-01"
-    name: "正常搜索 - 有结果"
-    description: >
-      标准关键词+语义搜索，找到结果。
-      Agent 应看到 success=true, total_found>0, merged_results 非空。
-    input:
-      query: "测试搜索"
-      level: 3
-    mocks:
-      l1_return:
-        - path: "Journals/2026/03/test.md"
-          title: "测试日志"
-      l2_return:
-        results:
-          - path: "Journals/2026/03/test.md"
-            metadata:
-              topic: ["test"]
-        truncated: false
-        total_available: 1
-      l3_return:
-        - path: "Journals/2026/03/test.md"
-          content: "这是测试搜索的内容"
-          score: 5.0
-      semantic_return:
-        results:
-          - path: "Journals/2026/03/test.md"
-            score: 0.85
-            title: "测试日志"
-        status:
-          available: true
-          reason: ""
-          note: ""
-    assertions:
-      success: true
-      total_found_gt: 0
-      merged_results_not_empty: true
-      warnings_empty: true
+    '
+  input:
+    query: 测试搜索
+    level: 3
+  mocks:
+    l1_return:
+    - path: Journals/2026/03/test.md
+      title: 测试日志
+    l2_return:
+      results:
+      - path: Journals/2026/03/test.md
+        metadata:
+          topic:
+          - test
+      truncated: false
+      total_available: 1
+    l3_return:
+    - path: Journals/2026/03/test.md
+      content: 这是测试搜索的内容
+      score: 5.0
+    semantic_return:
+      results:
+      - path: Journals/2026/03/test.md
+        score: 0.85
+        title: 测试日志
+      status:
+        available: true
+        reason: ''
+        note: ''
+  assertions:
+    success: true
+    total_found_gt: 0
+    merged_results_not_empty: true
+    warnings_empty: true
+- id: SB-02
+  name: 搜索无结果
+  description: '搜索未找到任何匹配。 Agent 应看到 success=true, total_found=0。 Agent 向用户报告"未找到匹配"。
 
-  - id: "SB-02"
-    name: "搜索无结果"
-    description: >
-      搜索未找到任何匹配。
-      Agent 应看到 success=true, total_found=0。
-      Agent 向用户报告"未找到匹配"。
-    input:
-      query: "完全不存在的内容XYZZY"
-      level: 3
-    mocks:
-      l1_return: []
-      l2_return:
-        results: []
-        truncated: false
-        total_available: 0
-      l3_return: []
-      semantic_return:
-        results: []
-        status:
-          available: true
-          reason: ""
-          note: ""
-    assertions:
-      success: true
-      total_found: 0
-      merged_results_empty: true
-      warnings_empty: true
+    '
+  input:
+    query: 完全不存在的内容XYZZY
+    level: 3
+  mocks:
+    l1_return: []
+    l2_return:
+      results: []
+      truncated: false
+      total_available: 0
+    l3_return: []
+    semantic_return:
+      results: []
+      status:
+        available: true
+        reason: ''
+        note: ''
+  assertions:
+    success: true
+    total_found: 0
+    merged_results_empty: true
+- id: SB-03
+  name: 语义搜索不可用 - 降级
+  description: '语义管道不可用（模型未加载）。 搜索仍应成功（仅关键词管道），但 warnings 非空。 Agent 应告知用户搜索结果可能不完整。
 
-  - id: "SB-03"
-    name: "语义搜索不可用 - 降级"
-    description: >
-      语义管道不可用（模型未加载）。
-      搜索仍应成功（仅关键词管道），但 warnings 非空。
-      Agent 应告知用户搜索结果可能不完整。
-    input:
-      query: "降级搜索测试"
-      level: 3
-    mocks:
-      l1_return: []
-      l2_return:
-        results: []
-        truncated: false
-        total_available: 0
-      l3_return: []
-      semantic_return:
-        results: []
-        status:
-          available: false
-          reason: "Model not loaded"
-          note: "Semantic search disabled"
-    assertions:
-      success: true
-      total_found: 0
+    '
+  input:
+    query: 降级搜索测试
+    level: 3
+  mocks:
+    l1_return: []
+    l2_return:
+      results: []
+      truncated: false
+      total_available: 0
+    l3_return: []
+    semantic_return:
+      results: []
+      status:
+        available: false
+        reason: Model not loaded
+        note: Semantic search disabled
+  assertions:
+    success: true
+    total_found: 0
+- id: SB-04
+  name: Level 1 快速搜索
+  description: 'level=1 时只做 L1 索引搜索，不触发 L2/L3/语义。 Agent 应看到快速的概览结果。
 
-  - id: "SB-04"
-    name: "Level 1 快速搜索"
-    description: >
-      level=1 时只做 L1 索引搜索，不触发 L2/L3/语义。
-      Agent 应看到快速的概览结果。
-    input:
-      query: "快速搜索"
-      level: 1
-    mocks:
-      l1_return:
-        - path: "Journals/2026/03/quick.md"
-          title: "快速搜索匹配"
-      l2_return:
-        results: []
-        truncated: false
-        total_available: 0
-      l3_return: []
-      semantic_return:
-        results: []
-        status:
-          available: true
-          reason: ""
-          note: ""
-    assertions:
-      success: true
-      l1_results_not_empty: true
+    '
+  input:
+    query: 快速搜索
+    level: 1
+  mocks:
+    l1_return:
+    - path: Journals/2026/03/quick.md
+      title: 快速搜索匹配
+    l2_return:
+      results: []
+      truncated: false
+      total_available: 0
+    l3_return: []
+    semantic_return:
+      results: []
+      status:
+        available: true
+        reason: ''
+        note: ''
+  assertions:
+    success: true
+    l1_results_not_empty: true

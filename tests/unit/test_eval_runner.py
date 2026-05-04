@@ -14,9 +14,7 @@ def _load_eval_llm_module():
     return import_module("tools.eval.llm_client")
 
 
-GOLDEN_QUERIES_PATH = (
-    Path(__file__).resolve().parents[2] / "tools" / "eval" / "golden_queries.yaml"
-)
+GOLDEN_QUERIES_PATH = Path(__file__).resolve().parents[2] / "tools" / "eval" / "golden_queries.yaml"
 
 
 JOURNALS = [
@@ -222,7 +220,7 @@ def test_golden_queries_yaml_is_valid() -> None:
 
     assert isinstance(payload, dict)
     assert isinstance(payload.get("queries"), list)
-    assert 20 <= len(payload["queries"]) <= 100
+    assert 20 <= len(payload["queries"]) <= 150
 
     required_categories = {
         "chinese_recall",
@@ -270,9 +268,7 @@ def test_eval_runner_with_isolated_data(isolated_data_dir: Path) -> None:
     assert "tokenizer_version" in result
 
 
-def test_eval_baseline_save_and_compare(
-    isolated_data_dir: Path, tmp_path: Path
-) -> None:
+def test_eval_baseline_save_and_compare(isolated_data_dir: Path, tmp_path: Path) -> None:
     _write_eval_fixture_data(isolated_data_dir)
 
     from tools.eval.run_eval import compare_against_baseline, run_evaluation
@@ -597,9 +593,7 @@ def test_compare_with_llm_metrics(tmp_path: Path, monkeypatch) -> None:
                         "first_relevant_rank": 1,
                     }
                 ],
-                "recall_gaps": [
-                    {"query_id": "Q1", "expected_but_missed": ["想念我的女儿"]}
-                ],
+                "recall_gaps": [{"query_id": "Q1", "expected_but_missed": ["想念我的女儿"]}],
             },
             ensure_ascii=False,
         ),
@@ -614,9 +608,7 @@ def test_compare_with_llm_metrics(tmp_path: Path, monkeypatch) -> None:
                 "precision_at_5": 0.8,
                 "ndcg_at_5": 0.88,
             },
-            "per_query": [
-                {"id": "Q1", "query": "乐乐", "pass": True, "first_relevant_rank": 1}
-            ],
+            "per_query": [{"id": "Q1", "query": "乐乐", "pass": True, "first_relevant_rank": 1}],
             "recall_gaps": [{"query_id": "Q1", "expected_but_missed": ["重庆过生日"]}],
         },
     )

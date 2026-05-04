@@ -14,7 +14,7 @@ def test_charter_exists_and_signed():
     charter = REPO_ROOT / "CHARTER.md"
     assert charter.exists(), "CHARTER.md must exist"
     text = charter.read_text(encoding="utf-8")
-    assert "v1.1.0" in text, "CHARTER must be v1.1.0+ (updated Phase 6-B)"
+    assert "v1.2.0" in text, "CHARTER must be v1.2.0+ (updated Phase 6-B)"
     assert "2026-04-23" in text, "CHARTER must be signed (批准日期)"
 
 
@@ -32,7 +32,7 @@ def test_golden_queries_count():
     assert gq.exists(), "golden_queries.yaml must exist"
     text = gq.read_text(encoding="utf-8")
     # Count entries by id pattern
-    ids = re.findall(r'- id: "GQ\d+"', text)
+    ids = re.findall(r'- id: "?GQ\d+"?', text)
     assert len(ids) >= 20, f"Expected >=20 golden queries, got {len(ids)}"
 
 

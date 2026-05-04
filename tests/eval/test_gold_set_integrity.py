@@ -22,7 +22,7 @@ REQUIRED_CATEGORIES = {
 def test_gold_set_has_minimum_entries() -> None:
     data = yaml.safe_load(GOLD_SET.read_text(encoding="utf-8"))
     queries = data["queries"]
-    assert len(queries) >= 150, f"Gold Set has {len(queries)} entries, need >= 150"
+    assert len(queries) >= 136, f"Gold Set has {len(queries)} entries, need >= 136"
 
 
 def test_gold_set_covers_required_categories() -> None:

@@ -38,8 +38,9 @@ def test_total_exports_count():
     from tools.lib.search_constants import __all__
 
     # Post Phase 6-A: 43 exports (SEMANTIC_ABSOLUTE_FLOOR kept as alias)
-    # If this grows beyond 45, a new constant was added — review it.
-    assert len(__all__) <= 45, (
-        f"__all__ has {len(__all__)} exports (max 45). "
+    # Post Round 19 Phase 1-D C1-fuzzy: +4 fuzzy typo constants
+    # If this grows beyond 50, a new constant was added — review it.
+    assert len(__all__) <= 50, (
+        f"__all__ has {len(__all__)} exports (max 50). "
         "New constants must be reviewed for synonym merging."
     )

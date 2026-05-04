@@ -129,8 +129,8 @@ class TestMergeAndRankResults:
 
         results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
-        # Base 30 + tags match 1 = 31
-        assert results[0]["relevance_score"] == 31
+        # Base 30 + tags match 3 = 33
+        assert results[0]["relevance_score"] == 33
 
     def test_l2_combined_scoring(self):
         """Test L2 results with multiple matches"""
@@ -146,8 +146,8 @@ class TestMergeAndRankResults:
 
         results = merge_and_rank_results([], l2, [], query="test", min_score=0)
 
-        # Base 30 + title 8 + abstract 4 + tags 1 = 43
-        assert results[0]["relevance_score"] == 43
+        # Base 30 + title 8 + abstract 4 + tags 3 = 45
+        assert results[0]["relevance_score"] == 45
 
     def test_l1_results_added(self):
         """Test L1 results are added when not in L2/L3"""
@@ -231,15 +231,11 @@ class TestMergeAndRankResultsHybrid:
 
         l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 80}]
 
-        results = merge_and_rank_results_hybrid(
-            [], [], l3, [], query="test", min_rrf_score=0
-        )
+        results = merge_and_rank_results_hybrid([], [], l3, [], query="test", min_rrf_score=0)
 
         assert results[0]["fts_score"] == 80.0
         # Uses FTS_WEIGHT_DEFAULT (1.0) for weight
-        assert results[0]["relevance_score"] == pytest.approx(
-            FTS_WEIGHT_DEFAULT / 61, abs=1e-4
-        )
+        assert results[0]["relevance_score"] == pytest.approx(FTS_WEIGHT_DEFAULT / 61, abs=1e-4)
 
     def test_semantic_results_added(self):
         """Test semantic results are added with weighted RRF score."""
@@ -247,9 +243,7 @@ class TestMergeAndRankResultsHybrid:
 
         semantic = [{"path": "/test/semantic.md", "similarity": 0.9}]
 
-        with patch(
-            "tools.search_journals.ranking.enrich_semantic_result"
-        ) as mock_enrich:
+        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
             mock_enrich.return_value = {
                 "path": "/test/semantic.md",
                 "title": "Semantic Doc",
@@ -261,7 +255,9 @@ class TestMergeAndRankResultsHybrid:
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/semantic.md"
-        assert results[0]["relevance_score"] == pytest.approx(0.6 / 61, abs=1e-4)  # ADR-010: semantic weight 0.4 → 0.6
+        assert results[0]["relevance_score"] == pytest.approx(
+            0.6 / 61, abs=1e-4
+        )  # ADR-010: semantic weight 0.4 → 0.6
 
     def test_semantic_score_exposed_as_percentage(self):
         """Test semantic score is exposed as percentage value"""
@@ -269,9 +265,7 @@ class TestMergeAndRankResultsHybrid:
 
         semantic = [{"path": "/test/doc.md", "similarity": 0.8, "final_score": 0.8}]
 
-        with patch(
-            "tools.search_journals.ranking.enrich_semantic_result"
-        ) as mock_enrich:
+        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
             mock_enrich.return_value = {"path": "/test/doc.md", "title": "Doc"}
 
             results = merge_and_rank_results_hybrid(
@@ -311,9 +305,7 @@ class TestMergeAndRankResultsHybrid:
             {"path": "/fts-first.md", "similarity": 0.95},
         ]
 
-        with patch(
-            "tools.search_journals.ranking.enrich_semantic_result"
-        ) as mock_enrich:
+        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
             mock_enrich.side_effect = lambda item: {
                 "path": item["path"],
                 "title": item["path"],
@@ -335,9 +327,7 @@ class TestMergeAndRankResultsHybrid:
 
         l2 = [{"path": "/test/l2.md", "title": "L2 Doc", "metadata": {}}]
 
-        results = merge_and_rank_results_hybrid(
-            [], l2, [], [], query=None, min_non_rrf_score=0
-        )
+        results = merge_and_rank_results_hybrid([], l2, [], [], query=None, min_non_rrf_score=0)
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/l2.md"
@@ -355,9 +345,7 @@ class TestMergeAndRankResultsHybrid:
             }
         ]
 
-        results = merge_and_rank_results_hybrid(
-            [], l2, [], [], query="test", min_non_rrf_score=0
-        )
+        results = merge_and_rank_results_hybrid([], l2, [], [], query="test", min_non_rrf_score=0)
 
         assert results[0]["relevance_score"] == 34
 
@@ -367,9 +355,7 @@ class TestMergeAndRankResultsHybrid:
 
         l1 = [{"path": "/test/l1.md", "date": "2026-03-14"}]
 
-        results = merge_and_rank_results_hybrid(
-            l1, [], [], [], query="test", min_non_rrf_score=0
-        )
+        results = merge_and_rank_results_hybrid(l1, [], [], [], query="test", min_non_rrf_score=0)
 
         assert len(results) == 1
         assert results[0]["path"] == "/test/l1.md"
@@ -383,9 +369,7 @@ class TestMergeAndRankResultsHybrid:
         l2 = [{"path": "/test/doc.md", "title": "Doc", "metadata": {}}]
         semantic = [{"path": "/test/doc.md", "similarity": 0.8, "final_score": 0.8}]
 
-        with patch(
-            "tools.search_journals.ranking.enrich_semantic_result"
-        ) as mock_enrich:
+        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
             mock_enrich.return_value = {"path": "/test/doc.md", "title": "Doc"}
 
             results = merge_and_rank_results_hybrid([], l2, l3, semantic, query="test")
@@ -440,9 +424,7 @@ class TestTierPriority:
 
         l1 = [{"path": "/test/doc.md", "date": "2026-03-14"}]
         l2 = [{"path": "/test/doc.md", "title": "Doc", "metadata": {}}]
-        l3 = [
-            {"path": "/test/doc.md", "title": "Doc", "relevance": 15}
-        ]  # Low but in L3
+        l3 = [{"path": "/test/doc.md", "title": "Doc", "relevance": 15}]  # Low but in L3
 
         results = merge_and_rank_results(l1, l2, l3, query="test", min_score=0)
 
@@ -483,9 +465,9 @@ class TestRankingConstantInvariants:
         """
         from tools.lib.search_constants import FTS_MIN_RELEVANCE, SCORE_L2_BASE
 
-        assert SCORE_L2_BASE > FTS_MIN_RELEVANCE, (
-            f"SCORE_L2_BASE ({SCORE_L2_BASE}) must exceed FTS_MIN_RELEVANCE ({FTS_MIN_RELEVANCE})"
-        )
+        assert (
+            SCORE_L2_BASE > FTS_MIN_RELEVANCE
+        ), f"SCORE_L2_BASE ({SCORE_L2_BASE}) must exceed FTS_MIN_RELEVANCE ({FTS_MIN_RELEVANCE})"
 
     def test_l1_base_exceeds_non_rrf_min(self):
         """SCORE_L1_BASE must meet or exceed NON_RRF_MIN_SCORE.
@@ -495,9 +477,9 @@ class TestRankingConstantInvariants:
         """
         from tools.lib.search_constants import NON_RRF_MIN_SCORE, SCORE_L1_BASE
 
-        assert SCORE_L1_BASE >= NON_RRF_MIN_SCORE, (
-            f"SCORE_L1_BASE ({SCORE_L1_BASE}) must >= NON_RRF_MIN_SCORE ({NON_RRF_MIN_SCORE})"
-        )
+        assert (
+            SCORE_L1_BASE >= NON_RRF_MIN_SCORE
+        ), f"SCORE_L1_BASE ({SCORE_L1_BASE}) must >= NON_RRF_MIN_SCORE ({NON_RRF_MIN_SCORE})"
 
     def test_high_freq_threshold_stricter_than_normal(self):
         """HIGH_FREQUENCY_MIN_RELEVANCE must be stricter than FTS_MIN_RELEVANCE."""
@@ -545,7 +527,8 @@ class TestRankingConstantInvariants:
         # A typical strong L3 match has BM25 relevance around BM25_RELEVANCE_BASE (70)
         # We allow max_l2 to be at most comparable to a strong L3, not exceed it
         assert max_l2 < BM25_RELEVANCE_BASE + 10, (
-            f"Max L2 score ({max_l2}) should not far exceed BM25_RELEVANCE_BASE ({BM25_RELEVANCE_BASE})"
+            f"Max L2 score ({max_l2}) should not far exceed "
+            f"BM25_RELEVANCE_BASE ({BM25_RELEVANCE_BASE})"
         )
 
 
