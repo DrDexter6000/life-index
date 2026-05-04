@@ -5,28 +5,8 @@ Round 18 Phase 2-A — 5 条未见 time_range query 防过拟合验证.
 用于验证 query_preprocessor 的修复是 generalized 而非 memorized.
 """
 
-import os
-import sys
+import pytest
 from pathlib import Path
-
-# Ensure fresh imports
-for m in list(sys.modules):
-    if "tools" in m:
-        del sys.modules[m]
-
-DATA_DIR = Path(r"C:\Users\17865\Documents\Life-Index")
-if not DATA_DIR.exists():
-    import pytest
-
-    pytest.skip("Real user data dir not available", allow_module_level=True)
-
-os.environ["LIFE_INDEX_DATA_DIR"] = str(DATA_DIR)
-
-from tools.search_journals.query_preprocessor import (
-    extract_time_expression,
-    parse_time_range,
-)
-from tools.search_journals.core import hierarchical_search
 
 UNSEEN_QUERIES = [
     # (query, expected_expr_substring, min_results_found)
@@ -39,6 +19,27 @@ UNSEEN_QUERIES = [
 
 
 def test_all_unseen_queries_pass() -> None:
+    import os
+    import sys
+
+    DATA_DIR = Path(r"C:\Users\17865\Documents\Life-Index")
+    if not DATA_DIR.exists():
+        pytest.skip("Real user data dir not available")
+
+    # Ensure fresh imports inside test body to avoid polluting sys.modules
+    # during pytest collection for other test files.
+    for m in list(sys.modules):
+        if "tools" in m:
+            del sys.modules[m]
+
+    os.environ["LIFE_INDEX_DATA_DIR"] = str(DATA_DIR)
+
+    from tools.search_journals.query_preprocessor import (
+        extract_time_expression,
+        parse_time_range,
+    )
+    from tools.search_journals.core import hierarchical_search
+
     failures = []
     for query, expected_expr, min_found in UNSEEN_QUERIES:
         expr = extract_time_expression(query)
