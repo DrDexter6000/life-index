@@ -1,0 +1,39 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 02:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    name: Nightly Gate (full suite + benchmarks)
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-timeout
+          pip install -e ".[dev]"
+
+      - name: Run nightly tests
+        run: pytest -m nightly -v --timeout=600
+
+      - name: Run benchmarks
+        run: pytest tests/benchmark -v --timeout=600
