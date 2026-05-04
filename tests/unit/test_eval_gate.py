@@ -36,10 +36,19 @@ EVAL_PHASE2_REQUIRED_CATEGORIES = frozenset({
     "time_range",
     "typo_precision",
 })
-# english_regression has only 1 query in phase 2; all others have >= 3.
-# Using a uniform minimum of 1 keeps the assertion honest without hiding
-# accidental category deletion.
-EVAL_PHASE2_MIN_QUERY_COUNT = 1
+# Exact query counts per category at phase 2, derived from
+# tools/eval/golden_queries.yaml (skip_until_phase <= 2).
+# If the gold set changes, update this map to match.
+EVAL_PHASE2_EXPECTED_CATEGORY_COUNTS = {
+    "complex_query": 34,
+    "edge_case": 21,
+    "english_regression": 1,
+    "entity_expansion": 20,
+    "high_frequency": 3,
+    "noise_rejection": 4,
+    "time_range": 21,
+    "typo_precision": 3,
+}
 
 # Categories whose queries are expected to return at least one result.
 # This is a product-level contract, not a CI convenience.
@@ -90,9 +99,13 @@ def test_eval_gate_categories_covered(isolated_data_dir: Path) -> None:
         assert (
             category in by_category
         ), f"Missing eval category: {category}. Available: {list(by_category.keys())}"
-        assert (
-            by_category[category]["query_count"] >= EVAL_PHASE2_MIN_QUERY_COUNT
-        ), f"Category {category} has only {by_category[category]['query_count']} queries"
+        expected = EVAL_PHASE2_EXPECTED_CATEGORY_COUNTS[category]
+        actual = by_category[category]["query_count"]
+        assert actual == expected, (
+            f"Category {category} expected {expected} queries, got {actual}. "
+            f"If the gold set changed intentionally, update "
+            f"EVAL_PHASE2_EXPECTED_CATEGORY_COUNTS in this file."
+        )
 
 
 def test_eval_gate_noise_rejection(isolated_data_dir: Path) -> None:
