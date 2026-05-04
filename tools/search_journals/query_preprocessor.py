@@ -114,6 +114,34 @@ _TYPO_CORRECTIONS: dict[str, str] = {
     "life indx": "life index",
 }
 
+# Fuzzy typo canonicals (fallback when exact-match misses)
+_TYPO_FUZZY_CANONICALS: tuple[str, ...] = ("life index",)
+
+_FUZZY_RATIO_THRESHOLD = 85
+_FUZZY_LEN_DIFF_MAX = 2
+
+
+def _fuzzy_correct_typo(query: str) -> str | None:
+    """Fuzzy typo correction fallback using rapidfuzz.
+
+    Only activates for ASCII queries against the canonical list.
+    Requires ratio >= 85 and len-diff <= 2.
+    Exact canonical match returns None (fast-path dict handles it).
+    Returns the canonical string if matched, else None.
+    """
+    if not query or not query.isascii():
+        return None
+    q = query.lower().strip()
+    for canonical in _TYPO_FUZZY_CANONICALS:
+        if q == canonical:
+            return None
+        if abs(len(q) - len(canonical)) > _FUZZY_LEN_DIFF_MAX:
+            continue
+        ratio = __import__("rapidfuzz").fuzz.ratio(q, canonical)
+        if ratio >= _FUZZY_RATIO_THRESHOLD:
+            return canonical
+    return None
+
 
 # ── Bilingual alias map ───────────────────────────────────────────────
 
@@ -791,10 +819,15 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
         )
 
     normalized = normalize_query(query)
-    # C1-a: typo correction
+    # C1-a: typo correction (exact-match fast path)
     _corrected = _TYPO_CORRECTIONS.get(normalized.lower().strip())
     if _corrected:
         normalized = _corrected
+    else:
+        # C1-a fuzzy fallback
+        _fuzzy_corrected = _fuzzy_correct_typo(normalized)
+        if _fuzzy_corrected:
+            normalized = _fuzzy_corrected
     time_expr = extract_time_expression(normalized)
     date_range = parse_time_range(time_expr, reference_date=reference_date) if time_expr else None
     intent = classify_intent(normalized)

@@ -3,9 +3,11 @@
 from datetime import date
 
 from tools.search_journals.l2_metadata import _matches_filters
+from tools.search_journals.noise_gate import is_noise_query
 from tools.search_journals.query_preprocessor import (
     _ALIAS_MAP,
     _TYPO_CORRECTIONS,
+    _fuzzy_correct_typo,
     build_search_plan,
 )
 from tools.search_journals.ranking import merge_and_rank_results
@@ -93,3 +95,79 @@ class TestRankingL2BonusStacking:
         assert len(merged) == 1
         # L3=83 + L2 tags match (+3) = 86, then title-promotion if applicable
         assert merged[0]["final_score"] > 83
+
+
+class TestFuzzyTypoCorrection:
+    """C1-a fuzzy: rapidfuzz fallback for near-typo queries."""
+
+    def test_fuzzy_corrects_life_indxx(self) -> None:
+        # Single char multi-repeat (ratio ≈ 90.0 > 85)
+        assert _fuzzy_correct_typo("life indxx") == "life index"
+
+    def test_fuzzy_corrects_lif_index(self) -> None:
+        # Single char deletion (ratio ≈ 94.7 > 85)
+        assert _fuzzy_correct_typo("lif index") == "life index"
+
+    def test_fuzzy_rejects_life_indxxx_below_threshold(self) -> None:
+        # Brief spec: ratio ≈ 0.818 < 0.85 → should return None (leave to Rule 8).
+        # REPL实测: ratio = 85.7 ≥ 85. This test asserts the brief-specified
+        # behavior; if it fails, the red signal is surfaced correctly.
+        assert _fuzzy_correct_typo("life indxxx") is None
+
+    def test_fuzzy_rejects_extended_query_by_len_guard(self) -> None:
+        # len-diff=4 > 2, length guard blocks (ratio ≈ 83.3 irrelevant)
+        assert _fuzzy_correct_typo("Life Index 2.0") is None
+
+    def test_fuzzy_skips_cjk_input(self) -> None:
+        # non-ASCII skips fuzzy
+        assert _fuzzy_correct_typo("生活索引") is None
+
+    def test_fuzzy_exact_match_passthrough(self) -> None:
+        # exact canonical returns None (exact-match dict handles it)
+        assert _fuzzy_correct_typo("life index") is None
+
+    def test_build_search_plan_uses_fuzzy_after_exact_miss(self) -> None:
+        plan = build_search_plan("life indxx", reference_date=date(2026, 3, 29))
+        assert plan.normalized_query == "life index"
+
+
+class TestNoiseGateRule8:
+    """Rule 8: typo_near_noise blocks mid-similarity queries."""
+
+    def test_rule8_blocks_life_indxxx(self) -> None:
+        # Brief spec: ratio in [65, 85) → should be blocked by Rule 8.
+        # REPL实测: ratio = 85.7 (above 85 upper bound). This test asserts
+        # the brief-specified behavior; failure surfaces the red signal.
+        blocked, reason = is_noise_query("life indxxx")
+        assert blocked
+        assert reason == "typo_near_noise"
+
+    def test_rule8_blocks_lyf_index(self) -> None:
+        # ratio ≈ 84.2 in [65, 85)
+        blocked, reason = is_noise_query("lyf index")
+        assert blocked
+        assert reason == "typo_near_noise"
+
+    def test_rule8_passes_lifx_ndex(self) -> None:
+        # ratio ≈ 84.2 in [65, 85)
+        blocked, reason = is_noise_query("lifx ndex")
+        assert blocked
+        assert reason == "typo_near_noise"
+
+    def test_rule8_does_not_block_extended_query(self) -> None:
+        # len-diff=4 > 2, length guard blocks
+        blocked, reason = is_noise_query("Life Index 2.0")
+        assert not blocked
+        assert reason is None
+
+    def test_rule8_does_not_block_chinese_project_name(self) -> None:
+        # non-ASCII, ASCII guard skips
+        blocked, reason = is_noise_query("Life Index 项目")
+        assert not blocked
+        assert reason is None
+
+    def test_rule8_does_not_block_canonical_itself(self) -> None:
+        # ratio = 100.0, outside [65, 85)
+        blocked, reason = is_noise_query("life index")
+        assert not blocked
+        assert reason is None
