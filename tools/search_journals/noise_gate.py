@@ -72,17 +72,6 @@ _OOD_TOPIC_SIGNALS: list[str] = [
     "旅游攻略",
 ]
 
-# ── Round 19 Phase 1-D: typo-near-noise (Rule 8, plan §3.C1a) ──────────
-# Mid-similarity matches against canonical typo targets are rejected as
-# noise: the query *looks* like a typo of a known target but exceeded the
-# correction threshold (0.85) — likely user error past the correction
-# budget, not a content query. Length-diff guard avoids gating valid
-# queries that contain the canonical as a substring (e.g. "Life Index 2.0").
-_TYPO_NEAR_NOISE_CANONICALS: tuple[str, ...] = ("life index",)
-_TYPO_NEAR_NOISE_LO: float = 0.65
-_TYPO_NEAR_NOISE_HI: float = 0.85  # ≥ this → fuzzy correction handles it
-_TYPO_NEAR_NOISE_MAX_LEN_DIFF: int = 2
-
 
 def is_noise_query(query: str | None) -> tuple[bool, str | None]:
     """Return (is_noise, reason) for a query string.
@@ -141,21 +130,5 @@ def is_noise_query(query: str | None) -> tuple[bool, str | None]:
     for signal in _OOD_TOPIC_SIGNALS:
         if signal in stripped:
             return True, "ood_topic"
-
-    # Rule 8: typo-near-noise — short ASCII query matches a canonical typo
-    # target with mid similarity (past correction threshold, not unrelated).
-    if not has_cjk and len(stripped) <= 20:
-        try:
-            from rapidfuzz import distance as _rf_distance
-
-            q_lower = stripped.lower()
-            for canonical in _TYPO_NEAR_NOISE_CANONICALS:
-                if abs(len(q_lower) - len(canonical)) > _TYPO_NEAR_NOISE_MAX_LEN_DIFF:
-                    continue
-                sim = _rf_distance.Levenshtein.normalized_similarity(q_lower, canonical)
-                if _TYPO_NEAR_NOISE_LO <= sim < _TYPO_NEAR_NOISE_HI:
-                    return True, "typo_near_noise"
-        except ImportError:
-            pass
 
     return False, None

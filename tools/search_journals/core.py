@@ -757,21 +757,22 @@ def hierarchical_search(
     # on "投资" alone after semantic bypass).
     _noise_blocked = False
     _noise_reason = None
-    if query:
+    if semantic and query:
         from .noise_gate import is_noise_query
 
         _noise_blocked, _noise_reason = is_noise_query(query)
         if _noise_blocked:
-            if semantic:
-                semantic = False
-                result["semantic_note"] = f"语义搜索被 noise gate 拦截（{_noise_reason}）"
-            result["warnings"].append(f"noise_gate: blocked '{query}' ({_noise_reason})")
+            semantic = False
+            result["semantic_note"] = f"语义搜索被 noise gate 拦截（{_noise_reason}）"
+            result["warnings"].append(
+                f"noise_gate: semantic bypassed for '{query}' ({_noise_reason})"
+            )
 
     # Phase 1 B2: Full pipeline bypass for OOD/negation-intent queries only.
     # Conservative: too_short and other original rules only bypass semantic
     # pipeline to avoid keyword-regression on legitimate short queries
     # (GQ10 '吃饭', GQ85 'AI', GQ126 '投资', etc.).
-    if _noise_blocked and _noise_reason in ("ood_topic", "negation_intent", "typo_near_noise"):
+    if _noise_blocked and _noise_reason in ("ood_topic", "negation_intent"):
         result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
         _emit_search_metrics(result)
         logger.info(
