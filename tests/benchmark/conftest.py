@@ -150,11 +150,3 @@ def l2_metadata_100(
         for j in synthetic_journals_100
     ]
 
-
-# CI Gate marker: all benchmark tests are nightly
-import pytest
-
-
-def pytest_collection_modifyitems(config, items):
-    for item in items:
-        item.add_marker(pytest.mark.nightly)
