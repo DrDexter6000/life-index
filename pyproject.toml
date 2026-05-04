@@ -163,12 +163,20 @@ python_functions = [
     "test_*",
 ]
 markers = [
+    # Legacy markers (保留兼容)
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "perf: marks tests as performance regression tests",
     "benchmark: marks tests as performance benchmarks (deselect with '-m \"not benchmark\"')",
     "critical: marks tests as critical path (write/search/index/edit core flows)",
+    # CI Gate markers (Round 19 Phase 1-D)
+    "blocker: deterministic, no external deps, no real data, must pass",
+    "contract: CLI contract / snapshot tests",
+    "quarantine: known flaky or env-dependent, allowed to fail",
+    "nightly: slow tests, not run on PR",
+    "realdata: requires ~/Documents/Life-Index",
+    "semantic: requires embedding model / vector index",
 ]
 
 # ========== Coverage - Test Coverage ==========

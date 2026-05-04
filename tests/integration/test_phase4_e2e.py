@@ -163,20 +163,10 @@ class TestPhase4E2E:
             assert r["source"] in allowed, f"Invalid source: {r['source']}"
 
     def test_rrf_score_positive_for_hybrid(self, search_env):
-        """Hybrid results should have rrf_score field; positive when both pipelines contribute."""
+        """Hybrid results should have rrf_score > 0 when both pipelines contribute."""
         result = search_env(query="乐乐", level=3)
-        merged = result.get("merged_results", [])
-        assert merged, "Hybrid search should return results"
-        for r in merged:
-            assert "rrf_score" in r, f"Missing rrf_score field in {r.get('path')}"
-        # rrf_score > 0 is only guaranteed when both pipelines contribute hits;
-        # when semantic has no hits, keyword-only results may have rrf_score == 0
-        has_positive_rrf = any(r.get("rrf_score", 0) > 0 for r in merged)
-        if has_positive_rrf:
-            return
-        # Fallback: verify semantic pipeline absence rather than hard failure
-        has_semantic = any("semantic" in str(r.get("source", "")) for r in merged)
-        assert not has_semantic, "Semantic pipeline contributed but no positive rrf_score found"
+        has_positive_rrf = any(r.get("rrf_score", 0) > 0 for r in result.get("merged_results", []))
+        assert has_positive_rrf, "At least one result should have positive rrf_score"
 
     def test_final_score_geq_rrf_score(self, search_env):
         """final_score >= rrf_score (title promotion can increase it)."""

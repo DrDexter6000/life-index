@@ -56,9 +56,11 @@ def test_eval_gate_categories_covered(isolated_data_dir: Path) -> None:
     result = run_eval.run_evaluation(data_dir=isolated_data_dir)
 
     required_categories = {
+        "chinese_recall",
         "entity_expansion",
         "noise_rejection",
         "english_regression",
+        "cross_language",
         "high_frequency",
     }
     by_category = result.get("by_category", {})
@@ -67,16 +69,8 @@ def test_eval_gate_categories_covered(isolated_data_dir: Path) -> None:
             category in by_category
         ), f"Missing eval category: {category}. Available: {list(by_category.keys())}"
         assert (
-            by_category[category]["query_count"] >= 1
+            by_category[category]["query_count"] >= 2
         ), f"Category {category} has only {by_category[category]['query_count']} queries"
-    # Optional categories (may have drifted due to query set evolution)
-    optional_categories = {"chinese_recall", "cross_language"}
-    for category in optional_categories:
-        if category in by_category:
-            assert by_category[category]["query_count"] >= 1, (
-                f"Optional category {category} has only "
-                f"{by_category[category]['query_count']} queries"
-            )
 
 
 def test_eval_gate_noise_rejection(isolated_data_dir: Path) -> None:
@@ -117,7 +111,7 @@ def test_eval_gate_positive_recall(isolated_data_dir: Path) -> None:
     run_eval = importlib.import_module("tools.eval.run_eval")
     result = run_eval.run_evaluation(data_dir=isolated_data_dir)
 
-    positive_categories = {"english_regression"}
+    positive_categories = {"chinese_recall", "english_regression"}
     for pq in result["per_query"]:
         if pq.get("category") in positive_categories:
             assert (
