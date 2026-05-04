@@ -1622,3 +1622,36 @@ queries:
   tags:
   - edge_case
   - supplement
+- id: GQ156
+  query: life indxxx
+  category: typo_precision
+  description: 'Anti-test: double-error typo insertion, must NOT match life-index results'
+  expected:
+    min_results: 0
+    must_contain_title: []
+  tags:
+  - typo_precision
+  - anti-test
+  - fuzzy
+- id: GQ157
+  query: lyf index
+  category: typo_precision
+  description: 'Anti-test: dense transposition typo, must NOT match life-index results'
+  expected:
+    min_results: 0
+    must_contain_title: []
+  tags:
+  - typo_precision
+  - anti-test
+  - fuzzy
+- id: GQ158
+  query: lifx ndex
+  category: typo_precision
+  description: 'Anti-test: scrambled character typo, must NOT match life-index results'
+  expected:
+    min_results: 0
+    must_contain_title: []
+  tags:
+  - typo_precision
+  - anti-test
+  - fuzzy
