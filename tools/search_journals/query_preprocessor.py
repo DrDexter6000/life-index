@@ -108,11 +108,47 @@ _PRONOUNS = {
     "么",
 }
 
-# ── Typo corrections (exact-match) ────────────────────────────────────
+# ── Typo corrections (exact-match fast path) ─────────────────────────
 
 _TYPO_CORRECTIONS: dict[str, str] = {
     "life indx": "life index",
 }
+
+# ── Typo corrections (fuzzy fallback, plan §3.C1a.1) ──────────────────
+# Canonical strings to fuzzy-match short ASCII queries against. A query
+# whose Levenshtein normalized similarity ≥ _TYPO_FUZZY_THRESHOLD is
+# corrected to the canonical form. Companion noise rule lives in
+# noise_gate.py (Rule 8) and rejects mid-similarity near-typos.
+
+_TYPO_FUZZY_CANONICALS: tuple[str, ...] = ("life index",)
+_TYPO_FUZZY_THRESHOLD: float = 0.85
+_TYPO_FUZZY_MAX_LEN_DIFF: int = 2
+
+
+def _fuzzy_correct_typo(query: str) -> str | None:
+    """Fuzzy-match query against canonical typo targets.
+
+    Returns canonical if Levenshtein normalized similarity ≥ threshold and
+    length difference ≤ MAX_LEN_DIFF. Restricted to ASCII-dominant short
+    queries (≤20 chars, no CJK) to avoid natural-language false positives.
+    """
+    q = query.lower().strip()
+    if not q or len(q) > 20:
+        return None
+    if any("一" <= c <= "鿿" for c in q):
+        return None
+    try:
+        from rapidfuzz import distance as _rf_distance
+    except ImportError:
+        return None
+    best: tuple[float, str] | None = None
+    for canonical in _TYPO_FUZZY_CANONICALS:
+        if abs(len(q) - len(canonical)) > _TYPO_FUZZY_MAX_LEN_DIFF:
+            continue
+        sim = _rf_distance.Levenshtein.normalized_similarity(q, canonical)
+        if sim >= _TYPO_FUZZY_THRESHOLD and (best is None or sim > best[0]):
+            best = (sim, canonical)
+    return best[1] if best else None
 
 
 # ── Bilingual alias map ───────────────────────────────────────────────
@@ -791,8 +827,10 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
         )
 
     normalized = normalize_query(query)
-    # C1-a: typo correction
+    # C1-a: typo correction (exact-match fast path → fuzzy fallback)
     _corrected = _TYPO_CORRECTIONS.get(normalized.lower().strip())
+    if not _corrected:
+        _corrected = _fuzzy_correct_typo(normalized)
     if _corrected:
         normalized = _corrected
     time_expr = extract_time_expression(normalized)
