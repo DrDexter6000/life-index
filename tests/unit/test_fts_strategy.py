@@ -11,22 +11,16 @@ class TestFTSStrategy:
         """纯空白查询应在进入 FTS/L3 前直接短路为空结果。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
                         "total_available": 0,
                     }
 
-                    _, _, l3_results, _, _, _ = run_keyword_pipeline(
-                        query="   ", use_index=True
-                    )
+                    _, _, l3_results, _, _, _ = run_keyword_pipeline(query="   ", use_index=True)
 
         assert mock_fts.call_count == 0
         assert mock_l3.call_count == 0
@@ -36,22 +30,16 @@ class TestFTSStrategy:
         """纯标点查询应视为无有效 query，而不是回退成全文扫描。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
                         "total_available": 0,
                     }
 
-                    _, _, l3_results, _, _, _ = run_keyword_pipeline(
-                        query="！！！", use_index=True
-                    )
+                    _, _, l3_results, _, _, _ = run_keyword_pipeline(query="！！！", use_index=True)
 
         assert mock_fts.call_count == 0
         assert mock_l3.call_count == 0
@@ -61,9 +49,7 @@ class TestFTSStrategy:
         """查询进入 FTS 前应先做标准化。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -81,9 +67,7 @@ class TestFTSStrategy:
         """多词查询应优先使用 AND：'团队 建设' 先走 AND 查询。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -109,9 +93,7 @@ class TestFTSStrategy:
         """AND 结果过少（<3）时，自动降级为 OR。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -146,9 +128,7 @@ class TestFTSStrategy:
                     ],
                 ]
 
-                _, _, l3_results, _, _, _ = run_keyword_pipeline(
-                    query="团队 建设", use_index=True
-                )
+                _, _, l3_results, _, _, _ = run_keyword_pipeline(query="团队 建设", use_index=True)
 
         assert mock_fts.call_count == 2
         assert mock_fts.call_args_list[0].args[0] == "团队 AND 建设"
@@ -159,9 +139,7 @@ class TestFTSStrategy:
         """单词查询行为不变。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -179,9 +157,7 @@ class TestFTSStrategy:
         """中文多词查询：'春节 旅行' AND 优先。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -199,9 +175,7 @@ class TestFTSStrategy:
         """用户显式使用 OR 时，不覆盖为 AND。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -219,9 +193,7 @@ class TestFTSStrategy:
         """引号内的短语应做精确匹配。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -252,12 +224,10 @@ class TestFTSStrategy:
         assert _has_explicit_fts_operator("team NOT project") is True
 
     def test_natural_language_query_gets_segmented(self) -> None:
-        """'how and why' should go through segmentation, not be treated as FTS AND."""
+        """'how and why' should not be treated as FTS AND; stopwords are filtered."""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -268,21 +238,18 @@ class TestFTSStrategy:
 
                 run_keyword_pipeline(query="how and why", use_index=True)
 
-        # The query should NOT be passed as "how AND and AND why" — it should be
-        # treated as a normal multi-word query with AND between tokens.
+        # T3.3: English stopwords ('how', 'and') are filtered, leaving 'why'.
+        # The key invariant is that lowercase 'and' is NOT misinterpreted as
+        # the FTS AND operator (which would produce "how AND and AND why").
         assert mock_fts.call_count >= 1
         fts_query = mock_fts.call_args_list[0].args[0]
-        # Should contain "AND" as a constructed separator, not the original
-        # lower-case "and" being misinterpreted as a boolean operator.
-        assert "AND" in fts_query or fts_query == "how and why"
+        assert fts_query == "why"
 
     def test_no_segmented_sentinel_in_fts_query(self) -> None:
         """B-3: The __SEGMENTED__ sentinel must never appear in FTS queries."""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.lib.search_index.search_fts") as mock_fts:
                 mock_l2.return_value = {
                     "results": [],
@@ -296,6 +263,6 @@ class TestFTSStrategy:
         assert mock_fts.call_count >= 1
         for call in mock_fts.call_args_list:
             fts_query = call.args[0]
-            assert "__SEGMENTED__" not in fts_query, (
-                f"B-3: sentinel leaked into FTS query: {fts_query}"
-            )
+            assert (
+                "__SEGMENTED__" not in fts_query
+            ), f"B-3: sentinel leaked into FTS query: {fts_query}"
