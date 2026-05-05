@@ -218,33 +218,6 @@ def expand_query_with_entity_graph(query: str) -> str:
 
         return [subject for subject in subjects if subject]
 
-    def _match_relation(actual_relation: str, expected_relation: str) -> bool:
-        return normalize_relation(actual_relation) == normalize_relation(expected_relation)
-
-    def _expand_related_entities(
-        *, source: dict[str, Any], relation: str, view: Any
-    ) -> list[dict[str, Any]]:
-        related_entities: list[dict[str, Any]] = []
-        seen_ids: set[str] = set()
-
-        for rel in source.get("relationships", []):
-            if not _match_relation(str(rel.get("relation", "")), relation):
-                continue
-            target = resolve_via_runtime(rel["target"], view)
-            if target and target["id"] not in seen_ids:
-                related_entities.append(target)
-                seen_ids.add(target["id"])
-
-        for source_id, reverse_relation in view.reverse_relationships.get(source["id"], []):
-            if not _match_relation(reverse_relation, relation):
-                continue
-            target = resolve_via_runtime(source_id, view)
-            if target and target["id"] not in seen_ids:
-                related_entities.append(target)
-                seen_ids.add(target["id"])
-
-        return related_entities
-
     # 1. Whole-query exact match (unchanged behavior)
     whole_match = resolve_via_runtime(query, view)
     if whole_match:
@@ -256,16 +229,26 @@ def expand_query_with_entity_graph(query: str) -> str:
 
     def _expand_phrase_pattern(token: str) -> str | None:
         """Try to match a relationship phrase pattern like X的老婆, X的奶奶."""
+        from tools.lib.entity_runtime import _expand_related_entities
+
         for pattern in view.phrase_patterns:
             suffix = pattern["suffix"]
             relation = pattern["relation"]
+            direction = pattern.get("direction", "symmetric")
+            role_filter = pattern.get("role_filter")
             related_entities: list[dict[str, Any]] = []
             for subject in _iter_subject_candidates(token, suffix):
                 source = resolve_via_runtime(subject, view)
                 if source is None:
                     continue
                 related_entities.extend(
-                    _expand_related_entities(source=source, relation=relation, view=view)
+                    _expand_related_entities(
+                        source=source,
+                        relation=relation,
+                        view=view,
+                        direction=direction,
+                        role_filter=role_filter,
+                    )
                 )
 
             if related_entities:
@@ -387,25 +370,25 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
         for pattern in view.phrase_patterns:
             suffix = pattern["suffix"]
             relation = pattern["relation"]
+            direction = pattern.get("direction", "symmetric")
+            role_filter = pattern.get("role_filter")
             matched_any = False
             for subject in _iter_subject_candidates(token, suffix):
                 source = resolve_via_runtime(subject, view)
                 if source is None:
                     continue
 
-                for rel in source.get("relationships", []):
-                    if _match_relation(str(rel.get("relation", "")), relation):
-                        target = resolve_via_runtime(rel["target"], view)
-                        if target:
-                            _add_hint(target, token, "phrase_match")
-                            matched_any = True
+                from tools.lib.entity_runtime import _expand_related_entities
 
-                for source_id, reverse_relation in view.reverse_relationships.get(source["id"], []):
-                    if _match_relation(reverse_relation, relation):
-                        target = resolve_via_runtime(source_id, view)
-                        if target:
-                            _add_hint(target, token, "phrase_match")
-                            matched_any = True
+                for target in _expand_related_entities(
+                    source=source,
+                    relation=relation,
+                    view=view,
+                    direction=direction,
+                    role_filter=role_filter,
+                ):
+                    _add_hint(target, token, "phrase_match")
+                    matched_any = True
 
             if matched_any:
                 break

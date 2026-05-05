@@ -12,7 +12,6 @@ import os
 import pytest
 import yaml
 
-
 RELATION_JOURNALS = [
     {
         "filename": "life-index_2026-03-04_001.md",
@@ -21,9 +20,7 @@ RELATION_JOURNALS = [
         "tags": ["亲子", "回忆", "感伤"],
         "topic": "think",
         "people": ["乐乐"],
-        "content": (
-            "翻看女儿乐乐小时候的照片，那个只有2岁上下的小英雄。小豆丁，爸爸想你了。"
-        ),
+        "content": ("翻看女儿乐乐小时候的照片，那个只有2岁上下的小英雄。小豆丁，爸爸想你了。"),
     },
     {
         "filename": "life-index_2026-03-10_001.md",
@@ -108,14 +105,17 @@ def _setup_relation_search_env(tmp_path_factory):
                 "type": "person",
                 "primary_name": "乐乐",
                 "aliases": ["小豆丁", "小英雄"],
-                "relationships": [],
+                "relationships": [{"target": "author-self", "relation": "child_of"}],
             },
             {
                 "id": "mama",
                 "type": "person",
                 "primary_name": "妈妈",
                 "aliases": ["老妈"],
-                "relationships": [{"target": "tuantuan", "relation": "grandmother_of"}],
+                "relationships": [
+                    {"target": "author-self", "relation": "mother_of"},
+                    {"target": "tuantuan", "relation": "grandmother_of"},
+                ],
             },
             {
                 "id": "wife",
@@ -144,9 +144,7 @@ def _setup_relation_search_env(tmp_path_factory):
             journal["content"],
             "",
         ]
-        (journals_dir / journal["filename"]).write_text(
-            "\n".join(frontmatter), encoding="utf-8"
-        )
+        (journals_dir / journal["filename"]).write_text("\n".join(frontmatter), encoding="utf-8")
 
     original_env = os.environ.get("LIFE_INDEX_DATA_DIR")
     os.environ["LIFE_INDEX_DATA_DIR"] = str(tmp_dir)
