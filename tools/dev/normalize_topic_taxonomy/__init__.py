@@ -11,9 +11,7 @@ from typing import Any
 from ...lib.frontmatter import format_frontmatter, parse_journal_file
 from ...lib.llm_extract import VALID_TOPICS
 
-# Display order preserved for human readability. Verified in sync with VALID_TOPICS.
-STANDARD_TOPICS = ("work", "learn", "health", "relation", "think", "create", "life")
-assert set(STANDARD_TOPICS) == VALID_TOPICS, "STANDARD_TOPICS out of sync with VALID_TOPICS"
+STANDARD_TOPICS = tuple(sorted(VALID_TOPICS))
 SAFE_TOPIC_MAPPING = {
     "learning": "learn",
     "ai": "think",
