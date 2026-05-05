@@ -702,7 +702,7 @@ def _evaluate_queries(
         if judge == "llm":
             entry["llm_scores"] = llm_scores
 
-        # --- Phase 1: broad_eval report-only fields ---
+        # --- Phase 1/2: broad_eval fields + soft gate ---
         broad_eval = query_case.get("broad_eval")
         if broad_eval and all_docs is not None:
             try:
@@ -723,12 +723,30 @@ def _evaluate_queries(
                 entry["min_results_ok"] = min_results_ok
                 entry["strict_pass"] = strict_pass
                 entry["soft_pass"] = soft_pass
+                # Phase 2 soft gate: soft_pass governs pass/fail for broad_eval queries
+                if soft_pass:
+                    entry["pass"] = True
+                    failure_reason = None
+                else:
+                    entry["pass"] = False
+                    if not min_results_ok:
+                        failure_reason = (
+                            f"broad_eval min_results fail: returned {returned_count} "
+                            f"< required {required_count}"
+                        )
+                    else:
+                        failure_reason = (
+                            f"broad_eval soft gate fail: precision {precision:.2f} "
+                            f"< 0.80 (matched {matched_count}/{returned_count})"
+                        )
             except Exception as exc:
                 # Report-only must not silently lose observability on errors
                 entry["eval_mode"] = "predicate_precision"
                 entry["broad_eval_error"] = str(exc)
                 entry["strict_pass"] = False
                 entry["soft_pass"] = False
+                entry["pass"] = False
+                failure_reason = f"broad_eval error: {exc}"
         else:
             entry["eval_mode"] = "exact_mrr"
         # --- End broad_eval ---
