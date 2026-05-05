@@ -87,11 +87,18 @@ life-index/                         # 技能根目录
 ├── tools/                         # 可执行工具目录
 │   ├── write_journal/             # 写入日志（天气查询、附件处理、索引更新）
 │   ├── search_journals/           # 搜索日志（L1/L2/L3 + 语义搜索）
+│   ├── smart_search/              # LLM 编排智能搜索
 │   ├── edit_journal/              # 编辑日志（修改元数据、追加内容）
 │   ├── entity/                    # 实体图谱（list/add/resolve/update）
-│   ├── generate_abstract/         # 生成摘要（月报/年报）
+│   ├── generate_index/            # 生成索引树（monthly/yearly/root）
 │   ├── build_index/               # 构建索引（FTS5 + 向量索引）
 │   ├── query_weather/             # 查询天气
+│   ├── backup/                    # 备份日志数据
+│   ├── verify/                    # 数据完整性校验
+│   ├── timeline/                  # 时序摘要流
+│   ├── migrate/                   # Schema 链式迁移
+│   ├── eval/                      # 搜索质量评估
+│   ├── dev/                       # 开发/验收辅助工具
 │   └── lib/                       # 共享库（SSOT）
 ├── docs/                          # API.md, ARCHITECTURE.md
 └── references/                    # WEATHER_FLOW.md, SCHEDULE.md
@@ -223,6 +230,8 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - 当前最小支持类型：`person` / `place` / `project` / `event` / `concept`
 
 ### Topic 分类（必填）
+
+> **SSOT**：`tools/lib/llm_extract.py` `VALID_TOPICS`（含验证逻辑，无效值静默丢弃）。下表为 Agent 便捷参考，若与代码不一致以代码为准。
 
 | Topic | 含义 | 示例场景 |
 |-------|------|----------|

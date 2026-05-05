@@ -241,9 +241,19 @@ CHARTER §1.5 定义了"确定性 vs 智能"的边界：CLI Core 层（`tools/se
 
 `search_constants.py` 作为搜索子系统所有阈值的唯一来源（CHARTER §4.3 合规）：
 
-- 43 个导出常量（`__all__` 已补齐），涵盖 RRF、语义、FTS、评分、置信度、标题加权、L3 回退、关键词管道、编排器等全部参数
+- **50** 个导出常量（`__all__` 已补齐，Round 19 新增 fuzzy typo 4 个 + structured intent 3 个 = +7），涵盖 RRF、语义、FTS、评分、置信度、标题加权、L3 回退、关键词管道、编排器、fuzzy typo correction、structured metadata retrieval 等全部参数
 - 每个常量带 ADR 编号和决策 rationale
 - 散落在 `confidence.py`、`title_promotion.py`、`l3_content.py`、`keyword_pipeline.py` 中的 14 个裸字面量已于 Round 17 Phase 1-A 迁移完毕
+
+### 5.10 Phase 1-D 搜索增强（Round 19 Phase 1-D）
+
+Round 19 Phase 1-D 在搜索子系统中新增以下能力：
+
+- **Eval Anchor 确定性注入**（F1）：`LIFE_INDEX_TIME_ANCHOR` 环境变量使 eval baseline 在任意日期产出 byte-identical metric，解决相对时间漂移问题。`run_eval.py` 启动时读取 baseline `frozen_at` 注入 env。
+- **Fuzzy Typo Correction**（C1-a）：`FUZZY_TYPO_*` 常量组（阈值 0.85, 长度差 ≤2, 规范字符串 `("life index",)`）在 `query_preprocessor.py` 中做 Levenshtein 模糊匹配，覆盖 GQ80 等拼写错误查询。
+- **Bilingual Alias Expansion**（C1-b）：`query_preprocessor.py` 内置中英别名映射（如 `birthday↔生日`），覆盖 GQ81 等跨语言查询。
+- **Structured Intent Match Bonus**（R1 safe）：`STRUCTURED_*` 常量组在 keyword-only 路径上对同时命中 date_range + topic_hints 的候选结果加分（+50 keyword path, +0.035 hybrid path），安全实现不做全局排序补丁。
+- **Broad Eval Soft Gate**：15 个 broad recall 查询从 MRR 强塞转为 `predicate_precision@5` 评估，precision < 0.8 / min_results fail / broad_eval_error 进入 failures；exact MRR 查询完全隔离，旧 metrics zero-drift 验证通过。
 
 ---
 
@@ -320,15 +330,7 @@ abstract: "100字内摘要"
 
 #### Topic 分类（必填）
 
-| Topic | 含义 |
-|-------|------|
-| `work` | 工作/职业 |
-| `learn` | 学习/成长 |
-| `health` | 健康/身体 |
-| `relation` | 关系/社交 |
-| `think` | 思考/反思 |
-| `create` | 创作/产出 |
-| `life` | 生活/日常 |
+> **SSOT**：`tools/lib/llm_extract.py` `VALID_TOPICS`。共 7 个有效值：`work`, `learn`, `health`, `relation`, `think`, `create`, `life`。此处不重复枚举，以代码为准。
 
 ---
 
@@ -345,6 +347,6 @@ abstract: "100字内摘要"
 
 ---
 
-> **校对日期**: 2026-05-01
-> **校对人**: Sisyphus (GLM-5.1) / Round 17 全 Phase 完成
-> **对应状态**: Round 17 全部 Phase 0-7 已完成（含编排器 Phase 5、SLO Phase 6-B、Gold Set Phase 1-B）
+> **校对日期**: 2026-05-05
+> **校对人**: Claude (Opus 4.7) / Round 19 Phase 1-D 收束
+> **对应状态**: Round 19 Phase 1-D 已完成（Broad eval soft gate + eval anchor + fuzzy/alias + structured intent）。当前 CHARTER v1.2.0，search_constants.py **50** 常量。

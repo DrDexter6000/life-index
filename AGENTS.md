@@ -113,11 +113,11 @@ python tools/write_journal.py --data '{...}'
 
 ### 内容保留原则
 
-- 用户原始输入的 `content` 必须 100% 原样传递
-- 禁止修改段落结构、Markdown 标题、列表格式
+详见 [`SKILL.md`](SKILL.md) §Content Preservation。核心：用户原始输入的 `content` 必须 100% 原样传递。
 
 ### 数据隔离
 
+详见 [`CHARTER.md`](CHARTER.md) §1.1。摘要：
 - 用户数据: `~/Documents/Life-Index/`
 - 项目代码: 仓库目录
 - 两者物理隔离，不可混淆

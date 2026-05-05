@@ -342,6 +342,8 @@ Presentation（呈现层）：按调用方需求截断、格式化
 
 **实测环境**：Windows 11, Python 3.12, SSD, 本地数据 68 篇日志, commit 53428b1
 
+> **注意（2026-05-05）**：上表为 Round 17 冻结基线，用作**历史地板**而非当前实测。Round 19 Phase 1-D 当前指标（107 queries, hybrid 模式）：MRR@5=0.6006, Recall@5=0.8387, P@5=0.4894。正式 SLO 基线更新需走 §5.2 宪章修订流程。当前回归门控应以 `tests/eval/baselines/` 中最新冻结 baseline 为准。
+
 ---
 
 ## 第五章：宪章修订流程
@@ -406,7 +408,7 @@ CHARTER.md（本文件，最高权威）
     │
     ├── AGENTS.md（开发者/AI 代理上下文）
     │
-    └── docs/specs/round-*.md（轮次 PRD，Round 17 起）
+    └── .strategy/cli/round-*.md（轮次 PRD 与执行文档）
 ```
 
 **冲突仲裁**：上层文档覆盖下层。CHARTER 是最高。

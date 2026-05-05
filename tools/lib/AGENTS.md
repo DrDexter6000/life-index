@@ -1,6 +1,6 @@
 # AGENTS.md - tools/lib/
 
-> **最后更新**: 2026-04-14 | **版本**: v1.3 | **状态**: 活跃维护
+> **最后更新**: 2026-05-05 | **版本**: v1.4 | **状态**: 活跃维护
 
 ## OVERVIEW
 Shared infrastructure library for all Life Index atomic tools.
@@ -23,6 +23,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
 | Debug URL download pipeline | `url_download.py` | Shared remote-file download helper used by write/web flows |
 | Vector index corruption | `vector_index_simple.py` | Pickle-based fallback when sqlite-vec unavailable |
+| Tune search parameters | `search_constants.py` | 50 constants (RRF, FTS, semantic, confidence, typo correction, structured metadata) with ADR annotations |
 
 ## MODULES
 
@@ -101,7 +102,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | schema_validator.py | dev tools | ✅ 活跃 | |
 | schema.py | frontmatter | ✅ 活跃 | |
 | search_config.py | search_journals | ✅ 活跃 | |
-| search_constants.py | search_journals | ✅ 活跃 | |
+| search_constants.py | search_journals | ✅ 活跃 | 50 常量；Round 19 新增 fuzzy typo (4) + structured metadata (3) |
 | search_diagnose.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 指标聚合最近搜索诊断摘要 |
 | search_index.py | build_index, search_journals | ✅ 活跃 | |
 | search_metrics.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 追加搜索指标日志 |
