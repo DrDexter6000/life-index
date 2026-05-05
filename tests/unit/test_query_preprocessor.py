@@ -7,11 +7,7 @@ classify_query_mode, build_search_plan.
 
 from __future__ import annotations
 
-import re
 from datetime import date
-from unittest.mock import patch
-
-import pytest
 
 from tools.search_journals.query_preprocessor import (
     build_search_plan,
@@ -153,6 +149,64 @@ class TestParseTimeRange:
     def test_none_input_returns_none(self):
         assert parse_time_range(None) is None
 
+    # A1a: Month-part semantics (下旬 corrected from 15 to 21)
+    def test_month_start(self):
+        """三月初 => 1..10."""
+        dr = parse_time_range("三月初", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-01"
+        assert dr.until == "2026-03-10"
+
+    def test_month_mid(self):
+        """三月中旬 => 11..20."""
+        dr = parse_time_range("三月中旬", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-11"
+        assert dr.until == "2026-03-20"
+
+    def test_month_late(self):
+        """三月下旬 => 21..end (A1a fix: was 15, now 21)."""
+        dr = parse_time_range("三月下旬", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-21"
+        assert dr.until == "2026-03-31"
+
+    def test_month_end(self):
+        """三月底 => 25..end."""
+        dr = parse_time_range("三月底", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-25"
+        assert dr.until == "2026-03-31"
+
+    def test_month_late_february_nonleap(self):
+        """二月下旬 => 21..28 (non-leap year)."""
+        dr = parse_time_range("二月下旬", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-02-21"
+        assert dr.until == "2026-02-28"
+
+    def test_month_late_february_leap(self):
+        """二月下旬 => 21..29 (leap year 2024)."""
+        ref = date(2024, 4, 18)
+        dr = parse_time_range("二月下旬", reference_date=ref)
+        assert dr is not None
+        assert dr.since == "2024-02-21"
+        assert dr.until == "2024-02-29"
+
+    def test_month_range_late_to_next(self):
+        """三月下旬到四月 => 21..end-of-April."""
+        dr = parse_time_range("三月下旬到四月", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-21"
+        assert dr.until == "2026-04-30"
+
+    def test_month_late_august(self):
+        """八月下旬 => 21..31."""
+        dr = parse_time_range("八月下旬", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-08-21"
+        assert dr.until == "2026-08-31"
+
 
 # ── classify_intent ────────────────────────────────────────────────────
 
@@ -270,9 +324,7 @@ class TestBuildSearchPlan:
     REF_DATE = date(2026, 4, 18)
 
     def test_time_aggregation_query(self):
-        plan = build_search_plan(
-            "过去60天我有多少次晚于10点睡觉？", reference_date=self.REF_DATE
-        )
+        plan = build_search_plan("过去60天我有多少次晚于10点睡觉？", reference_date=self.REF_DATE)
         assert plan.raw_query == "过去60天我有多少次晚于10点睡觉？"
         assert plan.intent_type == IntentType.COUNT
         assert plan.date_range is not None
@@ -300,9 +352,7 @@ class TestBuildSearchPlan:
         assert plan.intent_type == IntentType.RECALL
 
     def test_to_dict_json_serializable(self):
-        plan = build_search_plan(
-            "过去60天我有多少次晚于10点睡觉？", reference_date=self.REF_DATE
-        )
+        plan = build_search_plan("过去60天我有多少次晚于10点睡觉？", reference_date=self.REF_DATE)
         import json
 
         d = plan.to_dict()
@@ -310,15 +360,11 @@ class TestBuildSearchPlan:
         assert "过去60天" in json_str
 
     def test_work_topic_query(self):
-        plan = build_search_plan(
-            "上个月在工作中取得了什么进展？", reference_date=self.REF_DATE
-        )
+        plan = build_search_plan("上个月在工作中取得了什么进展？", reference_date=self.REF_DATE)
         assert "work" in plan.topic_hints
 
     def test_health_topic_query(self):
-        plan = build_search_plan(
-            "我有多久没有关心过健康了？", reference_date=self.REF_DATE
-        )
+        plan = build_search_plan("我有多久没有关心过健康了？", reference_date=self.REF_DATE)
         assert "health" in plan.topic_hints
 
 

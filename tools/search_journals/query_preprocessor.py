@@ -376,7 +376,7 @@ def parse_time_range(  # noqa: C901
         cn_end_month = _CN_NUMERALS.get(m.group(2))
         if cn_start_month and cn_end_month:
             year = ref.year
-            since = date(year, cn_start_month, 15)
+            since = date(year, cn_start_month, 21)
             if cn_end_month == 12:
                 until = date(year, 12, 31)
             else:
@@ -407,7 +407,7 @@ def parse_time_range(  # noqa: C901
         cn_month = _CN_NUMERALS.get(m.group(1))
         if cn_month:
             year = ref.year
-            since = date(year, cn_month, 15)
+            since = date(year, cn_month, 21)
             if cn_month == 12:
                 until = date(year, 12, 31)
             else:
