@@ -70,3 +70,180 @@ class TestApplyTitlePromotion:
     def test_empty_results(self):
         results = apply_title_promotion([], "test")
         assert results == []
+
+    def test_hybrid_priority_bucket_preserved(self):
+        """D2-3: source=none metadata hits must not outrank real retrieval hits
+        solely because of score magnitude differences (RRF ~0.05 vs L2 raw ~33).
+        """
+        results = [
+            # FTS+semantic hit (priority 5) with low RRF score
+            {
+                "title": "算力投资思考",
+                "final_score": 0.05,
+                "rrf_score": 0.05,
+                "fts_score": 100.0,
+                "semantic_score": 40.0,
+                "source": "fts,semantic",
+                "_hybrid_priority": 5,
+            },
+            # L2 metadata hit (priority 4) with high raw score
+            {
+                "title": "家庭吵架反思",
+                "final_score": 33.0,
+                "rrf_score": 0.0,
+                "fts_score": 0.0,
+                "semantic_score": 0.0,
+                "source": "none",
+                "_hybrid_priority": 4,
+            },
+        ]
+        promoted = apply_title_promotion(results, "投资思考")
+        # Title "算力投资思考" is promoted (0.05 * 1.5 = 0.075)
+        # Title "家庭吵架反思" is NOT promoted (unrelated)
+        # Even though 33.0 >> 0.075, the FTS hit must stay on top
+        # because priority 5 > priority 4.
+        assert promoted[0]["title"] == "算力投资思考"
+        assert promoted[1]["title"] == "家庭吵架反思"
+
+    def test_hybrid_promotion_within_bucket_only(self):
+        """D2-3: Title promotion should reorder within a bucket but not cross buckets."""
+        results = [
+            {
+                "title": "算力投资思考",
+                "final_score": 0.05,
+                "rrf_score": 0.05,
+                "fts_score": 100.0,
+                "semantic_score": 40.0,
+                "source": "fts,semantic",
+                "_hybrid_priority": 5,
+            },
+            {
+                "title": "投资研究笔记",
+                "final_score": 0.04,
+                "rrf_score": 0.04,
+                "fts_score": 80.0,
+                "semantic_score": 30.0,
+                "source": "fts,semantic",
+                "_hybrid_priority": 5,
+            },
+            {
+                "title": "家庭吵架反思",
+                "final_score": 33.0,
+                "rrf_score": 0.0,
+                "fts_score": 0.0,
+                "semantic_score": 0.0,
+                "source": "none",
+                "_hybrid_priority": 4,
+            },
+        ]
+        promoted = apply_title_promotion(results, "投资思考")
+        # Both retrieval hits are promoted; metadata hit is not.
+        # 0.05 * 1.5 = 0.075, 0.04 * 1.5 = 0.06
+        # Both should remain above the 33.0 metadata hit.
+        assert promoted[0]["title"] == "算力投资思考"
+        assert promoted[1]["title"] == "投资研究笔记"
+        assert promoted[2]["title"] == "家庭吵架反思"
+
+    def test_hybrid_full_priority_ordering(self):
+        """D2-4: Exact 4-tier priority must be preserved:
+        FTS (5) > L2 metadata (4) > L1 index (3) > semantic-only (2).
+        """
+        results = [
+            {
+                "title": "语义回填结果",
+                "final_score": 0.08,
+                "rrf_score": 0.08,
+                "fts_score": 0.0,
+                "semantic_score": 35.0,
+                "source": "semantic",
+                "_hybrid_priority": 2,
+            },
+            {
+                "title": "L2 元数据命中",
+                "final_score": 33.0,
+                "rrf_score": 0.0,
+                "fts_score": 0.0,
+                "semantic_score": 0.0,
+                "source": "none",
+                "_hybrid_priority": 4,
+            },
+            {
+                "title": "FTS 内容命中",
+                "final_score": 0.06,
+                "rrf_score": 0.06,
+                "fts_score": 100.0,
+                "semantic_score": 0.0,
+                "source": "fts",
+                "_hybrid_priority": 5,
+            },
+            {
+                "title": "L1 索引存在",
+                "final_score": 10.0,
+                "rrf_score": 0.0,
+                "fts_score": 0.0,
+                "semantic_score": 0.0,
+                "source": "none",
+                "_hybrid_priority": 3,
+            },
+        ]
+        promoted = apply_title_promotion(results, "投资思考")
+        # No title matches "投资思考", so no promotion happens.
+        # Order must follow _hybrid_priority strictly.
+        assert promoted[0]["title"] == "FTS 内容命中"  # priority 5
+        assert promoted[1]["title"] == "L2 元数据命中"  # priority 4
+        assert promoted[2]["title"] == "L1 索引存在"  # priority 3
+        assert promoted[3]["title"] == "语义回填结果"  # priority 2
+
+    def test_hybrid_semantic_does_not_outrank_l2(self):
+        """D2-4: Semantic-only (priority 2) must NOT outrank L2 metadata
+        (priority 4) even if its RRF score is higher than L2's raw score.
+        """
+        results = [
+            {
+                "title": "L2 元数据命中",
+                "final_score": 20.0,
+                "rrf_score": 0.0,
+                "fts_score": 0.0,
+                "semantic_score": 0.0,
+                "source": "none",
+                "_hybrid_priority": 4,
+            },
+            {
+                "title": "语义回填结果",
+                "final_score": 0.50,
+                "rrf_score": 0.50,
+                "fts_score": 0.0,
+                "semantic_score": 35.0,
+                "source": "semantic",
+                "_hybrid_priority": 2,
+            },
+        ]
+        promoted = apply_title_promotion(results, "投资思考")
+        # 0.50 > 20.0 numerically, but priority 4 > priority 2.
+        assert promoted[0]["title"] == "L2 元数据命中"
+        assert promoted[1]["title"] == "语义回填结果"
+
+    def test_non_hybrid_global_sort_unchanged(self):
+        """Non-hybrid results (uniform scale) still use global final_score sort."""
+        results = [
+            {
+                "title": "红烧肉做法",
+                "final_score": 0.04,
+                "rrf_score": 0.0,
+                "fts_score": 40.0,
+                "semantic_score": 0.0,
+                "source": "fts",
+            },
+            {
+                "title": "量子计算笔记",
+                "final_score": 0.03,
+                "rrf_score": 0.0,
+                "fts_score": 30.0,
+                "semantic_score": 0.0,
+                "source": "fts",
+            },
+        ]
+        promoted = apply_title_promotion(results, "量子计算")
+        # 0.03 * 1.5 = 0.045 > 0.04, so B should outrank A
+        assert promoted[0]["title"] == "量子计算笔记"
+        assert promoted[1]["title"] == "红烧肉做法"

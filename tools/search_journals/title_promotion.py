@@ -45,9 +45,19 @@ def apply_title_promotion(
     Modifies final_score by 1.5x for promoted results, then re-sorts.
     Does NOT modify confidence labels (D12 requirement).
 
+    In hybrid mode, preserves the exact priority buckets produced by
+    ranking._hybrid_priority() so that title promotion never inverts
+    the intended ordering (e.g. metadata-only raw score 33 must not
+    outrank an RRF-fused hit at 0.06, and semantic-only backfill must
+    remain below L2 metadata).
+
     Returns:
         Re-sorted merged_results list.
     """
+    # D2-4: Detect hybrid mode by presence of the internal priority field
+    # that ranking.py now exports (avoids guessing from score magnitude).
+    has_hybrid_priority = any("_hybrid_priority" in r for r in merged_results)
+
     for result in merged_results:
         title = str(result.get("title", ""))
         if should_promote(query, title):
@@ -57,6 +67,20 @@ def apply_title_promotion(
         else:
             result["title_promoted"] = False
 
-    # Re-sort by final_score descending
-    merged_results.sort(key=lambda r: float(r.get("final_score", 0)), reverse=True)
+    if has_hybrid_priority:
+        # Use the exact priority bucket from ranking._hybrid_priority().
+        # Priority values: FTS(5) > L2 metadata(4) > L1 index(3) >
+        # semantic-only(2) > others(0).  Promotion only reorders within
+        # the same bucket; cross-bucket ordering is preserved.
+        merged_results.sort(
+            key=lambda r: (
+                int(r.get("_hybrid_priority", 0)),
+                float(r.get("final_score", 0)),
+            ),
+            reverse=True,
+        )
+    else:
+        # Non-hybrid or uniform scale: global sort by final_score is safe.
+        merged_results.sort(key=lambda r: float(r.get("final_score", 0)), reverse=True)
+
     return merged_results

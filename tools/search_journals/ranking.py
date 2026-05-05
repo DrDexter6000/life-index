@@ -772,6 +772,10 @@ def merge_and_rank_results_hybrid(
             if item["semantic_score"] > 0:
                 _sources.append("semantic")
             data["source"] = ",".join(_sources) if _sources else "none"
+            # D2-4: Expose internal priority bucket so post-processors (e.g.
+            # title promotion) can preserve the intended ordering without
+            # guessing from score magnitude or source strings.
+            data["_hybrid_priority"] = _hybrid_priority(item)
 
             data["confidence"] = _classify_confidence(
                 fts_score=float(item["fts_score"]),
