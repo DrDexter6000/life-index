@@ -9,11 +9,7 @@ Validates graph cold-start from journal frontmatter:
 """
 
 import json
-from datetime import datetime
 from pathlib import Path
-from typing import Any
-
-import pytest
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
@@ -105,16 +101,14 @@ class TestSeedCandidateCollection:
             min_frequency=2,
         )
         names = {c.primary_name for c in candidates}
-        assert any("Lagos" in n for n in names), (
-            f"Should find Lagos in candidates, got: {names}"
-        )
+        assert any("Lagos" in n for n in names), f"Should find Lagos in candidates, got: {names}"
         lagos_cand = next(c for c in candidates if "Lagos" in c.primary_name)
         assert lagos_cand.type == "place"
 
     def test_extracts_tags_with_type_inference(self, isolated_data_dir: Path) -> None:
         """
         Tags type inference:
-        - Matches ^[A-Z][a-zA-Z0-9 ]+$ → type=tool
+        - Matches ^[A-Z][a-zA-Z0-9 ]+$ → type=concept (v1 schema has no "tool")
         - Otherwise → type=concept
         """
         from tools.entity.seed import collect_candidates
@@ -136,17 +130,15 @@ class TestSeedCandidateCollection:
         )
         by_name = {c.primary_name: c for c in candidates}
 
-        # "Claude Opus" → tool (matches PascalCase pattern)
+        # "Claude Opus" → concept (PascalCase tags are concepts in v1 schema)
         if "Claude Opus" in by_name:
-            assert by_name["Claude Opus"].type == "tool"
+            assert by_name["Claude Opus"].type == "concept"
 
         # "重构" → concept (doesn't match PascalCase)
         if "重构" in by_name:
             assert by_name["重构"].type == "concept"
 
-    def test_frequency_threshold_filters_singletons(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_frequency_threshold_filters_singletons(self, isolated_data_dir: Path) -> None:
         """Entities appearing only once should NOT enter the graph."""
         from tools.entity.seed import collect_candidates
 

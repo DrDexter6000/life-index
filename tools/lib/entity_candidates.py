@@ -46,7 +46,7 @@ def _infer_type_from_source(source_field: str, value: str) -> str:
     Rules:
     - people → person
     - location → place
-    - tags + matches TOOL_PATTERN → tool
+    - tags + matches TOOL_PATTERN → concept (v1 schema has no "tool" type)
     - tags + doesn't match → concept
     - project → project
     """
@@ -56,7 +56,7 @@ def _infer_type_from_source(source_field: str, value: str) -> str:
         return "place"
     if source_field == "tags":
         if _TOOL_PATTERN.match(value):
-            return "tool"
+            return "concept"
         return "concept"
     if source_field == "project":
         return "project"
