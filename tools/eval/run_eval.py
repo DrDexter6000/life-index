@@ -35,6 +35,128 @@ MODULES_TO_RELOAD = (
 )
 
 
+# --- Broad eval predicate helpers (Phase 1 report-only) ---
+
+
+def _doc_date(doc: dict[str, Any]) -> date:
+    """Extract date from a result or journal document."""
+    d = doc.get("date")
+    if isinstance(d, date):
+        return d
+    if isinstance(d, datetime):
+        return d.date()
+    if d is None:
+        return date.min
+    try:
+        s = str(d)[:10]
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return date.min
+
+
+def _doc_topics(doc: dict[str, Any]) -> list[str]:
+    """Extract topics from a result or journal document."""
+    topic = doc.get("topic")
+    if isinstance(topic, str):
+        return [topic]
+    if isinstance(topic, list):
+        return [str(t) for t in topic]
+    return []
+
+
+def _build_predicate(be_predicate: dict[str, Any]) -> Any:
+    """Build a predicate function from broad_eval predicate spec."""
+    ptype = be_predicate["type"]
+    if ptype == "date_range":
+        since = datetime.strptime(be_predicate["date_range"]["since"], "%Y-%m-%d").date()
+        until = datetime.strptime(be_predicate["date_range"]["until"], "%Y-%m-%d").date()
+        return lambda doc: since <= _doc_date(doc) <= until
+    if ptype == "topic":
+        hints = set(be_predicate["topic_hints"])
+        return lambda doc: bool(hints & set(_doc_topics(doc)))
+    if ptype == "date_topic":
+        since = datetime.strptime(be_predicate["date_range"]["since"], "%Y-%m-%d").date()
+        until = datetime.strptime(be_predicate["date_range"]["until"], "%Y-%m-%d").date()
+        hints = set(be_predicate["topic_hints"])
+        return lambda doc: (since <= _doc_date(doc) <= until) and bool(
+            hints & set(_doc_topics(doc))
+        )
+    if ptype == "season":
+        since = datetime.strptime(be_predicate["date_range"]["since"], "%Y-%m-%d").date()
+        until = datetime.strptime(be_predicate["date_range"]["until"], "%Y-%m-%d").date()
+        return lambda doc: since <= _doc_date(doc) <= until
+    raise ValueError(f"Unknown predicate type: {ptype}")
+
+
+def _compute_predicate_precision(
+    top_results: list[dict[str, Any]], predicate: Any
+) -> tuple[float, int, int]:
+    """Return (precision, matched_count, returned_count)."""
+    returned_count = len(top_results)
+    if returned_count == 0:
+        return 0.0, 0, 0
+    matched_count = sum(1 for doc in top_results if predicate(doc))
+    return matched_count / returned_count, matched_count, returned_count
+
+
+def _compute_global_matched_count(all_docs: list[dict[str, Any]], predicate: Any) -> int:
+    """Count how many docs in the full corpus satisfy the predicate."""
+    return sum(1 for doc in all_docs if predicate(doc))
+
+
+def _collect_all_indexed_docs() -> list[dict[str, Any]]:
+    """Collect all journal documents by scanning markdown files.
+
+    Uses frontmatter scanning rather than metadata_cache to avoid
+    depending on an unstable/undocumented API.
+    """
+    from tools.lib.frontmatter import parse_journal_file
+    from tools.lib.paths import resolve_journals_dir
+
+    journals_dir = resolve_journals_dir()
+    if not journals_dir.exists():
+        return []
+
+    docs: list[dict[str, Any]] = []
+    for file_path in sorted(journals_dir.glob("**/life-index_*.md")):
+        try:
+            metadata = parse_journal_file(file_path)
+        except Exception:
+            continue
+        docs.append(
+            {
+                "title": str(metadata.get("title") or metadata.get("_title") or ""),
+                "date": metadata.get("date"),
+                "topic": metadata.get("topic", []),
+            }
+        )
+    return docs
+
+
+def _collect_broad_eval_metrics(per_query: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate broad_eval stats across per-query results."""
+    broad_items = [item for item in per_query if item.get("eval_mode") == "predicate_precision"]
+    if not broad_items:
+        return {}
+
+    strict_passes = sum(1 for item in broad_items if item.get("strict_pass"))
+    soft_passes = sum(1 for item in broad_items if item.get("soft_pass"))
+    errors = sum(1 for item in broad_items if item.get("broad_eval_error"))
+
+    return {
+        "query_count": len(broad_items),
+        "strict_pass_rate": _round_metric(_safe_float_divide(strict_passes, len(broad_items))),
+        "soft_pass_rate": _round_metric(_safe_float_divide(soft_passes, len(broad_items))),
+        "strict_passes": strict_passes,
+        "soft_passes": soft_passes,
+        "errors": errors,
+        "fails": len(broad_items) - soft_passes - errors,
+    }
+
+
+# --- End broad eval helpers ---
+
+
 def _get_llm_client_module() -> Any:
     return importlib.import_module("tools.eval.llm_client")
 
@@ -420,6 +542,23 @@ def _build_summary_lines(result: dict[str, Any]) -> list[str]:
             lines.append(f'FAIL {failure["id"]} "{failure["query"]}" — {failure["reason"]}')
     else:
         lines.append("Failures: 0")
+
+    be_metrics = result.get("broad_eval_metrics")
+    if be_metrics:
+        lines.append("")
+        lines.append(f"Broad Eval ({be_metrics['query_count']} queries):")
+        lines.append(
+            f"  Strict pass: {be_metrics['strict_passes']}/{be_metrics['query_count']} "
+            f"({be_metrics['strict_pass_rate']:.0%})"
+        )
+        lines.append(
+            f"  Soft pass:   {be_metrics['soft_passes']}/{be_metrics['query_count']} "
+            f"({be_metrics['soft_pass_rate']:.0%})"
+        )
+        if be_metrics.get("errors"):
+            lines.append(f"  Errors:      {be_metrics['errors']}/{be_metrics['query_count']}")
+        lines.append(f"  Fail:        {be_metrics['fails']}/{be_metrics['query_count']}")
+
     return lines
 
 
@@ -479,6 +618,7 @@ def _evaluate_queries(
     judge: str,
     live: bool,
     llm_client: Any | None,
+    all_docs: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     from tools.search_journals.core import hierarchical_search
 
@@ -561,6 +701,38 @@ def _evaluate_queries(
         }
         if judge == "llm":
             entry["llm_scores"] = llm_scores
+
+        # --- Phase 1: broad_eval report-only fields ---
+        broad_eval = query_case.get("broad_eval")
+        if broad_eval and all_docs is not None:
+            try:
+                predicate = _build_predicate(broad_eval["predicate"])
+                precision, matched_count, returned_count = _compute_predicate_precision(
+                    top_results, predicate
+                )
+                global_matched = _compute_global_matched_count(all_docs, predicate)
+                required_count = min(5, global_matched)
+                min_results_ok = returned_count >= required_count
+                strict_pass = (precision == 1.0) and min_results_ok
+                soft_pass = (precision >= 0.8) and min_results_ok
+                entry["eval_mode"] = "predicate_precision"
+                entry["predicate_precision"] = _round_metric(precision)
+                entry["global_matched_count"] = global_matched
+                entry["returned_count"] = returned_count
+                entry["matched_count"] = matched_count
+                entry["min_results_ok"] = min_results_ok
+                entry["strict_pass"] = strict_pass
+                entry["soft_pass"] = soft_pass
+            except Exception as exc:
+                # Report-only must not silently lose observability on errors
+                entry["eval_mode"] = "predicate_precision"
+                entry["broad_eval_error"] = str(exc)
+                entry["strict_pass"] = False
+                entry["soft_pass"] = False
+        else:
+            entry["eval_mode"] = "exact_mrr"
+        # --- End broad_eval ---
+
         per_query.append(entry)
 
         if failure_reason:
@@ -607,12 +779,14 @@ def run_evaluation(
     context = _live_data_dir() if live else _temporary_data_dir(data_dir)
 
     with context:
+        all_docs = _collect_all_indexed_docs()
         per_query, failures = _evaluate_queries(
             queries,
             use_semantic=use_semantic,
             judge=judge,
             live=live,
             llm_client=llm_client,
+            all_docs=all_docs,
         )
 
     by_category: dict[str, list[dict[str, Any]]] = {}
@@ -636,6 +810,7 @@ def run_evaluation(
         "metrics": (
             _collect_llm_metrics(per_query) if judge == "llm" else _collect_metrics(per_query)
         ),
+        "broad_eval_metrics": _collect_broad_eval_metrics(per_query),
         "by_category": {},
         "per_query": per_query,
         "failures": failures,

@@ -49,3 +49,33 @@ def test_run_eval_script_exists() -> None:
 def test_baseline_json_exists() -> None:
     baseline = Path("tests/eval/baselines/round-17-baseline.json")
     assert baseline.exists(), "round-17-baseline.json must exist"
+
+
+def test_broad_eval_schema_when_present() -> None:
+    """If broad_eval is present, it must have required sub-fields."""
+    data = yaml.safe_load(GOLD_SET.read_text(encoding="utf-8"))
+    for q in data["queries"]:
+        be = q.get("broad_eval")
+        if be is None:
+            continue
+        assert "mode" in be, f"Missing mode in broad_eval for {q['id']}"
+        assert "predicate" in be, f"Missing predicate in broad_eval for {q['id']}"
+        assert "type" in be["predicate"], f"Missing predicate.type in broad_eval for {q['id']}"
+        assert "min_precision" in be, f"Missing min_precision in broad_eval for {q['id']}"
+        assert "min_results_policy" in be, f"Missing min_results_policy in broad_eval for {q['id']}"
+
+        ptype = be["predicate"]["type"]
+        if ptype in ("date_range", "date_topic", "season"):
+            assert (
+                "date_range" in be["predicate"]
+            ), f"Missing date_range in broad_eval for {q['id']}"
+            assert (
+                "since" in be["predicate"]["date_range"]
+            ), f"Missing since in broad_eval for {q['id']}"
+            assert (
+                "until" in be["predicate"]["date_range"]
+            ), f"Missing until in broad_eval for {q['id']}"
+        if ptype in ("topic", "date_topic"):
+            assert (
+                "topic_hints" in be["predicate"]
+            ), f"Missing topic_hints in broad_eval for {q['id']}"

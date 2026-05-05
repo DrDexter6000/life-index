@@ -428,6 +428,15 @@ queries:
     - 想念小英雄
     - 内驱力与家庭：写在Life Index启航时
     - Carloha Wiki诞生记：AI赋能的一天
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: season
+      date_range:
+        since: '2026-03-01'
+        until: '2026-05-31'
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - time
   - seasonal
@@ -854,6 +863,15 @@ queries:
     - 真正的第一步
     - 人类 vs AI
     - 现实与理想的平衡
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_range
+      date_range:
+        since: '2026-01-01'
+        until: '2026-01-31'
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - time_range
   - auto-generated
@@ -930,6 +948,15 @@ queries:
     - Agents Epiphany - 打破工具边界
     - OpenCode浏览器自动化故障解决记录
     - 特朗普病危与美国衰败的思考
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_range
+      date_range:
+        since: '2026-04-01'
+        until: '2026-04-30'
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - time_range
   - auto-generated
@@ -966,6 +993,14 @@ queries:
     - 现实与理想的平衡
     - Digital-self 项目迁移与创业思考
     - LobsterAI Journal 双维度索引上线
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: topic
+      topic_hints:
+      - work
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -979,6 +1014,14 @@ queries:
     - 真正的第一步
     - 人类 vs AI
     - 现实与理想的平衡
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: topic
+      topic_hints:
+      - think
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1001,6 +1044,14 @@ queries:
     - 真正的第一步
     - LobsterAI Journal 双维度索引上线
     - LobsterAI 日志自动化与项目管理整合
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: topic
+      topic_hints:
+      - create
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1013,6 +1064,17 @@ queries:
     must_contain_title:
     - 真正的第一步
     - 人类 vs AI
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-01-01'
+        until: '2026-01-31'
+      topic_hints:
+      - think
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1037,6 +1099,17 @@ queries:
     must_contain_title:
     - to-do-list 太长，大脑 overload
     - 记录应该是习惯，不应该是负担
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-02-01'
+        until: '2026-02-28'
+      topic_hints:
+      - life
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1049,6 +1122,17 @@ queries:
     must_contain_title:
     - Digital-self 项目迁移与创业思考
     - LobsterAI Journal 双维度索引上线
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-02-01'
+        until: '2026-02-28'
+      topic_hints:
+      - work
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1085,6 +1169,17 @@ queries:
     must_contain_title:
     - 想念小英雄
     - 硅基生命崛起：与发小周渝的深度辩论
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-03-01'
+        until: '2026-03-31'
+      topic_hints:
+      - think
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1097,6 +1192,17 @@ queries:
     must_contain_title:
     - 想念小英雄
     - Carloha Wiki诞生记：AI赋能的一天
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-03-01'
+        until: '2026-03-31'
+      topic_hints:
+      - create
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1109,6 +1215,17 @@ queries:
     must_contain_title:
     - 回归 LobsterAI
     - Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-03-01'
+        until: '2026-03-31'
+      topic_hints:
+      - work
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1121,6 +1238,17 @@ queries:
     must_contain_title:
     - 中年人的第一个GitHub仓库
     - Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-03-01'
+        until: '2026-03-31'
+      topic_hints:
+      - learn
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1142,6 +1270,17 @@ queries:
     must_contain_title:
     - 计划回重庆给小朋友过生日与生活反思
     - 关于乐乐的事
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-03-01'
+        until: '2026-03-31'
+      topic_hints:
+      - relation
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
@@ -1154,6 +1293,17 @@ queries:
     must_contain_title:
     - Agents Epiphany - 打破工具边界
     - 特朗普病危与美国衰败的思考
+  broad_eval:
+    mode: predicate_precision
+    predicate:
+      type: date_topic
+      date_range:
+        since: '2026-04-01'
+        until: '2026-04-30'
+      topic_hints:
+      - think
+    min_precision: 1.0
+    min_results_policy: min(5, global_matched_count)
   tags:
   - complex_query
   - auto-generated
