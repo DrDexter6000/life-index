@@ -198,6 +198,8 @@ tags: ["重构", "优化"]
 - 检测：重复实体、孤立实体、频繁共现无关系
 - Agent 逐项访谈用户决定 merge/archive/add_relationship
 
+> Entity Graph 的操作规范（别名准入、生产写入铁律、验证清单、回滚策略）见 [`docs/ENTITY_GRAPH.md`](./ENTITY_GRAPH.md)。
+
 ### 5.4 操作级可观测性（Round 6）
 
 - 所有 CLI 响应中增加 `_trace` 字段（trace_id + command + total_ms + steps）
@@ -343,6 +345,7 @@ abstract: "100字内摘要"
 - [AGENTS.md](../AGENTS.md) - 开发者上下文；交互范式已迁至 CHARTER §1.3 + §2
 - [SKILL.md](../SKILL.md) — Agent 技能定义
 - [README.md](../README.md) — 用户入口与安装提示
+- [ENTITY_GRAPH.md](./ENTITY_GRAPH.md) — Entity Graph 操作规范（别名准入、写入铁律、验证清单）
 - [ADR Index](./adr/INDEX.md) — ADR 分类索引（🔒 Invariant / 📋 Decision）
 
 ---
