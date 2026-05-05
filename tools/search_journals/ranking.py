@@ -126,6 +126,57 @@ def _topic_boost_multiplier(result: dict[str, Any], topic_hints: list[str] | Non
     return 1.0
 
 
+def _structured_intent_match(
+    result: dict[str, Any],
+    date_range: dict[str, str] | None,
+    topic_hints: list[str] | None,
+) -> bool:
+    """Return True if result's date falls within date_range AND topic hits topic_hints.
+
+    R1: Narrow bonus gate — only activates when search_plan explicitly
+    provides both date_range and topic_hints, and the candidate's frontmatter
+    matches both dimensions.
+    """
+    if not date_range or not topic_hints:
+        return False
+
+    since = date_range.get("since")
+    until = date_range.get("until")
+    if not since or not until:
+        return False
+
+    # Date match
+    date_str = result.get("date", "")
+    if not date_str:
+        return False
+    try:
+        from datetime import datetime
+
+        d = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+        d_str = d.strftime("%Y-%m-%d")
+        if not (since <= d_str <= until):
+            return False
+    except Exception:
+        return False
+
+    # Topic match (reuse logic from _topic_boost_multiplier)
+    result_topics: set[str] = set()
+    topic = result.get("topic")
+    if isinstance(topic, list):
+        result_topics.update(str(t) for t in topic)
+    elif isinstance(topic, str):
+        result_topics.add(topic)
+    metadata = result.get("metadata", {})
+    if isinstance(metadata, dict):
+        meta_topic = metadata.get("topic")
+        if isinstance(meta_topic, list):
+            result_topics.update(str(t) for t in meta_topic)
+        elif isinstance(meta_topic, str):
+            result_topics.add(meta_topic)
+
+    return bool(result_topics & set(topic_hints))
+
+
 def _dynamic_threshold_floor(base_threshold: float, dynamic_threshold: float) -> float:
     """Keep dynamic thresholds from becoming more permissive than baseline."""
     return max(base_threshold, dynamic_threshold)
@@ -272,6 +323,7 @@ def merge_and_rank_results(
     entity_hints: Optional[List[Dict[str, Any]]] = None,
     explain: bool = False,
     topic_hints: Optional[List[str]] = None,
+    date_range: Optional[Dict[str, str]] = None,
 ) -> List[Dict]:
     """
     合并三层搜索结果并按相关性排序
@@ -355,6 +407,14 @@ def merge_and_rank_results(
             boost = _topic_boost_multiplier(entry["data"], topic_hints)
             if boost > 1.0:
                 entry["score"] = entry["score"] * boost
+
+    # R1: Structured intent match bonus for keyword-only path.
+    if date_range and topic_hints:
+        from ..lib.search_constants import STRUCTURED_INTENT_MATCH_BONUS_KEYWORD
+
+        for path, entry in scored.items():
+            if _structured_intent_match(entry["data"], date_range, topic_hints):
+                entry["score"] = entry["score"] + STRUCTURED_INTENT_MATCH_BONUS_KEYWORD
 
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先），
     # 再按 title 中完整短语出现位置排序（越靠前越优先，C1-a/b）
@@ -450,6 +510,7 @@ def merge_and_rank_results_hybrid(
     explain: bool = False,  # Task 2.1: explain mode
     entity_hints: Optional[List[Dict[str, Any]]] = None,
     topic_hints: Optional[List[str]] = None,
+    date_range: Optional[Dict[str, str]] = None,
 ) -> List[Dict]:
     """
     混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
@@ -608,6 +669,17 @@ def merge_and_rank_results_hybrid(
             boost = _topic_boost_multiplier(entry["data"], topic_hints)
             if boost > 1.0:
                 entry["final_score"] = entry["final_score"] * boost
+
+    # R1: Structured intent match bonus — narrow boost for candidates whose
+    # frontmatter matches BOTH the inferred date_range and topic_hints.
+    # Bonus is added to final_score within the candidate's existing priority
+    # bucket; we do NOT fake fts_score or alter tier to preserve source truth.
+    if date_range and topic_hints:
+        from ..lib.search_constants import STRUCTURED_INTENT_MATCH_BONUS
+
+        for path, entry in scored.items():
+            if _structured_intent_match(entry["data"], date_range, topic_hints):
+                entry["final_score"] = entry["final_score"] + STRUCTURED_INTENT_MATCH_BONUS
 
     # 按混合检索意图排序：
     # 1) 真正的关键词命中（尤其 FTS）优先

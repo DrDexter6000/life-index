@@ -12,6 +12,10 @@ from pathlib import Path
 import pytest
 
 from tools.search_journals.core import hierarchical_search
+from tools.search_journals.ranking import (
+    merge_and_rank_results,
+    merge_and_rank_results_hybrid,
+)
 
 
 @pytest.fixture
@@ -136,3 +140,120 @@ class TestStructuredRetrieval:
             "Expected structured candidate to survive filtering and appear in merged, got "
             f"{merged_titles}"
         )
+
+    def test_structured_intent_bonus_applied_keyword_path(
+        self, structured_retrieval_data_dir: Path, monkeypatch
+    ):
+        """Keyword path: structured-intent matches receive bonus on top of L2 base score."""
+        monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-04")
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(structured_retrieval_data_dir))
+
+        result = hierarchical_search(
+            query="三月份的工作日志",
+            semantic=False,
+            level=3,
+            explain=False,
+        )
+
+        carloha = [r for r in result["merged_results"] if "Carloha" in r.get("title", "")]
+        assert len(carloha) >= 1
+        # L2 base 30 + keyword bonus 50 = 80
+        assert (
+            carloha[0]["final_score"] >= 80
+        ), f"Expected structured candidate final_score >= 80, got {carloha[0].get('final_score')}"
+
+
+class TestStructuredIntentBonus:
+    """R1: Ranking-layer structured-intent bonus behaviour."""
+
+    def test_structured_intent_bonus_affects_hybrid_ranking(self) -> None:
+        """Hybrid path: bonus raises final_score enough to reorder within bucket."""
+        semantic_a = {
+            "path": "a.md",
+            "similarity": 0.40,
+            "title": "A",
+            "date": "2026-03-15",
+            "topic": ["work"],
+        }
+        semantic_b = {
+            "path": "b.md",
+            "similarity": 0.45,
+            "title": "B",
+            "date": "2026-04-15",
+            "topic": ["learn"],
+        }
+
+        merged = merge_and_rank_results_hybrid(
+            [],
+            [],
+            [],
+            [semantic_b, semantic_a],
+            query="test",
+            min_rrf_score=0.0,
+            min_non_rrf_score=0.0,
+            date_range={"since": "2026-03-01", "until": "2026-03-31"},
+            topic_hints=["work"],
+        )
+
+        paths = [r["path"] for r in merged]
+        # semantic_b has higher raw similarity but no structured match;
+        # semantic_a has lower similarity but gets +0.035 structured bonus.
+        assert (
+            paths[0] == "a.md"
+        ), f"Expected structured-intent match to outrank non-match, got {paths}"
+
+    def test_semantic_only_structured_candidate_no_fake_fts_score(self) -> None:
+        """Semantic-only candidates must never receive fabricated fts_score or FTS source."""
+        semantic_result = {
+            "path": "doc.md",
+            "similarity": 0.45,
+            "title": "Doc",
+            "date": "2026-03-15",
+            "topic": ["work"],
+        }
+
+        merged = merge_and_rank_results_hybrid(
+            [],
+            [],
+            [],
+            [semantic_result],
+            query="test",
+            min_rrf_score=0.0,
+            min_non_rrf_score=0.0,
+            date_range={"since": "2026-03-01", "until": "2026-03-31"},
+            topic_hints=["work"],
+        )
+
+        assert len(merged) == 1
+        assert (
+            merged[0]["fts_score"] == 0.0
+        ), f"Semantic-only candidate must not get fake fts_score, got {merged[0]['fts_score']}"
+        assert (
+            merged[0]["source"] == "semantic"
+        ), f"Semantic-only candidate source must be 'semantic', got '{merged[0]['source']}'"
+
+    def test_non_structured_candidate_no_bonus(self) -> None:
+        """Candidates outside date_range+topic_hints must not receive bonus."""
+        l2_outside = {
+            "path": "outside.md",
+            "title": "Outside",
+            "date": "2026-04-15",
+            "topic": ["learn"],
+            "metadata": {},
+        }
+
+        merged = merge_and_rank_results(
+            [],
+            [l2_outside],
+            [],
+            query="test",
+            min_score=0,
+            date_range={"since": "2026-03-01", "until": "2026-03-31"},
+            topic_hints=["work"],
+        )
+
+        assert len(merged) == 1
+        # L2 base score is 30; without bonus final_score stays well below 80
+        assert (
+            merged[0]["final_score"] < 80
+        ), f"Non-structured candidate should not receive bonus, got {merged[0]['final_score']}"

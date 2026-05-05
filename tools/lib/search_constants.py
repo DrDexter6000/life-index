@@ -230,6 +230,17 @@ NON_RRF_MIN_SCORE: int = 10
 # body lacks query keywords but whose topic/date align with user intent.
 STRUCTURED_RETRIEVAL_ENABLED: bool = True
 
+# R1: Narrow bonus for candidates whose frontmatter date AND topic both match
+# the search_plan's inferred date_range + topic_hints.
+# Hybrid path: added to RRF final_score. Semantic-only structured matches
+# remain in the semantic bucket; bonus only helps within-bucket ordering.
+STRUCTURED_INTENT_MATCH_BONUS: float = 0.035
+
+# Keyword-only path: added to raw score (0-100 scale). 50 lifts GQ53 L2 target
+# from base 30 to 80, but keyword L3 floor (~128) still keeps it outside top5.
+# Bonus is kept as a conservative safety margin; it does NOT guarantee top5.
+STRUCTURED_INTENT_MATCH_BONUS_KEYWORD: int = 50
+
 
 # =============================================================================
 # Result Limits
@@ -415,4 +426,7 @@ __all__ = [
     # keyword pipeline with pure metadata matches to recall logs whose
     # body lacks query keywords but whose topic/date match the intent.
     "STRUCTURED_RETRIEVAL_ENABLED",
+    # R1-safe-bonus: conservative structured-intent boost (does not guarantee top5)
+    "STRUCTURED_INTENT_MATCH_BONUS",
+    "STRUCTURED_INTENT_MATCH_BONUS_KEYWORD",
 ]

@@ -522,6 +522,21 @@ def _eval_anchor() -> date | None:
     return None
 
 
+def _date_range_dict_from_plan(plan: Any | None) -> dict[str, str] | None:
+    """Extract a flat date-range dict from a SearchPlan for ranking kwargs.
+
+    Returns None if the plan has no usable date_range.
+    """
+    if plan is None or plan.date_range is None:
+        return None
+    dr: dict[str, str] = {}
+    if plan.date_range.since:
+        dr["since"] = plan.date_range.since
+    if plan.date_range.until:
+        dr["until"] = plan.date_range.until
+    return dr if dr else None
+
+
 def hierarchical_search(
     query: Optional[str] = None,
     topic: Optional[str] = None,
@@ -882,6 +897,7 @@ def hierarchical_search(
     # ── RRF 融合 ──
     # Phase 4 T4.2: Extract topic_hints from search_plan for ranking boost
     _topic_hints = _plan.topic_hints if _plan else None
+    _date_range = _date_range_dict_from_plan(_plan)
 
     if semantic_results:
         result["merged_results"] = merge_and_rank_results_hybrid(
@@ -897,6 +913,7 @@ def hierarchical_search(
             explain=explain,  # Task 2.1
             entity_hints=entity_hints,
             topic_hints=_topic_hints,
+            date_range=_date_range,
         )
     else:
         # 语义搜索无结果时退化为纯关键词排序
@@ -908,6 +925,7 @@ def hierarchical_search(
             entity_hints=entity_hints,
             explain=explain,  # T3.4: forward explain to non-hybrid path
             topic_hints=_topic_hints,
+            date_range=_date_range,
         )
 
     result["total_found"] = len(result["merged_results"])
