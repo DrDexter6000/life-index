@@ -247,3 +247,21 @@ class TestApplyTitlePromotion:
         # 0.03 * 1.5 = 0.045 > 0.04, so B should outrank A
         assert promoted[0]["title"] == "量子计算笔记"
         assert promoted[1]["title"] == "红烧肉做法"
+
+    def test_hybrid_priority_field_stripped_from_output(self):
+        """Internal _hybrid_priority must not leak into API output."""
+        results = [
+            {
+                "title": "算力投资思考",
+                "final_score": 0.05,
+                "_hybrid_priority": 5,
+            },
+        ]
+        promoted = apply_title_promotion(results, "投资思考")
+        assert "_hybrid_priority" not in promoted[0]
+
+    def test_non_hybrid_no_priority_field_no_issue(self):
+        """Non-hybrid results without _hybrid_priority work normally."""
+        results = [{"title": "红烧肉做法", "final_score": 0.04}]
+        promoted = apply_title_promotion(results, "量子计算")
+        assert "_hybrid_priority" not in promoted[0]

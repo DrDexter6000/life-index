@@ -79,6 +79,9 @@ def apply_title_promotion(
             ),
             reverse=True,
         )
+        # Strip internal transient field so it never leaks into API output.
+        for r in merged_results:
+            r.pop("_hybrid_priority", None)
     else:
         # Non-hybrid or uniform scale: global sort by final_score is safe.
         merged_results.sort(key=lambda r: float(r.get("final_score", 0)), reverse=True)
