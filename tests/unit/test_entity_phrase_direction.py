@@ -112,6 +112,38 @@ def _d6_family_graph() -> list[dict]:
                 {"target": "person-wang-daming", "relation": "parent_of"},
             ],
         },
+        {
+            "id": "person-li-yulan",
+            "type": "person",
+            "primary_name": "李玉兰",
+            "aliases": ["岳母"],
+            "attributes": {
+                "family_role_labels": {
+                    "child_perspective": {"primary": "外婆", "aliases": ["姥姥"]},
+                }
+            },
+            "relationships": [
+                {"target": "person-chen-xiaohong", "relation": "parent_of"},
+                {"target": "person-wang-lele", "relation": "grandmother_of"},
+                {"target": "person-wang-xiaobai", "relation": "grandmother_of"},
+            ],
+        },
+        {
+            "id": "person-zhang-guoqiang",
+            "type": "person",
+            "primary_name": "张国强",
+            "aliases": ["岳父"],
+            "attributes": {
+                "family_role_labels": {
+                    "child_perspective": {"primary": "外公", "aliases": ["姥爷"]},
+                }
+            },
+            "relationships": [
+                {"target": "person-chen-xiaohong", "relation": "parent_of"},
+                {"target": "person-wang-lele", "relation": "grandfather_of"},
+                {"target": "person-wang-xiaobai", "relation": "grandfather_of"},
+            ],
+        },
     ]
 
 
@@ -207,6 +239,60 @@ class TestChildDirection:
         assert "person-wang-xiaobai" not in ids
         assert "person-tu-xiuying" not in ids
         assert "person-li-jianguo" not in ids
+
+
+class TestGrandparentDirection:
+    """grandmother_of / grandfather_of with reverse traversal + child_perspective filter."""
+
+    def test_limucheng_grandmother(self, isolated_data_dir: Path) -> None:
+        _save_graph(_d6_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("王乐乐的外婆")
+        assert "李玉兰" in expanded
+        assert "张国强" not in expanded
+
+    def test_limucheng_grandmother_alias_laolao(self, isolated_data_dir: Path) -> None:
+        _save_graph(_d6_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("王乐乐的姥姥")
+        assert "李玉兰" in expanded
+
+    def test_limucheng_grandfather(self, isolated_data_dir: Path) -> None:
+        _save_graph(_d6_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("王乐乐的外公")
+        assert "张国强" in expanded
+        assert "李玉兰" not in expanded
+
+    def test_limucheng_grandfather_alias_laoye(self, isolated_data_dir: Path) -> None:
+        _save_graph(_d6_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("王乐乐的姥爷")
+        assert "张国强" in expanded
+
+    def test_limubai_grandmother(self, isolated_data_dir: Path) -> None:
+        _save_graph(_d6_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("王小柏的外婆")
+        assert "李玉兰" in expanded
+
+    def test_zhangyanhan_mother_excludes_grandmother(self, isolated_data_dir: Path) -> None:
+        """李玉兰's child_perspective is 外婆, so 妈妈 filter excludes her."""
+        _save_graph(_d6_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("陈小红的妈妈")
+        # 李玉兰 is tagged 外婆, not 妈妈, so role_filter excludes her
+        assert "李玉兰" not in expanded
+        assert "张国强" not in expanded
+
+    def test_zhangyanhan_father_excludes_grandfather(self, isolated_data_dir: Path) -> None:
+        """张国强's child_perspective is 外公, so 爸爸 filter excludes him."""
+        _save_graph(_d6_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("陈小红的爸爸")
+        # 张国强 is tagged 外公, not 爸爸, so role_filter excludes him
+        assert "张国强" not in expanded
+        assert "李玉兰" not in expanded
+
+    def test_grandmother_entity_hint_only_grandmother(self, isolated_data_dir: Path) -> None:
+        _save_graph(_d6_family_graph(), isolated_data_dir)
+        hints = resolve_query_entities("王乐乐的外婆")
+        ids = [h["entity_id"] for h in hints]
+        assert "person-li-yulan" in ids
+        assert "person-zhang-guoqiang" not in ids
 
 
 class TestBackwardCompatNoLabels:

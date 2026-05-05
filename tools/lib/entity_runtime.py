@@ -97,6 +97,30 @@ RELATION_PHRASE_PATTERNS: list[dict[str, Any]] = [
         "role_filter": {"child_perspective": ["爷爷", "外公"]},
     },
     {
+        "suffix": "的外婆",
+        "relation": "grandmother_of",
+        "direction": "reverse",
+        "role_filter": {"child_perspective": ["外婆", "姥姥"]},
+    },
+    {
+        "suffix": "的姥姥",
+        "relation": "grandmother_of",
+        "direction": "reverse",
+        "role_filter": {"child_perspective": ["外婆", "姥姥"]},
+    },
+    {
+        "suffix": "的外公",
+        "relation": "grandfather_of",
+        "direction": "reverse",
+        "role_filter": {"child_perspective": ["外公", "姥爷"]},
+    },
+    {
+        "suffix": "的姥爷",
+        "relation": "grandfather_of",
+        "direction": "reverse",
+        "role_filter": {"child_perspective": ["外公", "姥爷"]},
+    },
+    {
         "suffix": "的女儿",
         "relation": "child_of",
         "direction": "reverse",
@@ -140,6 +164,10 @@ ROLE_LABELS: frozenset[str] = frozenset(
         "孩子",
         "奶奶",
         "爷爷",
+        "外婆",
+        "外公",
+        "姥姥",
+        "姥爷",
         "老家",
     }
 )
