@@ -571,6 +571,8 @@ queries:
     must_contain_title:
     - Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审
     - Life Index 搜索功能优化
+    - Life Index Web GUI 功能开发完成
+    - Life Index Web GUI 开发日志#2
   tags:
   - complex
   - project
