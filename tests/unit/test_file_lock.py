@@ -19,7 +19,7 @@ import platform
 import pytest
 import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 
 from tools.lib.file_lock import (
     FileLock,
@@ -221,17 +221,25 @@ class TestFileLockAcquireWindows:
         lock._ensure_lock_file()
         lock._file_handle = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
 
+        fake_time = [0.0]
+
+        def mock_time():
+            return fake_time[0]
+
+        def mock_sleep(seconds):
+            fake_time[0] += seconds
+
         with patch("platform.system", return_value="Windows"):
-            with patch("msvcrt.locking") as mock_locking:
-                # Simulate lock always failing
-                mock_locking.side_effect = OSError("Lock held")
+            with patch("msvcrt.locking", side_effect=OSError("Lock held")):
+                with patch("time.time", side_effect=mock_time):
+                    with patch("time.sleep", side_effect=mock_sleep):
+                        result = lock._acquire_windows(blocking=True)
 
-                start_time = time.time()
-                result = lock._acquire_windows(blocking=True)
-                elapsed = time.time() - start_time
-
-                assert result is False
-                assert elapsed < 0.5  # Should respect timeout
+                        assert result is False
+                        # Timeout respected: fake elapsed should be ~timeout
+                        assert lock.timeout is not None
+                        assert lock.poll_interval is not None
+                        assert lock.timeout <= fake_time[0] < lock.timeout + lock.poll_interval * 2
 
     def test_acquire_windows_nonblocking_success(self, tmp_path):
         """Should acquire lock on Windows in non-blocking mode"""
@@ -333,9 +341,7 @@ class TestFileLockAcquire:
         lock_path = tmp_path / "test.lock"
         lock = FileLock(lock_path)
 
-        with patch.object(
-            lock, "_ensure_lock_file", side_effect=RuntimeError("Unexpected")
-        ):
+        with patch.object(lock, "_ensure_lock_file", side_effect=RuntimeError("Unexpected")):
             with pytest.raises(RuntimeError):
                 lock.acquire()
 
@@ -567,6 +573,7 @@ class TestGetJournalsLockPath:
     def test_returns_path_under_user_data_dir(self, mock_resolve):
         """Should return path under USER_DATA_DIR"""
         from tools.lib.paths import reset_path_cache
+
         try:
             reset_path_cache()
             result = get_journals_lock_path()
@@ -599,6 +606,7 @@ class TestGetIndexLockPath:
     def test_returns_path_under_user_data_dir(self, mock_resolve):
         """Should return path under USER_DATA_DIR"""
         from tools.lib.paths import reset_path_cache
+
         try:
             reset_path_cache()
             result = get_index_lock_path()
@@ -816,15 +824,26 @@ class TestFileLockWindowsBlocking:
         lock._ensure_lock_file()
         lock._file_handle = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
 
+        fake_time = [0.0]
+
+        def mock_time():
+            return fake_time[0]
+
+        def mock_sleep(seconds):
+            fake_time[0] += seconds
+
         # Always fail to simulate timeout
         with patch("platform.system", return_value="Windows"):
             with patch("msvcrt.locking", side_effect=OSError("Lock held")):
-                start_time = time.time()
-                result = lock._acquire_windows(blocking=True)
-                elapsed = time.time() - start_time
+                with patch("time.time", side_effect=mock_time):
+                    with patch("time.sleep", side_effect=mock_sleep):
+                        result = lock._acquire_windows(blocking=True)
 
-        assert result is False
-        assert elapsed < 0.1  # Should respect timeout
+                        assert result is False
+                        # Timeout respected: fake elapsed should be ~timeout
+                        assert lock.timeout is not None
+                        assert lock.poll_interval is not None
+                        assert lock.timeout <= fake_time[0] < lock.timeout + lock.poll_interval * 2
         os.close(lock._file_handle)
 
 
