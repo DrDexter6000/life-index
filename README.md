@@ -271,7 +271,7 @@ Life Index 采用「本地优先」和「数据与程序完全分离」策略：
 
 ### 已经建好的地基
 
-**CLI Core v1.7.0** 已稳定运行，不是原型，不是 demo——这是一个经过 2,400+ 单元测试、CI 全绿、真实日常使用的系统：
+**CLI Core v1.0.0** 已稳定运行，不是原型，不是 demo——这是一个经过 2,400+ 单元测试、CI 全绿、真实日常使用的系统：
 
 | 核心能力 | 状态 | 说明 |
 |:---|:---:|:---|
@@ -529,6 +529,8 @@ python3 -m venv .venv
 | **[AGENTS.md](./AGENTS.md)** | AI 编码代理上下文 |
 | **[API.md](./docs/API.md)** | 工具参数和返回值契约 |
 | **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** | 架构设计与关键决策 (ADR) |
+| **[ENTITY_GRAPH.md](./docs/ENTITY_GRAPH.md)** | Entity Graph 操作规范 |
+| **[VERSIONING.md](./docs/VERSIONING.md)** | 版本治理与 release 规则 |
 
 ---
 

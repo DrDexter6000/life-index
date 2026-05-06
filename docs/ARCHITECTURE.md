@@ -346,10 +346,11 @@ abstract: "100字内摘要"
 - [SKILL.md](../SKILL.md) — Agent 技能定义
 - [README.md](../README.md) — 用户入口与安装提示
 - [ENTITY_GRAPH.md](./ENTITY_GRAPH.md) — Entity Graph 操作规范（别名准入、写入铁律、验证清单）
+- [VERSIONING.md](./VERSIONING.md) — 版本治理规范（保守 SemVer、release checklist、tag policy）
 - [ADR Index](./adr/INDEX.md) — ADR 分类索引（🔒 Invariant / 📋 Decision）
 
 ---
 
-> **校对日期**: 2026-05-05
-> **校对人**: Claude (Opus 4.7) / Round 19 Phase 1-D 收束
-> **对应状态**: Round 19 Phase 1-D 已完成（Broad eval soft gate + eval anchor + fuzzy/alias + structured intent）。当前 CHARTER v1.2.0，search_constants.py **50** 常量。
+> **校对日期**: 2026-05-06
+> **校对人**: GPT-5.5 / Versioning Contract 落盘审计
+> **对应状态**: CLI Core 正式重置为 v1.0.0；Broad eval soft gate、Entity Graph operating contract、observer-scoped relationship search、privacy-clean public history 已进入主线。当前 CHARTER v1.2.0，search_constants.py **50** 常量。

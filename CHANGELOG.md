@@ -1,87 +1,26 @@
 # Life Index Changelog
 
-This changelog records user-visible milestones for the v1.x CLI line.
+This changelog records user-visible releases for the Life Index CLI line.
+
+Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier exploratory tags are treated as pre-contract history and no longer define formal release semantics.
 
 ## [Unreleased]
 
-- Removed deprecated `sentiment_score` and `themes` fields across the CLI surface because they were undefined placeholders with no real consumers.
-- Added schema v2→v3 migration that strips those fields from existing journal frontmatter while preserving `entities`.
+- No unreleased changes yet.
 
-## [1.6.5] - 2026-04-14
+## [1.0.0] - 2026-05-06
 
 ### What users get
-- The Entity Graph now participates in real CLI flows instead of staying as a passive registry.
-- Agents and users can review, merge, delete, and inspect entities with a more operational maintenance surface.
+
+- Life Index CLI Core reaches the first formal stable baseline under the conservative versioning contract.
+- The public repository history has been privacy-cleaned and normalized for future public maintenance.
+- The CLI remains the product source of truth for local-first journal writing, search, eval, and Entity Graph workflows.
 
 ### Included in this release
-- **Entity runtime serving layer**: added fast runtime views for entity lookup, reverse alias mapping, and phrase-pattern expansion so write/search flows can consume entity knowledge directly.
-- **Write-time entity assistance**: journal creation now extracts entity candidates during write flows, making downstream entity review easier and more grounded in actual entries.
-- **Search hints and expansion v2**: search can surface `entity_hints` and broader expansion signals so recall improves without requiring exact wording.
-- **Entity review hub and maintenance commands**: added risk-prioritized review workflows plus merge/delete/stats/check style maintenance operations for keeping the graph healthy over time.
-- **Round 7 hardening**: expanded entity-focused tests, aligned fixtures and documentation with the shipped behavior, and stabilized a flaky metadata cache timing assertion before release.
 
-## [1.6.0] - 2026-04-05
-
-### What users get
-- Life Index (CLI Core) reaches a cleaner stabilization point before the GUI line begins formal development.
-- The default repository health signal is now easier to trust: functional tests, benchmark checks, and quality gates are clearly separated.
-
-### Included in this release
-- **CLI Core stabilization**: hardened search-related test coverage for clean CI environments, especially around semantic search fallback behavior.
-- **CI reliability cleanup**: split tests, quality checks, and benchmark runs into clearer workflows so hosted-runner noise no longer obscures core correctness.
-- **Release surface refinement**: aligned package version, bootstrap manifest version, and version-reporting tests for a clean v1.6.0 cut.
-- **Documentation refresh**: rewrote README / README.en narrative and positioning so the active CLI product surface is clearer to users and agents.
-
-## [1.5.5] - 2026-03-30
-
-### Fixed
-- Stabilized CI on Windows by removing Unicode-sensitive console output and normalizing generated topic filenames.
-- Reduced weather-related timeout flakiness in test and CI environments.
-- Fixed several flaky search and timing assertions that could fail under mocked or fast execution paths.
-
-### Improved
-- Modernized Python 3.11+ typing across search and FTS modules.
-- Added regression coverage for FTS logging and typing modernization.
-
-## [1.5.0] - 2026-03-28
-
-### What users get
-- Life Index is now positioned as an **Agent-Native CLI journal system** with a cleaned release surface.
-- Old Web GUI materials are preserved only as historical archive references, not as the active product path.
-
-### Included in this release
-- **Search quality upgrades**: stronger semantic retrieval, AND-first FTS behavior, and more reliable ranking thresholds.
-- **Entity Graph**: alias-aware entity resolution, relationship modeling, query expansion, and entity maintenance CLI.
-- **Write enhancements**: metadata enrichment, entity extraction, and revision history.
-- **Tool schema standardization**: per-tool `schema.json` files and shared schema validation support.
-- **Release cleanup**: README alignment, schedule consolidation, and CLI-only release orientation.
-
-## [1.4.0] - 2026-03-22
-
-### What users get
-- All core CLI tools now expose standardized machine-readable tool schemas.
-- Agents can integrate with the CLI more consistently because tool contracts are explicit instead of implicit.
-
-## [1.3.0] - 2026-03-22
-
-### What users get
-- Journal writing now captures richer structure around `entities` and revision history.
-- Existing journals can be migrated forward as the metadata model evolves.
-
-## [1.2.0] - 2026-04-03
-
-### What users get
-- Searches can understand people, places, projects, and aliases instead of depending on exact wording.
-- The new Entity Graph lets agents resolve names like family roles or nicknames into the right underlying entity.
-
-## [1.1.0] - 2026-04-03
-
-### What users get
-- Search became more precise and less noisy through `bge-m3`, AND-first keyword behavior, and threshold tuning.
-- Keyword and semantic retrieval now cooperate more reliably, improving recall without flooding the result set.
-
-## [1.0.0] - 2026-03-04
-
-### What users get
-- First stable CLI release with local-first Markdown journaling, search, editing, weather lookup, indexing, abstracts, and backup.
-- Established the core Life Index workflow: write through an agent, store locally forever, and retrieve later with structured search.
+- **Local-first journal archive**: Markdown + YAML frontmatter stored outside the code repository in the user's Life Index data directory.
+- **Agent-native CLI workflow**: structured commands for write, confirm, search, smart-search, edit, abstract, index, backup, verify, migrate, eval, entity, health, and version operations.
+- **Search and eval quality gates**: keyword/hybrid search evaluation, broad-eval soft gate, frozen eval anchors, and regression tests for retrieval behavior.
+- **Entity Graph baseline**: operating contract, alias expansion, observer-scoped family role labels, relationship phrase search, and production validation workflow.
+- **CI hard gates**: blocker tests, contract checks, quality checks, benchmark workflow, and search eval quality gate.
+- **Versioning contract**: conservative product SemVer with long-lived `1.0.x` patch cadence, cautious `1.x.0` minor bumps, and `2.0.0` reserved for product-generation changes such as mobile or multi-device form factors.

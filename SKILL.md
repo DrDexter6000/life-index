@@ -209,21 +209,22 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | attachments | array | ❌ | 附件（自动检测 content 中的本地文件路径；也可显式传递 `{"source_path":"...","description":"..."}` 对象） |
 | entities | array | ❌ | 已匹配的 entity graph ID 列表 |
 
-### 写入增强（v1.x Phase 3）
+### 写入增强（已实现）
 
 - 写入结果现在可包含：`entities`
 - 编辑日志时会自动写入 co-located `.revisions/`
 
-### Tool Schema（v1.x Phase 4）
+### Tool Schema（已实现）
 
 - 每个 CLI 工具目录下均已提供 `schema.json`
 - Agent Runtime 可读取 schema 发现参数/返回值契约
 - 高频意图："列出工具"、"工具参数"、"schema"
 
-### Entity Graph（v1.x Phase 2）
+### Entity Graph（已实现）
 
 - CLI：`life-index entity --list|--add|--resolve|--update`
 - 存储：`~/Documents/Life-Index/entity_graph.yaml`
+- 操作规范：见 `docs/ENTITY_GRAPH.md`
 - 作用：
   - 搜索时做 alias / relationship query expansion
   - 写入时标记 `new_entities_detected`

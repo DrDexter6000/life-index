@@ -275,7 +275,7 @@ Life Index follows a strict *local-first* policy, with complete separation betwe
 
 ### The Foundation, Already Built
 
-**CLI Core v1.6.5** is live, stable, and in real daily use — not a prototype, not a demo. It's a system with 1,460+ unit tests, green CI, and deliberate, disciplined engineering:
+**CLI Core v1.0.0** is live, stable, and in real daily use — not a prototype, not a demo. It's a system with 2,400+ unit tests, green CI, and deliberate, disciplined engineering:
 
 | Capability | Status | Notes |
 |:---|:---:|:---|
@@ -535,6 +535,8 @@ python3 -m venv .venv
 | **[AGENTS.md](./AGENTS.md)** | AI coding agent context |
 | **[API.md](./docs/API.md)** | Tool parameters and response contracts |
 | **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** | Architecture design and key decisions (ADRs) |
+| **[ENTITY_GRAPH.md](./docs/ENTITY_GRAPH.md)** | Entity Graph operating contract |
+| **[VERSIONING.md](./docs/VERSIONING.md)** | Versioning and release policy |
 
 ---
 

@@ -1,5 +1,5 @@
 {
-  "repo_version": "1.7.0",
+  "repo_version": "1.0.0",
   "onboarding_schema_version": "2.0",
   "manifest_schema": 1,
   "requires_checkout_sync": true,
@@ -11,6 +11,8 @@
     "SKILL.md",
     "docs/API.md",
     "docs/ARCHITECTURE.md",
+    "docs/ENTITY_GRAPH.md",
+    "docs/VERSIONING.md",
     "tools/lib/AGENTS.md",
     "README.md"
   ]
