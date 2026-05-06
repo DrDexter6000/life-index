@@ -66,7 +66,12 @@ def _validate_overlay_schema(overlay: dict[str, Any]) -> None:
             raise ValueError(
                 f"Overlay for query '{qid}' must be a mapping, got {type(fields).__name__}"
             )
-        allowed_keys = {"must_contain_title_override", "expected_titles_add", "notes"}
+        allowed_keys = {
+            "must_contain_title_override",
+            "expected_titles_add",
+            "notes",
+            "query_override",
+        }
         unknown = set(fields.keys()) - allowed_keys
         if unknown:
             raise ValueError(
@@ -81,6 +86,13 @@ def _validate_overlay_schema(overlay: dict[str, Any]) -> None:
                         f"Overlay '{key}' for query '{qid}' must be a string or list, "
                         f"got {type(val).__name__}"
                     )
+        if "query_override" in fields:
+            val = fields["query_override"]
+            if not isinstance(val, str):
+                raise ValueError(
+                    f"Overlay 'query_override' for query '{qid}' must be a string, "
+                    f"got {type(val).__name__}"
+                )
 
 
 def apply_overlay(
@@ -117,6 +129,12 @@ def apply_overlay(
         query = modified_by_id[qid_str]
         expected = query.setdefault("expected", {})
         action_applied = False
+
+        if "query_override" in fields:
+            query["_public_query"] = query["query"]
+            query["query"] = str(fields["query_override"])
+            applied_count += 1
+            action_applied = True
 
         if "must_contain_title_override" in fields:
             expected["must_contain_title"] = [

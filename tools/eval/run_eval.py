@@ -721,6 +721,8 @@ def _evaluate_queries(
             "pass": passed,
             "overlay_applied": str(query_case["id"]) in (applied_query_ids or set()),
         }
+        if "_public_query" in query_case:
+            entry["public_query"] = query_case["_public_query"]
         if judge == "llm":
             entry["llm_scores"] = llm_scores
 

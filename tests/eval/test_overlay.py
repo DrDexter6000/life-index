@@ -201,6 +201,77 @@ class TestApplyOverlay:
         assert applied_ids == {"GQ01"}
         assert count == 1
 
+    def test_query_override_replaces_query_string(self):
+        queries = self._make_queries()
+        overlay = {
+            "queries": {
+                "GQ01": {"query_override": "Private Query"},
+            }
+        }
+        modified, count, warnings, applied_ids = apply_overlay(queries, overlay)
+        assert count == 1
+        assert applied_ids == {"GQ01"}
+        gq01 = next(q for q in modified if q["id"] == "GQ01")
+        assert gq01["query"] == "Private Query"
+        assert gq01["_public_query"] == "test query one"
+        # Original untouched
+        assert queries[0]["query"] == "test query one"
+
+    def test_query_override_requires_string(self):
+        queries = self._make_queries()
+        overlay = {
+            "queries": {
+                "GQ01": {"query_override": 123},
+            }
+        }
+        with pytest.raises(ValueError, match="must be a string"):
+            apply_overlay(queries, overlay)
+
+    def test_query_override_plus_title_override(self):
+        queries = self._make_queries()
+        overlay = {
+            "queries": {
+                "GQ01": {
+                    "query_override": "Private Query",
+                    "must_contain_title_override": ["Private Title"],
+                },
+            }
+        }
+        modified, count, warnings, applied_ids = apply_overlay(queries, overlay)
+        assert count == 2
+        assert applied_ids == {"GQ01"}
+        gq01 = next(q for q in modified if q["id"] == "GQ01")
+        assert gq01["query"] == "Private Query"
+        assert gq01["_public_query"] == "test query one"
+        assert gq01["expected"]["must_contain_title"] == ["Private Title"]
+
+    def test_query_override_only_counts_as_applied(self):
+        queries = self._make_queries()
+        overlay = {
+            "queries": {
+                "GQ01": {"query_override": "Private Query"},
+            }
+        }
+        modified, count, warnings, applied_ids = apply_overlay(queries, overlay)
+        assert count == 1
+        assert applied_ids == {"GQ01"}
+
+    def test_notes_plus_query_override_counts_as_applied(self):
+        queries = self._make_queries()
+        overlay = {
+            "queries": {
+                "GQ01": {
+                    "query_override": "Private Query",
+                    "notes": "query override note",
+                },
+            }
+        }
+        modified, count, warnings, applied_ids = apply_overlay(queries, overlay)
+        assert count == 1
+        assert applied_ids == {"GQ01"}
+        gq01 = next(q for q in modified if q["id"] == "GQ01")
+        assert gq01["_local_notes"] == ["query override note"]
+
     def test_invalid_schema_fail_fast_unknown_key(self):
         queries = self._make_queries()
         overlay = {
