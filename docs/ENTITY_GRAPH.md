@@ -58,7 +58,7 @@ Entity Graph 是 Life Index 的**轻量级实体网络**，用于别名解析、
 | 一次性称呼 | 某次聚会临时起的外号 | 不可复现，无法预期搜索行为 |
 | 上下文依赖词 | `老板`, `CEO`（无具体姓名时） | 指代对象随时间变化，alias 是静态的 |
 | 情感/评价词 | `小天使`, `捣蛋鬼` | 非稳定标识符，主观性强 |
-| AI 模型名 | `Claude`, `Kimi`, `GPT-4` | 当前暂缓入图（见 §8），故无对应实体 |
+| AI 泛词/类别词 | `AI`, `模型`, `大模型`, `LLM`, `助手` | 泛词会污染所有 AI 相关查询；具体模型名按 §8 规则在用户明确批准后处理 |
 
 ### 3.3 为什么角色词不能进 Aliases
 
@@ -106,14 +106,21 @@ attributes:
 `attributes.role`（如 `child`, `spouse`, `parent`）用于**当前阶段**快速标注实体在家庭结构中的位置，但它:
 - **不是**长期关系建模的终点
 - **不能**替代 `relationships` 字段中的有向边
-- 在建立正式的 `person-wang-daming` / `user` 实体和 relationship 边之后，应逐步迁移到 relationship 表达
+- 生产图已配置核心家庭 relationship 边（见 §4.3），`attributes.role` 与 `family_role_labels` 仍作为补充检索信号存在
 
 ### 4.3 关系短语搜索的当前状态
 
-关系短语搜索（如 `"我女儿"` → 通过 `child_of` 反向查找）是**设计目标**，但:
-- 当前生产图尚未建立 `person-wang-daming` / `user` 实体
-- 也未配置 `child_of`/`parent_of`/`spouse_of` relationship
-- **因此该能力当前不可被描述为已可靠可用**
+关系短语搜索（如 `"我女儿"` → 通过 `child_of` 反向查找）对已配置的 relationship 边**可用**：
+
+- 当前生产图已建立核心家庭 person 实体（含 self / spouse / child / parent）
+- 已配置 `child_of` / `parent_of` / `spouse_of` / `grandmother_of` / `grandfather_of` relationship
+- 已配置 `family_role_labels`（如 `parent_perspective: 女儿`、`child_perspective: 爸爸`）
+- 因此 `"王小橙的妈妈"` → `person-chen-xiaohong`、`"王小橙的外婆"` → `person-li-yulan` 等短语可解析（示例为虚构，不对应 production 具体实体）
+
+**限制**：
+- 裸词角色搜索（直接搜 `"妈妈"`、`"爸爸"`、`"婆婆"`、`"爷爷"`）仍不是通用关系解析能力；这些词作为 alias 被禁止（见 §3.2）
+- 新关系类型（如 `sibling_of`、`colleague_of`）仍暂缓，需按 §6 审批和 §7 验证
+- 新实体、新 relationship 边仍必须按 §6 生产写入规则和 §7 验证清单执行
 
 ---
 
@@ -234,25 +241,38 @@ life-index eval
 
 ## 8. AI 模型实体规则
 
-### 8.1 当前立场：暂缓入图
+### 8.1 当前立场：允许入图，须用户明确批准
 
-- AI 模型（Claude, Kimi, GPT-4 等）**不默认作为 person 实体入图**
-- ADR-024 v1 在 schema 层面允许 `person` + `subtype=ai` + `role=ai_assistant`，但这是**schema 能力**，不是**默认策略**
-- 当前 schema 没有专门的 `model` / `ai` 类型，直接塞进 `person` 会污染"人"的语义边界
+- AI 模型/助手**允许作为 `person` 实体入图**，但**不默认自动添加**
+- ADR-024 v1 在 schema 层面已批准 `person` + `subtype=ai` + `role=ai_assistant`，Pilot 验证通过
+- 每个 AI 实体仍需**用户明确确认**后方可写入 production（见 §6.1）
 
-### 8.2 什么时候可以入图
+### 8.2 AI 实体固定规则
 
-只有用户**明确要求**时，才考虑添加 AI 模型实体，且必须：
-- 用户明确说"把 Claude 加入实体图"
-- 指定具体的 aliases（如 `Claude Opus 4.6`, `Opus 4.6`）
-- 确认不入通用角色词（如 `AI`、`模型` 不入 aliases）
+| 规则 | 要求 | 说明 |
+|------|------|------|
+| `type` | 固定为 `person` | schema 暂无独立 `model`/`ai` 类型，以 `person` + `subtype=ai` 表达 |
+| `attributes.subtype` | 固定为 `ai` | 与 family/organization 等 subtype 区分 |
+| `attributes.role` | 固定为 `ai_assistant` | 统一角色标识，便于检索过滤 |
+| `attributes.provider` | 嵌套对象 `{name, aliases}` | 厂商信息暂放属性，**不单独建 entity** |
+| aliases | 禁止泛词 | `AI`、`模型`、`大模型`、`LLM`、`助手` 等不得进入 aliases |
+| 家族名绑定 | 需单独确认 | `Claude` 不应默认作为 `Claude Opus` alias；家族名与具体模型分开处理 |
+| 批次大小 | 建议 ≤3 个 | 控制 blast radius，便于回滚与验证 |
 
-### 8.3 替代检索方案
+### 8.3 什么时候可以入图
 
-在 AI 模型入图前，相关日志可通过以下方式被检索到：
+满足以下全部条件：
+1. 用户明确批准添加该 AI 实体（如"把 Kimi 加入实体图"）
+2. 指定具体、无歧义的 aliases（如 `Kimi`, `Kimi Chat`）
+3. 确认 aliases 不含 §8.2 禁止的泛词
+4. 按 §5 准入条件 + §7 验证清单执行激活
+
+### 8.4 替代检索方案
+
+即使 AI 实体已入图，以下方式仍可作为补充检索路径：
 - frontmatter tags: `[Claude, AI, Agent]`
 - 日志正文中的模型名称被 FTS 直接索引
-- concept 实体（如 `concept-agent-native`）可覆盖抽象概念层面
+- concept 实体（如 `concept-agent-native`）覆盖抽象概念层面
 
 ---
 
@@ -265,7 +285,7 @@ life-index eval
 | `老婆` / `妻子` | 高频人物，乐乐妈是常见称呼 | **候选池**，等用户确认 primary_name、aliases、是否建立 relationship |
 | `妈妈` / `母亲` | 高频人物，多篇日志提及 | **候选池**，等用户确认 |
 | `Jordan` | GQ28 关联 | **阻塞**，需用户输入身份确认 |
-| AI 模型（Claude/Kimi 等） | 日志中多次出现 | **暂缓**，除非用户明确要求（见 §8） |
+| AI 模型（Claude/Kimi 等） | 日志中多次出现 | **允许入图**，须用户明确批准并按 §8.2 固定规则执行（见 §8） |
 
 **候选池管理原则**:
 - 候选信息可记录在 `.kimi-learnings/` 或任务报告中，**不写入 `entity_graph.yaml`**
@@ -318,4 +338,5 @@ life-index entity --delete --id ENTITY_ID
 
 | 版本 | 日期 | 变更 | 作者 |
 |------|------|------|------|
+| v1.1 | 2026-05-06 | §8 AI 模型实体规则更新：从"暂缓入图"改为"允许入图，须用户明确批准"；固定 `person`+`subtype=ai`+`role=ai_assistant` 规则；明确 provider 属性表达、禁止泛词 alias、批次 ≤3 等约束；同步更新 §9 候选池状态 | Kimi |
 | v1.0 | 2026-05-05 | 基于 D0.3 草案正式落盘为 `docs/ENTITY_GRAPH.md`，收紧生产写入规则，明确 relationship 过渡策略，定义验证清单 | Kimi |
