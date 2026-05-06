@@ -789,6 +789,40 @@ def _evaluate_queries(
     return per_query, failures
 
 
+def _build_semantic_report(
+    keyword_result: dict[str, Any],
+    semantic_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Build report-only semantic comparison from keyword and semantic eval results."""
+    kw_metrics = keyword_result["metrics"]
+    sem_metrics = semantic_result["metrics"]
+
+    kw_failure_ids = {f["id"] for f in keyword_result["failures"]}
+    sem_failure_ids = {f["id"] for f in semantic_result["failures"]}
+
+    fixed_by_semantic = sorted(kw_failure_ids - sem_failure_ids)
+    regressed_by_semantic = sorted(sem_failure_ids - kw_failure_ids)
+    still_failing_both = sorted(kw_failure_ids & sem_failure_ids)
+
+    delta: dict[str, Any] = {}
+    for metric_name in ("mrr_at_5", "recall_at_5", "precision_at_5", "ndcg_at_5"):
+        kw_val = float(kw_metrics.get(metric_name, 0.0))
+        sem_val = float(sem_metrics.get(metric_name, 0.0))
+        delta[metric_name] = _round_metric(sem_val - kw_val)
+    delta["failure_count"] = len(sem_failure_ids) - len(kw_failure_ids)
+
+    return {
+        "enabled": True,
+        "metrics": sem_metrics,
+        "failure_count": len(sem_failure_ids),
+        "failure_ids": sorted(sem_failure_ids),
+        "fixed_by_semantic": fixed_by_semantic,
+        "regressed_by_semantic": regressed_by_semantic,
+        "still_failing_both": still_failing_both,
+        "delta": delta,
+    }
+
+
 def run_evaluation(
     *,
     data_dir: Path | None = None,
@@ -801,6 +835,7 @@ def run_evaluation(
     phase: int = 2,
     overlay_path: Path | None = None,
     use_overlay: bool | None = None,
+    semantic_report: bool = False,
 ) -> dict[str, Any]:
     """Run the search evaluation suite and optionally persist a baseline.
 
@@ -808,7 +843,20 @@ def run_evaluation(
       - Disabled in CI or when save_baseline is set (cannot be overridden).
       - Default: enabled for local eval when neither CI nor save_baseline.
       - Pass use_overlay=False to explicitly disable.
+
+    semantic_report: Run a second eval pass with use_semantic=True and append
+      a ``semantic_report`` dict to the result.  The top-level metrics, failures,
+      and pass/fail gate remain from the keyword (use_semantic=False) run.
+      Cannot be combined with save_baseline.
     """
+    if semantic_report and use_semantic:
+        raise ValueError(
+            "semantic report requires keyword/default top-level eval (use_semantic must be False)"
+        )
+
+    if semantic_report and save_baseline is not None:
+        raise ValueError("semantic report is diagnostic-only and cannot be saved as baseline")
+
     from tools.eval.overlay import is_ci_environment
 
     # Hard disable: overlay must never affect public baselines or CI runs
@@ -904,6 +952,29 @@ def run_evaluation(
             per_query=per_query,
             llm_client=llm_client,
         )
+
+    if semantic_report:
+        sem_context = _live_data_dir() if live else _temporary_data_dir(data_dir)
+        with sem_context:
+            sem_per_query, sem_failures = _evaluate_queries(
+                queries,
+                use_semantic=True,
+                judge=judge,
+                live=live,
+                llm_client=llm_client,
+                all_docs=all_docs,
+                applied_query_ids=applied_query_ids,
+            )
+        sem_metrics = (
+            _collect_llm_metrics(sem_per_query)
+            if judge == "llm"
+            else _collect_metrics(sem_per_query)
+        )
+        semantic_result = {
+            "metrics": sem_metrics,
+            "failures": sem_failures,
+        }
+        result["semantic_report"] = _build_semantic_report(result, semantic_result)
 
     if save_baseline is not None:
         save_baseline.parent.mkdir(parents=True, exist_ok=True)

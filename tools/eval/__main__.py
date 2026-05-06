@@ -44,6 +44,14 @@ def main(argv: list[str] | None = None) -> None:
         help="Disable semantic pipeline (default: disabled)",
     )
     parser.add_argument(
+        "--semantic-report",
+        action="store_true",
+        help=(
+            "Run a second semantic eval pass and append a semantic_report "
+            "section (diagnostic-only; cannot be used with --save-baseline)"
+        ),
+    )
+    parser.add_argument(
         "--judge",
         choices=("keyword", "llm"),
         default="keyword",
@@ -67,6 +75,15 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     use_semantic = args.semantic
+
+    if args.semantic_report and args.semantic:
+        parser.error(
+            "--semantic-report cannot be combined with --semantic; "
+            "top-level eval must remain keyword/default"
+        )
+
+    if args.semantic_report and args.save_baseline:
+        parser.error("--semantic-report cannot be used with --save-baseline")
 
     if args.compare_baseline:
         comparison = compare_against_baseline(
@@ -102,6 +119,7 @@ def main(argv: list[str] | None = None) -> None:
         live=args.live,
         use_overlay=cli_use_overlay,
         overlay_path=args.overlay_path,
+        semantic_report=args.semantic_report,
     )
     if args.json:
         payload = {"success": True, "data": result}
