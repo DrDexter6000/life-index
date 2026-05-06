@@ -140,7 +140,40 @@ Release state must stay aligned across:
 
 For a formal release, all five surfaces must agree.
 
-## 9. Release Checklist
+## 9. PyPI Distribution Constraint
+
+GitHub Release is the release/version SSOT. PyPI is an optional distribution
+channel and must not override this contract.
+
+Due to pre-contract PyPI uploads, several `life-index` distribution filenames
+have already been used. PyPI does not allow re-uploading a distribution file
+with the same filename, even if the corresponding PyPI release or file is later
+deleted.
+
+Known PyPI-used versions:
+
+```text
+1.0.0
+1.3.0
+1.4.0
+1.5.0
+1.5.5
+1.6.0
+1.6.5
+```
+
+These versions are not available for future PyPI publication. In particular,
+do not attempt to publish `life-index` `1.0.0` to PyPI.
+
+The first clean PyPI release after the `v1.0.0` baseline must be a future
+natural PATCH release, currently expected to be `1.0.1` or later. Any retained
+old PyPI release is only a namespace-reservation artifact and is not an
+authoritative Life Index CLI release.
+
+PyPI publishing is manual-only until explicitly re-enabled. Tag pushes must not
+automatically publish to PyPI.
+
+## 10. Release Checklist
 
 Before creating a release tag:
 
@@ -154,7 +187,7 @@ Before creating a release tag:
 8. Create annotated tag `vX.Y.Z`.
 9. Push commit and tag.
 
-## 10. Tag Policy
+## 11. Tag Policy
 
 Git tags are release anchors. They should point to commits where:
 
@@ -164,7 +197,7 @@ Git tags are release anchors. They should point to commits where:
 
 Exploratory historical tags before this contract do not define formal version semantics.
 
-## 11. Changelog Policy
+## 12. Changelog Policy
 
 [`CHANGELOG.md`](../CHANGELOG.md) records user-visible release history.
 
@@ -182,7 +215,7 @@ Use:
 
 Do not use changelog entries to document every internal experiment, diagnostic report, or sandbox verification.
 
-## 12. Non-Versioned Work
+## 13. Non-Versioned Work
 
 The following do not trigger a version bump by themselves:
 
@@ -195,7 +228,7 @@ The following do not trigger a version bump by themselves:
 
 They may support a later release, but they are not releases.
 
-## 13. Governance
+## 14. Governance
 
 PATCH releases may be prepared by agents after passing relevant gates.
 
