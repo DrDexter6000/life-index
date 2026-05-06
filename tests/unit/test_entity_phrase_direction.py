@@ -21,7 +21,7 @@ def _d6_family_graph() -> list[dict]:
         {
             "id": "person-wang-daming",
             "type": "person",
-            "primary_name": "李维杰",
+            "primary_name": "王大明",
             "aliases": ["Dexter"],
             "attributes": {
                 "family_role_labels": {
@@ -164,23 +164,23 @@ class TestSpouseDirection:
 
     def test_liweijie_wife(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("李维杰的老婆")
+        expanded = expand_query_with_entity_graph("王大明的老婆")
         assert "陈小红" in expanded
         assert "Mia" in expanded
         assert "老婆" in expanded
-        assert "李维杰" not in expanded  # should not expand to self
+        assert "王大明" not in expanded  # should not expand to self
 
     def test_zhangyanhan_husband(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("陈小红的老公")
-        assert "李维杰" in expanded
+        assert "王大明" in expanded
         assert "Dexter" in expanded
         assert "老公" in expanded
         assert "陈小红" not in expanded
 
     def test_wife_role_filter_excludes_husband(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        hints = resolve_query_entities("李维杰的老婆")
+        hints = resolve_query_entities("王大明的老婆")
         ids = [h["entity_id"] for h in hints]
         assert "person-chen-xiaohong" in ids
         assert "person-wang-daming" not in ids
@@ -194,12 +194,12 @@ class TestParentDirection:
         expanded = expand_query_with_entity_graph("王乐乐的妈妈")
         assert "陈小红" in expanded
         assert "妈妈" in expanded
-        assert "李维杰" not in expanded  # filtered by child_perspective (爸爸 != 妈妈)
+        assert "王大明" not in expanded  # filtered by child_perspective (爸爸 != 妈妈)
 
     def test_limucheng_father(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("王乐乐的爸爸")
-        assert "李维杰" in expanded
+        assert "王大明" in expanded
         assert "爸爸" in expanded
         assert "陈小红" not in expanded  # filtered by child_perspective (妈妈 != 爸爸)
 
@@ -216,7 +216,7 @@ class TestChildDirection:
 
     def test_liweijie_daughter(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("李维杰的女儿")
+        expanded = expand_query_with_entity_graph("王大明的女儿")
         assert "王乐乐" in expanded
         assert "小豆丁" in expanded
         assert "女儿" in expanded
@@ -227,7 +227,7 @@ class TestChildDirection:
 
     def test_liweijie_son(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("李维杰的儿子")
+        expanded = expand_query_with_entity_graph("王大明的儿子")
         assert "王小柏" in expanded
         assert "柏宝" in expanded
         assert "儿子" in expanded
@@ -238,7 +238,7 @@ class TestChildDirection:
 
     def test_liweijie_children(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("李维杰的孩子")
+        expanded = expand_query_with_entity_graph("王大明的孩子")
         assert "王乐乐" in expanded
         assert "王小柏" in expanded
         assert "女儿" in expanded
@@ -249,7 +249,7 @@ class TestChildDirection:
 
     def test_daughter_entity_hint_no_parents(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        hints = resolve_query_entities("李维杰的女儿")
+        hints = resolve_query_entities("王大明的女儿")
         ids = [h["entity_id"] for h in hints]
         assert "person-wang-lele" in ids
         assert "person-wang-xiaobai" not in ids
