@@ -199,6 +199,10 @@ tags: ["重构", "优化"]
 - Agent 逐项访谈用户决定 merge/archive/add_relationship
 
 > Entity Graph 的操作规范（别名准入、生产写入铁律、验证清单、回滚策略）见 [`docs/ENTITY_GRAPH.md`](./ENTITY_GRAPH.md)。
+>
+> **当前状态**：Entity Graph 已达 **Production Usable Baseline**（D5-D8 完成）。
+> 覆盖范围：家庭人物关系（8 person + relationship 边）、Life Index 项目实体（含中文名/曾用名/模块属性）、AI 模型实体（3 person，subtype=ai，role=ai_assistant）。
+> 生产图规模：13 entities，36 aliases，22 relationships。
 
 ### 5.4 操作级可观测性（Round 6）
 
