@@ -248,6 +248,7 @@ def expand_query_with_entity_graph(query: str) -> str:
                         view=view,
                         direction=direction,
                         role_filter=role_filter,
+                        observer_id=source["id"],
                     )
                 )
 
@@ -386,6 +387,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
                     view=view,
                     direction=direction,
                     role_filter=role_filter,
+                    observer_id=source["id"],
                 ):
                     _add_hint(target, token, "phrase_match")
                     matched_any = True

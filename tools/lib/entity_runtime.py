@@ -190,8 +190,21 @@ class EntityRuntimeView:
     phrase_patterns: list[dict[str, Any]] = field(default_factory=list)
 
 
-def _matches_role_filter(entity: dict[str, Any], role_filter: dict[str, list[str]] | None) -> bool:
+def _matches_role_filter(
+    entity: dict[str, Any],
+    role_filter: dict[str, list[str]] | None,
+    observer_id: str | None = None,
+) -> bool:
     """Check whether an entity matches a family_role_labels filter.
+
+    Supports observer-scoped labels via ``by_observer``:
+    ``family_role_labels.by_observer.<observer_id> = {"primary": "...", "aliases": [...]}``.
+
+    Resolution order:
+    1. If ``observer_id`` is given and the entity has a matching
+       ``by_observer`` entry, use that label data exclusively.
+    2. Otherwise fallback to the legacy perspective-based labels
+       (``child_perspective``, ``parent_perspective``, etc.).
 
     Backward-compatible: entities without family_role_labels are allowed
     to pass through. Only entities that *have* relevant labels but don't
@@ -204,6 +217,21 @@ def _matches_role_filter(entity: dict[str, Any], role_filter: dict[str, list[str
     if not family_role_labels:
         return True  # No labels to filter against; allow for backward compat.
 
+    # 1. Observer-scoped labels (D7+)
+    if observer_id:
+        by_observer = family_role_labels.get("by_observer", {})
+        observer_label_data = by_observer.get(observer_id)
+        if observer_label_data:
+            all_labels = [observer_label_data.get("primary", "")] + observer_label_data.get(
+                "aliases", []
+            )
+            for allowed in role_filter.values():
+                if any(label in allowed for label in all_labels if label):
+                    return True
+            # Observer-scoped label exists but doesn't match -> filter out
+            return False
+
+    # 2. Fallback to legacy perspective-based labels
     has_relevant_perspective = False
     for perspective, allowed in role_filter.items():
         label_data = family_role_labels.get(perspective)
@@ -227,6 +255,7 @@ def _expand_related_entities(
     view: Any,
     direction: str = "symmetric",
     role_filter: dict[str, list[str]] | None = None,
+    observer_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Find entities related to source by the given relation.
 
@@ -239,6 +268,10 @@ def _expand_related_entities(
             "forward"   — only source's own relationships.
             "reverse"   — only reverse_relationships (who points to source).
         role_filter: Optional family_role_labels filter.
+        observer_id: Optional observer entity ID for observer-scoped role
+            labels (``by_observer``). When provided, the filter is resolved
+            from the observer's perspective rather than the target entity's
+            generic perspective.
 
     Returns:
         List of matched entity dicts.
@@ -252,7 +285,11 @@ def _expand_related_entities(
         return normalize_relation(actual) == normalize_relation(relation)
 
     def _add(target: dict[str, Any] | None) -> None:
-        if target and target["id"] not in seen_ids and _matches_role_filter(target, role_filter):
+        if (
+            target
+            and target["id"] not in seen_ids
+            and _matches_role_filter(target, role_filter, observer_id=observer_id)
+        ):
             related_entities.append(target)
             seen_ids.add(target["id"])
 
