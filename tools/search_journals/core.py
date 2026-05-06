@@ -17,7 +17,7 @@ from datetime import date
 from importlib import import_module
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from ..lib.entity_graph import load_entity_graph
 from ..lib.entity_runtime import (
@@ -524,6 +524,232 @@ def _date_range_dict_from_plan(plan: Any | None) -> dict[str, str] | None:
     return dr if dr else None
 
 
+def _augment_with_structured_metadata(
+    l2_results: list[dict[str, Any]],
+    candidate_paths: set[str] | None,
+    plan: Any | None,
+    date_from: str | None,
+    date_to: str | None,
+    result: dict[str, Any],
+) -> list[str]:
+    """Supplement L2 with structured metadata candidates from date_range + topic_hints.
+
+    Returns list of added paths. Mutates l2_results and candidate_paths in place.
+    """
+    added: list[str] = []
+    if not (STRUCTURED_RETRIEVAL_ENABLED and plan and plan.date_range and plan.topic_hints):
+        return added
+    for hint in plan.topic_hints:
+        _structured = search_l2_metadata(
+            date_from=date_from,
+            date_to=date_to,
+            topic=hint,
+            query=None,
+        )
+        for r in _structured["results"]:
+            r["source"] = "structured_metadata"
+            if r["path"] not in {x["path"] for x in l2_results}:
+                l2_results.append(r)
+                added.append(r["path"])
+                if candidate_paths is not None:
+                    candidate_paths.add(r["path"])
+    if added:
+        result["warnings"].append(
+            "structured_metadata: added " f"{len(added)} candidates from date_range+topic_hints"
+        )
+    return added
+
+
+def _finalize_level3_results(
+    result: dict[str, Any],
+    query: str | None,
+    start_time: float,
+    explain: bool,
+    is_fallback: bool = False,
+) -> None:
+    """Truncate, promote, explain, and log merged results. Mutates result in place."""
+    result["total_found"] = len(result["merged_results"])
+    result["total_available"] = len(result["merged_results"])
+
+    if len(result["merged_results"]) > MAX_RESULTS_DEFAULT:
+        result["has_more"] = True
+        result["merged_results"] = result["merged_results"][:MAX_RESULTS_DEFAULT]
+    else:
+        result["has_more"] = False
+
+    result["total_found"] = len(result["merged_results"])
+    result["no_confident_match"] = _compute_no_confident_match(result["merged_results"])
+
+    from .title_promotion import apply_title_promotion
+
+    result["merged_results"] = apply_title_promotion(result["merged_results"], query or "")
+
+    if explain:
+        from .ranking_reason import compose as compose_reason
+
+        for r in result["merged_results"]:
+            r["query"] = query or ""
+            r["ranking_reason"] = compose_reason(r)
+            del r["query"]
+
+    result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+    _emit_search_metrics(result)
+
+    total_time = result["performance"]["total_time_ms"]
+    l1_time = result["performance"].get("l1_time_ms", 0)
+    l2_time = result["performance"].get("l2_time_ms", 0)
+    l3_time = result["performance"].get("l3_time_ms", 0)
+    sem_time = result["performance"].get("semantic_time_ms", 0)
+    suffix = f" (fallback={result['semantic_fallback_used']})" if is_fallback else ""
+    logger.info(
+        f"[SearchPerf] Total: {total_time}ms "
+        f"(L1:{l1_time} L2:{l2_time} L3:{l3_time} Semantic:{sem_time}) "
+        f"| Results: {result['total_found']}{suffix}"
+    )
+
+
+def _run_level3_fallback_search(
+    result: dict[str, Any],
+    *,
+    query: str | None,
+    topic: str | None,
+    project: str | None,
+    tags: list[str] | None,
+    mood: list[str] | None,
+    people: list[str] | None,
+    date_from: str | None,
+    date_to: str | None,
+    location: str | None,
+    weather: str | None,
+    use_index: bool,
+    fts_min_relevance: int,
+    semantic: bool,
+    semantic_top_k: int,
+    semantic_min_similarity: float,
+    candidate_paths: set[str] | None,
+    entity_hints: list[dict[str, Any]],
+    fts_weight: float,
+    semantic_weight: float,
+    rrf_min_score: float,
+    non_rrf_min_score: float,
+    explain: bool,
+    _plan: Any,
+    _topic_hints: list[str] | None,
+    _date_range: dict[str, str] | None,
+    start_time: float,
+) -> dict[str, Any]:
+    """Fallback policy: keyword first, semantic only on zero keyword results."""
+    # Run keyword pipeline
+    (
+        l1_results,
+        l2_results,
+        l3_results,
+        l2_truncated,
+        l2_total_available,
+        kw_perf,
+    ) = run_keyword_pipeline(
+        query=query,
+        topic=topic,
+        project=project,
+        tags=tags,
+        mood=mood,
+        people=people,
+        date_from=date_from,
+        date_to=date_to,
+        location=location,
+        weather=weather,
+        use_index=use_index,
+        fts_min_relevance=fts_min_relevance,
+        candidate_paths=candidate_paths,
+    )
+
+    # Structured metadata supplement (same as hybrid path)
+    _augment_with_structured_metadata(
+        l2_results, candidate_paths, _plan, date_from, date_to, result
+    )
+
+    # Candidate filtering (same as hybrid path)
+    l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
+    l2_results = _filter_results_by_candidates(l2_results, candidate_paths)
+    l3_results = _filter_results_by_candidates(l3_results, candidate_paths)
+
+    # Build keyword-only merged results to check if fallback is needed
+    _kw_merged = merge_and_rank_results(
+        l1_results,
+        l2_results,
+        l3_results,
+        query,
+        entity_hints=entity_hints,
+        explain=explain,
+        topic_hints=_topic_hints,
+        date_range=_date_range,
+    )
+
+    if _kw_merged:
+        # Keyword found results — skip semantic entirely
+        result["l1_results"] = l1_results
+        result["l2_results"] = l2_results
+        result["l3_results"] = l3_results
+        result["semantic_results"] = []
+        result["semantic_available"] = False
+        result["merged_results"] = _kw_merged
+        result["semantic_fallback_used"] = False
+        result["semantic_effective_policy"] = "fallback"
+        if l2_truncated:
+            result["l2_truncated"] = True
+            result["l2_total_available"] = l2_total_available
+        result["performance"].update(kw_perf)
+    else:
+        # Zero keyword results — invoke semantic as fallback
+        semantic_results, sem_perf, semantic_available, semantic_note = run_semantic_pipeline(
+            query=query,
+            date_from=date_from,
+            date_to=date_to,
+            semantic=semantic,
+            semantic_top_k=semantic_top_k,
+            semantic_min_similarity=semantic_min_similarity,
+            candidate_paths=candidate_paths,
+            entity_hints=entity_hints,
+        )
+        semantic_results = _filter_results_by_candidates(semantic_results, candidate_paths)
+        result["l1_results"] = []
+        result["l2_results"] = []
+        result["l3_results"] = []
+        result["semantic_results"] = semantic_results
+        result["semantic_available"] = semantic_available
+        if semantic_note:
+            result["semantic_note"] = semantic_note
+            if not semantic_available and semantic:
+                result["warnings"].append(f"semantic_unavailable: {semantic_note}")
+        result["semantic_fallback_used"] = True
+        result["semantic_effective_policy"] = "fallback"
+        result["performance"].update(kw_perf)
+        if sem_perf:
+            result["performance"].update(sem_perf)
+
+        if semantic_results:
+            result["merged_results"] = merge_and_rank_results_hybrid(
+                [],
+                [],
+                [],
+                semantic_results,
+                query,
+                fts_weight=fts_weight,
+                semantic_weight=semantic_weight,
+                min_rrf_score=rrf_min_score,
+                min_non_rrf_score=non_rrf_min_score,
+                explain=explain,
+                entity_hints=entity_hints,
+                topic_hints=_topic_hints,
+                date_range=_date_range,
+            )
+        else:
+            result["merged_results"] = []
+
+    _finalize_level3_results(result, query, start_time, explain, is_fallback=True)
+    return result
+
+
 def hierarchical_search(
     query: Optional[str] = None,
     topic: Optional[str] = None,
@@ -549,6 +775,7 @@ def hierarchical_search(
     rrf_min_score: float = RRF_MIN_SCORE,
     non_rrf_min_score: float = NON_RRF_MIN_SCORE,
     explain: bool = False,  # Task 2.1: explain mode
+    semantic_policy: Literal["hybrid", "fallback"] = "hybrid",
 ) -> Dict[str, Any]:
     """
     双管道并行搜索
@@ -559,6 +786,10 @@ def hierarchical_search(
 
     当 level=1 或 level=2 时，按原逻辑提前返回（向后兼容）。
     仅 level=3（默认）时启动双管道并行。
+
+    semantic_policy:
+      - "hybrid": keyword + semantic run in parallel, merged via RRF (default)
+      - "fallback": keyword first; semantic only invoked when keyword returns zero results
     """
     result: Dict[str, Any] = {
         "success": True,
@@ -590,6 +821,9 @@ def hierarchical_search(
         "search_plan": None,  # Phase 1 implementation: structured query understanding
         "ambiguity": {"has_ambiguity": False, "items": []},  # Phase 2 implementation
         "hints": [],  # Phase 2 implementation: invocation-time hints
+        "semantic_policy": semantic_policy,
+        "semantic_fallback_used": False,
+        "semantic_effective_policy": "off" if not semantic else semantic_policy,
     }
 
     # Round 10 T1.2: Expose entity graph status
@@ -650,6 +884,10 @@ def hierarchical_search(
         query = _plan.expanded_query
 
     start_time = time.time()
+
+    # Pre-compute topic hints / date range for ranking (used by both fallback and hybrid paths)
+    _topic_hints = _plan.topic_hints if _plan else None
+    _date_range = _date_range_dict_from_plan(_plan)
 
     # Round 12 Phase 3: Unified freshness guard + pending consumption
     from ..lib.pending_writes import has_pending as _has_pending, clear_pending as _clear_pending
@@ -789,6 +1027,38 @@ def hierarchical_search(
         )
         return result
 
+    if semantic_policy == "fallback" and semantic:
+        return _run_level3_fallback_search(
+            result,
+            query=query,
+            topic=topic,
+            project=project,
+            tags=tags,
+            mood=mood,
+            people=people,
+            date_from=date_from,
+            date_to=date_to,
+            location=location,
+            weather=weather,
+            use_index=use_index,
+            fts_min_relevance=fts_min_relevance,
+            semantic=semantic,
+            semantic_top_k=semantic_top_k,
+            semantic_min_similarity=semantic_min_similarity,
+            candidate_paths=candidate_paths,
+            entity_hints=entity_hints,
+            fts_weight=fts_weight,
+            semantic_weight=semantic_weight,
+            rrf_min_score=rrf_min_score,
+            non_rrf_min_score=non_rrf_min_score,
+            explain=explain,
+            _plan=_plan,
+            _topic_hints=_topic_hints,
+            _date_range=_date_range,
+            start_time=start_time,
+        )
+
+    # ── Hybrid policy: original parallel execution ──
     with ThreadPoolExecutor(max_workers=2) as executor:
         future_keyword = executor.submit(
             run_keyword_pipeline,
@@ -818,7 +1088,6 @@ def hierarchical_search(
             entity_hints=entity_hints,
         )
 
-        # 收集结果
         (
             l1_results,
             l2_results,
@@ -829,40 +1098,16 @@ def hierarchical_search(
         ) = future_keyword.result()
         semantic_results, sem_perf, semantic_available, semantic_note = future_semantic.result()
 
-    # R1-Prep: Structured metadata retrieval
-    # When search_plan has both date_range and topic_hints, supplement L2
-    # with pure metadata matches (no keyword filtering) so that logs matching
-    # the structured intent but lacking query keywords in body can still enter
-    # the candidate set. Source is marked for explainability.
-    _structured_l2_added: list[str] = []
-    if STRUCTURED_RETRIEVAL_ENABLED and _plan and _plan.date_range and _plan.topic_hints:
-        for hint in _plan.topic_hints:
-            _structured = search_l2_metadata(
-                date_from=date_from,
-                date_to=date_to,
-                topic=hint,
-                query=None,  # No keyword filtering — pure metadata match
-            )
-            for r in _structured["results"]:
-                r["source"] = "structured_metadata"
-                if r["path"] not in {x["path"] for x in l2_results}:
-                    l2_results.append(r)
-                    _structured_l2_added.append(r["path"])
-                    # Ensure the path is in candidate_paths so it survives filtering
-                    if candidate_paths is not None:
-                        candidate_paths.add(r["path"])
-        if _structured_l2_added:
-            result["warnings"].append(
-                "structured_metadata: added "
-                f"{len(_structured_l2_added)} candidates from date_range+topic_hints"
-            )
+    # R1-Prep: Structured metadata retrieval (shared helper)
+    _augment_with_structured_metadata(
+        l2_results, candidate_paths, _plan, date_from, date_to, result
+    )
 
     l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
     l2_results = _filter_results_by_candidates(l2_results, candidate_paths)
     l3_results = _filter_results_by_candidates(l3_results, candidate_paths)
     semantic_results = _filter_results_by_candidates(semantic_results, candidate_paths)
 
-    # 填充结果
     result["l1_results"] = l1_results
     result["l2_results"] = l2_results
     result["l3_results"] = l3_results
@@ -870,8 +1115,6 @@ def hierarchical_search(
     result["semantic_available"] = semantic_available
     if semantic_note:
         result["semantic_note"] = semantic_note
-        # Phase 2C: 语义搜索降级时添加警告
-        # Skip if user explicitly disabled semantic (line 589 already added semantic_disabled)
         if not semantic_available and semantic:
             result["warnings"].append(f"semantic_unavailable: {semantic_note}")
     if l2_truncated:
@@ -882,10 +1125,6 @@ def hierarchical_search(
         result["performance"].update(sem_perf)
 
     # ── RRF 融合 ──
-    # Phase 4 T4.2: Extract topic_hints from search_plan for ranking boost
-    _topic_hints = _plan.topic_hints if _plan else None
-    _date_range = _date_range_dict_from_plan(_plan)
-
     if semantic_results:
         result["merged_results"] = merge_and_rank_results_hybrid(
             l1_results,
@@ -897,68 +1136,23 @@ def hierarchical_search(
             semantic_weight=semantic_weight,
             min_rrf_score=rrf_min_score,
             min_non_rrf_score=non_rrf_min_score,
-            explain=explain,  # Task 2.1
+            explain=explain,
             entity_hints=entity_hints,
             topic_hints=_topic_hints,
             date_range=_date_range,
         )
     else:
-        # 语义搜索无结果时退化为纯关键词排序
         result["merged_results"] = merge_and_rank_results(
             l1_results,
             l2_results,
             l3_results,
             query,
             entity_hints=entity_hints,
-            explain=explain,  # T3.4: forward explain to non-hybrid path
+            explain=explain,
             topic_hints=_topic_hints,
             date_range=_date_range,
         )
 
-    result["total_found"] = len(result["merged_results"])
-    result["total_available"] = len(result["merged_results"])
-
-    # Phase 2 (Task 3): Presentation-layer truncation for backward compat.
-    # ranking now returns ALL results; we truncate here to MAX_RESULTS_DEFAULT
-    # so that existing callers (tests, GUI) are not affected.
-    if len(result["merged_results"]) > MAX_RESULTS_DEFAULT:
-        result["has_more"] = True
-        result["merged_results"] = result["merged_results"][:MAX_RESULTS_DEFAULT]
-    else:
-        result["has_more"] = False
-
-    result["total_found"] = len(result["merged_results"])
-    result["no_confident_match"] = _compute_no_confident_match(result["merged_results"])
-
-    # T4.4: Title hard promotion (post-rank, post-confidence)
-    from .title_promotion import apply_title_promotion
-
-    result["merged_results"] = apply_title_promotion(result["merged_results"], query or "")
-
-    # T4.5: ranking_reason natural language explanation (--explain mode only)
-    if explain:
-        from .ranking_reason import compose as compose_reason
-
-        for r in result["merged_results"]:
-            r["query"] = query or ""
-            r["ranking_reason"] = compose_reason(r)
-            # Clean up transient field
-            del r["query"]
-
-    result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
-
-    _emit_search_metrics(result)
-
-    # Log summary
-    total_time = result["performance"]["total_time_ms"]
-    l1_time = result["performance"].get("l1_time_ms", 0)
-    l2_time = result["performance"].get("l2_time_ms", 0)
-    l3_time = result["performance"].get("l3_time_ms", 0)
-    sem_time = result["performance"].get("semantic_time_ms", 0)
-    logger.info(
-        f"[SearchPerf] Total: {total_time}ms "
-        f"(L1:{l1_time} L2:{l2_time} L3:{l3_time} Semantic:{sem_time}) "
-        f"| Results: {result['total_found']}"
-    )
+    _finalize_level3_results(result, query, start_time, explain)
 
     return result

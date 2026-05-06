@@ -90,6 +90,12 @@ Examples:
         help="禁用语义搜索（默认启用）",
     )
     parser.add_argument(
+        "--semantic-policy",
+        choices=["fallback", "hybrid"],
+        default="fallback",
+        help="语义搜索策略: fallback=仅零结果时启用, hybrid=并行融合 (默认: fallback)",
+    )
+    parser.add_argument(
         "--semantic-weight",
         type=float,
         default=1.0,
@@ -183,6 +189,7 @@ Examples:
                 semantic_weight=args.semantic_weight,
                 fts_weight=args.fts_weight,
                 explain=args.explain,  # Task 2.1
+                semantic_policy=args.semantic_policy,
             )
 
     # Phase 2 (Task 3): Presentation-layer slicing with offset + limit
