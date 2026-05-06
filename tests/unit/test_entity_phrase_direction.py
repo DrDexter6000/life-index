@@ -167,6 +167,7 @@ class TestSpouseDirection:
         expanded = expand_query_with_entity_graph("李维杰的老婆")
         assert "陈小红" in expanded
         assert "Mia" in expanded
+        assert "老婆" in expanded
         assert "李维杰" not in expanded  # should not expand to self
 
     def test_zhangyanhan_husband(self, isolated_data_dir: Path) -> None:
@@ -174,6 +175,7 @@ class TestSpouseDirection:
         expanded = expand_query_with_entity_graph("陈小红的老公")
         assert "李维杰" in expanded
         assert "Dexter" in expanded
+        assert "老公" in expanded
         assert "陈小红" not in expanded
 
     def test_wife_role_filter_excludes_husband(self, isolated_data_dir: Path) -> None:
@@ -191,12 +193,14 @@ class TestParentDirection:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("王乐乐的妈妈")
         assert "陈小红" in expanded
+        assert "妈妈" in expanded
         assert "李维杰" not in expanded  # filtered by child_perspective (爸爸 != 妈妈)
 
     def test_limucheng_father(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("王乐乐的爸爸")
         assert "李维杰" in expanded
+        assert "爸爸" in expanded
         assert "陈小红" not in expanded  # filtered by child_perspective (妈妈 != 爸爸)
 
     def test_mother_entity_hint_only_mother(self, isolated_data_dir: Path) -> None:
@@ -215,6 +219,7 @@ class TestChildDirection:
         expanded = expand_query_with_entity_graph("李维杰的女儿")
         assert "王乐乐" in expanded
         assert "小豆丁" in expanded
+        assert "女儿" in expanded
         # Must NOT include son or parents
         assert "王小柏" not in expanded
         assert "凃秀英" not in expanded
@@ -225,6 +230,7 @@ class TestChildDirection:
         expanded = expand_query_with_entity_graph("李维杰的儿子")
         assert "王小柏" in expanded
         assert "柏宝" in expanded
+        assert "儿子" in expanded
         # Must NOT include daughter or parents
         assert "王乐乐" not in expanded
         assert "凃秀英" not in expanded
@@ -235,6 +241,8 @@ class TestChildDirection:
         expanded = expand_query_with_entity_graph("李维杰的孩子")
         assert "王乐乐" in expanded
         assert "王小柏" in expanded
+        assert "女儿" in expanded
+        assert "儿子" in expanded
         # Must NOT include parents
         assert "凃秀英" not in expanded
         assert "李建国" not in expanded
@@ -256,6 +264,8 @@ class TestGrandparentDirection:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("王乐乐的外婆")
         assert "李玉兰" in expanded
+        assert "外婆" in expanded
+        assert "姥姥" in expanded
         assert "张国强" not in expanded
 
     def test_limucheng_grandmother_alias_laolao(self, isolated_data_dir: Path) -> None:
@@ -267,6 +277,8 @@ class TestGrandparentDirection:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("王乐乐的外公")
         assert "张国强" in expanded
+        assert "外公" in expanded
+        assert "姥爷" in expanded
         assert "李玉兰" not in expanded
 
     def test_limucheng_grandfather_alias_laoye(self, isolated_data_dir: Path) -> None:
@@ -284,6 +296,7 @@ class TestGrandparentDirection:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("陈小红的妈妈")
         assert "李玉兰" in expanded
+        assert "妈妈" in expanded
         assert "张国强" not in expanded
 
     def test_zhangyanhan_father_via_by_observer(self, isolated_data_dir: Path) -> None:
@@ -291,6 +304,7 @@ class TestGrandparentDirection:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("陈小红的爸爸")
         assert "张国强" in expanded
+        assert "爸爸" in expanded
         assert "李玉兰" not in expanded
 
     def test_grandmother_entity_hint_only_grandmother(self, isolated_data_dir: Path) -> None:

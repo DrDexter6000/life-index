@@ -229,35 +229,37 @@ def expand_query_with_entity_graph(query: str) -> str:
 
     def _expand_phrase_pattern(token: str) -> str | None:
         """Try to match a relationship phrase pattern like X的老婆, X的奶奶."""
-        from tools.lib.entity_runtime import _expand_related_entities
+        from tools.lib.entity_runtime import _expand_related_entities, _get_matching_role_labels
 
         for pattern in view.phrase_patterns:
             suffix = pattern["suffix"]
             relation = pattern["relation"]
             direction = pattern.get("direction", "symmetric")
             role_filter = pattern.get("role_filter")
-            related_entities: list[dict[str, Any]] = []
+            deduped_names: list[str] = []
             for subject in _iter_subject_candidates(token, suffix):
                 source = resolve_via_runtime(subject, view)
                 if source is None:
                     continue
-                related_entities.extend(
-                    _expand_related_entities(
-                        source=source,
-                        relation=relation,
-                        view=view,
-                        direction=direction,
-                        role_filter=role_filter,
-                        observer_id=source["id"],
-                    )
-                )
-
-            if related_entities:
-                deduped_names: list[str] = []
-                for entity in related_entities:
-                    for name in [entity["primary_name"], *entity.get("aliases", [])]:
+                observer_id = source["id"]
+                for target in _expand_related_entities(
+                    source=source,
+                    relation=relation,
+                    view=view,
+                    direction=direction,
+                    role_filter=role_filter,
+                    observer_id=observer_id,
+                ):
+                    for name in [target["primary_name"], *target.get("aliases", [])]:
                         if name not in deduped_names:
                             deduped_names.append(name)
+                    for label in _get_matching_role_labels(
+                        target, role_filter, observer_id=observer_id
+                    ):
+                        if label not in deduped_names:
+                            deduped_names.append(label)
+
+            if deduped_names:
                 return "(" + " OR ".join(deduped_names) + ")"
         return None
 

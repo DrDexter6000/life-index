@@ -248,6 +248,62 @@ def _matches_role_filter(
     return not has_relevant_perspective
 
 
+def _get_matching_role_labels(
+    entity: dict[str, Any],
+    role_filter: dict[str, list[str]] | None,
+    observer_id: str | None = None,
+) -> list[str]:
+    """Return the specific role labels that matched the filter.
+
+    Used by query expansion to include observer-scoped role labels
+    (e.g. 外婆, 姥姥) as local retrieval terms alongside the entity's
+    primary_name and aliases.
+
+    Returns a deduplicated list of matching labels. Empty list means
+    no matching labels were found (or role_filter is None).
+    """
+    if not role_filter:
+        return []
+
+    family_role_labels = entity.get("attributes", {}).get("family_role_labels", {})
+    if not family_role_labels:
+        return []
+
+    matched: list[str] = []
+
+    def _collect(labels: list[str]) -> None:
+        for label in labels:
+            if label and label not in matched:
+                matched.append(label)
+
+    # 1. Observer-scoped labels (D7+)
+    if observer_id:
+        by_observer = family_role_labels.get("by_observer", {})
+        observer_label_data = by_observer.get(observer_id)
+        if observer_label_data:
+            all_labels = [observer_label_data.get("primary", "")] + observer_label_data.get(
+                "aliases", []
+            )
+            for allowed in role_filter.values():
+                for label in all_labels:
+                    if label and label in allowed:
+                        _collect([label])
+            return matched
+
+    # 2. Legacy perspective-based labels
+    for perspective, allowed in role_filter.items():
+        label_data = family_role_labels.get(perspective)
+        if not label_data:
+            continue
+        primary = label_data.get("primary", "")
+        aliases = label_data.get("aliases", [])
+        for label in [primary] + aliases:
+            if label and label in allowed:
+                _collect([label])
+
+    return matched
+
+
 def _expand_related_entities(
     *,
     source: dict[str, Any],
@@ -379,6 +435,7 @@ __all__ = [
     "resolve_via_runtime",
     "_expand_related_entities",
     "_matches_role_filter",
+    "_get_matching_role_labels",
     "RELATION_PHRASE_PATTERNS",
     "ROLE_LABELS",
 ]
