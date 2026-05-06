@@ -54,6 +54,16 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Evaluate against real ~/Documents/Life-Index data",
     )
+    parser.add_argument(
+        "--no-overlay",
+        action="store_true",
+        help="Disable private eval overlay (default: enabled if present)",
+    )
+    parser.add_argument(
+        "--overlay-path",
+        type=Path,
+        help="Path to a private eval overlay YAML file",
+    )
     args = parser.parse_args(argv)
 
     use_semantic = args.semantic
@@ -79,12 +89,19 @@ def main(argv: list[str] | None = None) -> None:
         _emit_json(payload)
         return
 
+    # CLI overlay control:
+    #   --no-overlay -> explicitly disable
+    #   default      -> let run_evaluation auto-decide (disable in CI / save_baseline)
+    cli_use_overlay = False if args.no_overlay else None
+
     result = run_evaluation(
         data_dir=args.data_dir,
         save_baseline=args.save_baseline,
         use_semantic=use_semantic,
         judge=args.judge,
         live=args.live,
+        use_overlay=cli_use_overlay,
+        overlay_path=args.overlay_path,
     )
     if args.json:
         payload = {"success": True, "data": result}

@@ -174,6 +174,26 @@ def load_golden_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
     return queries
 
 
+def _load_queries_with_overlay(
+    queries_path: Path | None = None,
+    overlay_path: Path | None = None,
+    use_overlay: bool = True,
+) -> tuple[list[dict[str, Any]], int, list[str], set[str]]:
+    """Load golden queries and optionally apply a private overlay.
+
+    Returns (queries, overlay_applied_count, overlay_warnings, applied_query_ids).
+    """
+    queries = load_golden_queries(queries_path)
+    if not use_overlay:
+        return queries, 0, [], set()
+
+    from tools.eval.overlay import load_overlay, apply_overlay
+
+    overlay = load_overlay(overlay_path)
+    modified_queries, applied_count, warnings_list, applied_ids = apply_overlay(queries, overlay)
+    return modified_queries, applied_count, warnings_list, applied_ids
+
+
 def _get_git_commit() -> str:
     try:
         completed = subprocess.run(
@@ -619,6 +639,7 @@ def _evaluate_queries(
     live: bool,
     llm_client: Any | None,
     all_docs: list[dict[str, Any]] | None = None,
+    applied_query_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     from tools.search_journals.core import hierarchical_search
 
@@ -698,6 +719,7 @@ def _evaluate_queries(
             "ndcg_at_5": _round_metric(ndcg_at_5) if ndcg_at_5 is not None else None,
             "expected_min_results": effective_expected_min_results,
             "pass": passed,
+            "overlay_applied": str(query_case["id"]) in (applied_query_ids or set()),
         }
         if judge == "llm":
             entry["llm_scores"] = llm_scores
@@ -775,13 +797,34 @@ def run_evaluation(
     live: bool = False,
     llm_client: Any | None = None,
     phase: int = 2,
+    overlay_path: Path | None = None,
+    use_overlay: bool | None = None,
 ) -> dict[str, Any]:
-    """Run the search evaluation suite and optionally persist a baseline."""
+    """Run the search evaluation suite and optionally persist a baseline.
+
+    Overlay behavior (hard rules):
+      - Disabled in CI or when save_baseline is set (cannot be overridden).
+      - Default: enabled for local eval when neither CI nor save_baseline.
+      - Pass use_overlay=False to explicitly disable.
+    """
+    from tools.eval.overlay import is_ci_environment
+
+    # Hard disable: overlay must never affect public baselines or CI runs
+    if is_ci_environment() or save_baseline is not None:
+        use_overlay = False
+    elif use_overlay is None:
+        use_overlay = True
     # F1: Deterministic eval anchor injection
     _anchor = _get_eval_anchor_date()
     _inject_eval_anchor(_anchor)
 
-    all_queries = load_golden_queries(queries_path)
+    all_queries, overlay_applied_count, overlay_warnings, applied_query_ids = (
+        _load_queries_with_overlay(
+            queries_path=queries_path,
+            overlay_path=overlay_path,
+            use_overlay=use_overlay,
+        )
+    )
     queries = []
     skipped_queries: list[dict[str, Any]] = []
     for q in all_queries:
@@ -805,6 +848,7 @@ def run_evaluation(
             live=live,
             llm_client=llm_client,
             all_docs=all_docs,
+            applied_query_ids=applied_query_ids,
         )
 
     by_category: dict[str, list[dict[str, Any]]] = {}
@@ -833,6 +877,8 @@ def run_evaluation(
         "per_query": per_query,
         "failures": failures,
         "recall_gaps": [],
+        "overlay_applied_count": overlay_applied_count,
+        "overlay_warnings": overlay_warnings,
     }
 
     for category, items in by_category.items():
@@ -842,6 +888,13 @@ def run_evaluation(
         }
 
     result["summary_lines"] = _build_summary_lines(result)
+
+    # Emit overlay warnings into summary so they are visible in CLI output
+    if overlay_warnings:
+        result["summary_lines"].append("")
+        result["summary_lines"].append("Overlay warnings:")
+        for w in overlay_warnings:
+            result["summary_lines"].append(f"  ⚠ {w}")
 
     if live and judge == "llm":
         result["recall_gaps"] = _detect_recall_gaps(
