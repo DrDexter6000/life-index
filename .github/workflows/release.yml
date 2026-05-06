@@ -1,9 +1,10 @@
 name: Publish to PyPI
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  # Manual only. PyPI permanently forbids reusing a filename once it has been
+  # uploaded, even if that file/version was later deleted. Version/tag reset
+  # operations must therefore never auto-publish packages on tag push.
+  workflow_dispatch:
 
 jobs:
   build:
