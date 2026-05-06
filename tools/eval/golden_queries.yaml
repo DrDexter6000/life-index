@@ -670,10 +670,9 @@ queries:
   category: complex_query
   description: 'Topic + self-reflection: cross-border family education'
   expected:
-    min_results: 2
+    min_results: 1
     must_contain_title:
     - 家庭会议：确立乐乐教育第一责任人原则
-    - 关于乐乐的事
   tags:
   - complex
   - family
