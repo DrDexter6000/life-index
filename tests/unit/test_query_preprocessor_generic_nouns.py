@@ -97,3 +97,25 @@ class TestDateOnlyGenericNounNoRegression:
         """'上个月在工作中取得了什么进展' should still have 'work' topic hint."""
         plan = build_search_plan("上个月在工作中取得了什么进展", reference_date=self.REF_DATE)
         assert "work" in plan.topic_hints
+
+
+class TestSeasonAndRelativeTimeGuard:
+    """Phase 2-C must NOT trigger for season/relative time queries (D4.13)."""
+
+    REF_DATE = date(2026, 4, 18)
+
+    def test_season_记录_not_suppressed(self) -> None:
+        """'春天的记录' must NOT suppress '记录' — season is not absolute date."""
+        plan = build_search_plan("春天的记录", reference_date=self.REF_DATE)
+        assert plan.date_range is not None
+        assert plan.date_range.source != "absolute_date_parse"
+        assert "记录" in plan.keywords
+        assert "记录" in plan.expanded_query
+
+    def test_relative_time_记录_not_suppressed(self) -> None:
+        """'最近一周的记录' must NOT suppress '记录' — relative time."""
+        plan = build_search_plan("最近一周的记录", reference_date=self.REF_DATE)
+        assert plan.date_range is not None
+        assert plan.date_range.source != "absolute_date_parse"
+        assert "记录" in plan.keywords
+        assert "记录" in plan.expanded_query

@@ -856,9 +856,9 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
         ]
         if not meaningful:
             keywords = [kw for kw in keywords if kw not in _GENERIC_NOUNS and kw not in particles]
-    elif date_range:
-        # Phase 2-C: date-only broad recall ("2026年03月的日志") — suppress generic
-        # nouns when they are the only content keywords and no topic signal exists.
+    elif date_range and date_range.source == "absolute_date_parse":
+        # Phase 2-C: absolute-date broad recall ("2026年03月的日志") — suppress
+        # generic nouns. Only for absolute date parse, not season/relative time.
         non_particle_keywords = [kw for kw in keywords if kw not in particles]
         meaningful = [kw for kw in non_particle_keywords if kw not in _GENERIC_NOUNS]
         if non_particle_keywords and not meaningful:
