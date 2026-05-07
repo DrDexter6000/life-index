@@ -848,20 +848,32 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
     # that are part of the query template rather than content filters.
     original_keywords = keywords[:]
     _GENERIC_NOUNS = {"日志", "记录", "笔记"}
+    particles = {"相关", "的", "有关", "关于", "年", "月"}
     if topic_hints:
         non_topic_keywords = [kw for kw in keywords if kw not in topic_hints]
-        particles = {"相关", "的", "有关", "关于", "年", "月"}
         meaningful = [
             kw for kw in non_topic_keywords if kw not in _GENERIC_NOUNS and kw not in particles
         ]
         if not meaningful:
+            keywords = [kw for kw in keywords if kw not in _GENERIC_NOUNS and kw not in particles]
+    elif date_range:
+        # Phase 2-C: date-only broad recall ("2026年03月的日志") — suppress generic
+        # nouns when they are the only content keywords and no topic signal exists.
+        non_particle_keywords = [kw for kw in keywords if kw not in particles]
+        meaningful = [kw for kw in non_particle_keywords if kw not in _GENERIC_NOUNS]
+        if non_particle_keywords and not meaningful:
             keywords = [kw for kw in keywords if kw not in _GENERIC_NOUNS and kw not in particles]
 
     query_mode = classify_query_mode(normalized)
 
     # Only use keyword-joined expanded_query when keywords were actually modified
     if keywords != original_keywords:
-        expanded = " ".join(keywords) if keywords else normalized
+        if keywords:
+            expanded = " ".join(keywords)
+        elif time_expr:
+            expanded = time_expr
+        else:
+            expanded = normalized
     else:
         expanded = normalized
 
