@@ -329,6 +329,125 @@ class TestCollectEvalDocCatalog:
 
 
 # ---------------------------------------------------------------------------
+# 4b. Revision backup exclusion
+# ---------------------------------------------------------------------------
+
+
+def _write_revision(
+    data_dir: Path,
+    year: str,
+    month: str,
+    filename: str,
+    frontmatter: str,
+    body: str = "# Test Title\n\nBody content here.",
+) -> Path:
+    """Write a revision backup file under .revisions/ subdirectory."""
+    revisions_dir = data_dir / "Journals" / year / month / ".revisions"
+    revisions_dir.mkdir(parents=True, exist_ok=True)
+    file_path = revisions_dir / filename
+    content = f"---\n{frontmatter}\n---\n\n{body}\n"
+    file_path.write_text(content, encoding="utf-8")
+    return file_path
+
+
+class TestRevisionBackupExclusion:
+    def test_excludes_revision_backups_from_catalog(self, data_dir: Path) -> None:
+        _write_journal(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001.md",
+            'title: "Shared Title"\ndate: "2026-03-01"',
+        )
+        _write_revision(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001_20260416_000000_000000.md",
+            'title: "Shared Title"\ndate: "2026-03-01"',
+        )
+        catalog = collect_eval_doc_catalog(data_dir=data_dir)
+        assert len(catalog) == 1
+        assert catalog[0].doc_id == "2026/03/life-index_2026-03-01_001.md"
+
+    def test_title_map_no_ambiguity_after_filter(self, data_dir: Path) -> None:
+        _write_journal(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001.md",
+            'title: "Shared Title"\ndate: "2026-03-01"',
+        )
+        _write_revision(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001_20260416_000000_000000.md",
+            'title: "Shared Title"\ndate: "2026-03-01"',
+        )
+        catalog = collect_eval_doc_catalog(data_dir=data_dir)
+        title_map = build_title_to_doc_ids(catalog)
+        assert len(title_map["Shared Title"]) == 1
+
+    def test_original_preserved_when_revision_exists(self, data_dir: Path) -> None:
+        _write_journal(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001.md",
+            'title: "Original"\ndate: "2026-03-01"',
+        )
+        _write_revision(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001_20260416_000000_000000.md",
+            'title: "Original"\ndate: "2026-03-01"',
+        )
+        catalog = collect_eval_doc_catalog(data_dir=data_dir)
+        assert len(catalog) == 1
+        assert catalog[0].title == "Original"
+        assert catalog[0].date == "2026-03-01"
+
+    def test_multiple_revisions_all_excluded(self, data_dir: Path) -> None:
+        _write_journal(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001.md",
+            'title: "Test"\ndate: "2026-03-01"',
+        )
+        _write_revision(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001_20260413_120000_000000.md",
+            'title: "Test"\ndate: "2026-03-01"',
+        )
+        _write_revision(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001_20260413_130000_111111.md",
+            'title: "Test"\ndate: "2026-03-01"',
+        )
+        catalog = collect_eval_doc_catalog(data_dir=data_dir)
+        assert len(catalog) == 1
+
+    def test_no_revisions_still_works(self, data_dir: Path) -> None:
+        _write_journal(
+            data_dir,
+            "2026",
+            "03",
+            "life-index_2026-03-01_001.md",
+            'title: "Solo"\ndate: "2026-03-01"',
+        )
+        catalog = collect_eval_doc_catalog(data_dir=data_dir)
+        assert len(catalog) == 1
+        assert catalog[0].doc_id == "2026/03/life-index_2026-03-01_001.md"
+
+
+# ---------------------------------------------------------------------------
 # 5. build_title_to_doc_ids
 # ---------------------------------------------------------------------------
 

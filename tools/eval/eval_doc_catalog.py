@@ -145,6 +145,9 @@ def collect_eval_doc_catalog(
 
     records: list[DocRecord] = []
     for file_path in sorted(journals_dir.glob("**/life-index_*.md")):
+        if ".revisions" in file_path.parts:
+            continue
+
         try:
             metadata = parse_journal_file(file_path)
         except Exception:
