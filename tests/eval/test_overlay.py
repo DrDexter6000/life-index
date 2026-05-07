@@ -12,22 +12,30 @@ from tools.eval.overlay import (
     load_overlay,
 )
 
+_CI_ENV_VARS = ("CI", "GITHUB_ACTIONS")
+
+
+def _clear_ci_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in _CI_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+
 
 class TestIsCiEnvironment:
     """Tests for is_ci_environment()."""
 
-    def test_returns_false_by_default(self):
+    def test_returns_false_by_default(self, monkeypatch: pytest.MonkeyPatch):
+        _clear_ci_env(monkeypatch)
         assert is_ci_environment() is False
 
     def test_detects_ci_env(self, monkeypatch: pytest.MonkeyPatch):
+        _clear_ci_env(monkeypatch)
         monkeypatch.setenv("CI", "true")
         assert is_ci_environment() is True
-        monkeypatch.delenv("CI", raising=False)
 
     def test_detects_github_actions(self, monkeypatch: pytest.MonkeyPatch):
+        _clear_ci_env(monkeypatch)
         monkeypatch.setenv("GITHUB_ACTIONS", "true")
         assert is_ci_environment() is True
-        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
 
 
 class TestLoadOverlay:
@@ -316,6 +324,7 @@ class TestOverlayCiAndBaselineDisable:
             yaml.dump({"queries": {"GQ07": {"must_contain_title_override": ["Should Not Apply"]}}}),
             encoding="utf-8",
         )
+        _clear_ci_env(monkeypatch)
         monkeypatch.setenv("CI", "true")
         result = run_evaluation(
             data_dir=tmp_path,
@@ -324,7 +333,6 @@ class TestOverlayCiAndBaselineDisable:
             overlay_path=overlay_path,
         )
         assert result["overlay_applied_count"] == 0
-        monkeypatch.delenv("CI", raising=False)
 
     def test_save_baseline_disables_overlay(self, tmp_path: pytest.MonkeyPatch):
         from tools.eval.run_eval import run_evaluation
@@ -355,6 +363,7 @@ class TestOverlayCiAndBaselineDisable:
             yaml.dump({"queries": {"GQ07": {"must_contain_title_override": ["Should Not Apply"]}}}),
             encoding="utf-8",
         )
+        _clear_ci_env(monkeypatch)
         monkeypatch.setenv("CI", "true")
         result = run_evaluation(
             data_dir=tmp_path,
@@ -363,7 +372,6 @@ class TestOverlayCiAndBaselineDisable:
             overlay_path=overlay_path,
         )
         assert result["overlay_applied_count"] == 0
-        monkeypatch.delenv("CI", raising=False)
 
     def test_save_baseline_overrides_explicit_true(self, tmp_path: pytest.MonkeyPatch):
         """save_baseline must force overlay off even if caller passes use_overlay=True."""
@@ -384,9 +392,12 @@ class TestOverlayCiAndBaselineDisable:
         )
         assert result["overlay_applied_count"] == 0
 
-    def test_local_eval_with_overlay_enabled(self, tmp_path: pytest.TempPathFactory):
+    def test_local_eval_with_overlay_enabled(
+        self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ):
         from tools.eval.run_eval import run_evaluation
 
+        _clear_ci_env(monkeypatch)
         overlay_path = tmp_path / "overlay.yaml"
         overlay_path.write_text(
             yaml.dump({"queries": {"GQ07": {"must_contain_title_override": ["Should Apply"]}}}),
@@ -418,9 +429,12 @@ class TestPerQueryOverlayApplied:
         assert applied_ids == {"GQ01"}
         assert "GQ01" not in applied_ids or "GQ02" not in applied_ids
 
-    def test_run_eval_per_query_overlay_applied_field(self, tmp_path: pytest.TempPathFactory):
+    def test_run_eval_per_query_overlay_applied_field(
+        self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ):
         from tools.eval.run_eval import run_evaluation
 
+        _clear_ci_env(monkeypatch)
         overlay_path = tmp_path / "overlay.yaml"
         overlay_path.write_text(
             yaml.dump(
