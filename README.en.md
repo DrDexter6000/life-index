@@ -280,7 +280,7 @@ Life Index follows a strict *local-first* policy, with complete separation betwe
 | Capability | Status | Notes |
 |:---|:---:|:---|
 | Journal write / edit | ✅ | Structured Markdown + YAML metadata, auto weather/sentiment/entity extraction |
-| Dual-pipeline search + L0 pre-filter | ✅ | Keyword (FTS5) + semantic (bge-m3) in parallel, fused via RRF, with optional index-tree pre-filtering by time/topic |
+| Layered life retrieval | ✅ | CLI Core runs layered retrieval fully offline — keyword precision + Entity Graph expansion + semantic recall supplement; Agents can optionally orchestrate before search and refine expression after search |
 | Entity graph + quality audit + maintenance | ✅ | Alias resolution for people/places/projects, relationship inference, duplicate/orphan detection + Agent interview remediation; review hub + merge/delete/stats/check maintenance commands |
 | Schema migration | ✅ | Chain migration framework, deterministic field backfill + Agent semantic enrichment collaboration |
 | Piggyback event notifications | ✅ | Zero cron, zero processes — event reminders attached to CLI responses (writing streak, missing monthly report, etc.) |
@@ -290,38 +290,65 @@ Life Index follows a strict *local-first* policy, with complete separation betwe
 | Cross-platform | ✅ | Windows / macOS / Linux, Python 3.11+ |
 
 <details>
-<summary>🔍 Dual-Pipeline Search Architecture (click to expand)</summary>
+<summary>📚 How does Life Index recover fragments from a vast life archive?</summary>
 
-Agents don't need to read all 2,000 of your journals — **parallel dual-pipeline retrieval** lets them focus on only the handful that actually matter:
+Life Index CLI Core's layered retrieval (keyword + entity expansion + semantic supplement) can recover key memory fragments from decades of growing personal journals while remaining **fully offline, deterministic, and zero-token**.
 
 ```
-                    User Query
+                    Your Question
                        │
-               L0 Index tree pre-filter (optional)
-               Narrow candidates by time/topic
-                       │
-                    ┌──┴───┐
-             ┌──────▼──────┐  ┌──────▼──────┐
-             │ Pipeline A  │  │ Pipeline B  │
-             │  Keyword    │  │  Semantic   │
-             │             │  │             │
-             │ L1 Index    │  │ Vector      │
-             │ L2 Metadata │  │ similarity  │
-             │ L3 FTS5     │  │ (multilingual)│
-             └──────┬──────┘  └──────┬──────┘
-                    └────┬────┘
-               RRF Fusion (k=60)
-                       │
-                   Final Results
+                       ▼
+┌─────────────────────────────────────────────┐
+│              Life Index CLI Core             │
+│        Offline / deterministic / zero-token   │
+│                                             │
+│  Keyword + structured retrieval + Entity Graph │
+│                    │                        │
+│             Results found? ── No ──▶ Semantic fallback │
+│                    │                        │
+│             Ranked results returned          │
+└─────────────────────────────────────────────┘
 ```
 
-Brute-force reading 2,000 journals costs ~3M tokens; after retrieval, only ~5K — **99.8% saved**. You can even search "missing my daughter" in English and find Chinese entries — semantic search understands 50+ languages, including cross-language queries.
+But many real questions do not start with an exact title, tag, or date. They start as loose clues:
+
+> "How many nights did I stay up late in the past two months?"
+>
+> "When did I start thinking seriously about Life Index?"
+>
+> "Where did the lessons that later changed my judgment first appear?"
+
+For those cases, Life Index exposes **CLI atomic interfaces** that Agents can use around both ends of the search pipeline:
+
+```
+┌─────────────────────────────────────────────┐
+│              Agent orchestration             │
+│  Before search: intent detection / query rewrite / keyword expansion / multi-pass search │
+└───────────────────┬─────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────┐
+│              Life Index CLI Core             │
+│  Local structured retrieval / entity relations / semantic supplement │
+│              Candidate evidence              │
+└───────────────────┬─────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────┐
+│              Agent orchestration             │
+│  After search: result filtering / citation assembly / summary / report generation │
+└─────────────────────────────────────────────┘
+```
+
+The difference is that Life Index does not ask AI to read your whole life and guess. It first narrows the evidence range through local structured retrieval, Entity Graph, and semantic supplement; Agents only step in when needed to orchestrate, filter, and express the result.
+
+For the full technical architecture, see [ARCHITECTURE.md §2](docs/ARCHITECTURE.md).
 
 </details>
 
 ### The Floors Being Built
 
-On top of the stable CLI Core, Life Index is building modular higher-level features — each module is a combination of **CLI atomic operations + LLM orchestration**:
+On top of the stable CLI Core, Life Index is building modular higher-level features — each module is a combination of **stable record format + structured search + Entity Graph enhancement + semantic recall supplement + LLM orchestration**:
 
 | Module | Codename | Description | Status |
 |:---|:---|:---|:---:|
@@ -399,7 +426,7 @@ No technical knowledge required.<br>Just look, click, feel.<br>*(Separate repo, 
 | Capability | 🖥️ CLI | 🗣️ Natural Language | 🎨 GUI |
 |:---|:---:|:---:|:---:|
 | Write journal | ✅ | ✅ | 🔨 In dev |
-| Search memories (keyword + semantic) | ✅ | ✅ | 🔨 In dev |
+| Search memories (layered retrieval) | ✅ | ✅ | 🔨 In dev |
 | Entity graph (people/place relationships) | ✅ | ✅ | 🔨 In dev |
 | Timeline browsing | ✅ | ✅ | 🔨 In dev |
 | Backup / verification | ✅ | ✅ | 🔭 |

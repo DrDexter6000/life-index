@@ -23,7 +23,7 @@
 | 系统边界（做什么 / 不做什么） | CHARTER §1.7 + 第四章反模式黑名单 |
 | 数据隔离（用户数据 vs 代码） | CHARTER §1.1 |
 
-**本文档聚焦可演化的实现细节** — 索引树结构、双管道参数、ADR-003/004 等可演化决策、目录快照、基础设施增量记录。这些随实现版本迭代，不属于宪章不变量。
+**本文档聚焦可演化的实现细节** — 索引树结构、分层搜索参数、ADR-003/004 等可演化决策、目录快照、基础设施增量记录。这些随实现版本迭代，不属于宪章不变量。
 
 ---
 
@@ -72,7 +72,25 @@ INDEX.md < index_YYYY.md < index_YYYY-MM.md
 
 ---
 
-## 2. 双管道并行检索架构
+## 2. 分层搜索架构
+
+**2026-05-06 搜索架构共识**：早期文档中的“关键词 + 语义双管道”只描述 CLI Core 内部的检索基座，不再代表 Life Index 搜索系统的完整形态。当前搜索系统应理解为四层 stack：
+
+| Stack | 所在层 | 责任 | 当前状态 |
+|:---:|:---:|:---|:---|
+| **S0 记录与索引基座** | L1/L2 | Markdown + YAML、FTS5、向量索引、`entity_graph.yaml`；全部可由本地数据重建 | 已落地 |
+| **S1 确定性检索与排序** | L2 | `life-index search`；关键词精确匹配、时间/主题过滤、Entity Graph 确定性扩展、语义候选补充（fallback/report-only）、RRF 融合 | 官方质量门（keyword/default） |
+| **S2 智能搜索编排** | L3 | `life-index smart-search`；LLM 做意图识别、query expansion、多轮 search 调用、结果精筛/摘要 | 可选增强，可降级 |
+| **S3 高级应用模块** | L3/L4 | 心理诊断、人格判断、数字人格、数字家书、家训提炼等领域编排 | 远景模块 |
+
+**核心原则**：
+- 关键词检索的首要目标是精确、少噪音，是当前 eval gate 的官方口径（keyword/default）。
+- 语义检索的首要目标是补充召回、捕捉关键词漏网结果；当前 user-facing CLI 使用 zero-result fallback 模式（关键词无结果时才触发语义搜索），eval 可通过 `--semantic-report` 生成 report-only 诊断。语义检索不得未经产品决策直接替代关键词 gate。
+- Entity Graph 是 S1 的 active serving layer，必须参与 retrieval/ranking、query expansion 与关系短语解析，不只是可视化数据源。
+- LLM 的合法位置是 S2：进入检索前做搜索编排，检索后做过滤/摘要/解释；它不得绕过 CLI Core 直接读写 L1 数据。
+- 高级模块必须建立在稳定记录格式、结构化检索、Entity Graph 增强、语义补充与可降级 LLM 编排之上。
+
+以下图示仅描述 S1 的 CLI Core 检索基座内部结构。
 
 **核心目的**: 逐层缩小候选集以节省 Agent 上下文 token 消耗。
 
@@ -83,19 +101,22 @@ INDEX.md < index_YYYY.md < index_YYYY-MM.md
               --year / --month / --topic
               缩小候选集为布尔集（不产生分数）
                       │
-                   ┌──┴───┐
-            ┌──────▼──────┐  ┌──────▼──────┐
-            │ Pipeline A  │  │ Pipeline B  │
-            │   关键词     │  │   语义      │
-            │ L1 filter   │  │ (bge-m3)    │
-            │ L2 filter   │  │ 向量搜索    │
-            │ L3 FTS5     │  │             │
-            └──────┬──────┘  └──────┬──────┘
-                   └────┬────┘
-              RRF 融合 (k=60)
+              ┌───────▼───────┐
+              │ Pipeline A    │
+              │ 关键词+结构化  │
+              │ L1 filter     │
+              │ L2 filter     │
+              │ L3 FTS5       │
+              └───────┬───────┘
                       │
-                 最终排序结果
+                有结果？─── 否 ──▶ Pipeline B: 语义召回 (bge-m3)
+                      │                              │
+                      │◀─────────────────────────────┘
+                      │
+                 排序结果返回
 ```
+
+`--semantic-policy hybrid` 模式下 Pipeline A / B 并行执行、RRF 融合 (k=60)；report-only 诊断通过 `--semantic-report` 生成。
 
 | 层级 | 数据来源 | 返回内容 | 设计意图 |
 |:---:|:---:|:---:|:---|
@@ -104,9 +125,9 @@ INDEX.md < index_YYYY.md < index_YYYY-MM.md
 | **L3 内容层** | FTS5 全文索引 | 匹配片段+上下文（~300字节/条） | 关键词精确匹配，返回段落而非全文 |
 | **语义层** | 向量嵌入（sentence-transformers / bge-m3） | 路径+相似度（~100字节/条） | 找到"意思相近"但关键词不同的日志，支持多语言长文本检索 |
 
-**核心原则**：每一层是过滤器，不是数据源。两条管道并行执行，RRF 融合排序。Pipeline A 内部执行三层递进过滤：L1 索引层快速预筛（by-topic 索引文件），L2 元数据层多维度过滤（YAML Frontmatter + SQLite 缓存），L3 FTS5 内容层精确匹配。Pipeline B 独立执行向量相似度搜索。两条管道结果经 RRF 融合后返回。
+**核心原则**：每一层是过滤器，不是数据源。Pipeline A（关键词+结构化检索）内部执行三层递进过滤：L1 索引层快速预筛（by-topic 索引文件），L2 元数据层多维度过滤（YAML Frontmatter + SQLite 缓存），L3 FTS5 内容层精确匹配。Pipeline B（语义向量搜索）作为召回补充而非默认路径。User-facing CLI 默认使用 fallback 模式：仅当 Pipeline A 返回零结果时才触发 Pipeline B；`--semantic-policy hybrid` 启用双管道并行执行并经 RRF 融合后返回。
 
-> 本双管道是 **确定性检索原语**，零 LLM 依赖。Agent 编排层（query understanding、result filtering）仅可在 `tools/search_journals/orchestrator.py` 内出现 —— 详见 CHARTER §3。
+> 以上检索基座是 **S1 确定性检索原语**，零 LLM 依赖。Agent 编排层（query understanding、multi-pass search、result filtering）仅可在 `tools/search_journals/orchestrator.py` 内出现，并属于 S2 智能搜索编排 —— 详见 CHARTER §1.5 与 §3。
 
 ---
 
@@ -211,7 +232,7 @@ tags: ["重构", "优化"]
 
 ### 5.5 搜索评估与可观测体系（Round 8）
 
-Round 8 在双管道并行检索架构之上，建立了完整的搜索质量保障闭环：
+Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环：
 
 - **结构化搜索指标落盘**：每次搜索自动写入 `~/.life-index/metrics/YYYY-MM.jsonl`，记录 query、latency、pipeline signal、result count 等关键字段
 - **搜索诊断入口**：`life-index search --diagnose` 聚合最近搜索行为，输出退化线索（zero-result queries、degraded searches、latency outliers）
@@ -240,7 +261,7 @@ CHARTER §1.5 定义了"确定性 vs 智能"的边界：CLI Core 层（`tools/se
 编排器架构（`tools/search_journals/orchestrator.py`）：
 - **CLI 入口**：`life-index smart-search`（注册于 `tools/__main__.py`，实现于 `tools/smart_search/__main__.py`）
 - **三段式流程**：前置改写（LLM 拆解 query）→ 中间调用（按意图调 search 原语）→ 后置筛选 + 摘要（LLM 精筛）
-- **降级策略**：LLM 超时/失败时自动回退到纯双管道
+- **降级策略**：LLM 超时/失败时自动回退到 CLI Core 确定性检索
 - **Data Minimization**：候选仅送 title + abstract + snippet（≤200 chars），最多 `ORCHESTRATOR_MAX_LLM_CANDIDATES`（15）条，禁止送 full_content
 
 ### 5.9 常量集中管理（Round 17 Phase 1-A）
@@ -355,6 +376,6 @@ abstract: "100字内摘要"
 
 ---
 
-> **校对日期**: 2026-05-06
-> **校对人**: GPT-5.5 / Versioning Contract 落盘审计
-> **对应状态**: CLI Core 正式重置为 v1.0.0；Broad eval soft gate、Entity Graph operating contract、observer-scoped relationship search、privacy-clean public history 已进入主线。当前 CHARTER v1.2.0，search_constants.py **50** 常量。
+> **校对日期**: 2026-05-07
+> **校对人**: GLM-5.1 / 搜索架构文档收束
+> **对应状态**: 搜索架构从"双管道"表述统一为 S0-S3 分层模型；zero-result semantic fallback 已 shipped；official eval gate 保持 keyword/default。当前 CHARTER v1.2.0，search_constants.py **50** 常量。
