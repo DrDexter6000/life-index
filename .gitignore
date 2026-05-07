@@ -107,6 +107,16 @@ Kimi_here.bat
 # ----- 本地 Agent 专属配置 -----
 .agents.local.md
 
+# ----- 本地 Agent 治理 / 并行任务运行层（不公开）-----
+.agent-governance/
+.agent-sessions/
+.agent-missions/
+.agent-reports/
+.agent-learnings/
+.codex-learnings/
+.glm-learnings/
+.claude-learnings/
+
 # ----- 本地备份 / 原型临时文件 -----
 *.backup
 .kimi-learnings/
@@ -116,3 +126,5 @@ Kimi_here.bat
 # ----- 临时调试文件 -----
 tmp_*
 !tmp_*.md
+*_tmp*.json
+.pytest_tmp*/

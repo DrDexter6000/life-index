@@ -3,7 +3,8 @@
 > 本文档为 AI 编码代理提供**快速导航入口**。详细规范已归源到 SSOT 文档，本文件仅保留指引与 Agent 行为约束。
 > **最后更新**: 2026-05-04 | **AGENTS.md 文档版本**: v3.0 | **状态**: 活跃维护
 >
-> 本地专属配置（含部署路径）见 `.agents.local.md`（已 gitignored，仅本地可用）。
+> 本地专属配置（含部署路径与 Agent 并行治理规则）见 `.agents.local.md`（已 gitignored，仅本地可用）。
+> 若 `.agents.local.md` 存在，所有 Agent 在执行任何**非只读**任务前必须先读取它，并遵守其中指向的本地治理层。
 
 ---
 
@@ -16,6 +17,8 @@
 > **战略文档协同规则**：任何 Agent 接手 CLI 开发时，必须先阅读 `.strategy/strategy.md` 与 `.strategy/ROADMAP.md`（本地 NTFS junction，仅本地可用），禁止跳过共享战略文档直接开始开发。
 >
 > **CLI / GUI 共享规则**：所有高层战略、路线图、阶段进展统一记录在共享 `.strategy/` 中；CLI 侧不得维护一份独立平行战略文档。
+
+> **本地 Agent 治理规则**：`.agents.local.md` 可指向本地私有治理目录（如 `.agent-governance/`）。该目录用于并行 session 管理、文件所有权、dirty state 协议、mission 模板与 CI failure 分类。它已 gitignored，不得提交；但在本地存在时，其执行规则对所有 Agent 生效。
 
 ## 项目概述
 
@@ -42,6 +45,7 @@
 | **修改数据格式/Schema** | `CHARTER.md` §1.1-§1.2 + `docs/ARCHITECTURE.md` §6.3 | 数据隔离不变量 + 日志格式规范 |
 | **修改 Entity Graph / alias / relationship** | `docs/ENTITY_GRAPH.md` + `docs/ARCHITECTURE.md` §5.3 | 实体图谱操作契约 + 搜索集成边界 |
 | **版本号 / release / tag 操作** | `docs/VERSIONING.md` + `CHANGELOG.md` | 保守 SemVer + release checklist + tag policy |
+| **并行 session / mission / dirty state / CI 归属** | `.agents.local.md` → `.agent-governance/README.md` | 本地私有治理层；存在时必须遵守，不进入公开仓库 |
 | **代码风格疑问** | `docs/ARCHITECTURE.md` §6.1 | 命名、类型注解、路径处理等 |
 | **模块结构疑问** | `docs/ARCHITECTURE.md` §6.2 | tools/ 目录树 |
 | **本地部署到实机** | `.agents.local.md` | 本地 OpenClaw/WSL 部署路径（已 gitignored） |
@@ -65,6 +69,7 @@
 | 📖 **L3** | [`AGENT_ONBOARDING.md`](AGENT_ONBOARDING.md) | 安装与初始化指南 | 面向 Agent |
 | 📖 **L3** | [`README.md`](README.md) | 用户入口、快速开始、常用命令 | 面向人类用户 |
 | 🏠 **本地** | `.agents.local.md` | 本地部署路径、环境配置 | 已 gitignored |
+| 🏠 **本地** | `.agent-governance/` | 本地 Agent 并行治理、mission 模板、dirty state 协议 | 已 gitignored |
 
 ---
 
