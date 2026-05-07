@@ -484,3 +484,129 @@ class EvalRun:
         # Forward-compatible unknown fields
         d.update(self.extra)
         return d
+
+
+# ---------------------------------------------------------------------------
+# QuerySpec: typed golden query specification
+# ---------------------------------------------------------------------------
+
+_QUERY_SPEC_EXPECTED_KNOWN_KEYS = frozenset({"min_results", "must_contain_title"})
+
+
+@dataclass
+class QuerySpec:
+    """Typed representation of a golden query specification.
+
+    Wraps the untyped dict from golden_queries.yaml (or post-overlay dict)
+    with typed fields. Supports forward-compatible round-trip via extra dicts.
+
+    ``overlay_applied`` is metadata computed at construction time (from
+    ``applied_query_ids`` or the presence of ``_public_query``); it is NOT
+    serialized by ``to_dict()``.
+    """
+
+    query_id: str
+    query: str
+    category: str
+    description: str
+    tags: list[str]
+    expected_min_results: int
+    expected_must_contain_title: list[str]
+    skip_until_phase: int | None = None
+    audit_note: str | list[str] | None = None
+    broad_eval: dict[str, Any] | None = None
+    public_query: str | None = None
+    overlay_applied: bool = False
+    extra: dict[str, Any] = field(default_factory=dict, repr=False)
+    _had_must_contain_title: bool = field(default=False, repr=False)
+    _expected_extra: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    _KNOWN_KEYS = frozenset(
+        {
+            "id",
+            "query",
+            "category",
+            "description",
+            "expected",
+            "tags",
+            "skip_until_phase",
+            "audit_note",
+            "broad_eval",
+            "_public_query",
+        }
+    )
+
+    @classmethod
+    def from_dict(
+        cls, data: dict[str, Any], *, applied_query_ids: set[str] | None = None
+    ) -> QuerySpec:
+        expected = data.get("expected", {})
+        if not isinstance(expected, dict):
+            expected = {}
+
+        had_mct = "must_contain_title" in expected
+        must_contain = expected.get("must_contain_title", [])
+        if not isinstance(must_contain, list):
+            must_contain = [str(must_contain)] if must_contain else []
+
+        qid = str(data.get("id", ""))
+        public_query = data.get("_public_query")
+
+        if applied_query_ids is not None:
+            overlay_applied = qid in applied_query_ids
+        else:
+            overlay_applied = public_query is not None
+
+        expected_extra = {
+            k: v for k, v in expected.items() if k not in _QUERY_SPEC_EXPECTED_KNOWN_KEYS
+        }
+        extra = {k: v for k, v in data.items() if k not in cls._KNOWN_KEYS}
+
+        return cls(
+            query_id=qid,
+            query=str(data.get("query", "")),
+            category=str(data.get("category", "")),
+            description=str(data.get("description", "")),
+            tags=list(data.get("tags", [])),
+            expected_min_results=int(expected.get("min_results", 0)),
+            expected_must_contain_title=[str(t) for t in must_contain],
+            skip_until_phase=data.get("skip_until_phase"),
+            audit_note=data.get("audit_note"),
+            broad_eval=data.get("broad_eval"),
+            public_query=public_query,
+            overlay_applied=overlay_applied,
+            extra=extra,
+            _had_must_contain_title=had_mct,
+            _expected_extra=expected_extra,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "id": self.query_id,
+            "query": self.query,
+            "category": self.category,
+            "description": self.description,
+            "expected": {"min_results": self.expected_min_results},
+            "tags": self.tags,
+        }
+
+        if self._had_must_contain_title or self.expected_must_contain_title:
+            d["expected"]["must_contain_title"] = self.expected_must_contain_title
+
+        if self._expected_extra:
+            d["expected"].update(self._expected_extra)
+
+        if self.skip_until_phase is not None:
+            d["skip_until_phase"] = self.skip_until_phase
+
+        if self.audit_note is not None:
+            d["audit_note"] = self.audit_note
+
+        if self.broad_eval is not None:
+            d["broad_eval"] = self.broad_eval
+
+        if self.public_query is not None:
+            d["_public_query"] = self.public_query
+
+        d.update(self.extra)
+        return d
