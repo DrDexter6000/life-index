@@ -27,8 +27,10 @@ from tools.eval.eval_compare import (
     _recall_at_k,
     classify_eval_query_deltas,
     classify_metric_direction,
+    classify_query_deltas,
     compare_eval_runs,
     compare_runs,
+    export_comparison_report,
 )
 from tools.eval.eval_types import (
     EvalRun,
@@ -828,4 +830,255 @@ class TestCompareRunsNoLeakage:
             if line.startswith("import ") or line.startswith("from ")
         ]
         joined = "\n".join(import_lines)
+        assert "ranx" not in joined
+
+
+# ---------------------------------------------------------------------------
+# classify_query_deltas
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyQueryDeltasNoIR:
+    def test_equivalent_to_pass_fail_without_qrels(self) -> None:
+        baseline = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=False, reciprocal_rank=0.0),
+                _make_run_result("Q2", passed=True, reciprocal_rank=1.0),
+            ]
+        )
+        candidate = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=0.5),
+                _make_run_result("Q2", passed=False, reciprocal_rank=0.0),
+            ]
+        )
+        deltas = classify_query_deltas(baseline, candidate)
+        assert len(deltas) == 2
+        q1 = [d for d in deltas if d.query_id == "Q1"][0]
+        q2 = [d for d in deltas if d.query_id == "Q2"][0]
+        assert q1.status == "fixed"
+        assert q2.status == "regressed"
+        assert q1.metric_deltas == []
+        assert q2.metric_deltas == []
+
+
+class TestClassifyQueryDeltasWithIR:
+    def test_attaches_mrr_and_recall(self) -> None:
+        baseline = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=False, reciprocal_rank=0.0),
+            ]
+        )
+        candidate = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+            ]
+        )
+        qrels: dict[str, dict[str, int]] = {"Q1": {"D1": 1}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D2": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        deltas = classify_query_deltas(baseline, candidate, qrels=qrels, run_a=run_a, run_b=run_b)
+        assert len(deltas) == 1
+        q1 = deltas[0]
+        assert q1.status == "fixed"
+        names = [m.metric_name for m in q1.metric_deltas]
+        assert "mrr_at_5" in names
+        assert "recall_at_5" in names
+
+    def test_skipped_no_qrel_keeps_pass_fail_status(self) -> None:
+        baseline = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+            ]
+        )
+        candidate = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+            ]
+        )
+        qrels: dict[str, dict[str, int]] = {"Q1": {"D1": 0}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        deltas = classify_query_deltas(baseline, candidate, qrels=qrels, run_a=run_a, run_b=run_b)
+        assert len(deltas) == 1
+        assert deltas[0].status == "still_passing"
+        assert deltas[0].metric_deltas == []
+
+
+class TestClassifyQueryDeltasQrelsOnlyInQrels:
+    def test_qrels_only_queries_not_in_output(self) -> None:
+        baseline = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+            ]
+        )
+        candidate = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+            ]
+        )
+        qrels: dict[str, dict[str, int]] = {
+            "Q1": {"D1": 1},
+            "Q2": {"D2": 1},
+        }
+        run_a: dict[str, dict[str, float]] = {
+            "Q1": {"D1": 1.0},
+            "Q2": {"D2": 1.0},
+        }
+        run_b: dict[str, dict[str, float]] = {
+            "Q1": {"D1": 1.0},
+            "Q2": {"D2": 1.0},
+        }
+        deltas = classify_query_deltas(baseline, candidate, qrels=qrels, run_a=run_a, run_b=run_b)
+        ids = [d.query_id for d in deltas]
+        assert "Q2" not in ids
+        assert "Q1" in ids
+
+
+class TestClassifyQueryDeltasNewMissing:
+    def test_new_in_candidate_keeps_status(self) -> None:
+        baseline = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+            ]
+        )
+        candidate = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+                _make_run_result("Q2", passed=True, reciprocal_rank=0.5),
+            ]
+        )
+        deltas = classify_query_deltas(baseline, candidate)
+        q2 = [d for d in deltas if d.query_id == "Q2"][0]
+        assert q2.status == "new_in_candidate"
+        assert q2.metric_deltas == []
+
+    def test_missing_from_candidate_keeps_status(self) -> None:
+        baseline = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+                _make_run_result("Q2", passed=False, reciprocal_rank=0.0),
+            ]
+        )
+        candidate = _make_eval_run(
+            per_query=[
+                _make_run_result("Q1", passed=True, reciprocal_rank=1.0),
+            ]
+        )
+        deltas = classify_query_deltas(baseline, candidate)
+        q2 = [d for d in deltas if d.query_id == "Q2"][0]
+        assert q2.status == "missing_from_candidate"
+        assert q2.metric_deltas == []
+
+
+# ---------------------------------------------------------------------------
+# export_comparison_report
+# ---------------------------------------------------------------------------
+
+
+class TestExportComparisonReportDeterministic:
+    def test_deterministic_output(self) -> None:
+        ec = EvalComparison(
+            baseline_commit="aaa1111",
+            candidate_commit="bbb2222",
+            baseline_anchor="2026-05-01",
+            candidate_anchor="2026-05-08",
+            total_shared_queries=10,
+            fixed_query_ids=["Q1"],
+            regressed_query_ids=["Q2"],
+            still_failing_ids=["Q3"],
+            still_passing_ids=["Q4"],
+            failure_delta=-1,
+        )
+        report = export_comparison_report(ec)
+        assert "baseline: aaa1111" in report
+        assert "candidate: bbb2222" in report
+        assert "shared_queries: 10" in report
+        assert "failure_delta: -1" in report
+        assert "fixed: 1 regressed: 1 still_failing: 1 still_passing: 1" in report
+        assert "=== End Report ===" in report
+
+    def test_with_run_comparison(self) -> None:
+        ec = EvalComparison(
+            baseline_commit="a",
+            candidate_commit="b",
+            baseline_anchor="x",
+            candidate_anchor="y",
+            total_shared_queries=5,
+        )
+        rc = RunComparison(
+            metric_deltas=[
+                MetricDelta("mrr_at_5", 0.3, 0.5, 0.2, "improved"),
+                MetricDelta("recall_at_5", 0.4, 0.6, 0.2, "improved"),
+            ],
+            queries_compared=5,
+            queries_skipped_no_qrel=1,
+        )
+        report = export_comparison_report(ec, run_comparison=rc)
+        assert "--- IR Metrics ---" in report
+        assert "mrr_at_5:" in report
+        assert "recall_at_5:" in report
+        assert "queries_compared: 5" in report
+
+    def test_with_query_deltas(self) -> None:
+        ec = EvalComparison(
+            baseline_commit="a",
+            candidate_commit="b",
+            baseline_anchor="x",
+            candidate_anchor="y",
+            total_shared_queries=1,
+            fixed_query_ids=["Q1"],
+        )
+        qd = QueryDelta(
+            query_id="Q1",
+            status="fixed",
+            baseline_score=0.0,
+            candidate_score=1.0,
+            delta=1.0,
+            metric_deltas=[
+                MetricDelta("mrr_at_5", 0.0, 1.0, 1.0, "improved"),
+            ],
+        )
+        report = export_comparison_report(ec, query_deltas=[qd])
+        assert "--- Per-Query Deltas ---" in report
+        assert "Q1 fixed delta=+1.0000" in report
+        assert "[mrr_at_5=+1.0000]" in report
+
+
+class TestExportComparisonReportNoLeakage:
+    def test_no_query_text_title_doc_id_path(self) -> None:
+        ec = EvalComparison(
+            baseline_commit="a",
+            candidate_commit="b",
+            baseline_anchor="x",
+            candidate_anchor="y",
+            total_shared_queries=1,
+        )
+        qd = QueryDelta(
+            query_id="Q1",
+            status="fixed",
+            baseline_score=0.0,
+            candidate_score=1.0,
+            delta=1.0,
+        )
+        report = export_comparison_report(ec, query_deltas=[qd])
+        assert "Secret Title" not in report
+        assert "query text" not in report
+        assert "doc_" not in report
+        assert "C:\\" not in report
+        assert "/" not in report.replace("delta=", "").replace("mrr_at_5", "")
+
+
+class TestExportComparisonReportSafety:
+    def test_module_does_not_import_run_eval_or_search(self) -> None:
+        mod = importlib.import_module("tools.eval.eval_compare")
+        source = open(mod.__file__, encoding="utf-8").read()
+        import_lines = [
+            line
+            for line in source.splitlines()
+            if line.startswith("import ") or line.startswith("from ")
+        ]
+        joined = "\n".join(import_lines)
+        assert "run_eval" not in joined
+        assert "search_journals" not in joined
         assert "ranx" not in joined

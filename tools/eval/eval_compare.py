@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Typed comparison dataclasses, pass/fail comparison, and IR metrics (R2-B4d).
+"""Typed comparison dataclasses, pass/fail comparison, and IR metrics (R2-B4e).
 
 Defines data types for comparing two eval runs or two IR Run dicts, implements
-per-query pass/fail delta classification, and computes MRR@5 / Recall@5
-against qrels without ranx.
+per-query pass/fail delta classification, computes MRR@5 / Recall@5
+against qrels without ranx, unifies deltas, and exports text reports.
 
 This module imports only eval_types (data layer). It does not import the
 runtime eval module, any search module, eval_qrels, eval_run, or ranx.
@@ -11,7 +11,7 @@ runtime eval module, any search module, eval_qrels, eval_run, or ranx.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
@@ -554,3 +554,164 @@ def compare_runs(
         queries_compared=queries_compared,
         queries_skipped_no_qrel=queries_skipped,
     )
+
+
+# ---------------------------------------------------------------------------
+# Unified comparison
+# ---------------------------------------------------------------------------
+
+_PassFailStatus = Literal[
+    "fixed",
+    "regressed",
+    "still_failing",
+    "still_passing",
+    "new_in_candidate",
+    "missing_from_candidate",
+]
+
+
+def classify_query_deltas(
+    baseline: EvalRun,
+    candidate: EvalRun,
+    qrels: Mapping[str, Mapping[str, int]] | None = None,
+    run_a: Mapping[str, Mapping[str, float]] | None = None,
+    run_b: Mapping[str, Mapping[str, float]] | None = None,
+) -> list[QueryDelta]:
+    """Unify pass/fail deltas with optional IR metric deltas per query.
+
+    Primary query set = union of baseline/candidate EvalRun per_query query_ids.
+    Primary status from pass/fail. If qrels + run_a + run_b all provided,
+    attaches per-query mrr_at_5 / recall_at_5 MetricDeltas from compare_runs()
+    for matching query_ids. Queries skipped by compare_runs (no relevant docs)
+    keep their pass/fail status without IR metric_deltas.
+    """
+    baseline_map: dict[str, RunResult] = {r.query_id: r for r in baseline.results.per_query}
+    candidate_map: dict[str, RunResult] = {r.query_id: r for r in candidate.results.per_query}
+
+    all_ids = sorted(set(baseline_map) | set(candidate_map))
+
+    ir_lookup: dict[str, list[MetricDelta]] = {}
+    has_ir = qrels is not None and run_a is not None and run_b is not None
+    if has_ir:
+        assert qrels is not None and run_a is not None and run_b is not None
+        rc = compare_runs(qrels, run_a, run_b)
+        for pq in rc.per_query_deltas:
+            if pq.status != "skipped_no_qrel" and pq.metric_deltas:
+                ir_lookup[pq.query_id] = pq.metric_deltas
+
+    deltas: list[QueryDelta] = []
+    for qid in all_ids:
+        b = baseline_map.get(qid)
+        c = candidate_map.get(qid)
+
+        if b is not None and c is not None:
+            b_passed = b.passed
+            c_passed = c.passed
+            if not b_passed and c_passed:
+                status: _PassFailStatus = "fixed"
+            elif b_passed and not c_passed:
+                status = "regressed"
+            elif not b_passed and not c_passed:
+                status = "still_failing"
+            else:
+                status = "still_passing"
+            b_score = b.reciprocal_rank
+            c_score = c.reciprocal_rank
+            deltas.append(
+                QueryDelta(
+                    query_id=qid,
+                    status=status,
+                    baseline_score=b_score,
+                    candidate_score=c_score,
+                    delta=c_score - b_score,
+                    metric_deltas=ir_lookup.get(qid, []),
+                )
+            )
+        elif c is not None:
+            deltas.append(
+                QueryDelta(
+                    query_id=qid,
+                    status="new_in_candidate",
+                    baseline_score=None,
+                    candidate_score=c.reciprocal_rank,
+                    delta=None,
+                    metric_deltas=[],
+                )
+            )
+        else:
+            assert b is not None
+            deltas.append(
+                QueryDelta(
+                    query_id=qid,
+                    status="missing_from_candidate",
+                    baseline_score=b.reciprocal_rank,
+                    candidate_score=None,
+                    delta=None,
+                    metric_deltas=[],
+                )
+            )
+
+    return deltas
+
+
+# ---------------------------------------------------------------------------
+# Text report export
+# ---------------------------------------------------------------------------
+
+
+def export_comparison_report(
+    eval_comparison: EvalComparison,
+    run_comparison: RunComparison | None = None,
+    query_deltas: Sequence[QueryDelta] | None = None,
+) -> str:
+    """Export a deterministic plain-text comparison report.
+
+    Contains failure_delta, fixed/regressed/still counts, aggregate
+    MRR@5/Recall@5 deltas (if run_comparison provided), and per-query
+    summaries (query_id/status/metric deltas only).
+
+    Never includes query text, journal title, doc_id, or absolute path.
+    """
+    lines: list[str] = []
+
+    lines.append("=== Eval Comparison Report ===")
+    lines.append(f"baseline: {eval_comparison.baseline_commit}")
+    lines.append(f"candidate: {eval_comparison.candidate_commit}")
+    lines.append(f"shared_queries: {eval_comparison.total_shared_queries}")
+    lines.append(f"failure_delta: {eval_comparison.failure_delta}")
+    lines.append(
+        f"fixed: {len(eval_comparison.fixed_query_ids)} "
+        f"regressed: {len(eval_comparison.regressed_query_ids)} "
+        f"still_failing: {len(eval_comparison.still_failing_ids)} "
+        f"still_passing: {len(eval_comparison.still_passing_ids)}"
+    )
+
+    if run_comparison is not None:
+        lines.append("")
+        lines.append("--- IR Metrics ---")
+        for md in run_comparison.metric_deltas:
+            lines.append(
+                f"{md.metric_name}: "
+                f"{md.baseline_value:.4f} -> {md.candidate_value:.4f} "
+                f"(delta={md.delta:+.4f}, {md.direction})"
+            )
+        lines.append(
+            f"queries_compared: {run_comparison.queries_compared} "
+            f"skipped_no_qrel: {run_comparison.queries_skipped_no_qrel}"
+        )
+
+    if query_deltas:
+        lines.append("")
+        lines.append("--- Per-Query Deltas ---")
+        for qd in query_deltas:
+            parts = [qd.query_id, qd.status]
+            if qd.delta is not None:
+                parts.append(f"delta={qd.delta:+.4f}")
+            if qd.metric_deltas:
+                metric_parts = [f"{m.metric_name}={m.delta:+.4f}" for m in qd.metric_deltas]
+                parts.append(f"[{', '.join(metric_parts)}]")
+            lines.append(" ".join(parts))
+
+    lines.append("")
+    lines.append("=== End Report ===")
+    return "\n".join(lines)
