@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Typed comparison dataclasses for eval run comparison (R2-B4b).
+"""Typed comparison dataclasses and pass/fail comparison for eval runs (R2-B4c).
 
-Defines data types for comparing two eval runs or two IR Run dicts.
-No comparison algorithms are implemented here -- only types and helpers.
+Defines data types for comparing two eval runs or two IR Run dicts, and
+implements per-query pass/fail delta classification between EvalRun objects.
 
-This module does not import the runtime eval module or any search module. No ranx dependency.
+This module imports only eval_types (data layer). It does not import the
+runtime eval module, any search module, eval_qrels, eval_run, or ranx.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
+
+from tools.eval.eval_types import EvalRun, RunResult
 
 # ---------------------------------------------------------------------------
 # Direction helper
@@ -232,3 +235,137 @@ class RunComparison:
             queries_compared=int(data.get("queries_compared", 0)),
             queries_skipped_no_qrel=int(data.get("queries_skipped_no_qrel", 0)),
         )
+
+
+# ---------------------------------------------------------------------------
+# Pass/fail comparison functions
+# ---------------------------------------------------------------------------
+
+
+def compare_eval_runs(
+    baseline: EvalRun,
+    candidate: EvalRun,
+) -> EvalComparison:
+    """Compare two EvalRun objects at the per-query pass/fail level.
+
+    Classifies each shared query_id as fixed, regressed, still_failing, or
+    still_passing based on the RunResult.passed field. Also identifies
+    queries present in only one run.
+
+    failure_delta counts across the entire run (not only shared queries).
+    """
+    baseline_map: dict[str, RunResult] = {r.query_id: r for r in baseline.results.per_query}
+    candidate_map: dict[str, RunResult] = {r.query_id: r for r in candidate.results.per_query}
+
+    shared_ids = sorted(set(baseline_map) & set(candidate_map))
+    new_in_candidate = sorted(set(candidate_map) - set(baseline_map))
+    missing_from_candidate = sorted(set(baseline_map) - set(candidate_map))
+
+    fixed: list[str] = []
+    regressed: list[str] = []
+    still_failing: list[str] = []
+    still_passing: list[str] = []
+
+    for qid in shared_ids:
+        b_passed = baseline_map[qid].passed
+        c_passed = candidate_map[qid].passed
+        if not b_passed and c_passed:
+            fixed.append(qid)
+        elif b_passed and not c_passed:
+            regressed.append(qid)
+        elif not b_passed and not c_passed:
+            still_failing.append(qid)
+        else:
+            still_passing.append(qid)
+
+    baseline_failures = sum(1 for r in baseline.results.per_query if not r.passed)
+    candidate_failures = sum(1 for r in candidate.results.per_query if not r.passed)
+
+    return EvalComparison(
+        baseline_commit=baseline.metadata.commit,
+        candidate_commit=candidate.metadata.commit,
+        baseline_anchor=baseline.metadata.anchor_date,
+        candidate_anchor=candidate.metadata.anchor_date,
+        total_shared_queries=len(shared_ids),
+        fixed_query_ids=fixed,
+        regressed_query_ids=regressed,
+        still_failing_ids=still_failing,
+        still_passing_ids=still_passing,
+        new_in_candidate=new_in_candidate,
+        missing_from_candidate=missing_from_candidate,
+        failure_delta=candidate_failures - baseline_failures,
+    )
+
+
+def classify_eval_query_deltas(
+    baseline: EvalRun,
+    candidate: EvalRun,
+) -> list[QueryDelta]:
+    """Produce per-query delta rows combining pass/fail status and reciprocal_rank.
+
+    Returns one QueryDelta per union query_id, sorted by query_id.
+    Uses reciprocal_rank as the score field.
+    """
+    baseline_map: dict[str, RunResult] = {r.query_id: r for r in baseline.results.per_query}
+    candidate_map: dict[str, RunResult] = {r.query_id: r for r in candidate.results.per_query}
+
+    all_ids = sorted(set(baseline_map) | set(candidate_map))
+    deltas: list[QueryDelta] = []
+
+    for qid in all_ids:
+        b = baseline_map.get(qid)
+        c = candidate_map.get(qid)
+
+        if b is not None and c is not None:
+            b_passed = b.passed
+            c_passed = c.passed
+            if not b_passed and c_passed:
+                status: Literal[
+                    "fixed",
+                    "regressed",
+                    "still_failing",
+                    "still_passing",
+                    "new_in_candidate",
+                    "missing_from_candidate",
+                    "skipped_no_qrel",
+                ] = "fixed"
+            elif b_passed and not c_passed:
+                status = "regressed"
+            elif not b_passed and not c_passed:
+                status = "still_failing"
+            else:
+                status = "still_passing"
+            b_score = b.reciprocal_rank
+            c_score = c.reciprocal_rank
+            deltas.append(
+                QueryDelta(
+                    query_id=qid,
+                    status=status,
+                    baseline_score=b_score,
+                    candidate_score=c_score,
+                    delta=c_score - b_score,
+                )
+            )
+        elif c is not None:
+            deltas.append(
+                QueryDelta(
+                    query_id=qid,
+                    status="new_in_candidate",
+                    baseline_score=None,
+                    candidate_score=c.reciprocal_rank,
+                    delta=None,
+                )
+            )
+        else:
+            assert b is not None  # qid is in union, c is None, so b must exist
+            deltas.append(
+                QueryDelta(
+                    query_id=qid,
+                    status="missing_from_candidate",
+                    baseline_score=b.reciprocal_rank,
+                    candidate_score=None,
+                    delta=None,
+                )
+            )
+
+    return deltas
