@@ -197,7 +197,10 @@ def expand_query_with_entity_graph(query: str) -> str:
     view = build_runtime_view(graph)
 
     def _expand_entity_names(entity: dict[str, Any]) -> str:
-        names = [entity["primary_name"], *entity.get("aliases", [])]
+        names = [entity["primary_name"]]
+        for alias in entity.get("aliases", []):
+            if len(str(alias).strip()) >= 2:
+                names.append(alias)
         deduped: list[str] = []
         for name in names:
             if name not in deduped:
@@ -275,15 +278,61 @@ def expand_query_with_entity_graph(query: str) -> str:
         if matched_entity:
             expanded_tokens.append(_expand_entity_names(matched_entity))
         else:
-            # Substring replacement: replace any entity alias/name within the token
-            replacements = token
+            # Substring replacement: position-aware, non-overlapping.
+            # Collect all (start, end, entity) matches in the original token,
+            # prefer longest match at the same start, skip overlaps, then
+            # build the result from accepted spans so generated OR groups are
+            # never scanned for additional matches.
+            spans: list[tuple[int, int, dict[str, Any]]] = []
             for entity in graph:
                 for name in [entity["primary_name"], *entity.get("aliases", [])]:
                     if len(str(name).strip()) < 2:
                         continue
-                    if name in replacements:
-                        replacements = replacements.replace(name, _expand_entity_names(entity))
-            expanded_tokens.append(replacements)
+                    pos = 0
+                    while True:
+                        idx = token.find(name, pos)
+                        if idx == -1:
+                            break
+                        spans.append((idx, idx + len(name), entity))
+                        pos = idx + 1
+
+            # Sort by start ascending, then by length descending (longest first)
+            spans.sort(key=lambda s: (s[0], -(s[1] - s[0])))
+
+            # Greedy non-overlapping selection: keep longest at each position,
+            # skip anything that overlaps a previously accepted span.
+            accepted: list[tuple[int, int, dict[str, Any]]] = []
+            last_end = 0
+            for start, end, ent in spans:
+                if start < last_end:
+                    continue
+                # Check if a longer span already accepted at this start
+                if accepted and accepted[-1][0] == start:
+                    continue
+                accepted.append((start, end, ent))
+                last_end = end
+
+            if not accepted:
+                expanded_tokens.append(token)
+                continue
+
+            # Build FTS-safe segments. When an OR group is embedded inside a
+            # larger token, explicit AND boundaries avoid malformed FTS syntax
+            # such as "在(重庆 OR Chongqing)发生过的事".
+            parts: list[str] = []
+            cursor = 0
+            for start, end, ent in accepted:
+                prefix = token[cursor:start]
+                if prefix:
+                    parts.append(prefix)
+                parts.append(_expand_entity_names(ent))
+                cursor = end
+            suffix = token[cursor:]
+            if suffix:
+                parts.append(suffix)
+
+            result = " AND ".join(parts)
+            expanded_tokens.append(result)
 
     expanded = " ".join(expanded_tokens).strip()
     return expanded or query

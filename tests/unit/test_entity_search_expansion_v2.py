@@ -7,13 +7,16 @@ Validates that the new phrase registry expands:
 - Kinship phrase patterns (X的奶奶, X的妈妈, X的老婆)
 - Place phrases (老家 → place entity expansion)
 - Backward compatibility with existing alias expansion
+
+R2-A1 expansion grammar fix tests:
+- Single-character alias (渝) excluded from OR groups
+- No recursive/nested OR from str.replace mutation
+- Position-aware non-overlapping replacement
+- Multi-character aliases (Chongqing, 山城) retained
+- Parentheses balanced in expanded output
 """
 
 from pathlib import Path
-
-import pytest
-
-from tools.lib.entity_graph import save_entity_graph
 
 
 def _spouse_family_graph() -> list[dict]:
@@ -219,3 +222,198 @@ class TestBackwardCompat:
 
         assert "Life Index" in expanded
         assert "日志系统" in expanded
+
+
+# ---------------------------------------------------------------------------
+# R2-A1 Expansion Grammar Fix Tests
+# ---------------------------------------------------------------------------
+
+
+def _chongqing_with_short_alias_graph() -> list[dict]:
+    """Entity graph matching production place-chongqing: includes 渝 alias."""
+    return [
+        {
+            "id": "person-zhouyu",
+            "type": "person",
+            "primary_name": "周渝",
+            "aliases": [],
+            "attributes": {},
+            "relationships": [],
+        },
+        {
+            "id": "place-chongqing",
+            "type": "place",
+            "primary_name": "重庆",
+            "aliases": ["渝", "Chongqing", "山城"],
+            "attributes": {},
+            "relationships": [],
+        },
+    ]
+
+
+def _count_substring(text: str, sub: str) -> int:
+    return text.count(sub)
+
+
+def _parentheses_balanced(text: str) -> bool:
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+class TestExpansionGrammarFix:
+    """R2-A1: position-aware replacement, no recursive expansion, short-alias filter."""
+
+    def test_expansion_excludes_single_char_yu(self, isolated_data_dir: Path) -> None:
+        """Single-character alias 渝 must NOT appear in the expanded query."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        assert "渝" not in expanded
+
+    def test_chongqing_appears_exactly_once(self, isolated_data_dir: Path) -> None:
+        """Chongqing must appear exactly once (not recursively duplicated)."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        assert _count_substring(expanded, "Chongqing") == 1
+
+    def test_mountain_city_appears_exactly_once(self, isolated_data_dir: Path) -> None:
+        """山城 must appear exactly once (not recursively duplicated)."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        assert _count_substring(expanded, "山城") == 1
+
+    def test_no_nested_or_groups(self, isolated_data_dir: Path) -> None:
+        """Expanded query must not contain nested OR groups.
+
+        A valid expansion looks like: 在(重庆 OR Chongqing OR 山城)发生过的事
+        Nested would be: 在(重庆 OR (重庆 OR Chongqing) OR 山城)发生过的事
+        """
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        # Check: no "OR" appears inside an already-open parenthesis group
+        # that itself contains "OR". Simpler: primary_name should appear
+        # exactly once in the expanded query (not nested).
+        assert _count_substring(expanded, "重庆") == 1
+
+    def test_parentheses_balanced(self, isolated_data_dir: Path) -> None:
+        """Parentheses in the expanded query must be balanced."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        assert _parentheses_balanced(expanded)
+
+    def test_embedded_or_group_has_explicit_fts_boundaries(self, isolated_data_dir: Path) -> None:
+        """Embedded OR groups must have FTS5-valid AND separators, not glued.
+
+        All expansion grammar properties verified in one focused test:
+        - explicit AND boundaries around the OR group
+        - single-char alias (渝) excluded
+        - Chongqing and 山城 appear exactly once
+        - no nested OR from recursive expansion
+        - balanced parentheses
+        """
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        # Exact expected FTS5-valid form
+        assert expanded == "在 AND (重庆 OR Chongqing OR 山城) AND 发生过的事"
+
+        # Single-char alias excluded
+        assert "渝" not in expanded
+
+        # Multi-char aliases appear exactly once
+        assert _count_substring(expanded, "Chongqing") == 1
+        assert _count_substring(expanded, "山城") == 1
+
+        # No nested OR (primary name appears once total)
+        assert _count_substring(expanded, "重庆") == 1
+
+        # Parentheses balanced
+        assert _parentheses_balanced(expanded)
+
+    def test_multi_char_aliases_retained(self, isolated_data_dir: Path) -> None:
+        """Multi-character aliases Chongqing and 山城 must still be in OR group."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        assert "Chongqing" in expanded
+        assert "山城" in expanded
+        assert "重庆" in expanded
+
+    def test_surrounding_text_preserved(self, isolated_data_dir: Path) -> None:
+        """Text around the matched entity must be preserved."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        assert expanded.startswith("在")
+        assert expanded.endswith("发生过的事")
+
+    def test_primary_name_first_in_or_group(self, isolated_data_dir: Path) -> None:
+        """Primary name 重庆 must be the first term in the OR group."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        # Find the OR group and check 重庆 appears first
+        or_group_start = expanded.index("(")
+        or_group_end = expanded.index(")", or_group_start)
+        or_content = expanded[or_group_start + 1 : or_group_end]
+        terms = [t.strip() for t in or_content.split(" OR ")]
+        assert terms[0] == "重庆"
+
+    def test_overlapping_matches_longest_wins(self, isolated_data_dir: Path) -> None:
+        """When two entity names overlap at the same position, longest wins."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        graph = _chongqing_with_short_alias_graph() + [
+            {
+                "id": "place-chongqing-city",
+                "type": "place",
+                "primary_name": "重庆城",
+                "aliases": ["山城重庆"],
+                "attributes": {},
+                "relationships": [],
+            },
+        ]
+        _save_graph(graph, isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆城里散步")
+
+        # Both 重庆 and 重庆城 match at position 1; longest (重庆城) should win
+        assert "重庆城" in expanded
+
+    def test_phrase_expansion_still_works_with_fix(self, isolated_data_dir: Path) -> None:
+        """Family phrase patterns (我的老婆 etc.) must not regress."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("我的老婆")
+
+        assert "王某某" in expanded
+        assert "乐乐妈" in expanded
