@@ -22,9 +22,13 @@ from tools.eval.eval_compare import (
     MetricDelta,
     QueryDelta,
     RunComparison,
+    _mrr_at_k,
+    _ranked_doc_ids,
+    _recall_at_k,
     classify_eval_query_deltas,
     classify_metric_direction,
     compare_eval_runs,
+    compare_runs,
 )
 from tools.eval.eval_types import (
     EvalRun,
@@ -621,3 +625,207 @@ class TestClassifyEvalQueryDeltas:
             serialized = str(d.to_dict())
             assert "query for" not in serialized
             assert "Secret Title" not in serialized
+
+
+# ---------------------------------------------------------------------------
+# _ranked_doc_ids
+# ---------------------------------------------------------------------------
+
+
+class TestRankedDocIds:
+    def test_sorted_by_score_desc(self) -> None:
+        run: dict[str, float] = {"D1": 0.3, "D2": 0.8, "D3": 0.1}
+        assert _ranked_doc_ids(run) == ["D2", "D1", "D3"]
+
+    def test_tiebreak_by_doc_id_asc(self) -> None:
+        run: dict[str, float] = {"D3": 1.0, "D1": 1.0, "D2": 1.0}
+        assert _ranked_doc_ids(run) == ["D1", "D2", "D3"]
+
+    def test_empty_run(self) -> None:
+        assert _ranked_doc_ids({}) == []
+
+
+# ---------------------------------------------------------------------------
+# _mrr_at_k
+# ---------------------------------------------------------------------------
+
+
+class TestMrrAtK:
+    def test_relevant_at_rank_1(self) -> None:
+        qrels: dict[str, int] = {"D1": 1}
+        run: dict[str, float] = {"D1": 2.0, "D2": 1.0}
+        assert _mrr_at_k(qrels, run, k=5) == 1.0
+
+    def test_relevant_at_rank_2(self) -> None:
+        qrels: dict[str, int] = {"D2": 1}
+        run: dict[str, float] = {"D1": 2.0, "D2": 1.0}
+        assert _mrr_at_k(qrels, run, k=5) == 0.5
+
+    def test_relevant_outside_top_k(self) -> None:
+        qrels: dict[str, int] = {"D6": 1}
+        run: dict[str, float] = {
+            "D1": 6.0,
+            "D2": 5.0,
+            "D3": 4.0,
+            "D4": 3.0,
+            "D5": 2.0,
+            "D6": 1.0,
+        }
+        assert _mrr_at_k(qrels, run, k=5) == 0.0
+
+    def test_no_relevant_docs(self) -> None:
+        qrels: dict[str, int] = {"D1": 0}
+        run: dict[str, float] = {"D1": 1.0}
+        assert _mrr_at_k(qrels, run, k=5) == 0.0
+
+    def test_empty_qrels(self) -> None:
+        assert _mrr_at_k({}, {"D1": 1.0}, k=5) == 0.0
+
+    def test_empty_run(self) -> None:
+        assert _mrr_at_k({"D1": 1}, {}, k=5) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _recall_at_k
+# ---------------------------------------------------------------------------
+
+
+class TestRecallAtK:
+    def test_two_relevant_one_hit(self) -> None:
+        qrels: dict[str, int] = {"D1": 1, "D2": 1}
+        run: dict[str, float] = {"D1": 2.0, "D3": 1.0}
+        assert _recall_at_k(qrels, run, k=5) == 0.5
+
+    def test_all_relevant_found(self) -> None:
+        qrels: dict[str, int] = {"D1": 1, "D2": 1}
+        run: dict[str, float] = {"D1": 2.0, "D2": 1.0}
+        assert _recall_at_k(qrels, run, k=5) == 1.0
+
+    def test_none_found(self) -> None:
+        qrels: dict[str, int] = {"D1": 1, "D2": 1}
+        run: dict[str, float] = {"D3": 2.0, "D4": 1.0}
+        assert _recall_at_k(qrels, run, k=5) == 0.0
+
+    def test_empty_qrels(self) -> None:
+        assert _recall_at_k({}, {"D1": 1.0}, k=5) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# compare_runs
+# ---------------------------------------------------------------------------
+
+
+class TestCompareRunsStatusFixed:
+    def test_fixed_when_a_zero_b_positive(self) -> None:
+        qrels = {"Q1": {"D1": 1}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D2": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        rc = compare_runs(qrels, run_a, run_b)
+        assert rc.per_query_deltas[0].status == "fixed"
+
+
+class TestCompareRunsStatusRegressed:
+    def test_regressed_when_a_positive_b_zero(self) -> None:
+        qrels = {"Q1": {"D1": 1}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D2": 1.0}}
+        rc = compare_runs(qrels, run_a, run_b)
+        assert rc.per_query_deltas[0].status == "regressed"
+
+
+class TestCompareRunsStatusStillFailing:
+    def test_still_failing_when_both_zero(self) -> None:
+        qrels = {"Q1": {"D1": 1}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D2": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D3": 1.0}}
+        rc = compare_runs(qrels, run_a, run_b)
+        assert rc.per_query_deltas[0].status == "still_failing"
+
+
+class TestCompareRunsStatusStillPassing:
+    def test_still_passing_when_both_positive(self) -> None:
+        qrels = {"Q1": {"D1": 1}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D1": 2.0, "D2": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        rc = compare_runs(qrels, run_a, run_b)
+        assert rc.per_query_deltas[0].status == "still_passing"
+
+
+class TestCompareRunsSkipNoRelevant:
+    def test_skip_qrels_with_no_relevant_docs(self) -> None:
+        qrels = {"Q1": {"D1": 0}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        rc = compare_runs(qrels, run_a, run_b)
+        assert rc.queries_skipped_no_qrel == 1
+        assert rc.queries_compared == 0
+        assert rc.per_query_deltas[0].status == "skipped_no_qrel"
+
+
+class TestCompareRunsMissingRunQuery:
+    def test_missing_run_query_counts_as_zero(self) -> None:
+        qrels = {"Q1": {"D1": 1}, "Q2": {"D2": 1}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        rc = compare_runs(qrels, run_a, run_b)
+        assert rc.queries_compared == 2
+        q2_delta = [d for d in rc.per_query_deltas if d.query_id == "Q2"][0]
+        assert q2_delta.baseline_score == 0.0
+        assert q2_delta.candidate_score == 0.0
+        assert q2_delta.delta == 0.0
+
+
+class TestCompareRunsAggregateDeltas:
+    def test_aggregate_metric_deltas_correct(self) -> None:
+        qrels = {"Q1": {"D1": 1}, "Q2": {"D2": 1}}
+        run_a: dict[str, dict[str, float]] = {
+            "Q1": {"D1": 1.0},
+            "Q2": {"D3": 1.0},
+        }
+        run_b: dict[str, dict[str, float]] = {
+            "Q1": {"D1": 1.0},
+            "Q2": {"D2": 1.0},
+        }
+        rc = compare_runs(qrels, run_a, run_b)
+        assert len(rc.metric_deltas) == 2
+        mrr_delta = [m for m in rc.metric_deltas if m.metric_name == "mrr_at_5"][0]
+        recall_delta = [m for m in rc.metric_deltas if m.metric_name == "recall_at_5"][0]
+        # Q1: both mrr=1.0, delta=0. Q2: a=0.0, b=1.0, delta=1.0. Mean delta=0.5
+        assert mrr_delta.delta == 0.5
+        assert mrr_delta.direction == "improved"
+        # Q1: both recall=1.0. Q2: a=0.0, b=1.0. Mean delta=0.5
+        assert recall_delta.delta == 0.5
+
+
+class TestCompareRunsPerQueryDeltas:
+    def test_per_query_includes_both_metrics(self) -> None:
+        qrels = {"Q1": {"D1": 1}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D2": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        rc = compare_runs(qrels, run_a, run_b)
+        pq = rc.per_query_deltas[0]
+        names = [m.metric_name for m in pq.metric_deltas]
+        assert "mrr_at_5" in names
+        assert "recall_at_5" in names
+
+
+class TestCompareRunsNoLeakage:
+    def test_no_title_query_text_in_comparison(self) -> None:
+        qrels = {"Q1": {"D1": 1}}
+        run_a: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        run_b: dict[str, dict[str, float]] = {"Q1": {"D1": 1.0}}
+        rc = compare_runs(qrels, run_a, run_b)
+        serialized = str(rc.to_dict())
+        assert "Secret Title" not in serialized
+        assert "query text" not in serialized
+
+    def test_module_does_not_import_ranx(self) -> None:
+        mod = importlib.import_module("tools.eval.eval_compare")
+        source = open(mod.__file__, encoding="utf-8").read()
+        import_lines = [
+            line
+            for line in source.splitlines()
+            if line.startswith("import ") or line.startswith("from ")
+        ]
+        joined = "\n".join(import_lines)
+        assert "ranx" not in joined

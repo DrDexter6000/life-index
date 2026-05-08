@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Typed comparison dataclasses and pass/fail comparison for eval runs (R2-B4c).
+"""Typed comparison dataclasses, pass/fail comparison, and IR metrics (R2-B4d).
 
-Defines data types for comparing two eval runs or two IR Run dicts, and
-implements per-query pass/fail delta classification between EvalRun objects.
+Defines data types for comparing two eval runs or two IR Run dicts, implements
+per-query pass/fail delta classification, and computes MRR@5 / Recall@5
+against qrels without ranx.
 
 This module imports only eval_types (data layer). It does not import the
 runtime eval module, any search module, eval_qrels, eval_run, or ranx.
@@ -10,6 +11,7 @@ runtime eval module, any search module, eval_qrels, eval_run, or ranx.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
@@ -369,3 +371,186 @@ def classify_eval_query_deltas(
             )
 
     return deltas
+
+
+# ---------------------------------------------------------------------------
+# IR metric helpers
+# ---------------------------------------------------------------------------
+
+
+def _ranked_doc_ids(run_for_query: Mapping[str, float]) -> list[str]:
+    """Sort doc_ids by score descending, then doc_id ascending for ties."""
+    return [
+        doc_id
+        for doc_id, _score in sorted(
+            run_for_query.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ]
+
+
+def _mrr_at_k(
+    qrels_for_query: Mapping[str, int],
+    run_for_query: Mapping[str, float],
+    k: int = 5,
+) -> float:
+    """Mean Reciprocal Rank at k for a single query."""
+    if not qrels_for_query or not run_for_query:
+        return 0.0
+    relevant = {did for did, rel in qrels_for_query.items() if rel > 0}
+    if not relevant:
+        return 0.0
+    ranked = _ranked_doc_ids(run_for_query)
+    for i, doc_id in enumerate(ranked[:k], start=1):
+        if doc_id in relevant:
+            return 1.0 / i
+    return 0.0
+
+
+def _recall_at_k(
+    qrels_for_query: Mapping[str, int],
+    run_for_query: Mapping[str, float],
+    k: int = 5,
+) -> float:
+    """Recall at k for a single query."""
+    if not qrels_for_query:
+        return 0.0
+    relevant = {did for did, rel in qrels_for_query.items() if rel > 0}
+    if not relevant:
+        return 0.0
+    ranked = _ranked_doc_ids(run_for_query)
+    top_k = set(ranked[:k])
+    return len(top_k & relevant) / len(relevant)
+
+
+# ---------------------------------------------------------------------------
+# Run comparison function
+# ---------------------------------------------------------------------------
+
+_QueryStatus = Literal[
+    "fixed",
+    "regressed",
+    "still_failing",
+    "still_passing",
+    "new_in_candidate",
+    "missing_from_candidate",
+    "skipped_no_qrel",
+]
+
+
+def compare_runs(
+    qrels: Mapping[str, Mapping[str, int]],
+    run_a: Mapping[str, Mapping[str, float]],
+    run_b: Mapping[str, Mapping[str, float]],
+) -> RunComparison:
+    """Compare two Run dicts against shared qrels using MRR@5 and Recall@5.
+
+    Iterates over query_ids present in qrels. Queries with no relevant docs
+    are skipped (counted in queries_skipped_no_qrel). Missing run entries
+    count as empty runs (all metrics = 0.0).
+    """
+    query_ids = sorted(qrels.keys())
+    per_query: list[QueryDelta] = []
+    queries_compared = 0
+    queries_skipped = 0
+
+    mrr_a_sum = 0.0
+    mrr_b_sum = 0.0
+    recall_a_sum = 0.0
+    recall_b_sum = 0.0
+
+    for qid in query_ids:
+        qrels_q = qrels[qid]
+        relevant = {did for did, rel in qrels_q.items() if rel > 0}
+        if not relevant:
+            per_query.append(QueryDelta(query_id=qid, status="skipped_no_qrel"))
+            queries_skipped += 1
+            continue
+
+        run_a_q = run_a.get(qid, {})
+        run_b_q = run_b.get(qid, {})
+
+        mrr_a = _mrr_at_k(qrels_q, run_a_q)
+        mrr_b = _mrr_at_k(qrels_q, run_b_q)
+        recall_a = _recall_at_k(qrels_q, run_a_q)
+        recall_b = _recall_at_k(qrels_q, run_b_q)
+
+        mrr_delta_val = mrr_b - mrr_a
+        recall_delta_val = recall_b - recall_a
+
+        if mrr_a < 1e-12 and mrr_b > 1e-12:
+            status: _QueryStatus = "fixed"
+        elif mrr_a > 1e-12 and mrr_b < 1e-12:
+            status = "regressed"
+        elif mrr_a < 1e-12 and mrr_b < 1e-12:
+            status = "still_failing"
+        else:
+            status = "still_passing"
+
+        metric_deltas = [
+            MetricDelta(
+                metric_name="mrr_at_5",
+                baseline_value=mrr_a,
+                candidate_value=mrr_b,
+                delta=mrr_delta_val,
+                direction=classify_metric_direction(mrr_delta_val),
+            ),
+            MetricDelta(
+                metric_name="recall_at_5",
+                baseline_value=recall_a,
+                candidate_value=recall_b,
+                delta=recall_delta_val,
+                direction=classify_metric_direction(recall_delta_val),
+            ),
+        ]
+
+        per_query.append(
+            QueryDelta(
+                query_id=qid,
+                status=status,
+                baseline_score=mrr_a,
+                candidate_score=mrr_b,
+                delta=mrr_delta_val,
+                metric_deltas=metric_deltas,
+            )
+        )
+
+        mrr_a_sum += mrr_a
+        mrr_b_sum += mrr_b
+        recall_a_sum += recall_a
+        recall_b_sum += recall_b
+        queries_compared += 1
+
+    aggregate_deltas: list[MetricDelta] = []
+    if queries_compared > 0:
+        mean_mrr_a = mrr_a_sum / queries_compared
+        mean_mrr_b = mrr_b_sum / queries_compared
+        mean_recall_a = recall_a_sum / queries_compared
+        mean_recall_b = recall_b_sum / queries_compared
+
+        mrr_agg_delta = mean_mrr_b - mean_mrr_a
+        recall_agg_delta = mean_recall_b - mean_recall_a
+
+        aggregate_deltas = [
+            MetricDelta(
+                metric_name="mrr_at_5",
+                baseline_value=mean_mrr_a,
+                candidate_value=mean_mrr_b,
+                delta=mrr_agg_delta,
+                direction=classify_metric_direction(mrr_agg_delta),
+            ),
+            MetricDelta(
+                metric_name="recall_at_5",
+                baseline_value=mean_recall_a,
+                candidate_value=mean_recall_b,
+                delta=recall_agg_delta,
+                direction=classify_metric_direction(recall_agg_delta),
+            ),
+        ]
+
+    return RunComparison(
+        metric_deltas=aggregate_deltas,
+        per_query_deltas=per_query,
+        queries_compared=queries_compared,
+        queries_skipped_no_qrel=queries_skipped,
+    )
