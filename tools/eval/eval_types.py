@@ -133,9 +133,11 @@ class RunResult:
     broad_eval_error: str | None = None
     llm_scores: list[int] | None = None
     public_query: str | None = None
+    top_doc_ids: list[str] | None = None
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
     _present_opt: frozenset[str] = field(default_factory=frozenset, repr=False)
     _had_ndcg: bool = field(default=False, repr=False)
+    _had_top_doc_ids: bool = field(default=False, repr=False)
 
     _KNOWN_KEYS = frozenset(
         {
@@ -163,6 +165,7 @@ class RunResult:
             "broad_eval_error",
             "llm_scores",
             "public_query",
+            "top_doc_ids",
         }
     )
 
@@ -170,6 +173,7 @@ class RunResult:
     def from_dict(cls, data: dict[str, Any]) -> RunResult:
         present = frozenset(k for k in _OPT_FIELDS if k in data)
         had_ndcg = "ndcg_at_5" in data
+        had_top_doc_ids = "top_doc_ids" in data
         return cls(
             query_id=str(data.get("id", "")),
             query=str(data.get("query", "")),
@@ -195,9 +199,11 @@ class RunResult:
             broad_eval_error=data.get("broad_eval_error"),
             llm_scores=data.get("llm_scores"),
             public_query=data.get("public_query"),
+            top_doc_ids=data.get("top_doc_ids"),
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
             _present_opt=present,
             _had_ndcg=had_ndcg,
+            _had_top_doc_ids=had_top_doc_ids,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -216,6 +222,8 @@ class RunResult:
         }
         if self._had_ndcg or self.ndcg_at_5 is not None:
             d["ndcg_at_5"] = self.ndcg_at_5
+        if self._had_top_doc_ids or self.top_doc_ids is not None:
+            d["top_doc_ids"] = self.top_doc_ids
         if self.eval_mode != "exact_mrr":
             d["eval_mode"] = self.eval_mode
         for opt_field in _OPT_FIELDS:

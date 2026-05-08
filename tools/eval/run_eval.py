@@ -272,6 +272,20 @@ def _safe_float_divide(numerator: float, denominator: float) -> float:
     return numerator / denominator
 
 
+def _result_doc_id(result: dict[str, Any]) -> str:
+    route = result.get("journal_route_path", "")
+    if route:
+        return str(route).replace("\\", "/")
+    rel_path = str(result.get("rel_path", "")).replace("\\", "/")
+    if rel_path.startswith("Journals/") or rel_path.startswith("journals/"):
+        return rel_path[len("Journals/") :]
+    path = str(result.get("path", "")).replace("\\", "/")
+    idx = path.find("/Journals/")
+    if idx >= 0:
+        return path[idx + len("/Journals/") :]
+    return ""
+
+
 def _query_expected(query_case: dict[str, Any]) -> dict[str, Any]:
     expected = query_case.get("expected", {})
     return expected if isinstance(expected, dict) else {}
@@ -712,6 +726,7 @@ def _evaluate_queries(
             "category": query_case["category"],
             "results_found": results_found,
             "top_titles": [str(item.get("title", "")) for item in top_results],
+            "top_doc_ids": [_result_doc_id(item) for item in top_results],
             "first_relevant_rank": first_relevant_rank,
             "first_relevant_rank_at_10": first_relevant_rank_at_10,
             "reciprocal_rank": _round_metric(reciprocal_rank),
