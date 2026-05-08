@@ -175,6 +175,18 @@ def _filter_results_by_candidates(
     return filtered_results
 
 
+def _join_entity_expanded_tokens_for_fts(expanded_tokens: list[str]) -> str:
+    """Join entity-expanded fragments with explicit FTS5 AND where needed."""
+    joined: list[str] = []
+    for i, token in enumerate(expanded_tokens):
+        if i > 0 and (expanded_tokens[i - 1].endswith(")") or token.startswith("(")):
+            joined.append(" AND ")
+        elif i > 0:
+            joined.append(" ")
+        joined.append(token)
+    return "".join(joined).strip()
+
+
 def expand_query_with_entity_graph(query: str) -> str:
     """Expand a search query using entity graph aliases and relationship phrases.
 
@@ -334,7 +346,11 @@ def expand_query_with_entity_graph(query: str) -> str:
             result = " AND ".join(parts)
             expanded_tokens.append(result)
 
-    expanded = " ".join(expanded_tokens).strip()
+    # FTS5 requires explicit AND at parenthesized group boundaries.
+    # Paths 2/3 produce standalone (OR group) fragments; path 1 already
+    # has explicit AND internally via " AND ".join(parts). When adjacent
+    # tokens produce )token or token( boundaries, FTS5 throws syntax error.
+    expanded = _join_entity_expanded_tokens_for_fts(expanded_tokens)
     return expanded or query
 
 

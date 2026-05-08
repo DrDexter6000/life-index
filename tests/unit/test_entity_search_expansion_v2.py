@@ -417,3 +417,82 @@ class TestExpansionGrammarFix:
 
         assert "王某某" in expanded
         assert "乐乐妈" in expanded
+
+
+# ---------------------------------------------------------------------------
+# R2-A4 Path 2/3 Explicit AND Tests
+# ---------------------------------------------------------------------------
+
+
+class TestPath23ExplicitAnd:
+    """R2-A4: Paths 2/3 must insert explicit AND around parenthesized OR groups.
+
+    FTS5 rejects `(OR group) token` and `token (OR group)` adjacency —
+    explicit AND is required at every parenthesized-group boundary.
+    """
+
+    def test_entity_token_with_following_plain_token(self, isolated_data_dir: Path) -> None:
+        """Direct entity token + following plain token → explicit AND."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("老婆 生日")
+
+        assert "生日" in expanded
+        # No implicit adjacency: `(group) 生日` is forbidden
+        assert ") 生日" not in expanded
+        # Must have explicit AND: `(group) AND 生日`
+        assert ") AND 生日" in expanded
+
+    def test_entity_token_with_leading_and_trailing_plain_tokens(
+        self, isolated_data_dir: Path
+    ) -> None:
+        """Plain tokens on both sides of entity → AND before and after OR group."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("买 老婆 礼物")
+
+        assert "买" in expanded
+        assert "礼物" in expanded
+        # AND before OR group
+        assert "买 AND (" in expanded
+        # AND after OR group
+        assert ") AND 礼物" in expanded
+        # No implicit adjacency
+        assert ") 礼物" not in expanded
+        assert "买 (" not in expanded
+
+    def test_phrase_expansion_with_surrounding_token(self, isolated_data_dir: Path) -> None:
+        """Phrase-pattern expansion with leading plain token → explicit AND."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("关于 我的老婆")
+
+        assert "关于" in expanded
+        # AND between plain token and OR group
+        assert "关于 AND (" in expanded
+        # No implicit adjacency
+        assert "关于 (" not in expanded
+
+    def test_path1_behavior_preserved(self, isolated_data_dir: Path) -> None:
+        """Path 1 substring replacement output must not regress."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在重庆发生过的事")
+
+        assert expanded == "在 AND (重庆 OR Chongqing OR 山城) AND 发生过的事"
+
+    def test_single_entity_or_group_no_extra_and(self, isolated_data_dir: Path) -> None:
+        """Single-token entity expansion stays as plain OR group, no leading/trailing AND."""
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("老婆")
+
+        assert expanded.startswith("(")
+        assert expanded.endswith(")")
+        assert "王某某" in expanded
+        assert "AND" not in expanded
