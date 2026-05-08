@@ -685,6 +685,7 @@ def _run_level3_fallback_search(
     _plan: Any,
     _topic_hints: list[str] | None,
     _date_range: dict[str, str] | None,
+    _entity_expanded: bool,
     start_time: float,
 ) -> dict[str, Any]:
     """Fallback policy: keyword first, semantic only on zero keyword results."""
@@ -710,6 +711,7 @@ def _run_level3_fallback_search(
         use_index=use_index,
         fts_min_relevance=fts_min_relevance,
         candidate_paths=candidate_paths,
+        entity_expanded=_entity_expanded,
     )
 
     # Structured metadata supplement (same as hybrid path)
@@ -916,7 +918,8 @@ def hierarchical_search(
         result["hints"] = [h.to_dict() for h in _hints]
 
     expanded_query = expand_query_with_entity_graph(query) if query else query
-    if expanded_query != query:
+    _entity_expanded = expanded_query != query
+    if _entity_expanded:
         result["query_params"]["expanded_query"] = expanded_query
     query = expanded_query
 
@@ -1104,6 +1107,7 @@ def hierarchical_search(
             _plan=_plan,
             _topic_hints=_topic_hints,
             _date_range=_date_range,
+            _entity_expanded=_entity_expanded,
             start_time=start_time,
         )
 
@@ -1124,6 +1128,7 @@ def hierarchical_search(
             use_index=use_index,
             fts_min_relevance=fts_min_relevance,
             candidate_paths=candidate_paths,
+            entity_expanded=_entity_expanded,
         )
         future_semantic = executor.submit(
             run_semantic_pipeline,

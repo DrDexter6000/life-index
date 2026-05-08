@@ -74,7 +74,72 @@ def _quote_fts_token(token: str) -> str:
     return token
 
 
-def _segment_query_for_fts(query: str) -> tuple[str, bool]:
+def _split_entity_expanded_query(query: str) -> list[str]:
+    """Split an entity-expanded query into operator and non-operator fragments.
+
+    Preserves FTS operators (AND, OR, NOT) and parenthesized groups as-is.
+    Returns non-operator Chinese text fragments for segmentation.
+
+    Example:
+        "在 AND (重庆 OR Chongqing OR 山城) AND 发生过的事"
+        → ["在", "AND", "(重庆 OR Chongqing OR 山城)", "AND", "发生过的事"]
+    """
+    # Pattern matches: parenthesized groups, operators, or remaining tokens
+    token_re = re.compile(r"\([^)]+\)|\b(AND|OR|NOT)\b|[一-鿿]+|[^\s()]+")
+    return [m.group(0) for m in token_re.finditer(query)]
+
+
+def _segment_entity_expanded_query(query: str) -> tuple[str, bool]:
+    """Segment an entity-expanded query: segment non-operator Chinese fragments.
+
+    Splits the query into structural fragments (operators, parenthesized OR
+    groups) and non-operator Chinese text, segments only the Chinese fragments
+    with jieba, then reassembles with original operator structure preserved.
+
+    Returns:
+        (reassembled_query, was_segmented) — was_segmented is always False
+        because the query contains explicit AND/OR operators and must pass
+        through _build_fts_queries() via the operator-passthrough path,
+        not the OR-join path that would destroy boolean structure.
+    """
+    fragments = _split_entity_expanded_query(query)
+    segment_for_fts = getattr(chinese_tokenizer, "segment_for_fts")
+
+    operators = {"AND", "OR", "NOT"}
+    processed: list[str] = []
+    for frag in fragments:
+        # Skip FTS operators and parenthesized OR groups — preserve as-is
+        if frag in operators or frag.startswith("("):
+            processed.append(frag)
+            continue
+
+        # Check if this fragment has CJK content needing segmentation
+        has_cjk = any(0x4E00 <= ord(c) <= 0x9FFF or 0x3400 <= ord(c) <= 0x4DBF for c in frag)
+        if has_cjk:
+            segmented = segment_for_fts(frag, mode="query").strip()
+            if segmented:
+                processed.append(segmented)
+        else:
+            # Quote non-CJK tokens that contain hyphens (e.g., 2026-01-15)
+            processed.append(_quote_fts_token(frag))
+
+    cleaned: list[str] = []
+    for frag in processed:
+        if not frag.strip():
+            continue
+        if frag in operators:
+            # Stopword removal may delete a neighboring text fragment; do not
+            # leave FTS operator syntax at expression boundaries or doubled up.
+            if not cleaned or cleaned[-1] in operators:
+                continue
+        cleaned.append(frag)
+    while cleaned and cleaned[-1] in operators:
+        cleaned.pop()
+
+    return " ".join(cleaned), False
+
+
+def _segment_query_for_fts(query: str, *, entity_expanded: bool = False) -> tuple[str, bool]:
     """Segment Chinese text in a query for FTS5 matching.
 
     Handles: pure Chinese, pure English, mixed, FTS operators, and quoted phrases.
@@ -82,8 +147,10 @@ def _segment_query_for_fts(query: str) -> tuple[str, bool]:
     - FTS operators (AND/OR/NOT) are preserved
     - Unquoted Chinese text is segmented in query mode (with stopword filtering)
 
-    MD5: Jieba runs before entity expansion in the query pipeline.
-    MD8: Does NOT handle FTS5 operators — they pass through unchanged.
+    R2-A3: When entity_expanded=True, the query comes from entity graph expansion
+    and contains system-injected AND/OR operators. Instead of bypassing segmentation
+    entirely, segment only the non-operator Chinese fragments while preserving the
+    boolean structure.
 
     Returns:
         Tuple of (segmented_query, was_segmented).  When was_segmented is True,
@@ -92,6 +159,10 @@ def _segment_query_for_fts(query: str) -> tuple[str, bool]:
     """
     if not query or not query.strip():
         return query, False
+
+    # R2-A3: Entity-expanded queries need targeted segmentation, not bypass
+    if entity_expanded and _has_explicit_fts_operator(query):
+        return _segment_entity_expanded_query(query)
 
     # If query already has FTS operators or is all ASCII, pass through
     # (entity expansion may have added operators like "乐乐 OR 小豆丁")
@@ -237,6 +308,7 @@ def run_keyword_pipeline(
     use_index: bool = True,
     fts_min_relevance: int = FTS_MIN_RELEVANCE,
     candidate_paths: set[str] | None = None,
+    entity_expanded: bool = False,
 ) -> KeywordPipelineResult:
     """
     关键词搜索管道: L1 索引 → L2 元数据 → L3 FTS5 内容
@@ -349,7 +421,9 @@ def run_keyword_pipeline(
 
     if has_effective_query and normalized_query:
         # Segment Chinese text in query before FTS matching (T1.3)
-        segmented_query, was_segmented = _segment_query_for_fts(normalized_query)
+        segmented_query, was_segmented = _segment_query_for_fts(
+            normalized_query, entity_expanded=entity_expanded
+        )
         fts_query, fallback_fts_query = _build_fts_queries(
             segmented_query, was_segmented=was_segmented
         )
