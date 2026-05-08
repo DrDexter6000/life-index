@@ -36,6 +36,7 @@ from ..lib.search_constants import (
     SCORE_ABSTRACT_MATCH_BONUS,
     SCORE_TAGS_MATCH_BONUS,
     SCORE_ENTITY_BONUS,
+    SCORE_LOCATION_MATCH_BONUS,
     TOPIC_HINT_BOOST,
     NON_RRF_MIN_SCORE,
     MAX_RESULTS_DEFAULT,
@@ -361,6 +362,10 @@ def merge_and_rank_results(
             # Multi-token query: OR semantics for metadata matching (C1-b alias support)
             query_tokens = query.split()
             tokens = query_tokens if len(query_tokens) > 1 else [query]
+            location = (
+                metadata.get("location", "") if isinstance(metadata.get("location"), str) else ""
+            )
+            location_matched = False
             for token in tokens:
                 if _query_matches_text(title, token):
                     bonus += SCORE_TITLE_MATCH_BONUS_L2
@@ -368,6 +373,9 @@ def merge_and_rank_results(
                     bonus += SCORE_ABSTRACT_MATCH_BONUS
                 if _query_matches_tags(tags, token):
                     bonus += SCORE_TAGS_MATCH_BONUS
+                if not location_matched and _query_matches_text(location, token):
+                    bonus += SCORE_LOCATION_MATCH_BONUS
+                    location_matched = True
 
             # Extra bonus for title containing the full query phrase
             if len(query_tokens) > 1:
@@ -628,6 +636,9 @@ def merge_and_rank_results_hybrid(
                 metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
             )
             tags = metadata.get("tags", [])
+            location = (
+                metadata.get("location", "") if isinstance(metadata.get("location"), str) else ""
+            )
 
             if _query_matches_text(title, query):
                 score += SCORE_TITLE_MATCH_BONUS_L2
@@ -635,6 +646,10 @@ def merge_and_rank_results_hybrid(
                 score += SCORE_ABSTRACT_MATCH_BONUS
             if _query_matches_tags(tags, query):
                 score += SCORE_TAGS_MATCH_BONUS
+            query_tokens = query.split()
+            tokens = query_tokens if len(query_tokens) > 1 else [query]
+            if any(_query_matches_text(location, token) for token in tokens):
+                score += SCORE_LOCATION_MATCH_BONUS
 
         score += _entity_bonus(r, entity_hints or [])
 

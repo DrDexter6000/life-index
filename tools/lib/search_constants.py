@@ -216,6 +216,13 @@ SCORE_ABSTRACT_MATCH_BONUS: int = 4
 SCORE_TAGS_MATCH_BONUS: int = 3
 SCORE_ENTITY_BONUS: int = 6
 
+# R2-A2C: Location metadata ranking bonus
+# When a query token matches metadata.location, the L2 candidate receives this
+# bonus. Value chosen so that location-only exact match (30+15=45) outranks
+# generic L2 title+abstract matches (30+8+4=42) in GQ64. Bounded: max L2 with
+# all bonuses (30+8+4+3+6+15=66) stays below L3 ceiling (BM25_RELEVANCE_BASE+10=80).
+SCORE_LOCATION_MATCH_BONUS: int = 15
+
 # ADR-016: Topic hint ranking boost (Phase 4 T4.2)
 # Conservative 1.1x multiplier applied to results whose topic matches search_plan.topic_hints.
 # Must not override large FTS/RRF score gaps — only breaks close ties.
@@ -385,6 +392,7 @@ __all__ = [
     "SCORE_ABSTRACT_MATCH_BONUS",
     "SCORE_TAGS_MATCH_BONUS",
     "SCORE_ENTITY_BONUS",
+    "SCORE_LOCATION_MATCH_BONUS",
     "TOPIC_HINT_BOOST",
     "NON_RRF_MIN_SCORE",
     # Limits

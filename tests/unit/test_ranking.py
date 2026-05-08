@@ -514,6 +514,7 @@ class TestRankingConstantInvariants:
             SCORE_ABSTRACT_MATCH_BONUS,
             SCORE_TAGS_MATCH_BONUS,
             SCORE_ENTITY_BONUS,
+            SCORE_LOCATION_MATCH_BONUS,
             BM25_RELEVANCE_BASE,
         )
 
@@ -523,6 +524,7 @@ class TestRankingConstantInvariants:
             + SCORE_ABSTRACT_MATCH_BONUS
             + SCORE_TAGS_MATCH_BONUS
             + SCORE_ENTITY_BONUS
+            + SCORE_LOCATION_MATCH_BONUS
         )
         # A typical strong L3 match has BM25 relevance around BM25_RELEVANCE_BASE (70)
         # We allow max_l2 to be at most comparable to a strong L3, not exceed it
@@ -530,6 +532,135 @@ class TestRankingConstantInvariants:
             f"Max L2 score ({max_l2}) should not far exceed "
             f"BM25_RELEVANCE_BASE ({BM25_RELEVANCE_BASE})"
         )
+
+
+class TestLocationMetadataRankingBonus:
+    """R2-A2C: L2 location metadata ranking bonus tests.
+
+    When a query token matches a candidate's metadata.location field, the
+    candidate should receive a bonus sufficient to rank above otherwise-equal
+    L2 candidates that only match weaker signals (e.g. common character in title).
+    """
+
+    def test_l2_location_match_ranks_above_title_match(self):
+        """L2 with location match should outrank L2 with only title match."""
+        from tools.search_journals.ranking import merge_and_rank_results
+        from tools.lib.search_constants import (
+            SCORE_L2_BASE,
+            SCORE_LOCATION_MATCH_BONUS,
+            SCORE_TITLE_MATCH_BONUS_L2,
+        )
+
+        l2_location_match = [
+            {
+                "path": "/test/location.md",
+                "title": "unrelated title",
+                "metadata": {"location": "Chongqing, China"},
+            }
+        ]
+        l2_title_match = [
+            {
+                "path": "/test/title.md",
+                "title": "Chongqing travel note",
+                "metadata": {},
+            }
+        ]
+
+        results = merge_and_rank_results(
+            [],
+            l2_location_match + l2_title_match,
+            [],
+            query="Chongqing",
+            min_score=0,
+        )
+
+        assert len(results) == 2
+        assert results[0]["path"] == "/test/location.md"
+        assert results[1]["path"] == "/test/title.md"
+        assert results[0]["relevance_score"] == SCORE_L2_BASE + SCORE_LOCATION_MATCH_BONUS
+        assert results[1]["relevance_score"] == SCORE_L2_BASE + SCORE_TITLE_MATCH_BONUS_L2
+
+    def test_l2_location_non_match_no_bonus(self):
+        """L2 candidate without location match should NOT receive location bonus."""
+        from tools.search_journals.ranking import merge_and_rank_results
+        from tools.lib.search_constants import SCORE_L2_BASE
+
+        l2 = [
+            {
+                "path": "/test/no-location.md",
+                "title": "unrelated",
+                "metadata": {"location": "Beijing, China"},
+            }
+        ]
+
+        results = merge_and_rank_results([], l2, [], query="Chongqing", min_score=0)
+
+        assert len(results) == 1
+        assert results[0]["relevance_score"] == SCORE_L2_BASE
+
+    def test_l2_location_bonus_multitoken_query(self):
+        """Location bonus is applied once for multi-token query matches."""
+        from tools.search_journals.ranking import merge_and_rank_results
+        from tools.lib.search_constants import (
+            SCORE_L2_BASE,
+            SCORE_LOCATION_MATCH_BONUS,
+        )
+
+        l2 = [
+            {
+                "path": "/test/location.md",
+                "title": "unrelated",
+                "metadata": {"location": "Chongqing, China"},
+            }
+        ]
+
+        results = merge_and_rank_results([], l2, [], query="Chongqing China", min_score=0)
+
+        assert len(results) == 1
+        assert results[0]["relevance_score"] == SCORE_L2_BASE + SCORE_LOCATION_MATCH_BONUS
+
+    def test_l2_location_bonus_hybrid_path(self):
+        """Location token match applies in hybrid ranking L2 scoring."""
+        from tools.search_journals.ranking import merge_and_rank_results_hybrid
+        from tools.lib.search_constants import (
+            SCORE_L2_BASE,
+            SCORE_LOCATION_MATCH_BONUS,
+        )
+
+        l2 = [
+            {
+                "path": "/test/location.md",
+                "title": "unrelated",
+                "metadata": {"location": "Chongqing, China"},
+            }
+        ]
+
+        results = merge_and_rank_results_hybrid(
+            [], l2, [], [], query="trip Chongqing", min_non_rrf_score=0
+        )
+
+        assert len(results) == 1
+        assert results[0]["relevance_score"] == SCORE_L2_BASE + SCORE_LOCATION_MATCH_BONUS
+
+    def test_l2_location_bonus_hybrid_non_match(self):
+        """Hybrid path: non-matching location gets no bonus."""
+        from tools.search_journals.ranking import merge_and_rank_results_hybrid
+        from tools.lib.search_constants import SCORE_L2_BASE
+
+        l2 = [
+            {
+                "path": "/test/no.md",
+                "title": "unrelated",
+                "metadata": {"location": "Beijing, China"},
+            }
+        ]
+
+        results = merge_and_rank_results_hybrid(
+            [], l2, [], [], query="Chongqing", min_non_rrf_score=0
+        )
+
+        assert len(results) == 1
+        assert results[0]["relevance_score"] == SCORE_L2_BASE
 
 
 if __name__ == "__main__":

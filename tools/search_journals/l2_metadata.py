@@ -137,6 +137,9 @@ def _matches_filters(
         title = metadata.get("title", "")
         abstract = metadata.get("abstract", "") if isinstance(metadata.get("abstract"), str) else ""
         file_tags = metadata.get("tags", [])
+        file_location = (
+            metadata.get("location", "") if isinstance(metadata.get("location"), str) else ""
+        )
 
         # Multi-token query: OR semantics for metadata matching (C1-b alias support)
         query_tokens = query.split()
@@ -145,6 +148,7 @@ def _matches_filters(
                 _query_matches_text(title, token)
                 or _query_matches_text(abstract, token)
                 or _query_matches_tags(file_tags, token)
+                or _query_matches_text(file_location, token)
                 for token in query_tokens
             )
         else:
@@ -152,6 +156,7 @@ def _matches_filters(
                 _query_matches_text(title, query)
                 or _query_matches_text(abstract, query)
                 or _query_matches_tags(file_tags, query)
+                or _query_matches_text(file_location, query)
             )
         if not matched:
             return False
