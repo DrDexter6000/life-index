@@ -231,19 +231,33 @@ class SmartSearchOrchestrator:
         search_result = self.execute_search(rewritten)
         candidates = search_result["candidates"]
 
-        # Evidence Pack (opt-in only)
+        # Evidence Pack (opt-in, best-effort)
         evidence_dict: dict[str, Any] | None = None
         evidence_ms = 0.0
+        evidence_error: str | None = None
         if include_evidence:
             from tools.evidence.adapter import extract_evidence_from_orchestrator
 
             ev_start = time.time()
-            evidence_pack = extract_evidence_from_orchestrator(
-                search_result["raw_results"],
-                smart_result={"rewritten_query": rewritten.get("rewritten_query")},
-            )
-            evidence_ms = (time.time() - ev_start) * 1000
-            evidence_dict = evidence_pack.to_dict()
+            try:
+                evidence_pack = extract_evidence_from_orchestrator(
+                    search_result["raw_results"],
+                    smart_result={
+                        "rewritten_query": rewritten.get("rewritten_query"),
+                        "original_query": query,
+                    },
+                )
+                evidence_ms = (time.time() - ev_start) * 1000
+                evidence_dict = evidence_pack.to_dict()
+                rewritten_query = evidence_dict.pop("rewritten_query", None)
+                if rewritten_query:
+                    evidence_dict.setdefault("query_context", {})[
+                        "rewritten_query"
+                    ] = rewritten_query
+            except Exception as exc:
+                evidence_ms = (time.time() - ev_start) * 1000
+                evidence_error = str(exc)
+                logger.warning(f"[Orchestrator] Evidence build failed: {exc}")
 
         # Stage 3: Post-filter + summarize
         filtered = self.post_filter_and_summarize(query, candidates)
@@ -283,6 +297,9 @@ class SmartSearchOrchestrator:
         if evidence_dict is not None:
             result_dict["evidence_pack"] = evidence_dict
             result_dict["performance"]["evidence_build_ms"] = round(evidence_ms, 2)
+        elif include_evidence:
+            result_dict["performance"]["evidence_build_ms"] = round(evidence_ms, 2)
+            result_dict["performance"]["evidence_error"] = evidence_error
         return result_dict
 
     # ── LLM Helpers ──────────────────────────────────────────────────────

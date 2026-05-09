@@ -7,6 +7,7 @@ or production data. Does not modify input dicts.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from tools.evidence.builder import build_evidence_pack
@@ -34,7 +35,8 @@ def extract_evidence_from_orchestrator(
 ) -> EvidencePack:
     """Extract EvidencePack from orchestrator's raw search results.
 
-    Optionally overlays smart-search rewritten_query into pack.extra,
+    Optionally overlays smart-search rewritten_query into
+    query_context.extra (serialized as evidence_pack.query_context.rewritten_query),
     separate from query_context.expanded_query (reserved for entity expansion).
     """
     missing = _REQUIRED_KEYS - set(raw_results.keys())
@@ -47,16 +49,10 @@ def extract_evidence_from_orchestrator(
 
     if smart_result is not None:
         rq = smart_result.get("rewritten_query")
-        if rq and rq != pack.query_context.query:
-            new_extra = {**pack.extra, "rewritten_query": rq}
-            pack = EvidencePack(
-                query_context=pack.query_context,
-                items=pack.items,
-                semantic_candidates=pack.semantic_candidates,
-                total_available=pack.total_available,
-                has_more=pack.has_more,
-                no_confident_match=pack.no_confident_match,
-                extra=new_extra,
-            )
+        original = smart_result.get("original_query", pack.query_context.query)
+        if rq and rq != original:
+            new_qc_extra = {**pack.query_context.extra, "rewritten_query": rq}
+            new_qc = replace(pack.query_context, extra=new_qc_extra)
+            pack = replace(pack, query_context=new_qc)
 
     return pack

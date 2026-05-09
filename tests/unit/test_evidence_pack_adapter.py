@@ -139,7 +139,7 @@ class TestExtractFromOrchestrator:
         smart = {"rewritten_query": "what did I do with family"}
         pack = extract_evidence_from_orchestrator(raw, smart_result=smart)
 
-        assert pack.extra.get("rewritten_query") == "what did I do with family"
+        assert pack.query_context.extra.get("rewritten_query") == "what did I do with family"
         # expanded_query must NOT be overwritten — it's entity expansion, not LLM rewrite
         assert pack.query_context.expanded_query == "family day out 团团"
 
@@ -184,6 +184,35 @@ class TestExtractFromOrchestrator:
 
         with pytest.raises(ValueError, match="query_params"):
             extract_evidence_from_orchestrator({"success": True})
+
+    def test_smart_result_original_query_overrides_comparison(self) -> None:
+        from tools.evidence.adapter import extract_evidence_from_orchestrator
+
+        raw = _synthetic_search_result()
+        # raw.query_params.query == "family day out"
+        # Simulate orchestrator flow: rewritten == query_params.query, but
+        # original_query differs
+        smart = {
+            "rewritten_query": "family day out",
+            "original_query": "what did we do as a family",
+        }
+        pack = extract_evidence_from_orchestrator(raw, smart_result=smart)
+
+        # rewritten_query equals query_context.query, but differs from original_query
+        # → overlay should still trigger
+        assert pack.query_context.extra.get("rewritten_query") == "family day out"
+
+    def test_smart_result_original_query_same_no_overlay(self) -> None:
+        from tools.evidence.adapter import extract_evidence_from_orchestrator
+
+        raw = _synthetic_search_result()
+        smart = {
+            "rewritten_query": "family day out",
+            "original_query": "family day out",
+        }
+        pack = extract_evidence_from_orchestrator(raw, smart_result=smart)
+
+        assert "rewritten_query" not in pack.extra
 
 
 # ---------------------------------------------------------------------------

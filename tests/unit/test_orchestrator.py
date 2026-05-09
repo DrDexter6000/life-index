@@ -215,7 +215,7 @@ def test_include_evidence_degradation_mode():
 
 
 def test_evidence_rewrite_overlay_separate_from_expansion():
-    """LLM rewritten_query goes into evidence extra, not expanded_query."""
+    """LLM rewritten_query goes into query_context, not expanded_query."""
     from unittest.mock import patch
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
@@ -241,8 +241,8 @@ def test_evidence_rewrite_overlay_separate_from_expansion():
     ):
         result = orch.search("family", include_evidence=True)
     pack = result["evidence_pack"]
-    # rewritten_query is flattened into top-level by EvidencePack.to_dict()
-    assert pack.get("rewritten_query") == "family activities with kids"
+    assert "rewritten_query" not in pack
+    assert pack["query_context"].get("rewritten_query") == "family activities with kids"
     # expanded_query must be from entity expansion, not LLM rewrite
     assert pack["query_context"].get("expanded_query") == "test expanded"
 
@@ -276,3 +276,57 @@ def test_no_raw_results_leak():
     ):
         result = orch.search("test", include_evidence=True)
     assert "raw_results" not in result
+
+
+def test_evidence_pack_empty_results():
+    """include_evidence=True with empty merged_results produces valid empty pack."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    empty_result = {
+        "success": True,
+        "query_params": {"query": "nonexistent"},
+        "merged_results": [],
+        "semantic_results": [],
+        "total_available": 0,
+        "has_more": False,
+        "no_confident_match": True,
+        "performance": {"total_time_ms": 5.0},
+    }
+    orch = SmartSearchOrchestrator(llm_client=None)
+    with patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=lambda **kw: empty_result,
+    ):
+        result = orch.search("nonexistent", include_evidence=True)
+    assert "evidence_pack" in result
+    pack = result["evidence_pack"]
+    assert pack["items"] == []
+    assert pack["total_available"] == 0
+    assert pack["no_confident_match"] is True
+
+
+def test_evidence_build_failure_does_not_fail_search():
+    """Evidence build failure is best-effort and does not leak raw results."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=None)
+    mock_result = _mock_search_result()
+    with (
+        patch(
+            "tools.search_journals.orchestrator._get_search_fn",
+            return_value=lambda **kw: mock_result,
+        ),
+        patch(
+            "tools.evidence.adapter.extract_evidence_from_orchestrator",
+            side_effect=ValueError("missing query_params"),
+        ),
+    ):
+        result = orch.search("test", include_evidence=True)
+
+    assert result["success"] is True
+    assert "evidence_pack" not in result
+    assert "raw_results" not in result
+    assert result["performance"]["evidence_build_ms"] >= 0
+    assert "missing query_params" in result["performance"]["evidence_error"]
