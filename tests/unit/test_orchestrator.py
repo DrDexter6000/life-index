@@ -1022,3 +1022,311 @@ def test_transparency_llm_injected_fields_not_trusted():
     assert any(
         "dropped" in lim.lower() for lim in result["limitations"]
     ), f"Expected 'dropped' in limitations, got: {result['limitations']}"
+
+
+# ---------------------------------------------------------------------------
+# R2-D Closure: Orchestrator failure-mode gap tests
+# ---------------------------------------------------------------------------
+
+
+def test_synthesis_empty_answer_text_returns_none():
+    """LLM returning answer_text="" yields None from synthesize_answer."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    class EmptyAnswerLLM:
+        def chat(self, messages, *, max_tokens=2000):
+            import json
+
+            return json.dumps({"answer_text": "", "citations": [1], "confidence": "high"})
+
+    orch = SmartSearchOrchestrator(llm_client=EmptyAnswerLLM())
+    filtered = _trust_gate_filtered_results(3)
+    result = orch.synthesize_answer(query="test", filtered_results=filtered, summary="")
+    assert result is None
+
+
+def test_synthesis_out_of_range_citations_dropped():
+    """Numeric citations beyond filtered_results range are dropped."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1, 99])
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(query="test", filtered_results=filtered, summary="")
+    assert result is not None
+    assert len(result["citations"]) == 1
+    assert result["citations"][0] == "Journals/2026/03/life-index_2026-03-01_001.md"
+
+
+def test_trust_gate_empty_evidence_context_list():
+    """evidence_context=[] (empty list, not None) caps confidence at low."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="high")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=[],
+    )
+    assert result is not None
+    assert result["confidence"] == "low"
+
+
+def test_transparency_dropped_citations_reported():
+    """Transparency limitations include 'dropped' when citations are dropped."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    class HalfHallucinatingLLM:
+        def chat(self, messages, *, max_tokens=2000):
+            import json
+
+            return json.dumps(
+                {
+                    "answer_text": "Some answer.",
+                    "citations": [
+                        "Journals/2026/03/life-index_2026-03-01_001.md",
+                        "Journals/2026/03/FAKE_PATH.md",
+                    ],
+                    "confidence": "high",
+                }
+            )
+
+    llm = HalfHallucinatingLLM()
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+    evidence = _trust_gate_evidence_context(3, confidences=["high", "medium", "low"])
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=evidence,
+    )
+    assert result is not None
+    assert any("dropped" in lim.lower() for lim in result["limitations"])
+
+
+def test_transparency_low_confidence_evidence_noted():
+    """When cited evidence has low confidence, limitations note it."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[3], confidence="low")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+    evidence = _trust_gate_evidence_context(3, confidences=["high", "medium", "low"])
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=evidence,
+    )
+    assert result is not None
+    assert result["confidence"] == "low"
+    assert any("low" in lim.lower() for lim in result["limitations"])
+
+
+def test_synthesis_json_code_block_wrapping():
+    """LLM response wrapped in ```json...``` is parsed correctly."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    class CodeBlockLLM:
+        def chat(self, messages, *, max_tokens=2000):
+            return (
+                "```json\n"
+                '{"answer_text": "Found one entry.", "citations": [1], "confidence": "medium"}\n'
+                "```"
+            )
+
+    llm = CodeBlockLLM()
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(query="test", filtered_results=filtered, summary="")
+    assert result is not None
+    assert result["answer_text"] == "Found one entry."
+    assert result["confidence"] == "medium"
+
+
+def test_search_synthesize_empty_answer_text_no_answer_field():
+    """Full search() with LLM returning empty answer_text omits answer."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    class EmptyTextLLM:
+        def chat(self, messages, *, max_tokens=2000):
+            import json
+
+            # Rewrite stage
+            if "query analyzer" in messages[0]["content"].lower():
+                return json.dumps(
+                    {
+                        "core_terms": "test",
+                        "expanded_terms": [],
+                        "time_range": None,
+                        "intent_type": "simple",
+                        "rewritten_query": "test",
+                    }
+                )
+            return json.dumps({"answer_text": "", "citations": [], "confidence": "low"})
+
+    orch = SmartSearchOrchestrator(llm_client=EmptyTextLLM())
+    mock_result = _mock_search_result(count=2)
+    with patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=lambda **kw: mock_result,
+    ):
+        result = orch.search("test", synthesize=True)
+    assert "answer" not in result
+    assert result["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# R2-D Closure: Answer eval harness integration
+# ---------------------------------------------------------------------------
+
+
+def test_answer_eval_classifies_supported_from_orchestrator():
+    """answer_eval classifies a valid orchestrator synthesis as SUPPORTED."""
+    from tools.eval.answer_eval import AnswerVerdict, evaluate_answer_from_orchestrator_output
+
+    output = {
+        "success": True,
+        "filtered_results": [
+            {"rel_path": "Journals/2026/03/life-index_2026-03-01_001.md"},
+        ],
+        "answer": {
+            "answer_text": "You had a family gathering.",
+            "citations": ["Journals/2026/03/life-index_2026-03-01_001.md"],
+            "confidence": "high",
+            "confidence_reason": "Supported by high-confidence evidence.",
+            "limitations": [],
+            "evidence_summary": "Entry 1; source: fts; confidence: high",
+        },
+    }
+    eval_result = evaluate_answer_from_orchestrator_output(output)
+    assert eval_result is not None
+    assert eval_result.verdict == AnswerVerdict.SUPPORTED
+    assert eval_result.valid_citation_count == 1
+    assert eval_result.transparency.verdict.value == "complete"
+
+
+def test_answer_eval_classifies_invalid_citation_from_orchestrator():
+    """answer_eval classifies hallucinated citation as INVALID_CITATION."""
+    from tools.eval.answer_eval import AnswerVerdict, evaluate_answer_from_orchestrator_output
+
+    output = {
+        "success": True,
+        "filtered_results": [
+            {"rel_path": "Journals/2026/03/life-index_2026-03-01_001.md"},
+        ],
+        "answer": {
+            "answer_text": "Some claim.",
+            "citations": ["Journals/2026/03/FAKE_NONEXISTENT.md"],
+            "confidence": "high",
+        },
+    }
+    eval_result = evaluate_answer_from_orchestrator_output(output)
+    assert eval_result is not None
+    assert eval_result.verdict == AnswerVerdict.INVALID_CITATION
+    assert eval_result.invalid_citation_count == 1
+
+
+def test_answer_eval_classifies_no_citations_from_orchestrator():
+    """answer_eval classifies answer without citations as NO_CITATIONS."""
+    from tools.eval.answer_eval import AnswerVerdict, evaluate_answer_from_orchestrator_output
+
+    output = {
+        "success": True,
+        "filtered_results": [],
+        "answer": {
+            "answer_text": "No relevant entries found.",
+            "citations": [],
+            "confidence": "low",
+            "confidence_reason": "No evidence found.",
+            "limitations": ["No validated citations support this answer."],
+            "evidence_summary": "",
+        },
+    }
+    eval_result = evaluate_answer_from_orchestrator_output(output)
+    assert eval_result is not None
+    assert eval_result.verdict == AnswerVerdict.NO_CITATIONS
+
+
+def test_answer_eval_classifies_overclaiming_from_orchestrator():
+    """answer_eval flags overclaiming answer from orchestrator output."""
+    from tools.eval.answer_eval import AnswerVerdict, evaluate_answer_from_orchestrator_output
+
+    output = {
+        "success": True,
+        "filtered_results": [
+            {"rel_path": "Journals/2026/03/life-index_2026-03-01_001.md"},
+        ],
+        "answer": {
+            "answer_text": "These are all entries from that month.",
+            "citations": ["Journals/2026/03/life-index_2026-03-01_001.md"],
+            "confidence": "high",
+        },
+    }
+    eval_result = evaluate_answer_from_orchestrator_output(output)
+    assert eval_result is not None
+    assert eval_result.verdict == AnswerVerdict.OVERCLAIMING
+
+
+def test_answer_eval_detects_missing_transparency():
+    """answer_eval flags MISSING transparency when fields absent."""
+    from tools.eval.answer_eval import (
+        AnswerVerdict,
+        TransparencyVerdict,
+        evaluate_answer_from_orchestrator_output,
+    )
+
+    output = {
+        "success": True,
+        "filtered_results": [
+            {"rel_path": "Journals/2026/03/life-index_2026-03-01_001.md"},
+        ],
+        "answer": {
+            "answer_text": "Minimal answer.",
+            "citations": ["Journals/2026/03/life-index_2026-03-01_001.md"],
+            "confidence": "medium",
+        },
+    }
+    eval_result = evaluate_answer_from_orchestrator_output(output)
+    assert eval_result is not None
+    assert eval_result.verdict == AnswerVerdict.SUPPORTED
+    assert eval_result.transparency.verdict == TransparencyVerdict.MISSING
+
+
+def test_answer_eval_skips_absolute_paths_in_known_paths():
+    """Absolute paths from orchestrator are excluded from known_paths."""
+    from tools.eval.answer_eval import evaluate_answer_from_orchestrator_output
+
+    output = {
+        "success": True,
+        "filtered_results": [
+            {"rel_path": "C:/Users/secret/test.md"},
+        ],
+        "answer": {
+            "answer_text": "Leaked.",
+            "citations": ["C:/Users/secret/test.md"],
+            "confidence": "low",
+        },
+    }
+    eval_result = evaluate_answer_from_orchestrator_output(output)
+    assert eval_result is not None
+    assert eval_result.invalid_citation_count == 1
+    assert eval_result.citation_checks[0].reason == "absolute_path"
+
+
+def test_answer_eval_no_answer_returns_none():
+    """evaluate_answer_from_orchestrator_output returns None when no answer."""
+    from tools.eval.answer_eval import evaluate_answer_from_orchestrator_output
+
+    output = {"success": True, "filtered_results": []}
+    assert evaluate_answer_from_orchestrator_output(output) is None

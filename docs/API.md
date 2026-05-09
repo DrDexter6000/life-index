@@ -772,6 +772,65 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | `--include-evidence --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score） |
 | `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
 
+### Answer Evaluation Harness
+
+`tools/eval/answer_eval.py` 提供确定性 answer 级别评估工具。不依赖网络或 LLM 凭证，对 orchestrator 输出做离线质量分类。
+
+#### 评估维度
+
+| 维度 | 说明 | Verdict 值 |
+|------|------|------------|
+| 支撑度 | Answer 有有效引用且无不实声称 | `supported` |
+| 过度声称 | 含 "all entries" 等全称断言但引用不足 | `overclaiming` |
+| 无效引用 | 所有引用均为幻觉路径或绝对路径 | `invalid_citation` |
+| 无引用 | Citations 列表为空 | `no_citations` |
+| 空答案 | Answer text 为空 | `empty` |
+
+#### 透明度质量
+
+| 质量等级 | 说明 |
+|----------|------|
+| `complete` | `confidence_reason` + `limitations`(list) + `evidence_summary` 均存在 |
+| `partial` | 部分字段缺失或 `limitations` 不是 list |
+| `missing` | 三个透明度字段均缺失 |
+| `not_applicable` | 答案为空，不适用透明度评估 |
+
+#### API
+
+**单条评估：**
+
+```python
+from tools.eval.answer_eval import evaluate_answer, evaluate_answer_from_orchestrator_output
+
+# 直接评估 answer dict
+result = evaluate_answer(answer_dict, known_paths={"Journals/..."})
+print(result.verdict, result.valid_citation_count, result.transparency.verdict)
+
+# 从完整 orchestrator 输出评估（自动提取 known_paths）
+result = evaluate_answer_from_orchestrator_output(orchestrator_output_dict)
+```
+
+**批量评估：**
+
+```python
+from tools.eval.answer_eval import evaluate_answer_batch
+
+batch = evaluate_answer_batch([
+    {"answer": answer_dict_1, "known_paths": paths_1},
+    {"answer": answer_dict_2, "known_paths": paths_2},
+])
+print(batch.by_verdict)  # {"supported": 1, "invalid_citation": 1}
+```
+
+#### 引用失败模式契约
+
+| 失败模式 | 原因 | `reason` 字段 |
+|----------|------|---------------|
+| 绝对路径 | 引用包含完整文件系统路径 | `absolute_path` |
+| 幻觉路径 | 引用路径不在 `known_paths` 中 | `unknown_path` |
+| 类型错误 | 引用不是 string | `not_a_string` |
+| 越界索引 | 数字引用超出 `filtered_results` 范围 | 被 `_parse_synthesis_response` 丢弃 |
+
 ---
 
 ## edit_journal
