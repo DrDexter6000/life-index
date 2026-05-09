@@ -149,7 +149,7 @@ class TestExtractFromOrchestrator:
         raw = _synthetic_search_result()
         pack = extract_evidence_from_orchestrator(raw, smart_result=None)
 
-        assert "rewritten_query" not in pack.extra
+        assert "rewritten_query" not in pack.query_context.extra
         assert pack.query_context.query == "family day out"
 
     def test_smart_result_same_as_original_query_no_overlay(self) -> None:
@@ -159,7 +159,7 @@ class TestExtractFromOrchestrator:
         smart = {"rewritten_query": "family day out"}
         pack = extract_evidence_from_orchestrator(raw, smart_result=smart)
 
-        assert "rewritten_query" not in pack.extra
+        assert "rewritten_query" not in pack.query_context.extra
 
     def test_smart_result_empty_rewritten_query_no_overlay(self) -> None:
         from tools.evidence.adapter import extract_evidence_from_orchestrator
@@ -168,7 +168,7 @@ class TestExtractFromOrchestrator:
         smart = {"rewritten_query": ""}
         pack = extract_evidence_from_orchestrator(raw, smart_result=smart)
 
-        assert "rewritten_query" not in pack.extra
+        assert "rewritten_query" not in pack.query_context.extra
 
     def test_smart_result_missing_rewritten_query_key(self) -> None:
         from tools.evidence.adapter import extract_evidence_from_orchestrator
@@ -177,7 +177,7 @@ class TestExtractFromOrchestrator:
         smart = {"agent_unavailable": True}
         pack = extract_evidence_from_orchestrator(raw, smart_result=smart)
 
-        assert "rewritten_query" not in pack.extra
+        assert "rewritten_query" not in pack.query_context.extra
 
     def test_raises_on_missing_required_keys(self) -> None:
         from tools.evidence.adapter import extract_evidence_from_orchestrator
@@ -212,7 +212,7 @@ class TestExtractFromOrchestrator:
         }
         pack = extract_evidence_from_orchestrator(raw, smart_result=smart)
 
-        assert "rewritten_query" not in pack.extra
+        assert "rewritten_query" not in pack.query_context.extra
 
 
 # ---------------------------------------------------------------------------
