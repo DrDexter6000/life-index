@@ -710,6 +710,9 @@ Evidence pack 采用**最佳努力（best-effort）**策略：
 | `answer.answer_text` | string | 回答用户查询的自然语言文本（2-4 句） |
 | `answer.citations` | string[] | 引用的文档相对路径列表（不含绝对路径） |
 | `answer.confidence` | string | 置信度：`high` / `medium` / `low` |
+| `answer.confidence_reason` | string | 置信度判定原因，由 validated citations 和 evidence context 计算（非 LLM 生成） |
+| `answer.limitations` | string[] | 答案局限性列表（如无有效引用、引用被丢弃、弱 evidence 等） |
+| `answer.evidence_summary` | string | 已验证引用的 evidence 摘要（title; source; confidence），无有效引用时为空字符串 |
 | `performance.synthesis_ms` | float | 答案生成耗时（毫秒），仅在合成尝试时出现 |
 
 #### 内部 Evidence 消费
@@ -741,6 +744,15 @@ LLM 返回的 citations 和 confidence 不会直接透传，而是经过 trust g
 - 若 evidence context 存在但为空或未覆盖被引用路径，视为 evidence 已检查但未提供支撑，最高 `low`
 
 #### 合成失败行为
+
+##### 透明度字段信任边界
+
+`confidence_reason`、`limitations`、`evidence_summary` 三个字段由 orchestrator 在 trust gate 之后根据 validated citations 和 evidence context **计算生成**，不允许 LLM 直接设定。具体规则：
+
+- `confidence_reason`：基于 valid_citations 数量和 cited evidence 的最高 confidence 等级推导
+- `limitations`：列举答案的局限性——无有效引用、引用被丢弃（幻觉路径）、弱 evidence confidence、整体低置信度等
+- `evidence_summary`：仅包含通过 trust gate 验证的引用的 evidence 摘要（title; source; confidence），用 ` | ` 分隔
+- 若无 valid citations：`limitations` 必须包含 "No validated citations support this answer"，`evidence_summary` 为空字符串
 
 Answer synthesis 采用**最佳努力（best-effort）**策略：
 

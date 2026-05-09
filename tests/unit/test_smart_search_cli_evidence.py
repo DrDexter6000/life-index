@@ -152,6 +152,9 @@ def _mock_orch_search_with_synthesis(query, include_evidence=False, synthesize=F
             "answer_text": "Mock answer based on evidence.",
             "citations": ["mock.md"],
             "confidence": "medium",
+            "confidence_reason": "Answer supported by retrieved results without evidence pack.",
+            "limitations": [],
+            "evidence_summary": "",
         }
         result["performance"]["synthesis_ms"] = 50.0
     if include_evidence:
@@ -231,3 +234,36 @@ def test_cli_help_includes_synthesize_flag():
 
     help_text = "".join(captured)
     assert "--synthesize" in help_text
+
+
+# ---------------------------------------------------------------------------
+# R2D3: Answer transparency CLI tests
+# ---------------------------------------------------------------------------
+
+
+def test_cli_synthesize_output_includes_transparency_fields():
+    """--synthesize output includes confidence_reason, limitations, evidence_summary."""
+    captured = []
+    with patch("sys.argv", ["smart-search", "--query", "test", "--synthesize"]):
+        with patch(
+            "tools.search_journals.orchestrator.SmartSearchOrchestrator",
+            return_value=_make_mock_orch_with_synthesis(),
+        ):
+            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
+                with patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+                ):
+                    from tools.smart_search.__main__ import main
+
+                    try:
+                        main()
+                    except SystemExit:
+                        pass
+    result = json.loads(captured[0])
+    assert "answer" in result
+    answer = result["answer"]
+    assert "confidence_reason" in answer
+    assert "limitations" in answer
+    assert "evidence_summary" in answer
+    assert isinstance(answer["limitations"], list)

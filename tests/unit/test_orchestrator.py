@@ -902,3 +902,123 @@ def test_trust_gate_high_confidence_with_high_evidence_allowed():
 
     assert result is not None
     assert result["confidence"] == "high"
+
+
+# ---------------------------------------------------------------------------
+# R2D3: Answer Transparency Contract tests
+# ---------------------------------------------------------------------------
+
+
+def test_transparency_high_evidence_has_reason_and_summary():
+    """High-evidence cited answer has confidence_reason and non-empty evidence_summary."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="high")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+    evidence = _trust_gate_evidence_context(3, confidences=["high", "medium", "low"])
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=evidence,
+    )
+
+    assert result is not None
+    assert "confidence_reason" in result, "Missing transparency field: confidence_reason"
+    assert "high" in result["confidence_reason"].lower()
+    assert "evidence_summary" in result, "Missing transparency field: evidence_summary"
+    assert result["evidence_summary"] != ""
+    assert "limitations" in result, "Missing transparency field: limitations"
+    assert isinstance(result["limitations"], list)
+
+
+def test_transparency_no_valid_citations_has_limitations():
+    """No valid citation answer has low confidence and explicit limitations."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(
+        citations=["Journals/2026/03/FAKE.md"],
+        confidence="high",
+    )
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+    )
+
+    assert result is not None
+    assert result["confidence"] == "low"
+    assert "limitations" in result
+    assert any(
+        "no validated citations" in lim.lower() for lim in result["limitations"]
+    ), f"Expected 'no validated citations' in limitations, got: {result['limitations']}"
+    assert result["evidence_summary"] == ""
+
+
+def test_transparency_medium_evidence_medium_reason():
+    """Medium evidence produces confidence_reason mentioning moderate evidence."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="high")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+    evidence = _trust_gate_evidence_context(3, confidences=["medium", "medium", "low"])
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=evidence,
+    )
+
+    assert result is not None
+    assert "confidence_reason" in result
+    assert "moderate" in result["confidence_reason"].lower()
+
+
+def test_transparency_llm_injected_fields_not_trusted():
+    """LLM-provided transparency fields are not blindly trusted when citations are dropped."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    class TransparencyInjectingLLM:
+        def chat(self, messages, *, max_tokens=2000):
+            import json
+
+            return json.dumps(
+                {
+                    "answer_text": "Some answer about events.",
+                    "citations": [
+                        "Journals/2026/03/FAKE_NONEXISTENT.md",
+                        "Journals/2026/03/life-index_2026-03-01_001.md",
+                    ],
+                    "confidence": "high",
+                    "confidence_reason": "LLM INJECTED: Very confident!",
+                    "limitations": ["LLM INJECTED: None at all"],
+                    "evidence_summary": "LLM INJECTED: Strong evidence",
+                }
+            )
+
+    llm = TransparencyInjectingLLM()
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+    evidence = _trust_gate_evidence_context(3, confidences=["medium", "medium", "low"])
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=evidence,
+    )
+
+    assert result is not None
+    assert result["confidence_reason"] != "LLM INJECTED: Very confident!"
+    assert result["limitations"] != ["LLM INJECTED: None at all"]
+    assert result["evidence_summary"] != "LLM INJECTED: Strong evidence"
+    assert any(
+        "dropped" in lim.lower() for lim in result["limitations"]
+    ), f"Expected 'dropped' in limitations, got: {result['limitations']}"

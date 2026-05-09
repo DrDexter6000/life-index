@@ -328,6 +328,9 @@ class SmartSearchOrchestrator:
                 "answer_text": answer_dict["answer_text"],
                 "citations": answer_dict["citations"],
                 "confidence": answer_dict["confidence"],
+                "confidence_reason": answer_dict.get("confidence_reason", ""),
+                "limitations": answer_dict.get("limitations", []),
+                "evidence_summary": answer_dict.get("evidence_summary", ""),
             }
             result_dict["performance"]["synthesis_ms"] = round(answer_dict.get("latency_ms", 0), 2)
         if evidence_dict is not None:
@@ -369,7 +372,14 @@ class SmartSearchOrchestrator:
             parsed = self._parse_synthesis_response(response, filtered_results)
             if parsed is None:
                 return None
-            return self._apply_trust_gate(parsed, filtered_results, evidence_context)
+            gated = self._apply_trust_gate(parsed, filtered_results, evidence_context)
+            transparency = self._compute_transparency(
+                gated,
+                evidence_context,
+                original_citation_count=len(parsed.get("citations", [])),
+            )
+            gated.update(transparency)
+            return gated
         except Exception as e:
             logger.warning(f"[Orchestrator] Answer synthesis failed: {e}")
             return None
@@ -574,6 +584,92 @@ class SmartSearchOrchestrator:
             "answer_text": parsed["answer_text"],
             "citations": valid_citations,
             "confidence": llm_confidence,
+        }
+
+    @staticmethod
+    def _compute_transparency(
+        gated: dict[str, Any],
+        evidence_context: list[dict[str, Any]] | None = None,
+        original_citation_count: int = 0,
+    ) -> dict[str, Any]:
+        """Derive transparency fields from validated trust gate output.
+
+        Fields are computed from validated citations and evidence context.
+        The LLM is never allowed to set these fields directly.
+
+        Args:
+            gated: Output of _apply_trust_gate (answer_text, citations, confidence).
+            evidence_context: Optional evidence context from EvidencePack.
+            original_citation_count: Number of citations before trust gate
+                validation (used to detect dropped citations).
+
+        Returns:
+            Dict with confidence_reason, limitations, evidence_summary.
+        """
+        valid_citations = gated.get("citations", [])
+        confidence = gated.get("confidence", "low")
+
+        # confidence_reason: why this confidence level was assigned
+        if not valid_citations:
+            confidence_reason = "No validated citations support this answer."
+        elif evidence_context is not None:
+            cited_strengths: set[str] = set()
+            for vc in valid_citations:
+                for ev in evidence_context:
+                    if ev.get("rel_path") == vc:
+                        conf = ev.get("confidence", "low")
+                        if conf in ("high", "medium", "low"):
+                            cited_strengths.add(conf)
+            if "high" in cited_strengths:
+                confidence_reason = "Answer supported by high-confidence evidence."
+            elif "medium" in cited_strengths:
+                confidence_reason = "Answer supported by moderate-confidence evidence."
+            else:
+                confidence_reason = "Answer supported by low-confidence evidence only."
+        else:
+            confidence_reason = "Answer supported by retrieved results without evidence pack."
+
+        # limitations: what the answer cannot claim
+        limitations: list[str] = []
+        if not valid_citations:
+            limitations.append("No validated citations support this answer.")
+        if original_citation_count > len(valid_citations):
+            dropped = original_citation_count - len(valid_citations)
+            limitations.append(f"{dropped} citation(s) were dropped as unvalidated.")
+        if evidence_context is not None and valid_citations:
+            low_count = sum(
+                1
+                for vc in valid_citations
+                for ev in evidence_context
+                if ev.get("rel_path") == vc and ev.get("confidence", "low") == "low"
+            )
+            if low_count > 0:
+                limitations.append(f"{low_count} cited source(s) have low evidence confidence.")
+        if confidence == "low" and valid_citations:
+            limitations.append("Overall confidence is low despite having citations.")
+
+        # evidence_summary: summary of validated evidence per cited source
+        evidence_summary = ""
+        if valid_citations and evidence_context is not None:
+            parts: list[str] = []
+            for vc in valid_citations:
+                for ev in evidence_context:
+                    if ev.get("rel_path") == vc:
+                        segments: list[str] = []
+                        if ev.get("title"):
+                            segments.append(ev["title"])
+                        if ev.get("source"):
+                            segments.append(f"source: {ev['source']}")
+                        if ev.get("confidence"):
+                            segments.append(f"confidence: {ev['confidence']}")
+                        if segments:
+                            parts.append("; ".join(segments))
+            evidence_summary = " | ".join(parts)
+
+        return {
+            "confidence_reason": confidence_reason,
+            "limitations": limitations,
+            "evidence_summary": evidence_summary,
         }
 
     # ── LLM Helpers ──────────────────────────────────────────────────────
