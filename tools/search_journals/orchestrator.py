@@ -354,6 +354,9 @@ class SmartSearchOrchestrator:
         snippet (≤200 chars) are sent to the LLM.  When evidence_context
         is available, provenance/source/score are also included.  No
         full_content, no raw metadata dict, no absolute paths.
+
+        Trust gate: citations are validated against known paths and
+        confidence is calibrated against evidence strength.
         """
         if self._llm is None or not filtered_results:
             return None
@@ -363,7 +366,10 @@ class SmartSearchOrchestrator:
                 query, filtered_results, summary, evidence_context
             )
             response = self._call_llm(prompt)
-            return self._parse_synthesis_response(response, filtered_results)
+            parsed = self._parse_synthesis_response(response, filtered_results)
+            if parsed is None:
+                return None
+            return self._apply_trust_gate(parsed, filtered_results, evidence_context)
         except Exception as e:
             logger.warning(f"[Orchestrator] Answer synthesis failed: {e}")
             return None
@@ -501,6 +507,73 @@ class SmartSearchOrchestrator:
             "answer_text": answer_text,
             "citations": citation_paths,
             "confidence": confidence,
+        }
+
+    @staticmethod
+    def _apply_trust_gate(
+        parsed: dict[str, Any],
+        filtered_results: list[dict[str, Any]],
+        evidence_context: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Validate citations against known paths and calibrate confidence.
+
+        Citation validation: only paths present in filtered_results or
+        evidence_context are kept.  Absolute paths are already filtered
+        upstream.
+
+        Confidence calibration: the LLM's self-assessed confidence is
+        capped by evidence strength.  The cap is determined by:
+          - no valid citations -> max low
+          - cited evidence contains 'high' -> cap high
+          - cited evidence contains 'medium' (no high) -> cap medium
+          - otherwise -> cap low
+        When evidence_context is None, valid filtered-results citations
+        serve as weak support (cap medium max).
+        """
+        # Build set of known valid relative paths
+        known_paths: set[str] = set()
+        for r in filtered_results:
+            rel = r.get("rel_path", "")
+            p = r.get("path", "")
+            if rel and not _is_absolute_path(rel):
+                known_paths.add(rel)
+            elif p and not _is_absolute_path(p):
+                known_paths.add(p)
+        for ev in evidence_context or []:
+            rel = ev.get("rel_path", "")
+            if rel and not _is_absolute_path(rel):
+                known_paths.add(rel)
+
+        valid_citations = [c for c in parsed.get("citations", []) if c in known_paths]
+
+        if not valid_citations:
+            confidence_cap = "low"
+        elif evidence_context is not None:
+            cited_confidences: set[str] = set()
+            for vc in valid_citations:
+                for ev in evidence_context:
+                    if ev.get("rel_path") == vc:
+                        conf = ev.get("confidence", "low")
+                        if conf in ("high", "medium", "low"):
+                            cited_confidences.add(conf)
+            if "high" in cited_confidences:
+                confidence_cap = "high"
+            elif "medium" in cited_confidences:
+                confidence_cap = "medium"
+            else:
+                confidence_cap = "low"
+        else:
+            confidence_cap = "medium"
+
+        llm_confidence = parsed.get("confidence", "low")
+        order = {"low": 0, "medium": 1, "high": 2}
+        if order.get(llm_confidence, 0) > order.get(confidence_cap, 0):
+            llm_confidence = confidence_cap
+
+        return {
+            "answer_text": parsed["answer_text"],
+            "citations": valid_citations,
+            "confidence": llm_confidence,
         }
 
     # ── LLM Helpers ──────────────────────────────────────────────────────

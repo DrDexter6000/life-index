@@ -716,6 +716,30 @@ Evidence pack 采用**最佳努力（best-effort）**策略：
 
 当 `--synthesize` 启用时，orchestrator 会**内部构建 EvidencePack**（即使未传 `--include-evidence`），并将其中的 provenance/source/score 等安全字段注入 synthesis prompt，以提升答案质量。若 evidence 构建失败，synthesis 回退为仅使用 `filtered_results`，不导致搜索失败。
 
+#### Trust Gate（引用验证 + 置信度校准）
+
+LLM 返回的 citations 和 confidence 不会直接透传，而是经过 trust gate 校验：
+
+**引用验证（Citation Validation）：**
+
+- 数字引用（如 `[1]`）映射到当前 `filtered_results` 对应序号的相对路径
+- 字符串引用仅当匹配 `filtered_results` 或 evidence context 中的已知相对路径时保留
+- 绝对路径始终丢弃
+- 不在已知路径集中的字符串引用（幻觉路径）被丢弃
+- 若所有引用均无效但 `answer_text` 有效，保留答案但 `citations` 为空、`confidence` 被强制降为 `low`
+
+**置信度校准（Confidence Calibration）：**
+
+- 最终 confidence 不高于 evidence 支撑强度
+- 校准规则（按优先级）：
+  - 无有效引用 → 最高 `low`
+  - 引用的 evidence 包含 `high` confidence → 最高 `high`
+  - 引用的 evidence 包含 `medium`（无 high）→ 最高 `medium`
+  - 其他情况 → 最高 `low`
+- LLM 可以降低 confidence（比 evidence 更保守），但不能提升至 evidence 上限以上
+- 无 evidence context 时，有效 `filtered_results` 引用视为弱支撑，最高 `medium`；无有效引用仍为 `low`
+- 若 evidence context 存在但为空或未覆盖被引用路径，视为 evidence 已检查但未提供支撑，最高 `low`
+
 #### 合成失败行为
 
 Answer synthesis 采用**最佳努力（best-effort）**策略：

@@ -662,3 +662,243 @@ def test_include_evidence_and_synthesize_combined():
     assert "answer" in result
     assert "evidence_pack" in result
     assert result["evidence_pack"]["total_available"] == 2
+
+
+# ---------------------------------------------------------------------------
+# R2D2: Answer Trust Gate tests
+# ---------------------------------------------------------------------------
+
+
+class TrustGateLLM:
+    """LLM returning configurable synthesis responses for trust gate testing."""
+
+    def __init__(
+        self,
+        answer_text: str = "Test answer",
+        citations: list | None = None,
+        confidence: str = "high",
+    ):
+        self._answer_text = answer_text
+        self._citations = citations or []
+        self._confidence = confidence
+
+    def chat(self, messages, *, max_tokens=2000):
+        import json
+
+        return json.dumps(
+            {
+                "answer_text": self._answer_text,
+                "citations": self._citations,
+                "confidence": self._confidence,
+            }
+        )
+
+
+def _trust_gate_filtered_results(count: int = 3) -> list[dict]:
+    """Build filtered_results with known rel_paths for trust gate tests."""
+    results = []
+    for i in range(1, count + 1):
+        results.append(
+            {
+                "title": f"Entry {i}",
+                "date": f"2026-03-{i:02d}",
+                "abstract": f"Abstract {i}",
+                "rel_path": f"Journals/2026/03/life-index_2026-03-{i:02d}_001.md",
+                "snippet": f"Snippet {i}",
+            }
+        )
+    return results
+
+
+def _trust_gate_evidence_context(
+    count: int = 3,
+    confidences: list[str] | None = None,
+) -> list[dict]:
+    """Build evidence_context with known rel_paths and confidences."""
+    if confidences is None:
+        confidences = ["medium"] * count
+    results = []
+    for i in range(1, count + 1):
+        results.append(
+            {
+                "title": f"Entry {i}",
+                "date": f"2026-03-{i:02d}",
+                "snippet": f"Snippet {i}",
+                "rel_path": f"Journals/2026/03/life-index_2026-03-{i:02d}_001.md",
+                "provenance": "keyword",
+                "source": "fts",
+                "score": 0.7,
+                "confidence": confidences[i - 1],
+            }
+        )
+    return results
+
+
+def test_trust_gate_numeric_citations_map_to_relative_paths():
+    """LLM numeric citations map to expected relative paths from filtered_results."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1, 2])
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+    )
+
+    assert result is not None
+    assert result["citations"] == [
+        "Journals/2026/03/life-index_2026-03-01_001.md",
+        "Journals/2026/03/life-index_2026-03-02_001.md",
+    ]
+
+
+def test_trust_gate_string_citation_not_in_set_dropped():
+    """LLM string citation not in current evidence/filter set is dropped."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(
+        citations=[
+            "Journals/2026/03/life-index_2026-03-01_001.md",  # valid
+            "Journals/2026/03/FAKE_NONEXISTENT_PATH.md",  # hallucinated
+        ]
+    )
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+    )
+
+    assert result is not None
+    assert result["citations"] == [
+        "Journals/2026/03/life-index_2026-03-01_001.md",
+    ]
+
+
+def test_trust_gate_absolute_citation_dropped():
+    """Absolute path citations are always dropped."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(
+        citations=[
+            "C:/Users/test/Documents/Life-Index/Journals/2026/03/life-index_2026-03-01_001.md",
+        ]
+    )
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+    )
+
+    assert result is not None
+    assert result["citations"] == []
+    assert result["confidence"] == "low"
+
+
+def test_trust_gate_high_confidence_no_valid_citations_capped_low():
+    """LLM confidence='high' is capped to 'low' when no valid citations."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(
+        citations=["Journals/2026/03/FAKE.md"],
+        confidence="high",
+    )
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+    )
+
+    assert result is not None
+    assert result["citations"] == []
+    assert result["confidence"] == "low"
+
+
+def test_trust_gate_high_confidence_cited_evidence_medium_capped_medium():
+    """LLM confidence='high' is capped to 'medium' when cited evidence max is medium."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="high")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+    evidence = _trust_gate_evidence_context(3, confidences=["medium", "medium", "low"])
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=evidence,
+    )
+
+    assert result is not None
+    assert result["confidence"] == "medium"
+
+
+def test_trust_gate_low_confidence_stays_low_with_high_evidence():
+    """LLM confidence='low' remains low even when evidence is high."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="low")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+    evidence = _trust_gate_evidence_context(3, confidences=["high", "medium", "low"])
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=evidence,
+    )
+
+    assert result is not None
+    assert result["confidence"] == "low"
+
+
+def test_trust_gate_no_evidence_context_valid_citations_cap_medium():
+    """Without evidence context, valid filtered-results citations cap at medium."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="high")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+    )
+
+    assert result is not None
+    assert len(result["citations"]) == 1
+    assert result["confidence"] == "medium"
+
+
+def test_trust_gate_high_confidence_with_high_evidence_allowed():
+    """LLM confidence='high' with high-evidence citations is allowed."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="high")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    filtered = _trust_gate_filtered_results(3)
+    evidence = _trust_gate_evidence_context(3, confidences=["high", "medium", "low"])
+
+    result = orch.synthesize_answer(
+        query="test",
+        filtered_results=filtered,
+        summary="",
+        evidence_context=evidence,
+    )
+
+    assert result is not None
+    assert result["confidence"] == "high"
