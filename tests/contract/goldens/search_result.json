@@ -57,6 +57,9 @@
   "has_more": false,
   "no_confident_match": true,
   "semantic_available": true,
+  "semantic_policy": "hybrid",
+  "semantic_effective_policy": "hybrid",
+  "semantic_fallback_used": false,
   "performance": {
     "l1_time_ms": 1.0,
     "l2_time_ms": 2.0,
