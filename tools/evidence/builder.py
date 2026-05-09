@@ -7,6 +7,7 @@ semantic, LLM, filesystem, or production data. Does not modify input.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from tools.evidence.types import (
@@ -23,6 +24,65 @@ def _normalize_path(path: str) -> str:
     return path.replace("\\", "/")
 
 
+def _is_absolute_path(path: str) -> bool:
+    """Check if a path looks absolute (Windows or POSIX)."""
+    return os.path.isabs(path) or (len(path) >= 2 and path[1] == ":")
+
+
+def _journals_suffix(path: str) -> str:
+    """Extract a safe Journals/... suffix from a normalized path."""
+    norm = _normalize_path(path)
+    journals_prefix = "Journals/"
+    start = 0
+    while True:
+        idx = norm.find(journals_prefix, start)
+        if idx < 0:
+            return ""
+        if idx == 0 or norm[idx - 1] == "/":
+            return norm[idx:]
+        start = idx + len(journals_prefix)
+
+
+def _metadata_doc_id(result: dict[str, Any]) -> str:
+    """Build a non-path fallback id from safe document metadata."""
+    parts = [
+        str(result.get("date", "")).strip(),
+        str(result.get("title", "")).strip(),
+    ]
+    fallback = " ".join(part for part in parts if part)
+    if not fallback or _is_absolute_path(fallback):
+        return "unknown"
+    return _normalize_path(fallback).replace("/", "-").replace(":", "-")
+
+
+def _safe_path(raw_path: str, result: dict[str, Any]) -> str:
+    """Return a safe relative path, never an absolute filesystem path.
+
+    Strategy:
+      1. If rel_path is present in result, sanitize and prefer it.
+      2. If raw_path is relative, use it as-is (after normalization).
+      3. If raw_path is absolute, try to extract a Journals/... suffix.
+      4. Fall back to empty string (path omitted; doc_id uses metadata).
+    """
+    rel = result.get("rel_path", "")
+    if isinstance(rel, str) and rel:
+        normalized_rel = _normalize_path(rel)
+        if not _is_absolute_path(normalized_rel):
+            return normalized_rel
+        suffix = _journals_suffix(normalized_rel)
+        if suffix:
+            return suffix
+
+    if not raw_path:
+        return ""
+
+    normalized_raw = _normalize_path(raw_path)
+    if not _is_absolute_path(normalized_raw):
+        return normalized_raw
+
+    return _journals_suffix(normalized_raw)
+
+
 def _determine_provenance(source: str) -> str:
     """Map search source field to provenance tag."""
     if not source or source == "none":
@@ -35,9 +95,14 @@ def _determine_provenance(source: str) -> str:
 
 
 def _build_document_ref(result: dict[str, Any]) -> DocumentRef:
-    """Build DocumentRef from a search result item."""
-    raw_path = result.get("path", "")
-    doc_id = _normalize_path(str(raw_path)) if raw_path else ""
+    """Build DocumentRef from a search result item.
+
+    Absolute filesystem paths are filtered - only safe relative paths
+    are emitted in doc_id and path fields.
+    """
+    raw_path = result.get("path") or ""
+    safe = _safe_path(str(raw_path), result)
+    doc_id = safe or _metadata_doc_id(result)
 
     metadata = result.get("metadata", {})
     if not isinstance(metadata, dict):
@@ -51,7 +116,7 @@ def _build_document_ref(result: dict[str, Any]) -> DocumentRef:
         doc_id=doc_id,
         title=str(result.get("title", "")),
         date=str(result.get("date", "")),
-        path=str(raw_path) if raw_path else None,
+        path=safe if safe else None,
         topic=list(topic),
         location=metadata.get("location"),
         metadata={k: v for k, v in metadata.items() if k != "topic" and k != "location"},
@@ -130,9 +195,9 @@ def build_evidence_pack(search_result: dict[str, Any]) -> EvidencePack:
     merged_ids = {item.document.doc_id for item in items}
     semantic_candidates = []
     for i, r in enumerate(search_result.get("semantic_results", []), start=1):
-        raw_path = r.get("path", "")
-        normalized = _normalize_path(str(raw_path)) if raw_path else ""
-        if normalized not in merged_ids:
+        safe = _safe_path(str(r.get("path") or ""), r)
+        doc_id = safe or _metadata_doc_id(r)
+        if doc_id not in merged_ids:
             semantic_candidates.append(_build_semantic_candidate(r, i))
 
     # Build query context

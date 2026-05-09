@@ -661,3 +661,275 @@ class TestExtraFieldSurvival:
         d = doc.to_dict()
         doc2 = DocumentRef.from_dict(d)
         assert doc2.extra["doc_future"] == "yes"
+
+
+# ---------------------------------------------------------------------------
+# Path Privacy - absolute paths must never leak
+# ---------------------------------------------------------------------------
+
+ABS_MERGED_PATH = (
+    "C:/Users/dexter/Documents/Life-Index/Journals/2026/03/" "life-index_2026-03-07_001.md"
+)
+ABS_SEMANTIC_PATH = (
+    "C:/Users/dexter/Documents/Life-Index/Journals/2026/02/" "life-index_2026-02-14_001.md"
+)
+POSIX_ABS_MERGED_PATH = (
+    "/home/user/Documents/Life-Index/Journals/2026/03/" "life-index_2026-03-07_001.md"
+)
+REL_MERGED_PATH = "Journals/2026/03/life-index_2026-03-07_001.md"
+
+
+def _absolute_path_search_result() -> dict:
+    """Synthetic search result with absolute paths in merged + semantic items."""
+    return {
+        "success": True,
+        "query_params": {"query": "test query"},
+        "merged_results": [
+            {
+                "path": ABS_MERGED_PATH,
+                "title": "Absolute Path Entry",
+                "date": "2026-03-07",
+                "snippet": "content here",
+                "source": "fts",
+                "relevance": 90,
+                "fts_score": 90.0,
+                "semantic_score": 0.0,
+                "rrf_score": 0.0,
+                "final_score": 90.0,
+                "search_rank": 1,
+                "confidence": "high",
+                "metadata": {"topic": "daily"},
+            },
+        ],
+        "semantic_results": [
+            {
+                "path": ABS_SEMANTIC_PATH,
+                "title": "Semantic Absolute",
+                "date": "2026-02-14",
+                "snippet": "semantic match",
+                "similarity": 0.55,
+                "source": "semantic",
+                "metadata": {"topic": "love"},
+            },
+        ],
+        "total_available": 1,
+        "has_more": False,
+        "no_confident_match": False,
+        "semantic_effective_policy": "hybrid",
+        "entity_hints": [],
+        "warnings": [],
+        "performance": {"total_time_ms": 50.0},
+    }
+
+
+class TestPathPrivacy:
+    """Absolute paths must never appear in evidence pack output."""
+
+    def test_merged_item_path_is_relative(self) -> None:
+        result = _absolute_path_search_result()
+        pack = build_evidence_pack(result)
+
+        path = pack.items[0].document.path
+        assert path is not None
+        assert not path.startswith("C:")
+        assert not path.startswith("/")
+        assert "Journals/" in path
+
+    def test_merged_item_doc_id_is_relative(self) -> None:
+        result = _absolute_path_search_result()
+        pack = build_evidence_pack(result)
+
+        doc_id = pack.items[0].document.doc_id
+        assert not doc_id.startswith("C:")
+        assert not doc_id.startswith("/")
+        assert "Journals/" in doc_id
+
+    def test_semantic_candidate_path_is_relative(self) -> None:
+        result = _absolute_path_search_result()
+        pack = build_evidence_pack(result)
+
+        assert len(pack.semantic_candidates) == 1
+        path = pack.semantic_candidates[0].document.path
+        assert path is not None
+        assert not path.startswith("C:")
+        assert not path.startswith("/")
+        assert "Journals/" in path
+
+    def test_semantic_candidate_doc_id_is_relative(self) -> None:
+        result = _absolute_path_search_result()
+        pack = build_evidence_pack(result)
+
+        doc_id = pack.semantic_candidates[0].document.doc_id
+        assert not doc_id.startswith("C:")
+        assert not doc_id.startswith("/")
+        assert "Journals/" in doc_id
+
+    def test_relative_paths_unchanged(self) -> None:
+        """Existing relative paths must not be altered."""
+        result = _synthetic_search_result()
+        pack = build_evidence_pack(result)
+
+        assert pack.items[0].document.path == REL_MERGED_PATH
+        assert pack.items[0].document.doc_id == REL_MERGED_PATH
+
+    def test_rel_path_preferred_over_absolute(self) -> None:
+        """When rel_path is present, it should be used instead of absolute path."""
+        result = _absolute_path_search_result()
+        result["merged_results"][0]["rel_path"] = REL_MERGED_PATH
+
+        pack = build_evidence_pack(result)
+        assert pack.items[0].document.path == REL_MERGED_PATH
+        assert pack.items[0].document.doc_id == REL_MERGED_PATH
+
+    def test_absolute_path_without_journals_suffix_uses_metadata_doc_id(self) -> None:
+        """Non-Journal absolute path omits path but keeps a safe metadata doc_id."""
+        result = {
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "C:/SomeOther/Directory/file.txt",
+                    "title": "Non-Journal",
+                    "date": "2026-01-01",
+                    "source": "none",
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+        }
+        pack = build_evidence_pack(result)
+
+        assert pack.items[0].document.path is None
+        assert pack.items[0].document.doc_id == "2026-01-01 Non-Journal"
+
+    def test_absolute_rel_path_is_sanitized(self) -> None:
+        """Absolute rel_path values must be sanitized before output."""
+        result = _absolute_path_search_result()
+        result["merged_results"][0]["rel_path"] = (
+            "C:/Users/dexter/Documents/Life-Index/Journals/2026/03/" "life-index_2026-03-07_001.md"
+        )
+        result["merged_results"][0]["path"] = "C:/Other/without-journals.md"
+
+        pack = build_evidence_pack(result)
+
+        assert pack.items[0].document.path == REL_MERGED_PATH
+        assert pack.items[0].document.doc_id == REL_MERGED_PATH
+
+    def test_backslash_windows_absolute_path_is_sanitized(self) -> None:
+        """Windows backslash absolute paths are normalized and sanitized."""
+        result = _absolute_path_search_result()
+        result["merged_results"][0]["path"] = (
+            "C:\\Users\\dexter\\Documents\\Life-Index\\Journals\\2026\\03\\"
+            "life-index_2026-03-07_001.md"
+        )
+
+        pack = build_evidence_pack(result)
+
+        assert pack.items[0].document.path == REL_MERGED_PATH
+        assert pack.items[0].document.doc_id == REL_MERGED_PATH
+
+    def test_input_not_modified_with_absolute_paths(self) -> None:
+        """Input dict must not be modified even with absolute paths."""
+        import copy
+
+        result = _absolute_path_search_result()
+        original = copy.deepcopy(result)
+        build_evidence_pack(result)
+        assert result == original
+
+    def test_posix_absolute_path_filtered(self) -> None:
+        """POSIX-style absolute paths are also filtered."""
+        result = {
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": POSIX_ABS_MERGED_PATH,
+                    "title": "POSIX Absolute",
+                    "date": "2026-03-07",
+                    "source": "none",
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+        }
+        pack = build_evidence_pack(result)
+
+        assert pack.items[0].document.path is not None
+        assert not pack.items[0].document.path.startswith("/")
+        assert "Journals/" in pack.items[0].document.path
+
+    def test_deduplication_uses_safe_paths(self) -> None:
+        """Semantic deduplication must use safe paths, not raw absolute paths."""
+        result = _absolute_path_search_result()
+        # Add semantic result with same absolute path as merged item
+        result["semantic_results"].append(
+            {
+                "path": ABS_MERGED_PATH,
+                "title": "Absolute Path Entry",
+                "date": "2026-03-07",
+                "similarity": 0.40,
+                "source": "semantic",
+            }
+        )
+
+        pack = build_evidence_pack(result)
+
+        # The duplicate should be excluded from semantic_candidates
+        assert len(pack.semantic_candidates) == 1
+        semantic_ids = {sc.document.doc_id for sc in pack.semantic_candidates}
+        item_ids = {item.document.doc_id for item in pack.items}
+        assert semantic_ids.isdisjoint(item_ids)
+
+    def test_none_path_uses_metadata_doc_id(self) -> None:
+        """path=None falls back to metadata-based doc_id, not literal 'None'."""
+        result = {
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": None,
+                    "title": "Missing Path",
+                    "date": "2026-05-09",
+                    "source": "none",
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+        }
+        pack = build_evidence_pack(result)
+
+        assert pack.items[0].document.path is None
+        assert pack.items[0].document.doc_id == "2026-05-09 Missing Path"
+
+    def test_deduplication_matches_doc_id_not_safe_path(self) -> None:
+        """When safe path is empty, deduplication must use metadata doc_id."""
+        result = {
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "C:/NoJournals/file.txt",
+                    "title": "Same Title",
+                    "date": "2026-05-09",
+                    "source": "none",
+                },
+            ],
+            "semantic_results": [
+                {
+                    "path": "C:/Other/file.txt",
+                    "title": "Same Title",
+                    "date": "2026-05-09",
+                    "similarity": 0.40,
+                    "source": "semantic",
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+        }
+        pack = build_evidence_pack(result)
+
+        # Both have empty safe path but same metadata doc_id
+        assert pack.items[0].document.doc_id == "2026-05-09 Same Title"
+        # Semantic duplicate should be excluded
+        assert len(pack.semantic_candidates) == 0
