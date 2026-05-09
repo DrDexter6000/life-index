@@ -203,8 +203,12 @@ class SmartSearchOrchestrator:
 
     # ── Main Entry Point ─────────────────────────────────────────────────
 
-    def search(self, query: str) -> dict[str, Any]:
+    def search(self, query: str, *, include_evidence: bool = False) -> dict[str, Any]:
         """Execute full smart-search pipeline.
+
+        Args:
+            query: User's natural language search query.
+            include_evidence: If True, include evidence_pack in output.
 
         Returns dict matching SmartSearchResult schema.
         """
@@ -226,6 +230,20 @@ class SmartSearchOrchestrator:
         # Stage 2: Execute search
         search_result = self.execute_search(rewritten)
         candidates = search_result["candidates"]
+
+        # Evidence Pack (opt-in only)
+        evidence_dict: dict[str, Any] | None = None
+        evidence_ms = 0.0
+        if include_evidence:
+            from tools.evidence.adapter import extract_evidence_from_orchestrator
+
+            ev_start = time.time()
+            evidence_pack = extract_evidence_from_orchestrator(
+                search_result["raw_results"],
+                smart_result={"rewritten_query": rewritten.get("rewritten_query")},
+            )
+            evidence_ms = (time.time() - ev_start) * 1000
+            evidence_dict = evidence_pack.to_dict()
 
         # Stage 3: Post-filter + summarize
         filtered = self.post_filter_and_summarize(query, candidates)
@@ -261,7 +279,11 @@ class SmartSearchOrchestrator:
             },
         )
 
-        return result.to_dict()
+        result_dict = result.to_dict()
+        if evidence_dict is not None:
+            result_dict["evidence_pack"] = evidence_dict
+            result_dict["performance"]["evidence_build_ms"] = round(evidence_ms, 2)
+        return result_dict
 
     # ── LLM Helpers ──────────────────────────────────────────────────────
 

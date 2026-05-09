@@ -39,13 +39,19 @@ def main() -> None:
         default=False,
         help="Include agent decisions in output",
     )
+    parser.add_argument(
+        "--include-evidence",
+        action="store_true",
+        default=False,
+        help="Include full evidence pack in output",
+    )
     args = parser.parse_args()
 
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
     llm_client = None if args.no_llm else _try_init_llm()
     orch = SmartSearchOrchestrator(llm_client=llm_client)
-    result = orch.search(args.query)
+    result = orch.search(args.query, include_evidence=args.include_evidence)
 
     # Optionally strip agent_decisions for cleaner output
     if not args.explain and "agent_decisions" in result:
