@@ -45,13 +45,21 @@ def main() -> None:
         default=False,
         help="Include full evidence pack in output",
     )
+    parser.add_argument(
+        "--synthesize",
+        action="store_true",
+        default=False,
+        help="Generate citation-backed answer from search evidence (requires LLM)",
+    )
     args = parser.parse_args()
 
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
     llm_client = None if args.no_llm else _try_init_llm()
     orch = SmartSearchOrchestrator(llm_client=llm_client)
-    result = orch.search(args.query, include_evidence=args.include_evidence)
+    result = orch.search(
+        args.query, include_evidence=args.include_evidence, synthesize=args.synthesize
+    )
 
     # Optionally strip agent_decisions for cleaner output
     if not args.explain and "agent_decisions" in result:

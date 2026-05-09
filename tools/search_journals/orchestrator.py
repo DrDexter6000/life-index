@@ -36,6 +36,13 @@ def _get_search_fn() -> Any:
 logger = logging.getLogger(__name__)
 
 
+def _is_absolute_path(path: str) -> bool:
+    """Check if a path looks absolute (Windows or POSIX)."""
+    import os
+
+    return os.path.isabs(path) or (len(path) >= 2 and path[1] == ":")
+
+
 # ── LLM Client Protocol ──────────────────────────────────────────────────────
 
 
@@ -203,12 +210,15 @@ class SmartSearchOrchestrator:
 
     # ── Main Entry Point ─────────────────────────────────────────────────
 
-    def search(self, query: str, *, include_evidence: bool = False) -> dict[str, Any]:
+    def search(
+        self, query: str, *, include_evidence: bool = False, synthesize: bool = False
+    ) -> dict[str, Any]:
         """Execute full smart-search pipeline.
 
         Args:
             query: User's natural language search query.
             include_evidence: If True, include evidence_pack in output.
+            synthesize: If True, generate citation-backed answer via LLM.
 
         Returns dict matching SmartSearchResult schema.
         """
@@ -231,11 +241,12 @@ class SmartSearchOrchestrator:
         search_result = self.execute_search(rewritten)
         candidates = search_result["candidates"]
 
-        # Evidence Pack (opt-in, best-effort)
+        # Evidence Pack (built when include_evidence or synthesize; best-effort)
         evidence_dict: dict[str, Any] | None = None
+        evidence_context_for_synthesis: list[dict[str, Any]] | None = None
         evidence_ms = 0.0
         evidence_error: str | None = None
-        if include_evidence:
+        if include_evidence or (synthesize and self._llm is not None):
             from tools.evidence.adapter import extract_evidence_from_orchestrator
 
             ev_start = time.time()
@@ -254,6 +265,8 @@ class SmartSearchOrchestrator:
                     evidence_dict.setdefault("query_context", {})[
                         "rewritten_query"
                     ] = rewritten_query
+                # Build minimized context for synthesis prompt
+                evidence_context_for_synthesis = self._evidence_to_synthesis_context(evidence_pack)
             except Exception as exc:
                 evidence_ms = (time.time() - ev_start) * 1000
                 evidence_error = str(exc)
@@ -272,6 +285,22 @@ class SmartSearchOrchestrator:
             )
 
         total_ms = (time.time() - start_time) * 1000
+
+        # Stage 4: Answer synthesis (opt-in)
+        answer_dict: dict[str, Any] | None = None
+        if synthesize and self._llm is not None and filtered.get("filtered_results"):
+            try:
+                ans_start = time.time()
+                answer_dict = self.synthesize_answer(
+                    query=query,
+                    filtered_results=filtered["filtered_results"],
+                    summary=filtered.get("summary", ""),
+                    evidence_context=evidence_context_for_synthesis,
+                )
+                if answer_dict is not None:
+                    answer_dict["latency_ms"] = (time.time() - ans_start) * 1000
+            except Exception as exc:
+                logger.warning(f"[Orchestrator] Answer synthesis failed: {exc}")
 
         result = SmartSearchResult(
             success=True,
@@ -294,13 +323,185 @@ class SmartSearchOrchestrator:
         )
 
         result_dict = result.to_dict()
+        if answer_dict is not None:
+            result_dict["answer"] = {
+                "answer_text": answer_dict["answer_text"],
+                "citations": answer_dict["citations"],
+                "confidence": answer_dict["confidence"],
+            }
+            result_dict["performance"]["synthesis_ms"] = round(answer_dict.get("latency_ms", 0), 2)
         if evidence_dict is not None:
-            result_dict["evidence_pack"] = evidence_dict
             result_dict["performance"]["evidence_build_ms"] = round(evidence_ms, 2)
+            if include_evidence:
+                result_dict["evidence_pack"] = evidence_dict
         elif include_evidence:
             result_dict["performance"]["evidence_build_ms"] = round(evidence_ms, 2)
             result_dict["performance"]["evidence_error"] = evidence_error
         return result_dict
+
+    # ── Stage 4: Answer Synthesis ────────────────────────────────────────
+
+    def synthesize_answer(
+        self,
+        query: str,
+        filtered_results: list[dict[str, Any]],
+        summary: str,
+        evidence_context: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any] | None:
+        """Generate citation-backed answer from filtered results.
+
+        Data minimization: only title, date, abstract (≤200 chars), and
+        snippet (≤200 chars) are sent to the LLM.  When evidence_context
+        is available, provenance/source/score are also included.  No
+        full_content, no raw metadata dict, no absolute paths.
+        """
+        if self._llm is None or not filtered_results:
+            return None
+
+        try:
+            prompt = self._build_synthesis_prompt(
+                query, filtered_results, summary, evidence_context
+            )
+            response = self._call_llm(prompt)
+            return self._parse_synthesis_response(response, filtered_results)
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Answer synthesis failed: {e}")
+            return None
+
+    def _build_synthesis_prompt(
+        self,
+        query: str,
+        filtered_results: list[dict[str, Any]],
+        summary: str,
+        evidence_context: list[dict[str, Any]] | None = None,
+    ) -> str:
+        """Build synthesis prompt with strict data minimization.
+
+        When evidence_context is available (from EvidencePack), includes
+        provenance/source/score per item.  Otherwise falls back to
+        filtered_results fields only.
+        """
+        items: list[str] = []
+        for i, r in enumerate(filtered_results, 1):
+            title = str(r.get("title", ""))
+            date = str(r.get("date", ""))
+            abstract = str(r.get("abstract", r.get("snippet", "")))[:200]
+            line = f"{i}. Title: {title}  Date: {date}\n   Abstract: {abstract}"
+
+            # Augment with evidence-derived provenance/source/score if available
+            if evidence_context and i <= len(evidence_context):
+                ev = evidence_context[i - 1]
+                extras: list[str] = []
+                if ev.get("provenance"):
+                    extras.append(f"provenance: {ev['provenance']}")
+                if ev.get("source"):
+                    extras.append(f"source: {ev['source']}")
+                if ev.get("score") is not None:
+                    extras.append(f"score: {ev['score']}")
+                if ev.get("confidence"):
+                    extras.append(f"confidence: {ev['confidence']}")
+                if extras:
+                    line += "\n   " + ", ".join(extras)
+
+            items.append(line)
+
+        evidence_text = "\n".join(items)
+        summary_line = f"\nSummary of findings: {summary}" if summary else ""
+        return (
+            f"You are a personal journal assistant. A user searched their life journal "
+            f'with the query: "{query}"\n\n'
+            f"Here are the relevant journal entries found:\n\n{evidence_text}"
+            f"{summary_line}\n\n"
+            f"Based ONLY on the evidence above, answer the user's query in natural language.\n"
+            f"- Write 2-4 sentences that directly address the query.\n"
+            f"- Cite specific entries by their number (e.g., [1], [2]).\n"
+            f"- If the evidence is insufficient, say so honestly.\n"
+            f"- Rate your confidence: high (multiple strong matches), "
+            f"medium (some matches with gaps), or low (weak or indirect matches).\n\n"
+            f"Return JSON: {{\n"
+            f'  "answer_text": "...",\n'
+            f'  "citations": [1, 2, ...],\n'
+            f'  "confidence": "high|medium|low"\n'
+            f"}}"
+        )
+
+    @staticmethod
+    def _evidence_to_synthesis_context(
+        evidence_pack: Any,
+    ) -> list[dict[str, Any]]:
+        """Extract safe whitelisted fields from EvidencePack items for synthesis.
+
+        Only includes: title, date, snippet/abstract (capped 200 chars),
+        relative doc path, provenance, source, confidence, score.
+        Excludes: full_content, raw metadata dict, absolute paths.
+        """
+        items: list[dict[str, Any]] = []
+        for ev_item in evidence_pack.items:
+            doc = ev_item.document
+            scores = ev_item.scores
+            # Use relative path only; skip absolute paths
+            rel_path = doc.path if doc.path and not _is_absolute_path(doc.path) else None
+            snippet = ev_item.snippet or ""
+            abstract = ev_item.abstract or ""
+            text = abstract if len(abstract) >= len(snippet) else snippet
+            items.append(
+                {
+                    "title": doc.title,
+                    "date": doc.date,
+                    "snippet": text[:200],
+                    "rel_path": rel_path,
+                    "provenance": ev_item.provenance,
+                    "source": scores.source,
+                    "score": scores.final_score,
+                    "confidence": scores.confidence,
+                }
+            )
+        return items
+
+    def _parse_synthesis_response(
+        self,
+        response: str,
+        filtered_results: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Parse LLM synthesis response into structured answer dict."""
+        import json
+
+        text = response.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+
+        answer_text = parsed.get("answer_text", "")
+        if not answer_text:
+            return None
+
+        # Map numeric citation indices to relative doc paths
+        raw_citations = parsed.get("citations", [])
+        citation_paths: list[str] = []
+        for c in raw_citations:
+            if isinstance(c, int) and 0 < c <= len(filtered_results):
+                path = filtered_results[c - 1].get("rel_path") or filtered_results[c - 1].get(
+                    "path", ""
+                )
+                # Only include relative paths, never absolute
+                if path and not _is_absolute_path(path):
+                    citation_paths.append(path)
+            elif isinstance(c, str):
+                if not _is_absolute_path(c):
+                    citation_paths.append(c)
+
+        confidence = parsed.get("confidence", "low")
+        if confidence not in ("high", "medium", "low"):
+            confidence = "low"
+
+        return {
+            "answer_text": answer_text,
+            "citations": citation_paths,
+            "confidence": confidence,
+        }
 
     # ── LLM Helpers ──────────────────────────────────────────────────────
 

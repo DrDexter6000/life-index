@@ -652,6 +652,7 @@ python -m tools.smart_search --query "..." [options]
 | no-llm | flag | ❌ | false | 强制降级模式（纯双管道，不调用 LLM） |
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情 |
 | include-evidence | flag | ❌ | false | 在输出中包含完整 evidence pack |
+| synthesize | flag | ❌ | false | 生成引用支撑的自然语言答案（需要 LLM） |
 
 ### 返回值
 
@@ -697,6 +698,43 @@ Evidence pack 采用**最佳努力（best-effort）**策略：
 - 返回值**不携带** `evidence_pack` 字段
 - `performance` 中记录 `evidence_build_ms` 和 `evidence_error`（错误信息）
 - 调用方不应将 `evidence_pack` 缺失等同于搜索失败
+
+### Answer Synthesis（`--synthesize`）
+
+默认行为（不传递 `--synthesize`）下，返回值**不包含** `answer` 字段。
+
+当传递 `--synthesize` 时，若 LLM 可用且搜索结果非空且 LLM 成功生成答案，返回值增加 `answer` 字段，结构如下：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `answer.answer_text` | string | 回答用户查询的自然语言文本（2-4 句） |
+| `answer.citations` | string[] | 引用的文档相对路径列表（不含绝对路径） |
+| `answer.confidence` | string | 置信度：`high` / `medium` / `low` |
+| `performance.synthesis_ms` | float | 答案生成耗时（毫秒），仅在合成尝试时出现 |
+
+#### 内部 Evidence 消费
+
+当 `--synthesize` 启用时，orchestrator 会**内部构建 EvidencePack**（即使未传 `--include-evidence`），并将其中的 provenance/source/score 等安全字段注入 synthesis prompt，以提升答案质量。若 evidence 构建失败，synthesis 回退为仅使用 `filtered_results`，不导致搜索失败。
+
+#### 合成失败行为
+
+Answer synthesis 采用**最佳努力（best-effort）**策略：
+
+- 若 LLM 不可用（`--no-llm` 或 LLM 初始化失败），`answer` 字段不存在，搜索结果正常返回
+- 若搜索结果为空，`answer` 字段不存在
+- 若 LLM 返回格式错误或合成过程异常，`answer` 字段不存在，搜索本身不受影响
+- `--synthesize` 不要求 `--include-evidence`；两者独立控制
+- `--synthesize` 内部构建 evidence 不等于输出包含 `evidence_pack`；后者仍需 `--include-evidence`
+
+#### 组合标志语义
+
+| 标志组合 | 行为 |
+|----------|------|
+| （无标志） | 当前默认：filtered results + summary |
+| `--include-evidence` | 添加 evidence_pack |
+| `--synthesize` | 内部构建 evidence；添加 answer（prompt 含 provenance/source/score） |
+| `--include-evidence --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score） |
+| `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
 
 ---
 
