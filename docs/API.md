@@ -753,10 +753,76 @@ python -m tools.smart_search --query "..." [options]
 | `evidence_pack.total_available` | int | 总可用结果数 |
 | `evidence_pack.has_more` | bool | 是否还有更多结果 |
 | `evidence_pack.no_confident_match` | bool | **检索层级信号**：底层搜索管道是否未找到高置信度匹配。这是检索质量指标，不是答案质量信号。调用方不应将其等同于 `answer.confidence` 的判断依据 |
-| `evidence_pack.diagnostics` | object | **确定性检索诊断**。由 `retrieval_outcome`、`outcome_reason`、`notes`、`suggestions` 组成。不依赖 LLM，从已有搜索结果字段推导。用于 Agent/GUI 消费者理解检索质量 |
+| `evidence_pack.diagnostics` | object | **确定性检索诊断**。不依赖 LLM，从已有搜索结果字段推导。详见下方 Diagnostics 子节 |
 | `performance.evidence_build_ms` | float | evidence pack 构建耗时（毫秒） |
 
 > **Forward-compatibility**: Evidence pack 的每个对象可能包含未在本文档中列出的额外字段（来自内部 `extra` 字典）。调用方应容忍未知字段，不应做严格 schema 校验。
+
+#### Diagnostics（`evidence_pack.diagnostics`）
+
+当 `--include-evidence` 请求 evidence pack 时，`diagnostics` 字段始终存在。纯确定性推导，不调用 LLM、不访问文件系统、不触发额外搜索。
+
+**字段结构：**
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `retrieval_outcome` | string enum | 检索质量分类（见下表） |
+| `outcome_reason` | string | 当前分类的具体原因（见下表） |
+| `notes` | string[] | 上下文观察（如置信度分布、截断信息）。为空时省略 |
+| `suggestions` | string[] | 改善检索的可操作建议。为空时省略 |
+
+**`retrieval_outcome` 枚举值：**
+
+| 值 | 含义 | 触发条件 |
+|----|------|----------|
+| `ok` | 检索正常，有高或中置信度结果 | 至少一个 item confidence 为 `high` 或 `medium` |
+| `weak_results` | 有结果但置信度全部较低 | 全部 low confidence，且 `no_confident_match` 为 false |
+| `no_confident_match` | 搜索核心标记无高置信匹配 | `no_confident_match` 为 true |
+| `zero_results` | 无任何检索结果 | `merged_results` 为空 |
+
+**`outcome_reason` 枚举值：**
+
+| 值 | 对应 outcome | 说明 |
+|----|-------------|------|
+| `confident_results_present` | `ok` | 存在 medium/high 置信度结果 |
+| `all_items_low_confidence_full_recall` | `weak_results` | 全部 low，total 等于 items 数（已全量召回） |
+| `low_confidence_with_potential_under_recall` | `weak_results` | 全部 low，total > items 数（可能还有更多未召回） |
+| `all_items_low_confidence` | `no_confident_match` | `no_confident_match` flag 且全部 low |
+| `search_core_flagged_no_confident` | `no_confident_match` | `no_confident_match` flag 但存在 medium/high |
+| `no_matches_found` | `zero_results` | 两个管道均无结果 |
+| `results_truncated_before_delivery` | `zero_results` | total_available > 0 但 items 为空 |
+
+**Consumer Guidance（消费指引）：**
+
+| `retrieval_outcome` | Agent 行为 | GUI 行为 |
+|---------------------|-----------|----------|
+| `ok` | 正常消费 `filtered_results` 和 `answer` | 正常展示结果 |
+| `weak_results` | 向用户说明结果置信度较低，建议调整查询；可参考 `suggestions` | 显示弱结果提示，提供 `suggestions` 给用户 |
+| `no_confident_match` | 明确告知用户未找到高置信匹配；参考 `suggestions` 建议换词或加过滤 | 显示"未找到精确匹配"提示 |
+| `zero_results` | 如实报告无结果；参考 `suggestions` 建议放宽条件 | 显示空结果页面和 `suggestions` |
+
+> `notes` 是观察性描述，`suggestions` 是可操作建议。两者均为 `string[]`；为空时序列化输出可能省略该字段。
+
+**诊断示例（`weak_results`）：**
+
+```json
+{
+  "evidence_pack": {
+    "diagnostics": {
+      "retrieval_outcome": "weak_results",
+      "outcome_reason": "all_items_low_confidence_full_recall",
+      "notes": [
+        "All 3 items have low confidence.",
+        "total_available equals item count (full recall, weak quality)."
+      ],
+      "suggestions": [
+        "Query may be too vague or match tangential content.",
+        "Try adding time range or entity filters."
+      ]
+    }
+  }
+}
+```
 
 #### 最佳努力失败行为
 

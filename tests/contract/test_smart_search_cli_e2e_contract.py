@@ -216,3 +216,40 @@ class TestHelpContract:
 
     def test_help_includes_explain(self, help_proc: subprocess.CompletedProcess[str]) -> None:
         assert "--explain" in help_proc.stdout
+
+
+class TestEvidenceDiagnosticsContract:
+    """evidence_pack.diagnostics shape in CLI subprocess output."""
+
+    def test_evidence_diagnostics_present(
+        self, evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        """When --include-evidence, evidence_pack.diagnostics exists.
+
+        notes/suggestions are conditionally present — serializer omits them
+        when empty (e.g. ``ok`` outcome).  Only assert type when present.
+        """
+        assert evidence_proc.returncode == 0, f"stderr: {evidence_proc.stderr}"
+        result = _json(evidence_proc)
+        if "evidence_pack" in result:
+            diag = result["evidence_pack"].get("diagnostics")
+            assert diag is not None
+            assert "retrieval_outcome" in diag
+            assert diag["retrieval_outcome"] in (
+                "ok",
+                "weak_results",
+                "no_confident_match",
+                "zero_results",
+            )
+            assert "outcome_reason" in diag
+            if "notes" in diag:
+                assert isinstance(diag["notes"], list)
+            if "suggestions" in diag:
+                assert isinstance(diag["suggestions"], list)
+
+    def test_no_diagnostics_without_evidence(
+        self, default_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        """Default output has no evidence_pack at all."""
+        result = _json(default_proc)
+        assert "evidence_pack" not in result

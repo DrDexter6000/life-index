@@ -267,3 +267,102 @@ def test_cli_synthesize_output_includes_transparency_fields():
     assert "limitations" in answer
     assert "evidence_summary" in answer
     assert isinstance(answer["limitations"], list)
+
+
+# ---------------------------------------------------------------------------
+# R2J: Evidence Pack Diagnostics CLI tests
+# ---------------------------------------------------------------------------
+
+_VALID_OUTCOMES = ("ok", "weak_results", "no_confident_match", "zero_results")
+
+
+def _mock_orch_search_with_diagnostics(query, include_evidence=False, **kwargs):
+    """Mock orchestrator.search() with diagnostics in evidence_pack."""
+    result = {
+        "success": True,
+        "query": query,
+        "rewritten_query": query,
+        "filtered_results": [{"title": "mock", "path": "mock.md"}],
+        "summary": "",
+        "citations": [],
+        "agent_decisions": [],
+        "agent_unavailable": True,
+        "performance": {"total_time_ms": 10.0},
+    }
+    if include_evidence:
+        result["evidence_pack"] = {
+            "query_context": {"query": query},
+            "items": [{"document": {"title": "mock"}, "scores": {"source": "fts"}}],
+            "semantic_candidates": [],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "diagnostics": {
+                "retrieval_outcome": "ok",
+                "outcome_reason": "confident_results_present",
+            },
+        }
+        result["performance"]["evidence_build_ms"] = 1.5
+    return result
+
+
+def _make_mock_orch_with_diagnostics():
+    """Create mock orchestrator with diagnostics-aware search."""
+    orch = MagicMock()
+    orch.search.side_effect = _mock_orch_search_with_diagnostics
+    return orch
+
+
+def test_cli_evidence_includes_diagnostics():
+    """--include-evidence output includes evidence_pack.diagnostics."""
+    captured = []
+    with patch("sys.argv", ["smart-search", "--query", "test", "--include-evidence"]):
+        with patch(
+            "tools.search_journals.orchestrator.SmartSearchOrchestrator",
+            return_value=_make_mock_orch_with_diagnostics(),
+        ):
+            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
+                with patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+                ):
+                    from tools.smart_search.__main__ import main
+
+                    try:
+                        main()
+                    except SystemExit:
+                        pass
+    result = json.loads(captured[0])
+    assert "evidence_pack" in result
+    assert "diagnostics" in result["evidence_pack"]
+    diag = result["evidence_pack"]["diagnostics"]
+    assert diag["retrieval_outcome"] in _VALID_OUTCOMES
+    assert isinstance(diag.get("outcome_reason"), str)
+    # notes/suggestions conditionally present (omitted when empty)
+    if "notes" in diag:
+        assert isinstance(diag["notes"], list)
+    if "suggestions" in diag:
+        assert isinstance(diag["suggestions"], list)
+
+
+def test_cli_default_no_diagnostics():
+    """Default output has no evidence_pack, hence no diagnostics."""
+    captured = []
+    with patch("sys.argv", ["smart-search", "--query", "test"]):
+        with patch(
+            "tools.search_journals.orchestrator.SmartSearchOrchestrator",
+            return_value=_make_mock_orch_with_diagnostics(),
+        ):
+            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
+                with patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+                ):
+                    from tools.smart_search.__main__ import main
+
+                    try:
+                        main()
+                    except SystemExit:
+                        pass
+    result = json.loads(captured[0])
+    assert "evidence_pack" not in result

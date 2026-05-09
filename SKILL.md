@@ -53,6 +53,7 @@ triggers:
 .venv/bin/life-index smart-search --query "我和女儿之间有哪些珍贵的回忆？"  # LLM 编排搜索
 .venv/bin/life-index smart-search --query "..." --no-llm  # 强制降级为纯双管道
 .venv/bin/life-index smart-search --query "..." --explain  # 展示 Agent 决策详情
+.venv/bin/life-index smart-search --query "..." --include-evidence  # 含 evidence pack + 检索诊断
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
 .venv/bin/life-index entity --list
 .venv/bin/life-index entity --resolve "乐乐的奶奶"
@@ -342,6 +343,19 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - `search_journals` 负责 retrieval execution，不负责替用户下结论
 - Agent 必须区分“搜索结果为空”与“搜索执行失败”
 - Agent 负责解释结果、回答用户真正的问题，并在需要时建议 refinement / follow-up
+
+**Evidence Pack 检索诊断消费（`--include-evidence`）**：
+
+当使用 `smart-search --include-evidence` 时，返回值包含 `evidence_pack.diagnostics`，提供确定性检索质量信号。Agent 应据此调整行为：
+
+| `retrieval_outcome` | Agent 行为 |
+|---------------------|-----------|
+| `ok` | 正常消费结果 |
+| `weak_results` | 向用户说明置信度低，参考 `suggestions` 建议调整查询 |
+| `no_confident_match` | 告知未找到高置信匹配，建议换词或加过滤 |
+| `zero_results` | 如实报告无结果，参考 `suggestions` 建议放宽条件 |
+
+> `diagnostics` 是纯确定性推导，不依赖 LLM。详见 [API.md §Evidence Pack Diagnostics](docs/API.md)。
 - 不得把工具返回的原始结果列表直接等同于最终用户答案
 
 **澄清与失败规则（强制）**：

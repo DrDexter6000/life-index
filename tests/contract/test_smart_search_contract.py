@@ -10,6 +10,7 @@ documented in docs/API.md:
 5. --explain swaps agent_decisions_summary for agent_decisions
 6. answer fields follow trust-gate semantics
 7. Performance sub-fields are conditionally present
+8. evidence_pack.diagnostics present and well-formed when --include-evidence
 """
 
 import json
@@ -445,3 +446,132 @@ class TestExplainFlag:
         assert "agent_decisions" not in result
         assert "agent_decisions_summary" in result
         assert isinstance(result["agent_decisions_summary"], str)
+
+
+# Evidence Pack Diagnostics
+
+
+class TestEvidencePackDiagnostics:
+    """Verify evidence_pack.diagnostics contract when --include-evidence."""
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_hierarchical_search,
+    )
+    @patch("tools.evidence.adapter.extract_evidence_from_orchestrator")
+    def test_diagnostics_ok_outcome_omits_empty_notes(self, mock_ev, _mock):
+        """``ok`` outcome produces empty notes/suggestions — serializer omits them."""
+        from tools.evidence.types import (
+            DocumentRef,
+            EvidenceDiagnostics,
+            EvidenceItem,
+            EvidencePack,
+            QueryContext,
+            ScoreBreakdown,
+        )
+
+        pack = EvidencePack(
+            query_context=QueryContext(query="test"),
+            items=[
+                EvidenceItem(
+                    document=DocumentRef(
+                        doc_id="1",
+                        title="Test",
+                        path="Journals/2026/03/test.md",
+                        date="2026-03-06",
+                    ),
+                    scores=ScoreBreakdown(source="fts", rank=1, confidence="medium"),
+                    snippet="test snippet",
+                )
+            ],
+            semantic_candidates=[],
+            total_available=1,
+            has_more=False,
+            no_confident_match=False,
+            diagnostics=EvidenceDiagnostics(
+                retrieval_outcome="ok",
+                outcome_reason="confident_results_present",
+            ),
+        )
+        mock_ev.return_value = pack
+
+        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        result = orch.search("test query", include_evidence=True)
+
+        assert "evidence_pack" in result
+        diag = result["evidence_pack"]["diagnostics"]
+        assert "retrieval_outcome" in diag
+        assert diag["retrieval_outcome"] == "ok"
+        assert "outcome_reason" in diag
+        assert "notes" not in diag
+        assert "suggestions" not in diag
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_hierarchical_search,
+    )
+    @patch("tools.evidence.adapter.extract_evidence_from_orchestrator")
+    def test_diagnostics_has_required_fields(self, mock_ev, _mock):
+        """When notes/suggestions are non-empty, serializer includes them."""
+        from tools.evidence.types import (
+            DocumentRef,
+            EvidenceDiagnostics,
+            EvidenceItem,
+            EvidencePack,
+            QueryContext,
+            ScoreBreakdown,
+        )
+
+        pack = EvidencePack(
+            query_context=QueryContext(query="test"),
+            items=[
+                EvidenceItem(
+                    document=DocumentRef(
+                        doc_id="1",
+                        title="Test",
+                        path="Journals/2026/03/test.md",
+                        date="2026-03-06",
+                    ),
+                    scores=ScoreBreakdown(source="fts", rank=1, confidence="high"),
+                    snippet="test snippet",
+                )
+            ],
+            semantic_candidates=[],
+            total_available=1,
+            has_more=False,
+            no_confident_match=False,
+            diagnostics=EvidenceDiagnostics(
+                retrieval_outcome="ok",
+                outcome_reason="confident_results_present",
+                notes=["High-confidence result found."],
+                suggestions=["Results look good."],
+            ),
+        )
+        mock_ev.return_value = pack
+
+        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        result = orch.search("test query", include_evidence=True)
+
+        diag = result["evidence_pack"]["diagnostics"]
+        assert "retrieval_outcome" in diag
+        assert diag["retrieval_outcome"] in (
+            "ok",
+            "weak_results",
+            "no_confident_match",
+            "zero_results",
+        )
+        assert "outcome_reason" in diag
+        assert "notes" in diag
+        assert isinstance(diag["notes"], list)
+        assert "suggestions" in diag
+        assert isinstance(diag["suggestions"], list)
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_hierarchical_search,
+    )
+    def test_no_diagnostics_without_evidence(self, _mock):
+        """Without --include-evidence, no evidence_pack and no diagnostics."""
+        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        result = orch.search("test query")
+        assert "evidence_pack" not in result
