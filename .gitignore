@@ -116,6 +116,7 @@ Kimi_here.bat
 .codex-learnings/
 .glm-learnings/
 .claude-learnings/
+.maestro/
 
 # ----- 本地备份 / 原型临时文件 -----
 *.backup
