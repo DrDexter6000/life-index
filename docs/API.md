@@ -651,6 +651,7 @@ python -m tools.smart_search --query "..." [options]
 | query | string | ✅ | - | 自然语言搜索查询 |
 | no-llm | flag | ❌ | false | 强制降级模式（纯双管道，不调用 LLM） |
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情 |
+| include-evidence | flag | ❌ | false | 在输出中包含完整 evidence pack |
 
 ### 返回值
 
@@ -671,6 +672,31 @@ python -m tools.smart_search --query "..." [options]
 - 降级模式 (`--no-llm` 或 LLM 不可用) 下等价于 `search --level 3`
 - Data Minimization：候选仅送 title + abstract + snippet（≤200 chars），最多 15 条
 - 实现详见 `docs/ARCHITECTURE.md` §5.8
+
+### Evidence Pack（`--include-evidence`）
+
+默认行为（不传递 `--include-evidence`）下，返回值**不包含** `evidence_pack` 字段。
+
+当传递 `--include-evidence` 时，返回值增加 `evidence_pack` 字段，结构如下：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `evidence_pack.query_context` | object | 查询上下文，含 `query`、`expanded_query`、`search_plan`、`entity_hints` |
+| `evidence_pack.items` | array | 检索证据项列表，每项含 `document`（文档引用）、`scores`（评分明细）、`snippet`（片段） |
+| `evidence_pack.semantic_candidates` | array | 纯语义候选列表（未进入主结果集的语义召回项） |
+| `evidence_pack.total_available` | int | 总可用结果数 |
+| `evidence_pack.has_more` | bool | 是否还有更多结果 |
+| `evidence_pack.no_confident_match` | bool | 是否无高置信度匹配 |
+| `performance.evidence_build_ms` | float | evidence pack 构建耗时（毫秒） |
+
+#### 最佳努力失败行为
+
+Evidence pack 采用**最佳努力（best-effort）**策略：
+
+- 若 evidence 构建失败，搜索本身仍返回 `success: true`
+- 返回值**不携带** `evidence_pack` 字段
+- `performance` 中记录 `evidence_build_ms` 和 `evidence_error`（错误信息）
+- 调用方不应将 `evidence_pack` 缺失等同于搜索失败
 
 ---
 

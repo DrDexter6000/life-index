@@ -110,3 +110,20 @@ def test_cli_include_evidence_adds_pack():
     result = json.loads(captured[0])
     assert "evidence_pack" in result
     assert "items" in result["evidence_pack"]
+
+
+def test_cli_help_includes_evidence_flag():
+    """--include-evidence appears in CLI help text."""
+    captured = []
+    with patch("sys.argv", ["smart-search", "--help"]):
+        with patch("sys.stdout.write", side_effect=lambda text: captured.append(text)):
+            from tools.smart_search.__main__ import main
+
+            try:
+                main()
+            except SystemExit as e:
+                assert e.code == 0
+
+    help_text = "".join(captured)
+    assert "--include-evidence" in help_text
+    assert "evidence pack" in help_text.lower()
