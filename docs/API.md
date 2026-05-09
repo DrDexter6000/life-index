@@ -753,6 +753,7 @@ python -m tools.smart_search --query "..." [options]
 | `evidence_pack.total_available` | int | 总可用结果数 |
 | `evidence_pack.has_more` | bool | 是否还有更多结果 |
 | `evidence_pack.no_confident_match` | bool | **检索层级信号**：底层搜索管道是否未找到高置信度匹配。这是检索质量指标，不是答案质量信号。调用方不应将其等同于 `answer.confidence` 的判断依据 |
+| `evidence_pack.diagnostics` | object | **确定性检索诊断**。由 `retrieval_outcome`、`outcome_reason`、`notes`、`suggestions` 组成。不依赖 LLM，从已有搜索结果字段推导。用于 Agent/GUI 消费者理解检索质量 |
 | `performance.evidence_build_ms` | float | evidence pack 构建耗时（毫秒） |
 
 > **Forward-compatibility**: Evidence pack 的每个对象可能包含未在本文档中列出的额外字段（来自内部 `extra` 字典）。调用方应容忍未知字段，不应做严格 schema 校验。

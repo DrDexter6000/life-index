@@ -12,6 +12,7 @@ from typing import Any
 
 from tools.evidence.types import (
     DocumentRef,
+    EvidenceDiagnostics,
     EvidenceItem,
     EvidencePack,
     QueryContext,
@@ -165,6 +166,113 @@ def _build_semantic_candidate(result: dict[str, Any], rank: int) -> SemanticCand
     )
 
 
+def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
+    """Compute deterministic retrieval diagnostics from search result fields.
+
+    Reads: items count, total_available, no_confident_match, has_more,
+    and per-item confidence/score fields.  No LLM, filesystem, or search calls.
+    """
+    items = search_result.get("merged_results", [])
+    total_available = int(search_result.get("total_available", len(items)))
+    no_confident_match = bool(search_result.get("no_confident_match", False))
+
+    # Determine per-item confidence distribution
+    confidences = [str(r.get("confidence", "low")) for r in items]
+
+    # zero_results: no items and no available
+    if len(items) == 0 and total_available == 0:
+        return EvidenceDiagnostics(
+            retrieval_outcome="zero_results",
+            outcome_reason="no_matches_found",
+            notes=["Query returned zero results from both pipelines."],
+            suggestions=[
+                "Try broader or fewer search terms.",
+                "Check spelling and entity names.",
+                "Verify the data directory has indexed journals.",
+            ],
+        )
+
+    # zero_results edge: no items but total_available > 0 (presentation truncation)
+    if len(items) == 0 and total_available > 0:
+        return EvidenceDiagnostics(
+            retrieval_outcome="zero_results",
+            outcome_reason="results_truncated_before_delivery",
+            notes=[
+                f"total_available={total_available} but merged_results is empty.",
+            ],
+            suggestions=["Increase --limit to retrieve available results."],
+        )
+
+    # no_confident_match flag set by search core
+    if no_confident_match:
+        has_high = "high" in confidences
+        has_medium = "medium" in confidences
+        if not has_high and not has_medium:
+            return EvidenceDiagnostics(
+                retrieval_outcome="no_confident_match",
+                outcome_reason="all_items_low_confidence",
+                notes=[
+                    f"Results present ({len(items)}) but all have low confidence.",
+                    "no_confident_match flag is True.",
+                ],
+                suggestions=[
+                    "Results may not directly address the query intent.",
+                    "Consider rephrasing with more specific terms.",
+                ],
+            )
+        return EvidenceDiagnostics(
+            retrieval_outcome="no_confident_match",
+            outcome_reason="search_core_flagged_no_confident",
+            notes=[
+                f"Results present ({len(items)}) with mixed confidence levels.",
+                "no_confident_match flag is True despite some medium/high items.",
+            ],
+            suggestions=[
+                "Top results may not be the best match for the query.",
+                "Review semantic_candidates for potentially relevant items.",
+            ],
+        )
+
+    # weak_results: items exist but no high-confidence, and total fits in one page
+    has_high = "high" in confidences
+    has_medium = "medium" in confidences
+    if not has_high and not has_medium and total_available <= len(items):
+        return EvidenceDiagnostics(
+            retrieval_outcome="weak_results",
+            outcome_reason="all_items_low_confidence_full_recall",
+            notes=[
+                f"All {len(items)} items have low confidence.",
+                "total_available equals item count (full recall, weak quality).",
+            ],
+            suggestions=[
+                "Query may be too vague or match tangential content.",
+                "Try adding time range or entity filters.",
+            ],
+        )
+
+    # ok: at least some high or medium confidence results
+    if has_high or has_medium:
+        return EvidenceDiagnostics(
+            retrieval_outcome="ok",
+            outcome_reason="confident_results_present",
+            notes=[],
+            suggestions=[],
+        )
+
+    # Default: low confidence items but possibly more available (under-recall hint)
+    notes: list[str] = [f"Results present ({len(items)}) with low confidence."]
+    if total_available > len(items):
+        notes.append(f"total_available ({total_available}) exceeds returned items ({len(items)}).")
+    return EvidenceDiagnostics(
+        retrieval_outcome="weak_results",
+        outcome_reason="low_confidence_with_potential_under_recall",
+        notes=notes,
+        suggestions=[
+            "Consider increasing result limit to capture more candidates.",
+        ],
+    )
+
+
 def build_evidence_pack(search_result: dict[str, Any]) -> EvidencePack:
     """Build EvidencePack from hierarchical_search() output dict.
 
@@ -218,4 +326,5 @@ def build_evidence_pack(search_result: dict[str, Any]) -> EvidencePack:
         total_available=int(search_result.get("total_available", len(items))),
         has_more=bool(search_result.get("has_more", False)),
         no_confident_match=bool(search_result.get("no_confident_match", False)),
+        diagnostics=compute_diagnostics(search_result),
     )

@@ -317,6 +317,59 @@ class QueryContext:
 
 
 # ---------------------------------------------------------------------------
+# EvidenceDiagnostics
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EvidenceDiagnostics:
+    """Deterministic retrieval diagnostics for an evidence pack.
+
+    Populated from search result fields without LLM, filesystem, or
+    additional search calls.  Used by Agent/GUI consumers to understand
+    retrieval quality.
+    """
+
+    retrieval_outcome: str  # "zero_results", "weak_results", "no_confident_match", "ok"
+    outcome_reason: str = ""
+    notes: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+    extra: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    _KNOWN_KEYS = frozenset(
+        {
+            "retrieval_outcome",
+            "outcome_reason",
+            "notes",
+            "suggestions",
+        }
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvidenceDiagnostics:
+        return cls(
+            retrieval_outcome=str(data.get("retrieval_outcome", "ok")),
+            outcome_reason=str(data.get("outcome_reason", "")),
+            notes=list(data.get("notes", [])),
+            suggestions=list(data.get("suggestions", [])),
+            extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "retrieval_outcome": self.retrieval_outcome,
+        }
+        if self.outcome_reason:
+            d["outcome_reason"] = self.outcome_reason
+        if self.notes:
+            d["notes"] = self.notes
+        if self.suggestions:
+            d["suggestions"] = self.suggestions
+        d.update(self.extra)
+        return d
+
+
+# ---------------------------------------------------------------------------
 # EvidencePack
 # ---------------------------------------------------------------------------
 
@@ -331,6 +384,7 @@ class EvidencePack:
     total_available: int
     has_more: bool
     no_confident_match: bool
+    diagnostics: EvidenceDiagnostics | None = None
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     _KNOWN_KEYS = frozenset(
@@ -341,11 +395,15 @@ class EvidencePack:
             "total_available",
             "has_more",
             "no_confident_match",
+            "diagnostics",
         }
     )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EvidencePack:
+        diagnostics = None
+        if "diagnostics" in data and data["diagnostics"] is not None:
+            diagnostics = EvidenceDiagnostics.from_dict(data["diagnostics"])
         return cls(
             query_context=QueryContext.from_dict(data.get("query_context", {})),
             items=[EvidenceItem.from_dict(i) for i in data.get("items", [])],
@@ -355,6 +413,7 @@ class EvidencePack:
             total_available=int(data.get("total_available", 0)),
             has_more=bool(data.get("has_more", False)),
             no_confident_match=bool(data.get("no_confident_match", False)),
+            diagnostics=diagnostics,
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
 
@@ -367,5 +426,7 @@ class EvidencePack:
             "has_more": self.has_more,
             "no_confident_match": self.no_confident_match,
         }
+        if self.diagnostics is not None:
+            d["diagnostics"] = self.diagnostics.to_dict()
         d.update(self.extra)
         return d

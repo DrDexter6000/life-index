@@ -19,6 +19,7 @@ import pytest
 from tools.evidence.builder import build_evidence_pack
 from tools.evidence.types import (
     DocumentRef,
+    EvidenceDiagnostics,
     EvidenceItem,
     EvidencePack,
     QueryContext,
@@ -933,3 +934,263 @@ class TestPathPrivacy:
         assert pack.items[0].document.doc_id == "2026-05-09 Same Title"
         # Semantic duplicate should be excluded
         assert len(pack.semantic_candidates) == 0
+
+
+# ---------------------------------------------------------------------------
+# EvidenceDiagnostics
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceDiagnostics:
+    """EvidenceDiagnostics round-trip and unknown extra preservation."""
+
+    def test_round_trip(self) -> None:
+        diag = EvidenceDiagnostics(
+            retrieval_outcome="ok",
+            outcome_reason="confident_results_present",
+            notes=[],
+            suggestions=[],
+        )
+        d = diag.to_dict()
+        diag2 = EvidenceDiagnostics.from_dict(d)
+        assert diag2 == diag
+        assert diag2.retrieval_outcome == "ok"
+
+    def test_round_trip_with_extra(self) -> None:
+        diag = EvidenceDiagnostics(
+            retrieval_outcome="weak_results",
+            outcome_reason="low_scores",
+            notes=["sparse results"],
+            suggestions=["try broader query"],
+            extra={"custom_metric": 0.42},
+        )
+        d = diag.to_dict()
+        assert d["custom_metric"] == pytest.approx(0.42)
+        diag2 = EvidenceDiagnostics.from_dict(d)
+        assert diag2.extra["custom_metric"] == pytest.approx(0.42)
+        assert diag2.notes == ["sparse results"]
+        assert diag2.suggestions == ["try broader query"]
+
+    def test_minimal_output(self) -> None:
+        diag = EvidenceDiagnostics(retrieval_outcome="zero_results")
+        d = diag.to_dict()
+        assert d == {"retrieval_outcome": "zero_results"}
+        assert "outcome_reason" not in d
+        assert "notes" not in d
+        assert "suggestions" not in d
+
+    def test_from_dict_without_optional_fields(self) -> None:
+        d = {"retrieval_outcome": "ok"}
+        diag = EvidenceDiagnostics.from_dict(d)
+        assert diag.retrieval_outcome == "ok"
+        assert diag.outcome_reason == ""
+        assert diag.notes == []
+        assert diag.suggestions == []
+
+    def test_unknown_fields_preserved_as_extra(self) -> None:
+        d = {
+            "retrieval_outcome": "ok",
+            "outcome_reason": "test",
+            "future_field": "future_value",
+        }
+        diag = EvidenceDiagnostics.from_dict(d)
+        assert diag.extra["future_field"] == "future_value"
+
+
+# ---------------------------------------------------------------------------
+# compute_diagnostics()
+# ---------------------------------------------------------------------------
+
+
+def _search_result_with_items(
+    count: int = 2,
+    total_available: int | None = None,
+    no_confident_match: bool = False,
+    confidences: list[str] | None = None,
+    has_more: bool = False,
+) -> dict:
+    """Build a synthetic search result for diagnostics testing."""
+    items = []
+    for i in range(1, count + 1):
+        item: dict = {
+            "path": f"Journals/2026/03/life-index_2026-03-0{i}_001.md",
+            "title": f"Entry {i}",
+            "date": f"2026-03-0{i}",
+            "snippet": f"snippet {i}",
+            "source": "fts",
+            "relevance": 80 - i * 10,
+            "confidence": (
+                confidences[i - 1] if confidences and i <= len(confidences) else "medium"
+            ),
+            "metadata": {},
+        }
+        items.append(item)
+    return {
+        "success": True,
+        "query_params": {"query": "test"},
+        "merged_results": items,
+        "semantic_results": [],
+        "total_available": total_available if total_available is not None else count,
+        "has_more": has_more,
+        "no_confident_match": no_confident_match,
+    }
+
+
+class TestComputeDiagnostics:
+    """compute_diagnostics() classification from search result fields."""
+
+    def test_zero_results(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(count=0, total_available=0, no_confident_match=True)
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "zero_results"
+        assert diag.outcome_reason == "no_matches_found"
+        assert len(diag.notes) > 0
+        assert len(diag.suggestions) > 0
+
+    def test_zero_results_truncated(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(count=0, total_available=5, no_confident_match=False)
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "zero_results"
+        assert diag.outcome_reason == "results_truncated_before_delivery"
+
+    def test_no_confident_match_all_low(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=3,
+            no_confident_match=True,
+            confidences=["low", "low", "low"],
+        )
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "no_confident_match"
+        assert diag.outcome_reason == "all_items_low_confidence"
+
+    def test_no_confident_flag_mixed_confidence(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=3,
+            no_confident_match=True,
+            confidences=["high", "medium", "low"],
+        )
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "no_confident_match"
+        assert diag.outcome_reason == "search_core_flagged_no_confident"
+
+    def test_weak_results_full_recall(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=3,
+            total_available=3,
+            no_confident_match=False,
+            confidences=["low", "low", "low"],
+        )
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "weak_results"
+        assert diag.outcome_reason == "all_items_low_confidence_full_recall"
+
+    def test_ok_high_confidence(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            total_available=2,
+            no_confident_match=False,
+            confidences=["high", "medium"],
+        )
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "ok"
+        assert diag.outcome_reason == "confident_results_present"
+        assert diag.notes == []
+        assert diag.suggestions == []
+
+    def test_ok_medium_confidence(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            total_available=2,
+            no_confident_match=False,
+            confidences=["medium", "medium"],
+        )
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "ok"
+
+    def test_weak_results_with_under_recall_hint(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            total_available=10,
+            no_confident_match=False,
+            confidences=["low", "low"],
+            has_more=True,
+        )
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "weak_results"
+        assert "under_recall" in diag.outcome_reason or "total_available" in str(diag.notes)
+
+    def test_diagnostics_in_build_evidence_pack(self) -> None:
+        """build_evidence_pack() populates diagnostics."""
+        result = _synthetic_search_result()
+        pack = build_evidence_pack(result)
+        assert pack.diagnostics is not None
+        assert pack.diagnostics.retrieval_outcome == "ok"
+
+    def test_diagnostics_in_empty_build(self) -> None:
+        """Empty search result produces zero_results diagnostics."""
+        result = {
+            "query_params": {"query": "nonexistent"},
+            "merged_results": [],
+            "total_available": 0,
+            "has_more": False,
+            "no_confident_match": True,
+        }
+        pack = build_evidence_pack(result)
+        assert pack.diagnostics is not None
+        assert pack.diagnostics.retrieval_outcome == "zero_results"
+
+    def test_diagnostics_round_trip_through_pack(self) -> None:
+        """Diagnostics survive pack to_dict / from_dict round-trip."""
+        result = _synthetic_search_result()
+        pack = build_evidence_pack(result)
+        d = pack.to_dict()
+        assert "diagnostics" in d
+        pack2 = EvidencePack.from_dict(d)
+        assert pack2.diagnostics is not None
+        assert pack2.diagnostics.retrieval_outcome == "ok"
+
+    def test_old_payload_without_diagnostics(self) -> None:
+        """Old EvidencePack payloads without diagnostics field still deserialize."""
+        old_data = {
+            "query_context": {"query": "test"},
+            "items": [],
+            "semantic_candidates": [],
+            "total_available": 0,
+            "has_more": False,
+            "no_confident_match": True,
+        }
+        pack = EvidencePack.from_dict(old_data)
+        assert pack.diagnostics is None
+        assert pack.total_available == 0
+
+
+class TestDiagnosticsPathPrivacy:
+    """Diagnostics must not contain absolute paths."""
+
+    def test_diagnostics_no_absolute_paths(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(count=2, confidences=["high", "medium"])
+        diag = compute_diagnostics(result)
+        d = diag.to_dict()
+        diag_str = str(d)
+        assert "C:/" not in diag_str
+        assert "/home/" not in diag_str
+        assert not any("\\" in n for n in diag.notes)
+        assert not any("\\" in s for s in diag.suggestions)
