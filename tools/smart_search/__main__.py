@@ -43,7 +43,7 @@ def main() -> None:
         "--include-evidence",
         action="store_true",
         default=False,
-        help="Include full evidence pack in output",
+        help="Include evidence pack in output",
     )
     parser.add_argument(
         "--synthesize",

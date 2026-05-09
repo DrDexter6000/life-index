@@ -651,26 +651,91 @@ python -m tools.smart_search --query "..." [options]
 | query | string | ✅ | - | 自然语言搜索查询 |
 | no-llm | flag | ❌ | false | 强制降级模式（纯双管道，不调用 LLM） |
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情 |
-| include-evidence | flag | ❌ | false | 在输出中包含完整 evidence pack |
+| include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
 | synthesize | flag | ❌ | false | 生成引用支撑的自然语言答案（需要 LLM） |
 
 ### 返回值
+
+**默认输出**（无额外标志）：
 
 ```json
 {
   "success": true,
   "query": "我和女儿之间有哪些珍贵的回忆？",
-  "results": [...],
-  "total_found": 3,
-  "agent_decisions_summary": "5 decisions made",
-  "mode": "llm_orchestrated"
+  "rewritten_query": "我和女儿之间有哪些珍贵的回忆？",
+  "filtered_results": [
+    {"title": "...", "path": "...", "date": "...", "rrf_score": 0.85}
+  ],
+  "summary": "Found 3 journal entries about memories with your daughter.",
+  "citations": ["女儿生日", "亲子时光"],
+  "agent_decisions_summary": "3 decisions made",
+  "agent_unavailable": false,
+  "performance": {
+    "total_time_ms": 142.5,
+    "rewrite_time_ms": 30.0,
+    "filter_time_ms": 50.0,
+    "search_time_ms": 45.0,
+    "total_available": 3
+  }
 }
 ```
+
+#### 默认输出字段说明
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `success` | bool | 搜索是否成功执行 |
+| `query` | string | 用户原始查询 |
+| `rewritten_query` | string | LLM 改写后的查询（降级模式下等于原始查询） |
+| `filtered_results` | list[dict] | LLM 后置筛选的结果列表（降级模式下为原始检索结果） |
+| `summary` | string | LLM 生成的 2-3 句结果摘要（降级模式下为空） |
+| `citations` | list[string] | LLM 筛选阶段返回的文档标题列表 |
+| `agent_decisions_summary` | string | CLI 默认输出的 Agent 决策数量摘要；传递 `--explain` 时替换为 `agent_decisions` |
+| `agent_unavailable` | bool | `true` 表示 LLM 不可用，搜索已降级为纯双管道模式 |
+| `performance` | object | 性能指标（详见下方 `performance` 子字段表） |
+
+#### `--explain` 输出变化
+
+当传递 `--explain` 时，`agent_decisions_summary`（string）被替换为 `agent_decisions`（list[dict]），包含每个 LLM 决策阶段的详细记录。未传递 `--explain` 时，输出包含 `agent_decisions_summary`（如 `"3 decisions made"`），不含 `agent_decisions`。
+
+#### `performance` 子字段
+
+| 子字段 | 类型 | 条件 | 说明 |
+|--------|------|------|------|
+| `total_time_ms` | float | 始终 | 总搜索耗时（毫秒） |
+| `rewrite_time_ms` | float | LLM 改写发生时 | 查询改写阶段耗时 |
+| `filter_time_ms` | float | LLM 后筛发生时 | 后置筛选阶段耗时 |
+| `search_time_ms` | float | 始终 | 底层检索耗时 |
+| `total_available` | int | 始终 | 检索到的总结果数 |
+| `evidence_build_ms` | float | evidence 构建尝试时（`--include-evidence` 或 `--synthesize`） | Evidence pack 构建耗时 |
+| `evidence_error` | string | evidence 构建失败且 `--include-evidence` 时 | 构建失败错误信息 |
+| `synthesis_ms` | float | 答案合成尝试时（`--synthesize`） | 答案合成耗时 |
+
+> **稳定性说明**: `performance` 子字段集合可能在未来扩展。调用方应容忍未知键。
+
+#### Consumer Guidance（字段消费指引）
+
+| 字段 | Agent 消费者 | GUI 消费者 | 稳定性 |
+|------|-------------|-----------|--------|
+| `success` | 必须检查 | 必须检查 | **stable** |
+| `query` | 引用 | 展示 | **stable** |
+| `filtered_results` | 主要结果 | 展示 | **stable** |
+| `summary` | 可读摘要 | 展示 | **stable** |
+| `citations` | 引用来源 | 可点击链接 | **stable** |
+| `answer` / `answer.*` | 优先展示 | 优先展示 | **stable** |
+| `evidence_pack` | 按需 | 按需 | **stable** |
+| `rewritten_query` | 不需要 | 不需要 | **internal** — LLM 改写产物，消费者应使用 `query` |
+| `agent_unavailable` | 不需要 | 不需要 | **internal** — 诊断信号，UI 应从 `answer`/`summary` 存在性推断 |
+| `agent_decisions_summary` | 不需要 | 不需要 | **internal** — 仅调试用 |
+| `agent_decisions` | 不需要 | 不需要 | **internal** — 仅 `--explain` 时出现 |
+| `performance.*` | 不需要 | 可选（高级） | **non-stable** — 性能分析用，子字段可能扩展 |
+
+> **稳定性定义**: `stable` = 字段语义承诺不变；`internal` = 仅用于调试/诊断，可能在未来移除或改名；`non-stable` = 子字段集合可能扩展，消费者应容忍未知键。
 
 ### 说明
 
 - `SmartSearchOrchestrator` 三段式流程：前置改写 → 中间调用 search 原语 → 后置筛选 + 摘要
-- 降级模式 (`--no-llm` 或 LLM 不可用) 下等价于 `search --level 3`
+- 降级模式 (`--no-llm` 或 LLM 不可用，`agent_unavailable: true`) 下等价于 `search --level 3`
 - Data Minimization：候选仅送 title + abstract + snippet（≤200 chars），最多 15 条
 - 实现详见 `docs/ARCHITECTURE.md` §5.8
 
@@ -687,8 +752,10 @@ python -m tools.smart_search --query "..." [options]
 | `evidence_pack.semantic_candidates` | array | 纯语义候选列表（未进入主结果集的语义召回项） |
 | `evidence_pack.total_available` | int | 总可用结果数 |
 | `evidence_pack.has_more` | bool | 是否还有更多结果 |
-| `evidence_pack.no_confident_match` | bool | 是否无高置信度匹配 |
+| `evidence_pack.no_confident_match` | bool | **检索层级信号**：底层搜索管道是否未找到高置信度匹配。这是检索质量指标，不是答案质量信号。调用方不应将其等同于 `answer.confidence` 的判断依据 |
 | `performance.evidence_build_ms` | float | evidence pack 构建耗时（毫秒） |
+
+> **Forward-compatibility**: Evidence pack 的每个对象可能包含未在本文档中列出的额外字段（来自内部 `extra` 字典）。调用方应容忍未知字段，不应做严格 schema 校验。
 
 #### 最佳努力失败行为
 
@@ -708,12 +775,44 @@ Evidence pack 采用**最佳努力（best-effort）**策略：
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `answer.answer_text` | string | 回答用户查询的自然语言文本（2-4 句） |
-| `answer.citations` | string[] | 引用的文档相对路径列表（不含绝对路径） |
-| `answer.confidence` | string | 置信度：`high` / `medium` / `low` |
-| `answer.confidence_reason` | string | 置信度判定原因，由 validated citations 和 evidence context 计算（非 LLM 生成） |
-| `answer.limitations` | string[] | 答案局限性列表（如无有效引用、引用被丢弃、弱 evidence 等） |
+| `answer.citations` | string[] | 引用的文档相对路径列表（不含绝对路径），经 trust gate 验证 |
+| `answer.confidence` | string | 置信度：`high` / `medium` / `low`，经 trust gate 校准（非 LLM 自评） |
+| `answer.confidence_reason` | string | 置信度判定原因，由 orchestrator 根据 validated citations 和 evidence context **计算生成**（非 LLM 设定） |
+| `answer.limitations` | string[] | 答案局限性列表，由 orchestrator 根据 citation 验证结果**计算生成**（非 LLM 设定） |
 | `answer.evidence_summary` | string | 已验证引用的 evidence 摘要（title; source; confidence），无有效引用时为空字符串 |
-| `performance.synthesis_ms` | float | 答案生成耗时（毫秒），仅在合成尝试时出现 |
+
+> **信任边界**: `confidence_reason`、`limitations`、`evidence_summary` 由 orchestrator 在 trust gate 之后根据 validated citations 和 evidence context **计算生成**，LLM 不可直接设定。
+
+**含 `answer` 的返回示例：**
+
+```json
+{
+  "success": true,
+  "query": "我和女儿之间有哪些珍贵的回忆？",
+  "rewritten_query": "女儿 珍贵回忆 亲子时光",
+  "filtered_results": [...],
+  "summary": "...",
+  "citations": [],
+  "agent_unavailable": false,
+  "answer": {
+    "answer_text": "日记中记录了多次与女儿相处的珍贵时刻...",
+    "citations": ["Journals/2026/03/life-index_2026-03-06_001.md"],
+    "confidence": "medium",
+    "confidence_reason": "Answer supported by moderate-confidence evidence.",
+    "limitations": [],
+    "evidence_summary": "女儿生日; source: fts; confidence: medium"
+  },
+  "performance": {
+    "total_time_ms": 250.0,
+    "rewrite_time_ms": 30.0,
+    "filter_time_ms": 50.0,
+    "search_time_ms": 45.0,
+    "total_available": 3,
+    "evidence_build_ms": 20.0,
+    "synthesis_ms": 105.0
+  }
+}
+```
 
 #### 内部 Evidence 消费
 
@@ -745,20 +844,12 @@ LLM 返回的 citations 和 confidence 不会直接透传，而是经过 trust g
 
 #### 合成失败行为
 
-##### 透明度字段信任边界
-
-`confidence_reason`、`limitations`、`evidence_summary` 三个字段由 orchestrator 在 trust gate 之后根据 validated citations 和 evidence context **计算生成**，不允许 LLM 直接设定。具体规则：
-
-- `confidence_reason`：基于 valid_citations 数量和 cited evidence 的最高 confidence 等级推导
-- `limitations`：列举答案的局限性——无有效引用、引用被丢弃（幻觉路径）、弱 evidence confidence、整体低置信度等
-- `evidence_summary`：仅包含通过 trust gate 验证的引用的 evidence 摘要（title; source; confidence），用 ` | ` 分隔
-- 若无 valid citations：`limitations` 必须包含 "No validated citations support this answer"，`evidence_summary` 为空字符串
-
 Answer synthesis 采用**最佳努力（best-effort）**策略：
 
 - 若 LLM 不可用（`--no-llm` 或 LLM 初始化失败），`answer` 字段不存在，搜索结果正常返回
 - 若搜索结果为空，`answer` 字段不存在
 - 若 LLM 返回格式错误或合成过程异常，`answer` 字段不存在，搜索本身不受影响
+- 若内部 evidence 构建失败但 synthesis 仍尝试执行：`answer` 仍可能生成（基于 `filtered_results`），不视为搜索失败
 - `--synthesize` 不要求 `--include-evidence`；两者独立控制
 - `--synthesize` 内部构建 evidence 不等于输出包含 `evidence_pack`；后者仍需 `--include-evidence`
 
@@ -772,7 +863,9 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | `--include-evidence --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score） |
 | `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
 
-### Answer Evaluation Harness
+### Answer Evaluation Harness（Internal Developer Tooling，非 CLI Public API）
+
+> **注意**: `tools/eval/answer_eval.py` 是**内部开发者/评估工具**，不属于 CLI 公共 API。以下文档仅供开发者和评估流水线参考。GUI 或 Agent 消费者不应导入或依赖此模块。
 
 `tools/eval/answer_eval.py` 提供确定性 answer 级别评估工具。不依赖网络或 LLM 凭证，对 orchestrator 输出做离线质量分类。
 
