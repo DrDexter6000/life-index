@@ -1330,3 +1330,276 @@ def test_answer_eval_no_answer_returns_none():
 
     output = {"success": True, "filtered_results": []}
     assert evaluate_answer_from_orchestrator_output(output) is None
+
+
+# ---------------------------------------------------------------------------
+# S1D-B: Entity-hint context in rewrite prompt
+# ---------------------------------------------------------------------------
+
+
+class RewriteCapturingLLM:
+    """LLM that captures the rewrite prompt for inspection."""
+
+    def __init__(self):
+        self.rewrite_prompt: str | None = None
+
+    def chat(self, messages, *, max_tokens=2000):
+        import json
+
+        content = messages[0]["content"] if messages else ""
+        if "query analyzer" in content.lower():
+            self.rewrite_prompt = content
+            return json.dumps(
+                {
+                    "core_terms": "test",
+                    "expanded_terms": [],
+                    "time_range": None,
+                    "intent_type": "simple",
+                    "rewritten_query": "test",
+                }
+            )
+        return json.dumps(
+            {
+                "filtered_indices": [1],
+                "summary": "test",
+                "citations": [],
+            }
+        )
+
+
+def test_rewrite_prompt_includes_entity_context_with_hints():
+    """When entity hints match, _build_rewrite_prompt includes entity graph context."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=RewriteCapturingLLM())
+    hints = [
+        {
+            "entity_id": "lele",
+            "entity_type": "person",
+            "matched_term": "乐乐",
+            "expansion_terms": ["乐乐", "小乐乐"],
+        }
+    ]
+    prompt = orch._build_rewrite_prompt("乐乐的生日", entity_hints=hints)
+    assert "Local entity graph matches" in prompt
+    assert "lele" in prompt
+    assert "person" in prompt
+    assert "乐乐" in prompt
+    assert "小乐乐" in prompt
+
+
+def test_rewrite_prompt_no_entity_context_without_hints():
+    """When no entity hints, _build_rewrite_prompt has no entity graph context."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=RewriteCapturingLLM())
+    prompt = orch._build_rewrite_prompt("some random query", entity_hints=None)
+    assert "Local entity graph matches" not in prompt
+    assert "entity graph" not in prompt.lower()
+
+
+def test_rewrite_prompt_empty_hints_list_no_entity_context():
+    """When entity_hints=[], prompt has no entity graph context."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=RewriteCapturingLLM())
+    prompt = orch._build_rewrite_prompt("some random query", entity_hints=[])
+    assert "Local entity graph matches" not in prompt
+
+
+def test_rewrite_query_resolves_entity_hints_via_core():
+    """rewrite_query calls resolve_query_entities and passes hints to prompt."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    fake_llm = RewriteCapturingLLM()
+    orch = SmartSearchOrchestrator(llm_client=fake_llm)
+    mock_hints = [
+        {
+            "entity_id": "lele",
+            "entity_type": "person",
+            "matched_term": "乐乐",
+            "expansion_terms": ["乐乐"],
+        }
+    ]
+    with patch(
+        "tools.search_journals.core.resolve_query_entities",
+        return_value=mock_hints,
+    ):
+        orch.rewrite_query("乐乐")
+
+    assert fake_llm.rewrite_prompt is not None
+    assert "lele" in fake_llm.rewrite_prompt
+    assert "Local entity graph matches" in fake_llm.rewrite_prompt
+
+
+def test_rewrite_query_degradation_no_entity_call():
+    """Degradation mode (no LLM) returns raw query without entity resolution."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=None)
+    result = orch.rewrite_query("乐乐")
+    assert result["rewritten_query"] == "乐乐"
+    assert result["intent_type"] == "simple"
+
+
+def test_resolve_entity_hints_returns_bounded_fields():
+    """_resolve_entity_hints returns only safe, bounded fields."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator()
+    mock_hints = [
+        {
+            "entity_id": "beijing",
+            "entity_type": "place",
+            "matched_term": "北京",
+            "expansion_terms": ["北京", "Beijing", "京城"],
+            "reason": "primary_name_match",
+        }
+    ]
+    with patch(
+        "tools.search_journals.core.resolve_query_entities",
+        return_value=mock_hints,
+    ):
+        result = orch._resolve_entity_hints("北京")
+    assert len(result) == 1
+    h = result[0]
+    assert "entity_id" in h
+    assert "entity_type" in h
+    assert "matched_term" in h
+    assert "expansion_terms" in h
+    assert "reason" not in h
+
+
+def test_resolve_entity_hints_exception_returns_empty():
+    """_resolve_entity_hints returns [] on exception (e.g. no entity graph)."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator()
+    with patch(
+        "tools.search_journals.core.resolve_query_entities",
+        side_effect=Exception("no graph"),
+    ):
+        result = orch._resolve_entity_hints("anything")
+    assert result == []
+
+
+def test_multiple_entity_hints_in_prompt():
+    """Multiple entity hints produce multi-line context block."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=RewriteCapturingLLM())
+    hints = [
+        {
+            "entity_id": "lele",
+            "entity_type": "person",
+            "matched_term": "乐乐",
+            "expansion_terms": ["乐乐"],
+        },
+        {
+            "entity_id": "beijing",
+            "entity_type": "place",
+            "matched_term": "北京",
+            "expansion_terms": ["北京", "Beijing"],
+        },
+    ]
+    prompt = orch._build_rewrite_prompt("乐乐在北京", entity_hints=hints)
+    assert prompt.count("matched") == 2
+    assert "lele" in prompt
+    assert "beijing" in prompt
+
+
+def test_entity_hint_count_capped_at_five():
+    """More than 5 entity hints are truncated to 5 in _resolve_entity_hints."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    many_hints = [
+        {
+            "entity_id": f"e{i}",
+            "entity_type": "person",
+            "matched_term": f"term{i}",
+            "expansion_terms": [f"term{i}"],
+        }
+        for i in range(10)
+    ]
+    orch = SmartSearchOrchestrator()
+    with patch(
+        "tools.search_journals.core.resolve_query_entities",
+        return_value=many_hints,
+    ):
+        result = orch._resolve_entity_hints("big query")
+    assert len(result) == 5
+    assert result[0]["entity_id"] == "e0"
+    assert result[4]["entity_id"] == "e4"
+
+
+def test_expansion_terms_capped_at_three_per_hint():
+    """More than 3 expansion terms per hint are truncated in _resolve_entity_hints."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    hints = [
+        {
+            "entity_id": "lele",
+            "entity_type": "person",
+            "matched_term": "乐乐",
+            "expansion_terms": ["乐乐", "小乐乐", "乐宝", "乐儿", "小乐"],
+        }
+    ]
+    orch = SmartSearchOrchestrator()
+    with patch(
+        "tools.search_journals.core.resolve_query_entities",
+        return_value=hints,
+    ):
+        result = orch._resolve_entity_hints("乐乐")
+    assert len(result) == 1
+    assert len(result[0]["expansion_terms"]) == 3
+    assert result[0]["expansion_terms"] == ["乐乐", "小乐乐", "乐宝"]
+
+
+def test_expansion_term_length_capped():
+    """Expansion terms longer than 20 chars are truncated in _resolve_entity_hints."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    long_term = "A" * 30
+    hints = [
+        {
+            "entity_id": "test",
+            "entity_type": "person",
+            "matched_term": "test",
+            "expansion_terms": [long_term, "short"],
+        }
+    ]
+    orch = SmartSearchOrchestrator()
+    with patch(
+        "tools.search_journals.core.resolve_query_entities",
+        return_value=hints,
+    ):
+        result = orch._resolve_entity_hints("test")
+    assert len(result[0]["expansion_terms"][0]) == 20
+    assert result[0]["expansion_terms"][1] == "short"
+
+
+def test_rewrite_prompt_capped_entity_hints():
+    """_build_rewrite_prompt only includes up to 5 entity hints in the prompt."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=RewriteCapturingLLM())
+    hints = [
+        {
+            "entity_id": f"e{i}",
+            "entity_type": "person",
+            "matched_term": f"term{i}",
+            "expansion_terms": [f"exp{i}"],
+        }
+        for i in range(8)
+    ]
+    prompt = orch._build_rewrite_prompt("big query", entity_hints=hints)
+    assert prompt.count("matched") == 5
+    assert "e0" in prompt
+    assert "e4" in prompt
+    assert "e5" not in prompt

@@ -19,6 +19,10 @@ from typing import Any, Protocol
 
 from ..lib.search_constants import ORCHESTRATOR_MAX_LLM_CANDIDATES
 
+_MAX_ENTITY_HINTS = 5
+_MAX_EXPANSION_TERMS_PER_HINT = 3
+_MAX_EXPANSION_TERM_LENGTH = 20
+
 # Lazy import to avoid circular dependency — but store at module level for mocking
 _search_fn = None
 
@@ -113,6 +117,34 @@ class SmartSearchOrchestrator:
 
     # ── Stage 1: Query Rewriting ──────────────────────────────────────────
 
+    def _resolve_entity_hints(self, query: str) -> list[dict[str, Any]]:
+        """Resolve entity hints from the query using the deterministic entity graph.
+
+        Returns a bounded list of matched-entity dicts with safe fields only.
+        """
+        try:
+            from .core import resolve_query_entities
+
+            hints = resolve_query_entities(query)
+            bounded = []
+            for h in hints[:_MAX_ENTITY_HINTS]:
+                terms = [
+                    t[:_MAX_EXPANSION_TERM_LENGTH]
+                    for t in h["expansion_terms"][:_MAX_EXPANSION_TERMS_PER_HINT]
+                ]
+                bounded.append(
+                    {
+                        "entity_id": h["entity_id"],
+                        "entity_type": h["entity_type"],
+                        "matched_term": h["matched_term"],
+                        "expansion_terms": terms,
+                    }
+                )
+            return bounded
+        except Exception as e:
+            logger.debug(f"[Orchestrator] Entity hint resolution skipped: {e}")
+            return []
+
     def rewrite_query(self, query: str) -> dict[str, Any]:
         """Rewrite user query into structured intent.
 
@@ -137,7 +169,8 @@ class SmartSearchOrchestrator:
 
         try:
             start = time.time()
-            prompt = self._build_rewrite_prompt(query)
+            entity_hints = self._resolve_entity_hints(query)
+            prompt = self._build_rewrite_prompt(query, entity_hints=entity_hints)
             response = self._call_llm(prompt)
             parsed = self._parse_rewrite_response(response)
             parsed["latency_ms"] = (time.time() - start) * 1000
@@ -681,10 +714,33 @@ class SmartSearchOrchestrator:
         messages = [{"role": "user", "content": prompt}]
         return self._llm.chat(messages)
 
-    def _build_rewrite_prompt(self, query: str) -> str:
+    def _build_rewrite_prompt(
+        self,
+        query: str,
+        *,
+        entity_hints: list[dict[str, Any]] | None = None,
+    ) -> str:
+        entity_block = ""
+        if entity_hints:
+            lines = []
+            for h in entity_hints[:_MAX_ENTITY_HINTS]:
+                terms = ", ".join(
+                    t[:_MAX_EXPANSION_TERM_LENGTH]
+                    for t in h["expansion_terms"][:_MAX_EXPANSION_TERMS_PER_HINT]
+                )
+                lines.append(
+                    f"- matched \"{h['matched_term']}\" -> {h['entity_id']} "
+                    f"({h['entity_type']}); also known as: {terms}"
+                )
+            entity_block = (
+                "\n\nLocal entity graph matches for this query:\n"
+                + "\n".join(lines)
+                + "\nUse these when expanding terms."
+            )
         return (
             f"You are a search query analyzer. Analyze this search query and return JSON:\n"
-            f'Query: "{query}"\n\n'
+            f'Query: "{query}"\n'
+            f"{entity_block}\n"
             f"Return ONLY a JSON object with these fields:\n"
             f'- "core_terms": the main search terms\n'
             f'- "expanded_terms": list of related terms/synonyms\n'
