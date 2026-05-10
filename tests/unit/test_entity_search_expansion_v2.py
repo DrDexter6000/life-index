@@ -496,3 +496,40 @@ class TestPath23ExplicitAnd:
         assert expanded.endswith(")")
         assert "王某某" in expanded
         assert "AND" not in expanded
+
+
+class TestCaseInsensitiveExpansion:
+    """Entity expansion should work with different casing."""
+
+    def test_case_insensitive_alias_expansion(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("chongqing")
+
+        assert "重庆" in expanded
+
+    def test_case_insensitive_primary_name_expansion(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("CHONGQING")
+
+        assert "重庆" in expanded
+
+    def test_case_insensitive_resolve_query_entities(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        hints = resolve_query_entities("chongqing")
+
+        assert len(hints) == 1
+        assert hints[0]["entity_id"] == "chongqing"
+
+    def test_case_insensitive_substring_expansion(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("在chongqing发生的事")
+
+        assert "重庆" in expanded

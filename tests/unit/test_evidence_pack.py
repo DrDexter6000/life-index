@@ -2016,3 +2016,82 @@ class TestExpansionTermsMatching:
         assert em.query_matched_term == "Beijing"
         assert "北京" in em.matched_terms
         assert "Beijing" not in em.matched_terms
+
+
+class TestCaseInsensitiveEntityMatching:
+    """Entity match provenance should be case-insensitive."""
+
+    def test_case_insensitive_term_in_text(self) -> None:
+        hint = {
+            "matched_term": "talias",
+            "entity_id": "person-test-001",
+            "entity_type": "person",
+            "expansion_terms": ["TestPerson", "talias"],
+        }
+        result = {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Day",
+                    "date": "2026-03-07",
+                    "snippet": "Meeting with TAlias about project",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [hint],
+        }
+        pack = build_evidence_pack(result)
+        assert len(pack.items[0].entity_matches) == 1
+        em = pack.items[0].entity_matches[0]
+        assert em.entity_id == "person-test-001"
+        assert "talias" in em.matched_terms
+
+    def test_case_insensitive_preserves_original_term_strings(self) -> None:
+        hint = {
+            "matched_term": "beijing",
+            "entity_id": "beijing",
+            "entity_type": "place",
+            "expansion_terms": ["Beijing", "北京"],
+        }
+        result = {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Trip to BEIJING",
+                    "date": "2026-03-07",
+                    "snippet": "Went to beijing",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [hint],
+        }
+        pack = build_evidence_pack(result)
+        em = pack.items[0].entity_matches[0]
+        assert "Beijing" in em.matched_terms
+        assert em.query_matched_term == "beijing"

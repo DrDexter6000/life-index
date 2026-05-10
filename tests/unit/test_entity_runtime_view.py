@@ -11,10 +11,7 @@ Validates that build_runtime_view produces correct:
 
 from pathlib import Path
 
-import pytest
-
 from tools.lib.entity_runtime import (
-    EntityRuntimeView,
     build_runtime_view,
     load_runtime_view,
     resolve_via_runtime,
@@ -141,12 +138,12 @@ class TestBuildRuntimeView:
     def test_phrase_patterns_use_grandparent_relations(self) -> None:
         view = build_runtime_view(_sample_graph())
 
-        assert {
-            pattern["suffix"]: pattern["relation"] for pattern in view.phrase_patterns
-        }["的奶奶"] == "grandmother_of"
-        assert {
-            pattern["suffix"]: pattern["relation"] for pattern in view.phrase_patterns
-        }["的爷爷"] == "grandfather_of"
+        assert {pattern["suffix"]: pattern["relation"] for pattern in view.phrase_patterns}[
+            "的奶奶"
+        ] == "grandmother_of"
+        assert {pattern["suffix"]: pattern["relation"] for pattern in view.phrase_patterns}[
+            "的爷爷"
+        ] == "grandfather_of"
 
     def test_phrase_patterns_include_child_suffixes(self) -> None:
         view = build_runtime_view(_sample_graph())
@@ -200,6 +197,40 @@ class TestResolveViaRuntime:
         result = resolve_via_runtime("anything", view)
 
         assert result is None
+
+
+class TestCaseInsensitiveLookup:
+    """resolve_via_runtime should resolve entities case-insensitively."""
+
+    def test_alias_case_insensitive(self) -> None:
+        view = build_runtime_view(_sample_graph())
+        result = resolve_via_runtime("乐乐妈", view)
+        assert result is not None
+        assert result["id"] == "wife-001"
+
+    def test_alias_uppercase_resolved_case_insensitive(self) -> None:
+        view = build_runtime_view(_sample_graph())
+        result = resolve_via_runtime("CHONGQING", view)
+        assert result is not None
+        assert result["id"] == "chongqing"
+
+    def test_primary_name_mixed_case(self) -> None:
+        view = build_runtime_view(_sample_graph())
+        result = resolve_via_runtime("chongqing", view)
+        assert result is not None
+        assert result["id"] == "chongqing"
+
+    def test_id_lookup_still_exact(self) -> None:
+        view = build_runtime_view(_sample_graph())
+        result = resolve_via_runtime("wife-001", view)
+        assert result is not None
+        assert result["id"] == "wife-001"
+
+    def test_preserves_original_entity_payload(self) -> None:
+        view = build_runtime_view(_sample_graph())
+        result = resolve_via_runtime("CHONGQING", view)
+        assert result["primary_name"] == "重庆"
+        assert "Chongqing" in result["aliases"]
 
 
 class TestLoadRuntimeView:

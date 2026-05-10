@@ -296,13 +296,15 @@ def expand_query_with_entity_graph(query: str) -> str:
             # build the result from accepted spans so generated OR groups are
             # never scanned for additional matches.
             spans: list[tuple[int, int, dict[str, Any]]] = []
+            token_lower = token.lower()
             for entity in graph:
                 for name in [entity["primary_name"], *entity.get("aliases", [])]:
                     if len(str(name).strip()) < 2:
                         continue
+                    name_lower = name.lower()
                     pos = 0
                     while True:
-                        idx = token.find(name, pos)
+                        idx = token_lower.find(name_lower, pos)
                         if idx == -1:
                             break
                         spans.append((idx, idx + len(name), entity))

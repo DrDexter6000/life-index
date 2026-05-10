@@ -8,8 +8,10 @@ index and costs several seconds on Windows.
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -20,17 +22,34 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _run_smart_search(
     *extra_args: str,
     data_dir: Path,
+    timeout: int = 30,
 ) -> subprocess.CompletedProcess[str]:
-    """Run smart-search CLI as a subprocess with an isolated data dir."""
+    """Run smart-search CLI as a subprocess with an isolated data dir.
+
+    On timeout the child process is killed before re-raising so that
+    stale ``index.lock`` files are not left behind on Windows.
+    """
     env = {**os.environ, "LIFE_INDEX_DATA_DIR": str(data_dir)}
-    return subprocess.run(
+    proc = subprocess.Popen(
         [sys.executable, "-m", "tools.smart_search", *extra_args],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         cwd=str(REPO_ROOT),
         env=env,
-        timeout=30,
     )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(
+            args=proc.args,
+            returncode=proc.returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        raise
 
 
 def _json(proc: subprocess.CompletedProcess[str]) -> dict:
@@ -222,8 +241,8 @@ class TestSeededEntityMatchContract:
     """Seeded CLI subprocess contract: entity_matches appear in evidence items."""
 
     @pytest.fixture(scope="class")
-    def seeded_sandbox(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
-        data_dir = tmp_path_factory.mktemp("life-index-seeded") / "Life-Index"
+    def seeded_sandbox(self) -> Path:
+        data_dir = Path(tempfile.mkdtemp(prefix="life-index-seeded-")) / "Life-Index"
         journals = data_dir / "Journals" / "2026" / "03"
         journals.mkdir(parents=True, exist_ok=True)
         (data_dir / ".index").mkdir(parents=True, exist_ok=True)
@@ -253,7 +272,19 @@ class TestSeededEntityMatchContract:
             "Met TAlias for lunch.\n",
             encoding="utf-8",
         )
-        return data_dir
+
+        env = {**os.environ, "LIFE_INDEX_DATA_DIR": str(data_dir)}
+        build_proc = subprocess.run(
+            [sys.executable, "-m", "tools.build_index"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            env=env,
+            timeout=60,
+        )
+        assert build_proc.returncode == 0, f"build_index failed: stderr={build_proc.stderr}"
+        yield data_dir
+        shutil.rmtree(data_dir.parent, ignore_errors=True)
 
     @pytest.fixture(scope="class")
     def seeded_evidence_proc(self, seeded_sandbox: Path) -> subprocess.CompletedProcess[str]:
@@ -263,6 +294,7 @@ class TestSeededEntityMatchContract:
             "--no-llm",
             "--include-evidence",
             data_dir=seeded_sandbox,
+            timeout=120,
         )
 
     @pytest.fixture(scope="class")
@@ -272,6 +304,7 @@ class TestSeededEntityMatchContract:
             "TAlias",
             "--no-llm",
             data_dir=seeded_sandbox,
+            timeout=120,
         )
 
     def test_seeded_exit_zero(self, seeded_evidence_proc: subprocess.CompletedProcess[str]) -> None:
@@ -346,3 +379,83 @@ class TestEvidenceDiagnosticsContract:
         """Default output has no evidence_pack at all."""
         result = _json(default_proc)
         assert "evidence_pack" not in result
+
+
+class TestCaseInsensitiveSeededEntityMatchContract:
+    """Case-insensitive entity match: lowercase query matches seeded uppercase data."""
+
+    @pytest.fixture(scope="class")
+    def ci_sandbox(self) -> Path:
+        data_dir = Path(tempfile.mkdtemp(prefix="life-index-ci-")) / "Life-Index"
+        journals = data_dir / "Journals" / "2026" / "03"
+        journals.mkdir(parents=True, exist_ok=True)
+        (data_dir / ".index").mkdir(parents=True, exist_ok=True)
+        (data_dir / ".cache").mkdir(parents=True, exist_ok=True)
+
+        entity_graph = data_dir / "entity_graph.yaml"
+        entity_graph.write_text(
+            "entities:\n"
+            "- id: person-ci-001\n"
+            "  type: person\n"
+            "  primary_name: TestCasePerson\n"
+            "  aliases:\n"
+            "  - TCI\n"
+            "  - CaseAlias\n",
+            encoding="utf-8",
+        )
+
+        journal = journals / "life-index_2026-03-16_001.md"
+        journal.write_text(
+            "---\n"
+            "title: Case insensitive entity match test\n"
+            "date: '2026-03-16'\n"
+            "topic:\n"
+            "- test\n"
+            "abstract: Meeting with CaseAlias about project\n"
+            "---\n"
+            "Met CaseAlias for lunch.\n",
+            encoding="utf-8",
+        )
+
+        env = {**os.environ, "LIFE_INDEX_DATA_DIR": str(data_dir)}
+        build_proc = subprocess.run(
+            [sys.executable, "-m", "tools.build_index"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            env=env,
+            timeout=60,
+        )
+        assert (
+            build_proc.returncode == 0
+        ), f"build_index failed: stderr={build_proc.stderr}, stdout={build_proc.stdout}"
+        yield data_dir
+        shutil.rmtree(data_dir.parent, ignore_errors=True)
+
+    @pytest.fixture(scope="class")
+    def ci_evidence_proc(self, ci_sandbox: Path) -> subprocess.CompletedProcess[str]:
+        return _run_smart_search(
+            "--query",
+            "casealias",
+            "--no-llm",
+            "--include-evidence",
+            data_dir=ci_sandbox,
+            timeout=120,
+        )
+
+    def test_ci_exit_zero(self, ci_evidence_proc: subprocess.CompletedProcess[str]) -> None:
+        assert ci_evidence_proc.returncode == 0, f"stderr: {ci_evidence_proc.stderr}"
+
+    def test_ci_entity_matches_nonempty(
+        self, ci_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(ci_evidence_proc)
+        assert result["success"] is True
+        pack = result.get("evidence_pack")
+        assert pack is not None, "evidence_pack missing with --include-evidence on ci sandbox"
+        items = pack.get("items", [])
+        has_entity_matches = any(item.get("entity_matches") for item in items)
+        assert has_entity_matches, (
+            f"No evidence item had non-empty entity_matches for case-insensitive query. "
+            f"Items: {len(items)}"
+        )

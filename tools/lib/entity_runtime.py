@@ -382,6 +382,7 @@ def build_runtime_view(graph: list[dict[str, Any]]) -> EntityRuntimeView:
         }
         for key in lookup_keys:
             by_lookup[key] = entity
+            by_lookup[key.lower()] = entity
 
         for rel in entity.get("relationships", []):
             target_id = rel["target"]
@@ -416,6 +417,10 @@ def load_runtime_view(graph_path: Path) -> EntityRuntimeView:
 def resolve_via_runtime(query: str, view: EntityRuntimeView) -> dict[str, Any] | None:
     """Resolve an entity by any lookup key using the runtime view.
 
+    Lookup is case-insensitive: query keys are normalized to lowercase
+    before dictionary lookup. Original entity payload values (primary_name,
+    aliases) are preserved in the returned dict.
+
     Args:
         query: id, primary_name, or alias to look up.
         view: The runtime view to search.
@@ -423,7 +428,11 @@ def resolve_via_runtime(query: str, view: EntityRuntimeView) -> dict[str, Any] |
     Returns:
         Entity dict if found, None otherwise.
     """
-    return view.by_lookup.get(query.strip())
+    stripped = query.strip()
+    result = view.by_lookup.get(stripped)
+    if result is not None:
+        return result
+    return view.by_lookup.get(stripped.lower())
 
 
 # Backward-compat alias for code that imports _expand_related_entities

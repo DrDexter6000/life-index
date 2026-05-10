@@ -873,7 +873,7 @@ python -m tools.smart_search --query "..." [options]
 
 **匹配语义（S1-C 实测确认）：**
 
-- **大小写敏感**：使用 Python `str.__contains__`（`term in text`）进行子串匹配，不做 `.lower()` 归一化。`talias` 不会匹配 `TAlias`
+- **大小写不敏感**：实体图谱查找（`resolve_via_runtime`）、确定性查询扩展（`expand_query_with_entity_graph`、`resolve_query_entities`）以及证据实体匹配溯源（`_build_entity_matches`）均使用 `.lower()` 归一化进行匹配。`life index` 与 `Life Index` 和 `LIFE INDEX` 等效。原始实体名称/别名在输出（`matched_terms`、`primary_name`、`aliases`）中保留原始大小写
 - **子串匹配**：匹配基于子串包含，而非整词边界。短别名（如 1-2 字符）可能匹配到无关文本，调用方在消费 `entity_matches` 时应注意此误报风险
 - **abstract + metadata 双重归因**：`metadata.abstract`（或 `metadata.summary`）的文本同时出现在 `abstract` 和 `metadata` 两个来源字段中，导致 `match_sources` 可能包含 `["abstract", "metadata"]` 双重归因。这是确定性文本扫描的正常结果，不代表独立匹配
 - **`metadata` 源聚合**：`metadata` 源字段由 frontmatter 中所有字符串值（含列表元素）拼接而成，覆盖 `location`、`weather`、`people`、`tags` 等全部元数据字段
