@@ -317,6 +317,33 @@ class QueryContext:
 
 
 # ---------------------------------------------------------------------------
+# PipelineComposition
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PipelineComposition:
+    """Deterministic classification of which pipelines contributed results."""
+
+    primary_pipeline: str  # "none", "fts", "semantic", "hybrid"
+    extra: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    _KNOWN_KEYS = frozenset({"primary_pipeline"})
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PipelineComposition:
+        return cls(
+            primary_pipeline=str(data.get("primary_pipeline", "none")),
+            extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"primary_pipeline": self.primary_pipeline}
+        d.update(self.extra)
+        return d
+
+
+# ---------------------------------------------------------------------------
 # EvidenceDiagnostics
 # ---------------------------------------------------------------------------
 
@@ -334,6 +361,7 @@ class EvidenceDiagnostics:
     outcome_reason: str = ""
     notes: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
+    pipeline_composition: PipelineComposition | None = None
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     _KNOWN_KEYS = frozenset(
@@ -342,16 +370,21 @@ class EvidenceDiagnostics:
             "outcome_reason",
             "notes",
             "suggestions",
+            "pipeline_composition",
         }
     )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EvidenceDiagnostics:
+        pipeline_composition = None
+        if "pipeline_composition" in data and data["pipeline_composition"] is not None:
+            pipeline_composition = PipelineComposition.from_dict(data["pipeline_composition"])
         return cls(
             retrieval_outcome=str(data.get("retrieval_outcome", "ok")),
             outcome_reason=str(data.get("outcome_reason", "")),
             notes=list(data.get("notes", [])),
             suggestions=list(data.get("suggestions", [])),
+            pipeline_composition=pipeline_composition,
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
 
@@ -365,6 +398,8 @@ class EvidenceDiagnostics:
             d["notes"] = self.notes
         if self.suggestions:
             d["suggestions"] = self.suggestions
+        if self.pipeline_composition is not None:
+            d["pipeline_composition"] = self.pipeline_composition.to_dict()
         d.update(self.extra)
         return d
 

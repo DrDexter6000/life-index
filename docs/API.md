@@ -770,14 +770,15 @@ python -m tools.smart_search --query "..." [options]
 | `outcome_reason` | string | 当前分类的具体原因（见下表） |
 | `notes` | string[] | 上下文观察（如置信度分布、截断信息）。为空时省略 |
 | `suggestions` | string[] | 改善检索的可操作建议。为空时省略 |
+| `pipeline_composition` | object | 参与本次检索的管道组成。见下方 Pipeline Composition 子节 |
 
 **`retrieval_outcome` 枚举值：**
 
 | 值 | 含义 | 触发条件 |
 |----|------|----------|
 | `ok` | 检索正常，有高或中置信度结果 | 至少一个 item confidence 为 `high` 或 `medium` |
-| `weak_results` | 有结果但置信度全部较低 | 全部 low confidence，且 `no_confident_match` 为 false |
-| `no_confident_match` | 搜索核心标记无高置信匹配 | `no_confident_match` 为 true |
+| `weak_results` | 有结果但质量较弱 | 全部 low confidence 且 `no_confident_match` 为 false；或 S1-A 语义-only moderate-confidence 场景 |
+| `no_confident_match` | 搜索核心标记无高置信匹配 | `no_confident_match` 为 true，且不属于 S1-A 语义-only moderate-confidence 场景 |
 | `zero_results` | 无任何检索结果 | `merged_results` 为空 |
 
 **`outcome_reason` 枚举值：**
@@ -787,10 +788,34 @@ python -m tools.smart_search --query "..." [options]
 | `confident_results_present` | `ok` | 存在 medium/high 置信度结果 |
 | `all_items_low_confidence_full_recall` | `weak_results` | 全部 low，total 等于 items 数（已全量召回） |
 | `low_confidence_with_potential_under_recall` | `weak_results` | 全部 low，total > items 数（可能还有更多未召回） |
+| `semantic_only_moderate_confidence_no_fts_support` | `weak_results` | S1-A：`no_confident_match` 为 true，但结果全来自语义管道且存在 medium/high confidence，FTS 管道未提供匹配 |
 | `all_items_low_confidence` | `no_confident_match` | `no_confident_match` flag 且全部 low |
-| `search_core_flagged_no_confident` | `no_confident_match` | `no_confident_match` flag 但存在 medium/high |
+| `search_core_flagged_no_confident` | `no_confident_match` | `no_confident_match` flag 但存在 medium/high，且非语义-only 场景 |
 | `no_matches_found` | `zero_results` | 两个管道均无结果 |
 | `results_truncated_before_delivery` | `zero_results` | total_available > 0 但 items 为空 |
+
+**S1-A 分类语义（语义-only moderate-confidence）：**
+
+当搜索核心设置 `no_confident_match=true` 时，诊断层做进一步细分：
+
+- 若所有结果 confidence 均为 `low` → 仍归类为 `no_confident_match`（`all_items_low_confidence`）
+- 若存在 `medium`/`high` confidence 结果，且**所有结果均来自语义管道**（无 FTS 支撑）→ 归类为 `weak_results`（`semantic_only_moderate_confidence_no_fts_support`）。这表示结果在语义上相关，但缺乏关键词确认，是可行动的降级状态
+- 若存在 `medium`/`high` confidence 结果，且有 FTS 支撑（hybrid 或纯 FTS）→ 仍归类为 `no_confident_match`（`search_core_flagged_no_confident`）
+
+**Pipeline Composition（`pipeline_composition`）：**
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `primary_pipeline` | string enum | `none` / `fts` / `semantic` / `hybrid` |
+
+`primary_pipeline` 的判定规则（从 `merged_results` 的 `source` 字段确定性推导）：
+
+| 值 | 条件 |
+|----|------|
+| `none` | `merged_results` 为空，或所有 item 的 `source` 均不含 `fts` 或 `semantic` |
+| `fts` | 至少一个 item 的 `source` 含 `fts`，且无任何 item 的 `source` 含 `semantic` |
+| `semantic` | 至少一个 item 的 `source` 含 `semantic`，且无任何 item 的 `source` 含 `fts` |
+| `hybrid` | 至少一个 item 的 `source` 含 `fts`，且至少一个 item 的 `source` 含 `semantic`（含 `fts,semantic` 合并 source） |
 
 **Consumer Guidance（消费指引）：**
 

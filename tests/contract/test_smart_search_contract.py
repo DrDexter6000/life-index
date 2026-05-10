@@ -575,3 +575,74 @@ class TestEvidencePackDiagnostics:
         orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
         result = orch.search("test query")
         assert "evidence_pack" not in result
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_hierarchical_search,
+    )
+    @patch("tools.evidence.adapter.extract_evidence_from_orchestrator")
+    def test_diagnostics_includes_pipeline_composition(self, mock_ev, _mock):
+        """Evidence pack diagnostics includes additive pipeline_composition field.
+
+        Asserts the additive contract: pipeline_composition is present alongside
+        all other standard diagnostic fields without replacing or omitting them.
+        """
+        from tools.evidence.types import (
+            DocumentRef,
+            EvidenceDiagnostics,
+            EvidenceItem,
+            EvidencePack,
+            PipelineComposition,
+            QueryContext,
+            ScoreBreakdown,
+        )
+
+        pack = EvidencePack(
+            query_context=QueryContext(query="test"),
+            items=[
+                EvidenceItem(
+                    document=DocumentRef(
+                        doc_id="1",
+                        title="Test",
+                        path="Journals/2026/03/test.md",
+                        date="2026-03-06",
+                    ),
+                    scores=ScoreBreakdown(source="fts", rank=1, confidence="high"),
+                    snippet="test snippet",
+                )
+            ],
+            semantic_candidates=[],
+            total_available=1,
+            has_more=False,
+            no_confident_match=False,
+            diagnostics=EvidenceDiagnostics(
+                retrieval_outcome="ok",
+                outcome_reason="confident_results_present",
+                pipeline_composition=PipelineComposition(primary_pipeline="fts"),
+            ),
+        )
+        mock_ev.return_value = pack
+
+        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        result = orch.search("test query", include_evidence=True)
+
+        assert "evidence_pack" in result
+        diag = result["evidence_pack"]["diagnostics"]
+
+        # Additive contract: pipeline_composition is present
+        assert "pipeline_composition" in diag
+        assert diag["pipeline_composition"]["primary_pipeline"] in (
+            "none",
+            "fts",
+            "semantic",
+            "hybrid",
+        )
+
+        # Additive contract: all other standard fields remain intact
+        assert "retrieval_outcome" in diag
+        assert diag["retrieval_outcome"] == "ok"
+        assert "outcome_reason" in diag
+        assert diag["outcome_reason"] == "confident_results_present"
+        # notes/suggestions are empty for ok outcome → serializer omits them
+        assert "notes" not in diag
+        assert "suggestions" not in diag

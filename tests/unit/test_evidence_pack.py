@@ -22,6 +22,7 @@ from tools.evidence.types import (
     EvidenceDiagnostics,
     EvidenceItem,
     EvidencePack,
+    PipelineComposition,
     QueryContext,
     ScoreBreakdown,
     SemanticCandidate,
@@ -937,6 +938,52 @@ class TestPathPrivacy:
 
 
 # ---------------------------------------------------------------------------
+# PipelineComposition
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineComposition:
+    """PipelineComposition round-trip and values."""
+
+    def test_none(self) -> None:
+        pc = PipelineComposition(primary_pipeline="none")
+        d = pc.to_dict()
+        assert d["primary_pipeline"] == "none"
+        pc2 = PipelineComposition.from_dict(d)
+        assert pc2 == pc
+
+    def test_fts(self) -> None:
+        pc = PipelineComposition(primary_pipeline="fts")
+        d = pc.to_dict()
+        assert d["primary_pipeline"] == "fts"
+        pc2 = PipelineComposition.from_dict(d)
+        assert pc2 == pc
+
+    def test_semantic(self) -> None:
+        pc = PipelineComposition(primary_pipeline="semantic")
+        d = pc.to_dict()
+        assert d["primary_pipeline"] == "semantic"
+        pc2 = PipelineComposition.from_dict(d)
+        assert pc2 == pc
+
+    def test_hybrid(self) -> None:
+        pc = PipelineComposition(primary_pipeline="hybrid")
+        d = pc.to_dict()
+        assert d["primary_pipeline"] == "hybrid"
+        pc2 = PipelineComposition.from_dict(d)
+        assert pc2 == pc
+
+    def test_extra_survives(self) -> None:
+        pc = PipelineComposition(
+            primary_pipeline="hybrid", extra={"detailed_sources": ["fts", "semantic"]}
+        )
+        d = pc.to_dict()
+        assert d["detailed_sources"] == ["fts", "semantic"]
+        pc2 = PipelineComposition.from_dict(d)
+        assert pc2.extra["detailed_sources"] == ["fts", "semantic"]
+
+
+# ---------------------------------------------------------------------------
 # EvidenceDiagnostics
 # ---------------------------------------------------------------------------
 
@@ -995,6 +1042,27 @@ class TestEvidenceDiagnostics:
         }
         diag = EvidenceDiagnostics.from_dict(d)
         assert diag.extra["future_field"] == "future_value"
+
+    def test_round_trip_with_pipeline_composition(self) -> None:
+        diag = EvidenceDiagnostics(
+            retrieval_outcome="ok",
+            outcome_reason="confident_results_present",
+            pipeline_composition=PipelineComposition(primary_pipeline="hybrid"),
+        )
+        d = diag.to_dict()
+        assert d["pipeline_composition"]["primary_pipeline"] == "hybrid"
+        diag2 = EvidenceDiagnostics.from_dict(d)
+        assert diag2.pipeline_composition is not None
+        assert diag2.pipeline_composition.primary_pipeline == "hybrid"
+
+    def test_pipeline_composition_none_omitted_in_dict(self) -> None:
+        diag = EvidenceDiagnostics(
+            retrieval_outcome="zero_results",
+            outcome_reason="no_matches_found",
+            pipeline_composition=None,
+        )
+        d = diag.to_dict()
+        assert "pipeline_composition" not in d
 
 
 # ---------------------------------------------------------------------------
@@ -1178,6 +1246,141 @@ class TestComputeDiagnostics:
         pack = EvidencePack.from_dict(old_data)
         assert pack.diagnostics is None
         assert pack.total_available == 0
+
+    # --- S1-A: semantic-only moderate-confidence no_confident_match → weak_results ---
+
+    def test_s1a_semantic_only_medium_confidence_becomes_weak_results(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            no_confident_match=True,
+            confidences=["medium", "medium"],
+        )
+        # Override source to semantic-only
+        for item in result["merged_results"]:
+            item["source"] = "semantic"
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "weak_results"
+        assert diag.outcome_reason == "semantic_only_moderate_confidence_no_fts_support"
+        assert diag.pipeline_composition is not None
+        assert diag.pipeline_composition.primary_pipeline == "semantic"
+
+    def test_s1a_semantic_only_high_confidence_becomes_weak_results(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=1,
+            no_confident_match=True,
+            confidences=["high"],
+        )
+        result["merged_results"][0]["source"] = "semantic"
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "weak_results"
+        assert diag.outcome_reason == "semantic_only_moderate_confidence_no_fts_support"
+
+    def test_s1a_all_low_remains_no_confident_match(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            no_confident_match=True,
+            confidences=["low", "low"],
+        )
+        for item in result["merged_results"]:
+            item["source"] = "semantic"
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "no_confident_match"
+        assert diag.outcome_reason == "all_items_low_confidence"
+
+    def test_s1a_hybrid_with_medium_stays_no_confident_match(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            no_confident_match=True,
+            confidences=["medium", "low"],
+        )
+        result["merged_results"][0]["source"] = "fts,semantic"
+        result["merged_results"][1]["source"] = "semantic"
+        diag = compute_diagnostics(result)
+        assert diag.retrieval_outcome == "no_confident_match"
+        assert diag.outcome_reason == "search_core_flagged_no_confident"
+
+    # --- S1-B: pipeline_composition ---
+
+    def test_pipeline_composition_none(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(count=0, total_available=0, no_confident_match=True)
+        diag = compute_diagnostics(result)
+        assert diag.pipeline_composition is not None
+        assert diag.pipeline_composition.primary_pipeline == "none"
+
+    def test_pipeline_composition_fts(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            no_confident_match=False,
+            confidences=["high", "medium"],
+        )
+        for item in result["merged_results"]:
+            item["source"] = "fts"
+        diag = compute_diagnostics(result)
+        assert diag.pipeline_composition is not None
+        assert diag.pipeline_composition.primary_pipeline == "fts"
+
+    def test_pipeline_composition_semantic(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            no_confident_match=False,
+            confidences=["medium", "medium"],
+        )
+        for item in result["merged_results"]:
+            item["source"] = "semantic"
+        diag = compute_diagnostics(result)
+        assert diag.pipeline_composition is not None
+        assert diag.pipeline_composition.primary_pipeline == "semantic"
+
+    def test_pipeline_composition_hybrid(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            no_confident_match=False,
+            confidences=["high", "medium"],
+        )
+        result["merged_results"][0]["source"] = "fts"
+        result["merged_results"][1]["source"] = "semantic"
+        diag = compute_diagnostics(result)
+        assert diag.pipeline_composition is not None
+        assert diag.pipeline_composition.primary_pipeline == "hybrid"
+
+    def test_pipeline_composition_hybrid_from_fts_semantic_source(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=1,
+            no_confident_match=False,
+            confidences=["high"],
+        )
+        result["merged_results"][0]["source"] = "fts,semantic"
+        diag = compute_diagnostics(result)
+        assert diag.pipeline_composition is not None
+        assert diag.pipeline_composition.primary_pipeline == "hybrid"
+
+    def test_pipeline_composition_round_trip_through_pack(self) -> None:
+        result = _synthetic_search_result()
+        pack = build_evidence_pack(result)
+        d = pack.to_dict()
+        assert "pipeline_composition" in d["diagnostics"]
+        pack2 = EvidencePack.from_dict(d)
+        assert pack2.diagnostics is not None
+        assert pack2.diagnostics.pipeline_composition is not None
+        assert pack2.diagnostics.pipeline_composition.primary_pipeline == "hybrid"
 
 
 class TestDiagnosticsPathPrivacy:

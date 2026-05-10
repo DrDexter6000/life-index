@@ -15,6 +15,7 @@ from tools.evidence.types import (
     EvidenceDiagnostics,
     EvidenceItem,
     EvidencePack,
+    PipelineComposition,
     QueryContext,
     ScoreBreakdown,
     SemanticCandidate,
@@ -166,6 +167,28 @@ def _build_semantic_candidate(result: dict[str, Any], rank: int) -> SemanticCand
     )
 
 
+def _compute_pipeline_composition(items: list[dict[str, Any]]) -> PipelineComposition:
+    """Determine primary pipeline from merged_results source fields.
+
+    Values: none, fts, semantic, hybrid.
+    Deterministic — no filesystem, search, or LLM calls.
+    """
+    if not items:
+        return PipelineComposition(primary_pipeline="none")
+
+    sources = [str(r.get("source", "none")) for r in items]
+    has_fts = any("fts" in s for s in sources)
+    has_semantic = any("semantic" in s for s in sources)
+
+    if has_fts and has_semantic:
+        return PipelineComposition(primary_pipeline="hybrid")
+    if has_fts:
+        return PipelineComposition(primary_pipeline="fts")
+    if has_semantic:
+        return PipelineComposition(primary_pipeline="semantic")
+    return PipelineComposition(primary_pipeline="none")
+
+
 def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
     """Compute deterministic retrieval diagnostics from search result fields.
 
@@ -179,6 +202,9 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
     # Determine per-item confidence distribution
     confidences = [str(r.get("confidence", "low")) for r in items]
 
+    # S1-B: pipeline composition from existing merged_results fields
+    pipeline_composition = _compute_pipeline_composition(items)
+
     # zero_results: no items and no available
     if len(items) == 0 and total_available == 0:
         return EvidenceDiagnostics(
@@ -190,6 +216,7 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
                 "Check spelling and entity names.",
                 "Verify the data directory has indexed journals.",
             ],
+            pipeline_composition=pipeline_composition,
         )
 
     # zero_results edge: no items but total_available > 0 (presentation truncation)
@@ -201,12 +228,15 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
                 f"total_available={total_available} but merged_results is empty.",
             ],
             suggestions=["Increase --limit to retrieve available results."],
+            pipeline_composition=pipeline_composition,
         )
 
     # no_confident_match flag set by search core
     if no_confident_match:
         has_high = "high" in confidences
         has_medium = "medium" in confidences
+
+        # S1-A: all-low remains no_confident_match
         if not has_high and not has_medium:
             return EvidenceDiagnostics(
                 retrieval_outcome="no_confident_match",
@@ -219,7 +249,31 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
                     "Results may not directly address the query intent.",
                     "Consider rephrasing with more specific terms.",
                 ],
+                pipeline_composition=pipeline_composition,
             )
+
+        # S1-A: semantic-only moderate-confidence → weak_results
+        sources = [str(r.get("source", "none")) for r in items]
+        has_fts = any("fts" in s for s in sources)
+        is_semantic_only = len(items) > 0 and not has_fts
+        if is_semantic_only and (has_medium or has_high):
+            return EvidenceDiagnostics(
+                retrieval_outcome="weak_results",
+                outcome_reason="semantic_only_moderate_confidence_no_fts_support",
+                notes=[
+                    f"Results present ({len(items)}) with medium/high confidence "
+                    "from semantic pipeline only.",
+                    "no_confident_match flag is True because FTS pipeline provided "
+                    "no supporting matches.",
+                ],
+                suggestions=[
+                    "Results are semantically relevant but lack keyword confirmation.",
+                    "Consider rephrasing with more specific or common terms.",
+                ],
+                pipeline_composition=pipeline_composition,
+            )
+
+        # Mixed confidence with FTS support → stays no_confident_match
         return EvidenceDiagnostics(
             retrieval_outcome="no_confident_match",
             outcome_reason="search_core_flagged_no_confident",
@@ -231,6 +285,7 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
                 "Top results may not be the best match for the query.",
                 "Review semantic_candidates for potentially relevant items.",
             ],
+            pipeline_composition=pipeline_composition,
         )
 
     # weak_results: items exist but no high-confidence, and total fits in one page
@@ -248,6 +303,7 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
                 "Query may be too vague or match tangential content.",
                 "Try adding time range or entity filters.",
             ],
+            pipeline_composition=pipeline_composition,
         )
 
     # ok: at least some high or medium confidence results
@@ -257,6 +313,7 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
             outcome_reason="confident_results_present",
             notes=[],
             suggestions=[],
+            pipeline_composition=pipeline_composition,
         )
 
     # Default: low confidence items but possibly more available (under-recall hint)
@@ -270,6 +327,7 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
         suggestions=[
             "Consider increasing result limit to capture more candidates.",
         ],
+        pipeline_composition=pipeline_composition,
     )
 
 
