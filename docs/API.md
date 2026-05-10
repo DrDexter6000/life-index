@@ -724,6 +724,7 @@ python -m tools.smart_search --query "..." [options]
 | `citations` | 引用来源 | 可点击链接 | **stable** |
 | `answer` / `answer.*` | 优先展示 | 优先展示 | **stable** |
 | `evidence_pack` | 按需 | 按需 | **stable** |
+| `evidence_pack.items[].entity_matches` | 按需 | 按需 | **stable**，实体匹配溯源；消费者应容忍缺失字段 |
 | `rewritten_query` | 不需要 | 不需要 | **internal** — LLM 改写产物，消费者应使用 `query` |
 | `agent_unavailable` | 不需要 | 不需要 | **internal** — 诊断信号，UI 应从 `answer`/`summary` 存在性推断 |
 | `agent_decisions_summary` | 不需要 | 不需要 | **internal** — 仅调试用 |
@@ -869,6 +870,13 @@ python -m tools.smart_search --query "..." [options]
 - `query_matched_term` 始终保留原始 `matched_term`，即使 item 中只匹配到了 `expansion_terms` 里的别名
 - 当 `entity_matches` 为空数组时，序列化输出中省略此字段
 - 旧 payload（无 `entity_matches`）仍可正常反序列化
+
+**匹配语义（S1-C 实测确认）：**
+
+- **大小写敏感**：使用 Python `str.__contains__`（`term in text`）进行子串匹配，不做 `.lower()` 归一化。`talias` 不会匹配 `TAlias`
+- **子串匹配**：匹配基于子串包含，而非整词边界。短别名（如 1-2 字符）可能匹配到无关文本，调用方在消费 `entity_matches` 时应注意此误报风险
+- **abstract + metadata 双重归因**：`metadata.abstract`（或 `metadata.summary`）的文本同时出现在 `abstract` 和 `metadata` 两个来源字段中，导致 `match_sources` 可能包含 `["abstract", "metadata"]` 双重归因。这是确定性文本扫描的正常结果，不代表独立匹配
+- **`metadata` 源聚合**：`metadata` 源字段由 frontmatter 中所有字符串值（含列表元素）拼接而成，覆盖 `location`、`weather`、`people`、`tags` 等全部元数据字段
 
 #### 最佳努力失败行为
 

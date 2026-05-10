@@ -218,6 +218,99 @@ class TestHelpContract:
         assert "--explain" in help_proc.stdout
 
 
+class TestSeededEntityMatchContract:
+    """Seeded CLI subprocess contract: entity_matches appear in evidence items."""
+
+    @pytest.fixture(scope="class")
+    def seeded_sandbox(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
+        data_dir = tmp_path_factory.mktemp("life-index-seeded") / "Life-Index"
+        journals = data_dir / "Journals" / "2026" / "03"
+        journals.mkdir(parents=True, exist_ok=True)
+        (data_dir / ".index").mkdir(parents=True, exist_ok=True)
+        (data_dir / ".cache").mkdir(parents=True, exist_ok=True)
+
+        entity_graph = data_dir / "entity_graph.yaml"
+        entity_graph.write_text(
+            "entities:\n"
+            "- id: person-test-001\n"
+            "  type: person\n"
+            "  primary_name: TestPerson\n"
+            "  aliases:\n"
+            "  - TP\n"
+            "  - TAlias\n",
+            encoding="utf-8",
+        )
+
+        journal = journals / "life-index_2026-03-15_001.md"
+        journal.write_text(
+            "---\n"
+            "title: Seeded entity match test\n"
+            "date: '2026-03-15'\n"
+            "topic:\n"
+            "- test\n"
+            "abstract: Meeting with TAlias about project\n"
+            "---\n"
+            "Met TAlias for lunch.\n",
+            encoding="utf-8",
+        )
+        return data_dir
+
+    @pytest.fixture(scope="class")
+    def seeded_evidence_proc(self, seeded_sandbox: Path) -> subprocess.CompletedProcess[str]:
+        return _run_smart_search(
+            "--query",
+            "TAlias",
+            "--no-llm",
+            "--include-evidence",
+            data_dir=seeded_sandbox,
+        )
+
+    @pytest.fixture(scope="class")
+    def seeded_default_proc(self, seeded_sandbox: Path) -> subprocess.CompletedProcess[str]:
+        return _run_smart_search(
+            "--query",
+            "TAlias",
+            "--no-llm",
+            data_dir=seeded_sandbox,
+        )
+
+    def test_seeded_exit_zero(self, seeded_evidence_proc: subprocess.CompletedProcess[str]) -> None:
+        assert seeded_evidence_proc.returncode == 0, f"stderr: {seeded_evidence_proc.stderr}"
+
+    def test_seeded_entity_matches_nonempty(
+        self, seeded_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(seeded_evidence_proc)
+        assert result["success"] is True
+        pack = result.get("evidence_pack")
+        assert pack is not None, "evidence_pack missing with --include-evidence on seeded data"
+        items = pack.get("items", [])
+        has_entity_matches = any(item.get("entity_matches") for item in items)
+        assert has_entity_matches, (
+            f"No evidence item had non-empty entity_matches. "
+            f"Items: {len(items)}, "
+            f"entity_hints: {pack.get('query_context', {}).get('entity_hints', [])}"
+        )
+
+    def test_seeded_entity_match_has_known_entity_id(
+        self, seeded_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(seeded_evidence_proc)
+        pack = result["evidence_pack"]
+        for item in pack.get("items", []):
+            for em in item.get("entity_matches", []):
+                if em.get("entity_id") == "person-test-001":
+                    return
+        pytest.fail("No entity_match with entity_id=person-test-001 found")
+
+    def test_seeded_default_no_evidence_pack(
+        self, seeded_default_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(seeded_default_proc)
+        assert result["success"] is True
+        assert "evidence_pack" not in result
+
+
 class TestEvidenceDiagnosticsContract:
     """evidence_pack.diagnostics shape in CLI subprocess output."""
 
