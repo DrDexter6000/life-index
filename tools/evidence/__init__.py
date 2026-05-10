@@ -7,6 +7,7 @@ from tools.evidence.adapter import (
 from tools.evidence.builder import build_evidence_pack
 from tools.evidence.types import (
     DocumentRef,
+    EntityMatch,
     EvidenceDiagnostics,
     EvidenceItem,
     EvidencePack,
@@ -17,6 +18,7 @@ from tools.evidence.types import (
 
 __all__ = [
     "DocumentRef",
+    "EntityMatch",
     "EvidenceDiagnostics",
     "EvidenceItem",
     "EvidencePack",

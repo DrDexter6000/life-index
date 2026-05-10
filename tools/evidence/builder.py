@@ -12,6 +12,7 @@ from typing import Any
 
 from tools.evidence.types import (
     DocumentRef,
+    EntityMatch,
     EvidenceDiagnostics,
     EvidenceItem,
     EvidencePack,
@@ -138,7 +139,96 @@ def _build_score_breakdown(result: dict[str, Any], rank: int) -> ScoreBreakdown:
     )
 
 
-def _build_evidence_item(result: dict[str, Any], rank: int) -> EvidenceItem:
+def _build_entity_matches(
+    result: dict[str, Any],
+    entity_hints: list[dict[str, Any]],
+) -> list[EntityMatch]:
+    """Build EntityMatch list from entity_hints matched against item fields.
+
+    Checks title, snippet, abstract, and metadata string values for hint
+    matched_term/expansion_terms presence. Deterministic — no filesystem,
+    search, or LLM calls.
+    """
+    if not entity_hints:
+        return []
+
+    # Collect searchable text from item fields
+    title = str(result.get("title", ""))
+    snippet = str(result.get("snippet", ""))
+    metadata = result.get("metadata", {})
+    abstract = None
+    if isinstance(metadata, dict):
+        abstract = metadata.get("abstract") or metadata.get("summary")
+    if not abstract:
+        abstract = result.get("abstract")
+
+    # Build a mapping of searchable text sources
+    source_texts: dict[str, str] = {
+        "title": title,
+        "snippet": snippet,
+    }
+    if abstract:
+        source_texts["abstract"] = str(abstract)
+
+    # Flatten metadata string values into searchable text
+    metadata_parts: list[str] = []
+    if isinstance(metadata, dict):
+        for v in metadata.values():
+            if isinstance(v, str) and v:
+                metadata_parts.append(v)
+            elif isinstance(v, list):
+                for item in v:
+                    if isinstance(item, str) and item:
+                        metadata_parts.append(item)
+    if metadata_parts:
+        source_texts["metadata"] = " ".join(metadata_parts)
+
+    matches: list[EntityMatch] = []
+    for hint in entity_hints:
+        matched_term = hint.get("matched_term", "")
+        if not matched_term:
+            continue
+
+        # Build candidate terms: matched_term first, then expansion_terms,
+        # deduplicated preserving stable order.
+        expansion = hint.get("expansion_terms") or []
+        candidate_terms: list[str] = []
+        for t in [matched_term] + [e for e in expansion if isinstance(e, str) and e]:
+            if t not in candidate_terms:
+                candidate_terms.append(t)
+
+        # Find which candidate terms actually appear in item text.
+        found_terms: list[str] = []
+        sources: list[str] = []
+        for term in candidate_terms:
+            term_found = False
+            for source_name, text in source_texts.items():
+                if term in text:
+                    term_found = True
+                    if source_name not in sources:
+                        sources.append(source_name)
+            if term_found:
+                found_terms.append(term)
+
+        if found_terms:
+            matches.append(
+                EntityMatch(
+                    entity_id=str(hint.get("entity_id", "")),
+                    entity_type=str(hint.get("entity_type", "")),
+                    matched_terms=found_terms,
+                    match_sources=sorted(set(sources)),
+                    query_matched_term=matched_term,
+                )
+            )
+
+    return matches
+
+
+def _build_evidence_item(
+    result: dict[str, Any],
+    rank: int,
+    entity_hints: list[dict[str, Any]] | None = None,
+) -> EvidenceItem:
     """Build EvidenceItem from a merged_results entry."""
     source = str(result.get("source", "none"))
     metadata = result.get("metadata", {})
@@ -146,6 +236,7 @@ def _build_evidence_item(result: dict[str, Any], rank: int) -> EvidenceItem:
     if isinstance(metadata, dict):
         abstract = metadata.get("abstract") or metadata.get("summary")
 
+    entity_match_hints = entity_hints if entity_hints is not None else []
     return EvidenceItem(
         document=_build_document_ref(result),
         scores=_build_score_breakdown(result, rank),
@@ -153,6 +244,7 @@ def _build_evidence_item(result: dict[str, Any], rank: int) -> EvidenceItem:
         abstract=abstract,
         explain=result.get("explain"),
         provenance=_determine_provenance(source),
+        entity_matches=_build_entity_matches(result, entity_match_hints),
     )
 
 
@@ -350,12 +442,13 @@ def build_evidence_pack(search_result: dict[str, Any]) -> EvidencePack:
     query_params = search_result.get("query_params") or {}
     query = str(query_params.get("query", ""))
     expanded_query = query_params.get("expanded_query")
+    entity_hints = list(search_result.get("entity_hints", []))
 
     # Build items from merged_results
     items = []
     for i, r in enumerate(search_result.get("merged_results", []), start=1):
         rank = int(r.get("search_rank", i))
-        items.append(_build_evidence_item(r, rank))
+        items.append(_build_evidence_item(r, rank, entity_hints))
 
     # Build semantic candidates, excluding those already in merged_results
     merged_ids = {item.document.doc_id for item in items}

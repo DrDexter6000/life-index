@@ -152,6 +152,56 @@ class DocumentRef:
 
 
 # ---------------------------------------------------------------------------
+# EntityMatch
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EntityMatch:
+    """Provenance record linking an entity hint to an evidence item."""
+
+    entity_id: str
+    entity_type: str
+    matched_terms: list[str]
+    match_sources: list[str]
+    query_matched_term: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    _KNOWN_KEYS = frozenset(
+        {
+            "entity_id",
+            "entity_type",
+            "matched_terms",
+            "match_sources",
+            "query_matched_term",
+        }
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EntityMatch:
+        return cls(
+            entity_id=str(data.get("entity_id", "")),
+            entity_type=str(data.get("entity_type", "")),
+            matched_terms=list(dict.fromkeys(data.get("matched_terms", []))),
+            match_sources=list(dict.fromkeys(data.get("match_sources", []))),
+            query_matched_term=data.get("query_matched_term"),
+            extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "entity_id": self.entity_id,
+            "entity_type": self.entity_type,
+            "matched_terms": list(dict.fromkeys(self.matched_terms)),
+            "match_sources": list(dict.fromkeys(self.match_sources)),
+        }
+        if self.query_matched_term is not None:
+            d["query_matched_term"] = self.query_matched_term
+        d.update(self.extra)
+        return d
+
+
+# ---------------------------------------------------------------------------
 # EvidenceItem
 # ---------------------------------------------------------------------------
 
@@ -166,6 +216,7 @@ class EvidenceItem:
     abstract: str | None = None
     explain: dict[str, Any] | None = None
     provenance: str = "keyword"
+    entity_matches: list[EntityMatch] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     _KNOWN_KEYS = frozenset(
@@ -176,11 +227,13 @@ class EvidenceItem:
             "abstract",
             "explain",
             "provenance",
+            "entity_matches",
         }
     )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EvidenceItem:
+        entity_matches = [EntityMatch.from_dict(em) for em in data.get("entity_matches", [])]
         return cls(
             document=DocumentRef.from_dict(data.get("document", {})),
             scores=ScoreBreakdown.from_dict(data.get("scores", {})),
@@ -188,6 +241,7 @@ class EvidenceItem:
             abstract=data.get("abstract"),
             explain=data.get("explain"),
             provenance=str(data.get("provenance", "keyword")),
+            entity_matches=entity_matches,
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
 
@@ -202,6 +256,8 @@ class EvidenceItem:
             d["abstract"] = self.abstract
         if self.explain is not None:
             d["explain"] = self.explain
+        if self.entity_matches:
+            d["entity_matches"] = [em.to_dict() for em in self.entity_matches]
         d.update(self.extra)
         return d
 

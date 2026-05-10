@@ -748,7 +748,7 @@ python -m tools.smart_search --query "..." [options]
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `evidence_pack.query_context` | object | 查询上下文，含 `query`、`expanded_query`、`search_plan`、`entity_hints` |
-| `evidence_pack.items` | array | 检索证据项列表，每项含 `document`（文档引用）、`scores`（评分明细）、`snippet`（片段） |
+| `evidence_pack.items` | array | 检索证据项列表，每项含 `document`（文档引用）、`scores`（评分明细）、`snippet`（片段）、`entity_matches`（实体匹配溯源，仅匹配时出现） |
 | `evidence_pack.semantic_candidates` | array | 纯语义候选列表（未进入主结果集的语义召回项） |
 | `evidence_pack.total_available` | int | 总可用结果数 |
 | `evidence_pack.has_more` | bool | 是否还有更多结果 |
@@ -848,6 +848,27 @@ python -m tools.smart_search --query "..." [options]
   }
 }
 ```
+
+#### Entity Match Provenance（`evidence_pack.items[].entity_matches`）
+
+当 `entity_hints` 中的实体匹配到某个 evidence item 的文本字段时，该 item 会包含 `entity_matches` 数组。未匹配到任何实体的 item 不包含此字段。
+
+**字段结构：**
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `entity_id` | string | 实体唯一标识 |
+| `entity_type` | string | 实体类型（如 `person`、`place`、`project`、`event`、`concept`） |
+| `matched_terms` | array\<string\> | 匹配到的实体术语（已去重）。来源包括 `entity_hints[].matched_term` 和 `entity_hints[].expansion_terms` 中的别名，仅包含在 item 文本中实际出现的术语 |
+| `match_sources` | array\<string\> | 匹配来源字段（如 `title`、`snippet`、`metadata`、`abstract`，已排序去重） |
+| `query_matched_term` | string | 可选，原始 query 中触发匹配的术语 |
+
+**特性：**
+- 纯确定性推导：从已有 `entity_hints`（含 `matched_term` 和 `expansion_terms`）和搜索结果字段（`title`、`snippet`、`abstract`、`metadata`）推导，不调用 LLM、不访问文件系统
+- `matched_terms` 仅包含在 item 文本中实际出现的术语（来自 `matched_term` 或 `expansion_terms`），不会包含未出现的候选词
+- `query_matched_term` 始终保留原始 `matched_term`，即使 item 中只匹配到了 `expansion_terms` 里的别名
+- 当 `entity_matches` 为空数组时，序列化输出中省略此字段
+- 旧 payload（无 `entity_matches`）仍可正常反序列化
 
 #### 最佳努力失败行为
 

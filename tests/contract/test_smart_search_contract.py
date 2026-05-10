@@ -646,3 +646,127 @@ class TestEvidencePackDiagnostics:
         # notes/suggestions are empty for ok outcome → serializer omits them
         assert "notes" not in diag
         assert "suggestions" not in diag
+
+
+# S1-C: Entity Match Enrichment
+
+
+class TestEntityMatchEnrichmentContract:
+    """Verify entity_matches in evidence_pack.items[] is additive when included."""
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_hierarchical_search,
+    )
+    @patch("tools.evidence.adapter.extract_evidence_from_orchestrator")
+    def test_entity_matches_additive_in_items(self, mock_ev, _mock):
+        """evidence_pack.items[].entity_matches is present alongside all other fields."""
+        from tools.evidence.types import (
+            DocumentRef,
+            EntityMatch,
+            EvidenceItem,
+            EvidencePack,
+            QueryContext,
+            ScoreBreakdown,
+        )
+
+        pack = EvidencePack(
+            query_context=QueryContext(
+                query="test",
+                entity_hints=[
+                    {"matched_term": "Test", "entity_id": "test_entity", "entity_type": "concept"},
+                ],
+            ),
+            items=[
+                EvidenceItem(
+                    document=DocumentRef(
+                        doc_id="1",
+                        title="Test Journal Entry",
+                        path="Journals/2026/03/test.md",
+                        date="2026-03-06",
+                    ),
+                    scores=ScoreBreakdown(source="fts", rank=1, confidence="high"),
+                    snippet="Test snippet content.",
+                    entity_matches=[
+                        EntityMatch(
+                            entity_id="test_entity",
+                            entity_type="concept",
+                            matched_terms=["Test"],
+                            match_sources=["snippet"],
+                            query_matched_term="Test",
+                        ),
+                    ],
+                )
+            ],
+            semantic_candidates=[],
+            total_available=1,
+            has_more=False,
+            no_confident_match=False,
+        )
+        mock_ev.return_value = pack
+
+        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        result = orch.search("test query", include_evidence=True)
+
+        assert "evidence_pack" in result
+        items = result["evidence_pack"]["items"]
+        assert len(items) == 1
+
+        # Additive: entity_matches is present
+        assert "entity_matches" in items[0]
+        em = items[0]["entity_matches"]
+        assert len(em) == 1
+        assert em[0]["entity_id"] == "test_entity"
+        assert em[0]["entity_type"] == "concept"
+        assert "Test" in em[0]["matched_terms"]
+        assert "snippet" in em[0]["match_sources"]
+        assert em[0]["query_matched_term"] == "Test"
+
+        # Additive: all other standard item fields remain intact
+        assert "document" in items[0]
+        assert "scores" in items[0]
+        assert "snippet" in items[0]
+        assert "provenance" in items[0]
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_hierarchical_search,
+    )
+    @patch("tools.evidence.adapter.extract_evidence_from_orchestrator")
+    def test_empty_entity_matches_omitted(self, mock_ev, _mock):
+        """Items without entity_matches omit the field from serialized output."""
+        from tools.evidence.types import (
+            DocumentRef,
+            EvidenceItem,
+            EvidencePack,
+            QueryContext,
+            ScoreBreakdown,
+        )
+
+        pack = EvidencePack(
+            query_context=QueryContext(query="test"),
+            items=[
+                EvidenceItem(
+                    document=DocumentRef(
+                        doc_id="1",
+                        title="Test",
+                        path="Journals/2026/03/test.md",
+                        date="2026-03-06",
+                    ),
+                    scores=ScoreBreakdown(source="fts", rank=1, confidence="medium"),
+                    snippet="test snippet",
+                    entity_matches=[],
+                )
+            ],
+            semantic_candidates=[],
+            total_available=1,
+            has_more=False,
+            no_confident_match=False,
+        )
+        mock_ev.return_value = pack
+
+        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        result = orch.search("test query", include_evidence=True)
+
+        items = result["evidence_pack"]["items"]
+        assert "entity_matches" not in items[0]

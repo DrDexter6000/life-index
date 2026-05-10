@@ -1397,3 +1397,622 @@ class TestDiagnosticsPathPrivacy:
         assert "/home/" not in diag_str
         assert not any("\\" in n for n in diag.notes)
         assert not any("\\" in s for s in diag.suggestions)
+
+
+# ---------------------------------------------------------------------------
+# S1-C: EntityMatch
+# ---------------------------------------------------------------------------
+
+
+class TestEntityMatch:
+    """EntityMatch round-trip and serialization."""
+
+    def test_round_trip_minimal(self) -> None:
+        from tools.evidence.types import EntityMatch
+
+        em = EntityMatch(
+            entity_id="tuan_tuan",
+            entity_type="person",
+            matched_terms=["团团"],
+            match_sources=["snippet"],
+        )
+        d = em.to_dict()
+        em2 = EntityMatch.from_dict(d)
+        assert em2 == em
+        assert em2.entity_id == "tuan_tuan"
+        assert em2.entity_type == "person"
+        assert em2.matched_terms == ["团团"]
+        assert em2.match_sources == ["snippet"]
+
+    def test_round_trip_with_query_matched_term(self) -> None:
+        from tools.evidence.types import EntityMatch
+
+        em = EntityMatch(
+            entity_id="beijing",
+            entity_type="location",
+            matched_terms=["北京", "Beijing"],
+            match_sources=["metadata", "title"],
+            query_matched_term="Beijing",
+        )
+        d = em.to_dict()
+        assert d["query_matched_term"] == "Beijing"
+        em2 = EntityMatch.from_dict(d)
+        assert em2 == em
+        assert em2.query_matched_term == "Beijing"
+
+    def test_query_matched_term_omitted_when_none(self) -> None:
+        from tools.evidence.types import EntityMatch
+
+        em = EntityMatch(
+            entity_id="work",
+            entity_type="topic",
+            matched_terms=["work"],
+            match_sources=["snippet"],
+        )
+        d = em.to_dict()
+        assert "query_matched_term" not in d
+
+    def test_extra_fields_survive(self) -> None:
+        from tools.evidence.types import EntityMatch
+
+        em = EntityMatch(
+            entity_id="test",
+            entity_type="person",
+            matched_terms=["test"],
+            match_sources=["title"],
+            extra={"custom": True},
+        )
+        d = em.to_dict()
+        assert d["custom"] is True
+        em2 = EntityMatch.from_dict(d)
+        assert em2.extra["custom"] is True
+
+    def test_stable_ordering_deduplicated_terms(self) -> None:
+        """matched_terms and match_sources must be de-duplicated and stable-ordered."""
+        from tools.evidence.types import EntityMatch
+
+        em = EntityMatch(
+            entity_id="tuan_tuan",
+            entity_type="person",
+            matched_terms=["团团", "团团", "小团团"],
+            match_sources=["snippet", "title", "snippet"],
+        )
+        d = em.to_dict()
+        assert d["matched_terms"] == ["团团", "小团团"]
+        assert d["match_sources"] == ["snippet", "title"]
+
+
+class TestEvidenceItemEntityMatches:
+    """EvidenceItem.entity_matches serialization."""
+
+    def test_empty_entity_matches_omitted_from_dict(self) -> None:
+        """Empty entity_matches list is omitted from serialized output."""
+        item = EvidenceItem(
+            document=DocumentRef(
+                doc_id="Journals/2026/03/test.md",
+                title="Test",
+                date="2026-03-07",
+            ),
+            scores=ScoreBreakdown(source="fts", rank=1, relevance=90.0, similarity=0.0),
+            snippet="test snippet",
+        )
+        d = item.to_dict()
+        assert "entity_matches" not in d
+
+    def test_entity_matches_present_when_non_empty(self) -> None:
+        """entity_matches appears when matches are present."""
+        from tools.evidence.types import EntityMatch
+
+        matches = [
+            EntityMatch(
+                entity_id="tuan_tuan",
+                entity_type="person",
+                matched_terms=["团团"],
+                match_sources=["snippet"],
+            ),
+        ]
+        item = EvidenceItem(
+            document=DocumentRef(
+                doc_id="Journals/2026/03/test.md",
+                title="Test",
+                date="2026-03-07",
+            ),
+            scores=ScoreBreakdown(source="fts", rank=1, relevance=90.0, similarity=0.0),
+            snippet="test snippet",
+            entity_matches=matches,
+        )
+        d = item.to_dict()
+        assert "entity_matches" in d
+        assert len(d["entity_matches"]) == 1
+        assert d["entity_matches"][0]["entity_id"] == "tuan_tuan"
+
+    def test_entity_matches_round_trip(self) -> None:
+        """entity_matches survive to_dict / from_dict round-trip."""
+        from tools.evidence.types import EntityMatch
+
+        matches = [
+            EntityMatch(
+                entity_id="tuan_tuan",
+                entity_type="person",
+                matched_terms=["团团"],
+                match_sources=["snippet"],
+                query_matched_term="团团",
+            ),
+            EntityMatch(
+                entity_id="beijing",
+                entity_type="location",
+                matched_terms=["Beijing"],
+                match_sources=["metadata"],
+            ),
+        ]
+        item = EvidenceItem(
+            document=DocumentRef(
+                doc_id="Journals/2026/03/test.md",
+                title="Test",
+                date="2026-03-07",
+            ),
+            scores=ScoreBreakdown(source="fts", rank=1, relevance=90.0, similarity=0.0),
+            snippet="test snippet",
+            entity_matches=matches,
+        )
+        d = item.to_dict()
+        item2 = EvidenceItem.from_dict(d)
+        assert item2.entity_matches == matches
+
+    def test_old_payload_without_entity_matches(self) -> None:
+        """Old payloads without entity_matches still deserialize with empty list."""
+        old_data = {
+            "document": {
+                "doc_id": "Journals/2026/03/test.md",
+                "title": "Test",
+                "date": "2026-03-07",
+            },
+            "scores": {"source": "fts", "rank": 1, "relevance": 90.0},
+            "snippet": "test",
+            "provenance": "keyword",
+        }
+        item = EvidenceItem.from_dict(old_data)
+        assert item.entity_matches == []
+
+    def test_entity_matches_round_trip_through_pack(self) -> None:
+        """entity_matches survive EvidencePack round-trip."""
+        from tools.evidence.types import EntityMatch
+
+        matches = [
+            EntityMatch(
+                entity_id="tuan_tuan",
+                entity_type="person",
+                matched_terms=["团团"],
+                match_sources=["snippet"],
+            ),
+        ]
+        items = [
+            EvidenceItem(
+                document=DocumentRef(
+                    doc_id="Journals/2026/03/test.md",
+                    title="Test",
+                    date="2026-03-07",
+                ),
+                scores=ScoreBreakdown(source="fts", rank=1, relevance=90.0, similarity=0.0),
+                snippet="团团 is here",
+                entity_matches=matches,
+            ),
+        ]
+        pack = EvidencePack(
+            query_context=QueryContext(query="test"),
+            items=items,
+            semantic_candidates=[],
+            total_available=1,
+            has_more=False,
+            no_confident_match=False,
+        )
+        d = pack.to_dict()
+        pack2 = EvidencePack.from_dict(d)
+        assert len(pack2.items[0].entity_matches) == 1
+        assert pack2.items[0].entity_matches[0].entity_id == "tuan_tuan"
+
+
+# ---------------------------------------------------------------------------
+# S1-C: Builder entity match tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildEntityMatches:
+    """build_evidence_pack() populates entity_matches from entity_hints and item fields."""
+
+    def test_entity_hint_matched_via_snippet(self) -> None:
+        """Entity hint matched_term appears in item snippet → entity_match populated."""
+        result = _synthetic_search_result()
+        pack = build_evidence_pack(result)
+        # entity_hints has matched_term="团团", snippet has "团团"
+        assert len(pack.items[0].entity_matches) == 1
+        em = pack.items[0].entity_matches[0]
+        assert em.entity_id == "tuan_tuan"
+        assert em.entity_type == "person"
+        assert "团团" in em.matched_terms
+        assert "snippet" in em.match_sources
+
+    def test_entity_hint_matched_via_metadata(self) -> None:
+        """Entity hint matched_term appears in item metadata → entity_match populated."""
+        result = _synthetic_search_result()
+        # "团团" is also in metadata.people for item 0
+        pack = build_evidence_pack(result)
+        em = pack.items[0].entity_matches[0]
+        assert "metadata" in em.match_sources
+
+    def test_entity_hint_matched_via_title(self) -> None:
+        """Entity hint matched_term appears in item title → entity_match populated."""
+        result = {
+            "success": True,
+            "query_params": {"query": "family"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "团团 and me",
+                    "date": "2026-03-07",
+                    "snippet": "A normal day",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [
+                {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+            ],
+        }
+        pack = build_evidence_pack(result)
+        assert len(pack.items[0].entity_matches) == 1
+        assert "title" in pack.items[0].entity_matches[0].match_sources
+
+    def test_unmatched_entity_hint_omitted_from_items(self) -> None:
+        """Entity hints with no match in any item field produce no entity_match."""
+        result = {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Normal Day",
+                    "date": "2026-03-07",
+                    "snippet": "Nothing special",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [
+                {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+            ],
+        }
+        pack = build_evidence_pack(result)
+        assert pack.items[0].entity_matches == []
+
+    def test_no_entity_hints_produces_empty_matches(self) -> None:
+        """No entity_hints in search result → all items have empty entity_matches."""
+        result = {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Day",
+                    "date": "2026-03-07",
+                    "snippet": "content",
+                    "source": "fts",
+                    "relevance": 80,
+                    "fts_score": 80.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 80.0,
+                    "search_rank": 1,
+                    "confidence": "medium",
+                    "metadata": {},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+        }
+        pack = build_evidence_pack(result)
+        assert pack.items[0].entity_matches == []
+
+    def test_query_matched_term_populated(self) -> None:
+        """query_matched_term is set when hint has matched_term that matches item."""
+        result = _synthetic_search_result()
+        pack = build_evidence_pack(result)
+        em = pack.items[0].entity_matches[0]
+        assert em.query_matched_term == "团团"
+
+    def test_multiple_entity_hints_matched(self) -> None:
+        """Multiple entity hints matching a single item produce multiple entity_matches."""
+        result = {
+            "success": True,
+            "query_params": {"query": "trip"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Beijing Trip",
+                    "date": "2026-03-07",
+                    "snippet": "Went to Beijing with 团团",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {"location": "Beijing"},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [
+                {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "Beijing", "entity_id": "beijing", "entity_type": "location"},
+            ],
+        }
+        pack = build_evidence_pack(result)
+        assert len(pack.items[0].entity_matches) == 2
+        entity_ids = {em.entity_id for em in pack.items[0].entity_matches}
+        assert entity_ids == {"tuan_tuan", "beijing"}
+
+    def test_abstract_used_as_match_source(self) -> None:
+        """Abstract field is also checked for entity hint matches."""
+        result = {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Day",
+                    "date": "2026-03-07",
+                    "snippet": "Normal content",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {"abstract": "Spent time with 团团 today."},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [
+                {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+            ],
+        }
+        pack = build_evidence_pack(result)
+        assert len(pack.items[0].entity_matches) == 1
+        assert "abstract" in pack.items[0].entity_matches[0].match_sources
+
+    def test_deterministic_stable_ordering(self) -> None:
+        """Entity matches across sources produce stable deduplicated sources."""
+        result = _synthetic_search_result()
+        # "团团" appears in snippet, metadata.people, and abstract
+        pack = build_evidence_pack(result)
+        em = pack.items[0].entity_matches[0]
+        # Sources should be sorted and deduplicated
+        assert em.match_sources == sorted(set(em.match_sources))
+
+    def test_entity_matches_in_pack_round_trip(self) -> None:
+        """Entity matches survive full pack to_dict / from_dict round-trip."""
+        result = _synthetic_search_result()
+        pack = build_evidence_pack(result)
+        d = pack.to_dict()
+        assert "entity_matches" in d["items"][0]
+        pack2 = EvidencePack.from_dict(d)
+        assert len(pack2.items[0].entity_matches) == 1
+        assert pack2.items[0].entity_matches[0].entity_id == "tuan_tuan"
+
+
+# ---------------------------------------------------------------------------
+# S1-C Rework: expansion_terms matching
+# ---------------------------------------------------------------------------
+
+
+class TestExpansionTermsMatching:
+    """entity_hints[].expansion_terms are candidate terms for matching."""
+
+    def _hint_result(self, hint: dict, snippet: str = "Normal day", title: str = "Day") -> dict:
+        """Helper: build a search result with one item and one entity hint."""
+        return {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": title,
+                    "date": "2026-03-07",
+                    "snippet": snippet,
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [hint],
+        }
+
+    def test_expansion_alias_matched_when_query_term_absent(self) -> None:
+        """An expansion_terms alias in item text produces entity_match even when
+        the original matched_term is NOT in the item."""
+        hint = {
+            "matched_term": "老婆",
+            "entity_id": "wife",
+            "entity_type": "person",
+            "expansion_terms": ["王某某", "乐乐妈", "老婆"],
+        }
+        # Item contains "乐乐妈" but NOT "老婆"
+        result = self._hint_result(hint, snippet="今天和乐乐妈去了公园")
+        pack = build_evidence_pack(result)
+
+        assert len(pack.items[0].entity_matches) == 1
+        em = pack.items[0].entity_matches[0]
+        assert em.entity_id == "wife"
+        assert "乐乐妈" in em.matched_terms
+        assert "老婆" not in em.matched_terms  # not found in item
+        assert em.query_matched_term == "老婆"  # original matched_term preserved
+
+    def test_expansion_alias_matched_via_title(self) -> None:
+        """expansion_terms alias appearing in title is matched."""
+        hint = {
+            "matched_term": "北京",
+            "entity_id": "beijing",
+            "entity_type": "place",
+            "expansion_terms": ["Beijing", "北京"],
+        }
+        result = self._hint_result(hint, title="Trip to Beijing", snippet="Normal day")
+        pack = build_evidence_pack(result)
+
+        assert len(pack.items[0].entity_matches) == 1
+        em = pack.items[0].entity_matches[0]
+        assert "Beijing" in em.matched_terms
+        assert "title" in em.match_sources
+
+    def test_expansion_alias_matched_via_metadata(self) -> None:
+        """expansion_terms alias appearing in flattened metadata values is matched."""
+        hint = {
+            "matched_term": "北京",
+            "entity_id": "beijing",
+            "entity_type": "place",
+            "expansion_terms": ["Beijing", "北京"],
+        }
+        result = {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Day",
+                    "date": "2026-03-07",
+                    "snippet": "Normal content",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {"location": "Beijing"},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [hint],
+        }
+        pack = build_evidence_pack(result)
+
+        assert len(pack.items[0].entity_matches) == 1
+        assert "metadata" in pack.items[0].entity_matches[0].match_sources
+
+    def test_matched_terms_only_contains_found_terms(self) -> None:
+        """matched_terms includes only terms actually found in the item, not all
+        candidate terms. Order preserves stable insertion order."""
+        hint = {
+            "matched_term": "老婆",
+            "entity_id": "wife",
+            "entity_type": "person",
+            "expansion_terms": ["王某某", "乐乐妈", "老婆"],
+        }
+        # Item contains both "老婆" and "乐乐妈"
+        result = self._hint_result(hint, snippet="老婆和乐乐妈一起去逛街")
+        pack = build_evidence_pack(result)
+
+        em = pack.items[0].entity_matches[0]
+        # matched_terms should be in stable insertion order of candidate terms
+        assert em.matched_terms == ["老婆", "乐乐妈"]
+        assert "王某某" not in em.matched_terms
+
+    def test_no_candidate_found_omits_match(self) -> None:
+        """If no candidate term (matched_term + expansion_terms) is found in
+        the item, the entity_match is omitted."""
+        hint = {
+            "matched_term": "老婆",
+            "entity_id": "wife",
+            "entity_type": "person",
+            "expansion_terms": ["王某某", "乐乐妈", "老婆"],
+        }
+        result = self._hint_result(hint, snippet="今天天气很好")
+        pack = build_evidence_pack(result)
+
+        assert pack.items[0].entity_matches == []
+
+    def test_empty_expansion_terms_falls_back_to_matched_term(self) -> None:
+        """Empty or missing expansion_terms: behavior is unchanged from original."""
+        hint = {
+            "matched_term": "团团",
+            "entity_id": "tuan_tuan",
+            "entity_type": "person",
+            "expansion_terms": [],
+        }
+        result = self._hint_result(hint, snippet="和团团玩耍")
+        pack = build_evidence_pack(result)
+
+        assert len(pack.items[0].entity_matches) == 1
+        assert "团团" in pack.items[0].entity_matches[0].matched_terms
+
+    def test_expansion_terms_deduplication_preserves_order(self) -> None:
+        """Duplicate candidate terms (across matched_term and expansion_terms)
+        are deduplicated, preserving stable order (matched_term first)."""
+        hint = {
+            "matched_term": "团团",
+            "entity_id": "tuan_tuan",
+            "entity_type": "person",
+            "expansion_terms": ["团团", "小团团", "团团"],
+        }
+        result = self._hint_result(hint, snippet="团团和小团团一起玩")
+        pack = build_evidence_pack(result)
+
+        em = pack.items[0].entity_matches[0]
+        assert em.matched_terms == ["团团", "小团团"]
+
+    def test_query_matched_term_preserved_from_original(self) -> None:
+        """query_matched_term is the original matched_term even when only an
+        expansion alias was found in the item."""
+        hint = {
+            "matched_term": "Beijing",
+            "entity_id": "beijing",
+            "entity_type": "place",
+            "expansion_terms": ["北京"],
+        }
+        result = self._hint_result(hint, snippet="去了北京故宫")
+        pack = build_evidence_pack(result)
+
+        em = pack.items[0].entity_matches[0]
+        assert em.query_matched_term == "Beijing"
+        assert "北京" in em.matched_terms
+        assert "Beijing" not in em.matched_terms
