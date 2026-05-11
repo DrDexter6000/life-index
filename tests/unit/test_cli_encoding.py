@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Subprocess-level E2E test ──────────────────────────────────────────
 
 
@@ -28,11 +27,28 @@ class TestCLIEncodingSubprocess:
 
     @pytest.fixture(autouse=True)
     def _setup_env(self, isolated_data_dir: Path) -> None:
-        """Ensure subprocess uses isolated data directory."""
+        """Ensure subprocess uses isolated data directory with fresh manifest."""
         self.data_dir = isolated_data_dir
-        # Create minimal directory structure so CLI doesn't fail on missing dirs
         journals_dir = isolated_data_dir / "Journals"
         journals_dir.mkdir(parents=True, exist_ok=True)
+
+        index_dir = isolated_data_dir / ".index"
+        index_dir.mkdir(parents=True, exist_ok=True)
+        from tools.lib.index_manifest import IndexManifest, write_manifest
+
+        write_manifest(
+            IndexManifest(
+                fts_count=0,
+                vector_count=0,
+                file_count=0,
+                fts_checksum="",
+                vector_checksum="",
+                build_timestamp="2026-01-01T00:00:00",
+                build_version="2.0.0",
+                partial=False,
+            ),
+            index_dir,
+        )
 
     @pytest.mark.integration
     def test_chinese_query_returns_valid_json(self) -> None:
@@ -134,12 +150,8 @@ class TestEncodingBootstrap:
         with patch("sys.stdout", mock_stdout), patch("sys.stderr", mock_stderr):
             ensure_utf8_io()
 
-        mock_stdout.reconfigure.assert_called_once_with(
-            encoding="utf-8", errors="replace"
-        )
-        mock_stderr.reconfigure.assert_called_once_with(
-            encoding="utf-8", errors="replace"
-        )
+        mock_stdout.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
+        mock_stderr.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
 
     def test_reconfigure_handles_missing_attribute(self) -> None:
         """

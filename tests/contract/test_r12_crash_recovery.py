@@ -8,17 +8,16 @@ Validates that the system recovers gracefully from various crash scenarios:
 """
 
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 
-from tools.lib.pending_writes import mark_pending, get_pending, clear_pending, has_pending
+from tools.lib.pending_writes import mark_pending, has_pending
 from tools.lib.index_manifest import IndexManifest, write_manifest
 
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch):
-    """Isolate all paths to tmp_path."""
+    """Isolate all paths to tmp_path with a zero-count fresh manifest."""
     import tools.lib.vector_index_simple as vi_mod
 
     idx = tmp_path / ".index"
@@ -34,56 +33,103 @@ def _isolate(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(vi_mod, "VEC_INDEX_PATH", idx / "vectors_simple.pkl")
     monkeypatch.setattr(vi_mod, "META_PATH", idx / "vectors_simple_meta.json")
 
+    write_manifest(
+        IndexManifest(
+            fts_count=0,
+            vector_count=0,
+            file_count=0,
+            fts_checksum="",
+            vector_checksum="",
+            build_timestamp="2026-01-01T00:00:00",
+            build_version="2.0.0",
+            partial=False,
+        ),
+        idx,
+    )
+
 
 class TestCrashRecovery:
 
     def test_missing_vector_index_search_degraded(self, tmp_path: Path, monkeypatch):
         """When vectors_simple.pkl is missing, search works in degraded mode."""
         import tools.search_journals.core as search_core
-        import tools.lib.search_index as si
-        import tools.build_index as bi
 
-        monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
-        monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
         monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
 
         result = search_core.hierarchical_search(query="test", level=3, semantic=False)
         assert result["success"] is True
-        # Should not crash; vector results may be empty
 
     def test_missing_fts_index_search_reports_unhealthy(self, tmp_path: Path, monkeypatch):
         """When FTS DB is missing, search reports unhealthy but doesn't crash."""
         import tools.search_journals.core as search_core
-        import tools.lib.search_index as si
+        import tools.lib.index_freshness as freshness_mod
         import tools.build_index as bi
 
-        monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": True, "reason": "fts_missing"})
-        monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
+        _stale_report = type(
+            "FR",
+            (),
+            {
+                "overall_fresh": False,
+                "issues": ["fts_stale: FTS index missing"],
+                "to_dict": lambda self: {
+                    "fts_fresh": False,
+                    "vector_fresh": True,
+                    "overall_fresh": False,
+                    "issues": ["fts_stale: FTS index missing"],
+                },
+            },
+        )()
+
+        monkeypatch.setattr(freshness_mod, "check_full_freshness", lambda _dir: _stale_report)
+        monkeypatch.setattr(
+            bi,
+            "build_all",
+            lambda **kw: {
+                "success": True,
+                "fts": {"success": True},
+                "vector": {"success": True},
+            },
+        )
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
         monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
 
         result = search_core.hierarchical_search(query="test", level=3, semantic=False)
-        assert result["success"] is True  # Search doesn't crash
+        assert result["success"] is True
         assert any("index_stale" in w for w in result.get("warnings", []))
 
     def test_pending_not_consumed_auto_consumed_on_next_search(self, tmp_path: Path, monkeypatch):
         """Pending writes not consumed → next search auto-consumes them."""
         import tools.search_journals.core as search_core
         import tools.build_index as bi
-        import tools.lib.search_index as si
+        import tools.lib.index_freshness as freshness_mod
 
         mark_pending("Journals/2026/03/test.md")
         assert has_pending()
 
         build_calls = []
+
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
             return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
 
+        _fresh_report = type(
+            "FR",
+            (),
+            {
+                "overall_fresh": True,
+                "issues": [],
+                "to_dict": lambda self: {
+                    "fts_fresh": True,
+                    "vector_fresh": True,
+                    "overall_fresh": True,
+                    "issues": [],
+                },
+            },
+        )()
+
         monkeypatch.setattr(bi, "build_all", mock_build_all)
-        monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
-        monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
+        monkeypatch.setattr(freshness_mod, "check_full_freshness", lambda _dir: _fresh_report)
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
         monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
 
