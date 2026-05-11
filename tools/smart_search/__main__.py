@@ -70,20 +70,44 @@ def main() -> None:
     sys.exit(0 if result.get("success") else 1)
 
 
+def _resolve_llm_config() -> tuple[str | None, str | None, str]:
+    """Resolve LLM config with atomic source selection.
+
+    Two mutually exclusive sources:
+    1. Legacy env (OPENAI_API_KEY / LLM_API_KEY present):
+       Uses only OPENAI_BASE_URL / LLM_BASE_URL and LLM_MODEL env / defaults.
+       Never inherits Life Index base_url or model.
+    2. Life Index config (LIFE_INDEX_LLM_* env + config.yaml):
+       Used only when no legacy API key exists.
+    """
+    import os
+
+    legacy_api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("LLM_API_KEY")
+
+    if legacy_api_key:
+        legacy_base_url = (
+            os.environ.get("OPENAI_BASE_URL") or os.environ.get("LLM_BASE_URL") or None
+        )
+        legacy_model = os.environ.get("LLM_MODEL") or "gpt-4o-mini"
+        return legacy_api_key, legacy_base_url, legacy_model
+
+    from tools.lib.config import get_llm_config
+
+    cfg = get_llm_config()
+    life_index_api_key = cfg.get("api_key") or None
+    life_index_base_url = cfg.get("base_url") or None
+    life_index_model = cfg.get("model") or "gpt-4o-mini"
+    return life_index_api_key, life_index_base_url, life_index_model
+
+
 def _try_init_llm() -> Any | None:
     """Try to initialize LLM client. Returns None if unavailable."""
     try:
-        import os
-
-        # Support OpenAI-compatible API via environment variables
-        api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("LLM_API_KEY")
-        base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("LLM_BASE_URL")
-        model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+        api_key, base_url, model = _resolve_llm_config()
 
         if not api_key:
             return None
 
-        # Lazy import to avoid hard dependency
         from openai import OpenAI
 
         client = OpenAI(api_key=api_key, base_url=base_url)
