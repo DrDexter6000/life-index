@@ -1873,6 +1873,252 @@ def test_string_length_caps_on_entity_synthesis_fields():
     assert em["matched_terms"][0] == long_term[:_MAX_MATCHED_TERM_LENGTH]
 
 
+# ---------------------------------------------------------------------------
+# S1S: Post-filter evidence-context alignment tests
+# ---------------------------------------------------------------------------
+
+_S1S_LI_SEARCH_PATH = "Journals/2026/05/life-index_2026-05-10_001.md"
+_S1S_GROCERY_PATH = "Journals/2026/05/life-index_2026-05-11_001.md"
+
+
+def _s1s_filtered_grocery_only() -> list[dict]:
+    """Post-filtered results containing only the grocery distractor."""
+    return [
+        {
+            "title": "Weekend Grocery Shopping",
+            "date": "2026-05-11",
+            "abstract": "Bought milk and eggs at the store.",
+            "rel_path": _S1S_GROCERY_PATH,
+            "snippet": "Bought milk and eggs",
+        }
+    ]
+
+
+def _s1s_evidence_misaligned() -> list[dict]:
+    """Evidence context with LI search at position 0, grocery at position 1.
+
+    Mimics the S1R scenario: evidence_pack rank-1 (LI search) was filtered out,
+    leaving filtered_results=[grocery] but evidence_context=[LI search, grocery].
+    """
+    return [
+        {
+            "title": "Life Index Graph Search Implementation",
+            "date": "2026-05-10",
+            "snippet": "Implemented graph search",
+            "rel_path": _S1S_LI_SEARCH_PATH,
+            "provenance": "keyword",
+            "source": "fts,semantic",
+            "score": 0.95,
+            "confidence": "high",
+        },
+        {
+            "title": "Weekend Grocery Shopping",
+            "date": "2026-05-11",
+            "snippet": "Bought milk and eggs",
+            "rel_path": _S1S_GROCERY_PATH,
+            "provenance": "keyword",
+            "source": "none",
+            "score": 0.2,
+            "confidence": "low",
+        },
+    ]
+
+
+class _S1SPromptCaptureLLM:
+    """LLM that captures the synthesis prompt for inspection."""
+
+    def __init__(self):
+        self.prompt: str | None = None
+
+    def chat(self, messages, *, max_tokens=2000):
+        import json
+
+        self.prompt = messages[0]["content"]
+        return json.dumps(
+            {
+                "answer_text": "Bought groceries.",
+                "citations": [1],
+                "confidence": "low",
+            }
+        )
+
+
+def test_s1s_synthesis_prompt_pairs_evidence_by_path():
+    """When filtered_results has grocery but evidence_context[0] is LI search,
+    the synthesis prompt must show grocery's evidence, not LI search's."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = _S1SPromptCaptureLLM()
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    result = orch.synthesize_answer(
+        query="grocery",
+        filtered_results=_s1s_filtered_grocery_only(),
+        summary="",
+        evidence_context=_s1s_evidence_misaligned(),
+    )
+    assert result is not None
+    prompt = llm.prompt
+    assert prompt is not None
+    assert (
+        "source: none" in prompt
+    ), "Expected grocery's source 'none' in synthesis prompt evidence block"
+    assert (
+        "source: fts,semantic" not in prompt
+    ), "LI search evidence leaked into grocery's prompt block (positional misalignment)"
+    assert "confidence: low" in prompt, "Expected grocery's confidence 'low' in evidence block"
+    assert "0.95" not in prompt, "LI search score 0.95 leaked into grocery's evidence block"
+
+
+def test_s1s_trust_gate_rejects_unfiltered_evidence_path():
+    """Citation for a path present only in unfiltered evidence (not in
+    filtered_results) must be rejected by the trust gate."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(
+        citations=[_S1S_LI_SEARCH_PATH],
+        confidence="high",
+    )
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    result = orch.synthesize_answer(
+        query="LI graph search",
+        filtered_results=_s1s_filtered_grocery_only(),
+        summary="",
+        evidence_context=_s1s_evidence_misaligned(),
+    )
+    assert result is not None
+    assert (
+        _S1S_LI_SEARCH_PATH not in result["citations"]
+    ), "Trust gate accepted a citation for an unfiltered-evidence-only path"
+    assert result["confidence"] == "low"
+
+
+def test_s1s_transparency_uses_aligned_evidence():
+    """evidence_summary must describe the filtered result (grocery, low),
+    not the unfiltered evidence (LI search, high)."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="low")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    result = orch.synthesize_answer(
+        query="grocery",
+        filtered_results=_s1s_filtered_grocery_only(),
+        summary="",
+        evidence_context=_s1s_evidence_misaligned(),
+    )
+    assert result is not None
+    assert result["evidence_summary"] != ""
+    assert (
+        "Weekend Grocery Shopping" in result["evidence_summary"]
+    ), "evidence_summary should describe the filtered grocery item"
+    assert (
+        "confidence: low" in result["evidence_summary"]
+    ), "evidence_summary should show grocery's low confidence, not LI search's high"
+    assert (
+        "confidence: high" not in result["evidence_summary"]
+    ), "evidence_summary should not contain unfiltered LI search's high confidence"
+
+
+def test_s1s_full_search_postfilter_alignment():
+    """End-to-end: full search() pipeline where LLM post-filter removes the
+    high-confidence result must produce synthesis prompt aligned to the
+    remaining filtered result only."""
+    from unittest.mock import patch
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    class _FilterRemovingLLM:
+        def __init__(self):
+            self.synthesis_messages = None
+
+        def chat(self, messages, *, max_tokens=2000):
+            import json
+
+            content = messages[0]["content"] if messages else ""
+            if "query analyzer" in content.lower():
+                return json.dumps(
+                    {
+                        "core_terms": "LI graph search",
+                        "expanded_terms": [],
+                        "time_range": None,
+                        "intent_type": "simple",
+                        "rewritten_query": "project-life-index graph search",
+                    }
+                )
+            elif "search result curator" in content.lower():
+                return json.dumps(
+                    {
+                        "filtered_indices": [2],
+                        "summary": "Found a grocery entry.",
+                        "citations": ["Weekend Grocery Shopping"],
+                    }
+                )
+            else:
+                self.synthesis_messages = messages
+                return json.dumps(
+                    {
+                        "answer_text": "You went grocery shopping.",
+                        "citations": [1],
+                        "confidence": "low",
+                    }
+                )
+
+    llm = _FilterRemovingLLM()
+    orch = SmartSearchOrchestrator(llm_client=llm)
+    mock_result = {
+        "success": True,
+        "query_params": {"query": "LI graph search"},
+        "merged_results": [
+            {
+                "path": _S1S_LI_SEARCH_PATH,
+                "title": "Life Index Graph Search Implementation",
+                "date": "2026-05-10",
+                "snippet": "Implemented graph search",
+                "source": "fts",
+                "relevance": 90,
+                "fts_score": 0.9,
+                "semantic_score": 0.8,
+                "rrf_score": 0.85,
+                "final_score": 0.9,
+                "search_rank": 1,
+                "confidence": "high",
+                "metadata": {"abstract": "Implemented graph search"},
+            },
+            {
+                "path": _S1S_GROCERY_PATH,
+                "title": "Weekend Grocery Shopping",
+                "date": "2026-05-11",
+                "snippet": "Bought groceries for the week",
+                "source": "none",
+                "relevance": 10,
+                "fts_score": 0.0,
+                "semantic_score": 0.1,
+                "rrf_score": 0.05,
+                "final_score": 0.1,
+                "search_rank": 2,
+                "confidence": "low",
+                "metadata": {"abstract": "Bought groceries for the week"},
+            },
+        ],
+        "semantic_results": [],
+        "total_available": 2,
+        "has_more": False,
+        "performance": {},
+    }
+    with patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=lambda **kw: mock_result,
+    ):
+        result = orch.search("LI graph search", synthesize=True)
+
+    assert result["success"] is True
+    assert "answer" in result
+    if llm.synthesis_messages:
+        prompt = llm.synthesis_messages[0]["content"]
+        assert "source: none" in prompt, (
+            "Synthesis prompt must use grocery evidence (source: none), "
+            "not implementation evidence (source: fts,semantic)"
+        )
+
+
 def test_string_length_caps_propagate_to_synthesis_prompt():
     """Truncated strings appear in the synthesis prompt, not the full originals."""
     from tools.search_journals.orchestrator import (

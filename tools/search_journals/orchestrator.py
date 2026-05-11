@@ -435,6 +435,13 @@ class SmartSearchOrchestrator:
         provenance/source/score per item.  Otherwise falls back to
         filtered_results fields only.
         """
+        ev_by_path: dict[str, dict[str, Any]] = {}
+        if evidence_context:
+            for context_item in evidence_context:
+                rp = context_item.get("rel_path", "")
+                if rp:
+                    ev_by_path[rp] = context_item
+
         items: list[str] = []
         for i, r in enumerate(filtered_results, 1):
             title = str(r.get("title", ""))
@@ -442,9 +449,11 @@ class SmartSearchOrchestrator:
             abstract = str(r.get("abstract", r.get("snippet", "")))[:200]
             line = f"{i}. Title: {title}  Date: {date}\n   Abstract: {abstract}"
 
-            # Augment with evidence-derived provenance/source/score if available
-            if evidence_context and i <= len(evidence_context):
+            r_path = r.get("rel_path", "") or r.get("path", "")
+            ev: dict[str, Any] | None = ev_by_path.get(r_path) if r_path else None
+            if evidence_context and ev is None and not r_path and i <= len(evidence_context):
                 ev = evidence_context[i - 1]
+            if evidence_context and ev is not None:
                 extras: list[str] = []
                 if ev.get("provenance"):
                     extras.append(f"provenance: {ev['provenance']}")
@@ -599,18 +608,23 @@ class SmartSearchOrchestrator:
         When evidence_context is None, valid filtered-results citations
         serve as weak support (cap medium max).
         """
-        # Build set of known valid relative paths
+        # Build set of known valid relative paths from filtered_results only
         known_paths: set[str] = set()
+        filtered_paths: set[str] = set()
         for r in filtered_results:
             rel = r.get("rel_path", "")
             p = r.get("path", "")
             if rel and not _is_absolute_path(rel):
                 known_paths.add(rel)
+                filtered_paths.add(rel)
             elif p and not _is_absolute_path(p):
                 known_paths.add(p)
+                filtered_paths.add(p)
+        # Evidence context paths are only valid when they also appear in
+        # filtered_results; paths removed by post-filter must not be accepted
         for ev in evidence_context or []:
             rel = ev.get("rel_path", "")
-            if rel and not _is_absolute_path(rel):
+            if rel and not _is_absolute_path(rel) and rel in filtered_paths:
                 known_paths.add(rel)
 
         valid_citations = [c for c in parsed.get("citations", []) if c in known_paths]
