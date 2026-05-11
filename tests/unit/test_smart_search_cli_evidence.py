@@ -388,6 +388,14 @@ def _clear_llm_env(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
+def _install_fake_openai(monkeypatch):
+    """Install a fake openai module so tests do not require optional SDK."""
+    fake_openai = type(sys)("openai")
+    fake_openai.OpenAI = MagicMock()
+    monkeypatch.setitem(sys.modules, "openai", fake_openai)
+    return fake_openai.OpenAI
+
+
 def test_resolve_llm_config_life_index_env(monkeypatch):
     """LIFE_INDEX_LLM_* env vars are used when OPENAI_*/LLM_* are absent."""
     _clear_llm_env(monkeypatch)
@@ -485,6 +493,7 @@ def test_try_init_llm_returns_none_without_key(monkeypatch):
 def test_try_init_llm_returns_client_with_life_index_key(monkeypatch):
     """_try_init_llm initializes client with LIFE_INDEX_LLM_API_KEY."""
     _clear_llm_env(monkeypatch)
+    _install_fake_openai(monkeypatch)
     monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
     monkeypatch.setenv("LIFE_INDEX_LLM_API_KEY", "test-li-key")
     monkeypatch.setenv("LIFE_INDEX_LLM_BASE_URL", "https://api.openai.com/v1")
@@ -500,6 +509,7 @@ def test_try_init_llm_returns_client_with_life_index_key(monkeypatch):
 def test_try_init_llm_openai_key_still_works(monkeypatch):
     """Existing OPENAI_API_KEY path is preserved."""
     _clear_llm_env(monkeypatch)
+    _install_fake_openai(monkeypatch)
     monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
