@@ -1603,3 +1603,315 @@ def test_rewrite_prompt_capped_entity_hints():
     assert "e0" in prompt
     assert "e4" in prompt
     assert "e5" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# S1I: Entity-aware synthesis context tests
+# ---------------------------------------------------------------------------
+
+
+def _mock_evidence_pack_with_entity_matches(
+    entity_matches_per_item: list[list[dict]] | None = None,
+):
+    """Build a mock EvidencePack with entity_matches for synthesis tests."""
+    from tools.evidence.types import (
+        DocumentRef,
+        EntityMatch,
+        EvidenceDiagnostics,
+        EvidenceItem,
+        EvidencePack,
+        QueryContext,
+        ScoreBreakdown,
+    )
+
+    items = []
+    n = len(entity_matches_per_item) if entity_matches_per_item else 2
+    for i in range(1, n + 1):
+        em_list = []
+        if entity_matches_per_item and i <= len(entity_matches_per_item):
+            for em_data in entity_matches_per_item[i - 1]:
+                em_list.append(
+                    EntityMatch(
+                        entity_id=em_data.get("entity_id", f"entity-{i}"),
+                        entity_type=em_data.get("entity_type", "person"),
+                        matched_terms=em_data.get("matched_terms", [f"term-{i}"]),
+                        match_sources=em_data.get("match_sources", ["fts"]),
+                        query_matched_term=em_data.get("query_matched_term"),
+                    )
+                )
+        items.append(
+            EvidenceItem(
+                document=DocumentRef(
+                    doc_id=f"doc-{i}",
+                    title=f"Entry {i}",
+                    date=f"2026-03-{i:02d}",
+                    path=f"Journals/2026/03/life-index_2026-03-{i:02d}_001.md",
+                ),
+                scores=ScoreBreakdown(
+                    source="fts",
+                    rank=i,
+                    final_score=0.9 - i * 0.1,
+                    confidence="high" if i == 1 else "medium",
+                ),
+                snippet=f"Snippet {i}",
+                abstract=f"Abstract {i}",
+                provenance="keyword",
+                entity_matches=em_list,
+            )
+        )
+
+    return EvidencePack(
+        query_context=QueryContext(query="test"),
+        items=items,
+        semantic_candidates=[],
+        total_available=n,
+        has_more=False,
+        no_confident_match=False,
+        diagnostics=EvidenceDiagnostics(retrieval_outcome="ok"),
+    )
+
+
+def test_synthesis_prompt_includes_entity_matches_when_present():
+    """Synthesis prompt includes bounded entity match context when evidence
+    items have entity_matches."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    fake_llm = FakeSynthesisLLM()
+    orch = SmartSearchOrchestrator(llm_client=fake_llm)
+    pack = _mock_evidence_pack_with_entity_matches(
+        entity_matches_per_item=[
+            [
+                {
+                    "entity_id": "lele",
+                    "entity_type": "person",
+                    "matched_terms": ["乐乐", "小乐乐"],
+                    "match_sources": ["fts"],
+                }
+            ],
+            [
+                {
+                    "entity_id": "beijing",
+                    "entity_type": "place",
+                    "matched_terms": ["北京", "Beijing"],
+                    "match_sources": ["fts"],
+                },
+                {
+                    "entity_id": "lele",
+                    "entity_type": "person",
+                    "matched_terms": ["乐乐"],
+                    "match_sources": ["fts"],
+                },
+            ],
+        ]
+    )
+    evidence_context = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
+    prompt = orch._build_synthesis_prompt(
+        "test query",
+        [
+            {"title": "Entry 1", "date": "2026-03-01", "abstract": "Abstract 1"},
+            {"title": "Entry 2", "date": "2026-03-02", "abstract": "Abstract 2"},
+        ],
+        "",
+        evidence_context,
+    )
+    assert "entities:" in prompt, "Entity match context missing from synthesis prompt"
+    assert "lele(person)" in prompt
+    assert "beijing(place)" in prompt
+    assert "乐乐" in prompt
+    assert "北京" in prompt
+
+
+def test_synthesis_prompt_no_entity_matches_no_leak():
+    """Synthesis prompt does not leak full_content, raw metadata, absolute
+    paths, or entity fields outside the bounded whitelist."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    fake_llm = FakeSynthesisLLM()
+    orch = SmartSearchOrchestrator(llm_client=fake_llm)
+    pack = _mock_evidence_pack_with_entity_matches(
+        entity_matches_per_item=[
+            [
+                {
+                    "entity_id": "lele",
+                    "entity_type": "person",
+                    "matched_terms": ["乐乐", "小乐乐"],
+                    "match_sources": ["fts", "metadata"],
+                    "query_matched_term": "乐乐",
+                },
+            ],
+        ]
+    )
+    evidence_context = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
+    prompt = orch._build_synthesis_prompt(
+        "test query",
+        [
+            {
+                "title": "Entry 1",
+                "date": "2026-03-01",
+                "abstract": "Abstract 1",
+                "full_content": "This is the full private content that must not leak.",
+                "metadata": {"people": ["Alice"], "secret_field": "secret_value"},
+            },
+        ],
+        "",
+        evidence_context,
+    )
+    assert "full_content" not in prompt
+    assert "C:/" not in prompt
+    assert "secret_value" not in prompt
+    assert "Alice" not in prompt
+    assert "match_sources" not in prompt
+    assert "query_matched_term" not in prompt
+    assert "lele(person)" in prompt
+
+
+def test_evidence_to_synthesis_context_bounded_entity_matches():
+    """_evidence_to_synthesis_context includes bounded entity_matches with
+    only whitelisted fields (entity_id, entity_type, matched_terms)."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    pack = _mock_evidence_pack_with_entity_matches(
+        entity_matches_per_item=[
+            [
+                {
+                    "entity_id": "lele",
+                    "entity_type": "person",
+                    "matched_terms": ["乐乐", "小乐乐"],
+                    "match_sources": ["fts"],
+                    "query_matched_term": "乐乐",
+                },
+            ],
+        ]
+    )
+    ctx = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
+    assert len(ctx) == 1
+    item = ctx[0]
+    assert "entity_matches" in item
+    em = item["entity_matches"][0]
+    assert em["entity_id"] == "lele"
+    assert em["entity_type"] == "person"
+    assert em["matched_terms"] == ["乐乐", "小乐乐"]
+    assert "match_sources" not in em
+    assert "query_matched_term" not in em
+
+
+def test_evidence_to_synthesis_context_no_entity_matches():
+    """_evidence_to_synthesis_context omits entity_matches key when none present."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    pack = _mock_evidence_pack_with_entity_matches(entity_matches_per_item=[[], []])
+    ctx = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
+    assert len(ctx) == 2
+    for item in ctx:
+        assert "entity_matches" not in item
+
+
+def test_entity_matches_capped_at_three_per_item():
+    """More than 3 entity_matches per item are truncated."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    many_em = [
+        {"entity_id": f"e{i}", "entity_type": "person", "matched_terms": [f"t{i}"]}
+        for i in range(6)
+    ]
+    pack = _mock_evidence_pack_with_entity_matches(entity_matches_per_item=[many_em])
+    ctx = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
+    assert len(ctx[0]["entity_matches"]) == 3
+
+
+def test_matched_terms_capped_at_three_per_entity():
+    """More than 3 matched_terms per entity match are truncated."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    pack = _mock_evidence_pack_with_entity_matches(
+        entity_matches_per_item=[
+            [
+                {
+                    "entity_id": "lele",
+                    "entity_type": "person",
+                    "matched_terms": ["a", "b", "c", "d", "e"],
+                }
+            ]
+        ]
+    )
+    ctx = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
+    assert len(ctx[0]["entity_matches"][0]["matched_terms"]) == 3
+
+
+def test_string_length_caps_on_entity_synthesis_fields():
+    """Overly long entity_id, entity_type, and matched_term strings are
+    truncated by the respective length caps."""
+    from tools.search_journals.orchestrator import (
+        _MAX_ENTITY_ID_LENGTH,
+        _MAX_ENTITY_TYPE_LENGTH,
+        _MAX_MATCHED_TERM_LENGTH,
+        SmartSearchOrchestrator,
+    )
+
+    long_id = "x" * (_MAX_ENTITY_ID_LENGTH + 40)
+    long_type = "y" * (_MAX_ENTITY_TYPE_LENGTH + 40)
+    long_term = "z" * (_MAX_MATCHED_TERM_LENGTH + 40)
+
+    pack = _mock_evidence_pack_with_entity_matches(
+        entity_matches_per_item=[
+            [
+                {
+                    "entity_id": long_id,
+                    "entity_type": long_type,
+                    "matched_terms": [long_term],
+                }
+            ]
+        ]
+    )
+    ctx = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
+    em = ctx[0]["entity_matches"][0]
+    assert len(em["entity_id"]) == _MAX_ENTITY_ID_LENGTH
+    assert em["entity_id"] == long_id[:_MAX_ENTITY_ID_LENGTH]
+    assert len(em["entity_type"]) == _MAX_ENTITY_TYPE_LENGTH
+    assert em["entity_type"] == long_type[:_MAX_ENTITY_TYPE_LENGTH]
+    assert len(em["matched_terms"][0]) == _MAX_MATCHED_TERM_LENGTH
+    assert em["matched_terms"][0] == long_term[:_MAX_MATCHED_TERM_LENGTH]
+
+
+def test_string_length_caps_propagate_to_synthesis_prompt():
+    """Truncated strings appear in the synthesis prompt, not the full originals."""
+    from tools.search_journals.orchestrator import (
+        _MAX_ENTITY_ID_LENGTH,
+        _MAX_ENTITY_TYPE_LENGTH,
+        _MAX_MATCHED_TERM_LENGTH,
+        SmartSearchOrchestrator,
+    )
+
+    long_id = "a" * (_MAX_ENTITY_ID_LENGTH + 20)
+    long_type = "b" * (_MAX_ENTITY_TYPE_LENGTH + 20)
+    long_term = "c" * (_MAX_MATCHED_TERM_LENGTH + 20)
+
+    fake_llm = FakeSynthesisLLM()
+    orch = SmartSearchOrchestrator(llm_client=fake_llm)
+    pack = _mock_evidence_pack_with_entity_matches(
+        entity_matches_per_item=[
+            [
+                {
+                    "entity_id": long_id,
+                    "entity_type": long_type,
+                    "matched_terms": [long_term],
+                }
+            ]
+        ]
+    )
+    evidence_context = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
+    prompt = orch._build_synthesis_prompt(
+        "test query",
+        [{"title": "Entry 1", "date": "2026-03-01", "abstract": "Abstract 1"}],
+        "",
+        evidence_context,
+    )
+    capped_id = long_id[:_MAX_ENTITY_ID_LENGTH]
+    capped_type = long_type[:_MAX_ENTITY_TYPE_LENGTH]
+    capped_term = long_term[:_MAX_MATCHED_TERM_LENGTH]
+    assert capped_id in prompt
+    assert capped_type in prompt
+    assert capped_term in prompt
+    assert long_id not in prompt
+    assert long_type not in prompt
+    assert long_term not in prompt

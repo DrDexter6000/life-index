@@ -22,6 +22,11 @@ from ..lib.search_constants import ORCHESTRATOR_MAX_LLM_CANDIDATES
 _MAX_ENTITY_HINTS = 5
 _MAX_EXPANSION_TERMS_PER_HINT = 3
 _MAX_EXPANSION_TERM_LENGTH = 20
+_MAX_ENTITY_MATCHES_PER_ITEM = 3
+_MAX_MATCHED_TERMS_PER_ENTITY = 3
+_MAX_ENTITY_ID_LENGTH = 64
+_MAX_ENTITY_TYPE_LENGTH = 32
+_MAX_MATCHED_TERM_LENGTH = 40
 
 # Lazy import to avoid circular dependency — but store at module level for mocking
 _search_fn = None
@@ -449,6 +454,12 @@ class SmartSearchOrchestrator:
                     extras.append(f"score: {ev['score']}")
                 if ev.get("confidence"):
                     extras.append(f"confidence: {ev['confidence']}")
+                if ev.get("entity_matches"):
+                    em_parts = []
+                    for em in ev["entity_matches"]:
+                        terms = ", ".join(em.get("matched_terms", []))
+                        em_parts.append(f"{em['entity_id']}({em['entity_type']})[{terms}]")
+                    extras.append(f"entities: {'; '.join(em_parts)}")
                 if extras:
                     line += "\n   " + ", ".join(extras)
 
@@ -481,8 +492,10 @@ class SmartSearchOrchestrator:
         """Extract safe whitelisted fields from EvidencePack items for synthesis.
 
         Only includes: title, date, snippet/abstract (capped 200 chars),
-        relative doc path, provenance, source, confidence, score.
-        Excludes: full_content, raw metadata dict, absolute paths.
+        relative doc path, provenance, source, confidence, score, and a
+        bounded entity_matches summary when present.
+        Excludes: full_content, raw metadata dict, absolute paths, raw
+        relationship edges, full graph attributes.
         """
         items: list[dict[str, Any]] = []
         for ev_item in evidence_pack.items:
@@ -493,18 +506,31 @@ class SmartSearchOrchestrator:
             snippet = ev_item.snippet or ""
             abstract = ev_item.abstract or ""
             text = abstract if len(abstract) >= len(snippet) else snippet
-            items.append(
-                {
-                    "title": doc.title,
-                    "date": doc.date,
-                    "snippet": text[:200],
-                    "rel_path": rel_path,
-                    "provenance": ev_item.provenance,
-                    "source": scores.source,
-                    "score": scores.final_score,
-                    "confidence": scores.confidence,
-                }
-            )
+            entry: dict[str, Any] = {
+                "title": doc.title,
+                "date": doc.date,
+                "snippet": text[:200],
+                "rel_path": rel_path,
+                "provenance": ev_item.provenance,
+                "source": scores.source,
+                "score": scores.final_score,
+                "confidence": scores.confidence,
+            }
+            if ev_item.entity_matches:
+                bounded: list[dict[str, Any]] = []
+                for em in ev_item.entity_matches[:_MAX_ENTITY_MATCHES_PER_ITEM]:
+                    bounded.append(
+                        {
+                            "entity_id": em.entity_id[:_MAX_ENTITY_ID_LENGTH],
+                            "entity_type": em.entity_type[:_MAX_ENTITY_TYPE_LENGTH],
+                            "matched_terms": [
+                                t[:_MAX_MATCHED_TERM_LENGTH]
+                                for t in em.matched_terms[:_MAX_MATCHED_TERMS_PER_ENTITY]
+                            ],
+                        }
+                    )
+                entry["entity_matches"] = bounded
+            items.append(entry)
         return items
 
     def _parse_synthesis_response(

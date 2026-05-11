@@ -940,7 +940,7 @@ Evidence pack 采用**最佳努力（best-effort）**策略：
 
 #### 内部 Evidence 消费
 
-当 `--synthesize` 启用时，orchestrator 会**内部构建 EvidencePack**（即使未传 `--include-evidence`），并将其中的 provenance/source/score 等安全字段注入 synthesis prompt，以提升答案质量。若 evidence 构建失败，synthesis 回退为仅使用 `filtered_results`，不导致搜索失败。
+当 `--synthesize` 启用时，orchestrator 会**内部构建 EvidencePack**（即使未传 `--include-evidence`），并将其中的 provenance/source/score 以及有界 `entity_matches` 摘要等安全字段注入 synthesis prompt，以提升答案质量。若 evidence 构建失败，synthesis 回退为仅使用 `filtered_results`，不导致搜索失败。
 
 #### Trust Gate（引用验证 + 置信度校准）
 
