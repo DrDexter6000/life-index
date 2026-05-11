@@ -132,6 +132,7 @@ class TestDefaultOutputContract:
             "summary",
             "citations",
             "agent_unavailable",
+            "agent_decisions_summary",
             "performance",
         ):
             assert field in result, f"Missing stable field: {field}"
@@ -354,6 +355,69 @@ class TestSeededEntityMatchContract:
         result = _json(seeded_default_proc)
         assert result["success"] is True
         assert "evidence_pack" not in result
+
+    @pytest.fixture(scope="class")
+    def seeded_evidence_synthesize_proc(
+        self, seeded_sandbox: Path
+    ) -> subprocess.CompletedProcess[str]:
+        return _run_smart_search(
+            "--query",
+            "TAlias",
+            "--no-llm",
+            "--include-evidence",
+            "--synthesize",
+            data_dir=seeded_sandbox,
+            timeout=120,
+        )
+
+    def test_seeded_evidence_synthesize_success(
+        self, seeded_evidence_synthesize_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        assert (
+            seeded_evidence_synthesize_proc.returncode == 0
+        ), f"stderr: {seeded_evidence_synthesize_proc.stderr}"
+        result = _json(seeded_evidence_synthesize_proc)
+        assert result["success"] is True
+
+    def test_seeded_evidence_synthesize_no_answer(
+        self, seeded_evidence_synthesize_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(seeded_evidence_synthesize_proc)
+        assert "answer" not in result
+
+    def test_seeded_evidence_synthesize_evidence_pack_present(
+        self, seeded_evidence_synthesize_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(seeded_evidence_synthesize_proc)
+        assert "evidence_pack" in result
+
+    def test_seeded_evidence_synthesize_entity_matches_nonempty(
+        self, seeded_evidence_synthesize_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(seeded_evidence_synthesize_proc)
+        pack = result.get("evidence_pack")
+        assert pack is not None
+        items = pack.get("items", [])
+        has_entity_matches = any(item.get("entity_matches") for item in items)
+        assert has_entity_matches, (
+            f"No evidence item had non-empty entity_matches. " f"Items: {len(items)}"
+        )
+
+    def test_seeded_evidence_synthesize_stable_fields_present(
+        self, seeded_evidence_synthesize_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(seeded_evidence_synthesize_proc)
+        for field in (
+            "success",
+            "query",
+            "rewritten_query",
+            "filtered_results",
+            "summary",
+            "citations",
+            "agent_unavailable",
+            "performance",
+        ):
+            assert field in result, f"Missing stable field: {field}"
 
 
 class TestEvidenceDiagnosticsContract:

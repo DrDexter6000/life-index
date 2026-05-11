@@ -983,8 +983,8 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 |----------|------|
 | （无标志） | 当前默认：filtered results + summary |
 | `--include-evidence` | 添加 evidence_pack |
-| `--synthesize` | 内部构建 evidence；添加 answer（prompt 含 provenance/source/score） |
-| `--include-evidence --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score） |
+| `--synthesize` | 内部构建 evidence；添加 answer（prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
+| `--include-evidence --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
 | `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
 
 ### Answer Evaluation Harness（Internal Developer Tooling，非 CLI Public API）
