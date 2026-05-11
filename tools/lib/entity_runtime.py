@@ -13,9 +13,10 @@ This is a read-only derived view. It never writes back to YAML.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from tools.lib.entity_graph import load_entity_graph
 
@@ -171,6 +172,52 @@ ROLE_LABELS: frozenset[str] = frozenset(
         "老家",
     }
 )
+
+
+_ASCII_WORD_BOUNDARY = r"A-Za-z0-9_"
+
+
+def _uses_ascii_word_boundaries(term: str) -> bool:
+    """Return true when a term should use ASCII token boundaries."""
+    return term.isascii() and any(ch.isalnum() for ch in term)
+
+
+def _iter_entity_term_spans(text: str, term: str) -> Iterator[tuple[int, int]]:
+    """Yield case-insensitive spans for an entity term in text.
+
+    ASCII terms use alphanumeric boundaries so aliases like ``LI`` and ``Ali``
+    do not match inside words such as ``life`` or ``Alibaba``. Non-ASCII terms
+    keep the previous substring behavior because CJK text is not whitespace
+    tokenized in the same way.
+    """
+    if not text or not term:
+        return
+
+    if _uses_ascii_word_boundaries(term):
+        left_boundary = rf"(?<![{_ASCII_WORD_BOUNDARY}])"
+        right_boundary = rf"(?![{_ASCII_WORD_BOUNDARY}])"
+        pattern = re.compile(
+            f"{left_boundary}{re.escape(term)}{right_boundary}",
+            re.IGNORECASE,
+        )
+        for match in pattern.finditer(text):
+            yield match.span()
+        return
+
+    text_lower = text.lower()
+    term_lower = term.lower()
+    pos = 0
+    while True:
+        idx = text_lower.find(term_lower, pos)
+        if idx == -1:
+            break
+        yield (idx, idx + len(term))
+        pos = idx + 1
+
+
+def _contains_entity_term(text: str, term: str) -> bool:
+    """Return true if text contains term according to entity matching rules."""
+    return any(_iter_entity_term_spans(text, term))
 
 
 @dataclass
@@ -443,6 +490,8 @@ __all__ = [
     "load_runtime_view",
     "resolve_via_runtime",
     "_expand_related_entities",
+    "_contains_entity_term",
+    "_iter_entity_term_spans",
     "_matches_role_filter",
     "_get_matching_role_labels",
     "RELATION_PHRASE_PATTERNS",

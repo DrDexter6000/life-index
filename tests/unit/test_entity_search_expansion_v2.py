@@ -526,6 +526,57 @@ class TestCaseInsensitiveExpansion:
         assert len(hints) == 1
         assert hints[0]["entity_id"] == "chongqing"
 
+    def test_ascii_short_alias_not_expanded_inside_word(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(
+            [
+                {
+                    "id": "life-index-project",
+                    "type": "project",
+                    "primary_name": "Life Index",
+                    "aliases": ["LI"],
+                    "attributes": {},
+                    "relationships": [],
+                },
+                {
+                    "id": "alice-person",
+                    "type": "person",
+                    "primary_name": "Alice",
+                    "aliases": ["Ali"],
+                    "attributes": {},
+                    "relationships": [],
+                },
+            ],
+            isolated_data_dir,
+        )
+
+        assert expand_query_with_entity_graph("life") == "life"
+        assert expand_query_with_entity_graph("Alibaba") == "Alibaba"
+        assert expand_query_with_entity_graph("Align") == "Align"
+        assert expand_query_with_entity_graph("Ali_note") == "Ali_note"
+
+    def test_ascii_short_alias_expands_at_token_boundary(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(
+            [
+                {
+                    "id": "life-index-project",
+                    "type": "project",
+                    "primary_name": "Life Index",
+                    "aliases": ["LI"],
+                    "attributes": {},
+                    "relationships": [],
+                }
+            ],
+            isolated_data_dir,
+        )
+
+        expanded = expand_query_with_entity_graph("my LI project")
+
+        assert "(Life Index OR LI)" in expanded
+
     def test_case_insensitive_substring_expansion(self, isolated_data_dir: Path) -> None:
         from tools.search_journals.core import expand_query_with_entity_graph
 

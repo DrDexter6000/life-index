@@ -2095,3 +2095,80 @@ class TestCaseInsensitiveEntityMatching:
         em = pack.items[0].entity_matches[0]
         assert "Beijing" in em.matched_terms
         assert em.query_matched_term == "beijing"
+
+    def test_ascii_alias_does_not_match_inside_unrelated_word(self) -> None:
+        hint = {
+            "matched_term": "Ali",
+            "entity_id": "alice-person",
+            "entity_type": "person",
+            "expansion_terms": ["Alice", "Ali"],
+        }
+        result = {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Alibaba and Align and Ali_note",
+                    "date": "2026-03-07",
+                    "snippet": "No exact alias token here",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [hint],
+        }
+
+        pack = build_evidence_pack(result)
+
+        assert pack.items[0].entity_matches == []
+
+    def test_ascii_alias_matches_exact_token_boundary(self) -> None:
+        hint = {
+            "matched_term": "Ali",
+            "entity_id": "alice-person",
+            "entity_type": "person",
+            "expansion_terms": ["Alice", "Ali"],
+        }
+        result = {
+            "success": True,
+            "query_params": {"query": "test"},
+            "merged_results": [
+                {
+                    "path": "Journals/2026/03/test.md",
+                    "title": "Meeting with Ali",
+                    "date": "2026-03-07",
+                    "snippet": "Alice joined later",
+                    "source": "fts",
+                    "relevance": 90,
+                    "fts_score": 90.0,
+                    "semantic_score": 0.0,
+                    "rrf_score": 0.0,
+                    "final_score": 90.0,
+                    "search_rank": 1,
+                    "confidence": "high",
+                    "metadata": {},
+                },
+            ],
+            "total_available": 1,
+            "has_more": False,
+            "no_confident_match": False,
+            "entity_hints": [hint],
+        }
+
+        pack = build_evidence_pack(result)
+        em = pack.items[0].entity_matches[0]
+
+        assert em.entity_id == "alice-person"
+        assert "Ali" in em.matched_terms
+        assert "Alice" in em.matched_terms

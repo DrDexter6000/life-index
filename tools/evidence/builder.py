@@ -21,6 +21,7 @@ from tools.evidence.types import (
     ScoreBreakdown,
     SemanticCandidate,
 )
+from tools.lib.entity_runtime import _contains_entity_term
 
 
 def _normalize_path(path: str) -> str:
@@ -202,9 +203,8 @@ def _build_entity_matches(
         sources: list[str] = []
         for term in candidate_terms:
             term_found = False
-            term_lower = term.lower()
             for source_name, text in source_texts.items():
-                if term_lower in text.lower():
+                if _contains_entity_term(text, term):
                     term_found = True
                     if source_name not in sources:
                         sources.append(source_name)

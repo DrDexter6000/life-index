@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Literal, Optional
 from ..lib.entity_graph import load_entity_graph
 from ..lib.entity_runtime import (
     build_runtime_view,
+    _iter_entity_term_spans,
     resolve_via_runtime,
 )
 from ..lib.entity_relations import normalize_relation
@@ -296,19 +297,12 @@ def expand_query_with_entity_graph(query: str) -> str:
             # build the result from accepted spans so generated OR groups are
             # never scanned for additional matches.
             spans: list[tuple[int, int, dict[str, Any]]] = []
-            token_lower = token.lower()
             for entity in graph:
                 for name in [entity["primary_name"], *entity.get("aliases", [])]:
                     if len(str(name).strip()) < 2:
                         continue
-                    name_lower = name.lower()
-                    pos = 0
-                    while True:
-                        idx = token_lower.find(name_lower, pos)
-                        if idx == -1:
-                            break
-                        spans.append((idx, idx + len(name), entity))
-                        pos = idx + 1
+                    for idx, end in _iter_entity_term_spans(token, str(name)):
+                        spans.append((idx, end, entity))
 
             # Sort by start ascending, then by length descending (longest first)
             spans.sort(key=lambda s: (s[0], -(s[1] - s[0])))
