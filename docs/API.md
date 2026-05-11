@@ -873,8 +873,11 @@ python -m tools.smart_search --query "..." [options]
 
 **匹配语义（S1-C 实测确认）：**
 
-- **大小写不敏感**：实体图谱查找（`resolve_via_runtime`）、确定性查询扩展（`expand_query_with_entity_graph`、`resolve_query_entities`）以及证据实体匹配溯源（`_build_entity_matches`）均使用 `.lower()` 归一化进行匹配。`life index` 与 `Life Index` 和 `LIFE INDEX` 等效。原始实体名称/别名在输出（`matched_terms`、`primary_name`、`aliases`）中保留原始大小写
-- **子串匹配**：匹配基于子串包含，而非整词边界。短别名（如 1-2 字符）可能匹配到无关文本，调用方在消费 `entity_matches` 时应注意此误报风险
+- **大小写不敏感**：实体图谱查找（`resolve_via_runtime`）、确定性查询扩展（`expand_query_with_entity_graph`、`resolve_query_entities`）以及证据实体匹配溯源（`_build_entity_matches`）均使用大小写归一化进行匹配。`life index` 与 `Life Index` 和 `LIFE INDEX` 等效。原始实体名称/别名在输出（`matched_terms`、`primary_name`、`aliases`）中保留原始大小写
+- **ASCII 边界匹配**：ASCII 实体名/别名使用大小写不敏感的字母数字边界匹配；短别名不会匹配到无关单词内部。例如 `LI` 不匹配 `life`，`Ali` 不匹配 `Alibaba` / `Align` / `Ali_note`
+- **下划线语义**：`_` 被视为 ASCII word character，因此 `my_LI_project` 不匹配 `LI`。这是为了避免代码式标识符、文件名片段或标签中的短别名误报
+- **非 ASCII 子串匹配**：中文等非 ASCII 术语保留子串匹配行为；系统当前不引入中文分词边界。调用方应将极短中文别名视为可能产生误报的高风险别名
+- **路径隐私**：Evidence Pack 的 `document.path` 是相对文档引用或被省略；消费者不得依赖绝对文件系统路径，系统也不应通过 `evidence_pack.items[].document.path` 暴露本机绝对路径
 - **abstract + metadata 双重归因**：`metadata.abstract`（或 `metadata.summary`）的文本同时出现在 `abstract` 和 `metadata` 两个来源字段中，导致 `match_sources` 可能包含 `["abstract", "metadata"]` 双重归因。这是确定性文本扫描的正常结果，不代表独立匹配
 - **`metadata` 源聚合**：`metadata` 源字段由 frontmatter 中所有字符串值（含列表元素）拼接而成，覆盖 `location`、`weather`、`people`、`tags` 等全部元数据字段
 

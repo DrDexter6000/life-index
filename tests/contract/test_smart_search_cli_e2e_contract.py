@@ -336,6 +336,18 @@ class TestSeededEntityMatchContract:
                     return
         pytest.fail("No entity_match with entity_id=person-test-001 found")
 
+    def test_seeded_evidence_document_paths_are_relative(
+        self, seeded_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(seeded_evidence_proc)
+        pack = result["evidence_pack"]
+        for item in pack.get("items", []):
+            path = item.get("document", {}).get("path")
+            if path is None:
+                continue
+            assert not Path(path).is_absolute()
+            assert not (len(path) >= 2 and path[1] == ":")
+
     def test_seeded_default_no_evidence_pack(
         self, seeded_default_proc: subprocess.CompletedProcess[str]
     ) -> None:

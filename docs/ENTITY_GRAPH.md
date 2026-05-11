@@ -80,6 +80,16 @@ attributes:
 
 ---
 
+### 3.4 搜索匹配语义
+
+Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端当前匹配语义如下：
+
+- **大小写不敏感**：ASCII 实体名和 alias 在查询扩展、`entity_hints` 和 Evidence Pack `entity_matches` 中按大小写不敏感方式匹配。
+- **ASCII 边界匹配**：ASCII 术语使用字母数字边界，短 alias 不匹配无关单词内部。例如 `LI` 不匹配 `life`，`Ali` 不匹配 `Alibaba` 或 `Align`。
+- **下划线语义**：`_` 被视为 word character，因此 `Ali_note` 和 `my_LI_project` 不匹配 `Ali` / `LI`。
+- **非 ASCII 子串匹配**：中文等非 ASCII 术语保留子串匹配；因此极短中文 alias 仍应谨慎准入，避免泛词或高频片段污染搜索。
+- **准入规则优先**：边界匹配降低短 ASCII alias 的误报风险，但不能替代 §3.1-§3.3 的 alias 准入审查。
+
 ## 4. Relationship 与 Role 的过渡策略
 
 ### 4.1 最小 Relationship Vocabulary
