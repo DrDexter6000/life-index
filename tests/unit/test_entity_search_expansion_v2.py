@@ -584,3 +584,90 @@ class TestCaseInsensitiveExpansion:
         expanded = expand_query_with_entity_graph("在chongqing发生的事")
 
         assert "重庆" in expanded
+
+
+# ---------------------------------------------------------------------------
+# S1T Multi-Word Alias Hint Resolution Tests
+# ---------------------------------------------------------------------------
+
+
+def _life_index_project_graph() -> list[dict]:
+    return [
+        {
+            "id": "life-index",
+            "type": "project",
+            "primary_name": "Life Index",
+            "aliases": ["life index", "LobsterAI Journal", "日志系统"],
+            "attributes": {},
+            "relationships": [],
+        },
+        {
+            "id": "life-index-project",
+            "type": "project",
+            "primary_name": "Life Index Project",
+            "aliases": ["LIP"],
+            "attributes": {},
+            "relationships": [],
+        },
+    ]
+
+
+class TestMultiWordAliasHintResolution:
+    """S1T: compound multi-word queries must resolve entities whose primary
+    name or alias spans multiple whitespace-separated tokens.
+    """
+
+    def test_resolve_query_entities_life_index_in_compound_query(
+        self, isolated_data_dir: Path
+    ) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(_life_index_project_graph(), isolated_data_dir)
+        hints = resolve_query_entities("life index graph search")
+
+        assert len(hints) >= 1
+        matched_ids = [h["entity_id"] for h in hints]
+        assert "life-index" in matched_ids
+
+    def test_resolve_query_entities_preserves_short_alias_boundary(
+        self, isolated_data_dir: Path
+    ) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(
+            _life_index_project_graph()
+            + [
+                {
+                    "id": "alice-person",
+                    "type": "person",
+                    "primary_name": "Alice",
+                    "aliases": ["Ali"],
+                    "attributes": {},
+                    "relationships": [],
+                },
+            ],
+            isolated_data_dir,
+        )
+
+        hints = resolve_query_entities("Align your Ali_note")
+
+        assert not any(h["entity_id"] == "alice-person" for h in hints)
+
+    def test_resolve_query_entities_multi_word_alias_primary_name(
+        self, isolated_data_dir: Path
+    ) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(_life_index_project_graph(), isolated_data_dir)
+        hints = resolve_query_entities("Life Index Project overview")
+
+        assert any(h["entity_id"] == "life-index-project" for h in hints)
+
+    def test_expand_query_multi_word_in_compound_query(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import expand_query_with_entity_graph
+
+        _save_graph(_life_index_project_graph(), isolated_data_dir)
+        expanded = expand_query_with_entity_graph("life index graph search")
+
+        assert "Life Index" in expanded
+        assert "日志系统" in expanded

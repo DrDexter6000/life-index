@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from ..lib.entity_graph import load_entity_graph
 from ..lib.entity_runtime import (
+    EntityRuntimeView,
     build_runtime_view,
     _iter_entity_term_spans,
     resolve_via_runtime,
@@ -176,6 +177,32 @@ def _filter_results_by_candidates(
     return filtered_results
 
 
+def _merge_multi_word_entity_tokens(
+    raw_tokens: list[str],
+    view: EntityRuntimeView,
+    max_window: int = 4,
+) -> list[str]:
+    tokens: list[str] = []
+    skip: set[int] = set()
+    for i in range(len(raw_tokens)):
+        if i in skip:
+            continue
+        merged = False
+        for window_len in range(min(len(raw_tokens) - i, max_window), 1, -1):
+            if i + window_len > len(raw_tokens):
+                continue
+            candidate = " ".join(raw_tokens[i : i + window_len])
+            if resolve_via_runtime(candidate, view) is not None:
+                tokens.append(candidate)
+                for k in range(1, window_len):
+                    skip.add(i + k)
+                merged = True
+                break
+        if not merged:
+            tokens.append(raw_tokens[i])
+    return tokens
+
+
 def _join_entity_expanded_tokens_for_fts(expanded_tokens: list[str]) -> str:
     """Join entity-expanded fragments with explicit FTS5 AND where needed."""
     joined: list[str] = []
@@ -240,7 +267,9 @@ def expand_query_with_entity_graph(query: str) -> str:
         return _expand_entity_names(whole_match)
 
     # 2. Token-level expansion
-    tokens = [token for token in query.split() if token.strip()]
+    raw_tokens = [token for token in query.split() if token.strip()]
+
+    tokens = _merge_multi_word_entity_tokens(raw_tokens, view)
     expanded_tokens: list[str] = []
 
     def _expand_phrase_pattern(token: str) -> str | None:
@@ -463,6 +492,25 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
         if matched:
             reason = "primary_name_match" if token == matched["primary_name"] else "alias_match"
             _add_hint(matched, token, reason)
+
+    # Multi-word window: try adjacent token spans for entities whose primary
+    # name or alias contains spaces (e.g. "Life Index", "Life Index Project").
+    # Longer windows tried first so "Life Index Project" is preferred over
+    # the shorter "Life Index".
+    consumed: set[int] = set()
+    for window_len in range(len(tokens), 1, -1):
+        for start in range(len(tokens) - window_len + 1):
+            if any(start + k in consumed for k in range(window_len)):
+                continue
+            candidate = " ".join(tokens[start : start + window_len])
+            matched = resolve_via_runtime(candidate, view)
+            if matched:
+                reason = (
+                    "primary_name_match" if candidate == matched["primary_name"] else "alias_match"
+                )
+                _add_hint(matched, candidate, reason)
+                for k in range(window_len):
+                    consumed.add(start + k)
 
     return hints
 
