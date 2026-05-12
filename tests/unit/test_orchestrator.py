@@ -1121,7 +1121,7 @@ def test_transparency_low_confidence_evidence_noted():
     evidence = _trust_gate_evidence_context(3, confidences=["high", "medium", "low"])
 
     result = orch.synthesize_answer(
-        query="test",
+        query="entry",
         filtered_results=filtered,
         summary="",
         evidence_context=evidence,
@@ -1885,7 +1885,7 @@ def _s1s_filtered_grocery_only() -> list[dict]:
     """Post-filtered results containing only the grocery distractor."""
     return [
         {
-            "title": "Weekend Grocery Shopping",
+            "title": "Weekend Grocery Shopping Index",
             "date": "2026-05-11",
             "abstract": "Bought milk and eggs at the store.",
             "rel_path": _S1S_GROCERY_PATH,
@@ -1912,7 +1912,7 @@ def _s1s_evidence_misaligned() -> list[dict]:
             "confidence": "high",
         },
         {
-            "title": "Weekend Grocery Shopping",
+            "title": "Weekend Grocery Shopping Index",
             "date": "2026-05-11",
             "snippet": "Bought milk and eggs",
             "rel_path": _S1S_GROCERY_PATH,
@@ -2119,6 +2119,116 @@ def test_s1s_full_search_postfilter_alignment():
         )
 
 
+# ---------------------------------------------------------------------------
+# S1U A+B: Filter signal alignment and low-confidence citation trust gate
+# ---------------------------------------------------------------------------
+
+
+def test_s1u_filter_prompt_includes_relevance_signals():
+    """Post-filter prompt includes bounded abstract/snippet and score signals."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=None)
+    prompt = orch._build_filter_prompt(
+        "life index graph search",
+        [
+            {
+                "title": "Life Index Graph Search Implementation",
+                "date": "2026-05-12",
+                "metadata": {
+                    "abstract": "Entity aliases and smart-search evidence alignment notes.",
+                },
+                "snippet": "Graph search implementation details for citation-backed synthesis.",
+                "source": "fts,semantic",
+                "confidence": "high",
+                "final_score": 0.95,
+                "entity_matches": [
+                    {
+                        "entity_id": "life-index",
+                        "entity_type": "project",
+                        "matched_terms": ["life index", "graph search"],
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert "Entity aliases and smart-search evidence alignment notes." in prompt
+    assert "Graph search implementation details" in prompt
+    assert "source: fts,semantic" in prompt
+    assert "confidence: high" in prompt
+    assert "score: 0.95" in prompt
+    assert "entities: life-index(project)[life index, graph search]" in prompt
+
+
+def test_s1u_trust_gate_rejects_low_confidence_grocery_for_graph_query():
+    """A low-confidence off-topic grocery citation is dropped for graph search."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="low")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+
+    result = orch.synthesize_answer(
+        query="life index graph search",
+        filtered_results=_s1s_filtered_grocery_only(),
+        summary="",
+        evidence_context=_s1s_evidence_misaligned(),
+    )
+
+    assert result is not None
+    assert result["citations"] == []
+    assert result["confidence"] == "low"
+
+
+def test_s1u_all_dropped_citations_remove_bracket_references():
+    """When all citations are dropped, answer_text must not keep [1]/[2] references."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(
+        answer_text=(
+            "Your journal has Life Index graph search implementation notes [1] "
+            "and a design review [2]."
+        ),
+        citations=[1, 2],
+        confidence="low",
+    )
+    orch = SmartSearchOrchestrator(llm_client=llm)
+
+    result = orch.synthesize_answer(
+        query="life index graph search",
+        filtered_results=_s1s_filtered_grocery_only(),
+        summary="",
+        evidence_context=_s1s_evidence_misaligned(),
+    )
+
+    assert result is not None
+    assert result["citations"] == []
+    assert result["confidence"] == "low"
+    assert "[1]" not in result["answer_text"]
+    assert "[2]" not in result["answer_text"]
+    assert "citation-backed answer" in result["answer_text"]
+    assert any("no validated citations" in lim.lower() for lim in result["limitations"])
+
+
+def test_s1u_trust_gate_allows_low_confidence_grocery_for_grocery_query():
+    """The same low-confidence grocery citation remains valid for grocery intent."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    llm = TrustGateLLM(citations=[1], confidence="low")
+    orch = SmartSearchOrchestrator(llm_client=llm)
+
+    result = orch.synthesize_answer(
+        query="grocery shopping",
+        filtered_results=_s1s_filtered_grocery_only(),
+        summary="",
+        evidence_context=_s1s_evidence_misaligned(),
+    )
+
+    assert result is not None
+    assert result["citations"] == [_S1S_GROCERY_PATH]
+    assert result["confidence"] == "low"
+
+
 def test_string_length_caps_propagate_to_synthesis_prompt():
     """Truncated strings appear in the synthesis prompt, not the full originals."""
     from tools.search_journals.orchestrator import (
@@ -2161,3 +2271,90 @@ def test_string_length_caps_propagate_to_synthesis_prompt():
     assert long_id not in prompt
     assert long_type not in prompt
     assert long_term not in prompt
+
+
+# ---------------------------------------------------------------------------
+# S1U A': Trust gate hardening — _normalized_tokens() fix tests
+# ---------------------------------------------------------------------------
+
+
+def test_s1u_prime_test_not_stopped():
+    """'test' must NOT be filtered as a stopword — users query 'test results'."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("test results")
+    assert "test" in tokens, f"'test' should be kept as a real token, got: {tokens}"
+
+
+def test_s1u_prime_cjk_query_produces_tokens():
+    """Chinese query like '图谱搜索' must produce non-empty token set."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("图谱搜索")
+    assert len(tokens) > 0, "CJK query produced empty token set — trust gate bypassed"
+
+
+def test_s1u_prime_cjk_mixed_query_produces_tokens():
+    """Mixed CJK+ASCII query 'life index 图谱' must contain both kinds of tokens."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("life index 图谱")
+    assert "life" in tokens
+    assert "index" in tokens
+    assert any(len(t) > 0 for t in tokens), "Must have CJK tokens"
+
+
+def test_s1u_prime_analysis_not_stemmed_to_analysi():
+    """'analysis' must NOT be stemmed to 'analysi' (unsafe trailing-s strip)."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("analysis")
+    assert (
+        "analysi" not in tokens
+    ), f"'analysis' was incorrectly stemmed to 'analysi', got: {tokens}"
+    assert any(
+        "analys" in t or "analysis" in t for t in tokens
+    ), f"'analysis' should remain 'analysis' or stem to 'analysi', got: {tokens}"
+
+
+def test_s1u_prime_basis_not_stemmed():
+    """'basis' ends in 's' but must NOT be stemmed (ends in 'is')."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("basis")
+    assert "basi" not in tokens, f"'basis' was incorrectly stemmed to 'basi', got: {tokens}"
+    assert "basis" in tokens
+
+
+def test_s1u_prime_focus_not_stemmed():
+    """'focus' ends in 's' but must NOT be stemmed (ends in 'us')."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("focus")
+    assert "focu" not in tokens, f"'focus' was incorrectly stemmed to 'focu', got: {tokens}"
+    assert "focus" in tokens
+
+
+def test_s1u_prime_thesis_not_stemmed():
+    """'thesis' ends in 's' but must NOT be stemmed (ends in 'sis')."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("thesis")
+    assert "thesi" not in tokens, f"'thesis' was incorrectly stemmed to 'thesi', got: {tokens}"
+    assert "thesis" in tokens
+
+
+def test_s1u_prime_ies_stemming_preserved():
+    """'stories' -> 'story' ies->y stemming must still work."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("stories")
+    assert "story" in tokens
+
+
+def test_s1u_prime_normal_plural_still_stemmed():
+    """'results' should still be stemmed to 'result' (normal trailing s)."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    tokens = SmartSearchOrchestrator._normalized_tokens("results")
+    assert "result" in tokens

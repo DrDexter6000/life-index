@@ -13,6 +13,7 @@ When LLM is unavailable, falls back to pure dual-pipeline with agent_unavailable
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -27,6 +28,23 @@ _MAX_MATCHED_TERMS_PER_ENTITY = 3
 _MAX_ENTITY_ID_LENGTH = 64
 _MAX_ENTITY_TYPE_LENGTH = 32
 _MAX_MATCHED_TERM_LENGTH = 40
+_QUERY_TOKEN_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "at",
+    "for",
+    "from",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+}
 
 # Lazy import to avoid circular dependency — but store at module level for mocking
 _search_fn = None
@@ -410,7 +428,7 @@ class SmartSearchOrchestrator:
             parsed = self._parse_synthesis_response(response, filtered_results)
             if parsed is None:
                 return None
-            gated = self._apply_trust_gate(parsed, filtered_results, evidence_context)
+            gated = self._apply_trust_gate(parsed, filtered_results, evidence_context, query=query)
             transparency = self._compute_transparency(
                 gated,
                 evidence_context,
@@ -592,6 +610,8 @@ class SmartSearchOrchestrator:
         parsed: dict[str, Any],
         filtered_results: list[dict[str, Any]],
         evidence_context: list[dict[str, Any]] | None = None,
+        *,
+        query: str = "",
     ) -> dict[str, Any]:
         """Validate citations against known paths and calibrate confidence.
 
@@ -627,7 +647,27 @@ class SmartSearchOrchestrator:
             if rel and not _is_absolute_path(rel) and rel in filtered_paths:
                 known_paths.add(rel)
 
-        valid_citations = [c for c in parsed.get("citations", []) if c in known_paths]
+        evidence_by_path = {
+            ev.get("rel_path", ""): ev for ev in evidence_context or [] if ev.get("rel_path")
+        }
+        filtered_by_path: dict[str, dict[str, Any]] = {}
+        for r in filtered_results:
+            path = r.get("rel_path", "") or r.get("path", "")
+            if path and not _is_absolute_path(path):
+                filtered_by_path[path] = r
+
+        valid_citations = []
+        for citation in parsed.get("citations", []):
+            if citation not in known_paths:
+                continue
+            evidence_item = evidence_by_path.get(citation, {})
+            filtered_item = filtered_by_path.get(citation, {})
+            confidence = evidence_item.get("confidence") or filtered_item.get("confidence")
+            if confidence == "low" and not SmartSearchOrchestrator._citation_matches_query(
+                query, filtered_item, evidence_item
+            ):
+                continue
+            valid_citations.append(citation)
 
         if not valid_citations:
             confidence_cap = "low"
@@ -653,8 +693,15 @@ class SmartSearchOrchestrator:
         if order.get(llm_confidence, 0) > order.get(confidence_cap, 0):
             llm_confidence = confidence_cap
 
+        answer_text = parsed["answer_text"]
+        if parsed.get("citations") and not valid_citations:
+            answer_text = (
+                "The retrieved evidence could not be validated into a "
+                "citation-backed answer for this query."
+            )
+
         return {
-            "answer_text": parsed["answer_text"],
+            "answer_text": answer_text,
             "citations": valid_citations,
             "confidence": llm_confidence,
         }
@@ -820,9 +867,48 @@ class SmartSearchOrchestrator:
         """Build prompt for post-filtering. Data minimization enforced."""
         items = []
         for i, c in enumerate(candidates, 1):
-            title = c.get("title", "")
-            abstract = c.get("abstract", "")[:200]
-            items.append(f"{i}. Title: {title}\n   Abstract: {abstract}")
+            metadata = c.get("metadata", {}) if isinstance(c.get("metadata"), dict) else {}
+            title = str(c.get("title", ""))[:200]
+            date = str(c.get("date", ""))[:40]
+            abstract = str(c.get("abstract") or metadata.get("abstract") or "")[:200]
+            snippet = str(c.get("snippet", ""))[:200]
+            lines = [f"{i}. Title: {title}"]
+            if date:
+                lines.append(f"   Date: {date}")
+            if abstract:
+                lines.append(f"   Abstract: {abstract}")
+            if snippet and snippet != abstract:
+                lines.append(f"   Snippet: {snippet}")
+
+            signals = []
+            if c.get("source"):
+                signals.append(f"source: {str(c['source'])[:80]}")
+            if c.get("confidence"):
+                signals.append(f"confidence: {str(c['confidence'])[:20]}")
+            score = c.get("final_score", c.get("score", c.get("relevance")))
+            if score is not None:
+                signals.append(f"score: {score}")
+            if signals:
+                lines.append(f"   Signals: {', '.join(signals)}")
+
+            entity_matches = c.get("entity_matches") or metadata.get("entity_matches") or []
+            if entity_matches:
+                entity_parts = []
+                for em in entity_matches[:_MAX_ENTITY_MATCHES_PER_ITEM]:
+                    entity_id = str(em.get("entity_id", ""))[:_MAX_ENTITY_ID_LENGTH]
+                    entity_type = str(em.get("entity_type", ""))[:_MAX_ENTITY_TYPE_LENGTH]
+                    matched_terms = [
+                        str(t)[:_MAX_MATCHED_TERM_LENGTH]
+                        for t in em.get("matched_terms", [])[:_MAX_MATCHED_TERMS_PER_ENTITY]
+                    ]
+                    if entity_id and entity_type:
+                        entity_parts.append(
+                            f"{entity_id}({entity_type})[{', '.join(matched_terms)}]"
+                        )
+                if entity_parts:
+                    lines.append(f"   entities: {'; '.join(entity_parts)}")
+
+            items.append("\n".join(lines))
 
         candidates_text = "\n".join(items)
         return (
@@ -838,6 +924,67 @@ class SmartSearchOrchestrator:
             f'"citations": ["..."]'
             f"}}"
         )
+
+    @staticmethod
+    def _citation_matches_query(
+        query: str,
+        filtered_item: dict[str, Any],
+        evidence_item: dict[str, Any],
+    ) -> bool:
+        query_tokens = SmartSearchOrchestrator._normalized_tokens(query)
+        if not query_tokens:
+            return True
+
+        text_parts = [
+            filtered_item.get("title", ""),
+            filtered_item.get("abstract", ""),
+            filtered_item.get("snippet", ""),
+            evidence_item.get("title", ""),
+            evidence_item.get("snippet", ""),
+        ]
+        metadata = filtered_item.get("metadata", {})
+        if isinstance(metadata, dict):
+            text_parts.append(metadata.get("abstract", ""))
+        entity_matches = (evidence_item.get("entity_matches") or []) + (
+            filtered_item.get("entity_matches") or []
+        )
+        for em in entity_matches:
+            text_parts.extend(
+                [
+                    em.get("entity_id", ""),
+                    em.get("entity_type", ""),
+                    " ".join(em.get("matched_terms", [])),
+                ]
+            )
+
+        item_tokens = SmartSearchOrchestrator._normalized_tokens(" ".join(map(str, text_parts)))
+        matches = query_tokens & item_tokens
+        required_matches = 1 if len(query_tokens) == 1 else 2
+        return len(matches) >= required_matches
+
+    @staticmethod
+    def _normalized_tokens(text: str) -> set[str]:
+        tokens: set[str] = set()
+        lowered = text.lower()
+        for token in re.findall(r"[a-z0-9]+", lowered):
+            if token in _QUERY_TOKEN_STOPWORDS or len(token) < 2:
+                continue
+            if token.endswith("ies") and len(token) > 4:
+                token = token[:-3] + "y"
+            elif (
+                token.endswith("s")
+                and len(token) > 3
+                and not token.endswith("is")
+                and not token.endswith("us")
+                and not token.endswith("sis")
+            ):
+                token = token[:-1]
+            tokens.add(token)
+        for match in re.finditer(r"[\u4e00-\u9fff\u3400-\u4dbf]+", lowered):
+            segment = match.group(0)
+            for i in range(len(segment)):
+                tokens.add(segment[i])
+        return tokens
 
     def _parse_filter_response(
         self, response: str, candidates: list[dict[str, Any]]
