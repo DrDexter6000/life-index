@@ -70,6 +70,14 @@ INDEX.md < index_YYYY.md < index_YYYY-MM.md
 
 每层索引是其覆盖时间段的元数据聚合体，Agent 阅读一个索引文件即可了解该阶段内容，无需逐条阅读日志。
 
+### 1.4 未来兼容性基线（ADR-026）
+
+Index Tree 的长期定位不只是浏览辅助，而是面向 10/20/50 年日志的导航基座：它应支持 long-running L3 模块做候选缩小、层级下钻、进度定位、checkpoint/resume 锚定与证据包组织。
+
+该方向不要求立即实现人格分析、数字家书、数字人格等高级模块；这些是终局压力测试，不是当前路线图承诺。L1/L2 需要优先固化的是稳定 CLI contract、Evidence Pack / Claim Envelope、可导航 Index Tree、batch/cursor/pagination、addressable intermediate artifacts 与 eval contract。详见 [ADR-026](./adr/ADR-026-l1-l2-future-compatibility-baseline.md) 与 [RFC-2026-05-13](./rfc/RFC-2026-05-13-l1-l2-future-compatibility-baseline.md)。
+
+L2 仍不得调用 LLM，也不得实现或存储 ADR-026 所列 persona interpretation、emotion interpretation、relationship judgment、narrative synthesis、digital letters、creative emulation、cross-journal LLM reasoning 等解释性能力或结论。L3/L4 模块若消费 L2 输出做解释或创作，必须保留证据、限制与 provenance。
+
 ---
 
 ## 2. 分层搜索架构
@@ -82,6 +90,8 @@ INDEX.md < index_YYYY.md < index_YYYY-MM.md
 | **S1 确定性检索与排序** | L2 | `life-index search`；关键词精确匹配、时间/主题过滤、Entity Graph 确定性扩展、语义候选补充（fallback/report-only）、RRF 融合 | 官方质量门（keyword/default） |
 | **S2 智能搜索编排** | L3 | `life-index smart-search`；LLM 做意图识别、query expansion、多轮 search 调用、结果精筛/摘要 | 可选增强，可降级 |
 | **S3 高级应用模块** | L3/L4 | 心理诊断、人格判断、数字人格、数字家书、家训提炼等领域编排 | 远景模块 |
+
+> S3 高级模块示例是终局压力测试，不是当前路线图承诺；其 L1/L2 地基要求见 ADR-026。
 
 **核心原则**：
 - 关键词检索的首要目标是精确、少噪音，是当前 eval gate 的官方口径（keyword/default）。
@@ -245,6 +255,7 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
 - 不做 WAL/checkpoint、Vector 增量更新、Agent Memory、Multi-Agent、Plugin、MCP
 
 > 更宽泛的"我们不做什么"系统边界已由 CHARTER §1.7 与第四章反模式黑名单承担。
+> ADR-026 中的 checkpoint/resume 指 long-running L3 模块的 addressable intermediate artifacts，不等于在 L2 检索/索引基座中引入 WAL/checkpoint。
 
 ### 5.7 自动索引重建与新鲜度检查（Round 8 Phase 1 + Round 12）
 
@@ -373,6 +384,10 @@ abstract: "100字内摘要"
 - [ENTITY_GRAPH.md](./ENTITY_GRAPH.md) — Entity Graph 操作规范（别名准入、写入铁律、验证清单）
 - [VERSIONING.md](./VERSIONING.md) — 版本治理规范（保守 SemVer、release checklist、tag policy）
 - [ADR Index](./adr/INDEX.md) — ADR 分类索引（🔒 Invariant / 📋 Decision）
+- [ADR-026](./adr/ADR-026-l1-l2-future-compatibility-baseline.md) — L1/L2 Future Compatibility Baseline
+- [RFC-2026-05-13](./rfc/RFC-2026-05-13-l1-l2-future-compatibility-baseline.md) — L1/L2 future compatibility Charter/Architecture/API proposal
+- [CN-002](./concepts/CN-002-life-index-terminal-architecture-discussion-record.md) — 终局形态战略讨论全文归档
+- [CN-003](./concepts/CN-003-life-index-future-compatibility-review-record.md) — 副审 / DeepSeek 审计意见全文归档
 
 ---
 
