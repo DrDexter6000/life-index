@@ -453,3 +453,117 @@ class TestEntityPresenceCaseInsensitive:
         assert result["success"] is True
         assert result["result"]["count"] == 1
         assert len(result["matched_entries"]) == 1
+
+
+class TestClaimEnvelopeAndEvidencePack:
+    """M02/A+: claim_envelope and evidence_pack additive output."""
+
+    def test_journal_count_measurable_exact(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "test")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="day",
+            predicate="journal_count",
+            query="过去60天我写了几篇日志",
+        )
+
+        assert "claim_envelope" in result
+        assert "evidence_pack" in result
+        ce = result["claim_envelope"]
+        assert ce["schema_version"] == "m02a.claim_envelope.v0"
+        assert ce["claim_type"] == "measurable_exact"
+        assert ce["source_command"] == "aggregate"
+        assert ce["query"] == "过去60天我写了几篇日志"
+        assert ce["metric"] == "journal_count"
+        assert ce["value"] == result["result"]["count"]
+        assert ce["denominator"] == result["result"]["denominator"]
+        assert ce["exactness"] == result["result"]["exactness"]
+        assert ce["confidence"] == result["result"]["confidence"]
+        assert ce["evidence_pack_ref"] == "aggregate.evidence_pack"
+        assert "time_range" in ce
+        assert "predicate" in ce
+        assert "limitations" in ce
+
+        ep = result["evidence_pack"]
+        assert ep["schema_version"] == "m02a.aggregate_evidence_pack.v0"
+        assert ep["source_command"] == "aggregate"
+        assert ep["query"] == "过去60天我写了几篇日志"
+        assert "time_range" in ep
+        assert "predicate" in ep
+        assert "items" in ep
+        assert len(ep["items"]) == 1
+        item = ep["items"][0]
+        assert item["role"] == "matched"
+        assert item["path"] == "Journals/2026/03/life-index_2026-03-14_001.md"
+        assert "\\" not in item["path"]
+        assert not os.path.isabs(item["path"])
+        assert "bucket" in item
+        assert "index_node_ref" in item
+        assert item["index_node_ref"]["type"] == "month"
+        assert "page_info" in ep
+        assert ep["page_info"]["has_more"] is False
+        assert ep["page_info"]["cursor"] is None
+        assert ep["page_info"]["cursor_hint"] is None
+
+    def test_term_presence_measurable_approximate(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "今天又晚睡了")
+        _write_journal(journals_dir, "2026-03-15", "今天按时睡觉了")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-15",
+            unit="day",
+            predicate="term_presence=晚睡",
+        )
+
+        assert "claim_envelope" in result
+        ce = result["claim_envelope"]
+        assert ce["claim_type"] == "measurable_approximate"
+
+        ep = result["evidence_pack"]
+        items_by_path = {i["path"]: i for i in ep["items"]}
+        assert len(items_by_path) == 2
+        matched_item = items_by_path.get("Journals/2026/03/life-index_2026-03-14_001.md")
+        assert matched_item is not None
+        assert matched_item["role"] == "matched"
+        excluded_item = items_by_path.get("Journals/2026/03/life-index_2026-03-15_001.md")
+        assert excluded_item is not None
+        assert excluded_item["role"] == "excluded"
+
+    def test_entry_time_after_not_measurable(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "some entry")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="day",
+            predicate="entry_time_after=22:00",
+        )
+
+        assert "claim_envelope" in result
+        ce = result["claim_envelope"]
+        assert ce["claim_type"] == "not_measurable"
+        assert ce["value"] == 0
+
+        ep = result["evidence_pack"]
+        assert len(ep["items"]) == 1
+        item = ep["items"][0]
+        assert item["role"] == "unknown"
+        assert item["reason"] == "no_time_field_available"
+
+    def test_evidence_paths_no_backslashes_or_absolute(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "test")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="day",
+            predicate="journal_count",
+        )
+
+        ep = result["evidence_pack"]
+        for item in ep["items"]:
+            assert "\\" not in item["path"], f"Backslash in path: {item['path']}"
+            assert not os.path.isabs(item["path"]), f"Absolute path: {item['path']}"

@@ -144,3 +144,40 @@ class TestAggregateCliContract:
         assert result.returncode != 0
         payload = json.loads(result.stdout)
         assert payload["success"] is False
+
+    def test_aggregate_includes_claim_envelope_and_evidence_pack(self, sandbox):
+        data_dir, env = sandbox
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tools",
+                "aggregate",
+                "--range",
+                "2026-03-14..2026-03-16",
+                "--unit",
+                "day",
+                "--predicate",
+                "journal_count",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        payload = json.loads(result.stdout)
+        assert "claim_envelope" in payload
+        assert "evidence_pack" in payload
+        ce = payload["claim_envelope"]
+        assert ce["schema_version"] == "m02a.claim_envelope.v0"
+        assert ce["claim_type"] == "measurable_exact"
+        assert ce["evidence_pack_ref"] == "aggregate.evidence_pack"
+        ep = payload["evidence_pack"]
+        assert ep["schema_version"] == "m02a.aggregate_evidence_pack.v0"
+        assert "items" in ep
+        for item in ep["items"]:
+            assert "\\" not in item["path"], f"Backslash in path: {item['path']}"
+            assert not os.path.isabs(item["path"]), f"Absolute path: {item['path']}"

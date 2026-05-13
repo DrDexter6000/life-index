@@ -749,7 +749,7 @@ python -m tools.smart_search --query "..." [options]
 
 > **确定性路由**: 路由使用正则模式匹配，不依赖 LLM。`tools.aggregate.core.run_aggregate` 是唯一的计算器。LLM 永远不计算计数。
 
-`aggregate_result` 的值是 `run_aggregate` 的完整输出，包含 `command`、`unit`、`range`、`predicate`、`result`（含 `count`、`denominator`、`exactness`、`confidence`）、`buckets`、`matched_entries`、`excluded_entries`、`unknown_entries`、`evidence_paths`、`limitations`、`performance`。
+`aggregate_result` 的值是 `run_aggregate` 的完整输出，包含 `command`、`unit`、`range`、`predicate`、`result`（含 `count`、`denominator`、`exactness`、`confidence`）、`buckets`、`matched_entries`、`excluded_entries`、`unknown_entries`、`evidence_paths`、`limitations`、`performance`、`claim_envelope`、`evidence_pack`。
 
 #### 当前支持的自动路由模式
 
@@ -766,6 +766,7 @@ python -m tools.smart_search --query "..." [options]
 - 所有现有 smart-search 必需字段（`success`、`query`、`filtered_results` 等）始终保留
 - 非 aggregate 意图的查询**不会**包含 `aggregate_result`
 - `aggregate_result` 出现时，smart-search 短路到 deterministic aggregate；normal search 不执行，但既有输出字段仍以空列表/空字符串形式保留
+- `aggregate_result.claim_envelope` 与 `aggregate_result.evidence_pack` 是 additive 子字段；它们不表示完整 Index Tree API 或 batch/cursor 平台已经实现
 
 ### Evidence Pack（`--include-evidence`）
 
@@ -1044,6 +1045,8 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | `aggregate_result.result.count` | int | 计算结果计数 |
 | `aggregate_result.result.exactness` | enum | `exact` / `approximate` / `not_measurable` |
 | `aggregate_result.limitations` | array | 局限性说明（如"日志写入时间不等于实际入睡时间"） |
+| `aggregate_result.claim_envelope` | object | 证据化结论外壳；结构同 aggregate 命令 |
+| `aggregate_result.evidence_pack` | object | aggregate 专用证据包；结构同 aggregate 命令 |
 
 **示例**：
 
@@ -1073,6 +1076,7 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 
 - 非聚合查询不包含 `aggregate_result` 字段
 - `aggregate_result` 为附加字段（additive），不影响现有字段语义
+- `aggregate_result.claim_envelope` 和 `aggregate_result.evidence_pack` 位于 `aggregate_result` 内，不新增 smart-search 顶层字段
 - `agent_unavailable` 沿用既有含义：无可用 LLM 时为 `true`；aggregate 路由本身不调用 LLM
 
 ### Aggregate Evaluation Coverage (Internal Developer Tooling)
@@ -1280,6 +1284,54 @@ python -m tools aggregate --range <since>..<until> --unit <unit> --predicate <pr
 | `evidence_paths` | array | 参与结果的所有相对路径（`matched` + `excluded` + `unknown`） |
 | `limitations` | array | 人类可读的局限性说明 |
 | `performance.total_time_ms` | float | 执行耗时 |
+| `claim_envelope` | object | M02/A+ 证据化结论外壳，见下方 Claim Envelope 子节 |
+| `evidence_pack` | object | M02/A+ aggregate 专用证据包，见下方 Aggregate Evidence Pack 子节 |
+
+### Claim Envelope（`claim_envelope`）
+
+`claim_envelope` 是 aggregate 结果的 additive 机器可读结论外壳。它不改变 `result` 字段语义，只把已有计数、精确度、谓词和局限性组织成未来 L3/L4 模块可组合的 claim。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schema_version` | string | 固定为 `m02a.claim_envelope.v0` |
+| `claim_type` | enum | `measurable_exact` / `measurable_approximate` / `not_measurable`，由 `result.exactness` 映射 |
+| `source_command` | string | 固定为 `aggregate` |
+| `query` | string | 原始自然语言查询（若调用方提供） |
+| `metric` | string | aggregate 指标名 |
+| `unit` | string | aggregate 单位 |
+| `time_range` | object | 与 `range` 相同的日期范围 |
+| `predicate` | object | 解析后的谓词 |
+| `value` | int | 与 `result.count` 相同 |
+| `denominator` | int | 与 `result.denominator` 相同 |
+| `exactness` | enum | 与 `result.exactness` 相同 |
+| `confidence` | enum | 与 `result.confidence` 相同 |
+| `limitations` | array | 与 aggregate 局限性说明相同 |
+| `evidence_pack_ref` | string | 固定为 `aggregate.evidence_pack` |
+
+### Aggregate Evidence Pack（`evidence_pack`）
+
+aggregate 专用 `evidence_pack` 是 deterministic source map，不是 smart-search `--include-evidence` 的检索证据包。它列出本次 aggregate 判定涉及的日志路径、日期、角色和最小未来兼容钩子。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schema_version` | string | 固定为 `m02a.aggregate_evidence_pack.v0` |
+| `source_command` | string | 固定为 `aggregate` |
+| `query` | string | 原始自然语言查询（若调用方提供） |
+| `time_range` | object | 与 `range` 相同的日期范围 |
+| `predicate` | object | 解析后的谓词 |
+| `items` | array | 证据项列表 |
+| `page_info` | object | 最小未来钩子，当前固定 `has_more=false`, `cursor=null`, `cursor_hint=null` |
+
+`items[]` 字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `path` | string | 日志相对路径，使用 `/`，不得为绝对路径 |
+| `date` | string | 日志日期 |
+| `role` | enum | `matched` / `excluded` / `unknown` |
+| `bucket` | string | aggregate bucket key |
+| `reason` | string | `unknown` 等状态的原因（如适用） |
+| `index_node_ref` | object | 可选未来钩子，当前为月度 Index Tree 引用；不是完整 Index Tree API |
 
 ### 精确度标签语义
 

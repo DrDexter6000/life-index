@@ -419,6 +419,13 @@ def run_aggregate(
     if explain and pred.get("definition"):
         limitations = [pred["definition"]] + limitations
 
+    entry_dates: Dict[str, str] = {}
+    bucket_by_path: Dict[str, str] = {}
+    for entry in entries:
+        e_path = entry["path"]
+        entry_dates[e_path] = entry["date"].isoformat()
+        bucket_by_path[e_path] = _bucket_key(entry["date"], unit)
+
     elapsed_ms = (time.perf_counter() - t0) * 1000
 
     result: Dict[str, Any] = {
@@ -449,5 +456,14 @@ def run_aggregate(
         "limitations": limitations,
         "performance": {"total_time_ms": round(elapsed_ms, 1)},
     }
+
+    from .claim_envelope import build_claim_envelope, build_evidence_pack
+
+    result["claim_envelope"] = build_claim_envelope(result)
+    result["evidence_pack"] = build_evidence_pack(
+        aggregate_result=result,
+        entry_dates=entry_dates,
+        bucket_by_path=bucket_by_path,
+    )
 
     return result

@@ -2552,3 +2552,54 @@ def test_d2_aggregate_failure_falls_back_to_normal_search(monkeypatch):
     assert "aggregate_result" not in result
     assert result["success"] is True
     assert result["filtered_results"][0]["title"] == "fallback"
+
+
+# ---------------------------------------------------------------------------
+# M02/A+: Aggregate claim envelope / evidence pack delegation tests
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_delegation_includes_claim_envelope_and_evidence_pack(tmp_path, monkeypatch):
+    """Smart-search aggregate route includes claim_envelope and evidence_pack."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    data_dir = tmp_path / "Life-Index"
+    journals_dir = data_dir / "Journals" / "2026" / "03"
+    journals_dir.mkdir(parents=True)
+    (journals_dir / "life-index_2026-03-14_001.md").write_text(
+        "---\ndate: 2026-03-14\n---\n\n# Test\n\ncontent\n", encoding="utf-8"
+    )
+
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-03-14")
+
+    orch = SmartSearchOrchestrator(llm_client=None)
+    result = orch.search("过去1天我有多少天晚睡")
+
+    assert "aggregate_result" in result
+    ar = result["aggregate_result"]
+    assert "claim_envelope" in ar
+    assert "evidence_pack" in ar
+    assert ar["claim_envelope"]["schema_version"] == "m02a.claim_envelope.v0"
+    assert ar["evidence_pack"]["schema_version"] == "m02a.aggregate_evidence_pack.v0"
+    assert "items" in ar["evidence_pack"]
+    assert ar["claim_envelope"]["evidence_pack_ref"] == "aggregate.evidence_pack"
+
+
+def test_aggregate_delegation_no_llm(monkeypatch):
+    """Aggregate routing is deterministic and includes new fields without LLM."""
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
+    orch = SmartSearchOrchestrator(llm_client=None)
+    result = orch.search("过去60天我有多少天晚睡")
+
+    assert "aggregate_result" in result
+    ar = result["aggregate_result"]
+    assert "claim_envelope" in ar
+    assert "evidence_pack" in ar
+    assert ar["claim_envelope"]["claim_type"] in (
+        "measurable_exact",
+        "measurable_approximate",
+        "not_measurable",
+    )
