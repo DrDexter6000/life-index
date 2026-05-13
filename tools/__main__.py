@@ -417,6 +417,7 @@ def main() -> None:
         "migrate": "tools.migrate.__main__",  # Round 6 Phase 1
         "eval": "tools.eval.__main__",
         "smart-search": "tools.smart_search.__main__",
+        "aggregate": "tools.aggregate.__main__",
     }
 
     if subcmd in cmd_map:
@@ -457,6 +458,7 @@ def print_usage() -> None:
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")
     print("  smart-search  Smart search with LLM orchestration")
+    print("  aggregate  Deterministic aggregate/trend computation")
     print("  health    Check installation health")
     print("            --data-audit  Audit data directory for anomalies")
     print("  version   Show package and bootstrap manifest version info")

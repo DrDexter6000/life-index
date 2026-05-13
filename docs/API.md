@@ -1050,6 +1050,136 @@ print(batch.by_verdict)  # {"supported": 1, "invalid_citation": 1}
 
 ---
 
+## aggregate
+
+> **Additive primitive, not a replacement.** `aggregate` is a deterministic, read-only CLI tool for explicit counts and trends over structured journal fields. It does **not** replace `search` or `smart-search`; use those for retrieval and synthesis. Use `aggregate` only when the user question can be settled by a whitelisted predicate over a date range.
+
+### 端点
+
+```bash
+life-index aggregate --range <since>..<until> --unit <unit> --predicate <predicate> [--query "..."] [--explain] [--json]
+python -m tools aggregate --range <since>..<until> --unit <unit> --predicate <predicate> [--query "..."] [--explain] [--json]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--range` | string | ✅ | — | 日期范围，格式 `YYYY-MM-DD..YYYY-MM-DD`（两端均包含） |
+| `--unit` | enum | ✅ | — | 聚合单位：`day`、`week`、`month`、`entry` |
+| `--predicate` | string | ✅ | — | 白名单谓词表达式（见下方） |
+| `--query` | string | ❌ | `""` | 原始自然语言查询（仅存入输出，不参与计算） |
+| `--explain` | flag | ❌ | false | 在输出中包含人类可读的谓词解释与局限性说明 |
+| `--json` | flag | ❌ | false | 输出完整 JSON 契约 |
+
+### 支持的聚合单位
+
+| 单位 | 行为 |
+|------|------|
+| `day` | 按日历日聚合；同一日多条日志去重 |
+| `week` | 按 ISO 周聚合（`YYYY-WNN`） |
+| `month` | 按月聚合（`YYYY-MM`） |
+| `entry` | 按单条日志文件计数，不做去重 |
+
+### 支持的谓词
+
+| 谓词 | 语法 | 数据要求 | 精确度 | 说明 |
+|------|------|----------|--------|------|
+| `journal_count` | `journal_count` | 仅需日期范围和日志路径 | `exact` | 统计每个聚合单位内的日志数量 |
+| `entry_time_after` | `entry_time_after=HH:MM` | Frontmatter `date` 含时间部分或独立 `time` 字段 | `exact`（全部有时间字段）或 `not_measurable`（部分缺失） | 日志时间戳晚于指定时间 |
+| `term_presence` | `term_presence=TERM` | 全文检索覆盖标题、正文、摘要 | `approximate` | 日志内容中出现指定词项 |
+| `entity_presence` | `entity_presence=ENTITY_ID` | Entity Graph 别名扩展 + 文本匹配 | `approximate` | 日志中出现指定实体（主名 + 别名） |
+
+> **⚠️ 重要**：`entry_time_after=22:00` 表示**日志写入/记录时间晚于 22:00**，不是实际入睡时间的证明。系统优先读取 frontmatter `date` 中的 ISO 8601 时间部分；若不存在，则回退到独立的 `time` 字段。若两者均缺失，对应条目进入 `unknown_entries`，精确度降为 `not_measurable`。
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "query": "过去60天我有多少次晚睡",
+  "command": "aggregate",
+  "metric": "entry_count",
+  "unit": "day",
+  "range": {"since": "2026-03-13", "until": "2026-05-12"},
+  "predicate": {
+    "type": "entry_time_after",
+    "threshold": "22:00",
+    "definition": "journal timestamp later than 22:00; not proof of actual sleep time"
+  },
+  "result": {
+    "count": 0,
+    "denominator": 61,
+    "exactness": "not_measurable",
+    "confidence": "high"
+  },
+  "buckets": [],
+  "matched_entries": [],
+  "excluded_entries": [],
+  "unknown_entries": [
+    {"path": "Journals/2026/03/life-index_2026-03-14_001.md", "reason": "no_time_field_available"}
+  ],
+  "evidence_paths": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+  "limitations": [
+    "No reliable time-of-day field was available for one or more journal entries."
+  ],
+  "performance": {"total_time_ms": 45.2}
+}
+```
+
+### 输出字段说明
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `success` | bool | 命令执行是否成功（`not_measurable` 仍视为成功） |
+| `query` | string | 调用方传入的原始自然语言查询 |
+| `command` | string | 固定为 `"aggregate"` |
+| `metric` | string | 计算出的指标名，如 `journal_count`、`entry_count`、`term_presence_count`、`entity_presence_count` |
+| `unit` | string | 聚合单位 |
+| `range` | object | 解析后的日期范围 `{"since", "until"}` |
+| `predicate` | object | 解析后的谓词，含 `type`、`threshold`/`term`/`entity_id`（如适用）及 `definition` |
+| `result.count` | int | 计算结果计数 |
+| `result.denominator` | int | 范围内总候选单位数（如总天数） |
+| `result.exactness` | enum | `exact` / `approximate` / `not_measurable` |
+| `result.confidence` | enum | `high` / `medium` / `low`；反映数据质量，非 LLM 意见 |
+| `buckets` | array | 非 `entry` 单位时的分组统计；每项含 `key`、`count`、`total`、`evidence_paths` |
+| `matched_entries` | array | 谓词判定为 true 的日志相对路径 |
+| `excluded_entries` | array | 谓词判定为 false 的日志相对路径 |
+| `unknown_entries` | array | 无法评估的日志，每项含 `path` 和 `reason` |
+| `evidence_paths` | array | 参与结果的所有相对路径（`matched` + `excluded` + `unknown`） |
+| `limitations` | array | 人类可读的局限性说明 |
+| `performance.total_time_ms` | float | 执行耗时 |
+
+### 精确度标签语义
+
+| 标签 | 含义 |
+|------|------|
+| `exact` | 所有单元均使用可靠结构化数据完成布尔判定，无推断或启发式 |
+| `approximate` | 谓词依赖检索召回（词项/实体存在），可能存在假阳性或假阴性 |
+| `not_measurable` | 所需数据字段缺失或不可靠；`count` 按惯例为 `0`，不得当作统计意义上的零 |
+
+### 行为约束
+
+- **只读**：`aggregate` 不创建、修改或删除任何日志、索引、Entity Graph 文件。
+- **本地执行**：所有计算在用户本地完成，无内容上传。
+- **沙盒兼容**：正确响应 `LIFE_INDEX_DATA_DIR` 指向临时目录的场景。
+- **路径隐私**：输出路径均为相对路径，不含绝对文件系统路径。
+
+### 限制与已知问题
+
+- `analyze` 别名在 MVP 中**未实现**。
+- 复合谓词（如 `AND` / `OR`）在 MVP 中**不支持**。
+- `term_presence` 和 `entity_presence` 使用大小写不敏感的简单子串匹配（`casefold()`），不做分词或语义扩展；计数为召回支撑，非现实世界行为的证明。
+- 性能目标：典型范围（< 5 年数据）< 2 秒；未针对 > 10,000 条日志做过专项优化。
+
+### 错误码
+
+| 代码 | 说明 | 恢复策略 |
+|------|------|----------|
+| E0001 | 无效输入（格式错误、未知谓词、非法单位等） | ask_user |
+
+---
+
 ## edit_journal
 
 ### 端点

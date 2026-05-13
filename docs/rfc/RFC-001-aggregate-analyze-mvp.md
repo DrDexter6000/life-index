@@ -326,6 +326,12 @@ Therefore, **proceed to C (aggregate/analyze MVP) before D**.
 - **Governance context**: `AGENTS.md`, `.agents.local.md`, `.agent-governance/README.md`, `.agent-governance/ACTIVE_SESSIONS.md`, `.agent-governance/maestro/MAESTRO-ORCHESTRATION-SOP.md`
 - **Public API / Architecture context**: `docs/API.md`, `docs/ARCHITECTURE.md`, `docs/ENTITY_GRAPH.md`
 
+## Appendix C: C-Phase Implementation Notes
+
+- The MVP implemented `aggregate` only; the optional `analyze` alias remains deferred.
+- `entry_time_after=HH:MM` accepts both ISO datetime in `date` and a separate frontmatter `time` field. If any candidate lacks reliable time data, `exactness` is `not_measurable` and `result.count` is `0` by convention, while matched/unknown entries remain available as evidence.
+- `term_presence` and `entity_presence` use simple case-insensitive substring matching via `casefold()` in the MVP. They do not yet delegate to `search_journals` / FTS, so their `exactness` remains `approximate`.
+
 ---
 
 *End of RFC-001*
