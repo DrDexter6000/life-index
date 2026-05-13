@@ -170,6 +170,21 @@ class TestDefaultOutputShape:
         assert "total_found" not in result
         assert "mode" not in result
 
+    def test_aggregate_intent_adds_aggregate_result(self, monkeypatch):
+        """Clear aggregate intents add aggregate_result without fabricating answer."""
+        monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
+        orch = SmartSearchOrchestrator(llm_client=None)
+        result = orch.search("过去60天我有多少天晚睡")
+        assert "aggregate_result" in result
+        assert result["aggregate_result"]["command"] == "aggregate"
+        assert result["aggregate_result"]["predicate"]["type"] == "entry_time_after"
+        assert result["aggregate_result"]["range"] == {
+            "since": "2026-03-15",
+            "until": "2026-05-13",
+        }
+        assert "answer" not in result
+        assert "filtered_results" in result
+
 
 # Performance sub-fields
 

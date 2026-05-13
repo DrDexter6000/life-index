@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Deterministic aggregate intent router for smart-search.
+
+Detects aggregate/count/trend intent from natural language queries using
+regex pattern matching (no LLM). When matched, returns the parameters
+needed to call tools.aggregate.core.run_aggregate.
+
+The orchestrator calls try_route_aggregate() before entering the
+normal search pipeline.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from dataclasses import dataclass
+from datetime import date, timedelta
+
+
+@dataclass(frozen=True)
+class AggregateRoute:
+    range_str: str
+    unit: str
+    predicate: str
+    query: str
+
+
+_LATE_SLEEP_PATTERNS = [
+    re.compile(r"晚睡"),
+    re.compile(r"late\s+sleep", re.IGNORECASE),
+    re.compile(r"熬夜"),
+    re.compile(r"睡得晚"),
+    re.compile(r"很晚.*睡"),
+]
+
+_AGGREGATE_SIGNAL_PATTERNS = [
+    re.compile(r"多少"),
+    re.compile(r"几[天个]?"),
+    re.compile(r"统计"),
+    re.compile(r"count", re.IGNORECASE),
+    re.compile(r"how\s+many", re.IGNORECASE),
+    re.compile(r"频率"),
+    re.compile(r"frequency", re.IGNORECASE),
+    re.compile(r"趋势"),
+    re.compile(r"trend", re.IGNORECASE),
+    re.compile(r"几次"),
+    re.compile(r"几次了"),
+]
+
+_PAST_N_DAYS_RE = re.compile(r"过去(\d+)天")
+_PAST_N_DAYS_EN_RE = re.compile(r"past\s+(\d+)\s+days?", re.IGNORECASE)
+_LAST_N_DAYS_RE = re.compile(r"last\s+(\d+)\s+days?", re.IGNORECASE)
+
+_CURRENT_YEAR_PATTERNS = [
+    re.compile(r"今年"),
+    re.compile(r"this\s+year", re.IGNORECASE),
+    re.compile(r"年度"),
+    re.compile(r"本年度"),
+    re.compile(r"current\s+year", re.IGNORECASE),
+]
+
+_WRITE_JOURNAL_PATTERNS = [
+    re.compile(r"写日志"),
+    re.compile(r"写日记"),
+    re.compile(r"日志.*频率"),
+    re.compile(r"日志.*趋势"),
+    re.compile(r"writing\s+(journal|diary|log)", re.IGNORECASE),
+    re.compile(r"journal\s+(writing|entries|count|frequency)", re.IGNORECASE),
+    re.compile(r"日志.*统计"),
+]
+
+
+def _get_anchor() -> date:
+    anchor_str = os.environ.get("LIFE_INDEX_TIME_ANCHOR", "")
+    if anchor_str:
+        try:
+            return date.fromisoformat(anchor_str)
+        except ValueError:
+            pass
+    return date.today()
+
+
+def detect_aggregate_intent(query: str) -> AggregateRoute | None:
+    anchor = _get_anchor()
+
+    past_match = _PAST_N_DAYS_RE.search(query)
+    if not past_match:
+        past_match = _PAST_N_DAYS_EN_RE.search(query)
+    if not past_match:
+        past_match = _LAST_N_DAYS_RE.search(query)
+
+    if past_match:
+        n_days = int(past_match.group(1))
+        has_late_sleep = any(p.search(query) for p in _LATE_SLEEP_PATTERNS)
+        has_aggregate_signal = any(p.search(query) for p in _AGGREGATE_SIGNAL_PATTERNS)
+
+        if has_late_sleep and has_aggregate_signal:
+            since = anchor - timedelta(days=n_days - 1)
+            return AggregateRoute(
+                range_str=f"{since.isoformat()}..{anchor.isoformat()}",
+                unit="day",
+                predicate="entry_time_after=22:00",
+                query=query,
+            )
+
+    has_current_year = any(p.search(query) for p in _CURRENT_YEAR_PATTERNS)
+    has_write_journal = any(p.search(query) for p in _WRITE_JOURNAL_PATTERNS)
+    has_aggregate_signal = any(p.search(query) for p in _AGGREGATE_SIGNAL_PATTERNS)
+
+    if has_current_year and has_write_journal and has_aggregate_signal:
+        year_start = date(anchor.year, 1, 1)
+        return AggregateRoute(
+            range_str=f"{year_start.isoformat()}..{anchor.isoformat()}",
+            unit="month",
+            predicate="journal_count",
+            query=query,
+        )
+
+    return None
+
+
+def try_route_aggregate(query: str) -> AggregateRoute | None:
+    return detect_aggregate_intent(query)

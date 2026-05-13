@@ -331,6 +331,7 @@ Therefore, **proceed to C (aggregate/analyze MVP) before D**.
 - The MVP implemented `aggregate` only; the optional `analyze` alias remains deferred.
 - `entry_time_after=HH:MM` accepts both ISO datetime in `date` and a separate frontmatter `time` field. If any candidate lacks reliable time data, `exactness` is `not_measurable` and `result.count` is `0` by convention, while matched/unknown entries remain available as evidence.
 - `term_presence` and `entity_presence` use simple case-insensitive substring matching via `casefold()` in the MVP. They do not yet delegate to `search_journals` / FTS, so their `exactness` remains `approximate`.
+- D2 adds deterministic smart-search delegation for a small whitelist of clear aggregate/count/trend intents, returning top-level `aggregate_result` without letting LLM compute counts.
 
 ---
 

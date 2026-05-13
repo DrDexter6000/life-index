@@ -2358,3 +2358,197 @@ def test_s1u_prime_normal_plural_still_stemmed():
 
     tokens = SmartSearchOrchestrator._normalized_tokens("results")
     assert "result" in tokens
+
+
+# ---------------------------------------------------------------------------
+# D2: Aggregate delegation from smart-search
+# ---------------------------------------------------------------------------
+
+
+def test_d2_red1_aggregate_delegation_late_sleep_query(monkeypatch):
+    """RED 1: '过去60天我有多少天晚睡' delegates to aggregate, returns aggregate_result
+    with predicate.type == 'entry_time_after', correct range, and no fabricated answer."""
+    from unittest.mock import patch
+
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
+    orch = SmartSearchOrchestrator(llm_client=None)
+    mock_result = {
+        "success": True,
+        "merged_results": [],
+        "total_available": 0,
+        "performance": {},
+    }
+    with patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=lambda **kw: mock_result,
+    ):
+        result = orch.search("过去60天我有多少天晚睡")
+
+    assert "aggregate_result" in result, "Missing aggregate_result for aggregate-intent query"
+    ar = result["aggregate_result"]
+    assert ar["command"] == "aggregate"
+    assert ar["predicate"]["type"] == "entry_time_after"
+    assert ar["range"]["since"] == "2026-03-15"
+    assert ar["range"]["until"] == "2026-05-13"
+    assert "exactness" in ar["result"]
+    assert "count" in ar["result"]
+    assert "denominator" in ar["result"]
+
+
+def test_d2_red2_writing_frequency_trend_query(monkeypatch):
+    """RED 2: writing frequency trend query delegates to aggregate with
+    unit=month and predicate.type=journal_count."""
+    from unittest.mock import patch
+
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
+    orch = SmartSearchOrchestrator(llm_client=None)
+    mock_result = {
+        "success": True,
+        "merged_results": [],
+        "total_available": 0,
+        "performance": {},
+    }
+    with patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=lambda **kw: mock_result,
+    ):
+        result = orch.search("统计一下我今年写日志的频率趋势")
+
+    assert "aggregate_result" in result
+    ar = result["aggregate_result"]
+    assert ar["unit"] == "month"
+    assert ar["predicate"]["type"] == "journal_count"
+    assert ar["range"]["since"].startswith("2026-01-01")
+    assert ar["range"]["until"] == "2026-05-13"
+
+
+def test_d2_red3_normal_retrieval_no_aggregate_result():
+    """RED 3: normal retrieval query does NOT include aggregate_result."""
+    from unittest.mock import patch
+
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    orch = SmartSearchOrchestrator(llm_client=None)
+    mock_result = {
+        "success": True,
+        "merged_results": [
+            {"title": "test", "path": "test.md", "relevance": 80},
+        ],
+        "total_available": 1,
+        "performance": {},
+    }
+    with patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=lambda **kw: mock_result,
+    ):
+        result = orch.search("我和女儿之间的回忆")
+
+    assert "aggregate_result" not in result
+    assert result["success"] is True
+    assert len(result["filtered_results"]) >= 1
+
+
+def test_d2_aggregate_result_preserves_existing_fields(monkeypatch):
+    """When aggregate delegation occurs, all existing smart-search fields remain."""
+    from unittest.mock import patch
+
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
+    orch = SmartSearchOrchestrator(llm_client=None)
+    mock_result = {
+        "success": True,
+        "merged_results": [],
+        "total_available": 0,
+        "performance": {},
+    }
+    with patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=lambda **kw: mock_result,
+    ):
+        result = orch.search("过去60天我有多少天晚睡")
+
+    required_fields = [
+        "success",
+        "query",
+        "rewritten_query",
+        "filtered_results",
+        "summary",
+        "citations",
+        "agent_decisions",
+        "agent_unavailable",
+        "performance",
+    ]
+    for field in required_fields:
+        assert field in result, f"Missing existing field: {field}"
+
+
+def test_d2_aggregate_no_llm_used_for_routing(monkeypatch):
+    """Aggregate routing is deterministic — no LLM call is made even when LLM is available."""
+    from unittest.mock import patch
+
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
+
+    class TrackingLLM:
+        def __init__(self):
+            self.called = False
+
+        def chat(self, messages, *, max_tokens=2000):
+            self.called = True
+            return (
+                '{"core_terms":"t","expanded_terms":[],"time_range":null,'
+                '"intent_type":"simple","rewritten_query":"t"}'
+            )
+
+    tracking_llm = TrackingLLM()
+    orch = SmartSearchOrchestrator(llm_client=tracking_llm)
+    mock_result = {
+        "success": True,
+        "merged_results": [],
+        "total_available": 0,
+        "performance": {},
+    }
+    with patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=lambda **kw: mock_result,
+    ):
+        result = orch.search("过去60天我有多少天晚睡")
+
+    assert "aggregate_result" in result
+    assert (
+        tracking_llm.called is False
+    ), "LLM was called during aggregate routing — routing must be deterministic"
+
+
+def test_d2_aggregate_failure_falls_back_to_normal_search(monkeypatch):
+    """Aggregate delegation failure does not break normal smart-search retrieval."""
+    from unittest.mock import patch
+
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
+    orch = SmartSearchOrchestrator(llm_client=None)
+    mock_result = {
+        "success": True,
+        "merged_results": [{"title": "fallback", "path": "fallback.md", "relevance": 80}],
+        "total_available": 1,
+        "performance": {},
+    }
+    with (
+        patch("tools.aggregate.core.run_aggregate", side_effect=RuntimeError("boom")),
+        patch(
+            "tools.search_journals.orchestrator._get_search_fn",
+            return_value=lambda **kw: mock_result,
+        ),
+    ):
+        result = orch.search("过去60天我有多少天晚睡")
+
+    assert "aggregate_result" not in result
+    assert result["success"] is True
+    assert result["filtered_results"][0]["title"] == "fallback"

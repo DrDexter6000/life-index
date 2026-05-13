@@ -724,6 +724,7 @@ python -m tools.smart_search --query "..." [options]
 | `citations` | 引用来源 | 可点击链接 | **stable** |
 | `answer` / `answer.*` | 优先展示 | 优先展示 | **stable** |
 | `evidence_pack` | 按需 | 按需 | **stable** |
+| `aggregate_result` | aggregate/count/trend queries | aggregate/count/trend display | **stable additive** - deterministic `aggregate` result; LLM never computes counts |
 | `evidence_pack.items[].entity_matches` | 按需 | 按需 | **stable**，实体匹配溯源；消费者应容忍缺失字段 |
 | `rewritten_query` | 不需要 | 不需要 | **internal** — LLM 改写产物，消费者应使用 `query` |
 | `agent_unavailable` | 不需要 | 不需要 | **internal** — 诊断信号，UI 应从 `answer`/`summary` 存在性推断 |
@@ -736,9 +737,35 @@ python -m tools.smart_search --query "..." [options]
 ### 说明
 
 - `SmartSearchOrchestrator` 三段式流程：前置改写 → 中间调用 search 原语 → 后置筛选 + 摘要
+- Clear aggregate/count/trend intents may short-circuit into deterministic `aggregate` and add top-level `aggregate_result`; existing smart-search fields remain present.
+- `aggregate_result` is computed by `tools.aggregate.core.run_aggregate`; LLM must not compute the count.
 - 降级模式 (`--no-llm` 或 LLM 不可用，`agent_unavailable: true`) 下等价于 `search --level 3`
 - Data Minimization：候选仅送 title + abstract + snippet（≤200 chars），最多 15 条
 - 实现详见 `docs/ARCHITECTURE.md` §5.8
+
+### Aggregate Result（`aggregate_result`）
+
+当 `smart-search` 通过确定性路由检测到 aggregate/count/trend 意图时（如 "过去60天我有多少天晚睡" 或 "统计一下我今年写日志的频率趋势"），返回值增加顶层 `aggregate_result` 字段。
+
+> **确定性路由**: 路由使用正则模式匹配，不依赖 LLM。`tools.aggregate.core.run_aggregate` 是唯一的计算器。LLM 永远不计算计数。
+
+`aggregate_result` 的值是 `run_aggregate` 的完整输出，包含 `command`、`unit`、`range`、`predicate`、`result`（含 `count`、`denominator`、`exactness`、`confidence`）、`buckets`、`matched_entries`、`excluded_entries`、`unknown_entries`、`evidence_paths`、`limitations`、`performance`。
+
+#### 当前支持的自动路由模式
+
+| 模式 | 匹配条件 | 路由到 |
+|------|----------|--------|
+| 晚睡计数 | "过去N天" + 聚合信号（多少/统计/count） + "晚睡" | `unit=day`, `predicate=entry_time_after=22:00`, `range=<anchor-N+1>..<anchor>` |
+| 写日志频率趋势 | "今年" + 写日志关键词 + 聚合信号（频率/趋势/统计） | `unit=month`, `predicate=journal_count`, `range=<year-01-01>..<anchor>` |
+
+> `LIFE_INDEX_TIME_ANCHOR=YYYY-MM-DD` 环境变量用于覆盖当前日期锚点（测试用）。未设置时使用 `date.today()`。
+
+#### Additive 契约
+
+- `aggregate_result` 是**纯增量的**：不存在时不影响现有字段
+- 所有现有 smart-search 必需字段（`success`、`query`、`filtered_results` 等）始终保留
+- 非 aggregate 意图的查询**不会**包含 `aggregate_result`
+- `aggregate_result` 出现时，smart-search 短路到 deterministic aggregate；normal search 不执行，但既有输出字段仍以空列表/空字符串形式保留
 
 ### Evidence Pack（`--include-evidence`）
 
@@ -986,6 +1013,67 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | `--synthesize` | 内部构建 evidence；添加 answer（prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
 | `--include-evidence --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
 | `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
+
+### Aggregate Delegation（自动聚合路由）
+
+当 smart-search 检测到明确的聚合/计数/趋势意图时，会自动委派给确定性 `aggregate` 原语计算，而非通过 LLM 自由计数。路由为纯确定性模式匹配（无 LLM），发生在正常检索管线之前。
+
+**触发条件（确定性，无 LLM）**：
+
+| 查询模式 | 路由参数 | 示例 |
+|----------|----------|------|
+| "过去N天" + 聚合信号 + "晚睡/late sleep" | `unit=day`, `predicate=entry_time_after=22:00` | "过去60天我有多少天晚睡" |
+| "今年" + "写日志" + 聚合/趋势信号 | `unit=month`, `predicate=journal_count` | "统计一下我今年写日志的频率趋势" |
+
+**委派行为**：
+
+- 使用 `LIFE_INDEX_TIME_ANCHOR=YYYY-MM-DD` 环境变量（若存在）确定时间锚点；否则使用 `date.today()`
+- 路由成功时，`aggregate` 为唯一计算器（`tools.aggregate.core.run_aggregate`），不经过 LLM rewrite/filter/synthesis 管线
+- 正常检索字段（`filtered_results`、`summary` 等）保留但为空值
+- `agent_unavailable` 继续表示 LLM 客户端是否不可用；它不是 aggregate 路由是否跳过 LLM 的标志
+
+#### `aggregate_result` 输出字段
+
+仅在 smart-search 委派到 `aggregate` 时出现。结构与 `aggregate` 命令输出一致（见 aggregate 章节）。关键字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `aggregate_result.command` | string | 固定为 `"aggregate"` |
+| `aggregate_result.range` | object | 解析后的日期范围 `{"since", "until"}` |
+| `aggregate_result.predicate.type` | string | 谓词类型，如 `entry_time_after`、`journal_count` |
+| `aggregate_result.result.count` | int | 计算结果计数 |
+| `aggregate_result.result.exactness` | enum | `exact` / `approximate` / `not_measurable` |
+| `aggregate_result.limitations` | array | 局限性说明（如"日志写入时间不等于实际入睡时间"） |
+
+**示例**：
+
+```json
+{
+  "success": true,
+  "query": "过去60天我有多少天晚睡",
+  "rewritten_query": "过去60天我有多少天晚睡",
+  "filtered_results": [],
+  "summary": "",
+  "citations": [],
+  "agent_decisions": [],
+  "agent_unavailable": true,
+  "aggregate_result": {
+    "success": true,
+    "command": "aggregate",
+    "predicate": {"type": "entry_time_after", "threshold": "22:00", "definition": "..."},
+    "range": {"since": "2026-03-15", "until": "2026-05-13"},
+    "result": {"count": 0, "denominator": 60, "exactness": "not_measurable", "confidence": "high"},
+    "limitations": ["No reliable time-of-day field was available for one or more journal entries."]
+  },
+  "performance": {"total_time_ms": 45.2}
+}
+```
+
+**Consumer Guidance**：
+
+- 非聚合查询不包含 `aggregate_result` 字段
+- `aggregate_result` 为附加字段（additive），不影响现有字段语义
+- `agent_unavailable` 沿用既有含义：无可用 LLM 时为 `true`；aggregate 路由本身不调用 LLM
 
 ### Aggregate Evaluation Coverage (Internal Developer Tooling)
 

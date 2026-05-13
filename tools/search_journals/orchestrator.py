@@ -278,8 +278,49 @@ class SmartSearchOrchestrator:
 
         Returns dict matching SmartSearchResult schema.
         """
+        from .aggregate_router import try_route_aggregate
+
         start_time = time.time()
         decisions: list[dict[str, Any]] = []
+
+        aggregate_route = try_route_aggregate(query)
+        aggregate_result_dict: dict[str, Any] | None = None
+        if aggregate_route is not None:
+            try:
+                from tools.aggregate.core import run_aggregate
+
+                aggregate_result_dict = run_aggregate(
+                    range_str=aggregate_route.range_str,
+                    unit=aggregate_route.unit,
+                    predicate=aggregate_route.predicate,
+                    query=aggregate_route.query,
+                )
+            except Exception as exc:
+                logger.warning(f"[Orchestrator] Aggregate delegation failed: {exc}")
+                aggregate_result_dict = None
+
+        if aggregate_result_dict is not None:
+            total_ms = (time.time() - start_time) * 1000
+            result = SmartSearchResult(
+                success=True,
+                query=query,
+                rewritten_query=query,
+                filtered_results=[],
+                summary="",
+                citations=[],
+                agent_decisions=[],
+                agent_unavailable=self._llm is None,
+                performance={
+                    "total_time_ms": round(total_ms, 2),
+                    "rewrite_time_ms": 0,
+                    "filter_time_ms": 0,
+                    "search_time_ms": 0,
+                    "total_available": 0,
+                },
+            )
+            result_dict = result.to_dict()
+            result_dict["aggregate_result"] = aggregate_result_dict
+            return result_dict
 
         # Stage 1: Rewrite
         rewritten = self.rewrite_query(query)
