@@ -987,6 +987,49 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | `--include-evidence --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
 | `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
 
+### Aggregate Evaluation Coverage (Internal Developer Tooling)
+
+`life-index eval` uses `tools/eval/golden_queries.yaml` as the search quality
+Gold Set authority. The same file may also contain an `aggregate_queries`
+companion section for deterministic aggregate/analyze checks. These cases do
+not participate in search MRR/Recall/Precision calculations; they are reported
+under `aggregate_eval` so aggregate regressions are visible without polluting
+retrieval metrics.
+
+`aggregate_eval` result shape:
+
+```json
+{
+  "total_queries": 3,
+  "passed_queries": 3,
+  "failed_queries": 0,
+  "metrics": {"pass_rate": 1.0},
+  "by_category": {
+    "aggregate_analyze": {
+      "query_count": 3,
+      "passed_queries": 3,
+      "failed_queries": 0,
+      "pass_rate": 1.0
+    }
+  },
+  "per_query": [
+    {
+      "id": "AGQ01",
+      "eval_mode": "aggregate",
+      "command": "aggregate",
+      "count": 3,
+      "exactness": "exact",
+      "pass": true
+    }
+  ],
+  "failures": []
+}
+```
+
+This is an eval-system extension, not a second Gold Set. Real-log diagnostic
+queries should be promoted into `aggregate_queries` only after their expected
+counts and evidence criteria are stable.
+
 ### Answer Evaluation Harness（Internal Developer Tooling，非 CLI Public API）
 
 > **注意**: `tools/eval/answer_eval.py` 是**内部开发者/评估工具**，不属于 CLI 公共 API。以下文档仅供开发者和评估流水线参考。GUI 或 Agent 消费者不应导入或依赖此模块。

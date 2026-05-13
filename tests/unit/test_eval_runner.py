@@ -268,6 +268,63 @@ def test_eval_runner_with_isolated_data(isolated_data_dir: Path) -> None:
     assert "tokenizer_version" in result
 
 
+def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
+    _write_eval_fixture_data(isolated_data_dir)
+
+    from tools.eval.run_eval import run_evaluation
+
+    result = run_evaluation(data_dir=isolated_data_dir)
+
+    aggregate_eval = result["aggregate_eval"]
+    assert aggregate_eval["total_queries"] >= 3
+    assert aggregate_eval["passed_queries"] == aggregate_eval["total_queries"]
+    assert aggregate_eval["failed_queries"] == 0
+    assert aggregate_eval["failures"] == []
+    assert aggregate_eval["by_category"]["aggregate_analyze"]["query_count"] >= 3
+
+    by_id = {item["id"]: item for item in aggregate_eval["per_query"]}
+    assert by_id["AGQ01"]["count"] == 3
+    assert by_id["AGQ01"]["exactness"] == "exact"
+    assert by_id["AGQ02"]["count"] == 1
+    assert by_id["AGQ02"]["exactness"] == "exact"
+    assert by_id["AGQ03"]["count"] == 2
+    assert by_id["AGQ03"]["exactness"] == "approximate"
+
+
+def test_eval_runner_reports_aggregate_eval_failures(monkeypatch) -> None:
+    from tools.eval.run_eval import run_evaluation
+
+    monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
+    monkeypatch.setattr(
+        "tools.eval.run_eval.load_aggregate_queries",
+        lambda _: [
+            {
+                "id": "AGQ_FAIL",
+                "query": "bad aggregate expectation",
+                "category": "aggregate_analyze",
+                "aggregate": {
+                    "range": "2026-03-14..2026-03-18",
+                    "unit": "entry",
+                    "predicate": "journal_count",
+                },
+                "expected": {
+                    "success": True,
+                    "count": 999,
+                    "exactness": "exact",
+                },
+            }
+        ],
+    )
+
+    result = run_evaluation()
+
+    aggregate_eval = result["aggregate_eval"]
+    assert aggregate_eval["failed_queries"] == 1
+    assert aggregate_eval["failures"][0]["id"] == "AGQ_FAIL"
+    assert "count" in aggregate_eval["failures"][0]["reason"]
+    assert any("Aggregate Eval" in line for line in result["summary_lines"])
+
+
 def test_eval_baseline_save_and_compare(isolated_data_dir: Path, tmp_path: Path) -> None:
     _write_eval_fixture_data(isolated_data_dir)
 
@@ -559,6 +616,7 @@ def test_eval_cli_passes_live_and_judge_flags(monkeypatch, capsys) -> None:
             "judge_mode": kwargs["judge"],
             "live_mode": kwargs["live"],
             "recall_gaps": [],
+            "aggregate_eval": {"total_queries": 1, "failed_queries": 0},
         }
 
     monkeypatch.setattr(eval_main, "run_evaluation", _fake_run_evaluation)
@@ -570,6 +628,7 @@ def test_eval_cli_passes_live_and_judge_flags(monkeypatch, capsys) -> None:
     assert captured["judge"] == "llm"
     assert payload["success"] is True
     assert payload["data"]["judge_mode"] == "llm"
+    assert payload["data"]["aggregate_eval"]["total_queries"] == 1
 
 
 def test_compare_with_llm_metrics(tmp_path: Path, monkeypatch) -> None:

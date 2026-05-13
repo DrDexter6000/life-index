@@ -1806,3 +1806,50 @@ queries:
   - typo_precision
   - anti-test
   - fuzzy
+
+aggregate_queries:
+- id: AGQ01
+  query: Count journal entries from 2026-03-14 through 2026-03-18.
+  category: aggregate_analyze
+  description: Deterministic journal_count coverage for aggregate eval.
+  aggregate:
+    range: 2026-03-14..2026-03-18
+    unit: entry
+    predicate: journal_count
+  expected:
+    success: true
+    count: 3
+    exactness: exact
+  tags:
+  - aggregate
+  - journal_count
+- id: AGQ02
+  query: Count days with journal timestamps after 21:00 from 2026-03-14 through 2026-03-18.
+  category: aggregate_analyze
+  description: Deterministic entry_time_after coverage for aggregate eval.
+  aggregate:
+    range: 2026-03-14..2026-03-18
+    unit: day
+    predicate: entry_time_after=21:00
+  expected:
+    success: true
+    count: 1
+    exactness: exact
+  tags:
+  - aggregate
+  - entry_time_after
+- id: AGQ03
+  query: Count entries mentioning OpenClaw from 2026-03-14 through 2026-03-22.
+  category: aggregate_analyze
+  description: Approximate term_presence coverage for aggregate eval.
+  aggregate:
+    range: 2026-03-14..2026-03-22
+    unit: entry
+    predicate: term_presence=OpenClaw
+  expected:
+    success: true
+    count: 2
+    exactness: approximate
+  tags:
+  - aggregate
+  - term_presence

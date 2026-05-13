@@ -79,3 +79,22 @@ def test_broad_eval_schema_when_present() -> None:
             assert (
                 "topic_hints" in be["predicate"]
             ), f"Missing topic_hints in broad_eval for {q['id']}"
+
+
+def test_aggregate_eval_schema_when_present() -> None:
+    """Aggregate/analyze cases live under the existing Gold Set authority."""
+    data = yaml.safe_load(GOLD_SET.read_text(encoding="utf-8"))
+    aggregate_queries = data.get("aggregate_queries", [])
+    assert len(aggregate_queries) >= 3
+
+    for q in aggregate_queries:
+        assert "id" in q, "Missing id in aggregate query"
+        assert str(q["id"]).startswith("AGQ")
+        assert "query" in q, f"Missing query in {q.get('id', '?')}"
+        assert q["category"] == "aggregate_analyze"
+        assert "aggregate" in q, f"Missing aggregate spec in {q['id']}"
+        assert "expected" in q, f"Missing expected in {q['id']}"
+        aggregate = q["aggregate"]
+        expected = q["expected"]
+        assert set(aggregate) >= {"range", "unit", "predicate"}
+        assert set(expected) >= {"success", "count", "exactness"}

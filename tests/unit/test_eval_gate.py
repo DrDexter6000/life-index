@@ -26,16 +26,18 @@ from pathlib import Path
 # *actual* categories present at phase 2.  If the gold set changes, update
 # these constants to match — do NOT soften assertions to make CI green.
 # ---------------------------------------------------------------------------
-EVAL_PHASE2_REQUIRED_CATEGORIES = frozenset({
-    "complex_query",
-    "edge_case",
-    "english_regression",
-    "entity_expansion",
-    "high_frequency",
-    "noise_rejection",
-    "time_range",
-    "typo_precision",
-})
+EVAL_PHASE2_REQUIRED_CATEGORIES = frozenset(
+    {
+        "complex_query",
+        "edge_case",
+        "english_regression",
+        "entity_expansion",
+        "high_frequency",
+        "noise_rejection",
+        "time_range",
+        "typo_precision",
+    }
+)
 # Exact query counts per category at phase 2, derived from
 # tools/eval/golden_queries.yaml (skip_until_phase <= 2).
 # If the gold set changes, update this map to match.
@@ -52,9 +54,11 @@ EVAL_PHASE2_EXPECTED_CATEGORY_COUNTS = {
 
 # Categories whose queries are expected to return at least one result.
 # This is a product-level contract, not a CI convenience.
-EVAL_PHASE2_POSITIVE_CATEGORIES = frozenset({
-    "english_regression",
-})
+EVAL_PHASE2_POSITIVE_CATEGORIES = frozenset(
+    {
+        "english_regression",
+    }
+)
 
 
 def _write_eval_fixture_data(data_dir: Path) -> None:
@@ -151,6 +155,19 @@ def test_eval_gate_positive_recall(isolated_data_dir: Path) -> None:
             assert (
                 pq["results_found"] > 0
             ), f"Positive query '{pq['query']}' ({pq['id']}) found 0 results"
+
+
+def test_eval_gate_aggregate_eval_passes(isolated_data_dir: Path) -> None:
+    """CI gate: aggregate/analyze Gold Set companion cases all pass."""
+    _write_eval_fixture_data(isolated_data_dir)
+
+    run_eval = importlib.import_module("tools.eval.run_eval")
+    result = run_eval.run_evaluation(data_dir=isolated_data_dir)
+
+    aggregate_eval = result.get("aggregate_eval")
+    assert aggregate_eval is not None
+    assert aggregate_eval["total_queries"] >= 3
+    assert aggregate_eval["failed_queries"] == 0, aggregate_eval["failures"]
 
 
 def test_eval_gate_baseline_comparison_works(isolated_data_dir: Path, tmp_path: Path) -> None:

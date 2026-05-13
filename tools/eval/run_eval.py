@@ -32,6 +32,7 @@ MODULES_TO_RELOAD = (
     "tools.search_journals.semantic_pipeline",
     "tools.search_journals.keyword_pipeline",
     "tools.search_journals.core",
+    "tools.aggregate.core",
 )
 
 
@@ -157,6 +158,140 @@ def _collect_broad_eval_metrics(per_query: list[dict[str, Any]]) -> dict[str, An
 # --- End broad eval helpers ---
 
 
+def _aggregate_query_passes(
+    *, query_case: dict[str, Any], aggregate_result: dict[str, Any]
+) -> tuple[bool, str | None]:
+    expected = query_case.get("expected", {})
+    if not isinstance(expected, dict):
+        expected = {}
+
+    failures: list[str] = []
+    expected_success = expected.get("success")
+    if expected_success is not None and bool(aggregate_result.get("success")) != bool(
+        expected_success
+    ):
+        failures.append(
+            "success expected "
+            f"{bool(expected_success)}, got {bool(aggregate_result.get('success'))}"
+        )
+
+    result_payload = aggregate_result.get("result", {})
+    if not isinstance(result_payload, dict):
+        result_payload = {}
+
+    if "count" in expected and result_payload.get("count") != expected["count"]:
+        failures.append(f"count expected {expected['count']}, got {result_payload.get('count')}")
+
+    if "exactness" in expected and result_payload.get("exactness") != expected["exactness"]:
+        failures.append(
+            f"exactness expected {expected['exactness']}, got {result_payload.get('exactness')}"
+        )
+
+    return not failures, "; ".join(failures) if failures else None
+
+
+def _empty_aggregate_eval() -> dict[str, Any]:
+    return {
+        "total_queries": 0,
+        "passed_queries": 0,
+        "failed_queries": 0,
+        "metrics": {"pass_rate": 0.0},
+        "by_category": {},
+        "per_query": [],
+        "failures": [],
+    }
+
+
+def _evaluate_aggregate_queries(queries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Evaluate aggregate/analyze companion cases without altering search metrics."""
+    if not queries:
+        return _empty_aggregate_eval()
+
+    from tools.aggregate.core import run_aggregate
+
+    per_query: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+
+    for query_case in queries:
+        aggregate_spec = query_case.get("aggregate", {})
+        if not isinstance(aggregate_spec, dict):
+            aggregate_spec = {}
+
+        try:
+            aggregate_result = run_aggregate(
+                range_str=str(aggregate_spec["range"]),
+                unit=str(aggregate_spec["unit"]),
+                predicate=str(aggregate_spec["predicate"]),
+                query=str(query_case.get("query", "")),
+            )
+        except Exception as exc:
+            aggregate_result = {
+                "success": False,
+                "result": {},
+                "error": {"message": str(exc)},
+                "evidence_paths": [],
+            }
+
+        passed, failure_reason = _aggregate_query_passes(
+            query_case=query_case,
+            aggregate_result=aggregate_result,
+        )
+        result_payload = aggregate_result.get("result", {})
+        if not isinstance(result_payload, dict):
+            result_payload = {}
+
+        entry = {
+            "id": query_case["id"],
+            "query": query_case["query"],
+            "category": query_case["category"],
+            "eval_mode": "aggregate",
+            "command": "aggregate",
+            "range": aggregate_spec.get("range"),
+            "unit": aggregate_spec.get("unit"),
+            "predicate": aggregate_spec.get("predicate"),
+            "success": bool(aggregate_result.get("success")),
+            "count": result_payload.get("count"),
+            "exactness": result_payload.get("exactness"),
+            "confidence": result_payload.get("confidence"),
+            "evidence_count": len(aggregate_result.get("evidence_paths", [])),
+            "pass": passed,
+        }
+        if "error" in aggregate_result:
+            entry["error"] = aggregate_result["error"]
+        per_query.append(entry)
+
+        if failure_reason:
+            failures.append(
+                {
+                    "id": query_case["id"],
+                    "query": query_case["query"],
+                    "reason": failure_reason,
+                }
+            )
+
+    by_category: dict[str, dict[str, Any]] = {}
+    for category in sorted({str(item["category"]) for item in per_query}):
+        items = [item for item in per_query if str(item["category"]) == category]
+        passed_count = sum(1 for item in items if item["pass"])
+        by_category[category] = {
+            "query_count": len(items),
+            "passed_queries": passed_count,
+            "failed_queries": len(items) - passed_count,
+            "pass_rate": _round_metric(_safe_float_divide(passed_count, len(items))),
+        }
+
+    passed_total = sum(1 for item in per_query if item["pass"])
+    return {
+        "total_queries": len(per_query),
+        "passed_queries": passed_total,
+        "failed_queries": len(per_query) - passed_total,
+        "metrics": {"pass_rate": _round_metric(_safe_float_divide(passed_total, len(per_query)))},
+        "by_category": by_category,
+        "per_query": per_query,
+        "failures": failures,
+    }
+
+
 def _get_llm_client_module() -> Any:
     return importlib.import_module("tools.eval.llm_client")
 
@@ -171,6 +306,15 @@ def load_golden_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
     queries = payload.get("queries", []) if isinstance(payload, dict) else []
     if not isinstance(queries, list):
         raise ValueError("golden_queries.yaml must contain a 'queries' list")
+    return queries
+
+
+def load_aggregate_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
+    """Load aggregate/analyze companion cases from the Gold Set YAML."""
+    payload = yaml.safe_load((file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8"))
+    queries = payload.get("aggregate_queries", []) if isinstance(payload, dict) else []
+    if not isinstance(queries, list):
+        raise ValueError("golden_queries.yaml aggregate_queries must be a list when present")
     return queries
 
 
@@ -593,6 +737,20 @@ def _build_summary_lines(result: dict[str, Any]) -> list[str]:
             lines.append(f"  Errors:      {be_metrics['errors']}/{be_metrics['query_count']}")
         lines.append(f"  Fail:        {be_metrics['fails']}/{be_metrics['query_count']}")
 
+    aggregate_eval = result.get("aggregate_eval")
+    if aggregate_eval and aggregate_eval.get("total_queries"):
+        lines.append("")
+        lines.append(f"Aggregate Eval ({aggregate_eval['total_queries']} queries):")
+        lines.append(
+            f"  Pass:        {aggregate_eval['passed_queries']}/"
+            f"{aggregate_eval['total_queries']} "
+            f"({aggregate_eval['metrics']['pass_rate']:.0%})"
+        )
+        if aggregate_eval.get("failed_queries"):
+            lines.append(f"  Fail:        {aggregate_eval['failed_queries']}")
+            for failure in aggregate_eval.get("failures", [])[:5]:
+                lines.append(f'AGG FAIL {failure["id"]} "{failure["query"]}" - {failure["reason"]}')
+
     return lines
 
 
@@ -890,6 +1048,7 @@ def run_evaluation(
             use_overlay=use_overlay,
         )
     )
+    aggregate_queries = load_aggregate_queries(queries_path)
     queries = []
     skipped_queries: list[dict[str, Any]] = []
     for q in all_queries:
@@ -915,6 +1074,7 @@ def run_evaluation(
             all_docs=all_docs,
             applied_query_ids=applied_query_ids,
         )
+        aggregate_eval = _evaluate_aggregate_queries(aggregate_queries)
 
     by_category: dict[str, list[dict[str, Any]]] = {}
     for item in per_query:
@@ -944,6 +1104,7 @@ def run_evaluation(
         "recall_gaps": [],
         "overlay_applied_count": overlay_applied_count,
         "overlay_warnings": overlay_warnings,
+        "aggregate_eval": aggregate_eval,
     }
 
     for category, items in by_category.items():

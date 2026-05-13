@@ -101,6 +101,7 @@ def main(argv: list[str] | None = None) -> None:
                     "diff": comparison["diff"],
                     "current_metrics": comparison["current"]["metrics"],
                     "recall_gaps": comparison["current"].get("recall_gaps", []),
+                    "aggregate_eval": comparison["current"].get("aggregate_eval", {}),
                 },
             }
         _emit_json(payload)
@@ -131,6 +132,7 @@ def main(argv: list[str] | None = None) -> None:
                 "metrics": result["metrics"],
                 "total_queries": result["total_queries"],
                 "failures": result["failures"],
+                "aggregate_eval": result.get("aggregate_eval", {}),
             },
         }
     _emit_json(payload)
