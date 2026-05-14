@@ -16,7 +16,15 @@ from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.paths import get_journals_dir, get_user_data_dir
 
 VALID_UNITS = {"day", "week", "month", "entry"}
-VALID_PREDICATES = {"journal_count", "entry_time_after", "term_presence", "entity_presence"}
+VALID_PREDICATES = {
+    "journal_count",
+    "entry_time_after",
+    "term_presence",
+    "entity_presence",
+    "field_equals",
+}
+
+_SAFE_FIELD_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _parse_range(range_str: str) -> Tuple[date, date]:
@@ -74,6 +82,20 @@ def _parse_predicate(predicate_str: str) -> Dict[str, Any]:
         )
     elif key == "journal_count":
         result["definition"] = "count of journal entries per aggregation unit"
+    elif key == "field_equals":
+        if value is None or ":" not in value:
+            raise ValueError("field_equals requires FIELD:VALUE format.")
+        field_part, value_part = value.split(":", 1)
+        if not _SAFE_FIELD_RE.match(field_part):
+            raise ValueError(
+                f"Invalid field name: {field_part!r}. " f"Must match [A-Za-z_][A-Za-z0-9_]*."
+            )
+        result["field"] = field_part
+        result["value"] = value_part
+        result["definition"] = (
+            f"frontmatter field '{field_part}' equals '{value_part}'; "
+            f"deterministic frontmatter-data comparison"
+        )
 
     return result
 
@@ -197,7 +219,28 @@ def _compute_metric(predicate: Dict[str, Any]) -> str:
         return "term_presence_count"
     elif ptype == "entity_presence":
         return "entity_presence_count"
+    elif ptype == "field_equals":
+        return "field_equals_count"
     return "entry_count"
+
+
+def _apply_field_equals(
+    entries: List[Dict[str, Any]], pred: Dict[str, Any]
+) -> Tuple[List[Any], List[Any]]:
+    target_field = pred["field"]
+    target_value = pred["value"].casefold()
+    matched: List[Any] = []
+    excluded: List[Any] = []
+
+    for entry in entries:
+        field_val = entry.get("metadata", {}).get(target_field)
+        if isinstance(field_val, list):
+            is_match = any(str(item).casefold() == target_value for item in field_val)
+        else:
+            is_match = field_val is not None and str(field_val).casefold() == target_value
+        (matched if is_match else excluded).append(entry["path"])
+
+    return matched, excluded
 
 
 def run_aggregate(
@@ -356,6 +399,11 @@ def run_aggregate(
             "Entity presence is recall-backed, not deterministic proof.",
             "Alias expansion depends on entity_graph.yaml completeness.",
         ]
+    elif pred_type == "field_equals":
+        matched, excluded = _apply_field_equals(entries, pred)
+        exactness = "exact"
+        confidence = "high"
+        limitations = ["Comparison limited to frontmatter data fields."]
     else:
         return {
             **error_result_base,
@@ -442,6 +490,8 @@ def run_aggregate(
             **({"threshold": pred["threshold"]} if "threshold" in pred else {}),
             **({"term": pred["term"]} if "term" in pred else {}),
             **({"entity_id": pred["entity_id"]} if "entity_id" in pred else {}),
+            **({"field": pred["field"]} if "field" in pred else {}),
+            **({"value": pred["value"]} if "value" in pred else {}),
             "definition": pred.get("definition", ""),
         },
         "result": {

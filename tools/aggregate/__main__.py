@@ -38,7 +38,8 @@ def main() -> None:
             "Whitelisted predicate expression "
             "(e.g. journal_count, "
             "entry_time_after=22:00, "
-            "term_presence=TERM)."
+            "term_presence=TERM, "
+            "field_equals=FIELD:VALUE)."
         ),
     )
     parser.add_argument(

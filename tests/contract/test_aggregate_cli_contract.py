@@ -248,3 +248,70 @@ class TestAggregateCliContract:
         assert payload["command"] == "aggregate"
         assert payload["error"]["code"] == "E0001"
         assert expected_message in payload["error"]["message"]
+
+
+class TestFieldEqualsCliContract:
+    def test_field_equals_exits_0_valid_json(self, sandbox):
+        data_dir, env = sandbox
+        journals_dir = data_dir / "Journals" / "2026" / "03"
+        work_entry = journals_dir / "life-index_2026-03-14_001.md"
+        work_entry.write_text(
+            "---\ndate: 2026-03-14\ntopic: work\n---\n\n# Test\n\nwork entry\n",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tools",
+                "aggregate",
+                "--range",
+                "2026-03-14..2026-03-14",
+                "--unit",
+                "entry",
+                "--predicate",
+                "field_equals=topic:work",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        payload = json.loads(result.stdout)
+        assert payload["success"] is True
+        assert payload["metric"] == "field_equals_count"
+        assert payload["result"]["count"] == 1
+        assert payload["result"]["exactness"] == "exact"
+        assert payload["result"]["confidence"] == "high"
+        assert payload["predicate"]["field"] == "topic"
+        assert payload["predicate"]["value"] == "work"
+
+    def test_field_equals_invalid_field_exits_nonzero(self, sandbox):
+        data_dir, env = sandbox
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tools",
+                "aggregate",
+                "--range",
+                "2026-03-14..2026-03-16",
+                "--unit",
+                "entry",
+                "--predicate",
+                "field_equals=bad-field:value",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+
+        assert result.returncode != 0
+        payload = json.loads(result.stdout)
+        assert payload["success"] is False

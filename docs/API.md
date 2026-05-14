@@ -1301,6 +1301,7 @@ claim/evidence contract.
 | `entry_time_after` | `entry_time_after=HH:MM` | Frontmatter `date` 含时间部分或独立 `time` 字段 | `exact`（全部有时间字段）或 `not_measurable`（部分缺失） | 日志时间戳晚于指定时间 |
 | `term_presence` | `term_presence=TERM` | 全文检索覆盖标题、正文、摘要 | `approximate` | 日志内容中出现指定词项 |
 | `entity_presence` | `entity_presence=ENTITY_ID` | Entity Graph 别名扩展 + 文本匹配 | `approximate` | 日志中出现指定实体（主名 + 别名） |
+| `field_equals` | `field_equals=FIELD:VALUE` | Frontmatter 标量或列表字段 | `exact` | Frontmatter 字段值等于指定值（大小写不敏感）；列表字段匹配任一元素 |
 
 > **⚠️ 重要**：`entry_time_after=22:00` 表示**日志写入/记录时间晚于 22:00**，不是实际入睡时间的证明。系统优先读取 frontmatter `date` 中的 ISO 8601 时间部分；若不存在，则回退到独立的 `time` 字段。若两者均缺失，对应条目进入 `unknown_entries`，精确度降为 `not_measurable`。
 
@@ -1346,10 +1347,10 @@ claim/evidence contract.
 | `success` | bool | 命令执行是否成功（`not_measurable` 仍视为成功） |
 | `query` | string | 调用方传入的原始自然语言查询 |
 | `command` | string | 固定为 `"aggregate"` |
-| `metric` | string | 计算出的指标名，如 `journal_count`、`entry_count`、`term_presence_count`、`entity_presence_count` |
+| `metric` | string | 计算出的指标名，如 `journal_count`、`entry_count`、`term_presence_count`、`entity_presence_count`、`field_equals_count` |
 | `unit` | string | 聚合单位 |
 | `range` | object | 解析后的日期范围 `{"since", "until"}` |
-| `predicate` | object | 解析后的谓词，含 `type`、`threshold`/`term`/`entity_id`（如适用）及 `definition` |
+| `predicate` | object | 解析后的谓词，含 `type`、`threshold`/`term`/`entity_id`/`field`/`value`（如适用）及 `definition` |
 | `result.count` | int | 计算结果计数 |
 | `result.denominator` | int | 范围内总候选单位数（如总天数） |
 | `result.exactness` | enum | `exact` / `approximate` / `not_measurable` |
@@ -1430,6 +1431,7 @@ aggregate 专用 `evidence_pack` 是 deterministic source map，不是 smart-sea
 - `analyze` is an alias for `aggregate`; JSON output still uses `"command": "aggregate"`。
 - 复合谓词（如 `AND` / `OR`）在 MVP 中**不支持**。
 - `term_presence` 和 `entity_presence` 使用大小写不敏感的简单子串匹配（`casefold()`），不做分词或语义扩展；计数为召回支撑，非现实世界行为的证明。
+- `field_equals` 的 `FIELD` 限制为 `[A-Za-z_][A-Za-z0-9_]*` 模式；值为大小写不敏感的精确字符串匹配。列表字段匹配任一元素。不含目标字段的条目归入 `excluded_entries`。
 - 性能目标：典型范围（< 5 年数据）< 2 秒；未针对 > 10,000 条日志做过专项优化。
 
 ### 错误码

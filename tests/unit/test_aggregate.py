@@ -756,3 +756,238 @@ class TestEmptyAggregateClaimEvidenceShape:
 
         ep = result["evidence_pack"]
         assert ep["items"] == []
+
+
+class TestFieldEqualsScalarMatch:
+    """RED: field_equals=topic:work matches scalar frontmatter values."""
+
+    def test_matches_scalar_topic_work(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(
+            journals_dir,
+            "2026-03-14",
+            "work entry",
+            extra_frontmatter="topic: work\n",
+        )
+        _write_journal(
+            journals_dir,
+            "2026-03-15",
+            "life entry",
+            extra_frontmatter="topic: life\n",
+        )
+        _write_journal(
+            journals_dir,
+            "2026-03-16",
+            "another work",
+            extra_frontmatter="topic: work\n",
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-16",
+            unit="entry",
+            predicate="field_equals=topic:work",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["exactness"] == "exact"
+        assert result["result"]["confidence"] == "high"
+        assert result["result"]["count"] == 2
+        assert len(result["matched_entries"]) == 2
+        assert len(result["excluded_entries"]) == 1
+        assert result["metric"] == "field_equals_count"
+
+    def test_predicate_contains_field_and_value(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(
+            journals_dir,
+            "2026-03-14",
+            "entry",
+            extra_frontmatter="topic: work\n",
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=topic:work",
+        )
+
+        assert result["success"] is True
+        assert result["predicate"]["field"] == "topic"
+        assert result["predicate"]["value"] == "work"
+
+    def test_case_insensitive_scalar_match(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(
+            journals_dir,
+            "2026-03-14",
+            "entry",
+            extra_frontmatter="topic: Work\n",
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=topic:WORK",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 1
+
+    def test_no_match_returns_zero(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(
+            journals_dir,
+            "2026-03-14",
+            "entry",
+            extra_frontmatter="topic: life\n",
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=topic:work",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 0
+        assert len(result["excluded_entries"]) == 1
+
+    def test_missing_field_excluded(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "no topic field")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=topic:work",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 0
+        assert len(result["excluded_entries"]) == 1
+
+
+class TestFieldEqualsListMatch:
+    """RED: field_equals matches list frontmatter values if any item equals."""
+
+    def test_matches_list_item(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        year, month, day = "2026", "03", "14"
+        d = journals_dir / year / month
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"life-index_{year}-{month}-{day}_001.md"
+        fm = (
+            f"---\ndate: {year}-{month}-{day}\n"
+            f"tags:\n  - python\n  - work\n  - ai\n---\n\n# Test\n\nentry\n"
+        )
+        path.write_text(fm, encoding="utf-8")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=tags:work",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 1
+        assert len(result["matched_entries"]) == 1
+
+    def test_list_no_match(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        year, month, day = "2026", "03", "14"
+        d = journals_dir / year / month
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"life-index_{year}-{month}-{day}_001.md"
+        fm = (
+            f"---\ndate: {year}-{month}-{day}\n"
+            f"tags:\n  - python\n  - life\n---\n\n# Test\n\nentry\n"
+        )
+        path.write_text(fm, encoding="utf-8")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=tags:work",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 0
+
+    def test_list_case_insensitive(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        year, month, day = "2026", "03", "14"
+        d = journals_dir / year / month
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"life-index_{year}-{month}-{day}_001.md"
+        fm = (
+            f"---\ndate: {year}-{month}-{day}\n"
+            f"tags:\n  - Python\n  - AI\n---\n\n# Test\n\nentry\n"
+        )
+        path.write_text(fm, encoding="utf-8")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=tags:python",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 1
+
+
+class TestFieldEqualsValidation:
+    """RED: field_equals rejects invalid field names."""
+
+    def test_invalid_field_name_rejected(self, sandbox: Path):
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=invalid-field:value",
+        )
+        assert result["success"] is False
+
+    def test_field_starts_with_digit_rejected(self, sandbox: Path):
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=0field:value",
+        )
+        assert result["success"] is False
+
+    def test_missing_value_rejected(self, sandbox: Path):
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=topic",
+        )
+        assert result["success"] is False
+
+
+class TestFieldEqualsClaimEnvelopeShape:
+    """field_equals claim_envelope and evidence_pack shape."""
+
+    def test_claim_envelope_measurable_exact(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(
+            journals_dir,
+            "2026-03-14",
+            "entry",
+            extra_frontmatter="topic: work\n",
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="field_equals=topic:work",
+        )
+
+        assert result["success"] is True
+        ce = result["claim_envelope"]
+        assert ce["claim_type"] == "measurable_exact"
+        assert ce["value"] == 1
+        assert ce["metric"] == "field_equals_count"
+
+        ep = result["evidence_pack"]
+        assert len(ep["items"]) == 1
+        item = ep["items"][0]
+        assert item["role"] == "matched"
