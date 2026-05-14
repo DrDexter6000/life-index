@@ -14,7 +14,11 @@ def test_charter_exists_and_signed():
     charter = REPO_ROOT / "CHARTER.md"
     assert charter.exists(), "CHARTER.md must exist"
     text = charter.read_text(encoding="utf-8")
-    assert "v1.2.0" in text, "CHARTER must be v1.2.0+ (updated Phase 6-B)"
+    m = re.search(r"v(\d+\.\d+\.\d+)", text)
+    assert m, "CHARTER must contain a version tag (e.g. v1.2.0)"
+    version = m.group(1)
+    version_tuple = tuple(int(part) for part in version.split("."))
+    assert version_tuple >= (1, 2, 0), f"CHARTER version must be >= v1.2.0, got v{version}"
     assert "2026-04-23" in text, "CHARTER must be signed (批准日期)"
 
 

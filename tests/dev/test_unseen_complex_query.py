@@ -10,18 +10,37 @@ Phase 2-B 防过拟合验证：5 条未见 complex_query。
 设计原则（补丁②）：以用户意图为基准、不绑定当前图谱 schema。
 断言检查"是否找到符合查询意图的 journal 条目"，而非 entity_expansion 输出。
 
-运行方式: python -m pytest tests/dev/test_unseen_complex_query.py -v
+运行方式: LIFE_INDEX_ENABLE_REALDATA_TESTS=1 python -m pytest tests/dev/test_unseen_complex_query.py -v
+
+This test requires explicit opt-in via LIFE_INDEX_ENABLE_REALDATA_TESTS=1 env var
+AND a real Life-Index data directory at ~/Documents/Life-Index. It does NOT write
+real user data; it only queries the search engine against the existing index.
 """
 
 import os
 from pathlib import Path
 
+import pytest
 
-_REAL_DATA_DIR = str(Path.home() / "Documents" / "Life-Index")
+_REAL_DATA_DIR_STR = str(Path.home() / "Documents" / "Life-Index")
+_REAL_DATA_DIR = Path(_REAL_DATA_DIR_STR)
+
+
+_REALDATA_ENABLED = (
+    os.environ.get("LIFE_INDEX_ENABLE_REALDATA_TESTS", "") == "1" and _REAL_DATA_DIR.is_dir()
+)
+
+pytestmark = pytest.mark.skipif(
+    not _REALDATA_ENABLED,
+    reason=(
+        "Real-data tests disabled: set LIFE_INDEX_ENABLE_REALDATA_TESTS=1 "
+        "and ensure ~/Documents/Life-Index exists"
+    ),
+)
 
 
 def _search(query: str, level: int = 3):
-    os.environ["LIFE_INDEX_DATA_DIR"] = _REAL_DATA_DIR
+    os.environ["LIFE_INDEX_DATA_DIR"] = str(_REAL_DATA_DIR)
     from tools.search_journals.core import hierarchical_search
 
     return hierarchical_search(query=query, level=level, semantic=False)

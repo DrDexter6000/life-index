@@ -5,8 +5,17 @@ Round 18 Phase 2-A — 5 条未见 time_range query 防过拟合验证.
 用于验证 query_preprocessor 的修复是 generalized 而非 memorized.
 """
 
-import pytest
+import os
 from pathlib import Path
+
+import pytest
+
+REAL_DATA_DIR = Path(r"C:\Users\17865\Documents\Life-Index")
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("LIFE_INDEX_ENABLE_REALDATA_TESTS") != "1" or not REAL_DATA_DIR.exists(),
+    reason="Real-data tests disabled: set LIFE_INDEX_ENABLE_REALDATA_TESTS=1",
+)
 
 UNSEEN_QUERIES = [
     # (query, expected_expr_substring, min_results_found)
@@ -22,7 +31,7 @@ def test_all_unseen_queries_pass() -> None:
     import os
     import sys
 
-    DATA_DIR = Path(r"C:\Users\17865\Documents\Life-Index")
+    DATA_DIR = REAL_DATA_DIR
     if not DATA_DIR.exists():
         pytest.skip("Real user data dir not available")
 
