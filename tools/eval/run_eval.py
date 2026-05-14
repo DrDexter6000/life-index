@@ -191,6 +191,38 @@ def _aggregate_query_passes(
         if field in expected and result_payload.get(field) != expected[field]:
             failures.append(f"{field} expected {expected[field]}, got {result_payload.get(field)}")
 
+    evidence_pack = aggregate_result.get("evidence_pack", {})
+    if not isinstance(evidence_pack, dict):
+        evidence_pack = {}
+    index_scope = evidence_pack.get("index_scope", {})
+    if not isinstance(index_scope, dict):
+        index_scope = {}
+    index_scope_refs = index_scope.get("refs", [])
+    if not isinstance(index_scope_refs, list):
+        index_scope_refs = []
+    actual_index_scope_node_ids = [
+        str(ref["node_id"])
+        for ref in index_scope_refs
+        if isinstance(ref, dict) and ref.get("node_id")
+    ]
+
+    if "index_scope_node_ids" in expected:
+        expected_node_ids = [str(node_id) for node_id in expected["index_scope_node_ids"]]
+        if actual_index_scope_node_ids != expected_node_ids:
+            failures.append(
+                "index_scope_node_ids expected "
+                f"{expected_node_ids}, got {actual_index_scope_node_ids}"
+            )
+
+    if (
+        "index_scope_ref_count" in expected
+        and len(index_scope_refs) != expected["index_scope_ref_count"]
+    ):
+        failures.append(
+            "index_scope_ref_count expected "
+            f"{expected['index_scope_ref_count']}, got {len(index_scope_refs)}"
+        )
+
     return not failures, "; ".join(failures) if failures else None
 
 

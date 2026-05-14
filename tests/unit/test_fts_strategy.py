@@ -89,6 +89,42 @@ class TestFTSStrategy:
         assert mock_fts.call_count >= 1
         assert mock_fts.call_args_list[0].args[0] == "团队 AND 建设"
 
+    def test_multi_word_column_name_literal_is_quoted(self) -> None:
+        """Bare FTS column/reserved names in user literals must be quoted."""
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.lib.search_index.search_fts") as mock_fts:
+                mock_l2.return_value = {
+                    "results": [],
+                    "truncated": False,
+                    "total_available": 0,
+                }
+                mock_fts.return_value = []
+
+                run_keyword_pipeline(query="Life Index", use_index=True)
+
+        assert mock_fts.call_count >= 1
+        assert mock_fts.call_args_list[0].args[0] == 'Life AND "Index"'
+
+    def test_version_literal_with_dot_is_quoted(self) -> None:
+        """Version-like literal tokens must be quoted before FTS MATCH."""
+        from tools.search_journals.keyword_pipeline import run_keyword_pipeline
+
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.lib.search_index.search_fts") as mock_fts:
+                mock_l2.return_value = {
+                    "results": [],
+                    "truncated": False,
+                    "total_available": 0,
+                }
+                mock_fts.return_value = []
+
+                run_keyword_pipeline(query="Life Index 2.0", use_index=True)
+
+        assert mock_fts.call_count >= 1
+        assert mock_fts.call_args_list[0].args[0] == 'Life AND "Index" AND "2.0"'
+
     def test_and_fallback_to_or(self) -> None:
         """AND 结果过少（<3）时，自动降级为 OR。"""
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
@@ -406,6 +442,22 @@ class TestFTSEntityBoundary:
         # Must preserve parenthesized group structure
         assert f"({self._CQ} OR Chongqing OR {self._SC})" in fts_query
         assert ") AND" in fts_query
+
+    def test_entity_expanded_alias_group_quotes_reserved_literals(self) -> None:
+        """Entity alias OR groups must quote literal tokens that collide with FTS5."""
+        from tools.search_journals.keyword_pipeline import (
+            _build_fts_queries,
+            _segment_query_for_fts,
+        )
+
+        expanded = "(Life Index OR life-index OR LobsterAI Journal)"
+        segmented, was_segmented = _segment_query_for_fts(expanded, entity_expanded=True)
+        fts_query, fallback = _build_fts_queries(segmented, was_segmented=was_segmented)
+
+        assert fallback is None
+        assert '"Index"' in fts_query
+        assert '"life-index"' in fts_query
+        assert "no such column" not in fts_query
 
     # -- Test 4: hyphenated date tokens remain safe --
 

@@ -1867,6 +1867,10 @@ aggregate_queries:
     success: true
     count: 1
     exactness: exact
+    index_scope_node_ids:
+    - month:2026-02
+    - month:2026-03
+    index_scope_ref_count: 2
   tags:
   - aggregate
   - cross_month
@@ -1887,6 +1891,9 @@ aggregate_queries:
     min_count: 1
     max_count: 2
     unknown_count: 1
+    index_scope_node_ids:
+    - month:2026-03
+    index_scope_ref_count: 1
   tags:
   - aggregate
   - entry_time_after

@@ -326,6 +326,8 @@ def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
     assert by_id["AGQ05"]["min_count"] == 1
     assert by_id["AGQ05"]["max_count"] == 2
     assert by_id["AGQ05"]["unknown_count"] == 1
+    assert by_id["AGQ05"]["index_scope_node_ids"] == ["month:2026-03"]
+    assert by_id["AGQ05"]["index_scope_ref_count"] == 1
 
 
 def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path) -> None:
@@ -348,6 +350,7 @@ def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path
                     "success": True,
                     "count": 999,
                     "exactness": "exact",
+                    "index_scope_node_ids": ["month:2099-01"],
                 },
             }
         ],
@@ -359,6 +362,7 @@ def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path
     assert aggregate_eval["failed_queries"] == 1
     assert aggregate_eval["failures"][0]["id"] == "AGQ_FAIL"
     assert "count" in aggregate_eval["failures"][0]["reason"]
+    assert "index_scope_node_ids" in aggregate_eval["failures"][0]["reason"]
     assert any("Aggregate Eval" in line for line in result["summary_lines"])
 
 

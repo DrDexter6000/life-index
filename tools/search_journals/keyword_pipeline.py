@@ -49,6 +49,24 @@ KeywordPipelineResult = tuple[
     dict[str, float],  # perf
 ]
 
+_FTS_LITERAL_QUOTE_TOKENS = {
+    "content",
+    "date",
+    "file_hash",
+    "index",
+    "location",
+    "modified_time",
+    "mood",
+    "path",
+    "people",
+    "project",
+    "tags",
+    "title",
+    "title_segmented",
+    "topic",
+    "weather",
+}
+
 
 def _has_explicit_fts_operator(query: str) -> bool:
     """Return whether query already contains explicit FTS boolean operators.
@@ -62,16 +80,30 @@ def _has_explicit_fts_operator(query: str) -> bool:
 def _quote_fts_token(token: str) -> str:
     """Quote a bare token if it contains characters that FTS5 treats as operators.
 
-    FTS5 interprets '-' as the prefix NOT operator.  A query like
-    ``2026-01-28`` becomes ``2026 NOT 01 NOT 28``, producing
-    ``no such column: 01``.  Wrapping the token in double quotes forces
-    FTS5 to treat it as a literal phrase.
+    FTS5 interprets punctuation and some bare words as query syntax. A query
+    like ``2026-01-28`` becomes ``2026 NOT 01 NOT 28``, producing
+    ``no such column: 01``; ``2.0`` similarly errors near ``.``. Wrapping the
+    token in double quotes forces FTS5 to treat it as a literal phrase.
     """
     if not token or token.startswith('"'):
         return token
-    if "-" in token:
+    if "-" in token or "." in token or token.lower() in _FTS_LITERAL_QUOTE_TOKENS:
         return f'"{token}"'
     return token
+
+
+def _quote_fts_boolean_group_literals(group: str) -> str:
+    """Quote unsafe literal tokens inside a simple parenthesized FTS group."""
+    if not (group.startswith("(") and group.endswith(")")):
+        return group
+    inner = group[1:-1].strip()
+    if not inner:
+        return group
+    operators = {"AND", "OR", "NOT"}
+    tokens = [
+        token if token in operators else _quote_fts_token(token) for token in inner.split() if token
+    ]
+    return f"({' '.join(tokens)})"
 
 
 def _split_entity_expanded_query(query: str) -> list[str]:
@@ -109,8 +141,11 @@ def _segment_entity_expanded_query(query: str) -> tuple[str, bool]:
     processed: list[str] = []
     for frag in fragments:
         # Skip FTS operators and parenthesized OR groups — preserve as-is
-        if frag in operators or frag.startswith("("):
+        if frag in operators:
             processed.append(frag)
+            continue
+        if frag.startswith("("):
+            processed.append(_quote_fts_boolean_group_literals(frag))
             continue
 
         # Check if this fragment has CJK content needing segmentation
