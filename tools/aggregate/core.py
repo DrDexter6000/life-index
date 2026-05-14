@@ -256,6 +256,43 @@ def _apply_field_equals(
     return matched, excluded
 
 
+def _build_partial_bounds(
+    *,
+    unit: str,
+    entries: List[Dict[str, Any]],
+    matched: List[Any],
+    unknown: List[Any],
+    count: int,
+) -> Dict[str, Any]:
+    unknown_count = len(unknown)
+    if unit == "entry":
+        min_count = len(matched)
+        max_count = len(matched) + unknown_count
+        unknown_bucket_count = unknown_count
+    else:
+        matched_paths = set(matched)
+        unknown_paths = {u["path"] for u in unknown}
+        matched_bucket_keys: set = set()
+        unknown_bucket_keys: set = set()
+        for entry in entries:
+            entry_path = entry["path"]
+            if entry_path in matched_paths:
+                matched_bucket_keys.add(_bucket_key(entry["date"], unit))
+            if entry_path in unknown_paths:
+                unknown_bucket_keys.add(_bucket_key(entry["date"], unit))
+        min_count = count
+        max_count = count + len(unknown_bucket_keys - matched_bucket_keys)
+        unknown_bucket_count = len(unknown_bucket_keys)
+
+    return {
+        "min_count": min_count,
+        "max_count": max_count,
+        "unknown_count": unknown_count,
+        "unknown_bucket_count": unknown_bucket_count,
+        "count_semantics": "partial_lower_bound",
+    }
+
+
 def run_aggregate(
     range_str: str,
     unit: str,
@@ -347,7 +384,7 @@ def run_aggregate(
                 )
 
         if has_unknown:
-            exactness = "not_measurable"
+            exactness = "partial"
             confidence = "high"
             limitations = [
                 "No reliable time-of-day field was available " "for one or more journal entries."
@@ -454,8 +491,15 @@ def run_aggregate(
                 }
             )
 
-    if exactness == "not_measurable" and pred_type == "entry_time_after":
-        count = 0
+    partial_bounds: Dict[str, Any] = {}
+    if exactness == "partial" and pred_type == "entry_time_after":
+        partial_bounds = _build_partial_bounds(
+            unit=unit,
+            entries=entries,
+            matched=matched,
+            unknown=unknown,
+            count=count,
+        )
 
     denominator = 0
     if entries:
@@ -512,6 +556,7 @@ def run_aggregate(
             "denominator": denominator,
             "exactness": exactness,
             "confidence": confidence,
+            **partial_bounds,
         },
         "buckets": buckets,
         "matched_entries": sorted(matched),

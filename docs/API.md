@@ -1074,7 +1074,7 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | `aggregate_result.range` | object | 解析后的日期范围 `{"since", "until"}` |
 | `aggregate_result.predicate.type` | string | 谓词类型，如 `entry_time_after`、`journal_count` |
 | `aggregate_result.result.count` | int | 计算结果计数 |
-| `aggregate_result.result.exactness` | enum | `exact` / `approximate` / `not_measurable` |
+| `aggregate_result.result.exactness` | enum | `exact` / `approximate` / `partial` / `not_measurable` |
 | `aggregate_result.limitations` | array | 局限性说明（如"日志写入时间不等于实际入睡时间"） |
 | `aggregate_result.claim_envelope` | object | 证据化结论外壳；结构同 aggregate 命令 |
 | `aggregate_result.evidence_pack` | object | aggregate 专用证据包；结构同 aggregate 命令 |
@@ -1096,7 +1096,17 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
     "command": "aggregate",
     "predicate": {"type": "entry_time_after", "threshold": "22:00", "definition": "..."},
     "range": {"since": "2026-03-15", "until": "2026-05-13"},
-    "result": {"count": 0, "denominator": 60, "exactness": "not_measurable", "confidence": "high"},
+    "result": {
+      "count": 7,
+      "denominator": 60,
+      "exactness": "partial",
+      "confidence": "high",
+      "min_count": 7,
+      "max_count": 11,
+      "unknown_count": 4,
+      "unknown_bucket_count": 4,
+      "count_semantics": "partial_lower_bound"
+    },
     "limitations": ["No reliable time-of-day field was available for one or more journal entries."]
   },
   "performance": {"total_time_ms": 45.2}
@@ -1327,41 +1337,49 @@ claim/evidence contract.
 | 谓词 | 语法 | 数据要求 | 精确度 | 说明 |
 |------|------|----------|--------|------|
 | `journal_count` | `journal_count` | 仅需日期范围和日志路径 | `exact` | 统计每个聚合单位内的日志数量 |
-| `entry_time_after` | `entry_time_after=HH:MM` | Frontmatter `date` 含时间部分或独立 `time` 字段 | `exact`（全部有时间字段）或 `not_measurable`（部分缺失） | 日志时间戳晚于指定时间 |
+| `entry_time_after` | `entry_time_after=HH:MM` | Frontmatter `date` 含时间部分或独立 `time` 字段 | `exact`（全部有时间字段）或 `partial`（部分缺失） | 日志时间戳晚于指定时间 |
 | `term_presence` | `term_presence=TERM` | 全文检索覆盖标题、正文、摘要 | `approximate` | 日志内容中出现指定词项 |
 | `entity_presence` | `entity_presence=ENTITY_ID` | Entity Graph 别名扩展 + 文本匹配 | `approximate` | 日志中出现指定实体（主名 + 别名） |
 | `field_equals` | `field_equals=FIELD:VALUE` | Frontmatter 标量或列表字段 | `exact` | Frontmatter 字段值等于指定值（大小写不敏感）；列表字段匹配任一元素 |
 
-> **⚠️ 重要**：`entry_time_after=22:00` 表示**日志写入/记录时间晚于 22:00**，不是实际入睡时间的证明。系统优先读取 frontmatter `date` 中的 ISO 8601 时间部分；若不存在，则回退到独立的 `time` 字段。若两者均缺失，对应条目进入 `unknown_entries`，精确度降为 `not_measurable`。
+> **⚠️ 重要**：`entry_time_after=22:00` 表示**日志写入/记录时间晚于 22:00**，不是实际入睡时间的证明。系统优先读取 frontmatter `date` 中的 ISO 8601 时间部分；若不存在，则回退到独立的 `time` 字段。若两者均缺失，对应条目进入 `unknown_entries`，精确度降为 `partial`，`count` 为确认下限而非完整计数。
 
 ### 返回值
 
 ```json
 {
   "success": true,
-  "query": "过去60天我有多少次晚睡",
+  "query": "过去2天我有多少次晚睡",
   "command": "aggregate",
   "metric": "entry_count",
   "unit": "day",
-  "range": {"since": "2026-03-13", "until": "2026-05-12"},
+  "range": {"since": "2026-03-14", "until": "2026-03-15"},
   "predicate": {
     "type": "entry_time_after",
     "threshold": "22:00",
     "definition": "journal timestamp later than 22:00; not proof of actual sleep time"
   },
   "result": {
-    "count": 0,
-    "denominator": 61,
-    "exactness": "not_measurable",
-    "confidence": "high"
+    "count": 1,
+    "denominator": 2,
+    "exactness": "partial",
+    "confidence": "high",
+    "min_count": 1,
+    "max_count": 2,
+    "unknown_count": 1,
+    "unknown_bucket_count": 1,
+    "count_semantics": "partial_lower_bound"
   },
   "buckets": [],
-  "matched_entries": [],
+  "matched_entries": ["Journals/2026/03/life-index_2026-03-14_001.md"],
   "excluded_entries": [],
   "unknown_entries": [
-    {"path": "Journals/2026/03/life-index_2026-03-14_001.md", "reason": "no_time_field_available"}
+    {"path": "Journals/2026/03/life-index_2026-03-15_001.md", "reason": "no_time_field_available"}
   ],
-  "evidence_paths": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+  "evidence_paths": [
+    "Journals/2026/03/life-index_2026-03-14_001.md",
+    "Journals/2026/03/life-index_2026-03-15_001.md"
+  ],
   "limitations": [
     "No reliable time-of-day field was available for one or more journal entries."
   ],
@@ -1382,8 +1400,13 @@ claim/evidence contract.
 | `predicate` | object | 解析后的谓词，含 `type`、`threshold`/`term`/`entity_id`/`field`/`value`（如适用）及 `definition` |
 | `result.count` | int | 计算结果计数 |
 | `result.denominator` | int | 范围内总候选单位数（如总天数） |
-| `result.exactness` | enum | `exact` / `approximate` / `not_measurable` |
+| `result.exactness` | enum | `exact` / `approximate` / `partial` / `not_measurable` |
 | `result.confidence` | enum | `high` / `medium` / `low`；反映数据质量，非 LLM 意见 |
+| `result.min_count` | int | additive；`exactness=partial` 时确认的下限计数 |
+| `result.max_count` | int | additive；`exactness=partial` 时可能的上限计数（含未知条目） |
+| `result.unknown_count` | int | additive；`exactness=partial` 时缺失数据字段的条目总数 |
+| `result.unknown_bucket_count` | int | additive；`exactness=partial` 时仅含未知条目（无确认匹配）的桶数 |
+| `result.count_semantics` | string | additive；`exactness=partial` 时为 `"partial_lower_bound"` |
 | `buckets` | array | 非 `entry` 单位时的分组统计；每项含 `key`、`count`、`total`、`evidence_paths` |
 | `matched_entries` | array | 谓词判定为 true 的日志相对路径 |
 | `excluded_entries` | array | 谓词判定为 false 的日志相对路径 |
@@ -1401,7 +1424,7 @@ claim/evidence contract.
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `schema_version` | string | 固定为 `m02a.claim_envelope.v0` |
-| `claim_type` | enum | `measurable_exact` / `measurable_approximate` / `not_measurable`，由 `result.exactness` 映射 |
+| `claim_type` | enum | `measurable_exact` / `measurable_approximate` / `measurable_partial` / `not_measurable`，由 `result.exactness` 映射 |
 | `source_command` | string | 固定为 `aggregate` |
 | `query` | string | 原始自然语言查询（若调用方提供） |
 | `metric` | string | aggregate 指标名 |
@@ -1414,6 +1437,11 @@ claim/evidence contract.
 | `confidence` | enum | 与 `result.confidence` 相同 |
 | `limitations` | array | 与 aggregate 局限性说明相同 |
 | `evidence_pack_ref` | string | 固定为 `aggregate.evidence_pack` |
+| `min_count` | int | additive；`exactness=partial` 时与 `result.min_count` 相同 |
+| `max_count` | int | additive；`exactness=partial` 时与 `result.max_count` 相同 |
+| `unknown_count` | int | additive；`exactness=partial` 时与 `result.unknown_count` 相同 |
+| `unknown_bucket_count` | int | additive；`exactness=partial` 时与 `result.unknown_bucket_count` 相同 |
+| `count_semantics` | string | additive；`exactness=partial` 时与 `result.count_semantics` 相同 |
 
 ### Aggregate Evidence Pack（`evidence_pack`）
 
@@ -1468,6 +1496,7 @@ aggregate 专用 `evidence_pack` 是 deterministic source map，不是 smart-sea
 |------|------|
 | `exact` | 所有单元均使用可靠结构化数据完成布尔判定，无推断或启发式 |
 | `approximate` | 谓词依赖检索召回（词项/实体存在），可能存在假阳性或假阴性 |
+| `partial` | 部分条目有所需数据字段，部分缺失；`count` 为确认下限，附加 `min_count`/`max_count`/`unknown_count`/`unknown_bucket_count`/`count_semantics` 字段提供完整范围 |
 | `not_measurable` | 所需数据字段缺失或不可靠；`count` 按惯例为 `0`，不得当作统计意义上的零 |
 
 ### 行为约束

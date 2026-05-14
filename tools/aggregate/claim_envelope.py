@@ -20,6 +20,8 @@ def claim_type_from_exactness(exactness: str) -> str:
         return "measurable_exact"
     if exactness == "approximate":
         return "measurable_approximate"
+    if exactness == "partial":
+        return "measurable_partial"
     return "not_measurable"
 
 
@@ -32,7 +34,7 @@ def build_claim_envelope(aggregate_result: Dict[str, Any]) -> Dict[str, Any]:
     result = aggregate_result.get("result", {})
     exactness = result.get("exactness", "not_measurable")
 
-    return {
+    envelope: Dict[str, Any] = {
         "schema_version": CLAIM_SCHEMA_VERSION,
         "claim_type": claim_type_from_exactness(exactness),
         "source_command": "aggregate",
@@ -48,6 +50,18 @@ def build_claim_envelope(aggregate_result: Dict[str, Any]) -> Dict[str, Any]:
         "limitations": aggregate_result.get("limitations", []),
         "evidence_pack_ref": "aggregate.evidence_pack",
     }
+
+    for bound_field in (
+        "min_count",
+        "max_count",
+        "unknown_count",
+        "unknown_bucket_count",
+        "count_semantics",
+    ):
+        if bound_field in result:
+            envelope[bound_field] = result[bound_field]
+
+    return envelope
 
 
 def build_evidence_pack(

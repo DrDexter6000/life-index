@@ -2,7 +2,7 @@
 """Unit tests for tools.aggregate.core — TDD RED phase.
 
 Required RED cases:
-1. date-only journals + entry_time_after=22:00 → not_measurable, count=0, unknown_entries
+1. date-only journals + entry_time_after=22:00 → partial, count=0, unknown_entries
 2. explicit datetime metadata counts late entries deterministically
 3. two late entries same day → unit=day counts once, unit=entry counts twice
 4. journal_count grouped by unit=month returns deterministic buckets
@@ -80,10 +80,10 @@ def _write_journal_with_separate_time(
     return path
 
 
-class TestRed1DateOnlyNotMeasurable:
-    """RED case 1: date-only journals with entry_time_after=22:00 → not_measurable."""
+class TestRed1DateOnlyPartial:
+    """RED case 1: date-only journals with entry_time_after=22:00 → partial."""
 
-    def test_date_only_returns_not_measurable(self, sandbox: Path):
+    def test_date_only_returns_partial(self, sandbox: Path):
         journals_dir = sandbox / "Journals"
         _write_journal(journals_dir, "2026-03-14", "some entry")
         _write_journal(journals_dir, "2026-03-15", "another entry")
@@ -95,7 +95,7 @@ class TestRed1DateOnlyNotMeasurable:
         )
 
         assert result["success"] is True
-        assert result["result"]["exactness"] == "not_measurable"
+        assert result["result"]["exactness"] == "partial"
         assert result["result"]["count"] == 0
         assert len(result["unknown_entries"]) == 2
         for entry in result["unknown_entries"]:
@@ -365,15 +365,15 @@ class TestOutputContract:
             assert "\\" not in path, f"Backslash in path: {path}"
 
 
-class TestMixedTimeNotMeasurableCountZero:
-    """Contract fix: mixed time data must return count=0 when not_measurable.
+class TestMixedTimePartialCountLowerBound:
+    """Contract fix: mixed time data returns partial with confirmed lower-bound count.
 
-    When some entries have time and others don't, exactness is not_measurable.
-    Per RFC §9.2.3 and API.md, not_measurable count is 0 by convention.
-    matched_entries may still list known-late entries as evidence/lower-bound.
+    When some entries have time and others don't, exactness is partial.
+    count is the confirmed lower bound; matched_entries still list known-late
+    entries as evidence.
     """
 
-    def test_mixed_time_count_is_zero_entry_unit(self, sandbox: Path):
+    def test_mixed_time_count_is_lower_bound_entry_unit(self, sandbox: Path):
         journals_dir = sandbox / "Journals"
         _write_journal_with_time(journals_dir, "2026-03-14", "23:30:00", "late entry")
         _write_journal(journals_dir, "2026-03-15", "no time entry")
@@ -385,14 +385,14 @@ class TestMixedTimeNotMeasurableCountZero:
         )
 
         assert result["success"] is True
-        assert result["result"]["exactness"] == "not_measurable"
-        assert result["result"]["count"] == 0
+        assert result["result"]["exactness"] == "partial"
+        assert result["result"]["count"] == 1
         assert len(result["matched_entries"]) >= 1
         assert "2026-03-14" in result["matched_entries"][0]
         assert len(result["unknown_entries"]) == 1
         assert "2026-03-15" in result["unknown_entries"][0]["path"]
 
-    def test_mixed_time_count_is_zero_day_unit(self, sandbox: Path):
+    def test_mixed_time_count_is_lower_bound_day_unit(self, sandbox: Path):
         journals_dir = sandbox / "Journals"
         _write_journal_with_time(journals_dir, "2026-03-14", "23:30:00", "late entry")
         _write_journal(journals_dir, "2026-03-15", "no time entry")
@@ -404,8 +404,8 @@ class TestMixedTimeNotMeasurableCountZero:
         )
 
         assert result["success"] is True
-        assert result["result"]["exactness"] == "not_measurable"
-        assert result["result"]["count"] == 0
+        assert result["result"]["exactness"] == "partial"
+        assert result["result"]["count"] == 1
         assert len(result["matched_entries"]) >= 1
         assert len(result["unknown_entries"]) == 1
 
@@ -533,7 +533,7 @@ class TestClaimEnvelopeAndEvidencePack:
         assert excluded_item is not None
         assert excluded_item["role"] == "excluded"
 
-    def test_entry_time_after_not_measurable(self, sandbox: Path):
+    def test_entry_time_after_partial(self, sandbox: Path):
         journals_dir = sandbox / "Journals"
         _write_journal(journals_dir, "2026-03-14", "some entry")
 
@@ -545,7 +545,7 @@ class TestClaimEnvelopeAndEvidencePack:
 
         assert "claim_envelope" in result
         ce = result["claim_envelope"]
-        assert ce["claim_type"] == "not_measurable"
+        assert ce["claim_type"] == "measurable_partial"
         assert ce["value"] == 0
 
         ep = result["evidence_pack"]
@@ -1306,3 +1306,141 @@ class TestMonthPrefilterSpy:
             assert "2026/04" not in path
         assert any("2026/02" in p for p in parsed_paths)
         assert any("2026/03" in p for p in parsed_paths)
+
+
+class TestPartialUnknownSemantics:
+    """RED 2: entry_time_after with mixed timed/untimed entries returns partial bounds.
+
+    When some entries have time data and others don't, the aggregate must
+    return a confirmed lower-bound count with auditable partial semantics
+    instead of fabricating zero. exactness='partial', and additive bound
+    fields must be present.
+    """
+
+    def test_mixed_time_entry_unit_partial_count(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal_with_time(journals_dir, "2026-03-14", "23:30:00", "late entry")
+        _write_journal(journals_dir, "2026-03-15", "no time entry")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-15",
+            unit="entry",
+            predicate="entry_time_after=22:00",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["exactness"] == "partial"
+        assert result["result"]["count"] == 1
+        assert result["result"]["count_semantics"] == "partial_lower_bound"
+        assert result["result"]["min_count"] == 1
+        assert result["result"]["max_count"] == 2
+        assert result["result"]["unknown_count"] == 1
+        assert result["result"]["unknown_bucket_count"] == 1
+        assert len(result["matched_entries"]) == 1
+        assert len(result["unknown_entries"]) == 1
+
+    def test_mixed_time_day_unit_partial_count(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal_with_time(journals_dir, "2026-03-14", "23:30:00", "late entry")
+        _write_journal(journals_dir, "2026-03-15", "no time entry")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-15",
+            unit="day",
+            predicate="entry_time_after=22:00",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["exactness"] == "partial"
+        assert result["result"]["count"] == 1
+        assert result["result"]["min_count"] == 1
+        assert result["result"]["max_count"] == 2
+        assert result["result"]["unknown_count"] == 1
+        assert result["result"]["unknown_bucket_count"] == 1
+
+    def test_unknown_same_day_as_matched_does_not_inflate_day_max(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal_with_time(journals_dir, "2026-03-14", "23:30:00", "late entry")
+        month_dir = journals_dir / "2026" / "03"
+        unknown_path = month_dir / "life-index_2026-03-14_002.md"
+        unknown_path.write_text(
+            "---\n"
+            "date: 2026-03-14\n"
+            "title: Same Day No Time\n"
+            "---\n\n"
+            "# Same Day No Time\n\n"
+            "same day no time entry\n",
+            encoding="utf-8",
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="day",
+            predicate="entry_time_after=22:00",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["exactness"] == "partial"
+        assert result["result"]["count"] == 1
+        assert result["result"]["min_count"] == 1
+        assert result["result"]["max_count"] == 1
+        assert result["result"]["unknown_count"] == 1
+        assert result["result"]["unknown_bucket_count"] == 1
+
+    def test_all_unknown_returns_partial(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "some entry")
+        _write_journal(journals_dir, "2026-03-15", "another entry")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-15",
+            unit="day",
+            predicate="entry_time_after=22:00",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["exactness"] == "partial"
+        assert result["result"]["count"] == 0
+        assert result["result"]["min_count"] == 0
+        assert result["result"]["max_count"] == 2
+        assert result["result"]["unknown_count"] == 2
+        assert result["result"]["unknown_bucket_count"] == 2
+        assert result["result"]["count_semantics"] == "partial_lower_bound"
+
+    def test_partial_claim_envelope_type(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal_with_time(journals_dir, "2026-03-14", "23:30:00", "late entry")
+        _write_journal(journals_dir, "2026-03-15", "no time entry")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-15",
+            unit="entry",
+            predicate="entry_time_after=22:00",
+        )
+
+        ce = result["claim_envelope"]
+        assert ce["claim_type"] == "measurable_partial"
+        assert ce["exactness"] == "partial"
+        assert ce["value"] == 1
+        assert "min_count" in ce
+        assert "max_count" in ce
+        assert ce["min_count"] == 1
+        assert ce["max_count"] == 2
+
+    def test_all_timed_stays_exact(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal_with_time(journals_dir, "2026-03-14", "23:30:00", "late entry")
+        _write_journal_with_time(journals_dir, "2026-03-15", "10:00:00", "early entry")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-15",
+            unit="entry",
+            predicate="entry_time_after=22:00",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["exactness"] == "exact"
+        assert result["result"]["count"] == 1
+        assert "count_semantics" not in result["result"]
+        assert "min_count" not in result["result"]
+        assert "max_count" not in result["result"]

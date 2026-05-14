@@ -1872,3 +1872,22 @@ aggregate_queries:
   - cross_month
   - recall_preservation
   - index_scope
+- id: AGQ05
+  query: Count days with journal timestamps after 21:00 from 2026-03-16 through 2026-03-23 with one missing time field.
+  category: aggregate_analyze
+  description: Partial aggregate coverage; one known late journal and one date-only journal produce a confirmed lower bound and an upper bound.
+  aggregate:
+    range: 2026-03-16..2026-03-23
+    unit: day
+    predicate: entry_time_after=21:00
+  expected:
+    success: true
+    count: 1
+    exactness: partial
+    min_count: 1
+    max_count: 2
+    unknown_count: 1
+  tags:
+  - aggregate
+  - entry_time_after
+  - partial

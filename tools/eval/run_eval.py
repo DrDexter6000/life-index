@@ -187,6 +187,10 @@ def _aggregate_query_passes(
             f"exactness expected {expected['exactness']}, got {result_payload.get('exactness')}"
         )
 
+    for field in ("min_count", "max_count", "unknown_count", "unknown_bucket_count"):
+        if field in expected and result_payload.get(field) != expected[field]:
+            failures.append(f"{field} expected {expected[field]}, got {result_payload.get(field)}")
+
     return not failures, "; ".join(failures) if failures else None
 
 
@@ -272,6 +276,10 @@ def _evaluate_aggregate_queries(
             "exactness": result_payload.get("exactness"),
             "confidence": result_payload.get("confidence"),
             "evidence_count": len(aggregate_result.get("evidence_paths", [])),
+            "min_count": result_payload.get("min_count"),
+            "max_count": result_payload.get("max_count"),
+            "unknown_count": result_payload.get("unknown_count"),
+            "unknown_bucket_count": result_payload.get("unknown_bucket_count"),
             "index_scope_node_ids": [
                 str(ref["node_id"])
                 for ref in index_scope_refs

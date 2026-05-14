@@ -119,6 +119,14 @@ JOURNALS = [
         ),
     },
     {
+        "filename": "life-index_2026-03-23_001.md",
+        "title": "Aggregate Partial Fixture",
+        "date": "2026-03-23",
+        "tags": ["fixture"],
+        "topic": "test",
+        "content": "Neutral fixture entry without a time-of-day field.",
+    },
+    {
         "filename": "life-index_2026-03-25_001.md",
         "title": "人工智能伦理讨论",
         "date": "2026-03-25T15:00:00",
@@ -313,6 +321,11 @@ def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
         "month:2026-02",
         "month:2026-03",
     ]
+    assert by_id["AGQ05"]["count"] == 1
+    assert by_id["AGQ05"]["exactness"] == "partial"
+    assert by_id["AGQ05"]["min_count"] == 1
+    assert by_id["AGQ05"]["max_count"] == 2
+    assert by_id["AGQ05"]["unknown_count"] == 1
 
 
 def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path) -> None:

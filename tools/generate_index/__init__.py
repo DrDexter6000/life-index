@@ -216,7 +216,7 @@ def _read_year_summary(year_dir: Path) -> tuple[list[Dict[str, Any]], Dict[str, 
 def _count_topic_entries(topic_name: str) -> int:
     count = 0
     for year_dir in sorted(get_journals_dir().iterdir()) if get_journals_dir().exists() else []:
-        if not year_dir.is_dir():
+        if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
         year = int(year_dir.name)
         journals = collect_year_journals(year)
