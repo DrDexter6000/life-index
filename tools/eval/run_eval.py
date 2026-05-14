@@ -202,8 +202,16 @@ def _empty_aggregate_eval() -> dict[str, Any]:
     }
 
 
-def _evaluate_aggregate_queries(queries: list[dict[str, Any]]) -> dict[str, Any]:
-    """Evaluate aggregate/analyze companion cases without altering search metrics."""
+def _evaluate_aggregate_queries(
+    queries: list[dict[str, Any]],
+    *,
+    diagnostic_only: bool = False,
+) -> dict[str, Any]:
+    """Evaluate aggregate/analyze companion cases without altering search metrics.
+
+    When diagnostic_only=True, fixed expected count mismatches are recorded as
+    diagnostic observations instead of incrementing failed_queries.
+    """
     if not queries:
         return _empty_aggregate_eval()
 
@@ -211,6 +219,7 @@ def _evaluate_aggregate_queries(queries: list[dict[str, Any]]) -> dict[str, Any]
 
     per_query: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
+    diagnostic_observations: list[dict[str, Any]] = []
 
     for query_case in queries:
         aggregate_spec = query_case.get("aggregate", {})
@@ -261,6 +270,18 @@ def _evaluate_aggregate_queries(queries: list[dict[str, Any]]) -> dict[str, Any]
         per_query.append(entry)
 
         if failure_reason:
+            if diagnostic_only:
+                entry["pass"] = True
+                expected = query_case.get("expected", {})
+                diagnostic_observations.append(
+                    {
+                        "id": query_case["id"],
+                        "query": query_case["query"],
+                        "reason": failure_reason,
+                        "expected": expected.get("count") if isinstance(expected, dict) else None,
+                        "actual": result_payload.get("count"),
+                    }
+                )
             failures.append(
                 {
                     "id": query_case["id"],
@@ -276,20 +297,24 @@ def _evaluate_aggregate_queries(queries: list[dict[str, Any]]) -> dict[str, Any]
         by_category[category] = {
             "query_count": len(items),
             "passed_queries": passed_count,
-            "failed_queries": len(items) - passed_count,
+            "failed_queries": 0 if diagnostic_only else (len(items) - passed_count),
             "pass_rate": _round_metric(_safe_float_divide(passed_count, len(items))),
         }
 
     passed_total = sum(1 for item in per_query if item["pass"])
-    return {
+    result: dict[str, Any] = {
         "total_queries": len(per_query),
         "passed_queries": passed_total,
-        "failed_queries": len(per_query) - passed_total,
+        "failed_queries": 0 if diagnostic_only else (len(per_query) - passed_total),
         "metrics": {"pass_rate": _round_metric(_safe_float_divide(passed_total, len(per_query)))},
         "by_category": by_category,
         "per_query": per_query,
-        "failures": failures,
+        "failures": [] if diagnostic_only else failures,
     }
+    if diagnostic_only:
+        result["diagnostic_only"] = True
+        result["diagnostic_observations"] = diagnostic_observations
+    return result
 
 
 def _get_llm_client_module() -> Any:
@@ -740,16 +765,28 @@ def _build_summary_lines(result: dict[str, Any]) -> list[str]:
     aggregate_eval = result.get("aggregate_eval")
     if aggregate_eval and aggregate_eval.get("total_queries"):
         lines.append("")
-        lines.append(f"Aggregate Eval ({aggregate_eval['total_queries']} queries):")
-        lines.append(
-            f"  Pass:        {aggregate_eval['passed_queries']}/"
-            f"{aggregate_eval['total_queries']} "
-            f"({aggregate_eval['metrics']['pass_rate']:.0%})"
-        )
-        if aggregate_eval.get("failed_queries"):
-            lines.append(f"  Fail:        {aggregate_eval['failed_queries']}")
-            for failure in aggregate_eval.get("failures", [])[:5]:
-                lines.append(f'AGG FAIL {failure["id"]} "{failure["query"]}" - {failure["reason"]}')
+        if aggregate_eval.get("diagnostic_only"):
+            lines.append(
+                f"Aggregate Eval ({aggregate_eval['total_queries']} queries) [diagnostic-only]:"
+            )
+            for obs in aggregate_eval.get("diagnostic_observations", [])[:5]:
+                lines.append(
+                    f'AGG OBS {obs["id"]} "{obs["query"]}" '
+                    f"- expected={obs.get('expected')}, actual={obs.get('actual')}"
+                )
+        else:
+            lines.append(f"Aggregate Eval ({aggregate_eval['total_queries']} queries):")
+            lines.append(
+                f"  Pass:        {aggregate_eval['passed_queries']}/"
+                f"{aggregate_eval['total_queries']} "
+                f"({aggregate_eval['metrics']['pass_rate']:.0%})"
+            )
+            if aggregate_eval.get("failed_queries"):
+                lines.append(f"  Fail:        {aggregate_eval['failed_queries']}")
+                for failure in aggregate_eval.get("failures", [])[:5]:
+                    lines.append(
+                        f'AGG FAIL {failure["id"]} "{failure["query"]}" - {failure["reason"]}'
+                    )
 
     return lines
 
@@ -1074,7 +1111,11 @@ def run_evaluation(
             all_docs=all_docs,
             applied_query_ids=applied_query_ids,
         )
-        aggregate_eval = _evaluate_aggregate_queries(aggregate_queries)
+        aggregate_diagnostic = data_dir is None or live
+        aggregate_eval = _evaluate_aggregate_queries(
+            aggregate_queries,
+            diagnostic_only=aggregate_diagnostic,
+        )
 
     by_category: dict[str, list[dict[str, Any]]] = {}
     for item in per_query:

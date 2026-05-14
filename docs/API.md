@@ -1118,6 +1118,21 @@ retrieval metrics.
 }
 ```
 
+#### Diagnostic-Only Mode
+
+When `run_evaluation()` is called without an explicit `data_dir` (default/live
+eval against real user data), aggregate companion checks run in **diagnostic-only**
+mode. In this mode:
+
+- `diagnostic_only` is set to `true`.
+- `failed_queries` is always `0` — count mismatches do not fail the gate.
+- `failures` is an empty list.
+- Mismatches are reported as `diagnostic_observations` with `id`, `query`,
+  `reason`, `expected`, and `actual` fields.
+
+When `data_dir` is explicitly provided (fixture/CI eval), aggregate checks
+remain a **hard gate** with `failed_queries` incremented on mismatch.
+
 This is an eval-system extension, not a second Gold Set. Real-log diagnostic
 queries should be promoted into `aggregate_queries` only after their expected
 counts and evidence criteria are stable.

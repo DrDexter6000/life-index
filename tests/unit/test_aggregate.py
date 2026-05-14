@@ -646,6 +646,58 @@ class TestEntityPresenceClaimEvidenceShape:
         assert ep["page_info"]["has_more"] is False
 
 
+class TestScanJournalsExcludesRevisions:
+    """M03: _scan_journals must exclude files under .revisions directories."""
+
+    def test_revisions_excluded_from_journal_count(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "current entry")
+
+        rev_dir = journals_dir / "2026" / "03" / ".revisions"
+        rev_dir.mkdir(parents=True, exist_ok=True)
+        rev_path = rev_dir / "life-index_2026-03-14_999_revision.md"
+        rev_path.write_text(
+            "---\ndate: 2026-03-14\n---\n\n# Revision\n\nold content\n",
+            encoding="utf-8",
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 1
+        assert len(result["matched_entries"]) == 1
+        assert ".revisions" not in result["matched_entries"][0]
+
+    def test_revisions_excluded_from_evidence_pack(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "current entry")
+
+        rev_dir = journals_dir / "2026" / "03" / ".revisions"
+        rev_dir.mkdir(parents=True, exist_ok=True)
+        rev_path = rev_dir / "life-index_2026-03-14_999_revision.md"
+        rev_path.write_text(
+            "---\ndate: 2026-03-14\n---\n\n# Revision\n\nold content\n",
+            encoding="utf-8",
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        for p in result["evidence_paths"]:
+            assert ".revisions" not in p, f"Revision path in evidence_paths: {p}"
+
+        ep = result["evidence_pack"]
+        for item in ep["items"]:
+            assert ".revisions" not in item["path"], f"Revision in evidence_pack: {item['path']}"
+
+
 class TestEmptyAggregateClaimEvidenceShape:
     """M02/A+ hardening: empty aggregate result claim_envelope and evidence_pack."""
 

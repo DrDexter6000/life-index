@@ -85,6 +85,8 @@ def _scan_journals(journals_dir: Path, since: date, until: date) -> List[Dict[st
 
     for md_file in sorted(journals_dir.rglob("life-index_*.md")):
         rel_parts = md_file.parts
+        if any(part == ".revisions" for part in rel_parts):
+            continue
         try:
             year_idx = rel_parts.index("Journals") + 1
             file_year = int(rel_parts[year_idx])

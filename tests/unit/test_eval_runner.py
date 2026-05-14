@@ -291,7 +291,7 @@ def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
     assert by_id["AGQ03"]["exactness"] == "approximate"
 
 
-def test_eval_runner_reports_aggregate_eval_failures(monkeypatch) -> None:
+def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path) -> None:
     from tools.eval.run_eval import run_evaluation
 
     monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
@@ -316,7 +316,7 @@ def test_eval_runner_reports_aggregate_eval_failures(monkeypatch) -> None:
         ],
     )
 
-    result = run_evaluation()
+    result = run_evaluation(data_dir=tmp_path / "data")
 
     aggregate_eval = result["aggregate_eval"]
     assert aggregate_eval["failed_queries"] == 1
@@ -567,6 +567,56 @@ def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
     ]
 
 
+def test_default_eval_aggregate_is_diagnostic_only(monkeypatch, tmp_path: Path) -> None:
+    from tools.eval.run_eval import run_evaluation
+
+    monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
+    monkeypatch.setattr(
+        "tools.eval.run_eval.load_aggregate_queries",
+        lambda _: [
+            {
+                "id": "AGQ_DIAG",
+                "query": "diagnostic aggregate",
+                "category": "aggregate_analyze",
+                "aggregate": {
+                    "range": "2026-03-14..2026-03-18",
+                    "unit": "entry",
+                    "predicate": "journal_count",
+                },
+                "expected": {
+                    "success": True,
+                    "count": 999,
+                    "exactness": "exact",
+                },
+            }
+        ],
+    )
+
+    result = run_evaluation(data_dir=None)
+
+    aggregate_eval = result["aggregate_eval"]
+    assert aggregate_eval.get("diagnostic_only") is True
+    assert aggregate_eval["failed_queries"] == 0
+    assert len(aggregate_eval.get("diagnostic_observations", [])) >= 1
+    obs = aggregate_eval["diagnostic_observations"][0]
+    assert obs["id"] == "AGQ_DIAG"
+    assert "expected" in obs
+    assert "actual" in obs
+
+
+def test_explicit_data_dir_aggregate_remains_hard_gate(isolated_data_dir: Path) -> None:
+    _write_eval_fixture_data(isolated_data_dir)
+
+    from tools.eval.run_eval import run_evaluation
+
+    result = run_evaluation(data_dir=isolated_data_dir)
+
+    aggregate_eval = result["aggregate_eval"]
+    assert aggregate_eval.get("diagnostic_only") is not True
+    assert aggregate_eval["failed_queries"] == 0
+    assert aggregate_eval["passed_queries"] == aggregate_eval["total_queries"]
+
+
 def test_live_mode_uses_real_data_dir(monkeypatch, tmp_path: Path) -> None:
     from tools.eval.run_eval import run_evaluation
 
@@ -587,6 +637,37 @@ def test_live_mode_uses_real_data_dir(monkeypatch, tmp_path: Path) -> None:
     assert result["live_mode"] is True
     assert captured == [str(Path.home() / "Documents" / "Life-Index")]
     assert os.environ["LIFE_INDEX_DATA_DIR"] == str(fake_env_dir)
+
+
+def test_live_mode_aggregate_eval_is_diagnostic_only(monkeypatch) -> None:
+    from tools.eval.run_eval import run_evaluation
+
+    captured: dict[str, bool] = {}
+
+    monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_aggregate_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval._evaluate_queries", lambda *_, **__: ([], []))
+
+    def _fake_evaluate_aggregate_queries(_queries, *, diagnostic_only=False):
+        captured["diagnostic_only"] = diagnostic_only
+        return {
+            "total_queries": 0,
+            "passed_queries": 0,
+            "failed_queries": 0,
+            "metrics": {"pass_rate": 0.0},
+            "by_category": {},
+            "per_query": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval._evaluate_aggregate_queries",
+        _fake_evaluate_aggregate_queries,
+    )
+
+    run_evaluation(live=True)
+
+    assert captured["diagnostic_only"] is True
 
 
 def test_recall_ratio_computation() -> None:
