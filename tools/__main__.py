@@ -418,6 +418,7 @@ def main() -> None:
         "eval": "tools.eval.__main__",
         "smart-search": "tools.smart_search.__main__",
         "aggregate": "tools.aggregate.__main__",
+        "analyze": "tools.aggregate.__main__",
     }
 
     if subcmd in cmd_map:
@@ -459,6 +460,7 @@ def print_usage() -> None:
     print("  eval      Run search evaluation gate")
     print("  smart-search  Smart search with LLM orchestration")
     print("  aggregate  Deterministic aggregate/trend computation")
+    print("  analyze   Alias for deterministic aggregate/trend computation")
     print("  health    Check installation health")
     print("            --data-audit  Audit data directory for anomalies")
     print("  version   Show package and bootstrap manifest version info")

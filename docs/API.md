@@ -1194,7 +1194,13 @@ print(batch.by_verdict)  # {"supported": 1, "invalid_citation": 1}
 ```bash
 life-index aggregate --range <since>..<until> --unit <unit> --predicate <predicate> [--query "..."] [--explain] [--json]
 python -m tools aggregate --range <since>..<until> --unit <unit> --predicate <predicate> [--query "..."] [--explain] [--json]
+life-index analyze --range <since>..<until> --unit <unit> --predicate <predicate> [--query "..."] [--explain] [--json]
+python -m tools analyze --range <since>..<until> --unit <unit> --predicate <predicate> [--query "..."] [--explain] [--json]
 ```
+
+`analyze` is an alias for `aggregate`. It does not add a separate reasoning
+engine; JSON output still uses `"command": "aggregate"` and the same
+claim/evidence contract.
 
 ### 参数
 
@@ -1350,7 +1356,7 @@ aggregate 专用 `evidence_pack` 是 deterministic source map，不是 smart-sea
 
 ### 限制与已知问题
 
-- `analyze` 别名在 MVP 中**未实现**。
+- `analyze` is an alias for `aggregate`; JSON output still uses `"command": "aggregate"`。
 - 复合谓词（如 `AND` / `OR`）在 MVP 中**不支持**。
 - `term_presence` 和 `entity_presence` 使用大小写不敏感的简单子串匹配（`casefold()`），不做分词或语义扩展；计数为召回支撑，非现实世界行为的证明。
 - 性能目标：典型范围（< 5 年数据）< 2 秒；未针对 > 10,000 条日志做过专项优化。

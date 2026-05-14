@@ -181,3 +181,33 @@ class TestAggregateCliContract:
         for item in ep["items"]:
             assert "\\" not in item["path"], f"Backslash in path: {item['path']}"
             assert not os.path.isabs(item["path"]), f"Absolute path: {item['path']}"
+
+    def test_analyze_alias_matches_aggregate_contract(self, sandbox):
+        data_dir, env = sandbox
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tools",
+                "analyze",
+                "--range",
+                "2026-03-14..2026-03-16",
+                "--unit",
+                "day",
+                "--predicate",
+                "journal_count",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        payload = json.loads(result.stdout)
+        assert payload["success"] is True
+        assert payload["command"] == "aggregate"
+        assert payload["result"]["count"] == 3
+        assert "claim_envelope" in payload
+        assert "evidence_pack" in payload
