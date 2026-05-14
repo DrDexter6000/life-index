@@ -567,3 +567,140 @@ class TestClaimEnvelopeAndEvidencePack:
         for item in ep["items"]:
             assert "\\" not in item["path"], f"Backslash in path: {item['path']}"
             assert not os.path.isabs(item["path"]), f"Absolute path: {item['path']}"
+
+
+class TestEntityPresenceClaimEvidenceShape:
+    """M02/A+ hardening: entity_presence claim_envelope and evidence_pack shape."""
+
+    def test_entity_presence_claim_envelope_shape(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "LATE-NIGHT gaming session")
+        _write_journal(journals_dir, "2026-03-15", "normal day")
+
+        graph_yaml = (
+            "entities:\n"
+            "  - id: sleep_habit\n"
+            "    type: concept\n"
+            "    primary_name: Sleep Habit\n"
+            "    aliases:\n"
+            "      - late-night\n"
+        )
+        (sandbox / "entity_graph.yaml").write_text(graph_yaml, encoding="utf-8")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-15",
+            unit="entry",
+            predicate="entity_presence=sleep_habit",
+        )
+
+        assert result["success"] is True
+        assert "claim_envelope" in result
+        ce = result["claim_envelope"]
+        assert ce["schema_version"] == "m02a.claim_envelope.v0"
+        assert ce["claim_type"] == "measurable_approximate"
+        assert ce["source_command"] == "aggregate"
+        assert ce["metric"] == "entity_presence_count"
+        assert ce["value"] == 1
+        assert ce["exactness"] == "approximate"
+        assert ce["confidence"] == "medium"
+        assert ce["evidence_pack_ref"] == "aggregate.evidence_pack"
+        assert "limitations" in ce
+        assert any("recall-backed" in lim for lim in ce["limitations"])
+
+    def test_entity_presence_evidence_pack_shape(self, sandbox: Path):
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "LATE-NIGHT gaming session")
+        _write_journal(journals_dir, "2026-03-15", "normal day")
+
+        graph_yaml = (
+            "entities:\n"
+            "  - id: sleep_habit\n"
+            "    type: concept\n"
+            "    primary_name: Sleep Habit\n"
+            "    aliases:\n"
+            "      - late-night\n"
+        )
+        (sandbox / "entity_graph.yaml").write_text(graph_yaml, encoding="utf-8")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-15",
+            unit="entry",
+            predicate="entity_presence=sleep_habit",
+        )
+
+        assert "evidence_pack" in result
+        ep = result["evidence_pack"]
+        assert ep["schema_version"] == "m02a.aggregate_evidence_pack.v0"
+        assert len(ep["items"]) == 2
+        matched_items = [i for i in ep["items"] if i["role"] == "matched"]
+        excluded_items = [i for i in ep["items"] if i["role"] == "excluded"]
+        assert len(matched_items) == 1
+        assert len(excluded_items) == 1
+        assert "2026-03-14" in matched_items[0]["path"]
+        assert "2026-03-15" in excluded_items[0]["path"]
+        for item in ep["items"]:
+            assert "\\" not in item["path"]
+            assert not os.path.isabs(item["path"])
+            assert "index_node_ref" in item
+            assert item["index_node_ref"]["type"] == "month"
+        assert ep["page_info"]["has_more"] is False
+
+
+class TestEmptyAggregateClaimEvidenceShape:
+    """M02/A+ hardening: empty aggregate result claim_envelope and evidence_pack."""
+
+    def test_empty_journal_count_claim_envelope(self, sandbox: Path):
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="day",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 0
+        assert result["result"]["exactness"] == "exact"
+        assert result["matched_entries"] == []
+        assert result["excluded_entries"] == []
+        assert result["unknown_entries"] == []
+        assert result["evidence_paths"] == []
+
+        assert "claim_envelope" in result
+        ce = result["claim_envelope"]
+        assert ce["schema_version"] == "m02a.claim_envelope.v0"
+        assert ce["claim_type"] == "measurable_exact"
+        assert ce["value"] == 0
+        assert ce["denominator"] == result["result"]["denominator"]
+        assert ce["exactness"] == "exact"
+        assert ce["evidence_pack_ref"] == "aggregate.evidence_pack"
+
+    def test_empty_journal_count_evidence_pack(self, sandbox: Path):
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="day",
+            predicate="journal_count",
+        )
+
+        assert "evidence_pack" in result
+        ep = result["evidence_pack"]
+        assert ep["schema_version"] == "m02a.aggregate_evidence_pack.v0"
+        assert ep["items"] == []
+        assert ep["page_info"]["has_more"] is False
+        assert ep["page_info"]["cursor"] is None
+
+    def test_empty_term_presence_claim_envelope(self, sandbox: Path):
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="term_presence=晚睡",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 0
+
+        assert "claim_envelope" in result
+        ce = result["claim_envelope"]
+        assert ce["claim_type"] == "measurable_approximate"
+        assert ce["value"] == 0
+
+        ep = result["evidence_pack"]
+        assert ep["items"] == []
