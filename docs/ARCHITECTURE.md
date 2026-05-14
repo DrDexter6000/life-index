@@ -88,7 +88,7 @@ L2 仍不得调用 LLM，也不得实现或存储 ADR-026 所列 persona interpr
 |:---:|:---:|:---|:---|
 | **S0 记录与索引基座** | L1/L2 | Markdown + YAML、FTS5、向量索引、`entity_graph.yaml`；全部可由本地数据重建 | 已落地 |
 | **S1 确定性检索与排序** | L2 | `life-index search`；关键词精确匹配、时间/主题过滤、Entity Graph 确定性扩展、语义候选补充（fallback/report-only）、RRF 融合 | 官方质量门（keyword/default） |
-| **S2 智能搜索编排** | L3 | `life-index smart-search`；LLM 做意图识别、query expansion、多轮 search 调用、结果精筛/摘要 | 可选增强，可降级 |
+| **S2 智能搜索编排** | L3 | `life-index smart-search` 默认输出确定性检索 scaffold；`--use-llm` 才启用意图识别、query expansion、多轮 search 调用、结果精筛/摘要 | 可选增强，可降级 |
 | **S3 高级应用模块** | L3/L4 | 心理诊断、人格判断、数字人格、数字家书、家训提炼等领域编排 | 远景模块 |
 
 > S3 高级模块示例是终局压力测试，不是当前路线图承诺；其 L1/L2 地基要求见 ADR-026。
@@ -271,8 +271,9 @@ CHARTER §1.5 定义了"确定性 vs 智能"的边界：CLI Core 层（`tools/se
 
 编排器架构（`tools/search_journals/orchestrator.py`）：
 - **CLI 入口**：`life-index smart-search`（注册于 `tools/__main__.py`，实现于 `tools/smart_search/__main__.py`）
-- **三段式流程**：前置改写（LLM 拆解 query）→ 中间调用（按意图调 search 原语）→ 后置筛选 + 摘要（LLM 精筛）
-- **降级策略**：LLM 超时/失败时自动回退到 CLI Core 确定性检索
+- **默认流程**：不初始化 provider client，不读取 LLM key，返回确定性检索 scaffold
+- **显式 LLM 流程**：仅在 `--use-llm` 下执行前置改写（LLM 拆解 query）→ 中间调用（按意图调 search 原语）→ 后置筛选 + 摘要（LLM 精筛）
+- **降级策略**：`--use-llm` 下 LLM 超时/失败时自动回退到 CLI Core 确定性检索
 - **Data Minimization**：候选仅送 title + abstract + snippet（≤200 chars），最多 `ORCHESTRATOR_MAX_LLM_CANDIDATES`（15）条，禁止送 full_content
 
 ### 5.9 常量集中管理（Round 17 Phase 1-A）
@@ -330,7 +331,7 @@ tools/                         # Core CLI/tool layer
 ├── backup/
 ├── migrate/                   # Schema 链式迁移
 ├── dev/                       # 开发/验收辅助工具
-├── smart_search/              # LLM 编排智能搜索
+├── smart_search/              # 默认确定性智能检索 scaffold；--use-llm 启用 LLM 编排
 ├── eval/                      # 搜索质量评估
 └── lib/                       # 共享库（SSOT）
 ```

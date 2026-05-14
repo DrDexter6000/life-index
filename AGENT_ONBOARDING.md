@@ -588,8 +588,8 @@ Keep it concise — this is a welcome message, not a manual.>
 | `life-index migrate --dry-run` | Preview schema migration |
 | `life-index migrate --apply` | Execute schema migration |
 | `life-index entity --audit` | Entity graph quality audit |
-| `life-index smart-search --query "..."` | Smart search with LLM orchestration |
-| `life-index smart-search --query "..." --no-llm` | Smart search (degraded, no LLM) |
+| `life-index smart-search --query "..."` | Smart search deterministic scaffold; no LLM by default |
+| `life-index smart-search --query "..." --use-llm` | Explicitly enable LLM orchestration |
 
 ---
 
