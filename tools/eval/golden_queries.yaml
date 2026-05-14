@@ -1853,3 +1853,22 @@ aggregate_queries:
   tags:
   - aggregate
   - term_presence
+- id: AGQ04
+  query: Count entries from 2026-02-28 through 2026-03-02 crossing month boundary.
+  category: aggregate_analyze
+  description: Cross-month boundary aggregate proving recall is preserved while index_scope
+    exposes inclusive month refs. The standard eval fixture includes a deterministic
+    Feb 28 journal so this is a real hard gate.
+  aggregate:
+    range: 2026-02-28..2026-03-02
+    unit: entry
+    predicate: journal_count
+  expected:
+    success: true
+    count: 1
+    exactness: exact
+  tags:
+  - aggregate
+  - cross_month
+  - recall_preservation
+  - index_scope

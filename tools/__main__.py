@@ -257,6 +257,49 @@ def _check_entity_graph(graph_path: Path) -> Dict[str, Any]:
     return check
 
 
+def _check_index_tree() -> Dict[str, Any]:
+    """Check Index Tree freshness using existing check_index_tree_freshness()."""
+    check: Dict[str, Any] = {
+        "name": "index_tree",
+        "status": "ok",
+        "freshness_status": None,
+        "total_nodes": 0,
+        "issues": [],
+    }
+
+    try:
+        from tools.generate_index.navigation import check_index_tree_freshness
+
+        result = check_index_tree_freshness(level="month")
+        check["freshness_status"] = result.get("status")
+        check["total_nodes"] = result.get("total_nodes", 0)
+        issues = result.get("issues", [])
+
+        if result.get("status") == "empty_tree":
+            check["status"] = "info"
+            check["issue"] = "Index Tree is empty — run 'life-index generate-index' to build"
+        elif issues:
+            check["status"] = "warning"
+            check["issues"] = issues
+            stale_count = sum(1 for i in issues if i.get("freshness") == "stale")
+            missing_count = sum(1 for i in issues if i.get("freshness") == "missing_index")
+            parts = []
+            if stale_count:
+                parts.append(f"{stale_count} stale")
+            if missing_count:
+                parts.append(f"{missing_count} missing")
+            check["issue"] = (
+                f"Index Tree has {' and '.join(parts)} nodes — run 'life-index generate-index'"
+            )
+        else:
+            check["status"] = "ok"
+    except Exception as e:
+        check["status"] = "info"
+        check["issue"] = f"Could not check Index Tree: {e}"
+
+    return check
+
+
 def health_check() -> None:
     """
     检查 Life Index 安装健康状态。
@@ -323,6 +366,12 @@ def health_check() -> None:
 
     graph_path = resolve_user_data_dir() / "entity_graph.yaml"
     check = _check_entity_graph(graph_path)
+    checks.append(check)
+    if check.get("issue"):
+        issues.append(check["issue"])
+
+    # 9. Index Tree freshness
+    check = _check_index_tree()
     checks.append(check)
     if check.get("issue"):
         issues.append(check["issue"])

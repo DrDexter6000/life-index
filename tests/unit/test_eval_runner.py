@@ -190,6 +190,24 @@ def _write_eval_fixture_data(data_dir: Path) -> None:
         ]
         file_path.write_text("\n".join(frontmatter), encoding="utf-8")
 
+    feb_dir = data_dir / "Journals" / "2026" / "02"
+    feb_dir.mkdir(parents=True, exist_ok=True)
+    (feb_dir / "life-index_2026-02-28_001.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "date: 2026-02-28",
+                "title: 'Feb cross-month entry'",
+                "topic: life",
+                "---",
+                "",
+                "Cross-month boundary test content",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
     import tools.lib.paths as paths_module
     import tools.lib.config as config_module
     import tools.lib.metadata_cache as metadata_cache_module
@@ -276,11 +294,11 @@ def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
     result = run_evaluation(data_dir=isolated_data_dir)
 
     aggregate_eval = result["aggregate_eval"]
-    assert aggregate_eval["total_queries"] >= 3
+    assert aggregate_eval["total_queries"] >= 4
     assert aggregate_eval["passed_queries"] == aggregate_eval["total_queries"]
     assert aggregate_eval["failed_queries"] == 0
     assert aggregate_eval["failures"] == []
-    assert aggregate_eval["by_category"]["aggregate_analyze"]["query_count"] >= 3
+    assert aggregate_eval["by_category"]["aggregate_analyze"]["query_count"] >= 4
 
     by_id = {item["id"]: item for item in aggregate_eval["per_query"]}
     assert by_id["AGQ01"]["count"] == 3
@@ -289,6 +307,12 @@ def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
     assert by_id["AGQ02"]["exactness"] == "exact"
     assert by_id["AGQ03"]["count"] == 2
     assert by_id["AGQ03"]["exactness"] == "approximate"
+    assert by_id["AGQ04"]["count"] == 1
+    assert by_id["AGQ04"]["exactness"] == "exact"
+    assert by_id["AGQ04"]["index_scope_node_ids"] == [
+        "month:2026-02",
+        "month:2026-03",
+    ]
 
 
 def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path) -> None:
@@ -838,3 +862,21 @@ def test_summary_lines_format() -> None:
     assert "  MRR@5:        0.8500 → 0.9200  (▲ +0.0700)" in lines
     assert "  Recall@5:     0.9000 → 0.8800  (▼ -0.0200)" in lines
     assert '  GQ05 "乐乐": 漏检 2/3 expected (想念我的女儿, 重庆过生日)' in lines
+
+
+def test_aggregate_cross_month_index_scope(isolated_data_dir: Path) -> None:
+    _write_eval_fixture_data(isolated_data_dir)
+
+    from tools.eval.run_eval import run_evaluation
+
+    result = run_evaluation(data_dir=isolated_data_dir)
+
+    aggregate_eval = result["aggregate_eval"]
+    by_id = {item["id"]: item for item in aggregate_eval["per_query"]}
+    assert "AGQ04" in by_id
+    agg_item = by_id["AGQ04"]
+    assert agg_item["pass"] is True
+    assert agg_item["success"] is True
+    assert agg_item["count"] == 1
+    assert agg_item["exactness"] == "exact"
+    assert agg_item["index_scope_node_ids"] == ["month:2026-02", "month:2026-03"]

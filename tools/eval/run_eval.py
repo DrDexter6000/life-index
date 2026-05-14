@@ -248,6 +248,15 @@ def _evaluate_aggregate_queries(
         result_payload = aggregate_result.get("result", {})
         if not isinstance(result_payload, dict):
             result_payload = {}
+        evidence_pack = aggregate_result.get("evidence_pack", {})
+        if not isinstance(evidence_pack, dict):
+            evidence_pack = {}
+        index_scope = evidence_pack.get("index_scope", {})
+        if not isinstance(index_scope, dict):
+            index_scope = {}
+        index_scope_refs = index_scope.get("refs", [])
+        if not isinstance(index_scope_refs, list):
+            index_scope_refs = []
 
         entry = {
             "id": query_case["id"],
@@ -263,10 +272,17 @@ def _evaluate_aggregate_queries(
             "exactness": result_payload.get("exactness"),
             "confidence": result_payload.get("confidence"),
             "evidence_count": len(aggregate_result.get("evidence_paths", [])),
+            "index_scope_node_ids": [
+                str(ref["node_id"])
+                for ref in index_scope_refs
+                if isinstance(ref, dict) and ref.get("node_id")
+            ],
+            "index_scope_ref_count": len(index_scope_refs),
             "pass": passed,
         }
         if "error" in aggregate_result:
             entry["error"] = aggregate_result["error"]
+
         per_query.append(entry)
 
         if failure_reason:

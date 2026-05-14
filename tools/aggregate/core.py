@@ -14,6 +14,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.paths import get_journals_dir, get_user_data_dir
+from tools.generate_index.navigation import (
+    index_node_refs_for_range as _nav_index_node_refs_for_range,
+)
 
 VALID_UNITS = {"day", "week", "month", "entry"}
 VALID_PREDICATES = {
@@ -105,97 +108,107 @@ def _scan_journals(journals_dir: Path, since: date, until: date) -> List[Dict[st
     if not journals_dir.exists():
         return entries
 
-    for md_file in sorted(journals_dir.rglob("life-index_*.md")):
-        rel_parts = md_file.parts
-        if any(part == ".revisions" for part in rel_parts):
+    month_refs = _nav_index_node_refs_for_range(since.isoformat(), until.isoformat())
+    if not month_refs:
+        for md_file in sorted(journals_dir.rglob("life-index_*.md")):
+            entry = _parse_journal_file(md_file, since, until, journals_dir)
+            if entry is not None:
+                entries.append(entry)
+        return entries
+
+    for ref in month_refs:
+        ref_id = ref.get("id", "")
+        parts = ref_id.split("/")
+        if len(parts) != 3:
             continue
-        try:
-            year_idx = rel_parts.index("Journals") + 1
-            file_year = int(rel_parts[year_idx])
-            file_month = int(rel_parts[year_idx + 1])
-        except (ValueError, IndexError):
+        year_str, month_str = parts[1], parts[2]
+        month_dir = journals_dir / year_str / month_str
+        if not month_dir.is_dir():
             continue
-
-        if date(file_year, file_month, 1) > date(until.year, until.month, 1):
-            continue
-        if file_month < 12:
-            next_month = date(file_year, file_month + 1, 1)
-            if next_month < date(since.year, since.month, 1):
-                continue
-
-        try:
-            content = md_file.read_text(encoding="utf-8")
-        except (IOError, OSError):
-            continue
-
-        metadata, body = parse_frontmatter(content)
-
-        date_val = metadata.get("date", "")
-        entry_date: Optional[date] = None
-        entry_time: Optional[str] = None
-
-        if isinstance(date_val, str) and date_val:
-            iso_match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?", date_val)
-            if iso_match:
-                try:
-                    entry_date = date.fromisoformat(iso_match.group(1))
-                    if iso_match.group(2):
-                        entry_time = iso_match.group(2)
-                except ValueError:
-                    continue
-            else:
-                continue
-
-        if entry_time is None:
-            time_val = metadata.get("time", "")
-            if isinstance(time_val, str) and time_val:
-                time_match = re.match(r"^(\d{1,2}:\d{2}(?::\d{2})?)$", time_val.strip())
-                if time_match:
-                    entry_time = time_match.group(1)
-            elif isinstance(time_val, int):
-                if time_val <= 1439:
-                    entry_time = f"{time_val // 60:02d}:{time_val % 60:02d}"
-                else:
-                    h = time_val // 3600
-                    rem = time_val % 3600
-                    m = rem // 60
-                    s = rem % 60
-                    if s > 0:
-                        entry_time = f"{h:02d}:{m:02d}:{s:02d}"
-                    else:
-                        entry_time = f"{h:02d}:{m:02d}"
-
-        if entry_date is None:
-            stem = md_file.stem
-            stem_match = re.search(r"(\d{4}-\d{2}-\d{2})", stem)
-            if stem_match:
-                try:
-                    entry_date = date.fromisoformat(stem_match.group(1))
-                except ValueError:
-                    continue
-            else:
-                continue
-
-        if entry_date < since or entry_date > until:
-            continue
-
-        try:
-            data_dir = get_user_data_dir()
-            rel_path = md_file.relative_to(data_dir).as_posix()
-        except ValueError:
-            rel_path = md_file.as_posix()
-
-        entries.append(
-            {
-                "path": rel_path,
-                "date": entry_date,
-                "time": entry_time,
-                "body": body,
-                "metadata": metadata,
-            }
-        )
+        for md_file in sorted(month_dir.glob("life-index_*.md")):
+            entry = _parse_journal_file(md_file, since, until, journals_dir)
+            if entry is not None:
+                entries.append(entry)
 
     return entries
+
+
+def _parse_journal_file(
+    md_file: Path, since: date, until: date, journals_dir: Path
+) -> Optional[Dict[str, Any]]:
+    rel_parts = md_file.parts
+    if any(part == ".revisions" for part in rel_parts):
+        return None
+
+    try:
+        content = md_file.read_text(encoding="utf-8")
+    except (IOError, OSError):
+        return None
+
+    metadata, body = parse_frontmatter(content)
+
+    date_val = metadata.get("date", "")
+    entry_date: Optional[date] = None
+    entry_time: Optional[str] = None
+
+    if isinstance(date_val, str) and date_val:
+        iso_match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?", date_val)
+        if iso_match:
+            try:
+                entry_date = date.fromisoformat(iso_match.group(1))
+                if iso_match.group(2):
+                    entry_time = iso_match.group(2)
+            except ValueError:
+                return None
+        else:
+            return None
+
+    if entry_time is None:
+        time_val = metadata.get("time", "")
+        if isinstance(time_val, str) and time_val:
+            time_match = re.match(r"^(\d{1,2}:\d{2}(?::\d{2})?)$", time_val.strip())
+            if time_match:
+                entry_time = time_match.group(1)
+        elif isinstance(time_val, int):
+            if time_val <= 1439:
+                entry_time = f"{time_val // 60:02d}:{time_val % 60:02d}"
+            else:
+                h = time_val // 3600
+                rem = time_val % 3600
+                m = rem // 60
+                s = rem % 60
+                if s > 0:
+                    entry_time = f"{h:02d}:{m:02d}:{s:02d}"
+                else:
+                    entry_time = f"{h:02d}:{m:02d}"
+
+    if entry_date is None:
+        stem = md_file.stem
+        stem_match = re.search(r"(\d{4}-\d{2}-\d{2})", stem)
+        if stem_match:
+            try:
+                entry_date = date.fromisoformat(stem_match.group(1))
+            except ValueError:
+                return None
+        else:
+            return None
+
+    if entry_date < since or entry_date > until:
+        return None
+
+    try:
+        data_dir = get_user_data_dir()
+        rel_path = md_file.relative_to(data_dir).as_posix()
+    except ValueError:
+        rel_path = md_file.as_posix()
+
+    return {
+        "path": rel_path,
+        "date": entry_date,
+        "time": entry_time,
+        "body": body,
+        "metadata": metadata,
+    }
 
 
 def _bucket_key(entry_date: date, unit: str) -> str:

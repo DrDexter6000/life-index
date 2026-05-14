@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.aggregate import core as aggregate_core
 from tools.aggregate.core import run_aggregate
 
 
@@ -1143,3 +1144,165 @@ class TestEvidencePackIndexScope:
         scope = ep["index_scope"]
         assert len(scope["refs"]) == 1
         assert scope["refs"][0]["node_id"] == "month:2026-03"
+
+
+class TestMonthDirectoryCandidateIterator:
+    """TDD 2 RED: _scan_journals must enumerate candidates from inclusive month directories.
+
+    The month prefilter reduces candidate file traversal to inclusive month
+    directories only, but still applies final per-entry date filtering.
+    Entries outside the date range but within an overlapping month dir may be
+    scanned but must be filtered out in the final result.
+    """
+
+    def test_only_inclusive_months_scanned(self, sandbox: Path, monkeypatch) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-01-15", "jan entry")
+        _write_journal(journals_dir, "2026-02-10", "feb entry")
+        _write_journal(journals_dir, "2026-03-05", "mar entry")
+        _write_journal(journals_dir, "2026-04-01", "apr entry")
+        parsed_paths: list[str] = []
+        original_parse = aggregate_core._parse_journal_file
+
+        def spy_parse(md_file, since, until, base_dir):
+            parsed_paths.append(md_file.relative_to(base_dir).as_posix())
+            return original_parse(md_file, since, until, base_dir)
+
+        monkeypatch.setattr(aggregate_core, "_parse_journal_file", spy_parse)
+
+        result = run_aggregate(
+            range_str="2026-02-01..2026-03-31",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 2
+        evidence = result["evidence_paths"]
+        for p in evidence:
+            assert "2026/01" not in p
+            assert "2026/04" not in p
+        assert parsed_paths == [
+            "2026/02/life-index_2026-02-10_001.md",
+            "2026/03/life-index_2026-03-05_001.md",
+        ]
+
+    def test_boundary_month_partial_overlap_included(self, sandbox: Path) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-02-01", "feb start")
+        _write_journal(journals_dir, "2026-02-28", "feb end")
+        _write_journal(journals_dir, "2026-03-01", "mar start")
+
+        result = run_aggregate(
+            range_str="2026-02-15..2026-03-01",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 2
+        for p in result["matched_entries"]:
+            assert "life-index_2026-02-01_001.md" not in p
+
+    def test_cross_year_month_range(self, sandbox: Path) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2025-12-20", "dec entry")
+        _write_journal(journals_dir, "2026-01-05", "jan entry")
+        _write_journal(journals_dir, "2026-02-10", "feb entry")
+
+        result = run_aggregate(
+            range_str="2025-12-15..2026-01-31",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 2
+        for p in result["evidence_paths"]:
+            assert "2026/02" not in p
+
+    def test_single_month_no_extra_dirs_scanned(self, sandbox: Path) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "target")
+        _write_journal(journals_dir, "2026-04-01", "next month")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 1
+        for p in result["evidence_paths"]:
+            assert "2026/04" not in p
+
+
+class TestMonthPrefilterSpy:
+    """Review fix: directly prove out-of-range month files are never parsed."""
+
+    def test_out_of_range_month_files_not_parsed(self, sandbox: Path, monkeypatch) -> None:
+        import tools.aggregate.core as agg_core
+
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-01-15", "jan entry")
+        _write_journal(journals_dir, "2026-02-10", "feb target")
+        _write_journal(journals_dir, "2026-03-05", "mar target")
+        _write_journal(journals_dir, "2026-04-01", "apr entry")
+
+        parsed_paths: list[str] = []
+        original_parse = agg_core._parse_journal_file
+
+        def _spy_parse(md_file, since, until, journals_dir_arg):
+            parsed_paths.append(str(md_file).replace("\\", "/"))
+            return original_parse(md_file, since, until, journals_dir_arg)
+
+        monkeypatch.setattr(agg_core, "_parse_journal_file", _spy_parse)
+
+        result = run_aggregate(
+            range_str="2026-02-01..2026-03-31",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 2
+
+        for path in parsed_paths:
+            assert "2026/01" not in path, f"Out-of-range Jan file was parsed: {path}"
+            assert "2026/04" not in path, f"Out-of-range Apr file was parsed: {path}"
+
+    def test_cross_month_boundary_only_relevant_months_parsed(
+        self, sandbox: Path, monkeypatch
+    ) -> None:
+        import tools.aggregate.core as agg_core
+
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-01-20", "jan")
+        _write_journal(journals_dir, "2026-02-28", "feb boundary")
+        _write_journal(journals_dir, "2026-03-01", "mar boundary")
+        _write_journal(journals_dir, "2026-04-15", "apr")
+
+        parsed_paths: list[str] = []
+        original_parse = agg_core._parse_journal_file
+
+        def _spy_parse(md_file, since, until, journals_dir_arg):
+            parsed_paths.append(str(md_file).replace("\\", "/"))
+            return original_parse(md_file, since, until, journals_dir_arg)
+
+        monkeypatch.setattr(agg_core, "_parse_journal_file", _spy_parse)
+
+        result = run_aggregate(
+            range_str="2026-02-28..2026-03-01",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 2
+
+        for path in parsed_paths:
+            assert "2026/01" not in path
+            assert "2026/04" not in path
+        assert any("2026/02" in p for p in parsed_paths)
+        assert any("2026/03" in p for p in parsed_paths)

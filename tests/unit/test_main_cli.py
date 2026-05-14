@@ -31,9 +31,7 @@ class TestHealthCheck:
 
         monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
         monkeypatch.setattr("tools.__main__.get_model_cache_dir", lambda: cache_dir)
-        monkeypatch.setitem(
-            sys.modules, "yaml", types.SimpleNamespace(__version__="test")
-        )
+        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
         monkeypatch.setitem(
             sys.modules,
             "sentence_transformers",
@@ -48,14 +46,10 @@ class TestHealthCheck:
         assert payload["success"] is True
         assert payload["data"]["status"] in {"healthy", "degraded"}
         data_directory_check = next(
-            check
-            for check in payload["data"]["checks"]
-            if check["name"] == "data_directory"
+            check for check in payload["data"]["checks"] if check["name"] == "data_directory"
         )
         search_index_check = next(
-            check
-            for check in payload["data"]["checks"]
-            if check["name"] == "search_index"
+            check for check in payload["data"]["checks"] if check["name"] == "search_index"
         )
 
         assert data_directory_check["path"] == str(data_dir)
@@ -75,3 +69,78 @@ class TestMainCli:
         output = capsys.readouterr().out
         assert exc_info.value.code == 1
         assert "Unknown command: serve" in output
+
+
+class TestHealthCheckIndexTree:
+    """TDD 3 RED: health check must report Index Tree freshness/status."""
+
+    def test_health_includes_index_tree_check(self, tmp_path, monkeypatch, capsys):
+        data_dir = tmp_path / "life-index-data"
+        journals_dir = data_dir / "Journals"
+        journals_dir.mkdir(parents=True)
+        (journals_dir / "entry.md").write_text("# test\n", encoding="utf-8")
+
+        index_dir = data_dir / ".index"
+        index_dir.mkdir(parents=True)
+        (index_dir / "journals_fts.db").write_text("fts", encoding="utf-8")
+
+        cache_dir = tmp_path / "model-cache"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "model.onnx").write_text("model", encoding="utf-8")
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+        monkeypatch.setattr("tools.__main__.get_model_cache_dir", lambda: cache_dir)
+        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
+        monkeypatch.setitem(
+            sys.modules,
+            "sentence_transformers",
+            types.SimpleNamespace(__version__="test"),
+        )
+
+        health_check()
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+
+        assert payload["success"] is True
+        checks = payload["data"]["checks"]
+        check_names = [c["name"] for c in checks]
+        assert "index_tree" in check_names
+
+        it_check = next(c for c in checks if c["name"] == "index_tree")
+        assert "status" in it_check
+        assert it_check["status"] in ("ok", "warning", "info")
+
+    def test_health_index_tree_not_critical_when_missing(self, tmp_path, monkeypatch, capsys):
+        data_dir = tmp_path / "life-index-data"
+        journals_dir = data_dir / "Journals"
+        journals_dir.mkdir(parents=True)
+        (journals_dir / "entry.md").write_text("# test\n", encoding="utf-8")
+
+        index_dir = data_dir / ".index"
+        index_dir.mkdir(parents=True)
+        (index_dir / "journals_fts.db").write_text("fts", encoding="utf-8")
+
+        cache_dir = tmp_path / "model-cache"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "model.onnx").write_text("model", encoding="utf-8")
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+        monkeypatch.setattr("tools.__main__.get_model_cache_dir", lambda: cache_dir)
+        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
+        monkeypatch.setitem(
+            sys.modules,
+            "sentence_transformers",
+            types.SimpleNamespace(__version__="test"),
+        )
+
+        health_check()
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+
+        assert payload["success"] is True
+        assert payload["data"]["status"] != "unhealthy"
+
+        it_check = next(c for c in payload["data"]["checks"] if c["name"] == "index_tree")
+        assert it_check["status"] in ("warning", "info")

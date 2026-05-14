@@ -1774,6 +1774,12 @@ python -m tools health [options]
 }
 ```
 
+Additive standard checks may include:
+
+| check.name | status | meaning |
+|------------|--------|---------|
+| index_tree | ok / warning / info | Internal Index Tree freshness visibility. Warnings are non-critical; run `life-index generate-index` to refresh missing/stale tree nodes. |
+
 **`--data-audit` 模式**：
 
 ```json
