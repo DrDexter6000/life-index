@@ -1021,3 +1021,125 @@ class TestIndexNodeRefReusesNavigation:
         assert "2026" in ref["id"]
         assert "01" in ref["id"]
         assert "index_2026-01" in ref["path"]
+        assert "node_id" in ref
+        assert ref["node_id"] == "month:2026-01"
+
+
+class TestEvidencePackIndexScope:
+    """RED step 5: cross-month/cross-year evidence_pack must have index_scope."""
+
+    def test_cross_month_index_scope(self, sandbox: Path) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-01-15", "jan entry")
+        _write_journal(journals_dir, "2026-02-10", "feb entry")
+        _write_journal(journals_dir, "2026-03-05", "mar entry")
+
+        result = run_aggregate(
+            range_str="2026-01-01..2026-03-31",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert "evidence_pack" in result
+        ep = result["evidence_pack"]
+        assert "index_scope" in ep
+
+        scope = ep["index_scope"]
+        assert scope["type"] == "month_range"
+        assert "refs" in scope
+        assert isinstance(scope["refs"], list)
+
+        ref_node_ids = [r["node_id"] for r in scope["refs"]]
+        assert "month:2026-01" in ref_node_ids
+        assert "month:2026-02" in ref_node_ids
+        assert "month:2026-03" in ref_node_ids
+
+        assert "note" in scope
+        assert "navigation anchors" in scope["note"]
+
+    def test_cross_year_index_scope(self, sandbox: Path) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2025-12-20", "dec entry")
+        _write_journal(journals_dir, "2026-01-05", "jan entry")
+
+        result = run_aggregate(
+            range_str="2025-12-01..2026-01-31",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        ep = result["evidence_pack"]
+        assert "index_scope" in ep
+
+        scope = ep["index_scope"]
+        ref_node_ids = [r["node_id"] for r in scope["refs"]]
+        assert "month:2025-12" in ref_node_ids
+        assert "month:2026-01" in ref_node_ids
+
+    def test_index_scope_preserves_items_and_refs(self, sandbox: Path) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-01-15", "jan entry")
+        _write_journal(journals_dir, "2026-02-10", "feb entry")
+
+        result = run_aggregate(
+            range_str="2026-01-01..2026-02-28",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        ep = result["evidence_pack"]
+        assert len(ep["items"]) == 2
+        for item in ep["items"]:
+            assert "index_node_ref" in item
+            assert "node_id" in item["index_node_ref"]
+
+        scope = ep["index_scope"]
+        assert len(scope["refs"]) == 2
+
+    def test_index_scope_does_not_filter_evidence(self, sandbox: Path) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-01-15", "jan entry")
+        _write_journal(journals_dir, "2026-03-05", "mar entry")
+
+        result = run_aggregate(
+            range_str="2026-01-01..2026-03-31",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        ep = result["evidence_pack"]
+        assert len(ep["items"]) == 2
+        evidence_paths = {item["path"] for item in ep["items"]}
+        assert any("2026-01" in p for p in evidence_paths)
+        assert any("2026-03" in p for p in evidence_paths)
+
+    def test_single_month_index_scope(self, sandbox: Path) -> None:
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "test")
+
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="day",
+            predicate="journal_count",
+        )
+
+        ep = result["evidence_pack"]
+        assert "index_scope" in ep
+        scope = ep["index_scope"]
+        assert len(scope["refs"]) == 1
+        assert scope["refs"][0]["node_id"] == "month:2026-03"
+
+    def test_empty_result_index_scope(self, sandbox: Path) -> None:
+        result = run_aggregate(
+            range_str="2026-03-14..2026-03-14",
+            unit="day",
+            predicate="journal_count",
+        )
+
+        ep = result["evidence_pack"]
+        assert "index_scope" in ep
+        scope = ep["index_scope"]
+        assert len(scope["refs"]) == 1
+        assert scope["refs"][0]["node_id"] == "month:2026-03"

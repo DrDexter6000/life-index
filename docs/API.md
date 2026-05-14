@@ -1427,6 +1427,7 @@ aggregate 专用 `evidence_pack` 是 deterministic source map，不是 smart-sea
 | `time_range` | object | 与 `range` 相同的日期范围 |
 | `predicate` | object | 解析后的谓词 |
 | `items` | array | 证据项列表 |
+| `index_scope` | object | 月度 Index Tree 导航锚点范围，见下方 `index_scope` 子节 |
 | `page_info` | object | 最小未来钩子，当前固定 `has_more=false`, `cursor=null`, `cursor_hint=null` |
 
 `items[]` 字段：
@@ -1439,6 +1440,27 @@ aggregate 专用 `evidence_pack` 是 deterministic source map，不是 smart-sea
 | `bucket` | string | aggregate bucket key |
 | `reason` | string | `unknown` 等状态的原因（如适用） |
 | `index_node_ref` | object | 可选未来钩子，当前为月度 Index Tree 引用；不是完整 Index Tree API |
+
+`index_node_ref` 字段（additive，月度引用）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | 固定为 `"month"` |
+| `node_id` | string | 逻辑节点标识，格式 `month:YYYY-MM`（如 `"month:2026-03"`） |
+| `id` | string | 物理月路径，格式 `Journals/YYYY/MM`（如 `"Journals/2026/03"`） |
+| `path` | string | 月度索引文件相对路径（如 `"Journals/2026/03/index_2026-03.md"`） |
+
+> `node_id` 与 `id` 构成月度节点的**双身份**：`node_id` 是逻辑标识（用于导航/分组/比较），`id` 是既有物理路径引用（用于文件系统定位）。`node_id` 为 additive 字段，现有消费者可忽略。
+
+`index_scope` 字段（additive，范围级月度锚点）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | 固定为 `"month_range"` |
+| `refs` | array | `since..until` 范围内所有月份的 `index_node_ref` 列表，按时间顺序排列 |
+| `note` | string | 固定为 `"navigation anchors only; evidence items remain authoritative"` |
+
+> `index_scope` 是导航辅助信息，不替代 `items[]` 中的证据路径。`refs` 列表由 `since`/`until` 日期范围确定性生成，不读取或写入文件系统，不包含 cursor/page 行为，不过滤证据。
 
 ### 精确度标签语义
 

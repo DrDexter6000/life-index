@@ -86,7 +86,7 @@ Example node summary:
 
 ```json
 {
-  "node_id": "Journals/2026/03",
+  "node_id": "month:2026-03",
   "path": "Journals/2026/03/index_2026-03.md",
   "entry_count": 12,
   "topics": {"work": 8, "life": 4}

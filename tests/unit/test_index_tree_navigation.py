@@ -12,6 +12,8 @@ from tools.generate_index.navigation import (
     build_month_node_ref,
     check_index_tree_freshness,
     enumerate_index_nodes,
+    index_node_ref_for_date,
+    index_node_refs_for_range,
 )
 
 
@@ -457,6 +459,7 @@ class TestMonthNodeRef:
         ref = build_month_node_ref("2026", "3")
         assert ref == {
             "type": "month",
+            "node_id": "month:2026-03",
             "id": "Journals/2026/03",
             "path": "Journals/2026/03/index_2026-03.md",
         }
@@ -566,3 +569,126 @@ class TestCheckIndexTreeFreshness:
         result = check_index_tree_freshness(level="month")
         assert result["status"] == "all_fresh"
         assert result["issues"] == []
+
+
+class TestMonthNodeRefDualIdentity:
+    """RED step 1: month refs must have stable dual identity — id (physical) + node_id (logical)."""
+
+    def test_build_month_node_ref_has_node_id(self) -> None:
+        ref = build_month_node_ref("2026", "3")
+        assert ref is not None
+        assert "node_id" in ref
+        assert ref["node_id"] == "month:2026-03"
+
+    def test_build_month_node_ref_preserves_id_as_physical_path(self) -> None:
+        ref = build_month_node_ref("2026", "3")
+        assert ref is not None
+        assert ref["id"] == "Journals/2026/03"
+
+    def test_build_month_node_ref_path_points_at_index_file(self) -> None:
+        ref = build_month_node_ref("2026", "3")
+        assert ref is not None
+        assert ref["path"] == "Journals/2026/03/index_2026-03.md"
+
+    def test_build_month_node_ref_type_is_month(self) -> None:
+        ref = build_month_node_ref("2026", "12")
+        assert ref is not None
+        assert ref["type"] == "month"
+        assert ref["node_id"] == "month:2026-12"
+
+    def test_index_node_ref_for_date_has_node_id(self) -> None:
+        ref = index_node_ref_for_date("2026-03-14")
+        assert ref is not None
+        assert "node_id" in ref
+        assert ref["node_id"] == "month:2026-03"
+
+    def test_index_node_ref_for_date_preserves_existing_fields(self) -> None:
+        ref = index_node_ref_for_date("2025-11-20")
+        assert ref is not None
+        assert ref["type"] == "month"
+        assert ref["id"] == "Journals/2025/11"
+        assert ref["path"] == "Journals/2025/11/index_2025-11.md"
+        assert ref["node_id"] == "month:2025-11"
+
+    def test_existing_test_compatibility_with_node_id(self) -> None:
+        ref = build_month_node_ref("2026", "3")
+        assert ref is not None
+        assert ref["type"] == "month"
+        assert ref["id"] == "Journals/2026/03"
+        assert ref["path"] == "Journals/2026/03/index_2026-03.md"
+        assert ref["node_id"] == "month:2026-03"
+
+
+class TestIndexNodeRefsForRange:
+    """RED step 3: index_node_refs_for_range returns inclusive month refs for a date range."""
+
+    def test_same_month_single_ref(self) -> None:
+        refs = index_node_refs_for_range("2026-03-01", "2026-03-31")
+        assert len(refs) == 1
+        assert refs[0]["node_id"] == "month:2026-03"
+
+    def test_cross_month_range(self) -> None:
+        refs = index_node_refs_for_range("2026-01-15", "2026-04-10")
+        node_ids = [r["node_id"] for r in refs]
+        assert "month:2026-01" in node_ids
+        assert "month:2026-02" in node_ids
+        assert "month:2026-03" in node_ids
+        assert "month:2026-04" in node_ids
+        assert len(refs) == 4
+
+    def test_cross_year_range(self) -> None:
+        refs = index_node_refs_for_range("2025-11-01", "2026-02-28")
+        node_ids = [r["node_id"] for r in refs]
+        assert "month:2025-11" in node_ids
+        assert "month:2025-12" in node_ids
+        assert "month:2026-01" in node_ids
+        assert "month:2026-02" in node_ids
+        assert len(refs) == 4
+
+    def test_deterministic_chronological_ordering(self) -> None:
+        refs = index_node_refs_for_range("2025-10-01", "2026-03-31")
+        node_ids = [r["node_id"] for r in refs]
+        assert node_ids == [
+            "month:2025-10",
+            "month:2025-11",
+            "month:2025-12",
+            "month:2026-01",
+            "month:2026-02",
+            "month:2026-03",
+        ]
+
+    def test_reversed_range_returns_empty(self) -> None:
+        refs = index_node_refs_for_range("2026-03-31", "2026-01-01")
+        assert refs == []
+
+    def test_invalid_date_returns_empty(self) -> None:
+        refs = index_node_refs_for_range("not-a-date", "2026-03-01")
+        assert refs == []
+
+    def test_none_inputs_return_empty(self) -> None:
+        refs = index_node_refs_for_range(None, "2026-03-01")
+        assert refs == []
+        refs2 = index_node_refs_for_range("2026-03-01", None)
+        assert refs2 == []
+
+    def test_each_ref_has_full_shape(self) -> None:
+        refs = index_node_refs_for_range("2026-01-01", "2026-01-31")
+        assert len(refs) == 1
+        ref = refs[0]
+        assert ref["type"] == "month"
+        assert "id" in ref
+        assert "node_id" in ref
+        assert "path" in ref
+        assert ref["id"] == "Journals/2026/01"
+        assert ref["node_id"] == "month:2026-01"
+        assert ref["path"] == "Journals/2026/01/index_2026-01.md"
+
+    def test_accepts_date_objects(self) -> None:
+        import datetime
+
+        refs = index_node_refs_for_range(
+            datetime.date(2026, 1, 15),
+            datetime.date(2026, 3, 20),
+        )
+        node_ids = [r["node_id"] for r in refs]
+        assert node_ids == ["month:2026-01", "month:2026-02", "month:2026-03"]

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..generate_index.navigation import (
     index_node_ref_for_date as _nav_index_node_ref_for_date,
+    index_node_refs_for_range as _nav_index_node_refs_for_range,
 )
 
 CLAIM_SCHEMA_VERSION = "m02a.claim_envelope.v0"
@@ -95,13 +96,25 @@ def build_evidence_pack(
             item["index_node_ref"] = index_ref
         items.append(item)
 
+    time_range = aggregate_result.get("range", {})
+    scope_refs: list[Dict[str, str]] = []
+    since = time_range.get("since")
+    until = time_range.get("until")
+    if since and until:
+        scope_refs = _nav_index_node_refs_for_range(since, until)
+
     return {
         "schema_version": EVIDENCE_SCHEMA_VERSION,
         "source_command": "aggregate",
         "query": aggregate_result.get("query", ""),
-        "time_range": aggregate_result.get("range", {}),
+        "time_range": time_range,
         "predicate": aggregate_result.get("predicate", {}),
         "items": items,
+        "index_scope": {
+            "type": "month_range",
+            "refs": scope_refs,
+            "note": "navigation anchors only; evidence items remain authoritative",
+        },
         "page_info": {
             "has_more": False,
             "cursor": None,

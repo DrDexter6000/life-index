@@ -8,6 +8,7 @@ public CLI/API contract.
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Optional
@@ -54,6 +55,7 @@ def build_month_node_ref(year_str: str, month_str: str) -> Optional[Dict[str, st
     month = f"{month_int:02d}"
     return {
         "type": "month",
+        "node_id": f"month:{year}-{month}",
         "id": f"Journals/{year}/{month}",
         "path": f"Journals/{year}/{month}/index_{year}-{month}.md",
     }
@@ -326,3 +328,36 @@ def index_node_ref_for_date(date_str: str) -> Optional[Dict[str, str]]:
         return build_month_node_ref(year, month)
     except (ValueError, IndexError):
         return None
+
+
+def index_node_refs_for_range(
+    since: Optional[str | datetime.date],
+    until: Optional[str | datetime.date],
+) -> list[Dict[str, str]]:
+    if since is None or until is None:
+        return []
+    try:
+        if isinstance(since, datetime.date):
+            start = since
+        else:
+            start = datetime.date.fromisoformat(since)
+        if isinstance(until, datetime.date):
+            end = until
+        else:
+            end = datetime.date.fromisoformat(until)
+    except (ValueError, TypeError):
+        return []
+    if end < start:
+        return []
+    refs: list[Dict[str, str]] = []
+    cursor_year = start.year
+    cursor_month = start.month
+    while (cursor_year, cursor_month) <= (end.year, end.month):
+        ref = build_month_node_ref(f"{cursor_year:04d}", f"{cursor_month:02d}")
+        if ref is not None:
+            refs.append(ref)
+        cursor_month += 1
+        if cursor_month > 12:
+            cursor_month = 1
+            cursor_year += 1
+    return refs
