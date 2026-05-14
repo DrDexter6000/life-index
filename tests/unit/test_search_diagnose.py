@@ -202,11 +202,14 @@ def test_diagnose_zero_result_queries(isolated_data_dir: Path) -> None:
 
 def test_diagnose_latency_outliers(isolated_data_dir: Path) -> None:
     diagnose_search = import_module("tools.lib.search_diagnose").diagnose_search
+    slow_old_ts = _iso_timestamp(0, hours_ago=2)
+    slow_new_ts = _iso_timestamp(0, hours_ago=1)
+    fast_ts = _iso_timestamp(0)
 
     _write_metrics_record(
         isolated_data_dir,
         _sample_record(
-            ts=_iso_timestamp(0, hours_ago=2),
+            ts=slow_old_ts,
             query="slow-old",
             latency_ms=250.0,
             result_count=1,
@@ -216,7 +219,7 @@ def test_diagnose_latency_outliers(isolated_data_dir: Path) -> None:
     _write_metrics_record(
         isolated_data_dir,
         _sample_record(
-            ts=_iso_timestamp(0, hours_ago=1),
+            ts=slow_new_ts,
             query="slow-new",
             latency_ms=450.2,
             result_count=1,
@@ -226,7 +229,7 @@ def test_diagnose_latency_outliers(isolated_data_dir: Path) -> None:
     _write_metrics_record(
         isolated_data_dir,
         _sample_record(
-            ts=_iso_timestamp(0),
+            ts=fast_ts,
             query="fast",
             latency_ms=120.0,
             result_count=1,
@@ -238,12 +241,12 @@ def test_diagnose_latency_outliers(isolated_data_dir: Path) -> None:
 
     assert report["latency_outliers"] == [
         {
-            "ts": _iso_timestamp(0, hours_ago=1),
+            "ts": slow_new_ts,
             "query": "slow-new",
             "latency_ms": 450.2,
         },
         {
-            "ts": _iso_timestamp(0, hours_ago=2),
+            "ts": slow_old_ts,
             "query": "slow-old",
             "latency_ms": 250.0,
         },
