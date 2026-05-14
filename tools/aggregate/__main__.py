@@ -29,7 +29,6 @@ def main() -> None:
     parser.add_argument(
         "--unit",
         required=True,
-        choices=["day", "week", "month", "entry"],
         help="Aggregation unit.",
     )
     parser.add_argument(

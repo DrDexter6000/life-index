@@ -211,3 +211,40 @@ class TestAggregateCliContract:
         assert payload["result"]["count"] == 3
         assert "claim_envelope" in payload
         assert "evidence_pack" in payload
+
+    @pytest.mark.parametrize(
+        ("extra_args", "expected_message"),
+        [
+            (["--unit", "day", "--predicate", "bogus_predicate"], "Unknown predicate"),
+            (["--unit", "day", "--predicate", "journal_count", "--range", "bad"], "Invalid range"),
+            (["--unit", "bogus", "--predicate", "journal_count"], "Invalid unit"),
+        ],
+    )
+    def test_analyze_alias_invalid_inputs_return_aggregate_json_error(
+        self, sandbox, extra_args, expected_message
+    ):
+        data_dir, env = sandbox
+        args = [
+            sys.executable,
+            "-m",
+            "tools",
+            "analyze",
+            "--range",
+            "2026-03-14..2026-03-16",
+            "--json",
+        ]
+        args.extend(extra_args)
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+
+        assert result.returncode != 0
+        payload = json.loads(result.stdout)
+        assert payload["success"] is False
+        assert payload["command"] == "aggregate"
+        assert payload["error"]["code"] == "E0001"
+        assert expected_message in payload["error"]["message"]

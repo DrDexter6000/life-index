@@ -1367,6 +1367,10 @@ aggregate 专用 `evidence_pack` 是 deterministic source map，不是 smart-sea
 |------|------|----------|
 | E0001 | 无效输入（格式错误、未知谓词、非法单位等） | ask_user |
 
+For both `aggregate` and its `analyze` alias, invalid range, unit, and
+predicate inputs are returned as JSON error payloads with `success=false`,
+`command="aggregate"`, and `error.code="E0001"`.
+
 ---
 
 ## edit_journal
