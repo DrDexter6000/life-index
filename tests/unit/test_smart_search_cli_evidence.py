@@ -88,6 +88,48 @@ def test_cli_default_no_evidence():
     assert "evidence_pack" not in result
 
 
+def test_cli_default_does_not_initialize_llm():
+    """Default smart-search path must stay deterministic until --use-llm is passed."""
+    with patch("sys.argv", ["smart-search", "--query", "test"]):
+        with patch(
+            "tools.search_journals.orchestrator.SmartSearchOrchestrator",
+            return_value=_make_mock_orch(),
+        ) as MockCls:
+            with patch(
+                "tools.smart_search.__main__._try_init_llm",
+                side_effect=AssertionError("LLM init must be opt-in"),
+            ):
+                with patch("builtins.print"):
+                    from tools.smart_search.__main__ import main
+
+                    try:
+                        main()
+                    except SystemExit as e:
+                        assert e.code == 0
+
+    MockCls.assert_called_once_with(llm_client=None)
+
+
+def test_cli_use_llm_opts_in_to_llm_initialization():
+    """--use-llm is the explicit opt-in for smart-search LLM orchestration."""
+    fake_llm = object()
+    with patch("sys.argv", ["smart-search", "--query", "test", "--use-llm"]):
+        with patch(
+            "tools.search_journals.orchestrator.SmartSearchOrchestrator",
+            return_value=_make_mock_orch(),
+        ) as MockCls:
+            with patch("tools.smart_search.__main__._try_init_llm", return_value=fake_llm):
+                with patch("builtins.print"):
+                    from tools.smart_search.__main__ import main
+
+                    try:
+                        main()
+                    except SystemExit as e:
+                        assert e.code == 0
+
+    MockCls.assert_called_once_with(llm_client=fake_llm)
+
+
 def test_cli_include_evidence_adds_pack():
     """With --include-evidence, output includes evidence_pack."""
     captured = []
@@ -234,6 +276,8 @@ def test_cli_help_includes_synthesize_flag():
 
     help_text = "".join(captured)
     assert "--synthesize" in help_text
+    assert "--use-llm" in help_text
+    assert "--no-llm" not in help_text
 
 
 # ---------------------------------------------------------------------------
@@ -609,3 +653,22 @@ def test_resolve_llm_config_llm_base_url_fallback_in_legacy(monkeypatch):
     api_key, base_url, model = _resolve_llm_config()
     assert api_key == "legacy-key"
     assert base_url == "https://llm-legacy.example/v1"
+
+
+def test_emit_json_falls_back_to_ascii_when_console_rejects_unicode(monkeypatch):
+    """Windows GBK consoles must not crash smart-search JSON output."""
+    from tools.smart_search.__main__ import _emit_json
+
+    calls = []
+
+    def fake_print(text):
+        calls.append(text)
+        if len(calls) == 1:
+            raise UnicodeEncodeError("gbk", "⭐", 0, 1, "illegal multibyte sequence")
+
+    monkeypatch.setattr("builtins.print", fake_print)
+
+    _emit_json({"text": "⭐"})
+
+    assert len(calls) == 2
+    assert "\\u2b50" in calls[1]

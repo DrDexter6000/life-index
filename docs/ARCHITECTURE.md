@@ -97,7 +97,7 @@ L2 仍不得调用 LLM，也不得实现或存储 ADR-026 所列 persona interpr
 - 关键词检索的首要目标是精确、少噪音，是当前 eval gate 的官方口径（keyword/default）。
 - 语义检索的首要目标是补充召回、捕捉关键词漏网结果；当前 user-facing CLI 使用 zero-result fallback 模式（关键词无结果时才触发语义搜索），eval 可通过 `--semantic-report` 生成 report-only 诊断。语义检索不得未经产品决策直接替代关键词 gate。
 - Entity Graph 是 S1 的 active serving layer，必须参与 retrieval/ranking、query expansion 与关系短语解析，不只是可视化数据源。
-- LLM 的合法位置是 S2：进入检索前做搜索编排，检索后做过滤/摘要/解释；它不得绕过 CLI Core 直接读写 L1 数据。
+- LLM 的合法位置是 S2：进入检索前做搜索编排，检索后做过滤/摘要/解释；但 provider-backed 编排必须由 `smart-search --use-llm` 显式启用，默认 smart-search 输出确定性检索 scaffold。LLM 不得绕过 CLI Core 直接读写 L1 数据。
 - 高级模块必须建立在稳定记录格式、结构化检索、Entity Graph 增强、语义补充与可降级 LLM 编排之上。
 
 以下图示仅描述 S1 的 CLI Core 检索基座内部结构。

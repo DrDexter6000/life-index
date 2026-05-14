@@ -649,10 +649,11 @@ python -m tools.smart_search --query "..." [options]
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | query | string | ✅ | - | 自然语言搜索查询 |
-| no-llm | flag | ❌ | false | 强制降级模式（纯双管道，不调用 LLM） |
+| use-llm | flag | ❌ | false | 显式启用 LLM 编排（query rewrite / filter / summary / synthesis） |
+| no-llm | flag | ❌ | false | 向后兼容 no-op；默认已是纯确定性模式 |
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情 |
 | include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
-| synthesize | flag | ❌ | false | 生成引用支撑的自然语言答案（需要 LLM） |
+| synthesize | flag | ❌ | false | 生成引用支撑的自然语言答案（需要 `--use-llm`） |
 
 ### 返回值
 
@@ -736,10 +737,10 @@ python -m tools.smart_search --query "..." [options]
 
 ### 说明
 
-- `SmartSearchOrchestrator` 三段式流程：前置改写 → 中间调用 search 原语 → 后置筛选 + 摘要
+- 默认不启用 LLM；传递 `--use-llm` 后，`SmartSearchOrchestrator` 执行三段式 LLM 编排：前置改写 → 中间调用 search 原语 → 后置筛选 + 摘要
 - Clear aggregate/count/trend intents may short-circuit into deterministic `aggregate` and add top-level `aggregate_result`; existing smart-search fields remain present.
 - `aggregate_result` is computed by `tools.aggregate.core.run_aggregate`; LLM must not compute the count.
-- 降级模式 (`--no-llm` 或 LLM 不可用，`agent_unavailable: true`) 下等价于 `search --level 3`
+- 默认模式、`--no-llm`、或 `--use-llm` 但 LLM 不可用时，`agent_unavailable: true`，等价于确定性检索结果
 - Data Minimization：候选仅送 title + abstract + snippet（≤200 chars），最多 15 条
 - 实现详见 `docs/ARCHITECTURE.md` §5.8
 
@@ -998,7 +999,7 @@ LLM 返回的 citations 和 confidence 不会直接透传，而是经过 trust g
 
 Answer synthesis 采用**最佳努力（best-effort）**策略：
 
-- 若 LLM 不可用（`--no-llm` 或 LLM 初始化失败），`answer` 字段不存在，搜索结果正常返回
+- 若未传 `--use-llm`、或 LLM 初始化失败，`answer` 字段不存在，搜索结果正常返回
 - 若搜索结果为空，`answer` 字段不存在
 - 若 LLM 返回格式错误或合成过程异常，`answer` 字段不存在，搜索本身不受影响
 - 若内部 evidence 构建失败但 synthesis 仍尝试执行：`answer` 仍可能生成（基于 `filtered_results`），不视为搜索失败
@@ -1009,11 +1010,12 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 
 | 标志组合 | 行为 |
 |----------|------|
-| （无标志） | 当前默认：filtered results + summary |
+| （无标志） | 确定性结果；不进行 LLM rewrite/filter/summary |
 | `--include-evidence` | 添加 evidence_pack |
-| `--synthesize` | 内部构建 evidence；添加 answer（prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
-| `--include-evidence --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
-| `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
+| `--use-llm` | 启用 LLM rewrite/filter/summary |
+| `--use-llm --synthesize` | 内部构建 evidence；添加 answer（prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
+| `--include-evidence --use-llm --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
+| `--synthesize` 或 `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
 
 ### Aggregate Delegation（自动聚合路由）
 

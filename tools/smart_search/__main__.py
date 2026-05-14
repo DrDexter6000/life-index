@@ -5,9 +5,9 @@ Usage:
     life-index smart-search --query "..."
     python -m tools.smart_search --query "..."
 
-Intelligence Layer search with LLM-assisted query rewriting,
-result filtering, and summarization. Falls back to pure dual-pipeline
-when LLM is unavailable.
+Intelligence Layer search with deterministic default behavior.
+Pass --use-llm to enable LLM-assisted query rewriting, result filtering,
+and summarization. Without --use-llm, it uses pure dual-pipeline mode.
 """
 
 import argparse
@@ -16,9 +16,18 @@ import sys
 from typing import Any
 
 
+def _emit_json(payload: dict[str, Any]) -> None:
+    """Print JSON safely across Windows console encodings."""
+    text = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(json.dumps(payload, ensure_ascii=True, indent=2, default=str))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Smart search with LLM-assisted orchestration",
+        description="Smart search with deterministic default and optional LLM orchestration",
     )
     parser.add_argument(
         "--query",
@@ -28,10 +37,16 @@ def main() -> None:
         help="Natural language search query",
     )
     parser.add_argument(
+        "--use-llm",
+        action="store_true",
+        default=False,
+        help="Enable LLM-assisted orchestration (explicit opt-in)",
+    )
+    parser.add_argument(
         "--no-llm",
         action="store_true",
         default=False,
-        help="Force degradation mode (no LLM, pure dual-pipeline)",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--explain",
@@ -55,7 +70,7 @@ def main() -> None:
 
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
-    llm_client = None if args.no_llm else _try_init_llm()
+    llm_client = _try_init_llm() if args.use_llm else None
     orch = SmartSearchOrchestrator(llm_client=llm_client)
     result = orch.search(
         args.query, include_evidence=args.include_evidence, synthesize=args.synthesize
@@ -66,7 +81,7 @@ def main() -> None:
         result["agent_decisions_summary"] = f"{len(result['agent_decisions'])} decisions made"
         del result["agent_decisions"]
 
-    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    _emit_json(result)
     sys.exit(0 if result.get("success") else 1)
 
 
