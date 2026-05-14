@@ -22,6 +22,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | Debug path normalization | `path_contract.py` | Canonical path normalization and route-safe path shaping |
 | Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
 | Debug URL download pipeline | `url_download.py` | Shared remote-file download helper used by write/web flows |
+| Modify topic taxonomy | `topics.py` | Deterministic `VALID_TOPICS` SSOT (no LLM dependency) |
 | Vector index corruption | `vector_index_simple.py` | Pickle-based fallback when sqlite-vec unavailable |
 | Tune search parameters | `search_constants.py` | 50 constants (RRF, FTS, semantic, confidence, typo correction, structured metadata) with ADR annotations |
 
@@ -46,6 +47,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **search_index.py**: FTS5 index management (init, stats) + backward-compat wrappers for fts_search.py and fts_update.py.
 - **semantic_search.py**: Vector embedding search using BAAI/bge-m3 via shared sentence-transformers backend.
 - **timing.py**: Performance timing utility for metrics collection. Used in tool outputs for monitoring.
+- **topics.py**: Deterministic topic taxonomy SSOT (`VALID_TOPICS`). Importable without LLM dependency.
 - **url_download.py**: Shared URL download helper for attachment ingestion and related flows.
 - **vector_index_simple.py**: Pure Python fallback vector index using numpy/pickle.
 
@@ -91,7 +93,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |
 | fts_search.py | search_journals | ✅ 活跃 | |
 | fts_update.py | build_index | ✅ 活跃 | |
-| llm_extract.py | write_journal(prepare) | ✅ 活跃 | |
+| llm_extract.py | write_journal(prepare) | ⬇️ 已迁移 | backward-compat shim；实际代码已移至 `tools/_optional/llm_extract.py` |
 | logger.py | ALL tools | ✅ 活跃 | |
 | metadata_cache.py | search_journals, write_journal | ✅ 活跃 | |
 | path_contract.py | write_journal, edit_journal | ✅ 活跃 | |
@@ -109,6 +111,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | semantic_search.py | search_journals | ✅ 活跃 | |
 | text_normalize.py | search, fts | ✅ 活跃 | |
 | timing.py | write_journal | ✅ 活跃 | write_journal 使用 Timer 做性能计时；其他工具使用 trace.py |
+| topics.py | write_journal, normalize_topic_taxonomy | ✅ 活跃 | Charter 19 Phase 1 新增：deterministic VALID_TOPICS SSOT |
 | trace.py | search_journals, build_index, write_journal | ✅ 活跃 | Round 7 观测层：step-based context manager |
 | url_download.py | write_journal | ✅ 活跃 | |
 | vector_index_simple.py | build_index | ✅ 活跃 | |

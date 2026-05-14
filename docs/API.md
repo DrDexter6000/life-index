@@ -183,10 +183,10 @@ python -m tools.write_journal --data '<json>'
 | weather | string | ❌ | 自动查询/手动兜底 | 天气描述；若正文中已明确写出天气，优先采用正文信息 |
 | mood | array | ❌ | [] | 心情标签 |
 | people | array | ❌ | [] | 相关人物 |
-| topic | array | ❌ | 调用方补齐/LLM 提炼 | 主题分类（7类之一） |
+| topic | array | ❌ | 调用方补齐 | 主题分类（7类之一）；LLM 提炼需显式 opt-in |
 | project | string | ❌ | "" | 关联项目 |
 | tags | array | ❌ | [] | 标签 |
-| summary | string | ❌ | 调用方补齐/LLM 提炼 | 摘要（≤100字，**Agent生成**）；`abstract` 为向后兼容别名 |
+| summary | string | ❌ | 调用方补齐 | 摘要（≤100字，**Agent生成**）；`abstract` 为向后兼容别名 |
 | links | array | ❌ | [] | 相关链接 |
 | related_entries | array | ❌ | [] | 关联日志相对路径（如 `Journals/2026/03/xxx.md`） |
 | attachments | array | ❌ | [] | 附件列表；输入阶段支持本地路径自动检测，也支持显式对象输入；写入后以 frontmatter `attachments` 作为唯一 SSOT |

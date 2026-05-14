@@ -368,7 +368,7 @@ abstract: "100字内摘要"
 
 #### Topic 分类（必填）
 
-> **SSOT**：`tools/lib/llm_extract.py` `VALID_TOPICS`。共 7 个有效值：`work`, `learn`, `health`, `relation`, `think`, `create`, `life`。此处不重复枚举，以代码为准。
+> **SSOT**：`tools/lib/topics.py` `VALID_TOPICS`。共 7 个有效值：`work`, `learn`, `health`, `relation`, `think`, `create`, `life`。此处不重复枚举，以代码为准。
 
 ---
 

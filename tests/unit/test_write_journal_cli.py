@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import sys
-from unittest.mock import patch
 
 import pytest
 
@@ -75,10 +74,49 @@ def test_unified_cli_routes_confirm_to_write_journal(monkeypatch) -> None:
             FakeModule.called = True
 
     monkeypatch.setattr(sys, "argv", ["life-index", "confirm", "--journal", "foo.md"])
-    monkeypatch.setattr(
-        tools_main, "__import__", lambda *args, **kwargs: FakeModule, raising=False
-    )
+    monkeypatch.setattr(tools_main, "__import__", lambda *args, **kwargs: FakeModule, raising=False)
 
     tools_main.main()
 
     assert FakeModule.called is True
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "expected_use_llm"),
+    [
+        ([], False),
+        (["--no-llm"], False),
+        (["--use-llm"], True),
+    ],
+)
+def test_enrich_cli_llm_opt_in_and_no_llm_compat(monkeypatch, extra_args, expected_use_llm) -> None:
+    captured = {}
+
+    def fake_prepare_journal_metadata(data, *, use_llm):
+        captured["data"] = data
+        captured["use_llm"] = use_llm
+        return {"content": data["content"], "topic": ["life"]}
+
+    monkeypatch.setattr(
+        "tools.write_journal.__main__.prepare_journal_metadata",
+        fake_prepare_journal_metadata,
+    )
+    monkeypatch.setattr("tools.write_journal.__main__._emit_json", lambda payload: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "write_journal",
+            "enrich",
+            "--data",
+            '{"content":"test","topic":"life"}',
+            *extra_args,
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == 0
+    assert captured["data"]["content"] == "test"
+    assert captured["use_llm"] is expected_use_llm

@@ -22,7 +22,7 @@ from . import frontmatter  # noqa: F401
 from . import errors  # noqa: F401
 from . import path_contract  # noqa: F401
 from . import text_normalize  # noqa: F401
-from . import llm_extract  # noqa: F401
+from . import topics  # noqa: F401
 
 __all__ = [
     "USER_DATA_DIR",

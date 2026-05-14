@@ -233,7 +233,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 ### Topic 分类（必填）
 
-> **SSOT**：`tools/lib/llm_extract.py` `VALID_TOPICS`（含验证逻辑，无效值静默丢弃）。下表为 Agent 便捷参考，若与代码不一致以代码为准。
+> **SSOT**：`tools/lib/topics.py` `VALID_TOPICS`（含验证逻辑，无效值静默丢弃）。下表为 Agent 便捷参考，若与代码不一致以代码为准。
 
 | Topic | 含义 | 示例场景 |
 |-------|------|----------|

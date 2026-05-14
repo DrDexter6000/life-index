@@ -11,7 +11,7 @@ Usage:
 Public API:
     from tools.write_journal import write_journal, prepare_journal_metadata
     result = write_journal(data={"date": "2026-03-14", "content": "..."})
-    prepared = prepare_journal_metadata(form_data={...})
+    prepared = prepare_journal_metadata(form_data={"content": "...", "topic": "life"})
 """
 
 # Public API exports

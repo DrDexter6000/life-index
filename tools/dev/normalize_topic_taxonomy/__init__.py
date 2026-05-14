@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ...lib.frontmatter import format_frontmatter, parse_journal_file
-from ...lib.llm_extract import VALID_TOPICS
+from ...lib.topics import VALID_TOPICS
 
 STANDARD_TOPICS = tuple(sorted(VALID_TOPICS))
 SAFE_TOPIC_MAPPING = {
