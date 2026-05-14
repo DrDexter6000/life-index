@@ -1202,6 +1202,60 @@ print(batch.by_verdict)  # {"supported": 1, "invalid_citation": 1}
 
 ---
 
+## eval
+
+> **Internal developer evaluation tooling.** `eval` runs search quality gates
+> against the Gold Set in `tools/eval/golden_queries.yaml`. It is not a user
+> search endpoint and must not be used to write or mutate journal data.
+
+### 端点
+
+```bash
+life-index eval [options]
+python -m tools eval [options]
+```
+
+### 参数
+
+| 名称 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| data-dir | path | temp fixture data | 使用指定数据目录运行 eval |
+| save-baseline | path | - | 保存当前 eval 结果为 baseline JSON |
+| compare-baseline | path | - | 与既有 baseline JSON 对比 |
+| json | flag | false | 输出完整 JSON |
+| semantic | flag | false | 启用语义 pipeline 作为 top-level eval |
+| no-semantic | flag | false | 显式禁用语义 pipeline |
+| semantic-report | flag | false | 附加第二次语义诊断 pass；不改变 top-level keyword gate |
+| judge | enum | keyword | `keyword` 或 `llm`；默认 `keyword` |
+| live | flag | false | 使用真实 `~/Documents/Life-Index` 数据运行诊断 |
+| no-overlay | flag | false | 禁用本地私有 eval overlay |
+| overlay-path | path | - | 指定私有 eval overlay YAML |
+
+### LLM 边界
+
+- 默认 `judge=keyword`，不初始化 provider client，不读取 LLM key，不调用外部 LLM。
+- `--judge llm` 是显式开发者 opt-in：该模式会通过 `tools/eval/llm_client.py`
+  读取 `OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY` 并调用 provider-backed judge。
+- `--live --judge llm` 还会启用 LLM recall-gap 诊断；`--live` 本身不触发 LLM。
+- `--semantic` / `--semantic-report` 属于检索 pipeline 诊断，不等同于 LLM judge。
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "data": {
+    "summary_lines": ["Queries: 50", "Failures: 0"],
+    "metrics": {"mrr_at_5": 1.0, "recall_at_5": 1.0},
+    "judge_mode": "keyword",
+    "semantic_enabled": false,
+    "aggregate_eval": {}
+  }
+}
+```
+
+---
+
 ## aggregate
 
 > **Additive primitive, not a replacement.** `aggregate` is a deterministic, read-only CLI tool for explicit counts and trends over structured journal fields. It does **not** replace `search` or `smart-search`; use those for retrieval and synthesis. Use `aggregate` only when the user question can be settled by a whitelisted predicate over a date range.
