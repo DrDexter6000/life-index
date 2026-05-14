@@ -6,6 +6,10 @@ No LLM, no filesystem writes, no search calls.
 
 from typing import Any, Dict, List, Optional
 
+from ..generate_index.navigation import (
+    index_node_ref_for_date as _nav_index_node_ref_for_date,
+)
+
 CLAIM_SCHEMA_VERSION = "m02a.claim_envelope.v0"
 EVIDENCE_SCHEMA_VERSION = "m02a.aggregate_evidence_pack.v0"
 
@@ -19,31 +23,7 @@ def claim_type_from_exactness(exactness: str) -> str:
 
 
 def index_node_ref_for_date(date_str: str) -> Optional[Dict[str, str]]:
-    """Return month-level index node ref from an entry date string.
-
-    Example: "2026-03-14" -> {
-        "type": "month",
-        "id": "Journals/2026/03",
-        "path": "Journals/2026/03/index_2026-03.md"
-    }
-    """
-    if not date_str or len(date_str) < 7:
-        return None
-    try:
-        year = date_str[:4]
-        month = date_str[5:7]
-        # Basic validation
-        int(year)
-        int(month)
-        if not (1 <= int(month) <= 12):
-            return None
-        return {
-            "type": "month",
-            "id": f"Journals/{year}/{month}",
-            "path": f"Journals/{year}/{month}/index_{year}-{month}.md",
-        }
-    except (ValueError, IndexError):
-        return None
+    return _nav_index_node_ref_for_date(date_str)
 
 
 def build_claim_envelope(aggregate_result: Dict[str, Any]) -> Dict[str, Any]:

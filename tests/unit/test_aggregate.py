@@ -991,3 +991,33 @@ class TestFieldEqualsClaimEnvelopeShape:
         assert len(ep["items"]) == 1
         item = ep["items"][0]
         assert item["role"] == "matched"
+
+
+class TestIndexNodeRefReusesNavigation:
+    """T2 RED: index_node_ref_for_date must reuse navigation helper."""
+
+    def test_ref_output_has_type_id_path_keys(self) -> None:
+        from tools.aggregate.claim_envelope import index_node_ref_for_date
+
+        ref = index_node_ref_for_date("2026-03-14")
+        assert ref is not None
+        assert ref["type"] == "month"
+        assert ref["id"] == "Journals/2026/03"
+        assert ref["path"] == "Journals/2026/03/index_2026-03.md"
+
+    def test_ref_delegates_to_navigation_lookup(self) -> None:
+        import tools.aggregate.claim_envelope as ce_mod
+
+        assert ce_mod.index_node_ref_for_date("2026-03-14") == (
+            ce_mod._nav_index_node_ref_for_date("2026-03-14")
+        )
+
+    def test_ref_preserves_existing_public_shape(self) -> None:
+        from tools.aggregate.claim_envelope import index_node_ref_for_date
+
+        ref = index_node_ref_for_date("2026-01-05")
+        assert ref is not None
+        assert ref["type"] == "month"
+        assert "2026" in ref["id"]
+        assert "01" in ref["id"]
+        assert "index_2026-01" in ref["path"]

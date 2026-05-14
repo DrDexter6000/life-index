@@ -40,6 +40,25 @@ class IndexNode:
 _VALID_LEVELS = {"root", "year", "month", "all"}
 
 
+def build_month_node_ref(year_str: str, month_str: str) -> Optional[Dict[str, str]]:
+    try:
+        if len(year_str) != 4:
+            return None
+        year_int = int(year_str)
+        month_int = int(month_str)
+        if not (1 <= month_int <= 12):
+            return None
+    except (ValueError, IndexError):
+        return None
+    year = f"{year_int:04d}"
+    month = f"{month_int:02d}"
+    return {
+        "type": "month",
+        "id": f"Journals/{year}/{month}",
+        "path": f"Journals/{year}/{month}/index_{year}-{month}.md",
+    }
+
+
 def _parse_index_frontmatter(file_path: Path) -> dict:
     return _parse_file_frontmatter(file_path)
 
@@ -273,3 +292,37 @@ def enumerate_index_nodes(level: str = "all") -> list[IndexNode]:
     nodes.extend(_build_year_nodes())
     nodes.extend(_build_month_nodes())
     return nodes
+
+
+def check_index_tree_freshness(level: str = "all") -> dict:
+    nodes = enumerate_index_nodes(level=level)
+    issues: list[dict] = []
+    for node in nodes:
+        if node.freshness in ("stale", "missing_index"):
+            issues.append(
+                {
+                    "node_id": node.node_id,
+                    "level": node.level,
+                    "freshness": node.freshness,
+                    "relative_path": node.relative_path,
+                }
+            )
+    all_empty = all(n.freshness == "empty" for n in nodes)
+    if all_empty:
+        return {"status": "empty_tree", "total_nodes": len(nodes), "issues": issues}
+    return {
+        "status": "all_fresh" if not issues else "has_issues",
+        "total_nodes": len(nodes),
+        "issues": issues,
+    }
+
+
+def index_node_ref_for_date(date_str: str) -> Optional[Dict[str, str]]:
+    if not date_str or len(date_str) < 7:
+        return None
+    try:
+        year = date_str[:4]
+        month = date_str[5:7]
+        return build_month_node_ref(year, month)
+    except (ValueError, IndexError):
+        return None

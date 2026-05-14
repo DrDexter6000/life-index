@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from tools.generate_index.navigation import IndexNode, enumerate_index_nodes
+from tools.generate_index.navigation import (
+    IndexNode,
+    build_month_node_ref,
+    check_index_tree_freshness,
+    enumerate_index_nodes,
+)
 
 
 def _write_journal(
@@ -445,3 +450,119 @@ class TestInvalidLevel:
         _patch_nav_roots(monkeypatch, tmp_path)
         with pytest.raises(ValueError, match="level must be"):
             enumerate_index_nodes(level="invalid")
+
+
+class TestMonthNodeRef:
+    def test_build_month_node_ref_pads_month(self) -> None:
+        ref = build_month_node_ref("2026", "3")
+        assert ref == {
+            "type": "month",
+            "id": "Journals/2026/03",
+            "path": "Journals/2026/03/index_2026-03.md",
+        }
+
+    def test_build_month_node_ref_rejects_invalid_month(self) -> None:
+        assert build_month_node_ref("2026", "13") is None
+
+
+class TestCheckIndexTreeFreshness:
+    """T1: check_index_tree_freshness gate using enumerate_index_nodes."""
+
+    def test_all_fresh_no_issues(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_nav_roots(monkeypatch, tmp_path)
+        j_dir = tmp_path / "Journals"
+        _write_journal(
+            j_dir / "2026" / "03" / "life-index_2026-03-01_001.md",
+            date="2026-03-01",
+        )
+        _write_index(
+            j_dir / "2026" / "03" / "index_2026-03.md",
+            [
+                "entries: 1",
+                "topics: {work: 1}",
+                'date_range: "2026-03"',
+            ],
+        )
+        result = check_index_tree_freshness(level="month")
+        assert result["status"] == "all_fresh"
+        assert result["issues"] == []
+        assert result["total_nodes"] >= 1
+
+    def test_stale_node_reported(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_nav_roots(monkeypatch, tmp_path)
+        j_dir = tmp_path / "Journals"
+        idx_path = j_dir / "2026" / "03" / "index_2026-03.md"
+        _write_index(
+            idx_path,
+            ["entries: 1", 'date_range: "2026-03"'],
+        )
+        old_mtime = time.time() - 3600
+        os.utime(idx_path, (old_mtime, old_mtime))
+        _write_journal(
+            j_dir / "2026" / "03" / "life-index_2026-03-01_001.md",
+            date="2026-03-01",
+        )
+        result = check_index_tree_freshness(level="month")
+        assert result["status"] == "has_issues"
+        assert len(result["issues"]) >= 1
+        stale_ids = [i["node_id"] for i in result["issues"]]
+        assert "month:2026-03" in stale_ids
+        assert any(i["freshness"] == "stale" for i in result["issues"])
+
+    def test_missing_index_reported(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_nav_roots(monkeypatch, tmp_path)
+        j_dir = tmp_path / "Journals"
+        _write_journal(
+            j_dir / "2026" / "03" / "life-index_2026-03-01_001.md",
+            date="2026-03-01",
+        )
+        result = check_index_tree_freshness(level="month")
+        assert result["status"] == "has_issues"
+        assert len(result["issues"]) >= 1
+        assert any(i["freshness"] == "missing_index" for i in result["issues"])
+
+    def test_empty_tree_status(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_nav_roots(monkeypatch, tmp_path)
+        result = check_index_tree_freshness(level="all")
+        assert result["status"] == "empty_tree"
+        assert result["issues"] == []
+        assert result["total_nodes"] >= 1
+
+    def test_issue_structure_has_required_fields(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_nav_roots(monkeypatch, tmp_path)
+        j_dir = tmp_path / "Journals"
+        _write_journal(
+            j_dir / "2026" / "03" / "life-index_2026-03-01_001.md",
+            date="2026-03-01",
+        )
+        result = check_index_tree_freshness(level="month")
+        assert result["status"] == "has_issues"
+        for issue in result["issues"]:
+            assert "node_id" in issue
+            assert "level" in issue
+            assert "freshness" in issue
+            assert "relative_path" in issue
+
+    def test_empty_nodes_not_reported_as_issues(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_nav_roots(monkeypatch, tmp_path)
+        j_dir = tmp_path / "Journals"
+        _write_journal(
+            j_dir / "2026" / "03" / "life-index_2026-03-01_001.md",
+            date="2026-03-01",
+        )
+        _write_index(
+            j_dir / "2026" / "03" / "index_2026-03.md",
+            [
+                "entries: 1",
+                "topics: {work: 1}",
+                'date_range: "2026-03"',
+            ],
+        )
+        (j_dir / "2026" / "04").mkdir(parents=True)
+        result = check_index_tree_freshness(level="month")
+        assert result["status"] == "all_fresh"
+        assert result["issues"] == []
