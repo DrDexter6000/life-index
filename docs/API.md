@@ -8,6 +8,35 @@
 
 ## 通用规范
 
+### 模块消费稳定契约（CHARTER §1.10）
+
+Life Index CLI 向 L3/L4 模块提供**确定性、稳定、可组合的基础能力**。模块消费者可依赖以下四维契约：
+
+| 维度 | 说明 | 稳定性承诺 |
+|------|------|-----------|
+| **JSON Shape** | 返回结构的顶层字段名称与类型；错误返回统一包含 `success` / `error`，成功返回采用工具自定义顶层字段 + `error: null` | 稳定：字段名称与顶层结构不变，不假设统一 `data` wrapper |
+| **字段语义** | 每个字段的精确含义与枚举值 | 稳定：语义不变，允许新增字段 |
+| **错误码** | `E{module}{type}` 分类与 `recovery_strategy` 语义 | 稳定：已有错误码不退化，允许新增 |
+| **关键 SLO** | 核心延迟与质量指标 | 稳定：不恶化 ≥3%（退化 ≥3% 需附 RFC） |
+
+**关键 SLO 基准**（CHARTER §4.5）：
+
+| 指标 | 目标 | 基线 |
+|------|------|------|
+| `search` p95 延迟 | ≤ 500ms | ~20ms (keyword-only) |
+| `smart-search` 默认路径 p95 | ≤ 8s | 降级模式 ≤ 500ms |
+| Gold Set Recall@5 | ≥ 最新冻结基线 | 见 `tests/eval/baselines/` 最新冻结 baseline |
+| Gold Set P@5 | ≥ 最新冻结基线 | 见 `tests/eval/baselines/` 最新冻结 baseline |
+| Gold Set MRR@5 | ≥ 最新冻结基线 | 见 `tests/eval/baselines/` 最新冻结 baseline |
+
+> Round 17 冻结基线（keyword-only, 85 queries）：Recall@5=0.3836 / P@5=0.3565 / MRR@5=0.2716 仅作为**历史地板**参考。当前回归门控应以 `tests/eval/baselines/` 中最新冻结 baseline 为准，详见 CHARTER §4.5。
+
+**模块消费约束**：
+- 模块应通过 CLI JSON-in/JSON-out 或 `tools.*` 公开 API 消费 L2 基元
+- 模块不得假设 CLI core 内部实现细节（如 SQLite 表结构、向量索引格式、jieba 配置）
+- 模块不得绕过 CLI 直接读写 `~/Documents/Life-Index/` 下的用户数据文件
+- 模块-local 过程状态（cursor、checkpoint、中间产物）应存放在模块自己的物理目录，不进入用户数据目录
+
 ### 调用方式
 
 所有工具通过 Bash CLI 调用，返回 JSON 格式：
