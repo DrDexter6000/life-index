@@ -133,6 +133,14 @@ class TestFieldEqualsRoutePositive:
         assert route.unit == "entry"
         assert route.range_str == "2026-04-16..2026-05-15"
 
+    def test_english_current_year_field_equals_takes_precedence(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("this year count journal entries where topic=think")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:think"
+        assert route.unit == "entry"
+        assert route.range_str == "2026-01-01..2026-05-15"
+
     def test_field_colon_value_syntax(self, monkeypatch):
         _set_anchor(monkeypatch, "2026-05-15")
         route = detect_aggregate_intent("过去30天有多少篇 topic:work 的日志")

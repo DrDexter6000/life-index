@@ -354,7 +354,7 @@ def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monk
     result = run_evaluation(data_dir=isolated_data_dir)
 
     smart_eval = result["smart_aggregate_eval"]
-    assert smart_eval["total_queries"] == 5
+    assert smart_eval["total_queries"] == 8
     assert smart_eval["passed_queries"] == smart_eval["total_queries"]
     assert smart_eval["failed_queries"] == 0
     assert smart_eval["failures"] == []
@@ -411,6 +411,51 @@ def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monk
     }
     assert by_id["SAGQ05"]["count"] == 12
     assert by_id["SAGQ05"]["exactness"] == "exact"
+    assert by_id["SAGQ06"]["route_present"] is True
+    assert by_id["SAGQ06"]["predicate_type"] == "field_equals"
+    assert by_id["SAGQ06"]["predicate_field"] == "topic"
+    assert by_id["SAGQ06"]["predicate_value"] == "think"
+    assert by_id["SAGQ06"]["unit"] == "entry"
+    assert by_id["SAGQ06"]["range"] == {
+        "since": "2026-01-01",
+        "until": "2026-03-31",
+    }
+    assert by_id["SAGQ06"]["count"] == 3
+    assert by_id["SAGQ06"]["exactness"] == "exact"
+    assert by_id["SAGQ06"]["index_scope_node_ids"] == [
+        "month:2026-01",
+        "month:2026-02",
+        "month:2026-03",
+    ]
+    assert by_id["SAGQ06"]["index_scope_ref_count"] == 3
+    assert by_id["SAGQ07"]["route_present"] is True
+    assert by_id["SAGQ07"]["predicate_type"] == "field_equals"
+    assert by_id["SAGQ07"]["predicate_field"] == "topic"
+    assert by_id["SAGQ07"]["predicate_value"] == "life"
+    assert by_id["SAGQ07"]["unit"] == "day"
+    assert by_id["SAGQ07"]["range"] == {
+        "since": "2026-03-02",
+        "until": "2026-03-31",
+    }
+    assert by_id["SAGQ07"]["count"] == 2
+    assert by_id["SAGQ07"]["exactness"] == "exact"
+    assert by_id["SAGQ07"]["index_scope_node_ids"] == ["month:2026-03"]
+    assert by_id["SAGQ07"]["index_scope_ref_count"] == 1
+    assert by_id["SAGQ08"]["route_present"] is True
+    assert by_id["SAGQ08"]["predicate_type"] == "journal_count"
+    assert by_id["SAGQ08"]["unit"] == "month"
+    assert by_id["SAGQ08"]["range"] == {
+        "since": "2026-01-01",
+        "until": "2026-03-31",
+    }
+    assert by_id["SAGQ08"]["count"] == 2
+    assert by_id["SAGQ08"]["exactness"] == "exact"
+    assert by_id["SAGQ08"]["index_scope_node_ids"] == [
+        "month:2026-01",
+        "month:2026-02",
+        "month:2026-03",
+    ]
+    assert by_id["SAGQ08"]["index_scope_ref_count"] == 3
     assert any("Smart Aggregate Eval" in line for line in result["summary_lines"])
 
 

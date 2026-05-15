@@ -179,15 +179,6 @@ def detect_aggregate_intent(query: str) -> AggregateRoute | None:
     has_write_journal = any(p.search(query) for p in _WRITE_JOURNAL_PATTERNS)
     has_aggregate_signal = any(p.search(query) for p in _AGGREGATE_SIGNAL_PATTERNS)
 
-    if has_current_year and has_write_journal and has_aggregate_signal:
-        year_start = date(anchor.year, 1, 1)
-        return AggregateRoute(
-            range_str=f"{year_start.isoformat()}..{anchor.isoformat()}",
-            unit="month",
-            predicate="journal_count",
-            query=query,
-        )
-
     if has_current_year and field_match and has_aggregate_signal:
         year_start = date(anchor.year, 1, 1)
         field_name, field_value = _field_equals_parts(field_match)
@@ -196,6 +187,15 @@ def detect_aggregate_intent(query: str) -> AggregateRoute | None:
             range_str=f"{year_start.isoformat()}..{anchor.isoformat()}",
             unit="day" if use_day else "entry",
             predicate=f"field_equals={field_name}:{field_value}",
+            query=query,
+        )
+
+    if has_current_year and has_write_journal and has_aggregate_signal:
+        year_start = date(anchor.year, 1, 1)
+        return AggregateRoute(
+            range_str=f"{year_start.isoformat()}..{anchor.isoformat()}",
+            unit="month",
+            predicate="journal_count",
             query=query,
         )
 

@@ -2044,3 +2044,82 @@ smart_aggregate_queries:
   - aggregate
   - journal_count
   - route
+- id: SAGQ06
+  query: this year count journal entries where topic=think
+  category: smart_aggregate_route
+  description: Route-family coverage proving explicit current-year field_equals constraints take precedence over generic journal_count wording.
+  anchor_date: 2026-03-31
+  expected:
+    success: true
+    count: 3
+    exactness: exact
+    unit: entry
+    range:
+      since: '2026-01-01'
+      until: '2026-03-31'
+    predicate_type: field_equals
+    predicate_field: topic
+    predicate_value: think
+    index_scope_node_ids:
+    - month:2026-01
+    - month:2026-02
+    - month:2026-03
+    index_scope_ref_count: 3
+  tags:
+  - smart-search
+  - aggregate
+  - field_equals
+  - current_year
+  - precedence
+  - route
+- id: SAGQ07
+  query: past 30 days how many days topic=life journal
+  category: smart_aggregate_route
+  description: Route-family coverage for field_equals with day unit over a relative range.
+  anchor_date: 2026-03-31
+  expected:
+    success: true
+    count: 2
+    exactness: exact
+    unit: day
+    range:
+      since: '2026-03-02'
+      until: '2026-03-31'
+    predicate_type: field_equals
+    predicate_field: topic
+    predicate_value: life
+    index_scope_node_ids:
+    - month:2026-03
+    index_scope_ref_count: 1
+  tags:
+  - smart-search
+  - aggregate
+  - field_equals
+  - day_unit
+  - route
+- id: SAGQ08
+  query: this year journal writing frequency
+  category: smart_aggregate_route
+  description: Route-family coverage for current-year journal_count frequency using monthly buckets.
+  anchor_date: 2026-03-31
+  expected:
+    success: true
+    count: 2
+    exactness: exact
+    unit: month
+    range:
+      since: '2026-01-01'
+      until: '2026-03-31'
+    predicate_type: journal_count
+    index_scope_node_ids:
+    - month:2026-01
+    - month:2026-02
+    - month:2026-03
+    index_scope_ref_count: 3
+  tags:
+  - smart-search
+  - aggregate
+  - journal_count
+  - current_year
+  - monthly_frequency
+  - route
