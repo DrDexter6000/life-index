@@ -1987,6 +1987,133 @@ python -m tools.backup [options]
 
 ---
 
+## verify
+
+### 端点
+
+```bash
+life-index verify [--json]
+python -m tools verify [--json]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--json` | flag | ❌ | false | 以 JSON 格式输出结果 |
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "total_journals": 42,
+  "checks": [
+    {
+      "name": "frontmatter_valid",
+      "status": "ok",
+      "count": 42,
+      "issues": []
+    },
+    {
+      "name": "required_fields",
+      "status": "ok",
+      "count": 42,
+      "issues": []
+    },
+    {
+      "name": "fts_consistency",
+      "status": "ok",
+      "count": 42,
+      "issues": []
+    },
+    {
+      "name": "vector_consistency",
+      "status": "ok",
+      "count": 42,
+      "issues": []
+    },
+    {
+      "name": "attachment_refs",
+      "status": "ok",
+      "count": 3,
+      "issues": []
+    },
+    {
+      "name": "topic_consistency",
+      "status": "ok",
+      "count": 15,
+      "issues": []
+    }
+  ],
+  "issues_count": 0,
+  "suggestion": ""
+}
+```
+
+### 检查项说明
+
+| 检查名 | 说明 |
+|--------|------|
+| `frontmatter_valid` | 每篇日志的 YAML frontmatter 是否可正常解析 |
+| `required_fields` | 必填字段（如 `date`）是否完整 |
+| `fts_consistency` | FTS 索引条目与实际日志文件的一致性（缺失 / 孤儿） |
+| `vector_consistency` | 向量索引条目与实际日志文件的一致性（缺失 / 孤儿） |
+| `attachment_refs` | 正文中引用的附件文件是否存在 |
+| `topic_consistency` | `by-topic/` 索引中链接的日志路径是否有效 |
+
+### 行为约束
+
+- **只读**：不创建、修改或删除任何文件。
+- `success` 为 `true` 当且仅当 `issues_count == 0`。
+- 存在问题时，`suggestion` 包含修复建议（如 `life-index index --rebuild`）。
+
+---
+
+## timeline
+
+### 端点
+
+```bash
+life-index timeline --range <START> <END> [--topic <topic>]
+python -m tools timeline --range <START> <END> [--topic <topic>]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--range` | string×2 | ✅ | — | 时间范围，两个 `YYYY-MM` 参数（起止月份，均包含） |
+| `--topic` | string | ❌ | — | 按主题过滤 |
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "range": ["2026-01", "2026-03"],
+  "entries": [
+    {
+      "date": "2026-01-15",
+      "title": "项目启动",
+      "mood": ["focused"],
+      "abstract": "开始了新项目的开发...",
+      "path": "Journals/2026/01/life-index_2026-01-15_001.md"
+    }
+  ],
+  "total": 25
+}
+```
+
+### 行为约束
+
+- **只读**：不创建、修改或删除任何文件。
+- `entries` 按日期升序排列。
+- `--topic` 过滤匹配 frontmatter `topic` 字段（列表中任一元素）。
+- 日期格式错误时返回 `success: false`，`error` 字段含描述。
+
+---
+
 ## entity
 
 ### 端点
