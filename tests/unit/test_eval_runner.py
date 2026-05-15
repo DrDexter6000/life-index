@@ -271,6 +271,13 @@ def test_golden_queries_yaml_is_valid() -> None:
     for category, count in category_counts.items():
         assert count >= 1, f"category {category} should have at least 1 query"
 
+    aggregate_queries = payload.get("aggregate_queries", [])
+    smart_aggregate_queries = payload.get("smart_aggregate_queries", [])
+    assert isinstance(aggregate_queries, list)
+    assert all(isinstance(query, dict) for query in aggregate_queries)
+    assert isinstance(smart_aggregate_queries, list)
+    assert all(isinstance(query, dict) for query in smart_aggregate_queries)
+
 
 def test_eval_runner_with_isolated_data(isolated_data_dir: Path) -> None:
     _write_eval_fixture_data(isolated_data_dir)
@@ -334,6 +341,34 @@ def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
     assert by_id["AGQ06"]["index_scope_ref_count"] == 1
 
 
+def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-03-31")
+    _write_eval_fixture_data(isolated_data_dir)
+
+    from tools.eval.run_eval import run_evaluation
+
+    result = run_evaluation(data_dir=isolated_data_dir)
+
+    smart_eval = result["smart_aggregate_eval"]
+    assert smart_eval["total_queries"] >= 1
+    assert smart_eval["passed_queries"] == smart_eval["total_queries"]
+    assert smart_eval["failed_queries"] == 0
+    assert smart_eval["failures"] == []
+
+    by_id = {item["id"]: item for item in smart_eval["per_query"]}
+    assert by_id["SAGQ01"]["route_present"] is True
+    assert by_id["SAGQ01"]["predicate_type"] == "field_equals"
+    assert by_id["SAGQ01"]["predicate_field"] == "topic"
+    assert by_id["SAGQ01"]["predicate_value"] == "work"
+    assert by_id["SAGQ01"]["unit"] == "entry"
+    assert by_id["SAGQ01"]["range"] == {
+        "since": "2026-01-31",
+        "until": "2026-03-31",
+    }
+    assert by_id["SAGQ01"]["count"] == 4
+    assert any("Smart Aggregate Eval" in line for line in result["summary_lines"])
+
+
 def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path) -> None:
     from tools.eval.run_eval import run_evaluation
 
@@ -359,6 +394,7 @@ def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path
             }
         ],
     )
+    monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
 
     result = run_evaluation(data_dir=tmp_path / "data")
 
@@ -636,6 +672,7 @@ def test_default_eval_aggregate_is_diagnostic_only(monkeypatch, tmp_path: Path) 
             }
         ],
     )
+    monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
 
     result = run_evaluation(data_dir=None)
 
@@ -675,6 +712,8 @@ def test_live_mode_uses_real_data_dir(monkeypatch, tmp_path: Path) -> None:
         return [], []
 
     monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_aggregate_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval._evaluate_queries", _fake_evaluate_queries)
 
     result = run_evaluation(live=True)
@@ -691,6 +730,7 @@ def test_live_mode_aggregate_eval_is_diagnostic_only(monkeypatch) -> None:
 
     monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval.load_aggregate_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval._evaluate_queries", lambda *_, **__: ([], []))
 
     def _fake_evaluate_aggregate_queries(_queries, *, diagnostic_only=False):
@@ -710,9 +750,27 @@ def test_live_mode_aggregate_eval_is_diagnostic_only(monkeypatch) -> None:
         _fake_evaluate_aggregate_queries,
     )
 
+    def _fake_evaluate_smart_aggregate_queries(_queries, *, diagnostic_only=False):
+        captured["smart_diagnostic_only"] = diagnostic_only
+        return {
+            "total_queries": 0,
+            "passed_queries": 0,
+            "failed_queries": 0,
+            "metrics": {"pass_rate": 0.0},
+            "by_category": {},
+            "per_query": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval._evaluate_smart_aggregate_queries",
+        _fake_evaluate_smart_aggregate_queries,
+    )
+
     run_evaluation(live=True)
 
     assert captured["diagnostic_only"] is True
+    assert captured["smart_diagnostic_only"] is True
 
 
 def test_recall_ratio_computation() -> None:

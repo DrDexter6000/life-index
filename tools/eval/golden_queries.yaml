@@ -1917,3 +1917,26 @@ aggregate_queries:
   - aggregate
   - field_equals
   - frontmatter
+
+smart_aggregate_queries:
+- id: SAGQ01
+  query: past 60 days count journal entries where topic=work
+  category: smart_aggregate_route
+  description: Deterministic smart-search route coverage for explicit field_equals aggregate intent.
+  anchor_date: 2026-03-31
+  expected:
+    success: true
+    count: 4
+    exactness: exact
+    unit: entry
+    range:
+      since: '2026-01-31'
+      until: '2026-03-31'
+    predicate_type: field_equals
+    predicate_field: topic
+    predicate_value: work
+  tags:
+  - smart-search
+  - aggregate
+  - field_equals
+  - route

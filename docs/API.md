@@ -1176,11 +1176,17 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 ### Aggregate Evaluation Coverage (Internal Developer Tooling)
 
 `life-index eval` uses `tools/eval/golden_queries.yaml` as the search quality
-Gold Set authority. The same file may also contain an `aggregate_queries`
-companion section for deterministic aggregate/analyze checks. These cases do
-not participate in search MRR/Recall/Precision calculations; they are reported
-under `aggregate_eval` so aggregate regressions are visible without polluting
-retrieval metrics.
+Gold Set authority. The same file may also contain companion sections for
+deterministic aggregate/analyze checks:
+
+- `aggregate_queries` exercises the aggregate primitive directly.
+- `smart_aggregate_queries` exercises smart-search deterministic aggregate
+  routing before normal retrieval.
+
+These cases do not participate in search MRR/Recall/Precision calculations;
+they are reported under `aggregate_eval` and `smart_aggregate_eval` so
+aggregate regressions and smart-search route regressions are visible without
+polluting retrieval metrics.
 
 `aggregate_eval` result shape:
 
@@ -1212,11 +1218,48 @@ retrieval metrics.
 }
 ```
 
+`smart_aggregate_eval` uses the same high-level shape, with per-query entries
+adding `eval_mode: "smart_aggregate"` and `route_present`. It validates that a
+natural-language smart-search query produced a top-level `aggregate_result`
+with the expected deterministic aggregate contract:
+
+```json
+{
+  "total_queries": 1,
+  "passed_queries": 1,
+  "failed_queries": 0,
+  "metrics": {"pass_rate": 1.0},
+  "by_category": {
+    "smart_aggregate_route": {
+      "query_count": 1,
+      "passed_queries": 1,
+      "failed_queries": 0,
+      "pass_rate": 1.0
+    }
+  },
+  "per_query": [
+    {
+      "id": "SAGQ01",
+      "eval_mode": "smart_aggregate",
+      "route_present": true,
+      "predicate_type": "field_equals",
+      "predicate_field": "topic",
+      "predicate_value": "work",
+      "unit": "entry",
+      "count": 4,
+      "exactness": "exact",
+      "pass": true
+    }
+  ],
+  "failures": []
+}
+```
+
 #### Diagnostic-Only Mode
 
 When `run_evaluation()` is called without an explicit `data_dir` (default/live
-eval against real user data), aggregate companion checks run in **diagnostic-only**
-mode. In this mode:
+eval against real user data), aggregate companion checks and smart aggregate
+route companion checks run in **diagnostic-only** mode. In this mode:
 
 - `diagnostic_only` is set to `true`.
 - `failed_queries` is always `0` — count mismatches do not fail the gate.
@@ -1224,12 +1267,14 @@ mode. In this mode:
 - Mismatches are reported as `diagnostic_observations` with `id`, `query`,
   `reason`, `expected`, and `actual` fields.
 
-When `data_dir` is explicitly provided (fixture/CI eval), aggregate checks
-remain a **hard gate** with `failed_queries` incremented on mismatch.
+When `data_dir` is explicitly provided (fixture/CI eval), aggregate and smart
+aggregate route checks remain a **hard gate** with `failed_queries` incremented
+on mismatch.
 
 This is an eval-system extension, not a second Gold Set. Real-log diagnostic
-queries should be promoted into `aggregate_queries` only after their expected
-counts and evidence criteria are stable.
+queries should be promoted into `aggregate_queries` or `smart_aggregate_queries`
+only after their expected counts, route criteria, and evidence criteria are
+stable.
 
 ### Answer Evaluation Harness（Internal Developer Tooling，非 CLI Public API）
 
@@ -1341,7 +1386,8 @@ python -m tools eval [options]
     "metrics": {"mrr_at_5": 1.0, "recall_at_5": 1.0},
     "judge_mode": "keyword",
     "semantic_enabled": false,
-    "aggregate_eval": {}
+    "aggregate_eval": {},
+    "smart_aggregate_eval": {}
   }
 }
 ```

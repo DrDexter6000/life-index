@@ -179,6 +179,29 @@ def _aggregate_query_passes(
     if not isinstance(result_payload, dict):
         result_payload = {}
 
+    if "unit" in expected and aggregate_result.get("unit") != expected["unit"]:
+        failures.append(f"unit expected {expected['unit']}, got {aggregate_result.get('unit')}")
+
+    if "range" in expected:
+        expected_range = expected["range"]
+        if aggregate_result.get("range") != expected_range:
+            failures.append(f"range expected {expected_range}, got {aggregate_result.get('range')}")
+
+    predicate_payload = aggregate_result.get("predicate", {})
+    if not isinstance(predicate_payload, dict):
+        predicate_payload = {}
+    predicate_expectations = {
+        "predicate_type": "type",
+        "predicate_field": "field",
+        "predicate_value": "value",
+    }
+    for expected_key, actual_key in predicate_expectations.items():
+        if expected_key in expected and predicate_payload.get(actual_key) != expected[expected_key]:
+            failures.append(
+                f"{expected_key} expected {expected[expected_key]}, "
+                f"got {predicate_payload.get(actual_key)}"
+            )
+
     if "count" in expected and result_payload.get("count") != expected["count"]:
         failures.append(f"count expected {expected['count']}, got {result_payload.get('count')}")
 
@@ -373,6 +396,170 @@ def _evaluate_aggregate_queries(
     return result
 
 
+@contextmanager
+def _temporary_time_anchor(anchor_date: Any | None) -> Iterator[None]:
+    """Temporarily override LIFE_INDEX_TIME_ANCHOR for relative smart-search routes."""
+    if not anchor_date:
+        yield
+        return
+
+    original = os.environ.get("LIFE_INDEX_TIME_ANCHOR")
+    os.environ["LIFE_INDEX_TIME_ANCHOR"] = str(anchor_date)
+    try:
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("LIFE_INDEX_TIME_ANCHOR", None)
+        else:
+            os.environ["LIFE_INDEX_TIME_ANCHOR"] = original
+
+
+def _evaluate_smart_aggregate_queries(
+    queries: list[dict[str, Any]],
+    *,
+    diagnostic_only: bool = False,
+) -> dict[str, Any]:
+    """Evaluate smart-search deterministic aggregate routing companion cases."""
+    if not queries:
+        return _empty_aggregate_eval()
+
+    from tools.search_journals.orchestrator import SmartSearchOrchestrator
+
+    per_query: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    diagnostic_observations: list[dict[str, Any]] = []
+
+    for query_case in queries:
+        smart_result: dict[str, Any] = {}
+        route_missing_reason: str | None = None
+        try:
+            with _temporary_time_anchor(query_case.get("anchor_date")):
+                smart_result = SmartSearchOrchestrator(llm_client=None).search(
+                    str(query_case.get("query", ""))
+                )
+            aggregate_result = smart_result.get("aggregate_result")
+            if not isinstance(aggregate_result, dict):
+                route_missing_reason = "aggregate_result missing"
+                aggregate_result = {
+                    "success": False,
+                    "result": {},
+                    "error": {"message": route_missing_reason},
+                    "evidence_paths": [],
+                }
+        except Exception as exc:
+            route_missing_reason = str(exc)
+            aggregate_result = {
+                "success": False,
+                "result": {},
+                "error": {"message": str(exc)},
+                "evidence_paths": [],
+            }
+
+        passed, failure_reason = _aggregate_query_passes(
+            query_case=query_case,
+            aggregate_result=aggregate_result,
+        )
+        if route_missing_reason:
+            failure_reason = (
+                f"{route_missing_reason}; {failure_reason}"
+                if failure_reason
+                else route_missing_reason
+            )
+            passed = False
+
+        result_payload = aggregate_result.get("result", {})
+        if not isinstance(result_payload, dict):
+            result_payload = {}
+        predicate_payload = aggregate_result.get("predicate", {})
+        if not isinstance(predicate_payload, dict):
+            predicate_payload = {}
+        evidence_pack = aggregate_result.get("evidence_pack", {})
+        if not isinstance(evidence_pack, dict):
+            evidence_pack = {}
+        index_scope = evidence_pack.get("index_scope", {})
+        if not isinstance(index_scope, dict):
+            index_scope = {}
+        index_scope_refs = index_scope.get("refs", [])
+        if not isinstance(index_scope_refs, list):
+            index_scope_refs = []
+
+        entry = {
+            "id": query_case["id"],
+            "query": query_case["query"],
+            "category": query_case["category"],
+            "eval_mode": "smart_aggregate",
+            "route_present": route_missing_reason is None,
+            "command": aggregate_result.get("command"),
+            "range": aggregate_result.get("range"),
+            "unit": aggregate_result.get("unit"),
+            "predicate_type": predicate_payload.get("type"),
+            "predicate_field": predicate_payload.get("field"),
+            "predicate_value": predicate_payload.get("value"),
+            "success": bool(aggregate_result.get("success")),
+            "count": result_payload.get("count"),
+            "exactness": result_payload.get("exactness"),
+            "confidence": result_payload.get("confidence"),
+            "evidence_count": len(aggregate_result.get("evidence_paths", [])),
+            "index_scope_node_ids": [
+                str(ref["node_id"])
+                for ref in index_scope_refs
+                if isinstance(ref, dict) and ref.get("node_id")
+            ],
+            "index_scope_ref_count": len(index_scope_refs),
+            "pass": passed,
+        }
+        if "error" in aggregate_result:
+            entry["error"] = aggregate_result["error"]
+        per_query.append(entry)
+
+        if failure_reason:
+            if diagnostic_only:
+                entry["pass"] = True
+                expected = query_case.get("expected", {})
+                diagnostic_observations.append(
+                    {
+                        "id": query_case["id"],
+                        "query": query_case["query"],
+                        "reason": failure_reason,
+                        "expected": expected if isinstance(expected, dict) else None,
+                        "actual": result_payload.get("count"),
+                    }
+                )
+            failures.append(
+                {
+                    "id": query_case["id"],
+                    "query": query_case["query"],
+                    "reason": failure_reason,
+                }
+            )
+
+    by_category: dict[str, dict[str, Any]] = {}
+    for category in sorted({str(item["category"]) for item in per_query}):
+        items = [item for item in per_query if str(item["category"]) == category]
+        passed_count = sum(1 for item in items if item["pass"])
+        by_category[category] = {
+            "query_count": len(items),
+            "passed_queries": passed_count,
+            "failed_queries": 0 if diagnostic_only else (len(items) - passed_count),
+            "pass_rate": _round_metric(_safe_float_divide(passed_count, len(items))),
+        }
+
+    passed_total = sum(1 for item in per_query if item["pass"])
+    result: dict[str, Any] = {
+        "total_queries": len(per_query),
+        "passed_queries": passed_total,
+        "failed_queries": 0 if diagnostic_only else (len(per_query) - passed_total),
+        "metrics": {"pass_rate": _round_metric(_safe_float_divide(passed_total, len(per_query)))},
+        "by_category": by_category,
+        "per_query": per_query,
+        "failures": [] if diagnostic_only else failures,
+    }
+    if diagnostic_only:
+        result["diagnostic_only"] = True
+        result["diagnostic_observations"] = diagnostic_observations
+    return result
+
+
 def _get_llm_client_module() -> Any:
     return importlib.import_module("tools.eval.llm_client")
 
@@ -396,6 +583,15 @@ def load_aggregate_queries(file_path: Path | None = None) -> list[dict[str, Any]
     queries = payload.get("aggregate_queries", []) if isinstance(payload, dict) else []
     if not isinstance(queries, list):
         raise ValueError("golden_queries.yaml aggregate_queries must be a list when present")
+    return queries
+
+
+def load_smart_aggregate_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
+    """Load smart-search aggregate route companion cases from the Gold Set YAML."""
+    payload = yaml.safe_load((file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8"))
+    queries = payload.get("smart_aggregate_queries", []) if isinstance(payload, dict) else []
+    if not isinstance(queries, list):
+        raise ValueError("golden_queries.yaml smart_aggregate_queries must be a list when present")
     return queries
 
 
@@ -844,6 +1040,34 @@ def _build_summary_lines(result: dict[str, Any]) -> list[str]:
                         f'AGG FAIL {failure["id"]} "{failure["query"]}" - {failure["reason"]}'
                     )
 
+    smart_aggregate_eval = result.get("smart_aggregate_eval")
+    if smart_aggregate_eval and smart_aggregate_eval.get("total_queries"):
+        lines.append("")
+        if smart_aggregate_eval.get("diagnostic_only"):
+            lines.append(
+                f"Smart Aggregate Eval ({smart_aggregate_eval['total_queries']} queries) "
+                "[diagnostic-only]:"
+            )
+            for obs in smart_aggregate_eval.get("diagnostic_observations", [])[:5]:
+                lines.append(
+                    f'SMART AGG OBS {obs["id"]} "{obs["query"]}" '
+                    f"- expected={obs.get('expected')}, actual={obs.get('actual')}"
+                )
+        else:
+            lines.append(f"Smart Aggregate Eval ({smart_aggregate_eval['total_queries']} queries):")
+            lines.append(
+                f"  Pass:        {smart_aggregate_eval['passed_queries']}/"
+                f"{smart_aggregate_eval['total_queries']} "
+                f"({smart_aggregate_eval['metrics']['pass_rate']:.0%})"
+            )
+            if smart_aggregate_eval.get("failed_queries"):
+                lines.append(f"  Fail:        {smart_aggregate_eval['failed_queries']}")
+                for failure in smart_aggregate_eval.get("failures", [])[:5]:
+                    lines.append(
+                        f'SMART AGG FAIL {failure["id"]} "{failure["query"]}" - '
+                        f'{failure["reason"]}'
+                    )
+
     return lines
 
 
@@ -1142,6 +1366,7 @@ def run_evaluation(
         )
     )
     aggregate_queries = load_aggregate_queries(queries_path)
+    smart_aggregate_queries = load_smart_aggregate_queries(queries_path)
     queries = []
     skipped_queries: list[dict[str, Any]] = []
     for q in all_queries:
@@ -1170,6 +1395,10 @@ def run_evaluation(
         aggregate_diagnostic = data_dir is None or live
         aggregate_eval = _evaluate_aggregate_queries(
             aggregate_queries,
+            diagnostic_only=aggregate_diagnostic,
+        )
+        smart_aggregate_eval = _evaluate_smart_aggregate_queries(
+            smart_aggregate_queries,
             diagnostic_only=aggregate_diagnostic,
         )
 
@@ -1202,6 +1431,7 @@ def run_evaluation(
         "overlay_applied_count": overlay_applied_count,
         "overlay_warnings": overlay_warnings,
         "aggregate_eval": aggregate_eval,
+        "smart_aggregate_eval": smart_aggregate_eval,
     }
 
     for category, items in by_category.items():
