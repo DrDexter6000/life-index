@@ -2123,3 +2123,73 @@ smart_aggregate_queries:
   - current_year
   - monthly_frequency
   - route
+
+timeline_queries:
+- id: TLQ01
+  query: timeline for March 2026
+  category: timeline_navigation
+  description: Full-month chronological timeline coverage for evidence navigation.
+  timeline:
+    range_start: '2026-03'
+    range_end: '2026-03'
+  expected:
+    success: true
+    range:
+    - '2026-03'
+    - '2026-03'
+    total: 11
+    first_date: '2026-03-04'
+    last_date: '2026-03-25'
+    ordered: true
+  tags:
+  - timeline
+  - evidence_navigation
+  - chronological_order
+- id: TLQ02
+  query: work timeline for March 2026
+  category: timeline_navigation
+  description: Topic-filtered timeline coverage for stable evidence slices.
+  timeline:
+    range_start: '2026-03'
+    range_end: '2026-03'
+    topic: work
+  expected:
+    success: true
+    range:
+    - '2026-03'
+    - '2026-03'
+    total: 4
+    dates:
+    - '2026-03-07'
+    - '2026-03-14'
+    - '2026-03-18'
+    - '2026-03-22'
+    ordered: true
+  tags:
+  - timeline
+  - evidence_navigation
+  - topic_filter
+- id: TLQ03
+  query: life timeline from February to March 2026
+  category: timeline_navigation
+  description: Cross-month timeline coverage for navigation boundaries.
+  timeline:
+    range_start: '2026-02'
+    range_end: '2026-03'
+    topic: life
+  expected:
+    success: true
+    range:
+    - '2026-02'
+    - '2026-03'
+    total: 3
+    dates:
+    - '2026-02-28'
+    - '2026-03-10'
+    - '2026-03-12'
+    ordered: true
+  tags:
+  - timeline
+  - evidence_navigation
+  - cross_month
+  - topic_filter

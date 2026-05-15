@@ -33,6 +33,7 @@ MODULES_TO_RELOAD = (
     "tools.search_journals.keyword_pipeline",
     "tools.search_journals.core",
     "tools.aggregate.core",
+    "tools.timeline.core",
 )
 
 
@@ -568,6 +569,177 @@ def _evaluate_smart_aggregate_queries(
     return result
 
 
+def _timeline_query_passes(
+    *, query_case: dict[str, Any], timeline_result: dict[str, Any]
+) -> tuple[bool, str | None]:
+    expected = query_case.get("expected", {})
+    if not isinstance(expected, dict):
+        expected = {}
+
+    entries = timeline_result.get("entries", [])
+    if not isinstance(entries, list):
+        entries = []
+    dates = [str(entry.get("date", "")) for entry in entries if isinstance(entry, dict)]
+    failures: list[str] = []
+
+    expected_success = expected.get("success")
+    if expected_success is not None and bool(timeline_result.get("success")) != bool(
+        expected_success
+    ):
+        failures.append(
+            "success expected "
+            f"{bool(expected_success)}, got {bool(timeline_result.get('success'))}"
+        )
+
+    if "range" in expected and timeline_result.get("range") != expected["range"]:
+        failures.append(f"range expected {expected['range']}, got {timeline_result.get('range')}")
+
+    if "total" in expected and int(timeline_result.get("total", -1)) != int(expected["total"]):
+        failures.append(f"total expected {expected['total']}, got {timeline_result.get('total')}")
+
+    if "first_date" in expected:
+        actual_first = dates[0] if dates else None
+        if actual_first != expected["first_date"]:
+            failures.append(f"first_date expected {expected['first_date']}, got {actual_first}")
+
+    if "last_date" in expected:
+        actual_last = dates[-1] if dates else None
+        if actual_last != expected["last_date"]:
+            failures.append(f"last_date expected {expected['last_date']}, got {actual_last}")
+
+    if expected.get("ordered") is True and dates != sorted(dates):
+        failures.append(f"dates expected chronological order, got {dates}")
+
+    if "dates" in expected:
+        expected_dates = [str(item) for item in expected["dates"]]
+        if dates != expected_dates:
+            failures.append(f"dates expected {expected_dates}, got {dates}")
+
+    if "required_dates" in expected:
+        missing = [str(item) for item in expected["required_dates"] if str(item) not in dates]
+        if missing:
+            failures.append(f"required_dates missing {missing}")
+
+    return not failures, "; ".join(failures) if failures else None
+
+
+def _evaluate_timeline_queries(
+    queries: list[dict[str, Any]],
+    *,
+    diagnostic_only: bool = False,
+) -> dict[str, Any]:
+    """Evaluate timeline evidence-navigation companion cases."""
+    if not queries:
+        return _empty_aggregate_eval()
+
+    from tools.timeline.core import run_timeline
+
+    per_query: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    diagnostic_observations: list[dict[str, Any]] = []
+
+    for query_case in queries:
+        timeline_spec = query_case.get("timeline", {})
+        if not isinstance(timeline_spec, dict):
+            timeline_spec = {}
+
+        try:
+            timeline_result = run_timeline(
+                range_start=str(timeline_spec["range_start"]),
+                range_end=str(timeline_spec["range_end"]),
+                topic=timeline_spec.get("topic"),
+            )
+        except Exception as exc:
+            timeline_result = {
+                "success": False,
+                "range": [timeline_spec.get("range_start"), timeline_spec.get("range_end")],
+                "entries": [],
+                "total": 0,
+                "error": str(exc),
+            }
+
+        passed, failure_reason = _timeline_query_passes(
+            query_case=query_case,
+            timeline_result=timeline_result,
+        )
+        entries = timeline_result.get("entries", [])
+        if not isinstance(entries, list):
+            entries = []
+        dates = [str(entry.get("date", "")) for entry in entries if isinstance(entry, dict)]
+
+        entry = {
+            "id": query_case["id"],
+            "query": query_case["query"],
+            "category": query_case["category"],
+            "eval_mode": "timeline",
+            "command": "timeline",
+            "range_start": timeline_spec.get("range_start"),
+            "range_end": timeline_spec.get("range_end"),
+            "topic": timeline_spec.get("topic"),
+            "success": bool(timeline_result.get("success")),
+            "range": timeline_result.get("range"),
+            "total": timeline_result.get("total"),
+            "first_date": dates[0] if dates else None,
+            "last_date": dates[-1] if dates else None,
+            "dates": dates,
+            "ordered": dates == sorted(dates),
+            "pass": passed,
+        }
+        if "error" in timeline_result:
+            entry["error"] = timeline_result["error"]
+        per_query.append(entry)
+
+        if failure_reason:
+            if diagnostic_only:
+                entry["pass"] = True
+                expected = query_case.get("expected", {})
+                diagnostic_observations.append(
+                    {
+                        "id": query_case["id"],
+                        "query": query_case["query"],
+                        "reason": failure_reason,
+                        "expected": expected if isinstance(expected, dict) else None,
+                        "actual": {
+                            "total": timeline_result.get("total"),
+                            "dates": dates,
+                        },
+                    }
+                )
+            failures.append(
+                {
+                    "id": query_case["id"],
+                    "query": query_case["query"],
+                    "reason": failure_reason,
+                }
+            )
+
+    by_category: dict[str, dict[str, Any]] = {}
+    for category in sorted({str(item["category"]) for item in per_query}):
+        items = [item for item in per_query if str(item["category"]) == category]
+        passed_count = sum(1 for item in items if item["pass"])
+        by_category[category] = {
+            "query_count": len(items),
+            "passed_queries": passed_count,
+            "failed_queries": 0 if diagnostic_only else (len(items) - passed_count),
+            "pass_rate": _round_metric(_safe_float_divide(passed_count, len(items))),
+        }
+
+    passed_total = sum(1 for item in per_query if item["pass"])
+    result: dict[str, Any] = {
+        "total_queries": len(per_query),
+        "passed_queries": passed_total,
+        "failed_queries": 0 if diagnostic_only else (len(per_query) - passed_total),
+        "metrics": {"pass_rate": _round_metric(_safe_float_divide(passed_total, len(per_query)))},
+        "by_category": by_category,
+        "per_query": per_query,
+        "failures": [] if diagnostic_only else failures,
+    }
+    if diagnostic_only:
+        result["diagnostic_only"] = True
+        result["diagnostic_observations"] = diagnostic_observations
+    return result
+
+
 def _get_llm_client_module() -> Any:
     return importlib.import_module("tools.eval.llm_client")
 
@@ -600,6 +772,15 @@ def load_smart_aggregate_queries(file_path: Path | None = None) -> list[dict[str
     queries = payload.get("smart_aggregate_queries", []) if isinstance(payload, dict) else []
     if not isinstance(queries, list):
         raise ValueError("golden_queries.yaml smart_aggregate_queries must be a list when present")
+    return queries
+
+
+def load_timeline_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
+    """Load timeline evidence-navigation companion cases from the Gold Set YAML."""
+    payload = yaml.safe_load((file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8"))
+    queries = payload.get("timeline_queries", []) if isinstance(payload, dict) else []
+    if not isinstance(queries, list):
+        raise ValueError("golden_queries.yaml timeline_queries must be a list when present")
     return queries
 
 
@@ -1076,6 +1257,33 @@ def _build_summary_lines(result: dict[str, Any]) -> list[str]:
                         f'{failure["reason"]}'
                     )
 
+    timeline_eval = result.get("timeline_eval")
+    if timeline_eval and timeline_eval.get("total_queries"):
+        lines.append("")
+        if timeline_eval.get("diagnostic_only"):
+            lines.append(
+                f"Timeline Eval ({timeline_eval['total_queries']} queries) [diagnostic-only]:"
+            )
+            for obs in timeline_eval.get("diagnostic_observations", [])[:5]:
+                lines.append(
+                    f'TIMELINE OBS {obs["id"]} "{obs["query"]}" '
+                    f"- expected={obs.get('expected')}, actual={obs.get('actual')}"
+                )
+        else:
+            lines.append(f"Timeline Eval ({timeline_eval['total_queries']} queries):")
+            lines.append(
+                f"  Pass:        {timeline_eval['passed_queries']}/"
+                f"{timeline_eval['total_queries']} "
+                f"({timeline_eval['metrics']['pass_rate']:.0%})"
+            )
+            if timeline_eval.get("failed_queries"):
+                lines.append(f"  Fail:        {timeline_eval['failed_queries']}")
+                for failure in timeline_eval.get("failures", [])[:5]:
+                    lines.append(
+                        f'TIMELINE FAIL {failure["id"]} "{failure["query"]}" - '
+                        f'{failure["reason"]}'
+                    )
+
     return lines
 
 
@@ -1375,6 +1583,7 @@ def run_evaluation(
     )
     aggregate_queries = load_aggregate_queries(queries_path)
     smart_aggregate_queries = load_smart_aggregate_queries(queries_path)
+    timeline_queries = load_timeline_queries(queries_path)
     queries = []
     skipped_queries: list[dict[str, Any]] = []
     for q in all_queries:
@@ -1409,6 +1618,10 @@ def run_evaluation(
             smart_aggregate_queries,
             diagnostic_only=aggregate_diagnostic,
         )
+        timeline_eval = _evaluate_timeline_queries(
+            timeline_queries,
+            diagnostic_only=aggregate_diagnostic,
+        )
 
     by_category: dict[str, list[dict[str, Any]]] = {}
     for item in per_query:
@@ -1440,6 +1653,7 @@ def run_evaluation(
         "overlay_warnings": overlay_warnings,
         "aggregate_eval": aggregate_eval,
         "smart_aggregate_eval": smart_aggregate_eval,
+        "timeline_eval": timeline_eval,
     }
 
     for category, items in by_category.items():

@@ -273,10 +273,13 @@ def test_golden_queries_yaml_is_valid() -> None:
 
     aggregate_queries = payload.get("aggregate_queries", [])
     smart_aggregate_queries = payload.get("smart_aggregate_queries", [])
+    timeline_queries = payload.get("timeline_queries", [])
     assert isinstance(aggregate_queries, list)
     assert all(isinstance(query, dict) for query in aggregate_queries)
     assert isinstance(smart_aggregate_queries, list)
     assert all(isinstance(query, dict) for query in smart_aggregate_queries)
+    assert isinstance(timeline_queries, list)
+    assert all(isinstance(query, dict) for query in timeline_queries)
 
 
 def test_eval_runner_with_isolated_data(isolated_data_dir: Path) -> None:
@@ -459,6 +462,41 @@ def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monk
     assert any("Smart Aggregate Eval" in line for line in result["summary_lines"])
 
 
+def test_eval_runner_includes_timeline_eval(isolated_data_dir: Path) -> None:
+    _write_eval_fixture_data(isolated_data_dir)
+
+    from tools.eval.run_eval import run_evaluation
+
+    result = run_evaluation(data_dir=isolated_data_dir)
+
+    timeline_eval = result["timeline_eval"]
+    assert timeline_eval["total_queries"] == 3
+    assert timeline_eval["passed_queries"] == timeline_eval["total_queries"]
+    assert timeline_eval["failed_queries"] == 0
+    assert timeline_eval["failures"] == []
+    assert timeline_eval["by_category"]["timeline_navigation"]["query_count"] == 3
+
+    by_id = {item["id"]: item for item in timeline_eval["per_query"]}
+    assert by_id["TLQ01"]["total"] == 11
+    assert by_id["TLQ01"]["first_date"] == "2026-03-04"
+    assert by_id["TLQ01"]["last_date"] == "2026-03-25"
+    assert by_id["TLQ01"]["ordered"] is True
+    assert by_id["TLQ02"]["total"] == 4
+    assert by_id["TLQ02"]["dates"] == [
+        "2026-03-07",
+        "2026-03-14",
+        "2026-03-18",
+        "2026-03-22",
+    ]
+    assert by_id["TLQ03"]["total"] == 3
+    assert by_id["TLQ03"]["dates"] == [
+        "2026-02-28",
+        "2026-03-10",
+        "2026-03-12",
+    ]
+    assert any("Timeline Eval" in line for line in result["summary_lines"])
+
+
 def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path) -> None:
     from tools.eval.run_eval import run_evaluation
 
@@ -485,6 +523,7 @@ def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path
         ],
     )
     monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_timeline_queries", lambda _: [])
 
     result = run_evaluation(data_dir=tmp_path / "data")
 
@@ -494,6 +533,39 @@ def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path
     assert "count" in aggregate_eval["failures"][0]["reason"]
     assert "index_scope_node_ids" in aggregate_eval["failures"][0]["reason"]
     assert any("Aggregate Eval" in line for line in result["summary_lines"])
+
+
+def test_eval_runner_reports_timeline_eval_failures(monkeypatch, tmp_path: Path) -> None:
+    from tools.eval.run_eval import run_evaluation
+
+    monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_aggregate_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
+    monkeypatch.setattr(
+        "tools.eval.run_eval.load_timeline_queries",
+        lambda _: [
+            {
+                "id": "TLQ_FAIL",
+                "query": "bad timeline expectation",
+                "category": "timeline_navigation",
+                "timeline": {"range_start": "2099-01", "range_end": "2099-01"},
+                "expected": {
+                    "success": True,
+                    "total": 1,
+                    "first_date": "2099-01-01",
+                },
+            }
+        ],
+    )
+
+    result = run_evaluation(data_dir=tmp_path / "data")
+
+    timeline_eval = result["timeline_eval"]
+    assert timeline_eval["failed_queries"] == 1
+    assert timeline_eval["failures"][0]["id"] == "TLQ_FAIL"
+    assert "total" in timeline_eval["failures"][0]["reason"]
+    assert "first_date" in timeline_eval["failures"][0]["reason"]
+    assert any("Timeline Eval" in line for line in result["summary_lines"])
 
 
 def test_eval_baseline_save_and_compare(isolated_data_dir: Path, tmp_path: Path) -> None:
@@ -763,6 +835,7 @@ def test_default_eval_aggregate_is_diagnostic_only(monkeypatch, tmp_path: Path) 
         ],
     )
     monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_timeline_queries", lambda _: [])
 
     result = run_evaluation(data_dir=None)
 
@@ -804,6 +877,7 @@ def test_live_mode_uses_real_data_dir(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval.load_aggregate_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_timeline_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval._evaluate_queries", _fake_evaluate_queries)
 
     result = run_evaluation(live=True)
@@ -821,6 +895,7 @@ def test_live_mode_aggregate_eval_is_diagnostic_only(monkeypatch) -> None:
     monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval.load_aggregate_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval.load_smart_aggregate_queries", lambda _: [])
+    monkeypatch.setattr("tools.eval.run_eval.load_timeline_queries", lambda _: [])
     monkeypatch.setattr("tools.eval.run_eval._evaluate_queries", lambda *_, **__: ([], []))
 
     def _fake_evaluate_aggregate_queries(_queries, *, diagnostic_only=False):
@@ -857,10 +932,28 @@ def test_live_mode_aggregate_eval_is_diagnostic_only(monkeypatch) -> None:
         _fake_evaluate_smart_aggregate_queries,
     )
 
+    def _fake_evaluate_timeline_queries(_queries, *, diagnostic_only=False):
+        captured["timeline_diagnostic_only"] = diagnostic_only
+        return {
+            "total_queries": 0,
+            "passed_queries": 0,
+            "failed_queries": 0,
+            "metrics": {"pass_rate": 0.0},
+            "by_category": {},
+            "per_query": [],
+            "failures": [],
+        }
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval._evaluate_timeline_queries",
+        _fake_evaluate_timeline_queries,
+    )
+
     run_evaluation(live=True)
 
     assert captured["diagnostic_only"] is True
     assert captured["smart_diagnostic_only"] is True
+    assert captured["timeline_diagnostic_only"] is True
 
 
 def test_recall_ratio_computation() -> None:
