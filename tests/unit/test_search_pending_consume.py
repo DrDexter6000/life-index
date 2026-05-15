@@ -3,13 +3,12 @@
 import pytest
 from pathlib import Path
 
-from tools.lib.pending_writes import mark_pending, get_pending, clear_pending, has_pending
+from tools.lib.pending_writes import mark_pending, clear_pending, has_pending
 
 
 @pytest.fixture(autouse=True)
 def _isolate_index(tmp_path: Path, monkeypatch):
     """Isolate pending_writes, data dir, and index to tmp_path."""
-    import tools.lib.pending_writes as pw_mod
     idx = tmp_path / ".index"
     idx.mkdir()
     journals_dir = tmp_path / "Journals"
@@ -24,6 +23,7 @@ class TestSearchPendingConsume:
 
         # Mock build_all to avoid actually building indexes
         built = {"called": False}
+
         def mock_build_all(**kwargs):
             built["called"] = True
             return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
@@ -31,13 +31,14 @@ class TestSearchPendingConsume:
         import tools.build_index as bi
         import tools.lib.search_index as si
         import tools.search_journals.core as search_core
+
         monkeypatch.setattr(bi, "build_all", mock_build_all)
         monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
         monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
         monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
 
-        result = search_core.hierarchical_search(query="test", level=3)
+        search_core.hierarchical_search(query="test", level=3)
         assert built["called"], "build_all should be called when pending is non-empty"
         assert not has_pending(), "pending should be cleared after consumption"
 
@@ -46,6 +47,7 @@ class TestSearchPendingConsume:
         clear_pending()
 
         built = {"called": False}
+
         def mock_build_all(**kwargs):
             built["called"] = True
             return {"success": True}
@@ -54,6 +56,7 @@ class TestSearchPendingConsume:
         import tools.lib.search_index as si
         import tools.search_journals.core as search_core
         from tools.lib.index_freshness import FreshnessReport
+
         monkeypatch.setattr(bi, "build_all", mock_build_all)
         monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
         monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
@@ -66,7 +69,9 @@ class TestSearchPendingConsume:
         )
 
         search_core.hierarchical_search(query="test", level=3)
-        assert not built["called"], "build_all should NOT be called when pending is empty and index is fresh"
+        assert not built[
+            "called"
+        ], "build_all should NOT be called when pending is empty and index is fresh"
 
     def test_build_failure_does_not_block_search(self, tmp_path: Path, monkeypatch):
         """If build_all fails, search still proceeds and pending is retained."""
@@ -78,6 +83,7 @@ class TestSearchPendingConsume:
         import tools.build_index as bi
         import tools.lib.search_index as si
         import tools.search_journals.core as search_core
+
         monkeypatch.setattr(bi, "build_all", mock_build_all)
         monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
         monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
@@ -88,3 +94,87 @@ class TestSearchPendingConsume:
         assert result.get("success") is True
         assert result.get("pending_consumed") is False
         assert has_pending(), "pending should be retained so next search can retry the build"
+
+    def test_pending_success_exposes_index_status(self, tmp_path: Path, monkeypatch):
+        """Successful pending build exposes index_status with pending observability fields."""
+        mark_pending("Journals/2026/03/test.md")
+
+        def mock_build_all(**kwargs):
+            return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
+
+        import tools.build_index as bi
+        import tools.lib.search_index as si
+        import tools.search_journals.core as search_core
+
+        monkeypatch.setattr(bi, "build_all", mock_build_all)
+        monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
+        monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
+        monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
+        monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
+
+        result = search_core.hierarchical_search(query="test", level=3)
+
+        assert "index_status" in result, "index_status must be present in pending-write path"
+        ist = result["index_status"]
+        assert ist.get("pending_before_search") is True
+        assert ist.get("auto_updated") is True
+        assert ist.get("pending_consumed") is True
+        assert result.get("pending_consumed") is True, "top-level pending_consumed preserved"
+
+    def test_pending_failure_exposes_index_status(self, tmp_path: Path, monkeypatch):
+        """Failed/raised pending build exposes index_status with failure observability."""
+        mark_pending("Journals/2026/03/test.md")
+
+        def mock_build_all(**kwargs):
+            raise RuntimeError("Build crashed!")
+
+        import tools.build_index as bi
+        import tools.lib.search_index as si
+        import tools.search_journals.core as search_core
+
+        monkeypatch.setattr(bi, "build_all", mock_build_all)
+        monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
+        monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
+        monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
+        monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
+
+        result = search_core.hierarchical_search(query="test", level=3)
+
+        assert "index_status" in result, "index_status must be present even on build failure"
+        ist = result["index_status"]
+        assert ist.get("pending_before_search") is True
+        assert ist.get("auto_updated") is False
+        assert ist.get("pending_consumed") is False
+        assert result.get("pending_consumed") is False
+        assert has_pending(), "pending queue preserved for retry"
+        assert any(
+            "pending_index_update_failed" in str(w) for w in result.get("warnings", [])
+        ), "warning should record the failure"
+
+    def test_pending_unsuccessful_result_exposes_index_status(self, tmp_path: Path, monkeypatch):
+        """Build returns success=False (not raised) exposes failure index_status."""
+        mark_pending("Journals/2026/03/test.md")
+
+        def mock_build_all(**kwargs):
+            return {"success": False, "fts": {"error": "disk full"}, "vector": {"success": True}}
+
+        import tools.build_index as bi
+        import tools.lib.search_index as si
+        import tools.search_journals.core as search_core
+
+        monkeypatch.setattr(bi, "build_all", mock_build_all)
+        monkeypatch.setattr(si, "check_index_freshness", lambda: {"stale": False})
+        monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True})
+        monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
+        monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
+
+        result = search_core.hierarchical_search(query="test", level=3)
+
+        ist = result["index_status"]
+        assert ist.get("pending_before_search") is True
+        assert ist.get("auto_updated") is False
+        assert ist.get("pending_consumed") is False
+        assert has_pending(), "pending queue preserved for retry"
+        assert any(
+            "pending_index_update_failed" in str(w) for w in result.get("warnings", [])
+        ), "warning should record the failure on unsuccessful build result"

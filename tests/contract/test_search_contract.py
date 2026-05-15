@@ -16,7 +16,7 @@ Note: After Phase 2B refactoring, mock targets changed:
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -36,13 +36,12 @@ REQUIRED_RESPONSE_FIELDS = {
     "total_found",
     "performance",
     "warnings",  # Phase 2C: added warnings field
+    "index_status",  # Phase B: index observability (emitted on both paths)
 }
 
 
 def _load_golden(name: str) -> dict:
-    return json.loads(
-        (Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8")
-    )
+    return json.loads((Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8"))
 
 
 def _normalize_search_snapshot(result: dict) -> dict:
@@ -52,19 +51,39 @@ def _normalize_search_snapshot(result: dict) -> dict:
         performance["total_time_ms"] = 10.0
     # index_status is dynamic (fts_document_count, last_updated change per run).
     # Normalize to a stable shape for snapshot comparison.
+    # Two mutually exclusive paths:
+    #   - no-pending: contains freshness sub-dict (already handled below)
+    #   - pending-writes: contains pending_before_search, auto_updated, pending_consumed
     index_status = normalized.get("index_status")
     if isinstance(index_status, dict):
-        normalized["index_status"] = {
-            k: ("__normalized__" if k in ("fts_document_count", "last_updated") else v)
-            for k, v in index_status.items()
-        }
-        # Normalize freshness sub-dict if present
-        freshness = index_status.get("freshness")
-        if isinstance(freshness, dict):
-            normalized["index_status"]["freshness"] = {
-                k: ("__normalized__" if k in ("fts_document_count", "last_updated", "fts_fresh_since", "vector_fresh_since") else v)
-                for k, v in freshness.items()
+        # Pending-path: normalize pending observability fields to stable sentinel.
+        PENDING_FIELDS = {"pending_before_search", "auto_updated", "pending_consumed"}
+        if PENDING_FIELDS & set(index_status.keys()):
+            normalized["index_status"] = {
+                k: ("__normalized__" if k in PENDING_FIELDS else v) for k, v in index_status.items()
             }
+        else:
+            # No-pending path: normalize dynamic freshness fields.
+            normalized["index_status"] = {
+                k: ("__normalized__" if k in ("fts_document_count", "last_updated") else v)
+                for k, v in index_status.items()
+            }
+            freshness = index_status.get("freshness")
+            if isinstance(freshness, dict):
+                normalized["index_status"]["freshness"] = {
+                    k: (
+                        "__normalized__"
+                        if k
+                        in (
+                            "fts_document_count",
+                            "last_updated",
+                            "fts_fresh_since",
+                            "vector_fresh_since",
+                        )
+                        else v
+                    )
+                    for k, v in freshness.items()
+                }
     # entity_graph_status is dynamic (depends on whether graph file exists).
     # Round 10 T1.2: normalize to stable shape for snapshot comparison.
     graph_status = normalized.get("entity_graph_status")
@@ -87,7 +106,11 @@ def _normalize_search_snapshot(result: dict) -> dict:
     merged = normalized.get("merged_results", [])
     if isinstance(merged, list):
         normalized["merged_results"] = [
-            {k: v for k, v in item.items() if k in ("path", "rel_path", "title", "date", "rrf_score")}
+            {
+                k: v
+                for k, v in item.items()
+                if k in ("path", "rel_path", "title", "date", "rrf_score")
+            }
             for item in merged
         ]
     return normalized
@@ -131,7 +154,8 @@ def mock_search_dependencies():
                                 return_value=([], {}),
                             ):
                                 with patch(
-                                    "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
+                                    "tools.search_journals.semantic_pipeline."
+                                    "get_semantic_runtime_status",
                                     return_value={
                                         "available": True,
                                         "reason": "",
@@ -177,6 +201,66 @@ class TestSearchResponseShape:
 
         for field in REQUIRED_RESPONSE_FIELDS:
             assert field in result, f"Missing required field: {field}"
+
+    def test_pending_path_response_has_all_required_fields(self):
+        """Pending-writes path returns all required fields including index_status."""
+        fresh_report = FreshnessReport(
+            fts_fresh=True,
+            vector_fresh=True,
+            overall_fresh=True,
+            issues=[],
+        )
+        with (
+            patch("tools.search_journals.core.search_l1_index", return_value=[]),
+            patch(
+                "tools.search_journals.core.search_l2_metadata",
+                return_value={"results": [], "truncated": False, "total_available": 0},
+            ),
+            patch("tools.search_journals.core.scan_all_indices", return_value=[]),
+            patch(
+                "tools.search_journals.keyword_pipeline.search_l3_content",
+                return_value=[],
+            ),
+            patch(
+                "tools.search_journals.keyword_pipeline.search_l2_metadata",
+                return_value={"results": [], "truncated": False, "total_available": 0},
+            ),
+            patch(
+                "tools.search_journals.keyword_pipeline.search_l1_index",
+                return_value=[],
+            ),
+            patch(
+                "tools.search_journals.semantic_pipeline.search_semantic",
+                return_value=([], {}),
+            ),
+            patch(
+                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
+                return_value={"available": True, "reason": "", "note": ""},
+            ),
+            patch(
+                "tools.lib.index_freshness.check_full_freshness",
+                return_value=fresh_report,
+            ),
+            patch("tools.lib.pending_writes.has_pending", return_value=True),
+            patch(
+                "tools.build_index.build_all",
+                return_value={
+                    "success": True,
+                    "fts": {"success": True},
+                    "vector": {"success": True},
+                },
+            ),
+            patch("tools.search_journals.core.build_l0_candidate_set", return_value=set()),
+            patch("tools.search_journals.core._emit_search_metrics"),
+            patch("tools.lib.pending_writes.clear_pending"),
+        ):
+            result = hierarchical_search(query="test", level=3)
+
+        for field in REQUIRED_RESPONSE_FIELDS:
+            assert field in result, f"Pending path missing required field: {field}"
+        assert "pending_before_search" in result["index_status"]
+        assert "auto_updated" in result["index_status"]
+        assert "pending_consumed" in result["index_status"]
 
 
 class TestSearchFieldTypes:
@@ -298,9 +382,7 @@ class TestSearchGoldenSnapshots:
         l1_results = [{"path": "C:/tmp/a.md", "title": "A"}]
         l2_results = [{"path": "C:/tmp/a.md", "metadata": {"topic": ["work"]}}]
         l3_results = [{"path": "C:/tmp/a.md", "content": "Golden hit"}]
-        semantic_results = [
-            {"path": "C:/tmp/a.md", "score": 0.91, "title": "A semantic"}
-        ]
+        semantic_results = [{"path": "C:/tmp/a.md", "score": 0.91, "title": "A semantic"}]
         merged_results = [
             {
                 "path": "C:/tmp/a.md",

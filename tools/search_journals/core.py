@@ -1010,6 +1010,11 @@ def hierarchical_search(
 
     # Step 1: If pending writes, trigger build and consume
     if _has_pending():
+        result["index_status"] = {
+            "pending_before_search": True,
+            "auto_updated": False,
+            "pending_consumed": False,
+        }
         try:
             from ..build_index import build_all as _build_all
 
@@ -1020,7 +1025,9 @@ def hierarchical_search(
             )
             if build_success:
                 _clear_pending()
-                result.setdefault("pending_consumed", True)
+                result["pending_consumed"] = True
+                result["index_status"]["auto_updated"] = True
+                result["index_status"]["pending_consumed"] = True
             else:
                 error = (
                     build_result.get("error")
@@ -1029,10 +1036,11 @@ def hierarchical_search(
                 )
                 logger.warning("Pending index update returned unsuccessful: %s", error)
                 result["warnings"].append(f"pending_index_update_failed: {error}")
-                result.setdefault("pending_consumed", False)
+                result["pending_consumed"] = False
         except Exception as exc:
             logger.warning("Pending index update failed, continuing with stale index: %s", exc)
-            result.setdefault("pending_consumed", False)
+            result["warnings"].append(f"pending_index_update_failed: {exc}")
+            result["pending_consumed"] = False
     else:
         # Step 2: Check full freshness (FTS + vector + manifest)
         _freshness = _check_full_freshness(_index_dir)

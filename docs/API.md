@@ -650,6 +650,54 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 
 > 当前搜索结果中的 `path` 经常是绝对路径；上层调用方不应直接把它拼进 Web 路由。
 
+### `index_status` — 索引状态可观测性
+
+搜索返回值包含 `index_status` 字段，提供索引更新状态的机读信号。存在两条互斥路径：
+
+#### No-pending freshness 路径（无待消费写入）
+
+当 pending 队列为空时，`index_status` 包含 `freshness` 子字段：
+
+```json
+{
+  "index_status": {
+    "freshness": {
+      "fts_fresh": true,
+      "vector_fresh": true,
+      "overall_fresh": true,
+      "issues": []
+    }
+  }
+}
+```
+
+- `freshness`：`check_full_freshness()` 的完整报告
+- `auto_updated`：若索引 stale 触发了增量构建，为 `true`；否则为 `false`（仅 stale 时出现）
+
+#### Pending-writes 路径（有待消费写入）
+
+当 pending 队列非空时，`index_status` 包含 pending 可观测性字段：
+
+```json
+{
+  "index_status": {
+    "pending_before_search": true,
+    "auto_updated": true,
+    "pending_consumed": true
+  },
+  "pending_consumed": true
+}
+```
+
+| 子字段 | 类型 | 成功值 | 失败值 | 说明 |
+|--------|------|--------|--------|------|
+| `pending_before_search` | bool | `true` | `true` | 搜索开始时 pending 队列非空。此字段仅在该路径存在，值**始终为 `true`**（成功/失败均不变） |
+| `auto_updated` | bool | `true` | `false` | 增量索引构建是否成功执行 |
+| `pending_consumed` | bool | `true` | `false` | pending 队列是否已清空 |
+
+- 顶层 `pending_consumed`（bool）同时保留，作为向后兼容的快速判断字段
+- 构建失败时，`warnings` 数组中追加 `pending_index_update_failed: {error}` 条目，pending 队列保留以供下次搜索重试
+
 ### 错误码
 
 | 代码 | 说明 | 恢复策略 |
