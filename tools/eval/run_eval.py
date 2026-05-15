@@ -194,6 +194,8 @@ def _aggregate_query_passes(
         "predicate_type": "type",
         "predicate_field": "field",
         "predicate_value": "value",
+        "predicate_term": "term",
+        "predicate_threshold": "threshold",
     }
     for expected_key, actual_key in predicate_expectations.items():
         if expected_key in expected and predicate_payload.get(actual_key) != expected[expected_key]:
@@ -495,11 +497,17 @@ def _evaluate_smart_aggregate_queries(
             "predicate_type": predicate_payload.get("type"),
             "predicate_field": predicate_payload.get("field"),
             "predicate_value": predicate_payload.get("value"),
+            "predicate_term": predicate_payload.get("term"),
+            "predicate_threshold": predicate_payload.get("threshold"),
             "success": bool(aggregate_result.get("success")),
             "count": result_payload.get("count"),
             "exactness": result_payload.get("exactness"),
             "confidence": result_payload.get("confidence"),
             "evidence_count": len(aggregate_result.get("evidence_paths", [])),
+            "min_count": result_payload.get("min_count"),
+            "max_count": result_payload.get("max_count"),
+            "unknown_count": result_payload.get("unknown_count"),
+            "unknown_bucket_count": result_payload.get("unknown_bucket_count"),
             "index_scope_node_ids": [
                 str(ref["node_id"])
                 for ref in index_scope_refs

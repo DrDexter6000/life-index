@@ -1922,7 +1922,7 @@ smart_aggregate_queries:
 - id: SAGQ01
   query: past 60 days count journal entries where topic=work
   category: smart_aggregate_route
-  description: Deterministic smart-search route coverage for explicit field_equals aggregate intent.
+  description: Route-family coverage for explicit field_equals aggregate intent; this is a generic frontmatter predicate, not a scenario-specific feature.
   anchor_date: 2026-03-31
   expected:
     success: true
@@ -1940,3 +1940,69 @@ smart_aggregate_queries:
   - aggregate
   - field_equals
   - route
+- id: SAGQ02
+  query: past 60 days how many entries mention "OpenClaw"
+  category: smart_aggregate_route
+  description: Route-family coverage for quoted term_presence aggregate intent over a relative past-N-day range.
+  anchor_date: 2026-03-31
+  expected:
+    success: true
+    count: 2
+    exactness: approximate
+    unit: entry
+    range:
+      since: '2026-01-31'
+      until: '2026-03-31'
+    predicate_type: term_presence
+    predicate_term: OpenClaw
+  tags:
+  - smart-search
+  - aggregate
+  - term_presence
+  - route
+- id: SAGQ03
+  query: this year how many entries mention "OpenClaw"
+  category: smart_aggregate_route
+  description: Route-family coverage for current-year date anchoring with quoted term_presence aggregate intent.
+  anchor_date: 2026-03-31
+  expected:
+    success: true
+    count: 2
+    exactness: approximate
+    unit: entry
+    range:
+      since: '2026-01-01'
+      until: '2026-03-31'
+    predicate_type: term_presence
+    predicate_term: OpenClaw
+  tags:
+  - smart-search
+  - aggregate
+  - term_presence
+  - current_year
+  - route
+- id: SAGQ04
+  query: past 60 days how many days late sleep
+  category: smart_aggregate_route
+  description: Representative natural-language sample for the generic entry_time_after route family; this must remain route coverage, not a dedicated late-sleep feature.
+  anchor_date: 2026-03-31
+  expected:
+    success: true
+    count: 1
+    exactness: partial
+    unit: day
+    range:
+      since: '2026-01-31'
+      until: '2026-03-31'
+    predicate_type: entry_time_after
+    predicate_threshold: '22:00'
+    min_count: 1
+    max_count: 3
+    unknown_count: 2
+    unknown_bucket_count: 2
+  tags:
+  - smart-search
+  - aggregate
+  - entry_time_after
+  - route_family_sample
+  - not_scenario_specific

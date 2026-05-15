@@ -1183,6 +1183,14 @@ deterministic aggregate/analyze checks:
 - `smart_aggregate_queries` exercises smart-search deterministic aggregate
   routing before normal retrieval.
 
+`smart_aggregate_queries` is a route-family coverage matrix, not a product
+scenario registry. Each case must prove that a natural-language query maps to a
+generic deterministic primitive such as `journal_count`, `entry_time_after`,
+`term_presence`, or `field_equals`. Representative samples are allowed, but the
+expected contract must assert the generic route and predicate. For example,
+"late sleep" may only appear as a sample for `entry_time_after=22:00`; it must
+not create or require a dedicated `late_sleep` predicate in the CLI core.
+
 These cases do not participate in search MRR/Recall/Precision calculations;
 they are reported under `aggregate_eval` and `smart_aggregate_eval` so
 aggregate regressions and smart-search route regressions are visible without
@@ -1219,9 +1227,10 @@ polluting retrieval metrics.
 ```
 
 `smart_aggregate_eval` uses the same high-level shape, with per-query entries
-adding `eval_mode: "smart_aggregate"` and `route_present`. It validates that a
-natural-language smart-search query produced a top-level `aggregate_result`
-with the expected deterministic aggregate contract:
+adding `eval_mode: "smart_aggregate"`, `route_present`, and predicate-detail
+fields such as `predicate_term` or `predicate_threshold` when applicable. It
+validates that a natural-language smart-search query produced a top-level
+`aggregate_result` with the expected deterministic aggregate contract:
 
 ```json
 {
@@ -1245,6 +1254,8 @@ with the expected deterministic aggregate contract:
       "predicate_type": "field_equals",
       "predicate_field": "topic",
       "predicate_value": "work",
+      "predicate_term": null,
+      "predicate_threshold": null,
       "unit": "entry",
       "count": 4,
       "exactness": "exact",

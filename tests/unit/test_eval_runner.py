@@ -350,7 +350,7 @@ def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monk
     result = run_evaluation(data_dir=isolated_data_dir)
 
     smart_eval = result["smart_aggregate_eval"]
-    assert smart_eval["total_queries"] >= 1
+    assert smart_eval["total_queries"] == 4
     assert smart_eval["passed_queries"] == smart_eval["total_queries"]
     assert smart_eval["failed_queries"] == 0
     assert smart_eval["failures"] == []
@@ -366,6 +366,38 @@ def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monk
         "until": "2026-03-31",
     }
     assert by_id["SAGQ01"]["count"] == 4
+    assert by_id["SAGQ02"]["route_present"] is True
+    assert by_id["SAGQ02"]["predicate_type"] == "term_presence"
+    assert by_id["SAGQ02"]["predicate_term"] == "OpenClaw"
+    assert by_id["SAGQ02"]["unit"] == "entry"
+    assert by_id["SAGQ02"]["range"] == {
+        "since": "2026-01-31",
+        "until": "2026-03-31",
+    }
+    assert by_id["SAGQ02"]["count"] == 2
+    assert by_id["SAGQ03"]["route_present"] is True
+    assert by_id["SAGQ03"]["predicate_type"] == "term_presence"
+    assert by_id["SAGQ03"]["predicate_term"] == "OpenClaw"
+    assert by_id["SAGQ03"]["unit"] == "entry"
+    assert by_id["SAGQ03"]["range"] == {
+        "since": "2026-01-01",
+        "until": "2026-03-31",
+    }
+    assert by_id["SAGQ03"]["count"] == 2
+    assert by_id["SAGQ04"]["route_present"] is True
+    assert by_id["SAGQ04"]["predicate_type"] == "entry_time_after"
+    assert by_id["SAGQ04"]["predicate_threshold"] == "22:00"
+    assert by_id["SAGQ04"]["unit"] == "day"
+    assert by_id["SAGQ04"]["range"] == {
+        "since": "2026-01-31",
+        "until": "2026-03-31",
+    }
+    assert by_id["SAGQ04"]["count"] == 1
+    assert by_id["SAGQ04"]["exactness"] == "partial"
+    assert by_id["SAGQ04"]["min_count"] == 1
+    assert by_id["SAGQ04"]["max_count"] == 3
+    assert by_id["SAGQ04"]["unknown_count"] == 2
+    assert by_id["SAGQ04"]["unknown_bucket_count"] == 2
     assert any("Smart Aggregate Eval" in line for line in result["summary_lines"])
 
 
