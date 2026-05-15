@@ -9,6 +9,7 @@ Usage:
 
 Commands:
     write     Write a journal entry
+    confirm   Apply write confirmation updates
     search    Search journals (pure dual-pipeline)
     smart-search  Smart search with LLM orchestration
     edit      Edit a journal entry
@@ -18,7 +19,15 @@ Commands:
     generate-index  Generate index tree (monthly/yearly/root)
     abstract  (alias for generate-index)
     backup    Backup journal data
+    verify    Verify data integrity
+    timeline  Output chronological summary stream
+    migrate   Schema migration tool
+    eval      Run search evaluation gate
+    aggregate Deterministic aggregate/trend computation
+    analyze   Alias for aggregate
     health    Check installation health
+              --data-audit  Audit data directory for anomalies
+    version   Show package and bootstrap manifest version info
 """
 
 import json
