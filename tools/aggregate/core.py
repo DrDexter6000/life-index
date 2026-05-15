@@ -16,6 +16,7 @@ from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.paths import get_journals_dir, get_user_data_dir
 from tools.generate_index.navigation import (
     index_node_refs_for_range as _nav_index_node_refs_for_range,
+    resolve_month_dir_from_ref as _nav_resolve_month_dir_from_ref,
 )
 
 VALID_UNITS = {"day", "week", "month", "entry"}
@@ -117,12 +118,9 @@ def _scan_journals(journals_dir: Path, since: date, until: date) -> List[Dict[st
         return entries
 
     for ref in month_refs:
-        ref_id = ref.get("id", "")
-        parts = ref_id.split("/")
-        if len(parts) != 3:
+        month_dir = _nav_resolve_month_dir_from_ref(journals_dir, ref)
+        if month_dir is None:
             continue
-        year_str, month_str = parts[1], parts[2]
-        month_dir = journals_dir / year_str / month_str
         if not month_dir.is_dir():
             continue
         for md_file in sorted(month_dir.glob("life-index_*.md")):

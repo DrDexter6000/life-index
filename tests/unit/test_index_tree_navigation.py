@@ -14,6 +14,7 @@ from tools.generate_index.navigation import (
     enumerate_index_nodes,
     index_node_ref_for_date,
     index_node_refs_for_range,
+    resolve_month_dir_from_ref,
 )
 
 
@@ -692,3 +693,30 @@ class TestIndexNodeRefsForRange:
         )
         node_ids = [r["node_id"] for r in refs]
         assert node_ids == ["month:2026-01", "month:2026-02", "month:2026-03"]
+
+
+class TestResolveMonthDirFromRef:
+    def test_resolves_month_dir_from_ref_path(self, tmp_path: Path) -> None:
+        journals_dir = tmp_path / "Journals"
+        ref = {
+            "type": "month",
+            "node_id": "month:2026-03",
+            "path": "Journals/2026/03/index_2026-03.md",
+        }
+
+        assert resolve_month_dir_from_ref(journals_dir, ref) == journals_dir / "2026" / "03"
+
+    def test_falls_back_to_ref_id(self, tmp_path: Path) -> None:
+        journals_dir = tmp_path / "Journals"
+        ref = {
+            "type": "month",
+            "node_id": "month:2026-03",
+            "id": "Journals/2026/03",
+        }
+
+        assert resolve_month_dir_from_ref(journals_dir, ref) == journals_dir / "2026" / "03"
+
+    def test_malformed_ref_returns_none(self, tmp_path: Path) -> None:
+        journals_dir = tmp_path / "Journals"
+
+        assert resolve_month_dir_from_ref(journals_dir, {"path": "bad"}) is None

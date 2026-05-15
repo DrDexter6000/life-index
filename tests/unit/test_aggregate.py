@@ -1307,6 +1307,35 @@ class TestMonthPrefilterSpy:
         assert any("2026/02" in p for p in parsed_paths)
         assert any("2026/03" in p for p in parsed_paths)
 
+    def test_month_prefilter_uses_index_ref_path_when_id_is_absent(
+        self, sandbox: Path, monkeypatch
+    ) -> None:
+        import tools.aggregate.core as agg_core
+
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2026-03-14", "target")
+
+        monkeypatch.setattr(
+            agg_core,
+            "_nav_index_node_refs_for_range",
+            lambda _since, _until: [
+                {
+                    "type": "month",
+                    "node_id": "month:2026-03",
+                    "path": "Journals/2026/03/index_2026-03.md",
+                }
+            ],
+        )
+
+        result = run_aggregate(
+            range_str="2026-03-01..2026-03-31",
+            unit="entry",
+            predicate="journal_count",
+        )
+
+        assert result["success"] is True
+        assert result["result"]["count"] == 1
+
 
 class TestPartialUnknownSemantics:
     """RED 2: entry_time_after with mixed timed/untimed entries returns partial bounds.

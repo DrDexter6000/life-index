@@ -339,6 +339,10 @@ def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
     assert by_id["AGQ06"]["exactness"] == "exact"
     assert by_id["AGQ06"]["index_scope_node_ids"] == ["month:2026-03"]
     assert by_id["AGQ06"]["index_scope_ref_count"] == 1
+    assert by_id["AGQ07"]["count"] == 2
+    assert by_id["AGQ07"]["exactness"] == "approximate"
+    assert by_id["AGQ07"]["index_scope_node_ids"] == ["month:2026-03"]
+    assert by_id["AGQ07"]["index_scope_ref_count"] == 1
 
 
 def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monkeypatch) -> None:
@@ -350,7 +354,7 @@ def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monk
     result = run_evaluation(data_dir=isolated_data_dir)
 
     smart_eval = result["smart_aggregate_eval"]
-    assert smart_eval["total_queries"] == 4
+    assert smart_eval["total_queries"] == 5
     assert smart_eval["passed_queries"] == smart_eval["total_queries"]
     assert smart_eval["failed_queries"] == 0
     assert smart_eval["failures"] == []
@@ -398,6 +402,15 @@ def test_eval_runner_includes_smart_aggregate_eval(isolated_data_dir: Path, monk
     assert by_id["SAGQ04"]["max_count"] == 3
     assert by_id["SAGQ04"]["unknown_count"] == 2
     assert by_id["SAGQ04"]["unknown_bucket_count"] == 2
+    assert by_id["SAGQ05"]["route_present"] is True
+    assert by_id["SAGQ05"]["predicate_type"] == "journal_count"
+    assert by_id["SAGQ05"]["unit"] == "entry"
+    assert by_id["SAGQ05"]["range"] == {
+        "since": "2026-01-31",
+        "until": "2026-03-31",
+    }
+    assert by_id["SAGQ05"]["count"] == 12
+    assert by_id["SAGQ05"]["exactness"] == "exact"
     assert any("Smart Aggregate Eval" in line for line in result["summary_lines"])
 
 

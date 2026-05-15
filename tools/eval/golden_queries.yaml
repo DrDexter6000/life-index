@@ -1917,6 +1917,25 @@ aggregate_queries:
   - aggregate
   - field_equals
   - frontmatter
+- id: AGQ07
+  query: Count entries mentioning the OpenClaw entity from 2026-03-01 through 2026-03-31.
+  category: aggregate_analyze
+  description: Approximate entity_presence coverage for Entity Graph-backed aggregate eval.
+  aggregate:
+    range: 2026-03-01..2026-03-31
+    unit: entry
+    predicate: entity_presence=openclaw
+  expected:
+    success: true
+    count: 2
+    exactness: approximate
+    index_scope_node_ids:
+    - month:2026-03
+    index_scope_ref_count: 1
+  tags:
+  - aggregate
+  - entity_presence
+  - entity_graph
 
 smart_aggregate_queries:
 - id: SAGQ01
@@ -2006,3 +2025,22 @@ smart_aggregate_queries:
   - entry_time_after
   - route_family_sample
   - not_scenario_specific
+- id: SAGQ05
+  query: past 60 days how many journal entries
+  category: smart_aggregate_route
+  description: Route-family coverage for generic journal_count aggregate intent over a relative past-N-day range.
+  anchor_date: 2026-03-31
+  expected:
+    success: true
+    count: 12
+    exactness: exact
+    unit: entry
+    range:
+      since: '2026-01-31'
+      until: '2026-03-31'
+    predicate_type: journal_count
+  tags:
+  - smart-search
+  - aggregate
+  - journal_count
+  - route

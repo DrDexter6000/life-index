@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Dict, Optional
 
 from ..lib.frontmatter import parse_frontmatter
@@ -59,6 +59,22 @@ def build_month_node_ref(year_str: str, month_str: str) -> Optional[Dict[str, st
         "id": f"Journals/{year}/{month}",
         "path": f"Journals/{year}/{month}/index_{year}-{month}.md",
     }
+
+
+def resolve_month_dir_from_ref(journals_dir: Path, ref: dict) -> Optional[Path]:
+    ref_path = ref.get("path")
+    if isinstance(ref_path, str) and ref_path:
+        parent_parts = PurePosixPath(ref_path.replace("\\", "/")).parent.parts
+        if len(parent_parts) == 3 and parent_parts[0] == "Journals":
+            return journals_dir / parent_parts[1] / parent_parts[2]
+
+    ref_id = ref.get("id")
+    if isinstance(ref_id, str):
+        id_parts = ref_id.replace("\\", "/").split("/")
+        if len(id_parts) == 3 and id_parts[0] == "Journals":
+            return journals_dir / id_parts[1] / id_parts[2]
+
+    return None
 
 
 def _parse_index_frontmatter(file_path: Path) -> dict:
