@@ -25,6 +25,23 @@ class AggregateRoute:
     query: str
 
 
+_QUOTE_CHARS = r'"\u201c\u201d\u300c\u300d\'\u2018\u2019'
+_QUOTED_TERM_RE = re.compile(rf"[{_QUOTE_CHARS}]([^{_QUOTE_CHARS}]+)[{_QUOTE_CHARS}]")
+
+_MENTION_DAY_PATTERNS = [
+    re.compile(r"多少天.*提到"),
+    re.compile(r"几天.*提到"),
+    re.compile(r"how\s+many\s+days?\s+mention", re.IGNORECASE),
+]
+
+_MENTION_PATTERNS = [
+    re.compile(r"提到"),
+    re.compile(r"提及"),
+    re.compile(r"mention", re.IGNORECASE),
+    re.compile(r"提到.*次"),
+    re.compile(r"几次.*提到"),
+]
+
 _LATE_SLEEP_PATTERNS = [
     re.compile(r"晚睡"),
     re.compile(r"late\s+sleep", re.IGNORECASE),
@@ -140,6 +157,32 @@ def detect_aggregate_intent(query: str) -> AggregateRoute | None:
             predicate="journal_count",
             query=query,
         )
+
+    quoted_match = _QUOTED_TERM_RE.search(query)
+    if quoted_match and has_aggregate_signal:
+        term = quoted_match.group(1).strip()
+        if term:
+            has_mention = any(p.search(query) for p in _MENTION_PATTERNS)
+            if has_mention:
+                use_day = any(p.search(query) for p in _MENTION_DAY_PATTERNS)
+                effective_range_str = None
+                if past_match:
+                    n = int(past_match.group(1))
+                    since = anchor - timedelta(days=n - 1)
+                    effective_range_str = f"{since.isoformat()}..{anchor.isoformat()}"
+                else:
+                    for yp in _CURRENT_YEAR_PATTERNS:
+                        if yp.search(query):
+                            year_start = date(anchor.year, 1, 1)
+                            effective_range_str = f"{year_start.isoformat()}..{anchor.isoformat()}"
+                            break
+                if effective_range_str:
+                    return AggregateRoute(
+                        range_str=effective_range_str,
+                        unit="day" if use_day else "entry",
+                        predicate=f"term_presence={term}",
+                        query=query,
+                    )
 
     return None
 

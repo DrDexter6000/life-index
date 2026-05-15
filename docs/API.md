@@ -1062,6 +1062,11 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | "过去N天" + 聚合信号 + "多少天写日志/有记录" | `unit=day`, `predicate=journal_count` | "过去90天有多少天写日志" |
 | "past/last N days" + "how many/count" + "journal entries/logs" | `unit=entry`, `predicate=journal_count` | "past 30 days how many journal entries" |
 | "今年" + "写日志" + 聚合/趋势信号 | `unit=month`, `predicate=journal_count` | "统计一下我今年写日志的频率趋势" |
+| "过去N天" + 聚合信号 + 引号词 + "提到/mention" | `unit=entry`, `predicate=term_presence=TERM` | `过去60天有多少次提到"OpenClaw"` |
+| "过去N天" + 聚合信号 + 引号词 + "多少天提到" | `unit=day`, `predicate=term_presence=TERM` | `过去60天有多少天提到"OpenClaw"` |
+| "past/last N days" + "how many" + 引号词 + "mention" | `unit=entry`, `predicate=term_presence=TERM` | `past 60 days how many entries mention "OpenClaw"` |
+| "past/last N days" + "how many days" + 引号词 + "mention" | `unit=day`, `predicate=term_presence=TERM` | `past 60 days how many days mention "OpenClaw"` |
+| "今年/this year" + 聚合信号 + 引号词 + "提到/mention" | `unit=entry`, `predicate=term_presence=TERM` | `今年有多少次提到"OpenClaw"` |
 
 **委派行为**：
 
