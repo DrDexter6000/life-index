@@ -185,6 +185,49 @@ class TestDefaultOutputShape:
         assert "answer" not in result
         assert "filtered_results" in result
 
+    def test_past_days_journal_entries_route_to_aggregate_entry_count(self, monkeypatch):
+        """Past-N-day journal entry count questions route to aggregate journal_count."""
+        monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-15")
+        orch = SmartSearchOrchestrator(llm_client=None)
+        result = orch.search("过去90天有多少篇日志")
+        assert "aggregate_result" in result
+        aggregate = result["aggregate_result"]
+        assert aggregate["command"] == "aggregate"
+        assert aggregate["predicate"]["type"] == "journal_count"
+        assert aggregate["unit"] == "entry"
+        assert aggregate["range"] == {
+            "since": "2026-02-15",
+            "until": "2026-05-15",
+        }
+
+    def test_past_days_journal_days_route_to_aggregate_day_count(self, monkeypatch):
+        """Past-N-day journal day count questions route to aggregate journal_count."""
+        monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-15")
+        orch = SmartSearchOrchestrator(llm_client=None)
+        result = orch.search("过去90天有多少天写日志")
+        assert "aggregate_result" in result
+        aggregate = result["aggregate_result"]
+        assert aggregate["predicate"]["type"] == "journal_count"
+        assert aggregate["unit"] == "day"
+        assert aggregate["range"] == {
+            "since": "2026-02-15",
+            "until": "2026-05-15",
+        }
+
+    def test_past_days_journal_entries_english_route_to_aggregate(self, monkeypatch):
+        """English past-N-day journal entry count questions route deterministically."""
+        monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-15")
+        orch = SmartSearchOrchestrator(llm_client=None)
+        result = orch.search("past 30 days how many journal entries")
+        assert "aggregate_result" in result
+        aggregate = result["aggregate_result"]
+        assert aggregate["predicate"]["type"] == "journal_count"
+        assert aggregate["unit"] == "entry"
+        assert aggregate["range"] == {
+            "since": "2026-04-16",
+            "until": "2026-05-15",
+        }
+
 
 # Performance sub-fields
 

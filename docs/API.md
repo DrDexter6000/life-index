@@ -1055,6 +1055,9 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | 查询模式 | 路由参数 | 示例 |
 |----------|----------|------|
 | "过去N天" + 聚合信号 + "晚睡/late sleep" | `unit=day`, `predicate=entry_time_after=22:00` | "过去60天我有多少天晚睡" |
+| "过去N天" + 聚合信号 + "多少篇/条日志/日记/记录" | `unit=entry`, `predicate=journal_count` | "过去90天有多少篇日志" |
+| "过去N天" + 聚合信号 + "多少天写日志/有记录" | `unit=day`, `predicate=journal_count` | "过去90天有多少天写日志" |
+| "past/last N days" + "how many/count" + "journal entries/logs" | `unit=entry`, `predicate=journal_count` | "past 30 days how many journal entries" |
 | "今年" + "写日志" + 聚合/趋势信号 | `unit=month`, `predicate=journal_count` | "统计一下我今年写日志的频率趋势" |
 
 **委派行为**：

@@ -69,6 +69,20 @@ _WRITE_JOURNAL_PATTERNS = [
     re.compile(r"日志.*统计"),
 ]
 
+_JOURNAL_ENTRY_COUNT_PATTERNS = [
+    re.compile(r"多少[篇条个]?(日志|日记|记录)"),
+    re.compile(r"几[篇条个](日志|日记|记录)"),
+    re.compile(r"(how\s+many|count).*(journal|diary|log)\s+entr", re.IGNORECASE),
+    re.compile(r"(how\s+many|count).*(journals|diaries|logs)", re.IGNORECASE),
+]
+
+_JOURNAL_DAY_COUNT_PATTERNS = [
+    re.compile(r"多少天.*(写日志|写日记|有日志|有日记|有记录)"),
+    re.compile(r"几天.*(写日志|写日记|有日志|有日记|有记录)"),
+    re.compile(r"(how\s+many|count).*days?.*(journal|diary|log)", re.IGNORECASE),
+    re.compile(r"journal.*days?", re.IGNORECASE),
+]
+
 
 def _get_anchor() -> date:
     anchor_str = os.environ.get("LIFE_INDEX_TIME_ANCHOR", "")
@@ -100,6 +114,17 @@ def detect_aggregate_intent(query: str) -> AggregateRoute | None:
                 range_str=f"{since.isoformat()}..{anchor.isoformat()}",
                 unit="day",
                 predicate="entry_time_after=22:00",
+                query=query,
+            )
+
+        has_journal_day_count = any(p.search(query) for p in _JOURNAL_DAY_COUNT_PATTERNS)
+        has_journal_entry_count = any(p.search(query) for p in _JOURNAL_ENTRY_COUNT_PATTERNS)
+        if has_aggregate_signal and (has_journal_day_count or has_journal_entry_count):
+            since = anchor - timedelta(days=n_days - 1)
+            return AggregateRoute(
+                range_str=f"{since.isoformat()}..{anchor.isoformat()}",
+                unit="day" if has_journal_day_count else "entry",
+                predicate="journal_count",
                 query=query,
             )
 
