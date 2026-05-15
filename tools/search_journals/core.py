@@ -1014,9 +1014,22 @@ def hierarchical_search(
             from ..build_index import build_all as _build_all
 
             logger.info("Pending writes detected, triggering incremental index update")
-            _build_all(incremental=True)
-            _clear_pending()
-            result.setdefault("pending_consumed", True)
+            build_result = _build_all(incremental=True)
+            build_success = (
+                build_result.get("success", True) if isinstance(build_result, dict) else True
+            )
+            if build_success:
+                _clear_pending()
+                result.setdefault("pending_consumed", True)
+            else:
+                error = (
+                    build_result.get("error")
+                    or (build_result.get("fts") or {}).get("error")
+                    or "unknown index update failure"
+                )
+                logger.warning("Pending index update returned unsuccessful: %s", error)
+                result["warnings"].append(f"pending_index_update_failed: {error}")
+                result.setdefault("pending_consumed", False)
         except Exception as exc:
             logger.warning("Pending index update failed, continuing with stale index: %s", exc)
             result.setdefault("pending_consumed", False)
