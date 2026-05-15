@@ -100,6 +100,102 @@ class TestQuotedTermMentionNegative:
         assert route is None
 
 
+class TestFieldEqualsRoutePositive:
+    def test_chinese_field_equals_entry_count(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("过去60天有多少篇 topic=work 的日志")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:work"
+        assert route.unit == "entry"
+        assert route.range_str == "2026-03-17..2026-05-15"
+
+    def test_chinese_field_equals_day_count(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("过去60天有多少天 topic=work 的日记")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:work"
+        assert route.unit == "day"
+        assert route.range_str == "2026-03-17..2026-05-15"
+
+    def test_chinese_field_equals_current_year(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("今年有多少篇 topic=health 的日志")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:health"
+        assert route.unit == "entry"
+        assert route.range_str == "2026-01-01..2026-05-15"
+
+    def test_english_field_equals_past_n_days(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("past 30 days count journal entries where topic=work")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:work"
+        assert route.unit == "entry"
+        assert route.range_str == "2026-04-16..2026-05-15"
+
+    def test_field_colon_value_syntax(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("过去30天有多少篇 topic:work 的日志")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:work"
+        assert route.unit == "entry"
+
+    def test_field_equals_quoted_value_double_quotes(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent('过去30天有多少篇 topic="work" 的日志')
+        assert route is not None
+        assert route.predicate == "field_equals=topic:work"
+
+    def test_field_equals_quoted_value_single_quotes(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("过去30天有多少篇 topic='work' 的日志")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:work"
+
+    def test_field_equals_quoted_value_curly_quotes(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("过去30天有多少篇 topic=\u201cwork\u201d 的日志")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:work"
+
+    def test_field_equals_quoted_value_may_contain_space(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent('过去30天有多少篇 project="life index" 的日志')
+        assert route is not None
+        assert route.predicate == "field_equals=project:life index"
+
+    def test_english_field_equals_day_count(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("past 30 days how many days topic=health journal")
+        assert route is not None
+        assert route.predicate == "field_equals=topic:health"
+        assert route.unit == "day"
+
+
+class TestFieldEqualsRouteNegative:
+    def test_no_time_range_not_routed(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("有多少篇 topic=work 的日志")
+        assert route is None
+
+    def test_no_aggregate_signal_not_routed(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("过去60天 topic=work 的日志")
+        assert route is None
+
+    def test_invalid_field_name_not_routed(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("过去60天有多少篇 invalid-field=work 的日志")
+        assert route is None
+
+    def test_quoted_term_mention_route_unchanged(self, monkeypatch):
+        _set_anchor(monkeypatch, "2026-05-15")
+        route = detect_aggregate_intent("过去60天有多少次提到\u201cOpenClaw\u201d")
+        assert route is not None
+        assert "term_presence=OpenClaw" in route.predicate
+        assert route.unit == "entry"
+
+
 class TestExistingRoutesUnchanged:
     def test_late_sleep_still_routes(self, monkeypatch):
         _set_anchor(monkeypatch, "2026-05-13")

@@ -1067,6 +1067,11 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 | "past/last N days" + "how many" + 引号词 + "mention" | `unit=entry`, `predicate=term_presence=TERM` | `past 60 days how many entries mention "OpenClaw"` |
 | "past/last N days" + "how many days" + 引号词 + "mention" | `unit=day`, `predicate=term_presence=TERM` | `past 60 days how many days mention "OpenClaw"` |
 | "今年/this year" + 聚合信号 + 引号词 + "提到/mention" | `unit=entry`, `predicate=term_presence=TERM` | `今年有多少次提到"OpenClaw"` |
+| "过去N天" + 聚合信号 + `field=value` or `field:value` | `unit=entry`, `predicate=field_equals=FIELD:VALUE` | "过去60天有多少篇 topic=work 的日志" |
+| "过去N天" + 聚合信号 + "多少天" + `field=value` or `field:value` | `unit=day`, `predicate=field_equals=FIELD:VALUE` | "过去60天有多少天 topic=work 的日记" |
+| "今年/this year" + 聚合信号 + `field=value` or `field:value` | `unit=entry`, `predicate=field_equals=FIELD:VALUE` | "今年有多少篇 topic=health 的日志" |
+| "past/last N days" + "how many/count" + `field=value` or `field:value` | `unit=entry`, `predicate=field_equals=FIELD:VALUE` | "past 30 days count journal entries where topic=work" |
+| "past/last N days" + "how many days" + `field=value` or `field:value` | `unit=day`, `predicate=field_equals=FIELD:VALUE` | "past 30 days how many days topic=health journal" |
 
 **委派行为**：
 
@@ -1074,6 +1079,14 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 - 路由成功时，`aggregate` 为唯一计算器（`tools.aggregate.core.run_aggregate`），不经过 LLM rewrite/filter/synthesis 管线
 - 正常检索字段（`filtered_results`、`summary` 等）保留但为空值
 - `agent_unavailable` 继续表示 LLM 客户端是否不可用；它不是 aggregate 路由是否跳过 LLM 的标志
+
+**`field_equals` 自动路由限制**：
+
+- 仅支持显式 `field=value` 或 `field:value` 语法（field 必须匹配 `[A-Za-z_][A-Za-z0-9_]*`）；不支持模糊自然语言字段提取
+- value 可选地用单引号、双引号或弯引号包围，路由会自动去除引号；未加引号的 value 在第一个空白处结束，加引号的 value 可包含空格
+- 不含时间范围（"过去N天" 或 "今年/this year"）的查询不触发 `field_equals` 路由
+- 不含聚合信号（"多少"/"count"/"how many" 等）的查询不触发路由
+- 单位（`entry` vs `day`）由 "篇/条/个" vs "天" 或英文 "entries" vs "days" 决定
 
 #### `aggregate_result` 输出字段
 
@@ -1121,6 +1134,35 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
     "limitations": ["No reliable time-of-day field was available for one or more journal entries."]
   },
   "performance": {"total_time_ms": 45.2}
+}
+```
+
+**field_equals 路由示例**：
+
+```json
+{
+  "success": true,
+  "query": "过去60天有多少篇 topic=work 的日志",
+  "rewritten_query": "过去60天有多少篇 topic=work 的日志",
+  "filtered_results": [],
+  "summary": "",
+  "citations": [],
+  "agent_decisions": [],
+  "agent_unavailable": true,
+  "aggregate_result": {
+    "success": true,
+    "command": "aggregate",
+    "predicate": {"type": "field_equals", "field": "topic", "value": "work"},
+    "range": {"since": "2026-03-17", "until": "2026-05-15"},
+    "result": {
+      "count": 12,
+      "denominator": 60,
+      "exactness": "exact",
+      "confidence": "high"
+    },
+    "limitations": []
+  },
+  "performance": {"total_time_ms": 38.1}
 }
 ```
 

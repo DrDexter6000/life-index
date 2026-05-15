@@ -228,6 +228,22 @@ class TestDefaultOutputShape:
             "until": "2026-05-15",
         }
 
+    def test_explicit_field_equals_route_to_aggregate(self, monkeypatch):
+        """Explicit frontmatter field filters route to aggregate field_equals."""
+        monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-15")
+        orch = SmartSearchOrchestrator(llm_client=None)
+        result = orch.search("过去60天有多少篇 topic=work 的日志")
+        assert "aggregate_result" in result
+        aggregate = result["aggregate_result"]
+        assert aggregate["predicate"]["type"] == "field_equals"
+        assert aggregate["predicate"]["field"] == "topic"
+        assert aggregate["predicate"]["value"] == "work"
+        assert aggregate["unit"] == "entry"
+        assert aggregate["range"] == {
+            "since": "2026-03-17",
+            "until": "2026-05-15",
+        }
+
 
 # Performance sub-fields
 

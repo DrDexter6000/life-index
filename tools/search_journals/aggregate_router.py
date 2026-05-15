@@ -100,6 +100,18 @@ _JOURNAL_DAY_COUNT_PATTERNS = [
     re.compile(r"journal.*days?", re.IGNORECASE),
 ]
 
+_DAY_UNIT_SIGNAL_PATTERNS = [
+    re.compile(r"多少天"),
+    re.compile(r"how\s+many\s+days", re.IGNORECASE),
+]
+
+_FIELD_EQUALS_RE = re.compile(
+    rf"(?<![A-Za-z0-9_-])"
+    rf"([A-Za-z_][A-Za-z0-9_]*)"
+    rf"\s*[=:]\s*"
+    rf"(?:[{_QUOTE_CHARS}]([^{_QUOTE_CHARS}]+)[{_QUOTE_CHARS}]|([^\s=:]+))"
+)
+
 
 def _get_anchor() -> date:
     anchor_str = os.environ.get("LIFE_INDEX_TIME_ANCHOR", "")
@@ -111,8 +123,15 @@ def _get_anchor() -> date:
     return date.today()
 
 
+def _field_equals_parts(match: re.Match[str]) -> tuple[str, str]:
+    value = match.group(2) if match.group(2) is not None else match.group(3)
+    return match.group(1), value.strip()
+
+
 def detect_aggregate_intent(query: str) -> AggregateRoute | None:
     anchor = _get_anchor()
+
+    field_match = _FIELD_EQUALS_RE.search(query)
 
     past_match = _PAST_N_DAYS_RE.search(query)
     if not past_match:
@@ -131,6 +150,17 @@ def detect_aggregate_intent(query: str) -> AggregateRoute | None:
                 range_str=f"{since.isoformat()}..{anchor.isoformat()}",
                 unit="day",
                 predicate="entry_time_after=22:00",
+                query=query,
+            )
+
+        if field_match and has_aggregate_signal:
+            field_name, field_value = _field_equals_parts(field_match)
+            use_day = any(p.search(query) for p in _DAY_UNIT_SIGNAL_PATTERNS)
+            since = anchor - timedelta(days=n_days - 1)
+            return AggregateRoute(
+                range_str=f"{since.isoformat()}..{anchor.isoformat()}",
+                unit="day" if use_day else "entry",
+                predicate=f"field_equals={field_name}:{field_value}",
                 query=query,
             )
 
@@ -155,6 +185,17 @@ def detect_aggregate_intent(query: str) -> AggregateRoute | None:
             range_str=f"{year_start.isoformat()}..{anchor.isoformat()}",
             unit="month",
             predicate="journal_count",
+            query=query,
+        )
+
+    if has_current_year and field_match and has_aggregate_signal:
+        year_start = date(anchor.year, 1, 1)
+        field_name, field_value = _field_equals_parts(field_match)
+        use_day = any(p.search(query) for p in _DAY_UNIT_SIGNAL_PATTERNS)
+        return AggregateRoute(
+            range_str=f"{year_start.isoformat()}..{anchor.isoformat()}",
+            unit="day" if use_day else "entry",
+            predicate=f"field_equals={field_name}:{field_value}",
             query=query,
         )
 
