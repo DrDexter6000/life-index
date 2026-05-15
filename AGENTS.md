@@ -46,7 +46,8 @@
 | **修改 Entity Graph / alias / relationship** | `docs/ENTITY_GRAPH.md` + `docs/ARCHITECTURE.md` §5.3 | 实体图谱操作契约 + 搜索集成边界 |
 | **版本号 / release / tag 操作** | `docs/VERSIONING.md` + `CHANGELOG.md` | 保守 SemVer + release checklist + tag policy |
 | **并行 session / mission / dirty state / CI 归属** | `.agents.local.md` → `.agent-governance/README.md` | 本地私有治理层；存在时必须遵守，不进入公开仓库 |
-| **Maestro 编排 / Auto Run / worker dispatch / 长程治理** | `.agent-governance/maestro/MAESTRO-ORCHESTRATION-SOP.md` + `.agent-governance/maestro/LONG-HORIZON-ORCHESTRATION-DOCTRINE.md` + `.agent-governance/maestro/LIFE-INDEX-LONG-HORIZON-ADAPTER.md` | 本地 Maestro 主审、worker 调度、长程任务循环与决策注册规则；非平凡任务必须遵守 |
+| **Maestro 编排 / Auto Run / worker dispatch** | `.agent-governance/maestro/MAESTRO-EXECUTION.md` + `.agent-governance/maestro/MAESTRO-REFERENCE.md` | 本地 Maestro 主审、worker 调度、Auto Run、worker evidence vs lead acceptance；非平凡任务必须遵守 |
+| **长程治理 / mission graph / TDD Program Plan** | `.agent-governance/maestro/LONG-HORIZON-ORCHESTRATION-DOCTRINE.md` + `.agent-governance/maestro/LIFE-INDEX-LONG-HORIZON-ADAPTER.md` | 长程任务循环、decision register、user-presence floor、milestone envelope |
 | **代码风格疑问** | `docs/ARCHITECTURE.md` §6.1 | 命名、类型注解、路径处理等 |
 | **模块结构疑问** | `docs/ARCHITECTURE.md` §6.2 | tools/ 目录树 |
 | **本地部署到实机** | `.agents.local.md` | 本地 OpenClaw/WSL 部署路径（已 gitignored） |
