@@ -1898,3 +1898,22 @@ aggregate_queries:
   - aggregate
   - entry_time_after
   - partial
+- id: AGQ06
+  query: Count work-topic journal entries from 2026-03-01 through 2026-03-31.
+  category: aggregate_analyze
+  description: Deterministic field_equals coverage for frontmatter topic matching in aggregate eval.
+  aggregate:
+    range: 2026-03-01..2026-03-31
+    unit: entry
+    predicate: field_equals=topic:work
+  expected:
+    success: true
+    count: 4
+    exactness: exact
+    index_scope_node_ids:
+    - month:2026-03
+    index_scope_ref_count: 1
+  tags:
+  - aggregate
+  - field_equals
+  - frontmatter

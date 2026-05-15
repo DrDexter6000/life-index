@@ -328,6 +328,10 @@ def test_eval_runner_includes_aggregate_eval(isolated_data_dir: Path) -> None:
     assert by_id["AGQ05"]["unknown_count"] == 1
     assert by_id["AGQ05"]["index_scope_node_ids"] == ["month:2026-03"]
     assert by_id["AGQ05"]["index_scope_ref_count"] == 1
+    assert by_id["AGQ06"]["count"] == 4
+    assert by_id["AGQ06"]["exactness"] == "exact"
+    assert by_id["AGQ06"]["index_scope_node_ids"] == ["month:2026-03"]
+    assert by_id["AGQ06"]["index_scope_ref_count"] == 1
 
 
 def test_eval_runner_reports_aggregate_eval_failures(monkeypatch, tmp_path: Path) -> None:
