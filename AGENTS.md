@@ -1,7 +1,7 @@
 <!-- AGENTS.md - Life Index Agent 导航入口 -->
 
 > 本文档为 AI 编码代理提供**快速导航入口**。详细规范已归源到 SSOT 文档，本文件仅保留指引与 Agent 行为约束。
-> **最后更新**: 2026-05-04 | **AGENTS.md 文档版本**: v3.0 | **状态**: 活跃维护
+> **最后更新**: 2026-05-16 | **AGENTS.md 文档版本**: v3.1 | **状态**: 活跃维护
 >
 > 本地专属配置（含部署路径与 Agent 并行治理规则）见 `.agents.local.md`（已 gitignored，仅本地可用）。
 > 若 `.agents.local.md` 存在，所有 Agent 在执行任何**非只读**任务前必须先读取它，并遵守其中指向的本地治理层。
@@ -46,7 +46,7 @@
 | **修改 Entity Graph / alias / relationship** | `docs/ENTITY_GRAPH.md` + `docs/ARCHITECTURE.md` §5.3 | 实体图谱操作契约 + 搜索集成边界 |
 | **版本号 / release / tag 操作** | `docs/VERSIONING.md` + `CHANGELOG.md` | 保守 SemVer + release checklist + tag policy |
 | **并行 session / mission / dirty state / CI 归属** | `.agents.local.md` → `.agent-governance/README.md` | 本地私有治理层；存在时必须遵守，不进入公开仓库 |
-| **Maestro 编排 / Auto Run / worker dispatch** | `.agent-governance/maestro/MAESTRO-EXECUTION.md` + `.agent-governance/maestro/MAESTRO-REFERENCE.md` | 本地 Maestro 主审、worker 调度、Auto Run、worker evidence vs lead acceptance；非平凡任务必须遵守 |
+| **Maestro 编排 / Auto Run / worker dispatch** | `.agent-governance/maestro/MAESTRO-EXECUTION.md` + `.agent-governance/maestro/MAESTRO-REFERENCE.md` | 本地 Maestro 主审、worker 调度、Auto Run、worker evidence vs lead acceptance；常规 Maestro 执行入口 |
 | **长程治理 / mission graph / TDD Program Plan** | `.agent-governance/maestro/LONG-HORIZON-ORCHESTRATION-DOCTRINE.md` + `.agent-governance/maestro/LIFE-INDEX-LONG-HORIZON-ADAPTER.md` | 长程任务循环、decision register、user-presence floor、milestone envelope |
 | **代码风格疑问** | `docs/ARCHITECTURE.md` §6.1 | 命名、类型注解、路径处理等 |
 | **模块结构疑问** | `docs/ARCHITECTURE.md` §6.2 | tools/ 目录树 |
