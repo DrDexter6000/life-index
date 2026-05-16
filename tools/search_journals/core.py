@@ -962,6 +962,7 @@ def hierarchical_search(
         from .query_preprocessor import build_search_plan as _build_plan
 
         _plan = _build_plan(query, reference_date=_now)
+        _plan.entity_hints_used = entity_hints
         result["search_plan"] = _plan.to_dict()
         # C1-a/b: Propagate typo-corrected / alias-expanded query into pipeline
         if _plan.normalized_query and _plan.normalized_query != query:

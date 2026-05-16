@@ -671,3 +671,51 @@ class TestMultiWordAliasHintResolution:
 
         assert "Life Index" in expanded
         assert "日志系统" in expanded
+
+
+# ---------------------------------------------------------------------------
+# T2: entity_hints_used in search_plan mirrors entity_hints
+# ---------------------------------------------------------------------------
+
+
+class TestEntityHintsUsedInSearchPlan:
+    """T2-QP-SE: search_plan.entity_hints_used must mirror result.entity_hints."""
+
+    def test_entity_hints_used_mirrors_entity_hints(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import hierarchical_search
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        result = hierarchical_search(query="老婆", level=3, semantic=False)
+        entity_hints = result["entity_hints"]
+        search_plan = result.get("search_plan")
+        assert search_plan is not None, "search_plan should be populated for non-empty query"
+        entity_hints_used = search_plan["entity_hints_used"]
+        if entity_hints:
+            assert entity_hints_used == entity_hints, (
+                f"entity_hints_used should mirror entity_hints when hints resolved: "
+                f"got {entity_hints_used}, expected {entity_hints}"
+            )
+        else:
+            assert (
+                entity_hints_used == []
+            ), "entity_hints_used should be empty when no hints resolved"
+
+    def test_entity_hints_used_empty_when_no_entity_match(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import hierarchical_search
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        result = hierarchical_search(query="完全陌生的查询xyz", level=3, semantic=False)
+        search_plan = result.get("search_plan")
+        assert search_plan is not None
+        assert search_plan["entity_hints_used"] == []
+
+    def test_entity_hints_used_mirrors_multi_entity_hints(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import hierarchical_search
+
+        _save_graph(_spouse_family_graph(), isolated_data_dir)
+        result = hierarchical_search(query="老婆 重庆", level=3, semantic=False)
+        entity_hints = result["entity_hints"]
+        search_plan = result.get("search_plan")
+        assert search_plan is not None
+        if entity_hints:
+            assert search_plan["entity_hints_used"] == entity_hints
