@@ -460,6 +460,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
 
     for token in tokens:
         # Try phrase patterns
+        phrase_matched = False
         for pattern in view.phrase_patterns:
             suffix = pattern["suffix"]
             relation = pattern["relation"]
@@ -485,7 +486,10 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
                     matched_any = True
 
             if matched_any:
+                phrase_matched = True
                 break
+        if phrase_matched:
+            continue
 
         # Direct entity match
         matched = resolve_via_runtime(token, view)
