@@ -500,6 +500,7 @@ def main() -> None:
 def print_usage() -> None:
     """Print usage information"""
     print("Usage: life-index <command> [options]")
+    print("       python -m tools <command> [options]")
     print()
     print("Commands:")
     print("  write     Write a journal entry")
