@@ -114,6 +114,35 @@ python -m tools.write_journal --data '{...}'
 
 ## Agent 行为约束
 
+### OpenCode TypeScript LSP 运行时保护
+
+本地应保留项目级 OpenCode 配置：`.opencode/opencode.json`，禁用 `typescript` LSP。该文件属于本地运行时配置，必须保持 gitignored，不得提交或推送。
+
+背景：FDE 项目在 OpenCode `1.15.3` 下复现过 TypeScript read-tool 失败，触发路径为"读取 `.ts` 文件 → OpenCode 启动 TypeScript LSP → 出现 `InstanceRef not provided` → Auto Run/continuation 失败"。该配置是预防性平移，用于避免 Life Index 未来在类似 TypeScript/JavaScript 项目结构或 worker 任务中命中同类 runtime 问题。
+
+该配置不禁用 TypeScript、Python、测试、构建、文件读取或模型推理；只关闭 OpenCode 在本项目内的 IDE 式 TypeScript 语义辅助。
+
+本地复现方式：如果新 clone 或新机器缺少该文件，按以下内容在本地创建 `.opencode/opencode.json`，不要把它加入 Git：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": {
+    "typescript": {
+      "disabled": true
+    }
+  }
+}
+```
+
+补偿规则：
+
+- TypeScript/JavaScript 相关任务必须优先使用 `rg`、`rg --files`、定向文件读取、明确的文件/函数引用来建立代码上下文。
+- 涉及代码变更时，用确定性 gate 补足语义确认：相关测试、typecheck、lint、契约测试或构建命令，按任务风险选择。
+- 跨文件或行为变更必须提供具体文件/函数证据；中高风险变更应安排独立 review worker。
+- 不得根据该 incident 推断某个 provider 或 worker 长期不可用；已验证的问题是 OpenCode TypeScript LSP 路径。
+- OpenCode 升级后，可临时删除本地 `.opencode/opencode.json` 做一次受控复测；只有复测通过后才恢复 TypeScript LSP。
+
 ### 工具调用规则
 
 ```bash
