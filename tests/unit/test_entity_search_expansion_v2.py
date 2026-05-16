@@ -719,3 +719,105 @@ class TestEntityHintsUsedInSearchPlan:
         assert search_plan is not None
         if entity_hints:
             assert search_plan["entity_hints_used"] == entity_hints
+
+
+# ---------------------------------------------------------------------------
+# T6: Embedded CJK Entity Resolver Tests
+# ---------------------------------------------------------------------------
+
+
+def _chongqing_with_city_graph() -> list[dict]:
+    """Graph with place-chongqing and place-chongqing-city for longest-match testing."""
+    return [
+        {
+            "id": "person-zhouyu",
+            "type": "person",
+            "primary_name": "周渝",
+            "aliases": [],
+            "attributes": {},
+            "relationships": [],
+        },
+        {
+            "id": "place-chongqing",
+            "type": "place",
+            "primary_name": "重庆",
+            "aliases": ["渝", "Chongqing", "山城"],
+            "attributes": {},
+            "relationships": [],
+        },
+        {
+            "id": "place-chongqing-city",
+            "type": "place",
+            "primary_name": "重庆城",
+            "aliases": ["山城重庆"],
+            "attributes": {},
+            "relationships": [],
+        },
+    ]
+
+
+class TestResolveQueryEntitiesEmbeddedCjk:
+    """T6: resolve_query_entities must detect entity names embedded inside
+    unsplit CJK tokens via substring scanning, mirroring the expander's
+    _iter_entity_term_spans logic.
+    """
+
+    def test_resolve_embedded_chongqing(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        hints = resolve_query_entities("在重庆发生过的事")
+
+        assert len(hints) == 1
+        assert hints[0]["entity_id"] == "place-chongqing"
+        assert hints[0]["reason"] == "embedded_name_match"
+        assert "重庆" in hints[0]["expansion_terms"]
+
+    def test_resolve_embedded_chongqing_surrounded_longest_match(
+        self, isolated_data_dir: Path
+    ) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(_chongqing_with_city_graph(), isolated_data_dir)
+        hints = resolve_query_entities("在重庆城里散步")
+
+        assert any(h["entity_id"] == "place-chongqing-city" for h in hints)
+
+    def test_no_resolve_single_char_yu(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        hints = resolve_query_entities("在重庆发生过的事")
+
+        matched_ids = [h["entity_id"] for h in hints]
+        assert "person-zhouyu" not in matched_ids
+
+    def test_resolve_embedded_case_insensitive(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(_chongqing_with_short_alias_graph(), isolated_data_dir)
+        hints = resolve_query_entities("在chongqing发生的事")
+
+        assert len(hints) == 1
+        assert hints[0]["entity_id"] == "place-chongqing"
+        assert hints[0]["reason"] == "embedded_name_match"
+
+    def test_no_resolve_embedded_ascii_inside_word(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import resolve_query_entities
+
+        _save_graph(
+            [
+                {
+                    "id": "alice-person",
+                    "type": "person",
+                    "primary_name": "Alice",
+                    "aliases": ["Ali"],
+                    "attributes": {},
+                    "relationships": [],
+                },
+            ],
+            isolated_data_dir,
+        )
+        hints = resolve_query_entities("Alibaba")
+
+        assert len(hints) == 0

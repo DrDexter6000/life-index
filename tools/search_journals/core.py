@@ -492,6 +492,33 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
         if matched:
             reason = "primary_name_match" if token == matched["primary_name"] else "alias_match"
             _add_hint(matched, token, reason)
+        else:
+            # Substring scanning for entity names embedded in unsplit CJK tokens.
+            # Mirrors expand_query_with_entity_graph's Path 1 logic with
+            # identical guardrails: two-char minimum, position-aware
+            # non-overlapping, longest-match-wins, ASCII word boundaries.
+            spans: list[tuple[int, int, dict[str, Any]]] = []
+            for entity in graph:
+                for name in [entity["primary_name"], *entity.get("aliases", [])]:
+                    if len(str(name).strip()) < 2:
+                        continue
+                    for idx, end in _iter_entity_term_spans(token, str(name)):
+                        spans.append((idx, end, entity))
+
+            spans.sort(key=lambda s: (s[0], -(s[1] - s[0])))
+
+            accepted: list[tuple[int, int, dict[str, Any]]] = []
+            last_end = 0
+            for start, end, ent in spans:
+                if start < last_end:
+                    continue
+                if accepted and accepted[-1][0] == start:
+                    continue
+                accepted.append((start, end, ent))
+                last_end = end
+
+            for _, _, ent in accepted:
+                _add_hint(ent, token, "embedded_name_match")
 
     # Multi-word window: try adjacent token spans for entities whose primary
     # name or alias contains spaces (e.g. "Life Index", "Life Index Project").
