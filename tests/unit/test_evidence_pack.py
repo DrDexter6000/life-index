@@ -383,12 +383,12 @@ class TestEvidencePack:
             total_available=0,
             has_more=False,
             no_confident_match=False,
-            extra={"schema_version": "0.1.0"},
+            extra={"custom_version": "0.1.0"},
         )
         d = pack.to_dict()
-        assert d["schema_version"] == "0.1.0"
+        assert d["custom_version"] == "0.1.0"
         pack2 = EvidencePack.from_dict(d)
-        assert pack2.extra["schema_version"] == "0.1.0"
+        assert pack2.extra["custom_version"] == "0.1.0"
 
 
 # ---------------------------------------------------------------------------

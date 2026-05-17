@@ -8,7 +8,7 @@ semantic, LLM, filesystem, or production data. Does not modify input.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal, cast
 
 from tools.evidence.types import (
     DocumentRef,
@@ -87,7 +87,7 @@ def _safe_path(raw_path: str, result: dict[str, Any]) -> str:
     return _journals_suffix(normalized_raw)
 
 
-def _determine_provenance(source: str) -> str:
+def _determine_provenance(source: str) -> Literal["keyword", "semantic", "hybrid"]:
     """Map search source field to provenance tag."""
     if not source or source == "none":
         return "keyword"
@@ -136,7 +136,7 @@ def _build_score_breakdown(result: dict[str, Any], rank: int) -> ScoreBreakdown:
         similarity=float(result.get("semantic_score", result.get("similarity", 0.0))),
         rrf_score=float(result.get("rrf_score", 0.0)),
         final_score=float(result.get("final_score", 0.0)),
-        confidence=str(result.get("confidence", "low")),
+        confidence=cast(Literal["high", "medium", "low"], str(result.get("confidence", "low"))),
     )
 
 
@@ -479,4 +479,5 @@ def build_evidence_pack(search_result: dict[str, Any]) -> EvidencePack:
         has_more=bool(search_result.get("has_more", False)),
         no_confident_match=bool(search_result.get("no_confident_match", False)),
         diagnostics=compute_diagnostics(search_result),
+        schema_version="1.0.0",
     )

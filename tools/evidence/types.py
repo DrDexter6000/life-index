@@ -9,8 +9,9 @@ Pattern follows tools/eval/eval_types.py.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, cast
 
 
 def _normalize_path(path: str) -> str:
@@ -33,7 +34,7 @@ class ScoreBreakdown:
     similarity: float = 0.0
     rrf_score: float = 0.0
     final_score: float = 0.0
-    confidence: str = "low"  # "high", "medium", "low"
+    confidence: Literal["high", "medium", "low"] = "low"
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     _KNOWN_KEYS = frozenset(
@@ -57,7 +58,7 @@ class ScoreBreakdown:
             similarity=float(data.get("similarity", 0.0)),
             rrf_score=float(data.get("rrf_score", 0.0)),
             final_score=float(data.get("final_score", 0.0)),
-            confidence=str(data.get("confidence", "low")),
+            confidence=cast(Literal["high", "medium", "low"], str(data.get("confidence", "low"))),
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
 
@@ -215,7 +216,7 @@ class EvidenceItem:
     snippet: str
     abstract: str | None = None
     explain: dict[str, Any] | None = None
-    provenance: str = "keyword"
+    provenance: Literal["keyword", "semantic", "hybrid"] = "keyword"
     entity_matches: list[EntityMatch] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -240,7 +241,9 @@ class EvidenceItem:
             snippet=str(data.get("snippet", "")),
             abstract=data.get("abstract"),
             explain=data.get("explain"),
-            provenance=str(data.get("provenance", "keyword")),
+            provenance=cast(
+                Literal["keyword", "semantic", "hybrid"], str(data.get("provenance", "keyword"))
+            ),
             entity_matches=entity_matches,
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
@@ -381,7 +384,7 @@ class QueryContext:
 class PipelineComposition:
     """Deterministic classification of which pipelines contributed results."""
 
-    primary_pipeline: str  # "none", "fts", "semantic", "hybrid"
+    primary_pipeline: Literal["none", "fts", "semantic", "hybrid"]
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     _KNOWN_KEYS = frozenset({"primary_pipeline"})
@@ -389,7 +392,10 @@ class PipelineComposition:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PipelineComposition:
         return cls(
-            primary_pipeline=str(data.get("primary_pipeline", "none")),
+            primary_pipeline=cast(
+                Literal["none", "fts", "semantic", "hybrid"],
+                str(data.get("primary_pipeline", "none")),
+            ),
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
 
@@ -413,7 +419,7 @@ class EvidenceDiagnostics:
     retrieval quality.
     """
 
-    retrieval_outcome: str  # "zero_results", "weak_results", "no_confident_match", "ok"
+    retrieval_outcome: Literal["ok", "weak_results", "no_confident_match", "zero_results"]
     outcome_reason: str = ""
     notes: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
@@ -436,7 +442,10 @@ class EvidenceDiagnostics:
         if "pipeline_composition" in data and data["pipeline_composition"] is not None:
             pipeline_composition = PipelineComposition.from_dict(data["pipeline_composition"])
         return cls(
-            retrieval_outcome=str(data.get("retrieval_outcome", "ok")),
+            retrieval_outcome=cast(
+                Literal["ok", "weak_results", "no_confident_match", "zero_results"],
+                str(data.get("retrieval_outcome", "ok")),
+            ),
             outcome_reason=str(data.get("outcome_reason", "")),
             notes=list(data.get("notes", [])),
             suggestions=list(data.get("suggestions", [])),
@@ -476,6 +485,7 @@ class EvidencePack:
     has_more: bool
     no_confident_match: bool
     diagnostics: EvidenceDiagnostics | None = None
+    schema_version: str = "1.0.0"
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     _KNOWN_KEYS = frozenset(
@@ -487,6 +497,7 @@ class EvidencePack:
             "has_more",
             "no_confident_match",
             "diagnostics",
+            "schema_version",
         }
     )
 
@@ -505,6 +516,7 @@ class EvidencePack:
             has_more=bool(data.get("has_more", False)),
             no_confident_match=bool(data.get("no_confident_match", False)),
             diagnostics=diagnostics,
+            schema_version=str(data.get("schema_version", "1.0.0")),
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
         )
 
@@ -516,8 +528,69 @@ class EvidencePack:
             "total_available": self.total_available,
             "has_more": self.has_more,
             "no_confident_match": self.no_confident_match,
+            "schema_version": self.schema_version,
         }
         if self.diagnostics is not None:
             d["diagnostics"] = self.diagnostics.to_dict()
         d.update(self.extra)
         return d
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+_KNOWN_SCHEMA_VERSIONS = {"1.0.0"}
+_VALID_CONFIDENCE = {"high", "medium", "low"}
+_VALID_PROVENANCE = {"keyword", "semantic", "hybrid"}
+_VALID_RETRIEVAL_OUTCOME = {"ok", "weak_results", "no_confident_match", "zero_results"}
+_VALID_PRIMARY_PIPELINE = {"none", "fts", "semantic", "hybrid"}
+
+
+def validate_evidence_pack(pack: EvidencePack) -> None:
+    """Validate domain values in *pack*.
+
+    Raises:
+        ValueError: If any constrained field contains an invalid value.
+
+    Warns:
+        UserWarning: If *pack.schema_version* is not in the known set.
+
+    Guarantees:
+        - Does not mutate *pack* or any nested object.
+        - Does not inspect or reject *extra* fields.
+    """
+    if pack.schema_version not in _KNOWN_SCHEMA_VERSIONS:
+        warnings.warn(
+            f"Unknown schema_version: {pack.schema_version!r}",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    for i, item in enumerate(pack.items):
+        if item.scores.confidence not in _VALID_CONFIDENCE:
+            raise ValueError(
+                f"items[{i}].scores.confidence={item.scores.confidence!r} "
+                f"not in {_VALID_CONFIDENCE}"
+            )
+        if item.provenance not in _VALID_PROVENANCE:
+            raise ValueError(
+                f"items[{i}].provenance={item.provenance!r} " f"not in {_VALID_PROVENANCE}"
+            )
+
+    if pack.diagnostics is not None:
+        if pack.diagnostics.retrieval_outcome not in _VALID_RETRIEVAL_OUTCOME:
+            raise ValueError(
+                f"diagnostics.retrieval_outcome={pack.diagnostics.retrieval_outcome!r} "
+                f"not in {_VALID_RETRIEVAL_OUTCOME}"
+            )
+        if (
+            pack.diagnostics.pipeline_composition is not None
+            and pack.diagnostics.pipeline_composition.primary_pipeline
+            not in _VALID_PRIMARY_PIPELINE
+        ):
+            raise ValueError(
+                f"diagnostics.pipeline_composition.primary_pipeline="
+                f"{pack.diagnostics.pipeline_composition.primary_pipeline!r} "
+                f"not in {_VALID_PRIMARY_PIPELINE}"
+            )
