@@ -14,6 +14,8 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from tools.evidence.builder import build_evidence_pack
@@ -2172,3 +2174,182 @@ class TestCaseInsensitiveEntityMatching:
         assert em.entity_id == "alice-person"
         assert "Ali" in em.matched_terms
         assert "Alice" in em.matched_terms
+
+
+# M3-E: validate_evidence_pack() domain rejection & compatibility tests
+
+_BASE_PACK: dict[str, Any] = {
+    "query_context": {"query": "test"},
+    "items": [],
+    "semantic_candidates": [],
+    "total_available": 0,
+    "has_more": False,
+    "no_confident_match": False,
+    "schema_version": "1.0.0",
+}
+_BASE_ITEM: dict[str, Any] = {
+    "document": {"doc_id": "Journals/2026/03/test.md", "title": "Test", "date": "2026-03-07"},
+    "scores": {"source": "fts", "rank": 1, "relevance": 90.0, "confidence": "high"},
+    "snippet": "test",
+    "provenance": "keyword",
+}
+
+
+def _pack(**kw: Any) -> dict[str, Any]:
+    d = dict(_BASE_PACK)
+    d.update(kw)
+    return d
+
+
+def _item(**kw: Any) -> dict[str, Any]:
+    d = dict(_BASE_ITEM)
+    d.update(kw)
+    return d
+
+
+def _validate(pack: EvidencePack) -> None:
+    from tools.evidence.types import validate_evidence_pack
+
+    validate_evidence_pack(pack)
+
+
+class TestValidateEvidencePackDomainRejection:
+    """validate_evidence_pack() rejects invalid constrained field values."""
+
+    def test_invalid_confidence_rejected(self) -> None:
+        pack = EvidencePack.from_dict(
+            _pack(
+                items=[_item(scores={"source": "fts", "rank": 1, "confidence": "INVALID"})],
+            )
+        )
+        with pytest.raises(ValueError, match=r"confidence.*INVALID"):
+            _validate(pack)
+
+    def test_invalid_provenance_rejected(self) -> None:
+        pack = EvidencePack.from_dict(_pack(items=[_item(provenance="nonexistent")]))
+        with pytest.raises(ValueError, match=r"provenance.*nonexistent"):
+            _validate(pack)
+
+    def test_invalid_retrieval_outcome_rejected(self) -> None:
+        pack = EvidencePack.from_dict(
+            _pack(
+                diagnostics={"retrieval_outcome": "catastrophe", "outcome_reason": "test"},
+            )
+        )
+        with pytest.raises(ValueError, match=r"retrieval_outcome.*catastrophe"):
+            _validate(pack)
+
+    def test_invalid_primary_pipeline_rejected(self) -> None:
+        pack = EvidencePack.from_dict(
+            _pack(
+                diagnostics={
+                    "retrieval_outcome": "ok",
+                    "pipeline_composition": {"primary_pipeline": "neural_net"},
+                },
+            )
+        )
+        with pytest.raises(ValueError, match=r"primary_pipeline.*neural_net"):
+            _validate(pack)
+
+    def test_valid_pack_passes(self) -> None:
+        pack = EvidencePack.from_dict(
+            _pack(
+                items=[_item()],
+                diagnostics={
+                    "retrieval_outcome": "ok",
+                    "pipeline_composition": {"primary_pipeline": "fts"},
+                },
+            )
+        )
+        _validate(pack)
+
+
+class TestValidateEvidencePackSchemaVersion:
+    """Unknown schema_version emits a warning but does not raise."""
+
+    def test_unknown_version_warns(self) -> None:
+        import warnings
+
+        pack = EvidencePack.from_dict(_pack(schema_version="99.0.0"))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _validate(pack)
+        assert len(caught) == 1
+        assert issubclass(caught[0].category, UserWarning)
+        assert "99.0.0" in str(caught[0].message)
+
+    def test_known_version_no_warning(self) -> None:
+        import warnings
+
+        pack = EvidencePack.from_dict(_pack(schema_version="1.0.0"))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _validate(pack)
+        assert len(caught) == 0
+
+
+class TestValidateEvidencePackNonMutation:
+    """Validation does not mutate the pack and preserves extra fields."""
+
+    def test_to_dict_identical_after_validation(self) -> None:
+        pack = EvidencePack.from_dict(
+            _pack(
+                items=[_item()],
+                diagnostics={
+                    "retrieval_outcome": "ok",
+                    "pipeline_composition": {"primary_pipeline": "fts"},
+                },
+            )
+        )
+        before = pack.to_dict()
+        _validate(pack)
+        assert before == pack.to_dict()
+
+    def test_extra_fields_preserved_after_validation(self) -> None:
+        import warnings
+
+        data = {
+            "query_context": {"query": "test", "future_query_field": True},
+            "items": [
+                {
+                    "document": {
+                        "doc_id": "Journals/2026/03/test.md",
+                        "title": "Test",
+                        "date": "2026-03-07",
+                        "custom_doc_field": "doc_val",
+                    },
+                    "scores": {
+                        "source": "fts",
+                        "rank": 1,
+                        "confidence": "high",
+                        "custom_score_field": 42,
+                    },
+                    "snippet": "test",
+                    "provenance": "keyword",
+                    "custom_item_field": "item_val",
+                }
+            ],
+            "semantic_candidates": [],
+            "total_available": 0,
+            "has_more": False,
+            "no_confident_match": False,
+            "schema_version": "1.0.0",
+            "diagnostics": {"retrieval_outcome": "ok", "custom_diag_field": "diag_val"},
+            "top_level_extra": "pack_val",
+        }
+        pack = EvidencePack.from_dict(data)
+        assert pack.extra["top_level_extra"] == "pack_val"
+        assert pack.items[0].extra["custom_item_field"] == "item_val"
+        assert pack.items[0].scores.extra["custom_score_field"] == 42
+        assert pack.items[0].document.extra["custom_doc_field"] == "doc_val"
+        assert pack.diagnostics.extra["custom_diag_field"] == "diag_val"
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            _validate(pack)
+
+        assert pack.extra["top_level_extra"] == "pack_val"
+        assert pack.items[0].extra["custom_item_field"] == "item_val"
+        assert pack.items[0].scores.extra["custom_score_field"] == 42
+        assert pack.items[0].document.extra["custom_doc_field"] == "doc_val"
+        assert pack.diagnostics.extra["custom_diag_field"] == "diag_val"
