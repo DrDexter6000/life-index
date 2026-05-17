@@ -457,6 +457,129 @@ class TestEvidenceDiagnosticsContract:
         assert "evidence_pack" not in result
 
 
+class TestFormatEntityAnnotatedContract:
+    """--format-entity-annotated produces formatted_evidence
+    when combined with --include-evidence.
+    """
+
+    @pytest.fixture(scope="class")
+    def fmt_sandbox(self) -> Path:
+        data_dir = Path(tempfile.mkdtemp(prefix="life-index-fmt-")) / "Life-Index"
+        journals = data_dir / "Journals" / "2026" / "03"
+        journals.mkdir(parents=True, exist_ok=True)
+        (data_dir / ".index").mkdir(parents=True, exist_ok=True)
+        (data_dir / ".cache").mkdir(parents=True, exist_ok=True)
+
+        entity_graph = data_dir / "entity_graph.yaml"
+        entity_graph.write_text(
+            "entities:\n"
+            "- id: person-fmt-001\n"
+            "  type: person\n"
+            "  primary_name: FormatPerson\n"
+            "  aliases:\n"
+            "  - FAlias\n",
+            encoding="utf-8",
+        )
+
+        journal = journals / "life-index_2026-03-17_001.md"
+        journal.write_text(
+            "---\n"
+            "title: Formatted evidence test\n"
+            "date: '2026-03-17'\n"
+            "topic:\n"
+            "- test\n"
+            "abstract: Meeting with FAlias about project\n"
+            "---\n"
+            "Met FAlias for lunch.\n",
+            encoding="utf-8",
+        )
+
+        env = {**os.environ, "LIFE_INDEX_DATA_DIR": str(data_dir)}
+        build_proc = subprocess.run(
+            [sys.executable, "-m", "tools.build_index"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+            env=env,
+            timeout=60,
+        )
+        assert build_proc.returncode == 0, f"build_index failed: stderr={build_proc.stderr}"
+        yield data_dir
+        shutil.rmtree(data_dir.parent, ignore_errors=True)
+
+    @pytest.fixture(scope="class")
+    def fmt_evidence_proc(self, fmt_sandbox: Path) -> subprocess.CompletedProcess[str]:
+        return _run_smart_search(
+            "--query",
+            "FAlias",
+            "--no-llm",
+            "--include-evidence",
+            "--format-entity-annotated",
+            data_dir=fmt_sandbox,
+            timeout=120,
+        )
+
+    @pytest.fixture(scope="class")
+    def fmt_no_evidence_proc(self, fmt_sandbox: Path) -> subprocess.CompletedProcess[str]:
+        return _run_smart_search(
+            "--query",
+            "FAlias",
+            "--no-llm",
+            "--format-entity-annotated",
+            data_dir=fmt_sandbox,
+            timeout=120,
+        )
+
+    def test_fmt_exit_zero(self, fmt_evidence_proc: subprocess.CompletedProcess[str]) -> None:
+        assert fmt_evidence_proc.returncode == 0, f"stderr: {fmt_evidence_proc.stderr}"
+
+    def test_fmt_produces_formatted_evidence(
+        self, fmt_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(fmt_evidence_proc)
+        assert "formatted_evidence" in result
+        assert isinstance(result["formatted_evidence"], str)
+        assert len(result["formatted_evidence"]) > 0
+
+    def test_fmt_formatted_evidence_contains_entity_id(
+        self, fmt_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(fmt_evidence_proc)
+        formatted = result["formatted_evidence"]
+        assert "person-fmt-001" in formatted
+
+    def test_fmt_formatted_evidence_contains_diagnostics(
+        self, fmt_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(fmt_evidence_proc)
+        formatted = result["formatted_evidence"]
+        assert "Retrieval Quality" in formatted
+        assert "Outcome:" in formatted
+
+    def test_fmt_no_evidence_flag_ignores_formatter(
+        self, fmt_no_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(fmt_no_evidence_proc)
+        assert "formatted_evidence" not in result
+        assert result["success"] is True
+
+    def test_fmt_default_output_unchanged(
+        self, fmt_evidence_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        result = _json(fmt_evidence_proc)
+        for field in (
+            "success",
+            "query",
+            "rewritten_query",
+            "filtered_results",
+            "summary",
+            "citations",
+            "agent_unavailable",
+            "performance",
+        ):
+            assert field in result, f"Missing stable field: {field}"
+
+
 class TestCaseInsensitiveSeededEntityMatchContract:
     """Case-insensitive entity match: lowercase query matches seeded uppercase data."""
 

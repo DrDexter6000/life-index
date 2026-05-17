@@ -66,6 +66,15 @@ def main() -> None:
         default=False,
         help="Generate citation-backed answer from search evidence (requires LLM)",
     )
+    parser.add_argument(
+        "--format-entity-annotated",
+        action="store_true",
+        default=False,
+        help=(
+            "Include human-readable formatted evidence when "
+            "--include-evidence is set (explicit opt-in)"
+        ),
+    )
     args = parser.parse_args()
 
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
@@ -75,6 +84,16 @@ def main() -> None:
     result = orch.search(
         args.query, include_evidence=args.include_evidence, synthesize=args.synthesize
     )
+
+    # Opt-in deterministic evidence formatter (additive only)
+    if args.include_evidence and getattr(args, "format_entity_annotated", False):
+        evidence_pack = result.get("evidence_pack")
+        if evidence_pack is not None:
+            from tools.evidence.types import EvidencePack
+            from tools.evidence.consumer_formatter import format_entity_annotated
+
+            pack = EvidencePack.from_dict(evidence_pack)
+            result["formatted_evidence"] = format_entity_annotated(pack)
 
     # Optionally strip agent_decisions for cleaner output
     if not args.explain and "agent_decisions" in result:

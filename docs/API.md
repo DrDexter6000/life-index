@@ -733,6 +733,7 @@ python -m tools.smart_search --query "..." [options]
 | no-llm | flag | ❌ | false | 向后兼容 no-op；默认已是纯确定性模式 |
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情 |
 | include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
+| format-entity-annotated | flag | ❌ | false | 与 `--include-evidence` 同用时，增加人类可读的 `formatted_evidence` |
 | synthesize | flag | ❌ | false | 生成引用支撑的自然语言答案（需要 `--use-llm`） |
 
 ### 返回值
@@ -805,6 +806,7 @@ python -m tools.smart_search --query "..." [options]
 | `citations` | 引用来源 | 可点击链接 | **stable** |
 | `answer` / `answer.*` | 优先展示 | 优先展示 | **stable** |
 | `evidence_pack` | 按需 | 按需 | **stable** |
+| `formatted_evidence` | 可展示 | 可展示 | **stable additive** — 仅 `--include-evidence --format-entity-annotated` 时出现 |
 | `aggregate_result` | aggregate/count/trend queries | aggregate/count/trend display | **stable additive** - deterministic `aggregate` result; LLM never computes counts |
 | `evidence_pack.items[].entity_matches` | 按需 | 按需 | **stable**，实体匹配溯源；消费者应容忍缺失字段 |
 | `rewritten_query` | 不需要 | 不需要 | **internal** — LLM 改写产物，消费者应使用 `query` |
