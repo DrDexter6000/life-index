@@ -1126,6 +1126,69 @@ def test_summary_lines_format() -> None:
     assert '  GQ05 "乐乐": 漏检 2/3 expected (想念我的女儿, 重庆过生日)' in lines
 
 
+def test_eval_runner_includes_ir_eval_artifacts(isolated_data_dir: Path) -> None:
+    _write_eval_fixture_data(isolated_data_dir)
+
+    from tools.eval.run_eval import run_evaluation
+
+    result = run_evaluation(data_dir=isolated_data_dir)
+
+    ir_eval = result["ir_eval"]
+
+    # Assert required top-level keys
+    assert "qrel_coverage" in ir_eval
+    assert "run_coverage" in ir_eval
+    assert "artifacts" in ir_eval
+    assert "qrels" in ir_eval["artifacts"]
+    assert "run" in ir_eval["artifacts"]
+
+    # Privacy: qrels must contain only query IDs (str) and doc IDs (str) with int grades
+    qrels = ir_eval["artifacts"]["qrels"]
+    for query_id, doc_dict in qrels.items():
+        assert isinstance(query_id, str)
+        for doc_id, grade in doc_dict.items():
+            assert isinstance(doc_id, str)
+            assert isinstance(grade, int)
+            # Doc IDs must be journal route paths, never raw content
+            assert "life-index_" in doc_id
+
+    # Privacy: run must contain only query IDs (str) and doc IDs (str) with float scores
+    run_artifact = ir_eval["artifacts"]["run"]
+    for query_id, doc_dict in run_artifact.items():
+        assert isinstance(query_id, str)
+        for doc_id, score in doc_dict.items():
+            assert isinstance(doc_id, str)
+            assert isinstance(score, float)
+            assert "life-index_" in doc_id
+
+    # Coverage reports have expected structure
+    qrel_cov = ir_eval["qrel_coverage"]
+    assert isinstance(qrel_cov["total_queries"], int)
+    assert isinstance(qrel_cov["resolved"], int)
+    assert isinstance(qrel_cov["ambiguous"], int)
+    assert isinstance(qrel_cov["unresolved"], int)
+    assert isinstance(qrel_cov["negative"], int)
+    assert isinstance(qrel_cov["min_results_only"], int)
+    assert isinstance(qrel_cov["warnings"], list)
+
+    run_cov = ir_eval["run_coverage"]
+    assert isinstance(run_cov["total_queries"], int)
+    assert isinstance(run_cov["total_result_items"], int)
+    assert isinstance(run_cov["emitted_items"], int)
+    assert isinstance(run_cov["skipped_empty_doc_ids"], int)
+    assert isinstance(run_cov["warnings"], list)
+
+    # Privacy: no raw journal content, titles, or query text in coverage reports
+    for forbidden in ["想念小英雄", "乐乐", "重庆过生日", "小豆丁", "女儿"]:
+        assert forbidden not in str(qrel_cov), f"Privacy leak in qrel_coverage: {forbidden}"
+        assert forbidden not in str(run_cov), f"Privacy leak in run_coverage: {forbidden}"
+
+    # Privacy: no raw text in artifacts either
+    for forbidden in ["想念小英雄", "乐乐", "重庆过生日", "小豆丁", "女儿"]:
+        assert forbidden not in str(qrels), f"Privacy leak in qrels: {forbidden}"
+        assert forbidden not in str(run_artifact), f"Privacy leak in run: {forbidden}"
+
+
 def test_aggregate_cross_month_index_scope(isolated_data_dir: Path) -> None:
     _write_eval_fixture_data(isolated_data_dir)
 

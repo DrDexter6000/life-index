@@ -1495,6 +1495,42 @@ def _evaluate_queries(
     return per_query, failures
 
 
+def _build_ir_eval_section(
+    queries: list[dict[str, Any]],
+    per_query: list[dict[str, Any]],
+    doc_catalog: list[Any],
+    result_dict: dict[str, Any],
+) -> dict[str, Any]:
+    """Build additive IR measurement artifacts from existing helpers (M4-A1).
+
+    Uses typed QuerySpec, DocRecord catalog, qrels/run builders.
+    Artifacts contain only query IDs and doc IDs; no raw content.
+    """
+    import dataclasses
+
+    from tools.eval.eval_export import qrels_to_plain_dict, run_to_plain_dict
+    from tools.eval.eval_qrels import build_qrels_from_query_specs, classify_qrel_coverage
+    from tools.eval.eval_query_specs import dicts_to_query_specs
+    from tools.eval.eval_run import build_run_with_report
+    from tools.eval.eval_types import EvalRun
+
+    specs = dicts_to_query_specs(queries)
+    qrels = build_qrels_from_query_specs(specs, doc_catalog)
+    qrel_coverage = classify_qrel_coverage(specs, doc_catalog)
+
+    eval_run = EvalRun.from_dict(result_dict)
+    run, run_coverage = build_run_with_report(eval_run)
+
+    return {
+        "qrel_coverage": dataclasses.asdict(qrel_coverage),
+        "run_coverage": dataclasses.asdict(run_coverage),
+        "artifacts": {
+            "qrels": qrels_to_plain_dict(qrels),
+            "run": run_to_plain_dict(run),
+        },
+    }
+
+
 def _build_semantic_report(
     keyword_result: dict[str, Any],
     semantic_result: dict[str, Any],
@@ -1623,6 +1659,11 @@ def run_evaluation(
             diagnostic_only=aggregate_diagnostic,
         )
 
+        # M4-A1: Collect doc catalog for IR eval artifacts
+        from tools.eval.eval_doc_catalog import collect_eval_doc_catalog
+
+        _ir_doc_catalog = collect_eval_doc_catalog()
+
     by_category: dict[str, list[dict[str, Any]]] = {}
     for item in per_query:
         by_category.setdefault(str(item["category"]), []).append(item)
@@ -1663,6 +1704,7 @@ def run_evaluation(
         }
 
     result["summary_lines"] = _build_summary_lines(result)
+    result["ir_eval"] = _build_ir_eval_section(queries, per_query, _ir_doc_catalog, result)
 
     # Emit overlay warnings into summary so they are visible in CLI output
     if overlay_warnings:
