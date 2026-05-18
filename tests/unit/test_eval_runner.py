@@ -1205,3 +1205,191 @@ def test_aggregate_cross_month_index_scope(isolated_data_dir: Path) -> None:
     assert agg_item["count"] == 1
     assert agg_item["exactness"] == "exact"
     assert agg_item["index_scope_node_ids"] == ["month:2026-02", "month:2026-03"]
+
+
+# --- Pack B: Baseline canonicalization lookup tests (M4-B1) ---
+
+
+def _write_baseline_json(
+    path: Path,
+    *,
+    frozen_at: str = "2026-05-04",
+    anchor_date: str | None = None,
+    baseline_id: str = "test-baseline",
+) -> None:
+    """Write a minimal valid baseline JSON file."""
+    payload = {
+        "baseline_id": baseline_id,
+        "frozen_at": frozen_at,
+        "anchor_date": anchor_date or frozen_at,
+        "metrics": {"mrr_at_5": 0.5, "recall_at_5": 0.5, "precision_at_5": 0.5},
+        "per_query": [],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def test_baseline_lookup_prefers_tools_dir_over_tests_dir(tmp_path: Path) -> None:
+    """A baseline in tools/eval/baselines/ wins over a newer-mtime file in tests/eval/baselines/."""
+    from tools.eval.run_eval import _find_latest_baseline
+
+    tools_dir = tmp_path / "tools_baselines"
+    tests_dir = tmp_path / "tests_baselines"
+    tools_dir.mkdir()
+    tests_dir.mkdir()
+
+    # Create a tools baseline with an older frozen_at and older mtime
+    tools_baseline = tools_dir / "round-19-phase1d-baseline-v4.json"
+    tools_baseline.write_text(
+        json.dumps({"frozen_at": "2026-03-04", "total_queries": 50}),
+        encoding="utf-8",
+    )
+
+    # Create a tests baseline with a newer frozen_at and newer mtime
+    import time
+
+    time.sleep(0.05)
+    tests_baseline = tests_dir / "round-19-phase1d-baseline-v5.json"
+    tests_baseline.write_text(
+        json.dumps({"frozen_at": "2026-03-10", "total_queries": 55}),
+        encoding="utf-8",
+    )
+
+    # tools_baseline has older mtime; tests_baseline has newer mtime.
+    # Canonicalization: tools dir wins regardless of mtime/frozen_at.
+    result = _find_latest_baseline(tools_dir=tools_dir, tests_dir=tests_dir)
+    assert result is not None
+    assert result.parent == tools_dir, f"Expected tools/eval/baselines/ to win, but got {result}"
+
+
+def test_baseline_lookup_falls_back_to_tests_dir(tmp_path: Path) -> None:
+    """When no tools baseline exists, tests/eval/baselines/ remains fallback."""
+    from tools.eval.run_eval import _find_latest_baseline
+
+    tests_dir = tmp_path / "tests_baselines"
+    tests_dir.mkdir()
+
+    tests_baseline = tests_dir / "round-19-phase1d-baseline-v4.json"
+    tests_baseline.write_text(
+        json.dumps({"frozen_at": "2026-03-04", "total_queries": 50}),
+        encoding="utf-8",
+    )
+
+    # Empty tools dir → should fall back to tests dir
+    tools_dir = tmp_path / "tools_baselines"
+    tools_dir.mkdir()
+
+    result = _find_latest_baseline(tools_dir=tools_dir, tests_dir=tests_dir)
+    assert result is not None
+    assert result.parent == tests_dir
+
+
+def test_baseline_lookup_sorts_by_frozen_at_not_mtime(tmp_path: Path) -> None:
+    """Deterministic sort by frozen_at wins over filesystem mtime."""
+    from tools.eval.run_eval import _find_latest_baseline
+
+    tools_dir = tmp_path / "tools_baselines"
+    tools_dir.mkdir()
+
+    import time
+
+    # Write newer frozen_at first (older mtime)
+    newer_frozen = tools_dir / "round-20-baseline-v1.json"
+    newer_frozen.write_text(
+        json.dumps({"frozen_at": "2026-05-01", "total_queries": 60}),
+        encoding="utf-8",
+    )
+
+    time.sleep(0.05)
+
+    # Write older frozen_at second (newer mtime)
+    older_frozen = tools_dir / "round-19-phase1d-baseline-v4.json"
+    older_frozen.write_text(
+        json.dumps({"frozen_at": "2026-03-04", "total_queries": 50}),
+        encoding="utf-8",
+    )
+
+    # older_frozen has newer mtime but older frozen_at → must NOT win
+    result = _find_latest_baseline(tools_dir=tools_dir)
+    assert result is not None
+    assert (
+        result.name == "round-20-baseline-v1.json"
+    ), f"Expected deterministic sort by frozen_at, but got {result.name}"
+
+
+def test_baseline_lookup_sorts_by_frozen_at_then_filename(tmp_path: Path) -> None:
+    """Within a directory, sort by embedded frozen_at desc, then filename desc."""
+    from tools.eval.run_eval import _find_latest_baseline
+
+    tools_dir = tmp_path / "tools" / "eval" / "baselines"
+    tests_dir = tmp_path / "tests" / "eval" / "baselines"
+
+    # Two baselines in tools_dir with different frozen_at values
+    _write_baseline_json(
+        tools_dir / "round-19-older-baseline.json",
+        frozen_at="2026-05-01",
+        baseline_id="older",
+    )
+    _write_baseline_json(
+        tools_dir / "round-20-newer-baseline.json",
+        frozen_at="2026-05-10",
+        baseline_id="newer",
+    )
+
+    result = _find_latest_baseline(
+        tools_dir=tools_dir,
+        tests_dir=tests_dir,
+    )
+    assert result is not None
+    assert result.name == "round-20-newer-baseline.json"
+
+
+def test_baseline_lookup_filename_desc_when_dates_tie(tmp_path: Path) -> None:
+    """When frozen_at/anchor_date tie, filename descending breaks the tie before mtime."""
+    from tools.eval.run_eval import _find_latest_baseline
+
+    tools_dir = tmp_path / "tools_baselines"
+    tools_dir.mkdir()
+
+    import time
+
+    later_name = tools_dir / "round-19-phase1d-baseline-v4.json"
+    later_name.write_text(
+        json.dumps({"frozen_at": "2026-05-04", "anchor_date": "2026-05-04"}),
+        encoding="utf-8",
+    )
+
+    time.sleep(0.05)
+
+    earlier_name = tools_dir / "round-19-phase1c-baseline-v3.json"
+    earlier_name.write_text(
+        json.dumps({"frozen_at": "2026-05-04", "anchor_date": "2026-05-04"}),
+        encoding="utf-8",
+    )
+
+    # Both have identical frozen_at and anchor_date.
+    # earlier_name has newer mtime but later_name is lexically later.
+    # Sort policy: frozen_at desc → anchor_date desc → filename desc → mtime desc
+    # "round-19-phase1d-baseline-v4.json" > "round-19-phase1c-baseline-v3.json" lexicographically,
+    # so filename desc should pick phase1d-v4 regardless of mtime.
+    # If filename were ascending (the bug), sorted()[0] would pick phase1c-v3
+    # because it sorts first alphabetically.
+    result = _find_latest_baseline(tools_dir=tools_dir)
+    assert result is not None
+    assert (
+        result.name == "round-19-phase1d-baseline-v4.json"
+    ), f"Expected filename-desc tie-break to pick lexically later name, but got {result.name}"
+
+
+def test_baseline_lookup_returns_none_when_no_baselines(tmp_path: Path) -> None:
+    """When neither directory has baselines, return None."""
+    from tools.eval.run_eval import _find_latest_baseline
+
+    tools_dir = tmp_path / "tools" / "eval" / "baselines"
+    tests_dir = tmp_path / "tests" / "eval" / "baselines"
+
+    result = _find_latest_baseline(
+        tools_dir=tools_dir,
+        tests_dir=tests_dir,
+    )
+    assert result is None

@@ -818,21 +818,68 @@ def _get_git_commit() -> str:
     return completed.stdout.strip() or "unknown"
 
 
-def _find_latest_baseline() -> Path | None:
-    """Locate the most recent baseline file in the standard directories."""
-    candidate_dirs = [
-        Path(__file__).parent / "baselines",
-        Path(__file__).parent.parent.parent / "tests" / "eval" / "baselines",
-    ]
-    candidates: list[Path] = []
-    for d in candidate_dirs:
-        if d.exists():
-            candidates.extend(d.glob("round-*-baseline*.json"))
-    if not candidates:
-        return None
-    # Sort by mtime descending
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return candidates[0]
+def _find_latest_baseline(
+    *,
+    tools_dir: Path | None = None,
+    tests_dir: Path | None = None,
+) -> Path | None:
+    """Locate the most recent baseline file preferring tools/eval/baselines/.
+
+    Lookup policy (M4-B1):
+      1. Scan ``tools/eval/baselines/`` (canonical) first.
+      2. Sort candidates deterministically by embedded ``frozen_at`` or
+         ``anchor_date`` descending, then filename descending, using mtime
+         only as the final tie-breaker.
+      3. If no tools baseline exists, fall back to
+         ``tests/eval/baselines/`` with the same deterministic sort.
+    """
+    canonical_dir = tools_dir or (Path(__file__).parent / "baselines")
+    fallback_dir = tests_dir or (
+        Path(__file__).parent.parent.parent / "tests" / "eval" / "baselines"
+    )
+
+    def _sort_key(p: Path) -> tuple:
+        """Deterministic sort key: all fields descending via reverse=True."""
+        frozen = ""
+        anchor = ""
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            frozen = str(data.get("frozen_at") or "")
+            anchor = str(data.get("anchor_date") or "")
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+        return (_sort_date_val(frozen), _sort_date_val(anchor), p.name, p.stat().st_mtime)
+
+    # Prefer canonical tools directory
+    if canonical_dir.exists():
+        tools_candidates = sorted(
+            canonical_dir.glob("round-*-baseline*.json"), key=_sort_key, reverse=True
+        )
+        if tools_candidates:
+            return tools_candidates[0]
+
+    # Fallback to tests directory
+    if fallback_dir.exists():
+        tests_candidates = sorted(
+            fallback_dir.glob("round-*-baseline*.json"), key=_sort_key, reverse=True
+        )
+        if tests_candidates:
+            return tests_candidates[0]
+
+    return None
+
+
+def _sort_date_val(date_str: str) -> int:
+    """Convert a date string like '2026-05-04' to an integer for sorting.
+
+    Returns 0 for empty or unparseable strings so missing dates sort last.
+    """
+    if not date_str:
+        return 0
+    try:
+        return int(date_str.replace("-", ""))
+    except (ValueError, TypeError):
+        return 0
 
 
 def _get_eval_anchor_date() -> date:
