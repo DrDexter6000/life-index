@@ -1846,6 +1846,126 @@ def generate_summary_lines(diff: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _build_ir_run_comparison(
+    baseline: dict[str, Any],
+    current: dict[str, Any],
+) -> dict[str, Any]:
+    """Build IR run comparison delta between baseline and current (M4-C1).
+
+    Reuses ``build_run_from_dict()`` and ``compare_runs()``.
+    Degrades gracefully when either side lacks IR artifacts.
+    """
+    from tools.eval.eval_compare import RunComparison, compare_runs
+    from tools.eval.eval_run import build_run_from_dict
+
+    baseline_ir = baseline.get("ir_eval", {})
+    current_ir = current.get("ir_eval", {})
+
+    baseline_artifacts = baseline_ir.get("artifacts", {}) if isinstance(baseline_ir, dict) else {}
+    current_artifacts = current_ir.get("artifacts", {}) if isinstance(current_ir, dict) else {}
+
+    baseline_qrels = baseline_artifacts.get("qrels", {})
+    baseline_run = baseline_artifacts.get("run", {})
+    current_run = current_artifacts.get("run", {})
+
+    if not baseline_qrels and not baseline_run and not current_run:
+        return RunComparison().to_dict()
+
+    # Build Run dicts from per_query if artifact run is empty
+    if not baseline_run and baseline.get("per_query"):
+        baseline_run = build_run_from_dict(baseline)
+    if not current_run and current.get("per_query"):
+        current_run = build_run_from_dict(current)
+
+    if not baseline_qrels:
+        return RunComparison(
+            metric_deltas=[],
+            per_query_deltas=[],
+            queries_compared=0,
+            queries_skipped_no_qrel=0,
+        ).to_dict()
+
+    run_comparison = compare_runs(baseline_qrels, baseline_run, current_run)
+    return run_comparison.to_dict()
+
+
+def _build_companion_eval_deltas(
+    baseline: dict[str, Any],
+    current: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build companion eval deltas per D-M04-011 schema (M4-C1).
+
+    Compares aggregate_eval, smart_aggregate_eval, and timeline_eval
+    sections by stable fields only: failed_queries, passed_queries,
+    metrics.pass_rate, and mode metadata. Keeps companion deltas
+    separate from search MRR/Recall/P metrics.
+    """
+    companion_sections = ["aggregate_eval", "smart_aggregate_eval", "timeline_eval"]
+    deltas: list[dict[str, Any]] = []
+
+    for section in companion_sections:
+        b_section = baseline.get(section)
+        c_section = current.get(section)
+
+        # Determine modes
+        b_mode = _companion_mode(b_section)
+        c_mode = _companion_mode(c_section)
+
+        # Extract stable fields
+        b_passed = int(b_section.get("passed_queries", 0)) if isinstance(b_section, dict) else 0
+        c_passed = int(c_section.get("passed_queries", 0)) if isinstance(c_section, dict) else 0
+        b_failed = int(b_section.get("failed_queries", 0)) if isinstance(b_section, dict) else 0
+        c_failed = int(c_section.get("failed_queries", 0)) if isinstance(c_section, dict) else 0
+
+        b_metrics = b_section.get("metrics", {}) if isinstance(b_section, dict) else {}
+        c_metrics = c_section.get("metrics", {}) if isinstance(c_section, dict) else {}
+        b_pass_rate = float(b_metrics.get("pass_rate", 0.0)) if isinstance(b_metrics, dict) else 0.0
+        c_pass_rate = float(c_metrics.get("pass_rate", 0.0)) if isinstance(c_metrics, dict) else 0.0
+
+        # Determine comparability
+        comparable = True
+        reason = ""
+
+        if b_section is None and c_section is None:
+            comparable = False
+            reason = "both baseline and current missing section"
+        elif b_section is None:
+            comparable = False
+            reason = "baseline missing section"
+        elif c_section is None:
+            comparable = False
+            reason = "current missing section"
+        elif b_mode != c_mode:
+            comparable = False
+            reason = f"mode mismatch: baseline={b_mode}, current={c_mode}"
+
+        deltas.append(
+            {
+                "section": section,
+                "baseline_mode": b_mode,
+                "current_mode": c_mode,
+                "passed_delta": c_passed - b_passed,
+                "failed_delta": c_failed - b_failed,
+                "pass_rate_delta": _round_metric(c_pass_rate - b_pass_rate),
+                "comparable": comparable,
+                "reason": reason,
+            }
+        )
+
+    return deltas
+
+
+def _companion_mode(section: Any) -> str | None:
+    """Determine the eval mode of a companion section."""
+    if section is None:
+        return None
+    if not isinstance(section, dict):
+        return None
+    if section.get("diagnostic_only"):
+        return "diagnostic"
+    return "hard_gate"
+
+
 def compare_against_baseline(
     *,
     baseline_path: Path,
@@ -1968,12 +2088,29 @@ def compare_against_baseline(
             }
         )
 
+    # --- Pack C: typed eval comparison (M4-C1) ---
+    from tools.eval.eval_types import EvalRun as _EvalRun
+    from tools.eval.eval_compare import compare_eval_runs as _compare_eval_runs
+
+    baseline_eval_run = _EvalRun.from_dict(baseline)
+    current_eval_run = _EvalRun.from_dict(current)
+    eval_comparison = _compare_eval_runs(baseline_eval_run, current_eval_run)
+
+    # --- Pack C: IR run comparison (M4-C1) ---
+    ir_run_comparison_data: dict[str, Any] = _build_ir_run_comparison(baseline, current)
+
+    # --- Pack C: companion eval deltas (M4-C1, D-M04-011) ---
+    companion_eval_deltas = _build_companion_eval_deltas(baseline, current)
+
     diff = {
         "metric_deltas": metric_deltas,
         "regressions": regressions,
         "new_failures": new_failures,
         "new_passes": new_passes,
         "recall_gap_changes": recall_gap_changes,
+        "eval_comparison": eval_comparison.to_dict(),
+        "ir_run_comparison": ir_run_comparison_data,
+        "companion_eval_deltas": companion_eval_deltas,
     }
     diff_lines = generate_summary_lines(diff)
 

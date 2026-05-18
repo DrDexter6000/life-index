@@ -1393,3 +1393,447 @@ def test_baseline_lookup_returns_none_when_no_baselines(tmp_path: Path) -> None:
         tests_dir=tests_dir,
     )
     assert result is None
+
+
+# --- Pack C: Reproducible Comparison Gate tests (M4-C1) ---
+
+
+def _pack_c_baseline_payload() -> dict:
+    """Minimal baseline payload with typed eval, IR, and companion sections."""
+    return {
+        "frozen_at": "2026-03-31",
+        "anchor_date": "2026-03-31",
+        "commit": "abc1234",
+        "judge_mode": "keyword",
+        "live_mode": False,
+        "semantic_enabled": False,
+        "metrics": {
+            "mrr_at_5": 0.85,
+            "recall_at_5": 0.9,
+            "precision_at_5": 0.75,
+            "ndcg_at_5": 0.8,
+        },
+        "total_queries": 2,
+        "skipped_queries": 0,
+        "per_query": [
+            {
+                "id": "Q1",
+                "query": "sample query",
+                "category": "family",
+                "results_found": 1,
+                "top_titles": ["Relevant Sample Doc"],
+                "top_doc_ids": ["2026/03/life-index_2026-03-04_001.md"],
+                "first_relevant_rank": 1,
+                "first_relevant_rank_at_10": 1,
+                "reciprocal_rank": 1.0,
+                "precision_at_5": 1.0,
+                "ndcg_at_5": 1.0,
+                "expected_min_results": 1,
+                "pass": True,
+                "eval_mode": "exact_mrr",
+            },
+            {
+                "id": "Q2",
+                "query": "zero-result sample",
+                "category": "noise_rejection",
+                "results_found": 0,
+                "top_titles": [],
+                "top_doc_ids": [],
+                "first_relevant_rank": None,
+                "first_relevant_rank_at_10": None,
+                "reciprocal_rank": 0.0,
+                "precision_at_5": 0.0,
+                "ndcg_at_5": 0.0,
+                "expected_min_results": 0,
+                "pass": True,
+                "eval_mode": "exact_mrr",
+            },
+        ],
+        "failures": [],
+        "recall_gaps": [],
+        "aggregate_eval": {
+            "total_queries": 1,
+            "passed_queries": 1,
+            "failed_queries": 0,
+            "metrics": {"pass_rate": 1.0},
+            "by_category": {},
+            "per_query": [],
+            "failures": [],
+        },
+        "smart_aggregate_eval": {
+            "total_queries": 1,
+            "passed_queries": 0,
+            "failed_queries": 1,
+            "metrics": {"pass_rate": 0.0},
+            "by_category": {},
+            "per_query": [],
+            "failures": [{"id": "SAGQ_X", "query": "test", "reason": "count mismatch"}],
+        },
+        "timeline_eval": {
+            "total_queries": 2,
+            "passed_queries": 2,
+            "failed_queries": 0,
+            "metrics": {"pass_rate": 1.0},
+            "by_category": {},
+            "per_query": [],
+            "failures": [],
+        },
+        "ir_eval": {
+            "artifacts": {
+                "qrels": {"Q1": {"2026/03/life-index_2026-03-04_001.md": 1}},
+                "run": {"Q1": {"2026/03/life-index_2026-03-04_001.md": 1.0}},
+            },
+            "qrel_coverage": {
+                "total_queries": 1,
+                "resolved": 1,
+                "ambiguous": 0,
+                "unresolved": 0,
+                "negative": 0,
+                "min_results_only": 0,
+                "warnings": [],
+            },
+            "run_coverage": {
+                "total_queries": 2,
+                "total_result_items": 1,
+                "emitted_items": 1,
+                "skipped_empty_doc_ids": 0,
+                "warnings": [],
+            },
+        },
+    }
+
+
+def _pack_c_current_payload() -> dict:
+    """Current run with one regression (Q2 now fails) and improved aggregate."""
+    return {
+        "frozen_at": "2026-03-31",
+        "anchor_date": "2026-03-31",
+        "commit": "def5678",
+        "judge_mode": "keyword",
+        "live_mode": False,
+        "semantic_enabled": False,
+        "metrics": {
+            "mrr_at_5": 0.5,
+            "recall_at_5": 0.5,
+            "precision_at_5": 0.5,
+            "ndcg_at_5": 0.5,
+        },
+        "total_queries": 2,
+        "skipped_queries": 0,
+        "per_query": [
+            {
+                "id": "Q1",
+                "query": "sample query",
+                "category": "family",
+                "results_found": 1,
+                "top_titles": ["Relevant Sample Doc"],
+                "top_doc_ids": ["2026/03/life-index_2026-03-04_001.md"],
+                "first_relevant_rank": 1,
+                "first_relevant_rank_at_10": 1,
+                "reciprocal_rank": 1.0,
+                "precision_at_5": 1.0,
+                "ndcg_at_5": 1.0,
+                "expected_min_results": 1,
+                "pass": True,
+                "eval_mode": "exact_mrr",
+            },
+            {
+                "id": "Q2",
+                "query": "zero-result sample",
+                "category": "noise_rejection",
+                "results_found": 1,
+                "top_titles": ["unexpected result"],
+                "top_doc_ids": ["2026/03/life-index_2026-03-07_001.md"],
+                "first_relevant_rank": None,
+                "first_relevant_rank_at_10": None,
+                "reciprocal_rank": 0.0,
+                "precision_at_5": 0.0,
+                "ndcg_at_5": 0.0,
+                "expected_min_results": 0,
+                "pass": False,
+                "eval_mode": "exact_mrr",
+            },
+        ],
+        "failures": [
+            {
+                "id": "Q2",
+                "query": "zero-result sample",
+                "reason": "Expected 0 results, got 1",
+            }
+        ],
+        "recall_gaps": [],
+        "aggregate_eval": {
+            "total_queries": 1,
+            "passed_queries": 1,
+            "failed_queries": 0,
+            "metrics": {"pass_rate": 1.0},
+            "by_category": {},
+            "per_query": [],
+            "failures": [],
+        },
+        "smart_aggregate_eval": {
+            "total_queries": 1,
+            "passed_queries": 1,
+            "failed_queries": 0,
+            "metrics": {"pass_rate": 1.0},
+            "by_category": {},
+            "per_query": [],
+            "failures": [],
+        },
+        "timeline_eval": {
+            "total_queries": 2,
+            "passed_queries": 1,
+            "failed_queries": 1,
+            "metrics": {"pass_rate": 0.5},
+            "by_category": {},
+            "per_query": [],
+            "failures": [{"id": "TLQ_X", "query": "test", "reason": "total mismatch"}],
+        },
+        "ir_eval": {
+            "artifacts": {
+                "qrels": {"Q1": {"2026/03/life-index_2026-03-04_001.md": 1}},
+                "run": {"Q1": {"2026/03/life-index_2026-03-04_001.md": 1.0}},
+            },
+            "qrel_coverage": {
+                "total_queries": 1,
+                "resolved": 1,
+                "ambiguous": 0,
+                "unresolved": 0,
+                "negative": 0,
+                "min_results_only": 0,
+                "warnings": [],
+            },
+            "run_coverage": {
+                "total_queries": 2,
+                "total_result_items": 1,
+                "emitted_items": 1,
+                "skipped_empty_doc_ids": 0,
+                "warnings": [],
+            },
+        },
+    }
+
+
+def test_compare_includes_typed_eval_comparison(tmp_path: Path, monkeypatch) -> None:
+    """Pack C: compare_against_baseline() exposes typed eval_comparison with failure_delta."""
+    from tools.eval.run_eval import compare_against_baseline
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(_pack_c_baseline_payload(), ensure_ascii=False), encoding="utf-8"
+    )
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval.run_evaluation",
+        lambda **kwargs: _pack_c_current_payload(),
+    )
+
+    comparison = compare_against_baseline(baseline_path=baseline_path)
+
+    # eval_comparison is a dict representation of EvalComparison
+    ec = comparison["diff"]["eval_comparison"]
+    assert isinstance(ec, dict)
+    assert "failure_delta" in ec
+    # baseline had 0 failures, current has 1 failure → delta = +1
+    assert ec["failure_delta"] == 1
+    assert "fixed_query_ids" in ec
+    assert "regressed_query_ids" in ec
+    assert "baseline_commit" in ec
+    assert "candidate_commit" in ec
+
+
+def test_compare_includes_ir_run_comparison(tmp_path: Path, monkeypatch) -> None:
+    """Pack C: compare_against_baseline() exposes ir_run_comparison with metric_deltas."""
+    from tools.eval.run_eval import compare_against_baseline
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(_pack_c_baseline_payload(), ensure_ascii=False), encoding="utf-8"
+    )
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval.run_evaluation",
+        lambda **kwargs: _pack_c_current_payload(),
+    )
+
+    comparison = compare_against_baseline(baseline_path=baseline_path)
+
+    ir_comp = comparison["diff"]["ir_run_comparison"]
+    assert isinstance(ir_comp, dict)
+    assert "metric_deltas" in ir_comp
+    assert "per_query_deltas" in ir_comp
+    assert "queries_compared" in ir_comp
+    # metric_deltas should be a list of MetricDelta dicts
+    assert isinstance(ir_comp["metric_deltas"], list)
+
+
+def test_compare_includes_companion_eval_deltas(tmp_path: Path, monkeypatch) -> None:
+    """Pack C: compare_against_baseline() exposes companion_eval_deltas with D-M04-011 fields."""
+    from tools.eval.run_eval import compare_against_baseline
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(_pack_c_baseline_payload(), ensure_ascii=False), encoding="utf-8"
+    )
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval.run_evaluation",
+        lambda **kwargs: _pack_c_current_payload(),
+    )
+
+    comparison = compare_against_baseline(baseline_path=baseline_path)
+
+    companion_deltas = comparison["diff"]["companion_eval_deltas"]
+    assert isinstance(companion_deltas, list)
+    assert len(companion_deltas) >= 1
+
+    # Check each delta entry has D-M04-011 fields
+    for delta_entry in companion_deltas:
+        assert "section" in delta_entry
+        assert "baseline_mode" in delta_entry
+        assert "current_mode" in delta_entry
+        assert "passed_delta" in delta_entry
+        assert "failed_delta" in delta_entry
+        assert "pass_rate_delta" in delta_entry
+        assert "comparable" in delta_entry
+        assert "reason" in delta_entry
+
+    # Find aggregate_eval entry — baseline had 1 pass/0 fail, current has 1 pass/0 fail
+    agg_delta = next(d for d in companion_deltas if d["section"] == "aggregate_eval")
+    assert agg_delta["passed_delta"] == 0
+    assert agg_delta["failed_delta"] == 0
+    assert agg_delta["pass_rate_delta"] == 0.0
+    assert agg_delta["comparable"] is True
+
+    # smart_aggregate_eval: baseline had 0 pass/1 fail, current has 1 pass/0 fail
+    smart_delta = next(d for d in companion_deltas if d["section"] == "smart_aggregate_eval")
+    assert smart_delta["passed_delta"] == 1
+    assert smart_delta["failed_delta"] == -1
+    assert smart_delta["comparable"] is True
+
+    # timeline_eval: baseline had 2 pass/0 fail, current has 1 pass/1 fail
+    tl_delta = next(d for d in companion_deltas if d["section"] == "timeline_eval")
+    assert tl_delta["passed_delta"] == -1
+    assert tl_delta["failed_delta"] == 1
+
+
+def test_companion_delta_diagnostic_vs_hard_gate_shape_mismatch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Pack C: diagnostic-vs-hard-gate shape mismatch degrades to non-comparable warning.
+
+    The comparison must not crash when baseline is diagnostic-only
+    and current is hard-gate; instead it records a non-comparable delta.
+    """
+    from tools.eval.run_eval import compare_against_baseline
+
+    baseline = _pack_c_baseline_payload()
+    # Make baseline aggregate_eval diagnostic-only (has diagnostic_only: True)
+    baseline["aggregate_eval"]["diagnostic_only"] = True
+    baseline["aggregate_eval"]["diagnostic_observations"] = [
+        {"id": "AGQ_X", "query": "test", "reason": "count mismatch", "expected": 999, "actual": 3}
+    ]
+    # Re-count: diagnostic_only means failed_queries is 0 but the data is unreliable
+    baseline["aggregate_eval"]["failed_queries"] = 0
+    baseline["aggregate_eval"]["passed_queries"] = 1
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps(baseline, ensure_ascii=False), encoding="utf-8")
+
+    current = _pack_c_current_payload()
+    # current has hard_gate aggregate (no diagnostic_only flag)
+    # This is a shape mismatch: baseline is diagnostic, current is hard gate
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval.run_evaluation",
+        lambda **kwargs: current,
+    )
+
+    # Must NOT raise — should degrade to a non-comparable warning
+    comparison = compare_against_baseline(baseline_path=baseline_path)
+
+    companion_deltas = comparison["diff"]["companion_eval_deltas"]
+    agg_delta = next(d for d in companion_deltas if d["section"] == "aggregate_eval")
+    assert agg_delta["comparable"] is False
+    assert "diagnostic" in agg_delta["reason"].lower() or "mode" in agg_delta["reason"].lower()
+
+
+def test_companion_delta_missing_section_degrades_gracefully(tmp_path: Path, monkeypatch) -> None:
+    """Pack C: missing companion section in current degrades to warning, not crash."""
+    from tools.eval.run_eval import compare_against_baseline
+
+    baseline = _pack_c_baseline_payload()
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps(baseline, ensure_ascii=False), encoding="utf-8")
+
+    current = _pack_c_current_payload()
+    # Remove timeline_eval entirely from current
+    del current["timeline_eval"]
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval.run_evaluation",
+        lambda **kwargs: current,
+    )
+
+    # Must not crash
+    comparison = compare_against_baseline(baseline_path=baseline_path)
+
+    companion_deltas = comparison["diff"]["companion_eval_deltas"]
+    tl_delta = next(d for d in companion_deltas if d["section"] == "timeline_eval")
+    assert tl_delta["comparable"] is False
+    assert tl_delta["baseline_mode"] is not None
+    assert tl_delta["current_mode"] is None or "missing" in tl_delta["reason"].lower()
+
+
+def test_compare_preserves_existing_diff_fields(tmp_path: Path, monkeypatch) -> None:
+    """Pack C: existing metric_deltas, regressions, new_failures, etc. are preserved."""
+    from tools.eval.run_eval import compare_against_baseline
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(_pack_c_baseline_payload(), ensure_ascii=False), encoding="utf-8"
+    )
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval.run_evaluation",
+        lambda **kwargs: _pack_c_current_payload(),
+    )
+
+    comparison = compare_against_baseline(baseline_path=baseline_path)
+
+    # Existing fields must still exist
+    assert "metric_deltas" in comparison["diff"]
+    assert "regressions" in comparison["diff"]
+    assert "new_failures" in comparison["diff"]
+    assert "new_passes" in comparison["diff"]
+    assert "recall_gap_changes" in comparison["diff"]
+
+    # New Pack C fields
+    assert "eval_comparison" in comparison["diff"]
+    assert "ir_run_comparison" in comparison["diff"]
+    assert "companion_eval_deltas" in comparison["diff"]
+
+
+def test_compare_ir_run_no_qrels_degrades(tmp_path: Path, monkeypatch) -> None:
+    """Pack C: when baseline has no IR artifacts, ir_run_comparison degrades gracefully."""
+    from tools.eval.run_eval import compare_against_baseline
+
+    baseline = _pack_c_baseline_payload()
+    # Remove IR artifacts from baseline (legacy baseline)
+    del baseline["ir_eval"]
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps(baseline, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "tools.eval.run_eval.run_evaluation",
+        lambda **kwargs: _pack_c_current_payload(),
+    )
+
+    # Must not crash
+    comparison = compare_against_baseline(baseline_path=baseline_path)
+
+    ir_comp = comparison["diff"]["ir_run_comparison"]
+    assert isinstance(ir_comp, dict)
+    # Should indicate no comparison was possible
+    assert ir_comp.get("queries_compared", 0) == 0 or ir_comp.get("metric_deltas") == []
