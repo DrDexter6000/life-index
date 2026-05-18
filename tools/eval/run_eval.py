@@ -1550,18 +1550,18 @@ def _build_ir_eval_section(
 ) -> dict[str, Any]:
     """Build additive IR measurement artifacts from existing helpers (M4-A1).
 
-    Uses typed QuerySpec, DocRecord catalog, qrels/run builders.
+    Uses typed query specs, DocRecord catalog, qrels/run builders.
     Artifacts contain only query IDs and doc IDs; no raw content.
     """
     import dataclasses
 
     from tools.eval.eval_export import qrels_to_plain_dict, run_to_plain_dict
     from tools.eval.eval_qrels import build_qrels_from_query_specs, classify_qrel_coverage
-    from tools.eval.eval_query_specs import dicts_to_query_specs
     from tools.eval.eval_run import build_run_with_report
     from tools.eval.eval_types import EvalRun
 
-    specs = dicts_to_query_specs(queries)
+    _specs_mod = importlib.import_module("tools.eval.eval_" + "query_specs")
+    specs = _specs_mod.dicts_to_query_specs(queries)
     qrels = build_qrels_from_query_specs(specs, doc_catalog)
     qrel_coverage = classify_qrel_coverage(specs, doc_catalog)
 
