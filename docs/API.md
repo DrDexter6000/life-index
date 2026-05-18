@@ -866,9 +866,21 @@ python -m tools.smart_search --query "..." [options]
 | `evidence_pack.has_more` | bool | 是否还有更多结果 |
 | `evidence_pack.no_confident_match` | bool | **检索层级信号**：底层搜索管道是否未找到高置信度匹配。这是检索质量指标，不是答案质量信号。调用方不应将其等同于 `answer.confidence` 的判断依据 |
 | `evidence_pack.diagnostics` | object | **确定性检索诊断**。不依赖 LLM，从已有搜索结果字段推导。详见下方 Diagnostics 子节 |
+| `evidence_pack.schema_version` | string | 证据包 schema 版本。当前为 `"1.0.0"`。旧 payload 反序列化时默认 `"1.0.0"` |
 | `performance.evidence_build_ms` | float | evidence pack 构建耗时（毫秒） |
 
-> **Forward-compatibility**: Evidence pack 的每个对象可能包含未在本文档中列出的额外字段（来自内部 `extra` 字典）。调用方应容忍未知字段，不应做严格 schema 校验。
+> **Forward-compatibility**: Evidence pack 的每个对象可能包含未在本文档中列出的额外字段（来自内部 `extra` 字典）。调用方应容忍未知字段，不应做严格 schema 校验。所有 9 个内部 dataclass（`ScoreBreakdown`、`DocumentRef`、`EntityMatch`、`EvidenceItem`、`SemanticCandidate`、`QueryContext`、`PipelineComposition`、`EvidenceDiagnostics`、`EvidencePack`）均携带 `extra` 字典；`from_dict()` 将未知键保留到 `extra`，`to_dict()` 将其重新发出。这提供了零开销的前向兼容机制。
+
+#### Validation Behavior
+
+`tools/evidence/types.py` 提供可选的 `validate_evidence_pack(pack: EvidencePack) -> None` 校验函数。
+
+- 调用方可选择在消费前调用，以拒绝无效域值。
+- 无效值（如不在已知集合中的 `confidence`、`provenance`、`retrieval_outcome`、`primary_pipeline`）抛出 `ValueError`。
+- 当前闭合集合：`confidence` = `high` / `medium` / `low`；`provenance` = `keyword` / `semantic` / `hybrid`；`retrieval_outcome` = `ok` / `weak_results` / `no_confident_match` / `zero_results`；`primary_pipeline` = `none` / `fts` / `semantic` / `hybrid`。
+- 未知 `schema_version` 发出 `UserWarning`，**不**抛出异常，以保留前向兼容。
+- `extra` 字典中的字段完全绕过校验，不检查、不丢弃、不修改。
+- 校验不修改输入对象。
 
 #### Diagnostics（`evidence_pack.diagnostics`）
 
@@ -905,6 +917,8 @@ python -m tools.smart_search --query "..." [options]
 | `search_core_flagged_no_confident` | `no_confident_match` | `no_confident_match` flag 但存在 medium/high，且非语义-only 场景 |
 | `no_matches_found` | `zero_results` | 两个管道均无结果 |
 | `results_truncated_before_delivery` | `zero_results` | total_available > 0 但 items 为空 |
+
+> `outcome_reason` 值为描述性文本，可能在不升级 `schema_version` 的情况下扩展。调用方不应将其视为闭合枚举进行严格校验。
 
 **S1-A 分类语义（语义-only moderate-confidence）：**
 
