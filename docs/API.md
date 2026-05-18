@@ -1419,6 +1419,9 @@ print(batch.by_verdict)  # {"supported": 1, "invalid_citation": 1}
 > **Internal developer evaluation tooling.** `eval` runs search quality gates
 > against the Gold Set in `tools/eval/golden_queries.yaml`. It is not a user
 > search endpoint and must not be used to write or mutate journal data.
+>
+> **M04 注**：以下文档描述内部开发者 eval 测量子系统的实现行为，不是公开的
+> CLI/API 扩展。没有新增公共 CLI flag（如 `--export-ir` 或 `--export-trec`）。
 
 ### 端点
 
@@ -1466,6 +1469,131 @@ python -m tools eval [options]
   }
 }
 ```
+
+### 内部测量输出（M04 实现）
+
+`run_evaluation()` 在 JSON 结果中附加以下内部开发者测量字段。这些字段由
+`tools/eval/run_eval.py` 生成，供 baseline 保存、回归比较和 CI 门控使用。
+
+#### `ir_eval` — IR 测量制品
+
+`ir_eval` 是 Pack A 引入的纯增量内部测量节，基于现有的 `tools/eval/eval_qrels.py`、
+`eval_run.py`、`eval_export.py` 等无依赖 helper 构建。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `ir_eval.qrel_coverage` | object | Qrel 覆盖分类报告，见下表 |
+| `ir_eval.run_coverage` | object | Run 覆盖统计报告，见下表 |
+| `ir_eval.artifacts.qrels` | dict | query ID → doc ID → int grade 的 qrels 字典 |
+| `ir_eval.artifacts.run` | dict | query ID → doc ID → float score 的 run 字典 |
+
+**隐私约束**：`artifacts.qrels` 和 `artifacts.run` 仅包含 query ID 和 doc ID；
+不序列化原始 query 文本、日志标题或正文内容。该约束由
+`tests/unit/test_eval_runner.py::test_eval_runner_includes_ir_eval_artifacts` 校验。
+
+**`qrel_coverage` 字段**：
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `total_queries` | int | 总查询数 |
+| `resolved` | int | 已解析到至少一个 doc ID 的查询数 |
+| `ambiguous` | int | 存在多个可能 doc 匹配的查询数 |
+| `unresolved` | int | 无法解析到 doc ID 的查询数 |
+| `negative` | int | 负例查询数（预期无匹配结果） |
+| `min_results_only` | int | 仅含 `min_results` 期望、无 title 期望的查询数 |
+| `broad_eval` | int | 使用 broad_eval 谓词评估的查询数 |
+| `broad_eval_with_titles` | int | 同时使用 broad_eval 和 must_contain_title 的查询数 |
+| `unresolved_ids` | list[str] | 未解析查询 ID 列表 |
+| `ambiguous_ids` | list[str] | 歧义查询 ID 列表 |
+| `procedural_only_ids` | list[str] | 纯过程性查询 ID 列表 |
+| `warnings` | list[str] | 构建过程中的警告信息 |
+
+**`run_coverage` 字段**：
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `total_queries` | int | 总查询数 |
+| `total_result_items` | int | 结果项总数 |
+| `emitted_items` | int | 实际写入 run 的项数 |
+| `skipped_empty_doc_ids` | int | 因 doc ID 为空而被跳过的项数 |
+| `length_mismatch_query_ids` | list[str] | 结果长度与期望长度不匹配的查询 ID |
+| `duplicate_doc_ids_query_ids` | list[str] | 存在重复 doc ID 的查询 ID |
+| `queries_with_no_run_items` | list[str] | 没有任何 run 项的查询 ID |
+| `warnings` | list[str] | 构建过程中的警告信息 |
+
+#### Baseline 规范化策略（M04 Pack B）
+
+Baseline 查找遵循确定性 canonical 路径偏好：
+
+1. **Canonical 目录**：优先使用 `tools/eval/baselines/` 中的冻结 baseline。
+2. **Fallback 目录**：若 canonical 目录无匹配，回退到 `tests/eval/baselines/`。
+3. **确定性排序**：在同一目录内，按 embedded `frozen_at` 或 `anchor_date` 降序、
+   文件名降序排序；mtime 仅作为最终 tie-breaker。
+
+`save-baseline` 写入时开发者自行指定路径；`compare-baseline` 读取调用方显式传入的
+baseline 路径。`_find_latest_baseline()` 使用上述策略为未设置
+`LIFE_INDEX_TIME_ANCHOR` 的 eval run 推断稳定时间锚点。
+
+#### `compare_against_baseline()` diff 增量（M04 Pack C）
+
+当使用 `compare-baseline` 时，`diff` 对象在保留原有字段（`metric_deltas`、
+`regressions`、`new_failures`、`new_passes`、`recall_gap_changes`）的基础上，
+新增以下内部比较节：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `diff.eval_comparison` | object | 基于 `EvalRun` 的 typed pass/fail 比较结果 |
+| `diff.ir_run_comparison` | object | 基于 qrels/run 的 IR 指标比较结果 |
+| `diff.companion_eval_deltas` | list[object] | aggregate / smart-aggregate / timeline 的 companion 比较增量 |
+
+**`eval_comparison` 字段**：
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `baseline_commit` | str | baseline 的 git commit |
+| `candidate_commit` | str | current 的 git commit |
+| `baseline_anchor` | str | baseline 的锚定日期 |
+| `candidate_anchor` | str | current 的锚定日期 |
+| `total_shared_queries` | int | 两边共有的查询数 |
+| `fixed_query_ids` | list[str] | 从失败变为修复的查询 ID |
+| `regressed_query_ids` | list[str] | 从通过变为失败的查询 ID |
+| `still_failing_ids` | list[str] | 两边均失败的查询 ID |
+| `still_passing_ids` | list[str] | 两边均通过的查询 ID |
+| `new_in_candidate` | list[str] | current 新增而 baseline 没有的查询 ID |
+| `missing_from_candidate` | list[str] | baseline 有而 current 缺失的查询 ID |
+| `failure_delta` | int | current 相对 baseline 的失败数变化（负值表示改善） |
+
+**`ir_run_comparison` 字段**：
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `metric_deltas` | list[object] | 每项含 `metric_name`、`baseline_value`、`candidate_value`、`delta`、`direction` |
+| `per_query_deltas` | list[object] | 每项含 `query_id`、`status`，以及可选 `baseline_score`、`candidate_score`、`delta`、`metric_deltas` |
+| `queries_compared` | int | 实际参与比较的查询数 |
+| `queries_skipped_no_qrel` | int | 因缺少 qrel 而跳过的查询数 |
+
+> **降级行为**：当 baseline 为 legacy 格式（不含 `ir_eval` 节）时，
+> `ir_run_comparison` 不会崩溃，而是显式报告 `queries_skipped_no_qrel` 并继续。
+
+**`companion_eval_deltas` 字段**：
+
+`companion_eval_deltas` 是一个列表，每项对应一个 companion eval 节
+（`aggregate_eval`、`smart_aggregate_eval`、`timeline_eval`），结构如下：
+
+| 子字段 | 类型 | 说明 |
+|--------|------|------|
+| `section` | str | 节名称 |
+| `baseline_mode` | str \| null | baseline 的评估模式：`hard_gate` / `diagnostic` / `null` |
+| `current_mode` | str \| null | current 的评估模式 |
+| `passed_delta` | int | current 通过数 − baseline 通过数 |
+| `failed_delta` | int | current 失败数 − baseline 失败数 |
+| `pass_rate_delta` | float | current 通过率 − baseline 通过率 |
+| `comparable` | bool | 两节是否可比较 |
+| `reason` | str | 不可比较时的原因说明 |
+
+> **隔离原则**：companion eval deltas 始终与搜索 MRR/Recall/P 指标分离，
+> 不会合并到 `metric_deltas` 中。诊断模式与硬 gate 模式之间的结构差异会降级为
+> 显式警告，不会导致崩溃。
 
 ---
 
