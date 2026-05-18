@@ -124,6 +124,7 @@ Kimi_here.bat
 .kimi-learnings/
 .deepseek-learnings/
 .playwright-mcp/
+.omo/
 
 # ----- 临时调试文件 -----
 tmp_*
