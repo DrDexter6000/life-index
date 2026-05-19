@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""M09 Supplement Threshold Probe — developer-only diagnostic harness.
+"""M07 Supplement Threshold Probe — developer-only diagnostic harness.
 
-Summarizes how the M08 ``_should_supplement`` threshold would classify
+Summarizes how the M07 ``_should_supplement`` threshold would classify
 keyword-result records across one or more threshold values, **without**
 changing public/default search behavior.
 
@@ -107,7 +107,7 @@ def summarize_thresholds(
             if not has_score:
                 bucket["unknown_score_records"] += 1
 
-            # Use M08 helpers for the classification decision
+            # Use M07 helpers for the classification decision
             if _should_supplement(kw_results, max_fts_threshold=threshold):
                 bucket["would_supplement"] += 1
                 if outcome == "fixed":
@@ -134,7 +134,7 @@ def summarize_thresholds(
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="M09 supplement threshold probe (developer-only)",
+        description="M07 supplement threshold probe (developer-only)",
     )
     parser.add_argument(
         "--input",

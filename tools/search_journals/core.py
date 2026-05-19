@@ -900,7 +900,7 @@ def _should_run_semantic_supplement(
 ) -> bool:
     """Private seam: decide whether semantic supplementation is appropriate.
 
-    This helper asks the M08 supplement policy whether keyword results look
+    This helper asks the M07 supplement policy whether keyword results look
     weak enough to merit future semantic supplementation.  It is **not**
     wired into public/default search flow and must NOT be called from
     ``hierarchical_search``, ``_run_level3_fallback_search``, or CLI code.

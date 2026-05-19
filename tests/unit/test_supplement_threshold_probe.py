@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TDD tests for the M09 supplement threshold probe harness.
+"""TDD tests for the M07 supplement threshold probe harness.
 
 Tests cover:
   A. summarize_thresholds pure function — correct classification counts
