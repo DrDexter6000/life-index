@@ -892,6 +892,40 @@ def _run_level3_fallback_search(
     return result
 
 
+def _should_run_semantic_supplement(
+    keyword_results: list[dict[str, Any]],
+    *,
+    semantic: bool = True,
+    max_fts_threshold: float = 76.0,
+) -> bool:
+    """Private seam: decide whether semantic supplementation is appropriate.
+
+    This helper asks the M08 supplement policy whether keyword results look
+    weak enough to merit future semantic supplementation.  It is **not**
+    wired into public/default search flow and must NOT be called from
+    ``hierarchical_search``, ``_run_level3_fallback_search``, or CLI code.
+
+    Args:
+        keyword_results: Keyword search result dicts (may contain
+            ``fts_score``, ``relevance``, ``relevance_score`` keys).
+        semantic: Whether semantic search is enabled at all.  Returns
+            ``False`` immediately when ``False``.
+        max_fts_threshold: Maximum FTS score at which supplementation is
+            still considered worthwhile.  Passed through to
+            :func:`supplement_policy._should_supplement`.
+
+    Returns:
+        ``True`` if semantic supplement should be considered, ``False``
+        otherwise.
+    """
+    if not semantic:
+        return False
+
+    from .supplement_policy import _should_supplement
+
+    return _should_supplement(keyword_results, max_fts_threshold=max_fts_threshold)
+
+
 def hierarchical_search(
     query: Optional[str] = None,
     topic: Optional[str] = None,
