@@ -6,9 +6,18 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
-### Added
+## [1.0.1] - 2026-05-20
+
+### What users get
+
+- Historical same-day recall is now available through a stable CLI command.
+- The public CLI contract and layer-boundary gates have a Foundation Freeze v1 checkpoint behind this release.
+
+### Included in this release
 
 - `on-this-day` command: deterministic same-month/day recall aid that finds prior-year journal entries sharing today's (or a specified) date. Consumes the existing `timeline` CLI via subprocess. Supports `--date`, `--years-back`, `--limit`, and `--json` flags.
+- Public JSON contract documentation and contract tests for core CLI surfaces, including search, smart-search, aggregate, analyze, entity, timeline, health, and generate-index.
+- Hard layer-invariant CI guard preventing the L2 default path from importing LLM clients or depending on L3 orchestrators.
 
 ## [1.0.0] - 2026-05-06
 

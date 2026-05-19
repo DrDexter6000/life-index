@@ -296,13 +296,19 @@ class TestOnThisDayCliContract:
             "life-index on-this-day" in readme_content
         ), "README.md missing 'life-index on-this-day'"
 
-        # CHANGELOG.md [Unreleased] must mention on-this-day
+        # CHANGELOG.md must include on-this-day in the current release history
         changelog = Path(__file__).resolve().parent.parent.parent / "CHANGELOG.md"
         changelog_content = changelog.read_text(encoding="utf-8")
-        unreleased_section = changelog_content.split("## [Unreleased]")[1].split("## [")[0]
         assert (
-            "on-this-day" in unreleased_section.lower()
-        ), "CHANGELOG.md [Unreleased] does not mention on-this-day"
+            "## [1.0.1] - 2026-05-20" in changelog_content
+        ), "CHANGELOG.md missing 1.0.1 release entry"
+        release_section = changelog_content.split("## [1.0.1] - 2026-05-20", 1)[1].split(
+            "## [1.0.0]",
+            1,
+        )[0]
+        assert (
+            "on-this-day" in release_section.lower()
+        ), "CHANGELOG.md 1.0.1 does not mention on-this-day"
 
     def test_on_this_day_omit_date_uses_today_with_defaults(self, tmp_path: Path):
         """Omitting --date defaults to today; empty sandbox returns 0 with

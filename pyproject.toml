@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-index"
-version = "1.0.0"
+version = "1.0.1"
 description = "Personal life journaling system with dual-dimension indexing"
 readme = "README.md"
 license = "Apache-2.0"
@@ -222,4 +222,3 @@ skips = [
     "B310",  # urllib_urlopen - used for weather API, trusted external services
     "B608",  # hardcoded_sql_expressions - all SQL uses hardcoded table/column names, no user input
 ]
-

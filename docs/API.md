@@ -3164,9 +3164,9 @@ life-index version
 
 ```json
 {
-  "package_version": "1.0.0",
+  "package_version": "1.0.1",
   "bootstrap_manifest": {
-    "repo_version": "1.0.0",
+    "repo_version": "1.0.1",
     "onboarding_schema_version": "2.0",
     "manifest_schema": 1,
     "requires_checkout_sync": true,
