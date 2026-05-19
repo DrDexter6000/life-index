@@ -2639,6 +2639,141 @@ python -m tools timeline --range <START> <END> [--topic <topic>]
 
 ---
 
+## on-this-day
+
+<!-- M24-CONTRACT: on-this-day -->
+
+### M24 Public JSON Contract: on-this-day
+
+#### JSON Shape / Top-Level Fields
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Whether the command succeeded |
+| `command` | string | yes | Fixed `"on-this-day"` |
+| `schema_version` | string | yes | `"m24.on_this_day.v0"` |
+| `query` | object | yes | Echo of resolved query/date parameters |
+| `query.date` | string | yes | Target date `"YYYY-MM-DD"` (defaults to today) |
+| `query.month_day` | string | yes | Target month/day `"MM-DD"` used for matching |
+| `query.years_back` | int | yes | Years lookback range used |
+| `query.since_year` | int | yes | First prior year scanned |
+| `query.until_year` | int | yes | Last prior year scanned; excludes target year |
+| `matches` | array | yes | Array of match objects (may be empty) |
+| `matches[].date` | string | yes | Entry date `"YYYY-MM-DD"` |
+| `matches[].year` | int | yes | Entry year |
+| `matches[].years_ago` | int | yes | How many years before target |
+| `matches[].title` | string | yes | Entry title |
+| `matches[].abstract` | string | yes | Entry abstract |
+| `matches[].mood` | array | yes | Mood tags from the timeline entry |
+| `matches[].path` | string | yes | Relative journal path (forward slashes only) |
+| `matches[].source_command` | string | yes | Fixed `"timeline"` |
+| `total` | int | yes | Count of returned matches |
+| `evidence_paths` | array | yes | Array of relative paths |
+| `source_contracts` | array | yes | `[{command: "timeline", contract: "M16 Public JSON Contract"}]` |
+| `limitations` | array | yes | Human-readable limitation notes |
+| `performance` | object | yes | `{timeline_calls, total_time_ms}` |
+| `error` | object\|null | yes | Structured error on failure; `null` on success |
+
+#### Field Semantics
+
+- `success`: execution success. No matches is still `success: true` with `total: 0` and `matches: []`.
+- `command`: always `"on-this-day"`.
+- `schema_version`: `"m24.on_this_day.v0"`.
+- `query.date`: the resolved target date in YYYY-MM-DD format (defaults to today).
+- `query.month_day`: the same-month/day key used to filter timeline entries.
+- `query.years_back`: the lookback range in years (`target_year - years_back` through `target_year - 1`).
+- `query.since_year` / `query.until_year`: inclusive prior-year scan bounds.
+- `matches`: sorted newest-first by date; excludes the target year.
+- `matches[].path`: relative path with forward slashes only; no backslashes.
+- `total`: count of matches actually returned (after `--limit` applied).
+- `source_contracts`: identifies the upstream data source contract.
+- `performance.timeline_calls`: number of timeline subprocess invocations.
+
+#### Error Behavior / Error Codes
+
+| Code | Meaning | Recovery Strategy |
+|------|---------|-------------------|
+| E2401 | Invalid `--date` format | ask_user |
+| E2402 | Invalid numeric bounds (`--years-back` or `--limit`) | ask_user |
+| E2403 | Timeline subprocess/contract failure | retry |
+
+#### schema_version Policy
+
+`on-this-day` emits `schema_version = "m24.on_this_day.v0"`. Top-level field names and types are stable; new fields may be added without a version bump. A version bump will accompany any backward-incompatible change.
+
+<!-- /M24-CONTRACT -->
+
+### 端点
+
+```bash
+life-index on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--json]
+python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--json]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--date` | string | ❌ | today | 目标日期 (YYYY-MM-DD) |
+| `--years-back` | int | ❌ | 10 | 向前回溯年数 |
+| `--limit` | int | ❌ | 20 | 最大返回条数 |
+| `--json` | flag | ❌ | true | 输出 JSON（唯一格式） |
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "command": "on-this-day",
+  "schema_version": "m24.on_this_day.v0",
+  "query": {
+    "date": "2026-05-19",
+    "month_day": "05-19",
+    "years_back": 10,
+    "since_year": 2016,
+    "until_year": 2025
+  },
+  "matches": [
+    {
+      "date": "2025-05-19",
+      "year": 2025,
+      "years_ago": 1,
+      "title": "Example title",
+      "abstract": "Example abstract",
+      "mood": ["calm"],
+      "path": "Journals/2025/05/life-index_2025-05-19_001.md",
+      "source_command": "timeline"
+    }
+  ],
+  "total": 1,
+  "evidence_paths": [
+    "Journals/2025/05/life-index_2025-05-19_001.md"
+  ],
+  "source_contracts": [
+    {"command": "timeline", "contract": "M16 Public JSON Contract"}
+  ],
+  "limitations": [
+    "Deterministic same-month/day recall aid; not narrative synthesis.",
+    "Relies on timeline CLI subprocess for journal discovery."
+  ],
+  "performance": {
+    "timeline_calls": 10,
+    "total_time_ms": 500
+  },
+  "error": null
+}
+```
+
+### 行为约束
+
+- **只读**：不创建、修改或删除任何文件。
+- 通过 `timeline` CLI 子进程发现日志条目；不直接扫描 `Journals/**`。
+- 排除目标年份的条目。
+- `matches` 按日期降序排列（newest-first）。
+- 所有路径为相对路径，仅使用正斜杠。
+
+---
+
 ## entity
 
 <!-- M16-CONTRACT: entity -->

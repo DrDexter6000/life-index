@@ -23,6 +23,7 @@ STABLE_COMMANDS = {
     "analyze",
     "health",
     "version",
+    "on-this-day",
 }
 
 

@@ -503,6 +503,7 @@ python3 -m venv .venv
 | Schema 迁移（预览） | `life-index migrate --dry-run` |
 | Schema 迁移（执行） | `life-index migrate --apply` |
 | Entity 质量审计 | `life-index entity --audit` |
+| 历史同日回顾 | `life-index on-this-day --date 2026-05-19 --years-back 3 --json` |
 | 开发者调用 | `python -m tools.search_journals --query "关键词"` |
 | 运行单元测试 | `python -m pytest tests/unit/ -v` |
 
