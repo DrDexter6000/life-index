@@ -513,6 +513,74 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 
 ## search_journals
 
+<!-- M16-CONTRACT: search -->
+
+### M16 Public JSON Contract: search
+
+#### JSON Shape / Top-Level Fields
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Whether the search executed successfully |
+| `query_params` | object | yes | Echo of all input parameters |
+| `merged_results` | array | yes | Unified result list across all levels |
+| `l1_results` | array | yes | Level-1 (index-only) results |
+| `l2_results` | array | yes | Level-2 (metadata) results |
+| `l3_results` | array | yes | Level-3 (full-text) results |
+| `semantic_results` | array | yes | Semantic pipeline results (empty if unavailable) |
+| `entity_hints` | array | yes | Entity graph match hints for the query |
+| `total_found` | int | yes | Number of results in this response |
+| `total_available` | int | yes | Total results available (may exceed page) |
+| `has_more` | bool | yes | Whether more results exist beyond current page |
+| `semantic_available` | bool | yes | Whether semantic pipeline was available |
+| `performance` | object | yes | Timing breakdown (`total_time_ms`, etc.) |
+| `warnings` | array | yes | Non-fatal warnings |
+| `index_status` | object | yes | Index freshness or pending-writes observability |
+| `search_plan` | object\|null | yes | Structured query understanding (Round 11) |
+| `ambiguity` | object | yes | Ambiguity signal report |
+| `hints` | array | yes | Invocation-time hints (≤5) |
+| `semantic_policy` | string | no | Effective semantic policy when applicable |
+| `semantic_fallback_used` | string | no | Fallback reason if semantic degraded |
+| `semantic_effective_policy` | string | no | Final effective semantic policy |
+| `entity_graph_status` | object | no | Entity graph resolution status |
+
+#### Field Semantics
+
+- `success`: retrieval execution success, not "Agent has answered the user". Empty results (`E0303`) are still `success: true`.
+- `merged_results`: primary result list consumers should use; items have `path`, `rel_path`, `title`, `date`, `rrf_score`.
+- `query_params`: exact echo of all CLI inputs, including defaults filled in.
+- `performance.total_time_ms`: end-to-end search wall-clock time in milliseconds.
+- `index_status`: two mutually exclusive paths — `freshness` (no pending writes) or `pending_before_search`/`auto_updated`/`pending_consumed` (writes in queue).
+- `search_plan.intent_type`: `recall` / `count` / `compare` / `summarize` / `unknown`.
+- `ambiguity.has_ambiguity`: signal only; Agent decides final interpretation.
+
+#### Error Behavior / Error Codes
+
+Errors use the structured unified format: `{success: false, error: {code, message, details, recovery_strategy}}`.
+
+| Code | Meaning | Recovery Strategy |
+|------|---------|-------------------|
+| E0300 | Index does not exist | continue |
+| E0301 | Search failed | fail |
+| E0302 | Query is empty | ask_user |
+| E0303 | No results | continue_empty |
+
+Note: `E0303` / empty results indicate successful execution with no matches; callers must not treat this as a search failure.
+
+#### SLO / Performance Expectation
+
+- **p95 latency ≤ 500ms** (keyword-only path). Baseline: ~20ms.
+- SLO is a monitoring target, not a unit-test gate.
+
+#### schema_version Policy
+
+`search` does **not** emit a top-level `schema_version` field. Schema versioning is additive-only in sub-structures:
+- `evidence_pack.schema_version = "1.0.0"` (when `--include-evidence` used on smart-search, which internally calls search).
+- Top-level field names and types are stable; new fields may be added without a version bump.
+- A future milestone may introduce top-level versioning if backward-incompatible changes become necessary.
+
+<!-- /M16-CONTRACT -->
+
 ### 端点
 
 ```bash
@@ -716,6 +784,58 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 ---
 
 ## smart_search
+
+<!-- M16-CONTRACT: smart-search -->
+
+### M16 Public JSON Contract: smart-search
+
+#### JSON Shape / Top-Level Fields
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Whether the search executed successfully |
+| `query` | string | yes | User's original query |
+| `rewritten_query` | string | yes | LLM-rewritten query (equals original in degraded mode) |
+| `filtered_results` | array | yes | LLM post-filtered results (or raw results in degraded mode) |
+| `summary` | string | yes | LLM-generated 2-3 sentence summary (empty in degraded mode) |
+| `citations` | array | yes | Document title list from LLM filtering |
+| `agent_decisions_summary` | string | conditional | Summary string when `--explain` not passed |
+| `agent_decisions` | array | conditional | Detailed decision list when `--explain` passed |
+| `agent_unavailable` | bool | yes | `true` when LLM is unavailable (degraded mode) |
+| `performance` | object | yes | Timing breakdown (`total_time_ms`, conditional sub-fields) |
+| `answer` | object | no | Additive: synthesized answer with trust-gate fields |
+| `evidence_pack` | object | no | Additive: retrieval evidence (requires `--include-evidence`) |
+| `aggregate_result` | object | no | Additive: deterministic aggregate output when aggregate intent detected |
+| `events` | array | no | Piggyback event notifications |
+
+#### Field Semantics
+
+- `success`: retrieval execution success. Evidence pack or answer synthesis failure does not affect this.
+- `filtered_results`: primary result list for consumers. Items have `title`, `path`, `date`, `rrf_score`.
+- `agent_unavailable`: diagnostic signal; UI should infer degraded state from `answer`/`summary` presence.
+- `performance`: non-stable; sub-fields may expand. Consumers should tolerate unknown keys.
+- `answer.confidence`: trust-gate calibrated (not LLM self-assessment). Values: `high` / `medium` / `low`.
+- `aggregate_result`: computed by `tools.aggregate.core.run_aggregate`; LLM never computes counts.
+
+#### Error Behavior / Error Codes
+
+Errors use the structured unified format: `{success: false, error: {code, message, details, recovery_strategy}}`.
+
+Evidence pack uses best-effort failure: `success: true`, no `evidence_pack`, but `performance.evidence_build_ms` and `performance.evidence_error` present.
+
+#### SLO / Performance Expectation
+
+- **Default path p95 ≤ 8s**. Degraded mode p95 ≤ 500ms.
+- SLO is a monitoring target, not a unit-test gate.
+
+#### schema_version Policy
+
+`smart-search` does **not** emit a top-level `schema_version` field. Schema versioning is additive-only:
+- `evidence_pack.schema_version = "1.0.0"` (when `--include-evidence` is used).
+- Top-level field names and types are stable; new fields may be added without a version bump.
+- A future milestone may introduce top-level versioning if backward-incompatible changes become necessary.
+
+<!-- /M16-CONTRACT -->
 
 ### 端点
 
@@ -1599,6 +1719,62 @@ baseline 路径。`_find_latest_baseline()` 使用上述策略为未设置
 
 ## aggregate
 
+<!-- M16-CONTRACT: aggregate -->
+
+### M16 Public JSON Contract: aggregate
+
+#### JSON Shape / Top-Level Fields
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Command execution success (`not_measurable` is still success) |
+| `query` | string | yes | Caller-provided natural language query (may be empty string) |
+| `command` | string | yes | Fixed `"aggregate"` |
+| `metric` | string | yes | Computed metric name (e.g., `journal_count`, `entry_count`) |
+| `unit` | string | yes | Aggregation unit: `day` / `week` / `month` / `entry` |
+| `range` | object | yes | Parsed date range `{since, until}` |
+| `predicate` | object | yes | Parsed predicate with `type`, `definition`, and type-specific fields |
+| `result` | object | yes | `{count, denominator, exactness, confidence}` plus additive partial fields |
+| `buckets` | array | yes | Per-unit group stats (empty for `entry` unit) |
+| `matched_entries` | array | yes | Relative paths of entries matching the predicate |
+| `excluded_entries` | array | yes | Relative paths of entries not matching |
+| `unknown_entries` | array | yes | Entries that could not be evaluated (`{path, reason}`) |
+| `evidence_paths` | array | yes | All participating relative paths (matched + excluded + unknown) |
+| `limitations` | array | yes | Human-readable limitation notes |
+| `performance` | object | yes | `{total_time_ms}` |
+| `claim_envelope` | object | yes | M02/A+ evidence-based claim wrapper |
+| `evidence_pack` | object | yes | M02/A+ aggregate-specific evidence pack |
+
+#### Field Semantics
+
+- `success`: execution success. `result.exactness = not_measurable` is still `success: true`.
+- `command`: always `"aggregate"` even when invoked via the `analyze` alias.
+- `result.exactness`: `exact` / `approximate` / `partial` / `not_measurable`.
+- `result.confidence`: data quality signal (`high`/`medium`/`low`), not LLM opinion.
+- `claim_envelope.schema_version`: `m02a.claim_envelope.v0`.
+- `evidence_pack.schema_version`: `m02a.aggregate_evidence_pack.v0`.
+- All output paths are relative; no absolute filesystem paths.
+
+#### Error Behavior / Error Codes
+
+Errors use the structured unified format with `command="aggregate"`:
+
+| Code | Meaning | Recovery Strategy |
+|------|---------|-------------------|
+| E0001 | Invalid input (bad format, unknown predicate, illegal unit) | ask_user |
+
+For both `aggregate` and its `analyze` alias, invalid range, unit, and predicate inputs return `success: false`, `command: "aggregate"`, `error.code: "E0001"`.
+
+#### schema_version Policy
+
+`aggregate` does **not** emit a top-level `schema_version` field. Versioning is in additive sub-structures only:
+- `claim_envelope.schema_version = "m02a.claim_envelope.v0"` — stable; changes require a new version string.
+- `evidence_pack.schema_version = "m02a.aggregate_evidence_pack.v0"` — stable; changes require a new version string.
+- Top-level field names and types are stable; new fields may be added without a version bump.
+- A future milestone may introduce top-level versioning if backward-incompatible changes become necessary.
+
+<!-- /M16-CONTRACT -->
+
 > **Additive primitive, not a replacement.** `aggregate` is a deterministic, read-only CLI tool for explicit counts and trends over structured journal fields. It does **not** replace `search` or `smart-search`; use those for retrieval and synthesis. Use `aggregate` only when the user question can be settled by a whitelisted predicate over a date range.
 
 ### 端点
@@ -1613,6 +1789,28 @@ python -m tools analyze --range <since>..<until> --unit <unit> --predicate <pred
 `analyze` is an alias for `aggregate`. It does not add a separate reasoning
 engine; JSON output still uses `"command": "aggregate"` and the same
 claim/evidence contract.
+
+<!-- M16-CONTRACT: analyze -->
+
+### M16 Public JSON Contract: analyze
+
+#### JSON Shape / Top-Level Fields
+
+`analyze` produces the **identical** JSON output shape as `aggregate`. The `command` field is always `"aggregate"`. See the `aggregate` M16 contract block for the full field table.
+
+#### Field Semantics
+
+All field semantics are identical to `aggregate`. The alias exists for user convenience; no separate processing pipeline or additional fields are involved.
+
+#### Error Behavior / Error Codes
+
+Error behavior is identical to `aggregate`: invalid inputs return `success: false`, `command: "aggregate"`, `error.code: "E0001"`. Error payloads always use `command: "aggregate"` even when invoked via the `analyze` alias.
+
+#### schema_version Policy
+
+Identical to `aggregate`. No top-level `schema_version`. Additive sub-structures carry their own version stamps (`m02a.claim_envelope.v0`, `m02a.aggregate_evidence_pack.v0`).
+
+<!-- /M16-CONTRACT -->
 
 ### 参数
 
@@ -1960,6 +2158,51 @@ python -m tools.query_weather --location "<location>" [options]
 
 ## generate_index
 
+<!-- M16-CONTRACT: generate-index -->
+
+### M16 Public JSON Contract: generate-index
+
+#### JSON Shape / Top-Level Fields
+
+`generate-index --json` emits a JSON **array** of result objects (not a single top-level response wrapper). Each element's shape depends on the operation:
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `type` | string | conditional | Operation type: `"monthly"` / `"yearly"` / `"root"` / `"rebuild"` |
+| `success` | bool | yes | Whether this specific operation succeeded |
+| `year` | int | conditional | Year (monthly/yearly results) |
+| `month` | int | conditional | Month (monthly results) |
+| `output_path` | string | conditional | Generated index file path |
+| `journal_count` | int | conditional | Number of journals indexed |
+| `message` | string | conditional | Human-readable status message |
+| `updated` | bool | conditional | Whether the index was actually updated |
+| `monthly_indexes_rebuilt` | int | conditional | Rebuild mode: count of monthly indexes rebuilt |
+| `yearly_indexes_rebuilt` | int | conditional | Rebuild mode: count of yearly indexes rebuilt |
+| `root_index_rebuilt` | bool | conditional | Rebuild mode: whether root was rebuilt |
+| `errors` | array | conditional | Rebuild mode: failed result objects |
+
+#### Field Semantics
+
+- The output is a JSON array; each element represents one index operation result.
+- `success: true` on an element means that specific index generation succeeded.
+- Error objects from internal functions (`create_error_response`) are appended to the results array, not emitted as a separate top-level error envelope.
+- `journal_count`: number of journals covered by the generated index.
+
+#### Error Behavior / Error Codes
+
+**Known deviation**: `generate-index` error handling is inconsistent with the unified error format.
+
+- **Parse errors** (e.g., invalid `--month` format): the CLI raises `SystemExit` and outputs a plain text error message. No JSON error payload is emitted.
+- **I/O errors** during index generation: `create_error_response` objects are appended as elements within the results array. These are not top-level CLI error envelopes.
+- No structured `{success: false, error: {code, message, ...}}` envelope is emitted for CLI-level errors.
+- Runtime alignment to the unified error format is deferred to a post-M16 milestone.
+
+#### schema_version Policy
+
+`generate-index` does **not** emit a `schema_version` field at any level. Top-level field names and types are stable; new fields may be added without a version bump. A future milestone may introduce versioning if backward-incompatible changes become necessary.
+
+<!-- /M16-CONTRACT -->
+
 > ⚡ 别名：`life-index abstract`（向后兼容）
 
 ### 端点
@@ -2076,6 +2319,56 @@ python -m tools.build_index [options]
 ---
 
 ## health
+
+<!-- M16-CONTRACT: health -->
+
+### M16 Public JSON Contract: health
+
+#### JSON Shape / Top-Level Fields
+
+**Standard mode:**
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Always `true` (even when degraded) |
+| `data` | object | yes | `{status, checks[], issues[], issue_count}` |
+| `data.status` | string | yes | `"healthy"` / `"degraded"` / `"unhealthy"` |
+| `data.checks` | array | yes | Individual check results |
+| `data.issues` | array | yes | Issue descriptions |
+| `data.issue_count` | int | yes | Number of issues found |
+| `events` | array | no | Piggyback event notifications |
+
+**`--data-audit` mode:**
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Always `true` |
+| `data` | object | yes | `{file_count, anomalies[], distribution{}}` |
+| `data.file_count` | int | yes | Total journal file count |
+| `data.anomalies` | array | yes | Anomaly objects (`type`, `severity`, `description`, `path`) |
+| `data.distribution` | object | yes | Month → count mapping |
+
+#### Field Semantics
+
+- `success`: always `true` for health checks. Degraded/unhealthy status is communicated via `data.status`, not via `success: false`.
+- `data.status`: the primary health indicator. `degraded` means partial functionality; `unhealthy` means critical issues.
+- `data.checks`: additive; new checks may be added (e.g., `index_tree` check).
+- `data.anomalies[].type`: `revision_file`, `naming`, `distribution`.
+- `events`: piggyback notifications; same format as other commands.
+
+#### Error Behavior / Error Codes
+
+**Known deviation**: `health` does not use the structured error format for error paths.
+
+- Standard mode always returns `success: true`. Health status degradation is communicated through `data.status` and `data.issues`, not through structured error codes.
+- No `{success: false, error: {code, message, ...}}` envelope is emitted in normal operation.
+- Runtime alignment to the unified error format is deferred to a post-M16 milestone.
+
+#### schema_version Policy
+
+`health` does **not** emit a `schema_version` field. The output shape is stable; new `data.checks` entries and `data.anomalies` types may be added without a version bump. A future milestone may introduce versioning if backward-incompatible changes become necessary.
+
+<!-- /M16-CONTRACT -->
 
 ### 端点
 
@@ -2264,6 +2557,46 @@ python -m tools verify [--json]
 
 ## timeline
 
+<!-- M16-CONTRACT: timeline -->
+
+### M16 Public JSON Contract: timeline
+
+#### JSON Shape / Top-Level Fields
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Whether the timeline was generated |
+| `range` | array | yes | `[start_month, end_month]` as `"YYYY-MM"` strings |
+| `entries` | array | yes | Timeline entry objects |
+| `entries[].date` | string | yes | Entry date `"YYYY-MM-DD"` |
+| `entries[].title` | string | yes | Entry title |
+| `entries[].mood` | array | yes | Mood tags |
+| `entries[].abstract` | string | yes | Entry abstract/summary |
+| `entries[].path` | string | yes | Relative journal path |
+| `total` | int | yes | Total number of entries |
+
+#### Field Semantics
+
+- `success`: whether the timeline was generated successfully.
+- `range`: two-element array of the requested time range (YYYY-MM format, inclusive).
+- `entries`: sorted by date ascending.
+- `entries[].path`: relative path to the journal file.
+- `total`: total count of entries in the response.
+
+#### Error Behavior / Error Codes
+
+**Known deviation**: `timeline` error handling is inconsistent with the unified error format.
+
+- Invalid date format returns `{success: false, error: "Invalid date format..."}` where `error` is a **plain string**, not a structured `{code, message, details, recovery_strategy}` object.
+- The `success` and `error` keys are present, but `error` does not conform to the unified error object format documented in the 通用规范.
+- Runtime alignment to the structured error format is deferred to a post-M16 milestone.
+
+#### schema_version Policy
+
+`timeline` does **not** emit a `schema_version` field. Top-level field names and types are stable; new fields may be added without a version bump. A future milestone may introduce versioning if backward-incompatible changes become necessary.
+
+<!-- /M16-CONTRACT -->
+
 ### 端点
 
 ```bash
@@ -2307,6 +2640,67 @@ python -m tools timeline --range <START> <END> [--topic <topic>]
 ---
 
 ## entity
+
+<!-- M16-CONTRACT: entity -->
+
+### M16 Public JSON Contract: entity
+
+#### JSON Shape / Top-Level Fields
+
+`entity` has multiple subcommand shapes. All share a common envelope pattern but with known deviations:
+
+**Standard envelope** (used by `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`):
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Whether the subcommand succeeded |
+| `data` | object\|array | yes | Subcommand-specific result payload |
+| `error` | null\|string | yes | `null` on success; string on some error paths |
+
+**`--merge` deviation** (flat envelope, no `data` wrapper):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | bool | Whether the merge succeeded |
+| `action` | string | `"merge_as_alias"` |
+| `source_id` | string | Source entity ID |
+| `target_id` | string | Target entity ID |
+| `transferred_names` | array | Names/aliases transferred from source to target |
+
+**`--resolve` envelope:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | bool | Whether resolution succeeded |
+| `data` | object\|null | Resolved entity or null |
+| `error` | null\|string | `null` on success; plain string (e.g., `"Entity not found"`) on failure |
+
+#### Field Semantics
+
+- `success`: subcommand execution success.
+- `data`: subcommand-specific payload. Shape varies by subcommand (see per-subcommand examples below).
+- `error`: on most subcommands, `null` for success. Known deviations:
+  - `--resolve` returns a plain string error message on failure (not a structured error object).
+  - `--merge` returns a flat object without `data` wrapper.
+- `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`.
+- `--stats` data contains: `total_entities`, `by_type{}`, `total_aliases`, `total_relationships`, `top_referenced[]`, `top_cooccurrence[]`.
+- `--check` data contains: `total_entities`, `issues[]`, `summary{}`.
+
+#### Error Behavior / Error Codes
+
+**Known deviations**: `entity` error handling is inconsistent across subcommands.
+
+- Most read subcommands (`--audit`, `--stats`, `--check`, `--review`) use the standard `{success, data, error}` envelope with `error: null` on success.
+- `--merge` returns a **flat shape** without a `data` wrapper — this is a documented deviation from the standard envelope.
+- `--resolve` returns `error` as a **plain string** (e.g., `"Entity not found"`) instead of a structured error object with `code`/`message`/`recovery_strategy`.
+- Parser errors (missing required flags) raise `SystemExit` with a plain text message, not a JSON error envelope.
+- Runtime alignment to the unified error format is deferred to a post-M16 milestone.
+
+#### schema_version Policy
+
+`entity` does **not** emit a `schema_version` field. Subcommand output shapes are stable; new fields in `data` objects may be added without a version bump. A future milestone may introduce versioning if backward-incompatible changes become necessary.
+
+<!-- /M16-CONTRACT -->
 
 ### 端点
 
