@@ -280,8 +280,15 @@ class SmartSearchOrchestrator:
         """
         from .aggregate_router import try_route_aggregate
 
+        from tools.smart_search.planner import (
+            StageRecord,
+            build_planner_record_from_stages,
+            merge_planner_into_search_plan,
+        )
+
         start_time = time.time()
         decisions: list[dict[str, Any]] = []
+        planner_stages: list[StageRecord] = []
 
         aggregate_route = try_route_aggregate(query)
         aggregate_result_dict: dict[str, Any] | None = None
@@ -323,7 +330,9 @@ class SmartSearchOrchestrator:
             return result_dict
 
         # Stage 1: Rewrite
+        rw_start = time.time()
         rewritten = self.rewrite_query(query)
+        rw_ms = (time.time() - rw_start) * 1000
         if "latency_ms" in rewritten:
             decisions.append(
                 {
@@ -333,10 +342,31 @@ class SmartSearchOrchestrator:
                     "latency_ms": rewritten["latency_ms"],
                 }
             )
+        planner_stages.append(
+            StageRecord(
+                name="rewrite",
+                status="success",
+                latency_ms=round(rw_ms, 2),
+                parameters={"llm_used": self._llm is not None},
+            )
+        )
 
         # Stage 2: Execute search
+        se_start = time.time()
         search_result = self.execute_search(rewritten)
+        se_ms = (time.time() - se_start) * 1000
         candidates = search_result["candidates"]
+        planner_stages.append(
+            StageRecord(
+                name="search",
+                status="success",
+                latency_ms=round(se_ms, 2),
+                parameters={
+                    "total_available": search_result["total_available"],
+                    "candidates_returned": len(candidates),
+                },
+            )
+        )
 
         # Evidence Pack (built when include_evidence or synthesize; best-effort)
         evidence_dict: dict[str, Any] | None = None
@@ -369,8 +399,18 @@ class SmartSearchOrchestrator:
                 evidence_error = str(exc)
                 logger.warning(f"[Orchestrator] Evidence build failed: {exc}")
 
+            planner_stages.append(
+                StageRecord(
+                    name="evidence",
+                    status="success" if evidence_dict is not None else "failed",
+                    latency_ms=round(evidence_ms, 2),
+                )
+            )
+
         # Stage 3: Post-filter + summarize
+        pf_start = time.time()
         filtered = self.post_filter_and_summarize(query, candidates)
+        pf_ms = (time.time() - pf_start) * 1000
         if "latency_ms" in filtered:
             decisions.append(
                 {
@@ -380,6 +420,14 @@ class SmartSearchOrchestrator:
                     "latency_ms": filtered["latency_ms"],
                 }
             )
+        planner_stages.append(
+            StageRecord(
+                name="filter",
+                status="success" if filtered.get("filtered_results") else "skipped",
+                latency_ms=round(pf_ms, 2),
+                parameters={"input_candidates": len(candidates)},
+            )
+        )
 
         total_ms = (time.time() - start_time) * 1000
 
@@ -396,8 +444,25 @@ class SmartSearchOrchestrator:
                 )
                 if answer_dict is not None:
                     answer_dict["latency_ms"] = (time.time() - ans_start) * 1000
+                planner_stages.append(
+                    StageRecord(
+                        name="synthesis",
+                        status="success" if answer_dict is not None else "failed",
+                        latency_ms=round((time.time() - ans_start) * 1000, 2),
+                    )
+                )
             except Exception as exc:
                 logger.warning(f"[Orchestrator] Answer synthesis failed: {exc}")
+                planner_stages.append(
+                    StageRecord(name="synthesis", status="failed", latency_ms=0.0)
+                )
+
+        # Build planner record and merge into evidence pack search_plan
+        planner_record = build_planner_record_from_stages(planner_stages)
+        if evidence_dict is not None:
+            existing_sp = evidence_dict.get("query_context", {}).get("search_plan")
+            enriched_sp = merge_planner_into_search_plan(existing_sp, planner_record)
+            evidence_dict.setdefault("query_context", {})["search_plan"] = enriched_sp
 
         result = SmartSearchResult(
             success=True,
