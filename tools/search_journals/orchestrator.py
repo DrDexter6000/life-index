@@ -280,7 +280,7 @@ class SmartSearchOrchestrator:
         """
         from .aggregate_router import try_route_aggregate
 
-        from tools.smart_search.planner import (
+        from tools.lib.planner_types import (
             StageRecord,
             build_planner_record_from_stages,
             merge_planner_into_search_plan,
