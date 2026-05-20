@@ -6,6 +6,15 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Added
+
+- Public JSON outputs for `search`, `smart-search`, `aggregate`, `entity`, `timeline`, and `health` now include a top-level `schema_version` field for forward-compatible contract tracking.
+- `on-this-day` command is now discoverable in agent navigation docs (`AGENTS.md`, `SKILL.md`).
+
+### Changed
+
+- `docs/API.md` contract documentation aligned with current CLI parameter defaults, error-code classifications, and M16 `schema_version` policy.
+
 ## [1.0.1] - 2026-05-20
 
 ### What users get

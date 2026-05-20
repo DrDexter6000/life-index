@@ -28,7 +28,8 @@ triggers:
 |:---:|:---|:---|
 | 记录日志 | "记日志"、"记录一下"、"写日记"、"记下来"、"log this"、"record this"、"write journal" | `write_journal` |
 | 搜索日志 | "查找日志"、"搜索记录"、"找一下关于...的日记"、"search journal"、"find log" | `search_journals` |
-| 智能搜索 | "帮我回忆..."、"我和女儿之间有哪些珍贵的回忆？"、"smart search" | `smart_search` |
+| 智能搜索 | "帮我回忆..."、"我和女儿之间有哪些珍贵的回忆？"、"smart search" | `smart_search`（默认确定性 scaffold；LLM 编排需 `--use-llm`） |
+| 历史同日 | "去年今天在做什么"、"历史上的今天"、"on-this-day"、"历史同日" | `on_this_day` |
 | 编辑日志 | "修改日志"、"补充日记"、"更新记录"、"edit journal"、"update log" | `edit_journal` |
 | 实体图谱 | "列出实体"、"解析人物关系"、"entity graph"、"谁是谁的..." | `entity` |
 | 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary" | `generate_abstract` |
@@ -54,6 +55,7 @@ triggers:
 .venv/bin/life-index smart-search --query "..." --use-llm  # 显式启用 LLM 编排搜索
 .venv/bin/life-index smart-search --query "..." --explain  # 展示 Agent 决策详情
 .venv/bin/life-index smart-search --query "..." --include-evidence  # 含 evidence pack + 检索诊断
+.venv/bin/life-index on-this-day --date 2026-05-19 --years-back 3       # 历史同日回顾
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
 .venv/bin/life-index entity --list
 .venv/bin/life-index entity --resolve "乐乐的奶奶"
@@ -97,6 +99,7 @@ life-index/                         # 技能根目录
 │   ├── backup/                    # 备份日志数据
 │   ├── verify/                    # 数据完整性校验
 │   ├── timeline/                  # 时序摘要流
+│   ├── on_this_day/               # 历史同日回顾
 │   ├── migrate/                   # Schema 链式迁移
 │   ├── eval/                      # 搜索质量评估
 │   ├── dev/                       # 开发/验收辅助工具

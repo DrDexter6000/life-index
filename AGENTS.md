@@ -24,7 +24,7 @@
 
 **Life Index** 是一个 Agent-Native、local-first 的个人人生日志与检索系统。
 
-- **CLI 原子工具**：write / confirm / search / smart-search / edit / abstract / weather / index / generate-index / backup / verify / timeline / migrate / eval / entity / health / health --data-audit / aggregate / analyze / version
+- **CLI 原子工具**：write / confirm / search / smart-search / edit / abstract / weather / index / generate-index / backup / verify / timeline / migrate / eval / entity / health / health --data-audit / aggregate / analyze / on-this-day / version
 - 用户通过自然语言 + Agent 调用 Python CLI 工具
 
 **核心理念**:
@@ -103,6 +103,7 @@ life-index analyze --range 2026-01-01..2026-03-31 --unit day --predicate entry_t
 life-index health          # 安装健康检查
 life-index version         # 显示版本信息
 life-index health --data-audit    # 审计数据目录异常
+life-index on-this-day --date 2026-05-19 --years-back 3 --json  # 历史同日回顾
 
 # 开发者模式（无需安装）
 python -m tools.write_journal --data '{...}'
