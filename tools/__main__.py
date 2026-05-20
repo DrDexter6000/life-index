@@ -41,6 +41,8 @@ from importlib.metadata import PackageNotFoundError, version as package_version
 from tools.lib.config import get_model_cache_dir  # noqa: F401 — used via monkeypatch in tests
 from tools.lib.paths import get_user_data_dir, get_journals_dir
 
+HEALTH_SCHEMA_VERSION = "m16.health.v0"
+
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
 
 
@@ -393,6 +395,7 @@ def health_check() -> None:
 
     result: Dict[str, Any] = {
         "success": True,
+        "schema_version": HEALTH_SCHEMA_VERSION,
         "data": {
             "status": overall,
             "checks": checks,
@@ -420,6 +423,7 @@ def _run_data_audit() -> None:
     report = audit_data_directory(get_user_data_dir())
     result = {
         "success": True,
+        "schema_version": HEALTH_SCHEMA_VERSION,
         "data": {
             "file_count": report.file_count,
             "anomalies": [

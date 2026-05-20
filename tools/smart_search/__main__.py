@@ -15,6 +15,8 @@ import json
 import sys
 from typing import Any
 
+SCHEMA_VERSION = "m16.smart_search.v0"
+
 
 def _emit_json(payload: dict[str, Any]) -> None:
     """Print JSON safely across Windows console encodings."""
@@ -100,6 +102,7 @@ def main() -> None:
         result["agent_decisions_summary"] = f"{len(result['agent_decisions'])} decisions made"
         del result["agent_decisions"]
 
+    result["schema_version"] = SCHEMA_VERSION
     _emit_json(result)
     sys.exit(0 if result.get("success") else 1)
 

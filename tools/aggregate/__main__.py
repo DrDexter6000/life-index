@@ -14,6 +14,8 @@ import sys
 
 from tools.aggregate.core import run_aggregate
 
+SCHEMA_VERSION = "m16.aggregate.v0"
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -70,6 +72,8 @@ def main() -> None:
         query=args.query,
         explain=args.explain,
     )
+
+    result["schema_version"] = SCHEMA_VERSION
 
     output = json.dumps(result, ensure_ascii=False, indent=2)
     print(output)

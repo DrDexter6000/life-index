@@ -10,6 +10,8 @@ import sys
 from .core import run_timeline
 from ..lib.config import ensure_dirs
 
+SCHEMA_VERSION = "m16.timeline.v0"
+
 
 def _emit_json(payload: dict) -> None:
     """Print JSON safely across Windows console encodings."""
@@ -54,6 +56,7 @@ Examples:
         range_end=args.range[1],
         topic=args.topic,
     )
+    result["schema_version"] = SCHEMA_VERSION
     _emit_json(result)
 
     sys.exit(0 if result["success"] else 1)

@@ -522,6 +522,7 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Whether the search executed successfully |
+| `schema_version` | string | yes | `"m16.search.v0"` — top-level output schema version |
 | `query_params` | object | yes | Echo of all input parameters |
 | `merged_results` | array | yes | Unified result list across all levels |
 | `l1_results` | array | yes | Level-1 (index-only) results |
@@ -574,10 +575,10 @@ Note: `E0303` / empty results indicate successful execution with no matches; cal
 
 #### schema_version Policy
 
-`search` does **not** emit a top-level `schema_version` field. Schema versioning is additive-only in sub-structures:
+`search` emits a top-level `schema_version` field set to `"m16.search.v0"`. Schema versioning remains additive-only in sub-structures:
 - `evidence_pack.schema_version = "1.0.0"` (when `--include-evidence` used on smart-search, which internally calls search).
 - Top-level field names and types are stable; new fields may be added without a version bump.
-- A future milestone may introduce top-level versioning if backward-incompatible changes become necessary.
+- A `schema_version` bump will accompany any backward-incompatible change.
 
 <!-- /M16-CONTRACT -->
 
@@ -794,6 +795,7 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Whether the search executed successfully |
+| `schema_version` | string | yes | `"m16.smart_search.v0"` — top-level output schema version |
 | `query` | string | yes | User's original query |
 | `rewritten_query` | string | yes | LLM-rewritten query (equals original in degraded mode) |
 | `filtered_results` | array | yes | LLM post-filtered results (or raw results in degraded mode) |
@@ -830,10 +832,10 @@ Evidence pack uses best-effort failure: `success: true`, no `evidence_pack`, but
 
 #### schema_version Policy
 
-`smart-search` does **not** emit a top-level `schema_version` field. Schema versioning is additive-only:
+`smart-search` emits a top-level `schema_version` field set to `"m16.smart_search.v0"`. Schema versioning is additive-only:
 - `evidence_pack.schema_version = "1.0.0"` (when `--include-evidence` is used).
 - Top-level field names and types are stable; new fields may be added without a version bump.
-- A future milestone may introduce top-level versioning if backward-incompatible changes become necessary.
+- A `schema_version` bump will accompany any backward-incompatible change.
 
 <!-- /M16-CONTRACT -->
 
@@ -1728,6 +1730,7 @@ baseline 路径。`_find_latest_baseline()` 使用上述策略为未设置
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Command execution success (`not_measurable` is still success) |
+| `schema_version` | string | yes | `"m16.aggregate.v0"` — top-level output schema version |
 | `query` | string | yes | Caller-provided natural language query (may be empty string) |
 | `command` | string | yes | Fixed `"aggregate"` |
 | `metric` | string | yes | Computed metric name (e.g., `journal_count`, `entry_count`) |
@@ -1767,11 +1770,11 @@ For both `aggregate` and its `analyze` alias, invalid range, unit, and predicate
 
 #### schema_version Policy
 
-`aggregate` does **not** emit a top-level `schema_version` field. Versioning is in additive sub-structures only:
+`aggregate` emits a top-level `schema_version` field set to `"m16.aggregate.v0"`. Versioning in additive sub-structures is unchanged:
 - `claim_envelope.schema_version = "m02a.claim_envelope.v0"` — stable; changes require a new version string.
 - `evidence_pack.schema_version = "m02a.aggregate_evidence_pack.v0"` — stable; changes require a new version string.
 - Top-level field names and types are stable; new fields may be added without a version bump.
-- A future milestone may introduce top-level versioning if backward-incompatible changes become necessary.
+- A `schema_version` bump will accompany any backward-incompatible change.
 
 <!-- /M16-CONTRACT -->
 
@@ -1808,7 +1811,7 @@ Error behavior is identical to `aggregate`: invalid inputs return `success: fals
 
 #### schema_version Policy
 
-Identical to `aggregate`. No top-level `schema_version`. Additive sub-structures carry their own version stamps (`m02a.claim_envelope.v0`, `m02a.aggregate_evidence_pack.v0`).
+Identical to `aggregate`: emits top-level `schema_version = "m16.aggregate.v0"`. Additive sub-structures carry their own version stamps (`m02a.claim_envelope.v0`, `m02a.aggregate_evidence_pack.v0`).
 
 <!-- /M16-CONTRACT -->
 
@@ -2199,7 +2202,7 @@ python -m tools.query_weather --location "<location>" [options]
 
 #### schema_version Policy
 
-`generate-index` does **not** emit a `schema_version` field at any level. Top-level field names and types are stable; new fields may be added without a version bump. A future milestone may introduce versioning if backward-incompatible changes become necessary.
+`generate-index` does **not** emit a `schema_version` field at any level. Top-level field names and types are stable; new fields may be added without a version bump. **BLOCKED**: `generate-index --json` emits a JSON **array**, not a dict; wrapping it with a top-level `schema_version` would be a breaking shape change for existing consumers. A future milestone may introduce versioning by migrating the output to a dict wrapper (`{schema_version, results}`), which requires a documented migration path.
 
 <!-- /M16-CONTRACT -->
 
@@ -2331,6 +2334,7 @@ python -m tools.build_index [options]
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Always `true` (even when degraded) |
+| `schema_version` | string | yes | `"m16.health.v0"` — top-level output schema version |
 | `data` | object | yes | `{status, checks[], issues[], issue_count}` |
 | `data.status` | string | yes | `"healthy"` / `"degraded"` / `"unhealthy"` |
 | `data.checks` | array | yes | Individual check results |
@@ -2343,6 +2347,7 @@ python -m tools.build_index [options]
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Always `true` |
+| `schema_version` | string | yes | `"m16.health.v0"` — top-level output schema version |
 | `data` | object | yes | `{file_count, anomalies[], distribution{}}` |
 | `data.file_count` | int | yes | Total journal file count |
 | `data.anomalies` | array | yes | Anomaly objects (`type`, `severity`, `description`, `path`) |
@@ -2366,7 +2371,7 @@ python -m tools.build_index [options]
 
 #### schema_version Policy
 
-`health` does **not** emit a `schema_version` field. The output shape is stable; new `data.checks` entries and `data.anomalies` types may be added without a version bump. A future milestone may introduce versioning if backward-incompatible changes become necessary.
+`health` emits a top-level `schema_version` field set to `"m16.health.v0"`. The output shape is stable; new `data.checks` entries and `data.anomalies` types may be added without a version bump. A `schema_version` bump will accompany any backward-incompatible change.
 
 <!-- /M16-CONTRACT -->
 
@@ -2566,6 +2571,7 @@ python -m tools verify [--json]
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Whether the timeline was generated |
+| `schema_version` | string | yes | `"m16.timeline.v0"` — top-level output schema version |
 | `range` | array | yes | `[start_month, end_month]` as `"YYYY-MM"` strings |
 | `entries` | array | yes | Timeline entry objects |
 | `entries[].date` | string | yes | Entry date `"YYYY-MM-DD"` |
@@ -2593,7 +2599,7 @@ python -m tools verify [--json]
 
 #### schema_version Policy
 
-`timeline` does **not** emit a `schema_version` field. Top-level field names and types are stable; new fields may be added without a version bump. A future milestone may introduce versioning if backward-incompatible changes become necessary.
+`timeline` emits a top-level `schema_version` field set to `"m16.timeline.v0"`. Top-level field names and types are stable; new fields may be added without a version bump. A `schema_version` bump will accompany any backward-incompatible change.
 
 <!-- /M16-CONTRACT -->
 
@@ -2789,6 +2795,7 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Whether the subcommand succeeded |
+| `schema_version` | string | yes | `"m16.entity.v0"` — top-level output schema version |
 | `data` | object\|array | yes | Subcommand-specific result payload |
 | `error` | null\|string | yes | `null` on success; string on some error paths |
 
@@ -2833,7 +2840,7 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 
 #### schema_version Policy
 
-`entity` does **not** emit a `schema_version` field. Subcommand output shapes are stable; new fields in `data` objects may be added without a version bump. A future milestone may introduce versioning if backward-incompatible changes become necessary.
+`entity` emits a top-level `schema_version` field set to `"m16.entity.v0"`. Subcommand output shapes are stable; new fields in `data` objects may be added without a version bump. A `schema_version` bump will accompany any backward-incompatible change.
 
 <!-- /M16-CONTRACT -->
 

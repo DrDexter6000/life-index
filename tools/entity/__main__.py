@@ -10,12 +10,17 @@ from typing import Any
 from tools.lib.entity_graph import load_entity_graph, resolve_entity, save_entity_graph
 from tools.lib.paths import get_user_data_dir
 
+SCHEMA_VERSION = "m16.entity.v0"
+
 
 def _graph_path() -> Path:
     return get_user_data_dir() / "entity_graph.yaml"
 
 
 def _print(payload: dict[str, Any]) -> None:
+    # Add schema_version to all entity outputs (additive only)
+    if "schema_version" not in payload:
+        payload["schema_version"] = SCHEMA_VERSION
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
         print(text)

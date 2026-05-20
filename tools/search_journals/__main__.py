@@ -22,6 +22,8 @@ from ..lib.config import ensure_dirs
 from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.trace import Trace
 
+SCHEMA_VERSION = "m16.search.v0"
+
 
 def _emit_json(payload: dict, *, include_events: bool = True) -> None:
     """Print JSON safely across Windows console encodings."""
@@ -250,6 +252,7 @@ Examples:
 
     # 输出结果
     result["_trace"] = trace.to_dict()
+    result["schema_version"] = SCHEMA_VERSION
     _emit_json(result)
 
     sys.exit(0 if result.get("success") else 1)
