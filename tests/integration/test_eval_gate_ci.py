@@ -22,9 +22,7 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-REJECTION_TEST_PATH = (
-    PROJECT_ROOT / "tests" / "integration" / "test_golden_rejection.py"
-)
+REJECTION_TEST_PATH = PROJECT_ROOT / "tests" / "integration" / "test_golden_rejection.py"
 GATE_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "run_eval_gate.sh"
 
 D15_THRESHOLD = 0.90
@@ -42,9 +40,9 @@ class TestRejectionThreshold:
         match = re.search(r"assert\s+rate\s*>=\s*([0-9.]+)", source)
         assert match, "Could not find 'assert rate >= ...' in test_golden_rejection.py"
         threshold = float(match.group(1))
-        assert threshold == D15_THRESHOLD, (
-            f"Rejection threshold is {threshold}, expected {D15_THRESHOLD}"
-        )
+        assert (
+            threshold == D15_THRESHOLD
+        ), f"Rejection threshold is {threshold}, expected {D15_THRESHOLD}"
 
 
 # ── Fake low pass-rate must fail ──
@@ -58,10 +56,15 @@ class TestFakeLowPassRateFailsGate:
         """Run pytest on a single file with isolated rootdir to avoid scanning."""
         return subprocess.run(
             [
-                sys.executable, "-m", "pytest",
-                str(test_file), "-v",
-                "--rootdir", str(test_file.parent),
-                "-c", "",  # ignore project pyproject.toml
+                sys.executable,
+                "-m",
+                "pytest",
+                str(test_file),
+                "-v",
+                "--rootdir",
+                str(test_file.parent),
+                "-c",
+                "",  # ignore project pyproject.toml
             ],
             capture_output=True,
             text=True,
@@ -161,9 +164,9 @@ class TestGateScriptStructure:
             pytest.skip("run_eval_gate.sh not found (non-POSIX environment)")
 
         source = GATE_SCRIPT_PATH.read_text(encoding="utf-8")
-        assert "test_golden_rejection" in source, (
-            "Gate script must reference test_golden_rejection.py in Section 2"
-        )
+        assert (
+            "test_golden_rejection" in source
+        ), "Gate script must reference test_golden_rejection.py in Section 2"
 
     def test_section_1_references_eval_infrastructure(self) -> None:
         """Section 1 must reference eval infrastructure tests."""
@@ -171,9 +174,9 @@ class TestGateScriptStructure:
             pytest.skip("run_eval_gate.sh not found (non-POSIX environment)")
 
         source = GATE_SCRIPT_PATH.read_text(encoding="utf-8")
-        assert "test_eval_gate" in source, (
-            "Gate script must reference test_eval_gate.py in Section 1"
-        )
+        assert (
+            "test_eval_gate" in source
+        ), "Gate script must reference test_eval_gate.py in Section 1"
 
     def test_section_3_references_full_regression(self) -> None:
         """Section 3 must run full unit regression."""
@@ -181,9 +184,7 @@ class TestGateScriptStructure:
             pytest.skip("run_eval_gate.sh not found (non-POSIX environment)")
 
         source = GATE_SCRIPT_PATH.read_text(encoding="utf-8")
-        assert "tests/unit/" in source, (
-            "Gate script must reference tests/unit/ in Section 3"
-        )
+        assert "tests/unit/" in source, "Gate script must reference tests/unit/ in Section 3"
 
     def test_no_continue_on_error(self) -> None:
         """Gate script must NOT use --continue-on-error."""
@@ -191,9 +192,9 @@ class TestGateScriptStructure:
             pytest.skip("run_eval_gate.sh not found (non-POSIX environment)")
 
         source = GATE_SCRIPT_PATH.read_text(encoding="utf-8")
-        assert "--continue-on-error" not in source, (
-            "Gate script must not use --continue-on-error (violates D15)"
-        )
+        assert (
+            "--continue-on-error" not in source
+        ), "Gate script must not use --continue-on-error (violates D15)"
 
     def test_uses_set_e(self) -> None:
         """Gate script must use 'set -e' for fail-fast behavior."""
@@ -201,6 +202,77 @@ class TestGateScriptStructure:
             pytest.skip("run_eval_gate.sh not found (non-POSIX environment)")
 
         source = GATE_SCRIPT_PATH.read_text(encoding="utf-8")
-        assert "set -e" in source or "set -euo pipefail" in source, (
-            "Gate script must use 'set -e' or 'set -euo pipefail' for fail-fast"
+        assert (
+            "set -e" in source or "set -euo pipefail" in source
+        ), "Gate script must use 'set -e' or 'set -euo pipefail' for fail-fast"
+
+
+# ── Workflow eval-family coverage ──
+
+
+WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "tests.yml"
+
+
+class TestWorkflowEvalCoverage:
+    """Verify search-eval-gate workflow covers broader eval-family tests.
+
+    The workflow must not be limited to the three narrow unit eval files.
+    It must also include tests/eval/ eval-family tests covering broad eval
+    soft-gate, semantic-report diagnostic safety, eval comparison/run/qrels/
+    export/serialization coverage.
+    """
+
+    @staticmethod
+    def _extract_gate_pytest_command() -> str:
+        """Parse the pytest command from search-eval-gate job in tests.yml."""
+        import yaml as _yaml
+
+        workflow = _yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+        gate_job = workflow["jobs"]["search-eval-gate"]
+        for step in gate_job["steps"]:
+            if "Run search eval quality gate" in step.get("name", ""):
+                return step["run"]
+        pytest.fail("Could not find 'Run search eval quality gate' step in search-eval-gate job")
+
+    def test_gate_includes_eval_family_tests(self) -> None:
+        """search-eval-gate must include tests/eval/ files, not only 3 unit files."""
+        command_text = self._extract_gate_pytest_command()
+
+        # Find the pytest line (may be multiline run: block)
+        pytest_line = None
+        for line in command_text.strip().split("\n"):
+            if "pytest" in line:
+                pytest_line = line.strip()
+                break
+        assert pytest_line is not None, f"No pytest invocation in gate command: {command_text}"
+
+        parts = pytest_line.split()
+        eval_family_files = [p for p in parts if p.startswith("tests/eval/")]
+
+        assert len(eval_family_files) >= 3, (
+            f"search-eval-gate includes only {eval_family_files} tests/eval/ files "
+            f"(expected >= 3: broad eval soft-gate, semantic-report, "
+            f"eval comparison/run/qrels/export/serialization). "
+            f"Command: {pytest_line}"
         )
+
+    def test_gate_includes_broad_eval_soft_gate(self) -> None:
+        """search-eval-gate must include test_broad_eval_soft_gate.py."""
+        command_text = self._extract_gate_pytest_command()
+        assert (
+            "test_broad_eval_soft_gate" in command_text
+        ), "search-eval-gate missing test_broad_eval_soft_gate.py"
+
+    def test_gate_includes_semantic_report(self) -> None:
+        """search-eval-gate must include test_semantic_report.py."""
+        command_text = self._extract_gate_pytest_command()
+        assert (
+            "test_semantic_report" in command_text
+        ), "search-eval-gate missing test_semantic_report.py"
+
+    def test_gate_includes_eval_serialization(self) -> None:
+        """search-eval-gate must include test_eval_serialization.py."""
+        command_text = self._extract_gate_pytest_command()
+        assert (
+            "test_eval_serialization" in command_text
+        ), "search-eval-gate missing test_eval_serialization.py"

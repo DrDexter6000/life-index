@@ -154,4 +154,4 @@ jobs:
 
       - name: Run search eval quality gate
         run: |
-          pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py tests/unit/test_eval_llm.py -v --timeout=120
+          pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py tests/unit/test_eval_llm.py tests/eval/test_broad_eval_soft_gate.py tests/eval/test_semantic_report.py tests/eval/test_eval_compare.py tests/eval/test_eval_run.py tests/eval/test_eval_qrels.py tests/eval/test_eval_export.py tests/eval/test_eval_serialization.py -v --timeout=120
