@@ -87,7 +87,8 @@ python -m tools.{tool_name} --data '{json_data}'
 | 天气 | E04xx | API 失败、超时 |
 | 编辑 | E05xx | 日志不存在、冲突 |
 | 索引 | E06xx | 构建失败、损坏 |
-| 迁移 | E08xx | Schema 迁移相关错误 |
+| Web | E07xx | Web GUI / URL 下载 / LLM 提供方 / 地理定位相关错误 |
+| 迁移 | E08xx | **Reserved / 未实现** — Schema 迁移错误码已预留，但当前 runtime 不发射结构化 E08xx 码 |
 
 
 ## 错误码格式
@@ -117,6 +118,8 @@ python -m tools.{tool_name} --data '{json_data}'
 | E0001 | 无效输入 | ask_user |
 | E0002 | 权限不足 | fail |
 | E0003 | 配置错误 | fail |
+| E0005 | 文件锁获取超时 | retry |
+| E0006 | 文件锁获取失败 | retry |
 
 ### 文件模块 (E01xx)
 
@@ -166,6 +169,7 @@ python -m tools.{tool_name} --data '{json_data}'
 | E0501 | 编辑冲突 | ask_user |
 | E0502 | 字段不识别 | ask_user |
 | E0503 | 无变更指定 | ask_user |
+| E0504 | 修改地点时缺少天气 | ask_user |
 
 ### 索引模块 (E06xx)
 
@@ -175,6 +179,19 @@ python -m tools.{tool_name} --data '{json_data}'
 | E0601 | 索引损坏 | fail |
 | E0602 | 向量存储错误 | continue |
 | E0603 | FTS 索引错误 | continue |
+
+### Web 模块 (E07xx)
+
+| 代码 | 说明 | 恢复策略 |
+|------|------|----------|
+| E0700 | Web GUI 通用错误 | ask_user |
+| E0701 | URL 附件下载失败 | skip_optional |
+| E0702 | URL 文件类型被拒绝 | ask_user |
+| E0703 | 所有 LLM 提供方不可用 | skip_optional |
+| E0704 | LLM 元数据提取失败 | skip_optional |
+| E0705 | 浏览器地理定位失败 | skip_optional |
+| E0706 | Nominatim 反向地理编码失败 | skip_optional |
+| E0707 | Web GUI 依赖未安装 | fail |
 
 ## JSON 返回示例
 
@@ -603,12 +620,17 @@ python -m tools.search_journals [options]
 | mood | string | ❌ | - | 按心情过滤（逗号分隔） |
 | people | string | ❌ | - | 按人物过滤（逗号分隔） |
 | level | int | ❌ | 3 | 搜索层级: 1=索引, 2=元数据, 3=全文 |
-| use-index | flag | ❌ | false | 使用 FTS 索引加速 |
-| semantic | flag | ❌ | false | 启用语义搜索 |
-| semantic-weight | float | ❌ | 0.4 | 语义搜索权重 (0-1) |
-| fts-weight | float | ❌ | 0.6 | FTS 搜索权重 (0-1) |
-| limit | int | ❌ | 10 | 返回结果数量限制 |
-| offset | int | ❌ | 0 | 结果偏移量（分页起始位置） |
+| --no-index | flag | ❌ | false | 禁用 FTS 索引（默认启用 FTS） |
+| --no-semantic | flag | ❌ | false | 禁用语义搜索（默认启用） |
+| --semantic-policy | enum | ❌ | fallback | 语义搜索策略: fallback=仅零结果时启用, hybrid=并行融合 |
+| --semantic-weight | float | ❌ | 1.0 | 语义搜索权重 (默认: 1.0) |
+| --fts-weight | float | ❌ | 1.0 | FTS 搜索权重 (默认: 1.0) |
+| --limit | int | ❌ | 20 | 返回结果数量限制；显式传入时覆盖默认截断 |
+| --offset | int | ❌ | 0 | 结果偏移量（分页起始位置） |
+| --read-top | int | ❌ | 0 | 读取前 N 条结果的完整正文（默认 0 不读取） |
+| --explain | flag | ❌ | false | 输出搜索评分详情 |
+| --diagnose | flag | ❌ | false | 输出最近搜索行为诊断摘要并退出 |
+| --diagnose-days | int | ❌ | 7 | 诊断回看天数 |
 | year | int | ❌ | - | L0 预过滤：限定年份（如 2026），先缩小候选集再进入搜索管道 |
 | month | int | ❌ | - | L0 预过滤：限定月份（需配合 --year） |
 
@@ -3288,7 +3310,7 @@ life-index version
 }
 ```
 
-**错误码**：E0800（迁移路径不存在）、E0801（文件解析失败）、E0802（迁移执行失败）、E0803（文件写入失败）
+> **E08xx 状态**: Reserved / 未实现。`tools/migrate/` 当前不发射结构化 E08xx 错误码；迁移失败以非结构化日志或异常形式报告。E0800–E0803 为预留编码，未来若迁移模块统一接入 `tools/lib/errors.py` 结构化错误体系时可启用。
 
 ### `life-index entity` — 实体图谱管理
 
