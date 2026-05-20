@@ -1,7 +1,7 @@
 <!-- AGENTS.md - Life Index Agent 导航入口 -->
 
 > 本文档为 AI 编码代理提供**快速导航入口**。详细规范已归源到 SSOT 文档，本文件仅保留指引与 Agent 行为约束。
-> **最后更新**: 2026-05-20 | **AGENTS.md 文档版本**: v3.3 | **状态**: 活跃维护
+> **最后更新**: 2026-05-20 | **AGENTS.md 文档版本**: v3.4 | **状态**: 活跃维护
 >
 > 本地专属配置（含部署路径与 Agent 并行治理规则）见 `.agents.local.md`（已 gitignored，仅本地可用）。
 > 若 `.agents.local.md` 存在，所有 Agent 在执行任何**非只读**任务前必须先读取它，并遵守其中指向的本地治理层。
@@ -39,6 +39,7 @@
 | 场景 | 必读文档 | 说明 |
 |------|----------|------|
 | **首次接手项目** | `CHARTER.md` → `AGENT_ONBOARDING.md` → `SKILL.md` | 先理解治理规则，再执行安装，最后掌握技能接口 |
+| **任何 RFC 流程**（起草/审稿/实施/收尾） | `docs/RFC_WORKFLOW.md` | 5 步闭环 + 边界情况 + RFC 类型差异 |
 | **涉及架构/模块变更** | `CHARTER.md` §1-§2 + `docs/ARCHITECTURE.md` | 宪章分层边界 + 技术实现细节 |
 | **修改搜索参数/阈值** | `CHARTER.md` §3 + `docs/ARCHITECTURE.md` §4-§5 | 搜索子系统不变量 + 架构参数 |
 | **新增/修改 CLI 命令** | `docs/API.md` + `CHARTER.md` §1.3 | 接口契约 + CLI 为 SSOT 规则 |
@@ -65,6 +66,7 @@
 | 📡 **L1** | [`docs/API.md`](docs/API.md) | **接口契约 SSOT**：CLI 参数、错误码、返回值 | 从属于 CHARTER |
 | 🧭 **L1** | [`docs/ENTITY_GRAPH.md`](docs/ENTITY_GRAPH.md) | **Entity Graph 操作契约 SSOT**：别名准入、生产写入、验证、回滚 | 从属于 CHARTER / ADR-024 |
 | 🏷️ **L1** | [`docs/VERSIONING.md`](docs/VERSIONING.md) | **版本治理 SSOT**：保守 SemVer、release checklist、tag policy | 从属于 CHARTER |
+| 🔄 **L1** | [`docs/RFC_WORKFLOW.md`](docs/RFC_WORKFLOW.md) | **RFC 流程 SSOT**：5 步闭环 + 内嵌 gate | 从属于 CHARTER |
 | 🗺️ **L2** | `.strategy/strategy.md` | 双产品线战略枢纽（本地 junction） | 本地只读 |
 | 🗺️ **L2** | `.strategy/ROADMAP.md` | CLI + GUI 综合路线图（本地 junction） | 本地只读 |
 | 📖 **L3** | [`SKILL.md`](SKILL.md) | Agent 技能定义、触发词、工具接口 | Agent 调用入口 |
