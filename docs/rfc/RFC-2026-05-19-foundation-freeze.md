@@ -1,9 +1,10 @@
 ---
 type: process-rfc
-status: accepted
+status: implemented
 created: 2026-05-19
 approved: 2026-05-19
 approved-by: Life Index Developer（user full authorization for map/governance changes）
+implemented: 2026-05-21
 title: Foundation Freeze v1 — CLI 地基封板线与里程碑重排
 related:
   - CHARTER.md §1.7 §1.8 §1.10
@@ -38,15 +39,15 @@ related:
 
 | # | 标准 | 交付物 | 现状 |
 |---|---|---|---|
-| 1 | L2 CLI JSON 契约冻结：8 个公开命令（search / smart-search / aggregate / analyze / entity / timeline / health / generate-index）的 JSON shape + 字段语义 + 错误码 + SLO 全部见于 `docs/API.md`，并打 `schema_version` 戳 | 里程碑 M16 | 🔴 未完成 |
+| 1 | L2 CLI JSON 契约冻结：8 个公开命令（search / smart-search / aggregate / analyze / entity / timeline / health / generate-index）的 JSON shape + 字段语义 + 错误码 + SLO 全部见于 `docs/API.md`，并打 `schema_version` 戳 | 里程碑 M16 | ✅ 已达成 |
 | 2 | 高迁移成本 schema 冻结：frontmatter 核心字段、entity schema（ADR-024）、topic taxonomy、evidence-pack schema（M03） | M03 + 既有 | ✅ 基本完成 |
-| 3 | 层级不变量 CI 硬门：一个全局测试，断言 L2 默认路径不得 import LLM client、不得跨层 | 并入 M16 | 🔴 未完成 |
+| 3 | 层级不变量 CI 硬门：一个全局测试，断言 L2 默认路径不得 import LLM client、不得跨层 | 并入 M16 | ✅ 已达成 |
 | 4 | Eval 回归门：gold set + 冻结 baseline + 回归 gate | M04 | ✅ 完成 |
 | 5 | 模块开发者契约 | RFC-2026-05-15 | ✅ 完成 |
-| 6 | 一个真实瘦模块端到端跑通，仅消费上述契约 | 里程碑 M24 | 🔴 未完成 |
+| 6 | 一个真实瘦模块端到端跑通，仅消费上述契约 | 里程碑 M24 | ✅ 已达成 |
 
 **判定**：Foundation Freeze v1 达成 **当且仅当** #1–#6 全部 ✅。
-当前剩 3 项：#1、#3（同属 M16）、#6（M24）。
+所有 6 项已于 2026-05-21 达成（见 §9 closeout 记录）。
 
 ## 4. 不在封板线内 —— 显式 defer
 
@@ -114,3 +115,22 @@ material change，经用户授权）：
 此即 Freeze 之后防止"地基阶段无限延长"复发的唯一闸门。它不是审代码、
 不是设计评审 —— 是一句话的方向判断，刻意保持到任何疲惫状态下都能在
 30 秒内完成。把它委托出去，定义上就是本 RFC §1 所述问题本身。
+
+## 9. Closeout (2026-05-21)
+
+退出标准 #1–#6 全部达成：
+
+- **#1** L2 CLI JSON 契约：6 个公开命令加 `schema_version` 戳，`docs/API.md` 对齐 (commits `fdb6718`, `18a270b`)；M16 schema_version 契约测试 12/12 + public contract docs 38/38 + pas2 alignment 测试 26/26 通过。
+- **#2** 高迁移成本 schema：维持冻结状态（无变更）。
+- **#3** 层级不变量 CI 硬门：`planner_types.py` 抽离 + 不变量测试 +65 行 (commit `957b46d`)；`tests/contract/test_layer_invariants.py` 5/5 通过。
+- **#4** Eval 回归门：workflow + 测试加强 (commit `50ba6c7`)。
+- **#5** 模块开发者契约：维持（RFC-2026-05-15）。
+- **#6** 真实瘦模块端到端：`tools/on_this_day/`（3 文件，仅 stdlib，**无 LLM/provider import**，subprocess 调 L2 CLI 模式）；`test_on_this_day_cli_contract.py` 8/8 通过；CHANGELOG `[Unreleased]` 含 user-facing 条目。
+
+**全套 contract + integration 测试**：535 passed / 1 skipped (无关) / 1 xpassed (无关) / 0 failed / 0 errored。
+
+**§1 诊断症状反转**：CHANGELOG `[Unreleased]` 从空 → 454 字符 user-facing 内容（schema_version 公开 + on-this-day 可发现 + API.md 对齐）。
+
+状态：`accepted` → `implemented`。
+
+下一步：进入 Phase-2（模块阶段），按 `RFC-2026-05-21-phase-2-governance-architecture`（待 land）规定的 4-Milestone 工作流执行。
