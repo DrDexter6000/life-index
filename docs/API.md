@@ -2858,6 +2858,7 @@ python -m tools.entity [options]
 | `--review` | flag | ❌ | false | 打开 Review Hub（风险优先审订队列） |
 | `--merge` | string | ❌ | - | 合并实体（需 `--id` 和 `--target-id`） |
 | `--delete` | flag | ❌ | false | 删除指定实体（需 `--id`） |
+| `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `--delete`） |
 | `--id` | string | 条件必填 | - | 源实体 ID |
 | `--target-id` | string | 条件必填 | - | 目标实体 ID（用于 merge） |
 | `--add-alias` | string | ❌ | - | 为实体添加别名（配合 `--update`） |
@@ -3055,6 +3056,32 @@ life-index entity --delete --id p003
   "error": null
 }
 ```
+
+##### `--delete --preview --id ENTITY_ID`
+
+预览删除影响，不修改实体图谱。返回与实际删除相同的 JSON 结构（`deleted_id`、`deleted_name`、`cleaned_refs`），但**不会移除实体或清理引用**：
+
+```bash
+life-index entity --delete --preview --id p003
+```
+
+返回：
+
+```json
+{
+  "success": true,
+  "data": {
+    "deleted_id": "p003",
+    "deleted_name": "旧同事A",
+    "cleaned_refs": [
+      {"entity_id": "p001", "relation": "colleague"}
+    ]
+  },
+  "error": null
+}
+```
+
+> **注意**: `--preview` 仅配合 `--delete` 使用，对其他子命令无效。不带 `--preview` 的 `--delete` 行为不变（立即删除并落盘）。
 
 #### `entity --seed`
 

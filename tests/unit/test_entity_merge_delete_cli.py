@@ -8,6 +8,7 @@ Validates that:
 - both operations produce structured JSON output
 """
 
+import json
 from pathlib import Path
 import io
 import sys
@@ -143,9 +144,7 @@ class TestDeleteCLI:
             self.captured = io.TextIOWrapper(
                 self.captured_buffer, encoding="utf-8", errors="strict"
             )
-            self.console = io.TextIOWrapper(
-                self.console_buffer, encoding="cp1252", errors="strict"
-            )
+            self.console = io.TextIOWrapper(self.console_buffer, encoding="cp1252", errors="strict")
 
         def write(self, text: str) -> int:
             self.captured.write(text)
@@ -242,6 +241,74 @@ class TestDeleteCLI:
 
         with pytest.raises(SystemExit):
             main(["--delete"])
+
+
+class TestDeletePreviewCLI:
+    """entity --delete --preview reports impact without mutating the graph."""
+
+    def test_preview_reports_deleted_id_name_and_cleaned_refs(
+        self, isolated_data_dir: Path
+    ) -> None:
+        """--delete --preview --id person-a reports deleted_id, deleted_name, and cleaned_refs."""
+        from tools.entity.__main__ import main
+
+        _save_graph(_sample_graph(), isolated_data_dir)
+
+        # Capture stdout
+        buffer = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = buffer
+        try:
+            main(["--delete", "--preview", "--id", "person-a"])
+        finally:
+            sys.stdout = old_stdout
+
+        output = json.loads(buffer.getvalue())
+        assert output["success"] is True
+        assert output["data"]["deleted_id"] == "person-a"
+        assert output["data"]["deleted_name"] == "张三"
+        # person-c has a relationship pointing to person-a
+        assert len(output["data"]["cleaned_refs"]) == 1
+        assert output["data"]["cleaned_refs"][0]["entity_id"] == "person-c"
+
+    def test_preview_does_not_remove_entity(self, isolated_data_dir: Path) -> None:
+        """Preview does not remove the target entity from the graph."""
+        from tools.entity.__main__ import main
+
+        _save_graph(_sample_graph(), isolated_data_dir)
+        gp = _graph_path_for(isolated_data_dir)
+
+        buffer = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = buffer
+        try:
+            main(["--delete", "--preview", "--id", "person-a"])
+        finally:
+            sys.stdout = old_stdout
+
+        graph = load_entity_graph(gp)
+        ids = {e["id"] for e in graph}
+        assert "person-a" in ids
+
+    def test_preview_does_not_clean_relationship_refs(self, isolated_data_dir: Path) -> None:
+        """Preview does not clean relationship refs from other entities."""
+        from tools.entity.__main__ import main
+
+        _save_graph(_sample_graph(), isolated_data_dir)
+        gp = _graph_path_for(isolated_data_dir)
+
+        buffer = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = buffer
+        try:
+            main(["--delete", "--preview", "--id", "person-a"])
+        finally:
+            sys.stdout = old_stdout
+
+        graph = load_entity_graph(gp)
+        person_c = next(e for e in graph if e["id"] == "person-c")
+        targets = [r["target"] for r in person_c.get("relationships", [])]
+        assert "person-a" in targets
 
 
 class TestReviewCLI:

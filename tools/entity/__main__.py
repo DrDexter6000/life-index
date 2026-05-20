@@ -37,6 +37,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--review", action="store_true")
     parser.add_argument("--merge")
     parser.add_argument("--delete", action="store_true", dest="delete_entity")
+    parser.add_argument(
+        "--preview", action="store_true", help="Preview only, do not mutate the graph"
+    )
     parser.add_argument("--id", dest="entity_id")
     parser.add_argument("--target-id", dest="target_id")
     parser.add_argument("--add-alias", dest="add_alias")
@@ -237,6 +240,21 @@ def main(argv: list[str] | None = None) -> None:
             for rel in entity.get("relationships", []):
                 if rel["target"] == entity_id:
                     refs.append({"entity_id": entity["id"], "relation": rel["relation"]})
+
+        # Preview-only path: report impact without mutating the graph
+        if args.preview:
+            _print(
+                {
+                    "success": True,
+                    "data": {
+                        "deleted_id": entity_id,
+                        "deleted_name": source.get("primary_name", ""),
+                        "cleaned_refs": refs,
+                    },
+                    "error": None,
+                }
+            )
+            return
 
         # Remove entity
         entities = [e for e in entities if e["id"] != entity_id]
