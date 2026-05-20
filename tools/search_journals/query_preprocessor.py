@@ -848,14 +848,13 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
     # that are part of the query template rather than content filters.
     original_keywords = keywords[:]
     _GENERIC_NOUNS = {"日志", "记录", "笔记"}
-    particles = {"相关", "的", "有关", "关于", "年", "月"}
+    particles = {"相关", "的", "有关", "关于", "年", "月", "份"}
     if topic_hints:
-        non_topic_keywords = [kw for kw in keywords if kw not in topic_hints]
-        meaningful = [
-            kw for kw in non_topic_keywords if kw not in _GENERIC_NOUNS and kw not in particles
-        ]
-        if not meaningful:
-            keywords = [kw for kw in keywords if kw not in _GENERIC_NOUNS and kw not in particles]
+        # M09: Always suppress generic nouns when topic hints are present.
+        # Generic nouns like "日志"/"记录" are query-template noise, not content
+        # filters — they should be removed regardless of whether other meaningful
+        # tokens (like "工作") coexist alongside them.
+        keywords = [kw for kw in keywords if kw not in _GENERIC_NOUNS and kw not in particles]
     elif date_range and date_range.source == "absolute_date_parse":
         # Phase 2-C: absolute-date broad recall ("2026年03月的日志") — suppress
         # generic nouns. Only for absolute date parse, not season/relative time.
@@ -863,6 +862,12 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
         meaningful = [kw for kw in non_particle_keywords if kw not in _GENERIC_NOUNS]
         if non_particle_keywords and not meaningful:
             keywords = [kw for kw in keywords if kw not in _GENERIC_NOUNS and kw not in particles]
+
+    # M09: Remove query-template particles from keywords regardless of path.
+    # These tokens ("的", "份", "相关", etc.) are never meaningful FTS keywords.
+    # They appear as residue after time-expression extraction or query-template
+    # patterns. This is a post-hoc cleanup, not a semantic decision.
+    keywords = [kw for kw in keywords if kw not in particles]
 
     query_mode = classify_query_mode(normalized)
 

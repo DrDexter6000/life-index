@@ -677,13 +677,31 @@ def _augment_with_structured_metadata(
     Returns list of added paths. Mutates l2_results and candidate_paths in place.
     """
     added: list[str] = []
-    if not (STRUCTURED_RETRIEVAL_ENABLED and plan and plan.date_range and plan.topic_hints):
+    if not (STRUCTURED_RETRIEVAL_ENABLED and plan and plan.date_range):
         return added
-    for hint in plan.topic_hints:
+    # M09: Date-navigation mode — when keywords are empty and no topic_hints,
+    # retrieve all metadata-matched journals within the date_range. This ensures
+    # pure date navigation ("2026年03月的日志") returns candidates.
+    if plan.topic_hints:
+        for hint in plan.topic_hints:
+            _structured = search_l2_metadata(
+                date_from=date_from,
+                date_to=date_to,
+                topic=hint,
+                query=None,
+            )
+            for r in _structured["results"]:
+                r["source"] = "structured_metadata"
+                if r["path"] not in {x["path"] for x in l2_results}:
+                    l2_results.append(r)
+                    added.append(r["path"])
+                    if candidate_paths is not None:
+                        candidate_paths.add(r["path"])
+    elif not plan.keywords:
+        # Pure date navigation: no keywords, no topic — just date_range
         _structured = search_l2_metadata(
             date_from=date_from,
             date_to=date_to,
-            topic=hint,
             query=None,
         )
         for r in _structured["results"]:
@@ -1053,11 +1071,15 @@ def hierarchical_search(
     # when entity expansion did not modify the query.
     # Only use when it's a single token (no spaces) to avoid breaking
     # _segment_query_for_fts was_segmented detection.
+    # M09: Skip when keywords are empty — the expanded_query is then a bare
+    # time expression (e.g. "2026年03月") that should not be used as FTS query.
+    # In this case the pipeline should rely on date_range filtering instead.
     if (
         _plan
         and _plan.expanded_query
         and expanded_query == _plan.raw_query
         and " " not in _plan.expanded_query
+        and _plan.keywords
     ):
         query = _plan.expanded_query
 
