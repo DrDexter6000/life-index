@@ -213,11 +213,11 @@ def test_default_output_is_text_report() -> None:
 
 
 def test_zero_production_writes() -> None:
-    """maintenance --dry-run does not modify user journal files in the data directory.
+    """maintenance --dry-run must NOT create or modify ANY file under the target data dir.
 
-    Index/cache files (.index/, .cache/) may be created by subprocess tools
-    (index --check, entity --audit) but these are machine artifacts, not
-    production user data. The maintenance module itself performs zero writes.
+    The full directory snapshot (all files, all subdirectories) must be identical
+    before and after maintenance --dry-run. This includes .index/, .cache/,
+    .life-index/metrics/, and any other subdirectory — zero writes, period.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir)
@@ -230,23 +230,36 @@ def test_zero_production_writes() -> None:
             encoding="utf-8",
         )
 
-        # Capture journal file hash before
-        before_hash = hashlib.sha256(test_file.read_bytes()).hexdigest()
+        # Capture FULL directory snapshot before
+        before_hashes = _file_hashes(data_dir)
+        assert len(before_hashes) > 0, "Test setup error: no files in data dir"
 
         # Run maintenance
         proc = _run_maintenance(["--dry-run", "--output=json"], LIFE_INDEX_DATA_DIR=str(data_dir))
         assert proc.returncode == 0
 
-        # Verify journal file is unmodified
-        after_hash = hashlib.sha256(test_file.read_bytes()).hexdigest()
-        assert before_hash == after_hash, (
-            f"Journal file was modified by maintenance dry-run! "
-            f"before={before_hash}, after={after_hash}"
-        )
+        # Capture FULL directory snapshot after
+        after_hashes = _file_hashes(data_dir)
 
-        # Verify no new journal files were created
-        journal_files_after = list(journals_dir.rglob("*.md"))
-        assert len(journal_files_after) == 1, f"Unexpected new journal files: {journal_files_after}"
+        # Assert ZERO changes: no new files, no modified files, no deleted files
+        new_files = set(after_hashes.keys()) - set(before_hashes.keys())
+        deleted_files = set(before_hashes.keys()) - set(after_hashes.keys())
+        modified_files = {
+            k for k in after_hashes if k in before_hashes and after_hashes[k] != before_hashes[k]
+        }
+
+        assert new_files == set(), (
+            f"maintenance --dry-run created {len(new_files)} new file(s) "
+            f"under target data dir: {sorted(new_files)}"
+        )
+        assert deleted_files == set(), (
+            f"maintenance --dry-run deleted {len(deleted_files)} file(s) "
+            f"from target data dir: {sorted(deleted_files)}"
+        )
+        assert modified_files == set(), (
+            f"maintenance --dry-run modified {len(modified_files)} file(s) "
+            f"in target data dir: {sorted(modified_files)}"
+        )
 
 
 # ── Subprocess boundary ─────────────────────────────────────────────

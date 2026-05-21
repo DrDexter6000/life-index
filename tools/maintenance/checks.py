@@ -350,16 +350,31 @@ def check_search_eval_smoke(data_dir: str | None = None) -> dict[str, Any]:
     Invokes: python -m tools entity-graph-eval --queries <fixture>
     Uses the existing ablation_queries.json fixture from Phase A.
     Gracefully degrades to needs-user-action if data directory is empty.
+
+    The eval subprocess runs against an isolated scratch data directory,
+    never against the target data_dir. This guarantees zero target-data
+    writes by the eval smoke check (the subprocess may create .index/,
+    .cache/, and .life-index/metrics/ in the scratch dir, which is
+    cleaned up after the check).
     """
-    env = os.environ.copy()
-    if data_dir:
-        env["LIFE_INDEX_DATA_DIR"] = data_dir
+    import tempfile
+
+    # Eval subprocess must write to an isolated scratch dir, NEVER the target.
+    # The eval tool creates .index/, .cache/, and .life-index/metrics/ under
+    # its LIFE_INDEX_DATA_DIR — we redirect those writes to a temp directory
+    # that gets cleaned up afterward, preserving the zero-write guarantee.
+    eval_scratch = tempfile.TemporaryDirectory(prefix="life-index-eval-smoke-")
+
+    # Build the eval subprocess env with the scratch data dir
+    eval_env = os.environ.copy()
+    eval_env["LIFE_INDEX_DATA_DIR"] = eval_scratch.name
 
     # Use the Phase A fixture path relative to repo root
     repo_root = Path(__file__).resolve().parents[2]
     fixture = repo_root / "tests" / "fixtures" / "eval" / "ablation_queries.json"
 
     if not fixture.exists():
+        eval_scratch.cleanup()
         return _check_result(
             "search_eval_smoke",
             "needs-user-action",
@@ -374,6 +389,7 @@ def check_search_eval_smoke(data_dir: str | None = None) -> dict[str, Any]:
         smoke_queries = []
 
     if not smoke_queries:
+        eval_scratch.cleanup()
         return _check_result(
             "search_eval_smoke",
             "needs-user-action",
@@ -381,8 +397,6 @@ def check_search_eval_smoke(data_dir: str | None = None) -> dict[str, Any]:
         )
 
     # Write a temporary fixture with just 3 queries
-    import tempfile
-
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
     try:
         json.dump(smoke_queries, tmp)
@@ -391,7 +405,7 @@ def check_search_eval_smoke(data_dir: str | None = None) -> dict[str, Any]:
 
         rc, stdout, stderr, timeout_err = _run_subprocess(
             [sys.executable, "-m", "tools", "entity-graph-eval", "--queries", tmp_path],
-            env=env,
+            env=eval_env,
             timeout=30,  # Short timeout for smoke test
         )
 
@@ -439,6 +453,10 @@ def check_search_eval_smoke(data_dir: str | None = None) -> dict[str, Any]:
     finally:
         try:
             Path(tmp_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        try:
+            eval_scratch.cleanup()
         except OSError:
             pass
 
