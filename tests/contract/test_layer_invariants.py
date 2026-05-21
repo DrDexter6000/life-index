@@ -255,3 +255,66 @@ def test_ablation_no_default_llm_imports() -> None:
             offenders.append(f"{rel}: {sorted(found)}")
 
     assert offenders == [], f"tools/eval/ablation/ contains disallowed LLM imports: {offenders}"
+
+
+# --- Phase D (gbrain #4): maintenance module invariant tests ---
+
+
+MAINTENANCE_ROOT = REPO_ROOT / "tools" / "maintenance"
+
+
+def _maintenance_files() -> list[Path]:
+    """All .py files in the maintenance module, if it exists."""
+    if not MAINTENANCE_ROOT.exists():
+        return []
+    return sorted(MAINTENANCE_ROOT.rglob("*.py"))
+
+
+def test_maintenance_no_default_llm_imports() -> None:
+    """Phase D invariant: tools/maintenance/ must not import LLM providers.
+
+    The maintenance cycle is a dry-run/report-only command that aggregates
+    six health checks via subprocess delegation. It must not depend on any
+    LLM provider in its default code path (CHARTER §1.5).
+    """
+    offenders: list[str] = []
+    for path in _maintenance_files():
+        imports = _imported_modules(path)
+        found = imports & DISALLOWED_LLM_IMPORTS
+        if found:
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            offenders.append(f"{rel}: {sorted(found)}")
+
+    assert offenders == [], f"tools/maintenance/ contains disallowed LLM imports: {offenders}"
+
+
+def test_maintenance_uses_subprocess_not_direct_import() -> None:
+    """Phase D invariant: tools/maintenance/ must not import called module internals.
+
+    The maintenance module delegates to existing CLI commands (index, entity,
+    eval/ablation, backup) via subprocess. It must never import their internals
+    directly — this preserves the L2/L3 subprocess boundary.
+    """
+    disallowed_internal_imports = {
+        "tools.build_index",
+        "tools.entity",
+        "tools.eval.ablation",
+        "tools.backup",
+    }
+
+    offenders: list[str] = []
+    for path in _maintenance_files():
+        imports = _imported_modules(path)
+        for imported in imports:
+            if any(
+                imported == disallowed or imported.startswith(f"{disallowed}.")
+                for disallowed in disallowed_internal_imports
+            ):
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                offenders.append(f"{rel}: {imported}")
+
+    # Allow tools.lib.* (shared utilities) and yaml (for file parsing)
+    assert offenders == [], (
+        f"maintenance module directly imports called module internals "
+        f"(should use subprocess): {offenders}"
+    )

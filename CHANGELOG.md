@@ -14,6 +14,7 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - `entity --candidate-edges --output=json`: read-only candidate relationship edge report scanning journal `people` co-occurrence, `related_entries`, wikilinks, and body co-occurrence. Outputs deduplicated JSON with evidence paths, confidence scores, and suggested actions. Zero production graph writes.
 - `recall` command: L3 recall module providing three search modes (`default` / `recall` / `deep`) via subprocess delegation to L2 search/smart-search. `default` mode uses pure FTS; `recall` mode uses hybrid search; `deep` mode requires explicit `--use-llm` opt-in (degrades to `recall` without it). Zero default LLM calls.
 - `search --enable-source-tier`: opt-in source-tier ranking boost (gbrain absorption Phase B). Applies evidence-quality multipliers based on document frontmatter richness (`journal_rich` 1.08× / `journal_standard` 1.04× / `journal_basic` 1.00×). Default off to preserve exact backward compatibility. Ablation eval shows flat delta on current fixture; documented in `.strategy/cli/2026-05-21-source-tier-eval-result.md`.
+- `maintenance` command: dry-run/report-only maintenance cycle aggregating six health checks (index freshness, entity audit, orphan related entries, search eval smoke, backup verification, candidate edges count) without production writes. All external CLI calls delegated via subprocess. Default path is fully deterministic — zero LLM imports.
 
 ### Changed
 
