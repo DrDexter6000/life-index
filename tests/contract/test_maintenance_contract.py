@@ -93,31 +93,16 @@ def _maintenance_files() -> list[Path]:
     return sorted(MAINTENANCE_ROOT.rglob("*.py"))
 
 
-# ── Module-scoped fixture for dry-run JSON output ────────────────────
-# Runs the full maintenance dry-run once and shares the parsed result
-# across all tests that only inspect the JSON structure. This avoids
-# repeatedly spawning slow subprocesses (especially search_eval_smoke).
-
-
-@pytest.fixture(scope="module")
-def dry_run_json() -> dict[str, Any]:
-    """Run maintenance --dry-run --output=json once per test module."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        proc = _run_maintenance(["--dry-run", "--output=json"], LIFE_INDEX_DATA_DIR=tmpdir)
-        return _parse_json_output(proc)
-
-
 # ── CLI surface tests ───────────────────────────────────────────────
 
 
 def test_maintenance_help_output() -> None:
     """maintenance --help prints usage and exits 0."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        proc = _run_maintenance(["--help"], LIFE_INDEX_DATA_DIR=tmpdir)
-        assert proc.returncode == 0, f"help failed: {proc.stderr}"
-        assert (
-            "maintenance" in proc.stdout.lower()
-        ), f"help output missing 'maintenance': {proc.stdout[:200]}"
+    proc = _run_maintenance(["--help"])
+    assert proc.returncode == 0, f"help failed: {proc.stderr}"
+    assert (
+        "maintenance" in proc.stdout.lower()
+    ), f"help output missing 'maintenance': {proc.stdout[:200]}"
 
 
 def test_maintenance_dry_run_exits_zero() -> None:
@@ -131,71 +116,78 @@ def test_maintenance_dry_run_exits_zero() -> None:
 
 
 def test_maintenance_no_args_prints_help() -> None:
-    """maintenance with no args prints help and exits 0 or non-zero.
-
-    This test must use a temp data dir to avoid touching the real default
-    ~/Documents/Life-Index when LIFE_INDEX_DATA_DIR is unset in the calling shell.
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        proc = _run_maintenance([], LIFE_INDEX_DATA_DIR=tmpdir)
-        # Should print usage info (either via argparse default or help)
-        combined = proc.stdout + proc.stderr
-        assert "maintenance" in combined.lower() or proc.returncode != 0
+    """maintenance with no args prints help and exits 0 or non-zero."""
+    proc = _run_maintenance([])
+    # Should print usage info (either via argparse default or help)
+    combined = proc.stdout + proc.stderr
+    assert "maintenance" in combined.lower() or proc.returncode != 0
 
 
 # ── Six check categories ────────────────────────────────────────────
 
 
-def test_six_check_categories_present(dry_run_json: dict[str, Any]) -> None:
+def test_six_check_categories_present() -> None:
     """maintenance --dry-run reports exactly 6 check categories."""
-    checks = dry_run_json["checks"]
-    assert isinstance(checks, list), f"Expected list, got {type(checks)}"
-    assert len(checks) == 6, f"Expected 6 checks, got {len(checks)}"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        proc = _run_maintenance(["--dry-run", "--output=json"], LIFE_INDEX_DATA_DIR=tmpdir)
+        output = _parse_json_output(proc)
+        checks = output["checks"]
+        assert isinstance(checks, list), f"Expected list, got {type(checks)}"
+        assert len(checks) == 6, f"Expected 6 checks, got {len(checks)}"
 
-    expected_categories = {
-        "index_freshness",
-        "entity_audit",
-        "orphan_related_entries",
-        "search_eval_smoke",
-        "backup_verification",
-        "candidate_edges",
-    }
-    actual_categories = {c["category"] for c in checks}
-    assert (
-        actual_categories == expected_categories
-    ), f"Missing/extra categories. Expected: {expected_categories}, Got: {actual_categories}"
+        expected_categories = {
+            "index_freshness",
+            "entity_audit",
+            "orphan_related_entries",
+            "search_eval_smoke",
+            "backup_verification",
+            "candidate_edges",
+        }
+        actual_categories = {c["category"] for c in checks}
+        assert (
+            actual_categories == expected_categories
+        ), f"Missing/extra categories. Expected: {expected_categories}, Got: {actual_categories}"
 
 
-def test_each_check_has_required_fields(dry_run_json: dict[str, Any]) -> None:
+def test_each_check_has_required_fields() -> None:
     """Each check has category, status, details, and timestamp."""
-    for check in dry_run_json["checks"]:
-        assert "category" in check, f"Missing 'category' in check: {check}"
-        assert "status" in check, f"Missing 'status' in check: {check}"
-        assert "details" in check, f"Missing 'details' in check: {check}"
-        assert "timestamp" in check, f"Missing 'timestamp' in check: {check}"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        proc = _run_maintenance(["--dry-run", "--output=json"], LIFE_INDEX_DATA_DIR=tmpdir)
+        output = _parse_json_output(proc)
+        for check in output["checks"]:
+            assert "category" in check, f"Missing 'category' in check: {check}"
+            assert "status" in check, f"Missing 'status' in check: {check}"
+            assert "details" in check, f"Missing 'details' in check: {check}"
+            assert "timestamp" in check, f"Missing 'timestamp' in check: {check}"
 
 
-def test_status_enum_values(dry_run_json: dict[str, Any]) -> None:
+def test_status_enum_values() -> None:
     """All check status values are valid enum members: pass, fail, needs-user-action."""
     valid_statuses = {"pass", "fail", "needs-user-action"}
-    for check in dry_run_json["checks"]:
-        assert (
-            check["status"] in valid_statuses
-        ), f"Invalid status '{check['status']}' in check '{check['category']}'"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        proc = _run_maintenance(["--dry-run", "--output=json"], LIFE_INDEX_DATA_DIR=tmpdir)
+        output = _parse_json_output(proc)
+        for check in output["checks"]:
+            assert (
+                check["status"] in valid_statuses
+            ), f"Invalid status '{check['status']}' in check '{check['category']}'"
 
 
 # ── JSON output format ──────────────────────────────────────────────
 
 
-def test_json_output_is_valid(dry_run_json: dict[str, Any]) -> None:
+def test_json_output_is_valid() -> None:
     """--output=json produces valid JSON with top-level keys."""
-    assert "success" in dry_run_json
-    assert "schema_version" in dry_run_json
-    assert "checks" in dry_run_json
-    assert "summary" in dry_run_json
-    assert "timestamp" in dry_run_json
-    assert isinstance(dry_run_json["checks"], list)
-    assert isinstance(dry_run_json["summary"], dict)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        proc = _run_maintenance(["--dry-run", "--output=json"], LIFE_INDEX_DATA_DIR=tmpdir)
+        output = _parse_json_output(proc)
+        assert "success" in output
+        assert "schema_version" in output
+        assert "checks" in output
+        assert "summary" in output
+        assert "timestamp" in output
+        assert isinstance(output["checks"], list)
+        assert isinstance(output["summary"], dict)
 
 
 def test_default_output_is_text_report() -> None:
@@ -302,31 +294,37 @@ def test_maintenance_no_default_llm_imports() -> None:
 # ── Schema version contract ─────────────────────────────────────────
 
 
-def test_schema_version_is_stable(dry_run_json: dict[str, Any]) -> None:
+def test_schema_version_is_stable() -> None:
     """JSON output includes a stable schema_version field."""
-    sv = dry_run_json.get("schema_version")
-    assert sv is not None, "Missing schema_version"
-    assert isinstance(sv, str)
-    assert sv.startswith("m"), f"schema_version should start with 'm': {sv}"
-    assert "maintenance" in sv, f"schema_version should contain 'maintenance': {sv}"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        proc = _run_maintenance(["--dry-run", "--output=json"], LIFE_INDEX_DATA_DIR=tmpdir)
+        output = _parse_json_output(proc)
+        sv = output.get("schema_version")
+        assert sv is not None, "Missing schema_version"
+        assert isinstance(sv, str)
+        assert sv.startswith("m"), f"schema_version should start with 'm': {sv}"
+        assert "maintenance" in sv, f"schema_version should contain 'maintenance': {sv}"
 
 
 # ── Summary contract ────────────────────────────────────────────────
 
 
-def test_summary_contains_counts(dry_run_json: dict[str, Any]) -> None:
+def test_summary_contains_counts() -> None:
     """summary includes pass_count, fail_count, needs_user_action_count totals."""
-    summary = dry_run_json["summary"]
-    assert isinstance(summary, dict)
-    assert "pass_count" in summary
-    assert "fail_count" in summary
-    assert "needs_user_action_count" in summary
-    assert isinstance(summary["pass_count"], int)
-    assert isinstance(summary["fail_count"], int)
-    assert isinstance(summary["needs_user_action_count"], int)
-    # Sum should equal 6
-    total = summary["pass_count"] + summary["fail_count"] + summary["needs_user_action_count"]
-    assert total == 6, f"Summary counts should sum to 6: {summary}"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        proc = _run_maintenance(["--dry-run", "--output=json"], LIFE_INDEX_DATA_DIR=tmpdir)
+        output = _parse_json_output(proc)
+        summary = output["summary"]
+        assert isinstance(summary, dict)
+        assert "pass_count" in summary
+        assert "fail_count" in summary
+        assert "needs_user_action_count" in summary
+        assert isinstance(summary["pass_count"], int)
+        assert isinstance(summary["fail_count"], int)
+        assert isinstance(summary["needs_user_action_count"], int)
+        # Sum should equal 6
+        total = summary["pass_count"] + summary["fail_count"] + summary["needs_user_action_count"]
+        assert total == 6, f"Summary counts should sum to 6: {summary}"
 
 
 # ── Dry-run flag is required for report ─────────────────────────────
@@ -336,9 +334,8 @@ def test_dry_run_flag_controls_report() -> None:
     """--dry-run flag produces the report; without it, behavior is the same
     (maintenance currently only supports dry-run mode)."""
     # Currently, --dry-run is the only mode. The command should work with it.
-    with tempfile.TemporaryDirectory() as tmpdir:
-        proc = _run_maintenance(["--dry-run", "--help"], LIFE_INDEX_DATA_DIR=tmpdir)
-        assert proc.returncode == 0
+    proc = _run_maintenance(["--dry-run", "--help"])
+    assert proc.returncode == 0
 
 
 if __name__ == "__main__":
