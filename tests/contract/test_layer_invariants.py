@@ -219,3 +219,39 @@ def test_recall_module_uses_subprocess_not_direct_import() -> None:
     assert (
         offenders == []
     ), f"recall module directly imports L2 internals (should use subprocess): {offenders}"
+
+
+# --- Phase A: tools/eval/ablation/ no-default-LLM invariant ---
+
+ABLATION_ROOT = REPO_ROOT / "tools" / "eval" / "ablation"
+
+DISALLOWED_LLM_IMPORTS = {
+    "anthropic",
+    "openai",
+    "llm_client",
+}
+
+
+def _ablation_python_files() -> list[Path]:
+    """Collect all .py files under tools/eval/ablation/."""
+    if not ABLATION_ROOT.exists():
+        return []
+    return sorted(ABLATION_ROOT.rglob("*.py"))
+
+
+def test_ablation_no_default_llm_imports() -> None:
+    """Phase A invariant: tools/eval/ablation/ must not import LLM providers.
+
+    The ablation eval surface is a deterministic cross-cutting tool that
+    measures search quality across pipeline configurations. It must not
+    depend on any LLM provider in its default code path (CHARTER §1.5).
+    """
+    offenders: list[str] = []
+    for path in _ablation_python_files():
+        imports = _imported_modules(path)
+        found = imports & DISALLOWED_LLM_IMPORTS
+        if found:
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            offenders.append(f"{rel}: {sorted(found)}")
+
+    assert offenders == [], f"tools/eval/ablation/ contains disallowed LLM imports: {offenders}"

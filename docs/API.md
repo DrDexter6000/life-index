@@ -1739,6 +1739,78 @@ baseline 路径。`_find_latest_baseline()` 使用上述策略为未设置
 > 不会合并到 `metric_deltas` 中。诊断模式与硬 gate 模式之间的结构差异会降级为
 > 显式警告，不会导致崩溃。
 
+## entity-graph-eval
+
+> **Graph ablation evaluation (gbrain Phase A).** Runs search across 8 pipeline
+> combinations to measure the impact of Entity Graph expansion, semantic search,
+> and hybrid policy on retrieval quality. Default path is fully deterministic —
+> zero LLM calls. Output schema version: `gbrain-ablation.v1`.
+
+### 端点
+
+```bash
+life-index entity-graph-eval --queries <fixture.json> [--output stdout|<path>] [--data-dir <dir>]
+python -m tools.eval.ablation --queries <fixture.json> [--output stdout|<path>] [--data-dir <dir>]
+```
+
+### 参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| queries | path | (required) | JSON fixture path with ablation queries |
+| output | string | `stdout` | `stdout` or a file path for JSON output |
+| data-dir | path | — | Override data directory (sets `LIFE_INDEX_DATA_DIR`) |
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "schema_version": "gbrain-ablation.v1",
+  "query_count": 25,
+  "combinations": [
+    {
+      "entity_graph": false,
+      "semantic": false,
+      "hybrid": false,
+      "precision_at_5": 0.12,
+      "recall_at_5": 0.08,
+      "mrr_at_5": 0.15,
+      "query_count": 25
+    }
+  ]
+}
+```
+
+**Output contains 8 entries** — one for each combination of:
+
+| Flag | Values | Effect |
+|------|--------|--------|
+| `entity_graph` | true/false | Entity Graph alias expansion on/off |
+| `semantic` | true/false | Semantic vector search on/off |
+| `hybrid` | true/false | Hybrid RRF policy vs. fallback (keyword-first) |
+
+### LLM 边界
+
+- Default path: **zero LLM calls**. All search uses FTS keyword + deterministic ranking.
+- `semantic=true` combinations use local `sentence-transformers` embeddings (no API call).
+- No `anthropic`, `openai`, or `llm_client` imports in the module.
+
+### Fixture format
+
+The queries fixture is a JSON array of objects:
+
+```json
+[
+  {
+    "id": "AQ01",
+    "query": "search terms",
+    "category": "entity_expansion",
+    "expected_relevant_ids": ["life-index_2026-03-04_002.md"]
+  }
+]
+```
+
 ---
 
 ## aggregate

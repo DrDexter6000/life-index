@@ -25,6 +25,7 @@ Commands:
     recall    Recall search with mode selection (default/recall/deep)
     migrate   Schema migration tool
     eval      Run search evaluation gate
+    entity-graph-eval  Run graph ablation evaluation (gbrain #1)
     aggregate Deterministic aggregate/trend computation
     analyze   Alias for aggregate
     health    Check installation health
@@ -480,6 +481,7 @@ def main() -> None:
         "timeline": "tools.timeline.__main__",  # Task 3.2
         "migrate": "tools.migrate.__main__",  # Round 6 Phase 1
         "eval": "tools.eval.__main__",
+        "entity-graph-eval": "tools.eval.ablation.__main__",
         "smart-search": "tools.smart_search.__main__",
         "aggregate": "tools.aggregate.__main__",
         "analyze": "tools.aggregate.__main__",
@@ -527,6 +529,7 @@ def print_usage() -> None:
     print("  recall    Recall search with mode selection (default/recall/deep)")
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")
+    print("  entity-graph-eval  Run graph ablation evaluation")
     print("  smart-search  Smart search with LLM orchestration")
     print("  aggregate  Deterministic aggregate/trend computation")
     print("  analyze   Alias for deterministic aggregate/trend computation")

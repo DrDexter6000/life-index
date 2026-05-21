@@ -8,6 +8,7 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### Added
 
+- `entity-graph-eval` command: graph ablation evaluation that runs search across 8 pipeline combinations (entity_graph × semantic × hybrid) and reports P@5 / R@5 / MRR@5 for each. Default path is fully deterministic — zero LLM calls. Invoked via `life-index entity-graph-eval --queries <fixture>` or `python -m tools.eval.ablation --queries <fixture>`. Output schema: `gbrain-ablation.v1`. (gbrain absorption Phase A)
 - Public JSON outputs for `search`, `smart-search`, `aggregate`, `entity`, `timeline`, and `health` now include a top-level `schema_version` field for forward-compatible contract tracking.
 - `on-this-day` command is now discoverable in agent navigation docs (`AGENTS.md`, `SKILL.md`).
 - `entity --candidate-edges --output=json`: read-only candidate relationship edge report scanning journal `people` co-occurrence, `related_entries`, wikilinks, and body co-occurrence. Outputs deduplicated JSON with evidence paths, confidence scores, and suggested actions. Zero production graph writes.
