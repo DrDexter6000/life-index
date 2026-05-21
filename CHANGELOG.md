@@ -6,19 +6,27 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
-### Added
+(No entries yet.)
 
-- `entity-graph-eval` command: graph ablation evaluation that runs search across 8 pipeline combinations (entity_graph × semantic × hybrid) and reports P@5 / R@5 / MRR@5 for each. Default path is fully deterministic — zero LLM calls. Invoked via `life-index entity-graph-eval --queries <fixture>` or `python -m tools.eval.ablation --queries <fixture>`. Output schema: `gbrain-ablation.v1`. (gbrain absorption Phase A)
+## [1.1.0] - 2026-05-21
+
+### What users get
+
+- Six new CLI capabilities matured into stable contract surface: graph ablation eval, opt-in source-tier ranking, candidate edge discovery, dry-run maintenance cycle, recall search modes, and trajectory observation extraction. All default paths remain deterministic — zero LLM imports — preserving Life Index's local-first privacy stance.
+- All public CLI commands now expose a top-level `schema_version` field for forward-compatible contract evolution.
+- New L3 recall and trajectory modules follow a strict subprocess-to-L2 boundary, codified by hard layer-invariant tests.
+
+### Included in this release
+
+- `entity-graph-eval` command: graph ablation evaluation across 8 pipeline combinations (entity_graph × semantic × hybrid) reporting P@5 / R@5 / MRR@5 deltas. Output schema `gbrain-ablation.v1`. (gbrain absorption Phase A)
+- `search --enable-source-tier`: opt-in source-tier ranking boost using evidence-quality multipliers (`journal_rich` 1.08× / `journal_standard` 1.04× / `journal_basic` 1.00×). Default off to preserve exact backward compatibility. Ablation eval shows flat delta on current fixture; documented in `.strategy/cli/2026-05-21-source-tier-eval-result.md`. (Phase B)
+- `entity --candidate-edges --output=json`: read-only candidate relationship edge report scanning journal `people` co-occurrence, `related_entries`, wikilinks, and body co-occurrence. Outputs deduplicated JSON with evidence paths, confidence scores, and suggested actions. Zero production graph writes. (Phase C)
+- `maintenance` command: dry-run/report-only maintenance cycle aggregating six health checks (index freshness, entity audit, orphan related entries, search eval smoke, backup verification, candidate edges count) without production writes. All external CLI calls delegated via subprocess. Default path is fully deterministic — zero LLM imports. (Phase D)
+- `recall` command: L3 recall module providing three search modes (`default` / `recall` / `deep`) via subprocess delegation to L2 search/smart-search. `default` uses pure FTS; `recall` uses hybrid search; `deep` requires explicit `--use-llm` opt-in (degrades to `recall` without it). Zero default LLM calls. (Phase E)
+- `trajectory` command: read-only typed observation extraction for `weight`, `sleep`, `mood`, `location`, and `project` across a month range. Consumes the L2 `search` CLI via subprocess, returns traceable `evidence_paths`, performs zero L1 schema writes, and has no default LLM calls. (Phase F)
 - Public JSON outputs for `search`, `smart-search`, `aggregate`, `entity`, `timeline`, and `health` now include a top-level `schema_version` field for forward-compatible contract tracking.
 - `on-this-day` command is now discoverable in agent navigation docs (`AGENTS.md`, `SKILL.md`).
-- `entity --candidate-edges --output=json`: read-only candidate relationship edge report scanning journal `people` co-occurrence, `related_entries`, wikilinks, and body co-occurrence. Outputs deduplicated JSON with evidence paths, confidence scores, and suggested actions. Zero production graph writes.
-- `recall` command: L3 recall module providing three search modes (`default` / `recall` / `deep`) via subprocess delegation to L2 search/smart-search. `default` mode uses pure FTS; `recall` mode uses hybrid search; `deep` mode requires explicit `--use-llm` opt-in (degrades to `recall` without it). Zero default LLM calls.
-- `search --enable-source-tier`: opt-in source-tier ranking boost (gbrain absorption Phase B). Applies evidence-quality multipliers based on document frontmatter richness (`journal_rich` 1.08× / `journal_standard` 1.04× / `journal_basic` 1.00×). Default off to preserve exact backward compatibility. Ablation eval shows flat delta on current fixture; documented in `.strategy/cli/2026-05-21-source-tier-eval-result.md`.
-- `maintenance` command: dry-run/report-only maintenance cycle aggregating six health checks (index freshness, entity audit, orphan related entries, search eval smoke, backup verification, candidate edges count) without production writes. All external CLI calls delegated via subprocess. Default path is fully deterministic — zero LLM imports.
-- `trajectory` command: read-only typed observation extraction for `weight`, `sleep`, `mood`, `location`, and `project` across a month range. Consumes the L2 `search` CLI via subprocess, returns traceable `evidence_paths`, performs zero L1 schema writes, and has no default LLM calls.
-
-### Changed
-
+- L3 boundary invariant tests for `trajectory` and `candidate-edges` modules.
 - `docs/API.md` contract documentation aligned with current CLI parameter defaults, error-code classifications, and M16 `schema_version` policy.
 
 ## [1.0.1] - 2026-05-20
