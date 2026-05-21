@@ -631,6 +631,7 @@ python -m tools.search_journals [options]
 | --explain | flag | ❌ | false | 输出搜索评分详情 |
 | --diagnose | flag | ❌ | false | 输出最近搜索行为诊断摘要并退出 |
 | --diagnose-days | int | ❌ | 7 | 诊断回看天数 |
+| --enable-source-tier | flag | ❌ | false | 启用 source-tier 排名加权（gbrain Phase B）。开启后，搜索结果会按文档 frontmatter 丰富度（topic/people/tags/related_entries）进行额外加权；默认关闭以保持行为不变 |
 | year | int | ❌ | - | L0 预过滤：限定年份（如 2026），先缩小候选集再进入搜索管道 |
 | month | int | ❌ | - | L0 预过滤：限定月份（需配合 --year） |
 

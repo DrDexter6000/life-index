@@ -31,6 +31,11 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Override data directory (sets LIFE_INDEX_DATA_DIR)",
     )
+    parser.add_argument(
+        "--tier-toggle",
+        action="store_true",
+        help="Run baseline and source-tier-enabled ablation and report deltas (gbrain Phase B)",
+    )
     args = parser.parse_args(argv)
 
     if not args.queries.exists():
@@ -52,7 +57,7 @@ def main(argv: list[str] | None = None) -> None:
 
         os.environ["LIFE_INDEX_DATA_DIR"] = str(args.data_dir)
 
-    output = run_ablation(queries_path=args.queries)
+    output = run_ablation(queries_path=args.queries, tier_toggle=args.tier_toggle)
     output["success"] = True
 
     text = json.dumps(output, ensure_ascii=False, indent=2)

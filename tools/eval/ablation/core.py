@@ -10,7 +10,7 @@ from unittest import mock
 from .metrics import precision_at_k, recall_at_k, mrr_at_k
 
 
-def run_ablation(queries_path: Path) -> dict[str, Any]:
+def run_ablation(queries_path: Path, tier_toggle: bool = False) -> dict[str, Any]:
     """Run graph ablation evaluation across 8 search pipeline combinations.
 
     Combinations: entity_graph={True,False} × semantic={True,False} × hybrid={True,False}
@@ -20,6 +20,7 @@ def run_ablation(queries_path: Path) -> dict[str, Any]:
 
     Args:
         queries_path: Path to the JSON fixture file with ablation queries.
+        tier_toggle: If True, also run with enable_source_tier=True and include deltas.
 
     Returns:
         Dict with schema_version, combinations list, and query_count.
@@ -43,22 +44,42 @@ def run_ablation(queries_path: Path) -> dict[str, Any]:
                     semantic=semantic,
                     hybrid=hybrid,
                 )
-                combinations.append(
-                    {
-                        "entity_graph": entity_graph,
-                        "semantic": semantic,
-                        "hybrid": hybrid,
-                        "precision_at_5": metrics["precision_at_5"],
-                        "recall_at_5": metrics["recall_at_5"],
-                        "mrr_at_5": metrics["mrr_at_5"],
-                        "query_count": query_count,
-                    }
-                )
+                entry: dict[str, Any] = {
+                    "entity_graph": entity_graph,
+                    "semantic": semantic,
+                    "hybrid": hybrid,
+                    "precision_at_5": metrics["precision_at_5"],
+                    "recall_at_5": metrics["recall_at_5"],
+                    "mrr_at_5": metrics["mrr_at_5"],
+                    "query_count": query_count,
+                }
+                if tier_toggle:
+                    metrics_tier = _run_combination(
+                        queries=queries,
+                        entity_graph=entity_graph,
+                        semantic=semantic,
+                        hybrid=hybrid,
+                        enable_source_tier=True,
+                    )
+                    entry["tier_precision_at_5"] = metrics_tier["precision_at_5"]
+                    entry["tier_recall_at_5"] = metrics_tier["recall_at_5"]
+                    entry["tier_mrr_at_5"] = metrics_tier["mrr_at_5"]
+                    entry["tier_delta_p5"] = round(
+                        metrics_tier["precision_at_5"] - metrics["precision_at_5"], 4
+                    )
+                    entry["tier_delta_r5"] = round(
+                        metrics_tier["recall_at_5"] - metrics["recall_at_5"], 4
+                    )
+                    entry["tier_delta_m5"] = round(
+                        metrics_tier["mrr_at_5"] - metrics["mrr_at_5"], 4
+                    )
+                combinations.append(entry)
 
     return {
         "schema_version": "gbrain-ablation.v1",
         "combinations": combinations,
         "query_count": query_count,
+        "tier_toggle": tier_toggle,
     }
 
 
@@ -68,6 +89,7 @@ def _run_combination(
     entity_graph: bool,
     semantic: bool,
     hybrid: bool,
+    enable_source_tier: bool = False,
 ) -> dict[str, float]:
     """Run a single search pipeline combination and aggregate metrics.
 
@@ -112,6 +134,7 @@ def _run_combination(
                 query=query_text,
                 semantic=semantic,
                 semantic_policy=semantic_policy,
+                enable_source_tier=enable_source_tier,
             )
 
             merged_results = result.get("merged_results", [])

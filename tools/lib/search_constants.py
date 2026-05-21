@@ -363,6 +363,22 @@ NOISE_GATE_TYPO_NEAR_LOW: float = 0.65
 
 
 # =============================================================================
+# Source-tier Ranking Boost (gbrain absorption Phase B)
+# =============================================================================
+
+# ADR-017: Evidence-quality multipliers applied to final_score when
+# --enable-source-tier is passed. Higher values promote well-curated primary
+# sources (journals with rich frontmatter) over sparse or generated content.
+SOURCE_TIER_WEIGHTS = {
+    "journal_rich": 1.08,  # topic + (people|tags|related_entries)
+    "journal_standard": 1.04,  # topic or people or tags
+    "journal_basic": 1.00,  # minimal metadata
+    "generated_report": 0.95,  # abstracts, indexes (future-proof)
+    "attachment_ocr": 0.90,  # external attachments (future-proof)
+}
+
+
+# =============================================================================
 # Export all constants
 # =============================================================================
 
@@ -437,4 +453,6 @@ __all__ = [
     # R1-safe-bonus: conservative structured-intent boost (does not guarantee top5)
     "STRUCTURED_INTENT_MATCH_BONUS",
     "STRUCTURED_INTENT_MATCH_BONUS_KEYWORD",
+    # Source-tier ranking boost (gbrain absorption Phase B)
+    "SOURCE_TIER_WEIGHTS",
 ]

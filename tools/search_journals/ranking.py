@@ -43,6 +43,7 @@ from ..lib.search_constants import (
     FTS_WEIGHT_DEFAULT,
     SEMANTIC_WEIGHT_DEFAULT,
     FTS_MIN_RELEVANCE,
+    SOURCE_TIER_WEIGHTS,
 )
 
 
@@ -125,6 +126,63 @@ def _topic_boost_multiplier(result: dict[str, Any], topic_hints: list[str] | Non
     if result_topics & set(topic_hints):
         return TOPIC_HINT_BOOST
     return 1.0
+
+
+def _compute_source_tier(result: dict[str, Any]) -> str:
+    """Determine source tier from result path and metadata.
+
+    Tiers reflect evidence quality: well-curated journals with rich frontmatter
+    are primary sources; generated reports and attachments are secondary.
+    """
+    path = str(result.get("path", ""))
+    metadata = result.get("metadata", {}) or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    # Generated reports / indexes (not currently in search corpus but future-proof)
+    if "Abstracts/" in path or "by-topic/" in path:
+        return "generated_report"
+    if "attachments/" in path:
+        return "attachment_ocr"
+
+    # Journal entries: classify by frontmatter richness
+    topic = metadata.get("topic")
+    people = metadata.get("people")
+    tags = metadata.get("tags")
+    related = metadata.get("related_entries")
+
+    has_topic = bool(topic)
+    has_people = bool(people and ((isinstance(people, list) and people) or isinstance(people, str)))
+    has_tags = bool(tags and ((isinstance(tags, list) and tags) or isinstance(tags, str)))
+    has_related = bool(related and isinstance(related, list) and related)
+
+    if has_topic and (has_people or has_tags or has_related):
+        return "journal_rich"
+    if has_topic or has_people or has_tags:
+        return "journal_standard"
+    return "journal_basic"
+
+
+def _apply_source_tier_boost(
+    scored: dict[str, dict[str, Any]],
+    enable: bool,
+) -> None:
+    """Apply source-tier weight multiplier to final_score in-place.
+
+    Only mutates scores when enable=True.  Default-off preserves exact
+    backward compatibility.
+    """
+    if not enable:
+        return
+    for entry in scored.values():
+        tier = _compute_source_tier(entry.get("data", {}))
+        weight = SOURCE_TIER_WEIGHTS.get(tier, 1.0)
+        # Non-hybrid path uses "score" key
+        if "score" in entry:
+            entry["score"] = entry["score"] * weight
+        # Hybrid path uses "final_score" key
+        if "final_score" in entry:
+            entry["final_score"] = entry["final_score"] * weight
 
 
 def _structured_intent_match(
@@ -325,6 +383,7 @@ def merge_and_rank_results(
     explain: bool = False,
     topic_hints: Optional[List[str]] = None,
     date_range: Optional[Dict[str, str]] = None,
+    enable_source_tier: bool = False,
 ) -> List[Dict]:
     """
     合并三层搜索结果并按相关性排序
@@ -424,6 +483,9 @@ def merge_and_rank_results(
             if _structured_intent_match(entry["data"], date_range, topic_hints):
                 entry["score"] = entry["score"] + STRUCTURED_INTENT_MATCH_BONUS_KEYWORD
 
+    # Phase B: Apply source-tier boost (opt-in, default off)
+    _apply_source_tier_boost(scored, enable_source_tier)
+
     # 按分数降序排序，分数相同按 tier 排序（高 tier 优先），
     # 再按 title 中完整短语出现位置排序（越靠前越优先，C1-a/b）
     def _title_phrase_position(data: dict, q: str) -> int:
@@ -519,6 +581,7 @@ def merge_and_rank_results_hybrid(
     entity_hints: Optional[List[Dict[str, Any]]] = None,
     topic_hints: Optional[List[str]] = None,
     date_range: Optional[Dict[str, str]] = None,
+    enable_source_tier: bool = False,
 ) -> List[Dict]:
     """
     混合排序：结合 FTS (BM25) 和语义搜索结果（RRF）
@@ -695,6 +758,9 @@ def merge_and_rank_results_hybrid(
         for path, entry in scored.items():
             if _structured_intent_match(entry["data"], date_range, topic_hints):
                 entry["final_score"] = entry["final_score"] + STRUCTURED_INTENT_MATCH_BONUS
+
+    # Phase B: Apply source-tier boost (opt-in, default off)
+    _apply_source_tier_boost(scored, enable_source_tier)
 
     # 按混合检索意图排序：
     # 1) 真正的关键词命中（尤其 FTS）优先

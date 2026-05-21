@@ -143,6 +143,11 @@ Examples:
         default=7,
         help="诊断回看天数（默认: 7）",
     )
+    parser.add_argument(
+        "--enable-source-tier",
+        action="store_true",
+        help="启用 source-tier 排名加权（gbrain Phase B，默认关闭）",
+    )
 
     args = parser.parse_args()
     ensure_dirs()
@@ -192,6 +197,7 @@ Examples:
                 fts_weight=args.fts_weight,
                 explain=args.explain,  # Task 2.1
                 semantic_policy=args.semantic_policy,
+                enable_source_tier=args.enable_source_tier,
             )
 
     # Phase 2 (Task 3): Presentation-layer slicing with offset + limit

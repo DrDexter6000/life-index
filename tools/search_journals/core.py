@@ -796,6 +796,7 @@ def _run_level3_fallback_search(
     _date_range: dict[str, str] | None,
     _entity_expanded: bool,
     start_time: float,
+    enable_source_tier: bool = False,
 ) -> dict[str, Any]:
     """Fallback policy: keyword first, semantic only on zero keyword results."""
     # Run keyword pipeline
@@ -843,6 +844,7 @@ def _run_level3_fallback_search(
         explain=explain,
         topic_hints=_topic_hints,
         date_range=_date_range,
+        enable_source_tier=enable_source_tier,
     )
 
     if _kw_merged:
@@ -902,6 +904,7 @@ def _run_level3_fallback_search(
                 entity_hints=entity_hints,
                 topic_hints=_topic_hints,
                 date_range=_date_range,
+                enable_source_tier=enable_source_tier,
             )
         else:
             result["merged_results"] = []
@@ -970,6 +973,7 @@ def hierarchical_search(
     non_rrf_min_score: float = NON_RRF_MIN_SCORE,
     explain: bool = False,  # Task 2.1: explain mode
     semantic_policy: Literal["hybrid", "fallback"] = "hybrid",
+    enable_source_tier: bool = False,  # gbrain Phase B: opt-in source-tier boost
 ) -> Dict[str, Any]:
     """
     双管道并行搜索
@@ -1000,6 +1004,7 @@ def hierarchical_search(
             "date_to": date_to,
             "level": level,
             "semantic": semantic,
+            "enable_source_tier": enable_source_tier,
         },
         "l1_results": [],
         "l2_results": [],
@@ -1278,6 +1283,7 @@ def hierarchical_search(
             _date_range=_date_range,
             _entity_expanded=_entity_expanded,
             start_time=start_time,
+            enable_source_tier=enable_source_tier,
         )
 
     # ── Hybrid policy: original parallel execution ──
@@ -1363,6 +1369,7 @@ def hierarchical_search(
             entity_hints=entity_hints,
             topic_hints=_topic_hints,
             date_range=_date_range,
+            enable_source_tier=enable_source_tier,
         )
     else:
         result["merged_results"] = merge_and_rank_results(
@@ -1374,6 +1381,7 @@ def hierarchical_search(
             explain=explain,
             topic_hints=_topic_hints,
             date_range=_date_range,
+            enable_source_tier=enable_source_tier,
         )
 
     _finalize_level3_results(result, query, start_time, explain)
