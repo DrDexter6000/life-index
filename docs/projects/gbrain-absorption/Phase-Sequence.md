@@ -22,7 +22,7 @@ gbrain-F (#6 + trajectory) 独立
 
 | Phase | gbrain # | Worktree | Branch | TDD Brief | Wave | Status | Subagent | PR |
 |---|---|---|---|---|---|---|---|---|
-| A | #1 Graph ablation eval | `.claude/worktrees/gbrain-A` | `claude/gbrain-A` | `Phase-A-TDD.md` | 1 | [ ] not started | TBD | TBD |
+| A | #1 Graph ablation eval | `.claude/worktrees/gbrain-A` | `claude/gbrain-A` | `Phase-A-TDD.md` | 1 | [x] accepted | `码农A_GLM` | local commit `fe5a8fe` (from `5719bf9`) |
 | B | #2 Source-tier boost | `.claude/worktrees/gbrain-B` | `claude/gbrain-B` | `Phase-B-TDD.md` | 2 (after A) | [ ] blocked by A | TBD | TBD |
 | C | #3 Candidate edges 报告 | `.claude/worktrees/gbrain-C` | `claude/gbrain-C` | `Phase-C-TDD.md` | 1 | [x] accepted | `码农C_DeepSeek` | local commit `366cac4` |
 | D | #4 Maintenance cycle | `.claude/worktrees/gbrain-D` | `claude/gbrain-D` | `Phase-D-TDD.md` | 2 (after A+C) | [ ] blocked by A+C | TBD | TBD |
