@@ -1,6 +1,6 @@
 ---
 type: project-prd-rfc
-status: accepted
+status: implemented
 created: 2026-05-21
 approved: 2026-05-21
 approved-by: Life Index Developer
@@ -328,3 +328,17 @@ phase 间文件域**几乎不重叠**：
 - [x] ack #1 by Life Index Developer (2026-05-21)
 - approved: 2026-05-21
 - approved-by: Life Index Developer
+
+## §11 Closeout / Ack #2
+
+- [x] ack #2 by Life Index Developer (2026-05-21)
+- implemented: 2026-05-21
+- implemented-by: 主审_GPT closeout pack after owner ack #2
+
+Closeout notes:
+
+- A-F are accepted and integrated on `main`; M4 evidence was accepted with the known eval caveat.
+- `CHANGELOG.md` `[Unreleased]` contains the gbrain user-facing entries for the 6 candidates and the `recall` / `trajectory` carrier modules.
+- `AGENTS.md` v3.6 records that gbrain absorption is closed by this PRD.
+- The remaining 13 `python -m tools eval` search query failures are explicitly out of this closure scope and assigned to the future `search quality milestone (post-gbrain)`.
+- The gbrain topic is closed under §2.3 Lock: future gbrain-derived changes must start a new RFC/PRD and must not silently amend this project scope.

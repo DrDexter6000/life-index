@@ -1,7 +1,7 @@
 <!-- AGENTS.md - Life Index Agent 导航入口 -->
 
 > 本文档为 AI 编码代理提供**快速导航入口**。详细规范已归源到 SSOT 文档，本文件仅保留指引与 Agent 行为约束。
-> **最后更新**: 2026-05-21 | **AGENTS.md 文档版本**: v3.5 | **状态**: 活跃维护
+> **最后更新**: 2026-05-21 | **AGENTS.md 文档版本**: v3.6 | **状态**: 活跃维护
 >
 > 本地专属配置（含部署路径与 Agent 并行治理规则）见 `.agents.local.md`（已 gitignored，仅本地可用）。
 > 若 `.agents.local.md` 存在，所有 Agent 在执行任何**非只读**任务前必须先读取它，并遵守其中指向的本地治理层。
@@ -31,6 +31,10 @@
 - **Agent-Native**：CLI 是 Agent 的母语。发挥 Agent 自然语言理解能力，仅在需要原子性/准确性时开发专用工具
 - **本地优先**：所有数据存储在 `~/Documents/Life-Index/`
 - **纯文本格式**：Markdown + YAML Frontmatter，永不过时
+
+## gbrain Absorption Closeout
+
+**gbrain absorption closed**: `docs/projects/gbrain-absorption/PRD.md` is implemented as of 2026-05-21. The closed scope is the 6 gbrain candidates plus the `tools/recall/` and `tools/trajectory/` carrier modules; future gbrain-derived changes must start a new RFC/PRD instead of silently amending this project.
 
 ---
 
