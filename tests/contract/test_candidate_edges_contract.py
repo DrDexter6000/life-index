@@ -386,6 +386,50 @@ class TestCandidateEdgesContract:
                 candidate["type"] in valid_types
             ), f"Invalid type: {candidate['type']} for candidate {candidate}"
 
+    def test_candidate_edges_no_graph_write(self):
+        """Static invariant: candidate_edges.py must not contain graph write paths."""
+        import ast
+
+        ce_path = Path(__file__).resolve().parents[2] / "tools" / "entity" / "candidate_edges.py"
+        if not ce_path.exists():
+            pytest.skip("candidate_edges.py not found")
+        tree = ast.parse(ce_path.read_text(encoding="utf-8"), filename=str(ce_path))
+
+        graph_write_calls = {"save_entity_graph", "write_text", "write_bytes", "dump"}
+        write_mode_markers = {"w", "a", "x", "+"}
+        offenders: list[str] = []
+
+        def _call_name(call: ast.Call) -> str | None:
+            if isinstance(call.func, ast.Attribute):
+                return call.func.attr
+            if isinstance(call.func, ast.Name):
+                return call.func.id
+            return None
+
+        def _literal_mode(call: ast.Call) -> str | None:
+            mode_node: ast.expr | None = None
+            if len(call.args) >= 2:
+                mode_node = call.args[1]
+            for keyword in call.keywords:
+                if keyword.arg == "mode":
+                    mode_node = keyword.value
+            if isinstance(mode_node, ast.Constant) and isinstance(mode_node.value, str):
+                return mode_node.value
+            return None
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = _call_name(node)
+            if name in graph_write_calls:
+                offenders.append(f"calls {name}()")
+            if name == "open":
+                mode = _literal_mode(node)
+                if mode and any(marker in mode for marker in write_mode_markers):
+                    offenders.append(f"opens file with write-capable mode {mode!r}")
+
+        assert offenders == [], f"candidate_edges.py contains graph write paths: {offenders}"
+
     def test_output_includes_schema_version(self, sandbox):
         """Output must include schema_version (additive, following project convention)."""
         _data_dir, env = sandbox

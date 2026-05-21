@@ -270,6 +270,28 @@ class TestTrajectoryContract:
     # ------------------------------------------------------------------
     # Layer boundary regression
     # ------------------------------------------------------------------
+    def test_trajectory_no_default_llm_imports(self):
+        """Static invariant: tools/trajectory/ must not import LLM providers."""
+        import ast
+
+        trajectory_dir = REPO_ROOT / "tools" / "trajectory"
+        disallowed = {"anthropic", "openai"}
+        offenders: list[str] = []
+        for py_file in sorted(trajectory_dir.rglob("*.py")):
+            tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    names = {a.name.split(".")[0] for a in node.names}
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    names = {node.module.split(".")[0]}
+                else:
+                    continue
+                found = names & disallowed
+                if found:
+                    rel = py_file.relative_to(REPO_ROOT).as_posix()
+                    offenders.append(f"{rel}: {sorted(found)}")
+        assert offenders == [], f"tools/trajectory/ contains disallowed LLM imports: {offenders}"
+
     def test_trajectory_has_no_direct_l1_access(self):
         """Fail if tools/trajectory imports or calls forbidden direct L1 patterns."""
         import ast
