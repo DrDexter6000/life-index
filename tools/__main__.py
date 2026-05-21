@@ -23,6 +23,7 @@ Commands:
     timeline  Output chronological summary stream
     on-this-day  Find prior-year entries on same month/day
     recall    Recall search with mode selection (default/recall/deep)
+    trajectory  Typed observations (weight/sleep/mood/location/project)
     migrate   Schema migration tool
     eval      Run search evaluation gate
     entity-graph-eval  Run graph ablation evaluation (gbrain #1)
@@ -489,6 +490,7 @@ def main() -> None:
         "on-this-day": "tools.on_this_day.__main__",
         "recall": "tools.recall.__main__",
         "maintenance": "tools.maintenance.__main__",
+        "trajectory": "tools.trajectory.__main__",
     }
 
     if subcmd in cmd_map:
@@ -529,6 +531,7 @@ def print_usage() -> None:
     print("  timeline  Output chronological summary stream")
     print("  on-this-day  Find prior-year entries on same month/day")
     print("  recall    Recall search with mode selection (default/recall/deep)")
+    print("  trajectory  Typed observations (weight/sleep/mood/location/project)")
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")
     print("  entity-graph-eval  Run graph ablation evaluation")
