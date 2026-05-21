@@ -22,6 +22,7 @@ Commands:
     verify    Verify data integrity
     timeline  Output chronological summary stream
     on-this-day  Find prior-year entries on same month/day
+    trajectory  Typed observations (weight/sleep/mood/location/project)
     migrate   Schema migration tool
     eval      Run search evaluation gate
     aggregate Deterministic aggregate/trend computation
@@ -483,6 +484,7 @@ def main() -> None:
         "aggregate": "tools.aggregate.__main__",
         "analyze": "tools.aggregate.__main__",
         "on-this-day": "tools.on_this_day.__main__",
+        "trajectory": "tools.trajectory.__main__",
     }
 
     if subcmd in cmd_map:
@@ -522,6 +524,7 @@ def print_usage() -> None:
     print("  verify    Verify data integrity")
     print("  timeline  Output chronological summary stream")
     print("  on-this-day  Find prior-year entries on same month/day")
+    print("  trajectory  Typed observations (weight/sleep/mood/location/project)")
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")
     print("  smart-search  Smart search with LLM orchestration")

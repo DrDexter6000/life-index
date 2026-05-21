@@ -3316,6 +3316,80 @@ life-index version
 
 Entity 管理工具在 Round 6 引入，现已成为独立一级命令。完整参数、操作模式、返回值结构和 Agent 约束见上文 `## entity` 章节。
 
+---
+
+## trajectory
+
+### 端点
+
+```bash
+life-index trajectory --field {weight|sleep|mood|location|project} --range YYYY-MM..YYYY-MM
+python -m tools trajectory --field weight --range 2025-01..2025-12
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| field | enum | ✅ | - | 提取字段: `weight`, `sleep`, `mood`, `location`, `project` |
+| range | string | ✅ | - | 月份范围 `YYYY-MM..YYYY-MM` (含起止) |
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "command": "trajectory",
+  "schema_version": "m26.trajectory.v0",
+  "field": "weight",
+  "range": ["2025-01", "2025-12"],
+  "observations": [
+    {
+      "type": "weight",
+      "value": 72.5,
+      "time": "2025-01-15",
+      "evidence_paths": ["Journals/2025/01/life-index_2025-01-15_001.md"]
+    }
+  ],
+  "total": 1,
+  "performance": {
+    "files_scanned": 12,
+    "total_time_ms": 15
+  },
+  "error": null
+}
+```
+
+### 字段语义
+
+- `observations`: 按时间升序排列的 typed observation 列表。
+- `observations[].type`: 与 `--field` 一致。
+- `observations[].value`: 提取值。`weight`/`sleep` 为数值; `mood`/`location`/`project` 为字符串。
+- `observations[].time`: 来源日志的 `date` 字段 (YYYY-MM-DD)。
+- `observations[].evidence_paths`: 指向来源日志文件的路径数组（相对 `LIFE_INDEX_DATA_DIR`）。
+- **只读语义**: 本命令不写入、不修改任何 L1 frontmatter 或 journal 文件。
+
+### 错误码
+
+| 代码 | 说明 | 恢复策略 |
+|------|------|----------|
+| E2601 | 无效 field | ask_user |
+| E2602 | 无效 range 格式 | ask_user |
+
+### 说明
+
+- `trajectory` 是 L3 模块，直接扫描日志文件提取 typed observations，不依赖搜索索引。
+- 各 field 的提取策略：
+  - `weight`: frontmatter `weight_kg` + 正文 `体重: XX.X kg` / `weight XX.X kg` 模式。
+  - `sleep`: frontmatter `sleep_hours` + 正文 `睡了 X 小时` / `slept X hours` 模式。
+  - `mood`: frontmatter `mood` 列表 + 正文 emoji 与描述词。
+  - `location`: frontmatter `location` + 正文 `在 XX` / `in/at XX` 模式。
+  - `project`: frontmatter `project` + tags + 正文项目名模式。
+- 默认路径无 LLM 调用，全部确定性提取。
+- 支持 `LIFE_INDEX_DATA_DIR` 环境变量覆盖数据目录。
+
+---
+
 ### Response: `events` 字段
 
 所有 CLI 命令的 JSON 响应均可包含 `events` 字段（搭便车事件通知）。

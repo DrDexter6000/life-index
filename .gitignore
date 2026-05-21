@@ -54,6 +54,7 @@ tests/reports/
 # 注意：这些数据在 ~/Documents/Life-Index/，不在项目目录
 # 但以防万一，也加上
 Journals/
+!tests/fixtures/trajectory/sample_journals/Journals/
 by-topic/
 attachments/
 *.db

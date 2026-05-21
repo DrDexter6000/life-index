@@ -10,6 +10,7 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 - Public JSON outputs for `search`, `smart-search`, `aggregate`, `entity`, `timeline`, and `health` now include a top-level `schema_version` field for forward-compatible contract tracking.
 - `on-this-day` command is now discoverable in agent navigation docs (`AGENTS.md`, `SKILL.md`).
+- `trajectory` command: read-only typed observation extraction for `weight`, `sleep`, `mood`, `location`, and `project` across a month range. Scans journal files directly with traceable `evidence_paths`. Zero L1 schema writes. Default path has no LLM calls.
 
 ### Changed
 
