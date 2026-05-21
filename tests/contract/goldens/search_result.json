@@ -12,7 +12,8 @@
     "level": 3,
     "semantic": true,
     "year": null,
-    "month": null
+    "month": null,
+    "enable_source_tier": false
   },
   "l1_results": [
     {
