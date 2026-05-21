@@ -23,7 +23,7 @@ gbrain-F (#6 + trajectory) 独立
 | Phase | gbrain # | Worktree | Branch | TDD Brief | Wave | Status | Subagent | PR |
 |---|---|---|---|---|---|---|---|---|
 | A | #1 Graph ablation eval | `.claude/worktrees/gbrain-A` | `claude/gbrain-A` | `Phase-A-TDD.md` | 1 | [x] accepted | `码农A_GLM` | local commit `fe5a8fe` (from `5719bf9`) |
-| B | #2 Source-tier boost | `.claude/worktrees/gbrain-B` | `claude/gbrain-B` | `Phase-B-TDD.md` | 2 (after A) | [ ] blocked by A | TBD | TBD |
+| B | #2 Source-tier boost | `.claude/worktrees/gbrain-B-kimi` | `claude/gbrain-B-kimi` | `Phase-B-TDD.md` | 2 (after A) | [x] accepted | `码农B_Kimi` fallback after GLM freeze | local commit `9d35afa` (from `8c551e7`) |
 | C | #3 Candidate edges 报告 | `.claude/worktrees/gbrain-C` | `claude/gbrain-C` | `Phase-C-TDD.md` | 1 | [x] accepted | `码农C_DeepSeek` | local commit `366cac4` |
 | D | #4 Maintenance cycle | `.claude/worktrees/gbrain-D` | `claude/gbrain-D` | `Phase-D-TDD.md` | 2 (after A+C) | [ ] blocked by A+C | TBD | TBD |
 | E | #5 Search modes + recall | `.claude/worktrees/gbrain-E` | `claude/gbrain-E` | `Phase-E-TDD.md` | 1 | [x] accepted | `码农A_GLM` | local commits `7fb3941`, `3898f9e` |
@@ -55,7 +55,7 @@ gbrain-F (#6 + trajectory) 独立
 | Phase | 主写域 | 共享文件（rebase 解决）|
 |---|---|---|
 | A | `tools/eval/ablation/` + `tests/contract/test_ablation_eval_contract.py` + `tests/fixtures/eval/ablation_queries.json` | `docs/API.md`, `CHANGELOG.md` |
-| B | `tools/search_journals/ranking.py` + `tools/search_journals/search_constants.py` + `tests/contract/test_source_tier_contract.py` | `docs/API.md`, `CHANGELOG.md`, `.strategy/cli/2026-05-2X-source-tier-eval-result.md`（新建）|
+| B | `tools/search_journals/ranking.py` + `tools/search_journals/core.py` + `tools/search_journals/__main__.py` + `tools/lib/search_constants.py` + `tools/eval/ablation/` + `tests/contract/test_source_tier_contract.py` | `docs/API.md`, `CHANGELOG.md`, `.strategy/cli/2026-05-21-source-tier-eval-result.md`（新建）|
 | C | `tools/entity/__main__.py`（加 flag）+ `tools/entity/candidate_edges.py` + `tests/contract/test_candidate_edges_contract.py` | `docs/API.md`, `CHANGELOG.md` |
 | D | `tools/maintenance/` + `tests/contract/test_maintenance_contract.py` | `docs/API.md`, `CHANGELOG.md`, `tools/__main__.py`（加 maintenance 注册）|
 | E | `tools/recall/` + `tests/contract/test_recall_contract.py` | `docs/API.md`, `CHANGELOG.md`, `tools/__main__.py`（加 recall 注册）|
