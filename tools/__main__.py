@@ -28,6 +28,7 @@ Commands:
     entity-graph-eval  Run graph ablation evaluation (gbrain #1)
     aggregate Deterministic aggregate/trend computation
     analyze   Alias for aggregate
+    maintenance  Run maintenance cycle (dry-run health checks)
     health    Check installation health
               --data-audit  Audit data directory for anomalies
     version   Show package and bootstrap manifest version info
@@ -487,6 +488,7 @@ def main() -> None:
         "analyze": "tools.aggregate.__main__",
         "on-this-day": "tools.on_this_day.__main__",
         "recall": "tools.recall.__main__",
+        "maintenance": "tools.maintenance.__main__",
     }
 
     if subcmd in cmd_map:
@@ -530,6 +532,7 @@ def print_usage() -> None:
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")
     print("  entity-graph-eval  Run graph ablation evaluation")
+    print("  maintenance  Run maintenance cycle (dry-run health checks)")
     print("  smart-search  Smart search with LLM orchestration")
     print("  aggregate  Deterministic aggregate/trend computation")
     print("  analyze   Alias for deterministic aggregate/trend computation")
