@@ -162,3 +162,60 @@ def test_l2_whitelisted_files_do_not_import_l3() -> None:
                 offenders.append(f"{rel}: {imported}")
 
     assert offenders == [], f"Whitelisted L2 files import from L3 packages: {offenders}"
+
+
+# --- Phase E (gbrain #5): recall module L3 invariant tests ---
+
+
+L3_RECALL_ROOT = REPO_ROOT / "tools" / "recall"
+
+
+def _recall_files() -> list[Path]:
+    """All .py files in the recall module, if it exists."""
+    if not L3_RECALL_ROOT.exists():
+        return []
+    return sorted(L3_RECALL_ROOT.rglob("*.py"))
+
+
+def test_recall_module_does_not_import_llm_providers() -> None:
+    """tools/recall/ must not import anthropic/openai anywhere.
+
+    The recall module delegates LLM work to smart-search via subprocess.
+    It must never import LLM providers directly — that would violate
+    the CHARTER §1.5 L2-no-LLM invariant and the L3 subprocess boundary.
+    """
+    offenders: list[str] = []
+    for path in _recall_files():
+        imports = _imported_modules(path)
+        if imports & DISALLOWED_PROVIDER_IMPORTS:
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            offenders.append(f"{rel}: {sorted(imports & DISALLOWED_PROVIDER_IMPORTS)}")
+
+    assert offenders == [], f"recall module imports LLM providers: {offenders}"
+
+
+def test_recall_module_uses_subprocess_not_direct_import() -> None:
+    """tools/recall/ must use subprocess to call L2, not direct imports.
+
+    The L3 subprocess boundary requires recall to invoke search/smart-search
+    via subprocess (like on_this_day), never importing L2 internals.
+    """
+    disallowed_l2_imports = {
+        "tools.search_journals",
+        "tools.smart_search",
+    }
+
+    offenders: list[str] = []
+    for path in _recall_files():
+        imports = _imported_modules(path)
+        for imported in imports:
+            if any(
+                imported == disallowed or imported.startswith(f"{disallowed}.")
+                for disallowed in disallowed_l2_imports
+            ):
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                offenders.append(f"{rel}: {imported}")
+
+    assert (
+        offenders == []
+    ), f"recall module directly imports L2 internals (should use subprocess): {offenders}"

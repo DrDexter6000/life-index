@@ -2802,6 +2802,109 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 
 ---
 
+## recall
+
+<!-- GBRAIN-E-CONTRACT: recall -->
+
+### recall Public JSON Contract
+
+#### JSON Shape / Top-Level Fields
+
+| Field | Type | Always Present | Description |
+|-------|------|----------------|-------------|
+| `success` | bool | yes | Whether the recall search succeeded |
+| `schema_version` | string | yes | `"gbrain.recall.v1"` |
+| `mode` | string | yes | Requested mode: `default` / `recall` / `deep` |
+| `effective_mode` | string | yes | Actual mode used (may differ from `mode` on degradation) |
+| `query` | string | yes | Search query string |
+| `results` | array | yes | Array of search result objects from L2 (may be empty) |
+| `source_command` | string | yes | L2 command used: `search --no-semantic` / `search` / `smart-search --use-llm` |
+| `performance` | object | yes | `{total_time_ms}` |
+| `error` | object\|null | yes | Structured error on failure; `null` on success |
+
+#### Field Semantics
+
+- `success`: search execution success. Empty results is still `success: true` with `results: []`.
+- `mode`: the mode requested by the caller.
+- `effective_mode`: the mode actually executed. When `mode=deep` but `--use-llm` not provided, `effective_mode` will be `recall` (degradation).
+- `source_command`: identifies which L2 command was used — confirms subprocess boundary.
+- `results`: extracted from L2 output (`merged_results` from `search`, `filtered_results` from `smart-search`).
+
+#### Mode Behavior
+
+| Mode | L2 Command | LLM? | Notes |
+|------|-----------|------|-------|
+| `default` | `search --no-semantic` | No | Pure FTS keyword search. `--use-llm` ignored. |
+| `recall` | `search` | No | Default hybrid search (FTS + semantic fallback). `--use-llm` ignored. |
+| `deep` + `--use-llm` | `smart-search --use-llm` | Yes (opt-in) | LLM-enhanced search with explicit opt-in. |
+| `deep` (no `--use-llm`) | `search` | No | Degrades to `recall` mode. Stderr warning emitted. `effective_mode=recall`. |
+
+#### Error Behavior / Error Codes
+
+| Code | Meaning | Recovery Strategy |
+|------|---------|-------------------|
+| E2501 | Invalid mode value | ask_user |
+| E2502 | Empty query | ask_user |
+| E2503 | L2 subprocess failure | retry |
+
+#### schema_version Policy
+
+`recall` emits `schema_version = "gbrain.recall.v1"`. Top-level field names and types are stable; new fields may be added without a version bump.
+
+<!-- /GBRAIN-E-CONTRACT -->
+
+### 端点
+
+```bash
+life-index recall --mode {default|recall|deep} --query "..." [--use-llm]
+python -m tools recall --mode {default|recall|deep} --query "..." [--use-llm]
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--mode` | enum | ✅ | - | 搜索模式：`default`（纯 FTS）、`recall`（混合）、`deep`（LLM 需 opt-in） |
+| `--query` | string | ✅ | - | 搜索查询字符串 |
+| `--use-llm` | flag | ❌ | false | 显式启用 LLM 搜索（仅影响 `deep` 模式） |
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "schema_version": "gbrain.recall.v1",
+  "mode": "default",
+  "effective_mode": "default",
+  "query": "python",
+  "results": [
+    {
+      "path": "C:/Users/.../Journals/2026/03/life-index_2026-03-01_001.md",
+      "rel_path": "Journals/2026/03/life-index_2026-03-01_001.md",
+      "title": "Python Learning",
+      "date": "2026-03-01",
+      "rrf_score": 0.85
+    }
+  ],
+  "source_command": "search --no-semantic",
+  "performance": {
+    "total_time_ms": 50
+  },
+  "error": null
+}
+```
+
+### 行为约束
+
+- **只读**：不创建、修改或删除任何文件。
+- 通过 subprocess 调用 L2 `search` / `smart-search`；不直接 import L2 内部模块。
+- `default` 和 `recall` 模式：零 LLM 调用。
+- `deep` 模式不带 `--use-llm`：自动降级到 `recall`，stderr 输出警告。
+- `--use-llm` 仅对 `deep` 模式有效；`default` 和 `recall` 模式忽略此标志。
+- 保留 `LIFE_INDEX_DATA_DIR` 环境变量传递给子进程。
+
+---
+
 ## entity
 
 <!-- M16-CONTRACT: entity -->

@@ -11,6 +11,7 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - Public JSON outputs for `search`, `smart-search`, `aggregate`, `entity`, `timeline`, and `health` now include a top-level `schema_version` field for forward-compatible contract tracking.
 - `on-this-day` command is now discoverable in agent navigation docs (`AGENTS.md`, `SKILL.md`).
 - `entity --candidate-edges --output=json`: read-only candidate relationship edge report scanning journal `people` co-occurrence, `related_entries`, wikilinks, and body co-occurrence. Outputs deduplicated JSON with evidence paths, confidence scores, and suggested actions. Zero production graph writes.
+- `recall` command: L3 recall module providing three search modes (`default` / `recall` / `deep`) via subprocess delegation to L2 search/smart-search. `default` mode uses pure FTS; `recall` mode uses hybrid search; `deep` mode requires explicit `--use-llm` opt-in (degrades to `recall` without it). Zero default LLM calls.
 
 ### Changed
 
