@@ -3,7 +3,7 @@
 > **PRD**: `docs/projects/gbrain-absorption/PRD.md`
 > **M1 ack #1**: 2026-05-21（commit `03eaf12`）
 > **M2 created**: 2026-05-21
-> **状态**: M3 准备中（等主控 Agent dispatch subagent）
+> **状态**: M3 已完成（A-F accepted locally；等待 M4 集成验收）
 
 ## 依赖图
 
@@ -27,7 +27,7 @@ gbrain-F (#6 + trajectory) 独立
 | C | #3 Candidate edges 报告 | `.claude/worktrees/gbrain-C` | `claude/gbrain-C` | `Phase-C-TDD.md` | 1 | [x] accepted | `码农C_DeepSeek` | local commit `366cac4` |
 | D | #4 Maintenance cycle | `.claude/worktrees/gbrain-D` | `claude/gbrain-D` | `Phase-D-TDD.md` | 2 (after A+C) | [x] accepted | `码农C_DeepSeek` | local commits `a8cebe3`, `ab16a37`, `5e2e6b5` (from `11f2f17` / `dfc458d` / `f958b5f`) |
 | E | #5 Search modes + recall | `.claude/worktrees/gbrain-E` | `claude/gbrain-E` | `Phase-E-TDD.md` | 1 | [x] accepted | `码农A_GLM` | local commits `7fb3941`, `3898f9e` |
-| F | #6 Facts/trajectory + trajectory module | `.claude/worktrees/gbrain-F` | `claude/gbrain-F` | `Phase-F-TDD.md` | 1 | [ ] not started | TBD | TBD |
+| F | #6 Facts/trajectory + trajectory module | `.claude/worktrees/gbrain-F` | `claude/gbrain-F` | `Phase-F-TDD.md` | 1 | [x] accepted | `码农B_Kimi` rework | local merge commit `938e96d` (from `dcf5a0e` / `c9ead4a`) |
 
 ## 主控 Agent 动作（M3 并行线 1）
 
