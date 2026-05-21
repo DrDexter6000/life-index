@@ -3120,6 +3120,51 @@ life-index entity --delete --preview --id p003
 life-index entity --seed
 ```
 
+#### `entity --candidate-edges`
+
+生成候选关系边报告（只读，零生产图谱写入）。扫描 journal 中的 `people` co-occurrence、`related_entries`、wikilinks `[[X]]` 与正文共现，输出去重后的候选边 JSON。
+
+```bash
+life-index entity --candidate-edges --output=json
+```
+
+返回：
+
+```json
+{
+  "success": true,
+  "schema_version": "m16.entity_candidate_edges.v0",
+  "candidates": [
+    {
+      "type": "people_cooccurrence",
+      "source": "Alice",
+      "target": "Bob",
+      "evidence_paths": ["2026/05/life-index_2026-05-10_001.md"],
+      "confidence": 0.2,
+      "suggested_action": "review-required-low-confidence"
+    }
+  ],
+  "total": 1,
+  "error": null
+}
+```
+
+**Candidate 字段说明**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | 提取器类型：`people_cooccurrence` / `related_entry` / `wikilink` / `body_cooccurrence` |
+| `source` | string | 源节点名称 |
+| `target` | string | 目标节点名称 |
+| `evidence_paths` | array | 支撑该候选的 journal 相对路径列表（至少 1 条） |
+| `confidence` | float | 置信度 0.0–1.0，基于 evidence 数量线性计算 |
+| `suggested_action` | string | 建议操作：`auto-confirm-recommended`（≥3 evidence）、`review-recommended`（2 evidence）、`review-required-low-confidence`（<2 evidence） |
+
+**行为约束**：
+- **只读**：不创建、修改或删除 `entity_graph.yaml` 或任何 journal 文件
+- **确定性**：不调用 LLM，纯本地确定性扫描
+- **路径隐私**：`evidence_paths` 均为相对路径，使用 `/` 分隔符
+
 ### Agent 使用约束
 
 - **review / merge / delete 是高风险操作**，必须在调用前明确目标实体和确认策略

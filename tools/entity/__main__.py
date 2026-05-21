@@ -23,10 +23,10 @@ def _print(payload: dict[str, Any]) -> None:
         payload["schema_version"] = SCHEMA_VERSION
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
-        print(text)
+        print(text, flush=True)
     except UnicodeEncodeError:
         fallback_text = json.dumps(payload, ensure_ascii=True, indent=2)
-        print(fallback_text)
+        print(fallback_text, flush=True)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -63,6 +63,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--output", dest="output_file")
     parser.add_argument(
         "--seed", action="store_true", help="Cold-start graph from journal frontmatter"
+    )
+    parser.add_argument(
+        "--candidate-edges",
+        action="store_true",
+        help="Generate candidate relationship edges report (read-only, zero graph writes)",
     )
     args = parser.parse_args(argv)
 
@@ -292,5 +297,16 @@ def main(argv: list[str] | None = None) -> None:
         _print(result)
         return
 
+    if args.candidate_edges:
+        from tools.entity.candidate_edges import run as run_candidate_edges
+
+        result = run_candidate_edges()
+        _print(result)
+        return
+
     parser.print_help()
     raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
