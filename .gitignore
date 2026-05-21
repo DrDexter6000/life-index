@@ -92,6 +92,10 @@ docs/archive/
 .opencode/
 .claude/
 
+# ----- Serena MCP（本地代码语义工具，不公开）-----
+.serena/
+serena_mcp_wrapper.py
+
 # ----- Windows 下载标记 -----
 *.Zone.Identifier
 
