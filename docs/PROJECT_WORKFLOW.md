@@ -146,14 +146,16 @@
 
 #### 主审验收 checklist（每个 PR 必跑）
 
-每个 PR 验收前必须独立验证 3 项，缺一不予 accept：
+每个 PR 验收前必须独立验证 4 项，缺一不予 accept：
 
 - **(a) 退出门证据**：PRD §4 "可证伪退出" 命令实际跑过、有 stdout/stderr/exit-code 证据；**不接受 commit message 自述 "PASS"**
 - **(b) 边界 enforcement**：
   - git diff 范围是否在 PRD §2 "禁止做" 之外
   - 是否绕开了 PRD §4 要求的 L2 契约 / 接口层
   - 是否动了**项目元数据**：典型清单 `layer_invariants.yaml`、`search_constants.py`、`schema/*.yaml`、`.gitignore`、`pyproject.toml`、`CHARTER.md`、`AGENTS.md`、`docs/PROJECT_WORKFLOW.md`、`docs/RFC_WORKFLOW.md`（governance 文档改动必须先走 RFC_WORKFLOW）
+  - **新增模块的 L3 边界类不变量测试统一加在 `tests/contract/test_layer_invariants.py`，不要散到模块 contract 文件**（维持单一边界规则索引；gbrain absorption final closure 实证）
 - **(c) 消费者真实可消费**：PRD §4 "真实消费者" 端到端可用，不是"自动化测试通过就算"
+- **(d) Push 前置门**：本地 `pytest -m blocker`（或等价 hard-required check）必须**实际跑过且全绿**才允许 push origin。**CI 后补救是 anti-pattern**——CI red 期间历史已被污染，不该靠"再 push 一个"洗白（gbrain absorption final closure push-after-CI 实证）
 
 #### Rework 版本管理（v1.1 新增）
 
@@ -342,8 +344,9 @@ M2/M3/M4 中若发生以下情况，**escalate 回 M1**：
   - PRD 必含从 8 项扩展到 9 项（加 §8 反对意见门）
   - 派发纪律从 3 门扩展到 4 门（加 §4(d) 任务能力需求，含 Life Index 具体维度）
   - M2 加 Worker-Task Matching（第三类失败定义）+ brief verbatim 退出门规则
-  - M3 大重构：rework loop 主路径显性化 / 主审验收 checklist (a)(b)(c) 含 Life Index 元数据清单 / Rework 版本管理（`rework/<phase>/v0X` 命名）/ 主审操作纪律 anti-noise / 主控 Agent 循环纪律 livelock prevention
+  - M3 大重构：rework loop 主路径显性化 / 主审验收 checklist (a)(b)(c)(d) 含 Life Index 元数据清单 + L3 边界测试归档 hint + push 前置门 / Rework 版本管理（`rework/<phase>/v0X` 命名）/ 主审操作纪律 anti-noise / 主控 Agent 循环纪律 livelock prevention
   - M4 加镜像验收清单 + 认知 offload 报告（`.agent-reports/<project-slug>/M4_INTEGRATION_<date>.md` 产出物）
   - 异常 escalate 章节重构为 "escalate vs rework loop" 区分（含触发频率/责任主体对照）
   - Two-ack 模型加角色合并模式
+  - *(2026-05-21 late revision，同 v1.1 内增补)*：M3 主审验收从 3 项扩为 4 项，(b) 加 L3 边界测试归档 hint（要求集中在 `test_layer_invariants.py`），新增 (d) push 前置门（blocker gate 必须 push 前实际跑过且全绿）。实证：gbrain absorption final closure
 - v1.0 (2026-05-21)：初版，随 `RFC-2026-05-21-phase-2-governance-architecture` 一并 land
