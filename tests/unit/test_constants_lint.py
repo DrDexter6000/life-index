@@ -40,8 +40,9 @@ def test_total_exports_count():
     # Post Phase 6-A: 43 exports (SEMANTIC_ABSOLUTE_FLOOR kept as alias)
     # Post Round 19 Phase 1-D C1-fuzzy: +4 fuzzy typo constants
     # Post R2-A2C: +1 reviewed location metadata ranking constant
-    # If this grows beyond 51, a new constant was added — review it.
-    assert len(__all__) <= 51, (
-        f"__all__ has {len(__all__)} exports (max 51). "
+    # Post gbrain Phase B: +1 reviewed source-tier ranking constant
+    # If this grows beyond 52, a new constant was added — review it.
+    assert len(__all__) <= 52, (
+        f"__all__ has {len(__all__)} exports (max 52). "
         "New constants must be reviewed for synonym merging."
     )
