@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
-_SLEEP_CN_RE = re.compile(r"睡了\s*(\d+(?:\.\d+)?)\s*小时")
+_SLEEP_CN_RE = re.compile(r"睡了\s*(\d+(?:\.\d+)?)\s*(?:小时|hours?)")
 _SLEEP_EN_RE = re.compile(
     r"(?:slept|sleep)\s+(?:for\s+)?(?:about\s+)?(?:only\s+)?(\d+(?:\.\d+)?)\s*hours?",
     re.IGNORECASE,

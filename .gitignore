@@ -57,6 +57,9 @@ Journals/
 !tests/fixtures/trajectory/sample_journals/Journals/
 by-topic/
 attachments/
+tests/fixtures/trajectory/sample_journals/.cache/
+tests/fixtures/trajectory/sample_journals/.index/
+tests/fixtures/trajectory/sample_journals/.life-index/
 *.db
 *.sqlite
 *.sqlite3

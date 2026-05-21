@@ -1,23 +1,21 @@
 """Life Index - Trajectory Core Logic
 
 Read-only typed observation extraction across weight, sleep, mood, location,
-and project fields. Scans journal files directly (no index dependency).
+and project fields. Consumes L2 search CLI via subprocess (no direct L1 reads).
 """
 
 from __future__ import annotations
 
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
 
-from ..lib.paths import get_journals_dir
-from ..lib.frontmatter import parse_journal_file
 from .extractors.weight import extract_weight
 from .extractors.sleep import extract_sleep
 from .extractors.mood import extract_mood
 from .extractors.location import extract_location
 from .extractors.project import extract_project
+from .data_provider import fetch_journals_via_l2
 
 SCHEMA_VERSION = "m26.trajectory.v0"
 
@@ -68,37 +66,6 @@ def _parse_range(range_str: str) -> Optional[tuple[str, str]]:
     return start, end
 
 
-def _month_in_range(month_str: str, start: str, end: str) -> bool:
-    """Check if YYYY-MM string is within inclusive range."""
-    return start <= month_str <= end
-
-
-def _scan_journals(start_month: str, end_month: str) -> List[Path]:
-    """Scan journals directory and return files within month range."""
-    journals_dir = get_journals_dir()
-    if not journals_dir.exists():
-        return []
-
-    files: List[Path] = []
-    for year_dir in journals_dir.iterdir():
-        if not year_dir.is_dir() or not year_dir.name.isdigit():
-            continue
-        for month_dir in year_dir.iterdir():
-            if not month_dir.is_dir():
-                continue
-            month_str = f"{year_dir.name}-{month_dir.name}"
-            if not _month_in_range(month_str, start_month, end_month):
-                continue
-            for journal_file in month_dir.glob("life-index_*.md"):
-                if journal_file.name.startswith("monthly_"):
-                    continue
-                files.append(journal_file)
-
-    # Sort by path for stable ordering
-    files.sort(key=lambda p: p.as_posix())
-    return files
-
-
 def _make_observation(
     field: str,
     value: Any,
@@ -139,24 +106,22 @@ def run_trajectory(field: str, range_str: str) -> Dict[str, Any]:
         )
 
     start_month, end_month = parsed
-    journal_files = _scan_journals(start_month, end_month)
+    journal_entries = fetch_journals_via_l2(start_month, end_month)
 
     extractor = FIELD_EXTRACTORS[field]
     observations: List[Dict[str, Any]] = []
-    journals_dir = get_journals_dir()
-    data_dir = journals_dir.parent
 
-    for journal_file in journal_files:
-        metadata = parse_journal_file(journal_file)
-        if not metadata or "_error" in metadata:
+    for entry in journal_entries:
+        metadata = entry["metadata"]
+        if not metadata:
             continue
 
-        date_str = str(metadata.get("date", ""))[:10]
+        date_str = entry["date"]
         if not date_str:
             continue
 
-        body = metadata.get("_body", "")
-        rel_path = journal_file.relative_to(data_dir).as_posix()
+        body = entry["body"]
+        rel_path = entry["rel_path"]
 
         values = extractor(metadata, body)
         for value in values:
@@ -176,7 +141,7 @@ def run_trajectory(field: str, range_str: str) -> Dict[str, Any]:
         "observations": observations,
         "total": len(observations),
         "performance": {
-            "files_scanned": len(journal_files),
+            "files_scanned": len(journal_entries),
             "total_time_ms": elapsed_ms,
         },
         "error": None,

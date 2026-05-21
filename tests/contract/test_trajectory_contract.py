@@ -75,12 +75,14 @@ def sandbox(tmp_path: Path):
     """Copy fixture journals into a temp data dir and return (data_dir, before_hashes)."""
     data_dir = tmp_path / "Life-Index"
     data_dir.mkdir()
-    journals_src = FIXTURE_JOURNALS_DIR / "Journals"
-    journals_dst = data_dir / "Journals"
-    if journals_src.exists():
+    # Copy the entire fixture tree (including .index) so that L2 search
+    # subprocesses find a warm index and do not trigger incremental builds
+    # that leave stale locks on Windows.
+    if FIXTURE_JOURNALS_DIR.exists():
         import shutil
 
-        shutil.copytree(journals_src, journals_dst)
+        shutil.copytree(FIXTURE_JOURNALS_DIR, data_dir, dirs_exist_ok=True)
+    journals_dst = data_dir / "Journals"
     before_hashes = _file_hashes(journals_dst)
     return data_dir, before_hashes
 
@@ -264,3 +266,50 @@ class TestTrajectoryContract:
         payload = _run_trajectory("weight", "2024-01..2024-03", data_dir)
         assert payload["success"] is True
         assert payload["observations"] == []
+
+    # ------------------------------------------------------------------
+    # Layer boundary regression
+    # ------------------------------------------------------------------
+    def test_trajectory_has_no_direct_l1_access(self):
+        """Fail if tools/trajectory imports or calls forbidden direct L1 patterns."""
+        import ast
+
+        trajectory_dir = REPO_ROOT / "tools" / "trajectory"
+        forbidden_modules = {
+            "tools.lib.paths",
+            "tools.lib.frontmatter",
+        }
+        forbidden_calls = {
+            "get_journals_dir",
+            "get_user_data_dir",
+            "parse_journal_file",
+            "glob",
+            "rglob",
+            "iterdir",
+            "read_text",
+        }
+
+        offenders: list[str] = []
+        for py_file in sorted(trajectory_dir.rglob("*.py")):
+            source = py_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(py_file))
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    module = node.module or ""
+                    for forbidden in forbidden_modules:
+                        if module == forbidden or module.startswith(forbidden + "."):
+                            rel = py_file.relative_to(REPO_ROOT).as_posix()
+                            offenders.append(f"{rel}: imports from {module}")
+                            break
+                elif isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Attribute):
+                        if node.func.attr in forbidden_calls:
+                            rel = py_file.relative_to(REPO_ROOT).as_posix()
+                            offenders.append(f"{rel}: calls .{node.func.attr}()")
+                    elif isinstance(node.func, ast.Name):
+                        if node.func.id in forbidden_calls:
+                            rel = py_file.relative_to(REPO_ROOT).as_posix()
+                            offenders.append(f"{rel}: calls {node.func.id}()")
+
+        assert offenders == [], f"Direct L1 access detected in trajectory: {offenders}"

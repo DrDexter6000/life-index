@@ -10,7 +10,7 @@ _WEIGHT_BODY_RE = re.compile(
     re.IGNORECASE,
 )
 _WEIGHT_EN_RE = re.compile(
-    r"(?:weight|weighed)\s+(?:at\s+)?(\d+(?:\.\d+)?)\s*kg",
+    r"(?:weight|weighed)\s+(?:measured\s+)?(?:at\s+)?(\d+(?:\.\d+)?)\s*kg",
     re.IGNORECASE,
 )
 
