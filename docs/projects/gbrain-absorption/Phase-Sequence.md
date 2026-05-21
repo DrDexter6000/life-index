@@ -26,7 +26,7 @@ gbrain-F (#6 + trajectory) 独立
 | B | #2 Source-tier boost | `.claude/worktrees/gbrain-B` | `claude/gbrain-B` | `Phase-B-TDD.md` | 2 (after A) | [ ] blocked by A | TBD | TBD |
 | C | #3 Candidate edges 报告 | `.claude/worktrees/gbrain-C` | `claude/gbrain-C` | `Phase-C-TDD.md` | 1 | [x] accepted | `码农C_DeepSeek` | local commit `366cac4` |
 | D | #4 Maintenance cycle | `.claude/worktrees/gbrain-D` | `claude/gbrain-D` | `Phase-D-TDD.md` | 2 (after A+C) | [ ] blocked by A+C | TBD | TBD |
-| E | #5 Search modes + recall | `.claude/worktrees/gbrain-E` | `claude/gbrain-E` | `Phase-E-TDD.md` | 1 | [ ] not started | TBD | TBD |
+| E | #5 Search modes + recall | `.claude/worktrees/gbrain-E` | `claude/gbrain-E` | `Phase-E-TDD.md` | 1 | [x] local commit (pending review) | `码农A_GLM` | local commit `7fb3941` |
 | F | #6 Facts/trajectory + trajectory module | `.claude/worktrees/gbrain-F` | `claude/gbrain-F` | `Phase-F-TDD.md` | 1 | [ ] not started | TBD | TBD |
 
 ## 主控 Agent 动作（M3 并行线 1）
