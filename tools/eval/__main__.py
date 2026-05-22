@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .run_eval import compare_against_baseline, run_evaluation
+from ..lib.observability import build_provenance_envelope
 
 
 def _emit_json(payload: dict[str, Any]) -> None:
@@ -86,7 +87,7 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--semantic-report cannot be used with --save-baseline")
 
     if args.compare_baseline:
-        comparison = compare_against_baseline(
+        comparison: dict[str, Any] = compare_against_baseline(
             baseline_path=args.compare_baseline,
             data_dir=args.data_dir,
             use_semantic=use_semantic,
@@ -104,6 +105,13 @@ def main(argv: list[str] | None = None) -> None:
                     "aggregate_eval": comparison["current"].get("aggregate_eval", {}),
                 },
             }
+        provenance_envelope = build_provenance_envelope(
+            source_data=comparison,
+            generator="eval",
+            params={"compare_baseline": str(args.compare_baseline)},
+        )
+        payload["schema_version"] = provenance_envelope["schema_version"]
+        payload["provenance"] = provenance_envelope["provenance"]
         _emit_json(payload)
         return
 
@@ -112,7 +120,7 @@ def main(argv: list[str] | None = None) -> None:
     #   default      -> let run_evaluation auto-decide (disable in CI / save_baseline)
     cli_use_overlay = False if args.no_overlay else None
 
-    result = run_evaluation(
+    result: dict[str, Any] = run_evaluation(
         data_dir=args.data_dir,
         save_baseline=args.save_baseline,
         use_semantic=use_semantic,
@@ -135,6 +143,17 @@ def main(argv: list[str] | None = None) -> None:
                 "aggregate_eval": result.get("aggregate_eval", {}),
             },
         }
+    provenance_envelope = build_provenance_envelope(
+        source_data=result,
+        generator="eval",
+        params={
+            "save_baseline": str(args.save_baseline) if args.save_baseline else None,
+            "use_semantic": use_semantic,
+            "judge": args.judge,
+        },
+    )
+    payload["schema_version"] = provenance_envelope["schema_version"]
+    payload["provenance"] = provenance_envelope["provenance"]
     _emit_json(payload)
 
 

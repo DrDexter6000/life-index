@@ -5,6 +5,7 @@ import json
 import sys
 
 from .core import run_trajectory
+from ..lib.observability import build_provenance_envelope
 
 
 def _emit_json(payload: dict) -> None:
@@ -47,6 +48,14 @@ Examples:
         field=args.field,
         range_str=args.range,
     )
+
+    provenance_envelope = build_provenance_envelope(
+        source_data=result,
+        generator="trajectory",
+        params={"field": args.field, "range": args.range},
+    )
+    result["schema_version"] = provenance_envelope["schema_version"]
+    result["provenance"] = provenance_envelope["provenance"]
 
     _emit_json(result)
 

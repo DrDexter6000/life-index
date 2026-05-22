@@ -19,6 +19,7 @@ from importlib import import_module
 
 from .core import hierarchical_search
 from ..lib.config import ensure_dirs
+from ..lib.observability import build_provenance_envelope
 from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.trace import Trace
 
@@ -258,7 +259,13 @@ Examples:
 
     # 输出结果
     result["_trace"] = trace.to_dict()
-    result["schema_version"] = SCHEMA_VERSION
+    provenance_envelope = build_provenance_envelope(
+        source_data=result,
+        generator="search",
+        params={"query": args.query, "topic": args.topic, "level": args.level},
+    )
+    result["schema_version"] = provenance_envelope["schema_version"]
+    result["provenance"] = provenance_envelope["provenance"]
     _emit_json(result)
 
     sys.exit(0 if result.get("success") else 1)

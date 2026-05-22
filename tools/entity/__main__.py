@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.lib.entity_graph import load_entity_graph, resolve_entity, save_entity_graph
+from tools.lib.observability import build_provenance_envelope
 from tools.lib.paths import get_user_data_dir
 
 SCHEMA_VERSION = "m16.entity.v0"
@@ -17,10 +18,19 @@ def _graph_path() -> Path:
     return get_user_data_dir() / "entity_graph.yaml"
 
 
+def _attach_provenance(payload: dict[str, Any]) -> dict[str, Any]:
+    provenance_envelope = build_provenance_envelope(
+        source_data=payload.get("data", {}),
+        generator="entity",
+        params={},
+    )
+    payload["schema_version"] = provenance_envelope["schema_version"]
+    payload["provenance"] = provenance_envelope["provenance"]
+    return payload
+
+
 def _print(payload: dict[str, Any]) -> None:
-    # Add schema_version to all entity outputs (additive only)
-    if "schema_version" not in payload:
-        payload["schema_version"] = SCHEMA_VERSION
+    payload = _attach_provenance(payload)
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
         print(text, flush=True)

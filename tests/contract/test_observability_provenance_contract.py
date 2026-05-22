@@ -1,20 +1,49 @@
-"""Contract tests for v1.1.1 provenance helper (A1).
+"""Contract tests for v1.1.1 provenance helper (A1) and CLI wiring (A2).
 
-Validates the reusable provenance envelope that later JSON-generating
-commands will consume.  No CLI wiring is tested here.
+A1 tests validate the reusable provenance envelope that JSON-generating
+commands consume.  A2 tests validate that the six covered CLI commands
+actually emit ``schema_version`` and ``provenance`` in their JSON output.
 """
 
 import copy
 import json
+import os
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _import_observability():
     from tools.lib.observability import build_provenance_envelope
 
     return build_provenance_envelope
+
+
+def _run_cli(args: list[str], data_dir: Path) -> dict:
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    proc = subprocess.run(
+        [sys.executable, "-m", "tools"] + args,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+    )
+    try:
+        payload = json.loads(proc.stdout)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise AssertionError(
+            f"CLI output not valid JSON (exit={proc.returncode}): {exc}\n"
+            f"stdout: {proc.stdout}\nstderr: {proc.stderr}"
+        )
+    if not isinstance(payload, dict):
+        raise AssertionError("CLI output JSON was not an object")
+    return payload
 
 
 class TestProvenanceEnvelopeSchema:
@@ -234,3 +263,202 @@ class TestJsonSerializable:
         serialized = json.dumps(result)
         deserialized = json.loads(serialized)
         assert deserialized == result
+
+
+# ====================================================================
+# A2 CLI wiring tests — each covered command emits provenance
+# ====================================================================
+
+
+class TestSearchProvenance:
+    """search --json output contains provenance envelope."""
+
+    def test_schema_version_v111(self, isolated_data_dir):
+        payload = _run_cli(
+            ["search", "--query", "test", "--no-semantic"],
+            isolated_data_dir,
+        )
+        assert payload["schema_version"] == "v1.1.1"
+
+    def test_provenance_generator_is_search(self, isolated_data_dir):
+        payload = _run_cli(
+            ["search", "--query", "test", "--no-semantic"],
+            isolated_data_dir,
+        )
+        assert payload["provenance"]["generator"] == "search"
+
+    def test_provenance_has_required_fields(self, isolated_data_dir):
+        payload = _run_cli(
+            ["search", "--query", "test", "--no-semantic"],
+            isolated_data_dir,
+        )
+        for field in [
+            "source_hash",
+            "tool_version",
+            "generated_at",
+            "generator",
+            "params_hash",
+            "fixture_version",
+        ]:
+            assert field in payload["provenance"], f"missing: {field}"
+
+    def test_existing_fields_preserved(self, isolated_data_dir):
+        payload = _run_cli(
+            ["search", "--query", "test", "--no-semantic"],
+            isolated_data_dir,
+        )
+        assert "success" in payload
+        assert "merged_results" in payload
+
+
+class TestIndexProvenance:
+    """index --json output contains provenance envelope."""
+
+    def test_schema_version_v111(self, isolated_data_dir):
+        payload = _run_cli(["index", "--json"], isolated_data_dir)
+        assert payload["schema_version"] == "v1.1.1"
+
+    def test_provenance_generator_is_index(self, isolated_data_dir):
+        payload = _run_cli(["index", "--json"], isolated_data_dir)
+        assert payload["provenance"]["generator"] == "index"
+
+    def test_provenance_has_required_fields(self, isolated_data_dir):
+        payload = _run_cli(["index", "--json"], isolated_data_dir)
+        for field in [
+            "source_hash",
+            "tool_version",
+            "generated_at",
+            "generator",
+            "params_hash",
+            "fixture_version",
+        ]:
+            assert field in payload["provenance"], f"missing: {field}"
+
+    def test_existing_fields_preserved(self, isolated_data_dir):
+        payload = _run_cli(["index", "--json"], isolated_data_dir)
+        assert "success" in payload
+
+
+class TestEvalProvenance:
+    """eval --json output contains provenance envelope."""
+
+    def test_schema_version_v111(self, isolated_data_dir):
+        payload = _run_cli(["eval", "--json"], isolated_data_dir)
+        assert payload["schema_version"] == "v1.1.1"
+
+    def test_provenance_generator_is_eval(self, isolated_data_dir):
+        payload = _run_cli(["eval", "--json"], isolated_data_dir)
+        assert payload["provenance"]["generator"] == "eval"
+
+    def test_provenance_has_required_fields(self, isolated_data_dir):
+        payload = _run_cli(["eval", "--json"], isolated_data_dir)
+        for field in [
+            "source_hash",
+            "tool_version",
+            "generated_at",
+            "generator",
+            "params_hash",
+            "fixture_version",
+        ]:
+            assert field in payload["provenance"], f"missing: {field}"
+
+    def test_existing_fields_preserved(self, isolated_data_dir):
+        payload = _run_cli(["eval", "--json"], isolated_data_dir)
+        assert "success" in payload
+        assert "data" in payload
+
+
+class TestEntityProvenance:
+    """entity --list output contains provenance envelope."""
+
+    def test_schema_version_v111(self, isolated_data_dir):
+        payload = _run_cli(["entity", "--list"], isolated_data_dir)
+        assert payload["schema_version"] == "v1.1.1"
+
+    def test_provenance_generator_is_entity(self, isolated_data_dir):
+        payload = _run_cli(["entity", "--list"], isolated_data_dir)
+        assert payload["provenance"]["generator"] == "entity"
+
+    def test_provenance_has_required_fields(self, isolated_data_dir):
+        payload = _run_cli(["entity", "--list"], isolated_data_dir)
+        for field in [
+            "source_hash",
+            "tool_version",
+            "generated_at",
+            "generator",
+            "params_hash",
+            "fixture_version",
+        ]:
+            assert field in payload["provenance"], f"missing: {field}"
+
+    def test_existing_fields_preserved(self, isolated_data_dir):
+        payload = _run_cli(["entity", "--list"], isolated_data_dir)
+        assert "success" in payload
+
+
+class TestMaintenanceProvenance:
+    """maintenance --output=json output contains provenance envelope."""
+
+    def test_schema_version_v111(self, isolated_data_dir):
+        payload = _run_cli(["maintenance", "--output=json"], isolated_data_dir)
+        assert payload["schema_version"] == "v1.1.1"
+
+    def test_provenance_generator_is_maintenance(self, isolated_data_dir):
+        payload = _run_cli(["maintenance", "--output=json"], isolated_data_dir)
+        assert payload["provenance"]["generator"] == "maintenance"
+
+    def test_provenance_has_required_fields(self, isolated_data_dir):
+        payload = _run_cli(["maintenance", "--output=json"], isolated_data_dir)
+        for field in [
+            "source_hash",
+            "tool_version",
+            "generated_at",
+            "generator",
+            "params_hash",
+            "fixture_version",
+        ]:
+            assert field in payload["provenance"], f"missing: {field}"
+
+    def test_existing_fields_preserved(self, isolated_data_dir):
+        payload = _run_cli(["maintenance", "--output=json"], isolated_data_dir)
+        assert "success" in payload
+
+
+class TestTrajectoryProvenance:
+    """trajectory output contains provenance envelope."""
+
+    def test_schema_version_v111(self, isolated_data_dir):
+        payload = _run_cli(
+            ["trajectory", "--field=weight", "--range=2025-01..2025-01"],
+            isolated_data_dir,
+        )
+        assert payload["schema_version"] == "v1.1.1"
+
+    def test_provenance_generator_is_trajectory(self, isolated_data_dir):
+        payload = _run_cli(
+            ["trajectory", "--field=weight", "--range=2025-01..2025-01"],
+            isolated_data_dir,
+        )
+        assert payload["provenance"]["generator"] == "trajectory"
+
+    def test_provenance_has_required_fields(self, isolated_data_dir):
+        payload = _run_cli(
+            ["trajectory", "--field=weight", "--range=2025-01..2025-01"],
+            isolated_data_dir,
+        )
+        for field in [
+            "source_hash",
+            "tool_version",
+            "generated_at",
+            "generator",
+            "params_hash",
+            "fixture_version",
+        ]:
+            assert field in payload["provenance"], f"missing: {field}"
+
+    def test_existing_fields_preserved(self, isolated_data_dir):
+        payload = _run_cli(
+            ["trajectory", "--field=weight", "--range=2025-01..2025-01"],
+            isolated_data_dir,
+        )
+        assert "success" in payload

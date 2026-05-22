@@ -11,6 +11,7 @@ import sys
 from . import build_all, show_stats, check_index
 from ..lib.config import ensure_dirs
 from ..lib.metadata_cache import get_cache_stats
+from ..lib.observability import build_provenance_envelope
 from ..lib.trace import Trace
 
 
@@ -143,6 +144,17 @@ Examples:
         }
 
     if args.explain or args.json:
+        provenance_envelope = build_provenance_envelope(
+            source_data=result,
+            generator="index",
+            params={
+                "rebuild": args.rebuild,
+                "fts_only": args.fts_only,
+                "vec_only": args.vec_only,
+            },
+        )
+        result["schema_version"] = provenance_envelope["schema_version"]
+        result["provenance"] = provenance_envelope["provenance"]
         print(json.dumps(result, indent=2, ensure_ascii=False))
     elif not result["success"]:
         sys.exit(1)

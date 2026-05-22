@@ -20,6 +20,19 @@ from pathlib import Path
 from .core import run_maintenance, format_text_report, to_json
 
 
+def _attach_provenance(result: dict) -> dict:
+    from ..lib.observability import build_provenance_envelope
+
+    provenance_envelope = build_provenance_envelope(
+        source_data=result,
+        generator="maintenance",
+        params={},
+    )
+    result["schema_version"] = provenance_envelope["schema_version"]
+    result["provenance"] = provenance_envelope["provenance"]
+    return result
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Life Index - Maintenance cycle (dry-run / report-only)",
@@ -69,6 +82,7 @@ Examples:
 
     # Output
     if args.output == "json":
+        result = _attach_provenance(result)
         text = to_json(result)
     else:
         text = format_text_report(result)
