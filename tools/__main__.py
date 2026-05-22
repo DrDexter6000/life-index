@@ -32,6 +32,7 @@ Commands:
     maintenance  Run maintenance cycle (dry-run health checks)
     health    Check installation health
               --data-audit  Audit data directory for anomalies
+              --cache-audit  Read-only cache version audit (JSON)
     version   Show package and bootstrap manifest version info
 """
 
@@ -455,8 +456,12 @@ def main() -> None:
 
     # Handle health check directly (no submodule import needed)
     if subcmd == "health":
-        # Check for --data-audit flag
-        if "--data-audit" in sys.argv[2:]:
+        if "--cache-audit" in sys.argv[2:]:
+            from tools.lib.metadata_cache import run_cache_audit
+
+            report = run_cache_audit()
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        elif "--data-audit" in sys.argv[2:]:
             _run_data_audit()
         else:
             health_check()
@@ -541,6 +546,7 @@ def print_usage() -> None:
     print("  analyze   Alias for deterministic aggregate/trend computation")
     print("  health    Check installation health")
     print("            --data-audit  Audit data directory for anomalies")
+    print("            --cache-audit  Read-only cache version audit (JSON)")
     print("  version   Show package and bootstrap manifest version info")
     print()
     print("Run 'life-index <command> --help' for command-specific options.")

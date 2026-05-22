@@ -10,13 +10,17 @@ L2搜索元数据缓存管理
 - 内存缓存：支持内存级缓存加速热点查询
 """
 
-import sqlite3
+import datetime
+import hashlib
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from .paths import get_cache_dir, get_metadata_db_path, get_journals_dir, get_user_data_dir
 from .frontmatter import parse_journal_file
 from .path_contract import build_journal_path_fields
+
+CACHE_VERSION_SCHEMA_VERSION = "v1.1.1"
 
 # 缓存存储目录 (deprecated: use getters)
 CACHE_DIR = get_cache_dir()  # deprecated: use get_cache_dir()
@@ -56,7 +60,8 @@ def init_metadata_cache() -> sqlite3.Connection:
     cursor = conn.cursor()
 
     # 创建元数据缓存表
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS metadata_cache (
             file_path TEXT PRIMARY KEY,
             date TEXT,
@@ -75,46 +80,59 @@ def init_metadata_cache() -> sqlite3.Connection:
             file_size INTEGER,
             cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS entry_relations (
             source_path TEXT NOT NULL,
             target_path TEXT NOT NULL,
             PRIMARY KEY (source_path, target_path)
         )
-        """)
+        """
+    )
 
     _ensure_metadata_cache_columns(conn)
 
     # 创建索引加速查询
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_date
         ON metadata_cache(date)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_topic
         ON metadata_cache(topic)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_project
         ON metadata_cache(project)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_location
         ON metadata_cache(location)
-    """)
+    """
+    )
 
     # 创建缓存状态表
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS cache_meta (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """)
+    """
+    )
 
     conn.commit()
     return conn
@@ -498,6 +516,178 @@ def get_cache_stats() -> Dict[str, Any]:
         }
     finally:
         conn.close()
+
+
+# ============================================================
+# Cache Version Sidecar (v1.1.1)
+# ============================================================
+
+
+def _get_tool_version() -> str:
+    try:
+        from importlib.metadata import PackageNotFoundError, version as package_version
+
+        return package_version("life-index")
+    except PackageNotFoundError:
+        pass
+    try:
+        bootstrap = Path(__file__).parent.parent.parent / "bootstrap-manifest.json"
+        if bootstrap.exists():
+            data = json.loads(bootstrap.read_text(encoding="utf-8"))
+            v = data.get("repo_version")
+            if isinstance(v, str) and v:
+                return v
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+    return "dev"
+
+
+def get_cache_version_dir() -> Path:
+    return get_user_data_dir() / ".life-index" / "cache"
+
+
+def get_cache_version_path() -> Path:
+    return get_cache_version_dir() / "_version.json"
+
+
+def _compute_source_hash() -> str:
+    journals_dir = get_journals_dir()
+    sha = hashlib.sha256()
+    if journals_dir.exists():
+        for journal_file in sorted(journals_dir.rglob("*.md")):
+            try:
+                sha.update(journal_file.read_bytes())
+            except (IOError, OSError):
+                continue
+    for meta_file in sorted(get_user_data_dir().glob("entity_graph.yaml")):
+        try:
+            sha.update(meta_file.read_bytes())
+        except (IOError, OSError):
+            continue
+    return f"sha256:{sha.hexdigest()}"
+
+
+def write_cache_version(
+    source_hash: str = "",
+    invalidation_reason: str = "",
+    from_version: str = "",
+) -> Dict[str, Any]:
+    version_dir = get_cache_version_dir()
+    version_dir.mkdir(parents=True, exist_ok=True)
+
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if not source_hash:
+        source_hash = _compute_source_hash()
+
+    existing = read_cache_version()
+    invalidation_history: list = []
+    if existing:
+        invalidation_history = list(existing.get("invalidation_history", []))
+    if invalidation_reason:
+        invalidation_history.append(
+            {
+                "at": now_iso,
+                "reason": invalidation_reason,
+                "from_version": from_version,
+            }
+        )
+
+    data: Dict[str, Any] = {
+        "schema_version": CACHE_VERSION_SCHEMA_VERSION,
+        "tool_version": _get_tool_version(),
+        "created_at": now_iso,
+        "source_hash": source_hash,
+        "invalidation_history": invalidation_history,
+    }
+
+    version_path = get_cache_version_path()
+    version_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return data
+
+
+def read_cache_version() -> Optional[Dict[str, Any]]:
+    version_path = get_cache_version_path()
+    if not version_path.exists():
+        return None
+    try:
+        data = json.loads(version_path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+        return None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def evaluate_cache_state(
+    data_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    current_hash = _compute_source_hash() if data_dir is None else "unknown"
+    stored = read_cache_version() if data_dir is None else None
+
+    if data_dir is not None:
+        version_path = data_dir / ".life-index" / "cache" / "_version.json"
+        if version_path.exists():
+            try:
+                stored = json.loads(version_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                stored = None
+
+    exists = stored is not None
+    version_match = False
+    hash_match = False
+    would_rebuild = not exists
+
+    if exists and stored:
+        version_match = stored.get("schema_version") == CACHE_VERSION_SCHEMA_VERSION
+        stored_hash = stored.get("source_hash", "")
+        hash_match = stored_hash == current_hash
+        if not version_match or not hash_match:
+            would_rebuild = True
+
+    reasons: List[str] = []
+    if not exists:
+        reasons.append("no_existing_version")
+    elif not version_match:
+        reasons.append("schema_version_mismatch")
+    elif not hash_match:
+        reasons.append("source_hash_mismatch")
+
+    return {
+        "exists": exists,
+        "stored_schema_version": stored.get("schema_version") if stored else None,
+        "stored_source_hash": stored.get("source_hash") if stored else None,
+        "current_schema_version": CACHE_VERSION_SCHEMA_VERSION,
+        "version_match": version_match,
+        "hash_match": hash_match,
+        "would_rebuild": would_rebuild,
+        "reasons": reasons,
+    }
+
+
+def run_cache_audit() -> Dict[str, Any]:
+    stored = read_cache_version()
+    version_exists = stored is not None
+    status = "missing"
+
+    if stored:
+        current_hash = _compute_source_hash()
+        version_match = stored.get("schema_version") == CACHE_VERSION_SCHEMA_VERSION
+        hash_match = stored.get("source_hash") == current_hash
+        if version_match and hash_match:
+            status = "valid"
+        elif version_match and not hash_match:
+            status = "stale"
+        else:
+            status = "incompatible"
+
+    return {
+        "success": True,
+        "cache_audit": {
+            "version_exists": version_exists,
+            "status": status,
+            "json": True,
+        },
+    }
 
 
 def update_cache_for_all_journals(

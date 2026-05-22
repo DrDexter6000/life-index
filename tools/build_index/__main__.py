@@ -56,6 +56,12 @@ Examples:
         help="Check index consistency (read-only diagnostic)",
     )
 
+    parser.add_argument(
+        "--cache-dry-run",
+        action="store_true",
+        help="Report cache invalidation status without writing (read-only)",
+    )
+
     args = parser.parse_args()
 
     if args.check:
@@ -63,6 +69,18 @@ Examples:
         print(json.dumps(result, indent=2, ensure_ascii=False))
         if not result["healthy"]:
             sys.exit(1)
+        return
+
+    if args.cache_dry_run:
+        from ..lib.metadata_cache import evaluate_cache_state
+
+        state = evaluate_cache_state()
+        result = {
+            "success": True,
+            "dry_run": True,
+            "cache_version": state,
+        }
+        print(json.dumps(result, indent=2, ensure_ascii=False))
         return
 
     ensure_dirs()
@@ -81,6 +99,15 @@ Examples:
             )
 
     result["_trace"] = trace.to_dict()
+
+    if result["success"]:
+        try:
+            from ..lib.metadata_cache import write_cache_version
+
+            write_cache_version()
+        except Exception:
+            pass
+
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     elif not result["success"]:
