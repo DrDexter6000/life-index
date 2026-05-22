@@ -84,7 +84,9 @@ def main() -> None:
     llm_client = _try_init_llm() if args.use_llm else None
     orch = SmartSearchOrchestrator(llm_client=llm_client)
     result = orch.search(
-        args.query, include_evidence=args.include_evidence, synthesize=args.synthesize
+        args.query,
+        include_evidence=args.include_evidence,
+        synthesize=args.synthesize,
     )
 
     # Opt-in deterministic evidence formatter (additive only)
@@ -101,6 +103,32 @@ def main() -> None:
     if not args.explain and "agent_decisions" in result:
         result["agent_decisions_summary"] = f"{len(result['agent_decisions'])} decisions made"
         del result["agent_decisions"]
+
+    # Add deterministic diagnostics when --explain is requested
+    if args.explain:
+        perf = result.get("performance", {})
+        latency_ms: dict[str, float] = {
+            "total": perf.get("total_time_ms", 0),
+        }
+        if "rewrite_time_ms" in perf:
+            latency_ms["rewrite"] = perf["rewrite_time_ms"]
+        if "search_time_ms" in perf:
+            latency_ms["search"] = perf["search_time_ms"]
+        if "filter_time_ms" in perf:
+            latency_ms["filter"] = perf["filter_time_ms"]
+        if "evidence_build_ms" in perf:
+            latency_ms["evidence"] = perf["evidence_build_ms"]
+        if "synthesis_ms" in perf:
+            latency_ms["synthesis"] = perf["synthesis_ms"]
+
+        result["diagnostics"] = {
+            "input_count": perf.get("total_available", 0),
+            "filter_drops": {},
+            "cache_hits": 0,
+            "cache_misses": 0,
+            "latency_ms": latency_ms,
+            "fallback_path": None,
+        }
 
     result["schema_version"] = SCHEMA_VERSION
     _emit_json(result)

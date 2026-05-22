@@ -10,6 +10,7 @@ import sys
 
 from . import build_all, show_stats, check_index
 from ..lib.config import ensure_dirs
+from ..lib.metadata_cache import get_cache_stats
 from ..lib.trace import Trace
 
 
@@ -49,6 +50,12 @@ Examples:
     parser.add_argument("--stats", action="store_true", help="Show index statistics")
 
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
+
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="Output build diagnostics as JSON",
+    )
 
     parser.add_argument(
         "--check",
@@ -108,7 +115,34 @@ Examples:
         except Exception:
             pass
 
-    if args.json:
+    if args.explain:
+        latency_ms: dict[str, float] = {
+            "total": round(result["duration_seconds"] * 1000, 2),
+        }
+        fts_data = result.get("fts") or {}
+        if isinstance(fts_data, dict) and "duration_seconds" in fts_data:
+            latency_ms["fts"] = round(fts_data["duration_seconds"] * 1000, 2)
+        vec_data = result.get("vector") or {}
+        if isinstance(vec_data, dict) and "duration_seconds" in vec_data:
+            latency_ms["vector"] = round(vec_data["duration_seconds"] * 1000, 2)
+
+        input_count = 0
+        if isinstance(fts_data, dict):
+            input_count += fts_data.get("added", 0) + fts_data.get("updated", 0)
+        if isinstance(vec_data, dict):
+            input_count += vec_data.get("added", 0) + vec_data.get("updated", 0)
+
+        cache_stats = get_cache_stats()
+        result["diagnostics"] = {
+            "input_count": input_count,
+            "filter_drops": {},
+            "cache_hits": cache_stats.get("total_entries", 0),
+            "cache_misses": 0,
+            "latency_ms": latency_ms,
+            "fallback_path": None,
+        }
+
+    if args.explain or args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     elif not result["success"]:
         sys.exit(1)

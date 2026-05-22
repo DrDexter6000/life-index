@@ -641,6 +641,37 @@ def _search_level_2(
     return result
 
 
+def _build_search_diagnostics(result: dict[str, Any]) -> dict[str, Any]:
+    """Build deterministic diagnostics dict for search --explain output."""
+    performance = result.get("performance", {})
+    latency_ms: dict[str, float] = {
+        "total": performance.get("total_time_ms", 0),
+    }
+    if "l1_time_ms" in performance:
+        latency_ms["l1"] = performance["l1_time_ms"]
+    if "l2_time_ms" in performance:
+        latency_ms["l2"] = performance["l2_time_ms"]
+    if "l3_time_ms" in performance:
+        latency_ms["l3"] = performance["l3_time_ms"]
+    if "semantic_time_ms" in performance:
+        latency_ms["semantic"] = performance["semantic_time_ms"]
+
+    fallback_path = None
+    if result.get("semantic_fallback_used"):
+        fallback_path = "semantic"
+
+    input_count = result.get("total_available", result.get("total_found", 0))
+
+    return {
+        "input_count": input_count,
+        "filter_drops": {},
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "latency_ms": latency_ms,
+        "fallback_path": fallback_path,
+    }
+
+
 def _eval_anchor() -> date | None:
     """Return the eval anchor date from the environment, or None."""
     env = os.environ.get("LIFE_INDEX_TIME_ANCHOR")
@@ -751,6 +782,10 @@ def _finalize_level3_results(
             del r["query"]
 
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
+
+    if explain:
+        result["diagnostics"] = _build_search_diagnostics(result)
+
     _emit_search_metrics(result)
 
     total_time = result["performance"]["total_time_ms"]
@@ -1195,6 +1230,8 @@ def hierarchical_search(
             tags=tags,
             start_time=start_time,
         )
+        if explain:
+            level_1_result["diagnostics"] = _build_search_diagnostics(level_1_result)
         _emit_search_metrics(level_1_result)
         return level_1_result
 
@@ -1214,6 +1251,8 @@ def hierarchical_search(
             weather=weather,
             start_time=start_time,
         )
+        if explain:
+            level_2_result["diagnostics"] = _build_search_diagnostics(level_2_result)
         _emit_search_metrics(level_2_result)
         return level_2_result
 
