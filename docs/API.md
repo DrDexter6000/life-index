@@ -90,6 +90,106 @@ python -m tools.{tool_name} --data '{json_data}'
 | Web | E07xx | Web GUI / URL 下载 / LLM 提供方 / 地理定位相关错误 |
 | 迁移 | E08xx | **Reserved / 未实现** — Schema 迁移错误码已预留，但当前 runtime 不发射结构化 E08xx 码 |
 
+## v1.1.1 Observability Contract
+
+> **适用版本**: v1.1.1+
+> **范围**: Phase A (Sub-PRD-1) — provenance envelope、step diagnostics、cache version governance
+
+Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 additive，不破坏 v1.1.0 客户端兼容。
+
+### Provenance Envelope
+
+六个生成 JSON 的命令在输出顶层附加 `schema_version` 与 `provenance` 字段：
+
+| 命令 | `generator` 值 | 备注 |
+|------|---------------|------|
+| `search` | `search` | 取代旧 `schema_version: "m16.search.v0"` |
+| `index` | `index` | 取代旧 `schema_version: "m16.index.v0"`（若存在） |
+| `eval` | `eval` | 新增 |
+| `entity` | `entity` | 取代旧 `schema_version: "m16.entity.v0"` |
+| `maintenance` | `maintenance` | 取代旧 `schema_version: "m16.maintenance.v0"` |
+| `trajectory` | `trajectory` | 取代旧 `schema_version: "m26.trajectory.v0"` |
+
+**顶层字段**：
+
+```json
+{
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:abc...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "search|index|eval|entity|maintenance|trajectory",
+    "params_hash": "sha256:def...",
+    "fixture_version": null
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schema_version` | string | 固定为 `"v1.1.1"` |
+| `provenance.source_hash` | string | 输入数据稳定 SHA-256（journal + entity_graph + 配置） |
+| `provenance.tool_version` | string | Life Index package 版本（来自 `pyproject.toml`） |
+| `provenance.generated_at` | string | ISO 8601 UTC 时间戳 |
+| `provenance.generator` | string enum | 生成该输出的命令标识 |
+| `provenance.params_hash` | string | 命令参数集稳定 SHA-256（时间相关 flag 除外） |
+| `provenance.fixture_version` | string \| null | 仅 `eval` 使用，标识 eval baseline fixture 版本 |
+
+**兼容策略**: v1.1.0 客户端可安全忽略未知顶层字段；字段语义 additive-only。
+
+### Step Diagnostics (`--explain`)
+
+`search --explain`、`smart-search --explain`、`index --explain` 在输出顶层附加 `diagnostics` 字段：
+
+```json
+{
+  "diagnostics": {
+    "input_count": 1234,
+    "filter_drops": {},
+    "cache_hits": 800,
+    "cache_misses": 400,
+    "latency_ms": {
+      "total": 45
+    },
+    "fallback_path": null
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `input_count` | int | 输入候选总数 |
+| `filter_drops` | object | 过滤丢弃统计（当前保留为空对象占位） |
+| `cache_hits` | int | 缓存命中数 |
+| `cache_misses` | int | 缓存未命中数 |
+| `latency_ms` | object | 各阶段耗时（键因命令而异） |
+| `fallback_path` | string \| null | 降级路径标识，如 `"semantic"` |
+
+**边界**: `diagnostics` 仅 `--explain` 请求时出现；不 `--explain` 时不存在。`latency_ms` 子键集合可能扩展，消费者应容忍未知键。
+
+### Cache Version Governance
+
+新增文件 `.life-index/cache/_version.json`：
+
+```json
+{
+  "schema_version": "v1.1.1",
+  "tool_version": "1.1.1",
+  "created_at": "2026-05-23T10:00:00+00:00",
+  "source_hash": "sha256:...",
+  "invalidation_history": []
+}
+```
+
+**CLI 入口**：
+
+| 命令 | 行为 | 副作用 |
+|------|------|--------|
+| `index --cache-dry-run` | 评估当前 cache 是否需要重建，返回 `would_rebuild` / `reasons` | **零写入** |
+| `health --cache-audit --json` | 返回 cache 版本只读审计状态 | **零写入** |
+
+**失效策略**: `source_hash` mismatch 或 `schema_version` mismatch → 建议全量重建；cache 为派生产物，重建无损，不做 migration。
 
 ## 错误码格式
 
@@ -539,7 +639,9 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Whether the search executed successfully |
-| `schema_version` | string | yes | `"m16.search.v0"` — top-level output schema version |
+| `schema_version` | string | yes | `"v1.1.1"` — top-level output schema version (replaces `m16.search.v0`) |
+| `provenance` | object | yes | Provenance envelope；详见 [v1.1.1 Observability Contract](#v111-observability-contract) |
+| `diagnostics` | object | no | 仅 `--explain` 时出现；详见 [v1.1.1 Observability Contract](#v111-observability-contract) |
 | `query_params` | object | yes | Echo of all input parameters |
 | `merged_results` | array | yes | Unified result list across all levels |
 | `l1_results` | array | yes | Level-1 (index-only) results |
@@ -628,7 +730,7 @@ python -m tools.search_journals [options]
 | --limit | int | ❌ | 20 | 返回结果数量限制；显式传入时覆盖默认截断 |
 | --offset | int | ❌ | 0 | 结果偏移量（分页起始位置） |
 | --read-top | int | ❌ | 0 | 读取前 N 条结果的完整正文（默认 0 不读取） |
-| --explain | flag | ❌ | false | 输出搜索评分详情 |
+| --explain | flag | ❌ | false | 输出搜索评分详情与 `diagnostics` 诊断块 |
 | --diagnose | flag | ❌ | false | 输出最近搜索行为诊断摘要并退出 |
 | --diagnose-days | int | ❌ | 7 | 诊断回看天数 |
 | --enable-source-tier | flag | ❌ | false | 启用 source-tier 排名加权（gbrain Phase B）。开启后，搜索结果会按文档 frontmatter 丰富度（topic/people/tags/related_entries）进行额外加权；默认关闭以保持行为不变 |
@@ -827,6 +929,7 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 | `agent_decisions_summary` | string | conditional | Summary string when `--explain` not passed |
 | `agent_decisions` | array | conditional | Detailed decision list when `--explain` passed |
 | `agent_unavailable` | bool | yes | `true` when LLM is unavailable (degraded mode) |
+| `diagnostics` | object | no | 仅 `--explain` 时出现；确定性诊断块，详见 [v1.1.1 Observability Contract](#v111-observability-contract) |
 | `performance` | object | yes | Timing breakdown (`total_time_ms`, conditional sub-fields) |
 | `answer` | object | no | Additive: synthesized answer with trust-gate fields |
 | `evidence_pack` | object | no | Additive: retrieval evidence (requires `--include-evidence`) |
@@ -876,7 +979,7 @@ python -m tools.smart_search --query "..." [options]
 | query | string | ✅ | - | 自然语言搜索查询 |
 | use-llm | flag | ❌ | false | 显式启用 LLM 编排（query rewrite / filter / summary / synthesis） |
 | no-llm | flag | ❌ | false | 向后兼容 no-op；默认已是纯确定性模式 |
-| explain | flag | ❌ | false | 在输出中包含 Agent 决策详情 |
+| explain | flag | ❌ | false | 在输出中包含 Agent 决策详情与 `diagnostics` 诊断块 |
 | include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
 | format-entity-annotated | flag | ❌ | false | 与 `--include-evidence` 同用时，增加人类可读的 `formatted_evidence` |
 | synthesize | flag | ❌ | false | 生成引用支撑的自然语言答案（需要 `--use-llm`） |
@@ -1604,6 +1707,15 @@ python -m tools eval [options]
 ```json
 {
   "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "eval",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "data": {
     "summary_lines": ["Queries: 50", "Failures: 0"],
     "metrics": {"mrr_at_5": 1.0, "recall_at_5": 1.0},
@@ -1863,7 +1975,15 @@ python -m tools maintenance --dry-run [--output text|json] [--data-dir <dir>]
 {
   "success": true,
   "command": "maintenance",
-  "schema_version": "m16.maintenance.v0",
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "maintenance",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "checks": [
     {
       "category": "index_freshness",
@@ -2456,7 +2576,9 @@ python -m tools.build_index [options]
 | fts-only | flag | ❌ | false | 仅更新 FTS 索引 |
 | vec-only | flag | ❌ | false | 仅更新向量索引 |
 | stats | flag | ❌ | false | 显示索引统计信息 |
-| json | flag | ❌ | false | 以 JSON 格式输出结果 |
+| json | flag | ❌ | false | 以 JSON 格式输出结果（含 `schema_version` + `provenance`） |
+| explain | flag | ❌ | false | 输出构建诊断 JSON（含 `diagnostics`） |
+| cache-dry-run | flag | ❌ | false | 评估 cache 失效状态，**零写入** |
 
 ### 返回值
 
@@ -2465,6 +2587,15 @@ python -m tools.build_index [options]
 ```json
 {
   "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "index",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "fts": {
     "success": true,
     "added": 45,
@@ -2499,6 +2630,25 @@ python -m tools.build_index [options]
 | vector_count | int | 向量索引中的条目数 |
 | file_count | int | Journals/ 下实际日志文件数 |
 | issues | string[] | 不一致描述列表；空列表表示健康 |
+
+**`--cache-dry-run` 模式**：
+
+```json
+{
+  "success": true,
+  "dry_run": true,
+  "cache_version": {
+    "exists": true,
+    "stored_schema_version": "v1.1.1",
+    "stored_source_hash": "sha256:...",
+    "current_schema_version": "v1.1.1",
+    "version_match": true,
+    "hash_match": true,
+    "would_rebuild": false,
+    "reasons": []
+  }
+}
+```
 
 退出码：healthy → 0, unhealthy → 1（便于 CI 集成）
 
@@ -2569,6 +2719,7 @@ python -m tools health [options]
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | data-audit | flag | ❌ | false | 数据目录清洁度审计 |
+| cache-audit | flag | ❌ | false | Cache 版本只读审计（JSON） |
 
 ### 返回值
 
@@ -2583,6 +2734,19 @@ python -m tools health [options]
     "issues": [ ... ]
   },
   "events": [ ... ]
+}
+```
+
+**`--cache-audit` 模式**：
+
+```json
+{
+  "success": true,
+  "cache_audit": {
+    "version_exists": true,
+    "status": "valid|stale|incompatible|missing",
+    "json": true
+  }
 }
 ```
 
@@ -3081,7 +3245,8 @@ python -m tools recall --mode {default|recall|deep} --query "..." [--use-llm]
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Whether the subcommand succeeded |
-| `schema_version` | string | yes | `"m16.entity.v0"` — top-level output schema version |
+| `schema_version` | string | yes | `"v1.1.1"` — top-level output schema版本（取代 `m16.entity.v0`） |
+| `provenance` | object | yes | Provenance envelope；详见 [v1.1.1 Observability Contract](#v111-observability-contract) |
 | `data` | object\|array | yes | Subcommand-specific result payload |
 | `error` | null\|string | yes | `null` on success; string on some error paths |
 
@@ -3176,6 +3341,15 @@ life-index entity --audit
 ```json
 {
   "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "data": {
     "audit_date": "2026-04-09",
     "total_entities": 42,
@@ -3217,6 +3391,15 @@ life-index entity --stats
 ```json
 {
   "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "data": {
     "total_entities": 42,
     "by_type": {"person": 15, "place": 8, "concept": 19},
@@ -3246,6 +3429,15 @@ life-index entity --check
 ```json
 {
   "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "data": {
     "total_entities": 42,
     "issues": [
@@ -3288,6 +3480,15 @@ life-index entity --review
 ```json
 {
   "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "data": {
     "queue": [
       {
@@ -3339,6 +3540,15 @@ life-index entity --delete --id p003
 ```json
 {
   "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "data": {
     "deleted_id": "p003",
     "deleted_name": "旧同事A",
@@ -3397,7 +3607,15 @@ life-index entity --candidate-edges --output=json
 ```json
 {
   "success": true,
-  "schema_version": "m16.entity_candidate_edges.v0",
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "candidates": [
     {
       "type": "people_cooccurrence",
@@ -3649,7 +3867,15 @@ python -m tools trajectory --field weight --range 2025-01..2025-12
 {
   "success": true,
   "command": "trajectory",
-  "schema_version": "m26.trajectory.v0",
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.1.1",
+    "generated_at": "2026-05-23T10:00:00+00:00",
+    "generator": "trajectory",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
   "field": "weight",
   "range": ["2025-01", "2025-12"],
   "observations": [

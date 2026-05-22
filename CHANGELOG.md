@@ -6,7 +6,22 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
-(No entries yet.)
+### What users get
+
+- Six generating commands (`search`, `index`, `eval`, `entity`, `maintenance`, `trajectory`) now emit a top-level `schema_version: "v1.1.1"` and a `provenance` envelope with stable source hash, tool version, timestamp, and generator identity. This makes every JSON output auditable and reproducible without changing any result semantics.
+- `search --explain`, `smart-search --explain`, and `index --explain` now include a deterministic `diagnostics` block showing input count, cache hits/misses, latency breakdown, and fallback path — zero LLM calls, purely additive.
+- `index --cache-dry-run` lets you preview whether a cache rebuild would be triggered before any write happens.
+- `health --cache-audit --json` provides a read-only cache version status check.
+
+### Included in this release
+
+- Provenance envelope: `schema_version`, `source_hash`, `tool_version`, `generated_at`, `generator`, `params_hash`, `fixture_version` (Sub-PRD-1, A1-A2).
+- Step diagnostics for `--explain`: `input_count`, `filter_drops`, `cache_hits`, `cache_misses`, `latency_ms`, `fallback_path` (Sub-PRD-1, A3).
+- Cache version governance: `.life-index/cache/_version.json` sidecar with `invalidation_history`; `index --cache-dry-run` and `health --cache-audit` read-only audit surfaces (Sub-PRD-1, A4).
+- Contract tests: 28+ provenance envelope tests, 13 diagnostics contract tests, 20 cache version contract tests (Sub-PRD-1, Gate 1).
+- docs/API.md: v1.1.1 Observability Contract section documenting provenance, diagnostics, and cache governance semantics.
+
+> **Not included**: Phase B (intermediate state contracts for QueryPlan/SearchPlan/IndexManifest/EntityExpansion) and Phase C/D (entity graph alias metadata backcompat, boost_decay placeholder) are deferred to subsequent work packages. This `[Unreleased]` entry covers Phase A only.
 
 ## [1.1.0] - 2026-05-21
 
