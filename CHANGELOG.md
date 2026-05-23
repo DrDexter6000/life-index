@@ -6,6 +6,8 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-05-23
+
 ### What users get
 
 - Six generating commands (`search`, `index`, `eval`, `entity`, `maintenance`, `trajectory`) now emit a top-level `schema_version: "v1.1.1"` and a `provenance` envelope with stable source hash, tool version, timestamp, and generator identity. This makes every JSON output auditable and reproducible without changing any result semantics.
