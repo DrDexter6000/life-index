@@ -1,0 +1,430 @@
+[
+  {
+    "id": "V120-C3-001",
+    "query": "2026-01-28",
+    "category": "C3_temporal",
+    "description": "Absolute temporal: ISO date string maps directly to three journal entries on 2026-01-28.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "真正的第一步",
+        "人类 vs AI",
+        "现实与理想的平衡"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/01/life-index_2026-01-28_001.md",
+      "Journals/2026/01/life-index_2026-01-28_002.md",
+      "Journals/2026/01/life-index_2026-01-28_003.md"
+    ],
+    "evidence_path": "01-28_001, 01-28_002, 01-28_003: all have date frontmatter 2026-01-28; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-002",
+    "query": "2026-03-09",
+    "category": "C3_temporal",
+    "description": "Absolute temporal: ISO date should match journal filename and frontmatter date.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "硅基生命崛起：与发小周渝的深度辩论"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-09_001.md"
+    ],
+    "evidence_path": "03-09_001: frontmatter date is 2026-03-09T20:00:00+01:00; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-003",
+    "query": "2026-04-05",
+    "category": "C3_temporal",
+    "description": "Absolute temporal: ISO date matches two journal entries on 2026-04-05.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "特朗普病危与美国衰败的思考",
+        "归家之旅一半喜一半忧"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-05_001.md",
+      "Journals/2026/04/life-index_2026-04-05_002.md"
+    ],
+    "evidence_path": "04-05_001 and 04-05_002: both have date frontmatter 2026-04-05; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-004",
+    "query": "四月份",
+    "category": "C3_temporal",
+    "description": "Month-level temporal: '四月份' should match all April 2026 journal entries.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Agents Epiphany - 打破工具边界",
+        "OpenCode浏览器自动化故障解决记录",
+        "特朗普病危与美国衰败的思考",
+        "今天又开了一个新Github仓库 —— LLM Smash Bros横空出世！",
+        "智算中心迈入兆瓦级时代——算力投资思考",
+        "AI算力国资股长线投资研究（Kimi辅助）",
+        "Italy PM Meloni condemns ally Trump over Pope criticism",
+        "回家行程紧迫日志",
+        "团团最爱的玩具陪我继续睡觉"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-02_001.md",
+      "Journals/2026/04/life-index_2026-04-03_001.md",
+      "Journals/2026/04/life-index_2026-04-05_001.md",
+      "Journals/2026/04/life-index_2026-04-07_001.md",
+      "Journals/2026/04/life-index_2026-04-09_001.md",
+      "Journals/2026/04/life-index_2026-04-13_001.md",
+      "Journals/2026/04/life-index_2026-04-14_001.md",
+      "Journals/2026/04/life-index_2026-04-21_001.md",
+      "Journals/2026/04/life-index_2026-04-25_001.md"
+    ],
+    "evidence_path": "All 9 listed journal files verified to exist in Journals/2026/04/ directory",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-005",
+    "query": "二月份",
+    "category": "C3_temporal",
+    "description": "Month-level temporal: '二月份' should match February 2026 journal entries.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "to-do-list 太长，大脑 overload",
+        "记录应该是习惯，不应该是负担",
+        "Digital-self 项目迁移与创业思考",
+        "LobsterAI Journal 双维度索引上线",
+        "Life Index 项目重构启动"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/02/life-index_2026-02-04_001.md",
+      "Journals/2026/02/life-index_2026-02-11_001.md",
+      "Journals/2026/02/life-index_2026-02-20_001.md",
+      "Journals/2026/02/life-index_2026-02-21_001.md",
+      "Journals/2026/02/life-index_2026-02-25_001.md"
+    ],
+    "evidence_path": "All 5 listed journal files verified to exist in Journals/2026/02/ directory",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-006",
+    "query": "一月底",
+    "category": "C3_temporal",
+    "description": "Relative month-end: '一月底' should resolve to last few days of January 2026.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "真正的第一步",
+        "人类 vs AI",
+        "现实与理想的平衡",
+        "Windows 实验启动日"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/01/life-index_2026-01-28_001.md",
+      "Journals/2026/01/life-index_2026-01-28_002.md",
+      "Journals/2026/01/life-index_2026-01-28_003.md",
+      "Journals/2026/01/life-index_2026-01-29_001.md"
+    ],
+    "evidence_path": "01-28 (3 entries) and 01-29 (1 entry) are the only January 2026 entries; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-007",
+    "query": "三月中",
+    "category": "C3_temporal",
+    "description": "Relative mid-month: '三月中' should resolve to middle of March 2026 (around 14-16).",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审",
+        "早起验收编码成果与今日Carloha工作要务",
+        "Carloha Wiki诞生记：AI赋能的一天"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-14_001.md",
+      "Journals/2026/03/life-index_2026-03-14_002.md",
+      "Journals/2026/03/life-index_2026-03-16_001.md"
+    ],
+    "evidence_path": "03-14 (2 entries) and 03-16 (1 entry) are mid-March entries; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-008",
+    "query": "三月底",
+    "category": "C3_temporal",
+    "description": "Relative month-end: '三月底' should resolve to last few days of March 2026.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Carloha Wiki AI Chat Bot 调试",
+        "Life Index 搜索功能优化",
+        "Anthropic 3000文件泄露事件观察：PR自导自演质疑 + AI安全悖论深思",
+        "家庭会议：确立团团教育第一责任人原则",
+        "为 Life Index 2.0 充值 Claude Code"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-27_001.md",
+      "Journals/2026/03/life-index_2026-03-28_001.md",
+      "Journals/2026/03/life-index_2026-03-29_001.md",
+      "Journals/2026/03/life-index_2026-03-30_001.md",
+      "Journals/2026/03/life-index_2026-03-31_001.md"
+    ],
+    "evidence_path": "03-27 through 03-31 entries all verified to exist on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-009",
+    "query": "2026-02-20",
+    "category": "C3_temporal",
+    "description": "Absolute temporal: ISO date string maps directly to journal filename date component.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Digital-self 项目迁移与创业思考"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/02/life-index_2026-02-20_001.md"
+    ],
+    "evidence_path": "02-20_001: frontmatter date is 2026-02-20T20:24:19+01:00; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-010",
+    "query": "2026-03-14",
+    "category": "C3_temporal",
+    "description": "Absolute temporal: ISO date matches two journal entries on 2026-03-14.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Claude Opus 4.6 对 Life Index 的 CTO 级别技术评审",
+        "早起验收编码成果与今日Carloha工作要务"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-14_001.md",
+      "Journals/2026/03/life-index_2026-03-14_002.md"
+    ],
+    "evidence_path": "03-14_001 and 03-14_002: both have date frontmatter 2026-03-14; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-011",
+    "query": "2026-04-13",
+    "category": "C3_temporal",
+    "description": "Absolute temporal: ISO date string should map to single journal on 2026-04-13.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "AI算力国资股长线投资研究（Kimi辅助）"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-13_001.md"
+    ],
+    "evidence_path": "04-13_001: frontmatter date is 2026-04-13T21:24:00; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-012",
+    "query": "2026-04-25",
+    "category": "C3_temporal",
+    "description": "Absolute temporal: ISO date string should map to single journal on 2026-04-25.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "团团最爱的玩具陪我继续睡觉"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-25_001.md"
+    ],
+    "evidence_path": "04-25_001: frontmatter date is 2026-04-25T07:40; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-013",
+    "query": "3月4号",
+    "category": "C3_temporal",
+    "description": "Chinese date format: '3月4号' uses Chinese month/day markers; tests non-ISO date parsing.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "想念尿片侠"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-04_001.md"
+    ],
+    "evidence_path": "03-04_001: filename and frontmatter date both contain 2026-03-04; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  },
+  {
+    "id": "V120-C3-014",
+    "query": "4月2日",
+    "category": "C3_temporal",
+    "description": "Chinese date format: '4月2日' uses Chinese date markers with 日 suffix.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Agents Epiphany - 打破工具边界"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-02_001.md"
+    ],
+    "evidence_path": "04-02_001: frontmatter date is 2026-04-02T16:59:00+01:00; verified on filesystem",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:ecc5adaf287ff3ef3b8a460f1730fdc1830f0927367f42081cc450f3ee43f9df"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C3_temporal"
+    ]
+  }
+]

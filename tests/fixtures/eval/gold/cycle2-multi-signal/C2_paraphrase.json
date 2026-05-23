@@ -1,0 +1,382 @@
+[
+  {
+    "id": "V120-C2-001",
+    "query": "大脑超负荷",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '大脑超负荷' maps to journal description of mental overload from long to-do list.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "to-do-list 太长，大脑 overload"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/02/life-index_2026-02-04_001.md"
+    ],
+    "evidence_path": "02-04_001: title 'to-do-list 太长，大脑 overload'; mood ['疲惫']; describes wanting to quit; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-002",
+    "query": "想摆烂",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: colloquial '想摆烂' (want to give up) maps to body text '想摆烂几天了'.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "to-do-list 太长，大脑 overload"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/02/life-index_2026-02-04_001.md"
+    ],
+    "evidence_path": "02-04_001: body explicitly contains '想摆烂几天了'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-003",
+    "query": "育儿烦恼",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '育儿烦恼' generalizes specific concerns about child being isolated at school and parental disagreement.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "关于团团的事"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-20_001.md"
+    ],
+    "evidence_path": "03-20_001: body describes 团团 being isolated by teacher, parents debating handling; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-004",
+    "query": "被老师罚",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '被老师罚' maps to 团团 being sent to kitchen alone for not behaving during meals.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "关于团团的事"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-20_001.md"
+    ],
+    "evidence_path": "03-20_001: body '老师收拾不住她，就把她单独叫到厨房去吃饭'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-005",
+    "query": "股市选股",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '股市选股' generalizes detailed AI-computing state-owned stock screening with 36-month investment plan.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "AI算力国资股长线投资研究（Kimi辅助）"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-13_001.md"
+    ],
+    "evidence_path": "04-13_001: body contains 'Kimi联通了同花顺数据库' and detailed portfolio allocation; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-006",
+    "query": "回国探亲",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '回国探亲' maps to detailed itinerary of returning to Chongqing via Turkey and Beijing with tight schedule (8 keyword hits on 回家/行程).",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "回家行程紧迫日志"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-21_001.md"
+    ],
+    "evidence_path": "04-21_001: title '回家行程紧迫日志'; body describes Turkey transit, Beijing auto show, Chongqing family time; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-007",
+    "query": "女儿暖心",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '女儿暖心' captures the emotional essence of child placing favorite plush toy beside sleeping father.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "团团最爱的玩具陪我继续睡觉"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-25_001.md"
+    ],
+    "evidence_path": "04-25_001: body describes 团团 quietly placing毛绒玩具 next to father; '我爱小团团'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-008",
+    "query": "项目做不下去",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '项目做不下去' maps to reflection that Digital-self project has no moat and existential doubt about continuing.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Digital-self 项目迁移与创业思考"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/02/life-index_2026-02-20_001.md"
+    ],
+    "evidence_path": "02-20_001: body '我还需要继续下去吗？' and '因为没有壁垒'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-009",
+    "query": "睡不够",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: colloquial '睡不够' maps to specific mentions of insufficient sleep and irregular schedule.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "计划回重庆给小朋友过生日与生活反思",
+        "看到“年仅41岁”后的恐惧与决心"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-11_001.md",
+      "Journals/2026/03/life-index_2026-03-24_001.md"
+    ],
+    "evidence_path": "03-11_001: '平均不到5个小时'; 03-24_001: '极其不规律、而且稀疏的睡眠'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-010",
+    "query": "重新开始",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '重新开始' maps to decision to completely rebuild LobsterAI Journal into Life Index on OpenClaw platform.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Life Index 项目重构启动"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/02/life-index_2026-02-25_001.md"
+    ],
+    "evidence_path": "02-25_001: body '下订决心重起炉灶' and '项目彻底回炉重造'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-011",
+    "query": "不信任AI",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '不信任AI' maps to lesson learned after Agent wiped entire data directory: '不要完全信任Agent'.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "凌晨的数据丢失惨剧"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-17_001.md"
+    ],
+    "evidence_path": "03-17_001: body '不要完全信任Agent' and describes losing 12 days of journals; 3 matches verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-012",
+    "query": "手绘转网页",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '手绘转网页' describes Google Stitch capability to convert mock-up sketches to dynamic HTML.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "试用 Google Stitch - 前端设计革命性工具"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-26_001.md"
+    ],
+    "evidence_path": "03-26_001: body describes Stitch converting 'mock-up草稿' to browser HTML instances; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-013",
+    "query": "文件外泄",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '文件外泄' maps to Anthropic CMS misconfiguration exposing ~3000 internal documents.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Anthropic 3000文件泄露事件观察：PR自导自演质疑 + AI安全悖论深思"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-29_001.md"
+    ],
+    "evidence_path": "03-29_001: title and body describe '约3000份内部文件被暴露' via CMS配置错误; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  },
+  {
+    "id": "V120-C2-014",
+    "query": "家庭教育分工",
+    "category": "C2_paraphrase",
+    "description": "Paraphrase: '家庭教育分工' generalizes family meeting establishing mother as first responsible person for child's education.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "家庭会议：确立团团教育第一责任人原则"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-30_001.md"
+    ],
+    "evidence_path": "03-30_001: body describes remote family meeting consensus that '妈妈都是第一负责人'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:234201069579b45eff2f564fdf1de5eb61f30c025385f4aab7616d6ee99ae24b"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C2_paraphrase"
+    ]
+  }
+]

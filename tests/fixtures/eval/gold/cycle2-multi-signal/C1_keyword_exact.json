@@ -1,0 +1,390 @@
+[
+  {
+    "id": "V120-C1-001",
+    "query": "飞书",
+    "category": "C1_keyword_exact",
+    "description": "Product name '飞书' appears in journal about Digital-self project migration to LobsterAI.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Digital-self 项目迁移与创业思考"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/02/life-index_2026-02-20_001.md"
+    ],
+    "evidence_path": "02-20_001: body '接通了飞书 bot —— 这样以后做碎片化的信息记录更简单了'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-002",
+    "query": "中科曙光",
+    "category": "C1_keyword_exact",
+    "description": "Stock name '中科曙光' appears in AI computing infrastructure investment journal.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "AI算力国资股长线投资研究（Kimi辅助）"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-13_001.md"
+    ],
+    "evidence_path": "04-13_001: body lists '中科曙光' as 30% core portfolio position; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-003",
+    "query": "Vercel",
+    "category": "C1_keyword_exact",
+    "description": "Platform name 'Vercel' appears in journal about Carloha Wiki deployment.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Carloha Wiki诞生记：AI赋能的一天"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-16_001.md"
+    ],
+    "evidence_path": "03-16_001: body states deployment on Vercel free tier with vercel.app URL; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-004",
+    "query": "团团",
+    "category": "C1_keyword_exact",
+    "description": "Entity name '团团' appears in multiple family-related journal entries across months.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "想念尿片侠",
+        "关于团团的事",
+        "团团最爱的玩具陪我继续睡觉"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-04_001.md",
+      "Journals/2026/03/life-index_2026-03-20_001.md",
+      "Journals/2026/04/life-index_2026-04-25_001.md"
+    ],
+    "evidence_path": "03-04_001: people field includes '团团'; 03-20_001: title '关于团团的事'; 04-25_001: people field includes '团团'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-005",
+    "query": "特朗普",
+    "category": "C1_keyword_exact",
+    "description": "Political figure name '特朗普' appears in title and body of geopolitics journal (7 hits).",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "特朗普病危与美国衰败的思考"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-05_001.md"
+    ],
+    "evidence_path": "04-05_001: title '特朗普病危与美国衰败的思考' and tags include '特朗普'; 7 keyword matches verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-006",
+    "query": "GitHub",
+    "category": "C1_keyword_exact",
+    "description": "Platform name 'GitHub' appears in journals about creating first repositories (3 hits in 03-08, 17 hits in 04-07).",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "中年人的第一个GitHub仓库",
+        "今天又开了一个新Github仓库 —— LLM Smash Bros横空出世！"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-08_001.md",
+      "Journals/2026/04/life-index_2026-04-07_001.md"
+    ],
+    "evidence_path": "03-08_001: title '中年人的第一个GitHub仓库'; 04-07_001: 17 hits, '今天又开了一个新Github仓库'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-007",
+    "query": "Stitch",
+    "category": "C1_keyword_exact",
+    "description": "Tool name 'Stitch' (Google Stitch) appears in journals about frontend design tool.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "试用 Google Stitch - 前端设计革命性工具",
+        "Agents Epiphany - 打破工具边界"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-26_001.md",
+      "Journals/2026/04/life-index_2026-04-02_001.md"
+    ],
+    "evidence_path": "03-26_001: title '试用 Google Stitch'; 04-02_001: body mentions 'Google的Stitch'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-008",
+    "query": "数据丢失",
+    "category": "C1_keyword_exact",
+    "description": "Exact phrase '数据丢失' appears in journal about Agent-caused data deletion incident.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "凌晨的数据丢失惨剧"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-17_001.md"
+    ],
+    "evidence_path": "03-17_001: title '凌晨的数据丢失惨剧'; body mentions 'Agent清空用户数据目录'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-009",
+    "query": "BM25",
+    "category": "C1_keyword_exact",
+    "description": "Algorithm name 'BM25' appears in journal about Carloha Wiki chatbot retrieval optimization (3 hits).",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Carloha Wiki AI Chat Bot 调试"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-27_001.md"
+    ],
+    "evidence_path": "03-27_001: body states '换了个叫 BM25 的算法就解决了'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-010",
+    "query": "张雪峰",
+    "category": "C1_keyword_exact",
+    "description": "Person name '张雪峰' appears in journal about fear of death after seeing news (6 hits).",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "看到“年仅41岁”后的恐惧与决心"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-24_001.md"
+    ],
+    "evidence_path": "03-24_001: title and body mention '张雪峰去世' and '年仅41岁'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-011",
+    "query": "LobsterAI",
+    "category": "C1_keyword_exact",
+    "description": "Product name 'LobsterAI' appears in journals about development tool choices.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "LobsterAI Journal 双维度索引上线",
+        "回归 LobsterAI"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/02/life-index_2026-02-21_001.md",
+      "Journals/2026/03/life-index_2026-03-06_001.md"
+    ],
+    "evidence_path": "02-21_001: title 'LobsterAI Journal 双维度索引上线' (5 hits); 03-06_001: title '回归 LobsterAI' (4 hits); verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-012",
+    "query": "梅洛尼",
+    "category": "C1_keyword_exact",
+    "description": "Person name '梅洛尼' appears in journal about Italy PM condemning Trump.",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Italy PM Meloni condemns ally Trump over Pope criticism"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-14_001.md"
+    ],
+    "evidence_path": "04-14_001: people field includes '梅洛尼'; title mentions 'Italy PM Meloni'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-013",
+    "query": "Anthropic",
+    "category": "C1_keyword_exact",
+    "description": "Company name 'Anthropic' appears in journal about data leak incident (2 hits).",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "Anthropic 3000文件泄露事件观察：PR自导自演质疑 + AI安全悖论深思"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/03/life-index_2026-03-29_001.md"
+    ],
+    "evidence_path": "03-29_001: title 'Anthropic 3000文件泄露事件观察' and body repeatedly mentions Anthropic; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  },
+  {
+    "id": "V120-C1-014",
+    "query": "LLM Smash Bros",
+    "category": "C1_keyword_exact",
+    "description": "Project name 'LLM Smash Bros' appears in title and body of new GitHub repo journal (4 hits).",
+    "expected": {
+      "min_results": 1,
+      "must_contain_title": [
+        "今天又开了一个新Github仓库 —— LLM Smash Bros横空出世！"
+      ]
+    },
+    "candidate_expected_hits": [
+      "Journals/2026/04/life-index_2026-04-07_001.md"
+    ],
+    "evidence_path": "04-07_001: title 'LLM Smash Bros横空出世！' and links to GitHub repo; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c0df989175c4237245eaaf6b1421085b17abd469df95f64b72b04a3fd062f24a"
+    },
+    "tags": [
+      "v120",
+      "cycle2-multi-signal",
+      "C1_keyword_exact"
+    ]
+  }
+]
