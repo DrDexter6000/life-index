@@ -11,10 +11,8 @@ title_segmented stores jieba tokens (for FTS matching, indexed).
 import importlib
 import sqlite3
 from pathlib import Path
-from typing import Any
 
 import pytest
-
 
 # ── Fixtures ────────────────────────────────────────────────────────────
 
@@ -63,9 +61,7 @@ class TestFTSTitleSchema:
         conn.close()
 
         assert "title" in columns, "FTS table must have 'title' column"
-        assert "title_segmented" in columns, (
-            "FTS table must have 'title_segmented' column"
-        )
+        assert "title_segmented" in columns, "FTS table must have 'title_segmented' column"
 
     def test_title_is_unindexed(self, isolated_data_dir: Path) -> None:
         """
@@ -85,9 +81,9 @@ class TestFTSTitleSchema:
         create_sql = cursor.fetchone()[0]
         conn2.close()
 
-        assert "title UNINDEXED" in create_sql, (
-            f"'title' column should be UNINDEXED. Got: {create_sql}"
-        )
+        assert (
+            "title UNINDEXED" in create_sql
+        ), f"'title' column should be UNINDEXED. Got: {create_sql}"
 
     def test_title_segmented_is_indexed(self, isolated_data_dir: Path) -> None:
         """
@@ -106,9 +102,9 @@ class TestFTSTitleSchema:
         create_sql = cursor.fetchone()[0]
         conn2.close()
 
-        assert "title_segmented UNINDEXED" not in create_sql, (
-            f"'title_segmented' should be indexed. Got: {create_sql}"
-        )
+        assert (
+            "title_segmented UNINDEXED" not in create_sql
+        ), f"'title_segmented' should be indexed. Got: {create_sql}"
 
 
 # ── Search result title verification ───────────────────────────────────
@@ -117,9 +113,7 @@ class TestFTSTitleSchema:
 class TestFTSTitleDisplay:
     """Verify search results return raw title, not segmented tokens."""
 
-    def _create_journal(
-        self, data_dir: Path, title: str, content: str = "测试内容"
-    ) -> Path:
+    def _create_journal(self, data_dir: Path, title: str, content: str = "测试内容") -> Path:
         """Create a minimal journal file in the isolated data dir."""
         from datetime import datetime
 
@@ -127,7 +121,7 @@ class TestFTSTitleDisplay:
         journals_dir.mkdir(parents=True, exist_ok=True)
 
         now = datetime.now().isoformat(timespec="seconds")
-        filename = f"life-index_2026-03-07_001.md"
+        filename = "life-index_2026-03-07_001.md"
         file_path = journals_dir / filename
 
         frontmatter = f"""---
@@ -158,9 +152,7 @@ topic: ["work"]
         from tools.lib.search_index import update_index, search_fts
 
         raw_title = "计划回重庆给小朋友过生日"
-        self._create_journal(
-            isolated_data_dir, raw_title, "今天很开心去给小朋友庆祝生日"
-        )
+        self._create_journal(isolated_data_dir, raw_title, "今天很开心去给小朋友庆祝生日")
         update_index(incremental=False)
         results = search_fts("生日")
 
@@ -168,9 +160,9 @@ topic: ["work"]
 
         # The title must be the original, not segmented
         result_title = results[0]["title"]
-        assert result_title == raw_title, (
-            f"Title should be raw '{raw_title}', got segmented '{result_title}'"
-        )
+        assert (
+            result_title == raw_title
+        ), f"Title should be raw '{raw_title}', got segmented '{result_title}'"
         assert "计划 回" not in result_title
         assert "重庆 给" not in result_title
 
@@ -227,16 +219,20 @@ topic: ["think"]
         assert doc is not None, "parse_journal should succeed"
 
         # Raw title must be preserved
-        assert doc["title"] == raw_title, (
-            f"title should be raw '{raw_title}', got '{doc['title']}'"
-        )
+        assert doc["title"] == raw_title, f"title should be raw '{raw_title}', got '{doc['title']}'"
 
         # Segmented title must contain spaces (jieba output)
-        assert " " in doc["title_segmented"], (
-            f"title_segmented should have spaces from jieba, got '{doc['title_segmented']}'"
-        )
+        assert (
+            " " in doc["title_segmented"]
+        ), f"title_segmented should have spaces from jieba, got '{doc['title_segmented']}'"
 
-        # Segmented title should contain the key token
-        assert "尿片" in doc["title_segmented"] or "小英雄" in doc["title_segmented"], (
-            f"title_segmented should contain '尿片' or '小英雄', got '{doc['title_segmented']}'"
-        )
+        tokens = doc["title_segmented"].split()
+
+        # Segmented title should contain stable meaningful tokens without
+        # depending on jieba compound-token granularity.
+        assert (
+            "想念" in tokens
+        ), f"title_segmented should contain '想念', got '{doc['title_segmented']}'"
+        assert any(
+            token.endswith("英雄") for token in tokens
+        ), f"title_segmented should contain an '英雄' token, got '{doc['title_segmented']}'"
