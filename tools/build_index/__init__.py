@@ -291,7 +291,13 @@ def show_stats() -> None:
     logger.info("\n💾 Cache Directory:")
     cache_dir = get_model_cache_dir()
     if cache_dir.exists():
-        total_size = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file())
+        total_size = 0
+        for f in cache_dir.rglob("*"):
+            if f.is_file():
+                try:
+                    total_size += f.stat().st_size
+                except (FileNotFoundError, OSError):
+                    pass
         logger.info(f"  Location: {cache_dir}")
         logger.info(f"  Size: {round(total_size / (1024 * 1024), 2)} MB")
     else:

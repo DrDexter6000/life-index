@@ -636,6 +636,49 @@ class TestShowStats:
         assert "life-index index --rebuild" in logged
 
 
+class TestShowStatsCacheRace:
+    """Regression tests for Windows cache stat race (V111 CI fix)."""
+
+    @patch("tools.build_index.get_model_cache_dir")
+    @patch("tools.build_index.get_fts_stats")
+    def test_show_stats_cache_file_disappears_during_stat(
+        self, mock_fts_stats, mock_cache_dir_getter
+    ):
+        """Cache files disappearing between rglob discovery and stat() must not crash show_stats."""
+        mock_fts_stats.return_value = {
+            "exists": True,
+            "total_documents": 5,
+            "db_size_mb": 0.1,
+            "last_updated": None,
+        }
+
+        mock_cache_dir = MagicMock()
+        mock_cache_dir.exists.return_value = True
+        vanishing_file = MagicMock()
+        vanishing_file.is_file.return_value = True
+        vanishing_file.stat.side_effect = FileNotFoundError("cache file vanished")
+        mock_cache_dir.rglob.return_value = [vanishing_file]
+        mock_cache_dir_getter.return_value = mock_cache_dir
+
+        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
+            mock_vec.return_value = {
+                "exists": True,
+                "total_vectors": 5,
+                "model_loaded": False,
+                "db_size_mb": 0.1,
+            }
+            with patch("tools.build_index.get_cache_stats") as mock_cache_stats:
+                mock_cache_stats.return_value = {
+                    "total_entries": 0,
+                    "db_size_mb": 0.0,
+                    "last_update": None,
+                    "cache_path": "/tmp/cache.db",
+                    "rebuild_hint": "",
+                }
+                with patch("tools.build_index.logger"):
+                    show_stats()
+
+
 class TestIntegration:
     """Integration-style tests for build_all"""
 
