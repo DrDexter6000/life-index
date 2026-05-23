@@ -3,7 +3,7 @@
 > **Document purpose**: Versioning and release policy for Life Index CLI
 > **Audience**: Maintainers, agents, and release reviewers
 > **Authority level**: This document defines release/versioning practice for Life Index CLI. It is subordinate to [`CHARTER.md`](../CHARTER.md); package version source remains [`pyproject.toml`](../pyproject.toml).
-> **Effective baseline**: `v1.0.0`
+> **Effective baseline**: `v1.1.1`
 > **Status**: Active
 
 ---
@@ -123,6 +123,8 @@ Implementation-level breakage alone is not sufficient. A MAJOR bump should mean 
 - Entity Graph operating contract and relationship search.
 - CI hard gates.
 - Privacy-clean public repository history.
+
+`v1.1.1` extends this baseline with additive observability contracts (provenance envelope, step diagnostics, cache version governance) and intermediate schema contracts (`QueryPlan`, `SearchPlan`, `IndexManifest`, `EntityExpansion`), plus Entity Graph alias metadata and `boost_decay` echo-only placeholder. No product behavior changes; all v1.1.0 clients remain compatible.
 
 Life Index can remain on `1.0.x` for a long time. That is expected.
 

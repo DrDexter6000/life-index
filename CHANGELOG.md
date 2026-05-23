@@ -12,16 +12,21 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - `search --explain`, `smart-search --explain`, and `index --explain` now include a deterministic `diagnostics` block showing input count, cache hits/misses, latency breakdown, and fallback path — zero LLM calls, purely additive.
 - `index --cache-dry-run` lets you preview whether a cache rebuild would be triggered before any write happens.
 - `health --cache-audit --json` provides a read-only cache version status check.
+- Four intermediate structures (`QueryPlan`, `SearchPlan`, `IndexManifest`, `EntityExpansion`) now carry an explicit `schema_version: "v1.1.1"` so downstream consumers can recognize field semantics forward-compatibly. No behavior changes.
+- Entity Graph aliases now support optional metadata (`source`, `confidence`, `created_at`) while remaining fully backward-compatible with old string-only alias lists.
+- `entity --audit` and `entity --stats` echo a `boost_decay` placeholder formula as a v1.2.0 calibration preview. This is metadata-only and does not affect search ranking.
 
 ### Included in this release
 
 - Provenance envelope: `schema_version`, `source_hash`, `tool_version`, `generated_at`, `generator`, `params_hash`, `fixture_version` (Sub-PRD-1, A1-A2).
 - Step diagnostics for `--explain`: `input_count`, `filter_drops`, `cache_hits`, `cache_misses`, `latency_ms`, `fallback_path` (Sub-PRD-1, A3).
 - Cache version governance: `.life-index/cache/_version.json` sidecar with `invalidation_history`; `index --cache-dry-run` and `health --cache-audit` read-only audit surfaces (Sub-PRD-1, A4).
-- Contract tests: 28+ provenance envelope tests, 13 diagnostics contract tests, 20 cache version contract tests (Sub-PRD-1, Gate 1).
-- docs/API.md: v1.1.1 Observability Contract section documenting provenance, diagnostics, and cache governance semantics.
-
-> **Not included**: Phase B (intermediate state contracts for QueryPlan/SearchPlan/IndexManifest/EntityExpansion) and Phase C/D (entity graph alias metadata backcompat, boost_decay placeholder) are deferred to subsequent work packages. This `[Unreleased]` entry covers Phase A only.
+- Intermediate contract schema versioning: `QueryPlan`, `SearchPlan`, `IndexManifest`, `EntityExpansion` all expose `schema_version: "v1.1.1"` (Sub-PRD-3, B3.1-B3.2).
+- Entity Graph alias metadata backcompat: aliases accept string or `{name, source, confidence, created_at}` objects; defaults `source=system`, `confidence=1.0` (Sub-PRD-4, B4.1).
+- `boost_decay` schema placeholder: echo-only metadata in `entity --audit/--stats` with `formula`, `k`, and calibration note; no search ranking effect (Sub-PRD-4, B4.2).
+- Contract tests: 28+ provenance envelope tests, 13 diagnostics contract tests, 20 cache version contract tests, 20+ intermediate contract tests, 15+ entity graph schema tests (Gate 1 + Gate 2).
+- docs/API.md: v1.1.1 Observability Contract section (provenance, diagnostics, cache governance) plus Phase B Intermediate Contracts section (QueryPlan, SearchPlan, IndexManifest, EntityExpansion, alias metadata, boost_decay).
+- Version metadata alignment: `pyproject.toml`, `bootstrap-manifest.json`, `docs/VERSIONING.md`, and version unit tests aligned to `1.1.1`.
 
 ## [1.1.0] - 2026-05-21
 

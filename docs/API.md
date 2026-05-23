@@ -191,6 +191,176 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 
 **失效策略**: `source_hash` mismatch 或 `schema_version` mismatch → 建议全量重建；cache 为派生产物，重建无损，不做 migration。
 
+### Phase B Intermediate Contracts
+
+> **适用版本**: v1.1.1+
+> **范围**: Sub-PRD-3 (QueryPlan / SearchPlan / IndexManifest / EntityExpansion) + Sub-PRD-4 (Entity Graph alias metadata / boost_decay placeholder)
+
+四个内部中间结构从 v1.1.1 起携带显式 `schema_version`，使下游消费者可前向兼容地识别字段语义。全部为 additive，不改变现有管道行为。
+
+#### QueryPlan
+
+`QueryPlan` 描述 smart-search planner 对查询的分解策略。
+
+```json
+{
+  "schema_version": "v1.1.1",
+  "raw_query": "我和女儿之间有哪些珍贵的回忆？",
+  "expanded_query": "我和女儿之间有哪些珍贵的回忆？",
+  "sub_queries": [],
+  "strategy": "keyword_and_semantic",
+  "fallback_decision": false
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schema_version` | string | 固定为 `"v1.1.1"` |
+| `raw_query` | string | 原始查询文本 |
+| `expanded_query` | string \| null | 实体/别名扩展后的查询 |
+| `sub_queries` | string[] | 分解后的子查询（空列表表示未分解） |
+| `strategy` | string | 信号组合策略，如 `"keyword_and_semantic"` |
+| `fallback_decision` | bool | 是否选择了降级路径 |
+
+#### SearchPlan
+
+`SearchPlan` 描述 L2 确定性预处理对查询的结构化理解，作为 `search` 返回值中的 `search_plan` 字段出现。
+
+```json
+{
+  "schema_version": "v1.1.1",
+  "raw_query": "我和女儿之间有哪些珍贵的回忆？",
+  "normalized_query": "我和女儿之间有哪些珍贵的回忆",
+  "intent_type": "recall",
+  "query_mode": "natural_language",
+  "keywords": ["女儿", "珍贵", "回忆"],
+  "date_range": null,
+  "topic_hints": ["family"],
+  "entity_hints_used": [],
+  "expanded_query": "我和女儿之间有哪些珍贵的回忆？",
+  "pipelines": {"keyword": true, "semantic": true}
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schema_version` | string | 固定为 `"v1.1.1"`（由输出层注入） |
+| `raw_query` | string | 原始查询文本 |
+| `normalized_query` | string | 标准化后查询（去标点、trim、全角转半角） |
+| `intent_type` | string | `recall` / `count` / `compare` / `summarize` / `unknown` |
+| `query_mode` | string | `keyword` / `natural_language` / `mixed` |
+| `keywords` | string[] | 提取的关键词列表 |
+| `date_range` | object \| null | 解析出的时间范围：`{since, until, source}` |
+| `topic_hints` | string[] | 推断的主题映射 |
+| `entity_hints_used` | array | 使用的实体 hint 列表 |
+| `expanded_query` | string | 扩展后的查询文本 |
+| `pipelines` | object | 启用的管道：`{keyword: bool, semantic: bool}` |
+
+#### IndexManifest
+
+`IndexManifest` 记录最后一次成功索引构建的快照，存储于索引目录的 `index_manifest.json`。
+
+```json
+{
+  "fts_count": 100,
+  "vector_count": 100,
+  "file_count": 100,
+  "fts_checksum": "abc123",
+  "vector_checksum": "def456",
+  "build_timestamp": "2026-05-23T00:00:00Z",
+  "build_version": "1.1.1",
+  "partial": false,
+  "schema_version": "v1.1.1"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `fts_count` | int | FTS 索引文档数 |
+| `vector_count` | int | 向量索引文档数 |
+| `file_count` | int | 实际文件数 |
+| `fts_checksum` | string | FTS 数据库 MD5 校验和 |
+| `vector_checksum` | string | 向量存储 MD5 校验和 |
+| `build_timestamp` | string | 构建时间（ISO 8601） |
+| `build_version` | string | 构建时 Life Index 版本 |
+| `partial` | bool | 是否仅 FTS 或仅向量成功 |
+| `schema_version` | string | 固定为 `"v1.1.1"` |
+
+#### EntityExpansion
+
+`EntityExpansion` 携带查询实体解析阶段产生的 entity hints，作为中间结构供搜索管道消费。
+
+```json
+{
+  "schema_version": "v1.1.1",
+  "entity_hints": [
+    {
+      "matched_term": "老婆",
+      "entity_id": "wife-001",
+      "entity_type": "person",
+      "expansion_terms": ["王某某", "乐乐妈", "老婆"],
+      "reason": "alias_match"
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schema_version` | string | 固定为 `"v1.1.1"` |
+| `entity_hints` | array | 实体命中 hint 列表，每项含 `matched_term` / `entity_id` / `entity_type` / `expansion_terms` / `reason` |
+
+#### Entity Graph Alias Metadata (B4.1)
+
+`entity_graph.yaml` 中的 `aliases` 字段从 v1.1.1 起支持两种写法，向下兼容：
+
+**旧写法（字符串列表）** —— 加载时自动补默认元数据：
+
+```yaml
+aliases:
+  - 乐乐妈
+  - 老婆
+```
+
+**新写法（带元数据对象列表）** —— 显式声明来源与置信度：
+
+```yaml
+aliases:
+  - name: 乐乐妈
+    source: journal
+    confidence: 0.95
+    created_at: "2026-05-23T10:00:00+00:00"
+  - name: 老婆
+    source: manual
+    confidence: 1.0
+```
+
+加载后每项别名均产生 `alias_metadata`：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `source` | string | `journal` / `wikilink` / `manual` / `system` |
+| `confidence` | float | 0.0–1.0 |
+| `created_at` | string | ISO 8601 时间戳 |
+
+旧文件无 `source` 时默认 `system`，无 `confidence` 时默认 `1.0`，无 `created_at` 时默认加载时间。
+
+#### boost_decay Echo-Only Placeholder (B4.2)
+
+`entity --audit` 和 `entity --stats` 输出包含 `boost_decay` 字段，作为 v1.2.0 Cycle 2 校准的 schema 占位：
+
+```json
+{
+  "boost_decay": {
+    "formula": "1 / (1 + k * (n - 1)^2)",
+    "k": 0.001,
+    "note": "Placeholder constant. To be calibrated via eval gate in v1.2.0 Cycle 2."
+  }
+}
+```
+
+**重要**: `boost_decay` 当前仅为 echo-only 元数据，**不接入**搜索排序/BM25/RRF/校准逻辑。任何搜索排名文件不得引用 `boost_decay`。
+
 ## 错误码格式
 
 格式：`E{module}{type}`
