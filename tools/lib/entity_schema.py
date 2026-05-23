@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 ENTITY_TYPES = {"person", "place", "project", "event", "concept"}
@@ -18,7 +19,42 @@ def _ensure_non_empty_string(value: Any, field: str) -> str:
     return value.strip()
 
 
-def validate_entity_graph_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _normalize_alias(alias: Any, load_time: str) -> tuple[str, dict[str, Any]]:
+    """Normalize an alias entry to (name, metadata).
+
+    Accepts:
+      - str: plain alias name; metadata defaults to
+        source=system, confidence=1.0, created_at=load_time
+      - dict: must have 'name'; optional 'source', 'confidence', 'created_at'
+    """
+    if isinstance(alias, str):
+        name = _ensure_non_empty_string(alias, "alias")
+        return name, {"source": "system", "confidence": 1.0, "created_at": load_time}
+
+    if isinstance(alias, dict):
+        name = _ensure_non_empty_string(alias.get("name"), "alias.name")
+        confidence = alias.get("confidence", 1.0)
+        if not isinstance(confidence, (int, float)):
+            raise EntityGraphValidationError("alias.confidence must be a number")
+        if not (0.0 <= float(confidence) <= 1.0):
+            raise EntityGraphValidationError("alias.confidence must be between 0.0 and 1.0")
+        source = alias.get("source", "system")
+        if not isinstance(source, str):
+            raise EntityGraphValidationError("alias.source must be a string")
+        created_at = alias.get("created_at", load_time)
+        if not isinstance(created_at, str):
+            raise EntityGraphValidationError("alias.created_at must be a string")
+        return name, {"source": source, "confidence": float(confidence), "created_at": created_at}
+
+    raise EntityGraphValidationError("alias must be a string or an object")
+
+
+def validate_entity_graph_payload(
+    payload: dict[str, Any], load_time: str | None = None
+) -> list[dict[str, Any]]:
+    if load_time is None:
+        load_time = datetime.now(timezone.utc).isoformat()
+
     entities = payload.get("entities")
     if not isinstance(entities, list):
         raise EntityGraphValidationError("entities must be a list")
@@ -44,13 +80,22 @@ def validate_entity_graph_payload(payload: dict[str, Any]) -> list[dict[str, Any
         if not isinstance(aliases, list):
             raise EntityGraphValidationError("aliases must be a list")
         normalized_aliases: list[str] = []
+        alias_metadata: dict[str, Any] = {}
         for alias in aliases:
-            normalized = _ensure_non_empty_string(alias, "alias")
-            owner = alias_owners.get(normalized)
+            name, metadata = _normalize_alias(alias, load_time)
+            owner = alias_owners.get(name)
             if owner and owner != entity_id:
-                raise EntityGraphValidationError(f"alias conflict: {normalized}")
-            alias_owners[normalized] = entity_id
-            normalized_aliases.append(normalized)
+                raise EntityGraphValidationError(f"alias conflict: {name}")
+            alias_owners[name] = entity_id
+            normalized_aliases.append(name)
+            alias_metadata[name] = metadata
+
+        # Merge explicit alias_metadata from raw if present
+        raw_alias_metadata = raw.get("alias_metadata", {}) or {}
+        if isinstance(raw_alias_metadata, dict):
+            for name, metadata in raw_alias_metadata.items():
+                if name in normalized_aliases and isinstance(metadata, dict):
+                    alias_metadata[name].update(metadata)
 
         relationships = raw.get("relationships", []) or []
         if not isinstance(relationships, list):
@@ -71,6 +116,7 @@ def validate_entity_graph_payload(payload: dict[str, Any]) -> list[dict[str, Any
                 "type": entity_type,
                 "primary_name": primary_name,
                 "aliases": normalized_aliases,
+                "alias_metadata": alias_metadata,
                 "attributes": raw.get("attributes", {}) or {},
                 "relationships": normalized_relationships,
             }
