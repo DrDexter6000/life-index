@@ -12,7 +12,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from tools.lib.entity_graph import load_entity_graph
+from tools.lib.entity_schema import get_boost_decay_defaults
 from tools.lib.paths import resolve_user_data_dir
 
 try:
@@ -45,6 +48,13 @@ def compute_stats(
     graph_path = graph_path or _default_graph_path()
     entities = load_entity_graph(graph_path)
 
+    boost_decay = get_boost_decay_defaults()
+    if graph_path.exists():
+        with graph_path.open("r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        if isinstance(raw.get("boost_decay"), dict):
+            boost_decay = dict(raw["boost_decay"])
+
     if not entities:
         return {
             "success": True,
@@ -55,6 +65,7 @@ def compute_stats(
                 "total_relationships": 0,
                 "top_referenced": [],
                 "top_cooccurrence": [],
+                "boost_decay": get_boost_decay_defaults(),
             },
             "error": None,
         }
@@ -117,6 +128,7 @@ def compute_stats(
             "total_relationships": total_relationships,
             "top_referenced": top_referenced,
             "top_cooccurrence": top_cooccurrence,
+            "boost_decay": boost_decay,
         },
         "error": None,
     }

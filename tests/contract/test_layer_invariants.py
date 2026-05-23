@@ -318,3 +318,50 @@ def test_maintenance_uses_subprocess_not_direct_import() -> None:
         f"maintenance module directly imports called module internals "
         f"(should use subprocess): {offenders}"
     )
+
+
+# --- B4.2: boost_decay echo-only invariant ---
+
+BOOST_DECAY_FORBIDDEN_FILES = {
+    REPO_ROOT / "tools" / "lib" / "search_constants.py",
+    REPO_ROOT / "tools" / "search_journals" / "core.py",
+    REPO_ROOT / "tools" / "search_journals" / "__main__.py",
+    REPO_ROOT / "tools" / "search_journals" / "ranking.py",
+    REPO_ROOT / "tools" / "eval" / "calibrate.py",
+}
+
+
+def _search_journals_py_files() -> list[Path]:
+    search_dir = REPO_ROOT / "tools" / "search_journals"
+    if not search_dir.exists():
+        return []
+    return sorted(search_dir.rglob("*.py"))
+
+
+def test_boost_decay_not_imported_by_search_ranking() -> None:
+    """B4.2 invariant: boost_decay must not be imported by search ranking/BM25/RRF/calibration.
+
+    boost_decay is a schema placeholder for v1.2.0 Cycle 2 calibration.
+    It must not be imported, read, or applied by any search ranking path
+    in v1.1.1 (CHARTER + M1 PRD §6.1.2).
+    """
+    offenders: list[str] = []
+    for path in BOOST_DECAY_FORBIDDEN_FILES:
+        if not path.exists():
+            continue
+        content = path.read_text(encoding="utf-8")
+        if "boost_decay" in content:
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            offenders.append(f"{rel}: contains 'boost_decay' reference")
+
+    for path in _search_journals_py_files():
+        if path in BOOST_DECAY_FORBIDDEN_FILES:
+            continue
+        content = path.read_text(encoding="utf-8")
+        if "boost_decay" in content:
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            offenders.append(f"{rel}: contains 'boost_decay' reference")
+
+    assert (
+        offenders == []
+    ), f"Search ranking/BM25/RRF/calibration files must not reference boost_decay: {offenders}"

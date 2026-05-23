@@ -8,6 +8,16 @@ from typing import Any
 ENTITY_TYPES = {"person", "place", "project", "event", "concept"}
 RESERVED_RELATIONSHIP_TARGETS: set[str] = set()
 
+BOOST_DECAY_DEFAULTS = {
+    "formula": "1 / (1 + k * (n - 1)^2)",
+    "k": 0.001,
+    "note": "Placeholder constant. To be calibrated via eval gate in v1.2.0 Cycle 2.",
+}
+
+
+def get_boost_decay_defaults() -> dict[str, Any]:
+    return dict(BOOST_DECAY_DEFAULTS)
+
 
 class EntityGraphValidationError(ValueError):
     pass

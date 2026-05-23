@@ -363,3 +363,115 @@ class TestEntityCliAliasBackcompat:
         result = _run_cli(["entity", "--audit"], isolated_data_dir)
         assert result["success"] is True
         assert result["data"]["total_entities"] == 1
+
+
+class TestBoostDecayPlaceholder:
+    """boost_decay schema placeholder — echo-only, no runtime ranking effect."""
+
+    def test_boost_decay_defaults_are_declared_in_entity_schema(self) -> None:
+        from tools.lib.entity_schema import BOOST_DECAY_DEFAULTS, get_boost_decay_defaults
+
+        assert isinstance(BOOST_DECAY_DEFAULTS, dict)
+        assert BOOST_DECAY_DEFAULTS["formula"] == "1 / (1 + k * (n - 1)^2)"
+        assert BOOST_DECAY_DEFAULTS["k"] == 0.001
+        assert "v1.2.0" in BOOST_DECAY_DEFAULTS["note"]
+
+        defaults = get_boost_decay_defaults()
+        assert defaults == BOOST_DECAY_DEFAULTS
+        assert defaults is not BOOST_DECAY_DEFAULTS
+
+    def test_entity_audit_echos_boost_decay(self, isolated_data_dir: Path) -> None:
+        graph_path = isolated_data_dir / "entity_graph.yaml"
+        payload = {
+            "entities": [
+                {
+                    "id": "person-test",
+                    "type": "person",
+                    "primary_name": "Test",
+                    "aliases": ["AliasA"],
+                    "relationships": [],
+                }
+            ],
+            "boost_decay": {
+                "formula": "1 / (1 + k * (n - 1)^2)",
+                "k": 0.001,
+                "note": "Placeholder constant. To be calibrated via eval gate in v1.2.0 Cycle 2.",
+            },
+        }
+        graph_path.parent.mkdir(parents=True, exist_ok=True)
+        with graph_path.open("w", encoding="utf-8") as f:
+            yaml.safe_dump(payload, f, allow_unicode=True, sort_keys=False)
+
+        result = _run_cli(["entity", "--audit"], isolated_data_dir)
+        assert result["success"] is True
+        assert "boost_decay" in result["data"]
+        assert result["data"]["boost_decay"]["formula"] == "1 / (1 + k * (n - 1)^2)"
+        assert result["data"]["boost_decay"]["k"] == 0.001
+        assert "v1.2.0" in result["data"]["boost_decay"]["note"]
+
+    def test_entity_stats_echos_boost_decay(self, isolated_data_dir: Path) -> None:
+        graph_path = isolated_data_dir / "entity_graph.yaml"
+        payload = {
+            "entities": [
+                {
+                    "id": "person-test",
+                    "type": "person",
+                    "primary_name": "Test",
+                    "aliases": ["AliasA"],
+                    "relationships": [],
+                }
+            ],
+            "boost_decay": {
+                "formula": "1 / (1 + k * (n - 1)^2)",
+                "k": 0.001,
+                "note": "Placeholder constant. To be calibrated via eval gate in v1.2.0 Cycle 2.",
+            },
+        }
+        graph_path.parent.mkdir(parents=True, exist_ok=True)
+        with graph_path.open("w", encoding="utf-8") as f:
+            yaml.safe_dump(payload, f, allow_unicode=True, sort_keys=False)
+
+        result = _run_cli(["entity", "--stats"], isolated_data_dir)
+        assert result["success"] is True
+        assert "boost_decay" in result["data"]
+        assert result["data"]["boost_decay"]["formula"] == "1 / (1 + k * (n - 1)^2)"
+        assert result["data"]["boost_decay"]["k"] == 0.001
+        assert "v1.2.0" in result["data"]["boost_decay"]["note"]
+
+    def test_missing_boost_decay_defaults_safely(self, isolated_data_dir: Path) -> None:
+        graph_path = isolated_data_dir / "entity_graph.yaml"
+        payload = {
+            "entities": [
+                {
+                    "id": "person-test",
+                    "type": "person",
+                    "primary_name": "Test",
+                    "aliases": ["AliasA"],
+                    "relationships": [],
+                }
+            ]
+        }
+        graph_path.parent.mkdir(parents=True, exist_ok=True)
+        with graph_path.open("w", encoding="utf-8") as f:
+            yaml.safe_dump(payload, f, allow_unicode=True, sort_keys=False)
+
+        result = _run_cli(["entity", "--audit"], isolated_data_dir)
+        assert result["success"] is True
+        assert "boost_decay" in result["data"]
+        assert result["data"]["boost_decay"]["formula"] == "1 / (1 + k * (n - 1)^2)"
+        assert result["data"]["boost_decay"]["k"] == 0.001
+        assert "v1.2.0" in result["data"]["boost_decay"]["note"]
+
+    def test_boost_decay_not_in_search_ranking(self) -> None:
+        forbidden_modules = [
+            "tools.lib.search_constants",
+            "tools.search_journals",
+            "tools.eval.calibrate",
+        ]
+        for module_name in forbidden_modules:
+            try:
+                mod = __import__(module_name, fromlist=["*"])
+            except ImportError:
+                continue
+            if "boost_decay" in str(dir(mod)):
+                assert False, f"{module_name} exports boost_decay"

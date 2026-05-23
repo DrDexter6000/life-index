@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from tools.lib.entity_schema import get_boost_decay_defaults
+
 # Kinship term mapping for semantic duplicate detection
 _KINSHIP_MAP: dict[str, set[str]] = {
     "妈妈": {"母亲", "妈", "老妈", "mom", "mother"},
@@ -41,7 +43,9 @@ def audit_entity_graph(
         }
     """
     if not graph_path.exists():
-        return _empty_report()
+        report = _empty_report()
+        report["boost_decay"] = _load_boost_decay(None)
+        return report
 
     with graph_path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {"entities": []}
@@ -72,6 +76,7 @@ def audit_entity_graph(
         "total_entities": len(entities),
         "issues": issues,
         "summary": summary,
+        "boost_decay": _load_boost_decay(data),
     }
 
 
@@ -308,10 +313,17 @@ def _levenshtein(s1: str, s2: str) -> int:
     return prev_row[-1]
 
 
+def _load_boost_decay(data: dict[str, Any] | None) -> dict[str, Any]:
+    if data and isinstance(data.get("boost_decay"), dict):
+        return dict(data["boost_decay"])
+    return get_boost_decay_defaults()
+
+
 def _empty_report() -> dict[str, Any]:
     return {
         "audit_date": date.today().isoformat(),
         "total_entities": 0,
         "issues": [],
         "summary": {"high": 0, "medium": 0, "low": 0},
+        "boost_decay": get_boost_decay_defaults(),
     }
