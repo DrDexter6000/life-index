@@ -1,0 +1,167 @@
+[
+  {
+    "query": "跟 Dexter 讨论 Life Index",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: contains person name 'Dexter' and project name 'Life Index'; entity boost should enhance ranking.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "乐乐妈",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-19_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity alias: '乐乐妈' is a familial alias for the mother of entity '乐乐'; tests alias expansion.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "周渝 辩论",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name '周渝' plus context word '辩论'; entity boost should prioritize this match.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "Toto 睡觉",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-04_002.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity alias: 'Toto' is English alias for '乐乐'; combined with activity '睡觉' for disambiguation.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "OpenCode 配置",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-04_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: product/tool name 'OpenCode' is a known entity in the Life Index ecosystem.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "Carloha",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md", "Journals/2026/03/life-index_2026-03-20_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Single entity query: 'Carloha' is a project/company name; tests pure entity ranking without keyword context.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "Jordan 打球",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name 'Jordan' with activity context '打球' (play ball); entity-person match.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "婆婆 来了",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-17_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: family role '婆婆' (mother-in-law) is a person entity; '来了' adds temporal context.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "Kimi agent",
+    "candidate_expected_hits": ["Journals/2026/01/life-index_2026-01-28_001.md", "Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: 'Kimi' is an AI agent/product entity; 'agent' disambiguates from person name.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "小豆丁",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-04_002.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity alias: '小豆丁' is a nickname alias for '乐乐'; tests alias resolution in ranking.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "Maestro 编排",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-04_001.md", "Journals/2026/04/life-index_2026-04-14_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: 'Maestro' is a product/tool entity in the agent ecosystem; '编排' adds context.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "Dexter",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Single entity query: pure person name 'Dexter' with no context words; tests entity-only ranking.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "爷爷 保护乐乐",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-13_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: two person entities '爷爷' and '乐乐' in relationship context; tests multi-entity boost.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "GLM 模型",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-14_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: 'GLM' is an AI model/provider entity; tests product-name entity recognition.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  },
+  {
+    "query": "乐乐让我感动的瞬间",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-04_002.md", "Journals/2026/05/life-index_2026-05-19_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy mixed: '乐乐' entity plus emotional phrase; entity should anchor, semantic should rank.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  }
+]

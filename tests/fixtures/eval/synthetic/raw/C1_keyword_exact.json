@@ -1,0 +1,167 @@
+[
+  {
+    "query": "python 代码",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-10_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Direct keyword match: 'Python' and '代码' appear verbatim in journal body about development work.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "vibe coding",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-05_001.md", "Journals/2026/04/life-index_2026-04-01_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Exact phrase 'Vibe Coding' appears in multiple journal entries about development methodology.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "乐乐 玩具",
+    "candidate_expected_hits": ["Journals/2026/05/life-index_2026-05-19_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Both keywords '乐乐' and '玩具' appear directly in journal title and body.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "OpenClaw",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-04_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Product name 'OpenClaw' appears verbatim in journal about deployment workflow.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "investment strategy",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-01_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "English phrase appears directly in English-language journal entry.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "算力 成本",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-22_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Both terms '算力' and '成本' appear in journal about AI infrastructure pricing.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "Carloha Wiki",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md", "Journals/2026/03/life-index_2026-03-20_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Project name appears verbatim in multiple project-planning journal entries.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "硅基生命",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Term '硅基生命' appears directly in journal title about AI debate with friend.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "pythn coding",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-10_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Typo-tolerant: 'pythn' is a common misspelling of 'python'; FTS with edit distance should match.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "Kimi",
+    "candidate_expected_hits": ["Journals/2026/01/life-index_2026-01-28_001.md", "Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Agent/product name 'Kimi' appears verbatim in multiple journal entries.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "CTO 任务",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Role keyword 'CTO' and '任务' appear in journal about executive responsibilities.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "想念小英雄",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-04_002.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Exact title phrase appears in journal about daughter; high keyword overlap expected.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "Jordan 篮球",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Mixed bilingual query; both 'Jordan' and '篮球' appear in same journal entry.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "life indx dev",
+    "candidate_expected_hits": ["Journals/2026/02/life-index_2026-02-28_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Fragmentary typo query: 'indx' misspelling of 'index'; dev shorthand for development.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  },
+  {
+    "query": "爷爷 保护",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-13_001.md"],
+    "category": "C1_keyword_exact",
+    "rationale": "Family terms appear directly in journal about grandfather protecting child.",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:a1b2c3d4e5f6...v120-c1-prompt-v1"
+    }
+  }
+]
