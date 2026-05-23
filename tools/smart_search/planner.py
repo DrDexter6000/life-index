@@ -14,12 +14,14 @@ from __future__ import annotations
 # Re-export all public symbols from the canonical L2 location.
 from tools.lib.planner_types import (  # noqa: F401
     PlannerRecord,
+    QueryPlan,
     StageRecord,
     build_planner_record_from_stages,
     merge_planner_into_search_plan,
 )
 
 __all__ = [
+    "QueryPlan",
     "StageRecord",
     "PlannerRecord",
     "build_planner_record_from_stages",

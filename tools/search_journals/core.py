@@ -56,6 +56,8 @@ except ImportError:
     logger = logging.getLogger("search_journals")
 
 
+SEARCH_PLAN_SCHEMA_VERSION = "v1.1.1"
+
 _MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 
@@ -1086,7 +1088,9 @@ def hierarchical_search(
 
         _plan = _build_plan(query, reference_date=_now)
         _plan.entity_hints_used = entity_hints
-        result["search_plan"] = _plan.to_dict()
+        _sp_dict = _plan.to_dict()
+        _sp_dict["schema_version"] = SEARCH_PLAN_SCHEMA_VERSION
+        result["search_plan"] = _sp_dict
         # C1-a/b: Propagate typo-corrected / alias-expanded query into pipeline
         if _plan.normalized_query and _plan.normalized_query != query:
             query = _plan.normalized_query

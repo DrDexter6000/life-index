@@ -126,6 +126,42 @@ def build_planner_record_from_stages(
     )
 
 
+@dataclass(frozen=True)
+class QueryPlan:
+    """Smart-search internal plan contract (v1.1.1 B3.1).
+
+    Describes the planner's decomposition of a query into sub-queries,
+    the chosen signal combination strategy, and whether a fallback path
+    was selected.  Purely additive metadata — does not change pipeline
+    behavior.
+
+    Attributes:
+        schema_version: Contract version, always ``"v1.1.1"``.
+        raw_query: The original user query string.
+        expanded_query: Query after entity/alias expansion, or ``None``.
+        sub_queries: Decomposed sub-query strings (empty = single query).
+        strategy: Signal combination mode (e.g. ``"keyword_and_semantic"``).
+        fallback_decision: Whether a fallback path was chosen.
+    """
+
+    schema_version: str = "v1.1.1"
+    raw_query: str = ""
+    expanded_query: str | None = None
+    sub_queries: list[str] = field(default_factory=list)
+    strategy: str = "keyword_and_semantic"
+    fallback_decision: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "raw_query": self.raw_query,
+            "expanded_query": self.expanded_query,
+            "sub_queries": list(self.sub_queries),
+            "strategy": self.strategy,
+            "fallback_decision": self.fallback_decision,
+        }
+
+
 def merge_planner_into_search_plan(
     existing_plan: dict[str, Any] | None,
     planner_record: PlannerRecord,

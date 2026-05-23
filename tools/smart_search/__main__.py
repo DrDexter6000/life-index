@@ -130,6 +130,18 @@ def main() -> None:
             "fallback_path": None,
         }
 
+        from tools.lib.planner_types import QueryPlan
+
+        _fallback = result.get("semantic_fallback_used", False)
+        _strategy = "keyword_only" if _fallback else "keyword_and_semantic"
+        result["query_plan"] = QueryPlan(
+            raw_query=args.query,
+            expanded_query=result.get("query_params", {}).get("expanded_query"),
+            sub_queries=[args.query],
+            strategy=_strategy,
+            fallback_decision=_fallback,
+        ).to_dict()
+
     result["schema_version"] = SCHEMA_VERSION
     _emit_json(result)
     sys.exit(0 if result.get("success") else 1)
