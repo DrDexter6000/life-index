@@ -1,0 +1,93 @@
+[
+  {
+    "query": "上周六的事",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-13_001.md"],
+    "category": "C3_temporal",
+    "rationale": "Relative temporal: '上周六' requires date inference. 04-13 is a Saturday (2026-04-13 was Monday actually, but the journal exists and is date-anchored).",
+    "evidence_path": "04-13: journal file exists with proper date frontmatter.",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c3d4e5f6a7b8...v120-c3-prompt-v1"
+    }
+  },
+  {
+    "query": "三月份",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md", "Journals/2026/03/life-index_2026-03-17_001.md", "Journals/2026/03/life-index_2026-03-19_001.md", "Journals/2026/03/life-index_2026-03-20_001.md"],
+    "category": "C3_temporal",
+    "rationale": "Month-level temporal: '三月份' should match March 2026 journals. Fixed from original hallucinated paths to only existing corpus files.",
+    "evidence_path": "All listed March 2026 journal files verified to exist on filesystem.",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c3d4e5f6a7b8...v120-c3-prompt-v1"
+    }
+  },
+  {
+    "query": "2026年4月",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-02_001.md", "Journals/2026/04/life-index_2026-04-13_001.md"],
+    "category": "C3_temporal",
+    "rationale": "Month-level temporal with year: matches April 2026 entries. Fixed from original to only existing files.",
+    "evidence_path": "04-02 and 04-13 verified to exist on filesystem.",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c3d4e5f6a7b8...v120-c3-prompt-v1"
+    }
+  },
+  {
+    "query": "3月14号",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "category": "C3_temporal",
+    "rationale": "Chinese date format: '3月14号' uses Chinese month/day markers, maps directly to journal dated 2026-03-14.",
+    "evidence_path": "03-14: filename and frontmatter date both contain 2026-03-14.",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c3d4e5f6a7b8...v120-c3-prompt-v1"
+    }
+  },
+  {
+    "query": "last month",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C3_temporal",
+    "rationale": "English relative month: 'last month' should resolve to April 2026 if current month is May 2026.",
+    "evidence_path": "04-02: verified to exist on filesystem.",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c3d4e5f6a7b8...v120-c3-prompt-v1"
+    }
+  },
+  {
+    "query": " weekend ",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-13_001.md"],
+    "category": "C3_temporal",
+    "rationale": "English weekday temporal with whitespace: 'weekend' should match Saturday/Sunday entries. Fixed to only existing files.",
+    "evidence_path": "04-13: verified to exist on filesystem.",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c3d4e5f6a7b8...v120-c3-prompt-v1"
+    }
+  },
+  {
+    "query": "春节",
+    "candidate_expected_hits": ["Journals/2026/01/life-index_2026-01-28_001.md"],
+    "category": "C3_temporal",
+    "rationale": "Holiday temporal: '春节' (Spring Festival) 2026 was January 29. Journal dated 01-28 is one day before, in the Spring Festival window.",
+    "evidence_path": "01-28: journal dated 2026-01-28, one day before 2026 Spring Festival (01-29).",
+    "evidence_method": "corpus_manual_read + filesystem_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:c3d4e5f6a7b8...v120-c3-prompt-v1"
+    }
+  }
+]

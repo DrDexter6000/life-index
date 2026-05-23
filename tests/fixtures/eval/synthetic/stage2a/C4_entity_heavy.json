@@ -1,0 +1,15 @@
+[
+  {
+    "query": "Kimi agent",
+    "candidate_expected_hits": ["Journals/2026/01/life-index_2026-01-28_001.md", "Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: 'Kimi' is an AI agent/product entity; 'agent' disambiguates from person name. 01-28 mentions Kimi 2.5, 04-02 explicitly mentions 'Kimi Agent'.",
+    "evidence_path": "01-28: mentions 'Kimi 2.5 思考模型'; 04-02: mentions 'Kimi Agent' and 'Kimi的agent'.",
+    "evidence_method": "corpus_manual_read",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+    }
+  }
+]

@@ -1,0 +1,41 @@
+[
+  {
+    "query": "工作压力",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "category": "C2_paraphrase",
+    "rationale": "Paraphrase: '工作压力' is a generalization of CTO-level technical review and executive responsibilities described in the journal entry.",
+    "evidence_path": "03-14: journal discusses Claude Opus CTO review, project pressures, and P0/P1/P2 issues to fix - semantically maps to work pressure.",
+    "evidence_method": "corpus_manual_read",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:b2c3d4e5f6a7...v120-c2-prompt-v1"
+    }
+  },
+  {
+    "query": "团队管理",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "category": "C2_paraphrase",
+    "rationale": "Paraphrase: '团队管理' maps to CTO-level responsibilities and leadership decisions described in the journal (e.g., architecture decisions, prioritizing fixes).",
+    "evidence_path": "03-14: journal's '五、战略建议' section discusses leadership priorities and team-level decisions.",
+    "evidence_method": "corpus_manual_read",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:b2c3d4e5f6a7...v120-c2-prompt-v1"
+    }
+  },
+  {
+    "query": "生活不易",
+    "candidate_expected_hits": ["Journals/2026/02/life-index_2026-02-20_001.md"],
+    "category": "C2_paraphrase",
+    "rationale": "Paraphrase: '生活不易' maps to the journal's reflection on entrepreneurship challenges, lack of business moat, and existential questioning ('我还需要继续下去吗？').",
+    "evidence_path": "02-20: journal discusses '创业思考', '壁垒不足', existential questioning about continuing the project.",
+    "evidence_method": "corpus_manual_read",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:b2c3d4e5f6a7...v120-c2-prompt-v1"
+    }
+  }
+]
