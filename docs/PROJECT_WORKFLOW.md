@@ -1,8 +1,8 @@
 # Project Workflow
 
-> **版本**: v1.1
+> **版本**: v1.2
 > **创建**: 2026-05-21
-> **更新**: 2026-05-21
+> **更新**: 2026-05-23
 > **状态**: 活跃
 > **权威**: 本文档是 Life Index 项目级工作流的唯一权威。与 `CHARTER.md` §5、`AGENTS.md` §工作派发纪律、`docs/RFC_WORKFLOW.md` 共同构成完整治理框架。
 
@@ -127,6 +127,22 @@
   - 执行总结 placeholder
 - 按 PRD worktree 拓扑机械执行 `git worktree add`
 
+### Cross-cutting impact grep（v1.2 新增）
+
+当 M1 PRD 引入**跨多模块的统一 contract 变更**（典型如 unified `schema_version`、统一字段命名、统一错误格式、统一日志格式），M2 翻译时**必须**:
+
+- grep 现有代码 + 现有 tests 中所有该 contract 的 assertion/引用位置；Life Index 典型命令:
+  - `rg -n 'schema_version' tools/ tests/`
+  - `rg -n '<unified-field-name>' tools/ tests/ docs/`
+- 全部列入 M2 task scope，或显式标 out-of-scope 并附**结构化理由**
+- 不允许"M3 才发现 legacy test 在 hardcode 旧值，得加 emergency commit"的局面
+
+**为什么必要**：M2 是翻译层，缺漏跨切片影响会强迫 M3 做 emergency scope expansion。这种 expansion 即使是 bounded、principled 的，也代表 M1/M2 翻译方法论缺口。CTO/主理人 audit 时需要把它跟"M2 翻译完整性"挂钩，而不是单纯当成 M3 主审的临场救火。
+
+**操作规范**：M2 brief 中显式列出 cross-cutting grep 命令 + 命中清单 + 处置决定（in-scope / out-of-scope-with-reason）。
+
+**实证来源**：Life Index v1.1.1 observability absorption — M1 PRD §12 unified `schema_version: "v1.1.1"`，但 M2 漏 grep legacy `m16.*` / `m26.trajectory.v0` assertions，导致 M3 emergency commit `1d03ad2` (4 lines, 3 contract test files) 才能解 Gate 2 阻塞。
+
 **M2 不引入新决策**。如果发现 PRD 没说"这块归谁"，是 M1 失败信号 → escalate 回 M1（见下"异常 escalate vs Rework Loop"）。
 
 主理人不介入。
@@ -156,6 +172,14 @@
   - **新增模块的 L3 边界类不变量测试统一加在 `tests/contract/test_layer_invariants.py`，不要散到模块 contract 文件**（维持单一边界规则索引；gbrain absorption final closure 实证）
 - **(c) 消费者真实可消费**：PRD §4 "真实消费者" 端到端可用，不是"自动化测试通过就算"
 - **(d) Push 前置门**：本地 `pytest -m blocker`（或等价 hard-required check）必须**实际跑过且全绿**才允许 push origin。**CI 后补救是 anti-pattern**——CI red 期间历史已被污染，不该靠"再 push 一个"洗白（gbrain absorption final closure push-after-CI 实证）
+  - **本地 blocker gate 完整性（v1.2 within-version 补全）**：Life Index 本地 gate 必须 1:1 覆盖 CI 跑的全部 hard check，**不只**是 `pytest -m blocker`。需同时跑:
+    - `pytest -m blocker -q --timeout=120`
+    - `black --check tools tests`
+    - `python -m compileall tools tests`
+    - 所有非 blocker mark 但 CI 强制的 unit test 文件（如 `tests/unit/test_fts_*.py`、`tests/unit/test_version_bump.py`）
+    - `git diff --check`
+    
+    维护 `.agent-governance/CI_HARD_CHECKS.md`（如缺则补建）作为 SSOT —— 每次 CI 加 hard check 必须同 commit 加进该清单 + 本地 gate 调用脚本。**CI 有但本地无 = §(d) 失效**，§(d) 是 anti-CI-补救原则，不是 anti-某次特定 CI 失败。实证来源：v1.1.1 release pre-push 跑了 contract/blocker/compileall/diff_check 但漏 jieba title test + black，push 后 CI 红 2 次，产生 2 post-tag commit (`52f5184` test loosen + `2b0696d` black format) 违反 §(d)
 
 #### Rework 版本管理（v1.1 新增）
 
@@ -172,6 +196,61 @@
 - **Dispatch 前**：确认目标 worker 未在执行该任务（避免重复 loop；gbrain absorption 实证过）
 - **Cherry-pick / merge 前**：`git log` 确认 commit 来自最新 accepted 版本（避免误用 rework v01 而非 v02）
 - **发现误操作**：立即 `git revert` + 留下 audit note（commit message 含 "operator error" 标签），**不静默修复**
+
+#### Long-running gate command hygiene（v1.2 新增）
+
+主审在 M3 期间运行 wall-clock 可能 **>60 秒**的 gate 命令时（典型：blocker gate / 全套 contract test / 全套 integration test），命令启动方式**必须**满足三件套:
+
+- **外层 wall-clock cap**：即使内层有 `--timeout` 也要加外层超时（防止挂死后无人救援）
+- **stdout/stderr 持久落盘到文件**：非仅终端输出，方便事后检视、归因和 audit trail 记录
+- **heartbeat 检测或外层 wait 协议**：主控 Agent 可探测命令是否仍在运行 vs 已挂死
+
+**Life Index 推荐命令模板**：
+
+```bash
+# 反模式（v1.2 严禁）：
+python -m pytest -m blocker -q --timeout=120
+
+# 推荐模式：外层 timeout + 落盘 + 可后续 wait
+mkdir -p .agent-reports/<project-slug>/gate-runs
+timeout 900 python -m pytest -m blocker -q --timeout=120 \
+  > .agent-reports/<project-slug>/gate-runs/blocker_$(date +%s).log 2>&1 &
+GATE_PID=$!
+# 主控可周期性 ps -p $GATE_PID + tail -n 5 log 做 heartbeat 检查
+wait $GATE_PID
+```
+
+**为什么必要**：raw 裸跑 gate 命令容易在多 Phase 并发 + worker 池压力下挂死、输出截断或被重复触发，污染 audit trail 并消耗算力。主控 Agent 经常因为"看起来还在跑"而误判，进而重复启动，进一步污染状态。
+
+**实证来源**：Life Index v1.1.1 observability absorption M3 主审反复启动 raw `python -m pytest -m blocker -q --timeout=120` 无外层 cap，导致重复诊断与噪音；后改为带 stdout/stderr 文件 + heartbeat + 外层等待方式才稳定收敛。
+
+#### Pre-Gate state hygiene（v1.2 新增）
+
+每个 Gate 命令运行**前**，主审/主控 Agent **必须**做 state 校验：
+
+- 无 **stale duplicate worker processes**（旧 worker 进程已干净退出）
+- 无 **locked temp dirs**（`.pytest_tmp` / `.maestro/worktrees/` 残留 / 类似）
+- 上一轮失败/中断的 worker 状态已 clear
+
+**Life Index 标准 state check 脚本**：
+
+```bash
+# 1. 检查 stale pytest / codex 进程
+pgrep -f 'pytest|codex' | tee .agent-reports/<project-slug>/state-checks/stale_procs_$(date +%s).txt
+# 若非空 → 评估是否本轮主审/worker 自己的进程；非自有则 kill -TERM 后等 5s 再 kill -KILL
+
+# 2. 检查 .pytest_tmp 锁污染
+find .pytest_tmp -maxdepth 2 -name '*.lock' -o -name '.lock' 2>/dev/null
+# 若非空且非本轮归属 → rm -rf .pytest_tmp/* 全清
+
+# 3. 检查 worktree 残留
+git worktree list --porcelain
+# 若有 stale worktree（worker 已退出但 worktree 未 prune）→ git worktree prune
+```
+
+**为什么必要**：worker 之间状态污染（共享 temp dir、锁文件、cache file）是 Gate 失败的常见隐性原因。表面看是 "实现坏了"，实际是 "上一轮残留污染当前测试"。如果不在 Gate 前做 state check，主审会反复消耗时间在错误归因上。
+
+**实证来源**：Life Index v1.1.1 observability absorption M3 — Gate 2 contract test 多次出现中途停住 / 大量 E / 输出不完整，最终根因为 stale duplicate Codex/pytest 进程并发锁住/污染 `.pytest_tmp`。主审停止旧进程隔离后 Gate 2 通过。
 
 #### 主控 Agent 循环纪律 livelock prevention（v1.1 新增）
 
@@ -339,6 +418,12 @@ M2/M3/M4 中若发生以下情况，**escalate 回 M1**：
 
 ## 版本历史
 
+- **v1.2 (2026-05-23)**：跨 M2/M3 的"翻译完整性 + 运行时纪律"补强（同步通用版 v1.5）
+  - M2 新增 **Cross-cutting impact grep**：unified contract 变更时 M2 必须 grep 全部 assertion 位置并 in-scope/out-of-scope-with-reason 标注；附 Life Index `rg` 命令示例
+  - M3 新增 **Long-running gate command hygiene**：>60s gate 命令必须外层 wall-clock cap + stdout/stderr 落盘 + heartbeat；附 Life Index `timeout` + `wait` 命令模板
+  - M3 新增 **Pre-Gate state hygiene**：每个 Gate 前必须校验无 stale pytest/codex 进程 + 无 `.pytest_tmp` 锁污染 + 无 stale worktree；附 Life Index 标准 state check 脚本（`pgrep` / `find` / `git worktree list`）
+  - 实证来源：Life Index v1.1.1 observability absorption（M2 漏 grep legacy schema_version 致 `1d03ad2` emergency commit；主审 raw blocker gate 反复启动；`.pytest_tmp` 锁污染导致 Gate 2 多次失败）
+  - *(within v1.2, 2026-05-23 late revision)*：M3 主审验收 (d) push 前置门 加 **本地 blocker gate 完整性** 子条 —— 本地 gate 必须 1:1 覆盖 CI 跑的全部 hard check（含 black/compileall/所有 hard test mark），不能"局部 green"。维护 `.agent-governance/CI_HARD_CHECKS.md` 作为 SSOT。实证来源：v1.1.1 release pre-push gate 漏 jieba title test + black，push 后 CI 红 2 次，产生 2 post-tag commit (`52f5184`/`2b0696d`) 违反 §(d)
 - **v1.1 (2026-05-21)**：从通用版 v1.4 全量 backport + Life Index 适配
   - 新增「适用边界」章节（3 类不适用工作类型）
   - PRD 必含从 8 项扩展到 9 项（加 §8 反对意见门）
