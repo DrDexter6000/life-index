@@ -1,15 +1,262 @@
 [
   {
-    "query": "Kimi agent",
-    "candidate_expected_hits": ["Journals/2026/01/life-index_2026-01-28_001.md", "Journals/2026/04/life-index_2026-04-02_001.md"],
+    "query": "团团 尿片侠",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-04_001.md"],
     "category": "C4_entity_heavy",
-    "rationale": "Entity-heavy: 'Kimi' is an AI agent/product entity; 'agent' disambiguates from person name. 01-28 mentions Kimi 2.5, 04-02 explicitly mentions 'Kimi Agent'.",
-    "evidence_path": "01-28: mentions 'Kimi 2.5 思考模型'; 04-02: mentions 'Kimi Agent' and 'Kimi的agent'.",
-    "evidence_method": "corpus_manual_read",
+    "rationale": "Entity-heavy: person entity '团团' with alias '尿片侠'; tests alias recognition.",
+    "evidence_path": "03-04_001: title '想念尿片侠'; people field includes '团团'; body refers to child as both '团团' and '尿片侠'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
     "provenance": {
       "generator": "synthetic_fixture_gen",
       "provider": "Kimi",
-      "prompt_hash": "sha256:d4e5f6a7b8c9...v120-c4-prompt-v1"
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "周渝 硅基生命",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-09_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name '周渝' combined with concept entity '硅基生命'; tests multi-entity boost.",
+    "evidence_path": "03-09_001: people field includes '周渝'; title contains '硅基生命'; body describes debate with 周渝 about 硅基生命; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "Carloha CEO",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_002.md", "Journals/2026/03/life-index_2026-03-16_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: project entity 'Carloha' with role entity 'CEO'; tests entity-relationship context.",
+    "evidence_path": "03-14_002: 7 Carloha mentions including CEO requiring Q&A materials; 03-16_001: 12 Carloha mentions, '应CEO要求' for Carloha Wiki; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "Felix Abuja",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_002.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name 'Felix' with location entity 'Abuja'; tests disambiguated entity match.",
+    "evidence_path": "03-14_002: body lists '敦促Felix：Abuja Jabi Lake Mall展示活动的费用支付'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "Taiwo 奇瑞",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-14_002.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name 'Taiwo' with company entity '奇瑞'; tests cross-entity matching.",
+    "evidence_path": "03-14_002: body lists '敦促Taiwo：奇瑞索要的一季度市场项目报销材料'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "Claude Mythos",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-29_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: product name 'Claude Mythos' (Anthropic internal model codename); tests product entity recognition.",
+    "evidence_path": "03-29_001: body extensively discusses 'Claude Mythos' as leaked internal codename 'Capybara'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "Dario Amodei",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-29_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name 'Dario Amodei' (Anthropic CEO); tests real-world person entity in corpus.",
+    "evidence_path": "03-29_001: body mentions '美国国防部长向Dario Amodei下最后通牒'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "Master Dexter",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-29_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person alias 'Master Dexter' with marketing analysis context; tests alias entity matching.",
+    "evidence_path": "03-29_001: body attributes PR stunt hypothesis to 'Master Dexter' as '二十年市场营销从业者'; verified via rg (5 hits)",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "梅洛尼 特朗普",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-14_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: two person entities '梅洛尼' and '特朗普' in political conflict context; tests multi-entity boost.",
+    "evidence_path": "04-14_001: people field includes both '梅洛尼' and '特朗普'; title describes Meloni condemning Trump; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "万斯 以色列",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-05_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name '万斯' with country entity '以色列' in geopolitical context.",
+    "evidence_path": "04-05_001: people field includes '万斯'; tags include '以色列'; verified via rg (万斯: 3 hits)",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "张雪峰 死亡",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-24_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name '张雪峰' with event context '死亡'; tests entity-event relationship matching.",
+    "evidence_path": "03-24_001: title and body discuss '张雪峰去世'; verified via rg (张雪峰: 6 hits, 去世: 4 hits)",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "雁涵 团团",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-20_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: person name '雁涵' with person entity '团团' in parenting disagreement context.",
+    "evidence_path": "03-20_001: body mentions '雁涵反馈的信息是 —— 我多虑了' regarding 团团 behavior; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "婆婆 厨房",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-20_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: family role '婆婆' with location '厨房' in child discipline context.",
+    "evidence_path": "03-20_001: body '婆婆告诉我团团被老师单独隔离到厨房去吃饭'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "Kimi 选股",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-13_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: product entity 'Kimi' with action '选股' in investment context; tests entity-action compound.",
+    "evidence_path": "04-13_001: title 'AI算力国资股长线投资研究（Kimi辅助）'; body 'Kimi联通了同花顺数据库' and 'Kimi选股及投资方式建议'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "Google Stitch",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-26_001.md", "Journals/2026/04/life-index_2026-04-02_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: company 'Google' with product 'Stitch'; tests compound product entity recognition.",
+    "evidence_path": "03-26_001: title '试用 Google Stitch'; 04-02_001: body mentions 'Google的Stitch' and 'Google Stitch'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "易老师 晓未",
+    "candidate_expected_hits": ["Journals/2026/04/life-index_2026-04-21_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: two person names '易老师' and '晓未' in social meeting context.",
+    "evidence_path": "04-21_001: people field includes '易老师' and '晓未'; body '28号争取与易老师、晓未见一面'; verified via rg (易老师: 2 hits, 晓未: 2 hits)",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "OpenClaw 部署",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-22_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: product 'OpenClaw' with action '部署'; tests entity-action compound matching.",
+    "evidence_path": "03-22_001: title 'OpenClaw 部署优化'; body 'Optimized OpenClaw deployment pipeline'; verified via rg (OpenClaw: 9 hits)",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "团团妈 教育",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-30_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: familial alias '团团妈' with topic '教育'; tests alias-topic compound.",
+    "evidence_path": "03-30_001: body describes family meeting with '团团妈' about '团团教育' and first-responsible-person principle; verified via rg (团团妈: 4 hits)",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "BM25 检索",
+    "candidate_expected_hits": ["Journals/2026/03/life-index_2026-03-27_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: algorithm entity 'BM25' with domain term '检索'; tests technical entity compound.",
+    "evidence_path": "03-27_001: body describes switching from TF-IDF to BM25 for '检索算法' in Carloha Wiki chatbot; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
+    }
+  },
+  {
+    "query": "LobsterAI Journal",
+    "candidate_expected_hits": ["Journals/2026/02/life-index_2026-02-21_001.md", "Journals/2026/03/life-index_2026-03-06_001.md"],
+    "category": "C4_entity_heavy",
+    "rationale": "Entity-heavy: compound product name 'LobsterAI Journal'; tests multi-word entity recognition.",
+    "evidence_path": "02-21_001: title 'LobsterAI Journal 双维度索引上线' (4 hits); 03-06_001: title '回归 LobsterAI' and body mentions 'Lobster AI Journal'; verified via rg",
+    "evidence_method": "corpus_manual_read + rg_verify",
+    "provenance": {
+      "generator": "synthetic_fixture_gen",
+      "provider": "Kimi",
+      "prompt_hash": "sha256:69ea72d5eea77e102dc6fea1093a56f156a2061b4015b59596a8e9c4d559b31c"
     }
   }
 ]
