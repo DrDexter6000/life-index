@@ -1966,6 +1966,39 @@ def _companion_mode(section: Any) -> str | None:
     return "hard_gate"
 
 
+def _build_per_category_deltas(
+    baseline: dict[str, Any],
+    current: dict[str, Any],
+) -> dict[str, dict[str, dict[str, float]]]:
+    """Build per-category metric deltas for R@5 and MRR@5 (A5 cycle2).
+
+    Returns a dict keyed by category name, each value containing metric deltas
+    in the same shape as top-level ``metric_deltas``: ``{baseline, current, delta}``.
+    """
+    baseline_by_cat = baseline.get("by_category", {})
+    current_by_cat = current.get("by_category", {})
+
+    all_categories = sorted(set(baseline_by_cat) | set(current_by_cat))
+    deltas: dict[str, dict[str, dict[str, float]]] = {}
+
+    for category in all_categories:
+        b_cat = baseline_by_cat.get(category, {})
+        c_cat = current_by_cat.get(category, {})
+
+        cat_deltas: dict[str, dict[str, float]] = {}
+        for metric_name in ("mrr_at_5", "recall_at_5", "precision_at_5", "ndcg_at_5"):
+            b_val = float(b_cat.get(metric_name, 0.0))
+            c_val = float(c_cat.get(metric_name, 0.0))
+            cat_deltas[metric_name] = {
+                "baseline": _round_metric(b_val),
+                "current": _round_metric(c_val),
+                "delta": _round_metric(c_val - b_val),
+            }
+        deltas[category] = cat_deltas
+
+    return deltas
+
+
 def compare_against_baseline(
     *,
     baseline_path: Path,
@@ -2102,6 +2135,9 @@ def compare_against_baseline(
     # --- Pack C: companion eval deltas (M4-C1, D-M04-011) ---
     companion_eval_deltas = _build_companion_eval_deltas(baseline, current)
 
+    # --- A5: per-category R@5 / MRR@5 deltas (cycle2 multi-signal) ---
+    per_category_deltas = _build_per_category_deltas(baseline, current)
+
     diff = {
         "metric_deltas": metric_deltas,
         "regressions": regressions,
@@ -2111,6 +2147,7 @@ def compare_against_baseline(
         "eval_comparison": eval_comparison.to_dict(),
         "ir_run_comparison": ir_run_comparison_data,
         "companion_eval_deltas": companion_eval_deltas,
+        "per_category_deltas": per_category_deltas,
     }
     diff_lines = generate_summary_lines(diff)
 
