@@ -87,7 +87,7 @@ class TestSearchSchemaVersion:
             "schema_version" in payload
         ), "search success payload missing top-level schema_version"
         assert isinstance(payload["schema_version"], str)
-        assert payload["schema_version"].startswith("m16.")
+        assert payload["schema_version"] == "v1.1.1"
 
 
 class TestSmartSearchSchemaVersion:
@@ -240,7 +240,7 @@ class TestEntitySchemaVersion:
             "schema_version" in payload
         ), "entity --stats success payload missing top-level schema_version"
         assert isinstance(payload["schema_version"], str)
-        assert payload["schema_version"].startswith("m16.")
+        assert payload["schema_version"] == "v1.1.1"
 
     def test_entity_audit_has_schema_version(self, sandbox):
         data_dir, env = sandbox

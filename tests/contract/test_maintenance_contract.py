@@ -320,8 +320,7 @@ def test_schema_version_is_stable(dry_run_json: dict[str, Any]) -> None:
     sv = dry_run_json.get("schema_version")
     assert sv is not None, "Missing schema_version"
     assert isinstance(sv, str)
-    assert sv.startswith("m"), f"schema_version should start with 'm': {sv}"
-    assert "maintenance" in sv, f"schema_version should contain 'maintenance': {sv}"
+    assert sv == "v1.1.1", f"schema_version should match observability contract: {sv}"
 
 
 # ── Summary contract ────────────────────────────────────────────────

@@ -24,7 +24,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_JOURNALS_DIR = REPO_ROOT / "tests" / "fixtures" / "trajectory" / "sample_journals"
 
-SCHEMA_VERSION = "m26.trajectory.v0"
+SCHEMA_VERSION = "v1.1.1"
 
 FIELDS = ("weight", "sleep", "mood", "location", "project")
 
