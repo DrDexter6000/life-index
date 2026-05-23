@@ -1,18 +1,60 @@
-"""Contract tests for v1.1.1 intermediate structures — B3.1.
+"""Contract tests for v1.1.1 intermediate structures (B3.1 + B3.2).
 
-Validates that QueryPlan and SearchPlan intermediate structures include
-``schema_version: "v1.1.1"`` and remain JSON-serializable and backward-
-compatible.  These tests do **not** require a running CLI or data directory;
-they test the dataclass / enrichment layer directly.
+B3.1: QueryPlan / SearchPlan  contracts.
+B3.2: IndexManifest / EntityExpansion  contracts.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Any
 
-# ---------------------------------------------------------------------------
-# QueryPlan contract
-# ---------------------------------------------------------------------------
+from tools.lib.index_manifest import (
+    IndexManifest,
+    write_manifest,
+    read_manifest,
+)
+from tools.lib.entity_runtime import EntityRuntimeView, EntityExpansion
+
+SCHEMA_VERSION = "v1.1.1"
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+
+def _valid_index_manifest() -> IndexManifest:
+    return IndexManifest(
+        fts_count=100,
+        vector_count=100,
+        file_count=100,
+        fts_checksum="abc123",
+        vector_checksum="def456",
+        build_timestamp="2026-05-23T00:00:00Z",
+        build_version="1.1.1",
+        partial=False,
+    )
+
+
+def _valid_entity_runtime_view() -> EntityRuntimeView:
+    return EntityRuntimeView(
+        entities=[
+            {
+                "id": "e1",
+                "type": "person",
+                "primary_name": "Alice",
+                "aliases": ["Ali"],
+            }
+        ],
+        by_lookup={},
+        reverse_relationships={},
+        phrase_patterns=[],
+    )
+
+
+# ── B3.1: QueryPlan ──────────────────────────────────────────────────────
 
 
 class TestQueryPlanContract:
@@ -101,9 +143,7 @@ class TestQueryPlanContract:
         assert "schema_version" not in old_reader_view
 
 
-# ---------------------------------------------------------------------------
-# SearchPlan contract (enrichment via core.py)
-# ---------------------------------------------------------------------------
+# ── B3.1: SearchPlan ─────────────────────────────────────────────────────
 
 
 class TestSearchPlanContract:
@@ -174,9 +214,7 @@ class TestSearchPlanContract:
         assert "schema_version" not in d
 
 
-# ---------------------------------------------------------------------------
-# Cross-contract: observability schema_version consistency
-# ---------------------------------------------------------------------------
+# ── B3.1: Cross-contract consistency ─────────────────────────────────────
 
 
 class TestSchemaVersionConsistency:
@@ -194,3 +232,306 @@ class TestSchemaVersionConsistency:
         from tools.search_journals.core import SEARCH_PLAN_SCHEMA_VERSION
 
         assert SEARCH_PLAN_SCHEMA_VERSION == SCHEMA_VERSION
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# B3.2: IndexManifest / EntityExpansion  contracts
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ── B3.2: IndexManifest ──────────────────────────────────────────────────
+
+
+class TestIndexManifestSchemaVersion:
+    """IndexManifest must carry top-level schema_version."""
+
+    def test_dataclass_has_schema_version_field(self):
+        manifest = _valid_index_manifest()
+        assert hasattr(manifest, "schema_version")
+        assert isinstance(manifest.schema_version, str)
+
+    def test_default_schema_version_is_v111(self):
+        manifest = IndexManifest(
+            fts_count=1,
+            vector_count=1,
+            file_count=1,
+            fts_checksum="a",
+            vector_checksum="b",
+            build_timestamp="ts",
+            build_version="1.0",
+        )
+        assert manifest.schema_version == SCHEMA_VERSION
+
+    def test_asdict_includes_schema_version(self):
+        manifest = _valid_index_manifest()
+        d = asdict(manifest)
+        assert "schema_version" in d
+        assert d["schema_version"] == SCHEMA_VERSION
+
+    def test_write_manifest_includes_schema_version(self):
+        manifest = _valid_index_manifest()
+        with TemporaryDirectory() as td:
+            idx_dir = Path(td) / ".index"
+            write_manifest(manifest, idx_dir)
+            raw = Path(idx_dir, "index_manifest.json").read_text(encoding="utf-8")
+            data = json.loads(raw)
+            assert "schema_version" in data
+            assert data["schema_version"] == SCHEMA_VERSION
+
+    def test_read_manifest_returns_schema_version(self):
+        manifest = _valid_index_manifest()
+        with TemporaryDirectory() as td:
+            idx_dir = Path(td) / ".index"
+            write_manifest(manifest, idx_dir)
+            loaded = read_manifest(idx_dir)
+            assert loaded is not None
+            assert loaded.schema_version == SCHEMA_VERSION
+
+    def test_read_manifest_old_format_fallback(self):
+        """Old manifest WITHOUT schema_version should still load with default."""
+        old_payload = {
+            "fts_count": 10,
+            "vector_count": 10,
+            "file_count": 10,
+            "fts_checksum": "aaa",
+            "vector_checksum": "bbb",
+            "build_timestamp": "2026-01-01",
+            "build_version": "1.0",
+            "partial": False,
+        }
+        with TemporaryDirectory() as td:
+            idx_dir = Path(td) / ".index"
+            idx_dir.mkdir(parents=True, exist_ok=True)
+            (idx_dir / "index_manifest.json").write_text(json.dumps(old_payload), encoding="utf-8")
+            loaded = read_manifest(idx_dir)
+            assert loaded is not None
+            assert loaded.schema_version == SCHEMA_VERSION
+
+    def test_manifest_json_serializable(self):
+        manifest = _valid_index_manifest()
+        d = asdict(manifest)
+        json_str = json.dumps(d, ensure_ascii=False)
+        roundtrip = json.loads(json_str)
+        assert roundtrip["schema_version"] == SCHEMA_VERSION
+        assert roundtrip["fts_count"] == manifest.fts_count
+        assert roundtrip["partial"] == manifest.partial
+
+    def test_manifest_ignored_by_old_caller(self):
+        """Old caller reading JSON ignores unknown schema_version field."""
+        manifest = _valid_index_manifest()
+        d = asdict(manifest)
+        old_keys = {
+            "fts_count",
+            "vector_count",
+            "file_count",
+            "fts_checksum",
+            "vector_checksum",
+            "build_timestamp",
+            "build_version",
+            "partial",
+        }
+        assert old_keys.issubset(d.keys())
+        remaining = d["fts_count"] > 0
+        assert remaining is True
+
+
+# ── B3.2: EntityExpansion ────────────────────────────────────────────────
+
+
+class TestEntityExpansionSchemaVersion:
+    """EntityExpansion must carry top-level schema_version."""
+
+    def test_dataclass_has_schema_version_field(self):
+        expansion = EntityExpansion()
+        assert hasattr(expansion, "schema_version")
+        assert isinstance(expansion.schema_version, str)
+
+    def test_default_schema_version_is_v111(self):
+        expansion = EntityExpansion()
+        assert expansion.schema_version == SCHEMA_VERSION
+
+    def test_entity_expansion_has_hints_field(self):
+        expansion = EntityExpansion()
+        assert hasattr(expansion, "entity_hints")
+        assert isinstance(expansion.entity_hints, list)
+        assert expansion.entity_hints == []
+
+    def test_entity_expansion_with_hints(self):
+        hints: list[dict[str, Any]] = [
+            {
+                "matched_term": "Ali",
+                "entity_id": "e1",
+                "entity_type": "person",
+                "expansion_terms": ["Alice", "Ali"],
+                "reason": "alias_match",
+            }
+        ]
+        expansion = EntityExpansion(entity_hints=hints)
+        assert len(expansion.entity_hints) == 1
+        assert expansion.entity_hints[0]["entity_id"] == "e1"
+
+    def test_to_dict_includes_schema_version(self):
+        expansion = EntityExpansion(
+            entity_hints=[
+                {
+                    "matched_term": "X",
+                    "entity_id": "e1",
+                    "entity_type": "person",
+                    "expansion_terms": ["Y"],
+                    "reason": "alias_match",
+                }
+            ]
+        )
+        d = expansion.to_dict()
+        assert "schema_version" in d
+        assert d["schema_version"] == SCHEMA_VERSION
+        assert "entity_hints" in d
+        assert len(d["entity_hints"]) == 1
+
+    def test_to_dict_json_serializable(self):
+        expansion = EntityExpansion(
+            entity_hints=[
+                {
+                    "matched_term": "test",
+                    "entity_id": "e1",
+                    "entity_type": "concept",
+                    "expansion_terms": ["test", "testing"],
+                    "reason": "primary_name_match",
+                }
+            ]
+        )
+        d = expansion.to_dict()
+        json_str = json.dumps(d, ensure_ascii=False)
+        roundtrip = json.loads(json_str)
+        assert roundtrip["schema_version"] == SCHEMA_VERSION
+        assert roundtrip["entity_hints"][0]["entity_id"] == "e1"
+
+    def test_entity_expansion_ignored_by_old_caller(self):
+        """Old caller reading JSON ignores unknown schema_version field."""
+        expansion = EntityExpansion(
+            entity_hints=[
+                {
+                    "matched_term": "a",
+                    "entity_id": "x",
+                    "entity_type": "person",
+                    "expansion_terms": ["a"],
+                    "reason": "alias_match",
+                }
+            ]
+        )
+        d = expansion.to_dict()
+        hint_keys = {"matched_term", "entity_id", "entity_type", "expansion_terms", "reason"}
+        for hint in d["entity_hints"]:
+            assert hint_keys.issubset(hint.keys())
+
+
+# ── B3.2: EntityRuntimeView ──────────────────────────────────────────────
+
+
+class TestEntityRuntimeViewSchemaVersion:
+    """EntityRuntimeView carries schema_version for contract stability."""
+
+    def test_dataclass_has_schema_version_field(self):
+        view = _valid_entity_runtime_view()
+        assert hasattr(view, "schema_version")
+        assert isinstance(view.schema_version, str)
+
+    def test_default_schema_version_is_v111(self):
+        view = EntityRuntimeView(entities=[])
+        assert view.schema_version == SCHEMA_VERSION
+
+    def test_runtime_view_ignored_by_old_caller(self):
+        view = _valid_entity_runtime_view()
+        d = asdict(view)
+        assert "entities" in d
+        assert "schema_version" in d
+
+
+# ── B3.2: Hints Builder Entity Expansion Contract ────────────────────────
+
+
+class TestHintsBuilderEntityExpansionContract:
+    """entity_expansion_applied hints exist and can be wrapped with EntityExpansion."""
+
+    def test_build_hints_emits_entity_expansion_when_hints_used(self):
+        from tools.search_journals.hints_builder import build_hints
+        from tools.search_journals.query_types import SearchPlan, AmbiguityReport
+
+        plan = SearchPlan(
+            raw_query="test",
+            entity_hints_used=[
+                {
+                    "matched_term": "x",
+                    "entity_id": "e1",
+                    "entity_type": "person",
+                    "expansion_terms": ["y"],
+                    "reason": "alias_match",
+                }
+            ],
+        )
+        ambiguity = AmbiguityReport()
+        hints = build_hints(plan, ambiguity)
+        entity_hints_found = [h for h in hints if h.type == "entity_expansion_applied"]
+        assert len(entity_hints_found) > 0
+
+
+# ── B3.2: Entity CLI Expansion Contract ──────────────────────────────────
+
+
+class TestEntityCLIExpansionContract:
+    """Entity CLI entity expansion output carries schema_version."""
+
+    def test_entity_expansion_from_cli_has_schema_version(self):
+        """Entity entity expansion contract exposes schema_version."""
+        from tools.lib.entity_runtime import EntityExpansion as EE
+
+        ee = EE(
+            entity_hints=[
+                {
+                    "matched_term": "test",
+                    "entity_id": "e99",
+                    "entity_type": "concept",
+                    "expansion_terms": ["test"],
+                    "reason": "alias_match",
+                }
+            ]
+        )
+        d = ee.to_dict()
+        assert "schema_version" in d
+        assert d["schema_version"] == SCHEMA_VERSION
+
+
+# ── B3.2: Index Build CLI Manifest Contract ──────────────────────────────
+
+
+class TestIndexBuildCLIManifestContract:
+    """Index build CLI exposes IndexManifest contract with schema_version."""
+
+    def test_index_manifest_construction_has_schema_version(self):
+        m = IndexManifest(
+            fts_count=1,
+            vector_count=1,
+            file_count=1,
+            fts_checksum="a",
+            vector_checksum="b",
+            build_timestamp="t",
+            build_version="v",
+        )
+        assert m.schema_version == SCHEMA_VERSION
+
+    def test_index_manifest_persists_schema_version(self):
+        m = IndexManifest(
+            fts_count=5,
+            vector_count=5,
+            file_count=5,
+            fts_checksum="c",
+            vector_checksum="d",
+            build_timestamp="t",
+            build_version="v",
+        )
+        with TemporaryDirectory() as td:
+            idx_dir = Path(td) / ".index"
+            write_manifest(m, idx_dir)
+            raw = Path(idx_dir, "index_manifest.json").read_text(encoding="utf-8")
+            data = json.loads(raw)
+            assert data["schema_version"] == SCHEMA_VERSION

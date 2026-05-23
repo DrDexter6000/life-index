@@ -18,6 +18,9 @@ logger = get_logger(__name__)
 MANIFEST_FILENAME = "index_manifest.json"
 
 
+SCHEMA_VERSION = "v1.1.1"
+
+
 @dataclass
 class IndexManifest:
     """Snapshot of the last successful index build."""
@@ -30,6 +33,7 @@ class IndexManifest:
     build_timestamp: str
     build_version: str
     partial: bool = False  # True if only FTS or only vector succeeded
+    schema_version: str = SCHEMA_VERSION
 
 
 def write_manifest(manifest: IndexManifest, index_dir: Path) -> None:
@@ -70,6 +74,7 @@ def read_manifest(index_dir: Path) -> Optional[IndexManifest]:
             build_timestamp=data.get("build_timestamp", ""),
             build_version=data.get("build_version", ""),
             partial=data.get("partial", False),
+            schema_version=data.get("schema_version", SCHEMA_VERSION),
         )
     except (json.JSONDecodeError, OSError, UnicodeDecodeError, TypeError):
         logger.warning("Corrupt or unreadable manifest, returning None")

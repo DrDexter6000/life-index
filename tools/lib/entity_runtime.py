@@ -220,6 +220,27 @@ def _contains_entity_term(text: str, term: str) -> bool:
     return any(_iter_entity_term_spans(text, term))
 
 
+SCHEMA_VERSION = "v1.1.1"
+
+
+@dataclass
+class EntityExpansion:
+    """Entity expansion intermediate structure (v1.1.1 contract).
+
+    Carries the entity hints produced during query entity resolution
+    together with schema version metadata for contract stability.
+    """
+
+    entity_hints: list[dict[str, Any]] = field(default_factory=list)
+    schema_version: str = SCHEMA_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "entity_hints": self.entity_hints,
+        }
+
+
 @dataclass
 class EntityRuntimeView:
     """Derived serving view over entity graph data.
@@ -235,6 +256,7 @@ class EntityRuntimeView:
     by_lookup: dict[str, dict[str, Any]] = field(default_factory=dict)
     reverse_relationships: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     phrase_patterns: list[dict[str, Any]] = field(default_factory=list)
+    schema_version: str = SCHEMA_VERSION
 
 
 def _matches_role_filter(
@@ -485,6 +507,7 @@ def resolve_via_runtime(query: str, view: EntityRuntimeView) -> dict[str, Any] |
 # Backward-compat alias for code that imports _expand_related_entities
 # from the old inline location in search_journals/core.py.
 __all__ = [
+    "EntityExpansion",
     "EntityRuntimeView",
     "build_runtime_view",
     "load_runtime_view",
