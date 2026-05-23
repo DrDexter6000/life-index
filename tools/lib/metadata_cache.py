@@ -60,8 +60,7 @@ def init_metadata_cache() -> sqlite3.Connection:
     cursor = conn.cursor()
 
     # 创建元数据缓存表
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS metadata_cache (
             file_path TEXT PRIMARY KEY,
             date TEXT,
@@ -80,59 +79,46 @@ def init_metadata_cache() -> sqlite3.Connection:
             file_size INTEGER,
             cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """
-    )
+    """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS entry_relations (
             source_path TEXT NOT NULL,
             target_path TEXT NOT NULL,
             PRIMARY KEY (source_path, target_path)
         )
-        """
-    )
+        """)
 
     _ensure_metadata_cache_columns(conn)
 
     # 创建索引加速查询
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_metadata_date
         ON metadata_cache(date)
-    """
-    )
+    """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_metadata_topic
         ON metadata_cache(topic)
-    """
-    )
+    """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_metadata_project
         ON metadata_cache(project)
-    """
-    )
+    """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_metadata_location
         ON metadata_cache(location)
-    """
-    )
+    """)
 
     # 创建缓存状态表
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS cache_meta (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """
-    )
+    """)
 
     conn.commit()
     return conn
