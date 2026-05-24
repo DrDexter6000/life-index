@@ -819,9 +819,11 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 | `l3_results` | array | yes | Level-3 (full-text) results |
 | `semantic_results` | array | yes | Semantic pipeline results (empty if unavailable) |
 | `entity_hints` | array | yes | Entity graph match hints for the query |
-| `total_found` | int | yes | Number of results in this response |
-| `total_available` | int | yes | Total results available (may exceed page) |
+| `total_found` | int | yes | Number of results in this response (after `--limit` applied) |
+| `total_matches` | int | yes | Total results matched (complete candidate set before truncation); always present, includes zero. `total_matches >= total_found` always holds. |
+| `total_available` | int | yes | Total results available (may exceed page); alias for `total_matches` (backward compatibility) |
 | `has_more` | bool | yes | Whether more results exist beyond current page |
+| `display_summary` | string | yes | Human-readable "Showing X of Y results" summary |
 | `semantic_available` | bool | yes | Whether semantic pipeline was available |
 | `performance` | object | yes | Timing breakdown (`total_time_ms`, etc.) |
 | `warnings` | array | yes | Non-fatal warnings |
@@ -837,7 +839,9 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 #### Field Semantics
 
 - `success`: retrieval execution success, not "Agent has answered the user". Empty results (`E0303`) are still `success: true`.
-- `merged_results`: primary result list consumers should use; items have `path`, `rel_path`, `title`, `date`, `rrf_score`.
+- `merged_results`: primary result list consumers should use; items have `path`, `rel_path`, `title`, `date`, `rrf_score`. Results are capped by `--limit` (default 20) at the presentation layer. The retrieval core always returns the complete ranked candidate set; use `--limit 0` to bypass truncation.
+- `total_matches`: complete candidate set size before presentation-layer truncation. Invariant: `total_matches >= total_found` always holds. Per CHARTER §1.11, the retrieval/ranking layer must not silently hard-cap results.
+- `display_summary`: human-readable count such as "Showing 5 of 56 results" or "Showing all 20 results" (when `--limit 0` or no truncation applied).
 - `query_params`: exact echo of all CLI inputs, including defaults filled in.
 - `performance.total_time_ms`: end-to-end search wall-clock time in milliseconds.
 - `index_status`: two mutually exclusive paths — `freshness` (no pending writes) or `pending_before_search`/`auto_updated`/`pending_consumed` (writes in queue).
@@ -897,7 +901,7 @@ python -m tools.search_journals [options]
 | --semantic-policy | enum | ❌ | fallback | 语义搜索策略: fallback=仅零结果时启用, hybrid=并行融合 |
 | --semantic-weight | float | ❌ | 1.0 | 语义搜索权重 (默认: 1.0) |
 | --fts-weight | float | ❌ | 1.0 | FTS 搜索权重 (默认: 1.0) |
-| --limit | int | ❌ | 20 | 返回结果数量限制；显式传入时覆盖默认截断 |
+| --limit | int | ❌ | 20 | 返回结果数量限制（默认 20）；传入 0 时返回全量结果（跳过呈现层截断） |
 | --offset | int | ❌ | 0 | 结果偏移量（分页起始位置） |
 | --read-top | int | ❌ | 0 | 读取前 N 条结果的完整正文（默认 0 不读取） |
 | --explain | flag | ❌ | false | 输出搜索评分详情与 `diagnostics` 诊断块 |
@@ -936,8 +940,10 @@ python -m tools.search_journals [options]
     }
   ],
   "total_found": 5,
+  "total_matches": 56,
   "total_available": 56,
   "has_more": true,
+  "display_summary": "Showing 5 of 56 results",
   "semantic_available": true,
   "performance": {"total_time_ms": 45}
 }

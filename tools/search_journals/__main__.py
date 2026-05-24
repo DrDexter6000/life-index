@@ -26,6 +26,42 @@ from ..lib.trace import Trace
 SCHEMA_VERSION = "m16.search.v0"
 
 
+def _apply_presentation_layer(result: dict, *, limit: int | None, offset: int = 0) -> None:
+    """Slice merged_results for display only. Mutates result in place.
+
+    Retrieval layer returns complete ranked candidate set with total_matches
+    (full count).  This function slices for CLI display only, preserving
+    total_matches.  Per CHARTER §1.11 rule #2: truncation lives in the
+    display layer only.
+
+    * limit = 0  →  no truncation (return full set)
+    * limit >= 1 →  return at most ``limit`` results
+    * offset >= 1 →  skip first ``offset`` results before applying limit
+    """
+    if "merged_results" not in result:
+        return
+
+    total_matches = result.get("total_matches", len(result["merged_results"]))
+    all_results = result["merged_results"]
+
+    if offset and offset > 0:
+        all_results = all_results[offset:]
+
+    if limit is not None and limit > 0:
+        all_results = all_results[:limit]
+
+    displayed = len(all_results)
+    result["merged_results"] = all_results
+    result["total_found"] = displayed
+    result["has_more"] = displayed < total_matches
+    result["total_available"] = total_matches
+
+    if total_matches > 0:
+        result["display_summary"] = f"Showing {displayed} of {total_matches} results"
+    else:
+        result["display_summary"] = "No results found"
+
+
 def _emit_json(payload: dict, *, include_events: bool = True) -> None:
     """Print JSON safely across Windows console encodings."""
     if include_events:
@@ -113,8 +149,8 @@ Examples:
     parser.add_argument(
         "--limit",
         type=int,
-        default=None,
-        help="返回结果数量限制",
+        default=20,
+        help="返回结果数量限制 (默认: 20; 0 = 全部)",
     )
     parser.add_argument(
         "--offset",
@@ -202,22 +238,9 @@ Examples:
             )
 
     # Phase 2 (Task 3): Presentation-layer slicing with offset + limit
-    if "merged_results" in result:
-        all_results = result["merged_results"]
-        total_available = result.get("total_available", len(all_results))
-
-        # Apply offset
-        if args.offset and args.offset > 0:
-            all_results = all_results[args.offset :]
-
-        # Apply limit (if specified, overrides the default MAX_RESULTS_DEFAULT truncation)
-        if args.limit:
-            all_results = all_results[: args.limit]
-
-        result["merged_results"] = all_results
-        result["total_found"] = len(all_results)
-        result["total_available"] = total_available
-        result["has_more"] = (args.offset + len(all_results)) < total_available
+    # Per CHARTER §1.11 rule #2: truncation lives in the display layer only;
+    # the retrieval core returns the complete ranked candidate set.
+    _apply_presentation_layer(result, limit=args.limit, offset=args.offset or 0)
 
     # Task 1.2.3: Read full content for top N results
     if args.read_top > 0 and result.get("success") and result.get("merged_results"):

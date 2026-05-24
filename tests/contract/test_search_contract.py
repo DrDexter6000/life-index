@@ -34,6 +34,9 @@ REQUIRED_RESPONSE_FIELDS = {
     "semantic_results",
     "merged_results",
     "total_found",
+    "total_matches",
+    "total_available",
+    "has_more",
     "performance",
     "warnings",  # Phase 2C: added warnings field
     "index_status",  # Phase B: index observability (emitted on both paths)
@@ -309,6 +312,22 @@ class TestSearchFieldTypes:
         """warnings field is a list."""
         result = hierarchical_search(query="test", level=3)
         assert isinstance(result["warnings"], list)
+
+    def test_total_matches_is_int(self):
+        """total_matches is an integer (PRD §4.4)."""
+        result = hierarchical_search(query="test", level=3)
+        assert isinstance(result["total_matches"], int)
+
+    def test_total_matches_ge_returned_results(self):
+        """Invariant: total_matches >= len(returned_results) (PRD §4.4)."""
+        result = hierarchical_search(query="test", level=3)
+        assert result["total_matches"] >= len(result["merged_results"])
+
+    def test_total_matches_present_in_zero_result_response(self):
+        """total_matches is present and 0 when zero results (PRD §4.4)."""
+        result = hierarchical_search(query="nonexistent_string_xyz", level=3)
+        assert "total_matches" in result
+        assert result["total_matches"] == 0
 
 
 class TestSearchEmptyVsFailure:
