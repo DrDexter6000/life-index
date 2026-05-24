@@ -23,7 +23,7 @@ scenarios:
     l3_return:
     - path: Journals/2026/03/test.md
       content: 这是测试搜索的内容
-      score: 5.0
+      relevance: 80
     semantic_return:
       results:
       - path: Journals/2026/03/test.md

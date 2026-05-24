@@ -105,7 +105,13 @@ class TestSourceTierFlag:
                 "tools.search_journals.semantic_pipeline.search_semantic",
                 return_value=([{"path": "x.md", "similarity": 0.5}], {}),
             ):
-                hierarchical_search(query="test", level=3, enable_source_tier=True)
+                hierarchical_search(
+                    query="test",
+                    level=3,
+                    semantic=True,
+                    semantic_policy="hybrid",
+                    enable_source_tier=True,
+                )
                 _, kwargs = mock_hybrid.call_args
                 assert kwargs.get("enable_source_tier") is True
 
