@@ -18,6 +18,7 @@ from tools.lib.search_constants import (
     FUZZY_TYPO_LEN_DIFF_MAX,
     FUZZY_TYPO_RATIO_THRESHOLD,
 )
+from .chinese_time_units import chinese_numeral_to_int
 
 # Chinese numerals for month parsing
 _CN_NUMERALS: dict[str, int] = {
@@ -45,20 +46,22 @@ _TIME_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"(\d{4})年(\d{1,2})月"),
     re.compile(r"(\d{4})-(\d{2})"),
     # 今年X月 (e.g. "今年一月")
-    re.compile(r"今年([一二两三四五六七八九十十一十二])月"),
+    re.compile(r"今年([一二两三四五六七八九]|十[一二]?)月"),
     # 去年X月 (e.g. "去年一月")
-    re.compile(r"去年([一二两三四五六七八九十十一十二])月"),
+    re.compile(r"去年([一二两三四五六七八九]|十[一二]?)月"),
     # Year+season combos (more specific than standalone season)
     re.compile(r"去年(的)?(春天|夏天|秋天|冬天)"),
     # Seasons
     re.compile(r"(春天|夏天|秋天|冬天)"),
     # Chinese month range (e.g. "三月下旬到四月")
-    re.compile(r"([一二两三四五六七八九十十一十二])月下旬到([一二两三四五六七八九十十一十二])月"),
-    # Chinese month parts (e.g. "三月初", "三月下旬", "三月底")
-    re.compile(r"([一二两三四五六七八九十十一十二])月初"),
-    re.compile(r"([一二两三四五六七八九十十一十二])月中旬"),
-    re.compile(r"([一二两三四五六七八九十十一十二])月下旬"),
-    re.compile(r"([一二两三四五六七八九十十一十二])月底"),
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月下旬到([一二两三四五六七八九]|十[一二]?)月"),
+    # Chinese month parts (e.g. "三月初", "三月中旬", "三月中", "三月下旬", "三月底", "三月末")
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月初"),
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月中旬"),
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月中"),
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月下旬"),
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月底"),
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月末"),
     re.compile(r"(\d{1,2})月底"),
     # Year halves
     re.compile(r"(上半年|下半年)"),
@@ -67,9 +70,10 @@ _TIME_PATTERNS: list[re.Pattern[str]] = [
     # Month expressions
     re.compile(r"(这个月|本月)"),
     # Month-Day without year (e.g. "3月15日", "三月十五号")
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月([一二两三四五六七八九十]+)[日号]?"),
     re.compile(r"(\d{1,2})月(\d{1,2})[日号]?"),
     # Chinese month names (e.g. "三月份", "三月")
-    re.compile(r"([一二两三四五六七八九十十一十二])月份?"),
+    re.compile(r"([一二两三四五六七八九]|十[一二]?)月份?"),
     # Relative expressions
     re.compile(r"过去(\d+)天"),
     re.compile(r"过去(\d+)周"),
@@ -79,9 +83,12 @@ _TIME_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"过去一周"),
     re.compile(r"上个月"),
     re.compile(r"上个?月"),
+    re.compile(r"下个月"),
+    re.compile(r"下个?月"),
     re.compile(r"去年这个时候"),
     re.compile(r"去年"),
     re.compile(r"今年"),
+    re.compile(r"明年"),
     re.compile(r"最近"),
     re.compile(r"(\d{1,2})月份?"),
     re.compile(r"(\d+)天前"),
@@ -266,7 +273,7 @@ def parse_time_range(  # noqa: C901
         )
 
     # 今年X月 (e.g. "今年一月")
-    m = re.match(r"今年([一二两三四五六七八九十十一十二])月", expr)
+    m = re.match(r"今年([一二两三四五六七八九]|十[一二]?)月", expr)
     if m:
         cn_month = _CN_NUMERALS.get(m.group(1))
         if cn_month:
@@ -283,7 +290,7 @@ def parse_time_range(  # noqa: C901
             )
 
     # 去年X月 (e.g. "去年一月")
-    m = re.match(r"去年([一二两三四五六七八九十十一十二])月", expr)
+    m = re.match(r"去年([一二两三四五六七八九]|十[一二]?)月", expr)
     if m:
         cn_month = _CN_NUMERALS.get(m.group(1))
         if cn_month:
@@ -354,7 +361,7 @@ def parse_time_range(  # noqa: C901
             )
 
     # Chinese month start (e.g. "三月初")
-    m = re.match(r"([一二两三四五六七八九十十一十二])月初", expr)
+    m = re.match(r"([一二两三四五六七八九]|十[一二]?)月初", expr)
     if m:
         cn_month = _CN_NUMERALS.get(m.group(1))
         if cn_month:
@@ -369,7 +376,7 @@ def parse_time_range(  # noqa: C901
 
     # Chinese month range (e.g. "三月下旬到四月")
     m = re.match(
-        r"([一二两三四五六七八九十十一十二])月下旬到([一二两三四五六七八九十十一十二])月", expr
+        r"([一二两三四五六七八九]|十[一二]?)月下旬到([一二两三四五六七八九]|十[一二]?)月", expr
     )
     if m:
         cn_start_month = _CN_NUMERALS.get(m.group(1))
@@ -388,7 +395,21 @@ def parse_time_range(  # noqa: C901
             )
 
     # Chinese month mid (e.g. "三月中旬")
-    m = re.match(r"([一二两三四五六七八九十十一十二])月中旬", expr)
+    m = re.match(r"([一二两三四五六七八九]|十[一二]?)月中旬", expr)
+    if m:
+        cn_month = _CN_NUMERALS.get(m.group(1))
+        if cn_month:
+            year = ref.year
+            since = date(year, cn_month, 11)
+            until = date(year, cn_month, 20)
+            return DateRange(
+                since=since.isoformat(),
+                until=until.isoformat(),
+                source="absolute_date_parse",
+            )
+
+    # Chinese month mid short form (e.g. "三月中")
+    m = re.match(r"([一二两三四五六七八九]|十[一二]?)月中", expr)
     if m:
         cn_month = _CN_NUMERALS.get(m.group(1))
         if cn_month:
@@ -402,7 +423,7 @@ def parse_time_range(  # noqa: C901
             )
 
     # Chinese month late (e.g. "三月下旬")
-    m = re.match(r"([一二两三四五六七八九十十一十二])月下旬", expr)
+    m = re.match(r"([一二两三四五六七八九]|十[一二]?)月下旬", expr)
     if m:
         cn_month = _CN_NUMERALS.get(m.group(1))
         if cn_month:
@@ -419,12 +440,29 @@ def parse_time_range(  # noqa: C901
             )
 
     # Chinese month end (e.g. "三月底")
-    m = re.match(r"([一二两三四五六七八九十十一十二])月底", expr)
+    m = re.match(r"([一二两三四五六七八九]|十[一二]?)月底", expr)
     if m:
         cn_month = _CN_NUMERALS.get(m.group(1))
         if cn_month:
             year = ref.year
-            since = date(year, cn_month, 25)
+            since = date(year, cn_month, 21)
+            if cn_month == 12:
+                until = date(year, 12, 31)
+            else:
+                until = date(year, cn_month + 1, 1) - timedelta(days=1)
+            return DateRange(
+                since=since.isoformat(),
+                until=until.isoformat(),
+                source="absolute_date_parse",
+            )
+
+    # Chinese month end alias (e.g. "三月末")
+    m = re.match(r"([一二两三四五六七八九]|十[一二]?)月末", expr)
+    if m:
+        cn_month = _CN_NUMERALS.get(m.group(1))
+        if cn_month:
+            year = ref.year
+            since = date(year, cn_month, 21)
             if cn_month == 12:
                 until = date(year, 12, 31)
             else:
@@ -441,7 +479,7 @@ def parse_time_range(  # noqa: C901
         month = int(m.group(1))
         if 1 <= month <= 12:
             year = ref.year
-            since = date(year, month, 25)
+            since = date(year, month, 21)
             if month == 12:
                 until = date(year, 12, 31)
             else:
@@ -492,7 +530,27 @@ def parse_time_range(  # noqa: C901
             since=since.isoformat(), until=until.isoformat(), source="relative_time_parse"
         )
 
-    # Month-Day without year (e.g. "3月15日", "3月15号")
+    # Month-Day without year (Chinese numerals, e.g. "三月十五日", "三月十五号")
+    m = re.match(r"([一二两三四五六七八九]|十[一二]?)月([一二两三四五六七八九十]+)[日号]?", expr)
+    if m:
+        cn_month = _CN_NUMERALS.get(m.group(1))
+        if cn_month is None:
+            return None
+        cn_day = chinese_numeral_to_int(m.group(2))
+        if cn_day is None or not (1 <= cn_day <= 31):
+            return None
+        year = ref.year
+        try:
+            target = date(year, cn_month, cn_day)
+            if target > ref:
+                target = date(year - 1, cn_month, cn_day)
+            return DateRange(
+                since=target.isoformat(), until=target.isoformat(), source="absolute_date_parse"
+            )
+        except ValueError:
+            return None
+
+    # Month-Day without year (Arabic numerals, e.g. "3月15日", "3月15号")
     m = re.match(r"(\d{1,2})月(\d{1,2})[日号]?", expr)
     if m:
         month = int(m.group(1))
@@ -511,7 +569,7 @@ def parse_time_range(  # noqa: C901
             return None
 
     # Chinese month names (e.g. "三月份", "三月")
-    m = re.match(r"([一二两三四五六七八九十十一十二])月份?$", expr)
+    m = re.match(r"([一二两三四五六七八九]|十[一二]?)月份?$", expr)
     if m:
         cn_month = _CN_NUMERALS.get(m.group(1))
         if cn_month:
@@ -586,14 +644,33 @@ def parse_time_range(  # noqa: C901
             since=since.isoformat(), until=ref.isoformat(), source="relative_time_parse"
         )
 
-    # 上个月
-    if "上个" in expr and "月" in expr:
+    # 上个月 / 上月
+    if expr in ("上个月", "上月"):
         first_of_this_month = ref.replace(day=1)
         last_of_prev = first_of_this_month - timedelta(days=1)
         first_of_prev = last_of_prev.replace(day=1)
         return DateRange(
             since=first_of_prev.isoformat(),
             until=last_of_prev.isoformat(),
+            source="relative_time_parse",
+        )
+
+    # 下个月 / 下月
+    if expr in ("下个月", "下月"):
+        if ref.month == 12:
+            year = ref.year + 1
+            month = 1
+        else:
+            year = ref.year
+            month = ref.month + 1
+        since = date(year, month, 1)
+        if month == 12:
+            until = date(year, 12, 31)
+        else:
+            until = date(year, month + 1, 1) - timedelta(days=1)
+        return DateRange(
+            since=since.isoformat(),
+            until=until.isoformat(),
             source="relative_time_parse",
         )
 
@@ -618,6 +695,14 @@ def parse_time_range(  # noqa: C901
     if expr == "今年":
         return DateRange(
             since=f"{ref.year}-01-01", until=ref.isoformat(), source="relative_time_parse"
+        )
+
+    # 明年
+    if expr == "明年":
+        return DateRange(
+            since=f"{ref.year + 1}-01-01",
+            until=f"{ref.year + 1}-12-31",
+            source="relative_time_parse",
         )
 
     # 最近

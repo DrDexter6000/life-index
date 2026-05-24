@@ -21,7 +21,6 @@ from tools.search_journals.query_preprocessor import (
 )
 from tools.search_journals.query_types import IntentType, QueryMode
 
-
 # ── normalize_query ────────────────────────────────────────────────────
 
 
@@ -172,10 +171,10 @@ class TestParseTimeRange:
         assert dr.until == "2026-03-31"
 
     def test_month_end(self):
-        """三月底 => 25..end."""
+        """三月底 => 21..end (Sub-PRD-2.C aligned with PRD §5.2)."""
         dr = parse_time_range("三月底", reference_date=self.REF_DATE)
         assert dr is not None
-        assert dr.since == "2026-03-25"
+        assert dr.since == "2026-03-21"
         assert dr.until == "2026-03-31"
 
     def test_month_late_february_nonleap(self):
@@ -453,3 +452,278 @@ class TestChineseTimeIntegration:
         since = date.fromisoformat(plan.date_range.since)
         diff = (self.REF_DATE - since).days
         assert 175 <= diff <= 185
+
+
+# ── Sub-PRD-2.C: Chinese temporal pattern normalization ────────────────
+
+
+class TestChineseTemporalPatterns:
+    """Comprehensive tests for Sub-PRD-2.C deterministic Chinese temporal patterns."""
+
+    REF_DATE = date(2026, 4, 18)
+
+    # ── X月份 / X月 (whole month) ──
+
+    def test_whole_month_chinese(self):
+        dr = parse_time_range("四月份", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-01"
+        assert dr.until == "2026-04-30"
+
+    def test_whole_month_chinese_short(self):
+        dr = parse_time_range("四月", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-01"
+        assert dr.until == "2026-04-30"
+
+    def test_whole_month_arabic(self):
+        dr = parse_time_range("4月份", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-01"
+        assert dr.until == "2026-04-30"
+
+    # ── X月初 (day 1-10) ──
+
+    def test_month_start_chinese(self):
+        dr = parse_time_range("四月初", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-01"
+        assert dr.until == "2026-04-10"
+
+    def test_month_start_january(self):
+        dr = parse_time_range("一月初", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-01-01"
+        assert dr.until == "2026-01-10"
+
+    # ── X月中 / X月中旬 (day 11-20) ──
+
+    def test_month_mid_full(self):
+        dr = parse_time_range("四月中旬", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-11"
+        assert dr.until == "2026-04-20"
+
+    def test_month_mid_short(self):
+        dr = parse_time_range("四月中", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-11"
+        assert dr.until == "2026-04-20"
+
+    def test_month_mid_december(self):
+        dr = parse_time_range("十二月中", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-12-11"
+        assert dr.until == "2026-12-20"
+
+    # ── X月底 / X月末 / X月下旬 (day 21-end) ──
+
+    def test_month_end_chinese(self):
+        dr = parse_time_range("四月底", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-21"
+        assert dr.until == "2026-04-30"
+
+    def test_month_end_alias(self):
+        dr = parse_time_range("四月末", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-21"
+        assert dr.until == "2026-04-30"
+
+    def test_month_late(self):
+        dr = parse_time_range("四月下旬", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-21"
+        assert dr.until == "2026-04-30"
+
+    def test_month_end_arabic(self):
+        dr = parse_time_range("4月底", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-21"
+        assert dr.until == "2026-04-30"
+
+    # ── 本月 / 这个月 ──
+
+    def test_this_month(self):
+        dr = parse_time_range("本月", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-01"
+        assert dr.until == "2026-04-30"
+
+    def test_this_month_long(self):
+        dr = parse_time_range("这个月", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-01"
+        assert dr.until == "2026-04-30"
+
+    # ── 上月 / 上个月 (cross-year) ──
+
+    def test_last_month(self):
+        dr = parse_time_range("上个月", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-01"
+        assert dr.until == "2026-03-31"
+
+    def test_last_month_short(self):
+        dr = parse_time_range("上月", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-01"
+        assert dr.until == "2026-03-31"
+
+    def test_last_month_cross_year_january(self):
+        ref = date(2026, 1, 15)
+        dr = parse_time_range("上个月", reference_date=ref)
+        assert dr is not None
+        assert dr.since == "2025-12-01"
+        assert dr.until == "2025-12-31"
+
+    # ── 下月 / 下个月 (cross-year) ──
+
+    def test_next_month(self):
+        dr = parse_time_range("下个月", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-05-01"
+        assert dr.until == "2026-05-31"
+
+    def test_next_month_short(self):
+        dr = parse_time_range("下月", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-05-01"
+        assert dr.until == "2026-05-31"
+
+    def test_next_month_cross_year_december(self):
+        ref = date(2026, 12, 15)
+        dr = parse_time_range("下个月", reference_date=ref)
+        assert dr is not None
+        assert dr.since == "2027-01-01"
+        assert dr.until == "2027-01-31"
+
+    # ── X月X号 / X月X日 (specific date) ──
+
+    def test_specific_date_arabic(self):
+        dr = parse_time_range("4月15日", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-15"
+        assert dr.until == "2026-04-15"
+
+    def test_specific_date_chinese(self):
+        dr = parse_time_range("四月十五日", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-15"
+        assert dr.until == "2026-04-15"
+
+    def test_specific_date_chinese_tenth(self):
+        dr = parse_time_range("三月十日", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-10"
+        assert dr.until == "2026-03-10"
+
+    def test_specific_date_chinese_thirty_first(self):
+        dr = parse_time_range("三月三十一日", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-03-31"
+        assert dr.until == "2026-03-31"
+
+    def test_specific_date_with_hao(self):
+        dr = parse_time_range("四月十五号", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-04-15"
+        assert dr.until == "2026-04-15"
+
+    # ── 今年 / 去年 / 明年 ──
+
+    def test_this_year(self):
+        dr = parse_time_range("今年", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2026-01-01"
+        assert dr.until == "2026-04-18"
+
+    def test_last_year(self):
+        dr = parse_time_range("去年", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2025-01-01"
+        assert dr.until == "2025-12-31"
+
+    def test_next_year(self):
+        dr = parse_time_range("明年", reference_date=self.REF_DATE)
+        assert dr is not None
+        assert dr.since == "2027-01-01"
+        assert dr.until == "2027-12-31"
+
+    # ── Invalid month / date fallback ──
+
+    def test_invalid_month_13(self):
+        assert parse_time_range("13月", reference_date=self.REF_DATE) is None
+
+    def test_invalid_month_0(self):
+        assert parse_time_range("0月", reference_date=self.REF_DATE) is None
+
+    def test_invalid_date_feb_31(self):
+        assert parse_time_range("2月31日", reference_date=self.REF_DATE) is None
+
+    def test_invalid_date_chinese_feb_31(self):
+        assert parse_time_range("二月三十一日", reference_date=self.REF_DATE) is None
+
+    def test_invalid_month_chinese_thirteen(self):
+        assert parse_time_range("十三月", reference_date=self.REF_DATE) is None
+
+    # ── Mixed query: date filter + keyword preservation ──
+
+    def test_build_plan_mixed_query(self):
+        plan = build_search_plan("二月份 团团", reference_date=self.REF_DATE)
+        assert plan.date_range is not None
+        assert plan.date_range.since == "2026-02-01"
+        assert plan.date_range.until == "2026-02-28"
+        assert "团团" in plan.keywords
+
+    def test_build_plan_mixed_query_end_of_month(self):
+        plan = build_search_plan("三月底 团团", reference_date=self.REF_DATE)
+        assert plan.date_range is not None
+        assert plan.date_range.since == "2026-03-21"
+        assert plan.date_range.until == "2026-03-31"
+        assert "团团" in plan.keywords
+
+    def test_build_plan_mixed_query_specific_date(self):
+        plan = build_search_plan("四月十五日 团团", reference_date=self.REF_DATE)
+        assert plan.date_range is not None
+        assert plan.date_range.since == "2026-04-15"
+        assert plan.date_range.until == "2026-04-15"
+        assert "团团" in plan.keywords
+
+    # ── Cross-year edge cases ──
+
+    def test_december_plus_next_month(self):
+        ref = date(2026, 12, 15)
+        dr = parse_time_range("12月", reference_date=ref)
+        assert dr is not None
+        assert dr.since == "2026-12-01"
+        assert dr.until == "2026-12-31"
+        dr2 = parse_time_range("下月", reference_date=ref)
+        assert dr2 is not None
+        assert dr2.since == "2027-01-01"
+        assert dr2.until == "2027-01-31"
+
+    def test_january_plus_last_month(self):
+        ref = date(2026, 1, 15)
+        dr = parse_time_range("1月", reference_date=ref)
+        assert dr is not None
+        assert dr.since == "2026-01-01"
+        assert dr.until == "2026-01-31"
+        dr2 = parse_time_range("上月", reference_date=ref)
+        assert dr2 is not None
+        assert dr2.since == "2025-12-01"
+        assert dr2.until == "2025-12-31"
+
+    def test_january_end_cross_year(self):
+        ref = date(2026, 1, 15)
+        dr = parse_time_range("一月底", reference_date=ref)
+        assert dr is not None
+        assert dr.since == "2026-01-21"
+        assert dr.until == "2026-01-31"
+
+    def test_december_end_cross_year(self):
+        ref = date(2026, 12, 15)
+        dr = parse_time_range("十二月底", reference_date=ref)
+        assert dr is not None
+        assert dr.since == "2026-12-21"
+        assert dr.until == "2026-12-31"

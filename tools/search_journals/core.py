@@ -1196,30 +1196,34 @@ def hierarchical_search(
                 result.setdefault("index_status", {})["auto_updated"] = False
 
     # Round 19 Phase 1-C Track B: Time expression parsing
+    # Sub-PRD-2.C: Prefer query_preprocessor date_range (broader pattern coverage)
+    # Fallback to time_parser for edge cases not handled by preprocessor.
     _time_filter = None
     if query and not date_from and not date_to:
-        from ..lib.time_parser import parse_time_expression
-
-        _time_filter = parse_time_expression(query, now=_now)
-        if _time_filter:
-            date_from = _time_filter.date_range.start.isoformat()
-            date_to = _time_filter.date_range.end.isoformat()
+        if _plan and _plan.date_range:
+            date_from = _plan.date_range.since
+            date_to = _plan.date_range.until
             result["time_parsed"] = {
-                "matched_span": _time_filter.matched_span,
+                "matched_span": _plan.date_range.source,
                 "date_from": date_from,
                 "date_to": date_to,
             }
+        else:
+            from ..lib.time_parser import parse_time_expression
+
+            _time_filter = parse_time_expression(query, now=_now)
+            if _time_filter:
+                date_from = _time_filter.date_range.start.isoformat()
+                date_to = _time_filter.date_range.end.isoformat()
+                result["time_parsed"] = {
+                    "matched_span": _time_filter.matched_span,
+                    "date_from": date_from,
+                    "date_to": date_to,
+                }
             # NOTE: Topic inference from cleaned query was attempted but
             # reverted because keyword-based topic matching is unreliable
             # (e.g. "开发" maps to "create" but user intent may be "work").
             # GQ53 remains a failure due to ranking, not time parsing.
-
-    # Phase 4 T4.1: Consume search_plan.date_range when no explicit date params
-    if _plan and _plan.date_range and not date_from and not date_to:
-        if _plan.date_range.since:
-            date_from = _plan.date_range.since
-        if _plan.date_range.until:
-            date_to = _plan.date_range.until
 
     candidate_paths = build_l0_candidate_set(
         year=year, month=month, topic=topic, date_from=date_from, date_to=date_to
