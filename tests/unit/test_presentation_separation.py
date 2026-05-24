@@ -1,9 +1,10 @@
 """Verify ranking layer returns full results, truncation only in presentation layer.
 
-Phase 2 (Task 3): Separation of ranking and presentation concerns.
+Per CHARTER §1.11: retrieval/ranking layer returns complete candidate set.
+Truncation lives only in the presentation layer (tools/search_journals/__main__.py).
 - ranking.py must return ALL results (no internal truncation)
-- core.py must truncate to MAX_RESULTS_DEFAULT for backward compat
-- CLI must support --offset + has_more + total_available
+- core.py must NOT truncate — no MAX_RESULTS_DEFAULT in retrieval path
+- CLI presentation layer must support --offset + has_more + total_matches
 """
 
 from pathlib import Path
@@ -95,14 +96,20 @@ def test_no_truncation_in_ranking():
     ), "ranking.py still contains [:max_results] internal truncation"
 
 
-def test_core_truncates_to_default():
-    """core.py must truncate results to MAX_RESULTS_DEFAULT for backward compat."""
+def test_core_no_truncation_to_default():
+    """core.py must NOT use MAX_RESULTS_DEFAULT for retrieval truncation.
+
+    Per CHARTER §1.11 rule #2: retrieval/ranking layer returns complete
+    ranked candidate set; truncation lives only in the presentation layer
+    (tools/search_journals/__main__.py). The old model had core.py
+    hard-truncate to MAX_RESULTS_DEFAULT — that is now a violation.
+    """
     core_file = REPO_ROOT / "tools" / "search_journals" / "core.py"
     text = core_file.read_text(encoding="utf-8")
-    # After refactor, core.py should have a truncation line
-    assert (
-        "MAX_RESULTS_DEFAULT" in text
-    ), "core.py must reference MAX_RESULTS_DEFAULT for backward-compat truncation"
+    assert "MAX_RESULTS_DEFAULT" not in text, (
+        "core.py must not reference MAX_RESULTS_DEFAULT — "
+        "truncation lives in presentation layer only"
+    )
 
 
 def test_cli_has_offset_param():
