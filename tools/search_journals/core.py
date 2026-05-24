@@ -708,9 +708,10 @@ def _is_pure_temporal_query(plan: Any | None) -> bool:
         return False
     from .query_preprocessor import extract_time_expression
 
-    if not plan.keywords:
+    keywords = getattr(plan, "keywords", None)
+    if not keywords:
         return True
-    return all(extract_time_expression(kw) == kw for kw in plan.keywords)
+    return all(extract_time_expression(kw) == kw for kw in keywords)
 
 
 def _augment_with_structured_metadata(
