@@ -36,7 +36,6 @@ from ..lib.search_constants import (
     NON_RRF_MIN_SCORE,
     SEMANTIC_WEIGHT_DEFAULT,
     FTS_WEIGHT_DEFAULT,
-    MAX_RESULTS_DEFAULT,
     STRUCTURED_RETRIEVAL_ENABLED,
 )
 
@@ -580,6 +579,8 @@ def _search_level_1(
 
     result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
     result["total_found"] = len(result["l1_results"])
+    result["total_matches"] = len(result["l1_results"])
+    result["total_available"] = len(result["l1_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
     return result
 
@@ -638,6 +639,8 @@ def _search_level_2(
         result["l2_total_available"] = l2_response.get("total_available", 0)
 
     result["performance"]["l2_time_ms"] = round((time.time() - l2_start) * 1000, 2)
+    result["total_matches"] = len(result["l2_results"])
+    result["total_available"] = len(result["l2_results"])
     result["total_found"] = len(result["l2_results"])
     result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
     return result
@@ -758,17 +761,20 @@ def _finalize_level3_results(
     explain: bool,
     is_fallback: bool = False,
 ) -> None:
-    """Truncate, promote, explain, and log merged results. Mutates result in place."""
-    result["total_found"] = len(result["merged_results"])
-    result["total_available"] = len(result["merged_results"])
+    """Promote, explain, and log merged results. Mutates result in place.
 
-    if len(result["merged_results"]) > MAX_RESULTS_DEFAULT:
-        result["has_more"] = True
-        result["merged_results"] = result["merged_results"][:MAX_RESULTS_DEFAULT]
-    else:
-        result["has_more"] = False
+    Truncation is deferred to the presentation layer (__main__.py).
+    This layer records total_matches (complete candidate set count) and
+    leaves merged_results at full size.  Per CHARTER §1.11 rule #2 and
+    §3.1, the retrieval/ranking layer must NOT hard-cap the candidate
+    set.
+    """
+    total_matches = len(result["merged_results"])
+    result["total_matches"] = total_matches
+    result["total_available"] = total_matches
+    result["total_found"] = total_matches
+    result["has_more"] = False
 
-    result["total_found"] = len(result["merged_results"])
     result["no_confident_match"] = _compute_no_confident_match(result["merged_results"])
 
     from .title_promotion import apply_title_promotion
@@ -1049,6 +1055,9 @@ def hierarchical_search(
         "semantic_results": [],
         "merged_results": [],
         "total_found": 0,
+        "total_matches": 0,
+        "total_available": 0,
+        "has_more": False,
         "semantic_available": semantic,
         "performance": {},
         "warnings": [],  # Phase 2C: 降级警告收集
