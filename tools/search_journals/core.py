@@ -697,6 +697,22 @@ def _date_range_dict_from_plan(plan: Any | None) -> dict[str, str] | None:
     return dr if dr else None
 
 
+def _is_pure_temporal_query(plan: Any | None) -> bool:
+    """Return True when the query contains only a time expression.
+
+    Detects queries like '四月份', '3月4号', '2026-01-28' where the
+    entire meaningful content is a temporal expression.  In these cases
+    the keyword pipeline should fall back to date-only L2 retrieval.
+    """
+    if plan is None or plan.date_range is None:
+        return False
+    from .query_preprocessor import extract_time_expression
+
+    if not plan.keywords:
+        return True
+    return all(extract_time_expression(kw) == kw for kw in plan.keywords)
+
+
 def _augment_with_structured_metadata(
     l2_results: list[dict[str, Any]],
     candidate_paths: set[str] | None,
@@ -759,6 +775,12 @@ def _finalize_level3_results(
     is_fallback: bool = False,
 ) -> None:
     """Truncate, promote, explain, and log merged results. Mutates result in place."""
+    # Date-only branch: sort by freshness (date descending)
+    if not query:
+        result["merged_results"].sort(
+            key=lambda r: str(r.get("date") or r.get("metadata", {}).get("date", "")),
+            reverse=True,
+        )
     result["total_found"] = len(result["merged_results"])
     result["total_available"] = len(result["merged_results"])
 
@@ -1228,6 +1250,10 @@ def hierarchical_search(
     candidate_paths = build_l0_candidate_set(
         year=year, month=month, topic=topic, date_from=date_from, date_to=date_to
     )
+
+    # B-C narrow rework: pure temporal query → date-only branch
+    if _plan and _plan.date_range and _is_pure_temporal_query(_plan):
+        query = None
 
     # ── Level 1: 索引层（向后兼容，提前返回） ──
     if level == 1:
