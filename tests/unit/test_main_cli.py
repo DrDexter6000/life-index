@@ -260,3 +260,59 @@ class TestApplyPresentationLayer:
         assert result["total_matches"] >= len(result["merged_results"])
         assert result["total_matches"] == 30
         assert len(result["merged_results"]) == 7
+
+    def test_has_more_false_for_tail_page_offset(self):
+        """has_more must be False when offset+displayed reaches total_matches.
+
+        Lead review finding 2: has_more semantics were based on displayed < total_matches,
+        which breaks for tail pages with offset.  Correct invariant:
+        has_more == (offset + displayed < total_matches).
+        """
+        result = {
+            "merged_results": [
+                {"path": f"/test/doc_{i}.md", "score": 0.9 - i * 0.01} for i in range(20)
+            ],
+            "total_matches": 20,
+            "total_found": 20,
+            "total_available": 20,
+            "has_more": True,
+        }
+        _apply_presentation_layer(result, limit=0, offset=10)
+
+        assert len(result["merged_results"]) == 10
+        assert result["has_more"] is False
+        assert result["display_summary"] == "Showing 10 of 20 results"
+
+    def test_has_more_true_for_mid_page_with_offset(self):
+        """has_more must be True when offset+displayed < total_matches."""
+        result = {
+            "merged_results": [
+                {"path": f"/test/doc_{i}.md", "score": 0.9 - i * 0.01} for i in range(25)
+            ],
+            "total_matches": 25,
+            "total_found": 25,
+            "total_available": 25,
+            "has_more": False,
+        }
+        _apply_presentation_layer(result, limit=5, offset=5)
+
+        assert len(result["merged_results"]) == 5
+        assert result["has_more"] is True
+        assert result["display_summary"] == "Showing 5 of 25 results"
+
+    def test_has_more_false_for_exact_page_boundary(self):
+        """has_more must be False when offset+displayed equals total_matches (exact boundary)."""
+        result = {
+            "merged_results": [
+                {"path": f"/test/doc_{i}.md", "score": 0.9 - i * 0.01} for i in range(15)
+            ],
+            "total_matches": 15,
+            "total_found": 15,
+            "total_available": 15,
+            "has_more": True,
+        }
+        _apply_presentation_layer(result, limit=10, offset=5)
+
+        assert len(result["merged_results"]) == 10
+        assert result["has_more"] is False
+        assert result["display_summary"] == "Showing 10 of 15 results"

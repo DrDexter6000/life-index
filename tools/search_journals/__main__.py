@@ -53,7 +53,7 @@ def _apply_presentation_layer(result: dict, *, limit: int | None, offset: int = 
     displayed = len(all_results)
     result["merged_results"] = all_results
     result["total_found"] = displayed
-    result["has_more"] = displayed < total_matches
+    result["has_more"] = (offset + displayed) < total_matches
     result["total_available"] = total_matches
 
     if total_matches > 0:
