@@ -439,6 +439,78 @@ class TestCLISemanticPolicyFlag:
 
 
 # ---------------------------------------------------------------------------
+# F2. CLI --semantic / --no-semantic flag defaults (v1.2 rework)
+# ---------------------------------------------------------------------------
+
+
+class TestCLISemanticDefaultKeywordOnly:
+    """CLI must default to keyword-only (semantic=False) per CHARTER §1.11."""
+
+    def _run_cli(self, argv: list[str]) -> dict:
+        import io
+        import sys
+        from tools.search_journals.__main__ import main
+
+        mock_result = {
+            "success": True,
+            "merged_results": [],
+            "total_found": 0,
+            "total_available": 0,
+            "semantic_policy": "fallback",
+            "semantic_fallback_used": False,
+            "query_params": {},
+            "l1_results": [],
+            "l2_results": [],
+            "l3_results": [],
+            "semantic_results": [],
+            "performance": {},
+            "warnings": [],
+            "entity_hints": [],
+            "search_plan": None,
+            "ambiguity": {"has_ambiguity": False, "items": []},
+            "hints": [],
+        }
+
+        with (
+            patch(
+                "tools.search_journals.__main__.hierarchical_search",
+                return_value=mock_result,
+            ) as mock_search,
+            patch("sys.argv", argv),
+        ):
+            captured = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = captured
+            try:
+                main()
+            except SystemExit:
+                pass
+            finally:
+                sys.stdout = old_stdout
+            return mock_search.call_args[1]
+
+    def test_cli_default_semantic_false(self):
+        """Regression: bare `life-index search "query"` must pass semantic=False."""
+        kwargs = self._run_cli(["search", "--query", "雁涵 团团"])
+        assert kwargs["semantic"] is False
+
+    def test_cli_semantic_flag_enables(self):
+        """`--semantic` flag must pass semantic=True."""
+        kwargs = self._run_cli(["search", "--query", "雁涵 团团", "--semantic"])
+        assert kwargs["semantic"] is True
+
+    def test_cli_no_semantic_flag_valid(self):
+        """`--no-semantic` flag must pass semantic=False (backward compat)."""
+        kwargs = self._run_cli(["search", "--query", "雁涵 团团", "--no-semantic"])
+        assert kwargs["semantic"] is False
+
+    def test_cli_semantic_and_no_semantic_both_set(self):
+        """If both flags are set, --no-semantic takes precedence (explicit disable)."""
+        kwargs = self._run_cli(["search", "--query", "雁涵 团团", "--semantic", "--no-semantic"])
+        assert kwargs["semantic"] is False
+
+
+# ---------------------------------------------------------------------------
 # H. Fallback semantic unavailable warning (P2 review fix)
 # ---------------------------------------------------------------------------
 

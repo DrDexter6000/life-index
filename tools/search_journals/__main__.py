@@ -57,7 +57,7 @@ Examples:
     python -m tools.search_journals --query "重构" --level 3
     python -m tools.search_journals --topic work --project Life-Index
     python -m tools.search_journals --date-from 2026-01-01 --date-to 2026-03-04
-    python -m tools.search_journals --query "学习笔记" --no-semantic
+    python -m tools.search_journals --query "学习笔记" --semantic
         """,
     )
 
@@ -88,9 +88,14 @@ Examples:
         help="禁用 FTS 索引（回退到文件扫描，默认启用 FTS）",
     )
     parser.add_argument(
+        "--semantic",
+        action="store_true",
+        help="启用语义搜索（默认关闭，per CHARTER §1.11）",
+    )
+    parser.add_argument(
         "--no-semantic",
         action="store_true",
-        help="禁用语义搜索（默认启用）",
+        help="显式禁用语义搜索（默认已关闭，此标志保持向后兼容）",
     )
     parser.add_argument(
         "--semantic-policy",
@@ -193,7 +198,7 @@ Examples:
                 month=args.month,
                 level=args.level,
                 use_index=not args.no_index,
-                semantic=not args.no_semantic,
+                semantic=args.semantic and not args.no_semantic,
                 semantic_weight=args.semantic_weight,
                 fts_weight=args.fts_weight,
                 explain=args.explain,  # Task 2.1
