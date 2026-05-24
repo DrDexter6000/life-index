@@ -3,8 +3,10 @@
 > 本文档为 AI 编码代理提供**快速导航入口**。详细规范已归源到 SSOT 文档，本文件仅保留指引与 Agent 行为约束。
 > **最后更新**: 2026-05-21 | **AGENTS.md 文档版本**: v3.6 | **状态**: 活跃维护
 >
+> **默认启动入口**：若 `.agent-governance/maestro/RULE_KERNEL.md` 存在，先读该 Kernel；本文件只作为 Kernel 触发矩阵命中的项目参考，不再默认全量必读。[See RULE_KERNEL]
+>
 > 本地专属配置（含部署路径与 Agent 并行治理规则）见 `.agents.local.md`（已 gitignored，仅本地可用）。
-> 若 `.agents.local.md` 存在，所有 Agent 在执行任何**非只读**任务前必须先读取它，并遵守其中指向的本地治理层。
+> 若 `.agents.local.md` 存在，按 `RULE_KERNEL.md` 触发矩阵读取；非只读任务仍必须遵守其中指向的本地安全边界。
 
 ---
 
