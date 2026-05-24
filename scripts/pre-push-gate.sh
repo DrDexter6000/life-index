@@ -85,9 +85,13 @@ echo "Using LIFE_INDEX_DATA_DIR: $LIFE_INDEX_DATA_DIR"
 
 # === tests.yml hard checks (with L1 outer timeout) ===
 # Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 1200s; eval 600s
-run_check "pytest -m blocker"    timeout 900 python -m pytest -m blocker -q --timeout=120 --basetemp="$PYTEST_BASETEMP/blocker"
-run_check "pytest -m contract"   timeout 1200 python -m pytest -m contract -q --timeout=120 --basetemp="$PYTEST_BASETEMP/contract"
+mkdir -p "$PYTEST_BASETEMP/blocker"
+run_check "pytest -m blocker"    timeout 900 python -m pytest -o addopts="" -ra -q --strict-markers --strict-config -m blocker --timeout=120 --basetemp="$PYTEST_BASETEMP/blocker"
+mkdir -p "$PYTEST_BASETEMP/contract"
+run_check "pytest -m contract"   timeout 1200 python -m pytest -o addopts="" -ra -q --strict-markers --strict-config -m contract --timeout=120 --basetemp="$PYTEST_BASETEMP/contract"
+mkdir -p "$PYTEST_BASETEMP/eval"
 run_check "search-eval-gate"     timeout 600 python -m pytest \
+    -o addopts="" -ra -q --strict-markers --strict-config \
     tests/unit/test_eval_gate.py \
     tests/unit/test_eval_runner.py \
     tests/unit/test_eval_llm.py \
@@ -98,7 +102,7 @@ run_check "search-eval-gate"     timeout 600 python -m pytest \
     tests/eval/test_eval_qrels.py \
     tests/eval/test_eval_export.py \
     tests/eval/test_eval_serialization.py \
-    -q --timeout=120 --basetemp="$PYTEST_BASETEMP/eval"
+    --timeout=120 --basetemp="$PYTEST_BASETEMP/eval"
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
