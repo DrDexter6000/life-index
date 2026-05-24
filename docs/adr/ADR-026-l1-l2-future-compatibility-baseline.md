@@ -3,8 +3,7 @@
 > **Status**: Accepted as strategic direction; Charter amendment pending RFC/cooldown
 > **Date**: 2026-05-13
 > **Decision type**: Architecture / governance boundary
-> **Context record**: `docs/concepts/CN-002-life-index-terminal-architecture-discussion-record.md`
-> **Review record**: `docs/concepts/CN-003-life-index-future-compatibility-review-record.md`
+> **Context / review records**: archived in private local governance docs; this ADR is the public architecture decision.
 > **RFC**: `docs/rfc/RFC-2026-05-13-l1-l2-future-compatibility-baseline.md`
 
 ## Context

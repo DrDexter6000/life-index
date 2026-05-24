@@ -413,19 +413,16 @@ abstract: "100字内摘要"
 - [bootstrap-manifest.json](../bootstrap-manifest.json) - Authority anchor；onboarding 必须先刷新此文件
 - [AGENT_ONBOARDING.md](../AGENT_ONBOARDING.md) - 基础版 Agent 安装与初始化流程
 - [API.md](./API.md) - 工具接口详细文档
-- [AGENTS.md](../AGENTS.md) - 开发者上下文；交互范式已迁至 CHARTER §1.3 + §2
 - [SKILL.md](../SKILL.md) — Agent 技能定义
 - [README.md](../README.md) — 用户入口与安装提示
 - [ENTITY_GRAPH.md](./ENTITY_GRAPH.md) — Entity Graph 操作规范（别名准入、写入铁律、验证清单）
-- [VERSIONING.md](./VERSIONING.md) — 版本治理规范（保守 SemVer、release checklist、tag policy）
+- [VERSIONING.md](./VERSIONING.md) — 公开版本语义与 release artifact contract
 - [ADR Index](./adr/INDEX.md) — ADR 分类索引（🔒 Invariant / 📋 Decision）
 - [ADR-026](./adr/ADR-026-l1-l2-future-compatibility-baseline.md) — L1/L2 Future Compatibility Baseline
 - [RFC-2026-05-13](./rfc/RFC-2026-05-13-l1-l2-future-compatibility-baseline.md) — L1/L2 future compatibility Charter/Architecture/API proposal
-- [CN-002](./concepts/CN-002-life-index-terminal-architecture-discussion-record.md) — 终局形态战略讨论全文归档
-- [CN-003](./concepts/CN-003-life-index-future-compatibility-review-record.md) — 副审 / DeepSeek 审计意见全文归档
 
 ---
 
 > **校对日期**: 2026-05-07
 > **校对人**: GLM-5.1 / 搜索架构文档收束
-> **对应状态**: 搜索架构从"双管道"表述统一为 S0-S3 分层模型；zero-result semantic fallback 已 shipped；official eval gate 保持 keyword/default。当前 CHARTER v1.2.0，search_constants.py **50** 常量。
+> **对应状态**: 搜索架构从"双管道"表述统一为 S0-S3 分层模型；zero-result semantic fallback 已 shipped；official eval gate 保持 keyword/default。当前 CHARTER v1.6.0，search_constants.py **50** 常量。

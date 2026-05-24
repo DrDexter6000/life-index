@@ -70,6 +70,21 @@ fts_index/
 docs/.dev-archive/
 /.archive/
 
+# ----- 本地诊断 / 过程报告（不公开）-----
+scripts/SEARCH_DIAGNOSTIC_REPORT.md
+tests/nl_query_diagnosis.md
+tests/fixtures/eval/synthetic/stage2a/reject_log.md
+tests/fixtures/eval/synthetic/stage2b/meta_issue_log.md
+tools/dev/anchor-drift-sweep.md
+tools/dev/block4-pilot-report.md
+tools/dev/month-part-alignment-audit.md
+tools/dev/v4-recall-diff.md
+tools/dev/v4-regression-analysis.md
+docs/charter-history/
+docs/concepts/CN-001-tool-scoped-progressive-disclosure.md
+docs/concepts/CN-002-life-index-terminal-architecture-discussion-record.md
+docs/concepts/CN-003-life-index-future-compatibility-review-record.md
+
 # ----- 内部战略与开发文档（不公开）-----
 .strategy/
 
@@ -114,6 +129,7 @@ Kimi_here.bat
 .handoff.md
 
 # ----- 本地 Agent 专属配置 -----
+AGENTS.md
 .agents.local.md
 
 # ----- 本地 Agent 治理 / 并行任务运行层（不公开）-----

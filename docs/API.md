@@ -2,7 +2,7 @@
 
 > **本文档职责**: 工具接口规范 SSOT，所有工具的参数、返回值、错误码定义
 > **目标读者**: Agent、开发者
-> **SSOT 引用**: SKILL.md、AGENTS.md 应引用本文档，不重复定义参数
+> **SSOT 引用**: SKILL.md 与公开 Agent 入口文档应引用本文档，不重复定义参数
 
 ---
 
@@ -868,7 +868,7 @@ Note: `E0303` / empty results indicate successful execution with no matches; cal
 
 #### schema_version Policy
 
-`search` emits a top-level `schema_version` field set to `"m16.search.v0"`. Schema versioning remains additive-only in sub-structures:
+`search` emits a top-level `schema_version` field set to `"v1.1.1"`. Schema versioning remains additive-only in sub-structures:
 - `evidence_pack.schema_version = "1.0.0"` (when `--include-evidence` used on smart-search, which internally calls search).
 - Top-level field names and types are stable; new fields may be added without a version bump.
 - A `schema_version` bump will accompany any backward-incompatible change.
@@ -3468,7 +3468,7 @@ python -m tools recall --mode {default|recall|deep} --query "..." [--use-llm]
 
 #### schema_version Policy
 
-`entity` emits a top-level `schema_version` field set to `"m16.entity.v0"`. Subcommand output shapes are stable; new fields in `data` objects may be added without a version bump. A `schema_version` bump will accompany any backward-incompatible change.
+`entity` emits a top-level `schema_version` field set to `"v1.1.1"`. Subcommand output shapes are stable; new fields in `data` objects may be added without a version bump. A `schema_version` bump will accompany any backward-incompatible change.
 
 <!-- /M16-CONTRACT -->
 
@@ -3924,9 +3924,9 @@ life-index version
 
 ```json
 {
-  "package_version": "1.1.0",
+  "package_version": "1.1.1",
   "bootstrap_manifest": {
-    "repo_version": "1.1.0",
+    "repo_version": "1.1.1",
     "onboarding_schema_version": "2.0",
     "manifest_schema": 1,
     "requires_checkout_sync": true,
@@ -3935,12 +3935,12 @@ life-index version
     "required_authority_docs": [
       "bootstrap-manifest.json",
       "AGENT_ONBOARDING.md",
-      "AGENT_ONBOARDING_WEB.md",
       "SKILL.md",
       "docs/API.md",
-      "docs/PRODUCT_BOUNDARY.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ENTITY_GRAPH.md",
+      "docs/VERSIONING.md",
       "tools/lib/AGENTS.md",
-      "docs/UPGRADE.md",
       "README.md"
     ]
   }

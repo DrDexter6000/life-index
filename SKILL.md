@@ -34,7 +34,7 @@ triggers:
 | 实体图谱 | "列出实体"、"解析人物关系"、"entity graph"、"谁是谁的..." | `entity` |
 | 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary" | `generate_abstract` |
 | 修订历史 | "查看修订历史"、"编辑记录" | `edit_journal` |
-| 定时报告 | 日报/周报/月报/年报 | 参考 [SCHEDULE.md](references/schedule/SCHEDULE.md) |
+| 定时报告 | 日报/周报/月报/年报 | Life Index 无内置 scheduler；由宿主平台定时能力编排 CLI |
 
 ---
 
@@ -469,7 +469,6 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | [AGENT_ONBOARDING.md](AGENT_ONBOARDING.md) | 基础安装、初始化、repair / route 判断入口 |
 | [API.md](docs/API.md) | 工具 API 接口、参数详情、错误码与恢复策略 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、核心原则、关键决策；**§1.5 定义人-Agent-CLI 三层信息流交互范式** |
-| [SCHEDULE.md](references/schedule/SCHEDULE.md) | 定时任务配置（日报/周报/月报） |
 | [WEATHER_FLOW.md](references/WEATHER_FLOW.md) | 天气处理详细流程与故障 Fallback |
 
 ---

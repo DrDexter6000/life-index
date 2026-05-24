@@ -339,7 +339,6 @@ life-index entity --delete --id ENTITY_ID
 | [`ADR-024`](./adr/ADR-024-entity-schema-v0.md) | Schema v1 frozen（5 类型、字段定义、ID 规则） | 本文档聚焦**操作流程与写入约束**，不修改 schema |
 | [`docs/API.md`](./API.md) §entity | CLI 参数、返回值、错误码 | 本文档聚焦**何时调用、调用前检查什么、生产约束** |
 | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) | 技术实现 SSOT（架构、模块结构） | 本文档是 Entity Graph 的操作规范，被 ARCHITECTURE 引用 |
-| [`AGENTS.md`](../AGENTS.md) | Agent 开发指南与行为约束 | 本文档是 Agent 操作 entity graph 的具体执行规则 |
 | [`CHARTER.md`](../CHARTER.md) | 最高治理文件 | 本文档从属于宪章；数据主权、纯文本永久、CLI SSOT 等不变量由宪章保证 |
 
 ---

@@ -140,7 +140,7 @@ Three different defaults across three layers reflect the absence of a single sou
 | CLI display layer | hard truncate 20 | default top-20 + "showing 20 of N, use --limit 0" + opt-out flag |
 | Documentation | no §1.11 reference | CHARTER §1.11 added, ARCHITECTURE.md updated |
 
-These code changes are **NOT in this ADR's scope**. They will be driven by the new v1.2.0 cycle PRD (renamed: `.strategy/cli/v1.2.0_搜索truthfulness与recall-first/`).
+These code changes are **NOT in this ADR's scope**. They will be driven by the private local v1.2.0 cycle PRD.
 
 ---
 

@@ -494,7 +494,7 @@ python3 -m venv .venv
 | 查看版本 | `life-index --version` |
 | 健康检查 | `life-index health` |
 | 记录日志 | `life-index write --data '{...}'` |
-| 搜索日志（关键词 + 语义） | `life-index search --query "关键词"` |
+| 搜索日志（默认关键词；语义仅作 fallback/显式模式） | `life-index search --query "关键词"` |
 | 搜索 + 时间/主题预过滤 | `life-index search --query "关键词" --year 2026 --topic work` |
 | 仅关键词搜索 | `life-index search --query "关键词" --no-semantic` |
 | 生成索引树（月/年/根） | `life-index generate-index --month 2026-03` |
@@ -551,7 +551,6 @@ python3 -m venv .venv
 | 文档 | 适用场景 |
 |:---|:---|
 | **[SKILL.md](./SKILL.md)** | Agent 技能定义、工具接口、工作流 |
-| **[AGENTS.md](./AGENTS.md)** | AI 编码代理上下文 |
 | **[API.md](./docs/API.md)** | 工具参数和返回值契约 |
 | **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** | 架构设计与关键决策 (ADR) |
 | **[ENTITY_GRAPH.md](./docs/ENTITY_GRAPH.md)** | Entity Graph 操作规范 |

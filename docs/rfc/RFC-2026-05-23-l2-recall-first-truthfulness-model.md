@@ -230,12 +230,12 @@ CTO 在 v1.2.0 cycle2 M1 PRD 中错误地假设了 baseline ~0.6 大致均匀分
 | 文档                                                                      | 变更类型                                                                                        | 备注                 |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------ |
 | `CHARTER.md`                                                            | 新增 §1.11 + §3.2 末尾加 amendment note + header 版本 v1.5.0→v1.6.0 + 修订次数 5→6 + §5.3 保护清单追加 §1.11 | 主要载体               |
-| `docs/charter-history/CHARTER-1.6.0-recall-first-truthfulness-model.md` | 新建归档                                                                                        | per §5.2 流程 #5     |
+| Private local charter-history archive                                    | 新建归档                                                                                        | per §5.2 流程 #5     |
 | `docs/adr/ADR-028-l2-recall-first-keyword-pure.md`                      | 新建                                                                                          | 架构决策记录             |
 | `docs/ARCHITECTURE.md`                                                  | 修订 L2 default behavior 描述                                                                   | 反映 §1.11           |
 | `docs/rfc/RFC-2026-05-23-l2-recall-first-truthfulness-model.md`         | 本文件                                                                                         | RFC 载体             |
-| `.strategy/cli/v1.2.0_搜索多信号融合/M1_PRD.md`                                | 加 superseded marker                                                                         | v1.2.0 cycle2 范围作废 |
-| `.strategy/cli/v1.2.0_搜索truthfulness与recall-first/README.md`            | 新建占位                                                                                        | 新 v1.2.0 cycle 起点  |
+| Private local v1.2.0 search-fusion PRD                                    | 加 superseded marker                                                                         | v1.2.0 cycle2 范围作废 |
+| Private local v1.2.0 truthfulness/recall-first plan                        | 新建占位                                                                                        | 新 v1.2.0 cycle 起点  |
 
 ### 5.2 Invariants 受影响
 

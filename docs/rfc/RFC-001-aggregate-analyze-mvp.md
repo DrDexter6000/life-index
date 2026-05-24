@@ -323,7 +323,7 @@ Therefore, **proceed to C (aggregate/analyze MVP) before D**.
 
 - **B' evidence**: `.agent-reports/realdata-search-quality/B_PRIME_20_QUERY_CAPABILITY_DIAGNOSIS.md`
 - **C design draft**: `.agent-reports/realdata-search-quality/C_DESIGN_AGGREGATE_ANALYZE_MVP_2026-05-12.md`
-- **Governance context**: `AGENTS.md`, `.agents.local.md`, `.agent-governance/README.md`, `.agent-governance/ACTIVE_SESSIONS.md`, `.agent-governance/maestro/MAESTRO-ORCHESTRATION-SOP.md`
+- **Governance context**: private local governance docs were used during implementation review and are not part of the public product/API contract.
 - **Public API / Architecture context**: `docs/API.md`, `docs/ARCHITECTURE.md`, `docs/ENTITY_GRAPH.md`
 
 ## Appendix C: C-Phase Implementation Notes

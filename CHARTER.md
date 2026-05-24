@@ -6,7 +6,7 @@
 > **下次评审**：2026-07-23（每季度一次）
 > **修订次数**：6
 > **最近修订**：2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）
-> **此前修订**：2026-05-20 — §5 修订流程改为 substantive gate（RFC-2026-05-20-governance-scope-correction；废除 24h cooldown 与三方评审覆盖机制）
+> **此前修订**：2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
 
 ---
 
@@ -22,7 +22,7 @@ Life Index 不是一个 side project。它承载着**一位父亲写给女儿的
 
 ## 第零条：本宪章的地位与效力
 
-1. **最高效力**：本宪章是 Life Index 项目的**最高治理文件**。在与任何其他项目文档（`docs/ARCHITECTURE.md`、`docs/API.md`、`SKILL.md`、`AGENTS.md`、任何 `docs/adr/ADR-*.md`）冲突时，**以本宪章为准**。
+1. **最高效力**：本宪章是 Life Index 项目的**最高治理文件**。在与任何其他公开项目文档（`docs/ARCHITECTURE.md`、`docs/API.md`、`SKILL.md`、任何 `docs/adr/ADR-*.md`）冲突时，**以本宪章为准**。
 
 2. **跨越代码**：本宪章高于代码实现。若代码违反本宪章，代码错、宪章对 —— 必须修改代码，不得反向修改宪章以迁就代码。
 
@@ -506,7 +506,7 @@ Presentation（呈现层）：按调用方需求截断、格式化
 4. **版本递增**：CHARTER.md 头部版本号递增，`修订次数` +1
 5. **联动更新**：
    - 更新 `docs/ARCHITECTURE.md` 对应实现章节
-   - 归档变更说明到 `docs/charter-history/`
+   - 将公开安全的 rationale 留在 `CHARTER.md` / public ADR / public RFC；过程性修订记录归档到本地私有治理层
 
 ### §5.3 不可修订的章节
 
@@ -542,9 +542,6 @@ CHARTER.md（本文件，最高权威）
     ├── SKILL.md（Agent 技能入口）
     │       └── AGENT_ONBOARDING.md（Agent 安装流程）
     │
-    ├── AGENTS.md（开发者/AI 代理上下文）
-    │
-    └── .strategy/cli/round-*.md（轮次 PRD 与执行文档）
 ```
 
 **冲突仲裁**：上层文档覆盖下层。CHARTER 是最高。
@@ -589,5 +586,5 @@ CHARTER.md（本文件，最高权威）
 *修订 2：Round 19 Phase 1-C — §1.8 长期主义原则（2026-05-02）*
 *修订 3：Round 20 — §1.9 Agent-Native 模块原则（2026-05-14，作者授权跳过 §5.2 24h cooldown）*
 *修订 4：Round 20 — §1.10 模块-基础层契约边界（2026-05-14，记录的三方评审覆盖 §5.2 24h cooldown，详见 RFC）*
-*修订 5：2026-05-20 — §5 修订流程改为 substantive gate（RFC-2026-05-20-governance-scope-correction；废除 24h cooldown 与三方评审覆盖机制）*
+*修订 5：2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）*
 *下一次强制性评审：2026-07-23*

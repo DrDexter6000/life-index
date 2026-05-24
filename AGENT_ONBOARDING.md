@@ -424,7 +424,7 @@ Run this step **only after** Steps 5.1-5.4 succeed. This step is optional — sk
 
 Run this step **only after** Steps 5.1-5.5 complete. This step is optional.
 
-If the user wants recurring automation (monthly/yearly reports, periodic index rebuilds), hand off to `references/schedule/SCHEDULE.md`.
+If the user wants recurring automation (monthly/yearly reports, periodic index rebuilds), explain that Life Index has no built-in scheduler and should be orchestrated by the host platform's scheduling mechanism.
 
 **Boundaries**: installation is already complete and separate from automation. Life Index has no built-in scheduler — automation depends on host-platform scheduling. User may enable only the tasks they want. Automation failure must not be reported as installation failure.
 

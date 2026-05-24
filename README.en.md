@@ -275,12 +275,14 @@ Life Index follows a strict *local-first* policy, with complete separation betwe
 
 ### The Foundation, Already Built
 
-**CLI Core v1.0.0** is live, stable, and in real daily use — not a prototype, not a demo. It's a system with 2,400+ unit tests, green CI, and deliberate, disciplined engineering:
+**CLI Core v1.1.1** is live, stable, and in real daily use — not a prototype, not a demo. It's a system with 2,400+ unit tests, green CI, and deliberate, disciplined engineering:
 
 | Capability | Status | Notes |
 |:---|:---:|:---|
 | Journal write / edit | ✅ | Structured Markdown + YAML metadata, auto weather/sentiment/entity extraction |
 | Layered life retrieval | ✅ | CLI Core runs layered retrieval fully offline — keyword precision + Entity Graph expansion + semantic recall supplement; Agents can optionally orchestrate before search and refine expression after search |
+| Smart search orchestrator (smart-search) | ✅ | Agent three-step orchestration (rewrite → retrieve → refine), with fallback to CLI Core and data minimization |
+| Search quality evaluation (eval) | ✅ | Gold Set regression, IR baseline tracking, and SLO gates |
 | Entity graph + quality audit + maintenance | ✅ | Alias resolution for people/places/projects, relationship inference, duplicate/orphan detection + Agent interview remediation; review hub + merge/delete/stats/check maintenance commands |
 | Schema migration | ✅ | Chain migration framework, deterministic field backfill + Agent semantic enrichment collaboration |
 | Piggyback event notifications | ✅ | Zero cron, zero processes — event reminders attached to CLI responses (writing streak, missing monthly report, etc.) |
@@ -503,7 +505,7 @@ python3 -m venv .venv
 | Version check | `life-index --version` |
 | Health check | `life-index health` |
 | Write journal | `life-index write --data '{...}'` |
-| Search (keyword + semantic) | `life-index search --query "keyword"` |
+| Search (keyword by default; semantic only as fallback/explicit mode) | `life-index search --query "keyword"` |
 | Search + time/topic pre-filter | `life-index search --query "keyword" --year 2026 --topic work` |
 | Keyword-only search | `life-index search --query "keyword" --no-semantic` |
 | Generate index tree (month/year/root) | `life-index generate-index --month 2026-03` |
@@ -512,6 +514,7 @@ python3 -m venv .venv
 | Schema migration (preview) | `life-index migrate --dry-run` |
 | Schema migration (execute) | `life-index migrate --apply` |
 | Entity quality audit | `life-index entity --audit` |
+| On-this-day review | `life-index on-this-day --date 2026-05-19 --years-back 3 --json` |
 | Dev-mode invocation | `python -m tools.search_journals --query "keyword"` |
 | Run unit tests | `python -m pytest tests/unit/ -v` |
 
@@ -559,7 +562,6 @@ python3 -m venv .venv
 | Document | When to Read |
 |:---|:---|
 | **[SKILL.md](./SKILL.md)** | Agent skill definition, tool interfaces, workflows |
-| **[AGENTS.md](./AGENTS.md)** | AI coding agent context |
 | **[API.md](./docs/API.md)** | Tool parameters and response contracts |
 | **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** | Architecture design and key decisions (ADRs) |
 | **[ENTITY_GRAPH.md](./docs/ENTITY_GRAPH.md)** | Entity Graph operating contract |

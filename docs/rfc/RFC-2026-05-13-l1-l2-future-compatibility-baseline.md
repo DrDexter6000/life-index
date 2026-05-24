@@ -3,8 +3,7 @@
 > **Status**: Draft
 > **Created**: 2026-05-13
 > **Decision record**: `docs/adr/ADR-026-l1-l2-future-compatibility-baseline.md`
-> **Raw discussion archive**: `docs/concepts/CN-002-life-index-terminal-architecture-discussion-record.md`
-> **Review archive**: `docs/concepts/CN-003-life-index-future-compatibility-review-record.md`
+> **Raw discussion / review archive**: archived in private local governance docs; this RFC keeps the public architecture rationale.
 > **Charter impact**: Proposed; no direct Charter edit in this RFC
 > **Authors / reviewers**: Life Index author, 主审_GPT, 副审_Opus; DeepSeek review requested
 > **Cooldown**: At least 24 hours after RFC creation before Charter approval, per `CHARTER.md` §5.2

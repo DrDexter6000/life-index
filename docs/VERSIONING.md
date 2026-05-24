@@ -1,8 +1,8 @@
 # Life Index Versioning Contract
 
-> **Document purpose**: Versioning and release policy for Life Index CLI
-> **Audience**: Maintainers, agents, and release reviewers
-> **Authority level**: This document defines release/versioning practice for Life Index CLI. It is subordinate to [`CHARTER.md`](../CHARTER.md); package version source remains [`pyproject.toml`](../pyproject.toml).
+> **Document purpose**: Public version semantics and release artifact contract for Life Index CLI
+> **Audience**: Maintainers and users reading the public repository
+> **Authority level**: This document defines public release/version semantics for Life Index CLI. It is subordinate to [`CHARTER.md`](../CHARTER.md); package version source remains [`pyproject.toml`](../pyproject.toml).
 > **Effective baseline**: `v1.1.1`
 > **Status**: Active
 
@@ -126,6 +126,8 @@ Implementation-level breakage alone is not sufficient. A MAJOR bump should mean 
 
 `v1.1.1` extends this baseline with additive observability contracts (provenance envelope, step diagnostics, cache version governance) and intermediate schema contracts (`QueryPlan`, `SearchPlan`, `IndexManifest`, `EntityExpansion`), plus Entity Graph alias metadata and `boost_decay` echo-only placeholder. No product behavior changes; all v1.1.0 clients remain compatible.
 
+Pending `v1.2.0` release candidate: Search Truthfulness / Recall-First makes search quality a user-visible product generation within the `1.x` line by aligning default retrieval with CHARTER §1.11, preserving keyword-only L2 defaults, recovering pure temporal Chinese queries through a date-only branch, and validating the change against the frozen Cycle 2 multi-signal fixture. This is not a formal baseline change until release artifacts and Git tag agree.
+
 Life Index can remain on `1.0.x` for a long time. That is expected.
 
 ## 8. Source of Truth
@@ -175,19 +177,18 @@ authoritative Life Index CLI release.
 PyPI publishing is manual-only until explicitly re-enabled. Tag pushes must not
 automatically publish to PyPI.
 
-## 10. Release Checklist
+## 10. Public Release Readiness
 
-Before creating a release tag:
+A public release is valid only when:
 
-1. Decide version bump using this contract.
-2. Update `pyproject.toml`.
-3. Update `bootstrap-manifest.json`.
-4. Update README version wording if present.
-5. Update `CHANGELOG.md`.
-6. Run version tests.
-7. Run relevant quality gates.
-8. Create annotated tag `vX.Y.Z`.
-9. Push commit and tag.
+- The version bump follows this contract.
+- Public version surfaces agree.
+- `CHANGELOG.md` records the user-visible change.
+- Required quality gates have a clear passing verdict.
+- The release is anchored by a Git tag `vX.Y.Z`.
+
+Detailed local release choreography and approval routing belong in private local
+governance docs, not in this public versioning contract.
 
 ## 11. Tag Policy
 
@@ -221,19 +222,23 @@ Do not use changelog entries to document every internal experiment, diagnostic r
 
 The following do not trigger a version bump by themselves:
 
-- `.kimi-learnings/` diagnostic reports.
-- `.strategy/` plans.
+- Internal planning notes.
+- Local diagnostic reports.
 - Sandbox verification.
 - Unmerged experiments.
 - Local user data changes such as `~/Documents/Life-Index/entity_graph.yaml`.
-- Agent handoff notes.
+- Agent handoff notes or session state.
 
 They may support a later release, but they are not releases.
 
-## 14. Governance
+## 14. Release Authority
 
-PATCH releases may be prepared by agents after passing relevant gates.
+PATCH releases are routine compatible releases.
 
-MINOR releases require explicit user confirmation of release scope.
+MINOR releases require explicit owner confirmation of release scope.
 
-MAJOR releases require explicit user approval plus migration and rollback planning.
+MAJOR releases require explicit owner approval plus migration and rollback
+planning.
+
+Detailed approval mechanics are private local governance, not public version
+semantics.
