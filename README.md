@@ -271,14 +271,14 @@ Life Index 采用「本地优先」和「数据与程序完全分离」策略：
 
 ### 已经建好的地基
 
-**CLI Core v1.1.1** 已稳定运行，不是原型，不是 demo——这是一个经过 2,400+ 单元测试、CI 全绿、真实日常使用的系统：
+**CLI Core 当前稳定线** 已稳定运行，不是原型，不是 demo——这是一个经过 2,400+ 单元测试、CI 全绿、真实日常使用的系统。当前版本以 `life-index --version` 和 `CHANGELOG.md` 为准：
 
 | 核心能力 | 状态 | 说明 |
 |:---|:---:|:---|
 | 日志写入 / 编辑 | ✅ | 结构化 Markdown + YAML 元数据，自动天气/情感/实体标注 |
-| 分层人生检索 | ✅ | CLI Core 离线完成分层检索：关键词精确匹配 + Entity Graph 实体扩展 + 语义召回补充；Agent 可选负责搜索前编排和搜索后表达 |
+| 分层人生检索 | ✅ | CLI Core 离线完成分层检索：关键词精确匹配 + Entity Graph 实体扩展；语义/向量召回为显式 opt-in，Agent 可选负责搜索前编排和搜索后表达 |
 | 智能搜索编排器 (smart-search) | ✅ | Agent 三段式编排（改写→检索→精筛），失败时降级回退 CLI Core，Data Minimization |
-| 搜索质量评估 (eval) | ✅ | Gold Set 85 queries，IR 基线 MRR@5=0.27 锁定，SLO 门控 |
+| 搜索质量评估 (eval) | ✅ | Cycle 2 多信号 fixture 锁定，C3 temporal R@5=1.0，recall-first 搜索质量门控 |
 | 实体图谱 + 质量审计 + 维护 | ✅ | 别名消解，关系推理，重复/孤立检测 + Agent 访谈修复；review hub + merge/delete/stats/check 维护命令 |
 | Schema 迁移 | ✅ | 链式迁移框架，确定性字段补齐 + Agent 语义回填协作 |
 | 搭便车事件通知 | ✅ | 零 cron、零进程，CLI 响应内附带事件提醒（连续未记日志、月报缺失等） |

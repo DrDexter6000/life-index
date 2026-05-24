@@ -211,6 +211,96 @@ class TestSmartSearchExplainDiagnostics:
         _assert_diagnostics_shape(result["diagnostics"])
         assert result["diagnostics"]["input_count"] == 1
         assert result["diagnostics"]["latency_ms"]["total"] == 10
+        assert result["diagnostics"]["fallback_path"] is None
+        assert result["query_plan"]["strategy"] == "keyword_only"
+        assert result["query_plan"]["fallback_decision"] is False
+
+    def test_smart_search_cli_explain_reports_semantic_fallback_truthfully(self):
+        """CLI query_plan must not invert semantic fallback status."""
+        from io import StringIO
+
+        mock_result = {
+            "success": True,
+            "query": "test",
+            "rewritten_query": "test",
+            "filtered_results": [],
+            "summary": "",
+            "citations": [],
+            "agent_decisions": [],
+            "agent_unavailable": True,
+            "semantic_fallback_used": True,
+            "performance": {"total_time_ms": 10, "total_available": 1},
+        }
+
+        captured = StringIO()
+        with patch("sys.argv", ["smart-search", "--query", "test", "--explain"]):
+            with patch("tools.search_journals.orchestrator.SmartSearchOrchestrator") as MockCls:
+                mock_orch = MagicMock()
+                mock_orch.search.return_value = mock_result.copy()
+                MockCls.return_value = mock_orch
+                with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
+                    with patch(
+                        "builtins.print",
+                        side_effect=lambda *a, **kw: captured.write(str(a[0])) if a else None,
+                    ):
+                        from tools.smart_search.__main__ import main
+
+                        try:
+                            main()
+                        except SystemExit:
+                            pass
+
+        result = json.loads(captured.getvalue())
+        assert result["diagnostics"]["fallback_path"] == "semantic"
+        assert result["query_plan"]["strategy"] == "keyword_with_semantic_fallback"
+        assert result["query_plan"]["fallback_decision"] is True
+
+    def test_smart_search_explain_preserves_orchestrator_query_plan(self):
+        """CLI explain must not overwrite orchestrator multi-query plans."""
+        from io import StringIO
+
+        mock_result = {
+            "success": True,
+            "query": "test",
+            "rewritten_query": "test",
+            "filtered_results": [],
+            "summary": "",
+            "citations": [],
+            "agent_decisions": [],
+            "agent_unavailable": False,
+            "performance": {"total_time_ms": 1, "total_available": 0},
+            "semantic_fallback_used": False,
+            "query_plan": {
+                "schema_version": "v1.1.1",
+                "raw_query": "test",
+                "expanded_query": "test",
+                "sub_queries": ["a", "b"],
+                "strategy": "keyword_multi_pass",
+                "fallback_decision": False,
+            },
+        }
+
+        captured = StringIO()
+        with patch("sys.argv", ["smart-search", "--query", "test", "--explain", "--use-llm"]):
+            with patch("tools.search_journals.orchestrator.SmartSearchOrchestrator") as MockCls:
+                mock_orch = MagicMock()
+                mock_orch.search.return_value = mock_result.copy()
+                MockCls.return_value = mock_orch
+                with patch("tools.smart_search.__main__._try_init_llm", return_value=object()):
+                    with patch(
+                        "builtins.print",
+                        side_effect=lambda *a, **kw: captured.write(str(a[0])) if a else None,
+                    ):
+                        from tools.smart_search.__main__ import main
+
+                        try:
+                            main()
+                        except SystemExit:
+                            pass
+
+        result = json.loads(captured.getvalue())
+        assert result["query_plan"]["sub_queries"] == ["a", "b"]
+        assert result["query_plan"]["strategy"] == "keyword_multi_pass"
 
     def test_smart_search_cli_no_explain_no_diagnostics(self):
         """Without --explain, CLI output must NOT contain diagnostics."""

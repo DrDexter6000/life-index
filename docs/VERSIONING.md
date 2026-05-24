@@ -3,7 +3,7 @@
 > **Document purpose**: Public version semantics and release artifact contract for Life Index CLI
 > **Audience**: Maintainers and users reading the public repository
 > **Authority level**: This document defines public release/version semantics for Life Index CLI. It is subordinate to [`CHARTER.md`](../CHARTER.md); package version source remains [`pyproject.toml`](../pyproject.toml).
-> **Effective baseline**: `v1.1.1`
+> **Release state source**: package version comes from [`pyproject.toml`](../pyproject.toml); formal releases are recorded in [`CHANGELOG.md`](../CHANGELOG.md) and anchored by Git tags.
 > **Status**: Active
 
 ---
@@ -112,7 +112,7 @@ For Life Index, MAJOR is reserved for changes at the level of:
 
 Implementation-level breakage alone is not sufficient. A MAJOR bump should mean the product shape has changed.
 
-## 7. Current Baseline
+## 7. Release Baselines
 
 `v1.0.0` is the formal Life Index CLI Core baseline:
 
@@ -126,23 +126,43 @@ Implementation-level breakage alone is not sufficient. A MAJOR bump should mean 
 
 `v1.1.1` extends this baseline with additive observability contracts (provenance envelope, step diagnostics, cache version governance) and intermediate schema contracts (`QueryPlan`, `SearchPlan`, `IndexManifest`, `EntityExpansion`), plus Entity Graph alias metadata and `boost_decay` echo-only placeholder. No product behavior changes; all v1.1.0 clients remain compatible.
 
-Pending `v1.2.0` release candidate: Search Truthfulness / Recall-First makes search quality a user-visible product generation within the `1.x` line by aligning default retrieval with CHARTER §1.11, preserving keyword-only L2 defaults, recovering pure temporal Chinese queries through a date-only branch, and validating the change against the frozen Cycle 2 multi-signal fixture. This is not a formal baseline change until release artifacts and Git tag agree.
+`v1.2.0` extends the baseline with Search Truthfulness / Recall-First as a
+MINOR release because it changes user-visible search behavior across a complete
+capability area while preserving CLI/data compatibility:
 
-Life Index can remain on `1.0.x` for a long time. That is expected.
+- L2 default search semantics reset to keyword-only under CHARTER §1.11, which
+  was enshrined in commit `d5a2ad2`.
+- Retrieval and presentation truncation are decoupled so evaluation and review
+  can inspect the full candidate pool while user-facing output remains capped.
+- Chinese temporal pattern normalization and the pure-temporal date-only branch
+  recover date/month-only journal queries.
+
+The frozen Cycle 2 multi-signal fixture measured Overall R@5 `0.7857`, C3
+temporal R@5 `1.0000`, and no C1/C4 regression. The overall score is a marginal
+miss versus the `0.79` target, accepted by the release owner as compatible with
+the CHARTER §1.11 recall-first precision trade-off.
+
+Life Index can remain on the `1.x` line for a long time. That is expected.
 
 ## 8. Source of Truth
 
-Release state must stay aligned across:
+Release authority is split by role. Do not duplicate the current package
+version in general-purpose docs.
 
 | Surface | Role |
 |---------|------|
 | [`pyproject.toml`](../pyproject.toml) `[project].version` | Package version source of truth |
-| [`bootstrap-manifest.json`](../bootstrap-manifest.json) `repo_version` | Agent/bootstrap compatibility version |
-| [`README.md`](../README.md) | Public user-facing current version |
+| [`bootstrap-manifest.json`](../bootstrap-manifest.json) `repo_version` | Machine-readable checkout/bootstrap compatibility version; must match `pyproject.toml` for formal releases |
 | [`CHANGELOG.md`](../CHANGELOG.md) | Human-readable release history |
 | Git tag `vX.Y.Z` | Release anchor |
 
-For a formal release, all five surfaces must agree.
+For a formal release:
+
+- `pyproject.toml` and `bootstrap-manifest.json` must agree.
+- `CHANGELOG.md` must contain the release entry.
+- The Git tag must point to the release commit.
+- README/API docs should point to `life-index --version`, `CHANGELOG.md`, or
+  this contract instead of hardcoding the current package version.
 
 ## 9. PyPI Distribution Constraint
 

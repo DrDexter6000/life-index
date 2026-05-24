@@ -24,6 +24,29 @@ def _mock_orch_search(query, include_evidence=False, **kwargs):
         "agent_decisions": [],
         "agent_unavailable": True,
         "performance": {"total_time_ms": 10.0},
+        "smart_search_mode": "deterministic_scaffold",
+        "agent_instructions": {
+            "schema_version": "smart_search.agent_instructions.v1",
+            "role": "calling_agent",
+            "mode": "deterministic_scaffold",
+            "steps": [
+                "Use filtered_results as bounded evidence; do not cite outside returned results."
+            ],
+        },
+        "answer_scaffold": {
+            "schema_version": "smart_search.answer_scaffold.v1",
+            "query": query,
+            "citation_policy": "cite_only_returned_results",
+            "result_count": 1,
+        },
+        "query_plan": {
+            "schema_version": "v1.1.1",
+            "raw_query": query,
+            "expanded_query": query,
+            "sub_queries": [query],
+            "strategy": "keyword_only",
+            "fallback_decision": False,
+        },
     }
     if include_evidence:
         result["evidence_pack"] = {
@@ -86,6 +109,31 @@ def test_cli_default_no_evidence():
                         pass
     result = json.loads(captured[0])
     assert "evidence_pack" not in result
+
+
+def test_cli_default_emits_agent_ready_scaffold():
+    captured = []
+    with patch("sys.argv", ["smart-search", "--query", "test"]):
+        with patch(
+            "tools.search_journals.orchestrator.SmartSearchOrchestrator",
+            return_value=_make_mock_orch(),
+        ):
+            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
+                with patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+                ):
+                    from tools.smart_search.__main__ import main
+
+                    try:
+                        main()
+                    except SystemExit:
+                        pass
+
+    result = json.loads(captured[0])
+    assert result["smart_search_mode"] == "deterministic_scaffold"
+    assert result["agent_instructions"]["role"] == "calling_agent"
+    assert result["answer_scaffold"]["citation_policy"] == "cite_only_returned_results"
 
 
 def test_cli_default_does_not_initialize_llm():

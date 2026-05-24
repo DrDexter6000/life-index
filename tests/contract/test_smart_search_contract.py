@@ -77,6 +77,116 @@ def _mock_hierarchical_search(query="", **kwargs):
     }
 
 
+def _mock_semantic_fallback_search(query="", **kwargs):
+    """Mock deterministic search where semantic fallback was actually used."""
+    result = _mock_hierarchical_search(query=query, **kwargs)
+    result["semantic_fallback_used"] = True
+    return result
+
+
+def _mock_multi_query_search(query="", **kwargs):
+    """Mock deterministic search returning one distinct result per query."""
+    return {
+        "success": True,
+        "merged_results": [
+            {
+                "title": f"Entry for {query}",
+                "path": f"Journals/2026/03/{query}.md",
+                "rel_path": f"Journals/2026/03/{query}.md",
+                "date": "2026-03-06",
+                "rrf_score": 0.85,
+                "abstract": f"Abstract for {query}",
+                "snippet": f"Snippet for {query}",
+            }
+        ],
+        "total_found": 1,
+        "total_available": 1,
+        "performance": {"total_time_ms": 10.0},
+        "semantic_fallback_used": False,
+    }
+
+
+class MultiQueryLLM:
+    def chat(self, messages, *, max_tokens=2000):
+        text = messages[0]["content"]
+        if "search query analyzer" in text:
+            return json.dumps(
+                {
+                    "core_terms": "family memories",
+                    "expanded_terms": ["女儿", "亲子", "回忆"],
+                    "time_range": None,
+                    "intent_type": "thematic",
+                    "rewritten_query": "family memories",
+                    "sub_queries": ["女儿 回忆", "亲子 时光", "珍贵 回忆"],
+                }
+            )
+        if "search result curator" in text:
+            return json.dumps(
+                {
+                    "filtered_indices": [1, 2, 3],
+                    "summary": "Three relevant memories.",
+                    "citations": [
+                        "Entry for 女儿 回忆",
+                        "Entry for 亲子 时光",
+                        "Entry for 珍贵 回忆",
+                    ],
+                }
+            )
+        return "{}"
+
+
+class ExpandedTermsLLM:
+    def chat(self, messages, *, max_tokens=2000):
+        text = messages[0]["content"]
+        if "search query analyzer" in text:
+            return json.dumps(
+                {
+                    "core_terms": "女儿 回忆",
+                    "expanded_terms": ["亲子", "生日"],
+                    "time_range": None,
+                    "intent_type": "thematic",
+                    "rewritten_query": "女儿 回忆",
+                }
+            )
+        if "search result curator" in text:
+            return json.dumps(
+                {
+                    "filtered_indices": [1, 2, 3],
+                    "summary": "Expanded term results.",
+                    "citations": [
+                        "Entry for 女儿 回忆",
+                        "Entry for 女儿 回忆 亲子",
+                        "Entry for 女儿 回忆 生日",
+                    ],
+                }
+            )
+        return "{}"
+
+
+class TemporalRangeLLM:
+    def chat(self, messages, *, max_tokens=2000):
+        text = messages[0]["content"]
+        if "search query analyzer" in text:
+            return json.dumps(
+                {
+                    "core_terms": "女儿 回忆",
+                    "expanded_terms": [],
+                    "time_range": "2026-03",
+                    "intent_type": "temporal",
+                    "rewritten_query": "女儿 回忆",
+                }
+            )
+        if "search result curator" in text:
+            return json.dumps(
+                {
+                    "filtered_indices": [1],
+                    "summary": "Temporal result.",
+                    "citations": ["Entry for 女儿 回忆"],
+                }
+            )
+        return "{}"
+
+
 # Default output shape
 
 
@@ -121,6 +231,15 @@ class TestDefaultOutputShape:
 
     @patch(
         "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_semantic_fallback_search,
+    )
+    def test_semantic_fallback_status_is_propagated(self, _mock):
+        orch = SmartSearchOrchestrator(llm_client=None)
+        result = orch.search("test query")
+        assert result["semantic_fallback_used"] is True
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
         return_value=_mock_hierarchical_search,
     )
     def test_default_has_agent_decisions_list(self, _mock):
@@ -148,6 +267,66 @@ class TestDefaultOutputShape:
         orch = SmartSearchOrchestrator(llm_client=None)
         result = orch.search("test query")
         assert result["agent_unavailable"] is True
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_hierarchical_search,
+    )
+    def test_default_output_includes_agent_ready_scaffold(self, _mock):
+        orch = SmartSearchOrchestrator(llm_client=None)
+        result = orch.search("我和女儿之间有哪些珍贵回忆")
+
+        assert result["agent_unavailable"] is True
+        assert result["smart_search_mode"] == "deterministic_scaffold"
+        assert result["agent_instructions"]["role"] == "calling_agent"
+        assert (
+            "Use filtered_results as bounded evidence" in result["agent_instructions"]["steps"][0]
+        )
+        assert result["answer_scaffold"]["query"] == "我和女儿之间有哪些珍贵回忆"
+        assert result["answer_scaffold"]["citation_policy"] == "cite_only_returned_results"
+
+    @patch(
+        "tools.search_journals.orchestrator._get_search_fn",
+        return_value=_mock_multi_query_search,
+    )
+    def test_use_llm_rewrite_sub_queries_trigger_bounded_multi_query_search(self, _mock):
+        orch = SmartSearchOrchestrator(llm_client=MultiQueryLLM())
+        result = orch.search("我和女儿之间有哪些珍贵回忆")
+
+        assert len(result["filtered_results"]) == 3
+        assert result["query_plan"]["sub_queries"] == ["女儿 回忆", "亲子 时光", "珍贵 回忆"]
+        assert result["query_plan"]["strategy"] == "keyword_multi_pass"
+        assert result["filtered_results"][0]["source_queries"] == ["女儿 回忆"]
+
+    def test_use_llm_expanded_terms_fill_bounded_sub_queries(self):
+        captured_queries = []
+
+        def search(query="", **kwargs):
+            captured_queries.append(query)
+            return _mock_multi_query_search(query=query, **kwargs)
+
+        with patch("tools.search_journals.orchestrator._get_search_fn", return_value=search):
+            orch = SmartSearchOrchestrator(llm_client=ExpandedTermsLLM())
+            result = orch.search("我和女儿之间有哪些珍贵回忆")
+
+        assert captured_queries == ["女儿 回忆", "女儿 回忆 亲子", "女儿 回忆 生日"]
+        assert result["query_plan"]["sub_queries"] == captured_queries
+        assert result["query_plan"]["strategy"] == "keyword_multi_pass"
+
+    def test_use_llm_temporal_intent_passes_time_range_to_search(self):
+        captured_kwargs = []
+
+        def search(query="", **kwargs):
+            captured_kwargs.append(kwargs)
+            return _mock_multi_query_search(query=query, **kwargs)
+
+        with patch("tools.search_journals.orchestrator._get_search_fn", return_value=search):
+            orch = SmartSearchOrchestrator(llm_client=TemporalRangeLLM())
+            result = orch.search("2026年3月我和女儿有哪些回忆")
+
+        assert captured_kwargs == [{"date_from": "2026-03-01", "date_to": "2026-03-31"}]
+        assert result["query_plan"]["strategy"] == "keyword_temporal"
+        assert result["query_plan"]["sub_queries"] == ["女儿 回忆"]
 
     @patch(
         "tools.search_journals.orchestrator._get_search_fn",

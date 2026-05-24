@@ -13,6 +13,7 @@ When LLM is unavailable, falls back to pure dual-pipeline with agent_unavailable
 from __future__ import annotations
 
 import logging
+import calendar
 import re
 import time
 from dataclasses import dataclass, field
@@ -28,6 +29,8 @@ _MAX_MATCHED_TERMS_PER_ENTITY = 3
 _MAX_ENTITY_ID_LENGTH = 64
 _MAX_ENTITY_TYPE_LENGTH = 32
 _MAX_MATCHED_TERM_LENGTH = 40
+_MAX_SMART_SEARCH_SUB_QUERIES = 3
+_MAX_SMART_SEARCH_SUB_QUERY_LENGTH = 120
 _QUERY_TOKEN_STOPWORDS = {
     "a",
     "an",
@@ -122,6 +125,51 @@ class SmartSearchResult:
         }
 
 
+def _build_agent_instructions(mode: str) -> dict[str, Any]:
+    """Build deterministic instructions for the calling L3 agent."""
+
+    return {
+        "schema_version": "smart_search.agent_instructions.v1",
+        "role": "calling_agent",
+        "mode": mode,
+        "steps": [
+            "Use filtered_results as bounded evidence; do not cite outside returned results.",
+            "If filtered_results is empty, say that this search did not find enough evidence.",
+            "Prefer concise synthesis with file/date citations from returned results.",
+            (
+                "For broader interpretation, run another explicit smart-search query "
+                "rather than inventing evidence."
+            ),
+        ],
+    }
+
+
+def _build_answer_scaffold(query: str, results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build provider-free response guidance for agent consumers."""
+
+    return {
+        "schema_version": "smart_search.answer_scaffold.v1",
+        "query": query,
+        "citation_policy": "cite_only_returned_results",
+        "result_count": len(results),
+        "suggested_response_shape": {
+            "summary": "brief evidence-backed answer",
+            "citations": "file/date references from filtered_results",
+            "limitations": "explicitly name missing evidence or low recall",
+        },
+    }
+
+
+def _result_identity(item: dict[str, Any]) -> str:
+    """Return a stable dedupe key for search candidates."""
+
+    for key in ("rel_path", "path", "title"):
+        value = item.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
 # ── Orchestrator ─────────────────────────────────────────────────────────────
 
 
@@ -188,6 +236,7 @@ class SmartSearchOrchestrator:
                 "time_range": None,
                 "intent_type": "simple",
                 "rewritten_query": query,
+                "sub_queries": [query],
             }
 
         try:
@@ -206,9 +255,144 @@ class SmartSearchOrchestrator:
                 "time_range": None,
                 "intent_type": "simple",
                 "rewritten_query": query,
+                "sub_queries": [query],
             }
 
     # ── Stage 2: Search Execution ────────────────────────────────────────
+
+    def _normalize_sub_queries(self, rewritten: dict[str, Any]) -> list[str]:
+        """Clamp optional LLM query decomposition to a bounded list."""
+
+        base_query = str(
+            rewritten.get("rewritten_query") or rewritten.get("core_terms") or ""
+        ).strip()
+        raw = rewritten.get("sub_queries")
+        if not isinstance(raw, list) or not raw:
+            raw = [base_query]
+
+        normalized: list[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                continue
+            value = item.strip()
+            if not value:
+                continue
+            normalized.append(value[:_MAX_SMART_SEARCH_SUB_QUERY_LENGTH])
+            if len(normalized) >= _MAX_SMART_SEARCH_SUB_QUERIES:
+                break
+
+        expansion_base = normalized[0] if normalized else base_query
+        for term in self._normalize_expanded_terms(rewritten):
+            if len(normalized) >= _MAX_SMART_SEARCH_SUB_QUERIES:
+                break
+            candidate = expansion_base if term in expansion_base else f"{expansion_base} {term}"
+            candidate = candidate.strip()[:_MAX_SMART_SEARCH_SUB_QUERY_LENGTH]
+            if candidate and candidate not in normalized:
+                normalized.append(candidate)
+
+        if normalized:
+            return normalized
+
+        return [base_query[:_MAX_SMART_SEARCH_SUB_QUERY_LENGTH]]
+
+    @staticmethod
+    def _normalize_expanded_terms(rewritten: dict[str, Any]) -> list[str]:
+        """Return bounded expansion terms from LLM rewrite output."""
+
+        raw = rewritten.get("expanded_terms")
+        if not isinstance(raw, list):
+            return []
+
+        terms: list[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                continue
+            value = item.strip()
+            if not value or value in terms:
+                continue
+            terms.append(value[:_MAX_SMART_SEARCH_SUB_QUERY_LENGTH])
+            if len(terms) >= _MAX_SMART_SEARCH_SUB_QUERIES - 1:
+                break
+        return terms
+
+    @staticmethod
+    def _coerce_iso_date(value: Any) -> str | None:
+        """Accept only exact ISO calendar dates."""
+
+        if not isinstance(value, str):
+            return None
+        candidate = value.strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", candidate):
+            return candidate
+        return None
+
+    @classmethod
+    def _resolve_time_range(cls, rewritten: dict[str, Any]) -> dict[str, str]:
+        """Map LLM time_range output to deterministic search date filters."""
+
+        raw = rewritten.get("time_range")
+        if raw is None:
+            return {}
+
+        if isinstance(raw, dict):
+            date_from = (
+                cls._coerce_iso_date(raw.get("date_from"))
+                or cls._coerce_iso_date(raw.get("since"))
+                or cls._coerce_iso_date(raw.get("start"))
+            )
+            date_to = (
+                cls._coerce_iso_date(raw.get("date_to"))
+                or cls._coerce_iso_date(raw.get("until"))
+                or cls._coerce_iso_date(raw.get("end"))
+            )
+            return {k: v for k, v in {"date_from": date_from, "date_to": date_to}.items() if v}
+
+        if not isinstance(raw, str):
+            return {}
+
+        value = raw.strip()
+        range_match = re.fullmatch(r"(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})", value)
+        if range_match:
+            return {"date_from": range_match.group(1), "date_to": range_match.group(2)}
+
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return {"date_from": value, "date_to": value}
+
+        month_match = re.fullmatch(r"(\d{4})-(\d{2})", value)
+        if month_match:
+            year = int(month_match.group(1))
+            month = int(month_match.group(2))
+            if 1 <= month <= 12:
+                last_day = calendar.monthrange(year, month)[1]
+                return {
+                    "date_from": f"{year:04d}-{month:02d}-01",
+                    "date_to": f"{year:04d}-{month:02d}-{last_day:02d}",
+                }
+
+        year_match = re.fullmatch(r"(\d{4})", value)
+        if year_match:
+            year = int(year_match.group(1))
+            return {"date_from": f"{year:04d}-01-01", "date_to": f"{year:04d}-12-31"}
+
+        return {}
+
+    def _select_search_strategy(
+        self,
+        rewritten: dict[str, Any],
+        sub_queries: list[str],
+        search_kwargs: dict[str, str],
+    ) -> str:
+        """Select a truthful QueryPlan strategy label."""
+
+        if self._llm is None:
+            return "keyword_only"
+        if len(sub_queries) > 1:
+            return "keyword_multi_pass"
+        if rewritten.get("intent_type") == "temporal" and search_kwargs:
+            return "keyword_temporal"
+        if self._normalize_expanded_terms(rewritten):
+            return "keyword_expanded"
+        return "keyword_rewritten"
 
     def execute_search(self, rewritten: dict[str, Any]) -> dict[str, Any]:
         """Execute search using deterministic primitives.
@@ -216,18 +400,86 @@ class SmartSearchOrchestrator:
         Calls hierarchical_search with parameters from rewritten query.
         """
         search_fn = _get_search_fn()
-        query = rewritten.get("rewritten_query", rewritten.get("core_terms", ""))
-        result = search_fn(query=query)
+        sub_queries = self._normalize_sub_queries(rewritten)
+        search_kwargs = self._resolve_time_range(rewritten)
+        strategy = self._select_search_strategy(rewritten, sub_queries, search_kwargs)
 
-        # Apply data minimization: trim to max candidates
-        merged = result.get("merged_results", [])
-        if len(merged) > ORCHESTRATOR_MAX_LLM_CANDIDATES:
-            merged = merged[:ORCHESTRATOR_MAX_LLM_CANDIDATES]
+        if len(sub_queries) == 1:
+            result = search_fn(query=sub_queries[0], **search_kwargs)
+
+            # Apply data minimization: trim to max candidates
+            merged = result.get("merged_results", [])
+            if len(merged) > ORCHESTRATOR_MAX_LLM_CANDIDATES:
+                merged = merged[:ORCHESTRATOR_MAX_LLM_CANDIDATES]
+
+            return {
+                "raw_results": result,
+                "candidates": merged,
+                "total_available": result.get("total_available", len(merged)),
+                "sub_queries": sub_queries,
+                "strategy": strategy,
+                "semantic_fallback_used": bool(result.get("semantic_fallback_used", False)),
+            }
+
+        raw_query_results: list[dict[str, Any]] = []
+        fused_by_key: dict[str, dict[str, Any]] = {}
+        total_available = 0
+        total_time_ms = 0.0
+        semantic_fallback_used = False
+
+        for sub_query in sub_queries:
+            result = search_fn(query=sub_query, **search_kwargs)
+            raw_query_results.append({"query": sub_query, "result": result})
+            total_available += int(result.get("total_available", 0) or 0)
+            total_time_ms += float(result.get("performance", {}).get("total_time_ms", 0) or 0)
+            semantic_fallback_used = semantic_fallback_used or bool(
+                result.get("semantic_fallback_used", False)
+            )
+
+            for item in result.get("merged_results", []):
+                key = _result_identity(item)
+                if not key:
+                    continue
+                candidate = dict(item)
+                candidate["source_queries"] = [sub_query]
+                existing = fused_by_key.get(key)
+                if existing is None:
+                    fused_by_key[key] = candidate
+                    continue
+
+                existing_queries = existing.get("source_queries", [])
+                existing["source_queries"] = sorted(set(existing_queries + [sub_query]))
+                existing_score = float(existing.get("rrf_score", 0) or 0)
+                candidate_score = float(candidate.get("rrf_score", 0) or 0)
+                if candidate_score > existing_score:
+                    for merge_field in ("title", "date", "abstract", "snippet", "path", "rel_path"):
+                        if candidate.get(merge_field):
+                            existing[merge_field] = candidate[merge_field]
+                    existing["rrf_score"] = candidate_score
+
+        merged = sorted(
+            fused_by_key.values(),
+            key=lambda item: float(item.get("rrf_score", 0) or 0),
+            reverse=True,
+        )[:ORCHESTRATOR_MAX_LLM_CANDIDATES]
+
+        raw_results = {
+            "success": True,
+            "merged_results": merged,
+            "total_found": len(merged),
+            "total_available": total_available,
+            "performance": {"total_time_ms": round(total_time_ms, 2)},
+            "semantic_fallback_used": semantic_fallback_used,
+            "multi_query_results": raw_query_results,
+        }
 
         return {
-            "raw_results": result,
+            "raw_results": raw_results,
             "candidates": merged,
-            "total_available": result.get("total_available", len(merged)),
+            "total_available": total_available,
+            "sub_queries": sub_queries,
+            "strategy": strategy,
+            "semantic_fallback_used": semantic_fallback_used,
         }
 
     # ── Stage 3: Post-Filter + Summarize ─────────────────────────────────
@@ -281,6 +533,7 @@ class SmartSearchOrchestrator:
         from .aggregate_router import try_route_aggregate
 
         from tools.lib.planner_types import (
+            QueryPlan,
             StageRecord,
             build_planner_record_from_stages,
             merge_planner_into_search_plan,
@@ -326,6 +579,20 @@ class SmartSearchOrchestrator:
                 },
             )
             result_dict = result.to_dict()
+            result_dict["smart_search_mode"] = "deterministic_aggregate"
+            result_dict["agent_instructions"] = _build_agent_instructions(
+                result_dict["smart_search_mode"]
+            )
+            result_dict["answer_scaffold"] = _build_answer_scaffold(
+                query, result_dict.get("filtered_results", [])
+            )
+            result_dict["query_plan"] = QueryPlan(
+                raw_query=query,
+                expanded_query=query,
+                sub_queries=[query],
+                strategy="deterministic_aggregate",
+                fallback_decision=False,
+            ).to_dict()
             result_dict["aggregate_result"] = aggregate_result_dict
             return result_dict
 
@@ -485,6 +752,30 @@ class SmartSearchOrchestrator:
         )
 
         result_dict = result.to_dict()
+        raw_semantic_fallback = search_result["raw_results"].get("semantic_fallback_used")
+        if raw_semantic_fallback is not None:
+            result_dict["semantic_fallback_used"] = bool(raw_semantic_fallback)
+        semantic_fallback_used = bool(search_result.get("semantic_fallback_used", False))
+        result_dict["smart_search_mode"] = (
+            "deterministic_scaffold" if self._llm is None else "llm_orchestrated"
+        )
+        result_dict["agent_instructions"] = _build_agent_instructions(
+            result_dict["smart_search_mode"]
+        )
+        result_dict["answer_scaffold"] = _build_answer_scaffold(
+            query, result_dict.get("filtered_results", [])
+        )
+        result_dict["query_plan"] = QueryPlan(
+            raw_query=query,
+            expanded_query=rewritten.get("rewritten_query"),
+            sub_queries=search_result.get("sub_queries", [query]),
+            strategy=(
+                "keyword_with_semantic_fallback"
+                if semantic_fallback_used and search_result.get("strategy") == "keyword_only"
+                else search_result.get("strategy", "keyword_only")
+            ),
+            fallback_decision=semantic_fallback_used,
+        ).to_dict()
         if answer_dict is not None:
             result_dict["answer"] = {
                 "answer_text": answer_dict["answer_text"],
@@ -940,6 +1231,7 @@ class SmartSearchOrchestrator:
             f'- "time_range": any time reference (e.g., "2024", "last week") or null\n'
             f'- "intent_type": one of "simple", "temporal", "thematic", "complex"\n'
             f'- "rewritten_query": optimized search query\n'
+            f'- "sub_queries": up to 3 focused keyword queries for multi-pass search\n'
         )
 
     def _parse_rewrite_response(self, response: str) -> dict[str, Any]:
@@ -958,6 +1250,7 @@ class SmartSearchOrchestrator:
                 "time_range": parsed.get("time_range"),
                 "intent_type": parsed.get("intent_type", "simple"),
                 "rewritten_query": parsed.get("rewritten_query", ""),
+                "sub_queries": parsed.get("sub_queries", []),
             }
         except (json.JSONDecodeError, KeyError):
             # Fallback: treat raw query as-is
@@ -967,6 +1260,7 @@ class SmartSearchOrchestrator:
                 "time_range": None,
                 "intent_type": "simple",
                 "rewritten_query": response[:100],
+                "sub_queries": [],
             }
 
     def _build_filter_prompt(self, query: str, candidates: list[dict[str, Any]]) -> str:

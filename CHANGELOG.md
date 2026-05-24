@@ -6,6 +6,61 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-24
+
+### What users get
+
+- Search System Upgrade: v1.2.0 now combines the recall-first deterministic
+  retrieval foundation with an agent-ready `smart-search` v1 contract.
+- Search defaults now preserve recall-first truthfulness: L2 search remains
+  keyword-only by default, semantic/vector retrieval stays explicit opt-in, and
+  ranking changes are evaluated against a frozen Cycle 2 multi-signal fixture.
+- `smart-search` default output is now a provider-free scaffold for agents:
+  `agent_instructions`, `answer_scaffold`, and `query_plan` tell the calling
+  agent how to synthesize, cite, and diagnose the returned evidence without
+  hidden LLM calls.
+- `smart-search --use-llm` now consumes LLM query decomposition as a bounded
+  outer loop: up to three sub-queries are run through keyword-first search,
+  fused, deduplicated, and marked with `source_queries` provenance before
+  optional filtering/synthesis.
+- `smart-search --use-llm` now also consumes rewrite metadata: `expanded_terms`
+  can fill bounded sub-queries, `time_range` can become deterministic
+  `date_from` / `date_to` filters for exact ISO-like ranges, and `intent_type`
+  is reflected in the truthful `query_plan.strategy`.
+- Pure temporal Chinese queries such as date-only or month-only requests now
+  return journal entries from the requested date range instead of falling
+  through to empty-keyword BM25 and returning zero results.
+- Search result truncation is separated from retrieval, so internal candidate
+  pools remain available for evaluation and review while the user-facing
+  presentation layer still controls display limits.
+
+### Included in this release
+
+- B-A reset default search semantics to the CHARTER §1.11 recall-first model.
+- B-B decoupled presentation truncation from retrieval/evaluation surfaces.
+- B-C added the date-only branch for fully temporal queries and covered it with
+  unit tests.
+- smart-search v1 added the default agent scaffold contract plus explicit
+  `--use-llm` bounded multi-query orchestration. Default mode remains
+  deterministic and does not initialize a provider client.
+- smart-search rewrite metadata consumption now covers `expanded_terms`,
+  `intent_type`, and deterministic `time_range` filters within the v1 contract.
+- Cycle 2 final eval on `tests/fixtures/eval/gold/cycle2-multi-signal/`:
+  overall R@5 `0.7857`, MRR@5 `0.7417`; C1 `1.0`, C2 `0.1429`,
+  C3 `1.0`, C4 `1.0`. Overall R@5 is a marginal miss versus the
+  `0.79` target; release owner accepted it because C1/C3/C4 gates passed,
+  C2 matched the baseline floor, and the recall-first precision trade-off is
+  intentional under CHARTER §1.11.
+- C3 temporal R@5 reached `1.0000`, exceeding the `0.95` target.
+- Gold Set Recall@5 improved `0.7957` to `0.8172`; Precision@5 moved from
+  `0.4628` to `0.4468`, a disclosed boundary trade-off of the recall-first
+  retrieval model.
+- The local pre-push gate contract timeout is calibrated to 1800 seconds after
+  measured contract-suite runtime showed distributed slowness rather than a
+  single outlier test.
+- GitHub Actions Tests / Quality / Benchmark were green on pushed main
+  `0408590`.
+
 ## [1.1.1] - 2026-05-23
 
 ### What users get

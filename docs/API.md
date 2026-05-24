@@ -208,7 +208,7 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
   "raw_query": "我和女儿之间有哪些珍贵的回忆？",
   "expanded_query": "我和女儿之间有哪些珍贵的回忆？",
   "sub_queries": [],
-  "strategy": "keyword_and_semantic",
+  "strategy": "keyword_only",
   "fallback_decision": false
 }
 ```
@@ -219,7 +219,7 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 | `raw_query` | string | 原始查询文本 |
 | `expanded_query` | string \| null | 实体/别名扩展后的查询 |
 | `sub_queries` | string[] | 分解后的子查询（空列表表示未分解） |
-| `strategy` | string | 信号组合策略，如 `"keyword_and_semantic"` |
+| `strategy` | string | 信号组合策略，如 `"keyword_only"`、`"keyword_with_semantic_fallback"`、`"keyword_and_semantic"` |
 | `fallback_decision` | bool | 是否选择了降级路径 |
 
 #### SearchPlan
@@ -1099,15 +1099,19 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 | `success` | bool | yes | Whether the search executed successfully |
 | `schema_version` | string | yes | `"m16.smart_search.v0"` — top-level output schema version |
 | `query` | string | yes | User's original query |
-| `rewritten_query` | string | yes | LLM-rewritten query (equals original in degraded mode) |
-| `filtered_results` | array | yes | LLM post-filtered results (or raw results in degraded mode) |
-| `summary` | string | yes | LLM-generated 2-3 sentence summary (empty in degraded mode) |
-| `citations` | array | yes | Document title list from LLM filtering |
+| `rewritten_query` | string | yes | Search query after orchestration; equals original in deterministic default mode |
+| `filtered_results` | array | yes | Primary bounded result list; LLM post-filtered only when `--use-llm` succeeds |
+| `summary` | string | yes | LLM-generated 2-3 sentence summary when `--use-llm` succeeds; empty in deterministic default mode |
+| `citations` | array | yes | Document title list from LLM filtering when available |
 | `agent_decisions_summary` | string | conditional | Summary string when `--explain` not passed |
 | `agent_decisions` | array | conditional | Detailed decision list when `--explain` passed |
 | `agent_unavailable` | bool | yes | `true` when LLM is unavailable (degraded mode) |
 | `diagnostics` | object | no | 仅 `--explain` 时出现；确定性诊断块，详见 [v1.1.1 Observability Contract](#v111-observability-contract) |
 | `performance` | object | yes | Timing breakdown (`total_time_ms`, conditional sub-fields) |
+| `smart_search_mode` | string | yes | `deterministic_scaffold`, `llm_orchestrated`, or `deterministic_aggregate` |
+| `agent_instructions` | object | yes | Provider-free guidance for the calling agent |
+| `answer_scaffold` | object | yes | Suggested response shape and citation policy for the calling agent |
+| `query_plan` | object | yes | Query decomposition and strategy metadata |
 | `answer` | object | no | Additive: synthesized answer with trust-gate fields |
 | `evidence_pack` | object | no | Additive: retrieval evidence (requires `--include-evidence`) |
 | `aggregate_result` | object | no | Additive: deterministic aggregate output when aggregate intent detected |
@@ -1117,6 +1121,15 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 
 - `success`: retrieval execution success. Evidence pack or answer synthesis failure does not affect this.
 - `filtered_results`: primary result list for consumers. Items have `title`, `path`, `date`, `rrf_score`.
+- `smart_search_mode`: default is `deterministic_scaffold`; provider-backed orchestration only occurs under `--use-llm`.
+- `agent_instructions` / `answer_scaffold`: the v1 agent-ready contract. Calling agents should synthesize from returned evidence and cite only returned results.
+- `query_plan.strategy`: `keyword_only` for default no-fallback search,
+  `keyword_with_semantic_fallback` when fallback was actually used,
+  `keyword_rewritten` for a single LLM rewrite query, `keyword_expanded`
+  when expansion terms shape a single query, `keyword_temporal` when
+  deterministic date filters are applied from LLM `time_range`, and
+  `keyword_multi_pass` when explicit `--use-llm` orchestration fans out to
+  multiple bounded sub-queries.
 - `agent_unavailable`: diagnostic signal; UI should infer degraded state from `answer`/`summary` presence.
 - `performance`: non-stable; sub-fields may expand. Consumers should tolerate unknown keys.
 - `answer.confidence`: trust-gate calibrated (not LLM self-assessment). Values: `high` / `medium` / `low`.
@@ -1173,14 +1186,37 @@ python -m tools.smart_search --query "..." [options]
   "filtered_results": [
     {"title": "...", "path": "...", "date": "...", "rrf_score": 0.85}
   ],
-  "summary": "Found 3 journal entries about memories with your daughter.",
-  "citations": ["女儿生日", "亲子时光"],
-  "agent_decisions_summary": "3 decisions made",
-  "agent_unavailable": false,
+  "summary": "",
+  "citations": [],
+  "agent_decisions_summary": "0 decisions made",
+  "agent_unavailable": true,
+  "smart_search_mode": "deterministic_scaffold",
+  "agent_instructions": {
+    "schema_version": "smart_search.agent_instructions.v1",
+    "role": "calling_agent",
+    "mode": "deterministic_scaffold",
+    "steps": [
+      "Use filtered_results as bounded evidence; do not cite outside returned results."
+    ]
+  },
+  "answer_scaffold": {
+    "schema_version": "smart_search.answer_scaffold.v1",
+    "query": "我和女儿之间有哪些珍贵的回忆？",
+    "citation_policy": "cite_only_returned_results",
+    "result_count": 3
+  },
+  "query_plan": {
+    "schema_version": "v1.1.1",
+    "raw_query": "我和女儿之间有哪些珍贵的回忆？",
+    "expanded_query": "我和女儿之间有哪些珍贵的回忆？",
+    "sub_queries": ["我和女儿之间有哪些珍贵的回忆？"],
+    "strategy": "keyword_only",
+    "fallback_decision": false
+  },
   "performance": {
     "total_time_ms": 142.5,
-    "rewrite_time_ms": 30.0,
-    "filter_time_ms": 50.0,
+    "rewrite_time_ms": 0,
+    "filter_time_ms": 0,
     "search_time_ms": 45.0,
     "total_available": 3
   }
@@ -1193,12 +1229,16 @@ python -m tools.smart_search --query "..." [options]
 |------|------|------|
 | `success` | bool | 搜索是否成功执行 |
 | `query` | string | 用户原始查询 |
-| `rewritten_query` | string | LLM 改写后的查询（降级模式下等于原始查询） |
-| `filtered_results` | list[dict] | LLM 后置筛选的结果列表（降级模式下为原始检索结果） |
-| `summary` | string | LLM 生成的 2-3 句结果摘要（降级模式下为空） |
-| `citations` | list[string] | LLM 筛选阶段返回的文档标题列表 |
+| `rewritten_query` | string | 编排后的检索查询；默认确定性模式下等于原始查询 |
+| `filtered_results` | list[dict] | 主要结果列表；只有 `--use-llm` 成功时才经过 LLM 后置筛选 |
+| `summary` | string | 只有 `--use-llm` 成功时才由 LLM 生成；默认确定性模式为空 |
+| `citations` | list[string] | LLM 筛选阶段返回的文档标题列表；默认确定性模式为空 |
 | `agent_decisions_summary` | string | CLI 默认输出的 Agent 决策数量摘要；传递 `--explain` 时替换为 `agent_decisions` |
-| `agent_unavailable` | bool | `true` 表示 LLM 不可用，搜索已降级为纯双管道模式 |
+| `agent_unavailable` | bool | `true` 表示未启用或不可用 LLM；默认确定性 scaffold 模式为 true |
+| `smart_search_mode` | string | `deterministic_scaffold` / `llm_orchestrated` / `deterministic_aggregate` |
+| `agent_instructions` | object | 给调用 Agent 的消费规则：只基于返回证据回答，不得外部补证 |
+| `answer_scaffold` | object | 给调用 Agent 的答案结构建议与引用政策 |
+| `query_plan` | object | 查询分解、检索策略与 fallback 判定 |
 | `performance` | object | 性能指标（详见下方 `performance` 子字段表） |
 
 #### `--explain` 输出变化
@@ -1227,9 +1267,13 @@ python -m tools.smart_search --query "..." [options]
 | `success` | 必须检查 | 必须检查 | **stable** |
 | `query` | 引用 | 展示 | **stable** |
 | `filtered_results` | 主要结果 | 展示 | **stable** |
-| `summary` | 可读摘要 | 展示 | **stable** |
-| `citations` | 引用来源 | 可点击链接 | **stable** |
-| `answer` / `answer.*` | 优先展示 | 优先展示 | **stable** |
+| `agent_instructions` | 默认消费规则 | 不需要 | **stable** |
+| `answer_scaffold` | 默认答案结构 | 不需要 | **stable** |
+| `query_plan` | 检索策略诊断 | 可选（高级） | **stable additive** |
+| `smart_search_mode` | 路径判断 | 可展示 | **stable** |
+| `summary` | `--use-llm` 摘要 | 展示 | **stable** |
+| `citations` | `--use-llm` 引用来源 | 可点击链接 | **stable** |
+| `answer` / `answer.*` | `--use-llm --synthesize` 时优先展示 | 优先展示 | **stable** |
 | `evidence_pack` | 按需 | 按需 | **stable** |
 | `formatted_evidence` | 可展示 | 可展示 | **stable additive** — 仅 `--include-evidence --format-entity-annotated` 时出现 |
 | `aggregate_result` | aggregate/count/trend queries | aggregate/count/trend display | **stable additive** - deterministic `aggregate` result; LLM never computes counts |
@@ -3924,9 +3968,9 @@ life-index version
 
 ```json
 {
-  "package_version": "1.1.1",
+  "package_version": "<package-version-from-pyproject>",
   "bootstrap_manifest": {
-    "repo_version": "1.1.1",
+    "repo_version": "<repo-version-from-bootstrap-manifest>",
     "onboarding_schema_version": "2.0",
     "manifest_schema": 1,
     "requires_checkout_sync": true,
@@ -3949,6 +3993,9 @@ life-index version
 
 ### 说明
 
+- `package_version` mirrors `pyproject.toml` `[project].version`
+- `bootstrap_manifest.repo_version` mirrors `bootstrap-manifest.json`
+- Formal releases require those two values to match
 - `life-index health` 只回答运行时健康，不回答 checkout freshness
 - `life-index --version` 用于 freshness / authority 校验
 - onboarding agent 不得用 `health` 替代 `--version` / manifest freshness gate

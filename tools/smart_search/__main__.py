@@ -107,6 +107,7 @@ def main() -> None:
     # Add deterministic diagnostics when --explain is requested
     if args.explain:
         perf = result.get("performance", {})
+        semantic_fallback_used = bool(result.get("semantic_fallback_used", False))
         latency_ms: dict[str, float] = {
             "total": perf.get("total_time_ms", 0),
         }
@@ -127,20 +128,22 @@ def main() -> None:
             "cache_hits": 0,
             "cache_misses": 0,
             "latency_ms": latency_ms,
-            "fallback_path": None,
+            "fallback_path": "semantic" if semantic_fallback_used else None,
         }
 
         from tools.lib.planner_types import QueryPlan
 
-        _fallback = result.get("semantic_fallback_used", False)
-        _strategy = "keyword_only" if _fallback else "keyword_and_semantic"
-        result["query_plan"] = QueryPlan(
-            raw_query=args.query,
-            expanded_query=result.get("query_params", {}).get("expanded_query"),
-            sub_queries=[args.query],
-            strategy=_strategy,
-            fallback_decision=_fallback,
-        ).to_dict()
+        if "query_plan" not in result:
+            _strategy = (
+                "keyword_with_semantic_fallback" if semantic_fallback_used else "keyword_only"
+            )
+            result["query_plan"] = QueryPlan(
+                raw_query=args.query,
+                expanded_query=result.get("query_params", {}).get("expanded_query"),
+                sub_queries=[args.query],
+                strategy=_strategy,
+                fallback_decision=semantic_fallback_used,
+            ).to_dict()
 
     result["schema_version"] = SCHEMA_VERSION
     _emit_json(result)

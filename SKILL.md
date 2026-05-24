@@ -323,7 +323,14 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
          最终结果
 ```
 
-对于复杂自然语言查询，`smart-search` 默认返回确定性检索 scaffold；只有显式传递 `--use-llm` 时，才在双管道之上启用 LLM 编排层（改写→检索→精筛），详见 [ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
+对于复杂自然语言查询，`smart-search` 默认返回确定性检索 scaffold；只有显式传递 `--use-llm` 时，才在双管道之上启用 LLM 编排层（改写→消费 `expanded_terms` / `intent_type` / `time_range`→有界多路检索→精筛），详见 [ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
+
+**Agent consumption rule（smart-search v1）**:
+1. 默认先调用 `life-index smart-search --query "..." --include-evidence`。
+2. 使用返回的 `agent_instructions` 与 `answer_scaffold` 组织最终答复。
+3. 只引用 `filtered_results` / `evidence_pack` 中返回的来源，不得自行补造证据。
+4. 只有当用户或任务明确允许 provider-backed 编排时，才使用 `--use-llm`。
+5. 只有需要 CLI 自己产出引用支撑答案字段时，才叠加 `--synthesize`。
 
 **查询意图 → 参数映射**:
 
