@@ -892,5 +892,5 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
         topic_hints=topic_hints,
         entity_hints_used=[],
         expanded_query=expanded,
-        pipelines={"keyword": True, "semantic": True},
+        pipelines={"keyword": True, "semantic": False},
     )

@@ -1386,7 +1386,7 @@ def hierarchical_search(
     result["l3_results"] = l3_results
     result["semantic_results"] = semantic_results
     result["semantic_available"] = semantic_available
-    if semantic_note:
+    if semantic_note and semantic:
         result["semantic_note"] = semantic_note
         if not semantic_available and semantic:
             result["warnings"].append(f"semantic_unavailable: {semantic_note}")

@@ -21,7 +21,6 @@ from tools.search_journals.query_preprocessor import (
 )
 from tools.search_journals.query_types import IntentType, QueryMode
 
-
 # ── normalize_query ────────────────────────────────────────────────────
 
 
@@ -331,7 +330,7 @@ class TestBuildSearchPlan:
         assert plan.date_range.since is not None
         assert len(plan.keywords) > 0
         assert plan.pipelines["keyword"] is True
-        assert plan.pipelines["semantic"] is True
+        assert plan.pipelines["semantic"] is False
 
     def test_keyword_query(self):
         plan = build_search_plan("乐乐", reference_date=self.REF_DATE)
@@ -453,3 +452,20 @@ class TestChineseTimeIntegration:
         since = date.fromisoformat(plan.date_range.since)
         diff = (self.REF_DATE - since).days
         assert 175 <= diff <= 185
+
+
+# ── v1.2.0 runtime rework: pipelines default keyword-only ───────────────
+
+
+class TestBuildSearchPlanPipelinesDefaultKeywordOnly:
+    """RED test: build_search_plan must default pipelines["semantic"] to False.
+
+    Per CHARTER §1.11, the default L2 search plan must be keyword-only.
+    """
+
+    def test_pipelines_semantic_false_by_default(self):
+        plan = build_search_plan("工作 进展")
+        assert plan.pipelines["semantic"] is False, (
+            "build_search_plan must default pipelines['semantic'] to False "
+            "(CHARTER §1.11 keyword-only default)"
+        )

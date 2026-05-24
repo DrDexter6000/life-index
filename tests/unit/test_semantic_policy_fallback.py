@@ -777,3 +777,132 @@ class TestStructuredMetadataPreventsFallback:
             assert len(result["merged_results"]) >= 1
             assert any(structured_md_path == r.get("path") for r in result["merged_results"])
             mock_sem.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# I. v1.2.0 runtime rework: direct API + semantic_note invariant tests
+# ---------------------------------------------------------------------------
+
+
+class TestDirectAPIDefaultKeywordOnly:
+    """RED test: direct hierarchical_search() call without explicit semantic
+    must expose default keyword-only state (semantic=False).
+
+    Per CHARTER §1.11, the direct API default must not enable semantic search.
+    """
+
+    def test_direct_call_default_semantic_false(self):
+        from tools.search_journals.core import hierarchical_search
+
+        with (
+            patch(
+                "tools.search_journals.core.run_keyword_pipeline",
+                return_value=_mock_keyword_results(2),
+            ),
+            patch(
+                "tools.search_journals.core._filter_results_by_candidates",
+                side_effect=lambda x, _: x,
+            ),
+            patch(
+                "tools.search_journals.core.merge_and_rank_results",
+                side_effect=lambda l1, l2, l3, *a, **kw: l3,
+            ),
+        ):
+            result = hierarchical_search(query="test query")
+            assert result["query_params"]["semantic"] is False
+            assert result["semantic_effective_policy"] == "off"
+
+
+class TestExplicitSemanticTrueEnablesPolicy:
+    """Verify explicit semantic=True still enables the semantic policy path."""
+
+    def test_explicit_semantic_true_enables_fallback(self):
+        from tools.search_journals.core import hierarchical_search
+
+        with (
+            patch(
+                "tools.search_journals.core.run_keyword_pipeline",
+                return_value=_mock_keyword_results(0),
+            ),
+            patch(
+                "tools.search_journals.core.run_semantic_pipeline",
+                return_value=_mock_semantic_results(2),
+            ),
+            patch(
+                "tools.search_journals.core._filter_results_by_candidates",
+                side_effect=lambda x, _: x,
+            ),
+            patch(
+                "tools.search_journals.core.merge_and_rank_results_hybrid",
+                side_effect=lambda *a, **kw: a[3] if len(a) > 3 else [],
+            ),
+        ):
+            result = hierarchical_search(
+                query="test query", semantic=True, semantic_policy="fallback"
+            )
+            assert result["semantic_fallback_used"] is True
+            assert result["query_params"]["semantic"] is True
+
+    def test_explicit_semantic_true_enables_hybrid(self):
+        from tools.search_journals.core import hierarchical_search
+
+        with (
+            patch(
+                "tools.search_journals.core.run_keyword_pipeline",
+                return_value=_mock_keyword_results(1),
+            ),
+            patch(
+                "tools.search_journals.core.run_semantic_pipeline",
+                return_value=_mock_semantic_results(1),
+            ),
+            patch(
+                "tools.search_journals.core._filter_results_by_candidates",
+                side_effect=lambda x, _: x,
+            ),
+            patch(
+                "tools.search_journals.core.merge_and_rank_results_hybrid",
+                side_effect=lambda *a, **kw: list(a[0]),
+            ),
+        ):
+            result = hierarchical_search(
+                query="test query", semantic=True, semantic_policy="hybrid"
+            )
+            assert result["query_params"]["semantic"] is True
+            assert result["semantic_effective_policy"] == "hybrid"
+
+
+class TestKeywordOnlySemanticNoteInvariant:
+    """Verify default keyword-only semantic_note mentions CHARTER §1.11 /
+    --semantic opt-in and is NOT overwritten by --no-semantic wording.
+
+    This tests that the semantic_note set by core.py for the keyword-only
+    default is preserved through the hybrid-path code, even when
+    semantic_pipeline returns its own note for semantic=False.
+    """
+
+    def test_default_keyword_note_mentions_charter_and_opt_in(self):
+        from tools.search_journals.core import hierarchical_search
+
+        with (
+            patch(
+                "tools.search_journals.core.run_keyword_pipeline",
+                return_value=_mock_keyword_results(1),
+            ),
+            patch(
+                "tools.search_journals.core._filter_results_by_candidates",
+                side_effect=lambda x, _: x,
+            ),
+            patch(
+                "tools.search_journals.core.merge_and_rank_results",
+                side_effect=lambda l1, l2, l3, *a, **kw: l3,
+            ),
+        ):
+            result = hierarchical_search(query="test query")
+            note = result.get("semantic_note", "")
+            assert "§1.11" in note, f"semantic_note must mention CHARTER §1.11, got: {note}"
+            assert (
+                "--semantic" in note
+            ), f"semantic_note must mention --semantic opt-in, got: {note}"
+            assert (
+                "--no-semantic" not in note
+            ), f"semantic_note must NOT contain --no-semantic wording, got: {note}"

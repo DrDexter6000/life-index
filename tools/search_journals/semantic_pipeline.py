@@ -152,7 +152,7 @@ def run_semantic_pipeline(
     sem_start = time.time()
 
     if not semantic:
-        return [], {}, False, "语义搜索已通过 --no-semantic 禁用。"
+        return [], {}, False, None
     if not query:
         return [], {}, True, None
     if semantic_min_similarity is None:
