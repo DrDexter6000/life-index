@@ -12,9 +12,7 @@ from pathlib import Path
 import pytest
 
 
-def _write_journal(
-    path: Path, *, title: str, date: str, body: str, topic: str = "work"
-) -> None:
+def _write_journal(path: Path, *, title: str, date: str, body: str, topic: str = "work") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         f'---\ntitle: "{title}"\ndate: {date}\ntopic: [{topic}]\n---\n\n{body}\n',
@@ -24,8 +22,6 @@ def _write_journal(
 
 def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Patch all search module path references to use tmp_path."""
-    import tools.lib.config as config_module
-    import tools.lib.paths as paths_module
     import tools.search_journals.core as core_module
     import tools.search_journals.keyword_pipeline as keyword_pipeline
     import tools.search_journals.l2_metadata as l2_metadata
@@ -39,7 +35,8 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
 
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
 
-    # Patch getter functions on each module so get_user_data_dir() / get_journals_dir() return tmp values
+    # Patch getter functions on each module so get_user_data_dir() /
+    # get_journals_dir() return tmp values
     for module in (
         core_module,
         keyword_pipeline,
@@ -63,20 +60,22 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
     monkeypatch.setattr(
         freshness_mod,
         "check_full_freshness",
-        lambda *a, **kw: type("F", (), {
-            "overall_fresh": True,
-            "issues": [],
-            "to_dict": lambda self: {"overall_fresh": True, "issues": []},
-        })(),
+        lambda *a, **kw: type(
+            "F",
+            (),
+            {
+                "overall_fresh": True,
+                "issues": [],
+                "to_dict": lambda self: {"overall_fresh": True, "issues": []},
+            },
+        )(),
     )
 
 
 # ── Test 1: date_range narrows candidates ──────────────────────────────
 
 
-def test_date_range_narrows_l0_candidates(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_date_range_narrows_l0_candidates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When preprocessor parses a date_range, L0 candidate set should be narrowed."""
     _patch_search_roots(monkeypatch, tmp_path)
 
@@ -103,9 +102,7 @@ def test_date_range_narrows_l0_candidates(
     from tools.search_journals.core import build_l0_candidate_set
 
     # With date_from and date_to restricting to March only
-    candidates = build_l0_candidate_set(
-        date_from="2026-03-01", date_to="2026-03-31"
-    )
+    candidates = build_l0_candidate_set(date_from="2026-03-01", date_to="2026-03-31")
     assert candidates is not None
     # Should only contain the March entry
     assert len(candidates) == 1
@@ -126,9 +123,7 @@ def test_no_date_range_returns_none() -> None:
 # ── Test 3: date_from only filters start ───────────────────────────────
 
 
-def test_date_from_only_filters_start_date(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_date_from_only_filters_start_date(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When only date_from is provided, all journals >= date_from are included."""
     _patch_search_roots(monkeypatch, tmp_path)
 
@@ -253,7 +248,7 @@ def test_hierarchical_search_consumes_date_range_from_plan(
 
     # "3月份" parses to 2026-03-01..2026-03-31, restricting L0 to March only
     # "mar3test" appears in both entries but L0 filtering excludes January
-    result = hierarchical_search(
+    _ = hierarchical_search(
         query="mar3test",
         level=3,
         semantic=False,
@@ -280,3 +275,119 @@ def test_hierarchical_search_consumes_date_range_from_plan(
     candidate_list = list(candidates)
     assert len(candidate_list) == 1
     assert "life-index_2026-03-10_001.md" in candidate_list[0]
+
+
+# ── Sub-PRD-2.C integration tests ──────────────────────────────────────
+
+
+def test_search_chinese_month_whole_month(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """'四月份' should narrow L0 candidates to April journals."""
+    _patch_search_roots(monkeypatch, tmp_path)
+
+    _write_journal(
+        tmp_path / "Journals" / "2026" / "02" / "life-index_2026-02-15_001.md",
+        title="February entry",
+        date="2026-02-15",
+        body="tuan2 content here",
+    )
+    _write_journal(
+        tmp_path / "Journals" / "2026" / "04" / "life-index_2026-04-05_001.md",
+        title="April entry",
+        date="2026-04-05",
+        body="tuan2 content here",
+    )
+
+    from tools.search_journals.query_preprocessor import build_search_plan
+    from datetime import date
+
+    plan = build_search_plan("四月份 tuan2", reference_date=date(2026, 4, 18))
+    assert plan.date_range is not None
+    assert plan.date_range.since == "2026-04-01"
+    assert plan.date_range.until == "2026-04-30"
+
+    from tools.search_journals.core import build_l0_candidate_set
+
+    candidates = build_l0_candidate_set(
+        date_from=plan.date_range.since, date_to=plan.date_range.until
+    )
+    assert candidates is not None
+    candidate_list = list(candidates)
+    assert len(candidate_list) == 1
+    assert "life-index_2026-04-05_001.md" in candidate_list[0]
+
+
+def test_search_chinese_month_end_late_march(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """'三月底' should narrow L0 candidates to March 21-31."""
+    _patch_search_roots(monkeypatch, tmp_path)
+
+    _write_journal(
+        tmp_path / "Journals" / "2026" / "03" / "life-index_2026-03-10_001.md",
+        title="Early March entry",
+        date="2026-03-10",
+        body="tuan3 content here",
+    )
+    _write_journal(
+        tmp_path / "Journals" / "2026" / "03" / "life-index_2026-03-25_001.md",
+        title="Late March entry",
+        date="2026-03-25",
+        body="tuan3 content here",
+    )
+
+    from tools.search_journals.query_preprocessor import build_search_plan
+    from datetime import date
+
+    plan = build_search_plan("三月底 tuan3", reference_date=date(2026, 4, 18))
+    assert plan.date_range is not None
+    assert plan.date_range.since == "2026-03-21"
+    assert plan.date_range.until == "2026-03-31"
+
+    from tools.search_journals.core import build_l0_candidate_set
+
+    candidates = build_l0_candidate_set(
+        date_from=plan.date_range.since, date_to=plan.date_range.until
+    )
+    assert candidates is not None
+    candidate_list = list(candidates)
+    assert len(candidate_list) == 1
+    assert "life-index_2026-03-25_001.md" in candidate_list[0]
+
+
+def test_search_mixed_query_date_plus_keyword(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """'二月份 团团' should apply February date filter and preserve '团团' keyword."""
+    _patch_search_roots(monkeypatch, tmp_path)
+
+    _write_journal(
+        tmp_path / "Journals" / "2026" / "01" / "life-index_2026-01-20_001.md",
+        title="January tuan",
+        date="2026-01-20",
+        body="团团 content here",
+    )
+    _write_journal(
+        tmp_path / "Journals" / "2026" / "02" / "life-index_2026-02-15_001.md",
+        title="February tuan",
+        date="2026-02-15",
+        body="团团 content here",
+    )
+
+    from tools.search_journals.query_preprocessor import build_search_plan
+    from datetime import date
+
+    plan = build_search_plan("二月份 团团", reference_date=date(2026, 4, 18))
+    assert plan.date_range is not None
+    assert plan.date_range.since == "2026-02-01"
+    assert plan.date_range.until == "2026-02-28"
+    assert "团团" in plan.keywords
+
+    from tools.search_journals.core import build_l0_candidate_set
+
+    candidates = build_l0_candidate_set(
+        date_from=plan.date_range.since, date_to=plan.date_range.until
+    )
+    assert candidates is not None
+    candidate_list = list(candidates)
+    assert len(candidate_list) == 1
+    assert "life-index_2026-02-15_001.md" in candidate_list[0]

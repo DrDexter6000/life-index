@@ -700,6 +700,23 @@ def _date_range_dict_from_plan(plan: Any | None) -> dict[str, str] | None:
     return dr if dr else None
 
 
+def _is_pure_temporal_query(plan: Any | None) -> bool:
+    """Return True when the query contains only a time expression.
+
+    Detects queries like '四月份', '3月4号', '2026-01-28' where the
+    entire meaningful content is a temporal expression.  In these cases
+    the keyword pipeline should fall back to date-only L2 retrieval.
+    """
+    if plan is None or plan.date_range is None:
+        return False
+    from .query_preprocessor import extract_time_expression
+
+    keywords = getattr(plan, "keywords", None)
+    if not keywords:
+        return True
+    return all(extract_time_expression(kw) == kw for kw in keywords)
+
+
 def _augment_with_structured_metadata(
     l2_results: list[dict[str, Any]],
     candidate_paths: set[str] | None,
@@ -763,12 +780,19 @@ def _finalize_level3_results(
 ) -> None:
     """Promote, explain, and log merged results. Mutates result in place.
 
+    Date-only results are sorted by freshness (date descending).
     Truncation is deferred to the presentation layer (__main__.py).
     This layer records total_matches (complete candidate set count) and
     leaves merged_results at full size.  Per CHARTER §1.11 rule #2 and
     §3.1, the retrieval/ranking layer must NOT hard-cap the candidate
     set.
     """
+    if not query:
+        result["merged_results"].sort(
+            key=lambda r: str(r.get("date") or r.get("metadata", {}).get("date", "")),
+            reverse=True,
+        )
+
     total_matches = len(result["merged_results"])
     result["total_matches"] = total_matches
     result["total_available"] = total_matches
@@ -1206,34 +1230,42 @@ def hierarchical_search(
                 result.setdefault("index_status", {})["auto_updated"] = False
 
     # Round 19 Phase 1-C Track B: Time expression parsing
+    # Sub-PRD-2.C: Prefer query_preprocessor date_range (broader pattern coverage)
+    # Fallback to time_parser for edge cases not handled by preprocessor.
     _time_filter = None
     if query and not date_from and not date_to:
-        from ..lib.time_parser import parse_time_expression
-
-        _time_filter = parse_time_expression(query, now=_now)
-        if _time_filter:
-            date_from = _time_filter.date_range.start.isoformat()
-            date_to = _time_filter.date_range.end.isoformat()
+        if _plan and _plan.date_range:
+            date_from = _plan.date_range.since
+            date_to = _plan.date_range.until
             result["time_parsed"] = {
-                "matched_span": _time_filter.matched_span,
+                "matched_span": _plan.date_range.source,
                 "date_from": date_from,
                 "date_to": date_to,
             }
+        else:
+            from ..lib.time_parser import parse_time_expression
+
+            _time_filter = parse_time_expression(query, now=_now)
+            if _time_filter:
+                date_from = _time_filter.date_range.start.isoformat()
+                date_to = _time_filter.date_range.end.isoformat()
+                result["time_parsed"] = {
+                    "matched_span": _time_filter.matched_span,
+                    "date_from": date_from,
+                    "date_to": date_to,
+                }
             # NOTE: Topic inference from cleaned query was attempted but
             # reverted because keyword-based topic matching is unreliable
             # (e.g. "开发" maps to "create" but user intent may be "work").
             # GQ53 remains a failure due to ranking, not time parsing.
 
-    # Phase 4 T4.1: Consume search_plan.date_range when no explicit date params
-    if _plan and _plan.date_range and not date_from and not date_to:
-        if _plan.date_range.since:
-            date_from = _plan.date_range.since
-        if _plan.date_range.until:
-            date_to = _plan.date_range.until
-
     candidate_paths = build_l0_candidate_set(
         year=year, month=month, topic=topic, date_from=date_from, date_to=date_to
     )
+
+    # B-C narrow rework: pure temporal query → date-only branch
+    if _plan and _plan.date_range and _is_pure_temporal_query(_plan):
+        query = None
 
     # ── Level 1: 索引层（向后兼容，提前返回） ──
     if level == 1:
