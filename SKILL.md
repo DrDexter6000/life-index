@@ -50,7 +50,7 @@ triggers:
 # 统一 CLI（推荐）
 .venv/bin/life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
 .venv/bin/life-index search --query "关键词" --topic work --level 3
-.venv/bin/life-index search --query "学习"  # 语义搜索默认启用
+.venv/bin/life-index search --query "学习"  # 默认 keyword-only；加 --semantic 启用语义搜索
 .venv/bin/life-index smart-search --query "我和女儿之间有哪些珍贵的回忆？"  # 确定性检索 scaffold（默认不调用 LLM）
 .venv/bin/life-index smart-search --query "..." --use-llm  # 显式启用 LLM 编排搜索
 .venv/bin/life-index smart-search --query "..." --explain  # 展示 Agent 决策详情
@@ -339,7 +339,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 **步骤**:
 1. **解析查询意图**：从用户表述中识别过滤条件
-2. **执行搜索**：`search_journals`（双管道自动启用）
+2. **执行搜索**：`search_journals`（默认 keyword-only；加 `--semantic` 启用语义/双管道）
 3. **呈现结果**：展示日志列表（按 RRF 分数排序）
 
 **职责边界（强制）**：
