@@ -10,7 +10,7 @@
     "date_from": null,
     "date_to": null,
     "level": 3,
-    "semantic": true,
+    "semantic": false,
     "year": null,
     "month": null,
     "enable_source_tier": false
@@ -58,9 +58,10 @@
   "has_more": false,
   "no_confident_match": true,
   "semantic_available": true,
-  "semantic_policy": "hybrid",
-  "semantic_effective_policy": "hybrid",
+  "semantic_policy": "fallback",
+  "semantic_effective_policy": "off",
   "semantic_fallback_used": false,
+  "semantic_note": "keyword-only 模式（per CHARTER §1.11）。使用 --semantic 启用语义搜索。",
   "performance": {
     "l1_time_ms": 1.0,
     "l2_time_ms": 2.0,

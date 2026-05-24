@@ -16,13 +16,12 @@ Note: After Phase 2B refactoring, mock targets changed:
 
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import importlib
 import sys
 import os
 
 from tools.lib.index_freshness import FreshnessReport
-
 
 DEFAULT_ENTITY_GRAPH = {
     "entities": [
@@ -62,9 +61,7 @@ class TestHierarchicalSearch:
     def _entity_graph(self, tmp_path: Path, monkeypatch):
         graph_path = tmp_path / "entity_graph.yaml"
         graph_path.write_text(
-            __import__("yaml").safe_dump(
-                DEFAULT_ENTITY_GRAPH, allow_unicode=True, sort_keys=False
-            ),
+            __import__("yaml").safe_dump(DEFAULT_ENTITY_GRAPH, allow_unicode=True, sort_keys=False),
             encoding="utf-8",
         )
         monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
@@ -116,15 +113,9 @@ class TestHierarchicalSearch:
                 ),
                 patch.object(write_core, "get_year_month", return_value=(2026, 3)),
                 patch.object(write_core, "get_next_sequence", return_value=1),
-                patch.object(
-                    write_core, "query_weather_for_location", return_value="Sunny 25°C"
-                ),
-                patch.object(
-                    write_core, "normalize_location", return_value="Chongqing, China"
-                ),
-                patch.object(
-                    write_core, "extract_file_paths_from_content", return_value=[]
-                ),
+                patch.object(write_core, "query_weather_for_location", return_value="Sunny 25°C"),
+                patch.object(write_core, "normalize_location", return_value="Chongqing, China"),
+                patch.object(write_core, "extract_file_paths_from_content", return_value=[]),
                 patch.object(write_core, "process_attachments", return_value=[]),
                 patch.object(
                     write_core,
@@ -170,9 +161,7 @@ class TestHierarchicalSearch:
             ):
                 edit_module.edit_journal(
                     journal_path=source_path,
-                    frontmatter_updates={
-                        "remove_related_entries": ["Journals/2026/03/target.md"]
-                    },
+                    frontmatter_updates={"remove_related_entries": ["Journals/2026/03/target.md"]},
                 )
 
             merged_after_edit = merge_and_rank_results(
@@ -218,15 +207,9 @@ class TestHierarchicalSearch:
             }
         ]
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l3_content"
-        ) as mock_l3:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l2_metadata"
-            ) as mock_l2:
-                with patch(
-                    "tools.search_journals.core.merge_and_rank_results"
-                ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+            with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
@@ -239,12 +222,8 @@ class TestHierarchicalSearch:
                     )
 
         assert result["success"] is True
-        assert result["merged_results"][0]["related_entries"] == [
-            "Journals/2026/03/other.md"
-        ]
-        assert result["merged_results"][0]["backlinked_by"] == [
-            "Journals/2026/03/source.md"
-        ]
+        assert result["merged_results"][0]["related_entries"] == ["Journals/2026/03/other.md"]
+        assert result["merged_results"][0]["backlinked_by"] == ["Journals/2026/03/source.md"]
 
     def test_search_level3_sets_no_confident_match_when_all_results_are_low(self):
         """Top-level no_confident_match should be true when all results are low."""
@@ -259,15 +238,9 @@ class TestHierarchicalSearch:
             }
         ]
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l3_content"
-        ) as mock_l3:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l2_metadata"
-            ) as mock_l2:
-                with patch(
-                    "tools.search_journals.core.merge_and_rank_results"
-                ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+            with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
@@ -299,12 +272,8 @@ class TestHierarchicalSearch:
         with patch(
             "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
         ) as mock_semantic_status:
-            with patch(
-                "tools.search_journals.semantic_pipeline.search_semantic"
-            ) as mock_sem:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
+            with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
                     with patch(
                         "tools.search_journals.keyword_pipeline.search_l2_metadata"
                     ) as mock_l2:
@@ -332,12 +301,8 @@ class TestHierarchicalSearch:
                             )
 
         assert result["success"] is True
-        assert result["merged_results"][0]["related_entries"] == [
-            "Journals/2026/03/other.md"
-        ]
-        assert result["merged_results"][0]["backlinked_by"] == [
-            "Journals/2026/03/source.md"
-        ]
+        assert result["merged_results"][0]["related_entries"] == ["Journals/2026/03/other.md"]
+        assert result["merged_results"][0]["backlinked_by"] == ["Journals/2026/03/source.md"]
 
     def test_search_level1_no_filters_scans_all(self):
         """Level 1 without filters should scan all indices"""
@@ -426,15 +391,9 @@ class TestHierarchicalSearch:
         from tools.search_journals.core import hierarchical_search
 
         # Level 3 keyword pipeline uses keyword_pipeline module
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l3_content"
-        ) as mock_l3:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l2_metadata"
-            ) as mock_l2:
-                with patch(
-                    "tools.search_journals.core.merge_and_rank_results"
-                ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+            with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
@@ -455,12 +414,8 @@ class TestHierarchicalSearch:
         with patch(
             "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
         ) as mock_semantic_status:
-            with patch(
-                "tools.search_journals.semantic_pipeline.search_semantic"
-            ) as mock_sem:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
+            with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
                     with patch(
                         "tools.search_journals.keyword_pipeline.search_l2_metadata"
                     ) as mock_l2:
@@ -526,49 +481,39 @@ class TestHierarchicalSearch:
 
         assert "performance" in result
 
-    def test_search_default_semantic_true(self):
-        """v1.2: semantic defaults to True"""
+    def test_search_default_semantic_false(self):
+        """v1.2: semantic defaults to False (per CHARTER §1.11, ADR-028)."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-        ) as mock_semantic_status:
-            with patch(
-                "tools.search_journals.semantic_pipeline.search_semantic"
-            ) as mock_sem:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
-                    with patch(
-                        "tools.search_journals.keyword_pipeline.search_l2_metadata"
-                    ) as mock_l2:
-                        with patch(
-                            "tools.search_journals.core.merge_and_rank_results_hybrid"
-                        ) as mock_rank:
-                            mock_semantic_status.return_value = {
-                                "available": True,
-                                "reason": None,
-                                "note": None,
-                            }
-                            mock_sem.return_value = (
-                                [{"path": "test.md", "similarity": 0.8}],
-                                {"semantic_encode_ms": 1.0, "semantic_search_ms": 2.0},
-                            )
-                            mock_l2.return_value = {
-                                "results": [],
-                                "truncated": False,
-                                "total_available": 0,
-                            }
-                            mock_l3.return_value = []
-                            mock_rank.return_value = [{"path": "test.md", "score": 0.8}]
-                            # Do NOT pass semantic= — test that default is True
-                            result = hierarchical_search(
-                                query="Python", level=3, use_index=False
-                            )
+        with (
+            patch(
+                "tools.search_journals.core.run_keyword_pipeline",
+                return_value=(
+                    [],
+                    [],
+                    [],
+                    False,
+                    0,
+                    {"l1_time_ms": 1.0, "l2_time_ms": 1.0, "l3_time_ms": 1.0},
+                ),
+            ),
+            patch(
+                "tools.search_journals.core.run_semantic_pipeline",
+                return_value=([], {}, False, "语义搜索已通过 --no-semantic 禁用。"),
+            ),
+            patch(
+                "tools.search_journals.core._filter_results_by_candidates",
+                side_effect=lambda x, _: x,
+            ),
+            patch(
+                "tools.search_journals.core.merge_and_rank_results",
+                side_effect=lambda l1, l2, l3, *a, **kw: l3,
+            ),
+        ):
+            result = hierarchical_search(query="Python", level=3, use_index=False)
 
         assert result["success"] is True
-        assert result["query_params"]["semantic"] is True
-        mock_sem.assert_called_once()
+        assert result["query_params"]["semantic"] is False
 
     def test_search_parallel_pipelines(self):
         """v1.2: level=3 runs keyword and semantic pipelines in parallel"""
@@ -577,12 +522,8 @@ class TestHierarchicalSearch:
         with patch(
             "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
         ) as mock_semantic_status:
-            with patch(
-                "tools.search_journals.semantic_pipeline.search_semantic"
-            ) as mock_sem:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
+            with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
                     with patch(
                         "tools.search_journals.keyword_pipeline.search_l2_metadata"
                     ) as mock_l2:
@@ -609,7 +550,11 @@ class TestHierarchicalSearch:
                                 {"path": "sem.md", "score": 0.8},
                             ]
                             result = hierarchical_search(
-                                query="test", level=3, use_index=False
+                                query="test",
+                                level=3,
+                                use_index=False,
+                                semantic=True,
+                                semantic_policy="hybrid",
                             )
 
         assert result["success"] is True
@@ -624,18 +569,10 @@ class TestHierarchicalSearch:
         """v1.2: semantic=False disables semantic pipeline"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.semantic_pipeline.search_semantic"
-        ) as mock_sem:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l3_content"
-            ) as mock_l3:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l2_metadata"
-                ) as mock_l2:
-                    with patch(
-                        "tools.search_journals.core.merge_and_rank_results"
-                    ) as mock_rank:
+        with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
+            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+                    with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                         mock_l2.return_value = {
                             "results": [],
                             "truncated": False,
@@ -650,7 +587,7 @@ class TestHierarchicalSearch:
         assert result["success"] is True
         assert result["semantic_results"] == []
         assert result["semantic_available"] is False
-        assert "--no-semantic" in result["semantic_note"]
+        assert "semantic_note" in result
         # semantic pipeline should not have been called
         mock_sem.assert_not_called()
 
@@ -666,15 +603,9 @@ class TestHierarchicalSearch:
                 "note": "向量索引未建立，请运行 life-index index",
             },
         ):
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l2_metadata"
-            ) as mock_l2:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
-                    with patch(
-                        "tools.search_journals.core.merge_and_rank_results"
-                    ) as mock_rank:
+            with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                    with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                         mock_l2.return_value = {
                             "results": [],
                             "truncated": False,
@@ -687,13 +618,16 @@ class TestHierarchicalSearch:
                             query="test",
                             level=3,
                             semantic=True,
+                            semantic_policy="hybrid",
                             use_index=False,
                         )
 
         assert result["success"] is True
         assert result["semantic_results"] == []
         assert result["semantic_available"] is False
-        assert result["merged_results"] == [{"path": "keyword.md", "score": 0.88, "title_promoted": False}]
+        assert result["merged_results"] == [
+            {"path": "keyword.md", "score": 0.88, "title_promoted": False}
+        ]
         assert result["semantic_note"] == "向量索引未建立，请运行 life-index index"
         assert result["performance"]["semantic_degraded"] == "vector index not found"
 
@@ -717,22 +651,14 @@ class TestHierarchicalSearch:
             ]
         }
         graph_path.write_text(
-            __import__("yaml").safe_dump(
-                legacy_graph, allow_unicode=True, sort_keys=False
-            ),
+            __import__("yaml").safe_dump(legacy_graph, allow_unicode=True, sort_keys=False),
             encoding="utf-8",
         )
         monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l3_content"
-            ) as mock_l3:
-                with patch(
-                    "tools.search_journals.core.merge_and_rank_results"
-                ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
@@ -752,12 +678,8 @@ class TestHierarchicalSearch:
         """Level 3 should preprocess multi-keyword query and use FTS index results"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.core.merge_and_rank_results"
-            ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                 with patch("tools.lib.search_index.search_fts") as mock_fts:
                     mock_l2.return_value = {
                         "results": [],
@@ -790,18 +712,10 @@ class TestHierarchicalSearch:
         """Level 3 should fall back to file scan when FTS import/search path fails"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l1_index"
-            ) as mock_l1:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
-                    with patch(
-                        "tools.search_journals.core.merge_and_rank_results"
-                    ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.keyword_pipeline.search_l1_index") as mock_l1:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                    with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                         mock_l2.return_value = {
                             "results": [{"path": "l2.md", "date": "2026-03-14"}],
                             "truncated": False,
@@ -827,12 +741,8 @@ class TestHierarchicalSearch:
         """Fallback-only L3 results should not be inflated by ranking defaults."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l3_content"
-            ) as mock_l3:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
                 mock_l2.return_value = {
                     "results": [],
                     "truncated": False,
@@ -863,15 +773,9 @@ class TestHierarchicalSearch:
         """Level 3 should propagate truncated flag from metadata pipeline"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l3_content"
-            ) as mock_l3:
-                with patch(
-                    "tools.search_journals.core.merge_and_rank_results"
-                ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                     mock_l2.return_value = {
                         "results": [{"path": "test.md", "date": "2026-03-14"}],
                         "truncated": True,
@@ -894,12 +798,8 @@ class TestHierarchicalSearch:
         """Level 3 without query should skip L3 and use keyword-only merge"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.core.merge_and_rank_results"
-            ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                 mock_l2.return_value = {
                     "results": [{"path": "meta.md", "date": "2026-03-14"}],
                     "truncated": False,
@@ -911,22 +811,18 @@ class TestHierarchicalSearch:
 
         assert result["success"] is True
         assert result["l3_results"] == []
-        assert result["merged_results"] == [{"path": "meta.md", "score": 1.0, "title_promoted": False}]
+        assert result["merged_results"] == [
+            {"path": "meta.md", "score": 1.0, "title_promoted": False}
+        ]
 
     def test_search_level3_keyword_pipeline_project_and_tags(self):
         """Level 3 keyword pipeline should query project and tag indexes"""
         from tools.search_journals.core import hierarchical_search
 
         with patch("tools.search_journals.keyword_pipeline.search_l1_index") as mock_l1:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l2_metadata"
-            ) as mock_l2:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
-                    with patch(
-                        "tools.search_journals.core.merge_and_rank_results"
-                    ) as mock_rank:
+            with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                    with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                         mock_l1.side_effect = [
                             [{"path": "project.md", "date": "2026-03-14"}],
                             [{"path": "tag1.md", "date": "2026-03-14"}],
@@ -958,12 +854,8 @@ class TestHierarchicalSearch:
         """Single keyword query should be passed to FTS unchanged"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.core.merge_and_rank_results"
-            ) as mock_rank:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
                 with patch("tools.lib.search_index.search_fts") as mock_fts:
                     mock_l2.return_value = {
                         "results": [],
@@ -991,15 +883,9 @@ class TestSearchWarnings:
         """搜索结果必须包含 warnings 字段"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l3_content"
-            ) as mock_l3:
-                with patch(
-                    "tools.search_journals.semantic_pipeline.search_semantic"
-                ) as mock_sem:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
@@ -1024,12 +910,8 @@ class TestSearchWarnings:
                 "note": "向量索引未建立",
             },
         ):
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l2_metadata"
-            ) as mock_l2:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l3_content"
-                ) as mock_l3:
+            with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
                     mock_l2.return_value = {
                         "results": [],
                         "truncated": False,
@@ -1056,12 +938,8 @@ class TestSearchWarnings:
         with patch(
             "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
         ) as mock_semantic_status:
-            with patch(
-                "tools.search_journals.semantic_pipeline.search_semantic"
-            ) as mock_sem:
-                with patch(
-                    "tools.search_journals.keyword_pipeline.search_l2_metadata"
-                ) as mock_l2:
+            with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
+                with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
                     with patch(
                         "tools.search_journals.keyword_pipeline.search_l3_content"
                     ) as mock_l3:
@@ -1091,34 +969,27 @@ class TestSearchWarnings:
                                     "total_available": 0,
                                 }
                                 mock_l3.return_value = []
-                                result = hierarchical_search(
-                                    query="test", level=3, use_index=False
-                                )
+                                result = hierarchical_search(query="test", level=3, use_index=False)
 
         assert result["warnings"] == []
 
-    def test_semantic_disabled_produces_warning(self):
-        """语义搜索被禁用时，warnings 应包含提示"""
+    def test_semantic_default_off_no_warning(self):
+        """v1.2: semantic defaults to False (per CHARTER §1.11).
+        No warning needed — keyword-only is the honest default."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
-            with patch(
-                "tools.search_journals.keyword_pipeline.search_l3_content"
-            ) as mock_l3:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
                 mock_l2.return_value = {
                     "results": [],
                     "truncated": False,
                     "total_available": 0,
                 }
                 mock_l3.return_value = []
-                result = hierarchical_search(
-                    query="test", level=3, semantic=False, use_index=False
-                )
+                result = hierarchical_search(query="test", level=3, semantic=False, use_index=False)
 
-        assert len(result["warnings"]) >= 1
-        assert any("disabled" in w.lower() for w in result["warnings"])
+        assert result["query_params"]["semantic"] is False
+        assert "semantic_note" in result
 
 
 class TestModuleImportFallback:

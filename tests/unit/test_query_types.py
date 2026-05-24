@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from enum import Enum
 
-import pytest
-
 from tools.search_journals.query_types import (
     AmbiguityItem,
     AmbiguityReport,
@@ -17,7 +15,6 @@ from tools.search_journals.query_types import (
     QueryMode,
     SearchPlan,
 )
-
 
 # ── Enum completeness ──────────────────────────────────────────────────
 
@@ -111,7 +108,7 @@ class TestSearchPlan:
             topic_hints=topic_hints or [],
             entity_hints_used=entity_hints_used or [],
             expanded_query=expanded_query,
-            pipelines=pipelines or {"keyword": True, "semantic": True},
+            pipelines=pipelines or {"keyword": True, "semantic": False},
         )
 
     def test_full_construction(self) -> None:
@@ -139,9 +136,16 @@ class TestSearchPlan:
         plan = self._make_plan()
         d = plan.to_dict()
         expected_keys = {
-            "raw_query", "normalized_query", "intent_type", "query_mode",
-            "keywords", "date_range", "topic_hints", "entity_hints_used",
-            "expanded_query", "pipelines",
+            "raw_query",
+            "normalized_query",
+            "intent_type",
+            "query_mode",
+            "keywords",
+            "date_range",
+            "topic_hints",
+            "entity_hints_used",
+            "expanded_query",
+            "pipelines",
         }
         assert expected_keys.issubset(set(d.keys()))
 
@@ -151,7 +155,11 @@ class TestSearchPlan:
 
     def test_pipelines_dict(self) -> None:
         plan = self._make_plan()
-        assert plan.pipelines == {"keyword": True, "semantic": True}
+        assert plan.pipelines == {"keyword": True, "semantic": False}
+
+    def test_pipelines_default_is_keyword_only(self) -> None:
+        plan = SearchPlan()
+        assert plan.pipelines == {"keyword": True, "semantic": False}
 
 
 # ── AmbiguityItem + AmbiguityReport ────────────────────────────────────

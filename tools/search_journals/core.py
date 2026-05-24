@@ -999,7 +999,7 @@ def hierarchical_search(
     weather: Optional[str] = None,
     level: int = 3,
     use_index: bool = True,
-    semantic: bool = True,
+    semantic: bool = False,
     semantic_weight: float = SEMANTIC_WEIGHT_DEFAULT,
     fts_weight: float = FTS_WEIGHT_DEFAULT,
     # Web-only recall overrides
@@ -1009,7 +1009,7 @@ def hierarchical_search(
     rrf_min_score: float = RRF_MIN_SCORE,
     non_rrf_min_score: float = NON_RRF_MIN_SCORE,
     explain: bool = False,  # Task 2.1: explain mode
-    semantic_policy: Literal["hybrid", "fallback"] = "hybrid",
+    semantic_policy: Literal["hybrid", "fallback"] = "fallback",
     enable_source_tier: bool = False,  # gbrain Phase B: opt-in source-tier boost
 ) -> Dict[str, Any]:
     """
@@ -1023,8 +1023,8 @@ def hierarchical_search(
     仅 level=3（默认）时启动双管道并行。
 
     semantic_policy:
-      - "hybrid": keyword + semantic run in parallel, merged via RRF (default)
-      - "fallback": keyword first; semantic only invoked when keyword returns zero results
+      - "fallback" (default): keyword first; semantic only invoked when keyword returns zero results
+      - "hybrid": keyword + semantic run in parallel, merged via RRF (requires --semantic opt-in)
     """
     result: Dict[str, Any] = {
         "success": True,
@@ -1070,8 +1070,9 @@ def hierarchical_search(
     result["entity_graph_status"] = graph_status
 
     if not semantic:
-        result["semantic_note"] = "语义搜索已通过 --no-semantic 禁用。"
-        result["warnings"].append("semantic_disabled: 用户通过 --no-semantic 禁用语义搜索")
+        result["semantic_note"] = (
+            "keyword-only 模式（per CHARTER §1.11）。使用 --semantic 启用语义搜索。"
+        )
 
     # F1: Eval anchor deterministic injection
     # Resolve a single anchor date for all time-dependent subsystems.

@@ -232,8 +232,9 @@ class TestHybridPolicyUnchanged:
             # hybrid never sets semantic_fallback_used=True
             assert result["semantic_fallback_used"] is False
 
-    def test_default_policy_is_hybrid(self):
-        """Without explicit semantic_policy, default must be 'hybrid'."""
+    def test_default_policy_is_fallback(self):
+        """Without explicit semantic_policy, default must be 'fallback'
+        (per CHARTER §1.11, ADR-028)."""
         from tools.search_journals.core import hierarchical_search
 
         with (
@@ -242,20 +243,16 @@ class TestHybridPolicyUnchanged:
                 return_value=_mock_keyword_results(1),
             ),
             patch(
-                "tools.search_journals.core.run_semantic_pipeline",
-                return_value=_mock_semantic_results(1),
-            ),
-            patch(
                 "tools.search_journals.core._filter_results_by_candidates",
                 side_effect=lambda x, _: x,
             ),
             patch(
-                "tools.search_journals.core.merge_and_rank_results_hybrid",
-                side_effect=lambda *a, **kw: list(a[0]),
+                "tools.search_journals.core.merge_and_rank_results",
+                side_effect=lambda l1, l2, l3, *a, **kw: l3,
             ),
         ):
-            result = hierarchical_search(query="test query", semantic=True)
-            assert result["semantic_policy"] == "hybrid"
+            result = hierarchical_search(query="test query", semantic=False)
+            assert result["semantic_policy"] == "fallback"
 
 
 # ---------------------------------------------------------------------------

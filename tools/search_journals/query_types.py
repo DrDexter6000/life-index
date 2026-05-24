@@ -86,7 +86,7 @@ class SearchPlan:
     topic_hints: list[str] = field(default_factory=list)
     entity_hints_used: list[dict] = field(default_factory=list)
     expanded_query: str = ""
-    pipelines: dict = field(default_factory=lambda: {"keyword": True, "semantic": True})
+    pipelines: dict = field(default_factory=lambda: {"keyword": True, "semantic": False})
 
     def to_dict(self) -> dict:
         return {
