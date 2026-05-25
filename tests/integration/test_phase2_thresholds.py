@@ -142,7 +142,7 @@ def _titles_and_confidence(results: list[dict]) -> list[str]:
 def test_high_relevance_queries_meet_phase2_thresholds(
     query: str, expected_top_title_terms: list[str], search_func
 ) -> None:
-    result = search_func(query=query, level=3)
+    result = search_func(query=query, level=3, semantic=True, semantic_policy="hybrid")
     merged = result.get("merged_results", [])
 
     assert len(merged) >= 3, (

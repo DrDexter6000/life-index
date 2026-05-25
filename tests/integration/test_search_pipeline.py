@@ -22,8 +22,7 @@ Usage:
 import pytest
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 import time
 
 # Add project root to path
@@ -125,12 +124,13 @@ class TestDualPipelineParallelExecution:
                             }
 
                             # Add topic to trigger L1 search
-                            start = time.perf_counter()
                             result = hierarchical_search(
-                                query="test", topic="work", level=3, semantic=True
+                                query="test",
+                                topic="work",
+                                level=3,
+                                semantic=True,
+                                semantic_policy="hybrid",
                             )
-                            total_time = time.perf_counter() - start
-
         # Extract start times from log
         l1_start = next(t for name, t in execution_log if name == "l1_start")
         sem_start = next(t for name, t in execution_log if name == "sem_start")
@@ -176,7 +176,8 @@ class TestDualPipelineParallelExecution:
                             return_value=([], {}),
                         ):
                             with patch(
-                                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
+                                "tools.search_journals.semantic_pipeline."
+                                "get_semantic_runtime_status"
                             ) as mock_status:
                                 mock_status.return_value = {
                                     "available": False,
@@ -184,7 +185,12 @@ class TestDualPipelineParallelExecution:
                                     "note": "向量索引未建立，请运行 life-index index",
                                 }
 
-                                result = hierarchical_search(query="test", level=3, semantic=True)
+                                result = hierarchical_search(
+                                    query="test",
+                                    level=3,
+                                    semantic=True,
+                                    semantic_policy="hybrid",
+                                )
 
         # Should still return FTS results with graceful degradation
         assert result["success"] is True
@@ -285,7 +291,8 @@ class TestRRFFusion:
                             return_value=([], {}),
                         ):
                             with patch(
-                                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
+                                "tools.search_journals.semantic_pipeline."
+                                "get_semantic_runtime_status"
                             ) as mock_status:
                                 mock_status.return_value = {
                                     "available": False,
@@ -353,7 +360,8 @@ class TestSemanticSearchDegradation:
                             return_value=([], {}),
                         ):
                             with patch(
-                                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
+                                "tools.search_journals.semantic_pipeline."
+                                "get_semantic_runtime_status"
                             ) as mock_status:
                                 mock_status.return_value = {
                                     "available": False,
@@ -361,7 +369,12 @@ class TestSemanticSearchDegradation:
                                     "note": "向量索引未建立，请运行 life-index index",
                                 }
 
-                                result = hierarchical_search(query="test", level=3, semantic=True)
+                                result = hierarchical_search(
+                                    query="test",
+                                    level=3,
+                                    semantic=True,
+                                    semantic_policy="hybrid",
+                                )
 
         assert result["success"] is True
         assert len(result["l3_results"]) == 1
@@ -421,7 +434,7 @@ class TestSemanticSearchDegradation:
         # Semantic should not be called
         mock_semantic.assert_not_called()
         assert "semantic_note" in result
-        assert "--no-semantic" in result["semantic_note"]
+        assert "--semantic" in result["semantic_note"]
 
 
 class TestEndToEndSearch:
@@ -533,7 +546,12 @@ class TestEndToEndSearch:
                                 "note": "",
                             }
 
-                            result = hierarchical_search(query="test", level=3)
+                            result = hierarchical_search(
+                                query="test",
+                                level=3,
+                                semantic=True,
+                                semantic_policy="hybrid",
+                            )
 
         assert result["performance"]["semantic_encode_ms"] == 12.3
         assert result["performance"]["semantic_search_ms"] == 4.5
@@ -607,7 +625,7 @@ class TestSearchWithFilters:
                                 "note": "",
                             }
 
-                            result = hierarchical_search(
+                            hierarchical_search(
                                 query="test",
                                 date_from="2026-01-01",
                                 date_to="2026-03-31",
@@ -646,7 +664,7 @@ class TestSearchWithFilters:
                                 "note": "",
                             }
 
-                            result = hierarchical_search(topic="work", level=3)
+                            hierarchical_search(topic="work", level=3)
 
         mock_l1.assert_called_with("topic", "work")
 
@@ -677,7 +695,7 @@ class TestSearchWithFilters:
                                 "note": "",
                             }
 
-                            result = hierarchical_search(tags=["python", "testing"], level=3)
+                            hierarchical_search(tags=["python", "testing"], level=3)
 
         # Should call search_l1_index for each tag
         assert mock_l1.call_count == 2
@@ -794,7 +812,8 @@ class TestSearchWeights:
                             return_value=([], {}),
                         ):
                             with patch(
-                                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
+                                "tools.search_journals.semantic_pipeline."
+                                "get_semantic_runtime_status"
                             ) as mock_status:
                                 mock_status.return_value = {
                                     "available": False,
