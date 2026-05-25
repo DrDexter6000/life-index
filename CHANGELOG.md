@@ -6,6 +6,25 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### What users get
+
+- README, README.en, and API docs now show the exact Recall@5 measurement
+  `0.7857` (keyword-only honest floor) instead of the rounded `0.79`, with
+  explicit notation that this is a marginal miss versus the 0.79 target and
+  that C2 paraphrase remains a known gap.
+- Search tool docstrings and CLI help text corrected to reflect the actual
+  default behavior: keyword-only retrieval with `--semantic` as explicit
+  opt-in for dual-pipeline parallel search.
+- `edit_journal` append-only revision history formalized as an accepted ADR
+  (`ADR-2026-05-25-edit-journal-append-only`) with passing contract tests
+  enforcing that `save_revision()` is called before every write, backing the
+  P1 Growth Rings promise.
+- MCP discovery-only layer RFC accepted (`RFC-2026-05-25-mcp-discovery-only-layer`,
+  status `In Flight`, planned 2026-Q3). ADR-004 numbering collision between
+  the inline `ARCHITECTURE.md` ADR-004 (MCP migration) and the standalone
+  `docs/adr/ADR-004-rrf-min-score.md` is documented with a one-time
+  disambiguation rule.
+
 ## [1.2.0] - 2026-05-24
 
 ### What users get
