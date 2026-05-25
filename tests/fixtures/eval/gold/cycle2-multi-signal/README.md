@@ -19,6 +19,17 @@ This gold fixture is the reviewed Phase A input for the v1.2.0 search multi-sign
 1. **C2 is Chinese-only.** English paraphrase coverage is a known gap and is deferred to a future absorption cycle. Baseline interpretation must read C2 as Chinese paraphrase recall, not language-agnostic paraphrase recall.
 2. **March-April corpus clustering is preserved.** This reflects the source corpus distribution rather than synthetic rebalancing. A6 reports per-category metrics so algorithm-side cluster overfit remains visible.
 3. **C4 entity queries are intentionally compound.** The category is designed to measure entity/context retrieval behavior, including cases where BM25 can still match exact entity tokens.
+4. **C2 paraphrase rows are not expected to contain literal query tokens in their target files** — that is the definitional property of paraphrase. Per-row `description` fields document the intended semantic bridge (synonym set, related concepts, or contextual cues) that the paraphrase relies on. Future audits of C2 must check for semantic bridges, not literal token presence; the latter would be a methodology error.
+
+## Provenance Hash Format
+
+All `provenance.prompt_hash` values in this fixture use the canonical **prefixed digest form**:
+
+```
+prompt_hash: "sha256:<64-hex-digest>"
+```
+
+This matches the OCI image manifest convention and is the canonical form used across content-addressable systems (Docker / OCI, IPFS multihash with explicit codec, etc.). Raw 64-hex without prefix is **not** the canonical form for this fixture. Audits and downstream consumers must treat `sha256:<64hex>` as valid and complete.
 
 ## Layout
 
