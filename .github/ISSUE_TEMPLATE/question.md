@@ -19,9 +19,9 @@ assignees: ''
 您是否已查阅以下文档？
 
 - [ ] [README.md](../README.md)
-- [ ] [AGENTS.md](../AGENTS.md)
-- [ ] [docs/HANDBOOK.md](../docs/HANDBOOK.md)
+- [ ] [SKILL.md](../SKILL.md)
 - [ ] [docs/API.md](../docs/API.md)
+- [ ] [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
 
 ## 环境信息
 

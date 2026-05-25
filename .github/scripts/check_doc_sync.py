@@ -6,18 +6,18 @@
 """
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
 
-def find_markdown_links(content: str, base_dir: Path) -> list:
+def find_markdown_links(content: str, base_dir: Path) -> list[tuple[str, str, int]]:
     """
     查找 Markdown 内容中的内部链接
     返回: [(链接文本, 链接路径, 行号)]
     """
-    links = []
+    _ = base_dir
+    links: list[tuple[str, str, int]] = []
     # 匹配 Markdown 链接: [text](./path) 或 [text](../path)
     link_pattern = r"\[([^\]]+)\]\((\.[^)]+)\)"
 
@@ -57,12 +57,21 @@ def extract_bootstrap_version(bootstrap_path: Path) -> str | None:
     content = bootstrap_path.read_text(encoding="utf-8")
     try:
         data = json.loads(content)
-        return data.get("repo_version")
     except json.JSONDecodeError:
         return None
 
+    if not isinstance(data, dict):
+        return None
 
-def check_link_validity(link_path: str, base_dir: Path, source_file: Path) -> tuple:
+    repo_version = data.get("repo_version")
+    if isinstance(repo_version, str):
+        return repo_version
+    return None
+
+
+def check_link_validity(
+    link_path: str, base_dir: Path, source_file: Path
+) -> tuple[bool, Path | None]:
     """
     检查链接是否有效
     返回: (是否有效, 解析后的完整路径)
@@ -83,15 +92,13 @@ def check_link_validity(link_path: str, base_dir: Path, source_file: Path) -> tu
     return exists, target
 
 
-def check_documentation_sync():
+def check_documentation_sync() -> int:
     """主检查函数"""
     project_root = Path(__file__).parent.parent.parent
-    docs_dir = project_root
 
     # 要检查的核心文档
     core_docs = [
         "SKILL.md",
-        "AGENTS.md",
         "README.md",
         "docs/API.md",
         "docs/ARCHITECTURE.md",
@@ -118,33 +125,20 @@ def check_documentation_sync():
         links = find_markdown_links(content, project_root)
 
         if not links:
-            print(f"   无内部链接")
+            print("   无内部链接")
             continue
 
         for text, link_path, line_num in links:
-            is_valid, resolved_path = check_link_validity(
-                link_path, project_root, doc_path
-            )
+            is_valid, resolved_path = check_link_validity(link_path, project_root, doc_path)
 
             if is_valid:
-                print(
-                    f"   [OK] [{text}]({link_path}) -> {resolved_path and resolved_path.name or 'anchor'}"
-                )
+                target_name = resolved_path.name if resolved_path else "anchor"
+                print(f"   [OK] [{text}]({link_path}) -> {target_name}")
             else:
                 errors.append(
                     f"[ERROR] {doc_rel_path}:{line_num} - 无效链接: [{text}]({link_path})"
                 )
                 print(f"   [FAIL] [{text}]({link_path}) - 未找到")
-
-    # 检查 AGENTS.md 最后更新日期
-    agents_md = project_root / "AGENTS.md"
-    if agents_md.exists():
-        content = agents_md.read_text(encoding="utf-8")
-        # 兼容两种格式: "最后更新:" 和 "**最后更新**:"
-        if "最后更新" in content:
-            print(f"\n[OK] AGENTS.md 包含最后更新日期标记")
-        else:
-            warnings.append("[WARN] AGENTS.md 缺少最后更新日期标记")
 
     # 检查 tools/lib/AGENTS.md 最后更新日期
     lib_agents_md = project_root / "tools/lib/AGENTS.md"
@@ -152,12 +146,12 @@ def check_documentation_sync():
         content = lib_agents_md.read_text(encoding="utf-8")
         # 兼容两种格式: "最后更新:" 和 "**最后更新**:"
         if "最后更新" in content:
-            print(f"[OK] tools/lib/AGENTS.md 包含最后更新日期标记")
+            print("[OK] tools/lib/AGENTS.md 包含最后更新日期标记")
         else:
             warnings.append("[WARN] tools/lib/AGENTS.md 缺少最后更新日期标记")
 
     # 检查版本号一致性
-    print(f"\n[检查] 版本号一致性")
+    print("\n[检查] 版本号一致性")
     pyproject_path = project_root / "pyproject.toml"
     bootstrap_path = project_root / "bootstrap-manifest.json"
 
@@ -167,26 +161,30 @@ def check_documentation_sync():
     if pyproject_version and bootstrap_version:
         if pyproject_version == bootstrap_version:
             print(
-                f"   [OK] pyproject.toml: {pyproject_version} == bootstrap-manifest.json: {bootstrap_version}"
+                "   [OK] pyproject.toml: "
+                f"{pyproject_version} == bootstrap-manifest.json: "
+                f"{bootstrap_version}"
             )
         else:
             errors.append(
-                f"[ERROR] 版本号不一致: pyproject.toml={pyproject_version}, bootstrap-manifest.json={bootstrap_version}"
+                "[ERROR] 版本号不一致: "
+                f"pyproject.toml={pyproject_version}, "
+                f"bootstrap-manifest.json={bootstrap_version}"
             )
             print(
-                f"   [FAIL] pyproject.toml: {pyproject_version} != bootstrap-manifest.json: {bootstrap_version}"
+                "   [FAIL] pyproject.toml: "
+                f"{pyproject_version} != bootstrap-manifest.json: "
+                f"{bootstrap_version}"
             )
     elif pyproject_version:
         errors.append("[ERROR] bootstrap-manifest.json 缺少 repo_version 或解析失败")
-        print(f"   [FAIL] bootstrap-manifest.json 缺少 repo_version")
+        print("   [FAIL] bootstrap-manifest.json 缺少 repo_version")
     elif bootstrap_version:
         errors.append("[ERROR] pyproject.toml 缺少 version 或解析失败")
-        print(f"   [FAIL] pyproject.toml 缺少 version")
+        print("   [FAIL] pyproject.toml 缺少 version")
     else:
-        errors.append(
-            "[ERROR] 无法从 pyproject.toml 和 bootstrap-manifest.json 提取版本号"
-        )
-        print(f"   [FAIL] 两个文件都无法提取版本号")
+        errors.append("[ERROR] 无法从 pyproject.toml 和 bootstrap-manifest.json 提取版本号")
+        print("   [FAIL] 两个文件都无法提取版本号")
 
     # 汇总结果
     print("\n" + "=" * 60)
@@ -206,7 +204,7 @@ def check_documentation_sync():
         print("检查失败 - 请修复上述错误")
         return 1
 
-    print(f"\n所有检查通过！")
+    print("\n所有检查通过！")
     print("=" * 60)
     return 0
 
