@@ -197,6 +197,8 @@ tags: ["重构", "优化"]
 
 ### ADR-004: MCP 迁移评估
 
+> **编号说明（2026-05-25）**：本节是历史内联 ADR。`docs/adr/ADR-004-rrf-min-score.md` 后续也使用了 ADR-004 编号。`RFC-2026-05-25-mcp-discovery-only-layer` 已记录一次性编号豁免：不重编号既有公开 ADR 文件；未来引用必须限定为 `ARCHITECTURE.md inline ADR-004 (MCP migration)` 或 `docs/adr/ADR-004-rrf-min-score.md (RRF min score)`。
+
 **决策**: 不迁移到 MCP，保持当前 CLI + SKILL.md 架构。
 
 **原因**:

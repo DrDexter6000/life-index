@@ -32,6 +32,7 @@
 | ADR-028 | L2 Retrieval Default = Pure Keyword | 🔒 Invariant | Recall-first truthfulness model；CHARTER §1.11；文件存在 |
 
 > **注**：ADR-018/019/020 编号被预留但未使用；ADR-021/022/023/025 为 round-specific deviation / audit / baseline process records，已移至私有本地治理归档，不再属于公开 ADR surface。
+> **编号例外**：`docs/ARCHITECTURE.md` 内仍保留一个历史内联 `ADR-004: MCP 迁移评估`。它与本索引中的 `docs/adr/ADR-004-rrf-min-score.md` 编号冲突。`RFC-2026-05-25-mcp-discovery-only-layer` 已按主审授权记录一次性豁免：不重编号既有公开 ADR 文件；未来引用必须限定为 `ARCHITECTURE.md inline ADR-004 (MCP migration)` 或 `docs/adr/ADR-004-rrf-min-score.md (RRF min score)`。
 
 ---
 
