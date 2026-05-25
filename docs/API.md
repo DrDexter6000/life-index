@@ -897,7 +897,7 @@ python -m tools.search_journals [options]
 | people | string | ❌ | - | 按人物过滤（逗号分隔） |
 | level | int | ❌ | 3 | 搜索层级: 1=索引, 2=元数据, 3=全文 |
 | --no-index | flag | ❌ | false | 禁用 FTS 索引（默认启用 FTS） |
-| --semantic | flag | ❌ | false | 启用语义搜索（默认 keyword-only；显式 opt-in 启用双管道并行，per CHARTER §1.11） |
+| --semantic | flag | ❌ | false | 语义搜索开关；默认 keyword-only，显式 opt-in 后开启双管道并行，per CHARTER §1.11 |
 | --no-semantic | flag | ❌ | false | 显式禁用语义搜索（向后兼容；默认已为 keyword-only，此 flag 确保不触发 fallback） |
 | --semantic-policy | enum | ❌ | fallback | 语义搜索策略: fallback=仅零结果时启用, hybrid=并行融合 |
 | --semantic-weight | float | ❌ | 1.0 | 语义搜索权重 (默认: 1.0) |

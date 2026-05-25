@@ -26,7 +26,7 @@
 <!-- 承诺 Badges -->
 
 <p align="center">
-  <a href="./tests/fixtures/eval/gold/cycle2-multi-signal/README.md"><img src="https://img.shields.io/badge/Recall%405-0.79_keyword_floor-4ecdc4" alt="Recall@5 keyword-only honest floor 0.79"></a>
+  <a href="./tests/fixtures/eval/gold/cycle2-multi-signal/README.md"><img src="https://img.shields.io/badge/Recall%405-0.7857_keyword_floor-4ecdc4" alt="Recall@5 keyword-only honest floor 0.7857"></a>
   <a href="./CHARTER.md"><img src="https://img.shields.io/badge/CHARTER_§1.11-Recall--First_Guarantee-78206E" alt="CHARTER §1.11 Recall-First Guarantee"></a>
 </p>
 
@@ -105,14 +105,14 @@ Agent 记忆系统会随评分淘汰，知识库会随认知迭代覆盖。Life 
 
 ### P2 · 无 LLM 即可 · 有 LLM 更强 (Complete Without LLM · Stronger With)
 
-**Life Index CLI Core 由 18 个 CLI 原子工具组成，经 2,400+ 测试验证 —— 架构面向 50 年日志增长，能力覆盖完整的 write + search + index + entity + eval + backup 链路。在不调用任何 LLM 的前提下，CLI Core 已经把 Recall@5 做到了 0.79（keyword-only honest floor，2026-05-25 完整 audit PASS）。这是 CLI Core 在你的 Agent 还没介入时就能达到的能力地板 —— Agent 介入只会让它更强。**
+**Life Index CLI Core 由 20+ CLI 命令组成，经 2,400+ 测试验证 —— 架构面向 50 年日志增长，能力覆盖完整的 write + search + index + entity + eval + backup 链路。在不调用任何 LLM 的前提下，CLI Core 已经把 Recall@5 做到 ≈0.79（实测 0.7857，keyword-only honest floor；C2 paraphrase 仍为已知 gap；2026-05-25 完整 audit PASS）。这是 CLI Core 在你的 Agent 还没介入时就能达到的能力地板 —— Agent 介入只会让它更强。**
 
 <details>
 <summary>展开 P2 · 阐释与约束</summary>
 
 <br>
 
-*Life Index CLI Core is built from 18 atomic CLI tools, validated by 2,400+ tests — architected for 50 years of journal growth, covering the full write + search + index + entity + eval + backup pipeline. Without invoking any LLM, CLI Core delivers Recall@5 = 0.79 (keyword-only honest floor, full audit PASS 2026-05-25). That's the capability floor of CLI Core before your Agent steps in — Agent integration only makes it stronger.*
+*Life Index CLI Core is built from 20+ CLI commands, validated by 2,400+ tests — architected for 50 years of journal growth, covering the full write + search + index + entity + eval + backup pipeline. Without invoking any LLM, CLI Core delivers Recall@5 ≈0.79 (0.7857 measured, keyword-only honest floor; C2 paraphrase remains a known gap; full audit PASS 2026-05-25). That's the capability floor of CLI Core before your Agent steps in — Agent integration only makes it stronger.*
 
 行业惯例是先公布**端到端 + LLM 合成**的"漂亮分数"，让人误以为是检索系统本身的能力。Life Index 反向操作 —— **CLI Core 自证能力地板，LLM 增强是显式 opt-in**。这意味着：
 
@@ -122,7 +122,7 @@ Agent 记忆系统会随评分淘汰，知识库会随认知迭代覆盖。Life 
 - LLM 是上层 frosting，不是地基。**地基本身已经能扛住**
 
 > **约束载体**：[CHARTER](./CHARTER.md) §1.5 确定性/智能边界 + §1.9 Agent-Native 模块原则 + §1.10 模块-基础层契约边界 + §1.11 召回优先检索真实模型 · §1.11 入 §5.3 不可弱化清单
-> **当前实测**：18 个 CLI 原子工具 · 2,400+ unit tests · keyword-only Recall@5 = 0.79 · MRR@5 = 0.74 · cycle2 fixture · 56 queries · 5-stage multi-LLM 评审 · 2026-05-25 完整 integrity audit PASS
+> **当前实测**：20+ CLI 命令 · 2,400+ unit tests · keyword-only Recall@5 = 0.7857（约等于 0.79；相对 0.79 目标为边际 miss；C2 paraphrase 仍为已知 gap）· MRR@5 = 0.74 · cycle2 fixture · 56 queries · 5-stage multi-LLM 评审 · 2026-05-25 完整 integrity audit PASS
 > **配套设施**：MCP discovery layer · RFC 标记 `In Flight`（计划 2026-Q3 落地，作为 BYOL 边界的可信度补强）
 > **否证条件**：(a) L2 默认 retrieval 路径加入 precision threshold 截断 token-match 候选；(b) 任一默认路径模块隐含 bundled LLM、provider client 初始化、或读取 API key —— 任一即视为违约。
 
@@ -426,7 +426,7 @@ life-index smart-search --query "..." --use-llm
 | 日志写入 / 编辑              | ✅   | 结构化 Markdown + YAML 元数据，自动天气/情感/实体标注                                                                                                     |
 | 分层人生检索                 | ✅   | CLI Core 离线完成分层检索：关键词精确匹配 + Entity Graph 实体扩展；语义/向量召回为显式 opt-in，Agent 可选负责搜索前编排和搜索后表达                                                    |
 | 智能搜索编排器 (smart-search) | ✅   | 默认输出 agent-ready 确定性检索 scaffold；`--use-llm` 才启用 LLM 编排（query 改写 → 多轮检索 → 精筛），失败时降级回退 CLI Core                                            |
-| 搜索质量评估 (eval)          | ✅   | Cycle 2 多信号 fixture 锁定，**2026-05-25 完整 integrity audit PASS**；overall R@5=0.79（keyword floor）· C3 temporal R@5=1.0 · recall-first 搜索质量门控 |
+| 搜索质量评估 (eval)          | ✅   | Cycle 2 多信号 fixture 锁定，**2026-05-25 完整 integrity audit PASS**；overall R@5=0.7857（keyword floor，相对 0.79 目标为边际 miss；C2 paraphrase 仍为已知 gap）· C3 temporal R@5=1.0 · recall-first 搜索质量门控 |
 | 实体图谱 + 质量审计 + 维护       | ✅   | 别名消解，关系推理，重复/孤立检测 + Agent 访谈修复；review hub + merge/delete/stats/check 维护命令                                                                |
 | Schema 迁移              | ✅   | 链式迁移框架，确定性字段补齐 + Agent 语义回填协作                                                                                                            |
 | 搭便车事件通知                | ✅   | 零 cron、零进程，CLI 响应内附带事件提醒（连续未记日志、月报缺失等）                                                                                                   |

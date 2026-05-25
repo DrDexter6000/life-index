@@ -209,11 +209,11 @@ class TestDefaultMode:
         assert payload["source_command"] == "search --no-semantic"
 
 
-# ── RECALL MODE (hybrid via search default) ───────────────────────────────
+# ── RECALL MODE (delegates to search, keyword-only by default) ───────────────
 
 
 class TestRecallMode:
-    """recall mode: delegates to L2 search (default hybrid behavior)."""
+    """recall mode: delegates to search (default keyword-only behavior)."""
 
     def test_recall_basic(self, sandbox):
         """recall mode returns matching results."""

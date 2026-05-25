@@ -516,7 +516,7 @@ class TestHierarchicalSearch:
         assert result["query_params"]["semantic"] is False
 
     def test_search_parallel_pipelines(self):
-        """v1.2: level=3 runs keyword and semantic pipelines in parallel"""
+        """v1.2: level=3 with --semantic --semantic-policy hybrid runs both pipelines"""
         from tools.search_journals.core import hierarchical_search
 
         with patch(

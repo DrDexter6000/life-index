@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Life Index - Search Journals Tool - CLI Entry Point
-双管道并行检索日志（关键词管道 ∥ 语义管道 → RRF 融合）
+分层检索日志（默认 keyword-only；--semantic 启用双管道并行融合）
 """
 
 # ── Encoding protection (R10 fix) ──────────────────────────────────────
@@ -116,7 +116,7 @@ Examples:
         type=int,
         choices=[1, 2, 3],
         default=3,
-        help="搜索层级：1=索引, 2=元数据, 3=双管道并行 (默认: 3)",
+        help="搜索层级：1=索引, 2=元数据, 3=全文检索 (默认: 3)",
     )
     parser.add_argument(
         "--no-index",
