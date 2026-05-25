@@ -10,7 +10,7 @@
 
 <div align="center">
 
-<p align="center">[English](./README.en.md) | **简体中文**</p>
+<p align="center"><a href="./README.en.md">English</a> | <strong>简体中文</strong></p>
 
 </div>
 
