@@ -153,7 +153,7 @@ CHARTER §3.2 "双管道作为确定性原语" 当前措辞暗示双管道（FTS
 
 | 证据                                  | 出处                                                                     | 说明                                                                                          |
 | ----------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| README 口语承诺                         | `README.md:72`                                                         | "keeps the fragments of your life searchable, traceable, and never silently overwritten"    |
+| README 口语承诺                         | `README.en.md:72`                                                      | "keeps the fragments of your life searchable, traceable, and never silently overwritten"    |
 | Production default = hybrid         | `tools/search_journals/core.py:1026`                                   | "hybrid: keyword + semantic run in parallel, merged via RRF (default)"                      |
 | Eval gate default = keyword-only    | `tools/eval/__main__.py:38-40`                                         | `--semantic` default disabled                                                               |
 | Round 19 hybrid P@5 仅 0.49          | `CHARTER.md:423` 注释                                                    | "Round 19 Phase 1-D 当前指标（107 queries, hybrid 模式）：MRR@5=0.6006, Recall@5=0.8387, P@5=0.4894" |
