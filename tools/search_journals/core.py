@@ -3,9 +3,9 @@
 Life Index - Search Journals Tool - Core
 核心协调模块
 
-双管道并行搜索架构:
+分层搜索架构（默认 keyword-only，--semantic 启用双管道并行）:
   Pipeline A (关键词): L1 索引过滤 → L2 元数据过滤 → L3 FTS5 内容匹配
-  Pipeline B (语义):   向量相似度搜索
+  Pipeline B (语义):   向量相似度搜索（需 --semantic 显式启用）
   融合: RRF (Reciprocal Rank Fusion, k=RRF_K)
 """
 
@@ -1043,14 +1043,15 @@ def hierarchical_search(
     enable_source_tier: bool = False,  # gbrain Phase B: opt-in source-tier boost
 ) -> Dict[str, Any]:
     """
-    双管道并行搜索
+    分层搜索（默认 keyword-only；--semantic 启用双管道并行）
 
     Pipeline A: L1 索引过滤 → L2 元数据过滤 → L3 FTS5 内容匹配
-    Pipeline B: 语义向量搜索
+    Pipeline B: 语义向量搜索（需 --semantic 显式启用）
     融合: RRF (Reciprocal Rank Fusion, k=RRF_K)
 
     当 level=1 或 level=2 时，按原逻辑提前返回（向后兼容）。
-    仅 level=3（默认）时启动双管道并行。
+    level=3（默认）运行关键词管道；启用 --semantic 后按 semantic_policy
+    决定是否并行启动语义管道。
 
     semantic_policy:
       - "fallback" (default): keyword first; semantic only invoked when keyword returns zero results
@@ -1302,7 +1303,7 @@ def hierarchical_search(
         _emit_search_metrics(level_2_result)
         return level_2_result
 
-    # ── Level 3: 双管道并行搜索 ──
+    # ── Level 3: 全文检索 + 可选语义搜索 ──
     # Round 18 Phase 3: Noise gate — skip semantic pipeline for noise queries
     # Round 19 Phase 1 B2: For OOD/noise queries, bypass both pipelines entirely
     # to prevent keyword-pipeline leakage (e.g. GQ77 "区块链技术投资" matching

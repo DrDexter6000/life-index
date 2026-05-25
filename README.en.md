@@ -23,7 +23,7 @@
 <!-- Promise Badges -->
 
 <p align="center">
-  <a href="./tests/fixtures/eval/gold/cycle2-multi-signal/README.md"><img src="https://img.shields.io/badge/Recall%405-0.79_keyword_floor-4ecdc4" alt="Recall@5 keyword-only honest floor 0.79"></a>
+  <a href="./tests/fixtures/eval/gold/cycle2-multi-signal/README.md"><img src="https://img.shields.io/badge/Recall%405-0.7857_keyword_floor-4ecdc4" alt="Recall@5 keyword-only honest floor 0.7857"></a>
   <a href="./CHARTER.md"><img src="https://img.shields.io/badge/CHARTER_§1.11-Recall--First_Guarantee-78206E" alt="CHARTER §1.11 Recall-First Guarantee"></a>
 </p>
 
@@ -100,7 +100,7 @@ Agent memory systems evict. Knowledge bases overwrite as your thinking evolves. 
 
 ### P2 · Complete Without LLM · Stronger With
 
-**Life Index CLI Core is made of 18 atomic CLI tools and validated by 2,400+ tests. It is architected for 50 years of journal growth and covers the full write + search + index + entity + eval + backup path. Without calling any LLM, CLI Core already reaches Recall@5 = 0.79 (keyword-only honest floor, full audit PASS on 2026-05-25). This is the floor before your Agent joins in. Agent integration only raises the ceiling.**
+**Life Index CLI Core is made of 20+ CLI commands and validated by 2,400+ tests. It is architected for 50 years of journal growth and covers the full write + search + index + entity + eval + backup path. Without calling any LLM, CLI Core already reaches Recall@5 ≈0.79 (0.7857 measured, keyword-only honest floor; C2 paraphrase remains a known gap; full audit PASS on 2026-05-25). This is the floor before your Agent joins in. Agent integration only raises the ceiling.**
 
 <details>
 <summary>Open P2 · Explanation and constraints</summary>
@@ -117,7 +117,7 @@ That means:
 - the LLM is frosting, not foundation; **the foundation already stands**
 
 > **Constraint carrier**: [CHARTER](./CHARTER.md) §1.5 deterministic/intelligence boundary, §1.9 Agent-Native module principle, §1.10 module/foundation boundary, and §1.11 Recall-First retrieval model
-> **Current measurement**: 18 atomic CLI tools, 2,400+ unit tests, keyword-only Recall@5 = 0.79, MRR@5 = 0.74, cycle2 fixture, 56 queries, 5-stage multi-LLM review, full integrity audit PASS on 2026-05-25
+> **Current measurement**: 20+ CLI commands, 2,400+ unit tests, keyword-only Recall@5 = 0.7857 (rounds to ≈0.79; marginal miss vs the 0.79 target; C2 paraphrase gap remains), MRR@5 = 0.74, cycle2 fixture, 56 queries, 5-stage multi-LLM review, full integrity audit PASS on 2026-05-25
 > **Companion work**: MCP discovery layer, RFC marked `In Flight`, planned for 2026-Q3 as a BYOL trust boundary
 > **Falsification condition**: either (a) a default L2 retrieval path adds precision-threshold truncation that drops token-match candidates, or (b) any default-path module implicitly bundles an LLM, initializes a provider client, or reads an API key.
 
@@ -414,7 +414,7 @@ life-index smart-search --query "..." --use-llm
 | Journal write / edit | ✅ | Structured Markdown + YAML metadata, with weather/sentiment/entity support |
 | Layered life retrieval | ✅ | Offline CLI Core retrieval: keyword exact match + Entity Graph expansion; semantic/vector recall is explicit opt-in |
 | Smart search orchestrator | ✅ | Agent-ready deterministic scaffold by default; `--use-llm` enables LLM orchestration with fallback |
-| Search quality evaluation | ✅ | Cycle 2 multi-signal fixture locked; full integrity audit PASS on 2026-05-25; overall R@5=0.79 keyword floor |
+| Search quality evaluation | ✅ | Cycle 2 multi-signal fixture locked; full integrity audit PASS on 2026-05-25; overall R@5=0.7857 keyword floor (marginal miss vs 0.79 target; C2 paraphrase gap remains) |
 | Entity graph + quality audit + maintenance | ✅ | Alias resolution, relationship inference, duplicate/orphan detection, review hub, merge/delete/stats/check |
 | Schema migration | ✅ | Chain migration framework with deterministic backfill and optional Agent semantic enrichment |
 | Piggyback event notifications | ✅ | Zero cron, zero daemon; event reminders attached to CLI responses |
