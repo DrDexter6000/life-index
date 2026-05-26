@@ -1,0 +1,98 @@
+[
+  {
+    "name": "write",
+    "description": "Write a new journal entry with metadata (title, content, date, topic, mood, tags, location, weather, attachments)"
+  },
+  {
+    "name": "confirm",
+    "description": "Confirm a pending write and apply the journal entry"
+  },
+  {
+    "name": "search",
+    "description": "Search journals by keyword (FTS5), with optional filters for topic, date range, people, mood"
+  },
+  {
+    "name": "edit",
+    "description": "Edit existing journal metadata or content fields"
+  },
+  {
+    "name": "entity",
+    "description": "Entity graph management: audit, stats, check, review, merge, delete"
+  },
+  {
+    "name": "weather",
+    "description": "Query weather for a location and return structured weather data"
+  },
+  {
+    "name": "index",
+    "description": "Incremental or full index rebuild for the search engine"
+  },
+  {
+    "name": "generate-index",
+    "description": "Generate index tree files (monthly, yearly, root)"
+  },
+  {
+    "name": "abstract",
+    "description": "Alias for generate-index: generate index tree for a given month"
+  },
+  {
+    "name": "backup",
+    "description": "Backup journal data to a specified destination directory"
+  },
+  {
+    "name": "verify",
+    "description": "Data integrity verification of the journal store"
+  },
+  {
+    "name": "timeline",
+    "description": "Timeline summary stream over a date range"
+  },
+  {
+    "name": "on-this-day",
+    "description": "Historical same-day review across past years"
+  },
+  {
+    "name": "recall",
+    "description": "Recall search with mode selection (default, recall, deep)"
+  },
+  {
+    "name": "trajectory",
+    "description": "Typed observations such as weight, sleep, mood, location, project"
+  },
+  {
+    "name": "migrate",
+    "description": "Schema chain migration with dry-run preview"
+  },
+  {
+    "name": "eval",
+    "description": "Search quality evaluation gate with gold-set fixtures"
+  },
+  {
+    "name": "entity-graph-eval",
+    "description": "Entity graph ablation evaluation"
+  },
+  {
+    "name": "maintenance",
+    "description": "Maintenance cycle dry-run health checks across six subsystems"
+  },
+  {
+    "name": "smart-search",
+    "description": "Deterministic search scaffold; --use-llm for LLM orchestration"
+  },
+  {
+    "name": "aggregate",
+    "description": "Aggregate metrics over a time range with configurable unit and predicate"
+  },
+  {
+    "name": "analyze",
+    "description": "Alias for aggregate: aggregate and analyze metrics over a time range"
+  },
+  {
+    "name": "health",
+    "description": "Installation health check and data audit subcommands"
+  },
+  {
+    "name": "version",
+    "description": "Display version information"
+  }
+]
