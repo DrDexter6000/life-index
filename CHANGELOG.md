@@ -6,6 +6,8 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-05-26
+
 ### What users get
 
 - README, README.en, and API docs now show the exact Recall@5 measurement
