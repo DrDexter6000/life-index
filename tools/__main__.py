@@ -13,6 +13,7 @@ Commands:
     search    Search journals (pure dual-pipeline)
     smart-search  Smart search with LLM orchestration
     edit      Edit a journal entry
+    attachment  Read/export archived attachments
     entity    Manage entity graph
     weather   Query weather information
     index     Build/rebuild search index
@@ -478,6 +479,7 @@ def main() -> None:
         "confirm": "tools.write_journal.__main__",
         "search": "tools.search_journals.__main__",
         "edit": "tools.edit_journal.__main__",
+        "attachment": "tools.attachment.__main__",
         "entity": "tools.entity.__main__",
         "weather": "tools.query_weather.__main__",
         "index": "tools.build_index.__main__",
@@ -526,6 +528,7 @@ def print_usage() -> None:
     print("  confirm   Apply write confirmation updates")
     print("  search    Search journals")
     print("  edit      Edit a journal entry")
+    print("  attachment  Read/export archived attachments")
     print("  entity    Manage entity graph")
     print("  weather   Query weather information")
     print("  index     Build/rebuild search index")

@@ -798,6 +798,93 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 
 ---
 
+## attachment
+
+### 端点
+
+```bash
+life-index attachment --info <path>
+life-index attachment --export <path>
+python -m tools attachment --info <path>
+python -m tools attachment --export <path>
+```
+
+### 参数
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--info` | string | 与 `--export` 二选一 | - | 返回附件元数据，不包含字节内容 |
+| `--export` | string | 与 `--info` 二选一 | - | 返回附件元数据与 base64 编码字节内容 |
+
+`<path>` 必须指向 Life Index `attachments/` 内的附件引用。支持三类输入：
+
+- `2026/05/photo.png`
+- `attachments/2026/05/photo.png`
+- frontmatter 中保存的历史相对形式：`../../../attachments/2026/05/photo.png`
+
+绝对路径、空路径、NUL 字节、以及会逃逸出 `attachments/` 根目录的路径遍历输入必须被拒绝。
+
+### 返回值
+
+`--info`：
+
+```json
+{
+  "success": true,
+  "schema_version": "m16.attachment.v0",
+  "data": {
+    "rel_path": "attachments/2026/05/photo.png",
+    "filename": "photo.png",
+    "content_type": "image/png",
+    "size": 12345
+  },
+  "error": null
+}
+```
+
+`--export` 在 `--info` 字段基础上增加：
+
+```json
+{
+  "sha256": "hex-encoded-sha256",
+  "content_base64": "..."
+}
+```
+
+### 错误行为
+
+错误以 JSON 输出到 stdout，并以非零状态码退出：
+
+```json
+{
+  "success": false,
+  "schema_version": "m16.attachment.v0",
+  "data": null,
+  "error": {
+    "code": "ATTACHMENT_NOT_FOUND",
+    "message": "Attachment file was not found."
+  }
+}
+```
+
+当前错误码：
+
+| code | 说明 |
+|------|------|
+| `ATTACHMENT_PATH_INVALID` | 路径为空、绝对路径、包含 NUL、路径遍历，或解析后不在 `attachments/` 根目录内 |
+| `ATTACHMENT_NOT_FOUND` | 附件文件不存在 |
+| `ATTACHMENT_NOT_FILE` | 附件引用不是文件 |
+| `ATTACHMENT_READ_FAILED` | 读取附件时发生 OS 错误 |
+
+### schema_version Policy
+
+`attachment` emits top-level `schema_version = "m16.attachment.v0"`.
+Top-level fields and `data` field names are stable; additive metadata fields may
+be added without a version bump. A version bump will accompany any
+backward-incompatible payload change.
+
+---
+
 ## search_journals
 
 <!-- M16-CONTRACT: search -->

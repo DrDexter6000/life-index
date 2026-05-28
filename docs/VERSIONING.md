@@ -164,6 +164,27 @@ For a formal release:
 - README/API docs should point to `life-index --version`, `CHANGELOG.md`, or
   this contract instead of hardcoding the current package version.
 
+### Cross-Consumer Intake At Version Planning
+
+When a new version line, milestone PRD, or contract-affecting release is being
+planned, maintainers should review any local cross-consumer intake queue
+available in the workspace. In the current Life Index CLI + GUI workspace, that
+queue is `.strategy/CLI_CAPABILITY_REQUESTS.md`.
+
+This intake queue is not a second roadmap and does not override the CLI release
+contract. Its role is to make GUI and advanced-module needs visible before CLI
+scope is locked:
+
+- Accepted or planned request IDs must be recorded in the existing CLI PRD,
+  roadmap milestone, or release planning notes.
+- Delivered requests must have CLI docs, tests, schema/contract evidence, and a
+  delivered version recorded before being treated as complete.
+- Consumed requests may be summarized in the shared contract registry instead
+  of remaining as active planning material.
+
+Routine internal PATCH work with no public contract or consumer-interoperability
+impact does not require a strategy intake review.
+
 ## 9. PyPI Distribution Constraint
 
 GitHub Release is the release/version SSOT. PyPI is an optional distribution
@@ -205,6 +226,9 @@ A public release is valid only when:
 - Public version surfaces agree.
 - `CHANGELOG.md` records the user-visible change.
 - Required quality gates have a clear passing verdict.
+- Contract-affecting releases have reviewed cross-consumer intake and recorded
+  any accepted, rejected, deferred, or delivered request IDs in the existing
+  planning/release artifacts.
 - The release is anchored by a Git tag `vX.Y.Z`.
 
 Detailed local release choreography and approval routing belong in private local
