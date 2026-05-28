@@ -21,6 +21,7 @@ STABLE_COMMANDS = {
     "smart-search",
     "aggregate",
     "analyze",
+    "journal",
     "health",
     "version",
     "on-this-day",

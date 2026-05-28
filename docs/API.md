@@ -885,6 +885,155 @@ backward-incompatible payload change.
 
 ---
 
+## journal
+
+### 端点
+
+```bash
+life-index journal get --path <rel-path>
+life-index journal get --id <journal-id>
+life-index journal list --recent [--limit <n>] [--offset <n>]
+python -m tools journal get --path <rel-path>
+python -m tools journal list --recent
+```
+
+`journal` 是面向 GUI / 高级模块消费者的只读 journal 读取契约。它不修改
+`Journals/`、索引、附件或 entity graph。
+
+### 参数
+
+#### `journal get`
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--path` | string | 与 `--id` 二选一 | - | journal 相对路径，必须形如 `Journals/YYYY/MM/life-index_YYYY-MM-DD_NNN.md` |
+| `--id` | string | 与 `--path` 二选一 | - | v0 journal id；当前等同于 `rel_path` |
+| `--json` | flag | 否 | false | 兼容参数；当前输出始终为 JSON |
+
+#### `journal list --recent`
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--recent` | flag | 是 | - | 按日期 + 序号倒序返回真实 journal 文件 |
+| `--limit` | int | 否 | 20 | 返回条数；`0` 表示不限制当前页大小 |
+| `--offset` | int | 否 | 0 | 分页偏移量 |
+| `--json` | flag | 否 | false | 兼容参数；当前输出始终为 JSON |
+
+### 路径与身份语义
+
+- `rel_path` 是相对 `LIFE_INDEX_DATA_DIR` 的稳定路径，使用 `/` 分隔符。
+- v0 `id` 等同于 `rel_path`。未来若引入 durable id，会通过新的
+  `schema_version` 或 additive 字段迁移，消费者不应自行猜测新 id。
+- `--path` / `--id` 拒绝空路径、绝对路径、NUL 字节、路径遍历，以及不匹配
+  `Journals/YYYY/MM/life-index_YYYY-MM-DD_NNN.md` 的输入。
+- `journal list --recent` 只扫描 `Journals/YYYY/MM/life-index_*.md`，不会返回
+  `INDEX.md`、topic/year/month 派生索引或其他非 journal 文件。
+
+### `journal get` 返回值
+
+```json
+{
+  "success": true,
+  "schema_version": "m16.journal.v0",
+  "data": {
+    "id": "Journals/2026/05/life-index_2026-05-28_001.md",
+    "rel_path": "Journals/2026/05/life-index_2026-05-28_001.md",
+    "journal_route_path": "2026/05/life-index_2026-05-28_001.md",
+    "metadata": {
+      "title": "示例日志",
+      "date": "2026-05-28",
+      "attachments": []
+    },
+    "content": "# 示例日志\n\n正文内容",
+    "attachments": [],
+    "word_count": 3
+  },
+  "error": null
+}
+```
+
+字段语义：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `data.id` | string | v0 journal id，当前等同于 `rel_path` |
+| `data.rel_path` | string | 相对 `LIFE_INDEX_DATA_DIR` 的 journal 路径 |
+| `data.journal_route_path` | string | 去掉 `Journals/` 前缀后的路由友好路径 |
+| `data.metadata` | object | frontmatter 解析结果 |
+| `data.content` | string | journal 正文，不含 frontmatter |
+| `data.attachments` | array | 从 frontmatter `attachments` 规范化后的附件元数据 |
+| `data.word_count` | int | 基于正文空白分词的轻量计数 |
+
+附件项字段与 `attachment` 读取侧一致，当前包含
+`raw_path`、`path`、`name`、`description`、`source_url`、`content_type`、`size`。
+
+### `journal list --recent` 返回值
+
+```json
+{
+  "success": true,
+  "schema_version": "m16.journal.v0",
+  "data": {
+    "items": [
+      {
+        "id": "Journals/2026/05/life-index_2026-05-28_001.md",
+        "rel_path": "Journals/2026/05/life-index_2026-05-28_001.md",
+        "journal_route_path": "2026/05/life-index_2026-05-28_001.md",
+        "title": "示例日志",
+        "date": "2026-05-28",
+        "metadata": {},
+        "attachments": [],
+        "word_count": 3
+      }
+    ],
+    "total_matches": 1,
+    "total_found": 1,
+    "limit": 20,
+    "offset": 0,
+    "has_more": false,
+    "sort": "date_desc"
+  },
+  "error": null
+}
+```
+
+列表项不返回 `content`，用于目录、最近日志列表和后续 `journal get` 导航。
+`total_matches` 是分页前匹配总数，`total_found` 是本次返回条数。
+
+### 错误行为
+
+错误以 JSON 输出到 stdout，并以非零状态码退出：
+
+```json
+{
+  "success": false,
+  "schema_version": "m16.journal.v0",
+  "data": null,
+  "error": {
+    "code": "JOURNAL_NOT_FOUND",
+    "message": "Journal file was not found."
+  }
+}
+```
+
+当前错误码：
+
+| code | 说明 |
+|------|------|
+| `JOURNAL_PATH_INVALID` | journal 引用为空、绝对路径、包含 NUL、路径遍历，或不匹配 journal 路径格式 |
+| `JOURNAL_NOT_FOUND` | journal 文件不存在 |
+| `JOURNAL_ARGUMENT_INVALID` | `list` 参数无效，例如负数 `--limit` / `--offset` |
+| `JOURNAL_READ_FAILED` | 读取 journal 时发生 OS 错误 |
+
+### schema_version Policy
+
+`journal` emits top-level `schema_version = "m16.journal.v0"`.
+Top-level fields and `data` field names are stable; additive metadata fields may
+be added without a version bump. A version bump will accompany any
+backward-incompatible payload change.
+
+---
+
 ## search_journals
 
 <!-- M16-CONTRACT: search -->

@@ -13,6 +13,7 @@ Commands:
     search    Search journals (pure dual-pipeline)
     smart-search  Smart search with LLM orchestration
     edit      Edit a journal entry
+    journal   Read journals through stable get/list contracts
     attachment  Read/export archived attachments
     entity    Manage entity graph
     weather   Query weather information
@@ -479,6 +480,7 @@ def main() -> None:
         "confirm": "tools.write_journal.__main__",
         "search": "tools.search_journals.__main__",
         "edit": "tools.edit_journal.__main__",
+        "journal": "tools.journal.__main__",
         "attachment": "tools.attachment.__main__",
         "entity": "tools.entity.__main__",
         "weather": "tools.query_weather.__main__",
@@ -528,6 +530,7 @@ def print_usage() -> None:
     print("  confirm   Apply write confirmation updates")
     print("  search    Search journals")
     print("  edit      Edit a journal entry")
+    print("  journal   Read journals through stable get/list contracts")
     print("  attachment  Read/export archived attachments")
     print("  entity    Manage entity graph")
     print("  weather   Query weather information")
