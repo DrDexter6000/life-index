@@ -1,0 +1,57 @@
+{
+  "adapter_id": "fixture.import_records",
+  "adapter_version": "v1",
+  "input_label": "fixture:minimal-plan",
+  "records": [
+    {
+      "source_record_id": "src_minimal_001",
+      "source_record_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "normalized_identity": "minimal-photo-2026-05-29-001",
+      "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "metadata_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "journal": {
+        "title": "Imported photo 1",
+        "date": "2026-05-29",
+        "topic": "imported",
+        "tags": ["imported", "photo"],
+        "content": "Fixture photo import record 1."
+      },
+      "attachments": [
+        {
+          "attachment_id": "att_minimal_001",
+          "source_ref": "source://fixture/photo-001.jpg",
+          "source_sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "target_rel_path": "attachments/2026/05/import_minimal_photo-001.jpg",
+          "media_type": "image/jpeg",
+          "size_bytes": 12345,
+          "copy_mode": "copy"
+        }
+      ]
+    },
+    {
+      "source_record_id": "src_minimal_002",
+      "source_record_fingerprint": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "normalized_identity": "minimal-photo-2026-05-29-002",
+      "content_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "metadata_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "journal": {
+        "title": "Imported photo 2",
+        "date": "2026-05-29",
+        "topic": "imported",
+        "tags": ["imported", "photo"],
+        "content": "Fixture photo import record 2."
+      },
+      "attachments": [
+        {
+          "attachment_id": "att_minimal_002",
+          "source_ref": "source://fixture/photo-002.jpg",
+          "source_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "target_rel_path": "attachments/2026/05/import_minimal_photo-002.jpg",
+          "media_type": "image/jpeg",
+          "size_bytes": 67890,
+          "copy_mode": "copy"
+        }
+      ]
+    }
+  ]
+}

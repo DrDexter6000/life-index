@@ -1034,6 +1034,174 @@ backward-incompatible payload change.
 
 ---
 
+## import
+
+### 端点
+
+```bash
+life-index import plan --source fixture.import_records --input <fixture.json> --json
+life-index import run --plan <plan.json> --confirm <import_id> --json
+life-index import status --import-id <import_id> --json
+life-index import rollback --import-id <import_id> --json
+python -m tools import plan --source fixture.import_records --input <fixture.json> --json
+```
+
+`import` 是 Tranche A batch import provider contract。它是 durable journal /
+attachment 写入的唯一 owner；GUI 或高级模块只能消费 plan、请求 confirmed
+run、查询 status、触发 rollback，不能直接写 `Journals/` 或 `attachments/`。
+
+Tranche A 只实现 `fixture.import_records` adapter，用于 contract tests 和后续
+GUI / adapter 对齐。EXIF、social archive parsing、AI drafting、GUI flow 不属
+于本命令当前契约。
+
+### 通用返回 Envelope
+
+所有 `import` 子命令返回同一 envelope：
+
+```json
+{
+  "schema_version": "import_job.v1",
+  "success": true,
+  "command": "import.plan",
+  "data": {},
+  "error": null
+}
+```
+
+失败时：
+
+```json
+{
+  "schema_version": "import_job.v1",
+  "success": false,
+  "command": "import.rollback",
+  "data": null,
+  "error": {
+    "code": "IMPORT_ROLLBACK_CHECKSUM_MISMATCH",
+    "message": "Rollback blocked.",
+    "details": {},
+    "retryable": false
+  }
+}
+```
+
+### `import plan`
+
+`plan` 是 dry-run，只读 source 和当前 data dir 状态，默认只向 stdout 输出
+JSON，不写 journal、attachment、ledger、manifest 或 index。
+
+返回 `data.schema_version = "import_plan.v1"`，核心字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `import_id` | string | `imp_YYYYMMDD_<hash>` 格式的本次计划 ID |
+| `dry_run` | bool | 恒为 `true` |
+| `source.source_fingerprint` | string | source adapter + source records 的稳定 SHA-256 |
+| `plan_fingerprint` | string | plan 内容指纹 |
+| `idempotency_key` | string | source + plan + target root 的幂等 key |
+| `proposals[]` | array | 拟写入 journal / attachment proposal |
+| `proposals[].proposal_fingerprint` | string | 单条 durable write proposal 指纹 |
+| `write_set_preview.create_files[]` | array | 预计创建的相对路径 |
+| `conflicts[]` | array | 现有目标路径冲突；Tranche A fail-closed |
+
+### `import run`
+
+`run` 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 plan。它按
+create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path，并在
+写入前建立固定 ledger 和 rollback manifest。
+
+固定路径：
+
+```text
+.life-index/import-jobs/ledger.json
+.life-index/import-jobs/<import_id>/rollback-manifest.json
+```
+
+返回 `data.schema_version = "import_run.v1"`，核心字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `state` | string | `committed` / `already_committed` / `partially_committed` |
+| `created_files[]` | array | 实际创建文件；每项含 `kind`、`rel_path`、`sha256_after`、`created_by_import` |
+| `rollback_manifest_rel_path` | string | 固定 rollback manifest 相对路径 |
+| `post_run_actions.index_rebuild_recommended` | bool | Tranche A 不自动 index，只建议后续重建 |
+
+重复运行同一 committed plan 返回 `state=already_committed`，不重复写入。
+`running`、`failed`、`partially_committed` 不会被误报为 committed。
+
+`run` 会在写 ledger 或 durable file 之前重新校验 plan 内容：
+
+- journal / attachment `target_rel_path` 必须 resolve 在 `LIFE_INDEX_DATA_DIR`
+  内；路径遍历或绝对路径属于 `IMPORT_PLAN_INVALID`；
+- `proposal_fingerprint`、`plan_fingerprint`、`idempotency_key` 必须按当前
+  plan 内容和目标 data dir 重新计算并匹配；
+- `summary.conflict_count > 0`、顶层 `conflicts[]` 非空，或任一
+  `proposals[].conflicts[]` 非空时，返回
+  `IMPORT_PLAN_CONFLICTS_UNRESOLVED`，不创建 ledger 或 durable files。
+
+### `import status`
+
+`status` 从固定 ledger 和 rollback manifest 读取 job state，不启动 daemon、不扫
+描 source、不推断未记录 job。
+
+返回 `data.schema_version = "import_status.v1"`，核心字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `state` | string | `running` / `committed` / `partially_committed` / `rollback_failed` / `rolled_back` 等 |
+| `counts` | object | planned/created journal 与 attachment 计数 |
+| `rollback_available` | bool | 是否存在 rollback manifest |
+| `rollback_manifest_rel_path` | string | 固定 manifest 相对路径 |
+
+未知 `import_id` 返回 `IMPORT_JOB_NOT_FOUND`。
+
+### `import rollback`
+
+`rollback` 只处理 manifest 中 `created_by_import=true` 的文件。删除前重新计算
+当前 SHA-256，并与 manifest 的 `sha256_after` 精确匹配；任何 mismatch 都会拒绝
+整个 rollback，返回 `IMPORT_ROLLBACK_CHECKSUM_MISMATCH`，不会删除部分文件。
+
+rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DATA_DIR`
+内；路径遍历、绝对路径、非普通文件等 unsafe path 返回
+`IMPORT_ROLLBACK_UNSAFE`，且不会删除任何文件。
+
+成功 rollback 后：
+
+- created files 被删除；
+- rollback manifest 保留为 audit evidence，并更新为 `state=rolled_back`；
+- ledger job state 更新为 `rolled_back`；
+- 再次 rollback 幂等返回 `rolled_back`。
+
+### 错误码
+
+| code | 说明 |
+|---|---|
+| `IMPORT_SOURCE_UNSUPPORTED` | 未知 source adapter |
+| `IMPORT_SOURCE_UNREADABLE` | source / fixture 无法读取 |
+| `IMPORT_PLAN_SCHEMA_UNSUPPORTED` | plan schema version 不支持 |
+| `IMPORT_PLAN_INVALID` | plan JSON 缺少必要字段或语义非法 |
+| `IMPORT_PLAN_CONFLICTS_UNRESOLVED` | plan 含 unresolved conflicts，Tranche A fail-closed |
+| `IMPORT_CONFIRMATION_REQUIRED` | `run` 缺少匹配的 `--confirm <import_id>` |
+| `IMPORT_CONFLICT_EXISTING_PATH` | 目标路径已存在且非同一幂等证据 |
+| `IMPORT_IDEMPOTENCY_CONFLICT` | 同一 key 映射到不兼容 import job |
+| `IMPORT_JOB_NOT_COMMITTED` | 同一 import/idempotency 记录存在但不是 committed 状态 |
+| `IMPORT_WRITE_FAILURE` | durable write 在创建任何文件前失败 |
+| `IMPORT_JOB_NOT_FOUND` | `status` / `rollback` 找不到 job |
+| `IMPORT_ROLLBACK_MANIFEST_MISSING` | 缺失 rollback evidence |
+| `IMPORT_ROLLBACK_CHECKSUM_MISMATCH` | rollback 文件当前 hash 与 manifest 不一致 |
+| `IMPORT_ROLLBACK_UNSAFE` | rollback 会触碰非安全 import-owned 文件或逃逸 data dir |
+| `IMPORT_INTERNAL_ERROR` | 未归类内部错误 |
+
+### schema_version Policy
+
+`import` top-level envelope 使用 `schema_version = "import_job.v1"`。
+子对象使用独立 schema：`import_plan.v1`、`import_run.v1`、
+`import_status.v1`、`import_rollback.v1`、`import_job_ledger.v1`、
+`import_rollback_manifest.v1`。新增 additive 字段不升级版本；破坏性变更必须
+升级对应 schema 并补 contract tests。
+
+---
+
 ## search_journals
 
 <!-- M16-CONTRACT: search -->

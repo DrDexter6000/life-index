@@ -1,0 +1,23 @@
+{
+  "adapter_id": "fixture.import_records",
+  "adapter_version": "v1",
+  "input_label": "fixture:conflicting-target",
+  "records": [
+    {
+      "source_record_id": "src_conflict_001",
+      "source_record_fingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "normalized_identity": "conflict-photo-2026-05-29-001",
+      "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "metadata_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "journal": {
+        "title": "Conflicting photo",
+        "date": "2026-05-29",
+        "topic": "imported",
+        "tags": ["imported", "conflict"],
+        "content": "This record targets a path that already exists."
+      },
+      "attachments": [],
+      "force_target_rel_path": "Journals/2026/05/life-index_2026-05-29_001.md"
+    }
+  ]
+}

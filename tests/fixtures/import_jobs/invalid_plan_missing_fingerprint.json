@@ -1,0 +1,47 @@
+{
+  "import_id": "imp_20260529_invalid001",
+  "schema_version": "import_plan.v1",
+  "dry_run": true,
+  "source": {
+    "adapter_id": "fixture.import_records",
+    "adapter_version": "v1",
+    "input_label": "fixture:invalid-missing-fingerprint",
+    "source_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "record_count": 1,
+    "sensitive_paths_redacted": true
+  },
+  "plan_fingerprint": null,
+  "idempotency_key": null,
+  "summary": {
+    "proposed_journal_count": 1,
+    "proposed_attachment_count": 0,
+    "conflict_count": 0,
+    "warning_count": 0
+  },
+  "proposals": [
+    {
+      "proposal_id": "prop_invalid_001",
+      "source_record_id": "src_invalid_001",
+      "source_record_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "proposal_fingerprint": null,
+      "journal": {
+        "target_rel_path": "Journals/2026/05/life-index_2026-05-29_099.md",
+        "title": "Invalid plan entry",
+        "date": "2026-05-29",
+        "topic": "imported",
+        "tags": ["imported"],
+        "content": "This plan is intentionally invalid."
+      },
+      "attachments": [],
+      "conflicts": [],
+      "warnings": []
+    }
+  ],
+  "write_set_preview": {
+    "create_files": ["Journals/2026/05/life-index_2026-05-29_099.md"],
+    "update_files": [],
+    "delete_files": []
+  },
+  "conflicts": [],
+  "warnings": []
+}

@@ -22,6 +22,7 @@ STABLE_COMMANDS = {
     "aggregate",
     "analyze",
     "journal",
+    "import",
     "health",
     "version",
     "on-this-day",
