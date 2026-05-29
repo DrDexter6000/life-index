@@ -1224,7 +1224,10 @@ def hierarchical_search(
                 logger.info(
                     "Index stale, triggering incremental update: %s", ", ".join(_freshness.issues)
                 )
-                _build_all(incremental=True)
+                build_kwargs = {"incremental": True}
+                if not semantic:
+                    build_kwargs["fts_only"] = True
+                _build_all(**build_kwargs)
                 result.setdefault("index_status", {})["auto_updated"] = True
             except Exception as exc:
                 logger.warning("Auto index update failed: %s", exc)

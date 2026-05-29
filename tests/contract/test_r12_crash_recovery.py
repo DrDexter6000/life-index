@@ -52,13 +52,22 @@ class TestCrashRecovery:
 
     def test_missing_vector_index_search_degraded(self, tmp_path: Path, monkeypatch):
         """When vectors_simple.pkl is missing, search works in degraded mode."""
+        import tools.build_index as bi
         import tools.search_journals.core as search_core
 
+        build_calls = []
+
+        def mock_build_all(**kwargs):
+            build_calls.append(kwargs)
+            return {"success": True, "fts": {"success": True}, "vector": None}
+
+        monkeypatch.setattr(bi, "build_all", mock_build_all)
         monkeypatch.setattr(search_core, "build_l0_candidate_set", lambda **kw: set())
         monkeypatch.setattr(search_core, "_emit_search_metrics", lambda r: None)
 
         result = search_core.hierarchical_search(query="test", level=3, semantic=False)
         assert result["success"] is True
+        assert build_calls == [{"incremental": True, "fts_only": True}]
 
     def test_missing_fts_index_search_reports_unhealthy(self, tmp_path: Path, monkeypatch):
         """When FTS DB is missing, search reports unhealthy but doesn't crash."""
