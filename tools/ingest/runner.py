@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -35,10 +36,11 @@ from tools.ingest.schemas import (
 # ---------------------------------------------------------------------------
 
 
-def execute_run(
+def execute_run(  # noqa: C901
     plan_path: str,
     confirm_id: str,
     data_dir: Path,
+    source_root: str | None = None,
 ) -> dict[str, Any]:
     """Execute a confirmed import plan (PRD §8).
 
@@ -250,8 +252,12 @@ def execute_run(
                 retryable=False,
             )
 
-    # --- 5. Conflict check ---
-    for proposal in proposals:
+    # --- 5. Conflict and attachment-source checks ---
+    attachment_source_paths: dict[tuple[int, int], Path] = {}
+    source_root_path = Path(source_root).resolve() if source_root else None
+    source_adapter_id = plan.get("source", {}).get("adapter_id", "")
+
+    for proposal_index, proposal in enumerate(proposals):
         journal_rel = proposal.get("journal", {}).get("target_rel_path", "")
         if journal_rel:
             target = _resolve_confined_file_path(data_dir, journal_rel)
@@ -269,7 +275,7 @@ def execute_run(
                     {"target_rel_path": journal_rel},
                     retryable=False,
                 )
-        for att in proposal.get("attachments", []):
+        for att_index, att in enumerate(proposal.get("attachments", [])):
             att_rel = att.get("target_rel_path", "")
             if att_rel:
                 target = _resolve_confined_file_path(data_dir, att_rel)
@@ -287,6 +293,70 @@ def execute_run(
                         {"target_rel_path": att_rel},
                         retryable=False,
                     )
+
+            source_rel = att.get("source_rel_path")
+            if source_adapter_id == "media.photo_timeline" and not source_rel:
+                return _err(
+                    "IMPORT_PLAN_INVALID",
+                    "Photo attachment is missing source_rel_path for byte copy.",
+                    {"proposal_index": proposal_index, "attachment_index": att_index},
+                    retryable=False,
+                )
+            if source_rel:
+                if source_root_path is None:
+                    return _err(
+                        "IMPORT_SOURCE_UNREADABLE",
+                        "Attachment source_root is required to copy original bytes.",
+                        {
+                            "proposal_index": proposal_index,
+                            "attachment_index": att_index,
+                            "source_rel_path": source_rel,
+                        },
+                        retryable=False,
+                    )
+                source_abs = _resolve_confined_source_path(source_root_path, source_rel)
+                if source_abs is None or not source_abs.exists():
+                    return _err(
+                        "IMPORT_SOURCE_UNREADABLE",
+                        f"Attachment source file not found: {source_rel}",
+                        {
+                            "proposal_index": proposal_index,
+                            "attachment_index": att_index,
+                            "source_rel_path": source_rel,
+                        },
+                        retryable=False,
+                    )
+                expected_sha = att.get("source_sha256", "")
+                actual_sha = f"sha256:{_file_sha256(source_abs)}"
+                if expected_sha != actual_sha:
+                    return _err(
+                        "IMPORT_SOURCE_UNREADABLE",
+                        "Attachment source hash no longer matches the plan.",
+                        {
+                            "proposal_index": proposal_index,
+                            "attachment_index": att_index,
+                            "source_rel_path": source_rel,
+                            "expected": expected_sha,
+                            "actual": actual_sha,
+                        },
+                        retryable=False,
+                    )
+                expected_size = att.get("size_bytes")
+                actual_size = source_abs.stat().st_size
+                if expected_size is not None and actual_size != expected_size:
+                    return _err(
+                        "IMPORT_SOURCE_UNREADABLE",
+                        "Attachment source size no longer matches the plan.",
+                        {
+                            "proposal_index": proposal_index,
+                            "attachment_index": att_index,
+                            "source_rel_path": source_rel,
+                            "expected": expected_size,
+                            "actual": actual_size,
+                        },
+                        retryable=False,
+                    )
+                attachment_source_paths[(proposal_index, att_index)] = source_abs
 
     # --- 6. Create ledger entry with state=running BEFORE durable writes (PRD §9) ---
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -328,7 +398,7 @@ def execute_run(
     # --- 8. Execute writes with incremental evidence (PRD §10) ---
     write_error: str | None = None
     try:
-        for proposal in proposals:
+        for proposal_index, proposal in enumerate(proposals):
             journal_spec = proposal.get("journal", {})
             journal_rel = journal_spec.get("target_rel_path", "")
             if journal_rel:
@@ -371,7 +441,7 @@ def execute_run(
                 journal_count += 1
                 _write_manifest(rollback_abs, manifest)  # evidence as each file is created
 
-            for att in proposal.get("attachments", []):
+            for att_index, att in enumerate(proposal.get("attachments", [])):
                 att_rel = att.get("target_rel_path", "")
                 if att_rel:
                     att_abs = _resolve_confined_file_path(data_dir, att_rel)
@@ -379,9 +449,13 @@ def execute_run(
                         raise RuntimeError(f"Unsafe target path: {att_rel}")
                     att_abs.parent.mkdir(parents=True, exist_ok=True)
 
-                    # Write attachment_id as placeholder content
-                    att_id = att.get("attachment_id", "")
-                    att_abs.write_text(att_id, encoding="utf-8")
+                    source_abs = attachment_source_paths.get((proposal_index, att_index))
+                    if source_abs is not None:
+                        shutil.copyfile(source_abs, att_abs)
+                    else:
+                        # Fixture adapters may only provide contract metadata.
+                        att_id = att.get("attachment_id", "")
+                        att_abs.write_text(att_id, encoding="utf-8")
 
                     sha256 = _file_sha256(att_abs)
                     size = att_abs.stat().st_size
@@ -962,6 +1036,26 @@ def _resolve_confined_file_path(data_dir: Path, rel_path: str) -> Path | None:
         return None
     try:
         resolved_target.relative_to(resolved_data)
+    except ValueError:
+        return None
+    if resolved_target.exists() and not resolved_target.is_file():
+        return None
+    return resolved_target
+
+
+def _resolve_confined_source_path(source_root: Path, rel_path: str) -> Path | None:
+    """Resolve a source-relative file path without allowing traversal escapes."""
+    if not rel_path:
+        return None
+    p = Path(rel_path)
+    if p.is_absolute():
+        return None
+    resolved_root = source_root.resolve()
+    resolved_target = (source_root / rel_path).resolve()
+    if resolved_target == resolved_root:
+        return None
+    try:
+        resolved_target.relative_to(resolved_root)
     except ValueError:
         return None
     if resolved_target.exists() and not resolved_target.is_file():

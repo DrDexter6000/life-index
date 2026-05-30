@@ -1535,3 +1535,487 @@ def test_import_rollback_refuses_unsafe_manifest_path(
     # Ledger must show rollback_failed
     ledger = _read_ledger(data_dir)
     assert ledger["jobs"][import_id]["state"] == "rollback_failed"
+
+
+def _copy_fixture_photo(name: str, dest_dir: Path) -> Path:
+    """Copy a photo fixture to a temp directory for testing."""
+    import shutil as _shutil
+
+    src = PHOTO_FIXTURES_DIR / name
+    dest = dest_dir / name
+    _shutil.copy2(src, dest)
+    return dest
+
+
+# ===================================================================
+# Tranche B: Photo Timeline adapter contract tests (S1)
+# ===================================================================
+
+PHOTO_FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "import_jobs" / "photo_timeline"
+
+
+def _run_photo_plan(data_dir: Path, input_dir: Path) -> subprocess.CompletedProcess[str]:
+    """Run import plan with media.photo_timeline source."""
+    return _run_import(
+        data_dir,
+        "plan",
+        "--source",
+        "media.photo_timeline",
+        "--input",
+        str(input_dir),
+        "--json",
+    )
+
+
+def test_photo_timeline_plan_generates_import_plan_envelope(
+    tmp_path: Path,
+) -> None:
+    """Uses photo_with_exif.jpg fixture. Verifies envelope shape."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy fixture to temp dir (adapter takes a directory)
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_with_exif.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+
+    assert payload["schema_version"] == ENVELOPE_SCHEMA_VERSION
+    assert payload["success"] is True
+    assert payload["command"] == "import.plan"
+
+    data = payload["data"]
+    assert data["dry_run"] is True
+    assert data["plan_fingerprint"].startswith("sha256:")
+    assert data["source"]["adapter_id"] == "media.photo_timeline"
+
+    proposals = data["proposals"]
+    assert len(proposals) >= 1
+    for proposal in proposals:
+        assert "journal" in proposal
+        assert "attachments" in proposal
+        assert proposal["proposal_fingerprint"].startswith("sha256:")
+
+
+def test_photo_timeline_plan_does_not_write_data_dir(
+    tmp_path: Path,
+) -> None:
+    """Plan must not create any files under data_dir."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    files_before = set(data_dir.rglob("*")) if data_dir.exists() else set()
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_with_exif.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+
+    files_after = set(data_dir.rglob("*")) if data_dir.exists() else set()
+    assert files_after == files_before, f"import plan created files: {files_after - files_before}"
+
+
+def test_photo_timeline_missing_capture_time_blocks_run(
+    tmp_path: Path,
+) -> None:
+    """Photo without EXIF capture time must generate a blocking conflict."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_no_exif.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+
+    assert (
+        data["summary"]["conflict_count"] > 0
+    ), f"Expected conflicts for photo without capture time: {data['summary']}"
+
+    # Verify conflict code
+    conflicts = data["conflicts"]
+    conflict_codes = [c.get("code", c.get("type", "")) for c in conflicts]
+    assert any(
+        "PHOTO_CAPTURE_TIME_MISSING" in code for code in conflict_codes
+    ), f"Expected PHOTO_CAPTURE_TIME_MISSING conflict, got: {conflict_codes}"
+
+    # Attempting import run should fail with IMPORT_PLAN_CONFLICTS_UNRESOLVED
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(data), encoding="utf-8")
+
+    run_result = _run_import(
+        data_dir,
+        "run",
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        data["import_id"],
+        "--json",
+    )
+    assert run_result.returncode != 0
+    run_payload = _payload(run_result)
+    assert run_payload["success"] is False
+    assert run_payload["error"]["code"] == "IMPORT_PLAN_CONFLICTS_UNRESOLVED"
+
+
+def test_photo_timeline_ambiguous_capture_time_blocks_run(
+    tmp_path: Path,
+) -> None:
+    """Conflicting EXIF date tags must generate PHOTO_CAPTURE_TIME_AMBIGUOUS."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_ambiguous_dates.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+
+    assert data["summary"]["conflict_count"] > 0
+    conflict_codes = [conflict.get("code", "") for conflict in data["conflicts"]]
+    assert "PHOTO_CAPTURE_TIME_AMBIGUOUS" in conflict_codes
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(data), encoding="utf-8")
+    run_result = _run_import(
+        data_dir,
+        "run",
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        data["import_id"],
+        "--source-root",
+        str(photo_dir),
+        "--json",
+    )
+    assert run_result.returncode != 0
+    run_payload = _payload(run_result)
+    assert run_payload["error"]["code"] == "IMPORT_PLAN_CONFLICTS_UNRESOLVED"
+
+
+def test_photo_timeline_missing_gps_is_warning_only(
+    tmp_path: Path,
+) -> None:
+    """Photo without GPS should have warnings but no conflicts."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_gps_missing.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+
+    assert (
+        data["summary"]["conflict_count"] == 0
+    ), f"GPS missing should NOT be a conflict: {data['summary']}"
+
+    warnings = data["warnings"]
+    warning_codes = [w.get("code", "") for w in warnings]
+    assert any(
+        "PHOTO_GPS_MISSING" in code for code in warning_codes
+    ), f"Expected PHOTO_GPS_MISSING warning, got: {warning_codes}"
+
+
+def test_photo_timeline_source_fingerprint_stable_without_absolute_paths(
+    tmp_path: Path,
+) -> None:
+    """Source fingerprint must be stable and not leak absolute paths."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_with_exif.jpg", photo_dir)
+
+    # Run plan twice
+    result1 = _run_photo_plan(data_dir, photo_dir)
+    assert result1.returncode == 0
+    payload1 = _payload(result1)
+
+    result2 = _run_photo_plan(data_dir, photo_dir)
+    assert result2.returncode == 0
+    payload2 = _payload(result2)
+
+    # Source fingerprint must be stable
+    fp1 = payload1["data"]["source"]["source_fingerprint"]
+    fp2 = payload2["data"]["source"]["source_fingerprint"]
+    assert fp1 == fp2, f"Fingerprints unstable: {fp1} vs {fp2}"
+
+    # Plan fingerprint must be stable
+    plan_fp1 = payload1["data"]["plan_fingerprint"]
+    plan_fp2 = payload2["data"]["plan_fingerprint"]
+    assert plan_fp1 == plan_fp2, f"Plan fingerprints unstable: {plan_fp1} vs {plan_fp2}"
+
+    # JSON output must NOT contain the absolute path of the input directory
+    plan_json = json.dumps(payload1["data"], ensure_ascii=False)
+    photo_dir_str = str(photo_dir).replace("\\", "/")
+    assert (
+        photo_dir_str not in plan_json
+    ), f"Plan JSON leaked input path: {photo_dir_str} found in output"
+
+    # Check proposals and source_ref don't leak paths
+    for proposal in payload1["data"]["proposals"]:
+        source_ref = proposal.get("source_record_id", "")
+        assert photo_dir_str not in source_ref, f"source_record_id leaked input path: {source_ref}"
+
+
+def test_photo_timeline_gps_canonicalization_is_stable(
+    tmp_path: Path,
+) -> None:
+    """GPS data must be normalized and produce stable fingerprints."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_with_exif.jpg", photo_dir)
+
+    result1 = _run_photo_plan(data_dir, photo_dir)
+    assert result1.returncode == 0
+    payload1 = _payload(result1)
+
+    result2 = _run_photo_plan(data_dir, photo_dir)
+    assert result2.returncode == 0
+    payload2 = _payload(result2)
+
+    # Same fixture, same fingerprint
+    assert payload1["data"]["plan_fingerprint"] == payload2["data"]["plan_fingerprint"]
+
+
+def test_photo_timeline_missing_orientation_uses_null_with_warning(
+    tmp_path: Path,
+) -> None:
+    """Photo without orientation should warn PHOTO_ORIENTATION_MISSING."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_gps_missing.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+
+    warnings = data["warnings"]
+    warning_codes = [w.get("code", "") for w in warnings]
+    assert any(
+        "PHOTO_ORIENTATION_MISSING" in code for code in warning_codes
+    ), f"Expected PHOTO_ORIENTATION_MISSING warning, got: {warning_codes}"
+
+
+def test_photo_timeline_corrupted_exif_graceful_degradation(
+    tmp_path: Path,
+) -> None:
+    """Corrupted EXIF must not crash the plan."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_corrupted_exif.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    # Should not crash (returncode=0 even with warnings/conflicts is OK)
+    payload = _payload(result)
+    assert payload["success"] is True, f"Plan should not crash on corrupted EXIF: {payload}"
+    # Should have at least warnings or conflicts about the corrupted file
+    data = payload["data"]
+    warnings_or_conflicts = len(data["warnings"]) + len(data["conflicts"])
+    assert warnings_or_conflicts > 0, "Expected warnings or conflicts for corrupted EXIF"
+    warning_codes = [warning.get("code", "") for warning in data["warnings"]]
+    conflict_codes = [conflict.get("code", "") for conflict in data["conflicts"]]
+    assert any(
+        code in warning_codes
+        for code in (
+            "PHOTO_EXIF_UNREADABLE",
+            "PHOTO_ORIENTATION_MISSING",
+            "PHOTO_GPS_MISSING",
+            "PHOTO_CAMERA_MISSING",
+        )
+    )
+    assert warning_codes or conflict_codes
+
+
+def test_photo_timeline_malformed_jpeg_emits_exif_unreadable(
+    tmp_path: Path,
+) -> None:
+    """Malformed .jpg bytes should degrade to PHOTO_EXIF_UNREADABLE."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    (photo_dir / "malformed.jpg").write_bytes(b"not a valid jpeg")
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+
+    warning_codes = [warning.get("code", "") for warning in data["warnings"]]
+    conflict_codes = [conflict.get("code", "") for conflict in data["conflicts"]]
+    assert "PHOTO_EXIF_UNREADABLE" in warning_codes
+    assert "PHOTO_CAPTURE_TIME_MISSING" in conflict_codes
+
+
+def test_photo_timeline_attachment_paths_stay_in_data_dir(
+    tmp_path: Path,
+) -> None:
+    """All attachment target paths must be relative and inside data_dir."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_with_exif.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+
+    for proposal in payload["data"]["proposals"]:
+        for att in proposal.get("attachments", []):
+            target = att["target_rel_path"]
+            # Must be relative (no leading slash, no drive letter)
+            assert not Path(target).is_absolute(), f"Attachment path absolute: {target}"
+            # Must start with attachments/
+            assert target.startswith("attachments/"), f"Attachment not under attachments/: {target}"
+            # Resolve inside data_dir
+            resolved = (data_dir / target).resolve()
+            assert str(resolved).startswith(
+                str(data_dir.resolve())
+            ), f"Attachment resolves outside data_dir: {resolved}"
+
+
+def test_photo_timeline_import_run_copies_original_attachment_bytes(
+    tmp_path: Path,
+) -> None:
+    """Photo import run copies original photo bytes when source root is provided."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    source_photo = _copy_fixture_photo("photo_with_exif.jpg", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    plan_data = _payload(result)["data"]
+    assert plan_data["summary"]["conflict_count"] == 0
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(plan_data), encoding="utf-8")
+    run_result = _run_import(
+        data_dir,
+        "run",
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        plan_data["import_id"],
+        "--source-root",
+        str(photo_dir),
+        "--json",
+    )
+    assert run_result.returncode == 0, f"stdout: {run_result.stdout}\nstderr: {run_result.stderr}"
+
+    target_rel = plan_data["proposals"][0]["attachments"][0]["target_rel_path"]
+    target_abs = data_dir / target_rel
+    assert target_abs.read_bytes() == source_photo.read_bytes()
+
+
+def test_photo_timeline_existing_target_path_conflict_blocks_run(
+    tmp_path: Path,
+) -> None:
+    """Pre-existing deterministic attachment target creates a blocking conflict."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_with_exif.jpg", photo_dir)
+
+    first_result = _run_photo_plan(data_dir, photo_dir)
+    assert (
+        first_result.returncode == 0
+    ), f"stdout: {first_result.stdout}\nstderr: {first_result.stderr}"
+    first_data = _payload(first_result)["data"]
+
+    target_rel = first_data["proposals"][0]["attachments"][0]["target_rel_path"]
+    target_abs = data_dir / target_rel
+    target_abs.parent.mkdir(parents=True, exist_ok=True)
+    target_abs.write_bytes(b"pre-existing attachment")
+
+    second_result = _run_photo_plan(data_dir, photo_dir)
+    assert (
+        second_result.returncode == 0
+    ), f"stdout: {second_result.stdout}\nstderr: {second_result.stderr}"
+    second_data = _payload(second_result)["data"]
+
+    assert (
+        second_data["summary"]["conflict_count"] > 0
+    ), f"Expected conflicts for existing target path: {second_data['summary']}"
+    conflict_codes = [
+        conflict.get("code", conflict.get("type", "")) for conflict in second_data["conflicts"]
+    ]
+    assert "PHOTO_TARGET_PATH_CONFLICT" in conflict_codes
+
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(second_data), encoding="utf-8")
+    run_result = _run_import(
+        data_dir,
+        "run",
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        second_data["import_id"],
+        "--json",
+    )
+    assert run_result.returncode != 0
+    run_payload = _payload(run_result)
+    assert run_payload["error"]["code"] == "IMPORT_PLAN_CONFLICTS_UNRESOLVED"
+
+
+def test_photo_timeline_unsupported_file_warns_and_skips(
+    tmp_path: Path,
+) -> None:
+    """Non-JPEG files should be skipped with PHOTO_UNSUPPORTED_FILE_SKIPPED warning."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+    _copy_fixture_photo("photo_with_exif.jpg", photo_dir)
+    _copy_fixture_photo("photo_unsupported.txt", photo_dir)
+
+    result = _run_photo_plan(data_dir, photo_dir)
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+
+    # Only the JPEG should generate a proposal
+    assert (
+        data["source"]["record_count"] == 1
+    ), f"Expected 1 record, got {data['source']['record_count']}"
+
+    # Should have a warning about the unsupported file
+    warnings = data["warnings"]
+    warning_codes = [w.get("code", "") for w in warnings]
+    assert any(
+        "PHOTO_UNSUPPORTED_FILE_SKIPPED" in code for code in warning_codes
+    ), f"Expected PHOTO_UNSUPPORTED_FILE_SKIPPED warning, got: {warning_codes}"

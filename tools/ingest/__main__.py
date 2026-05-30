@@ -37,13 +37,14 @@ from tools.ingest.fingerprint import (
     compute_proposal_fingerprint,
     compute_source_fingerprint,
 )
+from tools.ingest.adapters.photo_timeline import scan_photo_directory
 from tools.lib.paths import get_user_data_dir
 
 # ---------------------------------------------------------------------------
 # Supported source adapters (Tranche A: fixture only)
 # ---------------------------------------------------------------------------
 
-SUPPORTED_SOURCES = {"fixture.import_records"}
+SUPPORTED_SOURCES = {"fixture.import_records", "media.photo_timeline"}
 
 # ---------------------------------------------------------------------------
 # Journal path helpers
@@ -109,7 +110,11 @@ def _cmd_plan(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    # --- Read input fixture ---
+    # --- Pre-declare collections used by both branches ---
+    all_conflicts: list[dict[str, Any]] = []
+    all_warnings: list[dict[str, Any]] = []
+
+    # --- Read source data (fixture or adapter scan) ---
     if not input_path.exists():
         _print_json(
             error_envelope(
@@ -122,32 +127,49 @@ def _cmd_plan(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    try:
-        fixture_text = input_path.read_text(encoding="utf-8")
-        fixture_data: dict[str, Any] = json.loads(fixture_text)
-    except (json.JSONDecodeError, OSError) as exc:
-        _print_json(
-            error_envelope(
-                "import.plan",
-                "IMPORT_SOURCE_UNREADABLE",
-                f"Cannot read input: {exc}",
-                {"input_path": str(input_path)},
-                retryable=True,
+    if source_adapter == "media.photo_timeline":
+        if not input_path.is_dir():
+            _print_json(
+                error_envelope(
+                    "import.plan",
+                    "IMPORT_SOURCE_UNREADABLE",
+                    f"Photo timeline input must be a directory: {input_path}",
+                    {"input_path": str(input_path)},
+                    retryable=True,
+                )
             )
-        )
-        sys.exit(1)
+            sys.exit(1)
+        scan_result = scan_photo_directory(input_path)
+        adapter_id = scan_result["adapter_id"]
+        adapter_version = scan_result["adapter_version"]
+        input_label = scan_result["input_label"]
+        records = scan_result["records"]
+        all_warnings.extend(scan_result.get("warnings", []))
+    else:
+        try:
+            fixture_text = input_path.read_text(encoding="utf-8")
+            fixture_data: dict[str, Any] = json.loads(fixture_text)
+        except (json.JSONDecodeError, OSError) as exc:
+            _print_json(
+                error_envelope(
+                    "import.plan",
+                    "IMPORT_SOURCE_UNREADABLE",
+                    f"Cannot read input: {exc}",
+                    {"input_path": str(input_path)},
+                    retryable=True,
+                )
+            )
+            sys.exit(1)
 
-    adapter_id: str = fixture_data.get("adapter_id", source_adapter)
-    adapter_version: str = fixture_data.get("adapter_version", "v1")
-    input_label: str = fixture_data.get("input_label", "")
-    records: list[dict[str, Any]] = fixture_data.get("records", [])
+        adapter_id = fixture_data.get("adapter_id", source_adapter)
+        adapter_version = fixture_data.get("adapter_version", "v1")
+        input_label = fixture_data.get("input_label", "")
+        records = fixture_data.get("records", [])
 
     # --- Build proposals ---
     used_seqs: dict[str, int] = {}
     proposals: list[dict[str, Any]] = []
     all_create_files: list[str] = []
-    all_conflicts: list[dict[str, Any]] = []
-    all_warnings: list[dict[str, Any]] = []
     source_record_fingerprints: list[str] = []
     proposal_fingerprints: list[str] = []
     total_attachments = 0
@@ -187,6 +209,11 @@ def _cmd_plan(args: argparse.Namespace) -> None:
                     "attachment_id": att["attachment_id"],
                     "source_ref": att["source_ref"],
                     "source_sha256": att["source_sha256"],
+                    **(
+                        {"source_rel_path": att["source_rel_path"]}
+                        if "source_rel_path" in att
+                        else {}
+                    ),
                     "target_rel_path": att["target_rel_path"],
                     "media_type": att["media_type"],
                     "size_bytes": att["size_bytes"],
@@ -216,11 +243,44 @@ def _cmd_plan(args: argparse.Namespace) -> None:
                 "target_rel_path": target_rel_path,
                 "message": (f"Target path already exists: {target_rel_path}"),
             }
+            if adapter_id == "media.photo_timeline":
+                conflict_entry.update(
+                    {
+                        "code": "PHOTO_TARGET_PATH_CONFLICT",
+                        "severity": "conflict",
+                        "runnable": False,
+                    }
+                )
             proposal_conflicts.append(conflict_entry)
             all_conflicts.append(conflict_entry)
 
+        for att_output in att_outputs:
+            att_target_rel = att_output["target_rel_path"]
+            att_target_abs = data_dir / att_target_rel
+            if att_target_abs.exists():
+                conflict_entry = {
+                    "type": "existing_path",
+                    "target_rel_path": att_target_rel,
+                    "message": f"Target path already exists: {att_target_rel}",
+                }
+                if adapter_id == "media.photo_timeline":
+                    conflict_entry.update(
+                        {
+                            "code": "PHOTO_TARGET_PATH_CONFLICT",
+                            "severity": "conflict",
+                            "runnable": False,
+                        }
+                    )
+                proposal_conflicts.append(conflict_entry)
+                all_conflicts.append(conflict_entry)
+
         # --- Build proposal output ---
         proposal_id = f"prop_{proposal_fp.removeprefix('sha256:')[:20]}"
+
+        # Collect per-record warnings and conflicts from the source record
+        record_warnings: list[dict[str, Any]] = record.get("warnings", [])
+        record_conflicts: list[dict[str, Any]] = record.get("conflicts", [])
+
         proposals.append(
             {
                 "proposal_id": proposal_id,
@@ -236,10 +296,12 @@ def _cmd_plan(args: argparse.Namespace) -> None:
                     "content": journal_spec.get("content", ""),
                 },
                 "attachments": att_outputs,
-                "conflicts": proposal_conflicts,
-                "warnings": [],
+                "conflicts": proposal_conflicts + record_conflicts,
+                "warnings": record_warnings,
             }
         )
+        all_warnings.extend(record_warnings)
+        all_conflicts.extend(record_conflicts)
 
         # Track files for write-set preview
         all_create_files.append(target_rel_path)
@@ -291,7 +353,7 @@ def _cmd_plan(args: argparse.Namespace) -> None:
             "proposed_journal_count": len(records),
             "proposed_attachment_count": total_attachments,
             "conflict_count": len(all_conflicts),
-            "warning_count": 0,
+            "warning_count": len(all_warnings),
         },
         "proposals": proposals,
         "write_set_preview": {
@@ -317,6 +379,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
         plan_path=args.plan,
         confirm_id=args.confirm,
         data_dir=get_user_data_dir(),
+        source_root=args.source_root,
     )
 
     if result["success"]:
@@ -446,6 +509,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     run_p = sub.add_parser("run", help="Execute a confirmed import plan.")
     run_p.add_argument("--plan", required=True, help="Path to plan JSON.")
     run_p.add_argument("--confirm", required=False, default=None, help="import_id to confirm.")
+    run_p.add_argument(
+        "--source-root",
+        required=False,
+        default=None,
+        help="Optional source root for adapters that copy original attachment bytes.",
+    )
     run_p.add_argument("--json", action="store_true")
 
     # --- status ---

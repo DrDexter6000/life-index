@@ -1040,7 +1040,9 @@ backward-incompatible payload change.
 
 ```bash
 life-index import plan --source fixture.import_records --input <fixture.json> --json
+life-index import plan --source media.photo_timeline --input <photo-dir> --json
 life-index import run --plan <plan.json> --confirm <import_id> --json
+life-index import run --plan <plan.json> --confirm <import_id> --source-root <photo-dir> --json
 life-index import status --import-id <import_id> --json
 life-index import rollback --import-id <import_id> --json
 python -m tools import plan --source fixture.import_records --input <fixture.json> --json
@@ -1050,9 +1052,20 @@ python -m tools import plan --source fixture.import_records --input <fixture.jso
 attachment 写入的唯一 owner；GUI 或高级模块只能消费 plan、请求 confirmed
 run、查询 status、触发 rollback，不能直接写 `Journals/` 或 `attachments/`。
 
-Tranche A 只实现 `fixture.import_records` adapter，用于 contract tests 和后续
-GUI / adapter 对齐。EXIF、social archive parsing、AI drafting、GUI flow 不属
-于本命令当前契约。
+当前 source adapters：
+
+| source | 输入 | 状态 | 说明 |
+|---|---|---|---|
+| `fixture.import_records` | fixture JSON | Tranche A stable | contract tests 和后续 adapter 对齐用 fixture adapter |
+| `media.photo_timeline` | 本地 JPEG 目录 | Tranche B additive | 通过 Pillow 读取 JPEG EXIF，生成照片 timeline import proposals |
+
+`media.photo_timeline` 支持 `.jpg` / `.jpeg`。它提取 capture time、GPS
+（可选）、camera make/model（可选）、orientation、content SHA-256、
+size、media type，并生成 deterministic journal + attachment proposal。
+`import plan` 不写 durable data，不暴露绝对 source path；attachment 中的
+`source_rel_path` 只是相对 `--source-root` 的文件名/相对路径，用于
+`import run` 复制原始照片字节。社媒 export parsing、Google Photos sidecar
+解析、AI drafting、GUI flow 不属于当前命令契约。
 
 ### 通用返回 Envelope
 
@@ -1104,11 +1117,35 @@ JSON，不写 journal、attachment、ledger、manifest 或 index。
 | `write_set_preview.create_files[]` | array | 预计创建的相对路径 |
 | `conflicts[]` | array | 现有目标路径冲突；Tranche A fail-closed |
 
+`media.photo_timeline` attachment proposal 额外包含 `source_rel_path`。GUI
+可以展示 `source_ref`、`source_sha256`、`target_rel_path`、`media_type`、
+`size_bytes` 和 `copy_mode`，但不得自行读取照片、解析 EXIF、推导目标路径或
+写 durable data。执行 `import run` 时，调用方应传回同一照片目录作为
+`--source-root`；CLI 会在写入前校验 source hash/size 是否仍与 plan 匹配。
+
+`media.photo_timeline` structured warnings/conflicts：
+
+| code | severity | runnable | 说明 |
+|---|---|---|---|
+| `PHOTO_GPS_MISSING` | warning | yes | 没有 GPS metadata；不阻塞 run |
+| `PHOTO_CAMERA_MISSING` | warning | yes | make/model metadata 缺失 |
+| `PHOTO_ORIENTATION_MISSING` | warning | yes | orientation tag 缺失 |
+| `PHOTO_UNSUPPORTED_FILE_SKIPPED` | warning | yes | 当前 tranche 不支持的文件被跳过 |
+| `PHOTO_EXIF_UNREADABLE` | warning | yes | EXIF 无法读取，adapter 会降级并同时输出缺失 capture time conflict |
+| `PHOTO_CAPTURE_TIME_MISSING` | conflict | no | 没有可信 capture date；阻塞 run |
+| `PHOTO_CAPTURE_TIME_AMBIGUOUS` | conflict | no | 多个日期来源冲突；阻塞 run |
+| `PHOTO_SOURCE_UNREADABLE` | conflict | no | 源文件无法读取 |
+| `PHOTO_TARGET_PATH_CONFLICT` | conflict | no | 计划 journal 或 attachment path 已存在 |
+
 ### `import run`
 
 `run` 必须带 `--confirm <import_id>`，且 `<import_id>` 必须匹配 plan。它按
 create-only / fail-closed 策略写入 plan 中的 journal 和 attachment path，并在
 写入前建立固定 ledger 和 rollback manifest。
+
+对 `media.photo_timeline`，`run` 还应带 `--source-root <photo-dir>`。CLI 只
+使用该 root 解析 plan 中的 `source_rel_path`，并在复制 attachment 前校验
+`source_sha256` 与 `size_bytes`；绝对 source path 不进入 plan fingerprint。
 
 固定路径：
 
