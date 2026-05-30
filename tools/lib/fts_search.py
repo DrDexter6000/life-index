@@ -14,6 +14,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+MAX_FTS_MATCH_QUERY_CHARS = 1024
+MAX_FTS_MATCH_QUERY_TOKENS = 32
+
 from .search_constants import (
     FTS_LIMIT,
     FTS_MIN_RELEVANCE,
@@ -40,6 +43,16 @@ def _effective_min_relevance(query: str, min_relevance: int) -> int:
     if any(term in normalized_query for term in HIGH_FREQUENCY_TERMS):
         return HIGH_FREQUENCY_MIN_RELEVANCE
     return min_relevance
+
+
+def _bounded_match_query(query: str) -> str:
+    """Bound pathological FTS MATCH input before it reaches SQLite."""
+    tokens = str(query).split()
+    if len(tokens) > MAX_FTS_MATCH_QUERY_TOKENS:
+        return " ".join(tokens[:MAX_FTS_MATCH_QUERY_TOKENS])
+    if len(query) > MAX_FTS_MATCH_QUERY_CHARS:
+        return query[:MAX_FTS_MATCH_QUERY_CHARS]
+    return query
 
 
 def _parse_json_field(value: Any) -> list[str]:
@@ -81,6 +94,7 @@ def search_fts(
     """
     results: list[dict[str, Any]] = []
     effective_min_relevance = _effective_min_relevance(query, min_relevance)
+    match_query = _bounded_match_query(query)
 
     try:
         if not fts_db_path.exists():
@@ -108,7 +122,7 @@ def search_fts(
                 FROM journals
                 WHERE journals MATCH ?
             """
-            params = [FTS_SNIPPET_TOKENS, query]
+            params = [FTS_SNIPPET_TOKENS, match_query]
 
             # 添加日期过滤
             if date_from:
@@ -169,7 +183,7 @@ def search_fts(
                 FROM journals
                 WHERE journals MATCH ?
             """
-            params = [FTS_SNIPPET_TOKENS, query]
+            params = [FTS_SNIPPET_TOKENS, match_query]
 
             if date_from:
                 sql += " AND date >= ?"

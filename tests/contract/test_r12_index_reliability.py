@@ -19,6 +19,7 @@
 # 否则 conftest 第 58 行会抛出 ImportError。
 # 此处为模块级代码，pytest 收集阶段即执行，早于任何 fixture。
 import tools.lib.search_index as _si
+
 if not hasattr(_si, "FTS_DB_PATH"):
     _si.FTS_DB_PATH = _si.get_fts_db_path()
 
@@ -31,12 +32,35 @@ from tools.build_index import build_all, check_index
 from tools.lib.pending_writes import clear_pending
 
 
+@pytest.fixture(autouse=True)
+def _isolate_vector_backend(isolated_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep index reliability tests off network-backed embedding model loading."""
+    import tools.lib.semantic_search as semantic_mod
+    import tools.lib.vector_index_simple as simple_mod
+
+    class UnavailableSqliteModel:
+        def load(self) -> bool:
+            return False
+
+    class FakeSimpleModel:
+        def load(self) -> bool:
+            return True
+
+        def encode(self, texts: list[str]) -> list[list[float]]:
+            return [[1.0] + [0.0] * (simple_mod.EMBEDDING_DIM - 1) for _ in texts]
+
+    simple_mod._index_instance = None
+    monkeypatch.setattr(semantic_mod, "get_model", lambda: UnavailableSqliteModel())
+    monkeypatch.setattr(simple_mod, "get_model", lambda: FakeSimpleModel())
+    monkeypatch.setattr(simple_mod, "CACHE_DIR", isolated_data_dir / ".cache" / "models")
+
+
 # ============================================================
 # Helper: 在隔离目录中写入一篇日志
 # ============================================================
 
-def _write_one_journal(data_dir: Path, journals_dir: Path, lock_path: Path,
-                       idx: int) -> dict:
+
+def _write_one_journal(data_dir: Path, journals_dir: Path, lock_path: Path, idx: int) -> dict:
     """通过 write_journal 写入一篇日志，返回写入结果。"""
     from tools.write_journal.core import write_journal
 
@@ -51,17 +75,18 @@ def _write_one_journal(data_dir: Path, journals_dir: Path, lock_path: Path,
         patch("tools.write_journal.core.update_tag_indices", return_value=[]),
         patch("tools.write_journal.core.update_monthly_abstract", return_value="abstract.md"),
     ):
-        return write_journal({
-            "title": f"测试日志 R12-{idx:03d}",
-            "content": f"这是第 {idx} 篇测试日志内容，包含唯一关键词 test_r12_journal_{idx:03d}。",
-            "date": "2026-03-07",
-            "topic": ["work"],
-            "tags": [f"tag-{idx}"],
-        })
+        return write_journal(
+            {
+                "title": f"测试日志 R12-{idx:03d}",
+                "content": f"这是第 {idx} 篇测试日志内容，包含唯一关键词 test_r12_journal_{idx:03d}。",
+                "date": "2026-03-07",
+                "topic": ["work"],
+                "tags": [f"tag-{idx}"],
+            }
+        )
 
 
-def _write_n_journals(n: int, data_dir: Path, journals_dir: Path,
-                      lock_path: Path) -> list[dict]:
+def _write_n_journals(n: int, data_dir: Path, journals_dir: Path, lock_path: Path) -> list[dict]:
     """批量写入 n 篇日志。"""
     results = []
     for i in range(1, n + 1):
@@ -75,9 +100,7 @@ def _edit_journal(journal_path: Path) -> dict:
     """通过 edit_journal 编辑一篇日志，返回编辑结果。"""
     from tools.edit_journal import edit_journal
 
-    with (
-        patch("tools.edit_journal.save_revision", return_value="revisions/rev.md"),
-    ):
+    with (patch("tools.edit_journal.save_revision", return_value="revisions/rev.md"),):
         return edit_journal(
             journal_path=journal_path,
             frontmatter_updates={"mood": ["充实"]},
@@ -108,6 +131,7 @@ def _ensure_lock(data_dir: Path) -> Path:
 # Test 1: 写入 10 篇 → index --check 健康
 # ============================================================
 
+
 class TestWriteIndexHealth:
     """PRD §5.1 #2: 写入 10 篇日志后，索引健康检查应通过。"""
 
@@ -126,20 +150,15 @@ class TestWriteIndexHealth:
 
         # 索引健康检查
         report = check_index(data_dir=data_dir)
-        assert report["healthy"] is True, (
-            f"索引应健康，但发现问题: {report.get('issues', [])}"
-        )
-        assert report["fts_count"] == 10, (
-            f"FTS 文档数应为 10，实际 {report['fts_count']}"
-        )
-        assert report["file_count"] == 10, (
-            f"磁盘文件数应为 10，实际 {report['file_count']}"
-        )
+        assert report["healthy"] is True, f"索引应健康，但发现问题: {report.get('issues', [])}"
+        assert report["fts_count"] == 10, f"FTS 文档数应为 10，实际 {report['fts_count']}"
+        assert report["file_count"] == 10, f"磁盘文件数应为 10，实际 {report['file_count']}"
 
 
 # ============================================================
 # Test 2: 编辑 5 篇 → index --check 健康
 # ============================================================
+
 
 class TestEditIndexHealth:
     """PRD §5.1 #3: 编辑 5 篇日志后，索引健康检查应通过。"""
@@ -160,9 +179,7 @@ class TestEditIndexHealth:
         for r in results:
             journal_path = Path(r["journal_path"])
             edit_result = _edit_journal(journal_path)
-            assert edit_result.get("success"), (
-                f"编辑失败: {edit_result.get('error')}"
-            )
+            assert edit_result.get("success"), f"编辑失败: {edit_result.get('error')}"
 
         # 清除 pending + 增量构建索引（模拟 search 前自动消费）
         clear_pending()
@@ -170,14 +187,15 @@ class TestEditIndexHealth:
 
         # 索引健康检查
         report = check_index(data_dir=data_dir)
-        assert report["healthy"] is True, (
-            f"编辑后索引应健康，但发现问题: {report.get('issues', [])}"
-        )
+        assert (
+            report["healthy"] is True
+        ), f"编辑后索引应健康，但发现问题: {report.get('issues', [])}"
 
 
 # ============================================================
 # Test 3: 崩溃模拟 → search 自动检测并修复
 # ============================================================
+
 
 class TestCrashAutoRepair:
     """PRD §5.1 #4: 崩溃后（删除索引文件），search 应自动检测并重建索引。"""
@@ -212,9 +230,9 @@ class TestCrashAutoRepair:
         build_all(incremental=False)
 
         report_after = check_index(data_dir=data_dir)
-        assert report_after["healthy"] is True, (
-            f"自动修复后索引应健康，但发现问题: {report_after.get('issues', [])}"
-        )
+        assert (
+            report_after["healthy"] is True
+        ), f"自动修复后索引应健康，但发现问题: {report_after.get('issues', [])}"
 
     def test_delete_manifest_search_detects_stale(self, isolated_data_dir: Path):
         """删除 manifest.json → search 检测到 no_manifest → 标记不健康。"""
@@ -246,14 +264,15 @@ class TestCrashAutoRepair:
         build_all(incremental=False)
 
         report_after = check_index(data_dir=data_dir)
-        assert report_after["healthy"] is True, (
-            f"重建后索引应健康，但发现问题: {report_after.get('issues', [])}"
-        )
+        assert (
+            report_after["healthy"] is True
+        ), f"重建后索引应健康，但发现问题: {report_after.get('issues', [])}"
 
 
 # ============================================================
 # Test 4: 压力测试：10 写 + 5 编辑 + 10 搜索
 # ============================================================
+
 
 class TestStressIndexReliability:
     """综合压力测试：高频写入/编辑/搜索后，索引仍保持健康。"""
@@ -282,6 +301,7 @@ class TestStressIndexReliability:
 
         # Phase 3: 执行 10 次搜索（mock freshness guard 避免级联 auto-rebuild）
         from tools.lib.index_freshness import FreshnessReport
+
         fresh_report = FreshnessReport(
             fts_fresh=True, vector_fresh=True, overall_fresh=True, issues=[]
         )
@@ -300,12 +320,8 @@ class TestStressIndexReliability:
 
         # 最终断言：索引健康
         report = check_index(data_dir=data_dir)
-        assert report["healthy"] is True, (
-            f"压力测试后索引应健康，但发现问题: {report.get('issues', [])}"
-        )
-        assert report["fts_count"] == 10, (
-            f"FTS 文档数应为 10，实际 {report['fts_count']}"
-        )
-        assert report["file_count"] == 10, (
-            f"磁盘文件数应为 10，实际 {report['file_count']}"
-        )
+        assert (
+            report["healthy"] is True
+        ), f"压力测试后索引应健康，但发现问题: {report.get('issues', [])}"
+        assert report["fts_count"] == 10, f"FTS 文档数应为 10，实际 {report['fts_count']}"
+        assert report["file_count"] == 10, f"磁盘文件数应为 10，实际 {report['file_count']}"
