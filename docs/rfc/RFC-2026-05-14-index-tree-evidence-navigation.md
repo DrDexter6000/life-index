@@ -160,6 +160,12 @@ The phrase "coarse narrowing" is important. Index nodes may reduce work, but
 must not become answer truth. Full journal evidence remains the source for any
 claim.
 
+Truth-source rule: journals are the only durable truth source. Markdown indexes,
+private manifests, derived lenses, diagnostic reports, and future sidecars are
+all rebuildable derived artifacts. If a derived artifact conflicts with the
+journal file, the journal wins and the derived artifact must be rebuilt or
+discarded.
+
 ## 6. EverOS / EverCore Absorption Boundary
 
 Useful patterns to absorb:
@@ -195,6 +201,38 @@ Core Index Tree truth may include only deterministic facts:
 - validated frontmatter fields;
 - source hashes / freshness state;
 - evidence references.
+
+### 6.1 L1 Navigable Frontmatter Whitelist
+
+Only a narrow allowlist of validated frontmatter fields may be used as L1
+navigation signals. The initial allowlist is:
+
+- `date` for node/date range placement;
+- `topic` for coarse topic traversal;
+- `people` for person-label traversal;
+- `project` for project-label traversal;
+- `location` for place-label traversal.
+
+Phase 1 emits only `topic`, `people`, and `project` signal counts. `tags`,
+`mood`, narrative summaries, relationship labels, persona labels, emotional
+judgment, and any newly introduced frontmatter field are not L1 navigation
+signals by default.
+
+Adding any field to the L1 navigation allowlist requires a separate gate:
+schema-owner approval, deterministic extraction, fixture coverage, privacy
+review when the field may contain personal labels, coverage/denominator
+reporting, and proof that default search ranking remains unchanged.
+
+Signal coverage is mandatory for future manifests and lenses. Each signal
+dictionary must be interpretable with a denominator: how many journal entries
+were in scope, how many had the field present, and how many had parseable values.
+This prevents long-term bias from frontmatter schema drift, missing fields, or
+partial adoption.
+
+L3 narrative, persona, or relationship judgment may appear only in
+evidence-backed reports that cite journal paths and node refs. Such judgment
+must not be promoted into core Index Tree truth, L1 navigation fields, or
+machine-trusted counts.
 
 ## 7. Conceptual Future Interfaces
 
@@ -290,8 +328,12 @@ contract, it must go through a separate privacy review before publication.
 ## 8. Roadmap
 
 The roadmap proper has four phases: private manifest, shared deterministic
-builder, Search Shadow Mode, and promotion decision. The current RFC update is
-only a scope lock and does not count as an implementation phase.
+builder with evidence binding, deferred Search Shadow Mode, and promotion
+decision. The current RFC update is only a scope lock and does not count as an
+implementation phase. Priority is auditability and evidence binding first;
+retrieval optimization comes only after derived evidence can be rebuilt,
+bounded, and audited. Search Shadow Mode is intentionally later and must retain
+the recall-preservation gate.
 
 ### Current RFC Update - Scope Lock
 
@@ -365,6 +407,11 @@ journal frontmatter, which creates a double-parse / drift risk between Markdown
 indexes and manifest signals. The long-term path must converge on a shared
 deterministic builder rather than depending on Markdown index reverse parsing.
 
+Phase 2 backlog also includes cross-time entity/topic derived lenses: private,
+rebuildable views that group evidence across months or years while preserving
+journal paths, node refs, coverage denominators, and freshness state. These
+lenses are diagnostic/navigation aids, not truth stores and not ranking inputs.
+
 Allowed file impact:
 
 - Refactor within `tools/generate_index/**` to isolate a shared deterministic
@@ -395,6 +442,8 @@ Exit criteria:
 - Markdown indexes and JSON sidecar, if present, are generated from the same
   deterministic model.
 - Tests prove sidecar data matches Markdown node counts/refs for fixtures.
+- Derived lens candidates include evidence paths, node refs, freshness, and
+  signal coverage denominators.
 - Markdown reverse parsing remains allowed only as compatibility fallback or
   audit, not the primary generation path.
 
@@ -504,9 +553,14 @@ This RFC does not propose:
 
 - replacing `search`, `smart-search`, `aggregate`, `analyze`, or `recall`;
 - letting LLMs compute counts;
+- adopting an EverOS-style service stack, daemon, HTTP service, or external
+  memory database substrate;
+- adding a persona memory system or profile-as-truth store;
 - writing persona, emotion, relationship, or narrative conclusions into Index
   Tree nodes;
 - storing LLM-generated summaries as machine-trusted evidence;
+- adding recency decay ranking or changing result ranking through navigation
+  signals;
 - adding a public CLI command in this RFC update;
 - changing `generate-index --json`;
 - changing search default ranking;
@@ -527,6 +581,7 @@ Before this becomes a production feature, a future milestone should prove:
 | Privacy | all navigation is local-first and offline-capable; paths are relative |
 | Read-only safety | navigation does not write or mutate source journals |
 | Evidence auditability | every derived claim can cite exact journal paths and node refs |
+| Signal coverage | manifests/lenses report in-scope entry counts, present-field counts, and parseable-field counts |
 | Public compatibility | any public surface has schema/version and migration rules |
 
 ## 11. Risks
