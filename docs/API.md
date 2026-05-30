@@ -1197,8 +1197,22 @@ rollback 还会 resolve 每个 manifest path，确认目标仍在 `LIFE_INDEX_DA
 `import` top-level envelope 使用 `schema_version = "import_job.v1"`。
 子对象使用独立 schema：`import_plan.v1`、`import_run.v1`、
 `import_status.v1`、`import_rollback.v1`、`import_job_ledger.v1`、
-`import_rollback_manifest.v1`。新增 additive 字段不升级版本；破坏性变更必须
-升级对应 schema 并补 contract tests。
+`import_rollback_manifest.v1`。
+
+Tranche A 将以下内容纳入兼容性承诺：
+
+- 上述 schema version 字符串及其已记录字段名、字段类型、必填语义；
+- 错误码字符串及其 fail-closed 语义；
+- `proposal_fingerprint`、`plan_fingerprint`、`idempotency_key`、source
+  fingerprint 的规范化输入和计算公式；
+- fixed ledger / rollback manifest 路径语义；
+- dry-run 不写真实用户数据，run/rollback 必须限制在 `LIFE_INDEX_DATA_DIR`
+  内。
+
+新增 additive 字段不升级版本，消费者必须忽略未知字段。删除、重命名、重设
+类型、改变必填语义、改变错误码含义，或改变 fingerprint / idempotency 公式，
+都属于破坏性变更，必须升级对应 schema 并补 contract tests。兼容扩展可以继续
+使用现有 schema，但不得让旧消费者误判 import state 或 durable write boundary。
 
 ---
 

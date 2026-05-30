@@ -80,6 +80,15 @@ def _load_fixture(name: str) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _normalize_plan_payload_for_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize environment/date-dependent plan fields for golden snapshots."""
+    snapshot = json.loads(json.dumps(payload))
+    data = snapshot["data"]
+    data["import_id"] = "<import_id>"
+    data["idempotency_key"] = "<idempotency_key>"
+    return snapshot
+
+
 def _fixture_path(name: str) -> str:
     """Return absolute string path for a fixture file."""
     return str(FIXTURES_DIR / name)
@@ -195,6 +204,32 @@ def test_import_plan_returns_dry_run_envelope_with_fingerprints(
         assert "source_record_fingerprint" in proposal
         assert "journal" in proposal
         assert "attachments" in proposal
+
+
+def test_import_plan_matches_normalized_golden_snapshot(tmp_path: Path) -> None:
+    """T5 hardening: plan envelope shape is protected by a golden snapshot.
+
+    The snapshot keeps deterministic fingerprints exact while normalizing
+    fields that depend on the temp data directory or current date.
+    """
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    result = _run_import(
+        data_dir,
+        "plan",
+        "--source",
+        "fixture.import_records",
+        "--input",
+        _fixture_path("minimal_plan_source.json"),
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+
+    expected = _load_fixture("golden_minimal_plan_envelope.normalized.json")
+    assert _normalize_plan_payload_for_snapshot(payload) == expected
 
 
 # ===================================================================
@@ -478,6 +513,89 @@ def test_import_run_rejects_unresolved_conflicts_before_writes(
     assert payload["success"] is False
     assert payload["error"]["code"] == "IMPORT_PLAN_CONFLICTS_UNRESOLVED"
     assert not (data_dir / LEDGER_REL_PATH).exists()
+
+
+def test_import_run_rejects_unsupported_plan_schema_without_writes(
+    tmp_path: Path,
+) -> None:
+    """T5 hardening: unsupported plan schema versions fail before writes."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    plan_result = _run_import(
+        data_dir,
+        "plan",
+        "--source",
+        "fixture.import_records",
+        "--input",
+        _fixture_path("minimal_plan_source.json"),
+        "--json",
+    )
+    assert plan_result.returncode == 0
+    plan_data = _payload(plan_result)["data"]
+    import_id = plan_data["import_id"]
+    plan_data["schema_version"] = "import_plan.v2"
+
+    plan_file = tmp_path / "unsupported-schema-plan.json"
+    plan_file.write_text(json.dumps(plan_data), encoding="utf-8")
+
+    result = _run_import(
+        data_dir,
+        "run",
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        import_id,
+        "--json",
+    )
+    payload = _payload(result)
+
+    assert result.returncode != 0
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "IMPORT_PLAN_SCHEMA_UNSUPPORTED"
+    assert not (data_dir / LEDGER_REL_PATH).exists()
+
+
+def test_import_run_tolerates_additive_unknown_plan_fields(tmp_path: Path) -> None:
+    """T5 hardening: additive unknown fields are ignored by v1 consumers."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    plan_result = _run_import(
+        data_dir,
+        "plan",
+        "--source",
+        "fixture.import_records",
+        "--input",
+        _fixture_path("minimal_plan_source.json"),
+        "--json",
+    )
+    assert plan_result.returncode == 0
+    plan_data = _payload(plan_result)["data"]
+    import_id = plan_data["import_id"]
+
+    plan_data["future_extension"] = {"ignored_by": "import_plan.v1"}
+    plan_data["proposals"][0]["future_extension"] = {"ignored": True}
+    plan_data["proposals"][0]["journal"]["future_extension"] = "ignored"
+    plan_data["proposals"][0]["attachments"][0]["future_extension"] = "ignored"
+
+    plan_file = tmp_path / "additive-fields-plan.json"
+    plan_file.write_text(json.dumps(plan_data), encoding="utf-8")
+
+    result = _run_import(
+        data_dir,
+        "run",
+        "--plan",
+        str(plan_file),
+        "--confirm",
+        import_id,
+        "--json",
+    )
+    payload = _payload(result)
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    assert payload["success"] is True
+    assert payload["data"]["state"] == "committed"
 
 
 # ===================================================================
