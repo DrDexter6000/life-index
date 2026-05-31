@@ -156,3 +156,5 @@ tmp_*
 !tmp_*.md
 *_tmp*.json
 .pytest_tmp*/
+
+.kimi/
