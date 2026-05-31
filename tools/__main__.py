@@ -36,6 +36,7 @@ Commands:
               --data-audit  Audit data directory for anomalies
               --cache-audit  Read-only cache version audit (JSON)
     import    Import provider (plan, run, status, rollback)
+    index-tree  Read-only Index Tree Evidence Navigation
     version   Show package and bootstrap manifest version info
 """
 
@@ -502,6 +503,7 @@ def main() -> None:
         "maintenance": "tools.maintenance.__main__",
         "trajectory": "tools.trajectory.__main__",
         "import": "tools.ingest.__main__",
+        "index-tree": "tools.index_tree.__main__",
     }
 
     if subcmd in cmd_map:
@@ -556,6 +558,7 @@ def print_usage() -> None:
     print("            --data-audit  Audit data directory for anomalies")
     print("            --cache-audit  Read-only cache version audit (JSON)")
     print("  import    Import provider (plan, run, status, rollback)")
+    print("  index-tree  Read-only Index Tree Evidence Navigation")
     print("  version   Show package and bootstrap manifest version info")
     print()
     print("Run 'life-index <command> --help' for command-specific options.")

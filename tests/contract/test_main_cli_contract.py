@@ -23,6 +23,7 @@ STABLE_COMMANDS = {
     "analyze",
     "journal",
     "import",
+    "index-tree",
     "health",
     "version",
     "on-this-day",

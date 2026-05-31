@@ -6,6 +6,28 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-05-31
+
+### What users get
+
+- `index-tree` adds read-only Index Tree Evidence Navigation JSON envelopes for
+  node summaries, derived frontmatter lenses, and Search Shadow Mode diagnostics.
+  The new surface is local-first, journal-derived, and designed for GUI,
+  `on-this-day`, `smart-search` diagnostics, and approved advanced modules.
+- `index-tree shadow` is diagnostic-only: it reports candidate paths,
+  recall-preservation status, freshness blockers, and dropped-path evidence
+  without changing default `search` or `smart-search` ranking/output semantics.
+
+### Included in this release
+
+- Public schema family `m31.index_tree.v1` with `nodes`, `lens`, and `shadow`
+  subcommands.
+- Index Tree public promotion RFC:
+  `docs/rfc/RFC-2026-05-31-index-tree-public-contract-promotion.md`.
+- GUI/consumer constraints: no `tools/dev` private artifact consumption, no
+  durable writes outside CLI owner commands, and all derived lenses remain
+  rebuildable navigation aids rather than truth claims.
+
 ## [1.2.1] - 2026-05-26
 
 ### What users get

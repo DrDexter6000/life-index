@@ -1034,6 +1034,173 @@ backward-incompatible payload change.
 
 ---
 
+## index-tree
+
+### 端点
+
+```bash
+life-index index-tree nodes --level all --json
+life-index index-tree nodes --level month --json
+life-index index-tree lens --signal topic --json
+life-index index-tree lens --signal people --json
+life-index index-tree lens --signal project --json
+life-index index-tree shadow --query "Alpha" --json
+python -m tools index-tree nodes --level month --json
+```
+
+`index-tree` 是只读的 Index Tree Evidence Navigation 公共契约。它把
+root/year/month Index Tree、frontmatter-derived lenses、Search Shadow Mode
+诊断以 JSON envelope 暴露给 GUI、`on-this-day`、`smart-search` 诊断路径和已批准的高级模块。
+
+该命令不会写入或修改 journal、index、cache、attachment 或任何 durable data。Journal
+仍是唯一 truth source；index、lens、shadow report 都是可重建派生产物。
+
+### 通用返回 Envelope
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.nodes",
+  "generated_at": "2026-05-31T00:00:00Z",
+  "data": {},
+  "errors": []
+}
+```
+
+错误时：
+
+```json
+{
+  "success": false,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.lens",
+  "generated_at": "2026-05-31T00:00:00Z",
+  "data": null,
+  "errors": [
+    {
+      "code": "INDEX_TREE_INVALID_SIGNAL",
+      "message": "signal must be one of ['topic', 'people', 'project'], got 'mood'",
+      "details": {"signal": "mood", "allowed": ["topic", "people", "project"]}
+    }
+  ]
+}
+```
+
+### `nodes`
+
+`nodes` 输出 root/year/month 节点摘要、freshness、entry refs 和可导航 frontmatter
+信号。所有路径均为相对 `LIFE_INDEX_DATA_DIR` 的 POSIX-style 路径；不得出现绝对路径。
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.nodes",
+  "data": {
+    "truth_source": "journals",
+    "level": "month",
+    "nodes": [
+      {
+        "node_id": "month:2026-03",
+        "level": "month",
+        "relative_path": "Journals/2026/03/index_2026-03.md",
+        "entry_count": 1,
+        "freshness": "fresh",
+        "entry_refs": [
+          {
+            "relative_path": "Journals/2026/03/life-index_2026-03-14_001.md",
+            "signals": {"topic": ["work"]},
+            "node_ref": {
+              "type": "month",
+              "node_id": "month:2026-03",
+              "id": "Journals/2026/03",
+              "path": "Journals/2026/03/index_2026-03.md"
+            }
+          }
+        ],
+        "signal_coverage": {
+          "topic": {"entries_in_scope": 1, "present": 1, "parseable": 1}
+        }
+      }
+    ]
+  },
+  "errors": []
+}
+```
+
+### `lens`
+
+`lens` 输出 `topic`、`people`、`project` 三类 allowlisted frontmatter signal 的跨时间派生视图。
+它是 navigation aid，不是事实裁决或 persona/relationship judgment。
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.lens",
+  "data": {
+    "truth_source": "journals",
+    "privacy_level": "same_as_journals",
+    "signal": "topic",
+    "coverage": {"entries_in_scope": 2, "present": 2, "parseable": 2},
+    "items": [
+      {
+        "value": "work",
+        "count": 1,
+        "node_refs": [{"type": "month", "node_id": "month:2026-03"}],
+        "evidence_paths": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+        "freshness": ["fresh"]
+      }
+    ]
+  },
+  "errors": []
+}
+```
+
+### `shadow`
+
+`shadow` 输出 Search Shadow Mode 诊断。它只报告 candidate narrowing、baseline subset
+检查、stale/missing index disable reason 和 dropped-path evidence；不会改变 `search` 或
+`smart-search` 默认 ranking / order / output semantics。
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.shadow",
+  "data": {
+    "query": "Alpha",
+    "enabled": true,
+    "diagnostic_only": true,
+    "baseline_paths": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "shadow_candidate_paths": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "recall_preserved": true,
+    "dropped_paths": [],
+    "default_search_mutated": false,
+    "default_smart_search_mutated": false
+  },
+  "errors": []
+}
+```
+
+### GUI / Consumer 边界
+
+- GUI 只能消费 `index-tree` public JSON envelope；不得读取 `tools/dev` private manifest。
+- GUI 不得把 lens / shadow diagnostic 当作 truth claim；展示时应保留 evidence paths / node refs。
+- GUI 不得绕过 CLI 写入 `Journals/`、`attachments/` 或任何 durable data。
+- `frontmatter_signals`、lens value、people/project/location 等 key 可能含真实人名、项目名或地点；隐私等级等同 journal。
+- `shadow` 仅诊断，不是 ranking API。任何 search / smart-search ranking 变更必须另走授权和 recall-preservation gate。
+
+### schema_version Policy
+
+`index-tree` emits top-level `schema_version = "m31.index_tree.v1"`.
+Existing fields and semantics are stable. Additive optional fields may be added
+without a schema bump. Backward-incompatible shape or semantic changes require
+a new schema version.
+
+---
+
 ## import
 
 ### 端点
