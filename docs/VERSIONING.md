@@ -225,6 +225,8 @@ A public release is valid only when:
 - The version bump follows this contract.
 - Public version surfaces agree.
 - `CHANGELOG.md` records the user-visible change.
+- A GitHub Release exists for the same `vX.Y.Z` tag and is marked as the
+  repository's latest release when it is the newest stable release.
 - Required quality gates have a clear passing verdict.
 - Contract-affecting releases have reviewed cross-consumer intake and recorded
   any accepted, rejected, deferred, or delivered request IDs in the existing
@@ -241,6 +243,12 @@ Git tags are release anchors. They should point to commits where:
 - Version metadata is already updated.
 - Changelog entry exists.
 - Required checks have passed or are expected to pass.
+
+Updating `pyproject.toml`, `bootstrap-manifest.json`, and `CHANGELOG.md`, then
+pushing the release commit, does not update the GitHub Releases sidebar by
+itself. Formal release closeout must also create and push the matching
+`vX.Y.Z` tag, create the GitHub Release from that tag, and verify that the
+GitHub Release points at the intended release commit.
 
 Exploratory historical tags before this contract do not define formal version semantics.
 
