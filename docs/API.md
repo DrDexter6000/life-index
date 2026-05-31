@@ -4600,6 +4600,7 @@ life-index version
     "release_channel": "stable",
     "required_authority_docs": [
       "bootstrap-manifest.json",
+      "CHARTER.md",
       "AGENT_ONBOARDING.md",
       "SKILL.md",
       "docs/API.md",

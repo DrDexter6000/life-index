@@ -3,7 +3,8 @@
 > **Document Purpose**: Step-by-step operational instructions for AI agents installing Life Index on behalf of users.
 > **Audience**: External AI agents (not humans)
 > **Scope**: CLI installation, initialization, repair, and first-use verification
-> **SSOT References**: `bootstrap-manifest.json`, `SKILL.md`, `docs/API.md`, `docs/ARCHITECTURE.md`
+> **Governance SSOT**: `CHARTER.md`
+> **Install freshness anchor**: `bootstrap-manifest.json`; refresh every path listed in `required_authority_docs`
 
 ---
 
@@ -593,6 +594,6 @@ Keep it concise — this is a welcome message, not a manual.>
 
 ---
 
-**Document Version**: 2.1
-**Last Updated**: 2026-05-01
-**Authority Chain**: `bootstrap-manifest.json` → `AGENT_ONBOARDING.md` / `README.md` → domain SSOT docs such as `SKILL.md`, `docs/API.md`, `docs/ARCHITECTURE.md`, `tools/lib/AGENTS.md`
+**Document Version**: 2.2
+**Last Updated**: 2026-05-31
+**Authority Chain**: `CHARTER.md` governs project invariants. `bootstrap-manifest.json` governs install/upgrade/repair freshness and points to the current required authority documents through `required_authority_docs`.

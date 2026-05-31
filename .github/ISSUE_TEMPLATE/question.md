@@ -18,10 +18,10 @@ assignees: ''
 
 您是否已查阅以下文档？
 
-- [ ] [README.md](../README.md)
-- [ ] [SKILL.md](../SKILL.md)
-- [ ] [docs/API.md](../docs/API.md)
-- [ ] [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+- [ ] [README.md](../../README.md)
+- [ ] [SKILL.md](../../SKILL.md)
+- [ ] [docs/API.md](../../docs/API.md)
+- [ ] [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)
 
 ## 环境信息
 

@@ -489,7 +489,7 @@ Please read and strictly follow `AGENT_ONBOARDING.md` in this repository to comp
 https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 Requirements:
-1. Refresh and read the latest authority files before execution: refresh `bootstrap-manifest.json` first, then read every path in `required_authority_docs`: `AGENT_ONBOARDING.md`, `SKILL.md`, `docs/API.md`, `docs/ARCHITECTURE.md`, `tools/lib/AGENTS.md`, and `README.md`
+1. Refresh and read the latest authority files before execution: refresh `bootstrap-manifest.json` first, then read every path listed in `required_authority_docs`; do not rely on a hard-coded list in this paragraph
 2. If a canonical checkout already exists, sync it and reinstall into `.venv` before deciding whether this is fresh install, upgrade, or repair; do not skip sync just because files exist or `health` looks normal
 3. Make the route decision only after authority refresh + checkout sync
 4. All Python/CLI commands must use the virtual environment path

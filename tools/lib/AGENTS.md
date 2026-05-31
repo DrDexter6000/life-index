@@ -1,6 +1,6 @@
 # AGENTS.md - tools/lib/
 
-> **最后更新**: 2026-05-05 | **版本**: v1.4 | **状态**: 活跃维护
+> **最后更新**: 2026-05-31 | **版本**: v1.5 | **状态**: 活跃维护
 
 ## OVERVIEW
 Shared infrastructure library for all Life Index atomic tools.
@@ -59,7 +59,7 @@ Shared infrastructure library for all Life Index atomic tools.
 
 **File Locking**: All write operations (journal, edit, index) use `FileLock` to prevent concurrent conflicts. Lock timeout defaults to 30s for journals, 60s for index operations.
 
-**Semantic Search**: Uses sentence-transformers with BAAI/bge-m3 for multilingual embeddings. Core feature, always available.
+**Semantic Search**: Uses sentence-transformers with BAAI/bge-m3 for multilingual embeddings, but L2 retrieval remains keyword-only by default. Semantic/vector retrieval is explicit opt-in or fallback behavior; do not make it the default path from `tools/lib`.
 
 ## ANTI-PATTERNS
 
