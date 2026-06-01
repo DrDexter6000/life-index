@@ -6,6 +6,32 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-06-01
+
+### What users get
+
+- `maintenance` adds the Data Doctor command family for deterministic user-data
+  maintenance: `audit`, `plan`, `repair`, and `proposal validate`.
+- `maintenance audit --json` emits complete `m33.maintenance_audit.v0` issue
+  inventories with per-domain counts, detector status, non-truncation metadata,
+  stable issue IDs, relative evidence paths, and redacted secret/path output.
+- `maintenance repair --apply` is limited to rebuildable derived artifacts
+  such as generated Markdown indexes, `.index/`, `.cache/`, and
+  `.life-index/cache/`; journals, attachments, entity graph, import sources,
+  config secrets, migrations, and human-curated Markdown are not auto-mutated.
+- `maintenance proposal validate --file ... --json` gives GUI/L3/user flows a
+  deterministic validator for metadata/entity/relation repair proposals without
+  calling an LLM or applying changes.
+
+### Included in this release
+
+- Public schema family `m33.maintenance_audit.v0`,
+  `m33.maintenance_plan.v0`, `m33.maintenance_repair.v0`, and
+  `m33.maintenance_proposal.v0`.
+- Maintenance public promotion RFC:
+  `docs/rfc/RFC-2026-06-01-maintenance-cli-contract.md`.
+- Legacy `m16.maintenance.v0` and `m16.health.v0` compatibility preserved.
+
 ## [1.2.2] - 2026-05-31
 
 ### What users get

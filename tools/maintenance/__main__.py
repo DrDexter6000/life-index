@@ -14,10 +14,15 @@ are delegated via subprocess.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from .audit import parse_domains, run_audit
 from .core import run_maintenance, format_text_report, to_json
+from .plan import PLAN_SCHEMA_VERSION, build_plan
+from .proposal import validate_proposal
+from .repair import run_repair
 
 
 def _attach_provenance(result: dict) -> dict:
@@ -33,7 +38,164 @@ def _attach_provenance(result: dict) -> dict:
     return result
 
 
+def _run_audit_command(argv: list[str]) -> None:
+    parser = argparse.ArgumentParser(
+        prog="life-index maintenance audit",
+        description="Audit Life Index user-data maintenance health.",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    parser.add_argument(
+        "--domain",
+        type=str,
+        default=None,
+        help="Comma-separated domain filter, e.g. layout,frontmatter.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="Override data directory (sets LIFE_INDEX_DATA_DIR).",
+    )
+    args = parser.parse_args(argv)
+
+    data_dir: str | None = None
+    if args.data_dir:
+        data_dir = str(args.data_dir)
+        import os
+
+        os.environ["LIFE_INDEX_DATA_DIR"] = data_dir
+
+    try:
+        domains = parse_domains(args.domain)
+    except ValueError as exc:
+        payload = {
+            "success": False,
+            "schema_version": "m33.maintenance_audit.v0",
+            "command": "maintenance audit",
+            "error": {"code": "MAINTENANCE_AUDIT_INVALID_DOMAIN", "message": str(exc)},
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        sys.exit(2)
+
+    result = run_audit(data_dir=data_dir, domains=domains)
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    sys.exit(0)
+
+
+def _run_plan_command(argv: list[str]) -> None:
+    parser = argparse.ArgumentParser(
+        prog="life-index maintenance plan",
+        description="Build a dry-run maintenance repair plan for one issue.",
+    )
+    parser.add_argument("--issue-id", required=True, help="Issue ID from maintenance audit.")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="Override data directory (sets LIFE_INDEX_DATA_DIR).",
+    )
+    args = parser.parse_args(argv)
+
+    data_dir: str | None = None
+    if args.data_dir:
+        data_dir = str(args.data_dir)
+        import os
+
+        os.environ["LIFE_INDEX_DATA_DIR"] = data_dir
+
+    result, exit_code = build_plan(data_dir=data_dir, issue_id=args.issue_id)
+    result.setdefault("schema_version", PLAN_SCHEMA_VERSION)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    sys.exit(exit_code)
+
+
+def _run_repair_command(argv: list[str]) -> None:
+    parser = argparse.ArgumentParser(
+        prog="life-index maintenance repair",
+        description="Dry-run or apply a low-risk maintenance repair.",
+    )
+    parser.add_argument("--issue-id", required=True, help="Issue ID from maintenance audit.")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true", help="Preview repair only.")
+    mode.add_argument("--apply", action="store_true", help="Apply repair if allowed.")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="Override data directory (sets LIFE_INDEX_DATA_DIR).",
+    )
+    args = parser.parse_args(argv)
+
+    data_dir: str | None = None
+    if args.data_dir:
+        data_dir = str(args.data_dir)
+        import os
+
+        os.environ["LIFE_INDEX_DATA_DIR"] = data_dir
+
+    result, exit_code = run_repair(data_dir=data_dir, issue_id=args.issue_id, apply=args.apply)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    sys.exit(exit_code)
+
+
+def _run_proposal_command(argv: list[str]) -> None:
+    if not argv or argv[0] != "validate":
+        parser = argparse.ArgumentParser(prog="life-index maintenance proposal")
+        parser.error("expected subcommand: validate")
+
+    parser = argparse.ArgumentParser(
+        prog="life-index maintenance proposal validate",
+        description="Validate a maintenance proposal file without applying it.",
+    )
+    parser.add_argument("--file", required=True, help="Proposal JSON file to validate.")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="Override data directory (sets LIFE_INDEX_DATA_DIR).",
+    )
+    args = parser.parse_args(argv[1:])
+
+    data_dir: str | None = None
+    if args.data_dir:
+        data_dir = str(args.data_dir)
+        import os
+
+        os.environ["LIFE_INDEX_DATA_DIR"] = data_dir
+    else:
+        import os
+
+        data_dir = os.environ.get("LIFE_INDEX_DATA_DIR")
+
+    if data_dir is None:
+        data_dir = str(Path.home() / "Documents" / "Life-Index")
+
+    result, exit_code = validate_proposal(data_dir=data_dir, proposal_file=args.file)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    sys.exit(exit_code)
+
+
 def main(argv: list[str] | None = None) -> None:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "audit":
+        _run_audit_command(argv[1:])
+        return
+    if argv and argv[0] == "plan":
+        _run_plan_command(argv[1:])
+        return
+    if argv and argv[0] == "repair":
+        _run_repair_command(argv[1:])
+        return
+    if argv and argv[0] == "proposal":
+        _run_proposal_command(argv[1:])
+        return
+
     parser = argparse.ArgumentParser(
         description="Life Index - Maintenance cycle (dry-run / report-only)",
         formatter_class=argparse.RawDescriptionHelpFormatter,

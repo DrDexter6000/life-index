@@ -2775,12 +2775,24 @@ The queries fixture is a JSON array of objects:
 > aggregates six health checks without any production writes. All external CLI calls
 > are delegated via subprocess. Default path is fully deterministic — zero LLM calls.
 > Output schema version: `m16.maintenance.v0`.
+>
+> **Data Doctor maintenance contract.** The `maintenance audit|plan|repair|proposal`
+> family adds stable `m33.maintenance_*.v0` JSON envelopes for user-data
+> maintenance. It coexists with the legacy `m16.maintenance.v0` dry-run cycle.
+> Audit, plan, repair dry-run, and proposal validation are read-only. Repair
+> apply is limited to low-risk rebuildable artifacts.
 
 ### 端点
 
 ```bash
 life-index maintenance --dry-run [--output text|json] [--data-dir <dir>]
 python -m tools maintenance --dry-run [--output text|json] [--data-dir <dir>]
+
+life-index maintenance audit --json [--domain <domains>] [--data-dir <dir>]
+life-index maintenance plan --issue-id <id> --json [--data-dir <dir>]
+life-index maintenance repair --issue-id <id> --dry-run --json [--data-dir <dir>]
+life-index maintenance repair --issue-id <id> --apply --json [--data-dir <dir>]
+life-index maintenance proposal validate --file proposal.json --json [--data-dir <dir>]
 ```
 
 ### 参数
@@ -2790,6 +2802,11 @@ python -m tools maintenance --dry-run [--output text|json] [--data-dir <dir>]
 | dry-run | flag | (default) | Run maintenance in dry-run/report-only mode |
 | output | enum | `text` | Output format: `text` (human-readable) or `json` |
 | data-dir | path | — | Override data directory (sets `LIFE_INDEX_DATA_DIR`) |
+| json | flag | — | Emit JSON for `audit`, `plan`, `repair`, or `proposal validate` |
+| domain | CSV | all domains | Optional audit domain filter |
+| issue-id | string | — | Stable issue ID from `maintenance audit` |
+| file | path | — | Proposal JSON file for deterministic validation |
+| apply | flag | — | Apply an allowed low-risk derived-artifact repair |
 
 ### 六项检查
 
@@ -2861,7 +2878,132 @@ python -m tools maintenance --dry-run [--output text|json] [--data-dir <dir>]
 
 - **零生产写入**: maintenance 自身及其所有子进程调用均为只读操作
 - **Subprocess 边界**: 所有外部 CLI 调用通过 subprocess，不直接 import 被调用模块内部
-- **Report-only**: maintenance 只报告状态，不执行自动修复 (CHARTER §1.10)
+- **Legacy report-only**: `maintenance --dry-run` 只报告状态，不执行自动修复
+- **Data Doctor repair boundary**: `maintenance repair --apply` can only write
+  rebuildable derived artifacts such as generated Markdown indexes, `.index/`,
+  `.cache/`, and `.life-index/cache/`. It must not modify journals,
+  attachments, `entity_graph.yaml`, import source files, config secrets,
+  hand-curated Markdown, or migration state.
+
+### Data Doctor Audit Envelope
+
+Schema: `m33.maintenance_audit.v0`
+
+```json
+{
+  "success": true,
+  "schema_version": "m33.maintenance_audit.v0",
+  "command": "maintenance audit",
+  "generated_at": "2026-06-01T00:00:00+00:00",
+  "summary": {
+    "total_issues": 3,
+    "domain_counts": {
+      "layout": 2,
+      "search_index": 1
+    },
+    "detector_status": {
+      "layout": "ok",
+      "search_index": "ok"
+    },
+    "truncated": false,
+    "limit": null,
+    "offset": 0,
+    "has_more": false
+  },
+  "detectors": [
+    {
+      "domain": "layout",
+      "status": "ok",
+      "issue_count": 2
+    }
+  ],
+  "issues": [
+    {
+      "issue_id": "layout.missing_generated_index:INDEX.md",
+      "domain": "layout",
+      "type": "missing_generated_index",
+      "severity": "warning",
+      "risk": "low",
+      "repair_class": "derived",
+      "repairable": true,
+      "message": "Generated root index is missing.",
+      "evidence": [
+        {
+          "path": "INDEX.md",
+          "kind": "missing"
+        }
+      ]
+    }
+  ],
+  "error": null
+}
+```
+
+Audit domains:
+
+`layout`, `search_index`, `frontmatter`, `text_encoding`, `links`,
+`attachments`, `revisions`, `entity_nodes`, `entity_relations`, `import_jobs`,
+`migration`, `backup`, `config`, `path_portability`, `privacy`.
+
+All evidence paths are relative to `LIFE_INDEX_DATA_DIR`. Public output must not
+include absolute local paths or raw secret values. Detector failures are reported
+per domain as `status: "error"` and do not truncate unrelated detector output.
+
+### Data Doctor Plan Envelope
+
+Schema: `m33.maintenance_plan.v0`
+
+`maintenance plan --issue-id <id> --json` returns a dry-run plan for the current
+audit issue. Repairable plans include `risk`, `touched_paths`, `preconditions`,
+`post_check_command`, `rollback_story`, `requires_user_ack`, and `plan_steps`.
+Human-judgment issues return `repairable: false` with a
+`non_repairable_reason`.
+
+### Data Doctor Repair Envelope
+
+Schema: `m33.maintenance_repair.v0`
+
+`maintenance repair --dry-run` changes no files and reports `planned_paths`.
+`maintenance repair --apply` is implemented only for derived artifacts:
+
+- generated Markdown indexes via `generate-index --rebuild`;
+- search index/cache artifacts via `index --rebuild --fts-only`.
+
+Unsafe or non-repairable issue IDs return structured errors such as
+`MAINTENANCE_REPAIR_NOT_ALLOWED`, `MAINTENANCE_REPAIR_COMMAND_FAILED`, or
+`MAINTENANCE_REPAIR_UNSAFE_CHANGED_PATH`.
+
+### Data Doctor Proposal Validation
+
+Schema: `m33.maintenance_proposal.v0`
+
+`maintenance proposal validate --file proposal.json --json` validates proposal
+files produced by users, GUI flows, or L3 agents. It does not call an LLM and it
+does not apply changes. It verifies:
+
+- proposal schema version;
+- evidence presence;
+- relative paths confined to `LIFE_INDEX_DATA_DIR`;
+- source file hash freshness;
+- explicit `requires_user_ack: true`;
+- supported frontmatter fields;
+- secret-like token absence;
+- entity alias collision safety;
+- entity relation source/target existence.
+
+Representative rejection codes include
+`MAINTENANCE_PROPOSAL_INVALID_SCHEMA`,
+`MAINTENANCE_PROPOSAL_MISSING_EVIDENCE`,
+`MAINTENANCE_PROPOSAL_PATH_ESCAPE`,
+`MAINTENANCE_PROPOSAL_SECRET_EXPOSURE`,
+`MAINTENANCE_PROPOSAL_UNSUPPORTED_FIELD`,
+`MAINTENANCE_PROPOSAL_ENTITY_ALIAS_COLLISION`,
+`MAINTENANCE_PROPOSAL_MISSING_USER_ACK`, and
+`MAINTENANCE_PROPOSAL_STALE_SOURCE_HASH`.
+
+Compatibility: `m33.maintenance_*.v0` is a stable initial public contract.
+Additive optional fields may be added without a schema bump; incompatible shape
+or semantic changes require a new schema version or schema name.
 
 ---
 
