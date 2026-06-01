@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-import re
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from tools.lib.frontmatter import parse_frontmatter, format_frontmatter
+from tools.lib.journal_files import iter_journal_files
 from tools.lib.schema import SCHEMA_VERSION, run_migration_chain
 
 logger = logging.getLogger(__name__)
@@ -32,10 +32,6 @@ EXPECTED_FIELDS: set[str] = {
     "related_entries",
     "attachments",
 }
-
-# Only scan files matching this pattern.
-_JOURNAL_PATTERN = re.compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
-
 
 # ---------------------------------------------------------------------------
 # Scan (dry-run)
@@ -63,10 +59,7 @@ def scan_journals(journals_dir: Path) -> dict[str, Any]:
     outdated: list[dict[str, Any]] = []
     total = 0
 
-    for md_file in sorted(journals_dir.rglob("*.md")):
-        if not _JOURNAL_PATTERN.match(md_file.name):
-            continue
-
+    for md_file in iter_journal_files(journals_dir):
         total += 1
         try:
             content = md_file.read_text(encoding="utf-8")
@@ -139,10 +132,7 @@ def apply_migrations(
     needs_agent_list: list[dict[str, Any]] = []
     det_changes: list[dict[str, Any]] = []
 
-    for md_file in sorted(journals_dir.rglob("*.md")):
-        if not _JOURNAL_PATTERN.match(md_file.name):
-            continue
-
+    for md_file in iter_journal_files(journals_dir):
         try:
             content = md_file.read_text(encoding="utf-8")
             metadata, body = parse_frontmatter(content)

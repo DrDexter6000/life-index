@@ -2769,6 +2769,85 @@ The queries fixture is a JSON array of objects:
 
 ---
 
+## bootstrap
+
+### 端点
+
+```bash
+life-index bootstrap --json
+python -m tools bootstrap --json
+```
+
+### 语义
+
+`bootstrap` 是只读安装 / 数据状态检测命令，用于 Agent onboarding 前置判断。它不 clone、不 install、不 migrate、不 repair、不写入用户数据、不修改 `.venv`，也不删除任何 checkout。
+
+上游新鲜度仍由 onboarding Step 0.1 的 `bootstrap-manifest.json` authority refresh 负责；`bootstrap` 只报告本机安装包版本是否与当前 checkout manifest 版本一致，字段名为 `install_in_sync`。
+
+`journal_count` 使用共享 canonical journal-file 计数口径，只统计文件名匹配 `life-index_YYYY-MM-DD_NNN.md` 的日志文件；standard `health` 与 `migrate --dry-run` 使用同一口径。
+
+### 参数
+
+| 参数 | 必填 | 说明 |
+|---|---:|---|
+| `--json` | yes | 输出 JSON contract |
+| `--data-dir <path>` | no | 覆盖 Life Index 数据目录；仅影响本次检测 |
+| `--checkout-path <path>` | no | 要评估的本地 checkout 路径 |
+| `--checkout-origin discovered\|host_managed\|user_designated` | no | `--checkout-path` 的来源；默认 `discovered` |
+
+### checkout origin 规则
+
+`safe_to_adopt: true` 只会在以下条件同时满足时出现：
+
+1. checkout 含 `SKILL.md`、`pyproject.toml`、`bootstrap-manifest.json`;
+2. 未发现强 development-directory 信号；
+3. `--checkout-origin` 是 `host_managed` 或 `user_designated`。
+
+随机发现的 checkout 即使结构完整，也返回 `verdict: "ambiguous"`，并通过 `needs_human` 要求 Agent 让用户或 host platform 明确安装目标。
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "schema_version": "m34.bootstrap.v0",
+  "command": "bootstrap",
+  "detected_state": {
+    "has_user_data": true,
+    "journal_count": 12,
+    "data_dir": "C:/Users/example/Documents/Life-Index",
+    "installed_version": "1.2.3",
+    "manifest_version": "1.2.3",
+    "install_in_sync": true,
+    "migration_needed": 0,
+    "migration_check_error": null,
+    "checkout_assessment": null
+  },
+  "route": "upgrade",
+  "route_reason": "Found 12 journal(s) in C:/Users/example/Documents/Life-Index",
+  "needs_human": [],
+  "safe_next_steps": ["life-index health"]
+}
+```
+
+### route 值
+
+| route | 说明 |
+|---|---|
+| `fresh_install` | 未发现既有 journal 数据 |
+| `upgrade` | 已发现既有 journal 数据 |
+
+### needs_human codes
+
+| code | 说明 |
+|---|---|
+| `AMBIGUOUS_CHECKOUT` | checkout 结构完整但缺少 host/user 正向采纳授权 |
+| `DEV_DIR_FOUND` | checkout 有 development-directory 强信号 |
+| `INVALID_CHECKOUT` | checkout 缺少必要文件 |
+| `MIGRATION_CHECK_FAILED` | in-process migration scan 失败；不得当作无需迁移 |
+
+---
+
 ## maintenance
 
 > **Maintenance cycle (gbrain Phase D).** Dry-run/report-only maintenance command that
@@ -3676,6 +3755,7 @@ python -m tools.build_index [options]
 - `success`: always `true` for health checks. Degraded/unhealthy status is communicated via `data.status`, not via `success: false`.
 - `data.status`: the primary health indicator. `degraded` means partial functionality; `unhealthy` means critical issues.
 - `data.checks`: additive; new checks may be added (e.g., `index_tree` check).
+- `data.checks[name="data_directory"].journal_count`: counts only canonical journal filenames matching `life-index_YYYY-MM-DD_NNN.md`; this is the same journal enumeration used by `bootstrap` and `migrate --dry-run`.
 - `data.anomalies[].type`: `revision_file`, `naming`, `distribution`.
 - `events`: piggyback notifications; same format as other commands.
 

@@ -32,6 +32,7 @@ Commands:
     aggregate Deterministic aggregate/trend computation
     analyze   Alias for aggregate
     maintenance  Run maintenance cycle (dry-run health checks)
+    bootstrap    Detect install/data state and route onboarding (read-only)
     health    Check installation health
               --data-audit  Audit data directory for anomalies
               --cache-audit  Read-only cache version audit (JSON)
@@ -47,6 +48,7 @@ from typing import Any, Dict, List, Tuple, cast
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 
+from tools.lib.journal_files import count_journal_files
 from tools.lib.config import get_model_cache_dir  # noqa: F401 — used via monkeypatch in tests
 from tools.lib.paths import get_user_data_dir, get_journals_dir
 
@@ -173,9 +175,7 @@ def _check_data_dir() -> Tuple[Dict[str, Any], str]:
     data_dir = get_user_data_dir()
     journals_dir = get_journals_dir()
     data_exists = data_dir.exists()
-    journal_count = 0
-    if journals_dir.exists():
-        journal_count = len(list(journals_dir.rglob("*.md")))
+    journal_count = count_journal_files(journals_dir)
     check = {
         "name": "data_directory",
         "status": "ok" if data_exists else "info",
@@ -501,6 +501,7 @@ def main() -> None:
         "on-this-day": "tools.on_this_day.__main__",
         "recall": "tools.recall.__main__",
         "maintenance": "tools.maintenance.__main__",
+        "bootstrap": "tools.bootstrap.__main__",
         "trajectory": "tools.trajectory.__main__",
         "import": "tools.ingest.__main__",
         "index-tree": "tools.index_tree.__main__",
@@ -551,6 +552,7 @@ def print_usage() -> None:
     print("  eval      Run search evaluation gate")
     print("  entity-graph-eval  Run graph ablation evaluation")
     print("  maintenance  Run maintenance cycle (dry-run health checks)")
+    print("  bootstrap  Detect install/data state and route onboarding (read-only)")
     print("  smart-search  Smart search with LLM orchestration")
     print("  aggregate  Deterministic aggregate/trend computation")
     print("  analyze   Alias for deterministic aggregate/trend computation")

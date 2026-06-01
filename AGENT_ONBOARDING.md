@@ -20,150 +20,74 @@ Before taking any action, read this entire document once.
 
 ---
 
-## 2. Step 0 — Refresh Authority First, Then Detect Local State
+## 2. Step 0 — Refresh Authority First, Then Run Bootstrap Detection
 
-Do **not** clone, recreate `.venv`, run `health`, or classify fresh-install vs upgrade until you complete this gate.
+Do **not** clone, recreate `.venv`, run `health`, adopt a checkout, delete anything, or classify fresh-install vs upgrade until you complete this gate.
 
 ### Step 0.1: Refresh authority documents first
 
-Before trusting any local checkout, refresh `bootstrap-manifest.json` from the current upstream repository. Then treat that manifest as the version/authority anchor and refresh **every file listed in its `required_authority_docs` array** before proceeding. Treat local copies as potentially stale.
+Before trusting any local checkout, refresh `bootstrap-manifest.json` from the current upstream repository. Treat that manifest as the version/authority anchor and refresh **every file listed in its `required_authority_docs` array** before proceeding. Treat local copies as potentially stale.
 
-### Step 0.2: Check user data first (highest priority)
+This is the upstream freshness gate. `life-index bootstrap` does **not** perform network freshness checks; it only compares the installed package version against the local manifest version as `install_in_sync`.
 
-Check whether the user already has Life Index data:
+### Step 0.2: Run bootstrap detection
 
-- `~/Documents/Life-Index/`
-- `~/Documents/Life-Index/Journals/`
-- any existing journal files under `Journals/YYYY/MM/*.md`
-
-**Rule**:
-- If real journal data already exists, treat the machine as **not fresh install** unless strong evidence proves otherwise.
-- Protect user data first. Do not assume it is safe to restart from zero.
-- User wording such as "fresh", "clean", or "start from scratch" is **not** authorization to delete existing journal data. Destructive data reset is outside this onboarding workflow and requires separate explicit confirmation.
-
-### Step 0.3: Identify the canonical checkout
-
-Check whether there is already a Life Index repository checkout that is safe to use as the active install target.
-
-A directory containing these files is only a **candidate checkout**, not automatically the canonical install target:
-
-- `SKILL.md`
-- `pyproject.toml`
-- `bootstrap-manifest.json`
-- `.venv/`
-
-#### Host-managed canonical checkout rule
-
-If the host Agent platform already manages skills in a canonical directory, prefer that managed checkout over ad hoc working-directory clones.
-
-Treat a checkout as the active install target only if one of these conditions is true:
-
-- the user explicitly named that path as the install target in the current task
-- the host runtime exposes that path as its managed skill/install directory through official documentation, environment, configuration, or CLI output
-- the checkout already contains install metadata for this project and does not show development-directory warning signs
-
-If you discover multiple Life Index checkouts, do **not** silently pick a random one and do **not** create a third clone. Prefer the host-managed canonical checkout or the user-designated checkout, and if the active install location is still ambiguous, report the conflict and ask the user before cleanup.
-
-If you discover exactly one checkout but it is **not** under a host-managed skill directory and was **not** explicitly named by the user as the install target, do **not** adopt it silently. Treat it as a candidate only, report the path, and ask the user to confirm whether it is the install target.
-
-#### Development directory protection
-
-Before running sync, reinstall, cleanup, or any `.venv` deletion in a discovered checkout, verify that the checkout is not a developer working tree.
-
-Strong signals of a development directory include:
-
-- a Windows virtual environment under `.venv/Scripts/` while the current agent is running from WSL/Linux
-- dev-only packages or tools in `.venv/`, such as `pytest`, `black`, `mypy`, `flake8`, `isort`, or `playwright`
-- many unstaged tracked file changes
-- a path that looks like a source workspace rather than a host-managed skill location, such as `~/projects/*`, `/mnt/*/Projects/*`, or a downloaded repository clone
-
-If the only discovered checkout appears to be a development directory, do **not** use it as the install target and do **not** delete or recreate its `.venv`. Prefer Route A into the host-managed skill directory, or stop and ask the user to designate the install target.
-
-Never treat a Windows `.venv/Scripts/python.exe` found from WSL/Linux as a corrupted Linux venv. It is a cross-platform venv mismatch and a strong signal to avoid repairing that directory from WSL.
-
-If the general "ambiguous checkout" rule and the development-directory rule both seem to apply, the development-directory rule wins. A confirmed development directory is a "do not adopt" signal, not an install target to confirm; ask the user only when the target is still genuinely unclear and the next action would adopt, clean up, delete, or repair an existing checkout or user data.
-
-### Step 0.4: Mandatory sync gate before any route decision
-
-If a canonical checkout exists and network access is available, you **must** sync that checkout before doing health checks or route classification.
-
-Minimum rule:
-
-1. fetch/pull the canonical checkout from the upstream repository
-2. ensure `bootstrap-manifest.json` exists after sync
-3. reinstall into `.venv` after sync using the documented editable install path
-
-If the checkout cannot be synced because of local conflicts, detached state, or other git problems, do **not** pretend the checkout is current. Switch to repair handling.
-
-If network is unavailable, you may continue only after explicitly warning the user that you cannot verify freshness and may be operating on a stale checkout.
-
-### Step 0.5: Version/freshness is a mandatory gate
-
-Use the refreshed `bootstrap-manifest.json` plus local `life-index --version` output to determine whether the local checkout and installed package reflect the expected current version.
-
-**Critical rule**:
-- health only proves the installed system works
-- freshness proves the installed system is current
-- both gates must pass before you may report the install as current
-
-Do **not** treat `.venv` existence, CLI reachability, or passing `life-index health` as evidence that the checkout is up to date.
-
-### Step 0.6: Only now decide the route
-
-Use these rules **after** authority refresh and checkout sync:
-
-#### Route A — Fresh Install
-
-Choose **Fresh Install** only if all of the following are true:
-
-- no existing journal data is found
-- no reliable existing repo/venv installation is found
-- there is no sign of a partial prior install worth preserving
-
-If Fresh Install is selected, continue with the normal onboarding steps in this document.
-
-#### Route B — Upgrade Existing Install
-
-Choose **Upgrade** if any of the following are true:
-
-- existing journal data is found
-- a canonical checkout exists and has just been successfully synced
-- an existing install was found and reinstalled after sync
-
-If Upgrade is selected, continue using this document as the operational guide.
-
-Upgrade handling rules:
-
-1. treat the existing checkout and user data as the baseline to preserve
-2. do not create a parallel clone if a canonical checkout already exists
-3. sync checkout → reinstall into `.venv` → **check for schema migration** → rerun verification in this document
-4. do not claim success until freshness and health both pass
-
-#### Post-upgrade schema migration check
-
-After reinstall, check whether existing journals need schema migration:
+If you already have a usable Life Index command:
 
 ```bash
-.venv/bin/life-index migrate --dry-run
+life-index bootstrap --json
 ```
 
-If `needs_migration > 0`:
-- Run `life-index migrate --apply` to apply deterministic schema updates
-- If the output includes `needs_agent` items, report these to the user — they require Agent-driven semantic enrichment (extracting abstract/mood from content)
+If you are running from a checkout before installation:
 
-#### Route C — Repair / Ambiguous State
+```bash
+python -m tools bootstrap --json
+```
 
-Choose **Repair / Ambiguous** if signals conflict, for example:
+Windows PowerShell and Linux/macOS shells both support the two command forms above when the relevant executable or checkout is available.
 
-- journal data exists but repo/venv is missing
-- `.venv` exists but `life-index health` fails badly after sync/reinstall
-- repo exists but checkout sync fails or install still looks partial/broken
+If neither command is available, continue to Step 4.1 for a fresh clone/install, then return here after Step 4.3.
 
-If Repair / Ambiguous is selected:
+If you discovered a checkout during authority refresh, assess it explicitly:
 
-1. do **not** pretend this is a clean fresh install
-2. use this document's sync / reinstall / verification flow as the repair baseline
-3. if the state is still unclear after basic inspection, ask the user before doing destructive cleanup
+```bash
+# Random discovered checkout; default is deliberately conservative.
+life-index bootstrap --checkout-path <discovered-path> --json
+
+# Host-managed skill directory exposed by the agent platform.
+life-index bootstrap --checkout-path <host-managed-path> --checkout-origin host_managed --json
+
+# User explicitly selected this checkout as the intended install target.
+life-index bootstrap --checkout-path <user-selected-path> --checkout-origin user_designated --json
+```
+
+**Data safety invariant**: `bootstrap` is read-only. It never deletes existing journal data under `~/Documents/Life-Index/`, never repairs a checkout, never creates a venv, never runs migrations, and never modifies indexes. Phrases like "fresh install", "clean slate", or "start from scratch" do **not** authorize deleting existing journal data.
+
+### Step 0.3: Read `needs_human` first
+
+If `needs_human` is non-empty, relay each item to the user and wait for resolution before proceeding with adoption, cleanup, deletion, repair, or install-target decisions. Common codes:
+
+| `code` | Meaning | Correct action |
+|---|---|---|
+| `AMBIGUOUS_CHECKOUT` | A checkout looks complete but was only discovered, not positively authorized | Use a host-managed skill directory, ask the user to designate the target, or clone fresh |
+| `DEV_DIR_FOUND` | The checkout has development-directory signals | Do not adopt or repair it from this workflow; use a host-managed skill directory or ask the user |
+| `INVALID_CHECKOUT` | The checkout is missing required files | Delete/reclone only if it is inside the agent-managed install target; otherwise ask |
+| `MIGRATION_CHECK_FAILED` | Migration scan failed and cannot be treated as "no migration needed" | Run `life-index migrate --dry-run` manually and inspect output before proceeding |
+
+### Step 0.4: Read the route and safe next steps
+
+| `route` | Meaning | Proceed to |
+|---|---|---|
+| `fresh_install` | No existing journal data found | Steps 4.1 → 4.3 → 5.1 → 5.4 |
+| `upgrade` | Existing journal data found | Sync/reinstall as needed → run all `safe_next_steps` in order → Steps 5.1 → 5.4 |
+
+If `safe_next_steps` is non-empty, run them in order before the route's verification steps. On `upgrade`, `life-index health` should appear as the final safe next step. If health returns `status: "unhealthy"` after sync/reinstall/migration checks, treat this as **Repair / Ambiguous State**:
+
+1. do **not** pretend this is a clean fresh install;
+2. use this document's sync / reinstall / verification flow as the repair baseline;
+3. if state remains unclear after basic inspection, ask the user before destructive cleanup.
+
+**Checkout adoption rule**: only adopt a checkout when `detected_state.checkout_assessment.safe_to_adopt` is `true`. A checkout with no dev signals is still not adoptable unless it came from a host-managed path or was explicitly user-designated.
 
 ---
 

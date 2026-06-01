@@ -19,7 +19,7 @@ class TestHealthCheck:
         data_dir = tmp_path / "life-index-data"
         journals_dir = data_dir / "Journals"
         journals_dir.mkdir(parents=True)
-        (journals_dir / "entry.md").write_text("# test\n", encoding="utf-8")
+        (journals_dir / "life-index_2026-01-01_001.md").write_text("# test\n", encoding="utf-8")
 
         index_dir = data_dir / ".index"
         index_dir.mkdir(parents=True)
@@ -79,7 +79,7 @@ class TestHealthCheckIndexTree:
         data_dir = tmp_path / "life-index-data"
         journals_dir = data_dir / "Journals"
         journals_dir.mkdir(parents=True)
-        (journals_dir / "entry.md").write_text("# test\n", encoding="utf-8")
+        (journals_dir / "life-index_2026-01-01_001.md").write_text("# test\n", encoding="utf-8")
 
         index_dir = data_dir / ".index"
         index_dir.mkdir(parents=True)
@@ -116,7 +116,7 @@ class TestHealthCheckIndexTree:
         data_dir = tmp_path / "life-index-data"
         journals_dir = data_dir / "Journals"
         journals_dir.mkdir(parents=True)
-        (journals_dir / "entry.md").write_text("# test\n", encoding="utf-8")
+        (journals_dir / "life-index_2026-01-01_001.md").write_text("# test\n", encoding="utf-8")
 
         index_dir = data_dir / ".index"
         index_dir.mkdir(parents=True)

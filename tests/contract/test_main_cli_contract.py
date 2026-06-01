@@ -22,6 +22,7 @@ STABLE_COMMANDS = {
     "aggregate",
     "analyze",
     "journal",
+    "bootstrap",
     "import",
     "index-tree",
     "health",
