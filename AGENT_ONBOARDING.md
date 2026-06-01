@@ -42,7 +42,9 @@ Check whether the user already has Life Index data:
 
 ### Step 0.3: Identify the canonical checkout
 
-Check whether there is already a Life Index repository checkout with files such as:
+Check whether there is already a Life Index repository checkout that is safe to use as the active install target.
+
+A directory containing these files is only a **candidate checkout**, not automatically the canonical install target:
 
 - `SKILL.md`
 - `pyproject.toml`
@@ -53,7 +55,30 @@ Check whether there is already a Life Index repository checkout with files such 
 
 If the host Agent platform already manages skills in a canonical directory, prefer that managed checkout over ad hoc working-directory clones.
 
+Treat a checkout as the active install target only if one of these conditions is true:
+
+- the user explicitly named that path as the install target in the current task
+- the host runtime exposes that path as its managed skill/install directory through official documentation, environment, configuration, or CLI output
+- the checkout already contains install metadata for this project and does not show development-directory warning signs
+
 If you discover multiple Life Index checkouts, do **not** silently pick a random one and do **not** create a third clone. Prefer the host-managed canonical checkout or the user-designated checkout, and if the active install location is still ambiguous, report the conflict and ask the user before cleanup.
+
+If you discover exactly one checkout but it is **not** under a host-managed skill directory and was **not** explicitly named by the user as the install target, do **not** adopt it silently. Treat it as a candidate only, report the path, and ask the user to confirm whether it is the install target.
+
+#### Development directory protection
+
+Before running sync, reinstall, cleanup, or any `.venv` deletion in a discovered checkout, verify that the checkout is not a developer working tree.
+
+Strong signals of a development directory include:
+
+- a Windows virtual environment under `.venv/Scripts/` while the current agent is running from WSL/Linux
+- dev-only packages or tools in `.venv/`, such as `pytest`, `black`, `mypy`, `flake8`, `isort`, or `playwright`
+- many unstaged tracked file changes
+- a path that looks like a source workspace rather than a host-managed skill location, such as `~/projects/*`, `/mnt/*/Projects/*`, or a downloaded repository clone
+
+If the only discovered checkout appears to be a development directory, do **not** use it as the install target and do **not** delete or recreate its `.venv`. Prefer Route A into the host-managed skill directory, or stop and ask the user to designate the install target.
+
+Never treat a Windows `.venv/Scripts/python.exe` found from WSL/Linux as a corrupted Linux venv. It is a cross-platform venv mismatch and a strong signal to avoid repairing that directory from WSL.
 
 ### Step 0.4: Mandatory sync gate before any route decision
 
@@ -167,6 +192,11 @@ Execute these steps in order. Do not skip steps.
 | Linux/macOS/WSL | `.venv/bin/python` | `.venv/bin/life-index` | Forward slashes, `bin/` |
 | Windows | `.venv\Scripts\python` | `.venv\Scripts\life-index` | Backslashes, `Scripts\` |
 
+**Cross-platform venv rule**:
+- A Windows venv (`.venv/Scripts/python.exe`) cannot be used or repaired from WSL/Linux.
+- A Linux/WSL venv (`.venv/bin/python`) cannot be used or repaired from Windows PowerShell.
+- If the checkout contains only the other platform's venv layout, do **not** call it corrupted and do **not** delete it. Return to Step 0.3 and confirm whether you are looking at a development checkout or the wrong install target.
+
 **Platform Command Fallback Rule**:
 - If the host Agent platform provides its own skill install / add / setup commands, you may try them first only if the user explicitly asked for that platform-specific path.
 - If those commands fail, are unavailable, or do not clearly complete the installation, do **not** get stuck there.
@@ -201,6 +231,8 @@ cd <target-directory>/life-index
 ---
 
 ### Step 4.2: Create Virtual Environment
+
+Only create a virtual environment after Step 0.3 has confirmed the current directory is the intended install target. If `.venv/` already exists, do not delete it unless it belongs to the confirmed install target and matches the current platform.
 
 ```bash
 python3 -m venv .venv
@@ -241,7 +273,7 @@ If the target machine has no GPU (common for agent environments), install the CP
 - No red error messages
 
 **Failure Handling**:
-- If `pip` not found: Virtual environment may be corrupted, delete `.venv/` and recreate
+- If `pip` not found: verify the `.venv` platform layout first. Delete and recreate `.venv/` only after Step 0.3 confirms this is the intended install target and the existing venv is not a development venv from another platform.
 - If dependency fails: Retry once, then report to user
 
 ---
@@ -478,7 +510,13 @@ If the user wants recurring automation (monthly/yearly reports, periodic index r
 ### Venv Corrupted
 
 **Cause**: Python version change or interrupted install
-**Fix**: Delete `.venv/` directory, recreate with `python3 -m venv .venv`, reinstall with `pip install -e .`
+**Fix**: First confirm the current checkout passed Step 0.3 and is the intended install target. Then confirm the venv layout matches the current platform. Only after both checks pass, delete `.venv/`, recreate it with `python3 -m venv .venv`, and reinstall with `pip install -e .`.
+
+### Cross-Platform Venv Mismatch on WSL/Windows
+
+**Cause**: A `.venv` created on Windows uses `.venv/Scripts/python.exe`; a `.venv` created on WSL/Linux uses `.venv/bin/python`. These layouts are not interchangeable.
+
+**Fix**: Do not repair or delete the other platform's venv from the current platform. Treat the mismatch as evidence that you may be in a development checkout or the wrong install target. Return to Step 0.3, prefer the host-managed skill directory, or ask the user to confirm the intended install target.
 
 ### CUDA Dependencies Bloat on WSL/Linux
 
