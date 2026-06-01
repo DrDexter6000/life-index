@@ -39,6 +39,7 @@ Check whether the user already has Life Index data:
 **Rule**:
 - If real journal data already exists, treat the machine as **not fresh install** unless strong evidence proves otherwise.
 - Protect user data first. Do not assume it is safe to restart from zero.
+- User wording such as "fresh", "clean", or "start from scratch" is **not** authorization to delete existing journal data. Destructive data reset is outside this onboarding workflow and requires separate explicit confirmation.
 
 ### Step 0.3: Identify the canonical checkout
 
@@ -79,6 +80,8 @@ Strong signals of a development directory include:
 If the only discovered checkout appears to be a development directory, do **not** use it as the install target and do **not** delete or recreate its `.venv`. Prefer Route A into the host-managed skill directory, or stop and ask the user to designate the install target.
 
 Never treat a Windows `.venv/Scripts/python.exe` found from WSL/Linux as a corrupted Linux venv. It is a cross-platform venv mismatch and a strong signal to avoid repairing that directory from WSL.
+
+If the general "ambiguous checkout" rule and the development-directory rule both seem to apply, the development-directory rule wins. A confirmed development directory is a "do not adopt" signal, not an install target to confirm; ask the user only when the target is still genuinely unclear and the next action would adopt, clean up, delete, or repair an existing checkout or user data.
 
 ### Step 0.4: Mandatory sync gate before any route decision
 
@@ -422,6 +425,8 @@ $json | Out-File -FilePath "first-entry.json" -Encoding utf8
 
 Verify the entry can be retrieved via search.
 
+If this is the first search after a write, the command may first consume pending index updates and load search models/caches. A 10-30 second first run is expected behavior, not a failure.
+
 ```bash
 # Linux/macOS:
 .venv/bin/life-index search --query "First Journal"
@@ -632,6 +637,6 @@ Keep it concise — this is a welcome message, not a manual.>
 
 ---
 
-**Document Version**: 2.2
-**Last Updated**: 2026-05-31
+**Document Version**: 2.3
+**Last Updated**: 2026-06-01
 **Authority Chain**: `CHARTER.md` governs project invariants. `bootstrap-manifest.json` governs install/upgrade/repair freshness and points to the current required authority documents through `required_authority_docs`.
