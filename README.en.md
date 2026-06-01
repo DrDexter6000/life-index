@@ -480,7 +480,7 @@ Two install paths are already shipped: **natural-language users** ask their Agen
 
 **Who this is for**: you want your Agent to install, initialize, and verify Life Index. You do not need to edit code.
 
-> If your Agent platform already has a canonical skill directory or checkout, reuse it.
+> If your Agent platform already has a canonical skill directory or checkout, let the onboarding bootstrap gate assess it before deciding whether to reuse it.
 
 **Copy this to your Agent** - paste the following into Claude Desktop, Cursor, OpenClaw, or another Agent platform:
 
@@ -490,11 +490,12 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 Requirements:
 1. Refresh and read the latest authority files before execution: refresh `bootstrap-manifest.json` first, then read every path listed in `required_authority_docs`; do not rely on a hard-coded list in this paragraph
-2. If a canonical checkout already exists, sync it and reinstall into `.venv` before deciding whether this is fresh install, upgrade, or repair; do not skip sync just because files exist or `health` looks normal
-3. Make the route decision only after authority refresh + checkout sync
-4. All Python/CLI commands must use the virtual environment path
-5. If any step fails, stop immediately and report the exact error
-6. Report back in English using the format required by the document
+2. Before cloning, recreating `.venv`, running `health`, adopting a checkout, deleting any directory, or classifying fresh install / upgrade / repair, run `AGENT_ONBOARDING.md` Step 0 with `life-index bootstrap --json` or `python -m tools bootstrap --json`
+3. If a local checkout is discovered, assess it with bootstrap's `--checkout-path` / `--checkout-origin` rules; adopt it only when `safe_to_adopt: true`
+4. Handle `needs_human` first, then follow `route` and `safe_next_steps` in order; do not treat "clean slate", "fresh install", or "start from scratch" as permission to delete existing journal data
+5. All Python/CLI commands must use the virtual environment path specified by the document
+6. If any step fails, stop immediately and report the exact error
+7. Report back in English using the format required by the document
 ```
 
 <details>
@@ -565,10 +566,10 @@ Use `life-index write --data @first-entry.json` instead. The Agent installation 
 Run `.venv/bin/life-index health` and check whether sentence-transformers is installed.
 
 **Virtual environment corrupted after Python upgrade or system migration**
-Delete `.venv`, then run `python3 -m venv .venv && .venv/bin/pip install -e .`.
+First confirm Step 0 has identified the current directory as the intended install target and that the `.venv` layout matches the current platform. Then delete `.venv` and run `python3 -m venv .venv && .venv/bin/pip install -e .`.
 
 **Upgrading to a new version**
-Sync the canonical checkout first, then follow the freshness / sync / repair rules in `AGENT_ONBOARDING.md`.
+Refresh authority files and run the onboarding Step 0 bootstrap gate first, then follow the bootstrap / freshness / sync / repair rules in `AGENT_ONBOARDING.md`.
 
 </details>
 
