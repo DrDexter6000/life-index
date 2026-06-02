@@ -60,7 +60,8 @@ def init_metadata_cache() -> sqlite3.Connection:
     cursor = conn.cursor()
 
     # 创建元数据缓存表
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS metadata_cache (
             file_path TEXT PRIMARY KEY,
             date TEXT,
@@ -79,46 +80,59 @@ def init_metadata_cache() -> sqlite3.Connection:
             file_size INTEGER,
             cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS entry_relations (
             source_path TEXT NOT NULL,
             target_path TEXT NOT NULL,
             PRIMARY KEY (source_path, target_path)
         )
-        """)
+        """
+    )
 
     _ensure_metadata_cache_columns(conn)
 
     # 创建索引加速查询
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_date
         ON metadata_cache(date)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_topic
         ON metadata_cache(topic)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_project
         ON metadata_cache(project)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_location
         ON metadata_cache(location)
-    """)
+    """
+    )
 
     # 创建缓存状态表
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS cache_meta (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """)
+    """
+    )
 
     conn.commit()
     return conn
@@ -134,6 +148,8 @@ def _ensure_metadata_cache_columns(conn: sqlite3.Connection) -> None:
         cursor.execute("ALTER TABLE metadata_cache ADD COLUMN links TEXT")
     if "related_entries" not in existing_columns:
         cursor.execute("ALTER TABLE metadata_cache ADD COLUMN related_entries TEXT")
+    if "word_count" not in existing_columns:
+        cursor.execute("ALTER TABLE metadata_cache ADD COLUMN word_count INTEGER")
     conn.commit()
 
 
@@ -183,14 +199,18 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
         mood = json.dumps(metadata.get("mood", []), ensure_ascii=False)
         people = json.dumps(metadata.get("people", []), ensure_ascii=False)
 
+        # 计算字数（基于正文，不含 frontmatter）
+        word_count = len(metadata.get("_body", "").split())
+
         # 更新缓存
         cursor = conn.cursor()
         cursor.execute(
             """
             INSERT OR REPLACE INTO metadata_cache
             (file_path, date, title, location, weather, topic, project,
-             tags, mood, people, abstract, links, related_entries, file_mtime, file_size)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             tags, mood, people, abstract, links, related_entries,
+             word_count, file_mtime, file_size)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 file_path_str,
@@ -206,6 +226,7 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
                 abstract,
                 links,
                 related_entries,
+                word_count,
                 mtime,
                 size,
             ),
@@ -229,7 +250,8 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
             "abstract": abstract,
             "links": json.loads(links),
             "related_entries": json.loads(related_entries),
-            "metadata": metadata,
+            "word_count": word_count,
+            "metadata": {**metadata, "word_count": word_count},
         }
 
     except (IOError, OSError, ValueError):
@@ -276,6 +298,7 @@ def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[D
         "abstract": row["abstract"],
         "links": json.loads(row["links"]) if row["links"] else [],
         "related_entries": json.loads(row["related_entries"]) if row["related_entries"] else [],
+        "word_count": row["word_count"] if row["word_count"] is not None else 0,
         "metadata": {
             "date": row["date"],
             "title": row["title"],
@@ -289,6 +312,7 @@ def get_cached_metadata(conn: sqlite3.Connection, file_path: Path) -> Optional[D
             "abstract": row["abstract"],
             "links": json.loads(row["links"]) if row["links"] else [],
             "related_entries": json.loads(row["related_entries"]) if row["related_entries"] else [],
+            "word_count": row["word_count"] if row["word_count"] is not None else 0,
         },
     }
 
@@ -354,6 +378,7 @@ def get_all_cached_metadata(
                     "related_entries": (
                         json.loads(row["related_entries"]) if row["related_entries"] else []
                     ),
+                    "word_count": row["word_count"] if row["word_count"] is not None else 0,
                     "metadata": {
                         "date": row["date"],
                         "title": row["title"],
@@ -369,6 +394,7 @@ def get_all_cached_metadata(
                         "related_entries": (
                             json.loads(row["related_entries"]) if row["related_entries"] else []
                         ),
+                        "word_count": row["word_count"] if row["word_count"] is not None else 0,
                     },
                 }
             )

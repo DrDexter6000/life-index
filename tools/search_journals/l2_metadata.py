@@ -211,6 +211,7 @@ def _search_with_cache(
                 "title": entry.get("title", "无标题"),
                 **path_fields,
                 "metadata": entry["metadata"],
+                "word_count": entry.get("word_count", 0),
                 "source": "metadata_cache",
             }
         )
@@ -282,6 +283,7 @@ def _search_filesystem(
                             "title": entry.get("title", "无标题"),
                             **path_fields,
                             "metadata": entry["metadata"],
+                            "word_count": entry.get("word_count", 0),
                             "source": "filesystem_scan",
                         }
                     )
