@@ -10,7 +10,7 @@ subcommand does not exist yet in ``tools/__main__.py``.  Failures must be
 limited to the missing/unimplemented import runtime, **not** syntax errors,
 fixture parse errors, or malformed tests.
 
-PRD reference: .agent-governance/docs/projects/import-provider-contract/PRD.md
+PRD reference: Import Provider Contract PRD (private governance)
 """
 
 from __future__ import annotations

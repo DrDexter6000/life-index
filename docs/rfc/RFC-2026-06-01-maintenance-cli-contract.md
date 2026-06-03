@@ -3,11 +3,11 @@
 Status: Accepted by owner ack #1 to the Data Doctor Maintenance PRD
 Created: 2026-06-01
 Accepted: 2026-06-01 via owner ack #1 in
-`.agent-governance/docs/projects/data-doctor-maintenance/PRD.md`
+the Data Doctor Maintenance PRD（私有治理）
 Classification: public-surface promotion RFC; no implementation in this RFC;
 no version bump until Phase 4 release gate
 Related:
-`.agent-governance/docs/projects/data-doctor-maintenance/PRD.md`,
+Data Doctor Maintenance PRD（私有治理）,
 `docs/API.md`, `CHARTER.md`, `tools/maintenance/`
 
 ## 1. Decision
