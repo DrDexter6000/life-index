@@ -21,8 +21,8 @@ def _hermes_reachable() -> bool:
     if not ENDPOINT or os.environ.get("LIFE_INDEX_BRAIN_ACK") != "1":
         return False
     try:
-        base = ENDPOINT.rsplit("/v1", 1)[0]
-        urllib.request.urlopen(base, timeout=1.5)
+        base = ENDPOINT.rsplit("/v1", 1)[0].rstrip("/")
+        urllib.request.urlopen(f"{base}/health", timeout=1.5)
         return True
     except Exception:
         return False
