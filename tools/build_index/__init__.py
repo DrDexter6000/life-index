@@ -12,6 +12,7 @@ Public API:
     result = build_all(incremental=True)
 """
 
+import os
 from typing import Dict, Any
 from pathlib import Path
 
@@ -58,6 +59,9 @@ def build_all(
     Returns:
         构建结果
     """
+    if os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1" and not vec_only:
+        fts_only = True
+
     result: Dict[str, Any] = {
         "success": True,
         "fts": None,

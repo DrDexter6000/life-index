@@ -17,9 +17,7 @@ class TestBuildAll:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_fts_success(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_build_all_fts_success(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Test successful FTS index update"""
         # Setup mocks
         mock_lock_path.return_value = Path("/tmp/test.lock")
@@ -38,13 +36,9 @@ class TestBuildAll:
         # Mock vector index to fail (skip vector update)
         with patch("tools.lib.semantic_search.get_model") as mock_model:
             mock_model.return_value.load.return_value = False
-            with patch(
-                "tools.lib.vector_index_simple.update_vector_index_simple"
-            ) as mock_simple:
+            with patch("tools.lib.vector_index_simple.update_vector_index_simple") as mock_simple:
                 mock_simple.return_value = {"success": False, "error": "No model"}
-                with patch(
-                    "tools.lib.vector_index_simple.get_model"
-                ) as mock_simple_model:
+                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
                     mock_simple_model.return_value.load.return_value = False
 
                     result = build_all(incremental=True)
@@ -57,9 +51,7 @@ class TestBuildAll:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_fts_failure(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_build_all_fts_failure(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Test FTS index update failure"""
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -75,9 +67,7 @@ class TestBuildAll:
         with patch("tools.lib.semantic_search.get_model") as mock_model:
             mock_model.return_value.load.return_value = False
             with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch(
-                    "tools.lib.vector_index_simple.get_model"
-                ) as mock_simple_model:
+                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
                     mock_simple_model.return_value.load.return_value = False
 
                     result = build_all(incremental=True)
@@ -89,9 +79,7 @@ class TestBuildAll:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_fts_exception(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_build_all_fts_exception(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Test FTS index update with exception"""
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -104,9 +92,7 @@ class TestBuildAll:
         with patch("tools.lib.semantic_search.get_model") as mock_model:
             mock_model.return_value.load.return_value = False
             with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch(
-                    "tools.lib.vector_index_simple.get_model"
-                ) as mock_simple_model:
+                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
                     mock_simple_model.return_value.load.return_value = False
 
                     result = build_all(incremental=True)
@@ -118,9 +104,7 @@ class TestBuildAll:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_fts_only_mode(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_build_all_fts_only_mode(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Test FTS-only mode skips vector index"""
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -135,6 +119,29 @@ class TestBuildAll:
         assert result["success"] is True
         assert result["fts"]["success"] is True
         assert result["vector"] is None  # Should be None when fts_only=True
+
+    @patch("tools.build_index.get_index_lock_path")
+    @patch("tools.build_index.FileLock")
+    @patch("tools.build_index.update_fts_index")
+    def test_build_all_env_fts_only_skips_vector(
+        self, mock_update_fts, mock_file_lock, mock_lock_path, monkeypatch
+    ):
+        """CI can force FTS-only builds without changing user defaults."""
+        monkeypatch.setenv("LIFE_INDEX_INDEX_FTS_ONLY", "1")
+        mock_lock_path.return_value = Path("/tmp/test.lock")
+        mock_lock = MagicMock()
+        mock_file_lock.return_value = mock_lock
+        mock_lock.__enter__ = MagicMock(return_value=mock_lock)
+        mock_lock.__exit__ = MagicMock(return_value=False)
+        mock_update_fts.return_value = {"success": True, "added": 1}
+
+        with patch("tools.lib.semantic_search.get_model") as mock_model:
+            result = build_all()
+
+        assert result["success"] is True
+        assert result["fts"]["success"] is True
+        assert result["vector"] is None
+        mock_model.assert_not_called()
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -210,13 +217,9 @@ class TestBuildAll:
             mock_model.return_value = mock_model_instance
             mock_model_instance.load.return_value = False
             # simple index succeeds
-            with patch(
-                "tools.lib.vector_index_simple.update_vector_index_simple"
-            ) as mock_simple:
+            with patch("tools.lib.vector_index_simple.update_vector_index_simple") as mock_simple:
                 mock_simple.return_value = {"success": True, "added": 3}
-                with patch(
-                    "tools.lib.vector_index_simple.get_model"
-                ) as mock_simple_model:
+                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
                     mock_simple_model_instance = MagicMock()
                     mock_simple_model.return_value = mock_simple_model_instance
                     mock_simple_model_instance.load.return_value = True
@@ -230,9 +233,7 @@ class TestBuildAll:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_full_rebuild(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_build_all_full_rebuild(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Test full rebuild mode (incremental=False)"""
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -281,9 +282,7 @@ class TestBuildAll:
         with patch("tools.lib.semantic_search.get_model") as mock_model:
             mock_model.return_value.load.return_value = False
             with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch(
-                    "tools.lib.vector_index_simple.get_model"
-                ) as mock_simple_model:
+                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
                     mock_simple_model.return_value.load.return_value = False
 
                     build_all(incremental=False)
@@ -318,9 +317,7 @@ class TestBuildAll:
         with patch("tools.lib.semantic_search.get_model") as mock_model:
             mock_model.return_value.load.return_value = False
             with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch(
-                    "tools.lib.vector_index_simple.get_model"
-                ) as mock_simple_model:
+                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
                     mock_simple_model.return_value.load.return_value = False
 
                     build_all(incremental=False)
@@ -330,9 +327,7 @@ class TestBuildAll:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.create_error_response")
-    def test_build_all_lock_timeout(
-        self, mock_error_response, mock_file_lock, mock_lock_path
-    ):
+    def test_build_all_lock_timeout(self, mock_error_response, mock_file_lock, mock_lock_path):
         """Test lock timeout returns proper error response"""
         from tools.build_index import LockTimeoutError
 
@@ -357,9 +352,7 @@ class TestBuildAll:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_duration_tracking(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_build_all_duration_tracking(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Test duration_seconds is tracked"""
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -374,9 +367,7 @@ class TestBuildAll:
             mock_model.return_value = mock_model_instance
             mock_model_instance.load.return_value = False
             with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch(
-                    "tools.lib.vector_index_simple.get_model"
-                ) as mock_simple_model:
+                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
                     mock_simple_model_instance = MagicMock()
                     mock_simple_model.return_value = mock_simple_model_instance
                     mock_simple_model_instance.load.return_value = False
@@ -390,9 +381,7 @@ class TestBuildAll:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_includes_rebuild_hint(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_build_all_includes_rebuild_hint(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Build results should surface rebuild guidance for historical cache format cleanup."""
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -405,9 +394,7 @@ class TestBuildAll:
         with patch("tools.lib.semantic_search.get_model") as mock_model:
             mock_model.return_value.load.return_value = False
             with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch(
-                    "tools.lib.vector_index_simple.get_model"
-                ) as mock_simple_model:
+                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
                     mock_simple_model.return_value.load.return_value = False
 
                     result = build_all()
@@ -535,9 +522,7 @@ class TestShowStats:
 
     @patch("tools.build_index.get_model_cache_dir")
     @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_cache_directory_exists(
-        self, mock_fts_stats, mock_cache_dir_getter
-    ):
+    def test_show_stats_cache_directory_exists(self, mock_fts_stats, mock_cache_dir_getter):
         """Test show_stats with existing cache directory"""
         mock_fts_stats.return_value = {
             "exists": True,
@@ -566,9 +551,7 @@ class TestShowStats:
 
     @patch("tools.build_index.get_model_cache_dir")
     @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_cache_directory_not_exists(
-        self, mock_fts_stats, mock_cache_dir_getter
-    ):
+    def test_show_stats_cache_directory_not_exists(self, mock_fts_stats, mock_cache_dir_getter):
         """Test show_stats when cache directory doesn't exist"""
         mock_fts_stats.return_value = {
             "exists": False,
@@ -629,9 +612,7 @@ class TestShowStats:
             with patch("tools.build_index.logger") as mock_logger:
                 show_stats()
 
-        logged = "\n".join(
-            str(call.args[0]) for call in mock_logger.info.call_args_list
-        )
+        logged = "\n".join(str(call.args[0]) for call in mock_logger.info.call_args_list)
         assert "metadata cache" in logged.lower()
         assert "life-index index --rebuild" in logged
 
@@ -685,9 +666,7 @@ class TestIntegration:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_full_workflow_success(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_full_workflow_success(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Test complete successful workflow"""
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -736,9 +715,7 @@ class TestIntegration:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_partial_failure_continues(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
-    ):
+    def test_partial_failure_continues(self, mock_update_fts, mock_file_lock, mock_lock_path):
         """Test that FTS failure doesn't prevent vector index update"""
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()

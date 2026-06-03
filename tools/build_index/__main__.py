@@ -6,6 +6,7 @@ Life Index - Build Index Tool - CLI Entry Point
 
 import argparse
 import json
+import os
 import sys
 
 from . import build_all, show_stats, check_index
@@ -97,12 +98,16 @@ Examples:
         show_stats()
         return
 
+    effective_fts_only = args.fts_only or (
+        os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1" and not args.vec_only
+    )
+
     # 执行索引构建
     with Trace("index") as trace:
         with trace.step("build_all"):
             result = build_all(
                 incremental=not args.rebuild,
-                fts_only=args.fts_only,
+                fts_only=effective_fts_only,
                 vec_only=args.vec_only,
             )
 
@@ -149,7 +154,7 @@ Examples:
             generator="index",
             params={
                 "rebuild": args.rebuild,
-                "fts_only": args.fts_only,
+                "fts_only": effective_fts_only,
                 "vec_only": args.vec_only,
             },
         )

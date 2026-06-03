@@ -44,6 +44,8 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     name: Contract Gate (CLI contract / snapshot)
+    env:
+      LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
     steps:
       - uses: actions/checkout@v5
@@ -74,6 +76,8 @@ jobs:
     runs-on: ubuntu-latest
     name: Quarantine Gate (flaky / env-dependent)
     continue-on-error: true
+    env:
+      LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
     steps:
       - uses: actions/checkout@v5
@@ -104,6 +108,8 @@ jobs:
     runs-on: ubuntu-latest
     name: Coverage Report
     continue-on-error: true
+    env:
+      LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
     steps:
       - uses: actions/checkout@v5
@@ -137,6 +143,8 @@ jobs:
   search-eval-gate:
     runs-on: ubuntu-latest
     name: Search Eval Quality Gate
+    env:
+      LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
     steps:
       - uses: actions/checkout@v5
