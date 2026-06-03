@@ -14,9 +14,11 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   transport client with `data_exposure_ack` gating, and a `handoff_search()`
   entry point that sub-processes the L2 CLI for a scaffold, resolves a brain,
   and optionally synthesizes via the resolved endpoint. Layer-invariant tests
-  confirm L2 remains free of `agent_bridge` imports. An env-gated Hermes probe
-  harness and an always-on degrade-path test are included; real endpoint
-  validation is pending a reachable Hermes instance.
+  confirm L2 remains free of `agent_bridge` imports. The env-gated Hermes probe
+  harness and always-on degrade-path test are included, and live validation has
+  completed against a local Hermes OpenAI-compatible endpoint. `agent-bridge
+  probe --json` adds a no-journal-evidence operator preflight for endpoint,
+  model, ack, and token-presence checks.
 - `bootstrap --json` adds a read-only onboarding state detector for agents and
   maintainers. It reports existing data, installed and manifest versions,
   route decisions, human-needed blockers, and safe next steps without mutating

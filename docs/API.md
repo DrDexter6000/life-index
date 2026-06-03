@@ -2848,6 +2848,99 @@ python -m tools bootstrap --json
 
 ---
 
+## agent-bridge
+
+> **L3 operator/developer surface.** `agent-bridge` is an intelligence handoff
+> helper for host-agent integration. It is not an L2 data primitive and does not
+> write journal data. The `probe` subcommand is a safe preflight: it does not run
+> `smart-search`, does not send journal evidence, and does not synthesize.
+
+### 端点
+
+```bash
+life-index agent-bridge probe --json [--no-network] [--timeout 1.5]
+python -m tools agent-bridge probe --json [--no-network] [--timeout 1.5]
+python -m tools.agent_bridge probe --json [--no-network] [--timeout 1.5]
+```
+
+Diagnostic handoff path:
+
+```bash
+life-index agent-bridge --query "自然语言问题"
+python -m tools agent-bridge --query "自然语言问题"
+```
+
+The handoff path can send `smart-search --include-evidence` scaffold to the
+resolved P1/P2 endpoint when endpoint, token, and `brain.data_exposure_ack` are
+configured. Use `probe` first when checking operator readiness.
+
+### `probe` 语义
+
+`agent-bridge probe --json` resolves the configured brain source and checks
+operator readiness without sending journal evidence. With network checks enabled
+it may call endpoint health/model routes such as `/health` and `/v1/models`.
+It reports token presence/source type only; it never prints token values.
+
+### 参数
+
+| 参数 | 必填 | 说明 |
+|---|---:|---|
+| `probe` | yes | Run the no-journal-evidence preflight |
+| `--json` | yes | Emit JSON output |
+| `--no-network` | no | Skip endpoint/model HTTP checks |
+| `--timeout <seconds>` | no | HTTP timeout for probe checks; default `1.5` |
+| `--in-context` | no | Resolve as if an in-context calling agent is present |
+
+### 返回值
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.agent_bridge_probe.v0",
+  "command": "agent-bridge probe",
+  "source": "P1",
+  "mode": "host_agent",
+  "transport": "openai",
+  "endpoint": {
+    "configured": true,
+    "url": "http://127.0.0.1:8642/v1"
+  },
+  "model": {
+    "configured": true,
+    "name": "hermes-agent"
+  },
+  "ack": {
+    "data_exposure_ack": true,
+    "required_for": ["P1", "P2"]
+  },
+  "token": {
+    "configured": true,
+    "source": "env:LIFE_INDEX_LLM_API_KEY",
+    "persisted_in_config": false
+  },
+  "checks": [
+    {
+      "name": "models",
+      "status": "pass",
+      "model_ids": ["hermes-agent"]
+    }
+  ],
+  "sends_journal_evidence": false,
+  "ready_to_send_evidence": true
+}
+```
+
+### 安全边界
+
+- `probe` must always return `sends_journal_evidence: false`.
+- `probe` output must not contain `scaffold` or `synthesis`.
+- Missing endpoint/token/ack must not send data; it reports readiness failure or
+  `source: deterministic_only`.
+- GUI and advanced modules consume this CLI/L3 surface; they must not call the
+  host-agent endpoint directly with Life Index journal evidence.
+
+---
+
 ## maintenance
 
 > **Maintenance cycle (gbrain Phase D).** Dry-run/report-only maintenance command that

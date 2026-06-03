@@ -496,6 +496,7 @@ def main() -> None:
         "eval": "tools.eval.__main__",
         "entity-graph-eval": "tools.eval.ablation.__main__",
         "smart-search": "tools.smart_search.__main__",
+        "agent-bridge": "tools.agent_bridge.__main__",
         "aggregate": "tools.aggregate.__main__",
         "analyze": "tools.aggregate.__main__",
         "on-this-day": "tools.on_this_day.__main__",
@@ -554,6 +555,7 @@ def print_usage() -> None:
     print("  maintenance  Run maintenance cycle (dry-run health checks)")
     print("  bootstrap  Detect install/data state and route onboarding (read-only)")
     print("  smart-search  Smart search with LLM orchestration")
+    print("  agent-bridge  L3 host-agent bridge probe/handoff")
     print("  aggregate  Deterministic aggregate/trend computation")
     print("  analyze   Alias for deterministic aggregate/trend computation")
     print("  health    Check installation health")
