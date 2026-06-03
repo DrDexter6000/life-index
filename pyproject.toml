@@ -58,9 +58,14 @@ dev = [
 
 ]
 
+# Agent bridge - L3 OpenAI-compatible transport
+agent-bridge = [
+    "openai>=1.0.0",
+]
+
 # All optional dependencies - 所有可选依赖
 all = [
-    "life-index[dev]",
+    "life-index[dev,agent-bridge]",
 ]
 
 [project.urls]
