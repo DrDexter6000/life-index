@@ -7,7 +7,7 @@ pack: LONGRUN-EVIDENCE-ANALYZE-MODULE-SUBSTRATE-2026-05-15
 related:
   - CHARTER.md §1.9
   - CHARTER.md §1.10
-  - docs/rfc/RFC-2026-05-14-module-foundation-boundary.md
+  - RFC-2026-05-14 Module-Foundation Contract Boundary（私有治理 RFC）
 ---
 
 # RFC-2026-05-15: Advanced Module Developer Contract

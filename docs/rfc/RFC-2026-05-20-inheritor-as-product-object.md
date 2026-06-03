@@ -7,7 +7,7 @@ approved-by: Life Index Developer
 title: 继承者作为第二产品对象
 related:
   - CHARTER.md §1.1
-  - docs/rfc/RFC-2026-05-19-foundation-freeze.md
+  - RFC-2026-05-19 Foundation Freeze v1（私有治理 RFC）
 ---
 
 # RFC-2026-05-20: 继承者作为第二产品对象

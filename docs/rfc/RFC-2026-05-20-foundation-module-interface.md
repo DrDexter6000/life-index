@@ -7,7 +7,7 @@ approved-by: Life Index Developer
 title: 地基-模块接口稳态模型
 related:
   - CHARTER.md §1.5 §1.8 §1.9 §1.10
-  - docs/rfc/RFC-2026-05-19-foundation-freeze.md
+  - RFC-2026-05-19 Foundation Freeze v1（私有治理 RFC）
   - 里程碑 M16（L2 CLI 契约冻结 + 层级 CI 门）
 ---
 
