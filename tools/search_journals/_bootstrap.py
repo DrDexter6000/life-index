@@ -129,5 +129,8 @@ def _redirect_torch_stderr_windows() -> None:
                 # If redirect fails, restore and move on
                 sys.stderr = _original_stderr
                 tmp.close()
-    except ImportError:
-        pass  # torch not installed — nothing to redirect
+    except Exception:
+        # Best-effort protection: on non-Windows runners, tests may mock
+        # sys.platform="win32" while installed torch still expects Windows-only
+        # ctypes attributes. Redirect failure must never crash the CLI.
+        pass

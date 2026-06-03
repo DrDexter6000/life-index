@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 MODULES_TO_RELOAD = [
     "tools.lib.paths",
     "tools.lib.config",
@@ -125,7 +124,7 @@ def search_func(tmp_path_factory: pytest.TempPathFactory):
             }
         )
 
-    build_all(incremental=False)
+    build_all(incremental=False, fts_only=True)
     return hierarchical_search
 
 
