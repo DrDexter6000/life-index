@@ -8,6 +8,15 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### What users get
 
+- Agent Bridge P1 spike: `tools/agent_bridge/` adds the L3 intelligence handoff
+  helper defined by RFC-2026-06-03. It provides deterministic brain-source
+  resolution (P0 → P1 → P2 → deterministic-only), an OpenAI-compatible
+  transport client with `data_exposure_ack` gating, and a `handoff_search()`
+  entry point that sub-processes the L2 CLI for a scaffold, resolves a brain,
+  and optionally synthesizes via the resolved endpoint. Layer-invariant tests
+  confirm L2 remains free of `agent_bridge` imports. An env-gated Hermes probe
+  harness and an always-on degrade-path test are included; real endpoint
+  validation is pending a reachable Hermes instance.
 - `bootstrap --json` adds a read-only onboarding state detector for agents and
   maintainers. It reports existing data, installed and manifest versions,
   route decisions, human-needed blockers, and safe next steps without mutating
