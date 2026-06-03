@@ -4,9 +4,6 @@
 
 <p align="center"><em>"人生索引 · 心智年轮"</em></p>
 
-<p align="center">Agent Memory systems forget.</p>
-<p align="center">Knowledge bases deduplicate.</p>
-<p align="center"><strong>Life Index preserves every growth ring of the person you are becoming.</strong></p>
 <p align="center"><strong>An Agent-Native personal life archive, the digital legacy you leave to the future.</strong></p>
 
 <p align="center"><strong>English</strong> | <a href="./README.md">简体中文</a></p>

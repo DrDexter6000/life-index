@@ -6,6 +6,25 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### What users get
+
+- `bootstrap --json` adds a read-only onboarding state detector for agents and
+  maintainers. It reports existing data, installed and manifest versions,
+  route decisions, human-needed blockers, and safe next steps without mutating
+  user data.
+- Agent onboarding and README prompts now route fresh agents through the
+  bootstrap gate and clarify existing-data protection during install, upgrade,
+  and clean-context onboarding tests.
+
+### Included in this release
+
+- Public schema `m34.bootstrap.v0` and API documentation for
+  `life-index bootstrap --json`.
+- Bootstrap unit and contract coverage for data detection, checkout assessment,
+  route decisions, temp data-dir read-only behavior, and CLI exposure.
+- Onboarding safety guidance aligned with `bootstrap-manifest.json` and the
+  project data/code separation rules.
+
 ## [1.2.3] - 2026-06-01
 
 ### What users get

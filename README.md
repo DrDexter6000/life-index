@@ -4,9 +4,9 @@
 
 <p align="center"><em>"人生索引 · 心智年轮"</em></p>
 
-<p align="center"><strong>Agent记忆系统会遗忘，个人知识库会去重，Life Index 保留你成长的每一圈年轮。</strong></p>
+<p align="center"><strong>Agent-Native 的个人人生档案系统 ——   </strong></p>
 
-<p align="center"><strong>Agent-Native 的个人人生档案系统 —— 不是知识库，不是 Agent 记忆，是你留给未来的数字遗产。</strong></p>
+<p align="center"><strong>不是个人知识库，不是 Agent 记忆，是你留给未来的数字遗产。  </strong></p>
 
 <div align="center">
 
