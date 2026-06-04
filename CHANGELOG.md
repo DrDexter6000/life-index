@@ -6,6 +6,8 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-06-04
+
 ### What users get
 
 - Agent Bridge P1 spike: `tools/agent_bridge/` adds the L3 intelligence handoff
@@ -26,13 +28,22 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - Agent onboarding and README prompts now route fresh agents through the
   bootstrap gate and clarify existing-data protection during install, upgrade,
   and clean-context onboarding tests.
+- Search result metadata now includes `word_count` from the L2 metadata cache,
+  giving GUI and agent consumers a stable word-count field without re-reading
+  journal files.
 
 ### Included in this release
 
 - Public schema `m34.bootstrap.v0` and API documentation for
   `life-index bootstrap --json`.
+- Public schema `m35.agent_bridge_probe.v0` and API documentation for
+  `life-index agent-bridge probe --json`.
+- Optional `life-index[agent-bridge]` dependency extra for OpenAI-compatible
+  host-agent transport support.
 - Bootstrap unit and contract coverage for data detection, checkout assessment,
   route decisions, temp data-dir read-only behavior, and CLI exposure.
+- Agent Bridge unit, contract, layer-invariant, and env-gated Hermes integration
+  coverage for P1/degrade behavior and the no-journal-evidence probe.
 - Onboarding safety guidance aligned with `bootstrap-manifest.json` and the
   project data/code separation rules.
 
