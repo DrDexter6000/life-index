@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""CLI entry point for maintenance cycle (gbrain Phase D).
+"""CLI entry point for maintenance and Data Doctor commands.
 
 Usage:
+    python -m tools maintenance audit --json
+    python -m tools maintenance plan --issue-id <id> --json
+    python -m tools maintenance repair --issue-id <id> --dry-run --json
     python -m tools maintenance --dry-run
     python -m tools maintenance --dry-run --output=json
-    python -m tools maintenance --dry-run --output=json --data-dir /tmp/test
 
-The maintenance command is a dry-run/report-only cycle that aggregates
-six health checks without any production writes. All external CLI calls
-are delegated via subprocess.
+The maintenance command exposes the m33 Data Doctor audit/plan/repair
+contracts and preserves the legacy m16 dry-run/report-only health cycle.
 """
 
 from __future__ import annotations
@@ -197,10 +198,18 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     parser = argparse.ArgumentParser(
-        description="Life Index - Maintenance cycle (dry-run / report-only)",
+        description="Life Index - Maintenance and Data Doctor commands",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
+Data Doctor:
+    python -m tools maintenance audit --json
+    python -m tools maintenance audit --domain layout,search_index --json
+    python -m tools maintenance plan --issue-id <id> --json
+    python -m tools maintenance repair --issue-id <id> --dry-run --json
+    python -m tools maintenance repair --issue-id <id> --apply --json
+    python -m tools maintenance proposal validate --file <path> --json
+
+Legacy maintenance cycle:
     python -m tools maintenance --dry-run
     python -m tools maintenance --dry-run --output=json
     python -m tools maintenance --dry-run --output=json --data-dir /tmp/sandbox
@@ -211,7 +220,7 @@ Examples:
         "--dry-run",
         action="store_true",
         default=True,
-        help="Run maintenance in dry-run/report-only mode (default).",
+        help="Run legacy maintenance cycle in dry-run/report-only mode (default).",
     )
 
     parser.add_argument(
@@ -219,7 +228,7 @@ Examples:
         type=str,
         default="text",
         choices=["text", "json"],
-        help='Output format: "text" (default) or "json".',
+        help='Legacy maintenance cycle output format: "text" (default) or "json".',
     )
 
     parser.add_argument(
