@@ -106,7 +106,18 @@ class SimpleVectorIndex:
 
     def __init__(self) -> None:
         self.vectors: Dict[str, Dict[str, Any]] = {}
+        # Cached (N, dim) float32 matrix for vectorized search. self.vectors
+        # stays the source of truth (and the pickle format); this is purely a
+        # query accelerator, rebuilt lazily and invalidated on any mutation.
+        self._matrix: Any = None
+        self._matrix_paths: List[str] = []
+        self._matrix_dates: Any = None
+        self._matrix_valid: bool = False
         self._load()
+
+    def _invalidate_matrix(self) -> None:
+        """Mark the cached search matrix stale (rebuilt on next search)."""
+        self._matrix_valid = False
 
     def _load(self) -> None:
         """从磁盘加载索引"""
@@ -194,15 +205,49 @@ class SimpleVectorIndex:
             "added_at": datetime.now().isoformat(),
             "normalized": True,  # 标记已归一化
         }
+        self._invalidate_matrix()
 
     def remove(self, path: str) -> None:
         """删除向量"""
         if path in self.vectors:
             del self.vectors[path]
+            self._invalidate_matrix()
 
     def get(self, path: str) -> Optional[Dict[str, Any]]:
         """获取指定路径的向量"""
         return self.vectors.get(path)
+
+    def _build_matrix(self) -> None:
+        """(Re)build the cached float32 matrix from self.vectors.
+
+        Embeddings are stacked once into an (N, dim) array. Legacy vectors
+        stored without normalization are normalized here, mirroring the old
+        per-doc `doc_vec / (norm + 1e-8)`. Built lazily on the first search
+        after any mutation, so the per-query cost is a single matmul instead
+        of an O(N) Python loop with per-doc array conversion.
+        """
+        import numpy as np
+
+        paths = list(self.vectors.keys())
+        self._matrix_paths = paths
+        if not paths:
+            self._matrix = None
+            self._matrix_dates = None
+            self._matrix_valid = True
+            return
+
+        matrix = np.asarray([self.vectors[p]["embedding"] for p in paths], dtype=np.float32)
+        needs_norm = np.array([not self.vectors[p].get("normalized", False) for p in paths])
+        if needs_norm.any():
+            sub = matrix[needs_norm]
+            norms = np.linalg.norm(sub, axis=1, keepdims=True) + 1e-8
+            matrix[needs_norm] = sub / norms
+
+        self._matrix = matrix
+        self._matrix_dates = np.array(
+            [self.vectors[p].get("date", "") for p in paths], dtype="<U32"
+        )
+        self._matrix_valid = True
 
     def search(
         self,
@@ -226,34 +271,39 @@ class SimpleVectorIndex:
         if not self.vectors:
             return []
 
-        query_vec = np.array(query_embedding, dtype=np.float32)
+        if not self._matrix_valid:
+            self._build_matrix()
+        if self._matrix is None:
+            return []
 
-        results = []
+        # Query is left un-normalized (preserves legacy score scale): the loop
+        # used np.dot(query_vec, doc_vec) without normalizing query_vec.
+        query_vec = np.asarray(query_embedding, dtype=np.float32)
+        scores = self._matrix @ query_vec  # (N,)
 
-        for path, data in self.vectors.items():
-            # 日期过滤
-            doc_date = data.get("date", "")
-            if date_from and doc_date and doc_date < date_from:
-                continue
-            if date_to and doc_date and doc_date > date_to:
-                continue
+        # Date filtering: exclude a doc only when it HAS a date that is out of
+        # range; empty dates are always kept (matches the old per-doc guard).
+        keep_idx = None
+        if date_from or date_to:
+            dates = self._matrix_dates
+            has_date = dates != ""
+            keep = np.ones(len(scores), dtype=bool)
+            if date_from:
+                keep &= ~(has_date & (dates < date_from))
+            if date_to:
+                keep &= ~(has_date & (dates > date_to))
+            keep_idx = np.nonzero(keep)[0]
+            scores = scores[keep_idx]
 
-            # 计算余弦相似度
-            doc_vec = np.array(data["embedding"], dtype=np.float32)
+        # Stable descending sort keeps insertion order on ties (matches the old
+        # stable list .sort(reverse=True)); slice to top_k.
+        order = np.argsort(-scores, kind="stable")[:top_k]
 
-            # 向后兼容：仅对未标记归一化的旧向量进行归一化
-            # 新向量在 add() 时已预归一化
-            if not data.get("normalized", False):
-                doc_vec = doc_vec / (np.linalg.norm(doc_vec) + 1e-8)
-
-            similarity = float(np.dot(query_vec, doc_vec))
-
-            results.append((path, similarity))
-
-        # 按相似度降序排列
-        results.sort(key=lambda x: x[1], reverse=True)
-
-        return results[:top_k]
+        results: List[Tuple[str, float]] = []
+        for o in order:
+            orig = int(keep_idx[o]) if keep_idx is not None else int(o)
+            results.append((self._matrix_paths[orig], float(scores[o])))
+        return results
 
     def commit(self) -> None:
         """提交更改到磁盘"""
@@ -262,6 +312,7 @@ class SimpleVectorIndex:
     def clear(self) -> None:
         """清空所有向量"""
         self.vectors.clear()
+        self._invalidate_matrix()
 
     def stats(self) -> Dict[str, Any]:
         """获取统计信息"""
