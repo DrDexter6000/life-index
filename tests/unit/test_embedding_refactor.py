@@ -34,18 +34,22 @@ class TestSharedEmbeddingModelRefactor:
             normalize_embeddings=True,
         )
 
-    def test_simple_vector_index_add_keeps_pre_normalized_embedding(self) -> None:
+    def test_simple_vector_index_add_keeps_pre_normalized_embedding_out_of_metadata(
+        self,
+    ) -> None:
         from tools.lib.vector_index_simple import SimpleVectorIndex
 
         index = SimpleVectorIndex()
         index.vectors = {}
+        index._reset_matrix(valid=True)
         embedding = [0.6, 0.8]
 
         index.add("Journals/2026/04/test.md", embedding, "2026-04-01", "hash123")
 
         stored = index.vectors["Journals/2026/04/test.md"]
-        assert stored["embedding"] == embedding
-        assert stored["normalized"] is True
+        assert "embedding" not in stored
+        assert "normalized" not in stored
+        assert index.get_embedding("Journals/2026/04/test.md") == embedding
 
     def test_encode_texts_does_not_re_normalize_sentence_transformer_output(
         self,
@@ -55,9 +59,7 @@ class TestSharedEmbeddingModelRefactor:
         model = MagicMock()
         model.encode.return_value = [[0.6, 0.8]]
 
-        encoded = embedding_backends.encode_texts(
-            model, ["hello"], "sentence-transformers"
-        )
+        encoded = embedding_backends.encode_texts(model, ["hello"], "sentence-transformers")
 
         assert encoded == [[0.6, 0.8]]
         model.encode.assert_called_once_with(

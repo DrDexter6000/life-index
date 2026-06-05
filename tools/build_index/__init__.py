@@ -179,13 +179,13 @@ def build_all(
                     try:
                         import sqlite3
 
-                        from ..lib.semantic_baseline import compute_semantic_baseline
+                        from ..lib.semantic_baseline import compute_semantic_baseline_from_matrix
                         from ..lib.search_index import write_index_meta
                         from ..lib.paths import get_fts_db_path
                         from ..lib.vector_index_simple import get_index
 
                         index = get_index()
-                        baseline_p25 = compute_semantic_baseline(index.vectors)
+                        baseline_p25 = compute_semantic_baseline_from_matrix(index.get_matrix())
                         if baseline_p25 > 0 and get_fts_db_path().exists():
                             conn = sqlite3.connect(str(get_fts_db_path()))
                             try:

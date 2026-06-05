@@ -46,6 +46,11 @@ EMBEDDING_DIM = MODEL_CONFIG["dimension"]
 EMBEDDING_MODEL_VERSION = MODEL_CONFIG["version"]
 
 
+def get_vec_matrix_path() -> Path:
+    """Return the split-format embedding matrix sidecar path."""
+    return get_vec_index_path().with_name("vectors_simple_emb.npz")
+
+
 def compute_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     """
     计算文件哈希值
@@ -97,21 +102,20 @@ class SimpleVectorIndex:
     """
     简单向量索引实现
 
-    数据结构:
-    {
-        "path1": {"embedding": [0.1, 0.2, ...], "date": "2026-03-05", "hash": "abc123"},
-        "path2": {...}
-    }
+    On disk, `vectors_simple.pkl` stores metadata only:
+    {path: {"date": "...", "hash": "...", "added_at": "..."}}
+
+    Embeddings live in `vectors_simple_emb.npz` as a float32 matrix plus a
+    parallel paths array. Old inline-embedding pickles are migrated on load.
     """
 
     def __init__(self) -> None:
         self.vectors: Dict[str, Dict[str, Any]] = {}
-        # Cached (N, dim) float32 matrix for vectorized search. self.vectors
-        # stays the source of truth (and the pickle format); this is purely a
-        # query accelerator, rebuilt lazily and invalidated on any mutation.
         self._matrix: Any = None
         self._matrix_paths: List[str] = []
+        self._row_of: Dict[str, int] = {}
         self._matrix_dates: Any = None
+        self._pending_emb: Dict[str, List[float]] = {}
         self._matrix_valid: bool = False
         self._load()
 
@@ -119,26 +123,172 @@ class SimpleVectorIndex:
         """Mark the cached search matrix stale (rebuilt on next search)."""
         self._matrix_valid = False
 
+    def _reset_matrix(self, *, valid: bool = True) -> None:
+        """Reset matrix state after degradation, clear, or empty index load."""
+        self._matrix = None
+        self._matrix_paths = []
+        self._row_of = {}
+        self._matrix_dates = None
+        self._pending_emb = {}
+        self._matrix_valid = valid
+
+    @staticmethod
+    def _metadata_only(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the metadata fields persisted in the split pickle."""
+        metadata: Dict[str, Any] = {
+            "date": data.get("date", ""),
+            "hash": data.get("hash", ""),
+            "added_at": data.get("added_at", ""),
+        }
+        return metadata
+
+    @staticmethod
+    def _has_inline_embeddings(payload: Dict[str, Any]) -> bool:
+        return any(isinstance(item, dict) and "embedding" in item for item in payload.values())
+
+    @staticmethod
+    def _normalize_vector(embedding: List[float]) -> Any:
+        import numpy as np
+
+        vector = np.asarray(embedding, dtype=np.float32)
+        norm = np.linalg.norm(vector)
+        if norm > 1e-8:
+            vector = vector / (norm + 1e-8)
+        return vector.astype(np.float32, copy=False)
+
+    @staticmethod
+    def _matrix_tmp_path() -> Path:
+        return get_vec_matrix_path().with_name(f"{get_vec_matrix_path().name}.tmp")
+
     def _load(self) -> None:
         """从磁盘加载索引"""
         # Clean up stale tmp files from crashed saves
-        tmp_pkl = get_vec_index_path().with_suffix(".pkl.tmp")
-        if tmp_pkl.exists():
-            logger.warning("Found stale .pkl.tmp file, removing (likely from crashed save)")
+        for tmp_file in (
+            get_vec_index_path().with_suffix(".pkl.tmp"),
+            self._matrix_tmp_path(),
+        ):
+            if not tmp_file.exists():
+                continue
+            logger.warning("Found stale tmp file, removing: %s", tmp_file)
             try:
-                tmp_pkl.unlink()
+                tmp_file.unlink()
             except OSError:
                 pass
 
-        if get_vec_index_path().exists():
-            try:
-                with open(get_vec_index_path(), "rb") as f:
-                    self.vectors = pickle.load(f)
-                # 加载后自动清理陈旧向量
-                self._cleanup_stale_vectors()
-            except Exception as e:
-                logger.warning("Failed to load vector index: %s", e)
-                self.vectors = {}
+        if not get_vec_index_path().exists():
+            self.vectors = {}
+            self._reset_matrix(valid=True)
+            return
+
+        try:
+            with open(get_vec_index_path(), "rb") as f:
+                payload = pickle.load(f)
+        except Exception as e:
+            logger.warning("Failed to load vector index: %s", e)
+            self.vectors = {}
+            self._reset_matrix(valid=True)
+            return
+
+        if not isinstance(payload, dict):
+            logger.warning("Vector index pickle has invalid payload type; degrading")
+            self.vectors = {}
+            self._reset_matrix(valid=True)
+            return
+
+        if self._has_inline_embeddings(payload):
+            self._load_legacy_inline_pickle(payload)
+            self._cleanup_stale_vectors()
+            self._save()
+            return
+
+        self.vectors = {
+            str(path): self._metadata_only(data if isinstance(data, dict) else {})
+            for path, data in payload.items()
+        }
+        if not self._load_matrix_sidecar():
+            self.vectors = {}
+            self._reset_matrix(valid=True)
+            return
+
+        self._cleanup_stale_vectors()
+
+    def _load_legacy_inline_pickle(self, payload: Dict[str, Any]) -> None:
+        """Migrate old `{path: {embedding, ...}}` payload into split memory."""
+        import numpy as np
+
+        vectors: Dict[str, Dict[str, Any]] = {}
+        rows = []
+        paths: List[str] = []
+        for path, data in payload.items():
+            if not isinstance(data, dict):
+                continue
+            embedding = data.get("embedding")
+            if not isinstance(embedding, list) or not embedding:
+                continue
+            if not all(isinstance(value, (float, int)) for value in embedding):
+                continue
+            vector = np.asarray(embedding, dtype=np.float32)
+            if vector.ndim != 1 or vector.size == 0:
+                continue
+            if not data.get("normalized", False):
+                norm = np.linalg.norm(vector)
+                if norm > 1e-8:
+                    vector = vector / (norm + 1e-8)
+            path_str = str(path)
+            paths.append(path_str)
+            rows.append(vector.astype(np.float32, copy=False))
+            vectors[path_str] = self._metadata_only(data)
+
+        self.vectors = vectors
+        if rows:
+            self._matrix = np.vstack(rows).astype(np.float32, copy=False)
+            self._matrix_paths = paths
+            self._row_of = {path: i for i, path in enumerate(paths)}
+            self._matrix_dates = np.asarray(
+                [self.vectors[path].get("date", "") for path in paths], dtype="<U32"
+            )
+            self._pending_emb = {}
+            self._matrix_valid = True
+        else:
+            self._reset_matrix(valid=True)
+
+    def _load_matrix_sidecar(self) -> bool:
+        """Load and validate the split-format matrix sidecar."""
+        import numpy as np
+
+        if not self.vectors:
+            self._reset_matrix(valid=True)
+            return True
+
+        matrix_path = get_vec_matrix_path()
+        if not matrix_path.exists():
+            logger.warning("Vector matrix sidecar missing; semantic index degraded")
+            return False
+
+        try:
+            with np.load(matrix_path, mmap_mode="r") as payload:
+                matrix = np.asarray(payload["matrix"], dtype=np.float32)
+                paths = [str(path) for path in payload["paths"].tolist()]
+        except Exception as e:
+            logger.warning("Failed to load vector matrix sidecar: %s", e)
+            return False
+
+        if matrix.ndim != 2 or matrix.shape[0] != len(paths):
+            logger.warning("Vector matrix sidecar shape/path count mismatch; degraded")
+            return False
+        if len(paths) != len(set(paths)) or set(paths) != set(self.vectors.keys()):
+            logger.warning("Vector matrix sidecar paths mismatch metadata; degraded")
+            return False
+
+        self._matrix = matrix
+        self._matrix_paths = paths
+        self._row_of = {path: i for i, path in enumerate(paths)}
+        self._matrix_dates = np.asarray(
+            [self.vectors[path].get("date", "") for path in paths], dtype="<U32"
+        )
+        self._pending_emb = {}
+        self._matrix_valid = True
+        return True
 
     def _cleanup_stale_vectors(self) -> int:
         """
@@ -164,9 +314,11 @@ class SimpleVectorIndex:
         # 删除陈旧向量
         for path in stale_paths:
             del self.vectors[path]
+            self._pending_emb.pop(path, None)
 
         # 如果有清理，保存索引
         if stale_paths:
+            self._invalidate_matrix()
             self._save()
             logger.info("Cleaned %d stale vectors from index", len(stale_paths))
 
@@ -176,6 +328,24 @@ class SimpleVectorIndex:
         """保存索引到磁盘（原子写入：temp + rename）"""
         get_index_dir().mkdir(parents=True, exist_ok=True)
         try:
+            if not self._matrix_valid:
+                self._build_matrix()
+
+            import numpy as np
+
+            matrix_path = get_vec_matrix_path()
+            tmp_matrix = self._matrix_tmp_path()
+            matrix = (
+                self._matrix if self._matrix is not None else np.empty((0, 0), dtype=np.float32)
+            )
+            with open(tmp_matrix, "wb") as f:
+                np.savez(
+                    f,
+                    matrix=np.asarray(matrix, dtype=np.float32),
+                    paths=np.asarray(self._matrix_paths, dtype=str),
+                )
+            tmp_matrix.replace(matrix_path)
+
             # Atomic pickle write: temp file + rename
             tmp_pkl = get_vec_index_path().with_suffix(".pkl.tmp")
             with open(tmp_pkl, "wb") as f:
@@ -197,56 +367,85 @@ class SimpleVectorIndex:
             print(f"Warning: Failed to save vector index: {e}")
 
     def add(self, path: str, embedding: List[float], date: str, file_hash: str) -> None:
-        """添加或更新向量（预归一化存储）"""
+        """添加或更新向量（metadata in pickle, embedding staged for matrix）"""
         self.vectors[path] = {
-            "embedding": embedding,
             "date": date,
             "hash": file_hash,
             "added_at": datetime.now().isoformat(),
-            "normalized": True,  # 标记已归一化
         }
+        self._pending_emb[path] = embedding
         self._invalidate_matrix()
 
     def remove(self, path: str) -> None:
         """删除向量"""
         if path in self.vectors:
             del self.vectors[path]
+            self._pending_emb.pop(path, None)
             self._invalidate_matrix()
 
     def get(self, path: str) -> Optional[Dict[str, Any]]:
-        """获取指定路径的向量"""
+        """获取指定路径的 metadata."""
         return self.vectors.get(path)
 
-    def _build_matrix(self) -> None:
-        """(Re)build the cached float32 matrix from self.vectors.
+    def get_embedding(self, path: str) -> Optional[List[float]]:
+        """Return a path's embedding from pending rows or the matrix."""
+        if path in self._pending_emb:
+            return list(self._pending_emb[path])
+        if not self._matrix_valid:
+            self._build_matrix()
+        row = self._row_of.get(path)
+        if row is None or self._matrix is None:
+            return None
+        return [float(value) for value in self._matrix[row].tolist()]
 
-        Embeddings are stacked once into an (N, dim) array. Legacy vectors
-        stored without normalization are normalized here, mirroring the old
-        per-doc `doc_vec / (norm + 1e-8)`. Built lazily on the first search
-        after any mutation, so the per-query cost is a single matmul instead
-        of an O(N) Python loop with per-doc array conversion.
+    def get_matrix(self) -> Any:
+        """Return the current embedding matrix, rebuilding if needed."""
+        if not self._matrix_valid:
+            self._build_matrix()
+        return self._matrix
+
+    def _build_matrix(self) -> None:
+        """(Re)build the cached float32 matrix from metadata + embeddings.
+
+        Unchanged rows are copied from the previous matrix via `_row_of`; rows
+        added/updated in this process come from `_pending_emb`.
         """
         import numpy as np
 
         paths = list(self.vectors.keys())
         self._matrix_paths = paths
         if not paths:
-            self._matrix = None
-            self._matrix_dates = None
-            self._matrix_valid = True
+            self._reset_matrix(valid=True)
             return
 
-        matrix = np.asarray([self.vectors[p]["embedding"] for p in paths], dtype=np.float32)
-        needs_norm = np.array([not self.vectors[p].get("normalized", False) for p in paths])
-        if needs_norm.any():
-            sub = matrix[needs_norm]
-            norms = np.linalg.norm(sub, axis=1, keepdims=True) + 1e-8
-            matrix[needs_norm] = sub / norms
+        rows = []
+        for path in paths:
+            if path in self._pending_emb:
+                rows.append(self._normalize_vector(self._pending_emb[path]))
+                continue
+            row = self._row_of.get(path)
+            if row is None or self._matrix is None:
+                logger.warning("Vector matrix row missing for %s; semantic index degraded", path)
+                self.vectors = {}
+                self._reset_matrix(valid=True)
+                return
+            rows.append(np.asarray(self._matrix[row], dtype=np.float32))
+
+        try:
+            matrix = np.vstack(rows).astype(np.float32, copy=False)
+        except ValueError as e:
+            logger.warning("Vector matrix rebuild failed: %s", e)
+            self.vectors = {}
+            self._reset_matrix(valid=True)
+            return
 
         self._matrix = matrix
+        self._matrix_paths = paths
+        self._row_of = {path: i for i, path in enumerate(paths)}
         self._matrix_dates = np.array(
             [self.vectors[p].get("date", "") for p in paths], dtype="<U32"
         )
+        self._pending_emb = {}
         self._matrix_valid = True
 
     def search(
@@ -312,7 +511,7 @@ class SimpleVectorIndex:
     def clear(self) -> None:
         """清空所有向量"""
         self.vectors.clear()
-        self._invalidate_matrix()
+        self._reset_matrix(valid=True)
 
     def stats(self) -> Dict[str, Any]:
         """获取统计信息"""
@@ -320,7 +519,18 @@ class SimpleVectorIndex:
             "exists": get_vec_index_path().exists(),
             "total_vectors": len(self.vectors),
             "index_size_mb": (
-                round(get_vec_index_path().stat().st_size / (1024 * 1024), 2)
+                round(
+                    (
+                        get_vec_index_path().stat().st_size
+                        + (
+                            get_vec_matrix_path().stat().st_size
+                            if get_vec_matrix_path().exists()
+                            else 0
+                        )
+                    )
+                    / (1024 * 1024),
+                    2,
+                )
                 if get_vec_index_path().exists()
                 else 0
             ),

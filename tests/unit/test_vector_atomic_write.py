@@ -3,9 +3,12 @@
 import pickle
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from tools.lib.vector_index_simple import SimpleVectorIndex, get_vec_index_path, get_vec_meta_path
+from tools.lib.vector_index_simple import (
+    SimpleVectorIndex,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -34,11 +37,11 @@ class TestAtomicSave:
     """Tests for SimpleVectorIndex._save() atomic write behavior."""
 
     def test_save_creates_valid_pickle(self, tmp_path: Path):
-        """After _save(), the pickle file contains valid data."""
+        """After _save(), pickle metadata and matrix sidecar are both valid."""
         import tools.lib.vector_index_simple as vi_mod
 
         idx = SimpleVectorIndex()
-        idx.vectors = {"test/path.md": {"embedding": [0.1, 0.2], "date": "2026-03-07", "hash": "abc"}}
+        idx.add("test/path.md", [0.1, 0.2], "2026-03-07", "abc")
         idx._save()
 
         pkl_path = vi_mod.get_vec_index_path()
@@ -46,14 +49,25 @@ class TestAtomicSave:
         with open(pkl_path, "rb") as f:
             loaded = pickle.load(f)
         assert "test/path.md" in loaded
-        assert loaded["test/path.md"]["embedding"] == [0.1, 0.2]
+        assert loaded["test/path.md"] == {
+            "date": "2026-03-07",
+            "hash": "abc",
+            "added_at": loaded["test/path.md"]["added_at"],
+        }
+        assert "embedding" not in loaded["test/path.md"]
+
+        matrix_path = vi_mod.get_vec_matrix_path()
+        assert matrix_path.exists()
+        with np.load(matrix_path) as payload:
+            assert payload["paths"].tolist() == ["test/path.md"]
+            assert payload["matrix"].shape == (1, 2)
 
     def test_no_tmp_residual_after_save(self, tmp_path: Path):
         """After _save(), no .tmp files remain."""
         import tools.lib.vector_index_simple as vi_mod
 
         idx = SimpleVectorIndex()
-        idx.vectors = {"a.md": {"embedding": [0.5], "date": "2026-01-01", "hash": "x"}}
+        idx.add("a.md", [0.5], "2026-01-01", "x")
         idx._save()
 
         idx_dir = vi_mod.get_index_dir()
@@ -65,10 +79,11 @@ class TestAtomicSave:
         import tools.lib.vector_index_simple as vi_mod
 
         idx = SimpleVectorIndex()
-        idx.vectors = {"first.md": {"embedding": [1.0], "date": "2026-01-01", "hash": "a"}}
+        idx.add("first.md", [1.0], "2026-01-01", "a")
         idx._save()
 
-        idx.vectors = {"second.md": {"embedding": [2.0], "date": "2026-02-02", "hash": "b"}}
+        idx.clear()
+        idx.add("second.md", [2.0], "2026-02-02", "b")
         idx._save()
 
         pkl_path = vi_mod.get_vec_index_path()
@@ -76,6 +91,8 @@ class TestAtomicSave:
             loaded = pickle.load(f)
         assert "first.md" not in loaded  # Second save replaced entirely
         assert "second.md" in loaded
+        with np.load(vi_mod.get_vec_matrix_path()) as payload:
+            assert payload["paths"].tolist() == ["second.md"]
 
     def test_save_replaces_not_appends(self, tmp_path: Path):
         """_save() completely replaces the file, doesn't append."""
@@ -83,11 +100,13 @@ class TestAtomicSave:
 
         idx = SimpleVectorIndex()
         # First save with many entries
-        idx.vectors = {f"file_{i}.md": {"embedding": [float(i)], "date": "2026-01-01", "hash": str(i)} for i in range(10)}
+        for i in range(10):
+            idx.add(f"file_{i}.md", [float(i)], "2026-01-01", str(i))
         idx._save()
 
         # Second save with single entry
-        idx.vectors = {"only_this.md": {"embedding": [42.0], "date": "2026-01-01", "hash": "z"}}
+        idx.clear()
+        idx.add("only_this.md", [42.0], "2026-01-01", "z")
         idx._save()
 
         pkl_path = vi_mod.get_vec_index_path()
@@ -95,6 +114,8 @@ class TestAtomicSave:
             loaded = pickle.load(f)
         assert len(loaded) == 1
         assert "only_this.md" in loaded
+        with np.load(vi_mod.get_vec_matrix_path()) as payload:
+            assert payload["paths"].tolist() == ["only_this.md"]
 
     def test_load_handles_stale_tmp_file(self, tmp_path: Path):
         """If a .tmp file exists from a crashed save, _load ignores it."""
@@ -109,7 +130,13 @@ class TestAtomicSave:
         (data_dir / "Journals" / "2026" / "01" / "good.md").write_text("content", encoding="utf-8")
 
         # Create the main pickle with valid data
-        valid_data = {"Journals/2026/01/good.md": {"embedding": [1.0], "date": "2026-01-01", "hash": "x"}}
+        valid_data = {
+            "Journals/2026/01/good.md": {
+                "embedding": [1.0],
+                "date": "2026-01-01",
+                "hash": "x",
+            }
+        }
         with open(pkl_path, "wb") as f:
             pickle.dump(valid_data, f)
 

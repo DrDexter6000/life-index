@@ -11,11 +11,9 @@ What it measures, per corpus size N:
   baseline_p95 : a verbatim copy of the PRE-vectorization per-doc Python loop
                  (kept here only to document why the fix matters / regression).
   current_p95  : the real SimpleVectorIndex.search() (vectorized matmul).
-  build_ms     : one-time cost to build the cached matrix on the first search
-                 of a process (the list-pickle -> ndarray conversion). Amortized
-                 across queries in a long-running process; paid per invocation
-                 by a one-shot CLI.
-  dict_mb/mat_mb : Python-heap footprint of the list storage vs the float32 matrix.
+  cold_load_ms : fresh SimpleVectorIndex() load of metadata pickle + matrix sidecar.
+  one_shot_ms  : fresh load + first query, approximating a one-shot CLI search.
+  dict_mb/mat_mb : Python-heap footprint of the legacy list storage vs matrix file.
 
 This never touches real user data: it points the index at an empty temp dir.
 
@@ -79,7 +77,13 @@ def main() -> None:
 
     # Isolate before importing path-aware modules; never touch real data.
     os.environ["LIFE_INDEX_DATA_DIR"] = tempfile.mkdtemp()
+    import tools.lib.vector_index_simple as vi_mod
     from tools.lib.vector_index_simple import SimpleVectorIndex
+
+    # This benchmark synthesizes vector rows directly and does not create N
+    # journal files. Disable stale-file cleanup so load timing measures vector
+    # storage only, not filesystem fixture maintenance.
+    SimpleVectorIndex._cleanup_stale_vectors = lambda self: 0  # type: ignore[method-assign]
 
     queries = [
         np.random.default_rng(i).standard_normal(DIM).astype(np.float32).tolist()
@@ -90,7 +94,6 @@ def main() -> None:
     for n in grid:
         print(f"[N={n:,}] building ...", file=sys.stderr, flush=True)
         M = _unit_matrix(n)
-        mat_mb = M.nbytes / (1024 * 1024)
 
         gc.collect()
         tracemalloc.start()
@@ -114,21 +117,39 @@ def main() -> None:
             _baseline_loop(vectors, q)
             base.append((time.perf_counter() - t) * 1000)
 
-        # Current real search() (vectorized). First call builds the matrix.
+        # Current real split storage: add rows, persist, then measure a fresh
+        # load plus query path. This approximates one-shot CLI search.
         idx = SimpleVectorIndex()
-        idx.vectors = vectors
-        idx._invalidate_matrix()
+        idx.clear()
+        for i in range(n):
+            idx.add(f"Journals/2026/p{i}.md", M[i].tolist(), "2026-01-01", str(i))
+        idx.commit()
+
         t0 = time.perf_counter()
-        idx.search(queries[0], top_k=TOP_K)
-        build_ms = (time.perf_counter() - t0) * 1000
+        cold = SimpleVectorIndex()
+        cold_load_ms = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        cold.search(queries[0], top_k=TOP_K)
+        one_shot_ms = cold_load_ms + ((time.perf_counter() - t0) * 1000)
         cur = []
         for q in queries:
             t = time.perf_counter()
-            idx.search(q, top_k=TOP_K)
+            cold.search(q, top_k=TOP_K)
             cur.append((time.perf_counter() - t) * 1000)
 
-        rows.append((n, _pct(base, 95), _pct(cur, 95), build_ms, dict_mb, mat_mb))
-        del vectors, idx, M
+        matrix_mb = vi_mod.get_vec_matrix_path().stat().st_size / (1024 * 1024)
+        rows.append(
+            (
+                n,
+                _pct(base, 95),
+                _pct(cur, 95),
+                cold_load_ms,
+                one_shot_ms,
+                dict_mb,
+                matrix_mb,
+            )
+        )
+        del vectors, idx, cold, M
         gc.collect()
 
     print()
@@ -139,20 +160,19 @@ def main() -> None:
     print("=" * 84)
     print(
         f"{'N':>8} | {'baseline p95':>13} | {'current p95':>12} | "
-        f"{'build ms':>9} | {'dict MB':>8} | {'mat MB':>7}"
+        f"{'cold load':>9} | {'one-shot':>8} | {'dict MB':>8} | {'mat MB':>7}"
     )
     print("-" * 84)
-    for n, bp95, cp95, bms, dmb, mmb in rows:
+    for n, bp95, cp95, cold_ms, one_shot_ms, dmb, mmb in rows:
         print(
-            f"{n:>8,} | {bp95:11.1f}   | {cp95:10.2f}   | {bms:8.1f}  | "
-            f"{dmb:7.1f}  | {mmb:6.1f} "
+            f"{n:>8,} | {bp95:11.1f}   | {cp95:10.2f}   | "
+            f"{cold_ms:8.1f}  | {one_shot_ms:7.1f} | {dmb:7.1f}  | {mmb:6.1f} "
         )
     print("-" * 84)
     print("baseline = pre-fix per-doc Python loop; current = vectorized matmul.")
     print(
-        "Per-query scan is now flat; one-time build_ms is the list-pickle -> "
-        "ndarray cost\n(amortized in a long-running process; paid per one-shot "
-        "CLI invocation)."
+        "cold_load = metadata pickle + split matrix sidecar load; one-shot = "
+        "cold_load + first semantic query."
     )
 
 
