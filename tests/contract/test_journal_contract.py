@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 SCHEMA_VERSION = "m16.journal.v0"
 
 
