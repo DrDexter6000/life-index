@@ -106,8 +106,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    name: Coverage Report
-    continue-on-error: true
+    name: Coverage Gate (blocker + contract)
     env:
       LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
@@ -133,12 +132,12 @@ jobs:
           pip install pytest pytest-cov pytest-timeout
           pip install -e ".[dev]"
 
-      - name: Generate coverage report
-        # Report-only during gate migration. Runs blocker+contract to get
-        # deterministic coverage. Restore --cov-fail-under once stable.
+      - name: Enforce coverage gate
+        # Runs blocker+contract tests with enforced minimum coverage.
+        # fail_under is set in pyproject.toml [tool.coverage.report].
         run: |
           pytest -m "blocker or contract" -v --timeout=300 \
-            --cov=tools --cov-report=term-missing --cov-fail-under=0
+            --cov=tools --cov-report=term-missing
 
   search-eval-gate:
     runs-on: ubuntu-latest
