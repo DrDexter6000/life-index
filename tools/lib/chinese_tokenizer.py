@@ -403,6 +403,79 @@ def reset_tokenizer_state() -> None:
     _entity_dict_hash = ""
 
 
+def _is_cjk_script_char(char: str) -> bool:
+    """Return True for CJK ideographs, Hiragana, Katakana, or Hangul."""
+    if len(char) != 1:
+        return False
+    cp = ord(char)
+    # CJK ideographs (same ranges as is_cjk)
+    cjk_ranges = (
+        (0x3400, 0x4DBF),
+        (0x4E00, 0x9FFF),
+        (0xF900, 0xFAFF),
+        (0x20000, 0x2A6DF),
+        (0x2A700, 0x2B73F),
+        (0x2B740, 0x2B81F),
+        (0x2B820, 0x2CEAF),
+        (0x2CEB0, 0x2EBEF),
+        (0x30000, 0x3134F),
+        (0x2F800, 0x2FA1F),
+    )
+    if any(start <= cp <= end for start, end in cjk_ranges):
+        return True
+    # Hiragana
+    if 0x3040 <= cp <= 0x309F:
+        return True
+    # Katakana (fullwidth + halfwidth)
+    if (0x30A0 <= cp <= 0x30FF) or (0x31F0 <= cp <= 0x31FF) or (0xFF65 <= cp <= 0xFF9F):
+        return True
+    # Hangul syllables and jamo
+    if (
+        (0xAC00 <= cp <= 0xD7AF)
+        or (0x1100 <= cp <= 0x11FF)
+        or (0x3130 <= cp <= 0x318F)
+        or (0xA960 <= cp <= 0xA97F)
+        or (0xD7B0 <= cp <= 0xD7FF)
+    ):
+        return True
+    return False
+
+
+def count_cjk_words(text: str) -> int:
+    """Count words in a CJK-aware manner.
+
+    - CJK ideographs, Hiragana, Katakana, and Hangul are counted per character.
+    - Non-CJK alphanumeric runs are counted as single words.
+    - All other characters (punctuation, whitespace) are treated as delimiters.
+
+    For texts that contain no CJK-script characters, falls back to the legacy
+    ``len(text.split())`` behavior to preserve existing English-only counts.
+    """
+    if not text:
+        return 0
+    has_cjk_script = False
+    for ch in text:
+        if _is_cjk_script_char(ch):
+            has_cjk_script = True
+            break
+    if not has_cjk_script:
+        return len(text.split())
+
+    count = 0
+    in_alnum = False
+    for ch in text:
+        if _is_cjk_script_char(ch):
+            count += 1
+            in_alnum = False
+        elif ch.isalnum():
+            if not in_alnum:
+                count += 1
+                in_alnum = True
+        else:
+            in_alnum = False
+    return count
+
+
 __all__ = [
     "is_cjk",
     "normalize_query",
@@ -412,4 +485,5 @@ __all__ = [
     "get_dict_hash",
     "CHINESE_STOP_WORDS",
     "reset_tokenizer_state",
+    "count_cjk_words",
 ]

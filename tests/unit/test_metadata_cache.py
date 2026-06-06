@@ -21,6 +21,7 @@ from tools.lib.metadata_cache import (
     get_backlinked_by,
     add_entry_relations,
     replace_entry_relations,
+    read_cache_version,
 )
 
 
@@ -129,6 +130,78 @@ class TestMetadataCache:
             assert row["title"] == "Test Journal"
         finally:
             conn.close()
+
+    def test_parse_and_cache_journal_counts_cjk_body_by_character(self, tmp_path):
+        """CJK journal bodies are counted by character in metadata cache."""
+        test_file = tmp_path / "cjk_journal.md"
+        test_file.write_text(
+            (
+                "---\n"
+                'title: "CJK Journal"\n'
+                "date: 2026-06-06\n"
+                "---\n\n"
+                "今天天气很好我们去公园散步。"
+            ),
+            encoding="utf-8",
+        )
+
+        conn = init_metadata_cache()
+
+        try:
+            result = parse_and_cache_journal(conn, test_file)
+
+            assert result is not None
+            assert result["word_count"] == 13
+
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT word_count FROM metadata_cache WHERE file_path = ?",
+                (str(test_file).replace("\\", "/"),),
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            assert row["word_count"] == 13
+        finally:
+            conn.close()
+
+    def test_get_all_cached_metadata_rebuilds_stale_word_count_schema(self, monkeypatch, tmp_path):
+        """Missing cache sidecar invalidates stale derived word_count rows."""
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        journal_dir = tmp_path / "Journals" / "2026" / "06"
+        journal_dir.mkdir(parents=True)
+        journal_path = journal_dir / "life-index_2026-06-06_001.md"
+        journal_path.write_text(
+            (
+                "---\n"
+                'title: "CJK Journal"\n'
+                "date: 2026-06-06\n"
+                "---\n\n"
+                "今天天气很好我们去公园散步。"
+            ),
+            encoding="utf-8",
+        )
+
+        conn = init_metadata_cache()
+        try:
+            stale = parse_and_cache_journal(conn, journal_path)
+            assert stale is not None
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE metadata_cache SET word_count = 1 WHERE file_path = ?",
+                (str(journal_path).replace("\\", "/"),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rows = get_all_cached_metadata()
+
+        assert len(rows) == 1
+        assert rows[0]["word_count"] == 13
+        version = read_cache_version()
+        assert version is not None
+        assert version["schema_version"] == "v1.1.2"
+        assert version["invalidation_history"][-1]["reason"] == "no_existing_version"
 
     def test_get_cached_metadata(self, tmp_path):
         """Test retrieving cached metadata"""
@@ -420,13 +493,16 @@ class TestConnectionManagement:
         assert result is not None
         assert result["title"] == "Auto Connection Test"
 
-    def test_get_all_cached_metadata_creates_connection(self, tmp_path):
+    def test_get_all_cached_metadata_creates_connection(self, monkeypatch, tmp_path):
         """Test get_all_cached_metadata with conn=None creates its own connection (lines 256-260)"""
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
         # Clean state
         invalidate_cache()
 
         # Add a test file
-        test_file = tmp_path / "test.md"
+        journal_dir = tmp_path / "Journals" / "2026" / "03"
+        journal_dir.mkdir(parents=True)
+        test_file = journal_dir / "life-index_2026-03-13_001.md"
         test_file.write_text(
             '---\ntitle: "All Metadata Test"\ndate: 2026-03-13\n---\n\nContent\n',
             encoding="utf-8",

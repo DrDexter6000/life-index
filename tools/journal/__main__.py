@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from tools.lib.attachment import normalize_attachment_entries
+from tools.lib.chinese_tokenizer import count_cjk_words
 from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.path_contract import build_journal_path_fields
 from tools.lib.paths import get_journals_dir, get_user_data_dir
@@ -143,7 +144,7 @@ def _read_journal(path: Path) -> dict[str, Any]:
             metadata.get("attachments"),
             mode="stored_metadata",
         ),
-        "word_count": len(body.split()),
+        "word_count": count_cjk_words(body),
     }
 
 
@@ -202,7 +203,7 @@ def _journal_summary(path: Path) -> dict[str, Any]:
             metadata.get("attachments"),
             mode="stored_metadata",
         ),
-        "word_count": len(body.split()),
+        "word_count": count_cjk_words(body),
     }
 
 

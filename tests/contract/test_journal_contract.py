@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 SCHEMA_VERSION = "m16.journal.v0"
 
 
@@ -258,3 +257,68 @@ def test_list_recent_empty_archive_is_success(tmp_path: Path) -> None:
     assert payload["data"]["total_found"] == 0
     assert payload["data"]["has_more"] is False
     assert payload["error"] is None
+
+
+def test_get_cjk_continuous_text_counts_by_character_not_whitespace_split(
+    tmp_path: Path,
+) -> None:
+    """Characterization: continuous CJK text must be counted per ideograph."""
+    data_dir = tmp_path / "Life-Index"
+    body = "今天天气很好我们去公园散步。"
+    journal = _seed_journal(
+        data_dir,
+        date="2026-05-29",
+        title="Chinese Entry",
+        body=body,
+    )
+    rel_path = _rel(journal, data_dir)
+
+    result = _run_journal(data_dir, "get", "--path", rel_path)
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+    # Legacy whitespace split would return 1; CJK-aware should return 13.
+    assert data["word_count"] == 13
+
+
+def test_get_mixed_cjk_ascii_counts_cjk_by_char_and_ascii_by_word(
+    tmp_path: Path,
+) -> None:
+    """Characterization: mixed CJK + ASCII must count each script correctly."""
+    data_dir = tmp_path / "Life-Index"
+    body = "Hello world 今天天气很好。"
+    journal = _seed_journal(
+        data_dir,
+        date="2026-05-30",
+        title="Mixed Entry",
+        body=body,
+    )
+    rel_path = _rel(journal, data_dir)
+
+    result = _run_journal(data_dir, "get", "--path", rel_path)
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+    # Hello(1) world(2) 今(3) 天(4) 天(5) 气(6) 很(7) 好(8)
+    assert data["word_count"] == 8
+
+
+def test_list_recent_cjk_word_count_is_character_based(tmp_path: Path) -> None:
+    """List summary must use CJK-aware word counts for mixed entries."""
+    data_dir = tmp_path / "Life-Index"
+    _seed_journal(
+        data_dir,
+        date="2026-05-29",
+        title="Chinese Entry",
+        body="今天天气很好我们去公园散步。",
+    )
+
+    result = _run_journal(data_dir, "list", "--recent", "--limit", "1")
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    data = payload["data"]
+    assert data["total_matches"] == 1
+    assert data["items"][0]["word_count"] == 13

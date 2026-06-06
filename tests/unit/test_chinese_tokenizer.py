@@ -9,6 +9,7 @@ import yaml
 from tools.lib.chinese_tokenizer import (
     CHINESE_STOP_WORDS,
     _process_text,
+    count_cjk_words,
     get_dict_hash,
     is_cjk,
     load_entity_dict,
@@ -27,9 +28,7 @@ def _make_entity_graph(tmp_dir: Path, entities: list[dict]) -> Path:
     """Create a temporary entity_graph.yaml and return its path."""
     tmp_dir.mkdir(parents=True, exist_ok=True)
     graph_path = tmp_dir / "entity_graph.yaml"
-    graph_path.write_text(
-        yaml.dump({"entities": entities}, allow_unicode=True), encoding="utf-8"
-    )
+    graph_path.write_text(yaml.dump({"entities": entities}, allow_unicode=True), encoding="utf-8")
     return graph_path
 
 
@@ -429,3 +428,43 @@ class TestStopwordPreservesIntent:
         result = segment_for_fts("好吗", mode="query")
         tokens = _tokens(result)
         assert "吗" not in tokens
+
+
+class TestCountCJKWords:
+    """Tests for count_cjk_words."""
+
+    def test_empty_string(self):
+        assert count_cjk_words("") == 0
+
+    def test_pure_english_legacy_split_behavior(self):
+        """English-only text falls back to len(text.split())."""
+        assert count_cjk_words("Hello world") == 2
+        assert count_cjk_words("  multiple   spaces  ") == 2
+
+    def test_pure_chinese_by_character(self):
+        assert count_cjk_words("今天天气很好") == 6
+
+    def test_pure_hiragana_by_character(self):
+        assert count_cjk_words("こんにちは") == 5
+
+    def test_pure_katakana_by_character(self):
+        assert count_cjk_words("カタカナ") == 4
+
+    def test_pure_hangul_by_character(self):
+        assert count_cjk_words("안녕하세요") == 5
+
+    def test_mixed_cjk_and_ascii(self):
+        """Mixed text counts CJK per char and ASCII alnum runs as words."""
+        assert count_cjk_words("Hello world 今天天气很好") == 8
+
+    def test_punctuation_and_whitespace_as_delimiters(self):
+        assert count_cjk_words("Hello, world! 今天天气很好。") == 8
+
+    def test_numbers_counted_as_words(self):
+        # 2024(1) 年(2) AI(3) 计(4) 划(5)
+        assert count_cjk_words("2024年AI计划") == 5
+
+    def test_no_cjk_script_means_legacy_behavior_with_markdown_heading(self):
+        """Markdown headings like '# Title' are preserved via legacy split."""
+        body = "# First Entry\n\nThis is a small test entry."
+        assert count_cjk_words(body) == len(body.split())
