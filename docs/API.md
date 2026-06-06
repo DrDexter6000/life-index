@@ -962,7 +962,7 @@ python -m tools journal list --recent
 | `data.metadata` | object | frontmatter 解析结果 |
 | `data.content` | string | journal 正文，不含 frontmatter |
 | `data.attachments` | array | 从 frontmatter `attachments` 规范化后的附件元数据 |
-| `data.word_count` | int | 基于正文空白分词的轻量计数 |
+| `data.word_count` | int | 基于正文的轻量计数：CJK 字符按字符计，非 CJK 字母数字连续片段按词计；纯非 CJK 文本保持空白分词口径 |
 
 附件项字段与 `attachment` 读取侧一致，当前包含
 `raw_path`、`path`、`name`、`description`、`source_url`、`content_type`、`size`。
@@ -3796,9 +3796,9 @@ python -m tools.build_index [options]
   "dry_run": true,
   "cache_version": {
     "exists": true,
-    "stored_schema_version": "v1.1.1",
+    "stored_schema_version": "v1.1.2",
     "stored_source_hash": "sha256:...",
-    "current_schema_version": "v1.1.1",
+    "current_schema_version": "v1.1.2",
     "version_match": true,
     "hash_match": true,
     "would_rebuild": false,

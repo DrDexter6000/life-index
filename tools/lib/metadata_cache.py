@@ -19,8 +19,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .paths import get_cache_dir, get_metadata_db_path, get_journals_dir, get_user_data_dir
 from .frontmatter import parse_journal_file
 from .path_contract import build_journal_path_fields
+from .chinese_tokenizer import count_cjk_words
 
-CACHE_VERSION_SCHEMA_VERSION = "v1.1.1"
+CACHE_VERSION_SCHEMA_VERSION = "v1.1.2"
 
 # 缓存存储目录 (deprecated: use getters)
 CACHE_DIR = get_cache_dir()  # deprecated: use get_cache_dir()
@@ -60,7 +61,8 @@ def init_metadata_cache() -> sqlite3.Connection:
     cursor = conn.cursor()
 
     # 创建元数据缓存表
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS metadata_cache (
             file_path TEXT PRIMARY KEY,
             date TEXT,
@@ -79,46 +81,59 @@ def init_metadata_cache() -> sqlite3.Connection:
             file_size INTEGER,
             cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS entry_relations (
             source_path TEXT NOT NULL,
             target_path TEXT NOT NULL,
             PRIMARY KEY (source_path, target_path)
         )
-        """)
+        """
+    )
 
     _ensure_metadata_cache_columns(conn)
 
     # 创建索引加速查询
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_date
         ON metadata_cache(date)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_topic
         ON metadata_cache(topic)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_project
         ON metadata_cache(project)
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_metadata_location
         ON metadata_cache(location)
-    """)
+    """
+    )
 
     # 创建缓存状态表
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS cache_meta (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """)
+    """
+    )
 
     conn.commit()
     return conn
@@ -186,7 +201,7 @@ def parse_and_cache_journal(conn: sqlite3.Connection, file_path: Path) -> Option
         people = json.dumps(metadata.get("people", []), ensure_ascii=False)
 
         # 计算字数（基于正文，不含 frontmatter）
-        word_count = len(metadata.get("_body", "").split())
+        word_count = count_cjk_words(metadata.get("_body", ""))
 
         # 更新缓存
         cursor = conn.cursor()
@@ -332,6 +347,7 @@ def get_all_cached_metadata(
     """获取所有缓存的元数据（用于L2搜索）"""
     close_conn = False
     if conn is None:
+        ensure_cache_version_current()
         conn = init_metadata_cache()
         close_conn = True
 
@@ -390,6 +406,21 @@ def get_all_cached_metadata(
     finally:
         if close_conn:
             conn.close()
+
+
+def ensure_cache_version_current() -> Dict[str, Any]:
+    """Ensure metadata cache rows match the current derived-field schema."""
+    state = evaluate_cache_state()
+    if not state["would_rebuild"]:
+        return {"rebuilt": False, "cache_version": state, "rebuild": None}
+
+    invalidate_cache()
+    rebuild = update_cache_for_all_journals()
+    write_cache_version(
+        invalidation_reason=",".join(state["reasons"]),
+        from_version=state.get("stored_schema_version") or "",
+    )
+    return {"rebuilt": True, "cache_version": state, "rebuild": rebuild}
 
 
 def invalidate_cache(file_path: Optional[Path] = None) -> None:
@@ -517,7 +548,7 @@ def get_cache_stats() -> Dict[str, Any]:
 
 
 # ============================================================
-# Cache Version Sidecar (v1.1.1)
+# Cache Version Sidecar
 # ============================================================
 
 

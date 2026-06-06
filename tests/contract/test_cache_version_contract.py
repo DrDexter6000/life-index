@@ -35,7 +35,7 @@ class TestCacheVersionSidecar:
         from tools.lib.metadata_cache import write_cache_version, read_cache_version
 
         data = write_cache_version(source_hash="sha256:abc123")
-        assert data["schema_version"] == "v1.1.1"
+        assert data["schema_version"] == "v1.1.2"
         assert data["source_hash"] == "sha256:abc123"
         assert "tool_version" in data
         assert "created_at" in data
@@ -211,7 +211,7 @@ class TestIndexCacheDryRun:
         version_dir = data_dir / ".life-index" / "cache"
         version_dir.mkdir(parents=True)
         sidecar = {
-            "schema_version": "v1.1.1",
+            "schema_version": "v1.1.2",
             "tool_version": "1.1.1",
             "created_at": "2026-05-22T00:00:00Z",
             "source_hash": actual_hash,
@@ -253,7 +253,7 @@ class TestHealthCacheAudit:
         version_dir = data_dir / ".life-index" / "cache"
         version_dir.mkdir(parents=True)
         sidecar = {
-            "schema_version": "v1.1.1",
+            "schema_version": "v1.1.2",
             "tool_version": "1.1.1",
             "created_at": "2026-05-22T00:00:00Z",
             "source_hash": "abc",
