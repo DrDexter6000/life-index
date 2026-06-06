@@ -121,6 +121,9 @@ class TestPhase4E2E:
 
     def test_semantic_query_finds_daughter(self, search_env):
         """T4.1: '想起女儿' should find daughter-related journals via semantic."""
+        if os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1":
+            pytest.skip("Semantic search unavailable in FTS-only mode (vector index skipped)")
+
         result = search_env(query="想起女儿", level=3, semantic=True)
         merged = result.get("merged_results", [])
         assert len(merged) >= 1, "Should find at least one result for '想起女儿'"
