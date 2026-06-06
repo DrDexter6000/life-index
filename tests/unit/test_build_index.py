@@ -171,9 +171,10 @@ class TestBuildAll:
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
     def test_build_all_vector_with_sqlite_vec(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
+        self, mock_update_fts, mock_file_lock, mock_lock_path, monkeypatch
     ):
         """Test vector index with sqlite-vec backend"""
+        monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
         mock_file_lock.return_value = mock_lock
@@ -200,9 +201,10 @@ class TestBuildAll:
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
     def test_build_all_vector_fallback_to_simple(
-        self, mock_update_fts, mock_file_lock, mock_lock_path
+        self, mock_update_fts, mock_file_lock, mock_lock_path, monkeypatch
     ):
         """Test vector index fallback to simple backend when sqlite-vec fails"""
+        monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
         mock_file_lock.return_value = mock_lock
@@ -666,8 +668,11 @@ class TestIntegration:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_full_workflow_success(self, mock_update_fts, mock_file_lock, mock_lock_path):
+    def test_full_workflow_success(
+        self, mock_update_fts, mock_file_lock, mock_lock_path, monkeypatch
+    ):
         """Test complete successful workflow"""
+        monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
         mock_file_lock.return_value = mock_lock
@@ -715,8 +720,11 @@ class TestIntegration:
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_partial_failure_continues(self, mock_update_fts, mock_file_lock, mock_lock_path):
+    def test_partial_failure_continues(
+        self, mock_update_fts, mock_file_lock, mock_lock_path, monkeypatch
+    ):
         """Test that FTS failure doesn't prevent vector index update"""
+        monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
         mock_file_lock.return_value = mock_lock
