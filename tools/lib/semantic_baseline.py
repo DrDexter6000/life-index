@@ -47,17 +47,39 @@ def compute_semantic_baseline(
 
         normalized_embeddings.append(vector / norm)
 
-    total_docs = len(normalized_embeddings)
-    if total_docs < 5:
+    embedding_matrix = np.vstack(normalized_embeddings) if normalized_embeddings else None
+    return compute_semantic_baseline_from_matrix(
+        embedding_matrix, sample_size=sample_size, seed=seed
+    )
+
+
+def compute_semantic_baseline_from_matrix(
+    embedding_matrix: np.ndarray | None, sample_size: int = 50, seed: int = 42
+) -> float:
+    """Compute P25 baseline from a normalized embedding matrix.
+
+    Args:
+        embedding_matrix: normalized float32/float64 matrix with one row per document.
+        sample_size: number of pseudo-queries to sample.
+        seed: random seed for reproducibility.
+
+    Returns:
+        P25 percentile value (float). Returns 0.0 if insufficient data.
+    """
+    if embedding_matrix is None or sample_size <= 0:
         return 0.0
 
-    embedding_matrix = np.vstack(normalized_embeddings)
+    matrix = np.asarray(embedding_matrix, dtype=np.float32)
+    if matrix.ndim != 2 or matrix.shape[0] < 5 or matrix.shape[1] == 0:
+        return 0.0
+
+    total_docs = matrix.shape[0]
     rng = np.random.default_rng(seed)
     sample_indices = rng.choice(total_docs, size=min(sample_size, total_docs), replace=False)
 
     max_scores: list[float] = []
     for index in sample_indices:
-        similarities = embedding_matrix @ embedding_matrix[index]
+        similarities = matrix @ matrix[index]
         similarities[index] = -1.0  # exclude self-match
         max_scores.append(float(np.max(similarities)))
 

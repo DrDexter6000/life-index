@@ -102,7 +102,17 @@ def compute_fts_checksum(fts_db: Path) -> str:
 
 
 def compute_vector_checksum(vec_pkl: Path) -> str:
-    """Compute MD5 hex digest of vector pickle file. Returns '' if missing."""
+    """Compute MD5 digest of vector metadata pickle plus matrix sidecar.
+
+    Returns '' if the metadata pickle is missing. The pickle remains the
+    "index built" signal, while the split matrix sidecar participates in the
+    freshness checksum when present.
+    """
     if not vec_pkl.exists():
         return ""
-    return hashlib.md5(vec_pkl.read_bytes()).hexdigest()
+    digest = hashlib.md5()
+    digest.update(vec_pkl.read_bytes())
+    matrix_path = vec_pkl.with_name("vectors_simple_emb.npz")
+    if matrix_path.exists():
+        digest.update(matrix_path.read_bytes())
+    return digest.hexdigest()
