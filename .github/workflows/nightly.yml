@@ -1,14 +1,26 @@
 name: Nightly
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '0 2 * * *'  # 02:00 UTC daily
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  nightly:
-    runs-on: ubuntu-latest
-    name: Nightly Gate (full suite + benchmarks)
+  full-suite:
+    runs-on: ${{ matrix.os }}
+    name: Tier 2 Full Suite (${{ matrix.os }}, Python 3.12)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
     steps:
       - uses: actions/checkout@v5
@@ -29,11 +41,42 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-timeout
+          pip install pytest pytest-cov pytest-timeout
           pip install -e ".[dev]"
 
-      - name: Run nightly tests
-        run: pytest -m nightly -v --timeout=600
+      - name: Run full pytest suite
+        run: pytest tests -v --timeout=600
 
-      - name: Run benchmarks
-        run: pytest tests/benchmark -v --timeout=600
+  package-onboarding:
+    runs-on: ubuntu-latest
+    name: Tier 2 Package + Onboarding Smoke
+    env:
+      LIFE_INDEX_DATA_DIR: ${{ runner.temp }}/life-index-smoke-data
+      LIFE_INDEX_INDEX_FTS_ONLY: "1"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+          python -m build
+
+      - name: Install built wheel in clean venv
+        run: |
+          python -m venv .venv-wheel-smoke
+          .venv-wheel-smoke/bin/python -m pip install --upgrade pip
+          .venv-wheel-smoke/bin/python -m pip install dist/*.whl
+
+      - name: Run package onboarding smoke
+        run: |
+          mkdir -p "$LIFE_INDEX_DATA_DIR"
+          .venv-wheel-smoke/bin/life-index version --json
+          .venv-wheel-smoke/bin/life-index bootstrap --json
+          .venv-wheel-smoke/bin/life-index health --json
