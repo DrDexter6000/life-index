@@ -8,6 +8,7 @@ import types
 import pytest
 
 from tools.__main__ import health_check
+from tools.lib.semantic_status import write_semantic_status
 from tools.search_journals.__main__ import _apply_presentation_layer
 
 
@@ -56,6 +57,33 @@ class TestHealthCheck:
         assert data_directory_check["path"] == str(data_dir)
         assert data_directory_check["journal_count"] == 1
         assert search_index_check["path"] == str(index_dir)
+
+    def test_health_reports_semantic_index_status(self, tmp_path, monkeypatch, capsys):
+        data_dir = tmp_path / "life-index-data"
+        journals_dir = data_dir / "Journals"
+        journals_dir.mkdir(parents=True)
+        (journals_dir / "life-index_2026-01-01_001.md").write_text("# test\n", encoding="utf-8")
+        index_dir = data_dir / ".index"
+        index_dir.mkdir(parents=True)
+        (index_dir / "journals_fts.db").write_text("fts", encoding="utf-8")
+        write_semantic_status("building", index_dir=index_dir, pid=1234)
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
+        monkeypatch.setitem(
+            sys.modules,
+            "sentence_transformers",
+            types.SimpleNamespace(__version__="test"),
+        )
+
+        health_check()
+
+        payload = json.loads(capsys.readouterr().out)
+        search_index_check = next(
+            check for check in payload["data"]["checks"] if check["name"] == "search_index"
+        )
+        assert search_index_check["semantic_status"] == "building"
+        assert search_index_check["semantic"]["status"] == "building"
 
 
 class TestMainCli:

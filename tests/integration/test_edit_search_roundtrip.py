@@ -112,7 +112,9 @@ def test_edit_pending_is_auto_consumed_by_next_search(isolated_data_dir: Path, m
 
     real_build_all = build_index_module.build_all
 
-    def fts_only_build_all(incremental: bool = True) -> dict:
+    def fts_only_build_all(
+        incremental: bool = True, fts_only: bool = False, vec_only: bool = False
+    ) -> dict:
         return real_build_all(incremental=incremental, fts_only=True)
 
     monkeypatch.setattr(build_index_module, "build_all", fts_only_build_all)

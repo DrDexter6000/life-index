@@ -19,6 +19,7 @@ from ..lib.search_constants import (
     SEMANTIC_TOP_K_DEFAULT,
     SEMANTIC_SNIPPET_LENGTH,
 )
+from ..lib.semantic_status import get_semantic_index_status
 
 from .utils import parse_frontmatter
 
@@ -29,6 +30,15 @@ SEMANTIC_MISSING_INDEX_NOTE = "向量索引未建立，请运行 life-index inde
 
 def get_semantic_runtime_status() -> Dict[str, str | bool]:
     """Return whether semantic search can run in the current environment."""
+    semantic_status = get_semantic_index_status()
+    current_status = str(semantic_status.get("status", "disabled"))
+    if current_status != "ready":
+        return {
+            "available": False,
+            "reason": f"semantic index {current_status}",
+            "note": "语义索引尚未就绪，已降级为关键词搜索。",
+        }
+
     backend = get_backend_name(EMBEDDING_MODEL_CONFIG)
     if backend != "sentence-transformers":
         return {

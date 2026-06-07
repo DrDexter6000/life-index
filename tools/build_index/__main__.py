@@ -13,6 +13,7 @@ from . import build_all, show_stats, check_index
 from ..lib.config import ensure_dirs
 from ..lib.metadata_cache import get_cache_stats
 from ..lib.observability import build_provenance_envelope
+from ..lib.semantic_status import start_background_semantic_build, write_semantic_status
 from ..lib.trace import Trace
 
 
@@ -48,6 +49,12 @@ Examples:
     parser.add_argument("--fts-only", action="store_true", help="Only update FTS index")
 
     parser.add_argument("--vec-only", action="store_true", help="Only update vector index")
+
+    parser.add_argument(
+        "--with-semantic",
+        action="store_true",
+        help="Build semantic/vector index in the foreground (explicit opt-in)",
+    )
 
     parser.add_argument("--stats", action="store_true", help="Show index statistics")
 
@@ -98,8 +105,11 @@ Examples:
         show_stats()
         return
 
-    effective_fts_only = args.fts_only or (
-        os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1" and not args.vec_only
+    env_fts_only = os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1" and not args.vec_only
+    default_foreground_fts_only = not args.vec_only and not args.with_semantic
+    effective_fts_only = args.fts_only or env_fts_only or default_foreground_fts_only
+    should_start_background_semantic = (
+        not args.fts_only and not env_fts_only and not args.vec_only and not args.with_semantic
     )
 
     # 执行索引构建
@@ -110,6 +120,16 @@ Examples:
                 fts_only=effective_fts_only,
                 vec_only=args.vec_only,
             )
+
+    if result.get("success") and (args.fts_only or env_fts_only):
+        status = write_semantic_status("disabled")
+        result["semantic_status"] = status["status"]
+        result["semantic"] = status
+
+    if result.get("success") and should_start_background_semantic:
+        background_status = start_background_semantic_build(incremental=not args.rebuild)
+        result["semantic_status"] = background_status.get("status", "failed")
+        result["semantic_background"] = background_status
 
     result["_trace"] = trace.to_dict()
 
@@ -156,6 +176,7 @@ Examples:
                 "rebuild": args.rebuild,
                 "fts_only": effective_fts_only,
                 "vec_only": args.vec_only,
+                "with_semantic": args.with_semantic,
             },
         )
         result["schema_version"] = provenance_envelope["schema_version"]

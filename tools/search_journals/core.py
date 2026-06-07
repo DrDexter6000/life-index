@@ -1186,7 +1186,7 @@ def hierarchical_search(
             from ..build_index import build_all as _build_all
 
             logger.info("Pending writes detected, triggering incremental index update")
-            build_result = _build_all(incremental=True)
+            build_result = _build_all(incremental=True, fts_only=True)
             build_success = (
                 build_result.get("success", True) if isinstance(build_result, dict) else True
             )
@@ -1224,9 +1224,7 @@ def hierarchical_search(
                 logger.info(
                     "Index stale, triggering incremental update: %s", ", ".join(_freshness.issues)
                 )
-                build_kwargs = {"incremental": True}
-                if not semantic:
-                    build_kwargs["fts_only"] = True
+                build_kwargs = {"incremental": True, "fts_only": True}
                 _build_all(**build_kwargs)
                 result.setdefault("index_status", {})["auto_updated"] = True
             except Exception as exc:

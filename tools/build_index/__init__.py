@@ -18,7 +18,7 @@ from pathlib import Path
 
 # 导入配置 (relative imports from parent tools package)
 from ..lib.config import get_model_cache_dir, FILE_LOCK_TIMEOUT_REBUILD
-from ..lib.paths import get_user_data_dir
+from ..lib.paths import get_user_data_dir, get_vec_index_path
 from ..lib.search_index import (
     update_index as update_fts_index,
     get_stats as get_fts_stats,
@@ -30,6 +30,7 @@ from ..lib.index_manifest import (
     compute_fts_checksum,
     compute_vector_checksum,
 )
+from ..lib.semantic_status import write_semantic_status
 from ..lib.metadata_cache import (
     get_cache_stats,
     invalidate_cache,
@@ -69,6 +70,7 @@ def build_all(
         "duration_seconds": 0.0,
         "rebuild_hint": "",
         "auto_rebuild_triggered": False,  # Task 1.1.2: version mismatch auto-rebuild flag
+        "semantic_status": "disabled" if fts_only else "building",
     }
 
     import time
@@ -112,6 +114,7 @@ def build_all(
 
             # 更新向量索引
             if not fts_only:
+                write_semantic_status("building")
                 logger.info("Updating vector index...")
                 vec_success = False
 
@@ -176,6 +179,16 @@ def build_all(
 
                 vector_result = result.get("vector") or {}
                 if not fts_only and vector_result.get("success"):
+                    simple_vector_ready = get_vec_index_path().exists()
+                    if simple_vector_ready:
+                        result["semantic_status"] = "ready"
+                        write_semantic_status("ready")
+                    else:
+                        result["semantic_status"] = "failed"
+                        write_semantic_status(
+                            "failed",
+                            error="simple vector index missing after vector build",
+                        )
                     try:
                         import sqlite3
 
@@ -196,10 +209,18 @@ def build_all(
                             logger.info(f"  ✓ Semantic baseline P25: {baseline_p25:.4f}")
                     except Exception as e:
                         logger.warning(f"  ⚠ Semantic baseline computation skipped: {e}")
+                elif not fts_only:
+                    result["semantic_status"] = "failed"
+                    write_semantic_status(
+                        "failed",
+                        error=str(vector_result.get("error") or "semantic index build failed"),
+                    )
+            else:
+                result["semantic_status"] = "disabled"
 
             # Round 12 Phase 2: Write manifest after both phases complete
             from datetime import datetime as _dt
-            from ..lib.paths import get_fts_db_path, get_vec_index_path
+            from ..lib.paths import get_fts_db_path
 
             fts_success = (result.get("fts") or {}).get("success", False)
             vec_success = (result.get("vector") or {}).get("success", False)

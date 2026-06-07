@@ -44,13 +44,14 @@ Commands:
 import json
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Tuple, cast
+from typing import Any, Dict, List, Tuple
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 
 from tools.lib.journal_files import count_journal_files
 from tools.lib.config import get_model_cache_dir  # noqa: F401 — used via monkeypatch in tests
 from tools.lib.paths import get_user_data_dir, get_journals_dir
+from tools.lib.bootstrap_manifest import read_bootstrap_manifest as _read_bootstrap_manifest
 
 HEALTH_SCHEMA_VERSION = "m16.health.v0"
 
@@ -58,11 +59,7 @@ BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-ma
 
 
 def read_bootstrap_manifest() -> Dict[str, Any]:
-    with BOOTSTRAP_MANIFEST_PATH.open("r", encoding="utf-8") as f:
-        payload = json.load(f)
-    if not isinstance(payload, dict):
-        raise ValueError("bootstrap-manifest.json must contain a JSON object")
-    return cast(Dict[str, Any], payload)
+    return _read_bootstrap_manifest(BOOTSTRAP_MANIFEST_PATH)
 
 
 def get_package_version() -> str:
@@ -201,13 +198,21 @@ def _check_index() -> Tuple[Dict[str, Any], str]:
     vec_db = index_dir / "journals_vec.db"
     vec_pkl = index_dir / "vectors_simple.pkl"
     data_exists = get_user_data_dir().exists()
+    from tools.lib.semantic_status import get_semantic_index_status
+
+    semantic = get_semantic_index_status(index_dir)
+    semantic_status = str(semantic.get("status", "disabled"))
     check = {
         "name": "search_index",
         "status": "ok" if fts_db.exists() else "info",
         "fts_index_exists": fts_db.exists(),
         "vector_index_exists": vec_db.exists() or vec_pkl.exists(),
+        "semantic_status": semantic_status,
+        "semantic": semantic,
         "path": str(index_dir),
     }
+    if semantic_status == "failed":
+        return check, f"Semantic index failed: {semantic.get('error', 'unknown error')}"
     if not fts_db.exists() and data_exists:
         return check, "Search index not built. Run: life-index index"
     return check, ""

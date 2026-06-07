@@ -10,11 +10,11 @@
 
 ## 1. Goal
 
-Install and initialize Life Index on the user's machine, verify the installation is functional, and complete the first write/search cycle to confirm end-to-end operation.
+Install and initialize Life Index on the user's machine by mechanically executing the `bootstrap --json` gate and its `safe_next_steps`. Do not attempt to independently detect or reclassify the install state.
 
-This document is now a **smart entrypoint** rather than a fresh-install-only script. Your first job is to detect whether the machine is in a fresh install state, an upgrade state, or a partial/broken state.
+This document is a **bootstrap-driven execution script**, not a decision tree. The `route` and `safe_next_steps` returned by `bootstrap --json` are the sole authority for what happens next.
 
-You are acting on behalf of a user. Your job is to execute the installation workflow safely, verify each stage, and report the result back clearly.
+You are acting on behalf of a user. Your job is to execute the installation workflow safely, run only the steps that `bootstrap` prescribes, and report the result back clearly.
 
 Before taking any action, read this entire document once.
 
@@ -78,16 +78,26 @@ If `needs_human` is non-empty, relay each item to the user and wait for resoluti
 
 | `route` | Meaning | Proceed to |
 |---|---|---|
-| `fresh_install` | No existing journal data found | Steps 4.1 → 4.3 → 5.1 → 5.4 |
-| `upgrade` | Existing journal data found | Sync/reinstall as needed → run all `safe_next_steps` in order → Steps 5.1 → 5.4 |
+| `fresh_install` | No existing journal data found | Execute `safe_next_steps` in order, then optional verification |
+| `upgrade` | Existing journal data found | Execute `safe_next_steps` in order only |
 
-If `safe_next_steps` is non-empty, run them in order before the route's verification steps. On `upgrade`, `life-index health` should appear as the final safe next step. If health returns `status: "unhealthy"` after sync/reinstall/migration checks, treat this as **Repair / Ambiguous State**:
+If `safe_next_steps` is non-empty, run them in order and no others. On `upgrade`, `safe_next_steps` typically contains only `life-index health`. Do **not** append additional steps (index, write, search) beyond what `safe_next_steps` lists.
+
+If `safe_next_steps` is empty, onboarding completes immediately after Step 0.
+
+If health returns `status: "unhealthy"` after running the safe next steps, treat this as **Repair / Ambiguous State**:
 
 1. do **not** pretend this is a clean fresh install;
-2. use this document's sync / reinstall / verification flow as the repair baseline;
+2. collect `issues` and report them to the user; do not auto-repair;
 3. if state remains unclear after basic inspection, ask the user before destructive cleanup.
 
 **Checkout adoption rule**: only adopt a checkout when `detected_state.checkout_assessment.safe_to_adopt` is `true`. A checkout with no dev signals is still not adoptable unless it came from a host-managed path or was explicitly user-designated.
+
+### Step 0.5: Bootstrap results are the sole authority — no second-guessing
+
+- **Forbidden**: After `bootstrap --json` returns a `route`, do not reclassify fresh/upgrade/repair based on `health` output, index state, or any other local signal.
+- **Forbidden**: Do not interpret `route: "upgrade"` combined with "pre-init degraded" as a reason to run the full fresh-install workflow.
+- **Allowed**: Only after all `safe_next_steps` complete, if the state is still ambiguous, report to the user and ask for direction. Do not independently take repair / delete / rebuild actions.
 
 ---
 
@@ -101,8 +111,8 @@ Before starting, verify these requirements are met:
 |:---|:---|:---|
 | Python | `python3 --version` or `python --version` | 3.11+ |
 | Git | `git --version` | Any recent |
-| Disk space | ~700MB available | For code, venv, and embedding model (torch ~190MB CPU-only, model ~80MB) |
-| Network | Internet connection | For cloning and model download |
+| Disk space | ~700MB available | For code, venv, and optional semantic model cache |
+| Network | Internet connection | For cloning and optional background semantic model download |
 
 **Action**: Run the verification commands. If any fail, stop and report the missing prerequisite to the user.
 
@@ -127,7 +137,7 @@ Execute these steps in order. Do not skip steps.
 **Platform Command Fallback Rule**:
 - If the host Agent platform provides its own skill install / add / setup commands, you may try them first only if the user explicitly asked for that platform-specific path.
 - If those commands fail, are unavailable, or do not clearly complete the installation, do **not** get stuck there.
-- Fall back to the standard repository-driven path in this document: `git clone` → `python -m venv .venv` → `pip install -e .` → `life-index index` → verification.
+- Fall back to the standard repository-driven path in this document: `git clone` → `python -m venv .venv` → `pip install -e .`, then return to Step 0.2 to run `bootstrap --json` and follow `safe_next_steps`.
 - Prefer the documented repository workflow over undocumented host-platform behavior.
 
 **Canonical Path Guardrail**:
@@ -205,26 +215,17 @@ If the target machine has no GPU (common for agent environments), install the CP
 
 ---
 
-## 5. Initialization Workflow
+## 5. Initialization & Verification Workflow
 
-Execute these steps in order. Each step must succeed before proceeding.
+This section is **conditional** on `bootstrap --json` output. Do not execute any step unless it appears in `safe_next_steps` or is explicitly required for the returned `route`.
 
-After the required verification flow is complete, an **optional customization step** may follow. That step should follow the guardrails in this document plus the current configuration contracts in `docs/API.md` / `tools/lib/config.py`; the older review-scoped customization protocol is no longer the active reference.
+### 5.0 Pre-rule
 
-### Optional Customization Step (Post-Verification)
+- Run **only** the steps listed in `safe_next_steps`, in array order.
+- If `safe_next_steps` is empty, onboarding is complete after Step 0.
+- `safe_next_steps` may contain `life-index index`, `life-index health`, `life-index migrate --dry-run`, etc. Execute them exactly as listed.
 
-After installation, first write, and first search verification all pass, the Agent may offer two optional customizations:
-
-1. **专用触发词**：采用 `"/life-index" + "用户自定义触发词"` 的组合；如用户同意，Agent 可修改 `SKILL.md` 中的 trigger 列表与对应示例
-2. **默认地址偏好**：如用户同意，Agent 可创建或更新 `~/Documents/Life-Index/.life-index/config.yaml` 中的 `defaults.location`
-
-**Guardrails**:
-- 不得移除 `/life-index`
-- 不得重写与触发词无关的 workflow 段落
-- 默认地址配置必须诚实区分“已保存”与“已验证生效”
-- 如用户未明确要求个性化，不要在安装主流程中强行插入该步骤
-
-### Step 5.1: Build Index (Initialization)
+### Step 5.1: Build Index (Only if in `safe_next_steps`)
 
 ```bash
 # Linux/macOS:
@@ -235,24 +236,26 @@ After installation, first write, and first search verification all pass, the Age
 ```
 
 **What Happens**:
-1. Creates `~/Documents/Life-Index/` directory structure
-2. Downloads ~80MB embedding model (first run only, takes 1-3 minutes)
-3. Initializes FTS5 and vector indexes
+1. Creates / updates the FTS5 keyword search index in the foreground
+2. Starts semantic / vector indexing in the background when supported
+3. Returns before model loading or embedding work blocks the onboarding flow
 
 **Success Criteria**:
 - Command completes without errors
-- Progress shown for model download (if first run)
-- Returns success message
+- Keyword / FTS indexing succeeds
+- Semantic status is reported as `building`, `ready`, `disabled`, or `failed`
+- No foreground model download is required for onboarding success
 
-**Expected Wait**: 1-3 minutes for model download on first run. Do not interrupt.
+**Expected Wait**: The foreground command should return promptly after FTS work. Do not wait for semantic model download in the onboarding foreground path.
+Installation succeeds when keyword search is ready. Do not wait for `semantic_status: ready`.
 
 **Failure Handling**:
-- If hangs >5 minutes: Report "model download timeout" to user
+- If semantic status is `failed`: report it as non-blocking unless `safe_next_steps` explicitly requires semantic readiness
 - If errors: Capture full output and report
 
 ---
 
-### Step 5.2: Health Check
+### Step 5.2: Health Check (Only if in `safe_next_steps`)
 
 ```bash
 # Linux/macOS:
@@ -267,11 +270,11 @@ After installation, first write, and first search verification all pass, the Age
 - `status` is "healthy" or "degraded" (not "unhealthy")
 - No critical errors in the returned `issues` list
 
-**Known Nuance**: Pre-init `health` may legitimately report "degraded" before initial indexing. This is expected and acceptable. The post-init health check (after Step 5.1) should show "healthy" or acceptable "degraded" state.
+**Known Nuance**: Pre-init `health` may legitimately report "degraded" before initial indexing. This is expected and acceptable.
 
 **Acceptable Warnings**:
 - `virtual_env: "warning"` — Expected if running via full path
-- `sentence_transformers: "warning"` — Optional; keyword search remains available when semantic dependencies are unavailable
+- `sentence_transformers: "warning"` — Semantic search is optional; keyword search remains available. Record as `semantic_status: "building"` or `"disabled"`, not a failure.
 
 **Post-Round 6 Note**:
 The health response may include an `events` array with piggyback notifications (e.g., writing streak reminders, schema migration suggestions). These are informational and do not indicate errors. You may surface relevant events to the user at your discretion.
@@ -282,97 +285,65 @@ The health response may include an `events` array with piggyback notifications (
 
 ---
 
-### Step 5.3: First Write
+### Step 5.3: Optional Sandboxed Keyword-Only Smoke Test (Non-blocking)
 
-Create the first journal entry to verify write functionality.
+This step is **optional** and does **not** affect onboarding success. Run it only if you want to verify the CLI pipe is functional.
 
-Use the machine's current local date at execution time, formatted as `YYYY-MM-DD`.
-Do **not** write placeholder text such as `System current time` or `{TODAY}` literally into the JSON payload.
+Do not write a smoke journal into the user's real `~/Documents/Life-Index/` directory. Use a temporary sandbox through `LIFE_INDEX_DATA_DIR`, create one disposable Markdown file inside that sandbox, build only the keyword index, then search with `--no-semantic`.
 
 **Linux/macOS**:
 ```bash
+SMOKE_DIR=$(mktemp -d)
 TODAY=$(date +%F)
+export LIFE_INDEX_DATA_DIR="$SMOKE_DIR"
+mkdir -p "$LIFE_INDEX_DATA_DIR/Journals/${TODAY:0:4}/${TODAY:5:2}"
+cat > "$LIFE_INDEX_DATA_DIR/Journals/${TODAY:0:4}/${TODAY:5:2}/life-index_${TODAY}_001.md" <<EOF
+---
+title: Smoke Test Entry
+date: $TODAY
+topic: test
+---
+Temporary sandbox onboarding smoke keyword.
+EOF
 
-.venv/bin/life-index write --data "{
-  \"title\": \"First Journal Entry\",
-  \"content\": \"Today I set up Life Index. Looking forward to recording my journey.\",
-  \"date\": \"$TODAY\",
-  \"topic\": [\"life\"],
-  \"abstract\": \"Initial setup of Life Index journaling system.\",
-  \"mood\": [\"hopeful\"],
-  \"tags\": [\"setup\"],
-  \"people\": [],
-  \"project\": \"\",
-  \"links\": [],
-  \"entities\": []
-}"
+.venv/bin/life-index index --fts-only --json
+.venv/bin/life-index search --query "smoke" --no-semantic
+rm -rf "$SMOKE_DIR"
+unset LIFE_INDEX_DATA_DIR
 ```
 
-**Windows (Recommended: File-based)**:
+**Windows (PowerShell)**:
 ```powershell
-# Compute current local date first, then create JSON file (avoids escaping issues)
+$smokeDir = Join-Path $env:TEMP ("life-index-onboarding-smoke-" + [guid]::NewGuid())
 $today = Get-Date -Format 'yyyy-MM-dd'
+$env:LIFE_INDEX_DATA_DIR = $smokeDir
+$journalDir = Join-Path $smokeDir ("Journals\{0}\{1}" -f $today.Substring(0,4), $today.Substring(5,2))
+New-Item -ItemType Directory -Force -Path $journalDir | Out-Null
+@"
+---
+title: Smoke Test Entry
+date: $today
+topic: test
+---
+Temporary sandbox onboarding smoke keyword.
+"@ | Set-Content -LiteralPath (Join-Path $journalDir ("life-index_{0}_001.md" -f $today)) -Encoding UTF8
 
-$json = @"
-{
-  "title": "First Journal Entry",
-  "content": "Today I set up Life Index. Looking forward to recording my journey.",
-  "date": "$today",
-  "topic": ["life"],
-  "abstract": "Initial setup of Life Index journaling system.",
-  "mood": ["hopeful"],
-  "tags": ["setup"],
-  "people": [],
-  "project": "",
-  "links": [],
-  "entities": []
-}
-"@
-$json | Out-File -FilePath "first-entry.json" -Encoding utf8
-.venv\Scripts\life-index write --data @first-entry.json
+.venv\Scripts\life-index index --fts-only --json
+.venv\Scripts\life-index search --query "smoke" --no-semantic
+Remove-Item -LiteralPath $smokeDir -Recurse -Force
+Remove-Item Env:\LIFE_INDEX_DATA_DIR
 ```
 
-**Success Criteria**:
-- `success: true`
-- `journal_path` returned with valid path
-- File exists at `~/Documents/Life-Index/Journals/YYYY/MM/life-index_YYYY-MM-DD_001.md`
-- If `needs_confirmation` is returned, include the confirmation message in your final report instead of inventing your own summary
-
-**Failure Handling**:
-- If JSON parse error: On Windows, use file-based input (`@file.json`)
-- If missing required fields error: Include all fields shown in example
-- If write fails: Capture error code and report
+**Smoke Test Reporting**:
+- If it passes: mention it in the final report as "CLI pipe verified with temporary sandbox keyword-only search"
+- If it fails: mention it as "optional sandbox smoke test failed" but do **not** mark onboarding as failed
+- If cleanup fails: report the sandbox path; do **not** touch the user's real data directory
 
 ---
 
-### Step 5.4: First Search
+### Step 5.4: Optional Customization (Post-Verification)
 
-Verify the entry can be retrieved via search.
-
-If this is the first search after a write, the command may first consume pending index updates and load search models/caches. A 10-30 second first run is expected behavior, not a failure.
-
-```bash
-# Linux/macOS:
-.venv/bin/life-index search --query "First Journal"
-
-# Windows:
-.venv\Scripts\life-index search --query "First Journal"
-```
-
-**Success Criteria**:
-- `success: true`
-- Returned search payload includes at least one matching result
-- The entry just written appears in the returned results
-
-**Failure Handling**:
-- If `total: 0`: Run `.venv/bin/life-index index` (or Windows equivalent) to rebuild index, then retry search
-- If errors: Capture and report
-
----
-
-### Step 5.5: Optional Customization (Post-Install Personalization)
-
-Run this step **only after** Steps 5.1-5.4 succeed. This step is optional — skip if the user declines.
+Run this step **only after** all `safe_next_steps` complete. This step is optional — skip if the user declines.
 
 **A. Trigger phrase** — Suggest the user set a custom trigger phrase in the form `/life-index <their phrase>` (e.g., `/life-index 记日志: 今天状态不错`). If agreed, update the trigger list in `SKILL.md` — keep `/life-index`, keep examples consistent, do not touch unrelated sections.
 
@@ -382,9 +353,9 @@ Run this step **only after** Steps 5.1-5.4 succeed. This step is optional — sk
 
 ---
 
-### Step 5.6: Optional Automation Setup Handoff
+### Step 5.5: Optional Automation Setup Handoff
 
-Run this step **only after** Steps 5.1-5.5 complete. This step is optional.
+Run this step **only after** all `safe_next_steps` and optional customization complete. This step is optional.
 
 If the user wants recurring automation (monthly/yearly reports, periodic index rebuilds), explain that Life Index has no built-in scheduler and should be orchestrated by the host platform's scheduling mechanism.
 
@@ -394,18 +365,18 @@ If the user wants recurring automation (monthly/yearly reports, periodic index r
 
 ## 6. Success Criteria Summary
 
-| Step | Success Indicator |
-|:---|:---|
-| Clone | Repository exists, `SKILL.md` present |
-| Venv | `.venv/` directory created |
-| Install | "Successfully installed life-index" message |
-| Index | Command completes, model downloaded |
-| Health | `success: true`, `status` not "unhealthy" |
-| Schema Migration (upgrade only) | `migrate --dry-run` shows `needs_migration: 0` or user acknowledged `needs_agent` items |
-| First Write | `success: true`, `journal_path` returned |
-| First Search | `success: true`, `total` >= 1, entry found |
-| Optional Customization | User-approved personalization applied or explicitly skipped |
-| Optional Automation Setup | User either skipped automation or was correctly handed off to `SCHEDULE.md` after successful onboarding |
+| Step | Success Indicator | Applicable Route |
+|:---|:---|:---|
+| Authority Refresh | `bootstrap-manifest.json` + `required_authority_docs` refreshed | all |
+| Bootstrap Gate | `route` returned, `needs_human` handled | all |
+| Safe Next Steps | All `safe_next_steps` completed or passed | all |
+| Health (if in safe_next_steps) | `success: true`, `status` not "unhealthy" | all |
+| Semantic Status | `ready` / `building` / `disabled` / `failed` (reported, non-blocking) | all |
+| Keyword Status | `ready` (FTS5 is the core capability) | all |
+| Optional Smoke Test | `write`+`search` pass or fail (does not affect success) | fresh_install only |
+| Schema Migration (upgrade) | `migrate --dry-run` shows `needs_migration: 0` or user acknowledged | upgrade only |
+| Optional Customization | User-approved personalization applied or explicitly skipped | all |
+| Optional Automation Setup | User either skipped automation or was correctly handed off to `SCHEDULE.md` after successful onboarding | all |
 
 ---
 
@@ -421,20 +392,20 @@ If the user wants recurring automation (monthly/yearly reports, periodic index r
 **Cause**: PowerShell escaping issues
 **Fix**: Use file-based input: `--data @file.json`
 
-### Index Build Hangs
+### Semantic Index Still Building
 
-**Cause**: Downloading ~80MB embedding model
-**Fix**: Wait 1-3 minutes, do not interrupt
+**Cause**: Semantic / vector indexing is optional and may build in the background
+**Fix**: Report `semantic_status`; do not block onboarding or retry foreground model loading
 
 ### No Search Results
 
-**Cause**: Index not built or corrupted
-**Fix**: Run `life-index index` to rebuild
+**Cause**: Index not built or corrupted; or keyword-only search legitimately returned zero matches
+**Fix**: If `safe_next_steps` includes `index`, run it. Otherwise, report the empty result to the user without auto-rebuilding.
 
 ### Health Shows "degraded"
 
 **Cause**: Data directory, search index, or embedding model is not fully initialized yet
-**Fix**: If this happened before the initial `life-index index`, continue with indexing. If it still happens after indexing, include the issues list in the final report.
+**Fix**: If `safe_next_steps` includes `index`, run it, then re-run health. If `safe_next_steps` does not include `index`, report the health issues to the user and do not auto-run index. A degraded status with acceptable warnings is still a passing result.
 
 ### Venv Corrupted
 
@@ -463,6 +434,8 @@ Report back to the user using this structure. The entire report must be in one l
 
 **Status**: ✅ Success (or ❌ Failed with errors)
 
+**Route**: <fresh_install / upgrade>
+
 **Installation Location**: <full path to life-index directory>
 
 **Data Directory**: ~/Documents/Life-Index/
@@ -472,15 +445,14 @@ Report back to the user using this structure. The entire report must be in one l
 - Virtual environment: <active/inactive>
 - Dependencies: <all installed/missing: X>
 
-**First Journal**: <path to first entry>
-- Title: <title>
-- Date: <date>
-- Location: <location>
-- Weather: <weather>
+**Semantic Status**: <ready / building / disabled / failed>
+**Keyword Status**: <ready / degraded / failed>
 
-**Search Test**: <passed/failed>
-- Query: "First Journal"
-- Results found: <number>
+**Safe Next Steps Executed**: <list of steps run from safe_next_steps>
+
+**Optional Smoke Test**: <passed/failed/skipped>
+- If passed: "CLI pipe verified with temporary sandbox keyword-only search"
+- If failed: "Optional smoke test failed — does not affect installation success"
 
 **Customization**:
 - Trigger phrase: <report as combined form `/life-index [user phrase]` only; never separate>
@@ -498,7 +470,7 @@ Keep it concise — this is a welcome message, not a manual.>
 **Notes**:
 - <any warnings or non-blocking issues>
 - <reminder about Windows path syntax if applicable>
-- <whether `needs_confirmation` was returned by first write>
+- <whether semantic search is still building or disabled>
 ```
 
 ---
@@ -512,7 +484,10 @@ Keep it concise — this is a welcome message, not a manual.>
 - Require `gh` CLI or any GitHub-specific tools
 - Create MCP server configurations (not supported)
 - Modify repository source code during installation, except the explicitly allowed trigger-surface edits in `SKILL.md` during optional customization
-- Skip the health check or first write/search verification
+- Skip the health check when it is present in `safe_next_steps`
+- Treat `write`/`search` as mandatory install success gates
+- Wait for `semantic_status: ready` before declaring installation success
+- Re-interpret bootstrap `route` based on local state
 
 ### Do:
 - Keep all user data in `~/Documents/Life-Index/` (separate from code)
@@ -550,6 +525,7 @@ Keep it concise — this is a welcome message, not a manual.>
 | `life-index index --rebuild` | Full index rebuild |
 | `life-index write --data '{...}'` | Write new journal entry |
 | `life-index search --query "..."` | Search journals |
+| `life-index search --query "..." --no-semantic` | Keyword-only search (no model load) |
 | `life-index edit --journal "..." --set-weather "..."` | Edit existing entry |
 | `life-index abstract --month YYYY-MM` | Generate monthly summary |
 | `life-index weather --location "..."` | Query weather for location |
@@ -561,6 +537,6 @@ Keep it concise — this is a welcome message, not a manual.>
 
 ---
 
-**Document Version**: 2.3
-**Last Updated**: 2026-06-01
+**Document Version**: 2.4
+**Last Updated**: 2026-06-07
 **Authority Chain**: `CHARTER.md` governs project invariants. `bootstrap-manifest.json` governs install/upgrade/repair freshness and points to the current required authority documents through `required_authority_docs`.

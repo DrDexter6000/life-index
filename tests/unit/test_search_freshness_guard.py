@@ -1,17 +1,16 @@
 """Tests for unified freshness guard in search hot-path (Round 12 Phase 3 Task 3.2)."""
 
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
-from tools.lib.pending_writes import mark_pending, clear_pending, has_pending
+from tools.lib.pending_writes import mark_pending, has_pending
 
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch):
     """Isolate paths and modules to tmp_path."""
-    import tools.lib.pending_writes as pw_mod
     import tools.lib.config as cfg
     import tools.lib.paths as paths
     import tools.lib.vector_index_simple as vi_mod
@@ -53,6 +52,7 @@ class TestSearchFreshnessGuard:
         from tools.lib.index_freshness import FreshnessReport
 
         build_calls = []
+
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
             return {"success": True}
@@ -79,6 +79,7 @@ class TestSearchFreshnessGuard:
         mark_pending("Journals/2026/03/test.md")
 
         build_calls = []
+
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
             return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
@@ -95,6 +96,7 @@ class TestSearchFreshnessGuard:
         assert result["success"] is True
         assert not has_pending(), "Pending should be consumed"
         assert len(build_calls) == 1
+        assert build_calls[0] == {"incremental": True, "fts_only": True}
 
     def test_stale_index_triggers_incremental_update(self, tmp_path: Path, monkeypatch):
         """Stale index → triggers incremental build_all, then searches."""
@@ -103,6 +105,7 @@ class TestSearchFreshnessGuard:
         from tools.lib.index_freshness import FreshnessReport
 
         build_calls = []
+
         def mock_build_all(**kwargs):
             build_calls.append(kwargs)
             return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
@@ -113,7 +116,9 @@ class TestSearchFreshnessGuard:
         with patch(
             "tools.lib.index_freshness.check_full_freshness",
             return_value=FreshnessReport(
-                fts_fresh=False, vector_fresh=True, overall_fresh=False,
+                fts_fresh=False,
+                vector_fresh=True,
+                overall_fresh=False,
                 issues=["fts_stale: FTS has 5 docs, manifest expects 10"],
             ),
         ):
@@ -122,6 +127,7 @@ class TestSearchFreshnessGuard:
         assert result["success"] is True
         assert len(build_calls) == 1, "Stale index should trigger build"
         assert build_calls[0].get("incremental") is True
+        assert build_calls[0].get("fts_only") is True
 
     def test_build_failure_degrades_gracefully(self, tmp_path: Path, monkeypatch):
         """Build failure → search still works (degraded), returns warnings."""
@@ -139,15 +145,19 @@ class TestSearchFreshnessGuard:
         with patch(
             "tools.lib.index_freshness.check_full_freshness",
             return_value=FreshnessReport(
-                fts_fresh=False, vector_fresh=False, overall_fresh=False,
+                fts_fresh=False,
+                vector_fresh=False,
+                overall_fresh=False,
                 issues=["fts_stale"],
             ),
         ):
             result = search_core.hierarchical_search(query="test", level=3)
 
         assert result["success"] is True  # Search doesn't crash
-        assert any("stale" in str(w).lower() or "index" in str(w).lower()
-                    for w in result.get("warnings", []))
+        assert any(
+            "stale" in str(w).lower() or "index" in str(w).lower()
+            for w in result.get("warnings", [])
+        )
 
     def test_result_contains_freshness_field(self, tmp_path: Path, monkeypatch):
         """Search result includes index_status with freshness info."""
