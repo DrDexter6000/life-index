@@ -1,19 +1,16 @@
 """Tests for build_all two-phase commit (Round 12 Phase 2 Task 2.3)."""
 
-import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-from tools.lib.index_manifest import IndexManifest, read_manifest, is_manifest_valid
+from tools.lib.index_manifest import IndexManifest, read_manifest
 
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch):
     """Redirect all paths to tmp_path."""
-    import tools.lib.config as cfg
-    import tools.lib.paths as paths
     import tools.lib.search_index as si
     import tools.build_index as bi
 
@@ -23,12 +20,19 @@ def _isolate(tmp_path: Path, monkeypatch):
     (d / "Journals" / "2026" / "03").mkdir(parents=True)
 
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(d))
+    monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
     monkeypatch.setattr(si, "get_fts_db_path", lambda: idx / "journals_fts.db")
     monkeypatch.setattr(si, "get_user_data_dir", lambda: d)
 
     # Mock heavy operations
-    monkeypatch.setattr(si, "update_index", lambda **kw: {"success": True, "added": 1, "updated": 0, "removed": 0})
-    monkeypatch.setattr(bi, "update_fts_index", lambda **kw: {"success": True, "added": 1, "updated": 0, "removed": 0})
+    monkeypatch.setattr(
+        si, "update_index", lambda **kw: {"success": True, "added": 1, "updated": 0, "removed": 0}
+    )
+    monkeypatch.setattr(
+        bi,
+        "update_fts_index",
+        lambda **kw: {"success": True, "added": 1, "updated": 0, "removed": 0},
+    )
     monkeypatch.setattr(bi, "get_fts_stats", lambda: {"total_documents": 1, "exists": True})
     monkeypatch.setattr(bi, "get_index_lock_path", lambda: tmp_path / "test.lock")
     monkeypatch.setattr(bi, "invalidate_cache", lambda: None)
@@ -60,7 +64,9 @@ class TestBuildAllAtomic:
         index_dir = tmp_path / ".index"
         monkeypatch.setattr(vi_mod, "get_index_dir", lambda: index_dir)
         monkeypatch.setattr(vi_mod, "get_vec_index_path", lambda: index_dir / "vectors_simple.pkl")
-        monkeypatch.setattr(vi_mod, "get_vec_meta_path", lambda: index_dir / "vectors_simple_meta.json")
+        monkeypatch.setattr(
+            vi_mod, "get_vec_meta_path", lambda: index_dir / "vectors_simple_meta.json"
+        )
 
         # Mock vector model to avoid loading sentence-transformers
         mock_model = MagicMock()
@@ -70,7 +76,7 @@ class TestBuildAllAtomic:
             patch.object(ss, "get_model", return_value=mock_model),
             patch.object(vi_mod, "get_model", return_value=mock_model),
         ):
-            result = bi.build_all(incremental=True)
+            bi.build_all(incremental=True)
 
         # Manifest should be written (FTS only, no vector)
         data_dir = tmp_path / "Life-Index"
@@ -86,7 +92,9 @@ class TestBuildAllAtomic:
         index_dir = tmp_path / ".index"
         monkeypatch.setattr(vi_mod, "get_index_dir", lambda: index_dir)
         monkeypatch.setattr(vi_mod, "get_vec_index_path", lambda: index_dir / "vectors_simple.pkl")
-        monkeypatch.setattr(vi_mod, "get_vec_meta_path", lambda: index_dir / "vectors_simple_meta.json")
+        monkeypatch.setattr(
+            vi_mod, "get_vec_meta_path", lambda: index_dir / "vectors_simple_meta.json"
+        )
 
         mock_model = MagicMock()
         mock_model.load.return_value = False
@@ -95,7 +103,7 @@ class TestBuildAllAtomic:
             patch.object(ss, "get_model", return_value=mock_model),
             patch.object(vi_mod, "get_model", return_value=mock_model),
         ):
-            result = bi.build_all(incremental=True)
+            bi.build_all(incremental=True)
 
         manifest = read_manifest((tmp_path / "Life-Index") / ".index")
         # Either partial=True or manifest exists with correct flags
@@ -105,17 +113,20 @@ class TestBuildAllAtomic:
     def test_manifest_not_written_on_fts_failure(self, tmp_path: Path, monkeypatch):
         """When FTS build fails, no manifest is written."""
         import tools.build_index as bi
-        import tools.lib.search_index as si
         import tools.lib.vector_index_simple as vi_mod
         import tools.lib.semantic_search as ss
 
         index_dir = tmp_path / ".index"
         monkeypatch.setattr(vi_mod, "get_index_dir", lambda: index_dir)
         monkeypatch.setattr(vi_mod, "get_vec_index_path", lambda: index_dir / "vectors_simple.pkl")
-        monkeypatch.setattr(vi_mod, "get_vec_meta_path", lambda: index_dir / "vectors_simple_meta.json")
+        monkeypatch.setattr(
+            vi_mod, "get_vec_meta_path", lambda: index_dir / "vectors_simple_meta.json"
+        )
 
         # Override the fixture's FTS mock to make it fail
-        monkeypatch.setattr(bi, "update_fts_index", lambda **kw: {"success": False, "error": "FTS crashed"})
+        monkeypatch.setattr(
+            bi, "update_fts_index", lambda **kw: {"success": False, "error": "FTS crashed"}
+        )
 
         mock_model = MagicMock()
         mock_model.load.return_value = False

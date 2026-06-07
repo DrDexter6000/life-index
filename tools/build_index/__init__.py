@@ -203,7 +203,8 @@ def build_all(
 
             fts_success = (result.get("fts") or {}).get("success", False)
             vec_success = (result.get("vector") or {}).get("success", False)
-            partial = not (fts_success and vec_success)
+            # In FTS-only mode, vector is intentionally skipped; partial = !fts_success
+            partial = not fts_success if fts_only else not (fts_success and vec_success)
 
             if fts_success or vec_success:
                 try:
@@ -340,11 +341,17 @@ def check_index(data_dir: Path | None = None) -> Dict[str, Any]:
 
     # Convert report to JSON-friendly dict
     issues: list[str] = list(report.issues) if not report.consistency_ok else []
+    healthy = report.consistency_ok
+
+    # In FTS-only mode, vector missing is expected; only FTS health matters
+    fts_only_mode = os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1"
+    if fts_only_mode and not healthy:
+        issues = [i for i in issues if "Vector index" not in i]
+        healthy = report.fts_ok
 
     # Round 12 Phase 3: Enhanced check with manifest + freshness
     index_dir = data_dir / ".index"
     manifest = read_manifest(index_dir)
-    healthy = report.consistency_ok
 
     # Manifest info
     manifest_info: dict[str, object] = {"exists": manifest is not None}
