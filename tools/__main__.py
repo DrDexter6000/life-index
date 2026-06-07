@@ -201,13 +201,21 @@ def _check_index() -> Tuple[Dict[str, Any], str]:
     vec_db = index_dir / "journals_vec.db"
     vec_pkl = index_dir / "vectors_simple.pkl"
     data_exists = get_user_data_dir().exists()
+    from tools.lib.semantic_status import get_semantic_index_status
+
+    semantic = get_semantic_index_status(index_dir)
+    semantic_status = str(semantic.get("status", "disabled"))
     check = {
         "name": "search_index",
         "status": "ok" if fts_db.exists() else "info",
         "fts_index_exists": fts_db.exists(),
         "vector_index_exists": vec_db.exists() or vec_pkl.exists(),
+        "semantic_status": semantic_status,
+        "semantic": semantic,
         "path": str(index_dir),
     }
+    if semantic_status == "failed":
+        return check, f"Semantic index failed: {semantic.get('error', 'unknown error')}"
     if not fts_db.exists() and data_exists:
         return check, "Search index not built. Run: life-index index"
     return check, ""

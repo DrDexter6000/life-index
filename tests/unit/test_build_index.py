@@ -145,6 +145,25 @@ class TestBuildAll:
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
+    @patch("tools.build_index.update_fts_index")
+    def test_build_all_fts_only_reports_semantic_disabled(
+        self, mock_update_fts, mock_file_lock, mock_lock_path
+    ):
+        """FTS-only builds should honestly report semantic indexing as disabled."""
+        mock_lock_path.return_value = Path("/tmp/test.lock")
+        mock_lock = MagicMock()
+        mock_file_lock.return_value = mock_lock
+        mock_lock.__enter__ = MagicMock(return_value=mock_lock)
+        mock_lock.__exit__ = MagicMock(return_value=False)
+        mock_update_fts.return_value = {"success": True, "added": 1}
+
+        result = build_all(fts_only=True)
+
+        assert result["success"] is True
+        assert result["semantic_status"] == "disabled"
+
+    @patch("tools.build_index.get_index_lock_path")
+    @patch("tools.build_index.FileLock")
     def test_build_all_vec_only_mode(self, mock_file_lock, mock_lock_path):
         """Test vector-only mode skips FTS index"""
         mock_lock_path.return_value = Path("/tmp/test.lock")
@@ -403,6 +422,75 @@ class TestBuildAll:
 
         assert "rebuild_hint" in result
         assert "life-index index --rebuild" in result["rebuild_hint"]
+
+
+class TestIndexCliNonBlockingDefault:
+    """CLI-level contract for onboarding-safe index defaults."""
+
+    def test_index_cli_default_uses_fts_only_and_starts_background(self, monkeypatch, capsys):
+        import tools.build_index.__main__ as index_cli
+
+        calls: list[dict[str, object]] = []
+
+        def fake_build_all(**kwargs):
+            calls.append(kwargs)
+            return {
+                "success": True,
+                "fts": {"success": True, "duration_seconds": 0.01},
+                "vector": None,
+                "semantic_status": "disabled",
+                "duration_seconds": 0.01,
+            }
+
+        monkeypatch.setattr("sys.argv", ["life-index-index", "--json"])
+        monkeypatch.setattr(index_cli, "build_all", fake_build_all)
+        monkeypatch.setattr(index_cli, "ensure_dirs", lambda: None)
+        monkeypatch.setattr(
+            index_cli,
+            "start_background_semantic_build",
+            lambda *, incremental: {"status": "building", "pid": 1234},
+            raising=False,
+        )
+
+        index_cli.main()
+
+        payload = capsys.readouterr().out
+        assert calls == [{"incremental": True, "fts_only": True, "vec_only": False}]
+        assert '"semantic_status": "building"' in payload
+
+    def test_index_cli_fts_only_does_not_start_background(self, monkeypatch, capsys):
+        import tools.build_index.__main__ as index_cli
+
+        started = {"called": False}
+
+        def fake_build_all(**kwargs):
+            return {
+                "success": True,
+                "fts": {"success": True, "duration_seconds": 0.01},
+                "vector": None,
+                "semantic_status": "disabled",
+                "duration_seconds": 0.01,
+            }
+
+        def fake_start_background_semantic_build(*, incremental):
+            started["called"] = True
+            return {"status": "building"}
+
+        monkeypatch.setattr("sys.argv", ["life-index-index", "--fts-only", "--json"])
+        monkeypatch.setattr(index_cli, "build_all", fake_build_all)
+        monkeypatch.setattr(index_cli, "ensure_dirs", lambda: None)
+        monkeypatch.setattr(
+            index_cli,
+            "start_background_semantic_build",
+            fake_start_background_semantic_build,
+            raising=False,
+        )
+
+        index_cli.main()
+
+        payload = capsys.readouterr().out
+        assert started["called"] is False
+        assert '"semantic_status": "disabled"' in payload
 
 
 class TestShowStats:

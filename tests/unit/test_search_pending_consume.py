@@ -26,6 +26,7 @@ class TestSearchPendingConsume:
 
         def mock_build_all(**kwargs):
             built["called"] = True
+            built["kwargs"] = kwargs
             return {"success": True, "fts": {"success": True}, "vector": {"success": True}}
 
         import tools.build_index as bi
@@ -40,6 +41,7 @@ class TestSearchPendingConsume:
 
         search_core.hierarchical_search(query="test", level=3)
         assert built["called"], "build_all should be called when pending is non-empty"
+        assert built["kwargs"] == {"incremental": True, "fts_only": True}
         assert not has_pending(), "pending should be cleared after consumption"
 
     def test_no_build_when_pending_empty(self, tmp_path: Path, monkeypatch):

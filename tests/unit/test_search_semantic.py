@@ -387,5 +387,34 @@ Body.
         assert enriched["similarity"] == 0.9
 
 
+def test_semantic_runtime_status_building_degrades_fast(monkeypatch, tmp_path):
+    """Semantic search should degrade before model load while vector build is active."""
+    import sys
+
+    from tools.search_journals import semantic as semantic_mod
+
+    index_dir = tmp_path / ".index"
+    index_dir.mkdir()
+    vector_path = index_dir / "vectors_simple.pkl"
+    vector_path.write_bytes(b"metadata")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        type("FakeSentenceTransformers", (), {"__version__": "test"}),
+    )
+    monkeypatch.setattr(semantic_mod, "get_vec_index_path", lambda: vector_path)
+    monkeypatch.setattr(
+        semantic_mod,
+        "get_semantic_index_status",
+        lambda: {"status": "building", "pid": 1234},
+    )
+
+    status = semantic_mod.get_semantic_runtime_status()
+
+    assert status["available"] is False
+    assert status["reason"] == "semantic index building"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
