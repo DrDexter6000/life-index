@@ -556,8 +556,8 @@ Make sure you are using `.venv/bin/python` rather than system Python, and that y
 **Fresh install shows degraded health**
 If you have not run `life-index index` yet, this is expected. Initialize the index, then run health again.
 
-**Windows makes `write --data '{...}'` painful to escape**
-Use `life-index write --data @first-entry.json` instead. The Agent installation flow generates that file.
+**Need a post-install smoke test**
+Set `LIFE_INDEX_DATA_DIR` to a temporary sandbox, then run `index --fts-only` and `search --no-semantic`. Do not write verification journals into the real `~/Documents/Life-Index/` directory.
 
 **Semantic search unavailable**
 Run `.venv/bin/life-index health` and check whether sentence-transformers is installed.
