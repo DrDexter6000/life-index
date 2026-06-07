@@ -430,6 +430,7 @@ class TestIndexCliNonBlockingDefault:
     def test_index_cli_default_uses_fts_only_and_starts_background(self, monkeypatch, capsys):
         import tools.build_index.__main__ as index_cli
 
+        monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         calls: list[dict[str, object]] = []
 
         def fake_build_all(**kwargs):
@@ -461,6 +462,7 @@ class TestIndexCliNonBlockingDefault:
     def test_index_cli_fts_only_does_not_start_background(self, monkeypatch, capsys):
         import tools.build_index.__main__ as index_cli
 
+        monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         started = {"called": False}
 
         def fake_build_all(**kwargs):
@@ -477,6 +479,41 @@ class TestIndexCliNonBlockingDefault:
             return {"status": "building"}
 
         monkeypatch.setattr("sys.argv", ["life-index-index", "--fts-only", "--json"])
+        monkeypatch.setattr(index_cli, "build_all", fake_build_all)
+        monkeypatch.setattr(index_cli, "ensure_dirs", lambda: None)
+        monkeypatch.setattr(
+            index_cli,
+            "start_background_semantic_build",
+            fake_start_background_semantic_build,
+            raising=False,
+        )
+
+        index_cli.main()
+
+        payload = capsys.readouterr().out
+        assert started["called"] is False
+        assert '"semantic_status": "disabled"' in payload
+
+    def test_index_cli_env_fts_only_does_not_start_background(self, monkeypatch, capsys):
+        import tools.build_index.__main__ as index_cli
+
+        started = {"called": False}
+
+        def fake_build_all(**kwargs):
+            return {
+                "success": True,
+                "fts": {"success": True, "duration_seconds": 0.01},
+                "vector": None,
+                "semantic_status": "disabled",
+                "duration_seconds": 0.01,
+            }
+
+        def fake_start_background_semantic_build(*, incremental):
+            started["called"] = True
+            return {"status": "building"}
+
+        monkeypatch.setenv("LIFE_INDEX_INDEX_FTS_ONLY", "1")
+        monkeypatch.setattr("sys.argv", ["life-index-index", "--json"])
         monkeypatch.setattr(index_cli, "build_all", fake_build_all)
         monkeypatch.setattr(index_cli, "ensure_dirs", lambda: None)
         monkeypatch.setattr(
