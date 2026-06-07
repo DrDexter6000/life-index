@@ -160,6 +160,14 @@ def test_nightly_package_smoke_uses_step_scoped_runner_temp() -> None:
     assert "$RUNNER_TEMP" in str(package_job["steps"])
 
 
+def test_nightly_full_suite_forces_utf8_subprocess_io() -> None:
+    workflow = _workflow("nightly.yml")
+    env = workflow["jobs"]["full-suite"]["env"]
+
+    assert env["PYTHONUTF8"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8"
+
+
 def test_fast_local_tier1_gate_script_is_documented() -> None:
     script = REPO_ROOT / "scripts" / "tier1-gate.sh"
     source = script.read_text(encoding="utf-8")

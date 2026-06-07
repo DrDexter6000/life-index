@@ -21,6 +21,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     env:
       LIFE_INDEX_INDEX_FTS_ONLY: "1"
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
 
     steps:
       - uses: actions/checkout@v5
