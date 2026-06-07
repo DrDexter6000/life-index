@@ -51,7 +51,6 @@ jobs:
     runs-on: ubuntu-latest
     name: Tier 2 Package + Onboarding Smoke
     env:
-      LIFE_INDEX_DATA_DIR: ${{ runner.temp }}/life-index-smoke-data
       LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
     steps:
@@ -76,6 +75,7 @@ jobs:
 
       - name: Run package onboarding smoke
         run: |
+          export LIFE_INDEX_DATA_DIR="$RUNNER_TEMP/life-index-smoke-data"
           mkdir -p "$LIFE_INDEX_DATA_DIR"
           .venv-wheel-smoke/bin/life-index version --json
           .venv-wheel-smoke/bin/life-index bootstrap --json

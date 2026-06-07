@@ -152,6 +152,14 @@ def test_nightly_tier2_runs_on_schedule_manual_and_post_merge() -> None:
     assert "package-onboarding" in workflow["jobs"]
 
 
+def test_nightly_package_smoke_uses_step_scoped_runner_temp() -> None:
+    workflow = _workflow("nightly.yml")
+    package_job = workflow["jobs"]["package-onboarding"]
+
+    assert "runner.temp" not in str(package_job.get("env", {}))
+    assert "$RUNNER_TEMP" in str(package_job["steps"])
+
+
 def test_fast_local_tier1_gate_script_is_documented() -> None:
     script = REPO_ROOT / "scripts" / "tier1-gate.sh"
     source = script.read_text(encoding="utf-8")
