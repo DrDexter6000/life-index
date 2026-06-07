@@ -247,6 +247,7 @@ This section is **conditional** on `bootstrap --json` output. Do not execute any
 - No foreground model download is required for onboarding success
 
 **Expected Wait**: The foreground command should return promptly after FTS work. Do not wait for semantic model download in the onboarding foreground path.
+Installation succeeds when keyword search is ready. Do not wait for `semantic_status: ready`.
 
 **Failure Handling**:
 - If semantic status is `failed`: report it as non-blocking unless `safe_next_steps` explicitly requires semantic readiness
@@ -284,66 +285,59 @@ The health response may include an `events` array with piggyback notifications (
 
 ---
 
-### Step 5.3: Optional Keyword-Only Smoke Test (Non-blocking)
+### Step 5.3: Optional Sandboxed Keyword-Only Smoke Test (Non-blocking)
 
 This step is **optional** and does **not** affect onboarding success. Run it only if you want to verify the CLI pipe is functional.
 
-Use the machine's current local date at execution time, formatted as `YYYY-MM-DD`.
-Do **not** write placeholder text such as `System current time` or `{TODAY}` literally into the JSON payload.
+Do not write a smoke journal into the user's real `~/Documents/Life-Index/` directory. Use a temporary sandbox through `LIFE_INDEX_DATA_DIR`, create one disposable Markdown file inside that sandbox, build only the keyword index, then search with `--no-semantic`.
 
 **Linux/macOS**:
 ```bash
+SMOKE_DIR=$(mktemp -d)
 TODAY=$(date +%F)
+export LIFE_INDEX_DATA_DIR="$SMOKE_DIR"
+mkdir -p "$LIFE_INDEX_DATA_DIR/Journals/${TODAY:0:4}/${TODAY:5:2}"
+cat > "$LIFE_INDEX_DATA_DIR/Journals/${TODAY:0:4}/${TODAY:5:2}/life-index_${TODAY}_001.md" <<EOF
+---
+title: Smoke Test Entry
+date: $TODAY
+topic: test
+---
+Temporary sandbox onboarding smoke keyword.
+EOF
 
-.venv/bin/life-index write --data "{
-  \"title\": \"Smoke Test Entry\",
-  \"content\": \"Temporary entry for onboarding verification.\",
-  \"date\": \"$TODAY\",
-  \"topic\": [\"test\"],
-  \"abstract\": \"Temporary verification entry.\",
-  \"mood\": [\"neutral\"],
-  \"tags\": [\"smoke-test\"],
-  \"people\": [],
-  \"project\": \"\",
-  \"links\": [],
-  \"entities\": []
-}"
-```
-
-Then search with `--no-semantic` to avoid model-loading latency:
-
-```bash
+.venv/bin/life-index index --fts-only --json
 .venv/bin/life-index search --query "smoke" --no-semantic
+rm -rf "$SMOKE_DIR"
+unset LIFE_INDEX_DATA_DIR
 ```
 
-**Windows (Recommended: File-based)**:
+**Windows (PowerShell)**:
 ```powershell
+$smokeDir = Join-Path $env:TEMP ("life-index-onboarding-smoke-" + [guid]::NewGuid())
 $today = Get-Date -Format 'yyyy-MM-dd'
+$env:LIFE_INDEX_DATA_DIR = $smokeDir
+$journalDir = Join-Path $smokeDir ("Journals\{0}\{1}" -f $today.Substring(0,4), $today.Substring(5,2))
+New-Item -ItemType Directory -Force -Path $journalDir | Out-Null
+@"
+---
+title: Smoke Test Entry
+date: $today
+topic: test
+---
+Temporary sandbox onboarding smoke keyword.
+"@ | Set-Content -LiteralPath (Join-Path $journalDir ("life-index_{0}_001.md" -f $today)) -Encoding UTF8
 
-$json = @"
-{
-  "title": "Smoke Test Entry",
-  "content": "Temporary entry for onboarding verification.",
-  "date": "$today",
-  "topic": ["test"],
-  "abstract": "Temporary verification entry.",
-  "mood": ["neutral"],
-  "tags": ["smoke-test"],
-  "people": [],
-  "project": "",
-  "links": [],
-  "entities": []
-}
-"@
-$json | Out-File -FilePath "smoke-entry.json" -Encoding utf8
-.venv\Scripts\life-index write --data @smoke-entry.json
+.venv\Scripts\life-index index --fts-only --json
 .venv\Scripts\life-index search --query "smoke" --no-semantic
+Remove-Item -LiteralPath $smokeDir -Recurse -Force
+Remove-Item Env:\LIFE_INDEX_DATA_DIR
 ```
 
 **Smoke Test Reporting**:
-- If it passes: mention it in the final report as "CLI pipe verified"
-- If it fails: mention it as "optional smoke test failed" but do **not** mark onboarding as failed
-- If you created a temporary entry, you may delete it after verification
+- If it passes: mention it in the final report as "CLI pipe verified with temporary sandbox keyword-only search"
+- If it fails: mention it as "optional sandbox smoke test failed" but do **not** mark onboarding as failed
+- If cleanup fails: report the sandbox path; do **not** touch the user's real data directory
 
 ---
 
@@ -457,7 +451,7 @@ Report back to the user using this structure. The entire report must be in one l
 **Safe Next Steps Executed**: <list of steps run from safe_next_steps>
 
 **Optional Smoke Test**: <passed/failed/skipped>
-- If passed: "CLI pipe verified with temporary keyword-only search"
+- If passed: "CLI pipe verified with temporary sandbox keyword-only search"
 - If failed: "Optional smoke test failed — does not affect installation success"
 
 **Customization**:
@@ -492,6 +486,7 @@ Keep it concise — this is a welcome message, not a manual.>
 - Modify repository source code during installation, except the explicitly allowed trigger-surface edits in `SKILL.md` during optional customization
 - Skip the health check when it is present in `safe_next_steps`
 - Treat `write`/`search` as mandatory install success gates
+- Wait for `semantic_status: ready` before declaring installation success
 - Re-interpret bootstrap `route` based on local state
 
 ### Do:

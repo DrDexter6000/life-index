@@ -6,7 +6,6 @@ config.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from importlib.metadata import PackageNotFoundError
@@ -15,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from tools.lib.journal_files import count_journal_files
+from tools.lib.bootstrap_manifest import get_manifest_version
 from tools.migrate import scan_journals
 
 BOOTSTRAP_SCHEMA_VERSION = "m34.bootstrap.v0"
@@ -45,13 +45,7 @@ def _get_installed_version() -> str | None:
 
 
 def _get_manifest_version() -> str | None:
-    manifest = Path(__file__).resolve().parent.parent.parent / "bootstrap-manifest.json"
-    try:
-        payload = json.loads(manifest.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    version = payload.get("repo_version")
-    return version if isinstance(version, str) else None
+    return get_manifest_version()
 
 
 def _check_migration(data_dir: Path) -> tuple[int | None, str | None]:

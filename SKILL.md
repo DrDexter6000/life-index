@@ -65,8 +65,8 @@ triggers:
 .venv/bin/life-index index --rebuild # 全量重建
 .venv/bin/life-index health          # 安装健康检查
 
-# Windows 首次写入更稳妥的方式（first-entry.json 由 Agent 在 onboarding 中动态生成）
-.venv\Scripts\life-index write --data @first-entry.json
+# Windows 用户主动写入时可用文件参数；onboarding 不应创建首写验证日志
+.venv\Scripts\life-index write --data @journal-entry.json
 
 # 开发者模式
 .venv/bin/python -m tools.write_journal --data '{...}'

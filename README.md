@@ -573,8 +573,8 @@ python3 -m venv .venv
 **fresh install 时 health 显示 degraded**
 → 若 `safe_next_steps` 包含 `index`，执行后重新运行 health；若 `safe_next_steps` 不包含 `index`，报告 health issues 给用户，不要自行执行 index
 
-**Windows 下 `write --data '{...}'` 很难转义**
-→ 优先改用 `life-index write --data @first-entry.json`（该文件由 Agent 在安装流程中自动生成）
+**需要安装后 smoke test**
+→ 只在临时 sandbox 中设置 `LIFE_INDEX_DATA_DIR` 后运行 `index --fts-only` 和 `search --no-semantic`；不要向真实 `~/Documents/Life-Index/` 写入验证日志
 
 **语义搜索不可用**
 → 这是非阻塞状态。运行 `.venv/bin/life-index health` 确认 `semantic_status`；keyword-only 搜索（`--no-semantic`）仍然是核心能力
