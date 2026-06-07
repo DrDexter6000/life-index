@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from importlib import resources
+from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
@@ -21,9 +21,20 @@ def _read_manifest_path(path: Path) -> dict[str, Any]:
     return _validate_manifest(json.loads(path.read_text(encoding="utf-8")))
 
 
+def _iter_tools_package_dirs() -> list[Path]:
+    tools_package = import_module("tools")
+    package_paths = getattr(tools_package, "__path__", ())
+    return [Path(raw_path) for raw_path in package_paths if Path(raw_path).is_dir()]
+
+
 def _read_packaged_manifest() -> dict[str, Any]:
-    resource = resources.files("tools").joinpath(PACKAGED_BOOTSTRAP_MANIFEST_NAME)
-    return _validate_manifest(json.loads(resource.read_text(encoding="utf-8")))
+    for package_dir in _iter_tools_package_dirs():
+        candidate = package_dir / PACKAGED_BOOTSTRAP_MANIFEST_NAME
+        try:
+            return _read_manifest_path(candidate)
+        except OSError:
+            continue
+    raise FileNotFoundError(f"{PACKAGED_BOOTSTRAP_MANIFEST_NAME} not found in tools package")
 
 
 def read_bootstrap_manifest(preferred_path: Path | None = None) -> dict[str, Any]:

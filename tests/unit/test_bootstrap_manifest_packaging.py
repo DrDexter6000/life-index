@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.resources
+import importlib
 import json
 import tomllib
 from pathlib import Path
@@ -16,9 +16,14 @@ def _root_manifest() -> dict[str, object]:
 
 def test_tools_package_contains_bootstrap_manifest_resource() -> None:
     """Wheel installs must carry a manifest inside the importable tools package."""
-    resource = importlib.resources.files("tools").joinpath("bootstrap-manifest.json")
+    tools_package = importlib.import_module("tools")
+    package_dirs = [
+        Path(raw_path) for raw_path in tools_package.__path__ if Path(raw_path).is_dir()
+    ]
+    resources = [package_dir / "bootstrap-manifest.json" for package_dir in package_dirs]
+    resource = next((candidate for candidate in resources if candidate.is_file()), None)
 
-    assert resource.is_file()
+    assert resource is not None
     packaged = json.loads(resource.read_text(encoding="utf-8"))
     assert packaged == _root_manifest()
 
