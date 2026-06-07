@@ -5,9 +5,15 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   blocker:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ${{ matrix.os }}
     name: Blocker Gate (${{ matrix.os }}, Python ${{ matrix.python-version }})
     strategy:
@@ -42,6 +48,7 @@ jobs:
         run: pytest -m blocker -v --timeout=120
 
   contract:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     name: Contract Gate (CLI contract / snapshot)
     env:
@@ -73,9 +80,9 @@ jobs:
         run: pytest -m contract -v --timeout=120
 
   quarantine:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     name: Quarantine Gate (flaky / env-dependent)
-    continue-on-error: true
     env:
       LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
@@ -105,6 +112,7 @@ jobs:
         run: pytest -m quarantine -v --timeout=300
 
   coverage:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     name: Coverage Gate (blocker + contract)
     env:
@@ -140,6 +148,7 @@ jobs:
             --cov=tools --cov-report=term-missing
 
   search-eval-gate:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     name: Search Eval Quality Gate
     env:

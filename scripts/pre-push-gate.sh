@@ -2,8 +2,11 @@
 # Life Index CLI — pre-push gate
 #
 # Implements L4 from docs/PROJECT_WORKFLOW.md v1.2 §M3 (d) push 前置门
-# within-version revision. Runs all CI hard checks listed in
+# within-version revision. Runs all Tier 1 CI hard checks listed in
 # .agent-governance/CI_HARD_CHECKS.md.
+#
+# For frequent WIP feedback, use scripts/tier1-gate.sh. This full gate is the
+# merge/push-batch verdict and should not run once per local commit.
 #
 # Exit code:
 #   0  All checks pass; safe to push.

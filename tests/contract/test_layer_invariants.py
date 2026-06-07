@@ -106,6 +106,68 @@ def test_contract_gate_is_hard_required_check() -> None:
     assert contract_job.get("continue-on-error") is not True
 
 
+def _workflow(path: str) -> dict:
+    return yaml.safe_load((REPO_ROOT / ".github" / "workflows" / path).read_text(encoding="utf-8"))
+
+
+def _workflow_on(workflow: dict) -> dict:
+    # PyYAML follows YAML 1.1 and parses the GitHub Actions "on" key as True.
+    return workflow.get("on") or workflow.get(True)
+
+
+def test_pr_test_gates_skip_draft_wip_pushes() -> None:
+    workflow = _workflow("tests.yml")
+    draft_guard = "github.event.pull_request.draft == false"
+
+    for job_name in ("blocker", "contract", "search-eval-gate"):
+        job_if = str(workflow["jobs"][job_name].get("if", ""))
+        assert draft_guard in job_if, f"{job_name} must skip draft/WIP PR pushes"
+
+
+def test_search_eval_gate_remains_tier1_blocking_smoke() -> None:
+    workflow = _workflow("tests.yml")
+    job = workflow["jobs"]["search-eval-gate"]
+
+    assert job.get("continue-on-error") is not True
+    assert "github.event.pull_request.draft == false" in str(job.get("if", ""))
+
+
+def test_tier2_pr_heavy_jobs_are_post_merge_only() -> None:
+    workflow = _workflow("tests.yml")
+
+    for job_name in ("quarantine", "coverage"):
+        job_if = str(workflow["jobs"][job_name].get("if", ""))
+        assert "github.event_name == 'push'" in job_if
+        assert "pull_request" not in job_if
+
+
+def test_nightly_tier2_runs_on_schedule_manual_and_post_merge() -> None:
+    workflow = _workflow("nightly.yml")
+    triggers = _workflow_on(workflow)
+
+    assert "schedule" in triggers
+    assert "workflow_dispatch" in triggers
+    assert triggers["push"]["branches"] == ["main"]
+    assert "full-suite" in workflow["jobs"]
+    assert "package-onboarding" in workflow["jobs"]
+
+
+def test_fast_local_tier1_gate_script_is_documented() -> None:
+    script = REPO_ROOT / "scripts" / "tier1-gate.sh"
+    source = script.read_text(encoding="utf-8")
+
+    for expected in (
+        "Tier 1 fast gate",
+        "python -m black --check tools/",
+        "python -m flake8 tools/",
+        "python -m bandit -r tools/",
+        "python -m mypy tools/",
+        "python .github/scripts/check_doc_sync.py",
+        "python -m pytest -m blocker",
+    ):
+        assert expected in source
+
+
 def test_l2_production_modules_do_not_import_llm_providers() -> None:
     offenders: list[str] = []
     for path in _production_l2_files():
