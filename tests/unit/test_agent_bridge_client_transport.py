@@ -29,11 +29,26 @@ def test_transport_openai_unchanged(monkeypatch):
     must continue to pass — proving openai transport is not broken.
 
     Expected: GREEN (uses existing code path, no ACP dependency).
+
+    The openai package is an optional L3 dependency and may not be
+    installed in CI blocker gates. We inject a stub 'openai' module
+    with an 'OpenAI' attribute into sys.modules so the test works
+    regardless of whether the real package is installed.
     """
     from unittest.mock import MagicMock
 
     from tools.agent_bridge.client import synthesize
     from tools.agent_bridge.config import BrainConfig
+
+    # Ensure 'openai' module exists in sys.modules with an 'OpenAI'
+    # attribute, so monkeypatch.setattr("openai.OpenAI", ...) works
+    # even without the real package installed.
+    if "openai" not in sys.modules or not hasattr(sys.modules["openai"], "OpenAI"):
+        import types
+
+        _stub = types.ModuleType("openai")
+        _stub.OpenAI = object  # placeholder; will be overwritten by monkeypatch
+        sys.modules["openai"] = _stub
 
     # Build a fake OpenAI client
     fake_response = MagicMock()
