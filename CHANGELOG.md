@@ -6,6 +6,42 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-06-08
+
+### What users get
+
+- **Non-blocking onboarding**: `life-index health` and bootstrap flow now complete
+  without waiting for semantic index builds. FTS5 keyword search is available
+  immediately after install; semantic vector indexing runs in background and
+  degrades gracefully when unavailable. This fixes onboarding timeouts on fresh
+  installs and machines without sentence-transformer models.
+- **Bootstrap manifest in wheel**: `bootstrap-manifest.json` is now included in
+  the built wheel package, so `life-index bootstrap --json` works correctly from
+  a `pip install` without a source checkout.
+- **Additive ACP transport**: `tools/agent_bridge/` adds a `transport="acp"` L3
+  adapter that drives any Agent-Client-Protocol runtime (e.g. Hermes) via stdio
+  JSON-RPC. Life Index never holds or injects user-managed LLM API keys into the
+  ACP subprocess — credentials are owned entirely by the runtime. The existing
+  `transport="openai"` path is completely unchanged; ACP is dormant until
+  explicitly configured via `brain.acp_command` in user config.
+
+### Included in this release
+
+- P0 non-blocking onboarding: FTS-first index with async semantic fallback.
+- CI tiered gate hardening: PR-level blocker/contract/eval gates plus post-merge
+  full-suite and package smoke.
+- ACP adapter: `_build_acp_subprocess_env()` with denylist + credential-pattern
+  stripping (`_API_KEY`, `_TOKEN`, `SECRET`, `PASSWORD`), `parse_acp_stream()`
+  for JSON-RPC message accumulation, `acp_synthesize()` for the full
+  initialize→authenticate→session/new→session/prompt lifecycle, and 21 unit
+  tests covering env redaction, stream parsing, transport routing, and config
+  resolution.
+- Fixture `acp_poc_run.jsonl` from real Hermes ACP session for contract tests.
+- CJK word-count fix for `word_count` metadata (previously undercounted CJK
+  characters).
+- Write-journal flow refactoring and enforced coverage gate.
+- Vector index storage split and SimpleVectorIndex search vectorization.
+
 ## [1.2.4] - 2026-06-04
 
 ### What users get
