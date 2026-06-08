@@ -111,7 +111,7 @@ Before starting, verify these requirements are met:
 |:---|:---|:---|
 | Python | `python3 --version` or `python --version` | 3.11+ |
 | Git | `git --version` | Any recent |
-| Disk space | ~700MB available | For code, venv, and optional semantic model cache |
+| Disk space | ~150MB base (no ML stack) | `[semantic]` adds ~500MB–1GB (CPU torch) or ~2–3GB (CUDA torch); semantic model cache downloads only when enabled |
 | Network | Internet connection | For cloning and optional background semantic model download |
 
 **Action**: Run the verification commands. If any fail, stop and report the missing prerequisite to the user.
@@ -192,11 +192,11 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-**⚠️ WSL / headless Linux CPU-only optimization**:
-If the target machine has no GPU (common for agent environments), install the CPU-only version of torch first to skip ~2GB of CUDA dependencies:
+**⚠️ Optional semantic stack on CPU-only WSL / headless Linux**:
+Base `pip install -e .` is lightweight and does **not** pull torch. Only if the user opts into semantic search (`[semantic]`) on a GPU-less machine (common for agent environments), install CPU-only torch first to skip ~2GB of CUDA dependencies, then install with the extra:
 ```bash
 .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
-.venv/bin/pip install -e .
+.venv/bin/pip install -e '.[semantic]'
 ```
 
 **Windows**:
@@ -206,7 +206,8 @@ If the target machine has no GPU (common for agent environments), install the CP
 
 **Success Criteria**:
 - Installation completes with "Successfully installed life-index"
-- Dependencies installed (pyyaml, sentence-transformers, numpy)
+- Dependencies installed (pyyaml, numpy, jieba, rapidfuzz, Pillow)
+- Semantic search is optional: `pip install -e '.[semantic]'` adds sentence-transformers
 - No red error messages
 
 **Failure Handling**:
@@ -418,10 +419,10 @@ If the user wants recurring automation (monthly/yearly reports, periodic index r
 
 **Fix**: Do not repair or delete the other platform's venv from the current platform. Treat the mismatch as evidence that you may be in a development checkout or the wrong install target. Return to Step 0.3, prefer the host-managed skill directory, or ask the user to confirm the intended install target.
 
-### CUDA Dependencies Bloat on WSL/Linux
+### CUDA Dependencies Bloat on WSL/Linux (only with `[semantic]`)
 
-**Cause**: `pip install -e .` pulls full CUDA toolkit (~2GB) via torch dependency on Linux
-**Fix**: On CPU-only environments, pre-install CPU-only torch first: `pip install torch --index-url https://download.pytorch.org/whl/cpu`, then `pip install -e .`
+**Cause**: Base `pip install -e .` does **not** pull torch. Only the optional `[semantic]` extra pulls torch, which defaults to the full CUDA build (~2GB) on Linux.
+**Fix**: If semantic search is needed on a CPU-only environment, pre-install CPU-only torch first: `pip install torch --index-url https://download.pytorch.org/whl/cpu`, then `pip install -e '.[semantic]'`. If semantic search is not needed, plain `pip install -e .` avoids the ML stack entirely.
 
 ---
 
@@ -537,6 +538,6 @@ Keep it concise — this is a welcome message, not a manual.>
 
 ---
 
-**Document Version**: 2.4
-**Last Updated**: 2026-06-07
+**Document Version**: 2.5
+**Last Updated**: 2026-06-08
 **Authority Chain**: `CHARTER.md` governs project invariants. `bootstrap-manifest.json` governs install/upgrade/repair freshness and points to the current required authority documents through `required_authority_docs`.

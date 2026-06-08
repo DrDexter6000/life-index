@@ -171,7 +171,7 @@ def build_all(
                         else:
                             logger.info(
                                 "  ⚠ Embedding model not available. "
-                                "Install: pip install sentence-transformers"
+                                "Install: pip install 'life-index[semantic]'"
                             )
                     except (RuntimeError, IOError, OSError) as e:
                         logger.error(f"  ✗ Vector error: {e}")
