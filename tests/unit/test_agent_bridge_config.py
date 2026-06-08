@@ -75,3 +75,121 @@ def test_ack_required_raises_without_ack(monkeypatch):
 
     with pytest.raises(AckRequiredError):
         require_ack(cfg)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase A RED: ACP config field contract tests
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_acp_config_fields_are_parsed(monkeypatch):
+    """Contract: ACP mode parses acp_command, acp_workdir, acp_auth_method,
+    acp_env_allowlist from brain config section.
+
+    RED: BrainConfig dataclass does not have ACP fields yet.
+    """
+    _clear_env(monkeypatch)
+    monkeypatch.setattr(
+        "tools.lib.config.USER_CONFIG",
+        {
+            "brain": {
+                "mode": "host_agent",
+                "transport": "acp",
+                "acp_command": ["hermes", "acp"],
+                "acp_workdir": "/tmp/acp-workspace",
+                "acp_auth_method": "custom",
+                "acp_env_allowlist": {"PATH": "/usr/bin", "HOME": "/home/user"},
+                "data_exposure_ack": True,
+            }
+        },
+    )
+    from tools.agent_bridge.config import resolve_brain_config
+
+    cfg = resolve_brain_config()
+    assert cfg.transport == "acp"
+
+    # RED: BrainConfig has no ACP fields — these will raise AttributeError
+    assert cfg.acp_command == ["hermes", "acp"]
+    assert cfg.acp_workdir == "/tmp/acp-workspace"
+    assert cfg.acp_auth_method == "custom"
+    assert cfg.acp_env_allowlist == {"PATH": "/usr/bin", "HOME": "/home/user"}
+
+
+def test_acp_mode_does_not_require_api_key(monkeypatch):
+    """Contract: ACP transport mode does not require LIFE_INDEX_LLM_API_KEY
+    or a provider key — ACP uses its own auth mechanism.
+
+    GREEN: current resolve_brain_config is agnostic to transport type.
+    This test must remain GREEN after ACP config fields are added.
+    """
+    _clear_env(monkeypatch)
+    monkeypatch.setattr(
+        "tools.lib.config.USER_CONFIG",
+        {
+            "brain": {
+                "mode": "host_agent",
+                "transport": "acp",
+                "acp_command": ["hermes", "acp"],
+                "acp_workdir": "/tmp/acp",
+                "acp_auth_method": "custom",
+                "acp_env_allowlist": {},
+                "data_exposure_ack": True,
+            }
+        },
+    )
+    from tools.agent_bridge.config import resolve_brain_config
+
+    cfg = resolve_brain_config()
+    assert cfg.transport == "acp"
+    assert cfg.api_key is None, "ACP mode must not require LIFE_INDEX_LLM_API_KEY or provider key"
+    assert cfg.mode == "host_agent"
+
+
+def test_acp_default_auth_method_is_none(monkeypatch):
+    """Contract: when acp_auth_method is not specified, it defaults to None.
+
+    RED: BrainConfig has no acp_auth_method field yet.
+    """
+    _clear_env(monkeypatch)
+    monkeypatch.setattr(
+        "tools.lib.config.USER_CONFIG",
+        {
+            "brain": {
+                "mode": "host_agent",
+                "transport": "acp",
+                "acp_command": ["hermes", "acp"],
+                "acp_workdir": "/tmp/acp",
+                "data_exposure_ack": True,
+            }
+        },
+    )
+    from tools.agent_bridge.config import resolve_brain_config
+
+    cfg = resolve_brain_config()
+    # RED: acp_auth_method field does not exist on BrainConfig
+    assert cfg.acp_auth_method is None
+
+
+def test_acp_env_allowlist_defaults_to_empty(monkeypatch):
+    """Contract: acp_env_allowlist defaults to empty dict when not specified.
+
+    RED: BrainConfig has no acp_env_allowlist field yet.
+    """
+    _clear_env(monkeypatch)
+    monkeypatch.setattr(
+        "tools.lib.config.USER_CONFIG",
+        {
+            "brain": {
+                "mode": "host_agent",
+                "transport": "acp",
+                "acp_command": ["hermes", "acp"],
+                "acp_workdir": "/tmp/acp",
+                "data_exposure_ack": True,
+            }
+        },
+    )
+    from tools.agent_bridge.config import resolve_brain_config
+
+    cfg = resolve_brain_config()
+    # RED: acp_env_allowlist field does not exist on BrainConfig
+    assert cfg.acp_env_allowlist == {}
