@@ -163,7 +163,7 @@ def _check_sentence_transformers() -> Tuple[Dict[str, Any], str]:
                 "version": None,
             },
             "sentence-transformers is not installed. Semantic search will be disabled. "
-            "To enable: pip install 'sentence-transformers>=2.6.0'",
+            "To enable: pip install 'life-index[semantic]'",
         )
 
 

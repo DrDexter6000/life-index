@@ -31,7 +31,7 @@ dependencies = [
     # Core dependencies - 核心依赖
     "pyyaml>=6.0",
     "numpy>=1.24.0",
-    "sentence-transformers>=2.6.0",
+    "httpx>=0.24",
     "jieba>=0.42.1",
     "rapidfuzz>=3.14.0",
     "Pillow>=10.0.0",
@@ -63,9 +63,14 @@ agent-bridge = [
     "openai>=1.0.0",
 ]
 
+# Semantic search - embedding model (heavy: pulls torch). Opt-in only.
+semantic = [
+    "sentence-transformers>=2.6.0",
+]
+
 # All optional dependencies - 所有可选依赖
 all = [
-    "life-index[dev,agent-bridge]",
+    "life-index[dev,agent-bridge,semantic]",
 ]
 
 [project.urls]
