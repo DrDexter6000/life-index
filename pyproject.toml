@@ -31,6 +31,7 @@ dependencies = [
     # Core dependencies - 核心依赖
     "pyyaml>=6.0",
     "numpy>=1.24.0",
+    "httpx>=0.24",
     "jieba>=0.42.1",
     "rapidfuzz>=3.14.0",
     "Pillow>=10.0.0",

@@ -19,6 +19,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   heavy ML stack (torch + CUDA, ~1.3 GB / ~16 min). Semantic search is now an
   opt-in extra: `pip install 'life-index[semantic]'`. When not installed,
   `life-index health` degrades gracefully with a warning and install hint.
+- **Explicit httpx dependency**: Declared `httpx` as a core dependency
+  (previously an undeclared transitive of the ML stack exposed by the
+  `[semantic]` split).
 - **Bootstrap manifest in wheel**: `bootstrap-manifest.json` is now included in
   the built wheel package, so `life-index bootstrap --json` works correctly from
   a `pip install` without a source checkout.
