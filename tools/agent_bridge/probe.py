@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 from typing import Any
 from urllib import error, request
@@ -12,9 +13,9 @@ from tools.lib import config as _cfg
 
 SCHEMA_VERSION = "m35.agent_bridge_probe.v0"
 
-# Independent ACP handshake timeout — much longer than the OpenAI
-# network-check timeout (1.5s) because ACP involves subprocess spawn.
-_ACP_HANDSHAKE_TIMEOUT = 12.0  # seconds
+# Independent ACP handshake timeout: ACP live probe includes process spawn and
+# JSON-RPC handshake, so it must not reuse the short OpenAI HTTP probe timeout.
+_ACP_HANDSHAKE_TIMEOUT = 12.0
 
 
 def _token_source() -> dict[str, Any]:
@@ -119,20 +120,66 @@ def _models_check_passed(checks: list[dict[str, Any]]) -> bool:
     return any(check.get("name") == "models" and check.get("status") == "pass" for check in checks)
 
 
+def _acp_config_checks(cfg: BrainConfig) -> list[dict[str, Any]]:
+    """Check ACP configuration readiness without spawning subprocesses."""
+    checks: list[dict[str, Any]] = []
+    command = cfg.acp_command
+    command_configured = bool(command and len(command) > 0)
+
+    if command_configured:
+        checks.append(
+            {
+                "name": "acp_command",
+                "status": "pass",
+                "reason": f"acp_command configured: {command}",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "name": "acp_command",
+                "status": "fail",
+                "reason": "acp_command not configured",
+            }
+        )
+        return checks
+
+    assert command is not None and len(command) > 0
+    executable = shutil.which(command[0])
+    if executable:
+        checks.append(
+            {
+                "name": "acp_executable",
+                "status": "pass",
+                "executable": executable,
+                "reason": f"Found: {executable}",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "name": "acp_executable",
+                "status": "fail",
+                "executable": None,
+                "reason": f"'{command[0]}' not found in PATH",
+            }
+        )
+
+    return checks
+
+
 def _acp_live_handshake(cfg: BrainConfig, *, timeout: float, network: bool) -> dict[str, Any]:
-    """Run ACP live handshake (initialize → authenticate → session/new).
-
-    Uses ``_ACPConnection`` from Part A — completes only the handshake,
-    never sends ``session/prompt`` or journal evidence.
-
-    Returns a dict with ``status`` ("pass"/"fail"/"skip"), ``steps``,
-    ``error`` (sanitized, no secrets), and ``duration_ms``.
-    """
+    """Run ACP initialize -> authenticate -> session/new and stop there."""
     if not network:
         return {"status": "skip", "reason": "--no-network"}
 
     if not cfg.acp_command:
-        return {"status": "fail", "error": "acp_command not configured"}
+        return {
+            "status": "fail",
+            "steps": {"initialize": "fail", "authenticate": "fail", "session_new": "fail"},
+            "error": "acp_command not configured",
+            "duration_ms": 0,
+        }
 
     from tools.agent_bridge.acp_client import _ACPConnection
 
@@ -149,7 +196,6 @@ def _acp_live_handshake(cfg: BrainConfig, *, timeout: float, network: bool) -> d
         }
     except (ACPConfigError, RuntimeError, FileNotFoundError, OSError) as exc:
         duration_ms = int((time.monotonic() - start) * 1000)
-        # Construct partial steps from what conn.handshake_steps has
         steps = dict(conn.handshake_steps)
         if "initialize" not in steps:
             steps["initialize"] = "fail"
@@ -170,6 +216,27 @@ def _acp_live_handshake(cfg: BrainConfig, *, timeout: float, network: bool) -> d
             pass
 
 
+def _acp_config_ready(cfg: BrainConfig, source: str, checks: list[dict[str, Any]]) -> bool:
+    command_ok = bool(cfg.acp_command and len(cfg.acp_command) > 0)
+    executable_ok = any(
+        check.get("name") == "acp_executable" and check.get("status") == "pass" for check in checks
+    )
+    return source in ("P1", "P2") and bool(cfg.data_exposure_ack) and command_ok and executable_ok
+
+
+def _acp_info(cfg: BrainConfig, live_handshake: dict[str, Any]) -> dict[str, Any]:
+    acp_cmd = cfg.acp_command
+    executable = shutil.which(acp_cmd[0]) if acp_cmd and len(acp_cmd) > 0 else None
+    return {
+        "command_configured": bool(acp_cmd and len(acp_cmd) > 0),
+        "command": acp_cmd if acp_cmd else None,
+        "workdir": cfg.acp_workdir,
+        "auth_method": cfg.acp_auth_method,
+        "executable_resolved": executable,
+        "live_handshake": live_handshake,
+    }
+
+
 def probe_agent_bridge(
     *,
     network: bool = True,
@@ -179,19 +246,19 @@ def probe_agent_bridge(
     cfg = resolve_brain_config()
     source = resolve_source(cfg, in_context_agent=in_context_agent)
     token = _token_source()
-    checks = _network_checks(cfg, network=network, timeout=timeout)
 
-    # ── Ready to send evidence ────────────────────────────────────────
     if cfg.transport == "acp":
-        # ACP: no api_key token required; ready depends on source + ack
-        ready = source in ("P1", "P2") and bool(cfg.data_exposure_ack)
+        checks = _acp_config_checks(cfg)
+        config_ready = _acp_config_ready(cfg, source, checks)
     else:
-        ready = source in ("P1", "P2") and bool(cfg.data_exposure_ack) and token["configured"]
+        checks = _network_checks(cfg, network=network, timeout=timeout)
+        config_ready = (
+            source in ("P1", "P2") and bool(cfg.data_exposure_ack) and token["configured"]
+        )
         if network:
-            ready = ready and _models_check_passed(checks)
-
-    if not network and cfg.transport != "acp":
-        ready = False
+            config_ready = config_ready and _models_check_passed(checks)
+        else:
+            config_ready = False
 
     result: dict[str, Any] = {
         "success": True,
@@ -208,17 +275,17 @@ def probe_agent_bridge(
         "sends_journal_evidence": False,
     }
 
-    # ── ACP live handshake ──────────────────────────────────────
     if cfg.transport == "acp":
         handshake = _acp_live_handshake(cfg, timeout=_ACP_HANDSHAKE_TIMEOUT, network=network)
         result["live_handshake"] = handshake
-        # ACP ready_to_send_evidence: network=True requires pass;
-        # network=False maintains config-ready semantics.
+        result["acp"] = _acp_info(cfg, handshake)
         if network:
-            result["ready_to_send_evidence"] = bool(ready) and handshake.get("status") == "pass"
+            result["ready_to_send_evidence"] = (
+                bool(config_ready) and handshake.get("status") == "pass"
+            )
         else:
-            result["ready_to_send_evidence"] = bool(ready)
+            result["ready_to_send_evidence"] = bool(config_ready)
     else:
-        result["ready_to_send_evidence"] = bool(ready)
+        result["ready_to_send_evidence"] = bool(config_ready)
 
     return result
