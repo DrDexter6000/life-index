@@ -134,105 +134,148 @@ def _read_stdout_lines(
         pass
 
 
-def acp_synthesize(cfg: BrainConfig, system_prompt: str, user_prompt: str) -> str:
-    """Run a prompt through an ACP-compatible agent via stdio JSON-RPC.
+class _ACPConnection:
+    """Context manager for ACP agent stdio JSON-RPC handshake.
 
-    Contract:
-    1. Enforces ``data_exposure_ack`` (raises ``AckRequiredError``).
-    2. Validates ``acp_command`` is configured (raises ``ACPConfigError``).
-    3. Spawns bounded stdio subprocess with a daemon reader thread + deadline queue.
-     4. JSON-RPC flow::
+    Extracts the connect + handshake logic from ``acp_synthesize`` into
+    a reusable helper.  On ``__enter__`` the context manager:
 
-          initialize → authenticate (auto-select first non-setup
-          auth method from initialize response when none configured)
-          → session/new → session/prompt
+    1. Spawns the ACP subprocess with sanitized env.
+    2. Starts a daemon reader thread.
+    3. Runs initialize → authenticate (auto-select first non-setup
+       auth method) → session/new.
+    4. Exposes ``.session_id`` and ``.rpc()`` for further calls.
 
-    5. Matches responses by request ``id``; collects ``session/update``
-       notifications emitted before each matching response.
-    6. Returns only ``agent_message_chunk`` text via ``parse_acp_stream``.
+    On ``__exit__`` it guarantees cleanup: close stdin, wait/kill the
+    subprocess, drain the message queue.
     """
-    require_ack(cfg)
 
-    if not cfg.acp_command:
-        raise ACPConfigError(
-            "ACP transport requires acp_command to be configured. "
-            "Set acp_command in brain config or LIFE_INDEX_ACP_COMMAND env var."
+    def __init__(
+        self,
+        cfg: BrainConfig,
+        *,
+        rpc_timeout: float | None = None,
+        handshake_timeout: float | None = None,
+    ) -> None:
+        self._cfg = cfg
+        self._rpc_timeout = rpc_timeout if rpc_timeout is not None else _RPC_TIMEOUT
+        self._handshake_timeout = handshake_timeout
+        self._handshake_deadline: float | None = None
+
+        self.session_id: str = ""
+        self.handshake_steps: dict[str, str] = {}
+        self.collected: list[dict] = []
+
+        # Mutable state populated during __enter__
+        self._proc: subprocess.Popen | None = None
+        self._stdin: TextIO | None = None
+        self._msg_queue: queue.Queue[dict[Any, Any]] = queue.Queue()
+        self._stop_event: threading.Event = threading.Event()
+        self._reader: threading.Thread | None = None
+        self._id: int = 0
+
+    def __enter__(self) -> "_ACPConnection":
+        require_ack(self._cfg)
+
+        if not self._cfg.acp_command:
+            raise ACPConfigError(
+                "ACP transport requires acp_command to be configured. "
+                "Set acp_command in brain config or LIFE_INDEX_ACP_COMMAND env var."
+            )
+
+        proc_env = _build_acp_subprocess_env(self._cfg)
+
+        try:
+            self._proc = subprocess.Popen(
+                self._cfg.acp_command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=self._cfg.acp_workdir,
+                env=proc_env,
+                text=True,
+                encoding="utf-8",
+            )
+        except (FileNotFoundError, PermissionError, OSError) as exc:
+            raise ACPConfigError(
+                f"Failed to start ACP subprocess with command {self._cfg.acp_command!r}: {exc}"
+            ) from exc
+
+        assert self._proc.stdin is not None
+        assert self._proc.stdout is not None
+        self._stdin = self._proc.stdin  # type: ignore[assignment]
+
+        # ── Bounded reader thread ──────────────────────────────────
+        self._msg_queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._reader = threading.Thread(
+            target=_read_stdout_lines,
+            args=(self._proc.stdout, self._msg_queue, self._stop_event),
+            daemon=True,
         )
+        self._reader.start()
 
-    # Build subprocess environment — strip provider keys, overlay allowlist,
-    # then strip again (denylist always wins).
-    proc_env = _build_acp_subprocess_env(cfg)
+        self._id = 0
 
-    try:
-        proc = subprocess.Popen(
-            cfg.acp_command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=cfg.acp_workdir,
-            env=proc_env,
-            text=True,
-            encoding="utf-8",
-        )
-    except (FileNotFoundError, PermissionError, OSError) as exc:
-        raise ACPConfigError(
-            f"Failed to start ACP subprocess with command {cfg.acp_command!r}: {exc}"
-        ) from exc
+        # ── Handshake ──────────────────────────────────────────────
+        if self._handshake_timeout is not None:
+            self._handshake_deadline = time.monotonic() + self._handshake_timeout
+        try:
+            self._handshake()
+        except Exception:
+            self._cleanup(kill_first=True)
+            raise
+        self._handshake_deadline = None
 
-    assert proc.stdin is not None
-    assert proc.stdout is not None
-    _stdin = proc.stdin
-    _stdout = proc.stdout
+        return self
 
-    # ── Bounded reader thread ──────────────────────────────────────────
-    msg_queue: queue.Queue[dict[Any, Any]] = queue.Queue()
-    stop_event = threading.Event()
-    reader = threading.Thread(
-        target=_read_stdout_lines,
-        args=(_stdout, msg_queue, stop_event),
-        daemon=True,
-    )
-    reader.start()
+    def __exit__(self, *args: Any) -> None:
+        self._cleanup()
 
-    collected: list[dict] = []
-    _id = 0
+    # ── Public API ────────────────────────────────────────────────────
 
-    def _rpc(method: str, params: dict | None = None) -> dict[Any, Any]:
+    def rpc(self, method: str, params: dict | None = None) -> dict[Any, Any]:
         """Send a JSON-RPC request and return the parsed response.
 
         Collects ``session/update`` notifications encountered before the
-        matching response into the outer ``collected`` list.
+        matching response into ``self.collected``.
 
         Raises ``RuntimeError`` on deadline expiry, broken pipe,
         subprocess exit, or JSON-RPC error response.
         """
-        nonlocal _id
-        _id += 1
+        if self._stdin is None:
+            raise RuntimeError("ACPConnection not entered — stdin unavailable.")
+
+        self._id += 1
         request = {
             "jsonrpc": "2.0",
-            "id": _id,
+            "id": self._id,
             "method": method,
             "params": params or {},
         }
         msg = json.dumps(request, ensure_ascii=False) + "\n"
         try:
-            _stdin.write(msg)
-            _stdin.flush()
+            self._stdin.write(msg)
+            self._stdin.flush()
         except (BrokenPipeError, OSError) as exc:
             raise RuntimeError(f"ACP subprocess closed before {method} completed: {exc}") from exc
 
-        deadline = time.monotonic() + _RPC_TIMEOUT
+        rpc_deadline = time.monotonic() + self._rpc_timeout
+        deadline = rpc_deadline
+        deadline_label = f"ACP RPC deadline ({self._rpc_timeout:.0f}s)"
+        if self._handshake_deadline is not None and self._handshake_deadline < deadline:
+            deadline = self._handshake_deadline
+            deadline_label = f"ACP handshake deadline ({self._handshake_timeout:.1f}s)"
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise RuntimeError(f"ACP RPC deadline ({_RPC_TIMEOUT}s) expired during {method}")
+                raise RuntimeError(f"{deadline_label} expired during {method}")
             try:
-                line_msg = msg_queue.get(timeout=min(remaining, 1.0))
+                line_msg = self._msg_queue.get(timeout=min(remaining, 1.0))
             except queue.Empty:
                 continue
 
-            # Check for matching JSON-RPC response by id
-            if line_msg.get("id") == _id:
+            if line_msg.get("id") == self._id:
                 if "error" in line_msg:
                     err = line_msg["error"]
                     raise RuntimeError(
@@ -241,12 +284,16 @@ def acp_synthesize(cfg: BrainConfig, system_prompt: str, user_prompt: str) -> st
                     )
                 return line_msg
 
-            # Not a response for us — collect as notification
-            collected.append(line_msg)
+            self.collected.append(line_msg)
 
-    try:
+    # ── Internals ─────────────────────────────────────────────────────
+
+    def _handshake(self) -> None:
+        """Run initialize → authenticate → session/new handshake."""
+        self.handshake_steps = {}
+
         # 1. initialize
-        init_resp = _rpc(
+        init_resp = self.rpc(
             "initialize",
             {
                 "protocolVersion": 1,
@@ -257,9 +304,10 @@ def acp_synthesize(cfg: BrainConfig, system_prompt: str, user_prompt: str) -> st
                 "capabilities": {},
             },
         )
+        self.handshake_steps["initialize"] = "pass"
 
         # 2. authenticate — auto-select first non-setup method when none configured
-        auth_method = cfg.acp_auth_method
+        auth_method = self._cfg.acp_auth_method
         if not auth_method:
             auth_methods = init_resp.get("result", {}).get("authMethods", [])
             for method_info in auth_methods:
@@ -269,51 +317,94 @@ def acp_synthesize(cfg: BrainConfig, system_prompt: str, user_prompt: str) -> st
                 if mid and "setup" not in str(mid).lower():
                     auth_method = mid
                     break
-            # When no auth methods are advertised by the server, skip
-            # authenticate entirely — the transport may not require auth.
 
         if auth_method:
-            _rpc("authenticate", {"methodId": auth_method})
+            self.rpc("authenticate", {"methodId": auth_method})
+            self.handshake_steps["authenticate"] = "pass"
+        else:
+            self.handshake_steps["authenticate"] = "skip"
 
         # 3. session/new
-        session_resp = _rpc(
+        session_resp = self.rpc(
             "session/new",
             {
-                "cwd": cfg.acp_workdir or os.getcwd(),
+                "cwd": self._cfg.acp_workdir or os.getcwd(),
                 "mcpServers": [],
             },
         )
-        session_id = session_resp.get("result", {}).get("sessionId", "")
+        self.handshake_steps["session_new"] = "pass"
+        self.session_id = session_resp.get("result", {}).get("sessionId", "")
 
-        # 4. session/prompt
-        _rpc(
+    def _cleanup(self, *, kill_first: bool = False) -> None:
+        """Guaranteed subprocess cleanup: close stdin, wait/kill, drain queue."""
+        _stdin = self._stdin
+        if _stdin is not None:
+            try:
+                _stdin.close()
+            except OSError:
+                pass
+            self._stdin = None
+
+        _proc = self._proc
+        if _proc is not None:
+            if kill_first and _proc.poll() is None:
+                try:
+                    _proc.kill()
+                except OSError:
+                    pass
+            try:
+                _proc.wait(timeout=3 if kill_first else _SUBPROCESS_JOIN_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                _proc.kill()
+                _proc.wait()
+            self._proc = None
+
+        self._stop_event.set()
+        _reader = self._reader
+        if _reader is not None:
+            _reader.join(timeout=3)
+            self._reader = None
+
+        while True:
+            try:
+                remaining_msg = self._msg_queue.get_nowait()
+                self.collected.append(remaining_msg)
+            except queue.Empty:
+                break
+
+
+def acp_synthesize(cfg: BrainConfig, system_prompt: str, user_prompt: str) -> str:
+    """Run a prompt through an ACP-compatible agent via stdio JSON-RPC.
+
+    Contract:
+    1. Enforces ``data_exposure_ack`` (raises ``AckRequiredError``).
+    2. Validates ``acp_command`` is configured (raises ``ACPConfigError``).
+    3. Uses ``_ACPConnection`` for subprocess lifecycle and handshake.
+    4. JSON-RPC flow::
+
+          initialize → authenticate (auto-select first non-setup
+          auth method from initialize response when none configured)
+          → session/new → session/prompt
+
+    5. Matches responses by request ``id``; collects ``session/update``
+        notifications emitted before each matching response.
+    6. Returns only ``agent_message_chunk`` text via ``parse_acp_stream``.
+    """
+    require_ack(cfg)
+
+    if not cfg.acp_command:
+        raise ACPConfigError(
+            "ACP transport requires acp_command to be configured. "
+            "Set acp_command in brain config or LIFE_INDEX_ACP_COMMAND env var."
+        )
+
+    with _ACPConnection(cfg) as conn:
+        conn.rpc(
             "session/prompt",
             {
-                "sessionId": session_id,
+                "sessionId": conn.session_id,
                 "prompt": [{"type": "text", "text": f"{system_prompt}\n\n{user_prompt}"}],
             },
         )
 
-    finally:
-        # ── Subprocess cleanup ─────────────────────────────────────────
-        try:
-            _stdin.close()
-        except OSError:
-            pass
-        try:
-            proc.wait(timeout=_SUBPROCESS_JOIN_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-
-        # ── Drain remaining queue messages ─────────────────────────────
-        stop_event.set()
-        reader.join(timeout=3)
-        while True:
-            try:
-                remaining_msg = msg_queue.get_nowait()
-                collected.append(remaining_msg)
-            except queue.Empty:
-                break
-
-    return parse_acp_stream(collected)
+    return parse_acp_stream(conn.collected)
