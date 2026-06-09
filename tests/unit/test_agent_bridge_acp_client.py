@@ -166,7 +166,7 @@ def test_acp_subprocess_env_redacts_life_index_api_key(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     with pytest.raises(_EnvCaptureSentinel):
@@ -205,7 +205,7 @@ def test_acp_subprocess_env_redacts_openai_api_key(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     with pytest.raises(_EnvCaptureSentinel):
@@ -245,7 +245,7 @@ def test_acp_subprocess_env_preserves_non_provider_vars(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     with pytest.raises(_EnvCaptureSentinel):
@@ -285,7 +285,7 @@ def test_acp_env_allowlist_cannot_reintroduce_life_index_api_key(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
         # Attacker / misconfiguration: try to reintroduce provider key via allowlist
         acp_env_allowlist={"LIFE_INDEX_LLM_API_KEY": "sk-from-allowlist-override"},
     )
@@ -325,7 +325,7 @@ def test_acp_env_allowlist_preserves_non_provider_vars(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
         acp_env_allowlist={
             "CUSTOM_VAR": "custom_value",
             "ANOTHER_VAR": "another_value",
@@ -374,7 +374,7 @@ def test_acp_subprocess_env_strips_provider_keys():
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
         acp_env_allowlist={"BAR": "baz"},
     )
     env = _build_acp_subprocess_env(cfg, base_env=base)
@@ -420,7 +420,7 @@ def test_acp_connection_runs_handshake():
         model=None,
         data_exposure_ack=True,
         acp_command=[fake_agent, fake_script],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     with _ACPConnection(cfg) as conn:
@@ -453,7 +453,7 @@ def test_acp_connection_cleanup_on_timeout():
         model=None,
         data_exposure_ack=True,
         acp_command=[fake_agent, fake_script],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     conn = _ACPConnection(cfg, rpc_timeout=2)
@@ -489,7 +489,7 @@ def test_acp_synthesize_rpc_order_is_preserved(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=[fake_agent, fake_script],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     original_rpc = acp_mod._ACPConnection.rpc
@@ -551,7 +551,7 @@ def test_acp_synthesize_uses_acp_connection_context_manager(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=[fake_agent, fake_script],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     result = acp_synthesize(cfg, "test system", "test user")
@@ -587,7 +587,7 @@ def test_acp_connection_no_leak_on_handshake_failure():
         model=None,
         data_exposure_ack=True,
         acp_command=[fake_agent, fake_script],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     conn = _ACPConnection(cfg, rpc_timeout=1)
