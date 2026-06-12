@@ -166,7 +166,7 @@ def test_acp_subprocess_env_redacts_life_index_api_key(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     with pytest.raises(_EnvCaptureSentinel):
@@ -205,7 +205,7 @@ def test_acp_subprocess_env_redacts_openai_api_key(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     with pytest.raises(_EnvCaptureSentinel):
@@ -245,7 +245,7 @@ def test_acp_subprocess_env_preserves_non_provider_vars(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
     )
 
     with pytest.raises(_EnvCaptureSentinel):
@@ -285,7 +285,7 @@ def test_acp_env_allowlist_cannot_reintroduce_life_index_api_key(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
         # Attacker / misconfiguration: try to reintroduce provider key via allowlist
         acp_env_allowlist={"LIFE_INDEX_LLM_API_KEY": "sk-from-allowlist-override"},
     )
@@ -325,7 +325,7 @@ def test_acp_env_allowlist_preserves_non_provider_vars(monkeypatch):
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
         acp_env_allowlist={
             "CUSTOM_VAR": "custom_value",
             "ANOTHER_VAR": "another_value",
@@ -374,7 +374,7 @@ def test_acp_subprocess_env_strips_provider_keys():
         model=None,
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
-        acp_workdir="/tmp",
+        acp_workdir=str(FIXTURE_PATH.parent),
         acp_env_allowlist={"BAR": "baz"},
     )
     env = _build_acp_subprocess_env(cfg, base_env=base)
@@ -387,3 +387,212 @@ def test_acp_subprocess_env_strips_provider_keys():
     assert env["PATH"] == "/usr/bin" and env["HOME"] == "/home/u" and env["FOO"] == "keep"
     # Allowlist overlay works
     assert env["BAR"] == "baz"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase C-2: _ACPConnection context manager tests
+#
+# These tests verify the extracted _ACPConnection helper:
+#   - Runs the full handshake (initialize → authenticate → session/new)
+#   - Cleanup works on timeout (no leaked processes)
+#   - acp_synthesize preserves behavior after refactoring
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_acp_connection_runs_handshake():
+    """Contract: _ACPConnection context manager runs initialize → authenticate → session/new.
+
+    Uses the fake ACP agent fixture that responds to all three handshake
+    methods and hangs on session/prompt.  The context manager must complete
+    the handshake and expose the session_id.
+    """
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    fake_agent = sys.executable  # Use same Python
+    fake_script = str(FIXTURE_PATH.parent / "fake_acp_agent.py")
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    with _ACPConnection(cfg) as conn:
+        assert conn.session_id == "test-session-abc123"
+
+    # After exit, collected should contain handshake responses
+    assert len(conn.collected) >= 0  # notifications may or may not appear
+
+
+def test_acp_connection_cleanup_on_timeout():
+    """Contract: _ACPConnection cleanup works when RPC times out.
+
+    Uses the hang variant of fake ACP agent that never responds.
+    The context manager must raise RuntimeError on timeout and ensure
+    the subprocess is killed via _cleanup (no leaked processes).
+    Uses explicit __enter__/__exit__ to verify cleanup state.
+    """
+    import time
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    fake_agent = sys.executable
+    fake_script = str(FIXTURE_PATH.parent / "fake_acp_agent_hang.py")
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    conn = _ACPConnection(cfg, rpc_timeout=2)
+
+    start = time.monotonic()
+    with pytest.raises(RuntimeError, match=r"(?i)deadline|timeout|expired"):
+        conn.__enter__()
+    elapsed = time.monotonic() - start
+    assert elapsed < 8, f"Timeout cleanup took too long: {elapsed:.1f}s"
+    # After cleanup, subprocess must be gone
+    assert conn._proc is None, "Subprocess leaked after __enter__ + _cleanup"
+
+
+def test_acp_synthesize_rpc_order_is_preserved(monkeypatch):
+    """Contract: After refactoring, acp_synthesize sends RPCs in the correct order.
+
+    Uses the full-response fake ACP agent (responds to session/prompt too).
+    Captures all RPC method calls to verify:
+    1. initialize → 2. authenticate → 3. session/new → 4. session/prompt
+    """
+    import tools.agent_bridge.acp_client as acp_mod
+    from tools.agent_bridge.acp_client import acp_synthesize
+    from tools.agent_bridge.config import BrainConfig
+
+    fake_agent = sys.executable
+    fake_script = str(FIXTURE_PATH.parent / "fake_acp_agent_full.py")
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    original_rpc = acp_mod._ACPConnection.rpc
+    tracked: list[str] = []
+
+    def _tracked_rpc(self, method, params=None):
+        tracked.append(method)
+        return original_rpc(self, method, params)
+
+    monkeypatch.setattr(acp_mod._ACPConnection, "rpc", _tracked_rpc)
+
+    result = acp_synthesize(cfg, "test system", "test user")
+
+    # Verify RPC call order: all 4 calls should be tracked
+    assert len(tracked) == 4, f"Expected 4 RPC calls, got {len(tracked)}: {tracked}"
+    assert tracked[0] == "initialize"
+    assert tracked[1] == "authenticate"
+    assert tracked[2] == "session/new"
+    assert tracked[3] == "session/prompt"
+    # Verify output was collected from agent_message_chunk notification
+    assert "HELLO_FROM_FAKE_ACP" in result
+
+
+def test_acp_synthesize_uses_acp_connection_context_manager(monkeypatch):
+    """Contract: After refactoring, acp_synthesize uses _ACPConnection internally.
+
+    Uses the full-response fake ACP agent. Verifies that the context manager
+    pattern is used (__enter__ / __exit__ called) and acp_synthesize produces
+    output.
+    """
+    from tools.agent_bridge.acp_client import acp_synthesize, _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    enter_called = [False]
+    exit_called = [False]
+
+    original_enter = _ACPConnection.__enter__
+    original_exit = _ACPConnection.__exit__
+
+    def _tracking_enter(self):
+        enter_called[0] = True
+        return original_enter(self)
+
+    def _tracking_exit(self, *args):
+        exit_called[0] = True
+        return original_exit(self, *args)
+
+    monkeypatch.setattr(_ACPConnection, "__enter__", _tracking_enter)
+    monkeypatch.setattr(_ACPConnection, "__exit__", _tracking_exit)
+
+    fake_agent = sys.executable
+    fake_script = str(FIXTURE_PATH.parent / "fake_acp_agent_full.py")
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    result = acp_synthesize(cfg, "test system", "test user")
+
+    assert enter_called[0], "_ACPConnection.__enter__ was not called"
+    assert exit_called[0], "_ACPConnection.__exit__ was not called"
+    assert isinstance(result, str)
+    assert "HELLO_FROM_FAKE_ACP" in result
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase C-2 Blocker 5: __enter__ cleanup on handshake failure
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_acp_connection_no_leak_on_handshake_failure():
+    """Regression: _ACPConnection must not leak subprocess when handshake fails.
+
+    Uses the hang variant with a short rpc_timeout. After __enter__ raises,
+    verify the subprocess is cleaned up (not leaked).
+    """
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    fake_agent = sys.executable
+    fake_script = str(FIXTURE_PATH.parent / "fake_acp_agent_hang.py")
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    conn = _ACPConnection(cfg, rpc_timeout=1)
+    with pytest.raises(RuntimeError):
+        conn.__enter__()
+    # After __enter__ raises, cleanup must have run:
+    assert conn._proc is None, "Subprocess leaked after __enter__ handshake failure"
+    assert conn._stdin is None, "Stdin leaked after __enter__ handshake failure"

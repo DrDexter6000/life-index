@@ -55,3 +55,79 @@ def test_degrade_when_no_ack():
 
 def test_explicit_in_context_mode_forces_p0():
     assert resolve_source(_cfg(mode="in_context"), in_context_agent=False) == "P0"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase C-2: ACP-aware resolve_source tests
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _acp_cfg(mode="auto", ack=False, acp_command=None):
+    """Create a BrainConfig with ACP transport."""
+    return BrainConfig(
+        mode=mode,
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model="m",
+        data_exposure_ack=ack,
+        acp_command=acp_command,
+    )
+
+
+def test_usable_acp_returns_p1_when_acp_configured():
+    """Contract: ACP transport + acp_command + ack → P1."""
+    assert (
+        resolve_source(
+            _acp_cfg(mode="auto", ack=True, acp_command=["acp", "serve"]),
+            in_context_agent=False,
+        )
+        == "P1"
+    )
+
+
+def test_usable_acp_returns_p2_when_byol_mode():
+    """Contract: ACP + byol mode → P2 (same intent-label semantics as endpoint P2)."""
+    assert (
+        resolve_source(
+            _acp_cfg(mode="byol", ack=True, acp_command=["acp", "serve"]),
+            in_context_agent=False,
+        )
+        == "P2"
+    )
+
+
+def test_explicit_deterministic_only_with_acp_still_returns_deterministic_only():
+    """Contract: mode='deterministic_only' is respected even with full ACP config.
+
+    The early return for deterministic_only must fire before any ACP check.
+    """
+    assert (
+        resolve_source(
+            _acp_cfg(mode="deterministic_only", ack=True, acp_command=["acp", "serve"]),
+            in_context_agent=False,
+        )
+        == "deterministic_only"
+    )
+
+
+def test_acp_without_ack_returns_deterministic_only():
+    """Contract: ACP without data_exposure_ack → deterministic_only (same as endpoint)."""
+    assert (
+        resolve_source(
+            _acp_cfg(mode="auto", ack=False, acp_command=["acp", "serve"]),
+            in_context_agent=False,
+        )
+        == "deterministic_only"
+    )
+
+
+def test_acp_without_command_returns_deterministic_only():
+    """Contract: ACP transport without acp_command → deterministic_only (nothing usable)."""
+    assert (
+        resolve_source(
+            _acp_cfg(mode="auto", ack=True, acp_command=None),
+            in_context_agent=False,
+        )
+        == "deterministic_only"
+    )

@@ -3,7 +3,7 @@ import subprocess
 
 
 def _clear_env(mp):
-    for k in (
+    for key in (
         "LIFE_INDEX_LLM_API_KEY",
         "LIFE_INDEX_LLM_BASE_URL",
         "LIFE_INDEX_LLM_MODEL",
@@ -14,10 +14,22 @@ def _clear_env(mp):
         "LIFE_INDEX_ACP_AUTH_METHOD",
         "LIFE_INDEX_ACP_ENV_ALLOWLIST",
     ):
-        mp.delenv(k, raising=False)
+        mp.delenv(key, raising=False)
 
 
-# ── openai transport tests (existing) ──────────────────────────────────────
+def _acp_probe_config(monkeypatch, *, acp_command=None, ack=True):
+    _clear_env(monkeypatch)
+    monkeypatch.setattr(
+        "tools.lib.config.USER_CONFIG",
+        {
+            "brain": {
+                "mode": "host_agent",
+                "transport": "acp",
+                "data_exposure_ack": ack,
+                "acp_command": acp_command,
+            }
+        },
+    )
 
 
 def test_probe_degrades_without_endpoint_or_token(monkeypatch):
@@ -88,30 +100,10 @@ def test_probe_does_not_call_smart_search_or_handoff(monkeypatch):
     assert result["source"] == "deterministic_only"
 
 
-# ── ACP transport tests (new) ──────────────────────────────────────────────
-
-
 def test_acp_configured_executable_resolvable(monkeypatch):
-    """ACP transport with acp_command configured and executable in PATH."""
-    _clear_env(monkeypatch)
-    monkeypatch.setattr(
-        "tools.lib.config.USER_CONFIG",
-        {
-            "brain": {
-                "mode": "host_agent",
-                "transport": "acp",
-                "acp_command": ["hermes", "acp"],
-                "data_exposure_ack": True,
-            }
-        },
-    )
-
+    _acp_probe_config(monkeypatch, acp_command=["hermes", "acp"], ack=True)
     fake_path = "/usr/local/bin/hermes"
-
-    def _fake_which(cmd):
-        return fake_path if cmd == "hermes" else None
-
-    monkeypatch.setattr("shutil.which", _fake_which)
+    monkeypatch.setattr("shutil.which", lambda cmd: fake_path if cmd == "hermes" else None)
 
     from tools.agent_bridge.probe import probe_agent_bridge
 
@@ -121,31 +113,16 @@ def test_acp_configured_executable_resolvable(monkeypatch):
     assert result["acp"]["command_configured"] is True
     assert result["acp"]["command"] == ["hermes", "acp"]
     assert result["acp"]["executable_resolved"] == fake_path
-    assert result["acp"]["live_handshake"]["status"] == "not_checked"
-    assert result["acp"]["live_handshake"]["reason"] == "deferred to Phase C-2"
+    assert result["acp"]["live_handshake"]["status"] == "skip"
     assert result["ready_to_send_evidence"] is True
 
-    # Verify checks list has ACP entries
-    check_names = {c["name"] for c in result["checks"]}
+    check_names = {check["name"] for check in result["checks"]}
     assert "acp_command" in check_names
     assert "acp_executable" in check_names
 
 
 def test_acp_configured_executable_not_resolvable(monkeypatch):
-    """ACP transport with acp_command configured but executable NOT in PATH."""
-    _clear_env(monkeypatch)
-    monkeypatch.setattr(
-        "tools.lib.config.USER_CONFIG",
-        {
-            "brain": {
-                "mode": "host_agent",
-                "transport": "acp",
-                "acp_command": ["hermes", "acp"],
-                "data_exposure_ack": True,
-            }
-        },
-    )
-
+    _acp_probe_config(monkeypatch, acp_command=["hermes", "acp"], ack=True)
     monkeypatch.setattr("shutil.which", lambda _cmd: None)
 
     from tools.agent_bridge.probe import probe_agent_bridge
@@ -158,14 +135,12 @@ def test_acp_configured_executable_not_resolvable(monkeypatch):
     assert result["acp"]["executable_resolved"] is None
     assert result["ready_to_send_evidence"] is False
 
-    # acp_executable check should be fail
-    exec_checks = [c for c in result["checks"] if c["name"] == "acp_executable"]
+    exec_checks = [check for check in result["checks"] if check["name"] == "acp_executable"]
     assert len(exec_checks) == 1
     assert exec_checks[0]["status"] == "fail"
 
 
 def test_acp_no_command_configured(monkeypatch):
-    """ACP transport but acp_command is None → command_configured False."""
     _clear_env(monkeypatch)
 
     from tools.agent_bridge.config import BrainConfig
@@ -194,59 +169,258 @@ def test_acp_no_command_configured(monkeypatch):
     assert result["ready_to_send_evidence"] is False
 
 
-def test_acp_no_subprocess_spawning(monkeypatch):
-    """ACP probe path must not spawn subprocess.Popen — only shutil.which."""
-    _clear_env(monkeypatch)
-    monkeypatch.setattr(
-        "tools.lib.config.USER_CONFIG",
-        {
-            "brain": {
-                "mode": "host_agent",
-                "transport": "acp",
-                "acp_command": ["hermes", "acp"],
-                "data_exposure_ack": True,
-            }
-        },
-    )
-
-    import subprocess as sp
+def test_acp_no_subprocess_spawning_when_network_false(monkeypatch):
+    _acp_probe_config(monkeypatch, acp_command=["hermes", "acp"], ack=True)
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/fake/path/hermes")
 
     def _fail_popen(*_args, **_kwargs):
-        raise AssertionError("ACP probe must not spawn subprocess.Popen")
+        raise AssertionError("ACP --no-network probe must not spawn subprocess.Popen")
 
-    monkeypatch.setattr(sp, "Popen", _fail_popen)
-
-    # shutil.which returns a fake path to exercise the ACP path
-    monkeypatch.setattr("shutil.which", lambda _cmd: "/fake/path/hermes")
+    monkeypatch.setattr(subprocess, "Popen", _fail_popen)
 
     from tools.agent_bridge.probe import probe_agent_bridge
 
-    # Must not raise AssertionError
     result = probe_agent_bridge(network=False)
+
     assert result["transport"] == "acp"
     assert result["acp"]["executable_resolved"] == "/fake/path/hermes"
+    assert result["live_handshake"]["status"] == "skip"
 
 
 def test_acp_no_secret_leakage(monkeypatch):
-    """json.dumps of ACP probe result must not contain secret values."""
-    _clear_env(monkeypatch)
+    _acp_probe_config(monkeypatch, acp_command=["hermes", "acp"], ack=True)
     monkeypatch.setenv("LIFE_INDEX_LLM_API_KEY", "acp-secret-12345")
-    monkeypatch.setattr(
-        "tools.lib.config.USER_CONFIG",
-        {
-            "brain": {
-                "mode": "host_agent",
-                "transport": "acp",
-                "acp_command": ["hermes", "acp"],
-                "data_exposure_ack": True,
-            }
-        },
-    )
     monkeypatch.setattr("shutil.which", lambda _cmd: "/usr/local/bin/hermes")
 
     from tools.agent_bridge.probe import probe_agent_bridge
 
     result = probe_agent_bridge(network=False)
     serialized = json.dumps(result, ensure_ascii=False)
+
     assert "acp-secret-12345" not in serialized
     assert "secret-token-value" not in serialized
+
+
+def test_probe_live_handshake_success_with_fake_acp(monkeypatch):
+    import sys
+    from pathlib import Path
+
+    fake_script = (
+        Path(__file__).resolve().parent.parent / "fixtures" / "agent_bridge" / "fake_acp_agent.py"
+    )
+    _acp_probe_config(monkeypatch, acp_command=[sys.executable, str(fake_script)], ack=True)
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result = probe_agent_bridge(network=True, timeout=5.0)
+
+    assert result["transport"] == "acp"
+    handshake = result["live_handshake"]
+    assert result["acp"]["live_handshake"] == handshake
+    assert handshake["status"] == "pass"
+    assert "duration_ms" in handshake
+    steps = handshake["steps"]
+    assert isinstance(steps, dict)
+    assert "initialize" in steps
+    assert "authenticate" in steps
+    assert "session_new" in steps
+
+
+def test_probe_live_handshake_command_missing(monkeypatch):
+    _acp_probe_config(
+        monkeypatch,
+        acp_command=["/nonexistent/path/to/acp-binary-that-does-not-exist"],
+        ack=True,
+    )
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result = probe_agent_bridge(network=True, timeout=5.0)
+
+    handshake = result["live_handshake"]
+    assert handshake["status"] == "fail"
+    assert "error" in handshake
+    assert "sk-" not in str(handshake.get("error", ""))
+    assert isinstance(handshake["steps"], dict)
+
+
+def test_probe_live_handshake_no_network_skip(monkeypatch):
+    _acp_probe_config(monkeypatch, acp_command=["echo", "should-not-be-called"], ack=True)
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result = probe_agent_bridge(network=False)
+
+    assert result["transport"] == "acp"
+    assert result["live_handshake"]["status"] == "skip"
+
+
+def test_probe_live_handshake_timeout_cleanup(monkeypatch):
+    import sys
+    from pathlib import Path
+
+    fake_script = (
+        Path(__file__).resolve().parent.parent
+        / "fixtures"
+        / "agent_bridge"
+        / "fake_acp_agent_hang.py"
+    )
+    _acp_probe_config(monkeypatch, acp_command=[sys.executable, str(fake_script)], ack=True)
+
+    # Monkeypatch the module-level constant so the hang test uses a short
+    # timeout instead of the real 75.0s budget.
+    monkeypatch.setattr("tools.agent_bridge.probe._ACP_HANDSHAKE_TIMEOUT", 2.0)
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result = probe_agent_bridge(network=True, timeout=2.0)
+
+    handshake = result["live_handshake"]
+    assert handshake["status"] == "fail"
+    assert "error" in handshake
+    assert handshake.get("duration_ms", 0) > 0
+    assert isinstance(handshake["steps"], dict)
+
+
+def test_acp_live_handshake_enforces_overall_deadline(monkeypatch):
+    import sys
+    import time
+    from pathlib import Path
+
+    fake_script = (
+        Path(__file__).resolve().parent.parent
+        / "fixtures"
+        / "agent_bridge"
+        / "fake_acp_agent_slow_handshake.py"
+    )
+    _acp_probe_config(monkeypatch, acp_command=[sys.executable, str(fake_script)], ack=True)
+
+    from tools.agent_bridge.config import resolve_brain_config
+    from tools.agent_bridge.probe import _acp_live_handshake
+
+    cfg = resolve_brain_config()
+
+    start = time.monotonic()
+    handshake = _acp_live_handshake(cfg, timeout=0.6, network=True)
+    elapsed = time.monotonic() - start
+
+    assert handshake["status"] == "fail"
+    assert "handshake deadline" in handshake.get("error", "").lower()
+    assert elapsed < 3.0
+    assert handshake.get("duration_ms", 0) < 3000
+
+
+def test_probe_never_sends_session_prompt(monkeypatch):
+    import sys
+    from pathlib import Path
+
+    fake_script = (
+        Path(__file__).resolve().parent.parent / "fixtures" / "agent_bridge" / "fake_acp_agent.py"
+    )
+    _acp_probe_config(monkeypatch, acp_command=[sys.executable, str(fake_script)], ack=True)
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result = probe_agent_bridge(network=True, timeout=10.0)
+
+    handshake = result["live_handshake"]
+    assert handshake["status"] != "fail" or "timeout" not in str(handshake.get("error", "")).lower()
+
+
+def test_probe_ready_to_send_evidence_for_acp(monkeypatch):
+    import sys
+    from pathlib import Path
+
+    fake_script = (
+        Path(__file__).resolve().parent.parent / "fixtures" / "agent_bridge" / "fake_acp_agent.py"
+    )
+    _acp_probe_config(monkeypatch, acp_command=[sys.executable, str(fake_script)], ack=True)
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result_net = probe_agent_bridge(network=True, timeout=10.0)
+    assert result_net["sends_journal_evidence"] is False
+    assert result_net["transport"] == "acp"
+    if result_net.get("live_handshake", {}).get("status") == "pass":
+        assert result_net["ready_to_send_evidence"] is True
+
+    result_no_net = probe_agent_bridge(network=False)
+    assert result_no_net["sends_journal_evidence"] is False
+    assert result_no_net["ready_to_send_evidence"] is True
+
+
+def test_acp_live_handshake_uses_cold_start_budget(monkeypatch):
+    """RED test: probe passes a cold-start-tolerant handshake timeout to _ACPConnection.
+
+    Real Hermes ACP handshake timings (observed 2026-06-12, cumulative):
+      initialize_elapsed_s=10.922, auth_elapsed_s=16.22, session_elapsed_s=48.762
+    The observed full handshake completed around 48.8s; the 75.0s budget gives
+    conservative headroom above that observed total.  The probe must now pass a
+    budget >= 60.0s so real cold-start handshakes can complete.
+    """
+    import sys
+
+    _acp_probe_config(monkeypatch, acp_command=[sys.executable, "-c", "pass"], ack=True)
+    monkeypatch.setattr("shutil.which", lambda _cmd: sys.executable)
+
+    captured: dict[str, float] = {}
+
+    class _FakeACPConnection:
+        def __init__(self, cfg, *, rpc_timeout=None, handshake_timeout=None):
+            captured["rpc_timeout"] = rpc_timeout
+            captured["handshake_timeout"] = handshake_timeout
+            self.handshake_steps = {
+                "initialize": "pass",
+                "authenticate": "pass",
+                "session_new": "pass",
+            }
+            self.session_id = "cold-start-budget-test"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr("tools.agent_bridge.acp_client._ACPConnection", _FakeACPConnection)
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result = probe_agent_bridge(network=True, timeout=1.5)
+
+    assert result["transport"] == "acp"
+    assert result["live_handshake"]["status"] == "pass"
+
+    # Core assertion: both timeouts must accommodate real ACP cold-start
+    assert captured["handshake_timeout"] >= 60.0, (
+        f"handshake_timeout={captured['handshake_timeout']}s is too short for "
+        f"real ACP cold-start (observed session_elapsed_s=48.762)"
+    )
+    assert captured["rpc_timeout"] >= 60.0, (
+        f"rpc_timeout={captured['rpc_timeout']}s is too short for " f"real ACP cold-start RPC calls"
+    )
+
+
+def test_probe_live_handshake_authenticate_skip(monkeypatch):
+    import sys
+    from pathlib import Path
+
+    fake_script = (
+        Path(__file__).resolve().parent.parent
+        / "fixtures"
+        / "agent_bridge"
+        / "fake_acp_agent_noauth.py"
+    )
+    _acp_probe_config(monkeypatch, acp_command=[sys.executable, str(fake_script)], ack=True)
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result = probe_agent_bridge(network=True, timeout=10.0)
+
+    handshake = result["live_handshake"]
+    assert handshake["status"] == "pass"
+    steps = handshake.get("steps", {})
+    assert isinstance(steps, dict)
+    assert steps.get("initialize") == "pass"
+    assert steps.get("authenticate") == "skip"
+    assert steps.get("session_new") == "pass"
