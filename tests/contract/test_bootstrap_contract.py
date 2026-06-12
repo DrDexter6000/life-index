@@ -75,6 +75,7 @@ class TestBootstrapJsonContract:
         payload = _run_bootstrap(tmp_path)
         assert payload["route"] == "fresh_install"
         assert payload["detected_state"]["has_user_data"] is False
+        assert payload["safe_next_steps"][-1] == "life-index health"
 
     def test_existing_journal_routes_upgrade_and_suggests_health(self, tmp_path):
         data_dir = tmp_path / "Life-Index"

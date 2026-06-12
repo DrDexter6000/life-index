@@ -22,9 +22,14 @@ Before taking any action, read this entire document once.
 
 ## 2. Step 0 — Refresh Authority First, Then Run Bootstrap Detection
 
-Do **not** clone, recreate `.venv`, run `health`, adopt a checkout, delete anything, or classify fresh-install vs upgrade until you complete this gate.
+Do **not** recreate `.venv`, run `health`, adopt a checkout, delete anything, or classify fresh-install vs upgrade until you complete this gate. (Cloning a fresh copy is **not** forbidden — on a blank machine it is the only way to obtain authority at all; see Step 0.1.)
 
 ### Step 0.1: Refresh authority documents first
+
+**First decide which case you are in:**
+
+- **No local Life Index checkout or command exists yet** (blank machine): you cannot refresh files you do not have. Skip the refresh in this sub-step and go straight to Step 4.1 to clone — **a fresh clone of the upstream default branch IS an up-to-date authority refresh**. After cloning, return to Step 0.2.
+- **A local checkout already exists**: refresh it before trusting it, as described below.
 
 Before trusting any local checkout, refresh `bootstrap-manifest.json` from the current upstream repository. Treat that manifest as the version/authority anchor and refresh **every file listed in its `required_authority_docs` array** before proceeding. Treat local copies as potentially stale.
 
@@ -109,7 +114,8 @@ Before starting, verify these requirements are met:
 
 | Requirement | Verification Command | Minimum Version |
 |:---|:---|:---|
-| Python | `python3 --version` or `python --version` | 3.11+ |
+| Python | `python3 --version` or `python --version` | 3.11+ (tested through 3.14) |
+| `python3-venv` / `ensurepip` | `python3 -m venv --help` succeeds | Required for Step 4.2; often **absent on minimal Linux / WSL / headless agent images** |
 | Git | `git --version` | Any recent |
 | Disk space | ~150MB base (no ML stack) | `[semantic]` adds ~500MB–1GB (CPU torch) or ~2–3GB (CUDA torch); semantic model cache downloads only when enabled |
 | Network | Internet connection | For cloning and optional background semantic model download |
@@ -139,6 +145,7 @@ Execute these steps in order. Do not skip steps.
 - If those commands fail, are unavailable, or do not clearly complete the installation, do **not** get stuck there.
 - Fall back to the standard repository-driven path in this document: `git clone` → `python -m venv .venv` → `pip install -e .`, then return to Step 0.2 to run `bootstrap --json` and follow `safe_next_steps`.
 - Prefer the documented repository workflow over undocumented host-platform behavior.
+- **Decision summary**: user explicitly requested a host-platform install path → try the host command, and on any failure fall back to `git clone`. User did not specify → use `git clone` directly (the documented default).
 
 **Canonical Path Guardrail**:
 - If the host platform already manages a canonical skill checkout, do **not** create a duplicate checkout in a generic workspace root.
@@ -182,6 +189,13 @@ python3 -m venv .venv
 **Failure Handling**:
 - If Python not found: Try `python -m venv .venv` (Windows) or `py -3 -m venv .venv`
 - If permission denied: Report to user with exact error
+- If `ensurepip is not available` (or `python3 -m venv` fails on a missing venv module): first try the system package — `sudo apt install python3-venv` (or your distro's equivalent). **In a no-sudo / headless agent environment**, create the venv without pip and bootstrap pip from the official PyPA installer:
+  ```bash
+  python3 -m venv --without-pip .venv
+  .venv/bin/python -c "import urllib.request; urllib.request.urlretrieve('https://bootstrap.pypa.io/get-pip.py', '/tmp/get-pip.py')"
+  .venv/bin/python /tmp/get-pip.py
+  ```
+  Use only the official `bootstrap.pypa.io` source; do not fetch get-pip from third-party mirrors.
 
 ---
 
@@ -538,6 +552,6 @@ Keep it concise — this is a welcome message, not a manual.>
 
 ---
 
-**Document Version**: 2.5
-**Last Updated**: 2026-06-08
+**Document Version**: 2.6
+**Last Updated**: 2026-06-12
 **Authority Chain**: `CHARTER.md` governs project invariants. `bootstrap-manifest.json` governs install/upgrade/repair freshness and points to the current required authority documents through `required_authority_docs`.

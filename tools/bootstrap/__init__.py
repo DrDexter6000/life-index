@@ -233,7 +233,7 @@ def decide_route(
         safe_next_steps.append("life-index migrate --dry-run")
         safe_next_steps.append("life-index migrate --apply")
 
-    if route == "upgrade":
+    if route in ("upgrade", "fresh_install"):
         safe_next_steps.append("life-index health")
 
     return {

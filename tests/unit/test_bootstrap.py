@@ -231,13 +231,15 @@ def _checkout(verdict: str, safe: bool) -> dict:
 
 
 class TestDecideRoute:
-    def test_no_user_data_routes_fresh_install_without_steps(self):
+    def test_no_user_data_routes_fresh_install_suggests_health(self):
         result = decide_route(_state(has_user_data=False))
 
         assert result["route"] == "fresh_install"
         assert result["route_reason"] == "No existing journal data found"
         assert result["needs_human"] == []
-        assert result["safe_next_steps"] == []
+        # fresh_install must still verify the install runs, not declare "complete"
+        # with zero checks; health is the floor (empty data => degraded is OK).
+        assert result["safe_next_steps"] == ["life-index health"]
 
     def test_existing_data_routes_upgrade(self):
         result = decide_route(_state(has_user_data=True, journal_count=12))
