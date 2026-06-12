@@ -267,6 +267,10 @@ def test_probe_live_handshake_timeout_cleanup(monkeypatch):
     )
     _acp_probe_config(monkeypatch, acp_command=[sys.executable, str(fake_script)], ack=True)
 
+    # Monkeypatch the module-level constant so the hang test uses a short
+    # timeout instead of the real 75.0s budget.
+    monkeypatch.setattr("tools.agent_bridge.probe._ACP_HANDSHAKE_TIMEOUT", 2.0)
+
     from tools.agent_bridge.probe import probe_agent_bridge
 
     result = probe_agent_bridge(network=True, timeout=2.0)
@@ -343,6 +347,58 @@ def test_probe_ready_to_send_evidence_for_acp(monkeypatch):
     result_no_net = probe_agent_bridge(network=False)
     assert result_no_net["sends_journal_evidence"] is False
     assert result_no_net["ready_to_send_evidence"] is True
+
+
+def test_acp_live_handshake_uses_cold_start_budget(monkeypatch):
+    """RED test: probe passes a cold-start-tolerant handshake timeout to _ACPConnection.
+
+    Real Hermes ACP handshake timings (observed 2026-06-12, cumulative):
+      initialize_elapsed_s=10.922, auth_elapsed_s=16.22, session_elapsed_s=48.762
+    The observed full handshake completed around 48.8s; the 75.0s budget gives
+    conservative headroom above that observed total.  The probe must now pass a
+    budget >= 60.0s so real cold-start handshakes can complete.
+    """
+    import sys
+
+    _acp_probe_config(monkeypatch, acp_command=[sys.executable, "-c", "pass"], ack=True)
+    monkeypatch.setattr("shutil.which", lambda _cmd: sys.executable)
+
+    captured: dict[str, float] = {}
+
+    class _FakeACPConnection:
+        def __init__(self, cfg, *, rpc_timeout=None, handshake_timeout=None):
+            captured["rpc_timeout"] = rpc_timeout
+            captured["handshake_timeout"] = handshake_timeout
+            self.handshake_steps = {
+                "initialize": "pass",
+                "authenticate": "pass",
+                "session_new": "pass",
+            }
+            self.session_id = "cold-start-budget-test"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr("tools.agent_bridge.acp_client._ACPConnection", _FakeACPConnection)
+
+    from tools.agent_bridge.probe import probe_agent_bridge
+
+    result = probe_agent_bridge(network=True, timeout=1.5)
+
+    assert result["transport"] == "acp"
+    assert result["live_handshake"]["status"] == "pass"
+
+    # Core assertion: both timeouts must accommodate real ACP cold-start
+    assert captured["handshake_timeout"] >= 60.0, (
+        f"handshake_timeout={captured['handshake_timeout']}s is too short for "
+        f"real ACP cold-start (observed session_elapsed_s=48.762)"
+    )
+    assert captured["rpc_timeout"] >= 60.0, (
+        f"rpc_timeout={captured['rpc_timeout']}s is too short for " f"real ACP cold-start RPC calls"
+    )
 
 
 def test_probe_live_handshake_authenticate_skip(monkeypatch):

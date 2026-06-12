@@ -13,9 +13,13 @@ from tools.lib import config as _cfg
 
 SCHEMA_VERSION = "m35.agent_bridge_probe.v0"
 
-# Independent ACP handshake timeout: ACP live probe includes process spawn and
-# JSON-RPC handshake, so it must not reuse the short OpenAI HTTP probe timeout.
-_ACP_HANDSHAKE_TIMEOUT = 12.0
+# ACP cold-start handshake timeout: covers real ACP process spawn + initialize
+# + authenticate + session/new.  Observed real-runtime timings (Hermes 2026-06-12,
+# cumulative): initialize=10.9s, authenticate=16.2s, session/new=48.8s total.
+# The full handshake completed around 48.8s; 75.0s gives conservative headroom.
+# This is NOT the HTTP probe timeout — callers may pass a smaller explicit
+# timeout for fast-fail tests.
+_ACP_HANDSHAKE_TIMEOUT = 75.0
 
 
 def _token_source() -> dict[str, Any]:
