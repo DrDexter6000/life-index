@@ -36,6 +36,7 @@ Commands:
     health    Check installation health
               --data-audit  Audit data directory for anomalies
               --cache-audit  Read-only cache version audit (JSON)
+    server    Start/status/stop the shared loopback-only ACP gateway
     import    Import provider (plan, run, status, rollback)
     index-tree  Read-only Index Tree Evidence Navigation
     version   Show package and bootstrap manifest version info
@@ -509,6 +510,7 @@ def main() -> None:
         "maintenance": "tools.maintenance.__main__",
         "bootstrap": "tools.bootstrap.__main__",
         "trajectory": "tools.trajectory.__main__",
+        "server": "tools.agent_bridge.server_cli",
         "import": "tools.ingest.__main__",
         "index-tree": "tools.index_tree.__main__",
     }
@@ -520,7 +522,9 @@ def main() -> None:
 
         # Import and run the submodule's main()
         module = __import__(cmd_map[subcmd], fromlist=["main"])
-        module.main()
+        ret = module.main()
+        if isinstance(ret, int):
+            sys.exit(ret)
     elif subcmd in ("-V", "version"):
         print(json.dumps(get_version_info(), ensure_ascii=False, indent=2))
     elif subcmd in ("--help", "-h", "help"):
@@ -561,6 +565,7 @@ def print_usage() -> None:
     print("  bootstrap  Detect install/data state and route onboarding (read-only)")
     print("  smart-search  Smart search with LLM orchestration")
     print("  agent-bridge  L3 host-agent bridge probe/handoff")
+    print("  server    Start/status/stop the shared loopback-only ACP gateway")
     print("  aggregate  Deterministic aggregate/trend computation")
     print("  analyze   Alias for deterministic aggregate/trend computation")
     print("  health    Check installation health")
