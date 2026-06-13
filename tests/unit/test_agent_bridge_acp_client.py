@@ -634,3 +634,65 @@ def test_acp_connection_no_leak_on_handshake_failure():
     # After __enter__ raises, cleanup must have run:
     assert conn._proc is None, "Subprocess leaked after __enter__ handshake failure"
     assert conn._stdin is None, "Stdin leaked after __enter__ handshake failure"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase V5b-1: _ACPConnection lifecycle probes
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_acp_connection_is_alive_reflects_subprocess_state():
+    """is_alive() is True while the subprocess runs and False after cleanup."""
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    fake_agent = sys.executable
+    fake_script = str(FIXTURE_PATH.parent / "fake_acp_agent.py")
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    conn = _ACPConnection(cfg)
+    assert conn.is_alive() is False, "Unentered connection must report dead"
+
+    conn.__enter__()
+    assert conn.is_alive() is True, "Running subprocess must report alive"
+    assert conn.pid is not None and conn.pid > 0
+
+    conn.close()
+    assert conn.is_alive() is False, "Closed connection must report dead"
+    assert conn.pid is None
+
+
+def test_acp_connection_close_is_idempotent():
+    """close() can be called multiple times without error."""
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    fake_agent = sys.executable
+    fake_script = str(FIXTURE_PATH.parent / "fake_acp_agent.py")
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    conn = _ACPConnection(cfg)
+    conn.__enter__()
+    conn.close()
+    conn.close()
+    assert conn.is_alive() is False
