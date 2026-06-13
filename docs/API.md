@@ -3002,6 +3002,85 @@ python -m tools server stop [--host 127.0.0.1] [--port 8765] [--state-file PATH]
 | `state` | string | `warm` / `degraded` / `cold` / `not running` |
 | `degraded` | bool | 健康状态是否为 `degraded` |
 
+### `POST /query` 返回值
+
+Unary query returns a rich `m35.agent_bridge_query.v0` envelope:
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.agent_bridge_query.v0",
+  "command": "agent-bridge query",
+  "source": "host-agent",
+  "query": "过去三天我去过哪里？",
+  "mode": "GROUNDED",
+  "scaffold": {
+    "intent": "location",
+    "date_from": "2026-06-03",
+    "date_to": "2026-06-06",
+    "queries": ["过去三天 去过 哪里", "location"],
+    "filters": {}
+  },
+  "evidence": [
+    {
+      "id": "2026/06/life-index_2026-06-02_001",
+      "rel_path": "Journals/2026/06/life-index_2026-06-02_001.md",
+      "title": "随笔",
+      "date": "2026-06-02",
+      "snippet": "optional short excerpt",
+      "metadata": {}
+    }
+  ],
+  "answer": {
+    "mode": "GROUNDED",
+    "summary": "short answer grounded in evidence",
+    "insights": [
+      {
+        "theme": "location",
+        "quote": "optional short quote",
+        "date": "2026-06-02",
+        "interpretation": "why this evidence matters",
+        "evidence_refs": ["2026/06/life-index_2026-06-02_001"]
+      }
+    ],
+    "related_findings": [],
+    "gap": null,
+    "explanation": null,
+    "what_was_found": [],
+    "suggestions": []
+  },
+  "synthesis": "short answer grounded in evidence",
+  "events": [],
+  "provenance": {
+    "evidence_source": "life-index search",
+    "host_agent": "configured provider label",
+    "degraded": false
+  }
+}
+```
+
+Degraded responses keep the same rich shape with `mode: "UNGROUNDED"` and
+`provenance.degraded: true`. The gateway never falls back to a direct LLM.
+
+### `POST /query/stream` SSE 返回值
+
+Streaming queries use the same rich contract. Both `/query` (with
+`Accept: text/event-stream`) and `/query/stream` emit server-sent events.
+
+Allowed event types (in order):
+
+| Event | Payload | 说明 |
+|---|---|---|
+| `status` | `{"state": "active"}` | stream started |
+| `scaffold` | `{intent, date_from, date_to, queries, filters}` | search scaffold |
+| `evidence` | `evidence[]` | accepted evidence metadata |
+| `delta` | string | optional validated answer text update; answer text only |
+| `final` | full rich `m35.agent_bridge_query.v0` envelope | complete response |
+| `error` | `{message, envelope}` | unexpected failure with rich degraded envelope |
+
+`delta` carries answer text only and never includes evidence, mode, or
+provenance. `final` always carries the complete rich envelope.
+
 ### 安全边界
 
 - 禁止绑定 `0.0.0.0` 或公网地址。

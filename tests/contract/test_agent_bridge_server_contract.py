@@ -153,3 +153,51 @@ def test_server_stop_gracefully_shuts_down_service(fake_service_port: int, tmp_p
     assert result.returncode == 0
     assert "server stopped" in result.stdout
     assert not state_file.exists()
+
+
+def test_agent_bridge_query_rich_contract_shape():
+    """The warm gateway rich query contract exposes the expected top-level fields."""
+    from tools.agent_bridge.query_envelope import map_to_rich_envelope
+
+    internal = {
+        "schema_version": "m35.agent_bridge_query.v0",
+        "status": "GROUNDED",
+        "answer": "A grounded summary.",
+        "insights": [],
+        "evidence_refs": [],
+        "gap": None,
+        "provenance": {
+            "transport": "acp",
+            "model": "hermes-agent",
+            "runtime": "fake-acp",
+            "degraded": False,
+        },
+    }
+
+    rich = map_to_rich_envelope("What happened?", {"intent": "recall"}, internal)
+
+    assert rich["success"] is True
+    assert rich["schema_version"] == "m35.agent_bridge_query.v0"
+    assert rich["command"] == "agent-bridge query"
+    assert rich["source"] == "host-agent"
+    assert rich["query"] == "What happened?"
+    assert rich["mode"] == "GROUNDED"
+    assert set(rich.keys()) >= {
+        "success",
+        "schema_version",
+        "command",
+        "source",
+        "query",
+        "mode",
+        "scaffold",
+        "evidence",
+        "answer",
+        "synthesis",
+        "events",
+        "provenance",
+    }
+    assert rich["answer"]["mode"] == "GROUNDED"
+    assert rich["answer"]["summary"] == "A grounded summary."
+    assert rich["synthesis"] == "A grounded summary."
+    assert rich["provenance"]["evidence_source"] == "life-index search"
+    assert rich["provenance"]["degraded"] is False

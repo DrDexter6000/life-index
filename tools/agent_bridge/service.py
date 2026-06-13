@@ -27,6 +27,10 @@ from urllib.parse import urlparse
 from tools.agent_bridge.acp_query import build_degraded_result, build_provenance
 from tools.agent_bridge.acp_session_manager import ACPWarmSessionManager
 from tools.agent_bridge.config import BrainConfig, resolve_brain_config
+from tools.agent_bridge.query_envelope import (
+    clean_scaffold,
+    map_to_rich_envelope,
+)
 
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8787
@@ -140,6 +144,11 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
             return None
         return parsed if isinstance(parsed, dict) else None
 
+    def _host_agent_label(self) -> str:
+        """Return a productized host-agent label for the rich provenance block."""
+        cfg: BrainConfig = self.manager._cfg
+        return cfg.model or "configured provider label"
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/healthz":
@@ -158,7 +167,7 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "shutting down"})
             return
 
-        if parsed.path != "/query":
+        if parsed.path not in ("/query", "/query/stream"):
             self._send_json(404, {"error": "not found"})
             return
 
@@ -177,38 +186,52 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
             return
 
         accept = self.headers.get("Accept", "")
-        use_sse = "text/event-stream" in accept
+        use_sse = "text/event-stream" in accept or parsed.path == "/query/stream"
 
         if not use_sse:
             result = self.manager.query(query, scaffold)
-            self._send_json(200, result)
+            rich = map_to_rich_envelope(
+                query,
+                scaffold,
+                result,
+                host_agent=self._host_agent_label(),
+            )
+            self._send_json(200, rich)
             return
 
         self._handle_sse_query(query, scaffold)
 
     def _handle_sse_query(self, query: str, scaffold: dict[str, Any]) -> None:
-        """Stream query results as server-sent events.
+        """Stream query results as server-sent events using the GUI contract.
 
-        Runs the manager query in a worker thread so that incremental
-        ``agent_message_chunk`` updates can be emitted as ``event: chunk``
-        frames before the final ``event: result`` envelope.
+        Event vocabulary is fixed and ordered:
+        ``status`` -> ``scaffold`` -> ``evidence`` -> ``delta`` (optional)
+        -> ``final``.  ``delta`` carries the validated answer text only;
+        ``final`` carries the complete rich ``m35.agent_bridge_query.v0``
+        envelope.  On unexpected failure an ``error`` event is emitted.
         """
         sse_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
 
-        def enqueue(chunk: str) -> None:
+        def stream_callback(chunk: Any) -> None:
+            """Collect raw provider chunks; they are not emitted as deltas.
+
+            Raw model fragments (markdown fences, JSON, schema keys, etc.)
+            must never leak into ``delta`` events.  The validated answer text
+            is derived from the final rich envelope and emitted as a single
+            text-only delta after ``evidence``.
+            """
             sse_queue.put(("chunk", chunk))
 
         def run_query() -> None:
             try:
-                result = self.manager.query(query, scaffold, stream_callback=enqueue)
+                result = self.manager.query(
+                    query,
+                    scaffold,
+                    stream_callback=stream_callback,
+                )
                 sse_queue.put(("result", result))
             except Exception as exc:
-                cfg: BrainConfig = self.manager._cfg
-                provenance = build_provenance(cfg, conn_meta=None, degraded=True)
-                degraded = build_degraded_result(
-                    "UNGROUNDED", f"SSE query failed: {exc}", provenance
-                )
-                sse_queue.put(("result", degraded))
+                sse_queue.put(("error", exc))
 
         worker = threading.Thread(target=run_query, daemon=True)
         worker.start()
@@ -220,23 +243,72 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         try:
-            while True:
+            # Phase 1: status and scaffold are emitted immediately.
+            self._write_sse_event("status", {"state": "active"})
+            self._write_sse_event("scaffold", clean_scaffold(scaffold))
+
+            # Phase 2: wait for the validated result.  Raw chunks received from
+            # the adapter are ignored for delta purposes; the validated answer
+            # summary from the final envelope is the only delta source.
+            internal_result: Any = None
+            while internal_result is None:
                 try:
                     kind, data = sse_queue.get(timeout=_SSE_TIMEOUT)
                 except queue.Empty:
-                    break
+                    return
+
                 if kind == "chunk":
-                    try:
-                        self._write_sse_event("chunk", data)
-                    except (OSError, ValueError):
-                        break
+                    # Raw adapter chunks are intentionally not forwarded as
+                    # deltas.  They may contain JSON, markdown fences, or
+                    # schema fragments before validation completes.
                     continue
+
+                if kind == "error":
+                    if isinstance(data, Exception):
+                        raise data
+                    raise RuntimeError(str(data))
+
                 if kind == "result":
-                    try:
-                        self._write_sse_event("result", data)
-                    except (OSError, ValueError):
-                        break
+                    internal_result = data
                     break
+
+                raise RuntimeError(f"unexpected SSE queue kind: {kind}")
+
+            rich = map_to_rich_envelope(
+                query,
+                scaffold,
+                internal_result,
+                host_agent=self._host_agent_label(),
+            )
+
+            # Phase 3: evidence, a single text-only delta derived from the
+            # validated answer summary, and the final rich envelope.
+            self._write_sse_event("evidence", rich["evidence"])
+            answer_summary = rich.get("answer", {}).get("summary")
+            if isinstance(answer_summary, str) and answer_summary:
+                self._write_sse_event("delta", answer_summary)
+            self._write_sse_event("final", rich)
+
+        except Exception as exc:
+            cfg: BrainConfig = self.manager._cfg
+            provenance = build_provenance(cfg, conn_meta=None, degraded=True)
+            degraded = build_degraded_result("UNGROUNDED", f"SSE query failed: {exc}", provenance)
+            rich_degraded = map_to_rich_envelope(
+                query,
+                scaffold,
+                degraded,
+                host_agent=self._host_agent_label(),
+            )
+            try:
+                self._write_sse_event(
+                    "error",
+                    {
+                        "message": str(exc),
+                        "envelope": rich_degraded,
+                    },
+                )
+            except (OSError, ValueError):
+                pass
         finally:
             # Ensure the worker does not hold the manager lock forever
             # if the client disappeared mid-stream.
