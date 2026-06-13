@@ -166,6 +166,11 @@ class _ACPConnection:
         self.handshake_steps: dict[str, str] = {}
         self.collected: list[dict] = []
 
+        # Additive metadata from matched handshake responses.  These are
+        # populated during __enter__ and are read-only after handshake.
+        self.initialize_result: dict | None = None
+        self.session_new_result: dict | None = None
+
         # Mutable state populated during __enter__
         self._proc: subprocess.Popen | None = None
         self._stdin: TextIO | None = None
@@ -304,6 +309,7 @@ class _ACPConnection:
                 "capabilities": {},
             },
         )
+        self.initialize_result = init_resp.get("result")
         self.handshake_steps["initialize"] = "pass"
 
         # 2. authenticate — auto-select first non-setup method when none configured
@@ -332,8 +338,9 @@ class _ACPConnection:
                 "mcpServers": [],
             },
         )
+        self.session_new_result = session_resp.get("result")
         self.handshake_steps["session_new"] = "pass"
-        self.session_id = session_resp.get("result", {}).get("sessionId", "")
+        self.session_id = (self.session_new_result or {}).get("sessionId", "")
 
     def _cleanup(self, *, kill_first: bool = False) -> None:
         """Guaranteed subprocess cleanup: close stdin, wait/kill, drain queue."""

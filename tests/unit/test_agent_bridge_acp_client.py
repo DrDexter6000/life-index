@@ -567,6 +567,44 @@ def test_acp_synthesize_uses_acp_connection_context_manager(monkeypatch):
 # ──────────────────────────────────────────────────────────────────────
 
 
+def test_acp_connection_exposes_handshake_metadata():
+    """Contract: _ACPConnection exposes initialize_result and session_new_result.
+
+    Uses the query fake agent which returns serverInfo.name and a model
+    field in session/new.  The attributes must be populated without
+    changing handshake order or probe semantics.
+    """
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    fake_agent = sys.executable
+    fake_script = str(FIXTURE_PATH.parent / "fake_acp_agent_query.py")
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    with _ACPConnection(cfg) as conn:
+        assert conn.initialize_result is not None
+        assert conn.initialize_result.get("serverInfo", {}).get("name") == "fake-acp"
+        assert conn.session_new_result is not None
+        assert conn.session_new_result.get("sessionId") == "test-session-abc123"
+        assert conn.session_new_result.get("model") == "fake-model"
+        assert conn.session_id == "test-session-abc123"
+        assert conn.handshake_steps == {
+            "initialize": "pass",
+            "authenticate": "pass",
+            "session_new": "pass",
+        }
+
+
 def test_acp_connection_no_leak_on_handshake_failure():
     """Regression: _ACPConnection must not leak subprocess when handshake fails.
 

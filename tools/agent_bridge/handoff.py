@@ -38,11 +38,32 @@ def _build_prompts(scaffold: dict[str, Any]) -> tuple[str, str]:
 def handoff_search(query: str, *, in_context_agent: bool = False) -> dict[str, Any]:
     """Run smart-search scaffold -> resolve brain -> (maybe) synthesize.
 
-    Returns a proposal envelope with keys: source, query, scaffold, synthesis.
+    Returns a proposal envelope with keys: source, query, scaffold, synthesis
+    (or the m35.agent_bridge_query.v0 envelope when routed through ACP).
     """
     scaffold = _cli_smart_search(query)
     cfg = resolve_brain_config()
     source = resolve_source(cfg, in_context_agent=in_context_agent)
+
+    # ACP query path: route through dedicated ACP query adapter.
+    # This path does NOT call client.synthesize (no OpenAI-compatible fallback).
+    if source in ("P1", "P2") and cfg.transport == "acp" and cfg.data_exposure_ack:
+        from tools.agent_bridge.acp_query import acp_query_adapter
+
+        try:
+            result = acp_query_adapter(query, scaffold, cfg)
+            return result  # Already m35.agent_bridge_query.v0 envelope
+        except Exception:
+            # ACP setup failed — degrade deterministically through adapter
+            from tools.agent_bridge.acp_query import build_degraded_result, build_provenance
+
+            return build_degraded_result(
+                "UNGROUNDED",
+                f"ACP query adapter failed for query: {query}",
+                build_provenance(cfg, degraded=True),
+            )
+
+    # Legacy P1/P2 path (OpenAI-compatible)
     envelope: dict[str, Any] = {
         "source": source,
         "query": query,
