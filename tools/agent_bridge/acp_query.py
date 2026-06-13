@@ -465,19 +465,20 @@ def acp_query_adapter(
         pre_prompt_len = len(conn.collected)
 
         # 4. Send session/prompt and capture the authoritative RPC response.
+        #    Incremental agent_message_chunk updates are forwarded through
+        #    stream_callback inside rpc() as they arrive.
         prompt_resp = conn.rpc(
             "session/prompt",
             {
                 "sessionId": conn.session_id,
                 "prompt": [{"type": "text", "text": prompt}],
             },
+            stream_callback=stream_callback,
         )
         rpc_usage = _extract_rpc_usage(prompt_resp)
 
         # 5. Collect text via parse_acp_stream from only new chunks
         collected_text = parse_acp_stream(conn.collected[pre_prompt_len:])
-        if stream_callback:
-            stream_callback(collected_text)
 
         # 6. Parse and validate
         validated, error = parse_and_validate(collected_text, allowed_ids)
@@ -520,6 +521,7 @@ def acp_query_adapter(
                 "sessionId": conn.session_id,
                 "prompt": [{"type": "text", "text": repair_prompt}],
             },
+            stream_callback=stream_callback,
         )
         rpc_usage_retry = _extract_rpc_usage(prompt_resp_retry)
 

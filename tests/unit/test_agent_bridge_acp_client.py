@@ -696,3 +696,216 @@ def test_acp_connection_close_is_idempotent():
     conn.close()
     conn.close()
     assert conn.is_alive() is False
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase V5b-2: incremental stream_callback hook
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _make_handshake_responses(session_id: str = "s1") -> list[str]:
+    """Return JSON-RPC responses for initialize → authenticate → session/new."""
+    return [
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "protocolVersion": 1,
+                    "serverInfo": {"name": "fake-acp", "version": "0.1.0"},
+                    "authMethods": [{"id": "api-key", "name": "API Key"}],
+                    "capabilities": {},
+                },
+            }
+        ),
+        json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"status": "ok"}}),
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "result": {"sessionId": session_id, "cwd": "/tmp"},
+            }
+        ),
+    ]
+
+
+def test_acp_connection_rpc_calls_stream_callback_per_chunk(monkeypatch):
+    """rpc(stream_callback=...) forwards each agent_message_chunk incrementally.
+
+    Regression for the V5a final-buffer-only behaviour: the callback must be
+    invoked once per chunk as notifications arrive, before the RPC response
+    is returned, and the final collected_text must still parse correctly.
+    """
+    import io
+    import json
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy"],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    chunks = ["alpha", "beta", "gamma"]
+    notifications = []
+    for text in chunks:
+        notifications.append(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "session/update",
+                    "params": {
+                        "sessionId": "s1",
+                        "update": {
+                            "content": {"text": text, "type": "text"},
+                            "sessionUpdate": "agent_message_chunk",
+                        },
+                    },
+                }
+            )
+        )
+    prompt_response = json.dumps({"jsonrpc": "2.0", "id": 4, "result": {"status": "ok"}})
+    stdout_text = "\n".join(_make_handshake_responses() + notifications + [prompt_response]) + "\n"
+
+    class _FakeStdout:
+        def __init__(self, text: str):
+            self._io = io.StringIO(text)
+
+        def readline(self) -> str:
+            return self._io.readline()
+
+        def close(self) -> None:
+            self._io.close()
+
+    class _FakeProc:
+        def __init__(self):
+            self.stdout = _FakeStdout(stdout_text)
+            self.stdin = io.StringIO()
+            self._poll = None
+
+        def poll(self):
+            return self._poll
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+    captured_chunks: list[str] = []
+
+    def _fake_popen(*args, **kwargs):
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+
+    conn = _ACPConnection(cfg, rpc_timeout=5)
+    conn.__enter__()
+
+    def _on_chunk(text: str) -> None:
+        captured_chunks.append(text)
+
+    resp = conn.rpc("session/prompt", {"sessionId": "s1", "prompt": []}, stream_callback=_on_chunk)
+
+    assert resp["result"]["status"] == "ok"
+    assert captured_chunks == chunks, f"Expected chunks {chunks}, got {captured_chunks}"
+    # Final parse still works and contains all chunks in order.
+    from tools.agent_bridge.acp_client import parse_acp_stream
+
+    assert parse_acp_stream(conn.collected) == "alphabetagamma"
+    conn.close()
+
+
+def test_acp_connection_rpc_ignores_non_chunk_notifications_for_stream_callback(monkeypatch):
+    """Only agent_message_chunk notifications trigger stream_callback."""
+    import io
+    import json
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy"],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    prompt_lines = [
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": {
+                    "sessionId": "s1",
+                    "update": {
+                        "content": {"text": "thought", "type": "text"},
+                        "sessionUpdate": "agent_thought_chunk",
+                    },
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": {
+                    "sessionId": "s1",
+                    "update": {
+                        "content": {"text": "word", "type": "text"},
+                        "sessionUpdate": "agent_message_chunk",
+                    },
+                },
+            }
+        ),
+        json.dumps({"jsonrpc": "2.0", "id": 4, "result": {"status": "ok"}}),
+    ]
+
+    stdout_text = "\n".join(_make_handshake_responses() + prompt_lines) + "\n"
+
+    class _FakeStdout:
+        def __init__(self, text: str):
+            self._io = io.StringIO(text)
+
+        def readline(self) -> str:
+            return self._io.readline()
+
+        def close(self) -> None:
+            self._io.close()
+
+    class _FakeProc:
+        def __init__(self):
+            self.stdout = _FakeStdout(stdout_text)
+            self.stdin = io.StringIO()
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+    def _fake_popen(*args, **kwargs):
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+
+    conn = _ACPConnection(cfg, rpc_timeout=5)
+    conn.__enter__()
+
+    captured: list[str] = []
+    conn.rpc("session/prompt", {"sessionId": "s1"}, stream_callback=captured.append)
+
+    assert captured == ["word"]
+    conn.close()
