@@ -2941,6 +2941,75 @@ It reports token presence/source type only; it never prints token values.
 
 ---
 
+## server
+
+> **Shared loopback-only ACP gateway.** `server` manages the warm Agent Bridge
+> HTTP service as a single local process. It is bound to loopback only and never
+> exposes journal-evidence endpoints outside the local machine.
+
+### 端点
+
+```bash
+life-index server start [--host 127.0.0.1] [--port 8765] [--state-file PATH]
+life-index server status [--host 127.0.0.1] [--port 8765] [--state-file PATH]
+life-index server stop [--host 127.0.0.1] [--port 8765] [--state-file PATH]
+
+python -m tools server start [--host 127.0.0.1] [--port 8765] [--state-file PATH]
+python -m tools server status [--host 127.0.0.1] [--port 8765] [--state-file PATH]
+python -m tools server stop [--host 127.0.0.1] [--port 8765] [--state-file PATH]
+```
+
+### 参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `start` | subcommand | - | 启动共享网关；若目标端口已有 `/healthz` 响应则直接复用 |
+| `status` | subcommand | - | 返回运行状态、端口、PID 及 warm/degraded 状态 |
+| `stop` | subcommand | - | 通过 `/shutdown` 或信号优雅停止服务并清理状态文件 |
+| `--host` | string | `127.0.0.1` | 绑定主机，**仅允许 loopback** |
+| `--port` | int | `8765` | 绑定端口 |
+| `--state-file` | path | `~/.life-index/server.json` | 运行时状态文件路径 |
+
+状态文件解析优先级：`--state-file` > `LIFE_INDEX_SERVER_STATE_FILE` 环境变量 > `~/.life-index/server.json`。
+
+### 行为约束
+
+- **仅 loopback**：`--host` 解析结果必须落在 `127.0.0.0/8` 或 `::1`，否则以非零状态码退出并提示错误。`0.0.0.0` 被拒绝。
+- **启动复用**：`start` 会先探测目标地址的 `/healthz`；若已响应则退出 0 并输出 `already running on 127.0.0.1:PORT`，不启动第二个进程。
+- **状态文件**：`start` 写入 `host` / `port` / `pid` / `started_at`；`stop` 清理该文件。
+- **优雅停止**：`stop` 优先调用 `POST /shutdown`；失败时回退到向记录 PID 发送 `SIGTERM`。
+- **非阻塞状态**：`status` 探测 `/healthz` 使用短超时，不依赖活跃服务。
+
+### `status` 返回值
+
+```json
+{
+  "running": true,
+  "host": "127.0.0.1",
+  "port": 8765,
+  "pid": 12345,
+  "state": "warm",
+  "degraded": false
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `running` | bool | `/healthz` 是否响应 |
+| `host` | string | 当前使用的主机 |
+| `port` | int | 当前使用的端口 |
+| `pid` | int \| null | 状态文件记录的进程 ID |
+| `state` | string | `warm` / `degraded` / `cold` / `not running` |
+| `degraded` | bool | 健康状态是否为 `degraded` |
+
+### 安全边界
+
+- 禁止绑定 `0.0.0.0` 或公网地址。
+- 状态文件默认位于用户主目录 `~/.life-index/server.json`，不写入用户日志数据目录。
+- `stop` 仅操作状态文件与 loopback 端点；不会向未知进程发送信号。
+
+---
+
 ## maintenance
 
 > **Maintenance cycle (gbrain Phase D).** Dry-run/report-only maintenance command that
