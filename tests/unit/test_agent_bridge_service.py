@@ -146,6 +146,8 @@ class _FakeManagerWarmFails:
 
 
 class _FakeManagerStreaming:
+    """Streams raw model-like fragments that must not leak into ``delta``."""
+
     def __init__(self, raise_on_query: bool = False) -> None:
         self._cfg = _brain_config()
         self.queries: list[tuple[str, dict, Any]] = []
@@ -160,9 +162,43 @@ class _FakeManagerStreaming:
         if self.raise_on_query:
             raise RuntimeError("boom")
         if stream_callback is not None:
-            stream_callback("chunk-alpha")
-            stream_callback("chunk-beta")
+            # Emit raw JSON/markdown/schema fragments.  The gateway must NOT
+            # forward these as delta; the delta must be the validated answer
+            # summary from the final rich envelope.
+            stream_callback("```json\n")
+            stream_callback('{\n  "schema_version": "m35.agent_bridge_query.v0",\n')
+            stream_callback('  "status": "GROUNDED",\n')
+            stream_callback(f'  "answer": "{query}",\n')
+            stream_callback('  "evidence_refs": ["E1"],\n')
+            stream_callback('  "provenance": {"transport": "acp"}\n')
+            stream_callback("}\n```\n")
         return _success_envelope(answer=query)
+
+    def close(self) -> None:
+        self.closed = True
+
+    def health(self) -> dict:
+        return {"status": "ok", "state": "warm", "last_warm_error": None}
+
+
+class _FakeManagerStreamingDegraded:
+    """Streams fragments but returns a degraded UNGROUNDED result."""
+
+    def __init__(self) -> None:
+        self._cfg = _brain_config()
+        self.queries: list[tuple[str, dict, Any]] = []
+        self.closed = False
+
+    def start(self) -> "_FakeManagerStreamingDegraded":
+        return self
+
+    def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+        self.queries.append((query, scaffold, stream_callback))
+        if stream_callback is not None:
+            stream_callback("```json\n")
+            stream_callback('{"schema_version": "m35.agent_bridge_query.v0"}\n')
+            stream_callback("```\n")
+        return _degraded_envelope("no answer available")
 
     def close(self) -> None:
         self.closed = True
@@ -358,7 +394,7 @@ def test_build_server_keeps_running_when_warm_fails():
         server.shutdown_and_close()
 
 
-def test_query_json_returns_envelope():
+def test_query_json_returns_rich_envelope():
     manager = _FakeManagerWarmOk()
     server = _start_server_with_manager(manager)
     try:
@@ -370,8 +406,17 @@ def test_query_json_returns_envelope():
         )
         assert status == 200
         assert body["schema_version"] == QUERY_SCHEMA_VERSION
-        assert body["status"] == "GROUNDED"
-        assert body["answer"] == "hello"
+        assert body["success"] is True
+        assert body["command"] == "agent-bridge query"
+        assert body["source"] == "host-agent"
+        assert body["query"] == "hello"
+        assert body["mode"] == "GROUNDED"
+        assert body["answer"]["mode"] == "GROUNDED"
+        assert body["answer"]["summary"] == "hello"
+        assert body["synthesis"] == "hello"
+        assert body["events"] == []
+        assert body["provenance"]["evidence_source"] == "life-index search"
+        assert body["provenance"]["degraded"] is False
         assert len(manager.queries) == 1
         assert manager.queries[0][0] == "hello"
     finally:
@@ -410,7 +455,25 @@ def test_query_json_rejects_missing_query():
         server.shutdown_and_close()
 
 
-def test_query_sse_emits_chunks_before_result():
+def _parse_sse_events(raw: bytes) -> list[tuple[str, Any]]:
+    """Parse raw SSE response bytes into a list of (event_name, data) tuples."""
+    text = raw.decode("utf-8")
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+    events: list[tuple[str, Any]] = []
+    current_event: str | None = None
+    for line in lines:
+        if line.startswith("event:"):
+            current_event = line[len("event:") :].strip()
+        elif line.startswith("data:") and current_event is not None:
+            data = json.loads(line[len("data:") :].strip())
+            events.append((current_event, data))
+            current_event = None
+    return events
+
+
+def test_query_sse_emits_contract_events_in_order():
+    """SSE /query emits status -> scaffold -> evidence -> delta -> final."""
     manager = _FakeManagerStreaming()
     server = _start_server_with_manager(manager)
     try:
@@ -422,34 +485,43 @@ def test_query_sse_emits_chunks_before_result():
             headers={"Accept": "text/event-stream"},
         )
         assert status == 200
-        text = raw.decode("utf-8")
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
 
-        events: list[tuple[str, Any]] = []
-        current_event: str | None = None
-        for line in lines:
-            if line.startswith("event:"):
-                current_event = line[len("event:") :].strip()
-            elif line.startswith("data:") and current_event is not None:
-                data = json.loads(line[len("data:") :].strip())
-                events.append((current_event, data))
-                current_event = None
+        assert names == [
+            "status",
+            "scaffold",
+            "evidence",
+            "delta",
+            "final",
+        ], f"got {names}"
+        assert events[0][1] == {"state": "active"}
+        assert events[1][1] == {
+            "intent": "",
+            "date_from": "",
+            "date_to": "",
+            "queries": [],
+            "filters": {},
+        }
+        assert events[2][1] == []
+        delta = events[3][1]
+        assert delta == "stream me"
+        final = events[4][1]
+        assert final["schema_version"] == QUERY_SCHEMA_VERSION
+        assert final["success"] is True
+        assert final["mode"] == "GROUNDED"
+        assert final["answer"]["summary"] == "stream me"
+        assert final["synthesis"] == "stream me"
 
-        chunk_events = [e for e in events if e[0] == "chunk"]
-        result_events = [e for e in events if e[0] == "result"]
-        assert len(chunk_events) == 2, f"expected 2 chunks, got {events}"
-        assert chunk_events[0][1] == "chunk-alpha"
-        assert chunk_events[1][1] == "chunk-beta"
-        assert len(result_events) == 1
-        assert result_events[0][1]["status"] == "GROUNDED"
-        assert result_events[0][1]["answer"] == "stream me"
-        assert events.index(chunk_events[0]) < events.index(result_events[0])
-        assert events.index(chunk_events[1]) < events.index(result_events[0])
+        # The gateway must pass a stream_callback into the manager.
+        assert len(manager.queries) == 1
+        assert manager.queries[0][2] is not None
     finally:
         server.shutdown_and_close()
 
 
-def test_sse_exception_path_emits_degraded_result():
+def test_sse_exception_path_emits_error_with_rich_degraded_envelope():
+    """SSE /query error event carries a rich UNGROUNDED degraded envelope."""
     manager = _FakeManagerStreaming(raise_on_query=True)
     server = _start_server_with_manager(manager)
     try:
@@ -461,28 +533,129 @@ def test_sse_exception_path_emits_degraded_result():
             headers={"Accept": "text/event-stream"},
         )
         assert status == 200
-        text = raw.decode("utf-8")
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
 
-        events: list[tuple[str, Any]] = []
-        current_event: str | None = None
-        for line in lines:
-            if line.startswith("event:"):
-                current_event = line[len("event:") :].strip()
-            elif line.startswith("data:") and current_event is not None:
-                data = json.loads(line[len("data:") :].strip())
-                events.append((current_event, data))
-                current_event = None
+        assert "status" in names
+        assert "scaffold" in names
+        assert "error" in names
+        error_event = [e for e in events if e[0] == "error"][0]
+        envelope = error_event[1]["envelope"]
+        assert envelope["schema_version"] == QUERY_SCHEMA_VERSION
+        assert envelope["success"] is True
+        assert envelope["mode"] == "UNGROUNDED"
+        assert envelope["answer"]["mode"] == "UNGROUNDED"
+        assert envelope["answer"]["summary"] == ""
+        assert envelope["provenance"]["degraded"] is True
+        assert "SSE query failed" in envelope["answer"]["gap"]
+    finally:
+        server.shutdown_and_close()
 
-        chunk_events = [e for e in events if e[0] == "chunk"]
-        result_events = [e for e in events if e[0] == "result"]
-        assert len(chunk_events) == 0
-        assert len(result_events) == 1
-        result = result_events[0][1]
-        assert result["schema_version"] == QUERY_SCHEMA_VERSION
-        assert result["status"] == "UNGROUNDED"
-        assert result["provenance"]["degraded"] is True
-        assert "SSE query failed" in result["gap"]
+
+def test_query_stream_path_emits_sse_contract():
+    """POST /query/stream always emits SSE contract events."""
+    manager = _FakeManagerStreaming()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "stream via path", "scaffold": {}},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
+        assert names == [
+            "status",
+            "scaffold",
+            "evidence",
+            "delta",
+            "final",
+        ], f"got {names}"
+        assert events[3][1] == "stream via path"
+        assert events[4][1]["answer"]["summary"] == "stream via path"
+    finally:
+        server.shutdown_and_close()
+
+
+def test_sse_delta_excludes_raw_model_fragments():
+    """Raw JSON/markdown/schema fragments streamed by the adapter do not leak into delta."""
+    manager = _FakeManagerStreaming()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "raw fragments", "scaffold": {}},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        deltas = [data for name, data in events if name == "delta"]
+        assert len(deltas) == 1
+        delta = deltas[0]
+        assert delta == "raw fragments"
+
+        forbidden = [
+            "schema_version",
+            "evidence_refs",
+            "provenance",
+            "status",
+            "GROUNDED",
+            "```",
+            "{",
+            "}",
+        ]
+        for substring in forbidden:
+            assert (
+                substring not in delta
+            ), f"delta contains forbidden substring {substring!r}: {delta!r}"
+    finally:
+        server.shutdown_and_close()
+
+
+def test_sse_degraded_emits_no_delta():
+    """A degraded UNGROUNDED result with no answer text emits no delta event."""
+    manager = _FakeManagerStreamingDegraded()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "degraded", "scaffold": {}},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
+        assert names == ["status", "scaffold", "evidence", "final"], f"got {names}"
+        assert "delta" not in names
+        final = events[3][1]
+        assert final["mode"] == "UNGROUNDED"
+        assert final["answer"]["summary"] == ""
+        assert final["answer"]["gap"] == "no answer available"
+    finally:
+        server.shutdown_and_close()
+
+
+def test_query_json_degraded_returns_rich_ungrounded():
+    """A degraded manager result is returned as a rich UNGROUNDED envelope."""
+    manager = _FakeManagerWarmFails()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "hello", "scaffold": {}},
+        )
+        assert status == 200
+        assert body["success"] is True
+        assert body["mode"] == "UNGROUNDED"
+        assert body["answer"]["mode"] == "UNGROUNDED"
+        assert body["answer"]["summary"] == ""
+        assert body["provenance"]["degraded"] is True
     finally:
         server.shutdown_and_close()
 
