@@ -237,6 +237,27 @@ class _ACPConnection:
     def __exit__(self, *args: Any) -> None:
         self._cleanup()
 
+    def is_alive(self) -> bool:
+        """Return True if the subprocess is still running.
+
+        Treats a process that has never been started or has already exited
+        as dead.  This is a cheap poll; it does not probe the transport.
+        """
+        proc = self._proc
+        if proc is None:
+            return False
+        return proc.poll() is None
+
+    @property
+    def pid(self) -> int | None:
+        """Return the subprocess PID, or None if no process is running."""
+        proc = self._proc
+        return proc.pid if proc is not None else None
+
+    def close(self) -> None:
+        """Idempotent teardown alias for the context manager exit path."""
+        self._cleanup()
+
     # ── Public API ────────────────────────────────────────────────────
 
     def rpc(self, method: str, params: dict | None = None) -> dict[Any, Any]:
