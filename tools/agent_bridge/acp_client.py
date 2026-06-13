@@ -7,7 +7,7 @@ import re
 import subprocess
 import threading
 import time
-from typing import Any, TextIO
+from typing import Any, Callable, TextIO
 
 from tools.agent_bridge.config import ACPConfigError, BrainConfig, require_ack
 
@@ -258,13 +258,43 @@ class _ACPConnection:
         """Idempotent teardown alias for the context manager exit path."""
         self._cleanup()
 
+    def _maybe_stream_chunk(
+        self,
+        line_msg: dict,
+        stream_callback: Callable[[str], None] | None,
+    ) -> None:
+        """Forward a single ``agent_message_chunk`` to *stream_callback*.
+
+        Isolated in a helper so the RPC loop is not broken by a misbehaving
+        callback and the control flow stays simple for static analysis.
+        """
+        if stream_callback is None:
+            return
+        try:
+            update = line_msg.get("params", {}).get("update", {})
+            if update.get("sessionUpdate") == "agent_message_chunk":
+                text = update.get("content", {}).get("text", "")
+                if isinstance(text, str) and text:
+                    stream_callback(text)
+        except Exception:
+            # A misbehaving callback must not break the RPC loop.
+            return
+
     # ── Public API ────────────────────────────────────────────────────
 
-    def rpc(self, method: str, params: dict | None = None) -> dict[Any, Any]:
+    def rpc(
+        self,
+        method: str,
+        params: dict | None = None,
+        stream_callback: Callable[[str], None] | None = None,
+    ) -> dict[Any, Any]:
         """Send a JSON-RPC request and return the parsed response.
 
         Collects ``session/update`` notifications encountered before the
-        matching response into ``self.collected``.
+        matching response into ``self.collected``.  When ``stream_callback``
+        is provided, each ``agent_message_chunk`` notification is forwarded
+        incrementally as it arrives, enabling true streaming without final-
+        buffer splitting in callers.
 
         Raises ``RuntimeError`` on deadline expiry, broken pipe,
         subprocess exit, or JSON-RPC error response.
@@ -311,6 +341,7 @@ class _ACPConnection:
                 return line_msg
 
             self.collected.append(line_msg)
+            self._maybe_stream_chunk(line_msg, stream_callback)
 
     # ── Internals ─────────────────────────────────────────────────────
 

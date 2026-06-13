@@ -50,12 +50,21 @@ class ACPWarmSessionManager:
         self._lock = threading.RLock()
         self._warm_conn: _ACPConnection | None = None
         self._closed = False
+        self._last_warm_error: str | None = None
 
     # ── Public lifecycle ────────────────────────────────────────────────
 
     def start(self) -> "ACPWarmSessionManager":
-        """Eagerly prewarm the connection."""
-        self.ensure_warm()
+        """Eagerly prewarm the connection.
+
+        If warm-up fails, the manager records the error and returns without
+        raising so that callers (e.g. a localhost service) can start in a
+        degraded state.
+        """
+        try:
+            self.ensure_warm()
+        except Exception as exc:
+            self._last_warm_error = str(exc)
         return self
 
     def close(self) -> None:
@@ -63,6 +72,49 @@ class ACPWarmSessionManager:
         with self._lock:
             self._drop_warm_conn()
             self._closed = True
+
+    def health(self) -> dict[str, Any]:
+        """Return a non-blocking health snapshot.
+
+        Must not trigger a live probe or warm-up attempt.  Includes warm/cold/
+        degraded state, transport/runtime/model metadata, and the last warm
+        error if any.
+        """
+        with self._lock:
+            conn = self._warm_conn
+            alive = conn is not None and self._is_alive(conn)
+            if alive:
+                state = "warm"
+            elif self._closed or self._last_warm_error:
+                state = "degraded"
+            else:
+                state = "cold"
+
+            conn_meta = self._conn_meta(conn)
+            provenance = build_provenance(
+                self._cfg, conn_meta=conn_meta, degraded=(state == "degraded")
+            )
+
+            return {
+                "status": "ok",
+                "state": state,
+                "transport": provenance.get("transport", "acp"),
+                "runtime": provenance.get("runtime", "acp"),
+                "model": provenance.get("model", "unknown"),
+                "pid": getattr(conn, "pid", None),
+                "is_alive": alive,
+                "last_warm_error": self._last_warm_error,
+            }
+
+    def _conn_meta(self, conn: _ACPConnection | None) -> dict | None:
+        """Build conn_meta dict for provenance from a warm connection."""
+        if conn is None:
+            return None
+        return {
+            "session_id": getattr(conn, "session_id", ""),
+            "initialize_result": getattr(conn, "initialize_result", None),
+            "session_new_result": getattr(conn, "session_new_result", None),
+        }
 
     def ensure_warm(self, cfg: BrainConfig | None = None) -> _ACPConnection:
         """Return a live warm connection, creating one if necessary.
@@ -93,6 +145,7 @@ class ACPWarmSessionManager:
                     self._warm_conn = conn
                     return conn
                 except Exception as exc:
+                    self._last_warm_error = str(exc)
                     last_error = exc
                     if conn is not None:
                         try:

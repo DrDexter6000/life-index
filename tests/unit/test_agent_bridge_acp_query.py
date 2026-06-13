@@ -867,7 +867,7 @@ def test_acp_query_adapter_ignores_preexisting_collected_chunks():
             }
         ]
 
-        def rpc(self, method: str, params: dict | None = None) -> dict:
+        def rpc(self, method: str, params: dict | None = None, stream_callback=None) -> dict:
             self.collected.append(
                 {
                     "jsonrpc": "2.0",
