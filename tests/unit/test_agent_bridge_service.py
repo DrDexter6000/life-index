@@ -31,6 +31,9 @@ from tools.agent_bridge.service import (
     is_loopback,
 )
 
+# For RED tests and monkeypatching the L3 deterministic scaffold builder.
+import tools.agent_bridge.handoff as _handoff_mod
+
 QUERY_SCHEMA_VERSION = "m35.agent_bridge_query.v0"
 
 
@@ -78,6 +81,51 @@ def _degraded_envelope(gap: str = "dead") -> dict:
             "model": "unknown",
             "runtime": "acp",
             "degraded": True,
+        },
+        "usage": None,
+    }
+
+
+def _scaffold_with_evidence() -> dict:
+    """Deterministic scaffold returned by the L2 smart-search builder."""
+    return {
+        "intent": "recall",
+        "queries": ["park"],
+        "filters": {},
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {
+                        "doc_id": "Journals/2026/06/life-index_2026-06-04_001.md",
+                        "title": "Park day",
+                        "date": "2026-06-04",
+                    },
+                    "snippet": "Spent the afternoon at Central Park.",
+                },
+            ],
+        },
+    }
+
+
+def _envelope_with_real_evidence(answer: str = "ok") -> dict:
+    """Internal envelope that references the real journal IDs from _scaffold_with_evidence."""
+    return {
+        "schema_version": QUERY_SCHEMA_VERSION,
+        "status": "GROUNDED",
+        "answer": answer,
+        "insights": [
+            {
+                "text": "t",
+                "evidence_refs": ["Journals/2026/06/life-index_2026-06-04_001.md"],
+            },
+        ],
+        "evidence_refs": ["Journals/2026/06/life-index_2026-06-04_001.md"],
+        "gap": None,
+        "provenance": {
+            "transport": "acp",
+            "model": "test",
+            "runtime": "test",
+            "degraded": False,
         },
         "usage": None,
     }
@@ -199,6 +247,61 @@ class _FakeManagerStreamingDegraded:
             stream_callback('{"schema_version": "m35.agent_bridge_query.v0"}\n')
             stream_callback("```\n")
         return _degraded_envelope("no answer available")
+
+    def close(self) -> None:
+        self.closed = True
+
+    def health(self) -> dict:
+        return {"status": "ok", "state": "warm", "last_warm_error": None}
+
+
+class _FakeManagerWithEvidence:
+    """Returns a grounded envelope with real journal evidence refs."""
+
+    def __init__(self) -> None:
+        self._cfg = _brain_config()
+        self.started = False
+        self.closed = False
+        self.queries: list[tuple[str, dict, Any]] = []
+
+    def start(self) -> "_FakeManagerWithEvidence":
+        self.started = True
+        return self
+
+    def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+        self.queries.append((query, scaffold, stream_callback))
+        return _envelope_with_real_evidence(answer=query)
+
+    def close(self) -> None:
+        self.closed = True
+
+    def health(self) -> dict:
+        return {
+            "status": "ok",
+            "state": "warm",
+            "transport": "acp",
+            "runtime": "fake-runtime",
+            "model": "fake-model",
+            "pid": 12345,
+            "is_alive": True,
+            "last_warm_error": None,
+        }
+
+
+class _FakeManagerUngrounded:
+    """Always returns a deterministic UNGROUNDED envelope."""
+
+    def __init__(self) -> None:
+        self._cfg = _brain_config()
+        self.queries: list[tuple[str, dict, Any]] = []
+        self.closed = False
+
+    def start(self) -> "_FakeManagerUngrounded":
+        return self
+
+    def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+        self.queries.append((query, scaffold, stream_callback))
+        return _degraded_envelope("no relevant evidence")
 
     def close(self) -> None:
         self.closed = True
@@ -472,8 +575,10 @@ def _parse_sse_events(raw: bytes) -> list[tuple[str, Any]]:
     return events
 
 
-def test_query_sse_emits_contract_events_in_order():
+def test_query_sse_emits_contract_events_in_order(monkeypatch):
     """SSE /query emits status -> scaffold -> evidence -> delta -> final."""
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: {})
+
     manager = _FakeManagerStreaming()
     server = _start_server_with_manager(manager)
     try:
@@ -806,3 +911,695 @@ def test_signal_handler_schedules_async_shutdown():
     assert server.shutdown_and_close_called is True
     assert manager.close_thread_id != threading.current_thread().ident
     assert server.shutdown_and_close_thread_id != threading.current_thread().ident
+
+
+# ─── V6-CA L3 evidence assembly RED/regression tests ────────────────────
+
+
+def test_bare_json_query_assembles_scaffold_and_returns_evidence(monkeypatch):
+    """Bare /query with no scaffold fetches deterministic scaffold and returns rich evidence."""
+    calls: list[str] = []
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_smart_search",
+        lambda q: calls.append(q) or _scaffold_with_evidence(),
+    )
+
+    manager = _FakeManagerWithEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "hello bare"},
+        )
+        assert status == 200
+        assert body["mode"] == "GROUNDED"
+        assert len(body["evidence"]) == 1
+        assert body["evidence"][0]["id"] == "2026/06/life-index_2026-06-04_001"
+        assert "Central Park" in body["evidence"][0]["snippet"]
+
+        # L2 smart-search builder was invoked exactly once for the bare query.
+        assert calls == ["hello bare"]
+        # The resolved scaffold (with evidence) was passed to the manager.
+        assert len(manager.queries) == 1
+        assert manager.queries[0][0] == "hello bare"
+        passed_scaffold = manager.queries[0][1]
+        assert passed_scaffold["intent"] == "recall"
+        assert passed_scaffold["evidence_pack"]["items"][0]["document"]["doc_id"] == (
+            "Journals/2026/06/life-index_2026-06-04_001.md"
+        )
+    finally:
+        server.shutdown_and_close()
+
+
+def test_bare_sse_query_emits_assembled_scaffold(monkeypatch):
+    """Bare /query/stream emits status -> fetched scaffold -> evidence -> delta -> final."""
+    calls: list[str] = []
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_smart_search",
+        lambda q: calls.append(q) or _scaffold_with_evidence(),
+    )
+
+    manager = _FakeManagerWithEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "stream bare"},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
+        assert names == ["status", "scaffold", "evidence", "delta", "final"], f"got {names}"
+
+        # The scaffold event is the fetched scaffold, not empty defaults.
+        scaffold_event = events[1][1]
+        assert scaffold_event["intent"] == "recall"
+        assert scaffold_event["queries"] == ["park"]
+
+        # Evidence is populated from the assembled scaffold.
+        evidence_event = events[2][1]
+        assert len(evidence_event) == 1
+        assert evidence_event[0]["id"] == "2026/06/life-index_2026-06-04_001"
+
+        # Delta remains clean answer text from the validated final envelope.
+        assert events[3][1] == "stream bare"
+
+        # Smart-search was invoked exactly once.
+        assert calls == ["stream bare"]
+    finally:
+        server.shutdown_and_close()
+
+
+def test_explicit_evidence_scaffold_skips_smart_search(monkeypatch):
+    """An explicit evidence-bearing scaffold is respected and not re-fetched."""
+    calls: list[str] = []
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_smart_search",
+        lambda q: calls.append(q) or _scaffold_with_evidence(),
+    )
+
+    explicit_scaffold = {
+        "intent": "explicit",
+        "queries": ["work"],
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {
+                        "doc_id": "Journals/2026/06/life-index_2026-06-05_001.md",
+                        "title": "Work day",
+                        "date": "2026-06-05",
+                    },
+                    "snippet": "Busy day at the office.",
+                },
+            ],
+        },
+    }
+
+    manager = _FakeManagerWithEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "hello explicit", "scaffold": explicit_scaffold},
+        )
+        assert status == 200
+        # Smart-search must NOT be called for an explicit evidence-bearing scaffold.
+        assert calls == []
+        # Manager received the explicit scaffold unchanged.
+        assert len(manager.queries) == 1
+        passed_scaffold = manager.queries[0][1]
+        assert passed_scaffold["intent"] == "explicit"
+        assert passed_scaffold["evidence_pack"]["items"][0]["document"]["doc_id"] == (
+            "Journals/2026/06/life-index_2026-06-05_001.md"
+        )
+    finally:
+        server.shutdown_and_close()
+
+
+def test_empty_scaffold_still_no_llm_fallback(monkeypatch):
+    """Empty smart-search result is passed through; manager decides UNGROUNDED honestly."""
+    calls: list[str] = []
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_smart_search",
+        lambda q: calls.append(q) or {},
+    )
+
+    manager = _FakeManagerUngrounded()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "hello empty"},
+        )
+        assert status == 200
+        assert body["mode"] == "UNGROUNDED"
+        assert body["answer"]["gap"] == "no relevant evidence"
+        # No LLM fallback happened: manager was called with the empty scaffold.
+        assert len(manager.queries) == 1
+        assert manager.queries[0][1] == {}
+    finally:
+        server.shutdown_and_close()
+
+
+def test_scaffold_builder_failure_degrades_honestly(monkeypatch):
+    """Smart-search failure degrades to UNGROUNDED without a direct LLM fallback."""
+    calls: list[str] = []
+
+    def _failing_search(query: str) -> dict:
+        calls.append(query)
+        raise RuntimeError("smart-search subprocess failed")
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", _failing_search)
+
+    manager = _FakeManagerWithEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "hello failure"},
+        )
+        assert status == 200
+        assert body["mode"] == "UNGROUNDED"
+        assert body["provenance"]["degraded"] is True
+        assert (
+            "scaffold" in body["answer"]["gap"].lower() or "search" in body["answer"]["gap"].lower()
+        )
+        # Manager (ACP synthesis) must NOT be called when scaffold assembly fails.
+        assert len(manager.queries) == 0
+    finally:
+        server.shutdown_and_close()
+
+
+def test_scaffold_builder_failure_sse_emits_error_event(monkeypatch):
+    """Smart-search failure on SSE emits an error event carrying a degraded envelope."""
+    calls: list[str] = []
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_smart_search",
+        lambda q: calls.append(q) or (_ for _ in ()).throw(RuntimeError("search failed")),
+    )
+
+    manager = _FakeManagerWithEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "stream failure"},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
+        assert "status" in names
+        assert "scaffold" in names
+        assert "error" in names
+        # The error envelope is rich UNGROUNDED/degraded.
+        error_event = [e for e in events if e[0] == "error"][0]
+        envelope = error_event[1]["envelope"]
+        assert envelope["mode"] == "UNGROUNDED"
+        assert envelope["provenance"]["degraded"] is True
+        # No ACP synthesis happened.
+        assert len(manager.queries) == 0
+    finally:
+        server.shutdown_and_close()
+
+
+def _real_shape_blank_evidence_scaffold() -> dict:
+    """Return the real smart-search shape observed in lead WSL smoke.
+
+    The evidence item carries a doc_id but an empty snippet; filtered_results
+    has no snippet/abstract/content.  The gateway must hydrate this via the L2
+    ``search --read-top`` CLI before ACP synthesis.
+    """
+    return {
+        "intent": "recall",
+        "query_plan": {
+            "raw_query": "TB1_HERMES_ACP_SANDBOX_MARKER",
+            "expanded_query": "TB1_HERMES_ACP_SANDBOX_MARKER",
+            "sub_queries": ["TB1_HERMES_ACP_SANDBOX_MARKER"],
+            "strategy": "keyword_only",
+        },
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {
+                        "doc_id": "Journals/2026/06/life-index_2026-06-10_001.md",
+                        "title": "Team offsite",
+                        "date": "2026-06-10",
+                    },
+                    "snippet": "",
+                },
+            ],
+        },
+        "filtered_results": [
+            {
+                "rel_path": "Journals/2026/06/life-index_2026-06-10_001.md",
+                "title": "Team offsite",
+                "date": "2026-06-10",
+            },
+        ],
+    }
+
+
+def test_bare_gateway_hydrates_blank_evidence_from_l2_search(monkeypatch):
+    """Bare /query triggers smart-search and then hydrates blank snippets from L2 search."""
+    smart_calls: list[str] = []
+    search_calls: list[list[str]] = []
+
+    def _fake_smart_search(q: str) -> dict:
+        smart_calls.append(q)
+        return _real_shape_blank_evidence_scaffold()
+
+    def _fake_search_read_top(*args: str) -> dict:
+        search_calls.append(list(args))
+        return {
+            "success": True,
+            "merged_results": [
+                {
+                    "rel_path": "Journals/2026/06/life-index_2026-06-10_001.md",
+                    "snippet": "We discussed the <mark>roadmap</mark> for Q3.",
+                    "full_content": "Full journal body with <mark>roadmap</mark> details.",
+                },
+            ],
+        }
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", _fake_smart_search)
+    monkeypatch.setattr(_handoff_mod, "_cli_search_read_top", _fake_search_read_top)
+
+    class _FakeManagerHydratedEvidence(_FakeManagerWithEvidence):
+        def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+            self.queries.append((query, scaffold, stream_callback))
+            return {
+                "schema_version": QUERY_SCHEMA_VERSION,
+                "status": "GROUNDED",
+                "answer": query,
+                "insights": [
+                    {
+                        "text": "t",
+                        "evidence_refs": ["Journals/2026/06/life-index_2026-06-10_001.md"],
+                    },
+                ],
+                "evidence_refs": ["Journals/2026/06/life-index_2026-06-10_001.md"],
+                "gap": None,
+                "provenance": {
+                    "transport": "acp",
+                    "model": "test",
+                    "runtime": "test",
+                    "degraded": False,
+                },
+                "usage": None,
+            }
+
+    manager = _FakeManagerHydratedEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "hello hydrate"},
+        )
+        assert status == 200
+        assert body["mode"] == "GROUNDED"
+        assert len(body["evidence"]) == 1
+        # Hydrated text prefers full_content and strips <mark> tags.
+        assert body["evidence"][0]["snippet"] == "Full journal body with roadmap details."
+        assert body["evidence"][0]["id"] == "2026/06/life-index_2026-06-10_001"
+
+        # The resolved scaffold passed to the manager has hydrated snippets.
+        assert len(manager.queries) == 1
+        passed_scaffold = manager.queries[0][1]
+        assert passed_scaffold["evidence_pack"]["items"][0]["snippet"] == (
+            "Full journal body with roadmap details."
+        )
+        assert passed_scaffold["filtered_results"][0].get("snippet") == (
+            "Full journal body with roadmap details."
+        )
+
+        # smart-search was invoked exactly once.
+        assert smart_calls == ["hello hydrate"]
+        # L2 hydration was invoked exactly once because the evidence was blank.
+        assert len(search_calls) == 1
+    finally:
+        server.shutdown_and_close()
+
+
+def test_bare_gateway_hydrates_blank_evidence_sse(monkeypatch):
+    """Bare SSE query hydrates blank evidence and emits a populated scaffold event."""
+    smart_calls: list[str] = []
+    search_calls: list[list[str]] = []
+
+    def _fake_smart_search(q: str) -> dict:
+        smart_calls.append(q)
+        return _real_shape_blank_evidence_scaffold()
+
+    def _fake_search_read_top(*args: str) -> dict:
+        search_calls.append(list(args))
+        return {
+            "success": True,
+            "merged_results": [
+                {
+                    "rel_path": "Journals/2026/06/life-index_2026-06-10_001.md",
+                    "snippet": "We discussed the <mark>roadmap</mark> for Q3.",
+                    "full_content": "Full journal body with <mark>roadmap</mark> details.",
+                },
+            ],
+        }
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", _fake_smart_search)
+    monkeypatch.setattr(_handoff_mod, "_cli_search_read_top", _fake_search_read_top)
+
+    class _FakeManagerHydratedEvidence(_FakeManagerWithEvidence):
+        def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+            self.queries.append((query, scaffold, stream_callback))
+            return {
+                "schema_version": QUERY_SCHEMA_VERSION,
+                "status": "GROUNDED",
+                "answer": query,
+                "insights": [
+                    {
+                        "text": "t",
+                        "evidence_refs": ["Journals/2026/06/life-index_2026-06-10_001.md"],
+                    },
+                ],
+                "evidence_refs": ["Journals/2026/06/life-index_2026-06-10_001.md"],
+                "gap": None,
+                "provenance": {
+                    "transport": "acp",
+                    "model": "test",
+                    "runtime": "test",
+                    "degraded": False,
+                },
+                "usage": None,
+            }
+
+    manager = _FakeManagerHydratedEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "stream hydrate"},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
+        assert names == ["status", "scaffold", "evidence", "delta", "final"], f"got {names}"
+
+        # Scaffold event now carries real smart-search shape with sub_queries fallback.
+        scaffold_event = events[1][1]
+        assert scaffold_event["queries"] == ["TB1_HERMES_ACP_SANDBOX_MARKER"]
+
+        # Evidence event is populated from hydrated snippets.
+        evidence_event = events[2][1]
+        assert len(evidence_event) == 1
+        assert evidence_event[0]["snippet"] == "Full journal body with roadmap details."
+
+        assert smart_calls == ["stream hydrate"]
+        assert len(search_calls) == 1
+    finally:
+        server.shutdown_and_close()
+
+
+def test_explicit_nonblank_evidence_scaffold_skips_hydration(monkeypatch):
+    """An explicit non-blank scaffold is respected; no smart-search or hydration."""
+    smart_calls: list[str] = []
+    search_calls: list[list[str]] = []
+
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_smart_search",
+        lambda q: smart_calls.append(q) or _real_shape_blank_evidence_scaffold(),
+    )
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_search_read_top",
+        lambda *args: search_calls.append(list(args)) or {"success": True, "merged_results": []},
+    )
+
+    explicit_scaffold = {
+        "intent": "explicit",
+        "queries": ["work"],
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {
+                        "doc_id": "Journals/2026/06/life-index_2026-06-05_001.md",
+                        "title": "Work day",
+                        "date": "2026-06-05",
+                    },
+                    "snippet": "Busy day at the office.",
+                },
+            ],
+        },
+    }
+
+    manager = _FakeManagerWithEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "hello explicit", "scaffold": explicit_scaffold},
+        )
+        assert status == 200
+        # No smart-search or hydration for explicit evidence-bearing scaffolds.
+        assert smart_calls == []
+        assert search_calls == []
+        # Manager received the explicit scaffold unchanged.
+        assert len(manager.queries) == 1
+        passed_scaffold = manager.queries[0][1]
+        assert passed_scaffold["intent"] == "explicit"
+        assert passed_scaffold["evidence_pack"]["items"][0]["snippet"] == "Busy day at the office."
+    finally:
+        server.shutdown_and_close()
+
+
+def test_explicit_blank_evidence_scaffold_hydrates_without_smart_search(monkeypatch):
+    """An explicit blank evidence scaffold is hydrated without repeating smart-search."""
+    smart_calls: list[str] = []
+    search_calls: list[tuple[str, int]] = []
+
+    def _fake_smart_search(q: str) -> dict:
+        smart_calls.append(q)
+        raise AssertionError("explicit evidence scaffold must not re-run smart-search")
+
+    def _fake_search_read_top(query: str, limit: int = 10) -> dict:
+        search_calls.append((query, limit))
+        return {
+            "success": True,
+            "merged_results": [
+                {
+                    "rel_path": "Journals/2026/06/life-index_2026-06-10_001.md",
+                    "snippet": "",
+                    "full_content": (
+                        "Explicit scaffold content with <mark>Hermes ACP</mark> detail."
+                    ),
+                },
+            ],
+        }
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", _fake_smart_search)
+    monkeypatch.setattr(_handoff_mod, "_cli_search_read_top", _fake_search_read_top)
+
+    class _FakeManagerHydratedExplicit(_FakeManagerWithEvidence):
+        def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+            self.queries.append((query, scaffold, stream_callback))
+            return {
+                "schema_version": QUERY_SCHEMA_VERSION,
+                "status": "GROUNDED",
+                "answer": query,
+                "insights": [
+                    {
+                        "text": "t",
+                        "evidence_refs": ["Journals/2026/06/life-index_2026-06-10_001.md"],
+                    },
+                ],
+                "evidence_refs": ["Journals/2026/06/life-index_2026-06-10_001.md"],
+                "gap": None,
+                "provenance": {
+                    "transport": "acp",
+                    "model": "test",
+                    "runtime": "test",
+                    "degraded": False,
+                },
+                "usage": None,
+            }
+
+    manager = _FakeManagerHydratedExplicit()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={
+                "query": "hello explicit blank",
+                "scaffold": _real_shape_blank_evidence_scaffold(),
+            },
+        )
+        assert status == 200
+        assert body["mode"] == "GROUNDED"
+        assert body["evidence"][0]["snippet"] == (
+            "Explicit scaffold content with Hermes ACP detail."
+        )
+
+        assert smart_calls == []
+        assert search_calls == [("Journals/2026/06/life-index_2026-06-10_001.md", 1)]
+        assert len(manager.queries) == 1
+        passed_scaffold = manager.queries[0][1]
+        assert passed_scaffold["evidence_pack"]["items"][0]["snippet"] == (
+            "Explicit scaffold content with Hermes ACP detail."
+        )
+    finally:
+        server.shutdown_and_close()
+
+
+# ─── V6-CA Fixup 2 RED tests: hydration fallback + skip-when-present ─────
+
+
+def test_build_gateway_scaffold_skips_hydration_when_evidence_has_text(monkeypatch):
+    """When smart-search items already carry text, no _cli_search_read_top call is made."""
+    search_calls: list[tuple[str, int]] = []
+
+    def _fake_search_read_top(query: str, limit: int = 10) -> dict:
+        search_calls.append((query, limit))
+        return {"success": True, "merged_results": []}
+
+    monkeypatch.setattr(_handoff_mod, "_cli_search_read_top", _fake_search_read_top)
+
+    scaffold_with_text = {
+        "intent": "recall",
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {
+                        "doc_id": "Journals/2026/06/life-index_2026-06-10_001.md",
+                        "title": "Team offsite",
+                        "date": "2026-06-10",
+                    },
+                    "snippet": "Already have text.",
+                },
+            ],
+        },
+        "filtered_results": [
+            {
+                "rel_path": "Journals/2026/06/life-index_2026-06-10_001.md",
+                "title": "Team offsite",
+                "date": "2026-06-10",
+                "abstract": "Filtered result already has text.",
+            },
+        ],
+    }
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: scaffold_with_text)
+
+    result = _handoff_mod.build_gateway_scaffold("query with text")
+
+    assert result == scaffold_with_text
+    assert search_calls == []
+
+
+def test_hydration_reads_doc_id_before_original_query_fallback(monkeypatch):
+    """Blank items are hydrated by doc_id/rel_path before trying the original query."""
+    smart_calls: list[str] = []
+    search_calls: list[tuple[str, int]] = []
+
+    def _fake_smart_search(q: str) -> dict:
+        smart_calls.append(q)
+        return _real_shape_blank_evidence_scaffold()
+
+    def _fake_search_read_top(query: str, limit: int = 10) -> dict:
+        search_calls.append((query, limit))
+        if query == "hello fallback":
+            return {
+                "success": True,
+                "merged_results": [
+                    {
+                        "rel_path": "Journals/2026/06/life-index_2026-06-10_001.md",
+                        "snippet": "",
+                        "full_content": None,
+                    },
+                ],
+            }
+        if query == "Journals/2026/06/life-index_2026-06-10_001.md":
+            return {
+                "success": True,
+                "merged_results": [
+                    {
+                        "rel_path": "Journals/2026/06/life-index_2026-06-10_001.md",
+                        "snippet": "Doc id search snippet.",
+                        "full_content": "Doc id search full content.",
+                    },
+                ],
+            }
+        return {"success": True, "merged_results": []}
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", _fake_smart_search)
+    monkeypatch.setattr(_handoff_mod, "_cli_search_read_top", _fake_search_read_top)
+
+    result = _handoff_mod.build_gateway_scaffold("hello fallback")
+
+    # Hydrated from doc_id fallback search (full_content preferred, mark tags stripped).
+    assert result["evidence_pack"]["items"][0]["snippet"] == "Doc id search full content."
+    assert result["filtered_results"][0].get("snippet") == "Doc id search full content."
+
+    assert smart_calls == ["hello fallback"]
+    assert search_calls == [("Journals/2026/06/life-index_2026-06-10_001.md", 1)]
+
+
+def test_hydration_normalizes_absolute_and_journal_paths(monkeypatch):
+    """Absolute Windows paths and Journals/... IDs both resolve to the same lookup key."""
+
+    def _fake_smart_search(_q: str) -> dict:
+        return {
+            "intent": "recall",
+            "evidence_pack": {
+                "items": [
+                    {
+                        "document": {
+                            "doc_id": "Journals/2026/06/life-index_2026-06-10_001.md",
+                            "title": "Team offsite",
+                        },
+                        "snippet": "",
+                    },
+                ],
+            },
+        }
+
+    def _fake_search_read_top(query: str, limit: int = 10) -> dict:
+        if query == "hello normalize":
+            # Return with an absolute-style path to exercise normalization.
+            return {
+                "success": True,
+                "merged_results": [
+                    {
+                        "path": "D:/Life Index/Journals/2026/06/life-index_2026-06-10_001.md",
+                        "snippet": "Absolute path snippet.",
+                    },
+                ],
+            }
+        return {"success": True, "merged_results": []}
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", _fake_smart_search)
+    monkeypatch.setattr(_handoff_mod, "_cli_search_read_top", _fake_search_read_top)
+
+    result = _handoff_mod.build_gateway_scaffold("hello normalize")
+
+    assert result["evidence_pack"]["items"][0]["snippet"] == "Absolute path snippet."

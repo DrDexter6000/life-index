@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 from tools.agent_bridge.acp_query import build_degraded_result, build_provenance
 from tools.agent_bridge.acp_session_manager import ACPWarmSessionManager
 from tools.agent_bridge.config import BrainConfig, resolve_brain_config
+from tools.agent_bridge import handoff
 from tools.agent_bridge.query_envelope import (
     clean_scaffold,
     map_to_rich_envelope,
@@ -115,6 +116,43 @@ def is_loopback(host: str) -> bool:
     return True
 
 
+def _scaffold_has_evidence(scaffold: Any) -> bool:
+    """Return True when *scaffold* already carries L2-retrieved evidence.
+
+    A scaffold is considered evidence-bearing if it has a non-empty
+    ``evidence_pack["items"]`` list or a non-empty ``filtered_results`` list.
+    Everything else triggers the deterministic L2 smart-search builder.
+    """
+    if not isinstance(scaffold, dict):
+        return False
+
+    evidence_pack = scaffold.get("evidence_pack")
+    if isinstance(evidence_pack, dict):
+        items = evidence_pack.get("items")
+        if isinstance(items, list) and items:
+            return True
+
+    filtered_results = scaffold.get("filtered_results")
+    if isinstance(filtered_results, list) and filtered_results:
+        return True
+
+    return False
+
+
+def _resolve_scaffold(query: str, scaffold: dict[str, Any]) -> dict[str, Any]:
+    """Return an evidence-bearing scaffold, fetching one via L2 if necessary.
+
+    Explicit evidence-bearing scaffolds are respected and do not re-run
+    smart-search; blank evidence text is normalized through the bounded L2
+    hydration path.  Bare or evidence-empty scaffolds fetch
+    deterministic evidence via ``tools.agent_bridge.handoff.build_gateway_scaffold``,
+    which hydrates any blank evidence snippets through the public L2 search CLI.
+    """
+    if _scaffold_has_evidence(scaffold):
+        return handoff.hydrate_gateway_scaffold(scaffold, query)
+    return handoff.build_gateway_scaffold(query)
+
+
 class ACPServiceHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the warm ACP service."""
 
@@ -188,23 +226,62 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
         accept = self.headers.get("Accept", "")
         use_sse = "text/event-stream" in accept or parsed.path == "/query/stream"
 
-        if not use_sse:
-            result = self.manager.query(query, scaffold)
-            rich = map_to_rich_envelope(
+        try:
+            resolved_scaffold = _resolve_scaffold(query, scaffold)
+        except Exception as exc:
+            cfg: BrainConfig = self.manager._cfg
+            provenance = build_provenance(cfg, conn_meta=None, degraded=True)
+            degraded = build_degraded_result(
+                "UNGROUNDED",
+                f"Scaffold assembly failed: {exc}",
+                provenance,
+            )
+            rich_degraded = map_to_rich_envelope(
                 query,
                 scaffold,
+                degraded,
+                host_agent=self._host_agent_label(),
+            )
+            if not use_sse:
+                self._send_json(200, rich_degraded)
+                return
+            # SSE: emit status + scaffold, then error with degraded envelope.
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self._write_sse_event("status", {"state": "active"})
+            self._write_sse_event("scaffold", clean_scaffold(scaffold))
+            self._write_sse_event(
+                "error",
+                {
+                    "message": str(exc),
+                    "envelope": rich_degraded,
+                },
+            )
+            self.close_connection = True
+            return
+
+        if not use_sse:
+            result = self.manager.query(query, resolved_scaffold)
+            rich = map_to_rich_envelope(
+                query,
+                resolved_scaffold,
                 result,
                 host_agent=self._host_agent_label(),
             )
             self._send_json(200, rich)
             return
 
-        self._handle_sse_query(query, scaffold)
+        self._handle_sse_query(query, resolved_scaffold)
 
     def _handle_sse_query(self, query: str, scaffold: dict[str, Any]) -> None:
         """Stream query results as server-sent events using the GUI contract.
 
-        Event vocabulary is fixed and ordered:
+        *scaffold* is already resolved (either caller-supplied evidence-bearing
+        or fetched via the deterministic L2 smart-search builder).  Event
+        vocabulary is fixed and ordered:
         ``status`` -> ``scaffold`` -> ``evidence`` -> ``delta`` (optional)
         -> ``final``.  ``delta`` carries the validated answer text only;
         ``final`` carries the complete rich ``m35.agent_bridge_query.v0``

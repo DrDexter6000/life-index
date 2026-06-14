@@ -149,8 +149,17 @@ def clean_scaffold(scaffold: Any) -> dict[str, Any]:
         }
 
     queries = scaffold.get("queries")
-    if not isinstance(queries, list):
-        queries = []
+    if isinstance(queries, list) and queries:
+        pass
+    else:
+        # Real smart-search output carries sub_queries under query_plan.
+        query_plan = scaffold.get("query_plan")
+        if isinstance(query_plan, dict):
+            sub_queries = query_plan.get("sub_queries")
+            if isinstance(sub_queries, list):
+                queries = sub_queries
+        if not isinstance(queries, list):
+            queries = []
 
     filters = scaffold.get("filters")
     if not isinstance(filters, dict):
