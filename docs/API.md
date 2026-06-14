@@ -5239,6 +5239,56 @@ python -m tools trajectory --field weight --range 2025-01..2025-12
 
 ---
 
+## ACP Env Allowlist (agent bridge)
+
+`LIFE_INDEX_ACP_ENV_ALLOWLIST` 控制哪些父进程环境变量会被传递到 ACP 子进程中。
+
+### 安全姿态
+
+**零配置已知 provider key 穿透**：11 个主流 LLM provider 的标准 API key 环境变量（`OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`、`KIMI_API_KEY`、`GEMINI_API_KEY`、`AZURE_OPENAI_API_KEY`、`COHERE_API_KEY`、`MISTRAL_API_KEY`、`GROQ_API_KEY`、`TOGETHER_API_KEY`、`REPLICATE_API_KEY`）默认穿透到 ACP 子进程，**无需**设置 `LIFE_INDEX_ACP_ENV_ALLOWLIST`。
+
+**Life Index 自身密钥永不外泄**：`LIFE_INDEX_LLM_API_KEY` 属于 Life Index 自身，不属于任何 runtime provider。该密钥**始终**被剥离，即使用户尝试将其放入 allowlist。ACP 运行时不应依赖 Life Index 的密钥。
+
+**非已知 provider 凭据默认剥离**：所有凭据样式的环境变量（名称以 `_API_KEY` / `_TOKEN` 结尾，或包含 `SECRET` / `PASSWORD`）默认被剥离，除非该变量属于已知 runtime provider 集合或通过 allowlist 显式放行。
+
+**显式 allowlist 作为 fallback**：对于不在已知 provider 集合中的新 provider key（如 `FOO_API_KEY`），可通过 `LIFE_INDEX_ACP_ENV_ALLOWLIST` 显式放行。
+
+### 配置方式
+
+**零配置**（推荐）：已知 provider key 自动穿透，无需任何配置。
+
+**显式 allowlist**（新 provider 场景）：设置 `LIFE_INDEX_ACP_ENV_ALLOWLIST` 环境变量。
+
+#### 对象格式（兼容旧版本）
+
+```json
+{"MY_VAR": "value", "ANOTHER": "other"}
+```
+
+直接指定 key-value 对，值由调用方提供。
+
+#### 列表格式（新增）
+
+```json
+["FOO_API_KEY", "CUSTOM_VAR"]
+```
+
+每个 key 的值从当前进程环境（`os.environ`）中自动解析。若 key 在当前环境中不存在，则静默跳过。**不会在日志中输出解析后的值。**
+
+### 行为契约
+
+| 场景 | 结果 |
+|------|------|
+| 已知 provider key（如 `DEEPSEEK_API_KEY`）存在 | 默认穿透到 ACP 子进程（零配置） |
+| `LIFE_INDEX_LLM_API_KEY` 存在 | **始终剥离**（即使被 allowlist） |
+| 已知 provider key（如 `OPENAI_API_KEY`）从 allowlist 中排除 | 仍然穿透（已知 provider 不受 allowlist 影响） |
+| 新 provider key（如 `FOO_API_KEY`）未 allowlist | 剥离（非已知 provider，无 allowlist） |
+| 新 provider key（如 `FOO_API_KEY`）被 allowlist | 穿透（显式放行生效） |
+| 非凭据变量（如 `CUSTOM_CONFIG`）被 allowlist | 正常传递 |
+| 凭据样式变量（如 `FAKE_TOKEN`、`MY_SECRET`） | 始终剥离（除非是已知 provider 或被 allowlist） |
+
+---
+
 ### Response: `events` 字段
 
 所有 CLI 命令的 JSON 响应均可包含 `events` 字段（搭便车事件通知）。
