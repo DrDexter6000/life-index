@@ -70,12 +70,14 @@ def _degraded_envelope(gap: str = "dead") -> dict:
 
 
 class _FakeConn:
-    """Stand-in for ``_ACPConnection`` that tracks liveness and close calls."""
+    """Stand-in for ``_ACPConnection`` that tracks liveness, close calls, and rpc."""
 
     def __init__(self, name: str = "fake", alive: bool = True) -> None:
         self.name = name
         self.alive = alive
         self.closed = False
+        self.session_id = "fake-session-id"
+        self.rpc_calls: list[tuple[str, dict]] = []
 
     def __enter__(self) -> "_FakeConn":
         return self
@@ -89,6 +91,10 @@ class _FakeConn:
     def close(self) -> None:
         self.closed = True
         self.alive = False
+
+    def rpc(self, method: str, params: dict) -> dict:
+        self.rpc_calls.append((method, params))
+        return {"result": {"ok": True}}
 
 
 def test_ensure_warm_retries_and_reuses_successful_connection():
@@ -375,3 +381,154 @@ def test_query_does_not_retry_on_validation_degrade_with_alive_connection():
     assert calls[0] == 1
     assert result["status"] == "UNGROUNDED"
     assert "validation failed" in result["gap"]
+
+
+# ─── Data-free ACP prompt warmup tests ─────────────────────────────────
+
+
+def test_warm_acp_prompt_sends_session_prompt_rpc():
+    """warm_acp_prompt() sends a session/prompt RPC through the warm connection."""
+    conn = _FakeConn()
+
+    def factory(*args, **kwargs):
+        return conn
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory)
+    mgr.ensure_warm()
+
+    assert len(conn.rpc_calls) == 0
+    mgr.warm_acp_prompt()
+    assert len(conn.rpc_calls) == 1
+    method, params = conn.rpc_calls[0]
+    assert method == "session/prompt"
+    assert params["sessionId"] == "fake-session-id"
+    assert params["prompt"] == [{"type": "text", "text": "READY"}]
+
+
+def test_warm_acp_prompt_uses_default_ready_prompt():
+    """The default warmup prompt is the READY constant — data-free."""
+    conn = _FakeConn()
+
+    def factory(*args, **kwargs):
+        return conn
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory)
+    mgr.ensure_warm()
+    mgr.warm_acp_prompt()
+    assert len(conn.rpc_calls) == 1
+    _, params = conn.rpc_calls[0]
+    # The prompt payload must contain no journal evidence, scaffold text,
+    # or user query content.
+    prompt_text = params["prompt"][0]["text"]
+    assert prompt_text == "READY"
+    assert "evidence" not in prompt_text.lower()
+    assert "journal" not in prompt_text.lower()
+    assert "scaffold" not in prompt_text.lower()
+    assert "query" not in prompt_text.lower()
+
+
+def test_warm_acp_prompt_accepts_custom_prompt():
+    """warm_acp_prompt() forwards a custom prompt string."""
+    conn = _FakeConn()
+
+    def factory(*args, **kwargs):
+        return conn
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory)
+    mgr.ensure_warm()
+    mgr.warm_acp_prompt(prompt="CUSTOM_PROMPT")
+    _, params = conn.rpc_calls[0]
+    assert params["prompt"][0]["text"] == "CUSTOM_PROMPT"
+
+
+def test_warm_acp_prompt_skips_when_no_warm_connection():
+    """warm_acp_prompt() returns immediately when no warm connection exists."""
+    conn = _FakeConn()
+
+    def factory(*args, **kwargs):
+        return conn
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory)
+    # No ensure_warm() call — _warm_conn is None.
+    mgr.warm_acp_prompt()
+    assert len(conn.rpc_calls) == 0
+
+
+def test_warm_acp_prompt_skips_when_connection_dead():
+    """warm_acp_prompt() returns immediately when the connection is dead."""
+    conn = _FakeConn(alive=False)
+
+    def factory(*args, **kwargs):
+        return conn
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory)
+    mgr.ensure_warm()
+    mgr.warm_acp_prompt()
+    assert len(conn.rpc_calls) == 0
+
+
+def test_warm_acp_prompt_swallows_rpc_exception():
+    """warm_acp_prompt() does not raise when rpc() fails."""
+    conn = _FakeConn()
+
+    def failing_rpc(method, params):
+        raise RuntimeError("rpc exploded")
+
+    conn.rpc = failing_rpc  # type: ignore[method-assign]
+
+    def factory(*args, **kwargs):
+        return conn
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory)
+    mgr.ensure_warm()
+
+    # Must not raise.
+    mgr.warm_acp_prompt()
+    # Health must remain unchanged (not degraded by warmup failure).
+    assert mgr._last_warm_error is None
+
+
+def test_warm_acp_prompt_uses_warm_connection_not_manager_query():
+    """warm_acp_prompt() uses conn.rpc() directly, not manager.query().
+
+    This proves the warmup does not run the m35 evidence-bound query path.
+    """
+    conn = _FakeConn()
+    query_called = [False]
+
+    def factory(*args, **kwargs):
+        return conn
+
+    def fake_adapter(query, scaffold, cfg, *, connection=None, stream_callback=None):
+        query_called[0] = True
+        return _success_envelope()
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, adapter=fake_adapter)
+    mgr.ensure_warm()
+    mgr.warm_acp_prompt()
+
+    # rpc() was called directly, not through the query/adapter pipeline.
+    assert len(conn.rpc_calls) == 1
+    assert query_called[0] is False
+
+
+def test_warm_acp_prompt_does_not_change_health_state():
+    """warm_acp_prompt() failure does not mark the session manager as degraded."""
+    conn = _FakeConn()
+
+    def failing_rpc(method, params):
+        raise RuntimeError("rpc exploded")
+
+    conn.rpc = failing_rpc  # type: ignore[method-assign]
+
+    def factory(*args, **kwargs):
+        return conn
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory)
+    mgr.ensure_warm()
+    mgr.warm_acp_prompt()
+
+    health = mgr.health()
+    assert health["state"] == "warm"
+    assert health["is_alive"] is True
+    assert health["last_warm_error"] is None

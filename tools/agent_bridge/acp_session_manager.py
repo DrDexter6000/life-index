@@ -26,6 +26,10 @@ _WARM_RPC_TIMEOUT = 180.0
 _WARM_HANDSHAKE_TIMEOUT = 180.0
 _DEFAULT_WARM_ATTEMPTS = 3
 
+# Data-free prompt used for ACP session/prompt warmup on server start.
+# Must contain no journal evidence, scaffold text, or user query content.
+_DATA_FREE_READY_PROMPT = "READY"
+
 
 class ACPWarmSessionManager:
     """Owns a single warm ACP connection and serializes queries over it."""
@@ -66,6 +70,34 @@ class ACPWarmSessionManager:
         except Exception as exc:
             self._last_warm_error = str(exc)
         return self
+
+    def warm_acp_prompt(self, prompt: str = _DATA_FREE_READY_PROMPT) -> None:
+        """Send a data-free ``session/prompt`` RPC through the warm ACP connection.
+
+        This is best-effort only: any exception is swallowed silently so that
+        callers (e.g. a localhost service) can start without crashing.  The
+        method uses the existing warm connection directly via ``conn.rpc()``
+        rather than ``manager.query()`` to avoid the m35 evidence-bound query
+        path.  No journal evidence, scaffold text, or user query content may
+        appear in *prompt*.
+
+        If the warm connection is not available, the method returns
+        immediately without attempting a warm-up.
+        """
+        try:
+            with self._lock:
+                conn = self._warm_conn
+                if conn is None or not self._is_alive(conn):
+                    return
+                conn.rpc(
+                    "session/prompt",
+                    {
+                        "sessionId": conn.session_id,
+                        "prompt": [{"type": "text", "text": prompt}],
+                    },
+                )
+        except Exception:
+            pass
 
     def close(self) -> None:
         """Idempotently tear down the warm connection."""

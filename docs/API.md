@@ -2945,7 +2945,10 @@ It reports token presence/source type only; it never prints token values.
 
 > **Shared loopback-only ACP gateway.** `server` manages the warm Agent Bridge
 > HTTP service as a single local process. It is bound to loopback only and never
-> exposes journal-evidence endpoints outside the local machine.
+> exposes journal-evidence endpoints outside the local machine. The server is the
+> shared L3 gateway: bare `/query` and `/query/stream` requests self-assemble
+> deterministic evidence via `smart-search --include-evidence` before ACP synthesis;
+> explicit evidence-bearing scaffolds are passed through unchanged.
 
 ### 端点
 

@@ -291,6 +291,44 @@ def test_clean_scaffold_tolerates_non_dict():
     }
 
 
+def test_clean_scaffold_falls_back_to_query_plan_sub_queries():
+    """Real smart-search shape carries queries under query_plan.sub_queries."""
+    scaffold = {
+        "intent": "recall",
+        "query_plan": {
+            "raw_query": "What did we discuss at the offsite?",
+            "expanded_query": "team offsite discussion",
+            "sub_queries": ["team offsite", "offsite discussion"],
+            "strategy": "keyword_only",
+        },
+    }
+    cleaned = clean_scaffold(scaffold)
+    assert cleaned["queries"] == ["team offsite", "offsite discussion"]
+    assert cleaned["intent"] == "recall"
+
+
+def test_clean_scaffold_prefers_top_level_queries_over_query_plan():
+    """Explicit top-level queries win when both are present."""
+    scaffold = {
+        "queries": ["top level"],
+        "query_plan": {"sub_queries": ["plan level"]},
+    }
+    cleaned = clean_scaffold(scaffold)
+    assert cleaned["queries"] == ["top level"]
+
+
+def test_clean_scaffold_includes_strategy_when_queries_empty():
+    """When sub_queries is empty, strategy alone does not create queries."""
+    scaffold = {
+        "query_plan": {
+            "sub_queries": [],
+            "strategy": "keyword_with_semantic_fallback",
+        }
+    }
+    cleaned = clean_scaffold(scaffold)
+    assert cleaned["queries"] == []
+
+
 def test_build_provenance_preserves_degraded_flag():
     """build_provenance surfaces the internal degraded boolean."""
     assert build_provenance({"provenance": {"degraded": True}})["degraded"] is True
