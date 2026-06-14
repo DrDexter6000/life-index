@@ -178,16 +178,17 @@ def test_acp_subprocess_env_redacts_life_index_api_key(monkeypatch):
     )
 
 
-def test_acp_subprocess_env_redacts_openai_api_key(monkeypatch):
-    """Contract: OPENAI_API_KEY must NOT leak into ACP subprocess env.
+def test_acp_subprocess_env_passthrough_known_provider_key(monkeypatch):
+    """Contract: known runtime provider keys (e.g. OPENAI_API_KEY) pass through
+    by default — no LIFE_INDEX_ACP_ENV_ALLOWLIST needed.
 
-    The denylist must cover common third-party provider keys beyond
-    Life Index's own variable naming convention.
+    OPENAI_API_KEY is in _KNOWN_RUNTIME_PROVIDER_KEYS and must survive
+    all sanitization steps without explicit allowlisting.
     """
     from tools.agent_bridge.acp_client import acp_synthesize
     from tools.agent_bridge.config import BrainConfig
 
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-should-not-leak")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-known-provider")
 
     captured_env: dict = {}
 
@@ -211,10 +212,11 @@ def test_acp_subprocess_env_redacts_openai_api_key(monkeypatch):
     with pytest.raises(_EnvCaptureSentinel):
         acp_synthesize(cfg, "test system", "test user")
 
-    assert "OPENAI_API_KEY" not in captured_env, (
-        f"OPENAI_API_KEY leaked into ACP subprocess env: "
-        f"{captured_env.get('OPENAI_API_KEY', '<absent>')}"
-    )
+    # Known provider key passes through by default
+    assert (
+        "OPENAI_API_KEY" in captured_env
+    ), "OPENAI_API_KEY should pass through as known runtime provider key"
+    assert captured_env["OPENAI_API_KEY"] == "sk-openai-known-provider"
 
 
 def test_acp_subprocess_env_preserves_non_provider_vars(monkeypatch):
@@ -256,18 +258,18 @@ def test_acp_subprocess_env_preserves_non_provider_vars(monkeypatch):
     assert captured_env["PATH"] == "/usr/bin:/bin"
 
 
-def test_acp_env_allowlist_cannot_reintroduce_life_index_api_key(monkeypatch):
-    """Contract: acp_env_allowlist MUST NOT reintroduce a denylisted provider key.
+def test_acp_env_allowlist_can_reintroduce_explicitly_allowlisted_provider_key(monkeypatch):
+    """Contract: a novel provider key (not in the known runtime provider set)
+    passes to the ACP subprocess when explicitly allowlisted.
 
-    Regression for T2 rejection finding: the original implementation applied
-    denylist BEFORE allowlist, so an explicit allowlist entry could reintroduce
-    a provider key into the ACP subprocess environment.  The rework applies
-    denylist AFTER allowlist — provider keys never reach Popen(env=).
+    LIFE_INDEX_LLM_API_KEY can never be allowlisted (it is always stripped),
+    but novel keys like FOO_API_KEY should pass when explicitly allowlisted.
     """
     from tools.agent_bridge.acp_client import acp_synthesize
     from tools.agent_bridge.config import BrainConfig
 
     monkeypatch.setenv("LIFE_INDEX_LLM_API_KEY", "sk-from-parent")
+    monkeypatch.setenv("FOO_API_KEY", "sk-foo-from-env")
 
     captured_env: dict = {}
 
@@ -286,16 +288,21 @@ def test_acp_env_allowlist_cannot_reintroduce_life_index_api_key(monkeypatch):
         data_exposure_ack=True,
         acp_command=["dummy", "acp"],
         acp_workdir=str(FIXTURE_PATH.parent),
-        # Attacker / misconfiguration: try to reintroduce provider key via allowlist
-        acp_env_allowlist={"LIFE_INDEX_LLM_API_KEY": "sk-from-allowlist-override"},
+        acp_env_allowlist={"FOO_API_KEY": "sk-foo-from-allowlist-override"},
     )
 
     with pytest.raises(_EnvCaptureSentinel):
         acp_synthesize(cfg, "test system", "test user")
 
-    assert "LIFE_INDEX_LLM_API_KEY" not in captured_env, (
-        "LIFE_INDEX_LLM_API_KEY leaked into ACP subprocess env " "via acp_env_allowlist bypass"
-    )
+    # LIFE_INDEX_LLM_API_KEY is always stripped, even if in base env
+    assert (
+        "LIFE_INDEX_LLM_API_KEY" not in captured_env
+    ), "LIFE_INDEX_LLM_API_KEY must never reach the subprocess"
+    # Novel provider key passes because it was explicitly allowlisted
+    assert (
+        "FOO_API_KEY" in captured_env
+    ), "FOO_API_KEY was stripped despite being explicitly allowlisted"
+    assert captured_env["FOO_API_KEY"] == "sk-foo-from-allowlist-override"
 
 
 def test_acp_env_allowlist_preserves_non_provider_vars(monkeypatch):
@@ -347,12 +354,9 @@ def test_acp_env_allowlist_preserves_non_provider_vars(monkeypatch):
 
 
 def test_acp_subprocess_env_strips_provider_keys():
-    """Contract: _build_acp_subprocess_env strips all provider keys via denylist
-    and credential-pattern matching, while preserving non-credential vars and
-    overlaying allowlist entries.
-
-    Validates the pure-function extraction: exact denylist + case-insensitive
-    suffix/pattern matching for _API_KEY, _TOKEN, SECRET, PASSWORD.
+    """Contract: _build_acp_subprocess_env strips Life Index's own key and
+    unallowlisted credential-pattern keys, while preserving known runtime
+    provider keys and non-credential vars.  Allowlist overlay still works.
     """
     from tools.agent_bridge.acp_client import _build_acp_subprocess_env
     from tools.agent_bridge.config import BrainConfig
@@ -379,9 +383,11 @@ def test_acp_subprocess_env_strips_provider_keys():
     )
     env = _build_acp_subprocess_env(cfg, base_env=base)
 
-    # Provider keys must be stripped (denylist + pattern)
-    assert "LIFE_INDEX_LLM_API_KEY" not in env and "OPENAI_API_KEY" not in env
-    # Pattern-based: _TOKEN suffix and SECRET substring
+    # Life Index's own key must always be stripped
+    assert "LIFE_INDEX_LLM_API_KEY" not in env
+    # Known runtime provider key passes through by default
+    assert "OPENAI_API_KEY" in env and env["OPENAI_API_KEY"] == "sk-o"
+    # Pattern-based: _TOKEN suffix and SECRET substring — stripped
     assert "SOME_TOKEN" not in env and "MY_SECRET" not in env
     # Non-credential vars preserved
     assert env["PATH"] == "/usr/bin" and env["HOME"] == "/home/u" and env["FOO"] == "keep"
@@ -390,7 +396,338 @@ def test_acp_subprocess_env_strips_provider_keys():
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Phase C-2: _ACPConnection context manager tests
+# v6-ce-acp-env-allowlist: explicit allowlist precedence tests
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_acp_known_provider_key_passes_by_default():
+    """Contract: a known runtime provider key (e.g. DEEPSEEK_API_KEY) passes
+    through _build_acp_subprocess_env by default — no allowlist entry needed.
+    Unallowlisted credential-like keys are still stripped.
+    """
+    from tools.agent_bridge.acp_client import _build_acp_subprocess_env
+    from tools.agent_bridge.config import BrainConfig
+
+    base = {
+        "PATH": "/usr/bin",
+        "DEEPSEEK_API_KEY": "sk-deepseek-real",
+        "SOME_TOKEN": "t",
+    }
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy", "acp"],
+        acp_workdir="/tmp",
+        # No allowlist — zero-config passthrough for known providers
+    )
+    env = _build_acp_subprocess_env(cfg, base_env=base)
+
+    # Known provider key passes through by default (no allowlist)
+    assert "DEEPSEEK_API_KEY" in env, "DEEPSEEK_API_KEY stripped despite being known provider"
+    assert env["DEEPSEEK_API_KEY"] == "sk-deepseek-real"
+    # Non-allowlisted credential-like key still stripped
+    assert "SOME_TOKEN" not in env, "Unallowlisted SOME_TOKEN should be stripped"
+
+
+def test_acp_unallowlisted_credential_keys_still_stripped():
+    """Contract: credential-like keys that are NOT in the allowlist remain stripped."""
+    from tools.agent_bridge.acp_client import _build_acp_subprocess_env
+    from tools.agent_bridge.config import BrainConfig
+
+    base = {
+        "PATH": "/usr/bin",
+        "FAKE_API_KEY": "sk-fake",
+        "MY_SECRET": "s3cret",
+        "DB_PASSWORD": "p@ss",
+        "SOME_TOKEN": "tok",
+        "KEEP_ME": "safe",
+    }
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy", "acp"],
+        acp_workdir="/tmp",
+        acp_env_allowlist={"KEEP_ME": "safe"},  # only KEEP_ME is allowlisted
+    )
+    env = _build_acp_subprocess_env(cfg, base_env=base)
+
+    # Unallowlisted credential-like keys stripped
+    for bad_key in ("FAKE_API_KEY", "MY_SECRET", "DB_PASSWORD", "SOME_TOKEN"):
+        assert bad_key not in env, f"Unallowlisted {bad_key} should be stripped"
+    # Allowlisted non-credential key survives
+    assert env["KEEP_ME"] == "safe"
+    # Non-credential key survives
+    assert "PATH" in env
+
+
+def test_acp_env_allowlist_list_syntax_resolves_from_env(monkeypatch):
+    """Contract: JSON list allowlist resolves each key from os.environ.
+
+    Uses resolve_brain_config to parse LIFE_INDEX_ACP_ENV_ALLOWLIST from the
+    environment, then verifies the resolved key reaches the ACP subprocess env.
+    """
+    from tools.agent_bridge.acp_client import acp_synthesize
+    from tools.agent_bridge.config import resolve_brain_config
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-real-deepseek-from-env")
+    monkeypatch.setenv("LIFE_INDEX_ACP_ENV_ALLOWLIST", '["DEEPSEEK_API_KEY"]')
+
+    # Ensure resolve_brain_config can produce an ACP config
+    monkeypatch.setattr(
+        "tools.lib.config.USER_CONFIG",
+        {
+            "brain": {
+                "mode": "host_agent",
+                "transport": "acp",
+                "acp_command": ["dummy", "acp"],
+                "data_exposure_ack": True,
+            }
+        },
+    )
+
+    captured_env: dict = {}
+
+    def _fake_popen(args, **kwargs):
+        captured_env.update(kwargs.get("env", {}))
+        raise _EnvCaptureSentinel("captured")
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+
+    cfg = resolve_brain_config()
+
+    with pytest.raises(_EnvCaptureSentinel):
+        acp_synthesize(cfg, "test system", "test user")
+
+    # DEEPSEEK_API_KEY must reach the subprocess (resolved from env via list syntax)
+    assert (
+        "DEEPSEEK_API_KEY" in captured_env
+    ), "DEEPSEEK_API_KEY missing — list allowlist resolution failed"
+    # Must NOT log the secret value in assertions — only check presence
+
+
+def test_acp_env_allowlist_list_syntax_skips_missing_keys(monkeypatch):
+    """Contract: JSON list keys not present in os.environ are silently skipped."""
+    from tools.agent_bridge.acp_client import _build_acp_subprocess_env
+    from tools.agent_bridge.config import BrainConfig
+
+    # Set env to a list with a key that doesn't exist in os.environ
+    monkeypatch.setenv("LIFE_INDEX_ACP_ENV_ALLOWLIST", '["MISSING_KEY", "PATH"]')
+    # Ensure MISSING_KEY is not in os.environ
+    monkeypatch.delenv("MISSING_KEY", raising=False)
+    monkeypatch.setenv("PATH", "/resolved/path")
+
+    from tools.agent_bridge.config import resolve_brain_config
+
+    cfg = resolve_brain_config()
+
+    # Override cfg to use ACP transport (resolve_brain_config defaults to openai)
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy", "acp"],
+        acp_workdir="/tmp",
+        acp_env_allowlist=cfg.acp_env_allowlist,
+    )
+
+    base = {"HOME": "/home/u"}
+    env = _build_acp_subprocess_env(cfg, base_env=base)
+
+    # MISSING_KEY should not appear (not in os.environ)
+    assert "MISSING_KEY" not in env, "Missing env key should not appear in subprocess env"
+    # PATH should appear (was in os.environ and in the list)
+    assert "PATH" in env, "PATH should be resolved from env via list allowlist"
+    assert env["PATH"] == "/resolved/path"
+
+
+def test_acp_existing_non_provider_allowlist_still_works():
+    """Contract: existing non-provider allowlist entries still work.
+    Backward compatibility: dict-style allowlist for runtime config vars
+    continues to function as before.
+    """
+    from tools.agent_bridge.acp_client import _build_acp_subprocess_env
+    from tools.agent_bridge.config import BrainConfig
+
+    base = {"PATH": "/usr/bin", "HOME": "/home/u"}
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy", "acp"],
+        acp_workdir="/tmp",
+        acp_env_allowlist={
+            "CUSTOM_CONFIG": "value1",
+            "RUNTIME_FLAG": "enabled",
+        },
+    )
+    env = _build_acp_subprocess_env(cfg, base_env=base)
+
+    assert env["CUSTOM_CONFIG"] == "value1"
+    assert env["RUNTIME_FLAG"] == "enabled"
+    assert env["PATH"] == "/usr/bin"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# v6-ce-acp-env-allowlist: zero-config known provider key passthrough
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_life_index_api_key_always_stripped():
+    """Contract: LIFE_INDEX_LLM_API_KEY is always stripped, even when someone
+    tries to put it in the allowlist.  The key belongs to Life Index alone.
+    """
+    from tools.agent_bridge.acp_client import _build_acp_subprocess_env
+    from tools.agent_bridge.config import BrainConfig
+
+    base = {
+        "PATH": "/usr/bin",
+        "LIFE_INDEX_LLM_API_KEY": "sk-life-index-secret",
+    }
+    # Attempt to allowlist Life Index's own key — should be ignored
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy", "acp"],
+        acp_workdir="/tmp",
+        acp_env_allowlist={"LIFE_INDEX_LLM_API_KEY": "sk-override-attempt"},
+    )
+    env = _build_acp_subprocess_env(cfg, base_env=base)
+
+    # LIFE_INDEX_LLM_API_KEY must never reach the subprocess
+    assert (
+        "LIFE_INDEX_LLM_API_KEY" not in env
+    ), "LIFE_INDEX_LLM_API_KEY leaked despite always-strip contract"
+
+
+def test_unallowlisted_credential_keys_stripped_by_default():
+    """Contract: credential-like variables that are NOT known runtime
+    provider keys are stripped by default (no allowlist needed to strip them).
+    """
+    from tools.agent_bridge.acp_client import _build_acp_subprocess_env
+    from tools.agent_bridge.config import BrainConfig
+
+    base = {
+        "PATH": "/usr/bin",
+        "FAKE_SECRET_TOKEN": "tok123",
+        "FOO_API_KEY": "sk-novel-provider",
+        "MY_SECRET": "s3cret",
+        "DB_PASSWORD": "p@ss",
+    }
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy", "acp"],
+        acp_workdir="/tmp",
+    )
+    env = _build_acp_subprocess_env(cfg, base_env=base)
+
+    # All credential-like keys not in the known provider set are stripped
+    for bad_key in ("FAKE_SECRET_TOKEN", "FOO_API_KEY", "MY_SECRET", "DB_PASSWORD"):
+        assert bad_key not in env, f"Unallowlisted credential-like {bad_key} should be stripped"
+    # Non-credential vars survive
+    assert "PATH" in env
+
+
+def test_novel_provider_key_passes_when_allowlisted(monkeypatch):
+    """Contract: a novel provider key (e.g. FOO_API_KEY) not in the known
+    runtime provider set passes to the ACP subprocess ONLY when explicitly
+    allowlisted via the list syntax.
+    """
+    from tools.agent_bridge.acp_client import acp_synthesize
+    from tools.agent_bridge.config import resolve_brain_config
+
+    monkeypatch.setenv("FOO_API_KEY", "sk-novel-provider-from-env")
+    monkeypatch.setenv("LIFE_INDEX_ACP_ENV_ALLOWLIST", '["FOO_API_KEY"]')
+
+    monkeypatch.setattr(
+        "tools.lib.config.USER_CONFIG",
+        {
+            "brain": {
+                "mode": "host_agent",
+                "transport": "acp",
+                "acp_command": ["dummy", "acp"],
+                "data_exposure_ack": True,
+            }
+        },
+    )
+
+    captured_env: dict = {}
+
+    def _fake_popen(args, **kwargs):
+        captured_env.update(kwargs.get("env", {}))
+        raise _EnvCaptureSentinel("captured")
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+
+    cfg = resolve_brain_config()
+
+    with pytest.raises(_EnvCaptureSentinel):
+        acp_synthesize(cfg, "test system", "test user")
+
+    # FOO_API_KEY reaches the subprocess because it was explicitly allowlisted
+    assert "FOO_API_KEY" in captured_env, (
+        "FOO_API_KEY should pass when allowlisted; " f"captured keys: {sorted(captured_env.keys())}"
+    )
+    # Must NOT log the secret value in assertions — only check presence
+
+
+def test_novel_provider_key_stripped_without_allowlist(monkeypatch):
+    """Contract: a novel provider key (e.g. FOO_API_KEY) NOT in the known
+    runtime provider set is stripped by default when there is no allowlist.
+    """
+    from tools.agent_bridge.acp_client import acp_synthesize
+    from tools.agent_bridge.config import BrainConfig
+
+    monkeypatch.setenv("FOO_API_KEY", "sk-novel-provider-from-env")
+
+    captured_env: dict = {}
+
+    def _fake_popen(args, **kwargs):
+        captured_env.update(kwargs.get("env", {}))
+        raise _EnvCaptureSentinel("captured")
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy", "acp"],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    with pytest.raises(_EnvCaptureSentinel):
+        acp_synthesize(cfg, "test system", "test user")
+
+    # FOO_API_KEY is not a known provider and was not allowlisted
+    assert "FOO_API_KEY" not in captured_env, "FOO_API_KEY should be stripped without allowlist"
+
+
 #
 # These tests verify the extracted _ACPConnection helper:
 #   - Runs the full handshake (initialize → authenticate → session/new)

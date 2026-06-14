@@ -44,6 +44,35 @@ def _parse_json_env(key: str) -> Any | None:
         raise ACPConfigError(f"Environment variable {key} must be valid JSON: {exc}") from exc
 
 
+def _resolve_acp_env_allowlist(raw: Any) -> dict[str, str]:
+    """Resolve ``LIFE_INDEX_ACP_ENV_ALLOWLIST`` to a dict.
+
+    Dict format (backward compatible): ``{"NAME": "value"}`` — used as-is.
+
+    List format (new): ``["NAME1", "NAME2"]`` — each name resolves its value
+    from the current process environment (``os.environ``).  Keys not present
+    in the environment are silently skipped.
+    """
+    if isinstance(raw, dict):
+        return {str(k): str(v) for k, v in raw.items()}
+    if isinstance(raw, list):
+        result: dict[str, str] = {}
+        for key in raw:
+            if not isinstance(key, str):
+                raise ACPConfigError(
+                    f"LIFE_INDEX_ACP_ENV_ALLOWLIST list items must be strings, "
+                    f"got {type(key).__name__}"
+                )
+            val = os.environ.get(key)
+            if val is not None:
+                result[key] = val
+        return result
+    raise ACPConfigError(
+        f"LIFE_INDEX_ACP_ENV_ALLOWLIST must be a JSON object or "
+        f"JSON list of strings, got {type(raw).__name__}"
+    )
+
+
 def _parse_acp_command_env() -> list[str] | None:
     """Parse ``LIFE_INDEX_ACP_COMMAND``, accepting JSON list or shell string.
 
@@ -104,11 +133,13 @@ def resolve_brain_config() -> BrainConfig:
     acp_command = _parse_acp_command_env() or brain.get("acp_command")
     acp_workdir = os.environ.get("LIFE_INDEX_ACP_WORKDIR") or brain.get("acp_workdir")
     acp_auth_method = os.environ.get("LIFE_INDEX_ACP_AUTH_METHOD") or brain.get("acp_auth_method")
-    acp_env_allowlist = _parse_json_env("LIFE_INDEX_ACP_ENV_ALLOWLIST") or brain.get(
-        "acp_env_allowlist"
-    )
-    if acp_env_allowlist is None:
+    raw_allowlist = _parse_json_env("LIFE_INDEX_ACP_ENV_ALLOWLIST")
+    if raw_allowlist is None:
+        raw_allowlist = brain.get("acp_env_allowlist")
+    if raw_allowlist is None:
         acp_env_allowlist = {}
+    else:
+        acp_env_allowlist = _resolve_acp_env_allowlist(raw_allowlist)
 
     # Validate: ACP transport requires acp_command
     if transport == "acp" and not acp_command:

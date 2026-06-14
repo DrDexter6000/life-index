@@ -20,17 +20,18 @@ class UnsupportedTransportError(ValueError):
 _RPC_TIMEOUT = 60  # seconds per RPC call
 _SUBPROCESS_JOIN_TIMEOUT = 30  # seconds to wait for subprocess after stdin close
 
-# Provider-key env vars that must NEVER be passed into the ACP subprocess.
-# The ACP runtime owns its own credentials; Life Index must not inject keys
-# from the parent process. Keep this list conservative and auditable.
-_PROVIDER_KEY_DENYLIST: frozenset[str] = frozenset(
+# Known runtime provider API-key env vars — these pass through to the ACP
+# subprocess by default WITHOUT requiring LIFE_INDEX_ACP_ENV_ALLOWLIST.
+# The ACP runtime needs its own provider credentials; these are well-known
+# standard env var names for 11 major LLM providers.
+# Keep this set readable and auditable — no branchy provider logic.
+_KNOWN_RUNTIME_PROVIDER_KEYS: frozenset[str] = frozenset(
     {
-        "LIFE_INDEX_LLM_API_KEY",
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
-        "GEMINI_API_KEY",
         "DEEPSEEK_API_KEY",
         "KIMI_API_KEY",
+        "GEMINI_API_KEY",
         "AZURE_OPENAI_API_KEY",
         "COHERE_API_KEY",
         "MISTRAL_API_KEY",
@@ -39,6 +40,11 @@ _PROVIDER_KEY_DENYLIST: frozenset[str] = frozenset(
         "REPLICATE_API_KEY",
     }
 )
+
+# Life Index's own API key — MUST NEVER be passed to the ACP subprocess.
+# This key belongs to Life Index, not to any runtime provider.
+# It is always stripped, even if someone tries to allowlist it.
+_ALWAYS_STRIP_KEYS: frozenset[str] = frozenset({"LIFE_INDEX_LLM_API_KEY"})
 
 # Case-insensitive suffix/pattern patterns for env var names that indicate
 # credentials.  Any key whose upper-cased name ends with ``_API_KEY`` or
@@ -55,28 +61,41 @@ def _build_acp_subprocess_env(
 ) -> dict[str, str]:
     """Build a sanitized environment dict for the ACP subprocess.
 
-    Safety rationale: Hermes (and other ACP runtimes) loads its own
-    credentials from ``~/.hermes/.env`` (or equivalent) at startup —
-    it does **not** depend on inheriting provider keys from the parent
-    process.  Stripping those keys from the subprocess environment is
-    therefore safe and prevents accidental credential leakage.
+    Safety contract (owner-approved):
+
+    * Known runtime provider API keys (11 providers in
+      ``_KNOWN_RUNTIME_PROVIDER_KEYS``) pass through to the ACP subprocess
+      by default — no ``LIFE_INDEX_ACP_ENV_ALLOWLIST`` needed.
+    * Life Index's own ``LIFE_INDEX_LLM_API_KEY`` is **always** stripped.
+    * Credential-like variables outside the known provider set are stripped
+      by default, unless explicitly allowlisted.
+    * ``LIFE_INDEX_ACP_ENV_ALLOWLIST`` acts as a fallback for novel
+      provider keys (e.g. ``FOO_API_KEY``).
 
     Steps:
     1. Start from *base_env* (defaults to ``os.environ`` snapshot).
-    2. Remove every key in the explicit ``_PROVIDER_KEY_DENYLIST``.
-    3. Remove any key whose name (case-insensitive) ends with
-       ``_API_KEY`` or ``_TOKEN``, or contains ``SECRET`` or ``PASSWORD``.
-    4. Overlay ``cfg.acp_env_allowlist`` (user-requested non-provider vars).
-    5. Remove denylisted keys again (denylist always wins over allowlist).
+    2. Remove every key in ``_ALWAYS_STRIP_KEYS`` (always, no exceptions).
+    3. Remove any credential-pattern key NOT in the known runtime
+       provider set (preserves known provider keys by default).
+    4. Overlay ``cfg.acp_env_allowlist`` (user-requested vars).
+    5. Final strip: remove always-strip keys (again); remove remaining
+       credential-pattern keys unless they are known providers or
+       explicitly allowlisted.
     """
     env = dict(base_env if base_env is not None else os.environ)
 
-    # Step 2: explicit denylist
-    for key in _PROVIDER_KEY_DENYLIST:
+    # Build the set of keys that the user explicitly allowlisted
+    allowlisted_names: frozenset[str] = frozenset(cfg.acp_env_allowlist.keys())
+
+    # Step 2: always-strip keys (Life Index internal)
+    for key in _ALWAYS_STRIP_KEYS:
         env.pop(key, None)
 
-    # Step 3: pattern-based credential stripping
-    to_strip = [k for k in env if _CREDENTIAL_PATTERNS.search(k)]
+    # Step 3: pattern-based credential stripping — preserve known
+    # runtime provider keys (they pass through by default)
+    to_strip = [
+        k for k in env if _CREDENTIAL_PATTERNS.search(k) and k not in _KNOWN_RUNTIME_PROVIDER_KEYS
+    ]
     for key in to_strip:
         env.pop(key, None)
 
@@ -84,10 +103,18 @@ def _build_acp_subprocess_env(
     if cfg.acp_env_allowlist:
         env.update(cfg.acp_env_allowlist)
 
-    # Step 5: denylist always wins — strip again after allowlist overlay
-    for key in _PROVIDER_KEY_DENYLIST:
+    # Step 5: final credential strip
+    #   - always-strip keys: unconditionally removed (no allowlist override)
+    #   - credential-pattern keys: preserved if known provider OR allowlisted
+    for key in _ALWAYS_STRIP_KEYS:
         env.pop(key, None)
-    to_strip2 = [k for k in env if _CREDENTIAL_PATTERNS.search(k)]
+    to_strip2 = [
+        k
+        for k in env
+        if _CREDENTIAL_PATTERNS.search(k)
+        and k not in _KNOWN_RUNTIME_PROVIDER_KEYS
+        and k not in allowlisted_names
+    ]
     for key in to_strip2:
         env.pop(key, None)
 

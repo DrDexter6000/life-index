@@ -193,3 +193,68 @@ def test_acp_env_allowlist_defaults_to_empty(monkeypatch):
     cfg = resolve_brain_config()
     # RED: acp_env_allowlist field does not exist on BrainConfig
     assert cfg.acp_env_allowlist == {}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# v6-ce-acp-env-allowlist: JSON list allowlist resolution tests
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_acp_env_allowlist_list_syntax(monkeypatch):
+    """Contract: LIFE_INDEX_ACP_ENV_ALLOWLIST as a JSON list resolves keys
+    from os.environ into a dict.
+    """
+    _clear_env(monkeypatch)
+    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+    monkeypatch.setenv("LIFE_INDEX_ACP_ENV_ALLOWLIST", '["DEEPSEEK_API_KEY", "CUSTOM_VAR"]')
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-from-env")
+    monkeypatch.setenv("CUSTOM_VAR", "custom-value")
+
+    from tools.agent_bridge.config import resolve_brain_config
+
+    cfg = resolve_brain_config()
+
+    assert cfg.acp_env_allowlist == {
+        "DEEPSEEK_API_KEY": "sk-deepseek-from-env",
+        "CUSTOM_VAR": "custom-value",
+    }
+
+
+def test_acp_env_allowlist_list_skips_missing_keys(monkeypatch):
+    """Contract: list keys not in os.environ are silently skipped."""
+    _clear_env(monkeypatch)
+    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+    monkeypatch.setenv("LIFE_INDEX_ACP_ENV_ALLOWLIST", '["MISSING_KEY"]')
+    monkeypatch.delenv("MISSING_KEY", raising=False)
+
+    from tools.agent_bridge.config import resolve_brain_config
+
+    cfg = resolve_brain_config()
+
+    assert cfg.acp_env_allowlist == {}
+
+
+def test_acp_env_allowlist_list_rejects_non_string_items(monkeypatch):
+    """Contract: list items that are not strings raise ACPConfigError."""
+    _clear_env(monkeypatch)
+    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+    monkeypatch.setenv("LIFE_INDEX_ACP_ENV_ALLOWLIST", '[123, "VALID_KEY"]')
+
+    import pytest
+    from tools.agent_bridge.config import resolve_brain_config, ACPConfigError
+
+    with pytest.raises(ACPConfigError, match=r"(?i)list items must be strings"):
+        resolve_brain_config()
+
+
+def test_acp_env_allowlist_invalid_type_raises(monkeypatch):
+    """Contract: non-dict, non-list values raise ACPConfigError."""
+    _clear_env(monkeypatch)
+    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
+    monkeypatch.setenv("LIFE_INDEX_ACP_ENV_ALLOWLIST", '"just a string"')
+
+    import pytest
+    from tools.agent_bridge.config import resolve_brain_config, ACPConfigError
+
+    with pytest.raises(ACPConfigError, match=r"(?i)must be a JSON object or"):
+        resolve_brain_config()
