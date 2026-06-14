@@ -306,6 +306,27 @@ def _hydrate_blank_evidence(scaffold: dict[str, Any], query: str) -> dict[str, A
     return scaffold
 
 
+def warm_gateway_scaffold_path(query: str = "__warmup__") -> dict[str, Any]:
+    """Best-effort warm the deterministic L3→L2 scaffold path on server start.
+
+    Runs ``build_gateway_scaffold`` and a bounded ``search --read-top`` once
+    so the first real grounded query pays less Python import / subprocess /
+    index-cache cold cost.
+
+    This is best-effort only: any exception is caught, recorded, and must
+    NOT prevent the ACP service from starting.  No ACP init or LLM synthesis
+    is performed.
+
+    Returns a dict with ``ok`` (bool) and ``error_message`` (str | None).
+    """
+    try:
+        build_gateway_scaffold(query)
+        _cli_search_read_top(query, limit=1)
+        return {"ok": True, "error_message": None}
+    except Exception as exc:
+        return {"ok": False, "error_message": str(exc)}
+
+
 def hydrate_gateway_scaffold(scaffold: dict[str, Any], query: str) -> dict[str, Any]:
     """Hydrate blank evidence text in an existing gateway scaffold.
 

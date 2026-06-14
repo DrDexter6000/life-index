@@ -422,6 +422,15 @@ def _build_server(
     manager = ACPWarmSessionManager(cfg, **manager_kwargs)
     manager.start()
 
+    # Warm the deterministic L3→L2 scaffold path so the first real grounded
+    # query pays less Python import / subprocess / index-cache cold cost.
+    # This is best-effort: any exception is caught and must NOT prevent the
+    # server from accepting traffic.
+    try:
+        handoff.warm_gateway_scaffold_path()
+    except Exception:
+        pass
+
     ACPServiceHandler.manager = manager
     server = ACPThreadingServer((host, port), ACPServiceHandler)
     ACPServiceHandler.server_instance = server

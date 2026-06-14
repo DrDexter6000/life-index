@@ -497,6 +497,94 @@ def test_build_server_keeps_running_when_warm_fails():
         server.shutdown_and_close()
 
 
+def test_build_server_calls_scaffold_warmup(monkeypatch):
+    """_build_server calls warm_gateway_scaffold_path exactly once after manager.start."""
+    warm_calls: list[str] = []
+
+    def _record_warm(query: str = "__warmup__") -> dict:
+        warm_calls.append(query)
+        return {"ok": True, "error_message": None}
+
+    monkeypatch.setattr(_handoff_mod, "warm_gateway_scaffold_path", _record_warm)
+
+    cfg = _brain_config()
+    server, manager = _build_server(
+        "127.0.0.1",
+        0,
+        cfg,
+        connection_factory=lambda *a, **k: _fake_warm_conn(),
+        adapter=lambda *a, **k: _success_envelope(),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        # Warmup was called exactly once with the default query.
+        assert len(warm_calls) == 1, f"expected 1 warm call, got {len(warm_calls)}"
+        assert warm_calls[0] == "__warmup__"
+        # Manager was started before warmup (started check in _build_server).
+        assert manager._last_warm_error is None
+    finally:
+        server.shutdown_and_close()
+
+
+def test_scaffold_warmup_failure_does_not_crash_build_server(monkeypatch):
+    """Warmup failure in warm_gateway_scaffold_path() does not crash _build_server()."""
+
+    def _failing_warm(query: str = "__warmup__") -> dict:
+        raise RuntimeError("scaffold warmup exploded")
+
+    monkeypatch.setattr(_handoff_mod, "warm_gateway_scaffold_path", _failing_warm)
+
+    cfg = _brain_config()
+    server, manager = _build_server(
+        "127.0.0.1",
+        0,
+        cfg,
+        connection_factory=lambda *a, **k: _fake_warm_conn(),
+        adapter=lambda *a, **k: _success_envelope(),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        # Server must still start and serve healthz.
+        status, body = _request(server, "/healthz")
+        assert status == 200
+        assert body["state"] == "warm"
+        assert body["pid"] == 12345
+    finally:
+        server.shutdown_and_close()
+
+
+def test_warm_gateway_scaffold_path_returns_ok_on_success(monkeypatch):
+    """Direct unit test: warm_gateway_scaffold_path returns ok when build succeeds."""
+    read_top_calls: list[tuple[str, int]] = []
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: _scaffold_with_evidence())
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_search_read_top",
+        lambda q, limit=10: read_top_calls.append((q, limit))
+        or {"success": True, "merged_results": []},
+    )
+
+    result = _handoff_mod.warm_gateway_scaffold_path("warm query")
+    assert result == {"ok": True, "error_message": None}
+    assert read_top_calls == [("warm query", 1)]
+
+
+def test_warm_gateway_scaffold_path_swallows_exceptions(monkeypatch):
+    """Direct unit test: warm_gateway_scaffold_path swallows exceptions and reports them."""
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_smart_search",
+        lambda _q: (_ for _ in ()).throw(RuntimeError("subprocess refused")),
+    )
+
+    result = _handoff_mod.warm_gateway_scaffold_path()
+    assert result["ok"] is False
+    assert "subprocess refused" in result["error_message"]
+
+
 def test_query_json_returns_rich_envelope():
     manager = _FakeManagerWarmOk()
     server = _start_server_with_manager(manager)
