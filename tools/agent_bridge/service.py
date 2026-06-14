@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
 import signal
 import socket
@@ -36,6 +37,11 @@ from tools.agent_bridge.query_envelope import (
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8787
 _SSE_TIMEOUT = 300.0
+
+# Env var to opt out of the data-free ACP session/prompt warmup on server
+# start.  Set to "0", "false", "no", or "off" to disable.  Default: enabled.
+_ACP_WARMUP_PROMPT_ENV = "LIFE_INDEX_ACP_WARMUP_PROMPT_ENABLED"
+_ACP_WARMUP_PROMPT_DISABLE_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 
 
 class ACPThreadingServer(ThreadingHTTPServer):
@@ -430,6 +436,20 @@ def _build_server(
         handoff.warm_gateway_scaffold_path()
     except Exception:
         pass
+
+    # Warm the data-free ACP session/prompt path so the first real ACP query
+    # pays less cold-start latency.  Uses the existing warm ACP connection
+    # via conn.rpc() rather than manager.query() to avoid the m35
+    # evidence-bound query path.  Best-effort only: failure is swallowed and
+    # must NOT crash the server or change /healthz to degraded.
+    if (
+        os.environ.get(_ACP_WARMUP_PROMPT_ENV, "").strip().lower()
+        not in _ACP_WARMUP_PROMPT_DISABLE_VALUES
+    ):
+        try:
+            manager.warm_acp_prompt()
+        except Exception:
+            pass
 
     ACPServiceHandler.manager = manager
     server = ACPThreadingServer((host, port), ACPServiceHandler)

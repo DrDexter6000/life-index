@@ -25,6 +25,8 @@ from tools.agent_bridge.config import BrainConfig
 from tools.agent_bridge.service import (
     ACPServiceHandler,
     ACPThreadingServer,
+    _ACP_WARMUP_PROMPT_DISABLE_VALUES,
+    _ACP_WARMUP_PROMPT_ENV,
     _build_server,
     _make_signal_handler,
     _schedule_async_shutdown,
@@ -419,8 +421,10 @@ def _fake_warm_conn():
 
     class _Conn:
         pid = 12345
+        session_id = "fake-session"
         initialize_result = {"serverInfo": {"name": "fake-acp"}}
         session_new_result = {"sessionId": "fake-session", "model": "fake-model"}
+        rpc_calls: list[tuple[str, dict]] = []
 
         def __enter__(self):
             return self
@@ -433,6 +437,10 @@ def _fake_warm_conn():
 
         def close(self):
             pass
+
+        def rpc(self, method, params):
+            self.rpc_calls.append((method, params))
+            return {"result": {"ok": True}}
 
     return _Conn()
 
@@ -1691,3 +1699,276 @@ def test_hydration_normalizes_absolute_and_journal_paths(monkeypatch):
     result = _handoff_mod.build_gateway_scaffold("hello normalize")
 
     assert result["evidence_pack"]["items"][0]["snippet"] == "Absolute path snippet."
+
+
+# ─── V6-CA ACP prompt warmup integration tests ────────────────────────
+
+
+def test_build_server_calls_acp_prompt_warmup_by_default(monkeypatch):
+    """_build_server calls manager.warm_acp_prompt() by default after scaffold warmup."""
+    cfg = _brain_config()
+
+    # Use a fake warm connection that records rpc calls.
+    warm_calls: list[str] = []
+    call_order: list[str] = []
+    monkeypatch.setattr(
+        _handoff_mod,
+        "warm_gateway_scaffold_path",
+        lambda: call_order.append("scaffold") or {"ok": True, "error_message": None},
+    )
+
+    class _TrackedConn:
+        pid = 12345
+        session_id = "tracked-session"
+        initialize_result = {"serverInfo": {"name": "tracked-acp"}}
+        session_new_result = {"sessionId": "tracked-session", "model": "tracked-model"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def is_alive(self):
+            return True
+
+        def close(self):
+            pass
+
+        def rpc(self, method, params):
+            warm_calls.append(method)
+            call_order.append(method)
+            return {"result": {"ok": True}}
+
+    server, manager = _build_server(
+        "127.0.0.1",
+        0,
+        cfg,
+        connection_factory=lambda *a, **k: _TrackedConn(),
+        adapter=lambda *a, **k: _success_envelope(),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        # scaffold warmup was called first (it's part of _build_server)
+        # ACP prompt warmup was called after scaffold warmup
+        assert (
+            "session/prompt" in warm_calls
+        ), f"ACP prompt warmup not called; warm_calls={warm_calls}"
+        assert call_order == ["scaffold", "session/prompt"]
+        # Manager was started before warmup.
+        assert manager._last_warm_error is None
+    finally:
+        server.shutdown_and_close()
+
+
+def test_build_server_skips_acp_warmup_when_env_opt_out(monkeypatch):
+    """_build_server does NOT call warm_acp_prompt when env var opts out."""
+    monkeypatch.setenv(_ACP_WARMUP_PROMPT_ENV, "0")
+    monkeypatch.setattr(
+        _handoff_mod,
+        "warm_gateway_scaffold_path",
+        lambda: {"ok": True, "error_message": None},
+    )
+
+    cfg = _brain_config()
+    warm_calls: list[str] = []
+
+    class _TrackedConn:
+        pid = 12345
+        session_id = "tracked-session"
+        initialize_result = {"serverInfo": {"name": "tracked-acp"}}
+        session_new_result = {"sessionId": "tracked-session", "model": "tracked-model"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def is_alive(self):
+            return True
+
+        def close(self):
+            pass
+
+        def rpc(self, method, params):
+            warm_calls.append(method)
+            return {"result": {"ok": True}}
+
+    server, manager = _build_server(
+        "127.0.0.1",
+        0,
+        cfg,
+        connection_factory=lambda *a, **k: _TrackedConn(),
+        adapter=lambda *a, **k: _success_envelope(),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        # session/prompt must NOT appear — opt-out suppressed the warmup.
+        assert (
+            "session/prompt" not in warm_calls
+        ), f"ACP prompt warmup was called despite opt-out; warm_calls={warm_calls}"
+    finally:
+        server.shutdown_and_close()
+
+
+def test_acp_warmup_failure_does_not_crash_build_server(monkeypatch):
+    """warm_acp_prompt() failure does NOT crash _build_server()."""
+    cfg = _brain_config()
+    monkeypatch.setattr(
+        _handoff_mod,
+        "warm_gateway_scaffold_path",
+        lambda: {"ok": True, "error_message": None},
+    )
+
+    class _FailingConn:
+        pid = 12345
+        session_id = "failing-session"
+        initialize_result = {"serverInfo": {"name": "failing-acp"}}
+        session_new_result = {"sessionId": "failing-session", "model": "failing-model"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def is_alive(self):
+            return True
+
+        def close(self):
+            pass
+
+        def rpc(self, method, params):
+            raise RuntimeError("ACP prompt warmup exploded")
+
+    server, manager = _build_server(
+        "127.0.0.1",
+        0,
+        cfg,
+        connection_factory=lambda *a, **k: _FailingConn(),
+        adapter=lambda *a, **k: _success_envelope(),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        # Server must still start and serve healthz.
+        status, body = _request(server, "/healthz")
+        assert status == 200
+        # Health must remain warm — warmup failure does not degrade.
+        assert body["state"] == "warm"
+        assert body["pid"] == 12345
+        assert body["last_warm_error"] is None
+    finally:
+        server.shutdown_and_close()
+
+
+def test_env_opt_out_accepts_all_disable_values(monkeypatch):
+    """All documented opt-out values suppress the warmup."""
+    monkeypatch.setattr(
+        _handoff_mod,
+        "warm_gateway_scaffold_path",
+        lambda: {"ok": True, "error_message": None},
+    )
+    for disable_val in sorted(_ACP_WARMUP_PROMPT_DISABLE_VALUES):
+        monkeypatch.setenv(_ACP_WARMUP_PROMPT_ENV, disable_val)
+
+        cfg = _brain_config()
+        warm_calls: list[str] = []
+
+        class _TrackedConn:
+            pid = 12345
+            session_id = f"s-{disable_val}"
+            initialize_result = {"serverInfo": {"name": "tracked-acp"}}
+            session_new_result = {"sessionId": f"s-{disable_val}", "model": "tracked-model"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def is_alive(self):
+                return True
+
+            def close(self):
+                pass
+
+            def rpc(self, method, params):
+                warm_calls.append(method)
+                return {"result": {"ok": True}}
+
+        server, manager = _build_server(
+            "127.0.0.1",
+            0,
+            cfg,
+            connection_factory=lambda *a, **k: _TrackedConn(),
+            adapter=lambda *a, **k: _success_envelope(),
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            assert (
+                "session/prompt" not in warm_calls
+            ), f"ACP prompt warmup called despite env={disable_val!r}"
+        finally:
+            server.shutdown_and_close()
+
+
+def test_build_server_acp_warmup_uses_existing_connection(monkeypatch):
+    """The ACP prompt warmup uses the warm connection, not manager.query()."""
+    cfg = _brain_config()
+    monkeypatch.setattr(
+        _handoff_mod,
+        "warm_gateway_scaffold_path",
+        lambda: {"ok": True, "error_message": None},
+    )
+
+    query_calls: list[str] = []
+    rpc_calls: list[str] = []
+
+    class _TrackedConn:
+        pid = 12345
+        session_id = "existing-session"
+        initialize_result = {"serverInfo": {"name": "existing-acp"}}
+        session_new_result = {"sessionId": "existing-session", "model": "existing-model"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def is_alive(self):
+            return True
+
+        def close(self):
+            pass
+
+        def rpc(self, method, params):
+            rpc_calls.append(method)
+            return {"result": {"ok": True}}
+
+    def tracking_adapter(query, scaffold, cfg, *, connection=None, stream_callback=None):
+        query_calls.append(query)
+        return _success_envelope()
+
+    server, manager = _build_server(
+        "127.0.0.1",
+        0,
+        cfg,
+        connection_factory=lambda *a, **k: _TrackedConn(),
+        adapter=tracking_adapter,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        # The warmup used conn.rpc() (direct), NOT the query adapter.
+        assert "session/prompt" in rpc_calls
+        assert (
+            len(query_calls) == 0
+        ), "manager.query() was called during warmup; expected conn.rpc() only"
+    finally:
+        server.shutdown_and_close()
