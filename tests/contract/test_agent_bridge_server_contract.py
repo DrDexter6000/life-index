@@ -68,6 +68,76 @@ def fake_service_port():
         server.server_close()
 
 
+@pytest.fixture
+def fake_service_process():
+    """Yield a real subprocess-backed fake service port and pid.
+
+    Stop lifecycle tests must not run the listener inside the pytest process:
+    the server CLI discovers the OS listener pid and may signal it during
+    escalation.
+    """
+    script = r"""
+import json
+import os as _os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+    def _send_json(self, status, body):
+        payload = json.dumps(body).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self):
+        if self.path == "/healthz":
+            self._send_json(200, {"status": "ok", "state": "warm"})
+        else:
+            self._send_json(404, {"error": "not found"})
+
+    def do_POST(self):
+        if self.path == "/shutdown":
+            self._send_json(200, {"status": "shutting down"})
+            self.wfile.flush()
+            _os._exit(0)
+        else:
+            self._send_json(404, {"error": "not found"})
+
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+print(server.server_address[1], flush=True)
+server.serve_forever()
+server.server_close()
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-u", "-c", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdout is not None
+    port_line = process.stdout.readline().strip()
+    if not port_line:
+        process.kill()
+        stderr = process.stderr.read() if process.stderr is not None else ""
+        pytest.fail(f"fake service process failed to start: {stderr}")
+    try:
+        yield int(port_line), process.pid
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+
 def test_server_help_appears_in_main_help():
     result = _invoke("--help")
     assert result.returncode == 0
@@ -116,7 +186,12 @@ def test_server_start_detects_existing_service(fake_service_port: int, tmp_path:
     assert result.returncode == 0
     assert "already running" in result.stdout
     assert f"127.0.0.1:{fake_service_port}" in result.stdout
-    assert not state_file.exists()
+    assert state_file.exists()
+    data = json.loads(state_file.read_text(encoding="utf-8"))
+    assert data["host"] == "127.0.0.1"
+    assert data["port"] == fake_service_port
+    assert isinstance(data["pid"], int)
+    assert data["pid"] > 0
 
 
 def test_server_status_reports_running_service(fake_service_port: int, tmp_path: Path):
@@ -136,10 +211,11 @@ def test_server_status_reports_running_service(fake_service_port: int, tmp_path:
     assert data["port"] == fake_service_port
 
 
-def test_server_stop_gracefully_shuts_down_service(fake_service_port: int, tmp_path: Path):
+def test_server_stop_gracefully_shuts_down_service(fake_service_process, tmp_path: Path):
+    fake_service_port, fake_service_pid = fake_service_process
     state_file = tmp_path / "server.json"
     state_file.write_text(
-        json.dumps({"host": "127.0.0.1", "port": fake_service_port, "pid": 12345}),
+        json.dumps({"host": "127.0.0.1", "port": fake_service_port, "pid": fake_service_pid}),
         encoding="utf-8",
     )
     result = _invoke(
