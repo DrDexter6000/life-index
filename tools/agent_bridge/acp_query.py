@@ -14,6 +14,37 @@ _MAX_EVIDENCE_ENTRIES = 10
 _REPAIR_RETRY_MAX = 1
 _FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 _JSON_OBJECT_RE = re.compile(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", re.DOTALL)
+# Trailing comma immediately before a closing ``}`` or ``]`` — a common
+# weak-model "light schema-shape drift". Used only as a bounded, generic
+# syntax repair inside ``_try_loads``; it never relaxes schema / status /
+# evidence-ID validation, which all run unchanged on the parsed result.
+_TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
+
+
+def _try_loads(text: str) -> Any | None:
+    """Best-effort ``json.loads`` with one bounded, generic light-drift repair.
+
+    First attempts strict ``json.loads``. On failure, applies exactly one
+    generic repair — stripping trailing commas immediately before ``}`` or
+    ``]`` — and retries once. Returns the parsed object, or ``None`` if both
+    attempts fail.
+
+    This relaxes only JSON *syntax* tolerance (a deterministic, model-agnostic
+    normalization). Every downstream schema-version, allowed-evidence-ID,
+    status-rule, and grounded/partial/ungrounded validation runs unchanged on
+    the returned object, so no safety contract is weakened.
+    """
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    repaired = _TRAILING_COMMA_RE.sub(r"\1", text)
+    if repaired != text:
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+    return None
 
 
 def _normalize_journal_id(pathish: str) -> str:
@@ -179,6 +210,16 @@ EVIDENCE PACK (only these entries may be cited):
 
 ALLOWED EVIDENCE IDs: {allowed_str}
 
+IMPORTANT — EVIDENCE IS ALREADY PROVIDED ABOVE. The full text of every
+evidence entry is printed in the EVIDENCE PACK. You do NOT need to look
+anywhere else, and you must NOT claim that you lack access to the evidence.
+Each entry above that shows text IS a real, non-empty evidence entry. Even
+if an entry looks short, it still has content. You MUST NOT answer that an
+entry "has no content", "is empty", "could not be read", or "was not
+provided" when text is shown for it above. Your answer status (GROUNDED /
+PARTIAL / UNGROUNDED) MUST be decided by reading the text already printed
+in the EVIDENCE PACK — not by assuming evidence is missing.
+
 INSTRUCTIONS:
 1. Answer ONLY from the supplied evidence. Do NOT fabricate, infer, or use
    external knowledge.
@@ -188,6 +229,10 @@ INSTRUCTIONS:
    set above.
 4. If the evidence is insufficient for a complete answer, mark status as
    PARTIAL or UNGROUNDED.
+5. Before choosing UNGROUNDED, re-read the EVIDENCE PACK above. If any
+   entry with a non-empty text is relevant to the question, you MUST use it
+   and mark the answer GROUNDED or PARTIAL instead. Only mark UNGROUNDED
+   when every supplied entry's text genuinely fails to address the question.
 
 OUTPUT FORMAT — Respond with exactly ONE JSON object conforming to schema
 m35.agent_bridge_query.v0:
@@ -233,31 +278,22 @@ def parse_and_validate(  # noqa: C901
     """
     parsed: Any = None
 
-    # 1. Try direct parse
+    # 1. Try direct parse (with bounded trailing-comma repair)
     stripped = raw_text.strip()
-    try:
-        parsed = json.loads(stripped)
-    except json.JSONDecodeError:
-        pass
+    parsed = _try_loads(stripped)
 
     # 2. Strip markdown JSON fence (one level)
     if parsed is None:
         m = _FENCE_RE.search(stripped)
         if m:
             inner = m.group(1).strip()
-            try:
-                parsed = json.loads(inner)
-            except json.JSONDecodeError:
-                pass
+            parsed = _try_loads(inner)
 
     # 3. Extract exactly one top-level JSON object
     if parsed is None:
         matches = _JSON_OBJECT_RE.findall(stripped)
         if len(matches) == 1:
-            try:
-                parsed = json.loads(matches[0])
-            except json.JSONDecodeError:
-                pass
+            parsed = _try_loads(matches[0])
         elif len(matches) > 1:
             return None, "Multiple JSON objects found in output — rejected as mixed prose"
 
