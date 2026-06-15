@@ -1075,3 +1075,343 @@ def test_acp_query_adapter_retry_uses_rpc_usage():
     assert result["schema_version"] == QUERY_SCHEMA_VERSION
     assert result["status"] == "GROUNDED"
     assert result["usage"] == {"input_tokens": 7, "output_tokens": 13}
+
+
+# ─── V6-CF grounding hardening: prompt + bounded-repair tests ─────────
+#
+# These tests lock in the V6-CF hardening:
+#   * build_query_prompt tells the model that evidence text is already
+#     hydrated and that non-empty entries must NOT be reported as empty.
+#   * parse_and_validate applies one bounded, generic trailing-comma repair
+#     ("light schema-shape drift") while leaving schema / status /
+#     evidence-ID / grounded-rule validation fully intact.
+
+
+def test_build_query_prompt_states_evidence_already_provided():
+    """Prompt explicitly tells the model evidence text is already supplied."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    evidence = {
+        "E1": {"short_id": "E1", "text": "First evidence snippet."},
+    }
+    prompt = build_query_prompt("What happened?", evidence, {"E1"})
+
+    assert "EVIDENCE IS ALREADY PROVIDED" in prompt
+    assert "already printed" in prompt or "already provided" in prompt
+
+
+def test_build_query_prompt_forbids_claiming_nonempty_entry_is_empty():
+    """Prompt forbids the model from claiming a non-empty entry has no content."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    evidence = {
+        "E1": {"short_id": "E1", "text": "A real, non-empty snippet."},
+    }
+    prompt = build_query_prompt("Any question", evidence, {"E1"})
+
+    assert "non-empty" in prompt
+    # The exact phrasing the model is told NOT to emit:
+    assert "has no content" in prompt
+    assert "MUST NOT" in prompt
+
+
+def test_build_query_prompt_ties_status_to_supplied_text():
+    """Prompt requires status to be decided from the supplied evidence text."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    evidence = {
+        "E1": {"short_id": "E1", "text": "Snippet."},
+        "E2": {"short_id": "E2", "text": "Second snippet."},
+    }
+    prompt = build_query_prompt("Question?", evidence, {"E1", "E2"})
+
+    assert "GROUNDED" in prompt
+    assert "PARTIAL" in prompt
+    assert "UNGROUNDED" in prompt
+    # The hardening adds an instruction to re-read evidence before UNGROUNDED.
+    assert "re-read" in prompt or "re-read the EVIDENCE PACK" in prompt
+    # m35 contract + allowed-ID restrictions preserved.
+    assert "m35.agent_bridge_query.v0" in prompt
+    assert "E1" in prompt and "E2" in prompt
+
+
+def test_build_query_prompt_remains_well_formed_with_no_evidence():
+    """Empty evidence pack still yields a coherent prompt (no crash, contract intact)."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    prompt = build_query_prompt("Question?", {}, set())
+
+    assert "m35.agent_bridge_query.v0" in prompt
+    assert "GROUNDED" in prompt
+    assert "(no evidence supplied)" in prompt
+    assert "EVIDENCE IS ALREADY PROVIDED" in prompt
+
+
+# ── Bounded trailing-comma repair (light schema-shape drift) ──
+
+
+def _envelope_with_trailing_comma_in_refs() -> str:
+    """Valid m35 GROUNDED envelope with a trailing comma in evidence_refs."""
+    return (
+        "{"
+        '"schema_version": "m35.agent_bridge_query.v0", '
+        '"status": "GROUNDED", '
+        '"answer": "Answer grounded in supplied evidence.", '
+        '"insights": ['
+        '{"text": "Insight one", "evidence_refs": ["E1"]}, '
+        '{"text": "Insight two", "evidence_refs": ["E1", "E2"]}'
+        "], "
+        '"evidence_refs": ["E1", "E2",], '  # trailing comma
+        '"gap": null, '
+        '"provenance": {"transport": "acp", "model": "x", "runtime": "y", "degraded": false}, '
+        '"usage": null'
+        "}"
+    )
+
+
+def _envelope_with_trailing_comma_in_insights() -> str:
+    """Valid m35 GROUNDED envelope with a trailing comma after the last insight."""
+    return (
+        "{"
+        '"schema_version": "m35.agent_bridge_query.v0", '
+        '"status": "GROUNDED", '
+        '"answer": "Grounded answer.", '
+        '"insights": ['
+        '{"text": "Insight one", "evidence_refs": ["E1"]},], '  # trailing comma
+        '"evidence_refs": ["E1"], '
+        '"gap": null'
+        "}"
+    )
+
+
+def _envelope_with_trailing_comma_top_level() -> str:
+    """Valid m35 GROUNDED envelope with a trailing comma after the last top-level field."""
+    return (
+        "{"
+        '"schema_version": "m35.agent_bridge_query.v0", '
+        '"status": "GROUNDED", '
+        '"answer": "Grounded answer.", '
+        '"insights": [{"text": "Insight", "evidence_refs": ["E1"]}], '
+        '"evidence_refs": ["E1"], '
+        '"gap": null,'
+        "}"  # implicit trailing: the closing brace follows a field+comma above
+    )
+
+
+def test_trailing_comma_in_evidence_refs_is_repaired_and_accepted():
+    """Trailing comma in evidence_refs array is repaired; GROUNDED envelope accepted."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = _envelope_with_trailing_comma_in_refs()
+    result, error = parse_and_validate(raw, frozenset({"E1", "E2"}))
+
+    assert error is None, f"Trailing-comma repair should succeed, got error: {error}"
+    assert result is not None
+    assert result["status"] == "GROUNDED"
+    assert result["evidence_refs"] == ["E1", "E2"]
+
+
+def test_trailing_comma_in_insights_is_repaired_and_accepted():
+    """Trailing comma inside the insights array is repaired; envelope accepted."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = _envelope_with_trailing_comma_in_insights()
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert error is None, f"Trailing-comma repair should succeed, got error: {error}"
+    assert result is not None
+    assert result["status"] == "GROUNDED"
+    assert len(result["insights"]) == 1
+
+
+def test_trailing_comma_top_level_is_repaired_and_accepted():
+    """Trailing comma after the last top-level field is repaired; envelope accepted."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = _envelope_with_trailing_comma_top_level()
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert error is None, f"Trailing-comma repair should succeed, got error: {error}"
+    assert result is not None
+    assert result["status"] == "GROUNDED"
+
+
+def test_trailing_comma_inside_fenced_json_is_repaired_and_accepted():
+    """Trailing-comma drift inside a markdown fence is also repaired."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = "```json\n" + _envelope_with_trailing_comma_in_refs() + "\n```"
+    result, error = parse_and_validate(raw, frozenset({"E1", "E2"}))
+
+    assert error is None, f"Fenced trailing-comma repair should succeed: {error}"
+    assert result is not None
+    assert result["status"] == "GROUNDED"
+
+
+def test_trailing_comma_prose_single_object_is_repaired_and_accepted():
+    """Prose + single envelope (with trailing comma) is repaired and accepted."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = (
+        "Here is my response based on the supplied evidence.\n\n"
+        + _envelope_with_trailing_comma_top_level()
+        + "\n\nLet me know if you need anything else."
+    )
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert error is None, f"Prose + single object repair should succeed: {error}"
+    assert result is not None
+    assert result["status"] == "GROUNDED"
+
+
+def test_prose_around_single_clean_object_is_accepted():
+    """Prose surrounding a single clean JSON object is recovered (regression)."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = "Sure, here is the answer.\n\n" + _valid_grounded_json() + "\n\nHope this helps."
+    result, error = parse_and_validate(raw, frozenset({"E1", "E2"}))
+
+    assert error is None, f"Prose + single object should be accepted: {error}"
+    assert result is not None
+    assert result["status"] == "GROUNDED"
+
+
+# ── Validation is NOT weakened by the trailing-comma repair ──
+
+
+def test_trailing_comma_with_unknown_evidence_id_still_rejected():
+    """Trailing-comma repair must NOT bypass evidence-ID whitelist validation."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = (
+        "{"
+        '"schema_version": "m35.agent_bridge_query.v0", '
+        '"status": "GROUNDED", '
+        '"answer": "Answer.", '
+        '"insights": [{"text": "t", "evidence_refs": ["Z99"]},], '
+        '"evidence_refs": ["Z99",], '
+        '"gap": null'
+        "}"
+    )
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert result is None, "Unknown evidence ID must still be rejected after repair"
+    assert error is not None
+    assert "Z99" in error
+
+
+def test_trailing_comma_with_invalid_status_still_rejected():
+    """Trailing-comma repair must NOT bypass status enumeration validation."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = (
+        "{"
+        '"schema_version": "m35.agent_bridge_query.v0", '
+        '"status": "HALLUCINATED", '
+        '"answer": "x", '
+        '"insights": [{"text": "t", "evidence_refs": ["E1"]},], '
+        '"evidence_refs": ["E1",], '
+        '"gap": null'
+        "}"
+    )
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert result is None, "Invalid status must still be rejected after repair"
+    assert error is not None
+    assert "HALLUCINATED" in error
+
+
+def test_trailing_comma_with_wrong_schema_version_still_rejected():
+    """Trailing-comma repair must NOT bypass schema-version validation."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = (
+        "{"
+        '"schema_version": "v5_spike.answer.v0", '
+        '"status": "GROUNDED", '
+        '"answer": "x", '
+        '"insights": [{"text": "t", "evidence_refs": ["E1"]},], '
+        '"evidence_refs": ["E1",], '
+        '"gap": null'
+        "}"
+    )
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert result is None, "Wrong schema_version must still be rejected after repair"
+    assert error is not None
+    assert "m35.agent_bridge_query.v0" in error
+
+
+def test_trailing_comma_grounded_with_null_answer_still_rejected():
+    """Trailing-comma repair must NOT bypass the GROUNDED-requires-answer rule."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = (
+        "{"
+        '"schema_version": "m35.agent_bridge_query.v0", '
+        '"status": "GROUNDED", '
+        '"answer": null, '
+        '"insights": [{"text": "t", "evidence_refs": ["E1"]},], '
+        '"evidence_refs": ["E1",], '
+        '"gap": null'
+        "}"
+    )
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert result is None, "GROUNDED with null answer must still be rejected"
+    assert error is not None
+
+
+def test_trailing_comma_grounded_with_non_null_gap_still_rejected():
+    """Trailing-comma repair must NOT bypass the GROUNDED-requires-null-gap rule."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = (
+        "{"
+        '"schema_version": "m35.agent_bridge_query.v0", '
+        '"status": "GROUNDED", '
+        '"answer": "x", '
+        '"insights": [{"text": "t", "evidence_refs": ["E1"]},], '
+        '"evidence_refs": ["E1",], '
+        '"gap": "should be null for GROUNDED",'
+        "}"
+    )
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert result is None, "GROUNDED with non-null gap must still be rejected"
+    assert error is not None
+
+
+def test_trailing_comma_grounded_missing_insight_refs_still_rejected():
+    """Trailing-comma repair must NOT bypass the GROUNDED insight-must-have-refs rule."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = (
+        "{"
+        '"schema_version": "m35.agent_bridge_query.v0", '
+        '"status": "GROUNDED", '
+        '"answer": "x", '
+        '"insights": [{"text": "t"},], '  # missing evidence_refs
+        '"evidence_refs": ["E1",], '
+        '"gap": null'
+        "}"
+    )
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert result is None, "GROUNDED insight without refs must still be rejected"
+    assert error is not None
+
+
+def test_trailing_comma_does_not_silently_accept_multiple_objects():
+    """Trailing-comma repair must NOT weaken the multi-object rejection guard."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    # Two JSON objects (one valid envelope + one trivial), both with trailing
+    # commas. The multi-object guard must still reject — repair never picks
+    # one envelope out of an ambiguous multi-object blob.
+    raw = _envelope_with_trailing_comma_top_level() + ' {"extra": "noise",}'
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert result is None, "Multiple JSON objects must still be rejected"
+    assert error is not None
+    assert "Multiple" in error
