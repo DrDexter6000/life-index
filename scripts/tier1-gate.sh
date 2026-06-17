@@ -51,6 +51,7 @@ run_check() {
 
 export LIFE_INDEX_INDEX_FTS_ONLY="${LIFE_INDEX_INDEX_FTS_ONLY:-1}"
 
+run_check "public-diff-names"    python .github/scripts/check_public_diff_names.py
 run_check "doc-sync"             python .github/scripts/check_doc_sync.py
 run_check "black --check tools/"  python -m black --check tools/
 run_check "flake8 tools/"         python -m flake8 tools/ --count --max-complexity=40 --max-line-length=100 --show-source --statistics
