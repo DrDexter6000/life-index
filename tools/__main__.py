@@ -51,7 +51,12 @@ from importlib.metadata import PackageNotFoundError, version as package_version
 
 from tools.lib.journal_files import count_journal_files
 from tools.lib.config import get_model_cache_dir  # noqa: F401 — used via monkeypatch in tests
-from tools.lib.paths import get_user_data_dir, get_journals_dir
+from tools.lib.paths import (
+    ValidationModeDataDirError,
+    enforce_validation_mode_data_dir,
+    get_journals_dir,
+    get_user_data_dir,
+)
 from tools.lib.bootstrap_manifest import read_bootstrap_manifest as _read_bootstrap_manifest
 
 HEALTH_SCHEMA_VERSION = "m16.health.v0"
@@ -463,6 +468,12 @@ def main() -> None:
         sys.exit(1)
 
     subcmd = sys.argv[1]
+    if subcmd not in ("--help", "-h", "help"):
+        try:
+            enforce_validation_mode_data_dir()
+        except ValidationModeDataDirError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(2)
 
     # Handle health check directly (no submodule import needed)
     if subcmd == "health":

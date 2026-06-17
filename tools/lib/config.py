@@ -36,6 +36,8 @@ from .paths import (
     sanitize_filename,
     get_path_mappings,
     PATH_MAPPINGS,
+    ValidationModeDataDirError,
+    enforce_validation_mode_data_dir,
     normalize_path,
     get_safe_path,
     get_index_prefixes,
@@ -109,7 +111,11 @@ def load_user_config() -> Dict[str, Any]:
     3. Code defaults (handled by callers)
     """
     # Start with file config, then override with environment variables
-    file_config = load_yaml_config(CONFIG_FILE)
+    try:
+        enforce_validation_mode_data_dir()
+        file_config = load_yaml_config(CONFIG_FILE)
+    except ValidationModeDataDirError:
+        file_config = {}
     env_config = _get_env_config()
 
     return deep_merge(file_config, env_config)
