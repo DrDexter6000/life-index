@@ -3073,7 +3073,10 @@ Unary query returns a rich `m35.agent_bridge_query.v0` envelope:
 ```
 
 Degraded responses keep the same rich shape with `mode: "UNGROUNDED"` and
-`provenance.degraded: true`. The gateway never falls back to a direct LLM.
+`provenance.degraded: true`. If the local search index is still becoming
+ready, the gateway returns this degraded shape with an index readiness gap
+instead of sending an empty evidence scaffold to ACP synthesis. The gateway
+never falls back to a direct LLM.
 
 ### `POST /query/stream` SSE 返回值
 

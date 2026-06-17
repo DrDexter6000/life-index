@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from typing import Any, cast
 
 from tools.agent_bridge.config import resolve_brain_config
@@ -17,8 +18,22 @@ _MAX_HYDRATED_SNIPPET_LEN = 2000
 # subprocess storms when many evidence items are blank.
 _MAX_FALLBACK_SEARCHES = 10
 
+# Keep first-query readiness bounded: enough for a just-triggered incremental
+# index build to become visible, but short enough to return an honest degraded
+# envelope instead of hanging the gateway.
+_GATEWAY_SCAFFOLD_READY_ATTEMPTS = 3
+_GATEWAY_SCAFFOLD_READY_RETRY_SECONDS = 0.25
+
+# Search-layer warnings that mean an empty result may be an index readiness
+# race rather than a real no-evidence answer.
+_INDEX_NOT_READY_WARNING_PREFIXES = ("index_stale:", "pending_index_update_failed:")
+
 # Tags that may leak from L2 search highlighting into prompt text.
 _MARK_RE = re.compile(r"</?mark>", re.IGNORECASE)
+
+
+class GatewayScaffoldNotReady(RuntimeError):
+    """Raised when gateway scaffold assembly sees transient index not-readiness."""
 
 
 def _cli_smart_search(query: str) -> dict[str, Any]:
@@ -245,6 +260,36 @@ def _has_evidence_items(scaffold: dict[str, Any]) -> bool:
     return False
 
 
+def _warnings_indicate_index_not_ready(scaffold: dict[str, Any]) -> bool:
+    warnings = scaffold.get("warnings")
+    if not isinstance(warnings, list):
+        return False
+    for warning in warnings:
+        if not isinstance(warning, str):
+            continue
+        if warning.startswith(_INDEX_NOT_READY_WARNING_PREFIXES):
+            return True
+    return False
+
+
+def _index_status_indicates_retryable_empty(scaffold: dict[str, Any]) -> bool:
+    """Return True when empty evidence may be caused by index readiness timing."""
+    index_status = scaffold.get("index_status")
+    if not isinstance(index_status, dict):
+        return _warnings_indicate_index_not_ready(scaffold)
+
+    if index_status.get("pending_before_search") is True:
+        return True
+    if index_status.get("auto_updated") is True:
+        return True
+
+    freshness = index_status.get("freshness")
+    if isinstance(freshness, dict) and freshness.get("overall_fresh") is False:
+        return True
+
+    return _warnings_indicate_index_not_ready(scaffold)
+
+
 def _has_blank_evidence(scaffold: dict[str, Any]) -> bool:
     """Return True when at least one evidence/filtered item needs hydration."""
     evidence_pack = scaffold.get("evidence_pack")
@@ -346,7 +391,29 @@ def build_gateway_scaffold(query: str) -> dict[str, Any]:
     evidence snippets through the public L2 search CLI. This is used only for
     bare gateway queries.
     """
-    return hydrate_gateway_scaffold(_cli_smart_search(query), query)
+    last_scaffold: dict[str, Any] | None = None
+    last_was_index_not_ready = False
+
+    for attempt in range(_GATEWAY_SCAFFOLD_READY_ATTEMPTS):
+        scaffold = hydrate_gateway_scaffold(_cli_smart_search(query), query)
+        if _has_evidence_items(scaffold):
+            return scaffold
+
+        last_scaffold = scaffold
+        last_was_index_not_ready = _index_status_indicates_retryable_empty(scaffold)
+        if not last_was_index_not_ready:
+            return scaffold
+
+        if attempt < _GATEWAY_SCAFFOLD_READY_ATTEMPTS - 1:
+            time.sleep(_GATEWAY_SCAFFOLD_READY_RETRY_SECONDS)
+
+    if last_was_index_not_ready:
+        raise GatewayScaffoldNotReady(
+            "Gateway search index not ready after "
+            f"{_GATEWAY_SCAFFOLD_READY_ATTEMPTS} attempts; retry later"
+        )
+
+    return last_scaffold or {}
 
 
 def _build_prompts(scaffold: dict[str, Any]) -> tuple[str, str]:

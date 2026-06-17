@@ -1168,6 +1168,78 @@ def test_empty_scaffold_still_no_llm_fallback(monkeypatch):
         server.shutdown_and_close()
 
 
+def test_gateway_scaffold_retries_once_after_index_auto_update(monkeypatch):
+    """A transient empty scaffold after index auto-update is retried before ACP."""
+    calls: list[str] = []
+
+    def _smart_search(query: str) -> dict:
+        calls.append(query)
+        if len(calls) == 1:
+            return {
+                "query": query,
+                "evidence_pack": {"items": []},
+                "filtered_results": [],
+                "index_status": {
+                    "pending_before_search": True,
+                    "auto_updated": True,
+                    "pending_consumed": True,
+                },
+            }
+        return _scaffold_with_evidence()
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", _smart_search)
+
+    result = _handoff_mod.build_gateway_scaffold("freshly indexed marker")
+
+    assert calls == ["freshly indexed marker", "freshly indexed marker"]
+    assert result["evidence_pack"]["items"][0]["document"]["doc_id"] == (
+        "Journals/2026/06/life-index_2026-06-04_001.md"
+    )
+
+
+def test_index_not_ready_scaffold_degrades_without_acp(monkeypatch):
+    """Persistent index-not-ready emptiness returns degraded, never empty ACP synthesis."""
+    calls: list[str] = []
+
+    def _not_ready_scaffold(query: str) -> dict:
+        calls.append(query)
+        return {
+            "query": query,
+            "evidence_pack": {"items": []},
+            "filtered_results": [],
+            "index_status": {
+                "pending_before_search": True,
+                "auto_updated": True,
+                "pending_consumed": True,
+            },
+        }
+
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", _not_ready_scaffold)
+
+    manager = _FakeManagerWithEvidence()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "freshly indexed marker"},
+        )
+        assert status == 200
+        assert body["mode"] == "UNGROUNDED"
+        assert body["provenance"]["degraded"] is True
+        assert "index" in body["answer"]["gap"].lower()
+        assert "not ready" in body["answer"]["gap"].lower()
+        assert len(manager.queries) == 0
+        assert calls == [
+            "freshly indexed marker",
+            "freshly indexed marker",
+            "freshly indexed marker",
+        ]
+    finally:
+        server.shutdown_and_close()
+
+
 def test_scaffold_builder_failure_degrades_honestly(monkeypatch):
     """Smart-search failure degrades to UNGROUNDED without a direct LLM fallback."""
     calls: list[str] = []
