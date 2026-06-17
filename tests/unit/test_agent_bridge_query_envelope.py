@@ -181,6 +181,33 @@ def test_build_evidence_skips_unknown_ids():
     assert evidence == []
 
 
+def test_build_evidence_loads_validated_agentic_refs_from_data_dir(tmp_path, monkeypatch):
+    """Agentic citations outside the seed scaffold can still render evidence."""
+    rel_path = "Journals/2026/06/life-index_2026-06-10_001.md"
+    journal = tmp_path / rel_path
+    journal.parent.mkdir(parents=True)
+    journal.write_text(
+        "---\n"
+        "title: Agentic cited entry\n"
+        "date: 2026-06-10\n"
+        "location: Sandbox\n"
+        "---\n\n"
+        "This journal content was cited by the ACP agent.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+
+    evidence = build_evidence({"evidence_pack": {"items": []}}, [rel_path])
+
+    assert len(evidence) == 1
+    assert evidence[0]["id"] == "2026/06/life-index_2026-06-10_001"
+    assert evidence[0]["rel_path"] == rel_path
+    assert evidence[0]["title"] == "Agentic cited entry"
+    assert evidence[0]["date"] == "2026-06-10"
+    assert "ACP agent" in evidence[0]["snippet"]
+    assert evidence[0]["metadata"]["location"] == "Sandbox"
+
+
 def test_build_evidence_from_filtered_results():
     """Evidence is also gathered from filtered_results when present."""
     scaffold = {

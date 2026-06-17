@@ -69,7 +69,7 @@ def _valid_grounded_json() -> str:
         {
             "schema_version": "m35.agent_bridge_query.v0",
             "status": "GROUNDED",
-            "answer": "This is a valid grounded answer referencing supplied evidence.",
+            "answer": "This is a valid grounded answer referencing supplied evidence [E1].",
             "insights": [
                 {"text": "Key finding from evidence", "evidence_refs": ["E1"]},
                 {"text": "Supporting observation", "evidence_refs": ["E1", "E2"]},
@@ -141,7 +141,7 @@ def _custom_usage_json(usage_value) -> str:
     payload = {
         "schema_version": "m35.agent_bridge_query.v0",
         "status": "GROUNDED",
-        "answer": "Grounded answer with custom usage field.",
+        "answer": "Grounded answer with custom usage field [E1].",
         "insights": [
             {"text": "Key finding from evidence", "evidence_refs": ["E1"]},
         ],
@@ -272,7 +272,7 @@ def main() -> None:
                     {
                         "schema_version": "m35.agent_bridge_query.v0",
                         "status": "GROUNDED",
-                        "answer": "Default grounded answer referencing E1.",
+                        "answer": "Default grounded answer referencing E1 [E1].",
                         "insights": [
                             {"text": "Default insight", "evidence_refs": ["E1"]},
                         ],
