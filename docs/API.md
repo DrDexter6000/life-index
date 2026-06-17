@@ -2949,6 +2949,10 @@ It reports token presence/source type only; it never prints token values.
 > shared L3 gateway: bare `/query` and `/query/stream` requests self-assemble
 > deterministic evidence via `smart-search --include-evidence` before ACP synthesis;
 > explicit evidence-bearing scaffolds are passed through unchanged.
+>
+> WSL/Linux production setup: use the dedicated server venv runbook in
+> [`docs/wsl-server-venv.md`](./wsl-server-venv.md). The server should run from
+> its own venv and should not borrow dependencies through `PYTHONPATH`.
 
 ### 端点
 
