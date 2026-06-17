@@ -8,6 +8,7 @@ and one retry before returning a deterministic degraded envelope.
 
 from __future__ import annotations
 
+import re
 import threading
 from typing import Any, Callable
 
@@ -25,10 +26,51 @@ from tools.agent_bridge.config import BrainConfig
 _WARM_RPC_TIMEOUT = 180.0
 _WARM_HANDSHAKE_TIMEOUT = 180.0
 _DEFAULT_WARM_ATTEMPTS = 3
+_MAX_WARM_ERROR_CHARS = 500
+
+_SENSITIVE_VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"(?i)\b(?:api[_\s-]*key|token|authorization)\b\s*[:=]\s*" r"['\"]?[^\s,'\";\]}]+"
+        ),
+        "[redacted]",
+    ),
+    (re.compile(r"(?i)\bbearer\s+['\"]?[^\s,'\";\]}]+"), "[redacted]"),
+    (re.compile(r"\b(?:sk|pk|rk|sess)-[A-Za-z0-9_-]{8,}\b"), "[redacted]"),
+    (
+        re.compile(r"(?i)(?:[A-Za-z]:)?(?:[/\\][^\s'\",;:]+)*[/\\]\.env" r"(?:[^\s'\",;:]*)?"),
+        "[redacted]",
+    ),
+    (
+        re.compile(
+            r"(?i)(?:[A-Za-z]:)?(?:[/\\][^\s'\",;:]+)*[/\\]"
+            r"(?:Documents[/\\]Life-Index|Life-Index[/\\]Journals|Journals)"
+            r"(?:[/\\][^\s'\",;:]+)*"
+        ),
+        "[redacted]",
+    ),
+    (re.compile(r"(?i)\.env(?:\.[A-Za-z0-9_-]+)?"), "[redacted]"),
+    (re.compile(r"(?i)\bjournals?\b"), "[redacted]"),
+    (
+        re.compile(r"(?i)\b(?:api[_\s-]*key|token|authorization|bearer)\b"),
+        "[redacted]",
+    ),
+)
 
 # Data-free prompt used for ACP session/prompt warmup on server start.
 # Must contain no journal evidence, scaffold text, or user query content.
 _DATA_FREE_READY_PROMPT = "READY"
+
+
+def _sanitize_warm_error(error: object) -> str:
+    """Return a health-safe warm error string with secrets/user-data paths removed."""
+    text = str(error)
+    for pattern, replacement in _SENSITIVE_VALUE_PATTERNS:
+        text = pattern.sub(replacement, text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > _MAX_WARM_ERROR_CHARS:
+        return f"{text[:_MAX_WARM_ERROR_CHARS]}... [truncated]"
+    return text
 
 
 class ACPWarmSessionManager:
@@ -68,7 +110,8 @@ class ACPWarmSessionManager:
         try:
             self.ensure_warm()
         except Exception as exc:
-            self._last_warm_error = str(exc)
+            if self._last_warm_error is None:
+                self._last_warm_error = _sanitize_warm_error(exc)
         return self
 
     def warm_acp_prompt(self, prompt: str = _DATA_FREE_READY_PROMPT) -> None:
@@ -175,9 +218,10 @@ class ACPWarmSessionManager:
                     )
                     conn.__enter__()
                     self._warm_conn = conn
+                    self._last_warm_error = None
                     return conn
                 except Exception as exc:
-                    self._last_warm_error = str(exc)
+                    self._last_warm_error = _sanitize_warm_error(exc)
                     last_error = exc
                     if conn is not None:
                         try:

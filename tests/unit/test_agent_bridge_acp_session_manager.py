@@ -323,6 +323,73 @@ def test_start_prewarms_connection():
     assert mgr._warm_conn is created[0]
 
 
+def test_start_preserves_warm_root_cause_for_health():
+    """start() must not replace the last attempt error with a generic wrapper."""
+
+    def factory(*args, **kwargs):
+        raise RuntimeError(
+            "ACP JSON-RPC error during session/new: " "code=-32603 message=Internal error"
+        )
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, warm_attempts=2)
+
+    mgr.start()
+
+    health = mgr.health()
+    assert health["state"] == "degraded"
+    assert health["last_warm_error"] is not None
+    assert "session/new" in health["last_warm_error"]
+    assert "code=-32603" in health["last_warm_error"]
+    assert "Failed to establish warm ACP session" not in health["last_warm_error"]
+
+
+def test_ensure_warm_sanitizes_sensitive_failure_details():
+    """Stored warm errors may expose protocol facts, not secrets or user logs."""
+
+    def factory(*args, **kwargs):
+        raise RuntimeError(
+            "spawn failed with API key=sk-live-secret token=tok-secret "
+            "from C:/Users/me/.env and "
+            "C:/Users/me/Documents/Life-Index/Journals/2026/private.md"
+        )
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, warm_attempts=1)
+
+    try:
+        mgr.ensure_warm()
+    except RuntimeError:
+        pass
+
+    error = mgr.health()["last_warm_error"]
+    assert error is not None
+    lowered = error.lower()
+    assert "sk-live-secret" not in error
+    assert "tok-secret" not in error
+    assert "api key" not in lowered
+    assert "token" not in lowered
+    assert ".env" not in lowered
+    assert "journal" not in lowered
+
+
+def test_ensure_warm_clears_previous_error_after_success():
+    """A later successful warm connection clears stale failure details."""
+    created = []
+
+    def factory(*args, **kwargs):
+        created.append(len(created) + 1)
+        if len(created) == 1:
+            raise RuntimeError("first warm-up failure")
+        return _FakeConn()
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, warm_attempts=2)
+
+    mgr.ensure_warm()
+
+    health = mgr.health()
+    assert health["state"] == "warm"
+    assert health["last_warm_error"] is None
+
+
 def test_ensure_warm_failure_leads_to_degraded_query():
     """If warm-up fails entirely, query returns a degraded envelope."""
 
