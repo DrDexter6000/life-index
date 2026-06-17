@@ -11,6 +11,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  public-diff-names:
+    runs-on: ubuntu-latest
+    name: Public Diff Name Check
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Check public diff added lines
+        run: python .github/scripts/check_public_diff_names.py
+
   doc-sync:
     runs-on: ubuntu-latest
     name: Documentation Sync Check
