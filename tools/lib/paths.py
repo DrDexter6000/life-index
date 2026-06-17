@@ -33,6 +33,47 @@ def resolve_user_data_dir() -> Path:
     return Path.home() / "Documents" / "Life-Index"
 
 
+class ValidationModeDataDirError(RuntimeError):
+    """Raised when validation mode would use a non-sandbox data directory."""
+
+
+def _normalize_for_compare(path: Path) -> str:
+    return os.path.normcase(str(path.expanduser().resolve(strict=False)))
+
+
+def get_default_user_data_dir() -> Path:
+    """Return the platform default user data directory."""
+    return Path.home() / "Documents" / "Life-Index"
+
+
+def is_default_user_data_dir(path: Path) -> bool:
+    """Return True when path resolves to the platform default user data dir."""
+    return _normalize_for_compare(path) == _normalize_for_compare(get_default_user_data_dir())
+
+
+def _raise_if_validation_mode_rejects(data_dir: Path) -> None:
+    if os.environ.get("LIFE_INDEX_VALIDATION_MODE") != "1":
+        return
+
+    if not os.environ.get("LIFE_INDEX_DATA_DIR"):
+        raise ValidationModeDataDirError(
+            "LIFE_INDEX_VALIDATION_MODE=1 requires LIFE_INDEX_DATA_DIR "
+            "to be set to an isolated sandbox; refusing to use the default "
+            f"user data directory: {data_dir}"
+        )
+
+    if is_default_user_data_dir(data_dir):
+        raise ValidationModeDataDirError(
+            "LIFE_INDEX_VALIDATION_MODE=1 refuses the default user data "
+            f"directory: {data_dir}. Set LIFE_INDEX_DATA_DIR to an isolated sandbox."
+        )
+
+
+def enforce_validation_mode_data_dir() -> None:
+    """Refuse validation-mode commands unless data dir is an explicit sandbox."""
+    _raise_if_validation_mode_rejects(resolve_user_data_dir())
+
+
 def resolve_journals_dir() -> Path:
     """Resolve active journals directory based on current data-dir resolution."""
     return resolve_user_data_dir() / "Journals"
@@ -59,14 +100,18 @@ def get_user_data_dir() -> Path:
     """
     explicit = os.environ.get("LIFE_INDEX_DATA_DIR")
     if explicit:
-        return Path(explicit)
+        data_dir = Path(explicit)
+        _raise_if_validation_mode_rejects(data_dir)
+        return data_dir
+    data_dir = get_default_user_data_dir()
+    _raise_if_validation_mode_rejects(data_dir)
     if "pytest" in sys.modules:
         raise RuntimeError(
             "LIFE_INDEX_DATA_DIR not set during pytest — "
             "refusing to use real data dir. "
             "conftest.py must set this env var before importing tool modules."
         )
-    return Path.home() / "Documents" / "Life-Index"
+    return data_dir
 
 
 def get_journals_dir() -> Path:
@@ -266,7 +311,10 @@ def get_path_mappings() -> dict[str, str]:
     return mappings
 
 
-PATH_MAPPINGS = get_path_mappings()
+try:
+    PATH_MAPPINGS = get_path_mappings()
+except ValidationModeDataDirError:
+    PATH_MAPPINGS = {}
 
 
 def normalize_path(path: str) -> str:
@@ -373,7 +421,11 @@ def get_index_prefixes() -> dict[str, str]:
     }
 
     # 从用户配置合并（如果存在）
-    user_config = load_yaml_config(CONFIG_FILE)
+    try:
+        enforce_validation_mode_data_dir()
+        user_config = load_yaml_config(CONFIG_FILE)
+    except ValidationModeDataDirError:
+        user_config = {}
     return deep_merge(defaults, user_config.get("index_prefixes", {}))
 
 
@@ -397,6 +449,10 @@ __all__ = [
     "CONFIG_FILE",
     "resolve_user_data_dir",
     "resolve_journals_dir",
+    "ValidationModeDataDirError",
+    "enforce_validation_mode_data_dir",
+    "get_default_user_data_dir",
+    "is_default_user_data_dir",
     "ensure_dirs",
     # Lazy Getters (Round 13 Phase 0)
     "reset_path_cache",

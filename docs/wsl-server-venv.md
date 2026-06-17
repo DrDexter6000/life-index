@@ -47,15 +47,18 @@ pyyaml, numpy, httpx, jieba, rapidfuzz, Pillow
 ## Smoke Test Data Boundary
 
 All smoke tests must run against an isolated sandbox data directory. Set
-`LIFE_INDEX_DATA_DIR` before any `health`, `server`, or `query` command:
+`LIFE_INDEX_VALIDATION_MODE=1` and `LIFE_INDEX_DATA_DIR` before any `health`,
+`server`, or `query` command:
 
 ```bash
+export LIFE_INDEX_VALIDATION_MODE=1
 export LIFE_INDEX_DATA_DIR="/path/to/sandbox/Life-Index"
 test -n "$LIFE_INDEX_DATA_DIR"
 test "$LIFE_INDEX_DATA_DIR" != "$HOME/Documents/Life-Index"
 ```
 
-Do not run smoke tests against the default user data directory.
+With validation mode enabled, commands refuse to run if `LIFE_INDEX_DATA_DIR`
+is missing or resolves to the default user data directory.
 
 ## Launch The Server
 
@@ -67,6 +70,7 @@ used a custom path.
 cd /path/to/life-index
 unset PYTHONPATH
 
+export LIFE_INDEX_VALIDATION_MODE=1
 export LIFE_INDEX_DATA_DIR="/path/to/sandbox/Life-Index"
 export LIFE_INDEX_ACP_COMMAND='["/path/to/acp-runtime", "acp"]'
 
