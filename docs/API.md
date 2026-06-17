@@ -2992,7 +2992,8 @@ python -m tools server stop [--host 127.0.0.1] [--port 8765] [--state-file PATH]
   "port": 8765,
   "pid": 12345,
   "state": "warm",
-  "degraded": false
+  "degraded": false,
+  "last_warm_error": null
 }
 ```
 
@@ -3004,6 +3005,11 @@ python -m tools server stop [--host 127.0.0.1] [--port 8765] [--state-file PATH]
 | `pid` | int \| null | 状态文件记录的进程 ID |
 | `state` | string | `warm` / `degraded` / `cold` / `not running` |
 | `degraded` | bool | 健康状态是否为 `degraded` |
+| `last_warm_error` | string \| null | 最近一次 warm ACP 失败的脱敏底层错误；warm 成功时为 `null` |
+
+当 warm ACP 建连失败时，`/healthz` 与 `server status` 的
+`last_warm_error` 暴露脱敏后的底层失败原因（例如 JSON-RPC 方法、错误码
+和简短 message），而不是仅暴露通用重试次数摘要。
 
 ### `POST /query` 返回值
 

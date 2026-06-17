@@ -471,6 +471,7 @@ def cmd_status(argv: list[str]) -> int:
             "pid": pid,
             "state": health.get("state", "unknown"),
             "degraded": health.get("state") == "degraded",
+            "last_warm_error": health.get("last_warm_error"),
         }
     elif _is_port_occupied(host, port):
         # Healthz unreachable but port is occupied: degraded with OS truth.

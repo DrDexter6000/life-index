@@ -395,7 +395,13 @@ def test_status_reports_degraded_state(tmp_path: Path, capsys):
     state_file = _make_state_file(tmp_path)
 
     def _fake_probe(*args, **kwargs):
-        return {"status": "ok", "state": "degraded", "last_warm_error": "boom"}
+        return {
+            "status": "ok",
+            "state": "degraded",
+            "last_warm_error": (
+                "ACP JSON-RPC error during session/new: " "code=-32603 message=Internal error"
+            ),
+        }
 
     with patch("tools.agent_bridge.server_cli._probe_healthz", side_effect=_fake_probe):
         with patch("tools.agent_bridge.server_cli._find_listener_pid", return_value=None):
@@ -406,6 +412,8 @@ def test_status_reports_degraded_state(tmp_path: Path, capsys):
     assert result["running"] is True
     assert result["state"] == "degraded"
     assert result["degraded"] is True
+    assert "session/new" in result["last_warm_error"]
+    assert "code=-32603" in result["last_warm_error"]
 
 
 # -- status: healthz success with no state pid -------------------------

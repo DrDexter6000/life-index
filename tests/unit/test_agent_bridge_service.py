@@ -479,7 +479,9 @@ def test_build_server_keeps_running_when_warm_fails():
     cfg = _brain_config()
 
     def _factory(*args, **kwargs):
-        raise RuntimeError("warm-up always fails")
+        raise RuntimeError(
+            "ACP JSON-RPC error during session/new: " "code=-32603 message=Internal error"
+        )
 
     server, manager = _build_server(
         "127.0.0.1",
@@ -495,12 +497,9 @@ def test_build_server_keeps_running_when_warm_fails():
         assert status == 200
         assert body["state"] == "degraded"
         assert body["last_warm_error"] is not None
-        # The recorded error may be the root cause or the manager's wrapper;
-        # either proves warm failure was captured and the service stayed up.
-        assert (
-            "warm-up always fails" in body["last_warm_error"]
-            or "Failed to establish" in body["last_warm_error"]
-        )
+        assert "session/new" in body["last_warm_error"]
+        assert "code=-32603" in body["last_warm_error"]
+        assert "Failed to establish warm ACP session" not in body["last_warm_error"]
     finally:
         server.shutdown_and_close()
 
