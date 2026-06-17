@@ -80,7 +80,7 @@ Recommended for repeatable smoke tests:
 ```bash
 test -n "$LIFE_INDEX_DATA_DIR"
 test "$LIFE_INDEX_DATA_DIR" != "$HOME/Documents/Life-Index"
-export LIFE_INDEX_SERVER_STATE_FILE="$PWD/.agent-reports/server-smoke/server.json"
+export LIFE_INDEX_SERVER_STATE_FILE="$PWD/.life-index-smoke/server.json"
 ```
 
 Use a non-default port for smoke tests when another server may already be
