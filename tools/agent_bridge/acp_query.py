@@ -5,6 +5,11 @@ import re
 from typing import Any, Callable
 
 from tools.agent_bridge.acp_client import _ACPConnection, parse_acp_stream
+from tools.agent_bridge.citation_validator import (
+    extract_tool_trace_journal_refs,
+    normalize_journal_ref,
+    validate_citation_gate,
+)
 from tools.agent_bridge.config import BrainConfig
 
 QUERY_SCHEMA_VERSION = "m35.agent_bridge_query.v0"
@@ -19,6 +24,31 @@ _JSON_OBJECT_RE = re.compile(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", re.DOTALL)
 # syntax repair inside ``_try_loads``; it never relaxes schema / status /
 # evidence-ID validation, which all run unchanged on the parsed result.
 _TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
+_SENSITIVE_ERROR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"(?i)\b(?:api[_\s-]*key|token|authorization)\b\s*[:=]\s*['\"]?[^\s,'\";\]}]+"),
+        "[redacted]",
+    ),
+    (re.compile(r"(?i)\bbearer\s+['\"]?[^\s,'\";\]}]+"), "[redacted]"),
+    (re.compile(r"\b(?:sk|pk|rk|sess)-[A-Za-z0-9_-]{8,}\b"), "[redacted]"),
+    (re.compile(r"(?i)\.env(?:\.[A-Za-z0-9_-]+)?"), "[redacted]"),
+    (
+        re.compile(
+            r"(?:/home/[^/\s,'\";\]}]+|[A-Za-z]:[\\/](?:Users|Documents and Settings)"
+            r"[\\/][^\\/\s,'\";\]}]+)[^\s,'\";\]}]*",
+            re.IGNORECASE,
+        ),
+        "[local-path-redacted]",
+    ),
+)
+
+
+def _safe_exception_summary(exc: Exception) -> str:
+    raw = f"{type(exc).__name__}: {exc}"
+    for pattern, replacement in _SENSITIVE_ERROR_PATTERNS:
+        raw = pattern.sub(replacement, raw)
+    raw = re.sub(r"\s+", " ", raw).strip()
+    return raw[:300] or type(exc).__name__
 
 
 def _try_loads(text: str) -> Any | None:
@@ -186,10 +216,11 @@ def build_evidence_pack(scaffold: dict) -> tuple[dict, dict[str, str]]:
 
 
 def build_query_prompt(query: str, evidence_pack: dict, allowed_ids: set[str]) -> str:
-    """Build a strict prompt that instructs the model to answer ONLY from supplied evidence.
+    """Build the agentic ACP query prompt.
 
-    The prompt requires output as ``m35.agent_bridge_query.v0`` JSON and
-    defines exact status rules (GROUNDED / PARTIAL / UNGROUNDED).
+    The supplied evidence pack is only a deterministic seed/hint.  The host
+    agent is expected to use its available Life Index CLI/file-read tools for
+    multi-hop evidence gathering, then return the same query envelope schema.
     """
     allowed_str = ", ".join(sorted(allowed_ids)) if allowed_ids else "(none)"
     evidence_lines: list[str] = []
@@ -199,40 +230,58 @@ def build_query_prompt(query: str, evidence_pack: dict, allowed_ids: set[str]) -
 
     evidence_block = "\n".join(evidence_lines) if evidence_lines else "  (no evidence supplied)"
 
-    return f"""You are an evidence-bound research assistant. Your task is to answer the
-following question using ONLY the evidence supplied below.
+    return f"""You are an evidence-bound Life Index research assistant. Your task is to
+answer the following question by actively gathering journal evidence through
+the available Life Index CLI and file-read tools, then returning a strictly
+validated JSON answer.
 
 QUESTION:
 {query}
 
-EVIDENCE PACK (only these entries may be cited):
+SEED EVIDENCE PACK (deterministic hints, not the evidence boundary):
 {evidence_block}
 
-ALLOWED EVIDENCE IDs: {allowed_str}
+SEED EVIDENCE IDs: {allowed_str}
 
-IMPORTANT — EVIDENCE IS ALREADY PROVIDED ABOVE. The full text of every
-evidence entry is printed in the EVIDENCE PACK. You do NOT need to look
-anywhere else, and you must NOT claim that you lack access to the evidence.
-Each entry above that shows text IS a real, non-empty evidence entry. Even
-if an entry looks short, it still has content. You MUST NOT answer that an
-entry "has no content", "is empty", "could not be read", or "was not
-provided" when text is shown for it above. Your answer status (GROUNDED /
-PARTIAL / UNGROUNDED) MUST be decided by reading the text already printed
-in the EVIDENCE PACK — not by assuming evidence is missing.
+IMPORTANT:
+- You MUST use the active Life Index data directory exposed to your runtime.
+- Prefer Life Index CLI commands such as smart-search/search/read-top, then
+  read the cited journal files when needed. Do not rely on hidden session
+  memory or unstated prior knowledge.
+- Do NOT create, edit, patch, or write any files. Do NOT save the answer to a
+  temporary file. Return the final JSON directly in the ACP message.
+- You may use seed IDs (E1, E2, ...) only when the seed text is sufficient.
+  For any evidence found through tools, cite canonical journal IDs in the form
+  Journals/YYYY/MM/name.md.
+- Every substantive answer sentence or bullet MUST include at least one
+  evidence ID inline, for example "[Journals/2026/06/example.md]" or "[E1]".
+  This includes opening summaries, totals, and final takeaway sentences.
+  If you state a count, date range, classification, or conclusion, put the
+  evidence ID in that same sentence. Do not rely on citations in neighboring
+  bullets or later paragraphs.
+- Do NOT use uncited Markdown headings, month headings, date headings, or
+  category labels. Prefer plain cited bullets. A heading like "**2026年3月**"
+  without a journal id is invalid.
+- Do NOT cite phrases like "[all March entries]" or "[search results]".
+  Citation markers must be seed IDs or concrete Journals/YYYY/MM/name.md ids.
+- JSON strings must be valid JSON: avoid raw double quotes inside strings, or
+  use Chinese corner quotes like 「...」 instead.
+- If you cannot gather enough evidence, return PARTIAL or UNGROUNDED with a
+  concrete gap. Never produce an empty answer with zero evidence as if it were
+  complete.
 
 INSTRUCTIONS:
-1. Answer ONLY from the supplied evidence. Do NOT fabricate, infer, or use
-   external knowledge.
-2. Every claim in your answer MUST be traceable to at least one supplied
-   evidence entry.
-3. Cite evidence using ONLY the short IDs (E1, E2, etc.) from the ALLOWED
-   set above.
+1. Answer ONLY from cited Life Index journal evidence. Do NOT fabricate,
+   infer from hidden memory, or use external knowledge.
+2. Every claim in your answer MUST be traceable to at least one cited journal
+   entry.
+3. Cite evidence using seed short IDs from the SEED set above or canonical
+   Journals/YYYY/MM/name.md IDs discovered by your tool reads.
 4. If the evidence is insufficient for a complete answer, mark status as
    PARTIAL or UNGROUNDED.
-5. Before choosing UNGROUNDED, re-read the EVIDENCE PACK above. If any
-   entry with a non-empty text is relevant to the question, you MUST use it
-   and mark the answer GROUNDED or PARTIAL instead. Only mark UNGROUNDED
-   when every supplied entry's text genuinely fails to address the question.
+5. Before choosing UNGROUNDED, run at least one relevant Life Index search or
+   read the relevant seed evidence. Only mark UNGROUNDED when the checked
+   evidence genuinely fails to address the question.
 
 OUTPUT FORMAT — Respond with exactly ONE JSON object conforming to schema
 m35.agent_bridge_query.v0:
@@ -240,9 +289,9 @@ m35.agent_bridge_query.v0:
 {{
   "schema_version": "m35.agent_bridge_query.v0",
   "status": "GROUNDED",
-  "answer": "string or null",
+  "answer": "Example: Total is 3 days [Journals/2026/04/example.md].",
   "insights": [
-    {{"text": "insight text", "evidence_refs": ["E1"]}}
+    {{"text": "insight text with [E1]", "evidence_refs": ["E1"]}}
   ],
   "evidence_refs": ["E1", "E2"],
   "gap": null,
@@ -253,18 +302,21 @@ m35.agent_bridge_query.v0:
 }}
 
 NOTE: Do not invent a ``usage`` object. The adapter sets usage from the
-ACP RPC response; any model-generated value will be ignored."
+ACP RPC response; any model-generated value will be ignored.
 
 STATUS RULES (enforced by validator):
 - GROUNDED: answer is non-empty; insights is non-empty with at least one
-  evidence_ref each; all refs are from the allowed set; gap is null.
+  evidence_ref each; all refs are seed IDs or canonical Journals/... ids;
+  gap is null.
 - PARTIAL: answer is present (may be partial); gap is non-empty; refs may
   be incomplete.
 - UNGROUNDED: answer is null; insights is empty; evidence_refs is empty;
   gap is non-empty explaining why.
 
-WARNING: Using any evidence ID not in the ALLOWED set will cause your
-entire response to be rejected. Only use IDs from: {allowed_str}"""
+WARNING: Any GROUNDED or PARTIAL answer with fabricated, missing, or
+non-journal citations, or any uncited summary/total/takeaway sentence, will be
+rejected before it reaches the user. Seed IDs available in this prompt:
+{allowed_str}"""
 
 
 def parse_and_validate(  # noqa: C901
@@ -354,10 +406,15 @@ def parse_and_validate(  # noqa: C901
         if isinstance(refs, list):
             all_refs.update(r for r in refs if isinstance(r, str))
 
-    unknown_ids = all_refs - allowed_ids
+    unknown_ids = {
+        ref for ref in all_refs if ref not in allowed_ids and normalize_journal_ref(ref) is None
+    }
     if unknown_ids:
         ids_str = ", ".join(sorted(unknown_ids))
-        return None, f"Unknown evidence IDs in response: {ids_str}. Allowed: {sorted(allowed_ids)}"
+        return None, (
+            f"Unknown evidence IDs in response: {ids_str}. Allowed seed IDs: "
+            f"{sorted(allowed_ids)} or canonical Journals/YYYY/MM/name.md ids"
+        )
 
     # ── Status rule validation ──────────────────────────────────────
     if status == "GROUNDED":
@@ -365,6 +422,8 @@ def parse_and_validate(  # noqa: C901
             return None, "GROUNDED status requires non-empty answer"
         if not insights:
             return None, "GROUNDED status requires non-empty insights"
+        if not evidence_refs:
+            return None, "GROUNDED status requires non-empty evidence_refs"
         for i, ins in enumerate(insights):
             refs = ins.get("evidence_refs", [])
             if not isinstance(refs, list) or len(refs) == 0:
@@ -452,6 +511,37 @@ def build_provenance(
     }
 
 
+def _finalize_validated_envelope(
+    validated: dict,
+    *,
+    id_mapping: dict[str, str],
+    cfg: BrainConfig,
+    conn_meta: dict,
+    rpc_usage: dict | None,
+    turn_messages: list[dict],
+) -> tuple[dict | None, str | None]:
+    """Run the deterministic citation gate and attach authoritative metadata."""
+    trace_refs = extract_tool_trace_journal_refs(turn_messages)
+    citation = validate_citation_gate(
+        validated,
+        short_id_mapping=id_mapping,
+        tool_trace_refs=trace_refs,
+        apply_mapping=True,
+    )
+    if not citation.ok:
+        return None, citation.error or "Citation validation failed"
+
+    provenance = build_provenance(cfg, conn_meta, degraded=False)
+    provenance["citation_trace_checked"] = citation.trace_checked
+    if citation.trace_checked:
+        provenance["citation_trace_refs"] = trace_refs
+
+    validated["provenance"] = provenance
+    validated["usage"] = rpc_usage
+    validated.setdefault("schema_version", QUERY_SCHEMA_VERSION)
+    return validated, None
+
+
 def acp_query_adapter(
     query: str,
     scaffold: dict,
@@ -465,7 +555,7 @@ def acp_query_adapter(
 
     Algorithm:
     1. Build evidence pack and allowed ID set from the scaffold.
-    2. Build a strict prompt instructing the model to answer from evidence only.
+    2. Build an agentic prompt that treats scaffold evidence as a seed hint.
     3. Create or reuse an ``_ACPConnection``, send ``session/prompt``, collect text.
     4. Parse and validate the collected text.
     5. On success: map short evidence IDs back to real IDs and return the envelope.
@@ -514,27 +604,24 @@ def acp_query_adapter(
         rpc_usage = _extract_rpc_usage(prompt_resp)
 
         # 5. Collect text via parse_acp_stream from only new chunks
-        collected_text = parse_acp_stream(conn.collected[pre_prompt_len:])
+        turn_messages = conn.collected[pre_prompt_len:]
+        collected_text = parse_acp_stream(turn_messages)
 
         # 6. Parse and validate
         validated, error = parse_and_validate(collected_text, allowed_ids)
 
         if validated is not None:
-            # Success — map short IDs back to real IDs
-            evidence_refs = validated.get("evidence_refs", [])
-            mapped_refs = [id_mapping.get(r, r) for r in evidence_refs]
-            validated["evidence_refs"] = mapped_refs
-
-            for ins in validated.get("insights", []):
-                if isinstance(ins, dict):
-                    refs = ins.get("evidence_refs", [])
-                    if isinstance(refs, list):
-                        ins["evidence_refs"] = [id_mapping.get(r, r) for r in refs]
-
-            validated["provenance"] = build_provenance(cfg, conn_meta, degraded=False)
-            validated["usage"] = rpc_usage
-            validated.setdefault("schema_version", QUERY_SCHEMA_VERSION)
-            return validated
+            finalized, citation_error = _finalize_validated_envelope(
+                validated,
+                id_mapping=id_mapping,
+                cfg=cfg,
+                conn_meta=conn_meta,
+                rpc_usage=rpc_usage,
+                turn_messages=turn_messages,
+            )
+            if finalized is not None:
+                return finalized
+            error = citation_error
 
         # 7. First failure — bounded retry with repair prompt
         # Snapshot collected messages: only parse new messages from the retry
@@ -546,8 +633,19 @@ def acp_query_adapter(
             f"  {error}\n\n"
             "Please respond with ONLY the JSON object conforming to schema "
             "m35.agent_bridge_query.v0.  Do NOT include any markdown fences, "
-            "explanations, or prose outside the JSON object.  Use only evidence "
-            f"IDs from: {', '.join(sorted(allowed_ids)) if allowed_ids else '(none)'}.\n\n"
+            "explanations, or prose outside the JSON object. Do NOT create, edit, "
+            "patch, or write any files; return the JSON directly in this ACP "
+            "message. You may cite seed "
+            f"IDs from: {', '.join(sorted(allowed_ids)) if allowed_ids else '(none)'}, "
+            "and you may cite additional journal evidence as "
+            "Journals/YYYY/MM/life-index_YYYY-MM-DD_NNN.md if you read or searched it "
+            "during this ACP turn. Every substantive answer sentence or bullet must "
+            "include at least one inline evidence id. Counts, date ranges, opening "
+            "summaries, and final takeaway sentences must carry their own inline "
+            "evidence id in the same sentence. Do not use uncited Markdown headings, "
+            "date/month/category labels, or non-file citation phrases like "
+            "[all March entries]. Avoid raw double quotes inside JSON strings; use "
+            "Chinese corner quotes instead.\n\n"
             "Output:"
         )
 
@@ -561,25 +659,23 @@ def acp_query_adapter(
         )
         rpc_usage_retry = _extract_rpc_usage(prompt_resp_retry)
 
-        collected_text_retry = parse_acp_stream(conn.collected[pre_retry_len:])
+        retry_messages = conn.collected[pre_retry_len:]
+        collected_text_retry = parse_acp_stream(retry_messages)
 
         validated_retry, error_retry = parse_and_validate(collected_text_retry, allowed_ids)
 
         if validated_retry is not None:
-            evidence_refs_retry = validated_retry.get("evidence_refs", [])
-            mapped_refs_retry = [id_mapping.get(r, r) for r in evidence_refs_retry]
-            validated_retry["evidence_refs"] = mapped_refs_retry
-
-            for ins in validated_retry.get("insights", []):
-                if isinstance(ins, dict):
-                    refs = ins.get("evidence_refs", [])
-                    if isinstance(refs, list):
-                        ins["evidence_refs"] = [id_mapping.get(r, r) for r in refs]
-
-            validated_retry["provenance"] = build_provenance(cfg, conn_meta, degraded=False)
-            validated_retry["usage"] = rpc_usage_retry
-            validated_retry.setdefault("schema_version", QUERY_SCHEMA_VERSION)
-            return validated_retry
+            finalized_retry, citation_error_retry = _finalize_validated_envelope(
+                validated_retry,
+                id_mapping=id_mapping,
+                cfg=cfg,
+                conn_meta=conn_meta,
+                rpc_usage=rpc_usage_retry,
+                turn_messages=turn_messages + retry_messages,
+            )
+            if finalized_retry is not None:
+                return finalized_retry
+            error_retry = citation_error_retry
 
         # 8. Both attempts failed — degrade
         return build_degraded_result(
@@ -588,11 +684,12 @@ def acp_query_adapter(
             build_provenance(cfg, conn_meta, degraded=True),
         )
 
-    except Exception:
+    except Exception as exc:
         # Transport-level failure — degrade deterministically
+        safe_error = _safe_exception_summary(exc)
         return build_degraded_result(
             "UNGROUNDED",
-            f"ACP query adapter failed for query: {query}",
+            f"ACP query adapter failed for query: {query} ({safe_error})",
             build_provenance(cfg, conn_meta, degraded=True),
         )
 

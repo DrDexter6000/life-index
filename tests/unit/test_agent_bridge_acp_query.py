@@ -8,9 +8,20 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "agent_bridge"
+
+
+@pytest.fixture(autouse=True)
+def _allow_fixture_journal_refs(monkeypatch):
+    """Adapter fixture tests use synthetic journal IDs; existence has focused tests."""
+    monkeypatch.setattr(
+        "tools.agent_bridge.citation_validator.journal_ref_exists",
+        lambda _ref: True,
+    )
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────
@@ -179,8 +190,14 @@ def test_mixed_prose_rejected_then_repaired():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
-                {"document": {"doc_id": "real-entry-2"}, "snippet": "Evidence snippet two."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-11_001.md"},
+                    "snippet": "Evidence snippet two.",
+                },
             ],
         },
     }
@@ -348,7 +365,10 @@ def test_acp_handoff_does_not_call_openai_synthesize(monkeypatch):
         "query": "test query",
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "entry-1"}, "snippet": "Test evidence."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Test evidence.",
+                },
             ],
         },
     }
@@ -401,7 +421,10 @@ def test_acp_handoff_degrade_does_not_call_openai_synthesize(monkeypatch):
         "query": "test query",
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "entry-1"}, "snippet": "Test evidence."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Test evidence.",
+                },
             ],
         },
     }
@@ -567,6 +590,28 @@ def test_parse_and_validate_grounded_requires_answer():
     assert error is not None
 
 
+def test_parse_and_validate_rejects_grounded_with_empty_top_level_evidence_refs():
+    """GROUNDED must carry at least one top-level evidence ref."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = json.dumps(
+        {
+            "schema_version": "m35.agent_bridge_query.v0",
+            "status": "GROUNDED",
+            "answer": "test [E1]",
+            "insights": [{"text": "t", "evidence_refs": ["E1"]}],
+            "evidence_refs": [],
+            "gap": None,
+        }
+    )
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert result is None
+    assert error is not None
+    assert "GROUNDED" in error
+    assert "evidence_refs" in error
+
+
 def test_build_provenance_uses_cfg_model():
     """build_provenance uses cfg.model when conn_meta has no model."""
     from tools.agent_bridge.acp_query import build_provenance
@@ -623,8 +668,14 @@ def test_acp_query_adapter_two_turn_retry_succeeds():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
-                {"document": {"doc_id": "real-entry-2"}, "snippet": "Evidence snippet two."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-11_001.md"},
+                    "snippet": "Evidence snippet two.",
+                },
             ],
         },
     }
@@ -658,7 +709,10 @@ def test_acp_query_adapter_with_ungrounded_marker():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
             ],
         },
     }
@@ -693,8 +747,14 @@ def test_acp_query_adapter_with_fenced_json():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
-                {"document": {"doc_id": "real-entry-2"}, "snippet": "Evidence snippet two."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-11_001.md"},
+                    "snippet": "Evidence snippet two.",
+                },
             ],
         },
     }
@@ -733,7 +793,10 @@ def test_acp_query_adapter_with_unknown_evidence_rejected_then_repaired():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
             ],
         },
     }
@@ -744,6 +807,89 @@ def test_acp_query_adapter_with_unknown_evidence_rejected_then_repaired():
     # The retry succeeds (fake agent defaults to valid GROUNDED with E1)
     assert result["status"] == "GROUNDED"
     assert result["provenance"]["degraded"] is False
+
+
+def test_acp_query_adapter_rejects_nonexistent_real_journal_id_after_mapping(monkeypatch):
+    """Allowed short IDs are still rejected when mapped journal files do not exist."""
+    from tools.agent_bridge.acp_query import acp_query_adapter
+    from tools.agent_bridge.config import BrainConfig
+
+    monkeypatch.setattr(
+        "tools.agent_bridge.citation_validator.journal_ref_exists",
+        lambda _ref: False,
+    )
+    fake_agent = sys.executable
+    fake_script = str(FIXTURE_PATH / "fake_acp_agent_query.py")
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=[fake_agent, fake_script],
+        acp_workdir=str(FIXTURE_PATH),
+    )
+    scaffold = {
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-11_001.md"},
+                    "snippet": "Evidence snippet two.",
+                },
+            ],
+        },
+    }
+
+    result = acp_query_adapter("VALID_JSON_TEST query", scaffold, cfg)
+
+    assert result["status"] == "UNGROUNDED"
+    assert result["answer"] is None
+    assert result["provenance"]["degraded"] is True
+    assert "does not exist" in result["gap"]
+
+
+def test_citation_gate_rejects_grounded_unreferenced_answer_claim():
+    """A GROUNDED answer sentence without an inline evidence id is rejected."""
+    from tools.agent_bridge.citation_validator import validate_citation_gate
+
+    envelope = {
+        "status": "GROUNDED",
+        "answer": "This answer contains a claim without an inline citation.",
+        "insights": [{"text": "Insight", "evidence_refs": ["Journals/2026/06/a.md"]}],
+        "evidence_refs": ["Journals/2026/06/a.md"],
+    }
+
+    result = validate_citation_gate(envelope)
+
+    assert result.ok is False
+    assert result.error is not None
+    assert "lacks an evidence id" in result.error
+
+
+def test_citation_gate_rejects_trace_mismatch():
+    """When ACP read/tool trace is present, cited IDs must appear in that trace."""
+    from tools.agent_bridge.citation_validator import validate_citation_gate
+
+    envelope = {
+        "status": "GROUNDED",
+        "answer": "Trace-backed claim [Journals/2026/06/a.md].",
+        "insights": [{"text": "Insight", "evidence_refs": ["Journals/2026/06/a.md"]}],
+        "evidence_refs": ["Journals/2026/06/a.md"],
+    }
+
+    result = validate_citation_gate(
+        envelope,
+        tool_trace_refs=["Journals/2026/06/other.md"],
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert "not observed" in result.error
 
 
 # ─── Lead-review regression tests ─────────────────────────────────────
@@ -836,7 +982,7 @@ def test_acp_query_adapter_ignores_preexisting_collected_chunks():
         {
             "schema_version": "m35.agent_bridge_query.v0",
             "status": "GROUNDED",
-            "answer": "Grounded answer from current query.",
+            "answer": "Grounded answer from current query [E1].",
             "insights": [{"text": "Insight", "evidence_refs": ["E1"]}],
             "evidence_refs": ["E1"],
             "gap": None,
@@ -885,7 +1031,12 @@ def test_acp_query_adapter_ignores_preexisting_collected_chunks():
 
     scaffold = {
         "evidence_pack": {
-            "items": [{"document": {"doc_id": "journal-001"}, "snippet": "Evidence one."}]
+            "items": [
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence one.",
+                }
+            ]
         }
     }
 
@@ -894,7 +1045,7 @@ def test_acp_query_adapter_ignores_preexisting_collected_chunks():
     assert result["schema_version"] == QUERY_SCHEMA_VERSION
     assert result["status"] == "GROUNDED"
     assert prior_text not in result["answer"]
-    assert result["evidence_refs"] == ["journal-001"]
+    assert result["evidence_refs"] == ["Journals/2026/06/life-index_2026-06-10_001.md"]
 
 
 # ─── Lead-review: provenance and usage contract tests ─────────────────
@@ -922,7 +1073,10 @@ def test_acp_query_adapter_provenance_uses_acp_metadata():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
             ],
         },
     }
@@ -958,7 +1112,10 @@ def test_acp_query_adapter_usage_from_rpc_result():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
             ],
         },
     }
@@ -993,7 +1150,10 @@ def test_acp_query_adapter_usage_overrides_invalid_model_usage():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
             ],
         },
     }
@@ -1028,7 +1188,10 @@ def test_acp_query_adapter_usage_null_when_rpc_omits_usage():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
             ],
         },
     }
@@ -1062,8 +1225,14 @@ def test_acp_query_adapter_retry_uses_rpc_usage():
     scaffold = {
         "evidence_pack": {
             "items": [
-                {"document": {"doc_id": "real-entry-1"}, "snippet": "Evidence snippet one."},
-                {"document": {"doc_id": "real-entry-2"}, "snippet": "Evidence snippet two."},
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence snippet one.",
+                },
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-11_001.md"},
+                    "snippet": "Evidence snippet two.",
+                },
             ],
         },
     }
@@ -1077,18 +1246,19 @@ def test_acp_query_adapter_retry_uses_rpc_usage():
     assert result["usage"] == {"input_tokens": 7, "output_tokens": 13}
 
 
-# ─── V6-CF grounding hardening: prompt + bounded-repair tests ─────────
+# ─── V6-CL agentic grounding hardening: prompt + bounded-repair tests ──
 #
-# These tests lock in the V6-CF hardening:
-#   * build_query_prompt tells the model that evidence text is already
-#     hydrated and that non-empty entries must NOT be reported as empty.
+# These tests lock in the V6-CL prompt contract:
+#   * seed evidence is a hint, not the evidence boundary.
+#   * the ACP agent must use Life Index CLI/file-read tools and cite every
+#     substantive answer sentence inline.
 #   * parse_and_validate applies one bounded, generic trailing-comma repair
 #     ("light schema-shape drift") while leaving schema / status /
 #     evidence-ID / grounded-rule validation fully intact.
 
 
-def test_build_query_prompt_states_evidence_already_provided():
-    """Prompt explicitly tells the model evidence text is already supplied."""
+def test_build_query_prompt_marks_seed_evidence_as_hint_not_boundary():
+    """Prompt frames deterministic evidence as seed hints for agentic search."""
     from tools.agent_bridge.acp_query import build_query_prompt
 
     evidence = {
@@ -1096,12 +1266,13 @@ def test_build_query_prompt_states_evidence_already_provided():
     }
     prompt = build_query_prompt("What happened?", evidence, {"E1"})
 
-    assert "EVIDENCE IS ALREADY PROVIDED" in prompt
-    assert "already printed" in prompt or "already provided" in prompt
+    assert "SEED EVIDENCE PACK" in prompt
+    assert "not the evidence boundary" in prompt
+    assert "First evidence snippet" in prompt
 
 
-def test_build_query_prompt_forbids_claiming_nonempty_entry_is_empty():
-    """Prompt forbids the model from claiming a non-empty entry has no content."""
+def test_build_query_prompt_requires_life_index_tool_reads():
+    """Prompt requires active Life Index CLI/file-read evidence gathering."""
     from tools.agent_bridge.acp_query import build_query_prompt
 
     evidence = {
@@ -1109,14 +1280,15 @@ def test_build_query_prompt_forbids_claiming_nonempty_entry_is_empty():
     }
     prompt = build_query_prompt("Any question", evidence, {"E1"})
 
-    assert "non-empty" in prompt
-    # The exact phrasing the model is told NOT to emit:
-    assert "has no content" in prompt
-    assert "MUST NOT" in prompt
+    assert "Life Index CLI" in prompt
+    assert "file-read tools" in prompt
+    assert "Do not rely on hidden session" in prompt
+    assert "memory" in prompt
+    assert "Do NOT create, edit, patch, or write any files" in prompt
 
 
-def test_build_query_prompt_ties_status_to_supplied_text():
-    """Prompt requires status to be decided from the supplied evidence text."""
+def test_build_query_prompt_requires_inline_citations_and_search_before_ungrounded():
+    """Prompt requires inline IDs and checked evidence before UNGROUNDED."""
     from tools.agent_bridge.acp_query import build_query_prompt
 
     evidence = {
@@ -1128,8 +1300,9 @@ def test_build_query_prompt_ties_status_to_supplied_text():
     assert "GROUNDED" in prompt
     assert "PARTIAL" in prompt
     assert "UNGROUNDED" in prompt
-    # The hardening adds an instruction to re-read evidence before UNGROUNDED.
-    assert "re-read" in prompt or "re-read the EVIDENCE PACK" in prompt
+    assert "Every substantive answer sentence or bullet MUST include" in prompt
+    assert "Before choosing UNGROUNDED" in prompt
+    assert "run at least one relevant Life Index search" in prompt
     # m35 contract + allowed-ID restrictions preserved.
     assert "m35.agent_bridge_query.v0" in prompt
     assert "E1" in prompt and "E2" in prompt
@@ -1144,7 +1317,7 @@ def test_build_query_prompt_remains_well_formed_with_no_evidence():
     assert "m35.agent_bridge_query.v0" in prompt
     assert "GROUNDED" in prompt
     assert "(no evidence supplied)" in prompt
-    assert "EVIDENCE IS ALREADY PROVIDED" in prompt
+    assert "Life Index CLI" in prompt
 
 
 # ── Bounded trailing-comma repair (light schema-shape drift) ──

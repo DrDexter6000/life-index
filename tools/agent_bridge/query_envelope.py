@@ -8,13 +8,18 @@ no-OpenAI-fallback behavior.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
+
+from tools.lib.paths import get_user_data_dir
 
 RICH_SCHEMA_VERSION = "m35.agent_bridge_query.v0"
 DEFAULT_COMMAND = "agent-bridge query"
 DEFAULT_SOURCE = "host-agent"
 DEFAULT_EVIDENCE_SOURCE = "life-index search"
 DEFAULT_HOST_AGENT = "configured provider label"
+_MAX_SNIPPET_CHARS = 500
 
 
 def _normalize_path_sep(pathish: str) -> str:
@@ -44,6 +49,88 @@ def _gui_id_to_rel_path(gui_id: str) -> str:
     if not norm.startswith("Journals/"):
         norm = f"Journals/{norm}"
     return norm
+
+
+def _safe_journal_path(real_id: str) -> tuple[str, Path] | None:
+    """Return ``(rel_path, absolute_path)`` for a journal ID inside data-dir."""
+    norm = _normalize_path_sep(real_id).strip("/")
+    idx = norm.find("Journals/")
+    if idx != -1:
+        norm = norm[idx:]
+    elif re.match(r"^\d{4}/\d{2}/", norm):
+        norm = f"Journals/{norm}"
+    else:
+        return None
+    if not norm.endswith(".md"):
+        norm = f"{norm}.md"
+    parts = norm.split("/")
+    if len(parts) != 4 or parts[0] != "Journals" or any(p in ("", ".", "..") for p in parts):
+        return None
+
+    try:
+        data_dir = get_user_data_dir().expanduser().resolve(strict=False)
+    except RuntimeError:
+        return None
+    path = (data_dir / norm).expanduser().resolve(strict=False)
+    try:
+        path.relative_to(data_dir)
+    except ValueError:
+        return None
+    return norm, path
+
+
+def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    if not text.startswith("---"):
+        return {}, text
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return {}, text
+    meta: dict[str, str] = {}
+    for line in parts[1].splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if key and value:
+            meta[key] = value
+    return meta, parts[2].strip()
+
+
+def _load_journal_entry_from_data_dir(real_id: str) -> dict[str, Any] | None:
+    """Build an evidence lookup entry for a validated journal citation."""
+    resolved = _safe_journal_path(real_id)
+    if resolved is None:
+        return None
+    rel_path, path = resolved
+    if not path.is_file():
+        return None
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    metadata, body = _split_frontmatter(raw)
+    snippet = " ".join(line.strip() for line in body.splitlines() if line.strip())
+    if len(snippet) > _MAX_SNIPPET_CHARS:
+        snippet = snippet[:_MAX_SNIPPET_CHARS] + "..."
+
+    date = metadata.get("date") or ""
+    if not date:
+        match = re.search(r"life-index_(\d{4}-\d{2}-\d{2})_\d{3}\.md$", rel_path)
+        if match:
+            date = match.group(1)
+
+    title = metadata.get("title") or path.stem
+    return {
+        "document": {
+            "doc_id": rel_path,
+            "title": title,
+            "date": date,
+            "metadata": metadata,
+        },
+        "snippet": snippet,
+    }
 
 
 def _extract_real_id_from_item(item: dict[str, Any]) -> str | None:
@@ -181,8 +268,9 @@ def build_evidence(
     """Build the rich ``evidence[]`` list from scaffold metadata.
 
     Only entries whose real journal ID appears in *accepted_real_ids* are
-    included, preserving the adapter's evidence whitelist guard and avoiding
-    any extra journal file reads.
+    included. Scaffold matches are preferred; validated agentic journal refs
+    that are not in the seed scaffold may be loaded from the active data dir
+    so the public envelope can render the cited evidence.
     """
     lookup = _build_scaffold_lookup(scaffold)
     evidence: list[dict[str, Any]] = []
@@ -194,9 +282,12 @@ def build_evidence(
         seen.add(real_id)
         entry = lookup.get(real_id)
         if entry is None:
-            # Unknown IDs are dropped; the adapter already rejected them, so
-            # this is defensive against malformed downstream input.
-            continue
+            entry = _load_journal_entry_from_data_dir(real_id)
+            if entry is None:
+                # Unknown IDs are dropped; the adapter/citation gate should
+                # already have rejected them, so this is defensive against
+                # malformed downstream input.
+                continue
 
         document = entry.get("document") or {}
         if not isinstance(document, dict):
