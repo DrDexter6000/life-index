@@ -13,12 +13,14 @@ def test_field_sources_user_provided_fields():
         mock_extract.return_value = {}
         raw = {
             "title": "我的标题",
+            "abstract": "我的摘要",
             "content": "正文",
             "tags": "tag1, tag2",
             "topic": "work",
         }
         result = prepare_journal_metadata(raw, use_llm=True)
         assert result["field_sources"]["title"] == "user"
+        assert result["field_sources"]["abstract"] == "user"
         assert result["field_sources"]["tags"] == "user"
         assert result["field_sources"]["topic"] == "user"
 
@@ -108,3 +110,71 @@ def test_field_sources_mixed_sources():
         assert result["field_sources"]["title"] == "user"
         assert result["field_sources"]["abstract"] == "rule"
         assert result["field_sources"]["mood"] == "ai"
+
+
+def test_default_path_does_not_infer_project_from_keywords():
+    """Default no-LLM path leaves semantic project facet to the host Agent."""
+    raw = {
+        "content": "今天复盘 Life Index facet 进料闭环，也看了 life-index runbook。",
+        "topic": "work",
+    }
+
+    result = prepare_journal_metadata(raw)
+
+    assert result.get("project", "") == ""
+    assert "project" not in result["field_sources"]
+    assert result["llm_status"]["state"] == "disabled"
+
+
+def test_user_project_is_preserved_without_inference():
+    """Explicit project supplied by the Agent/caller is preserved."""
+    raw = {
+        "content": "今天复盘 facet 进料闭环。",
+        "topic": "work",
+        "project": "Index Pipeline",
+    }
+
+    result = prepare_journal_metadata(raw)
+
+    assert result["project"] == "Index Pipeline"
+    assert result["field_sources"]["project"] == "user"
+
+
+def test_enrich_uses_explicit_body_location_weather_before_defaults():
+    """Body-declared location/weather win during metadata preview."""
+    raw = {
+        "content": "地点：Lagos, Nigeria\n天气：Rain 24C\n今天复盘 facet 进料闭环。",
+        "topic": "work",
+        "location": "Chongqing, China",
+        "weather": "Sunny 30C",
+    }
+
+    with (
+        patch("tools.write_journal.prepare.get_default_location") as mock_default,
+        patch("tools.write_journal.prepare.query_weather_for_location") as mock_weather,
+    ):
+        result = prepare_journal_metadata(raw)
+
+    mock_default.assert_not_called()
+    mock_weather.assert_not_called()
+    assert result["location"] == "Lagos, Nigeria"
+    assert result["weather"] == "Rain 24C"
+    assert result["field_sources"]["location"] == "user"
+    assert result["field_sources"]["weather"] == "user"
+
+
+def test_opt_in_extraction_can_supply_project():
+    """Explicit opt-in extraction may supply project and marks it as ai."""
+    with (
+        patch("tools._optional.llm_extract.is_llm_available", return_value=True),
+        patch("tools._optional.llm_extract.extract_metadata_sync") as mock_extract,
+    ):
+        mock_extract.return_value = {"project": "Index Pipeline"}
+
+        result = prepare_journal_metadata(
+            {"content": "今天复盘 facet 进料闭环。"},
+            use_llm=True,
+        )
+
+    assert result["project"] == "Index Pipeline"
+    assert result["field_sources"]["project"] == "ai"

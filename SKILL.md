@@ -252,10 +252,11 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 1. **必填字段**：title, content, date, abstract, topic, mood, tags — 必须有值
 2. **语义提取**：从用户内容中主动提取 mood（1~3个）、tags（关键词）、people、project
-3. **地点规则**：正文里明确写出的地点优先；只有正文和入参都未提供地点时，工具才使用默认地点；但无论地点来源为何，只要写入成功，Agent 都必须展示确认信息并等待用户确认或修正
-4. **空值处理**：people, project, links 未提取到时传空值（如 `"people": []`）
-5. **摘要生成**：从 content 提取关键信息，生成 ≤100 字的 abstract
-6. **必须确认**：工具返回后检查 `needs_confirmation`；对所有成功写入结果，这都应视为必须执行的 follow-up
+3. **工具边界**：`write_journal enrich` 默认只做规则补全、规范化和地点/天气处理；不会替 Agent 从正文语义推断 mood/tags/people/project
+4. **地点规则**：正文里明确写出的地点优先；只有正文和入参都未提供地点时，工具才使用默认地点；但无论地点来源为何，只要写入成功，Agent 都必须展示确认信息并等待用户确认或修正
+5. **空值处理**：people, project, links 未提取到时传空值（如 `"people": []`）
+6. **摘要生成**：从 content 提取关键信息，生成 ≤100 字的 abstract
+7. **必须确认**：工具返回后检查 `needs_confirmation`；对所有成功写入结果，这都应视为必须执行的 follow-up
 
 ---
 
