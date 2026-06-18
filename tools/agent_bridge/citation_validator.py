@@ -20,6 +20,17 @@ _JOURNAL_REF_RE = re.compile(
     r"(?:(?:Journals[/\\])?\d{4}[/\\]\d{2}[/\\][^\s\]\"'`,;:)}]+(?:\.md)?)"
 )
 _SHORT_REF_RE_TEMPLATE = r"(?<![A-Za-z0-9_-]){ref}(?![A-Za-z0-9_-])"
+_ISO_DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+_CHINESE_DATE_RE = re.compile(r"\d{1,2}月\d{1,2}日")
+_NUMBER_FACT_RE = re.compile(
+    r"(?:\b\d+(?:\.\d+)?\s*(?:days?|entries|logs?|times?)\b|"
+    r"\d+(?:\.\d+)?\s*(?:天|次|篇|条|个))",
+    re.IGNORECASE,
+)
+_AGGREGATE_FACT_RE = re.compile(
+    r"\b(?:total|count|aggregate|sum)\b|(?:总共|一共|共计|合计)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -217,6 +228,92 @@ def _map_refs_in_place(envelope: dict[str, Any], short_id_mapping: dict[str, str
                 ]
 
 
+def _is_structured_magazine_insight(insight: dict[str, Any]) -> bool:
+    return isinstance(insight.get("quote"), str) or isinstance(insight.get("interpretation"), str)
+
+
+def _has_structured_magazine_insights(envelope: dict[str, Any]) -> bool:
+    insights = envelope.get("insights")
+    if not isinstance(insights, list):
+        return False
+    return any(isinstance(ins, dict) and _is_structured_magazine_insight(ins) for ins in insights)
+
+
+def _validate_insight_refs(
+    envelope: dict[str, Any],
+    short_id_mapping: dict[str, str],
+) -> str | None:
+    insights = envelope.get("insights")
+    if not isinstance(insights, list):
+        return "insights must be a list"
+    if envelope.get("status") == "GROUNDED" and not insights:
+        return "GROUNDED status requires at least one cited insight"
+    for idx, insight in enumerate(insights):
+        if not isinstance(insight, dict):
+            return f"insights[{idx}] must be an object"
+        refs = insight.get("evidence_refs")
+        if not isinstance(refs, list) or not refs:
+            return f"insights[{idx}].evidence_refs must contain at least one journal id"
+        for raw_ref in refs:
+            if not isinstance(raw_ref, str):
+                return f"insights[{idx}].evidence_refs must contain only strings"
+            if _canonicalize_ref(raw_ref, short_id_mapping) is None:
+                return f"Evidence ref is not a journal id: {raw_ref}"
+    return None
+
+
+def _insight_support_text(envelope: dict[str, Any], canonical_refs: list[str]) -> str:
+    parts: list[str] = []
+    insights = envelope.get("insights")
+    if isinstance(insights, list):
+        for insight in insights:
+            if not isinstance(insight, dict):
+                continue
+            for key in ("quote", "interpretation", "text", "theme", "date"):
+                val = insight.get(key)
+                if isinstance(val, str):
+                    parts.append(val)
+    for ref in canonical_refs:
+        match = re.search(r"Journals/(\d{4})/(\d{2})/life-index_(\d{4}-\d{2}-\d{2})_", ref)
+        if match:
+            _, _, iso_date = match.groups()
+            _year, month, day = iso_date.split("-")
+            parts.extend([iso_date, f"{int(month)}月{int(day)}日", f"{month}月{day}日"])
+            parts.append(ref)
+    return "\n".join(parts)
+
+
+def _summary_fact_markers(summary: str) -> list[str]:
+    markers: list[str] = []
+    seen: set[str] = set()
+    for pattern in (_ISO_DATE_RE, _CHINESE_DATE_RE, _NUMBER_FACT_RE, _AGGREGATE_FACT_RE):
+        for match in pattern.finditer(summary):
+            token = match.group(0).strip()
+            if token and token not in seen:
+                seen.add(token)
+                markers.append(token)
+    return markers
+
+
+def _validate_summary_covered_by_insights(
+    answer: Any,
+    envelope: dict[str, Any],
+    canonical_refs: list[str],
+) -> str | None:
+    if not isinstance(answer, str) or not answer.strip():
+        return None
+    support_text = _insight_support_text(envelope, canonical_refs)
+    support_compact = re.sub(r"\s+", "", support_text)
+    for marker in _summary_fact_markers(answer):
+        marker_compact = re.sub(r"\s+", "", marker)
+        if marker_compact and marker_compact not in support_compact:
+            return (
+                "Summary fact not covered by cited insights; answer claim lacks an "
+                f"evidence id: {marker}"
+            )
+    return None
+
+
 def validate_citation_gate(
     envelope: dict[str, Any],
     *,
@@ -254,7 +351,24 @@ def validate_citation_gate(
                 evidence_refs=canonical_refs,
             )
 
-    if require_answer_citations and isinstance(answer, str) and answer.strip():
+    insight_error = _validate_insight_refs(envelope, mapping)
+    if insight_error:
+        return CitationGateResult(
+            ok=False,
+            error=insight_error,
+            evidence_refs=canonical_refs,
+        )
+
+    structured_magazine = _has_structured_magazine_insights(envelope)
+    if structured_magazine:
+        summary_error = _validate_summary_covered_by_insights(answer, envelope, canonical_refs)
+        if summary_error:
+            return CitationGateResult(
+                ok=False,
+                error=summary_error,
+                evidence_refs=canonical_refs,
+            )
+    elif require_answer_citations and isinstance(answer, str) and answer.strip():
         for segment in _claim_segments(answer):
             if not _segment_has_ref_marker(segment, canonical_refs, mapping):
                 return CitationGateResult(

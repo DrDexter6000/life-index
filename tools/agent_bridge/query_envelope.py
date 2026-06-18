@@ -359,20 +359,27 @@ def build_answer(
                 if gui_ref in valid_evidence_ids:
                     gui_refs.append(gui_ref)
 
-            interpretation = ins.get("text")
+            interpretation = ins.get("interpretation")
+            if not isinstance(interpretation, str):
+                interpretation = ins.get("text")
             if not isinstance(interpretation, str):
                 interpretation = ""
 
-            theme = scaffold.get("intent") if isinstance(scaffold, dict) else ""
+            theme = ins.get("theme")
+            if not isinstance(theme, str):
+                theme = scaffold.get("intent") if isinstance(scaffold, dict) else ""
             if not isinstance(theme, str):
                 theme = ""
 
-            quote = ""
+            quote = ins.get("quote")
+            if not isinstance(quote, str):
+                quote = ""
             date = ""
             if gui_refs:
                 first = evidence_lookup.get(gui_refs[0], {})
-                raw_quote = first.get("snippet")
-                quote = raw_quote if isinstance(raw_quote, str) else ""
+                if not quote:
+                    raw_quote = first.get("snippet")
+                    quote = raw_quote if isinstance(raw_quote, str) else ""
                 raw_date = first.get("date")
                 date = raw_date if isinstance(raw_date, str) else ""
 

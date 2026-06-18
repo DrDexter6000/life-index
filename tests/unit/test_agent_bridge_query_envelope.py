@@ -139,6 +139,34 @@ def test_map_to_rich_envelope_grounded():
     }
 
 
+def test_map_to_rich_envelope_preserves_structured_magazine_insight():
+    """Structured ACP insight quote/interpretation populate rich answer fields."""
+    internal = _grounded_internal()
+    internal["answer"] = "整体总结保留在 summary。"
+    internal["insights"] = [
+        {
+            "theme": "work",
+            "quote": "ACP agent selected this exact journal excerpt.",
+            "interpretation": "ACP interpretation should be preserved.",
+            "evidence_refs": ["Journals/2026/06/life-index_2026-06-04_001.md"],
+        }
+    ]
+
+    result = map_to_rich_envelope(
+        "What happened?",
+        _sample_scaffold(),
+        internal,
+        host_agent="hermes-agent",
+    )
+
+    insight = result["answer"]["insights"][0]
+    assert insight["theme"] == "work"
+    assert insight["quote"] == "ACP agent selected this exact journal excerpt."
+    assert insight["interpretation"] == "ACP interpretation should be preserved."
+    assert insight["evidence_refs"] == ["2026/06/life-index_2026-06-04_001"]
+    assert result["answer"]["summary"] == "整体总结保留在 summary。"
+
+
 def test_map_to_rich_envelope_degraded():
     """A degraded internal envelope maps to a rich UNGROUNDED response."""
     result = map_to_rich_envelope(
