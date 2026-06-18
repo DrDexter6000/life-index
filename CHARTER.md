@@ -1,12 +1,12 @@
 # Life Index Charter | 生命索引宪章
 
-> **版本**：v1.7.0
+> **版本**：v1.8.0
 > **批准日期**：2026-04-23（Round 17 · Task 1）
 > **批准人**：Life Index Developer
 > **下次评审**：2026-07-23（每季度一次）
-> **修订次数**：7
-> **最近修订**：2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）
-> **此前修订**：2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
+> **修订次数**：8
+> **最近修订**：2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）
+> **此前修订**：2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
 
 ---
 
@@ -29,6 +29,26 @@ Life Index 不是一个 side project。它承载着**一位父亲写给女儿的
 3. **修订门槛**：本宪章的任何章节变更，必须经由第五章「宪章修订流程」，不得通过普通 commit 直接修改。
 
 4. **对 Agent 的约束**：所有 AI 编码代理在承担本项目任务前**必须通读本宪章**。违反本宪章的变更不得被接受，即使它通过了测试、即使它解决了用户报告的问题。
+
+---
+
+## 北极星（Agent-Native 最高不变量 · APEX）
+
+> **Life Index 提供确定性、可组合的好工具（L1/L2）与领域 Skills；智能——规划、多跳、推理、合成——归宿主 agent；界面（GUI）只做呈现。agent 越聪明，Life Index 的体验自动越好。**
+
+本节为全宪章**最高实质原则**，先于并统辖第一章各项不变量：
+
+1. **工具非智能**：Life Index 的本体是给 agent 生态的**工具 + Skills**，不是 agent 本身。编排 / 多跳 / 推理 / 叙述合成由**宿主 agent**完成；**Life Index 不内建会替 agent 思考的 LLM 编排模块**。
+
+2. **高级功能 = Skills**：复杂能力以 `SKILL.md` 程序化 playbook（+ 确定性 helper + 参考知识）承载，**引导而非强制** agent；不以"Life Index 自建智能模块"的形态实现。
+
+3. **GUI = 呈现**：智能对 CLI / GUI 等同；GUI 的价值在终端做不到的**呈现与交互**，零智能、零编排。
+
+4. **APEX 优先（冲突即以此为准）**：本节为最高不变量。**本宪章任何其他条款（含 §1.x / §2.x，及旧 §1.9 中"自建 L3 智能模块"措辞）与本节冲突时，一律以本节为准**，并须经第五章修订流程消解矛盾。
+
+5. **判尺**：对任何能力 / 改动只问一句——它是"让数据可找 / 可结构化 / 可呈现"的工具·skill·呈现，**还是在替 agent 决策·推理·编排**？后者即违宪。
+
+**对旧 §1.9 的收编**：旧文所列"Life Index 自建 L3 智能模块（自传引擎 / 心潮地图 / 数字家书）"——这些体验**保留**，但实现为"**宿主 agent 驱动的 Skills + GUI 呈现**"，非 Life Index 自有的 LLM 代码模块。§1.9 全文对应措辞将按本节精神在后续修订中收束。
 
 ---
 
