@@ -720,6 +720,61 @@ def test_query_sse_emits_contract_events_in_order(monkeypatch):
         server.shutdown_and_close()
 
 
+def test_query_sse_final_carries_structured_insights_delta_stays_summary(monkeypatch):
+    """Structured insights appear only in final; delta remains validated summary text."""
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: {})
+
+    class _StructuredInsightManager(_FakeManagerWarmOk):
+        def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+            self.queries.append((query, scaffold, stream_callback))
+            return {
+                "schema_version": QUERY_SCHEMA_VERSION,
+                "status": "GROUNDED",
+                "answer": "Magazine summary",
+                "insights": [
+                    {
+                        "theme": "work",
+                        "quote": "ACP selected journal excerpt.",
+                        "interpretation": "ACP interpretation is preserved.",
+                        "evidence_refs": ["Journals/2026/06/life-index_2026-06-04_001.md"],
+                    }
+                ],
+                "evidence_refs": ["Journals/2026/06/life-index_2026-06-04_001.md"],
+                "gap": None,
+                "provenance": {
+                    "transport": "acp",
+                    "model": "test",
+                    "runtime": "test",
+                    "degraded": False,
+                },
+                "usage": None,
+            }
+
+    manager = _StructuredInsightManager()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "stream structured", "scaffold": _scaffold_with_evidence()},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
+        assert names == ["status", "scaffold", "evidence", "delta", "final"], f"got {names}"
+
+        assert events[3][1] == "Magazine summary"
+        final = events[4][1]
+        insight = final["answer"]["insights"][0]
+        assert insight["theme"] == "work"
+        assert insight["quote"] == "ACP selected journal excerpt."
+        assert insight["interpretation"] == "ACP interpretation is preserved."
+        assert insight["evidence_refs"] == ["2026/06/life-index_2026-06-04_001"]
+    finally:
+        server.shutdown_and_close()
+
+
 def test_sse_exception_path_emits_error_with_rich_degraded_envelope():
     """SSE /query error event carries a rich UNGROUNDED degraded envelope."""
     manager = _FakeManagerStreaming(raise_on_query=True)

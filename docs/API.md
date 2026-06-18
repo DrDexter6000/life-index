@@ -3095,9 +3095,12 @@ For `GROUNDED` and `PARTIAL` responses, cited journal IDs are checked before
 the response is returned. Seed search results are hints, not the evidence
 boundary: an ACP host agent may gather additional Life Index journal evidence,
 but every cited `Journals/YYYY/MM/name.md` entry must exist in the active data
-directory and every substantive answer claim must carry an inline evidence ID.
-Citation validation failure degrades honestly instead of returning an
-uncited answer.
+directory. The answer uses a magazine-style structure: `answer.summary`
+contains connective prose, while each substantive `answer.insights[]` item
+carries `quote`, `interpretation`, and validated `evidence_refs`. Summary text
+must not introduce dates, counts, events, or conclusions that are not covered
+by cited insights. Citation validation failure degrades honestly instead of
+returning an uncited answer.
 
 ### `POST /query/stream` SSE 返回值
 

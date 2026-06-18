@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import sys
 from typing import Any, Callable
 
 from tools.agent_bridge.acp_client import _ACPConnection, parse_acp_stream
@@ -17,6 +19,7 @@ QUERY_SCHEMA_VERSION = "m35.agent_bridge_query.v0"
 # ─── Constants ────────────────────────────────────────────────────────
 _MAX_EVIDENCE_ENTRIES = 10
 _REPAIR_RETRY_MAX = 1
+_PROMPT_RPC_RETRY_MAX = 1
 _FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 _JSON_OBJECT_RE = re.compile(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", re.DOTALL)
 # Trailing comma immediately before a closing ``}`` or ``]`` — a common
@@ -223,6 +226,9 @@ def build_query_prompt(query: str, evidence_pack: dict, allowed_ids: set[str]) -
     multi-hop evidence gathering, then return the same query envelope schema.
     """
     allowed_str = ", ".join(sorted(allowed_ids)) if allowed_ids else "(none)"
+    data_dir = os.environ.get("LIFE_INDEX_DATA_DIR") or "(active LIFE_INDEX_DATA_DIR)"
+    validation_mode = os.environ.get("LIFE_INDEX_VALIDATION_MODE") or "(unset)"
+    python_executable = sys.executable or "python"
     evidence_lines: list[str] = []
     for sid in sorted(evidence_pack, key=lambda x: int(x[1:]) if x[1:].isdigit() else 0):
         entry = evidence_pack[sid]
@@ -245,23 +251,37 @@ SEED EVIDENCE IDs: {allowed_str}
 
 IMPORTANT:
 - You MUST use the active Life Index data directory exposed to your runtime.
+- Current LIFE_INDEX_DATA_DIR: {data_dir}
+- Current LIFE_INDEX_VALIDATION_MODE: {validation_mode}
+- Current Python executable: {python_executable}
 - Prefer Life Index CLI commands such as smart-search/search/read-top, then
-  read the cited journal files when needed. Do not rely on hidden session
-  memory or unstated prior knowledge.
+  read the cited journal files when needed. When using a terminal, invoke the
+  CLI with the current Python executable above and preserve LIFE_INDEX_DATA_DIR
+  / LIFE_INDEX_VALIDATION_MODE in that process.
+- Do NOT use web search, browser tools, external internet, or unstated prior
+  knowledge for evidence. Do not rely on hidden session memory. This is a
+  local journal query.
+- Do NOT use the queue command or queue the answer for a later turn. Return the
+  final JSON directly in the current ACP turn.
+- Do NOT search for virtual environments, inspect repository setup, or guess
+  runtime paths. Use the current Python executable above.
 - Do NOT create, edit, patch, or write any files. Do NOT save the answer to a
   temporary file. Return the final JSON directly in the ACP message.
 - You may use seed IDs (E1, E2, ...) only when the seed text is sufficient.
   For any evidence found through tools, cite canonical journal IDs in the form
   Journals/YYYY/MM/name.md.
-- Every substantive answer sentence or bullet MUST include at least one
-  evidence ID inline, for example "[Journals/2026/06/example.md]" or "[E1]".
-  This includes opening summaries, totals, and final takeaway sentences.
-  If you state a count, date range, classification, or conclusion, put the
-  evidence ID in that same sentence. Do not rely on citations in neighboring
-  bullets or later paragraphs.
-- Do NOT use uncited Markdown headings, month headings, date headings, or
-  category labels. Prefer plain cited bullets. A heading like "**2026年3月**"
-  without a journal id is invalid.
+- Use the magazine output model: `answer` is a concise summary, and
+  `insights[]` carries the evidence. The summary may be connective prose and
+  does not need an inline evidence id, but it must not introduce dates, counts,
+  locations, events, or conclusions that are not covered by the cited insights.
+- Every substantive insight MUST include `quote`, `interpretation`, and at
+  least one `evidence_refs` item. The quote should be a short journal excerpt
+  or close excerpt with no raw double quotes; use Chinese corner quotes if the
+  source text contains quotes. The interpretation explains why that evidence
+  matters for the question.
+- The top-level evidence_refs MUST exactly equal the union of all
+  insights[].evidence_refs. Do not list every document you found, searched, or
+  classified; list only the journal IDs actually used by returned insights.
 - Do NOT cite phrases like "[all March entries]" or "[search results]".
   Citation markers must be seed IDs or concrete Journals/YYYY/MM/name.md ids.
 - JSON strings must be valid JSON: avoid raw double quotes inside strings, or
@@ -273,8 +293,8 @@ IMPORTANT:
 INSTRUCTIONS:
 1. Answer ONLY from cited Life Index journal evidence. Do NOT fabricate,
    infer from hidden memory, or use external knowledge.
-2. Every claim in your answer MUST be traceable to at least one cited journal
-   entry.
+2. Every factual claim in your summary MUST be covered by at least one
+   structured cited insight.
 3. Cite evidence using seed short IDs from the SEED set above or canonical
    Journals/YYYY/MM/name.md IDs discovered by your tool reads.
 4. If the evidence is insufficient for a complete answer, mark status as
@@ -289,9 +309,14 @@ m35.agent_bridge_query.v0:
 {{
   "schema_version": "m35.agent_bridge_query.v0",
   "status": "GROUNDED",
-  "answer": "Example: Total is 3 days [Journals/2026/04/example.md].",
+  "answer": "A short magazine-style summary. No new facts beyond insights.",
   "insights": [
-    {{"text": "insight text with [E1]", "evidence_refs": ["E1"]}}
+    {{
+      "theme": "optional short theme",
+      "quote": "short journal excerpt with no raw double quotes",
+      "interpretation": "why this evidence matters",
+      "evidence_refs": ["E1"]
+    }}
   ],
   "evidence_refs": ["E1", "E2"],
   "gap": null,
@@ -307,15 +332,16 @@ ACP RPC response; any model-generated value will be ignored.
 STATUS RULES (enforced by validator):
 - GROUNDED: answer is non-empty; insights is non-empty with at least one
   evidence_ref each; all refs are seed IDs or canonical Journals/... ids;
-  gap is null.
+  each insight has quote or interpretation; gap is null.
 - PARTIAL: answer is present (may be partial); gap is non-empty; refs may
   be incomplete.
 - UNGROUNDED: answer is null; insights is empty; evidence_refs is empty;
   gap is non-empty explaining why.
 
 WARNING: Any GROUNDED or PARTIAL answer with fabricated, missing, or
-non-journal citations, or any uncited summary/total/takeaway sentence, will be
-rejected before it reaches the user. Seed IDs available in this prompt:
+non-journal citations, any insight without evidence_refs, or any summary fact
+not covered by cited insights will be rejected before it reaches the user.
+Seed IDs available in this prompt:
 {allowed_str}"""
 
 
@@ -384,12 +410,27 @@ def parse_and_validate(  # noqa: C901
     if gap is not None and not isinstance(gap, str):
         return None, f"gap must be string or null, got: {type(gap).__name__}"
 
-    # Validate insight entries
+    # Validate insight entries.  V6-CM accepts the structured magazine
+    # shape (quote + interpretation) while preserving the legacy text field.
     for i, ins in enumerate(insights):
         if not isinstance(ins, dict):
             return None, f"insights[{i}] must be a dict"
-        if not isinstance(ins.get("text"), str):
-            return None, f"insights[{i}].text must be a string"
+        text = ins.get("text")
+        quote = ins.get("quote")
+        interpretation = ins.get("interpretation")
+        theme = ins.get("theme")
+        for field_name, value in (
+            ("text", text),
+            ("quote", quote),
+            ("interpretation", interpretation),
+            ("theme", theme),
+        ):
+            if value is not None and not isinstance(value, str):
+                return None, f"insights[{i}].{field_name} must be a string when present"
+        if not any(
+            isinstance(value, str) and value.strip() for value in (text, quote, interpretation)
+        ):
+            return None, (f"insights[{i}] must include non-empty text, quote, or interpretation")
         refs = ins.get("evidence_refs")
         if not isinstance(refs, list):
             return None, f"insights[{i}].evidence_refs must be a list"
@@ -542,6 +583,44 @@ def _finalize_validated_envelope(
     return validated, None
 
 
+def _is_queued_placeholder(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", text).strip().lower()
+    return bool(normalized) and "queued for the next turn" in normalized
+
+
+def _send_prompt_turn(
+    conn: _ACPConnection,
+    prompt_text: str,
+    *,
+    stream_callback: Callable[[str], None] | None = None,
+) -> tuple[dict, list[dict]]:
+    """Send one ``session/prompt`` turn with one bounded retry on RPC failure.
+
+    The retry is intentionally scoped to prompt RPCs, not handshake/startup.
+    If a failed attempt emitted partial chunks before raising, those chunks are
+    ignored by returning only the successful attempt's newly collected messages.
+    """
+    last_exc: Exception | None = None
+    for _attempt in range(_PROMPT_RPC_RETRY_MAX + 1):
+        start_len = len(conn.collected)
+        try:
+            resp = conn.rpc(
+                "session/prompt",
+                {
+                    "sessionId": conn.session_id,
+                    "prompt": [{"type": "text", "text": prompt_text}],
+                },
+                stream_callback=stream_callback,
+            )
+            return resp, conn.collected[start_len:]
+        except Exception as exc:
+            last_exc = exc
+            continue
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("ACP session/prompt failed without an exception")
+
+
 def acp_query_adapter(
     query: str,
     scaffold: dict,
@@ -586,25 +665,17 @@ def acp_query_adapter(
         conn_meta["initialize_result"] = getattr(conn, "initialize_result", None)
         conn_meta["session_new_result"] = getattr(conn, "session_new_result", None)
 
-        # Snapshot collected length before this query so we only parse chunks
-        # produced for the current prompt (prevents warm-connection contamination).
-        pre_prompt_len = len(conn.collected)
-
         # 4. Send session/prompt and capture the authoritative RPC response.
         #    Incremental agent_message_chunk updates are forwarded through
         #    stream_callback inside rpc() as they arrive.
-        prompt_resp = conn.rpc(
-            "session/prompt",
-            {
-                "sessionId": conn.session_id,
-                "prompt": [{"type": "text", "text": prompt}],
-            },
+        prompt_resp, turn_messages = _send_prompt_turn(
+            conn,
+            prompt,
             stream_callback=stream_callback,
         )
         rpc_usage = _extract_rpc_usage(prompt_resp)
 
         # 5. Collect text via parse_acp_stream from only new chunks
-        turn_messages = conn.collected[pre_prompt_len:]
         collected_text = parse_acp_stream(turn_messages)
 
         # 6. Parse and validate
@@ -623,11 +694,14 @@ def acp_query_adapter(
                 return finalized
             error = citation_error
 
-        # 7. First failure — bounded retry with repair prompt
-        # Snapshot collected messages: only parse new messages from the retry
-        # to avoid concatenating the original (failed) output with the retry.
-        pre_retry_len = len(conn.collected)
+        if _is_queued_placeholder(collected_text):
+            return build_degraded_result(
+                "UNGROUNDED",
+                "ACP runtime queued the prompt instead of returning a final answer.",
+                build_provenance(cfg, conn_meta, degraded=True),
+            )
 
+        # 7. First failure — bounded retry with repair prompt
         repair_prompt = (
             "Your previous response failed validation with the following error:\n"
             f"  {error}\n\n"
@@ -639,27 +713,25 @@ def acp_query_adapter(
             f"IDs from: {', '.join(sorted(allowed_ids)) if allowed_ids else '(none)'}, "
             "and you may cite additional journal evidence as "
             "Journals/YYYY/MM/life-index_YYYY-MM-DD_NNN.md if you read or searched it "
-            "during this ACP turn. Every substantive answer sentence or bullet must "
-            "include at least one inline evidence id. Counts, date ranges, opening "
-            "summaries, and final takeaway sentences must carry their own inline "
-            "evidence id in the same sentence. Do not use uncited Markdown headings, "
-            "date/month/category labels, or non-file citation phrases like "
-            "[all March entries]. Avoid raw double quotes inside JSON strings; use "
-            "Chinese corner quotes instead.\n\n"
+            "during this ACP turn. Use the magazine model: answer is a concise "
+            "summary, and every substantive insight has quote, interpretation, "
+            "and evidence_refs. The summary may be connective prose without inline "
+            "ids, but it must not introduce dates, counts, locations, events, or "
+            "conclusions not covered by cited insights. The top-level evidence_refs "
+            "MUST exactly equal the union of all insights[].evidence_refs; do not "
+            "list every document you found or classified. Do not use non-file "
+            "citation phrases like [all March entries]. Avoid raw double quotes "
+            "inside JSON strings; use Chinese corner quotes instead.\n\n"
             "Output:"
         )
 
-        prompt_resp_retry = conn.rpc(
-            "session/prompt",
-            {
-                "sessionId": conn.session_id,
-                "prompt": [{"type": "text", "text": repair_prompt}],
-            },
+        prompt_resp_retry, retry_messages = _send_prompt_turn(
+            conn,
+            repair_prompt,
             stream_callback=stream_callback,
         )
         rpc_usage_retry = _extract_rpc_usage(prompt_resp_retry)
 
-        retry_messages = conn.collected[pre_retry_len:]
         collected_text_retry = parse_acp_stream(retry_messages)
 
         validated_retry, error_retry = parse_and_validate(collected_text_retry, allowed_ids)

@@ -1048,6 +1048,149 @@ def test_acp_query_adapter_ignores_preexisting_collected_chunks():
     assert result["evidence_refs"] == ["Journals/2026/06/life-index_2026-06-10_001.md"]
 
 
+def test_acp_query_adapter_retries_transient_prompt_rpc_failure():
+    """A transient session/prompt failure is retried once before degrading."""
+    from tools.agent_bridge.acp_query import QUERY_SCHEMA_VERSION, acp_query_adapter
+    from tools.agent_bridge.config import BrainConfig
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+    )
+
+    valid_response = json.dumps(
+        {
+            "schema_version": "m35.agent_bridge_query.v0",
+            "status": "GROUNDED",
+            "answer": "A connective summary.",
+            "insights": [
+                {
+                    "quote": "Evidence one.",
+                    "interpretation": "The cited evidence supports the answer.",
+                    "evidence_refs": ["E1"],
+                }
+            ],
+            "evidence_refs": ["E1"],
+            "gap": None,
+            "provenance": {
+                "transport": "acp",
+                "model": "fake",
+                "runtime": "fake",
+                "degraded": False,
+            },
+            "usage": None,
+        },
+        ensure_ascii=False,
+    )
+
+    class FlakyPromptConnection:
+        session_id = "flaky-session"
+        collected: list[dict] = []
+        calls = 0
+
+        def rpc(self, method: str, params: dict | None = None, stream_callback=None) -> dict:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary ACP prompt timeout")
+            self.collected.append(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "session/update",
+                    "params": {
+                        "sessionId": "flaky-session",
+                        "update": {
+                            "content": {"text": valid_response, "type": "text"},
+                            "sessionUpdate": "agent_message_chunk",
+                        },
+                    },
+                }
+            )
+            return {"jsonrpc": "2.0", "id": self.calls, "result": {"status": "ok"}}
+
+    scaffold = {
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence one.",
+                }
+            ]
+        }
+    }
+    conn = FlakyPromptConnection()
+
+    result = acp_query_adapter("flaky prompt query", scaffold, cfg, connection=conn)
+
+    assert result["schema_version"] == QUERY_SCHEMA_VERSION
+    assert result["status"] == "GROUNDED"
+    assert result["provenance"]["degraded"] is False
+    assert conn.calls == 2
+
+
+def test_acp_query_adapter_degrades_queued_prompt_without_json_repair():
+    """Hermes queue placeholders are runtime-not-final, not JSON format failures."""
+    from tools.agent_bridge.acp_query import acp_query_adapter
+    from tools.agent_bridge.config import BrainConfig
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+    )
+
+    class QueuedPromptConnection:
+        session_id = "queued-session"
+        collected: list[dict] = []
+        calls = 0
+
+        def rpc(self, method: str, params: dict | None = None, stream_callback=None) -> dict:
+            self.calls += 1
+            self.collected.append(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "session/update",
+                    "params": {
+                        "sessionId": "queued-session",
+                        "update": {
+                            "content": {
+                                "text": "Queued for the next turn. (1 queued)",
+                                "type": "text",
+                            },
+                            "sessionUpdate": "agent_message_chunk",
+                        },
+                    },
+                }
+            )
+            return {"jsonrpc": "2.0", "id": self.calls, "result": {"status": "ok"}}
+
+    scaffold = {
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence one.",
+                }
+            ]
+        }
+    }
+    conn = QueuedPromptConnection()
+
+    result = acp_query_adapter("queued prompt query", scaffold, cfg, connection=conn)
+
+    assert result["status"] == "UNGROUNDED"
+    assert result["provenance"]["degraded"] is True
+    assert "queued" in result["gap"].lower()
+    assert "Failed to parse any valid JSON" not in result["gap"]
+    assert conn.calls == 1
+
+
 # ─── Lead-review: provenance and usage contract tests ─────────────────
 
 
@@ -1287,8 +1430,39 @@ def test_build_query_prompt_requires_life_index_tool_reads():
     assert "Do NOT create, edit, patch, or write any files" in prompt
 
 
-def test_build_query_prompt_requires_inline_citations_and_search_before_ungrounded():
-    """Prompt requires inline IDs and checked evidence before UNGROUNDED."""
+def test_build_query_prompt_forbids_web_queue_and_runtime_guessing():
+    """Prompt keeps ACP agent inside local CLI/runtime boundaries."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    prompt = build_query_prompt(
+        "Any question",
+        {"E1": {"short_id": "E1", "text": "A real, non-empty snippet."}},
+        {"E1"},
+    )
+
+    assert "Do NOT use web search" in prompt
+    assert "Do NOT use the queue command" in prompt
+    assert "Do NOT search for virtual environments" in prompt
+    assert "Current Python executable" in prompt
+    assert "LIFE_INDEX_DATA_DIR" in prompt
+
+
+def test_build_query_prompt_limits_top_level_refs_to_insight_union():
+    """Prompt prevents catalog-style evidence_refs that fail trace validation."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    prompt = build_query_prompt(
+        "Classify test logs",
+        {"E1": {"short_id": "E1", "text": "A real, non-empty snippet."}},
+        {"E1"},
+    )
+
+    assert "top-level evidence_refs MUST exactly equal the union" in prompt
+    assert "Do not list every document" in prompt
+
+
+def test_build_query_prompt_requires_structured_insight_evidence_and_search_before_ungrounded():
+    """Prompt requires cited insights and checked evidence before UNGROUNDED."""
     from tools.agent_bridge.acp_query import build_query_prompt
 
     evidence = {
@@ -1300,12 +1474,34 @@ def test_build_query_prompt_requires_inline_citations_and_search_before_unground
     assert "GROUNDED" in prompt
     assert "PARTIAL" in prompt
     assert "UNGROUNDED" in prompt
-    assert "Every substantive answer sentence or bullet MUST include" in prompt
+    assert "Every substantive insight MUST include" in prompt
+    assert "quote" in prompt
+    assert "interpretation" in prompt
+    assert "evidence_refs" in prompt
     assert "Before choosing UNGROUNDED" in prompt
     assert "run at least one relevant Life Index search" in prompt
     # m35 contract + allowed-ID restrictions preserved.
     assert "m35.agent_bridge_query.v0" in prompt
     assert "E1" in prompt and "E2" in prompt
+
+
+def test_build_query_prompt_requests_magazine_insights_not_sentence_citation_json():
+    """Prompt asks for structured magazine insights with evidence on each insight."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    prompt = build_query_prompt(
+        "Summarize my March work progress",
+        {"E1": {"short_id": "E1", "text": "A cited snippet."}},
+        {"E1"},
+    )
+
+    assert "magazine" in prompt.lower()
+    assert '"quote"' in prompt
+    assert '"interpretation"' in prompt
+    assert "each insight" in prompt
+    assert "summary" in prompt
+    assert "does not need an inline evidence id" in prompt
+    assert "Do NOT create, edit, patch, or write any files" in prompt
 
 
 def test_build_query_prompt_remains_well_formed_with_no_evidence():
@@ -1318,6 +1514,36 @@ def test_build_query_prompt_remains_well_formed_with_no_evidence():
     assert "GROUNDED" in prompt
     assert "(no evidence supplied)" in prompt
     assert "Life Index CLI" in prompt
+
+
+def test_parse_and_validate_accepts_structured_magazine_insight_without_text():
+    """Structured insight fields are accepted without legacy text duplication."""
+    from tools.agent_bridge.acp_query import parse_and_validate
+
+    raw = json.dumps(
+        {
+            "schema_version": "m35.agent_bridge_query.v0",
+            "status": "GROUNDED",
+            "answer": "A connective summary.",
+            "insights": [
+                {
+                    "quote": "Original journal excerpt.",
+                    "interpretation": "Why the excerpt matters.",
+                    "evidence_refs": ["E1"],
+                }
+            ],
+            "evidence_refs": ["E1"],
+            "gap": None,
+        },
+        ensure_ascii=False,
+    )
+
+    result, error = parse_and_validate(raw, frozenset({"E1"}))
+
+    assert error is None
+    assert result is not None
+    assert result["insights"][0]["quote"] == "Original journal excerpt."
+    assert result["insights"][0]["interpretation"] == "Why the excerpt matters."
 
 
 # ── Bounded trailing-comma repair (light schema-shape drift) ──
