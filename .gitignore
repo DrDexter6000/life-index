@@ -129,7 +129,6 @@ Kimi_here.bat
 .handoff.md
 
 # ----- 本地 Agent 专属配置 -----
-AGENTS.md
 .agents.local.md
 
 # ----- 本地 Agent 治理 / 并行任务运行层（不公开）-----
