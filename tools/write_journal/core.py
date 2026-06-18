@@ -4,7 +4,6 @@ Life Index - Write Journal Tool - Core
 核心协调模块
 """
 
-import re
 from pathlib import Path
 from typing import Any, Dict, Sequence
 
@@ -42,7 +41,12 @@ from ..lib.logger import get_logger
 logger = get_logger(__name__)
 
 # 导入子模块
-from .utils import get_year_month, generate_filename, get_next_sequence
+from .utils import (
+    extract_explicit_metadata_from_content as _extract_explicit_metadata_from_content,
+    generate_filename,
+    get_next_sequence,
+    get_year_month,
+)
 from ..lib.frontmatter import format_journal_content as format_content
 from .attachments import extract_file_paths_from_content, process_attachments
 from .weather import query_weather_for_location, normalize_location
@@ -729,25 +733,7 @@ def extract_explicit_metadata_from_content(content: str) -> Dict[str, str]:
     调用方应将提取结果用于填充 data["location"]/data["weather"]，
     但 **不得** 用任何"清理后"的内容覆盖 data["content"]。
     """
-    extracted: Dict[str, str] = {}
-    if not content:
-        return extracted
-
-    patterns = {
-        "location": re.compile(r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
-        "weather": re.compile(r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
-    }
-
-    for line in content.splitlines():
-        for field, pattern in patterns.items():
-            if field in extracted:
-                continue
-            match = pattern.match(line)
-            if match:
-                extracted[field] = match.group(1).strip()
-                break
-
-    return extracted
+    return _extract_explicit_metadata_from_content(content)
 
 
 def _build_confirmation_payload(

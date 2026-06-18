@@ -117,3 +117,30 @@ def get_next_sequence(date_str: str) -> int:
             max_seq = max(max_seq, int(match.group(1)))
 
     return max_seq + 1
+
+
+def extract_explicit_metadata_from_content(content: str) -> dict[str, str]:
+    """Extract explicit location/weather metadata from journal body.
+
+    This is a read-only scan for lines such as ``地点:`` / ``天气:`` and their
+    English equivalents. It must never modify the body text.
+    """
+    extracted: dict[str, str] = {}
+    if not content:
+        return extracted
+
+    patterns = {
+        "location": re.compile(r"^\s*(?:地点|位置|location)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
+        "weather": re.compile(r"^\s*(?:天气|weather)\s*[:：]\s*(.+?)\s*$", re.IGNORECASE),
+    }
+
+    for line in content.splitlines():
+        for field, pattern in patterns.items():
+            if field in extracted:
+                continue
+            match = pattern.match(line)
+            if match:
+                extracted[field] = match.group(1).strip()
+                break
+
+    return extracted

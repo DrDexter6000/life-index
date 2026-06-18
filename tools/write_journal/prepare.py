@@ -8,7 +8,7 @@ This module contains the core business logic for preparing journal data
 before writing. It handles:
 - Rule-based fallbacks (title/abstract from content)
 - Optional LLM-assisted metadata extraction when explicitly enabled
-- Project inference from content keywords
+- Project preservation from explicit input or opt-in extraction
 - Weather query integration
 - Location normalization
 
@@ -32,11 +32,14 @@ from tools.lib.text_normalize import normalize_text_list
 from tools.lib.topics import VALID_TOPICS
 
 logger = logging.getLogger(__name__)
+from tools.write_journal.utils import extract_explicit_metadata_from_content
 from tools.write_journal.weather import normalize_location
 
 from .weather import query_weather_for_location
 
-# Project inference rules - SSOT for known project aliases
+# Retained for import compatibility with older callers. Default metadata
+# preparation intentionally does not infer project from these aliases; host
+# agents own semantic facet completion.
 KNOWN_PROJECT_ALIASES: list[tuple[str, str]] = [
     ("life index", "Life Index"),
     ("life-index", "Life Index"),
@@ -105,34 +108,24 @@ def _compact_location(value: str) -> str:
     return f"{parts[0]}, {parts[-1]}"
 
 
-def _infer_project(prepared: dict[str, Any], extracted: dict[str, Any]) -> str:
-    """Infer project from content keywords.
+def _resolve_project(prepared: dict[str, Any], extracted: dict[str, Any]) -> str:
+    """Resolve project from explicit input or opt-in extraction.
 
-    Checks both user-provided fields and extracted fields for known aliases.
+    The default no-LLM path must not infer semantic facets from content keywords.
+    Host agents are responsible for natural-language facet completion and should
+    pass project explicitly when they can infer it. Opt-in extraction may still
+    provide a project value through ``extracted``.
 
     Args:
         prepared: User-provided data dict
-        extracted: LLM-extracted metadata dict
+        extracted: Opt-in extracted metadata dict
 
     Returns:
-        Inferred project name or empty string
+        Explicit project name or empty string
     """
     explicit = str(prepared.get("project") or extracted.get("project") or "").strip()
     if explicit:
         return explicit
-
-    # Build corpus for keyword search
-    corpus_parts = [
-        str(prepared.get("title") or ""),
-        str(prepared.get("content") or ""),
-        " ".join(normalize_text_list(prepared.get("tags"))),
-        " ".join(normalize_text_list(extracted.get("tags"))),
-    ]
-    corpus = "\n".join(corpus_parts).lower()
-
-    for needle, canonical in KNOWN_PROJECT_ALIASES:
-        if needle in corpus:
-            return canonical
 
     return ""
 
@@ -255,6 +248,7 @@ def prepare_journal_metadata(
     # Mark user-provided fields
     for field in (
         "title",
+        "abstract",
         "topic",
         "mood",
         "tags",
@@ -314,8 +308,8 @@ def prepare_journal_metadata(
                 prepared[field] = normalized
                 field_sources[field] = "ai"
 
-    # Project inference
-    inferred_project = _infer_project(prepared, extracted)
+    # Project is agent/user supplied by default; no keyword inference here.
+    inferred_project = _resolve_project(prepared, extracted)
     if inferred_project and not str(prepared.get("project", "")).strip():
         prepared["project"] = inferred_project
         field_sources["project"] = "ai"
@@ -332,9 +326,15 @@ def prepare_journal_metadata(
     prepared["attachments"] = list(form_data.get("attachments", []))
     prepared["attachment_urls"] = list(form_data.get("attachment_urls", []))
 
-    # Location auto-fill
-    location = str(prepared.get("location", "")).strip()
-    weather = str(prepared.get("weather", "")).strip()
+    # Location/weather auto-fill. Explicit metadata in the body wins over
+    # caller-supplied fallback fields, matching the write path.
+    explicit_metadata = extract_explicit_metadata_from_content(content)
+    location = str(explicit_metadata.get("location") or prepared.get("location", "")).strip()
+    weather = str(explicit_metadata.get("weather") or prepared.get("weather", "")).strip()
+    if explicit_metadata.get("location"):
+        field_sources["location"] = "user"
+    if explicit_metadata.get("weather"):
+        field_sources["weather"] = "user"
 
     if not location:
         location = get_default_location()
