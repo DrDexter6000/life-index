@@ -121,6 +121,21 @@ def _invoke(data_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _invoke_with_env(
+    data_dir: Path, extra_env: dict[str, str], *args: str
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    env.update(extra_env)
+    return subprocess.run(
+        [sys.executable, "-m", "tools", "index-tree", *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+
 def _payload(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     return json.loads(result.stdout)
 
@@ -339,6 +354,47 @@ def test_navigate_json_contract_filters_materialized_index_b(tmp_path: Path) -> 
     assert payload["data"]["count"] == 1
     assert payload["data"]["entry_pointers"] == [journal.relative_to(data_dir).as_posix()]
     assert str(data_dir) not in _all_strings(payload)
+
+
+def test_navigate_writes_validation_tool_call_log(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    log_path = tmp_path / "tool-calls.jsonl"
+    journal = _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Facet Work",
+        extra_frontmatter=(
+            'project: "Life Index"\n' 'tags: ["ai"]\n' 'location: "London, United Kingdom"'
+        ),
+    )
+
+    result = _invoke_with_env(
+        data_dir,
+        {
+            "LIFE_INDEX_VALIDATION_MODE": "1",
+            "LIFE_INDEX_TOOL_CALL_LOG": str(log_path),
+        },
+        "navigate",
+        "--from",
+        "2026-03",
+        "--to",
+        "2026-03",
+        "--filter",
+        "location=London, United Kingdom",
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["tool"] == "index-tree.navigate"
+    assert records[0]["params"] == {
+        "date_from": "2026-03",
+        "date_to": "2026-03",
+        "filters": ["location=London, United Kingdom"],
+    }
+    assert records[0]["result"]["count"] == 1
+    assert records[0]["result"]["entry_pointers"] == [journal.relative_to(data_dir).as_posix()]
+    assert str(data_dir) not in json.dumps(records, ensure_ascii=False)
 
 
 def test_lens_invalid_signal_returns_structured_error(tmp_path: Path) -> None:

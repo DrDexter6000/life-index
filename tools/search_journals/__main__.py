@@ -15,6 +15,7 @@ ensure_utf8_io()
 import argparse
 import json
 import sys
+import time
 from importlib import import_module
 
 from .core import hierarchical_search
@@ -22,6 +23,7 @@ from ..lib.config import ensure_dirs
 from ..lib.observability import build_provenance_envelope
 from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.trace import Trace
+from ..lib.tool_call_log import emit_tool_call_log
 
 SCHEMA_VERSION = "m16.search.v0"
 
@@ -84,6 +86,7 @@ def _emit_json(payload: dict, *, include_events: bool = True) -> None:
 
 def main() -> None:
     """CLI entry point"""
+    started = time.perf_counter()
     parser = argparse.ArgumentParser(
         description="Life Index - Search Journals Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -294,6 +297,35 @@ Examples:
     )
     result["schema_version"] = provenance_envelope["schema_version"]
     result["provenance"] = provenance_envelope["provenance"]
+    emit_tool_call_log(
+        "search",
+        params={
+            "query": args.query,
+            "topic": args.topic,
+            "project": args.project,
+            "tags": tags,
+            "mood": mood,
+            "people": people,
+            "date_from": args.date_from,
+            "date_to": args.date_to,
+            "location": args.location,
+            "weather": args.weather,
+            "year": args.year,
+            "month": args.month,
+            "level": args.level,
+            "semantic": args.semantic and not args.no_semantic,
+            "limit": args.limit,
+            "offset": args.offset,
+        },
+        result={
+            "total_matches": result.get("total_matches"),
+            "total_found": result.get("total_found"),
+            "total_available": result.get("total_available"),
+            "has_more": result.get("has_more"),
+        },
+        elapsed_ms=(time.perf_counter() - started) * 1000.0,
+        success=bool(result.get("success")),
+    )
     _emit_json(result)
 
     sys.exit(0 if result.get("success") else 1)

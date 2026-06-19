@@ -6,7 +6,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from typing import Any
+
+from tools.lib.tool_call_log import emit_tool_call_log
 
 from .core import (
     _error_payload,
@@ -117,8 +120,57 @@ def _parse_filter_operations(filters: list[str]) -> list[dict[str, Any]]:
     return operations
 
 
+def _log_index_tree_call(
+    args: argparse.Namespace, payload: dict[str, Any], elapsed_ms: float
+) -> None:
+    if args.subcommand not in {"ensure", "navigate"}:
+        return
+
+    raw_data = payload.get("data")
+    data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+    raw_fallback = data.get("fallback")
+    fallback: dict[str, Any] = raw_fallback if isinstance(raw_fallback, dict) else {}
+    result: dict[str, Any] = {
+        "source": data.get("source"),
+        "fallback_used": fallback.get("used"),
+    }
+    if args.subcommand == "ensure":
+        result["entry_count"] = data.get("entry_count")
+    else:
+        result["count"] = data.get("count")
+        result["entry_pointers"] = data.get("entry_pointers", [])
+        raw_coverage = data.get("coverage")
+        coverage: dict[str, Any] = raw_coverage if isinstance(raw_coverage, dict) else {}
+        result["candidate_count_before_filters"] = coverage.get("candidate_count_before_filters")
+        result["candidate_count_after_filters"] = coverage.get("candidate_count_after_filters")
+
+    raw_error = payload.get("error")
+    error: dict[str, Any] | None = raw_error if isinstance(raw_error, dict) else None
+    raw_errors = payload.get("errors")
+    if error is None and isinstance(raw_errors, list) and raw_errors:
+        first_error = raw_errors[0]
+        error = first_error if isinstance(first_error, dict) else None
+
+    params: dict[str, Any] = {
+        "date_from": getattr(args, "date_from", None),
+        "date_to": getattr(args, "date_to", None),
+    }
+    if args.subcommand == "navigate":
+        params["filters"] = list(getattr(args, "filter", []) or [])
+
+    emit_tool_call_log(
+        f"index-tree.{args.subcommand}",
+        params=params,
+        result=result,
+        elapsed_ms=elapsed_ms,
+        success=bool(payload.get("success")),
+        error_code=str(error.get("code")) if error else None,
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
+    started = time.perf_counter()
     if args.subcommand == "nodes":
         payload = build_nodes_payload(level=args.level)
     elif args.subcommand == "lens":
@@ -172,6 +224,7 @@ def main(argv: list[str] | None = None) -> None:
     else:
         raise AssertionError(f"unreachable subcommand: {args.subcommand}")
 
+    _log_index_tree_call(args, payload, (time.perf_counter() - started) * 1000.0)
     _emit(payload)
     sys.exit(0 if payload.get("success") else 1)
 
