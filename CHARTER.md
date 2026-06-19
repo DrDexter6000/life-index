@@ -1,12 +1,12 @@
 # Life Index Charter | 生命索引宪章
 
-> **版本**：v1.8.0
+> **版本**：v1.9.0
 > **批准日期**：2026-04-23（Round 17 · Task 1）
 > **批准人**：Life Index Developer
 > **下次评审**：2026-07-23（每季度一次）
-> **修订次数**：8
-> **最近修订**：2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）
-> **此前修订**：2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
+> **修订次数**：9
+> **最近修订**：2026-06-19 — 新增 APEX 第 6 点「评估即咨询,非闸门(Evaluation is Advisory, not a Gate)」,收紧 APEX §1/§5(RFC-2026-06-19-evaluation-advisory-not-gate;owner 亲签)
+> **此前修订**：2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）；2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
 
 ---
 
@@ -47,6 +47,11 @@ Life Index 不是一个 side project。它承载着**一位父亲写给女儿的
 4. **APEX 优先（冲突即以此为准）**：本节为最高不变量。**本宪章任何其他条款（含 §1.x / §2.x，及旧 §1.9 中"自建 L3 智能模块"措辞）与本节冲突时，一律以本节为准**，并须经第五章修订流程消解矛盾。
 
 5. **判尺**：对任何能力 / 改动只问一句——它是"让数据可找 / 可结构化 / 可呈现"的工具·skill·呈现，**还是在替 agent 决策·推理·编排**？后者即违宪。
+
+6. 评估即咨询,非闸门(Evaluation is Advisory, not a Gate):对 agent 输出的任何评估机制(grounding 校验、引证核验、质量判定等)仅以旁路咨询形态存在:产出标签与可观测元数据,供用户与宿主 agent 参考;不得作为控制流闸门去阻断、压制、改写、强制重试或以其它方式覆盖 agent 的产出。
+   - 依据:agent 能力为非平稳量(随模型迭代单调增强)。任何以"当下能力"标定的闸门,其判据将随时间系统性失配(误拒率上升),反向劣化产品——与第零条"不随模型迭代而动摇"相悖。旁路标签对能力单调安全:无论 agent 强弱,只增信息、不夺决策权,故长期正确。
+   - 推论:① 评估机制默认非阻断(non-blocking by construction),其输出是元数据而非控制信号。② 为弥补当下模型局限而引入的辅助件(预脚手架、prompt 提示、候选集预筛等)须为 agent 可关闭的可选增益,不得成为产出路径上的承重依赖。
+   - 判尺补充(承 APEX §5):一个评估 / 辅助机制只问——它是在告知(标签 / 可观测性,agent 与用户自决),还是在替 agent 把关(阻断 / 覆盖)?后者即违宪。
 
 **对旧 §1.9 的收编**：旧文所列"Life Index 自建 L3 智能模块（自传引擎 / 心潮地图 / 数字家书）"——这些体验**保留**，但实现为"**宿主 agent 驱动的 Skills + GUI 呈现**"，非 Life Index 自有的 LLM 代码模块。§1.9 全文对应措辞将按本节精神在后续修订中收束。
 
