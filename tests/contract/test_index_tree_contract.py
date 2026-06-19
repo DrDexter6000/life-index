@@ -397,6 +397,59 @@ def test_navigate_writes_validation_tool_call_log(tmp_path: Path) -> None:
     assert str(data_dir) not in json.dumps(records, ensure_ascii=False)
 
 
+def test_discover_json_contract_and_validation_tool_call_log(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    log_path = tmp_path / "tool-calls.jsonl"
+    _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Facet Work",
+        extra_frontmatter=(
+            'project: "Life Index"\n' 'tags: ["ai"]\n' 'location: "London, United Kingdom"'
+        ),
+    )
+
+    result = _invoke_with_env(
+        data_dir,
+        {
+            "LIFE_INDEX_VALIDATION_MODE": "1",
+            "LIFE_INDEX_TOOL_CALL_LOG": str(log_path),
+        },
+        "discover",
+        "--from",
+        "2026-03",
+        "--to",
+        "2026-03",
+        "--facet",
+        "location",
+        "--facet",
+        "project",
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    assert payload["success"] is True
+    assert payload["command"] == "index-tree.discover"
+    assert payload["data"]["facets"]["location"]["values"][0]["value"] == ("London, United Kingdom")
+    assert payload["data"]["facets"]["project"]["values"][0]["count"] == 1
+    assert str(data_dir) not in _all_strings(payload)
+
+    records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["tool"] == "index-tree.discover"
+    assert records[0]["params"] == {
+        "date_from": "2026-03",
+        "date_to": "2026-03",
+        "facets": ["location", "project"],
+    }
+    assert records[0]["result"]["candidate_count"] == 1
+    assert records[0]["result"]["facet_value_counts"] == {
+        "location": 1,
+        "project": 1,
+    }
+    assert str(data_dir) not in json.dumps(records, ensure_ascii=False)
+
+
 def test_lens_invalid_signal_returns_structured_error(tmp_path: Path) -> None:
     data_dir = tmp_path / "Life-Index"
     _seed_data(data_dir)

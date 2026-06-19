@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -216,6 +217,119 @@ def _baseline_paths_by_scan(query: str, nodes: list[dict[str, Any]]) -> list[str
 
 def _facet_specs_by_name() -> dict[str, Any]:
     return {spec.name: spec for spec in FACETS}
+
+
+def _normalize_facets(facets: list[str] | None) -> list[str]:
+    facet_specs = _facet_specs_by_name()
+    if not facets:
+        return [spec.name for spec in FACETS]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for facet in facets:
+        text = str(facet).strip()
+        if text and text not in seen:
+            seen.add(text)
+            normalized.append(text)
+    invalid = [facet for facet in normalized if facet not in facet_specs]
+    if invalid:
+        raise ValueError(f"facet must be one of {sorted(facet_specs)}, got {invalid!r}")
+    return normalized
+
+
+def _facet_menu(entries: list[Any], facet: str) -> dict[str, Any]:
+    spec = _facet_specs_by_name()[facet]
+    counts: dict[str, int] = defaultdict(int)
+    pointers: dict[str, list[str]] = defaultdict(list)
+    for entry in entries:
+        for value in _facet_values(entry, spec):
+            counts[value] += 1
+            if len(pointers[value]) < 5:
+                pointers[value].append(entry.rel_path)
+
+    values: list[dict[str, Any]] = [
+        {
+            "value": value,
+            "count": count,
+            "sample_entry_pointers": pointers[value],
+        }
+        for value, count in counts.items()
+    ]
+    values.sort(key=lambda item: (-int(item["count"]), str(item["value"])))
+    return {
+        "facet": facet,
+        "value_count": len(values),
+        "values": values,
+    }
+
+
+def build_discover_payload(
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    facets: list[str] | None = None,
+) -> dict[str, Any]:
+    """Return deterministic facet value menus for a scoped Index B query.
+
+    The host agent chooses relevant values from this menu. This helper only
+    enumerates already-materializable facet values and never infers predicates
+    from natural language.
+    """
+    try:
+        selected_facets = _normalize_facets(facets)
+    except ValueError as exc:
+        return _error_payload(
+            "index-tree.discover",
+            "INDEX_TREE_DISCOVER_INVALID_FACET",
+            str(exc),
+            {"facets": facets},
+        )
+
+    try:
+        start = _parse_month(date_from)
+        end = _parse_month(date_to, fallback=start)
+        if start is not None and end is not None and end < start:
+            raise ValueError("--to must be greater than or equal to --from")
+        ensured = build_ensure_payload(date_from=start, date_to=end)
+    except ValueError as exc:
+        return _error_payload(
+            "index-tree.discover",
+            "INDEX_TREE_DISCOVER_INVALID_RANGE",
+            str(exc),
+            {"date_from": date_from, "date_to": date_to},
+        )
+
+    scoped_entries = _collect_entries(start, end)
+    source = ensured.get("source") if isinstance(ensured, dict) else None
+    if source not in ("index-b", "journals"):
+        source = "index-b"
+
+    data = {
+        "truth_source": "journals",
+        "privacy_level": "same_as_journals",
+        "source": source,
+        "artifact": ensured.get("artifact") if isinstance(ensured, dict) else "index-b",
+        "date_from": start,
+        "date_to": end,
+        "operation_model": "deterministic_navigation.v1",
+        "selection_contract": "host_agent_selects_values; tool_executes_only",
+        "exhaustive": True,
+        "facets": {facet: _facet_menu(scoped_entries, facet) for facet in selected_facets},
+        "navigation_docs": (
+            _navigation_docs_for_entries(scoped_entries) if source == "index-b" else []
+        ),
+        "coverage": {
+            "candidate_count": len(scoped_entries),
+            "facet_count": len(selected_facets),
+        },
+        "freshness": (
+            ensured.get("freshness") or ensured.get("freshness_before")
+            if isinstance(ensured, dict)
+            else None
+        ),
+        "fallback": ensured.get("fallback") if isinstance(ensured, dict) else None,
+        "extension_points": ["entity_neighbors"],
+    }
+    return _success_payload("index-tree.discover", data)
 
 
 def _normalize_values(values: Any) -> list[str]:

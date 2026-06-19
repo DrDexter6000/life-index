@@ -289,16 +289,33 @@ IMPORTANT:
 - Current Python executable: {python_executable}
 - First use Index B navigation for time-scoped facet, count, enumerate, or
   cross-facet questions: run `life-index index-tree ensure --from YYYY-MM --to
-  YYYY-MM --json`, then `life-index index-tree navigate --from YYYY-MM --to
-  YYYY-MM --filter facet=value --json` with explicit structured predicates you
-  choose. The tool is a deterministic executor; it must not infer predicates
-  from natural language for you.
+  YYYY-MM --json`, then `life-index index-tree discover --from YYYY-MM --to
+  YYYY-MM --facet tag --facet task --facet project --facet location --json` to
+  inspect the available value menu. You choose relevant values; the tool only
+  enumerates.
+- For count questions, inspect tag, task, project, and location menus before
+  falling back to keyword search. If the menus expose relevant values, choose
+  them yourself and narrow with Index B before reading journals.
+  For example, sleep/routine questions should first look for relevant tag/task
+  values such as sleep, routine, late-night, 作息, 睡眠, or 失眠, then use
+  `index-tree navigate` if such values exist.
+- After choosing values, run `life-index index-tree navigate --from YYYY-MM --to
+  YYYY-MM --filter facet=value --filter other_facet=other_value --json` with
+  explicit structured predicates. Repeated filters are deterministic
+  intersections; VALUE1||VALUE2 is OR inside one facet. The tool is a
+  deterministic executor; it must not infer predicates from natural language for
+  you.
 - Only after deterministic candidate narrowing, read bounded candidates with
-  `life-index journal get --path Journals/YYYY/MM/name.md`; cite only journal
-  entries you read or seed evidence whose text is sufficient.
+  `life-index journal batch-get --path Journals/YYYY/MM/name.md --path
+  Journals/YYYY/MM/other.md`; use `life-index journal get --path
+  Journals/YYYY/MM/name.md` for one candidate. Cite only journal entries you
+  read or seed evidence whose text is sufficient.
+- Do NOT call journal get repeatedly for multiple candidates. If there are two
+  or more candidate paths, issue one `journal batch-get` call with repeated
+  `--path` arguments.
 - Use smart-search/search only for keyword/entity-weighted discovery paths, and
-  then read exact journal candidates with `journal get`. Do NOT use grep,
-  broad full-directory reads, or ad hoc file scans.
+  then read exact journal candidates with `journal batch-get` or `journal get`.
+  Do NOT use grep, broad full-directory reads, or ad hoc file scans.
 - When using a terminal, invoke the CLI with the current Python executable
   above and preserve LIFE_INDEX_DATA_DIR / LIFE_INDEX_VALIDATION_MODE in that
   process.

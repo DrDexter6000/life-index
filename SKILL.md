@@ -94,9 +94,16 @@ journal evidence.
 2. Classify the query shape yourself, then use deterministic tools as
    executors. The tools must not infer which facets to search from natural
    language. For time-scoped, facet, count, enumerate, or cross-facet questions,
-   first ensure Index B navigation:
+   first ensure Index B navigation and inspect the available value menu:
    `life-index index-tree ensure --from YYYY-MM --to YYYY-MM --json`.
-3. Use structured Index B navigation before journal reads:
+   `life-index index-tree discover --from YYYY-MM --to YYYY-MM --facet tag --facet task --facet project --facet location --json`.
+   For count questions, inspect tag, task, project, and location menus before
+   falling back to keyword search; pick relevant values yourself if the menus
+   expose them. For example, sleep/routine questions should first look for
+   relevant tag/task values such as sleep, routine, late-night, 作息, 睡眠, or
+   失眠, then use `index-tree navigate` if such values exist.
+3. Pick relevant facet values yourself from the discover menu, then use
+   structured Index B navigation before journal reads:
    `life-index index-tree navigate --from YYYY-MM --to YYYY-MM --filter facet=value --json`.
    Read the reported root/year/month navigation docs and use the returned
    `entry_pointers` as the bounded candidate set. Repeated `--filter` arguments
@@ -104,9 +111,14 @@ journal evidence.
    If the response source is `journals`, use the returned fallback entry
    pointers directly.
 4. Read only bounded candidates through stable domain tools:
-   `life-index journal get --path Journals/YYYY/MM/name.md`. Use
+   `life-index journal batch-get --path Journals/YYYY/MM/name.md --path Journals/YYYY/MM/other.md`.
+   Do NOT call journal get repeatedly for multiple candidates; if there are
+   two or more paths, use one `journal batch-get`.
+   Use `life-index journal get --path Journals/YYYY/MM/name.md` for a single
+   candidate. Use
    `life-index smart-search` or `life-index search` for keyword/entity-weighted
-   discovery paths, then feed discovered exact paths back into `journal get`.
+   discovery paths, then feed discovered exact paths back into `journal batch-get`
+   or `journal get`.
    Do not use ad hoc `grep` or broad full-directory reads.
 5. Return the magazine answer shape:
    `answer.insights[]` where each item has `quote`, `interpretation`, and
