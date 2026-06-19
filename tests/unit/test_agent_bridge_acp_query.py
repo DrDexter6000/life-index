@@ -1574,6 +1574,25 @@ def test_build_query_prompt_requires_structured_insight_evidence_and_search_befo
     assert "E1" in prompt and "E2" in prompt
 
 
+def test_build_query_prompt_prioritizes_index_b_navigation_before_search_reads():
+    """Prompt discipline routes facet/time questions through Index B first."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    prompt = build_query_prompt(
+        "Cross-facet question",
+        {"E1": {"short_id": "E1", "text": "Snippet."}},
+        {"E1"},
+    )
+
+    assert "First use Index B navigation" in prompt
+    assert "life-index index-tree ensure" in prompt
+    assert "life-index index-tree navigate" in prompt
+    assert "Only after deterministic candidate narrowing" in prompt
+    assert "journal get" in prompt
+    assert "smart-search/search only for keyword/entity-weighted discovery" in prompt
+    assert "Do NOT use grep" in prompt
+
+
 def test_build_query_prompt_requests_magazine_insights_not_sentence_citation_json():
     """Prompt asks for structured magazine insights with evidence on each insight."""
     from tools.agent_bridge.acp_query import build_query_prompt

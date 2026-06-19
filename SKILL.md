@@ -91,24 +91,31 @@ journal evidence.
 1. Treat planning, multi-hop reasoning, interpretation, and synthesis as host
    agent work. Life Index tools provide deterministic search, navigation, read,
    and validation surfaces.
-2. Ensure Index B navigation for the requested time scope:
-   `life-index index-tree ensure --from YYYY-MM --to YYYY-MM --json`. If the
-   response source is `index-b`, read `.life-index/index-b/INDEX.md`, then the
-   relevant year/month navigation docs. If the response source is `journals`,
-   use the returned fallback entry pointers directly. Use facet counts and child
-   pointers to narrow the candidate scope before reading journal entries.
-3. Use deterministic retrieval and read tools for evidence:
-   `life-index search ...`, `life-index index-tree nodes ...`, and
-   `life-index journal get --path Journals/YYYY/MM/name.md`. Prefer these
-   domain tools over ad hoc full-directory reads.
-4. Return the magazine answer shape:
+2. Classify the query shape yourself, then use deterministic tools as
+   executors. The tools must not infer which facets to search from natural
+   language. For time-scoped, facet, count, enumerate, or cross-facet questions,
+   first ensure Index B navigation:
+   `life-index index-tree ensure --from YYYY-MM --to YYYY-MM --json`.
+3. Use structured Index B navigation before journal reads:
+   `life-index index-tree navigate --from YYYY-MM --to YYYY-MM --filter facet=value --json`.
+   Read the reported root/year/month navigation docs and use the returned
+   `entry_pointers` as the bounded candidate set. Repeated `--filter` arguments
+   are intersections; `value1||value2` is a deterministic OR inside one facet.
+   If the response source is `journals`, use the returned fallback entry
+   pointers directly.
+4. Read only bounded candidates through stable domain tools:
+   `life-index journal get --path Journals/YYYY/MM/name.md`. Use
+   `life-index smart-search` or `life-index search` for keyword/entity-weighted
+   discovery paths, then feed discovered exact paths back into `journal get`.
+   Do not use ad hoc `grep` or broad full-directory reads.
+5. Return the magazine answer shape:
    `answer.insights[]` where each item has `quote`, `interpretation`, and
    `evidence_refs`, plus `answer.summary` as connective prose. Every factual
    date, count, location, event, or conclusion must be covered by cited
    insights. If the answer includes an aggregate count, include a dedicated
    insight whose `interpretation` repeats the exact count and whose
    `evidence_refs` cover the counted journal entries.
-5. Never mark an answer `GROUNDED` with zero citations, missing journal IDs, or
+6. Never mark an answer `GROUNDED` with zero citations, missing journal IDs, or
    facts that only come from hidden session memory. If evidence is insufficient
    or validation fails, return `PARTIAL` or `UNGROUNDED` with a concrete gap.
 

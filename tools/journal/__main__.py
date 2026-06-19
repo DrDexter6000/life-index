@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -15,6 +16,7 @@ from tools.lib.chinese_tokenizer import count_cjk_words
 from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.path_contract import build_journal_path_fields
 from tools.lib.paths import get_journals_dir, get_user_data_dir
+from tools.lib.tool_call_log import emit_tool_call_log
 
 SCHEMA_VERSION = "m16.journal.v0"
 JOURNAL_NAME_RE = re.compile(r"^life-index_(\d{4}-\d{2}-\d{2})_(\d+)\.md$")
@@ -240,8 +242,31 @@ def _handle_list(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
+def _log_journal_get_call(
+    args: argparse.Namespace, payload: dict[str, Any], elapsed_ms: float
+) -> None:
+    if args.command != "get":
+        return
+    raw_data = payload.get("data")
+    data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+    raw_error = payload.get("error")
+    error: dict[str, Any] | None = raw_error if isinstance(raw_error, dict) else None
+    emit_tool_call_log(
+        "journal get",
+        params={"path": args.path, "id": args.id},
+        result={
+            "rel_path": data.get("rel_path"),
+            "word_count": data.get("word_count"),
+        },
+        elapsed_ms=elapsed_ms,
+        success=bool(payload.get("success")),
+        error_code=str(error.get("code")) if error else None,
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
+    started = time.perf_counter()
     try:
         if args.command == "get":
             payload = _handle_get(args)
@@ -249,14 +274,20 @@ def main(argv: list[str] | None = None) -> None:
             payload = _handle_list(args)
         else:
             payload = _json_error("JOURNAL_ARGUMENT_INVALID", "Unsupported journal command.")
+            _log_journal_get_call(args, payload, (time.perf_counter() - started) * 1000.0)
             _print_json(payload)
             sys.exit(1)
+        _log_journal_get_call(args, payload, (time.perf_counter() - started) * 1000.0)
         _print_json(payload)
     except JournalContractError as exc:
-        _print_json(_json_error(exc.code, exc.message))
+        payload = _json_error(exc.code, exc.message)
+        _log_journal_get_call(args, payload, (time.perf_counter() - started) * 1000.0)
+        _print_json(payload)
         sys.exit(1)
     except OSError as exc:
-        _print_json(_json_error("JOURNAL_READ_FAILED", str(exc)))
+        payload = _json_error("JOURNAL_READ_FAILED", str(exc))
+        _log_journal_get_call(args, payload, (time.perf_counter() - started) * 1000.0)
+        _print_json(payload)
         sys.exit(1)
 
 

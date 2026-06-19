@@ -30,6 +30,7 @@ from tools.agent_bridge.service import (
     _ACP_WARMUP_PROMPT_ENV,
     _build_server,
     _make_signal_handler,
+    _progress_event_payload,
     _schedule_async_shutdown,
     is_loopback,
 )
@@ -86,6 +87,36 @@ def _degraded_envelope(gap: str = "dead") -> dict:
             "degraded": True,
         },
         "usage": None,
+    }
+
+
+def test_progress_event_payload_preserves_sanitized_path_observability() -> None:
+    """SSE thinking events keep bounded navigation/read-path diagnostics."""
+    progress = _progress_event_payload(
+        {
+            "type": "progress",
+            "source": "acp",
+            "session_update": "tool_call_update",
+            "tool": "index-tree navigate",
+            "status": "completed",
+            "index_b_paths": [".life-index/index-b/INDEX.md"],
+            "matched_entries": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+            "read_paths": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+            "raw_text": "must not be forwarded",
+        },
+        7,
+    )
+
+    assert progress == {
+        "state": "working",
+        "source": "acp",
+        "sequence": 7,
+        "session_update": "tool_call_update",
+        "tool": "index-tree navigate",
+        "status": "completed",
+        "index_b_paths": [".life-index/index-b/INDEX.md"],
+        "matched_entries": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+        "read_paths": ["Journals/2026/03/life-index_2026-03-14_001.md"],
     }
 
 
@@ -1188,6 +1219,34 @@ def test_bare_json_query_assembles_scaffold_and_returns_evidence(monkeypatch):
         assert passed_scaffold["evidence_pack"]["items"][0]["document"]["doc_id"] == (
             "Journals/2026/06/life-index_2026-06-04_001.md"
         )
+    finally:
+        server.shutdown_and_close()
+
+
+def test_bare_query_can_disable_pre_scaffold_for_agentic_navigation_ab(monkeypatch):
+    """A validation flag can skip deterministic pre-scaffold without changing defaults."""
+    calls: list[str] = []
+    monkeypatch.setenv("LIFE_INDEX_GATEWAY_PRESCAFFOLD_ENABLED", "0")
+    monkeypatch.setattr(
+        _handoff_mod,
+        "_cli_smart_search",
+        lambda q: calls.append(q) or _scaffold_with_evidence(),
+    )
+
+    manager = _FakeManagerUngrounded()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={"query": "hello no prescaffold"},
+        )
+        assert status == 200
+        assert body["mode"] == "UNGROUNDED"
+        assert calls == []
+        assert len(manager.queries) == 1
+        assert manager.queries[0][1] == {}
     finally:
         server.shutdown_and_close()
 

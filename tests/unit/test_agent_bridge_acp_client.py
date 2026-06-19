@@ -1346,6 +1346,117 @@ def test_acp_connection_rpc_can_forward_progress_updates_when_opted_in(monkeypat
     conn.close()
 
 
+def test_acp_progress_update_surfaces_sanitized_navigation_and_read_paths(monkeypatch):
+    """Progress events expose path-level navigation without raw tool output."""
+    import io
+    import json
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy"],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    prompt_lines = [
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": {
+                    "sessionId": "s1",
+                    "update": {
+                        "sessionUpdate": "tool_call_update",
+                        "toolName": "index-tree navigate",
+                        "status": "completed",
+                        "content": {
+                            "text": (
+                                "read .life-index/index-b/INDEX.md and matched "
+                                "Journals/2026/03/life-index_2026-03-14_001.md "
+                                "secret raw excerpt should not be forwarded"
+                            )
+                        },
+                    },
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": {
+                    "sessionId": "s1",
+                    "update": {
+                        "sessionUpdate": "tool_call",
+                        "toolName": "journal get",
+                        "status": "running",
+                        "arguments": {"path": "Journals/2026/03/life-index_2026-03-14_001.md"},
+                    },
+                },
+            }
+        ),
+        json.dumps({"jsonrpc": "2.0", "id": 4, "result": {"status": "ok"}}),
+    ]
+
+    stdout_text = "\n".join(_make_handshake_responses() + prompt_lines) + "\n"
+
+    class _FakeStdout:
+        def __init__(self, text: str):
+            self._io = io.StringIO(text)
+
+        def readline(self) -> str:
+            return self._io.readline()
+
+        def close(self) -> None:
+            self._io.close()
+
+    class _FakeProc:
+        def __init__(self):
+            self.stdout = _FakeStdout(stdout_text)
+            self.stdin = io.StringIO()
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: _FakeProc())
+
+    conn = _ACPConnection(cfg, rpc_timeout=5)
+    conn.__enter__()
+
+    captured: list[Any] = []
+    conn.rpc(
+        "session/prompt",
+        {"sessionId": "s1"},
+        stream_callback=captured.append,
+        stream_progress=True,
+    )
+
+    navigation = captured[0]
+    assert navigation["type"] == "progress"
+    assert navigation["session_update"] == "tool_call_update"
+    assert navigation["tool"] == "index-tree navigate"
+    assert navigation["index_b_paths"] == [".life-index/index-b/INDEX.md"]
+    assert navigation["matched_entries"] == ["Journals/2026/03/life-index_2026-03-14_001.md"]
+    assert "secret raw excerpt" not in json.dumps(navigation, ensure_ascii=False)
+
+    journal_read = captured[1]
+    assert journal_read["tool"] == "journal get"
+    assert journal_read["read_paths"] == ["Journals/2026/03/life-index_2026-03-14_001.md"]
+    conn.close()
+
+
 def test_acp_connection_rpc_accepts_per_call_timeout_override(monkeypatch):
     """A long-lived warm connection can use a shorter/longer timeout per RPC call."""
     import io

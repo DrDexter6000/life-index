@@ -13,7 +13,10 @@ and summarization. Without --use-llm, it uses pure dual-pipeline mode.
 import argparse
 import json
 import sys
+import time
 from typing import Any
+
+from tools.lib.tool_call_log import emit_tool_call_log
 
 SCHEMA_VERSION = "m16.smart_search.v0"
 
@@ -28,6 +31,7 @@ def _emit_json(payload: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    started = time.perf_counter()
     parser = argparse.ArgumentParser(
         description="Smart search with deterministic default and optional LLM orchestration",
     )
@@ -146,6 +150,29 @@ def main() -> None:
             ).to_dict()
 
     result["schema_version"] = SCHEMA_VERSION
+    raw_log_evidence_pack = result.get("evidence_pack")
+    log_evidence_pack: dict[str, Any] = (
+        raw_log_evidence_pack if isinstance(raw_log_evidence_pack, dict) else {}
+    )
+    raw_evidence_items = log_evidence_pack.get("items")
+    evidence_items: list[Any] = raw_evidence_items if isinstance(raw_evidence_items, list) else []
+    emit_tool_call_log(
+        "smart-search",
+        params={
+            "query": args.query,
+            "use_llm": args.use_llm,
+            "include_evidence": args.include_evidence,
+            "synthesize": args.synthesize,
+        },
+        result={
+            "total_found": result.get("total_found"),
+            "total_available": result.get("total_available"),
+            "evidence_count": len(evidence_items),
+            "mode": result.get("smart_search_mode"),
+        },
+        elapsed_ms=(time.perf_counter() - started) * 1000.0,
+        success=bool(result.get("success")),
+    )
     _emit_json(result)
     sys.exit(0 if result.get("success") else 1)
 

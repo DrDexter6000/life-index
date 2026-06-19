@@ -287,10 +287,21 @@ IMPORTANT:
 - Current LIFE_INDEX_DATA_DIR: {data_dir}
 - Current LIFE_INDEX_VALIDATION_MODE: {validation_mode}
 - Current Python executable: {python_executable}
-- Prefer Life Index CLI commands such as smart-search/search/read-top, then
-  read the cited journal files when needed. When using a terminal, invoke the
-  CLI with the current Python executable above and preserve LIFE_INDEX_DATA_DIR
-  / LIFE_INDEX_VALIDATION_MODE in that process.
+- First use Index B navigation for time-scoped facet, count, enumerate, or
+  cross-facet questions: run `life-index index-tree ensure --from YYYY-MM --to
+  YYYY-MM --json`, then `life-index index-tree navigate --from YYYY-MM --to
+  YYYY-MM --filter facet=value --json` with explicit structured predicates you
+  choose. The tool is a deterministic executor; it must not infer predicates
+  from natural language for you.
+- Only after deterministic candidate narrowing, read bounded candidates with
+  `life-index journal get --path Journals/YYYY/MM/name.md`; cite only journal
+  entries you read or seed evidence whose text is sufficient.
+- Use smart-search/search only for keyword/entity-weighted discovery paths, and
+  then read exact journal candidates with `journal get`. Do NOT use grep,
+  broad full-directory reads, or ad hoc file scans.
+- When using a terminal, invoke the CLI with the current Python executable
+  above and preserve LIFE_INDEX_DATA_DIR / LIFE_INDEX_VALIDATION_MODE in that
+  process.
 - Do NOT use web search, browser tools, external internet, or unstated prior
   knowledge for evidence. Do not rely on hidden session memory. This is a
   local journal query.
