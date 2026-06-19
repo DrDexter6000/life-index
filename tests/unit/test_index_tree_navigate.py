@@ -98,6 +98,65 @@ def test_navigate_filters_values_by_month_scope_and_intersects_facets(
     assert ".life-index/index-b/Journals/2026/03/index.md" in payload["data"]["navigation_docs"]
 
 
+def test_discover_returns_scoped_facet_value_menu_without_natural_language_inference(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tools.index_tree.core import build_discover_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+    march_lagos = _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="March Lagos AI",
+        extra_frontmatter=(
+            'project: "Life Index"\n' 'tags: ["ai", "planning"]\n' 'location: "Lagos, Nigeria"\n'
+        ),
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-15",
+        title="March London",
+        extra_frontmatter='project: "Other"\ntags: ["travel"]\nlocation: "London, United Kingdom"',
+    )
+    _write_journal(
+        data_dir,
+        date="2026-04-01",
+        title="April Lagos",
+        extra_frontmatter='project: "Life Index"\ntags: ["ai"]\nlocation: "Lagos, Nigeria"',
+    )
+
+    payload = build_discover_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        facets=["location", "project", "tag"],
+    )
+
+    assert payload["success"] is True
+    assert payload["command"] == "index-tree.discover"
+    assert payload["data"]["operation_model"] == "deterministic_navigation.v1"
+    assert payload["data"]["exhaustive"] is True
+    assert payload["data"]["coverage"]["candidate_count"] == 2
+    assert payload["data"]["facets"]["location"]["values"] == [
+        {
+            "value": "Lagos, Nigeria",
+            "count": 1,
+            "sample_entry_pointers": [march_lagos.relative_to(data_dir).as_posix()],
+        },
+        {
+            "value": "London, United Kingdom",
+            "count": 1,
+            "sample_entry_pointers": ["Journals/2026/03/life-index_2026-03-15_001.md"],
+        },
+    ]
+    assert payload["data"]["facets"]["project"]["values"][0]["value"] == "Life Index"
+    assert payload["data"]["facets"]["tag"]["values"][0]["value"] == "ai"
+    assert payload["data"]["selection_contract"] == (
+        "host_agent_selects_values; tool_executes_only"
+    )
+
+
 def test_navigate_exhaustive_result_matches_full_scan(tmp_path: Path, monkeypatch) -> None:
     from tools.index_tree.core import build_navigate_payload
 

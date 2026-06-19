@@ -13,11 +13,11 @@
   },
   {
     "name": "journal",
-    "description": "Read one journal or list recent journals through stable get/list JSON contracts"
+    "description": "Read one or multiple journals or list recent journals through stable get/batch-get/list JSON contracts"
   },
   {
     "name": "index-tree",
-    "description": "Deterministic Index Tree and Index B navigation: nodes, lens, materialize, freshness, ensure, navigate"
+    "description": "Deterministic Index Tree and Index B navigation: nodes, lens, materialize, freshness, ensure, discover, navigate"
   },
   {
     "name": "edit",

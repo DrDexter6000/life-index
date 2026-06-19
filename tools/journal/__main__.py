@@ -20,6 +20,7 @@ from tools.lib.tool_call_log import emit_tool_call_log
 
 SCHEMA_VERSION = "m16.journal.v0"
 JOURNAL_NAME_RE = re.compile(r"^life-index_(\d{4}-\d{2}-\d{2})_(\d+)\.md$")
+MAX_BATCH_GET_ITEMS = 50
 
 
 class JournalContractError(Exception):
@@ -65,6 +66,26 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     get_ref.add_argument("--path", metavar="REL_PATH", help="Journal path under Journals/.")
     get_ref.add_argument("--id", metavar="JOURNAL_ID", help="Current v0 journal id.")
     get_parser.add_argument("--json", action="store_true", help="Accepted for compatibility.")
+
+    batch_parser = subparsers.add_parser(
+        "batch-get",
+        help="Read multiple journal entries as one bounded JSON batch.",
+    )
+    batch_parser.add_argument(
+        "--path",
+        action="append",
+        default=[],
+        metavar="REL_PATH",
+        help="Journal path under Journals/. Repeat for multiple entries.",
+    )
+    batch_parser.add_argument(
+        "--id",
+        action="append",
+        default=[],
+        metavar="JOURNAL_ID",
+        help="Current v0 journal id. Repeat for multiple entries.",
+    )
+    batch_parser.add_argument("--json", action="store_true", help="Accepted for compatibility.")
 
     list_parser = subparsers.add_parser("list", help="List journal entries as JSON.")
     list_parser.add_argument(
@@ -215,6 +236,41 @@ def _handle_get(args: argparse.Namespace) -> dict[str, Any]:
     return _json_success(_read_journal(path))
 
 
+def _batch_refs(args: argparse.Namespace) -> list[str]:
+    refs: list[str] = []
+    seen: set[str] = set()
+    for raw_ref in [*(args.path or []), *(args.id or [])]:
+        text = str(raw_ref).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        refs.append(text)
+    if not refs:
+        raise JournalContractError(
+            "JOURNAL_ARGUMENT_INVALID",
+            "journal batch-get requires at least one --path or --id.",
+        )
+    if len(refs) > MAX_BATCH_GET_ITEMS:
+        raise JournalContractError(
+            "JOURNAL_BATCH_TOO_LARGE",
+            f"journal batch-get accepts at most {MAX_BATCH_GET_ITEMS} entries.",
+        )
+    return refs
+
+
+def _handle_batch_get(args: argparse.Namespace) -> dict[str, Any]:
+    refs = _batch_refs(args)
+    items = [_read_journal(_resolve_journal_ref(raw_ref)) for raw_ref in refs]
+    return _json_success(
+        {
+            "items": items,
+            "total_requested": len(refs),
+            "total_found": len(items),
+            "max_items": MAX_BATCH_GET_ITEMS,
+        }
+    )
+
+
 def _handle_list(args: argparse.Namespace) -> dict[str, Any]:
     if args.limit < 0 or args.offset < 0:
         raise JournalContractError(
@@ -242,22 +298,40 @@ def _handle_list(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
-def _log_journal_get_call(
-    args: argparse.Namespace, payload: dict[str, Any], elapsed_ms: float
-) -> None:
-    if args.command != "get":
+def _log_journal_call(args: argparse.Namespace, payload: dict[str, Any], elapsed_ms: float) -> None:
+    if args.command not in {"get", "batch-get"}:
         return
     raw_data = payload.get("data")
     data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
     raw_error = payload.get("error")
     error: dict[str, Any] | None = raw_error if isinstance(raw_error, dict) else None
-    emit_tool_call_log(
-        "journal get",
-        params={"path": args.path, "id": args.id},
-        result={
+
+    if args.command == "batch-get":
+        raw_items = data.get("items")
+        items: list[Any] = raw_items if isinstance(raw_items, list) else []
+        result = {
+            "total_requested": data.get("total_requested"),
+            "total_found": data.get("total_found"),
+            "rel_paths": [
+                item.get("rel_path")
+                for item in items
+                if isinstance(item, dict) and isinstance(item.get("rel_path"), str)
+            ],
+        }
+        params = {"paths": list(args.path or []), "ids": list(args.id or [])}
+        tool = "journal batch-get"
+    else:
+        result = {
             "rel_path": data.get("rel_path"),
             "word_count": data.get("word_count"),
-        },
+        }
+        params = {"path": args.path, "id": args.id}
+        tool = "journal get"
+
+    emit_tool_call_log(
+        tool,
+        params=params,
+        result=result,
         elapsed_ms=elapsed_ms,
         success=bool(payload.get("success")),
         error_code=str(error.get("code")) if error else None,
@@ -270,23 +344,25 @@ def main(argv: list[str] | None = None) -> None:
     try:
         if args.command == "get":
             payload = _handle_get(args)
+        elif args.command == "batch-get":
+            payload = _handle_batch_get(args)
         elif args.command == "list":
             payload = _handle_list(args)
         else:
             payload = _json_error("JOURNAL_ARGUMENT_INVALID", "Unsupported journal command.")
-            _log_journal_get_call(args, payload, (time.perf_counter() - started) * 1000.0)
+            _log_journal_call(args, payload, (time.perf_counter() - started) * 1000.0)
             _print_json(payload)
             sys.exit(1)
-        _log_journal_get_call(args, payload, (time.perf_counter() - started) * 1000.0)
+        _log_journal_call(args, payload, (time.perf_counter() - started) * 1000.0)
         _print_json(payload)
     except JournalContractError as exc:
         payload = _json_error(exc.code, exc.message)
-        _log_journal_get_call(args, payload, (time.perf_counter() - started) * 1000.0)
+        _log_journal_call(args, payload, (time.perf_counter() - started) * 1000.0)
         _print_json(payload)
         sys.exit(1)
     except OSError as exc:
         payload = _json_error("JOURNAL_READ_FAILED", str(exc))
-        _log_journal_get_call(args, payload, (time.perf_counter() - started) * 1000.0)
+        _log_journal_call(args, payload, (time.perf_counter() - started) * 1000.0)
         _print_json(payload)
         sys.exit(1)
 

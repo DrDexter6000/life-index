@@ -25,6 +25,21 @@ def _run_journal(data_dir: Path, *args: str) -> subprocess.CompletedProcess[str]
     )
 
 
+def _run_journal_with_env(
+    data_dir: Path, extra_env: dict[str, str], *args: str
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    env.update(extra_env)
+    return subprocess.run(
+        [sys.executable, "-m", "tools", "journal", *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+
 def _seed_journal(
     data_dir: Path,
     *,
@@ -121,6 +136,65 @@ def test_get_by_id_uses_current_rel_path_identity(tmp_path: Path) -> None:
     assert payload["success"] is True
     assert payload["data"]["id"] == rel_path
     assert payload["data"]["rel_path"] == rel_path
+
+
+def test_batch_get_returns_multiple_journals_with_one_validation_log_record(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "Life-Index"
+    log_path = tmp_path / "tool-calls.jsonl"
+    first = _seed_journal(
+        data_dir,
+        date="2026-05-28",
+        title="First Batch Entry",
+        body="# First Batch Entry\n\nFirst body.",
+    )
+    second = _seed_journal(
+        data_dir,
+        date="2026-05-29",
+        title="Second Batch Entry",
+        body="# Second Batch Entry\n\nSecond body.",
+    )
+    first_rel = _rel(first, data_dir)
+    second_rel = _rel(second, data_dir)
+
+    result = _run_journal_with_env(
+        data_dir,
+        {
+            "LIFE_INDEX_VALIDATION_MODE": "1",
+            "LIFE_INDEX_TOOL_CALL_LOG": str(log_path),
+        },
+        "batch-get",
+        "--path",
+        first_rel,
+        "--path",
+        second_rel,
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    assert payload["success"] is True
+    assert payload["schema_version"] == SCHEMA_VERSION
+    assert payload["error"] is None
+    assert payload["data"]["total_requested"] == 2
+    assert payload["data"]["total_found"] == 2
+    assert [item["rel_path"] for item in payload["data"]["items"]] == [
+        first_rel,
+        second_rel,
+    ]
+    assert payload["data"]["items"][0]["content"] == "# First Batch Entry\n\nFirst body."
+
+    records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 1
+    assert records[0]["tool"] == "journal batch-get"
+    assert records[0]["params"] == {"paths": [first_rel, second_rel], "ids": []}
+    assert records[0]["result"] == {
+        "total_requested": 2,
+        "total_found": 2,
+        "rel_paths": [first_rel, second_rel],
+    }
+    assert str(data_dir) not in json.dumps(records, ensure_ascii=False)
 
 
 def test_get_rejects_path_traversal_as_json_error(tmp_path: Path) -> None:

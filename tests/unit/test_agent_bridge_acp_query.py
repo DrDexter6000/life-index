@@ -1586,8 +1586,17 @@ def test_build_query_prompt_prioritizes_index_b_navigation_before_search_reads()
 
     assert "First use Index B navigation" in prompt
     assert "life-index index-tree ensure" in prompt
+    assert "life-index index-tree discover" in prompt
     assert "life-index index-tree navigate" in prompt
     assert "Only after deterministic candidate narrowing" in prompt
+    assert "journal batch-get" in prompt
+    assert "Do NOT call journal get repeatedly for multiple candidates" in prompt
+    assert "For concept-style questions, inspect the actual facet value menu" in prompt
+    assert "Do not preload a fixed vocabulary" in prompt
+    assert "use `navigate`'s exhaustive" in prompt
+    assert "Do not restart with broad search after a successful exhaustive navigation" in prompt
+    assert "For example" not in prompt
+    assert "questions should first look for relevant" not in prompt
     assert "journal get" in prompt
     assert "smart-search/search only for keyword/entity-weighted discovery" in prompt
     assert "Do NOT use grep" in prompt
@@ -1624,7 +1633,9 @@ def test_build_query_prompt_embeds_grounded_query_skill_playbook():
 
     assert "Grounded Query Skill Playbook" in prompt
     assert "index-tree ensure" in prompt
+    assert "index-tree discover" in prompt
     assert "journal get" in prompt
+    assert "journal batch-get" in prompt
     assert "answer.insights[]" in prompt
     assert "aggregate count" in prompt
     assert "Do not put a count only in the summary" in prompt

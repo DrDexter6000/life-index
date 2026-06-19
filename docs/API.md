@@ -905,8 +905,10 @@ backward-incompatible payload change.
 ```bash
 life-index journal get --path <rel-path>
 life-index journal get --id <journal-id>
+life-index journal batch-get --path <rel-path> [--path <rel-path> ...]
 life-index journal list --recent [--limit <n>] [--offset <n>]
 python -m tools journal get --path <rel-path>
+python -m tools journal batch-get --path <rel-path> --path <rel-path>
 python -m tools journal list --recent
 ```
 
@@ -921,6 +923,14 @@ python -m tools journal list --recent
 |------|------|------|--------|------|
 | `--path` | string | 与 `--id` 二选一 | - | journal 相对路径，必须形如 `Journals/YYYY/MM/life-index_YYYY-MM-DD_NNN.md` |
 | `--id` | string | 与 `--path` 二选一 | - | v0 journal id；当前等同于 `rel_path` |
+| `--json` | flag | 否 | false | 兼容参数；当前输出始终为 JSON |
+
+#### `journal batch-get`
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--path` | string[] | 与 `--id` 至少一项 | - | journal 相对路径，可重复；每项必须匹配 `journal get` 路径规则 |
+| `--id` | string[] | 与 `--path` 至少一项 | - | v0 journal id，可重复；当前等同于 `rel_path` |
 | `--json` | flag | 否 | false | 兼容参数；当前输出始终为 JSON |
 
 #### `journal list --recent`
@@ -980,6 +990,35 @@ python -m tools journal list --recent
 附件项字段与 `attachment` 读取侧一致，当前包含
 `raw_path`、`path`、`name`、`description`、`source_url`、`content_type`、`size`。
 
+### `journal batch-get` 返回值
+
+`batch-get` 是 `journal get` 的有界批量形态，用于 agent 在确定性窄化后减少
+多次 CLI 往返。它复用同一套路径校验与读取语义，不做排序、筛选或事实判断。
+
+```json
+{
+  "success": true,
+  "schema_version": "m16.journal.v0",
+  "data": {
+    "items": [
+      {
+        "id": "Journals/2026/05/life-index_2026-05-28_001.md",
+        "rel_path": "Journals/2026/05/life-index_2026-05-28_001.md",
+        "journal_route_path": "2026/05/life-index_2026-05-28_001.md",
+        "metadata": {"title": "示例日志", "date": "2026-05-28"},
+        "content": "# 示例日志\n\n正文内容",
+        "attachments": [],
+        "word_count": 3
+      }
+    ],
+    "total_requested": 1,
+    "total_found": 1,
+    "max_items": 50
+  },
+  "error": null
+}
+```
+
 ### `journal list --recent` 返回值
 
 ```json
@@ -1036,6 +1075,7 @@ python -m tools journal list --recent
 | `JOURNAL_PATH_INVALID` | journal 引用为空、绝对路径、包含 NUL、路径遍历，或不匹配 journal 路径格式 |
 | `JOURNAL_NOT_FOUND` | journal 文件不存在 |
 | `JOURNAL_ARGUMENT_INVALID` | `list` 参数无效，例如负数 `--limit` / `--offset` |
+| `JOURNAL_BATCH_TOO_LARGE` | `batch-get` 请求超过单次批量读取上限 |
 | `JOURNAL_READ_FAILED` | 读取 journal 时发生 OS 错误 |
 
 ### schema_version Policy
@@ -1062,7 +1102,8 @@ life-index index-tree materialize --from 2026-03 --to 2026-06 --json
 life-index index-tree materialize --from 2026-03 --to 2026-06 --incremental --json
 life-index index-tree freshness --from 2026-03 --to 2026-06 --json
 life-index index-tree ensure --from 2026-03 --to 2026-06 --json
-life-index index-tree navigate --from 2026-03 --to 2026-06 --filter "location=Lagos, Nigeria" --filter "project=Life Index" --json
+life-index index-tree discover --from 2026-03 --to 2026-06 --facet location --facet project --json
+life-index index-tree navigate --from 2026-03 --to 2026-06 --filter "location=London, United Kingdom" --filter "project=Life Index" --json
 python -m tools index-tree nodes --level month --json
 ```
 
@@ -1074,9 +1115,9 @@ root/year/month Index Tree、frontmatter-derived lenses、Search Shadow Mode
 durable data。`materialize` 只写 `.life-index/index-b/` 下可重建的导航文档和
 `manifest.json` 哈希清单，不写 journal、attachment 或 durable truth source。
 `freshness` 只读并比较 journal 内容哈希；`ensure` 在 Index B 缺失或陈旧时尝试刷新，
-刷新失败则返回 journal fallback pointers。`navigate` 只执行调用方给定的结构化谓词，
-不会从自然语言推断 facet。Journal 仍是唯一 truth source；index、lens、shadow report、
-Index B docs 和 manifest 都是可重建派生产物。
+刷新失败则返回 journal fallback pointers。`discover` 只枚举调用方请求的 facet 值菜单；
+`navigate` 只执行调用方给定的结构化谓词，不会从自然语言推断 facet。Journal 仍是唯一
+truth source；index、lens、shadow report、Index B docs 和 manifest 都是可重建派生产物。
 
 ### 通用返回 Envelope
 
@@ -1315,6 +1356,52 @@ entry pointers，调用方应直接读取这些 journal 条目，而不是把 In
 }
 ```
 
+### `discover`
+
+`discover` 在月份范围内返回一个紧凑的 facet 值菜单，供调用方 agent 自己选择相关值。
+它只接受显式 facet 名称，不接受自然语言查询，不做相关性判断。当前支持的 facet 与
+Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`people`。
+遇到概念类问题时，调用方应先检查实际 facet 值菜单并从数据中选择匹配值，不预设任何
+特定主题词表。
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.discover",
+  "data": {
+    "truth_source": "journals",
+    "privacy_level": "same_as_journals",
+    "source": "index-b",
+    "artifact": "index-b",
+    "date_from": "2026-03",
+    "date_to": "2026-06",
+    "operation_model": "deterministic_navigation.v1",
+    "selection_contract": "host_agent_selects_values; tool_executes_only",
+    "exhaustive": true,
+    "facets": {
+      "location": {
+        "facet": "location",
+        "value_count": 1,
+        "values": [
+          {
+            "value": "London, United Kingdom",
+            "count": 2,
+            "sample_entry_pointers": [
+              "Journals/2026/03/life-index_2026-03-14_001.md"
+            ]
+          }
+        ]
+      }
+    },
+    "coverage": {"candidate_count": 2, "facet_count": 1},
+    "navigation_docs": [".life-index/index-b/INDEX.md"],
+    "extension_points": ["entity_neighbors"]
+  },
+  "errors": []
+}
+```
+
 ### `navigate`
 
 `navigate` 在已物化的 Index B 范围上执行确定性结构化导航。它只接受显式谓词：
@@ -1325,8 +1412,11 @@ entry pointers，调用方应直接读取这些 journal 条目，而不是把 In
 
 `navigate` 先执行 `ensure`。Index B fresh 或成功刷新时返回 `source: "index-b"` 和
 本次范围涉及的 `navigation_docs`；刷新失败时可返回 journal fallback source。返回的
-`entry_pointers` 是候选 journal 路径，调用方仍需用 `journal get` 读取 journal 内容后
-才能引用为事实证据。
+`entry_pointers` 是候选 journal 路径，调用方仍需用 `journal batch-get` 或 `journal get`
+读取 journal 内容后才能引用为事实证据。
+对于干净的 facet 计数或枚举问题，`count`、`entries` 和 `entry_pointers` 是穷尽候选源；
+调用方应仅读取支撑答案所需的有界 journal 条目（例如边界日期、代表条目或用于消除日期
+缺口歧义的条目），不应在成功穷尽导航后默认重启宽泛搜索。
 
 ```json
 {
@@ -1345,7 +1435,7 @@ entry pointers，调用方应直接读取这些 journal 条目，而不是把 In
       {
         "type": "facet_value_filter",
         "facet": "location",
-        "values": ["Lagos, Nigeria"],
+        "values": ["London, United Kingdom"],
         "match": "any"
       },
       {
@@ -1364,7 +1454,7 @@ entry pointers，调用方应直接读取这些 journal 条目，而不是把 In
         "title": "Facet Work",
         "path": "Journals/2026/03/life-index_2026-03-14_001.md",
         "matched_facets": {
-          "location": ["Lagos, Nigeria"],
+          "location": ["London, United Kingdom"],
           "project": ["Life Index"]
         }
       }

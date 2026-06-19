@@ -94,19 +94,37 @@ journal evidence.
 2. Classify the query shape yourself, then use deterministic tools as
    executors. The tools must not infer which facets to search from natural
    language. For time-scoped, facet, count, enumerate, or cross-facet questions,
-   first ensure Index B navigation:
+   first ensure Index B navigation and inspect the available value menu:
    `life-index index-tree ensure --from YYYY-MM --to YYYY-MM --json`.
-3. Use structured Index B navigation before journal reads:
+   `life-index index-tree discover --from YYYY-MM --to YYYY-MM --facet tag --facet task --facet project --facet location --json`.
+   For concept-style questions, inspect the actual facet value menu first and
+   choose matching values from the data. Do not preload a fixed vocabulary for
+   any specific topic. If the menu does not expose useful values, fall back to
+   keyword/entity-weighted discovery.
+3. Pick relevant facet values yourself from the discover menu, then use
+   structured Index B navigation before journal reads:
    `life-index index-tree navigate --from YYYY-MM --to YYYY-MM --filter facet=value --json`.
    Read the reported root/year/month navigation docs and use the returned
    `entry_pointers` as the bounded candidate set. Repeated `--filter` arguments
    are intersections; `value1||value2` is a deterministic OR inside one facet.
    If the response source is `journals`, use the returned fallback entry
    pointers directly.
+   For clean facet count or enumeration questions, use `navigate`'s exhaustive
+   `count`, `entries`, and `entry_pointers` as the candidate/count source. Read
+   only the bounded journal entries needed to support the answer, such as
+   boundary dates, representative rows, or entries that disambiguate a date
+   gap. Do not restart with broad search after a successful exhaustive
+   navigation unless the user asks for semantic facts beyond the selected
+   facets.
 4. Read only bounded candidates through stable domain tools:
-   `life-index journal get --path Journals/YYYY/MM/name.md`. Use
+   `life-index journal batch-get --path Journals/YYYY/MM/name.md --path Journals/YYYY/MM/other.md`.
+   Do NOT call journal get repeatedly for multiple candidates; if there are
+   two or more paths, use one `journal batch-get`.
+   Use `life-index journal get --path Journals/YYYY/MM/name.md` for a single
+   candidate. Use
    `life-index smart-search` or `life-index search` for keyword/entity-weighted
-   discovery paths, then feed discovered exact paths back into `journal get`.
+   discovery paths, then feed discovered exact paths back into `journal batch-get`
+   or `journal get`.
    Do not use ad hoc `grep` or broad full-directory reads.
 5. Return the magazine answer shape:
    `answer.insights[]` where each item has `quote`, `interpretation`, and

@@ -12,6 +12,7 @@ from typing import Any
 from tools.lib.tool_call_log import emit_tool_call_log
 
 from .core import (
+    build_discover_payload,
     _error_payload,
     _success_payload,
     build_lens_payload,
@@ -80,6 +81,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ensure.add_argument("--to", dest="date_to", help="End month, YYYY-MM")
     ensure.add_argument("--json", action="store_true", help="Emit JSON output")
 
+    discover = subparsers.add_parser(
+        "discover",
+        help="Return scoped deterministic facet value menus for host-agent selection",
+    )
+    discover.add_argument("--from", dest="date_from", help="Start month, YYYY-MM")
+    discover.add_argument("--to", dest="date_to", help="End month, YYYY-MM")
+    discover.add_argument(
+        "--facet",
+        action="append",
+        default=[],
+        help="Facet to include in the menu. Repeat to include multiple facets.",
+    )
+    discover.add_argument("--json", action="store_true", help="Emit JSON output")
+
     navigate = subparsers.add_parser(
         "navigate",
         help="Run deterministic structured navigation over Index B",
@@ -123,7 +138,7 @@ def _parse_filter_operations(filters: list[str]) -> list[dict[str, Any]]:
 def _log_index_tree_call(
     args: argparse.Namespace, payload: dict[str, Any], elapsed_ms: float
 ) -> None:
-    if args.subcommand not in {"ensure", "navigate"}:
+    if args.subcommand not in {"ensure", "discover", "navigate"}:
         return
 
     raw_data = payload.get("data")
@@ -136,13 +151,28 @@ def _log_index_tree_call(
     }
     if args.subcommand == "ensure":
         result["entry_count"] = data.get("entry_count")
+    elif args.subcommand == "discover":
+        raw_coverage = data.get("coverage")
+        discover_coverage: dict[str, Any] = raw_coverage if isinstance(raw_coverage, dict) else {}
+        raw_facets = data.get("facets")
+        facets: dict[str, Any] = raw_facets if isinstance(raw_facets, dict) else {}
+        result["candidate_count"] = discover_coverage.get("candidate_count")
+        result["facet_value_counts"] = {
+            name: facet.get("value_count")
+            for name, facet in facets.items()
+            if isinstance(facet, dict)
+        }
     else:
         result["count"] = data.get("count")
         result["entry_pointers"] = data.get("entry_pointers", [])
         raw_coverage = data.get("coverage")
-        coverage: dict[str, Any] = raw_coverage if isinstance(raw_coverage, dict) else {}
-        result["candidate_count_before_filters"] = coverage.get("candidate_count_before_filters")
-        result["candidate_count_after_filters"] = coverage.get("candidate_count_after_filters")
+        navigate_coverage: dict[str, Any] = raw_coverage if isinstance(raw_coverage, dict) else {}
+        result["candidate_count_before_filters"] = navigate_coverage.get(
+            "candidate_count_before_filters"
+        )
+        result["candidate_count_after_filters"] = navigate_coverage.get(
+            "candidate_count_after_filters"
+        )
 
     raw_error = payload.get("error")
     error: dict[str, Any] | None = raw_error if isinstance(raw_error, dict) else None
@@ -157,6 +187,8 @@ def _log_index_tree_call(
     }
     if args.subcommand == "navigate":
         params["filters"] = list(getattr(args, "filter", []) or [])
+    if args.subcommand == "discover":
+        params["facets"] = list(getattr(args, "facet", []) or [])
 
     emit_tool_call_log(
         f"index-tree.{args.subcommand}",
@@ -215,6 +247,12 @@ def main(argv: list[str] | None = None) -> None:
                 str(exc),
                 {"date_from": args.date_from, "date_to": args.date_to},
             )
+    elif args.subcommand == "discover":
+        payload = build_discover_payload(
+            date_from=args.date_from,
+            date_to=args.date_to,
+            facets=args.facet,
+        )
     elif args.subcommand == "navigate":
         payload = build_navigate_payload(
             date_from=args.date_from,
