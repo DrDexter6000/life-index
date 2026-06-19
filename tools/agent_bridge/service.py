@@ -21,6 +21,7 @@ import signal
 import socket
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -36,7 +37,8 @@ from tools.agent_bridge.query_envelope import (
 
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8787
-_SSE_TIMEOUT = 300.0
+_SSE_KEEPALIVE_INTERVAL = 15.0
+_SSE_MAX_DURATION = 1800.0
 
 # Env var to opt out of the data-free ACP session/prompt warmup on server
 # start.  Set to "0", "false", "no", or "off" to disable.  Default: enabled.
@@ -157,6 +159,29 @@ def _resolve_scaffold(query: str, scaffold: dict[str, Any]) -> dict[str, Any]:
     if _scaffold_has_evidence(scaffold):
         return handoff.hydrate_gateway_scaffold(scaffold, query)
     return handoff.build_gateway_scaffold(query)
+
+
+def _progress_event_payload(data: Any, sequence: int) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "state": "working",
+        "source": "gateway",
+        "sequence": sequence,
+    }
+    if not isinstance(data, dict):
+        return payload
+    source = data.get("source")
+    if isinstance(source, str) and source.strip():
+        payload["source"] = source.strip()[:80]
+    session_update = data.get("session_update")
+    if isinstance(session_update, str) and session_update.strip():
+        payload["session_update"] = session_update.strip()[:120]
+    tool = data.get("tool")
+    if isinstance(tool, str) and tool.strip():
+        payload["tool"] = tool.strip()[:120]
+    status = data.get("status")
+    if isinstance(status, str) and status.strip():
+        payload["status"] = status.strip()[:120]
+    return payload
 
 
 class ACPServiceHandler(BaseHTTPRequestHandler):
@@ -288,8 +313,9 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
         *scaffold* is already resolved (either caller-supplied evidence-bearing
         or fetched via the deterministic L2 smart-search builder).  Event
         vocabulary is fixed and ordered:
-        ``status`` -> ``scaffold`` -> ``evidence`` -> ``delta`` (optional)
-        -> ``final``.  ``delta`` carries the validated answer text only;
+        ``status`` -> ``scaffold`` -> ``thinking`` (optional, repeatable)
+        -> ``evidence`` -> ``delta`` (optional) -> ``final``.  ``delta``
+        carries the validated answer text only;
         ``final`` carries the complete rich ``m35.agent_bridge_query.v0``
         envelope.  On unexpected failure an ``error`` event is emitted.
         """
@@ -300,10 +326,14 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
 
             Raw model fragments (markdown fences, JSON, schema keys, etc.)
             must never leak into ``delta`` events.  The validated answer text
-            is derived from the final rich envelope and emitted as a single
-            text-only delta after ``evidence``.
+            is derived from the final rich envelope.  Structured progress
+            dictionaries are emitted as ``thinking`` events and never treated
+            as answer text.
             """
-            sse_queue.put(("chunk", chunk))
+            if isinstance(chunk, dict) and chunk.get("type") == "progress":
+                sse_queue.put(("progress", chunk))
+            else:
+                sse_queue.put(("chunk", chunk))
 
         def run_query() -> None:
             try:
@@ -331,19 +361,47 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
             self._write_sse_event("scaffold", clean_scaffold(scaffold))
 
             # Phase 2: wait for the validated result.  Raw chunks received from
-            # the adapter are ignored for delta purposes; the validated answer
-            # summary from the final envelope is the only delta source.
+            # the adapter are ignored for delta purposes; progress updates feed
+            # ``thinking`` events so long agentic planning does not look hung.
             internal_result: Any = None
+            progress_sequence = 0
+            started_at = time.monotonic()
             while internal_result is None:
+                elapsed = time.monotonic() - started_at
+                if elapsed > _SSE_MAX_DURATION:
+                    raise TimeoutError(
+                        f"SSE query exceeded max duration ({_SSE_MAX_DURATION:.0f}s)"
+                    )
                 try:
-                    kind, data = sse_queue.get(timeout=_SSE_TIMEOUT)
+                    timeout = min(_SSE_KEEPALIVE_INTERVAL, max(0.01, _SSE_MAX_DURATION - elapsed))
+                    kind, data = sse_queue.get(timeout=timeout)
                 except queue.Empty:
-                    return
+                    if worker.is_alive():
+                        progress_sequence += 1
+                        self._write_sse_event(
+                            "thinking",
+                            {
+                                "state": "working",
+                                "source": "gateway",
+                                "sequence": progress_sequence,
+                                "status": "waiting",
+                            },
+                        )
+                        continue
+                    raise RuntimeError("SSE query worker ended without a result")
 
                 if kind == "chunk":
                     # Raw adapter chunks are intentionally not forwarded as
                     # deltas.  They may contain JSON, markdown fences, or
                     # schema fragments before validation completes.
+                    continue
+
+                if kind == "progress":
+                    progress_sequence += 1
+                    self._write_sse_event(
+                        "thinking",
+                        _progress_event_payload(data, progress_sequence),
+                    )
                     continue
 
                 if kind == "error":

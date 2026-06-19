@@ -52,6 +52,33 @@ def _seed_data(data_dir: Path) -> Path:
     return journal
 
 
+def _seed_index_b_data(data_dir: Path) -> Path:
+    journal = _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Alpha Work",
+        extra_frontmatter=(
+            'topic: ["work"]\n'
+            'people: ["Alice"]\n'
+            'project: "Atlas"\n'
+            'tags: ["planning"]\n'
+            'task: ["review"]\n'
+            'location: "London, United Kingdom"\n'
+            'weather: "Cloudy 12C"'
+        ),
+    )
+    _write_index(
+        data_dir / "Journals" / "2026" / "03" / "index_2026-03.md",
+        ["entries: 1", "topics: {work: 1}", 'date_range: "2026-03"'],
+    )
+    _write_index(
+        data_dir / "Journals" / "2026" / "index_2026.md",
+        ["entries: 1", "topics: {work: 1}"],
+    )
+    _write_index(data_dir / "INDEX.md", ["total_entries: 1", 'date_range: "2026-03"'])
+    return journal
+
+
 def _invoke(data_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
@@ -128,6 +155,55 @@ def test_shadow_json_contract(tmp_path: Path) -> None:
     assert payload["command"] == "index-tree.shadow"
     assert payload["data"]["diagnostic_only"] is True
     assert payload["data"]["recall_preserved"] is True
+
+
+def test_materialize_writes_index_b_navigation_docs(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    journal = _seed_index_b_data(data_dir)
+
+    result = _invoke(
+        data_dir,
+        "materialize",
+        "--from",
+        "2026-03",
+        "--to",
+        "2026-03",
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    assert payload["success"] is True
+    assert payload["command"] == "index-tree.materialize"
+    written_docs = payload["data"]["written_docs"]
+    assert ".life-index/index-b/INDEX.md" in written_docs
+    assert ".life-index/index-b/Journals/2026/index.md" in written_docs
+    assert ".life-index/index-b/Journals/2026/03/index.md" in written_docs
+
+    root_doc = data_dir / ".life-index" / "index-b" / "INDEX.md"
+    year_doc = data_dir / ".life-index" / "index-b" / "Journals" / "2026" / "index.md"
+    month_doc = data_dir / ".life-index" / "index-b" / "Journals" / "2026" / "03" / "index.md"
+    for path in (root_doc, year_doc, month_doc):
+        assert path.exists(), f"missing materialized doc: {path}"
+        assert path.read_text(encoding="utf-8").strip()
+
+    month_text = month_doc.read_text(encoding="utf-8")
+    assert "## Facets" in month_text
+    for facet in ("weather", "location", "task", "project", "tag", "people"):
+        assert f"### {facet}" in month_text
+    assert "| Cloudy 12C | 1 |" in month_text
+    assert "| London, United Kingdom | 1 |" in month_text
+    assert "| review | 1 |" in month_text
+    assert "| Atlas | 1 |" in month_text
+    assert "| planning | 1 |" in month_text
+    assert "| Alice | 1 |" in month_text
+    assert journal.relative_to(data_dir).as_posix() in month_text
+
+    root_text = root_doc.read_text(encoding="utf-8")
+    year_rel = ".life-index/index-b/Journals/2026/index.md"
+    month_rel = ".life-index/index-b/Journals/2026/03/index.md"
+    assert year_rel in root_text
+    assert month_rel in year_doc.read_text(encoding="utf-8")
 
 
 def test_lens_invalid_signal_returns_structured_error(tmp_path: Path) -> None:

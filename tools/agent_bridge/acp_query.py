@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import inspect
 import os
 import re
 import sys
+from pathlib import Path
 from typing import Any, Callable
 
 from tools.agent_bridge.acp_client import _ACPConnection, parse_acp_stream
@@ -20,6 +22,10 @@ QUERY_SCHEMA_VERSION = "m35.agent_bridge_query.v0"
 _MAX_EVIDENCE_ENTRIES = 10
 _REPAIR_RETRY_MAX = 1
 _PROMPT_RPC_RETRY_MAX = 1
+_QUERY_PROMPT_RPC_TIMEOUT = 1800.0
+_SKILL_PLAYBOOK_START = "<!-- GROUNDED_QUERY_SKILL_START -->"
+_SKILL_PLAYBOOK_END = "<!-- GROUNDED_QUERY_SKILL_END -->"
+_MAX_SKILL_PLAYBOOK_CHARS = 6000
 _FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 _JSON_OBJECT_RE = re.compile(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", re.DOTALL)
 # Trailing comma immediately before a closing ``}`` or ``]`` — a common
@@ -52,6 +58,23 @@ def _safe_exception_summary(exc: Exception) -> str:
         raw = pattern.sub(replacement, raw)
     raw = re.sub(r"\s+", " ", raw).strip()
     return raw[:300] or type(exc).__name__
+
+
+def _load_grounded_query_playbook() -> str:
+    """Load the bounded grounded-query playbook from the repository skill file."""
+    skill_path = Path(__file__).resolve().parents[2] / "SKILL.md"
+    try:
+        text = skill_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    start = text.find(_SKILL_PLAYBOOK_START)
+    end = text.find(_SKILL_PLAYBOOK_END)
+    if start == -1 or end == -1 or end <= start:
+        return ""
+    playbook = text[start + len(_SKILL_PLAYBOOK_START) : end].strip()
+    if len(playbook) > _MAX_SKILL_PLAYBOOK_CHARS:
+        playbook = playbook[:_MAX_SKILL_PLAYBOOK_CHARS].rstrip() + "\n[truncated]"
+    return playbook
 
 
 def _try_loads(text: str) -> Any | None:
@@ -235,6 +258,13 @@ def build_query_prompt(query: str, evidence_pack: dict, allowed_ids: set[str]) -
         evidence_lines.append(f"  {sid}: {entry['text']}")
 
     evidence_block = "\n".join(evidence_lines) if evidence_lines else "  (no evidence supplied)"
+    grounded_query_playbook = _load_grounded_query_playbook()
+    if not grounded_query_playbook:
+        grounded_query_playbook = (
+            "## Grounded Query Skill Playbook\n"
+            "Use deterministic Life Index navigation/search/read tools, then return "
+            "answer.insights[] with quote, interpretation, and evidence_refs."
+        )
 
     return f"""You are an evidence-bound Life Index research assistant. Your task is to
 answer the following question by actively gathering journal evidence through
@@ -248,6 +278,9 @@ SEED EVIDENCE PACK (deterministic hints, not the evidence boundary):
 {evidence_block}
 
 SEED EVIDENCE IDs: {allowed_str}
+
+Grounded Query Skill Playbook:
+{grounded_query_playbook}
 
 IMPORTANT:
 - You MUST use the active Life Index data directory exposed to your runtime.
@@ -279,6 +312,9 @@ IMPORTANT:
   or close excerpt with no raw double quotes; use Chinese corner quotes if the
   source text contains quotes. The interpretation explains why that evidence
   matters for the question.
+- If the answer contains an aggregate count, one insight MUST repeat the exact
+  count string in its interpretation and cite the journal entries that make up
+  that count. Do not put a count only in the summary.
 - The top-level evidence_refs MUST exactly equal the union of all
   insights[].evidence_refs. Do not list every document you found, searched, or
   classified; list only the journal IDs actually used by returned insights.
@@ -588,11 +624,25 @@ def _is_queued_placeholder(text: str) -> bool:
     return bool(normalized) and "queued for the next turn" in normalized
 
 
+def _supports_stream_progress(conn: _ACPConnection) -> bool:
+    try:
+        return "stream_progress" in inspect.signature(conn.rpc).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _supports_rpc_timeout(conn: _ACPConnection) -> bool:
+    try:
+        return "rpc_timeout" in inspect.signature(conn.rpc).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 def _send_prompt_turn(
     conn: _ACPConnection,
     prompt_text: str,
     *,
-    stream_callback: Callable[[str], None] | None = None,
+    stream_callback: Callable[[Any], None] | None = None,
 ) -> tuple[dict, list[dict]]:
     """Send one ``session/prompt`` turn with one bounded retry on RPC failure.
 
@@ -604,6 +654,11 @@ def _send_prompt_turn(
     for _attempt in range(_PROMPT_RPC_RETRY_MAX + 1):
         start_len = len(conn.collected)
         try:
+            rpc_kwargs: dict[str, Any] = {}
+            if _supports_stream_progress(conn):
+                rpc_kwargs["stream_progress"] = True
+            if _supports_rpc_timeout(conn):
+                rpc_kwargs["rpc_timeout"] = _QUERY_PROMPT_RPC_TIMEOUT
             resp = conn.rpc(
                 "session/prompt",
                 {
@@ -611,6 +666,7 @@ def _send_prompt_turn(
                     "prompt": [{"type": "text", "text": prompt_text}],
                 },
                 stream_callback=stream_callback,
+                **rpc_kwargs,
             )
             return resp, conn.collected[start_len:]
         except Exception as exc:
@@ -627,7 +683,7 @@ def acp_query_adapter(
     cfg: BrainConfig,
     *,
     connection: _ACPConnection | None = None,
-    stream_callback: Callable[[str], None] | None = None,
+    stream_callback: Callable[[Any], None] | None = None,
 ) -> dict:
     """Route an ACP transport query through ``session/prompt`` and return a validated
     ``m35.agent_bridge_query.v0`` envelope.

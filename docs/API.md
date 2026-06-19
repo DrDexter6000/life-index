@@ -1058,15 +1058,18 @@ life-index index-tree lens --signal topic --json
 life-index index-tree lens --signal people --json
 life-index index-tree lens --signal project --json
 life-index index-tree shadow --query "Alpha" --json
+life-index index-tree materialize --from 2026-03 --to 2026-06 --json
 python -m tools index-tree nodes --level month --json
 ```
 
-`index-tree` 是只读的 Index Tree Evidence Navigation 公共契约。它把
+`index-tree` 是 Index Tree Evidence Navigation 公共契约。它把
 root/year/month Index Tree、frontmatter-derived lenses、Search Shadow Mode
 诊断以 JSON envelope 暴露给 GUI、`on-this-day`、`smart-search` 诊断路径和已批准的高级模块。
 
-该命令不会写入或修改 journal、index、cache、attachment 或任何 durable data。Journal
-仍是唯一 truth source；index、lens、shadow report 都是可重建派生产物。
+`nodes`、`lens`、`shadow` 不会写入或修改 journal、index、cache、attachment 或任何
+durable data。`materialize` 只写 `.life-index/index-b/` 下可重建的导航文档，不写
+journal、attachment 或 durable truth source。Journal 仍是唯一 truth source；index、
+lens、shadow report、Index B docs 都是可重建派生产物。
 
 ### 通用返回 Envelope
 
@@ -1192,6 +1195,40 @@ root/year/month Index Tree、frontmatter-derived lenses、Search Shadow Mode
     "dropped_paths": [],
     "default_search_mutated": false,
     "default_smart_search_mutated": false
+  },
+  "errors": []
+}
+```
+
+### `materialize`
+
+`materialize` 为指定月份范围写入确定性 Index B facet 导航文档。输出目录固定为
+`.life-index/index-b/`，以 root/year/month 三层组织。文档包含
+weather/location/task/project/tag/people facet 的计数，以及指向下层导航文档或 journal
+条目的相对路径。它不做 LLM 摘要，不改变 search / smart-search ranking。
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.materialize",
+  "data": {
+    "truth_source": "journals",
+    "artifact": "index-b",
+    "schema_version": "m31.index_tree.index_b.v0",
+    "output_dir": ".life-index/index-b",
+    "date_from": "2026-03",
+    "date_to": "2026-06",
+    "entry_count": 42,
+    "year_count": 1,
+    "month_count": 4,
+    "facets": ["weather", "location", "task", "project", "tag", "people"],
+    "written_docs": [
+      ".life-index/index-b/INDEX.md",
+      ".life-index/index-b/Journals/2026/index.md",
+      ".life-index/index-b/Journals/2026/03/index.md"
+    ],
+    "dry_run": false
   },
   "errors": []
 }
@@ -3113,13 +3150,15 @@ Allowed event types (in order):
 |---|---|---|
 | `status` | `{"state": "active"}` | stream started |
 | `scaffold` | `{intent, date_from, date_to, queries, filters}` | search scaffold |
+| `thinking` | `{state, source, sequence, session_update?, tool?, status?}` | agentic progress / keepalive; not answer text |
 | `evidence` | `evidence[]` | accepted evidence metadata |
 | `delta` | string | optional validated answer text update; answer text only |
 | `final` | full rich `m35.agent_bridge_query.v0` envelope | complete response |
 | `error` | `{message, envelope}` | unexpected failure with rich degraded envelope |
 
 `delta` carries answer text only and never includes evidence, mode, or
-provenance. `final` always carries the complete rich envelope.
+provenance. `thinking` is progress/keepalive metadata only and must not be
+rendered as final answer content. `final` always carries the complete rich envelope.
 
 ### 安全边界
 

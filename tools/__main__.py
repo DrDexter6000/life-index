@@ -38,7 +38,7 @@ Commands:
               --cache-audit  Read-only cache version audit (JSON)
     server    Start/status/stop the shared loopback-only ACP gateway
     import    Import provider (plan, run, status, rollback)
-    index-tree  Read-only Index Tree Evidence Navigation
+    index-tree  Index Tree Evidence Navigation
     version   Show package and bootstrap manifest version info
 """
 
@@ -583,7 +583,7 @@ def print_usage() -> None:
     print("            --data-audit  Audit data directory for anomalies")
     print("            --cache-audit  Read-only cache version audit (JSON)")
     print("  import    Import provider (plan, run, status, rollback)")
-    print("  index-tree  Read-only Index Tree Evidence Navigation")
+    print("  index-tree  Index Tree Evidence Navigation")
     print("  version   Show package and bootstrap manifest version info")
     print()
     print("Run 'life-index <command> --help' for command-specific options.")

@@ -8,7 +8,14 @@ import json
 import sys
 from typing import Any
 
-from .core import build_lens_payload, build_nodes_payload, build_shadow_payload
+from .core import (
+    _error_payload,
+    _success_payload,
+    build_lens_payload,
+    build_nodes_payload,
+    build_shadow_payload,
+)
+from .materialize import build_materialize_payload
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -22,7 +29,7 @@ def _emit(payload: dict[str, Any]) -> None:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="life-index index-tree",
-        description="Read-only Index Tree Evidence Navigation",
+        description="Index Tree Evidence Navigation",
     )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
@@ -38,6 +45,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     shadow.add_argument("--query", required=True, help="Query to diagnose")
     shadow.add_argument("--json", action="store_true", help="Emit JSON output")
 
+    materialize = subparsers.add_parser(
+        "materialize",
+        help="Write deterministic Index B facet navigation docs",
+    )
+    materialize.add_argument("--from", dest="date_from", help="Start month, YYYY-MM")
+    materialize.add_argument("--to", dest="date_to", help="End month, YYYY-MM")
+    materialize.add_argument("--dry-run", action="store_true", help="Plan docs without writing")
+    materialize.add_argument("--json", action="store_true", help="Emit JSON output")
+
     return parser.parse_args(argv)
 
 
@@ -49,6 +65,21 @@ def main(argv: list[str] | None = None) -> None:
         payload = build_lens_payload(signal=args.signal)
     elif args.subcommand == "shadow":
         payload = build_shadow_payload(query=args.query)
+    elif args.subcommand == "materialize":
+        try:
+            data = build_materialize_payload(
+                date_from=args.date_from,
+                date_to=args.date_to,
+                dry_run=args.dry_run,
+            )
+            payload = _success_payload("index-tree.materialize", data)
+        except ValueError as exc:
+            payload = _error_payload(
+                "index-tree.materialize",
+                "INDEX_TREE_MATERIALIZE_INVALID_RANGE",
+                str(exc),
+                {"date_from": args.date_from, "date_to": args.date_to},
+            )
     else:
         raise AssertionError(f"unreachable subcommand: {args.subcommand}")
 

@@ -472,6 +472,30 @@ def test_warm_acp_prompt_sends_session_prompt_rpc():
     assert params["prompt"] == [{"type": "text", "text": "READY"}]
 
 
+def test_warm_acp_prompt_does_not_override_connection_rpc_timeout():
+    """Data-free warmup keeps the short warm connection RPC budget."""
+
+    class TimeoutCapturingConn(_FakeConn):
+        def __init__(self) -> None:
+            super().__init__()
+            self.rpc_kwargs: list[dict] = []
+
+        def rpc(self, method: str, params: dict, **kwargs) -> dict:
+            self.rpc_kwargs.append(kwargs)
+            return super().rpc(method, params)
+
+    conn = TimeoutCapturingConn()
+
+    def factory(*args, **kwargs):
+        return conn
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory)
+    mgr.ensure_warm()
+    mgr.warm_acp_prompt()
+
+    assert conn.rpc_kwargs == [{}]
+
+
 def test_warm_acp_prompt_uses_default_ready_prompt():
     """The default warmup prompt is the READY constant — data-free."""
     conn = _FakeConn()
