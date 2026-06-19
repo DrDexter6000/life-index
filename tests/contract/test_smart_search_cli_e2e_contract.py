@@ -69,7 +69,7 @@ def sandbox(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture(scope="session")
 def default_proc(sandbox: Path) -> subprocess.CompletedProcess[str]:
-    return _run_smart_search("--query", "test", "--no-llm", data_dir=sandbox)
+    return _run_smart_search("--query", "test", data_dir=sandbox)
 
 
 @pytest.fixture(scope="session")
@@ -77,7 +77,6 @@ def evidence_proc(sandbox: Path) -> subprocess.CompletedProcess[str]:
     return _run_smart_search(
         "--query",
         "test",
-        "--no-llm",
         "--include-evidence",
         data_dir=sandbox,
     )
@@ -85,7 +84,7 @@ def evidence_proc(sandbox: Path) -> subprocess.CompletedProcess[str]:
 
 @pytest.fixture(scope="session")
 def synthesize_proc(sandbox: Path) -> subprocess.CompletedProcess[str]:
-    return _run_smart_search("--query", "test", "--no-llm", "--synthesize", data_dir=sandbox)
+    return _run_smart_search("--query", "test", "--synthesize", data_dir=sandbox)
 
 
 @pytest.fixture(scope="session")
@@ -93,7 +92,6 @@ def combined_proc(sandbox: Path) -> subprocess.CompletedProcess[str]:
     return _run_smart_search(
         "--query",
         "test",
-        "--no-llm",
         "--include-evidence",
         "--synthesize",
         data_dir=sandbox,
@@ -102,7 +100,7 @@ def combined_proc(sandbox: Path) -> subprocess.CompletedProcess[str]:
 
 @pytest.fixture(scope="session")
 def explain_proc(sandbox: Path) -> subprocess.CompletedProcess[str]:
-    return _run_smart_search("--query", "test", "--no-llm", "--explain", data_dir=sandbox)
+    return _run_smart_search("--query", "test", "--explain", data_dir=sandbox)
 
 
 @pytest.fixture(scope="session")
@@ -177,7 +175,7 @@ class TestIncludeEvidenceContract:
 
 
 class TestSynthesizeNoLlmContract:
-    """--synthesize --no-llm: no answer, agent_unavailable true."""
+    """--synthesize without in-tool LLM: no answer, agent_unavailable true."""
 
     def test_success_without_answer(
         self, synthesize_proc: subprocess.CompletedProcess[str]
@@ -292,7 +290,6 @@ class TestSeededEntityMatchContract:
         return _run_smart_search(
             "--query",
             "TAlias",
-            "--no-llm",
             "--include-evidence",
             data_dir=seeded_sandbox,
             timeout=120,
@@ -303,7 +300,6 @@ class TestSeededEntityMatchContract:
         return _run_smart_search(
             "--query",
             "TAlias",
-            "--no-llm",
             data_dir=seeded_sandbox,
             timeout=120,
         )
@@ -363,7 +359,6 @@ class TestSeededEntityMatchContract:
         return _run_smart_search(
             "--query",
             "TAlias",
-            "--no-llm",
             "--include-evidence",
             "--synthesize",
             data_dir=seeded_sandbox,
@@ -512,7 +507,6 @@ class TestFormatEntityAnnotatedContract:
         return _run_smart_search(
             "--query",
             "FAlias",
-            "--no-llm",
             "--include-evidence",
             "--format-entity-annotated",
             data_dir=fmt_sandbox,
@@ -524,7 +518,6 @@ class TestFormatEntityAnnotatedContract:
         return _run_smart_search(
             "--query",
             "FAlias",
-            "--no-llm",
             "--format-entity-annotated",
             data_dir=fmt_sandbox,
             timeout=120,
@@ -636,7 +629,6 @@ class TestCaseInsensitiveSeededEntityMatchContract:
         return _run_smart_search(
             "--query",
             "casealias",
-            "--no-llm",
             "--include-evidence",
             data_dir=ci_sandbox,
             timeout=120,

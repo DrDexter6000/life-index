@@ -28,7 +28,7 @@ triggers:
 |:---:|:---|:---|
 | 记录日志 | "记日志"、"记录一下"、"写日记"、"记下来"、"log this"、"record this"、"write journal" | `write_journal` |
 | 搜索日志 | "查找日志"、"搜索记录"、"找一下关于...的日记"、"search journal"、"find log" | `search_journals` |
-| 智能搜索 | "帮我回忆..."、"我和女儿之间有哪些珍贵的回忆？"、"smart search" | `smart_search`（默认确定性 scaffold；LLM 编排需 `--use-llm`） |
+| 智能搜索 | "帮我回忆..."、"我和女儿之间有哪些珍贵的回忆？"、"smart search" | `smart_search`（确定性 scaffold；合成与判断由宿主 agent 完成） |
 | 历史同日 | "去年今天在做什么"、"历史上的今天"、"on-this-day"、"历史同日" | `on_this_day` |
 | 编辑日志 | "修改日志"、"补充日记"、"更新记录"、"edit journal"、"update log" | `edit_journal` |
 | 实体图谱 | "列出实体"、"解析人物关系"、"entity graph"、"谁是谁的..." | `entity` |
@@ -52,7 +52,6 @@ triggers:
 .venv/bin/life-index search --query "关键词" --topic work --level 3
 .venv/bin/life-index search --query "学习"  # 默认 keyword-only；加 --semantic 启用语义搜索
 .venv/bin/life-index smart-search --query "我和女儿之间有哪些珍贵的回忆？"  # 确定性检索 scaffold（默认不调用 LLM）
-.venv/bin/life-index smart-search --query "..." --use-llm  # 显式启用 LLM 编排搜索
 .venv/bin/life-index smart-search --query "..." --explain  # 展示 Agent 决策详情
 .venv/bin/life-index smart-search --query "..." --include-evidence  # 含 evidence pack + 检索诊断
 .venv/bin/life-index on-this-day --date 2026-05-19 --years-back 3       # 历史同日回顾
@@ -147,7 +146,7 @@ life-index/                         # 技能根目录
 ├── tools/                         # 可执行工具目录
 │   ├── write_journal/             # 写入日志（天气查询、附件处理、索引更新）
 │   ├── search_journals/           # 搜索日志（L1/L2/L3 + 语义搜索）
-│   ├── smart_search/              # 默认确定性智能检索 scaffold；--use-llm 才启用 LLM 编排
+│   ├── smart_search/              # 确定性智能检索 scaffold；宿主 agent 负责合成
 │   ├── edit_journal/              # 编辑日志（修改元数据、追加内容）
 │   ├── entity/                    # 实体图谱（list/add/resolve/update）
 │   ├── generate_index/            # 生成索引树（monthly/yearly/root）
@@ -381,14 +380,14 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
          最终结果
 ```
 
-对于复杂自然语言查询，`smart-search` 默认返回确定性检索 scaffold；只有显式传递 `--use-llm` 时，才在双管道之上启用 LLM 编排层（改写→消费 `expanded_terms` / `intent_type` / `time_range`→有界多路检索→精筛），详见 [ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
+对于复杂自然语言查询，`smart-search` 返回确定性检索 scaffold；查询拆解、判断、过滤与总结由宿主 agent 按本 Skill 的 playbook 完成，详见 [ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
 
 **Agent consumption rule（smart-search v1）**:
 1. 默认先调用 `life-index smart-search --query "..." --include-evidence`。
 2. 使用返回的 `agent_instructions` 与 `answer_scaffold` 组织最终答复。
 3. 只引用 `filtered_results` / `evidence_pack` 中返回的来源，不得自行补造证据。
-4. 只有当用户或任务明确允许 provider-backed 编排时，才使用 `--use-llm`。
-5. 只有需要 CLI 自己产出引用支撑答案字段时，才叠加 `--synthesize`。
+4. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
+5. 只有需要 CLI 产出确定性答案 scaffold 字段时，才叠加 `--synthesize`。
 
 **查询意图 → 参数映射**:
 

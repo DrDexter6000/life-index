@@ -81,20 +81,11 @@ def test_unified_cli_routes_confirm_to_write_journal(monkeypatch) -> None:
     assert FakeModule.called is True
 
 
-@pytest.mark.parametrize(
-    ("extra_args", "expected_use_llm"),
-    [
-        ([], False),
-        (["--no-llm"], False),
-        (["--use-llm"], True),
-    ],
-)
-def test_enrich_cli_llm_opt_in_and_no_llm_compat(monkeypatch, extra_args, expected_use_llm) -> None:
+def test_enrich_cli_is_deterministic(monkeypatch) -> None:
     captured = {}
 
-    def fake_prepare_journal_metadata(data, *, use_llm):
+    def fake_prepare_journal_metadata(data):
         captured["data"] = data
-        captured["use_llm"] = use_llm
         return {"content": data["content"], "topic": ["life"]}
 
     monkeypatch.setattr(
@@ -110,7 +101,6 @@ def test_enrich_cli_llm_opt_in_and_no_llm_compat(monkeypatch, extra_args, expect
             "enrich",
             "--data",
             '{"content":"test","topic":"life"}',
-            *extra_args,
         ],
     )
 
@@ -119,4 +109,22 @@ def test_enrich_cli_llm_opt_in_and_no_llm_compat(monkeypatch, extra_args, expect
 
     assert exc_info.value.code == 0
     assert captured["data"]["content"] == "test"
-    assert captured["use_llm"] is expected_use_llm
+
+
+def test_enrich_cli_use_llm_is_not_accepted(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "write_journal",
+            "enrich",
+            "--data",
+            '{"content":"test","topic":"life"}',
+            "--use-llm",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == 2

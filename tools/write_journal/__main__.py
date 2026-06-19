@@ -107,9 +107,8 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
 
     This command extracts/enriches metadata from content using:
     1. Rule-based fallbacks
-    2. Optional LLM-assisted extraction only when explicitly enabled
-    3. Project inference
-    4. Weather auto-fill
+    2. Project preservation from explicit input
+    3. Weather auto-fill
 
     Returns the prepared metadata for preview/validation without writing a journal.
     """
@@ -143,7 +142,7 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
         print(f"[INFO] 输入数据: {json.dumps(data, ensure_ascii=False)}", file=sys.stderr)
 
     try:
-        result = prepare_journal_metadata(data, use_llm=args.use_llm)
+        result = prepare_journal_metadata(data)
         _emit_json({"success": True, "data": result})
         return 0
     except ValueError as e:
@@ -205,7 +204,7 @@ Examples:
 
     # Enrich metadata (for preview, deterministic by default)
     python -m tools.write_journal enrich --data '{"content":"今天看到乐乐以前的照片..."}'
-    python -m tools.write_journal enrich --data @draft.json --use-llm
+    python -m tools.write_journal enrich --data @draft.json
         """,
     )
 
@@ -231,17 +230,12 @@ Examples:
         help="Extract/enrich metadata without writing",
         description=(
             "Prepare journal metadata from content using rule-based "
-            "extraction. Returns enriched data without writing a journal. "
-            "Use --use-llm to opt into LLM-assisted metadata extraction."
+            "extraction. Returns enriched data without writing a journal."
         ),
     )
     enrich_parser.add_argument(
         "--data", required=True, help="JSON数据，或 @文件路径 (如 @input.json)"
     )
-    enrich_parser.add_argument(
-        "--use-llm", action="store_true", help="启用 LLM 提取（显式 opt-in）"
-    )
-    enrich_parser.add_argument("--no-llm", action="store_true", help=argparse.SUPPRESS)
     enrich_parser.add_argument("--verbose", action="store_true", help="输出详细日志")
     enrich_parser.set_defaults(func=_cmd_enrich)
 

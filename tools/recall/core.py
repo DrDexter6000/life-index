@@ -3,7 +3,7 @@
 Life Index - Recall Module Core Logic
 
 L3 module that consumes L2 search/smart-search through subprocess delegation.
-Provides three search modes: default (pure FTS), recall (hybrid), deep (LLM opt-in).
+Provides three search modes: default (pure FTS), recall (hybrid), deep (deterministic recall).
 
 Mirrors the on_this_day subprocess pattern — never imports L2 internals directly.
 """
@@ -76,46 +76,6 @@ def _call_search(
     return payload
 
 
-def _call_smart_search(
-    query: str,
-    use_llm: bool = False,
-    env: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
-    """Invoke L2 smart-search CLI via subprocess and return parsed JSON."""
-    cmd = [
-        sys.executable,
-        "-m",
-        "tools",
-        "smart-search",
-        "--query",
-        query,
-    ]
-    if use_llm:
-        cmd.append("--use-llm")
-
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=120,
-        env=env,
-    )
-
-    try:
-        payload = json.loads(proc.stdout)
-    except (json.JSONDecodeError, TypeError) as exc:
-        return {
-            "success": False,
-            "error": f"smart-search output not valid JSON: {exc}",
-        }
-    if not isinstance(payload, dict):
-        return {
-            "success": False,
-            "error": "smart-search output JSON was not an object",
-        }
-    return payload
-
-
 def _extract_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extract result list from L2 search output.
 
@@ -139,7 +99,7 @@ def run_recall(
     Args:
         mode: Search mode — 'default', 'recall', or 'deep'.
         query: Search query string.
-        use_llm: Whether LLM is explicitly opted-in (only affects deep mode).
+        use_llm: Legacy compatibility parameter; ignored. Tools are deterministic.
 
     Returns:
         Structured JSON result with schema_version, mode, effective_mode,
@@ -178,28 +138,21 @@ def run_recall(
         # Pure FTS — no semantic search
         l2_payload = _call_search(query, no_semantic=True, env=env)
         source_command = "search --no-semantic"
-        # --use-llm is ignored in default mode
+        # Legacy use_llm is ignored in default mode.
 
     elif mode == "recall":
         # Default hybrid search (FTS + semantic fallback)
         l2_payload = _call_search(query, no_semantic=False, env=env)
         source_command = "search"
-        # --use-llm is ignored in recall mode
+        # Legacy use_llm is ignored in recall mode.
 
     elif mode == "deep":
-        if use_llm:
-            # Delegate to smart-search with LLM
-            l2_payload = _call_smart_search(query, use_llm=True, env=env)
-            source_command = "smart-search --use-llm"
-            effective_mode = "deep"
-        else:
-            # Degrade to recall mode with stderr warning
-            l2_payload = _call_search(query, no_semantic=False, env=env)
-            source_command = "search"
-            effective_mode = "recall"
-            stderr_warning = (
-                "recall: deep mode requires --use-llm; " "degraded to recall mode (no LLM)."
-            )
+        # Deep mode no longer invokes in-tool LLM orchestration. Keep the mode
+        # accepted for compatibility, but execute the deterministic recall path.
+        l2_payload = _call_search(query, no_semantic=False, env=env)
+        source_command = "search"
+        effective_mode = "recall"
+        stderr_warning = "recall: deep mode uses deterministic recall; in-tool LLM is retired."
 
     # Check L2 payload success
     if not l2_payload.get("success", False):

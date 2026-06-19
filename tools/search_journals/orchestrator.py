@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Smart Search Orchestrator — Intelligence Layer (CHARTER §1.5).
+"""Smart Search Orchestrator.
 
-This module is the ONLY place where LLM calls are allowed in the search subsystem.
-It sits ABOVE the deterministic dual-pipeline (hierarchical_search) and orchestrates:
-  1. Query rewriting (pre-processing)
-  2. Search execution (calling deterministic primitives)
-  3. Post-filtering + summarization (LLM-assisted curation)
+The product smart-search CLI constructs this orchestrator with ``llm_client=None``.
+Provider-backed synthesis is retired from default tool paths; host agents and
+Skills own planning, filtering, and synthesis.
 
-When LLM is unavailable, falls back to pure dual-pipeline with agent_unavailable=True.
+The injectable client protocol remains for eval/legacy characterization tests,
+not as a core tool execution path. With no client, the orchestrator returns a
+deterministic scaffold over the dual-pipeline search results.
 """
 
 from __future__ import annotations

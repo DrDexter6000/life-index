@@ -41,6 +41,20 @@ jobs:
       - name: Run documentation sync check
         run: python .github/scripts/check_doc_sync.py
 
+  l2-no-llm:
+    runs-on: ubuntu-latest
+    name: L2 No LLM Check
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Check deterministic tool modules
+        run: python .github/scripts/check_l2_no_llm.py
+
   lint:
     runs-on: ubuntu-latest
     name: Lint

@@ -2013,16 +2013,16 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 | `success` | bool | yes | Whether the search executed successfully |
 | `schema_version` | string | yes | `"m16.smart_search.v0"` — top-level output schema version |
 | `query` | string | yes | User's original query |
-| `rewritten_query` | string | yes | Search query after orchestration; equals original in deterministic default mode |
-| `filtered_results` | array | yes | Primary bounded result list; LLM post-filtered only when `--use-llm` succeeds |
-| `summary` | string | yes | LLM-generated 2-3 sentence summary when `--use-llm` succeeds; empty in deterministic default mode |
-| `citations` | array | yes | Document title list from LLM filtering when available |
+| `rewritten_query` | string | yes | Search query used by deterministic scaffold; equals original unless deterministic routing expands it |
+| `filtered_results` | array | yes | Primary bounded result list from deterministic retrieval |
+| `summary` | string | yes | Empty in deterministic scaffold mode; host agents synthesize from returned evidence |
+| `citations` | array | yes | Empty in deterministic scaffold mode; host agents cite returned evidence |
 | `agent_decisions_summary` | string | conditional | Summary string when `--explain` not passed |
 | `agent_decisions` | array | conditional | Detailed decision list when `--explain` passed |
-| `agent_unavailable` | bool | yes | `true` when LLM is unavailable (degraded mode) |
+| `agent_unavailable` | bool | yes | `true` for deterministic scaffold output; host agent synthesis happens outside the tool |
 | `diagnostics` | object | no | 仅 `--explain` 时出现；确定性诊断块，详见 [v1.1.1 Observability Contract](#v111-observability-contract) |
 | `performance` | object | yes | Timing breakdown (`total_time_ms`, conditional sub-fields) |
-| `smart_search_mode` | string | yes | `deterministic_scaffold`, `llm_orchestrated`, or `deterministic_aggregate` |
+| `smart_search_mode` | string | yes | `deterministic_scaffold` or `deterministic_aggregate` |
 | `agent_instructions` | object | yes | Provider-free guidance for the calling agent |
 | `answer_scaffold` | object | yes | Suggested response shape and citation policy for the calling agent |
 | `query_plan` | object | yes | Query decomposition and strategy metadata |
@@ -2035,15 +2035,11 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 
 - `success`: retrieval execution success. Evidence pack or answer synthesis failure does not affect this.
 - `filtered_results`: primary result list for consumers. Items have `title`, `path`, `date`, `rrf_score`.
-- `smart_search_mode`: default is `deterministic_scaffold`; provider-backed orchestration only occurs under `--use-llm`.
+- `smart_search_mode`: default is `deterministic_scaffold`; in-tool provider-backed orchestration is retired.
 - `agent_instructions` / `answer_scaffold`: the v1 agent-ready contract. Calling agents should synthesize from returned evidence and cite only returned results.
 - `query_plan.strategy`: `keyword_only` for default no-fallback search,
   `keyword_with_semantic_fallback` when fallback was actually used,
-  `keyword_rewritten` for a single LLM rewrite query, `keyword_expanded`
-  when expansion terms shape a single query, `keyword_temporal` when
-  deterministic date filters are applied from LLM `time_range`, and
-  `keyword_multi_pass` when explicit `--use-llm` orchestration fans out to
-  multiple bounded sub-queries.
+  deterministic strategy names may be added for bounded tool-side routing.
 - `agent_unavailable`: diagnostic signal; UI should infer degraded state from `answer`/`summary` presence.
 - `performance`: non-stable; sub-fields may expand. Consumers should tolerate unknown keys.
 - `answer.confidence`: trust-gate calibrated (not LLM self-assessment). Values: `high` / `medium` / `low`.
@@ -2081,12 +2077,10 @@ python -m tools.smart_search --query "..." [options]
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | query | string | ✅ | - | 自然语言搜索查询 |
-| use-llm | flag | ❌ | false | 显式启用 LLM 编排（query rewrite / filter / summary / synthesis） |
-| no-llm | flag | ❌ | false | 向后兼容 no-op；默认已是纯确定性模式 |
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情与 `diagnostics` 诊断块 |
 | include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
 | format-entity-annotated | flag | ❌ | false | 与 `--include-evidence` 同用时，增加人类可读的 `formatted_evidence` |
-| synthesize | flag | ❌ | false | 生成引用支撑的自然语言答案（需要 `--use-llm`） |
+| synthesize | flag | ❌ | false | 生成确定性答案 scaffold 字段（不调用 LLM） |
 
 ### 返回值
 
@@ -2143,13 +2137,13 @@ python -m tools.smart_search --query "..." [options]
 |------|------|------|
 | `success` | bool | 搜索是否成功执行 |
 | `query` | string | 用户原始查询 |
-| `rewritten_query` | string | 编排后的检索查询；默认确定性模式下等于原始查询 |
-| `filtered_results` | list[dict] | 主要结果列表；只有 `--use-llm` 成功时才经过 LLM 后置筛选 |
-| `summary` | string | 只有 `--use-llm` 成功时才由 LLM 生成；默认确定性模式为空 |
-| `citations` | list[string] | LLM 筛选阶段返回的文档标题列表；默认确定性模式为空 |
+| `rewritten_query` | string | 确定性 scaffold 使用的检索查询；通常等于原始查询 |
+| `filtered_results` | list[dict] | 主要结果列表，由确定性检索返回 |
+| `summary` | string | 默认确定性模式为空；宿主 agent 负责总结 |
+| `citations` | list[string] | 默认确定性模式为空；宿主 agent 负责引用返回证据 |
 | `agent_decisions_summary` | string | CLI 默认输出的 Agent 决策数量摘要；传递 `--explain` 时替换为 `agent_decisions` |
-| `agent_unavailable` | bool | `true` 表示未启用或不可用 LLM；默认确定性 scaffold 模式为 true |
-| `smart_search_mode` | string | `deterministic_scaffold` / `llm_orchestrated` / `deterministic_aggregate` |
+| `agent_unavailable` | bool | `true` 表示工具只返回 scaffold，宿主 agent 负责合成 |
+| `smart_search_mode` | string | `deterministic_scaffold` / `deterministic_aggregate` |
 | `agent_instructions` | object | 给调用 Agent 的消费规则：只基于返回证据回答，不得外部补证 |
 | `answer_scaffold` | object | 给调用 Agent 的答案结构建议与引用政策 |
 | `query_plan` | object | 查询分解、检索策略与 fallback 判定 |
@@ -2185,14 +2179,14 @@ python -m tools.smart_search --query "..." [options]
 | `answer_scaffold` | 默认答案结构 | 不需要 | **stable** |
 | `query_plan` | 检索策略诊断 | 可选（高级） | **stable additive** |
 | `smart_search_mode` | 路径判断 | 可展示 | **stable** |
-| `summary` | `--use-llm` 摘要 | 展示 | **stable** |
-| `citations` | `--use-llm` 引用来源 | 可点击链接 | **stable** |
-| `answer` / `answer.*` | `--use-llm --synthesize` 时优先展示 | 优先展示 | **stable** |
+| `summary` | 默认空；宿主 agent 可忽略 | 展示 | **stable** |
+| `citations` | 默认空；宿主 agent 应引用 evidence | 可点击链接 | **stable** |
+| `answer` / `answer.*` | `--synthesize` 时优先展示 deterministic scaffold | 优先展示 | **stable** |
 | `evidence_pack` | 按需 | 按需 | **stable** |
 | `formatted_evidence` | 可展示 | 可展示 | **stable additive** — 仅 `--include-evidence --format-entity-annotated` 时出现 |
 | `aggregate_result` | aggregate/count/trend queries | aggregate/count/trend display | **stable additive** - deterministic `aggregate` result; LLM never computes counts |
 | `evidence_pack.items[].entity_matches` | 按需 | 按需 | **stable**，实体匹配溯源；消费者应容忍缺失字段 |
-| `rewritten_query` | 不需要 | 不需要 | **internal** — LLM 改写产物，消费者应使用 `query` |
+| `rewritten_query` | 不需要 | 不需要 | **internal** — 检索查询诊断，消费者应使用 `query` |
 | `agent_unavailable` | 不需要 | 不需要 | **internal** — 诊断信号，UI 应从 `answer`/`summary` 存在性推断 |
 | `agent_decisions_summary` | 不需要 | 不需要 | **internal** — 仅调试用 |
 | `agent_decisions` | 不需要 | 不需要 | **internal** — 仅 `--explain` 时出现 |
@@ -2202,11 +2196,11 @@ python -m tools.smart_search --query "..." [options]
 
 ### 说明
 
-- 默认不启用 LLM；传递 `--use-llm` 后，`SmartSearchOrchestrator` 执行三段式 LLM 编排：前置改写 → 中间调用 search 原语 → 后置筛选 + 摘要
+- `smart-search` 不启用工具内嵌 LLM；宿主 agent / Skills 负责 query 改写、多轮检索策略、判断与总结
 - Clear aggregate/count/trend intents may short-circuit into deterministic `aggregate` and add top-level `aggregate_result`; existing smart-search fields remain present.
 - `aggregate_result` is computed by `tools.aggregate.core.run_aggregate`; LLM must not compute the count.
-- 默认模式、`--no-llm`、或 `--use-llm` 但 LLM 不可用时，`agent_unavailable: true`，等价于确定性检索结果
-- Data Minimization：候选仅送 title + abstract + snippet（≤200 chars），最多 15 条
+- 默认模式下 `agent_unavailable: true`，表示工具只提供确定性检索 scaffold
+- Data Minimization：工具返回 bounded evidence；后续读取由宿主 agent 显式调用
 - 实现详见 `docs/ARCHITECTURE.md` §5.8
 
 ### Aggregate Result（`aggregate_result`）
@@ -2478,7 +2472,7 @@ LLM 返回的 citations 和 confidence 不会直接透传，而是经过 trust g
 
 Answer synthesis 采用**最佳努力（best-effort）**策略：
 
-- 若未传 `--use-llm`、或 LLM 初始化失败，`answer` 字段不存在，搜索结果正常返回
+- 若未传 `--synthesize`，`answer` 字段不存在，搜索结果正常返回
 - 若搜索结果为空，`answer` 字段不存在
 - 若 LLM 返回格式错误或合成过程异常，`answer` 字段不存在，搜索本身不受影响
 - 若内部 evidence 构建失败但 synthesis 仍尝试执行：`answer` 仍可能生成（基于 `filtered_results`），不视为搜索失败
@@ -2489,12 +2483,10 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 
 | 标志组合 | 行为 |
 |----------|------|
-| （无标志） | 确定性结果；不进行 LLM rewrite/filter/summary |
+| （无标志） | 确定性结果；不进行工具内 LLM rewrite/filter/summary |
 | `--include-evidence` | 添加 evidence_pack |
-| `--use-llm` | 启用 LLM rewrite/filter/summary |
-| `--use-llm --synthesize` | 内部构建 evidence；添加 answer（prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
-| `--include-evidence --use-llm --synthesize` | 添加 evidence_pack + answer（answer prompt 含 provenance/source/score 以及有界 `entity_matches` 摘要） |
-| `--synthesize` 或 `--no-llm --synthesize` | `--synthesize` 静默忽略（无 LLM） |
+| `--synthesize` | 内部构建 evidence；添加 deterministic answer scaffold |
+| `--include-evidence --synthesize` | 添加 evidence_pack + deterministic answer scaffold |
 
 ### Aggregate Delegation（自动聚合路由）
 
@@ -4809,7 +4801,7 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 | `effective_mode` | string | yes | Actual mode used (may differ from `mode` on degradation) |
 | `query` | string | yes | Search query string |
 | `results` | array | yes | Array of search result objects from L2 (may be empty) |
-| `source_command` | string | yes | L2 command used: `search --no-semantic` / `search` / `smart-search --use-llm` |
+| `source_command` | string | yes | L2 command used: `search --no-semantic` / `search` |
 | `performance` | object | yes | `{total_time_ms}` |
 | `error` | object\|null | yes | Structured error on failure; `null` on success |
 
@@ -4817,7 +4809,7 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 
 - `success`: search execution success. Empty results is still `success: true` with `results: []`.
 - `mode`: the mode requested by the caller.
-- `effective_mode`: the mode actually executed. When `mode=deep` but `--use-llm` not provided, `effective_mode` will be `recall` (degradation).
+- `effective_mode`: the mode actually executed. `mode=deep` is retained as a compatibility alias and executes deterministic `recall`.
 - `source_command`: identifies which L2 command was used — confirms subprocess boundary.
 - `results`: extracted from L2 output (`merged_results` from `search`, `filtered_results` from `smart-search`).
 
@@ -4825,10 +4817,9 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 
 | Mode | L2 Command | LLM? | Notes |
 |------|-----------|------|-------|
-| `default` | `search --no-semantic` | No | Pure FTS keyword search. `--use-llm` ignored. |
-| `recall` | `search` | No | Default keyword-only search (FTS); zero-result semantic fallback per ADR-006. `--semantic` enables hybrid (FTS + semantic + RRF). `--use-llm` ignored. |
-| `deep` + `--use-llm` | `smart-search --use-llm` | Yes (opt-in) | LLM-enhanced search with explicit opt-in. |
-| `deep` (no `--use-llm`) | `search` | No | Degrades to `recall` mode. Stderr warning emitted. `effective_mode=recall`. |
+| `default` | `search --no-semantic` | No | Pure FTS keyword search. |
+| `recall` | `search` | No | Default keyword-only search (FTS); zero-result semantic fallback per ADR-006. `--semantic` enables hybrid (FTS + semantic + RRF). |
+| `deep` | `search` | No | Compatibility alias for deterministic recall. Stderr warning emitted. `effective_mode=recall`. |
 
 #### Error Behavior / Error Codes
 
@@ -4847,17 +4838,16 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 ### 端点
 
 ```bash
-life-index recall --mode {default|recall|deep} --query "..." [--use-llm]
-python -m tools recall --mode {default|recall|deep} --query "..." [--use-llm]
+life-index recall --mode {default|recall|deep} --query "..."
+python -m tools recall --mode {default|recall|deep} --query "..."
 ```
 
 ### 参数
 
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `--mode` | enum | ✅ | - | 搜索模式：`default`（纯 FTS）、`recall`（混合）、`deep`（LLM 需 opt-in） |
+| `--mode` | enum | ✅ | - | 搜索模式：`default`（纯 FTS）、`recall`（混合）、`deep`（确定性 recall 兼容别名） |
 | `--query` | string | ✅ | - | 搜索查询字符串 |
-| `--use-llm` | flag | ❌ | false | 显式启用 LLM 搜索（仅影响 `deep` 模式） |
 
 ### 返回值
 
@@ -4888,10 +4878,10 @@ python -m tools recall --mode {default|recall|deep} --query "..." [--use-llm]
 ### 行为约束
 
 - **只读**：不创建、修改或删除任何文件。
-- 通过 subprocess 调用 L2 `search` / `smart-search`；不直接 import L2 内部模块。
+- 通过 subprocess 调用 L2 `search`；不直接 import L2 内部模块。
 - `default` 和 `recall` 模式：零 LLM 调用。
-- `deep` 模式不带 `--use-llm`：自动降级到 `recall`，stderr 输出警告。
-- `--use-llm` 仅对 `deep` 模式有效；`default` 和 `recall` 模式忽略此标志。
+- `deep` 模式：作为确定性 `recall` 兼容别名执行，stderr 输出警告。
+- `--use-llm` 已退役；传入该 flag 会被 CLI 参数解析拒绝。
 - 保留 `LIFE_INDEX_DATA_DIR` 环境变量传递给子进程。
 
 ---

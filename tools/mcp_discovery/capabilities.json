@@ -85,7 +85,7 @@
   },
   {
     "name": "smart-search",
-    "description": "Deterministic search scaffold; --use-llm for LLM orchestration"
+    "description": "Deterministic search scaffold for host-agent synthesis"
   },
   {
     "name": "aggregate",

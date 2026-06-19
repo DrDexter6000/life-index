@@ -1,20 +1,20 @@
 """
 Life Index - LLM Metadata Extraction Module (Optional)
 =====================================================
-CLI-based metadata extraction from journal content.
+Isolated metadata extraction from journal content.
 
-This module provides synchronous LLM extraction that can be called from CLI tools.
+This module provides synchronous LLM extraction for isolated optional use.
 It extracts metadata (title, abstract, topic, mood, tags, people, project) from
 raw journal content using an OpenAI-compatible API.
 
 This module is in tools/_optional/ because it depends on LLM API configuration.
-Per CHARTER §1.9, it must NOT be imported by default on the deterministic code path.
-Import it only when the user explicitly opts into LLM enrichment.
+Per CHARTER APEX, it must NOT be imported by deterministic tools or default
+agent paths.
 
 The prompts and validation logic are SSOT here - Web layer should call this
 module, not duplicate the logic.
 
-Usage:
+Optional direct usage:
     from tools._optional.llm_extract import extract_metadata_sync
     from tools.lib.topics import VALID_TOPICS
 
