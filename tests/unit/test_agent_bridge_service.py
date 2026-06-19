@@ -344,6 +344,34 @@ class _FakeManagerUngrounded:
         return {"status": "ok", "state": "warm", "last_warm_error": None}
 
 
+class _FakeManagerConversationAware:
+    """Records optional conversation ids passed by the HTTP gateway."""
+
+    def __init__(self) -> None:
+        self._cfg = _brain_config()
+        self.queries: list[tuple[str, dict, Any, str | None]] = []
+        self.closed = False
+
+    def start(self) -> "_FakeManagerConversationAware":
+        return self
+
+    def query(
+        self,
+        query: str,
+        scaffold: dict,
+        stream_callback: Any = None,
+        conversation_id: str | None = None,
+    ) -> dict:
+        self.queries.append((query, scaffold, stream_callback, conversation_id))
+        return _success_envelope(answer=f"{conversation_id}:{query}")
+
+    def close(self) -> None:
+        self.closed = True
+
+    def health(self) -> dict:
+        return {"status": "ok", "state": "warm", "last_warm_error": None}
+
+
 class _DummyConn:
     def __init__(self) -> None:
         self.alive = True
@@ -653,6 +681,30 @@ def test_query_json_returns_rich_envelope():
         server.shutdown_and_close()
 
 
+def test_query_json_forwards_conversation_id_and_echoes_it():
+    """JSON /query routes a client conversation id into the manager."""
+    manager = _FakeManagerConversationAware()
+    server = _start_server_with_manager(manager)
+    try:
+        status, body = _request(
+            server,
+            "/query",
+            method="POST",
+            data={
+                "query": "follow up",
+                "conversation_id": "thread-a",
+                "scaffold": {"evidence_pack": {}},
+            },
+        )
+        assert status == 200
+        assert body["conversation_id"] == "thread-a"
+        assert body["answer"]["summary"] == "thread-a:follow up"
+        assert len(manager.queries) == 1
+        assert manager.queries[0][3] == "thread-a"
+    finally:
+        server.shutdown_and_close()
+
+
 def test_query_json_rejects_invalid_json():
     manager = _FakeManagerWarmOk()
     server = _start_server_with_manager(manager)
@@ -748,6 +800,36 @@ def test_query_sse_emits_contract_events_in_order(monkeypatch):
         # The gateway must pass a stream_callback into the manager.
         assert len(manager.queries) == 1
         assert manager.queries[0][2] is not None
+    finally:
+        server.shutdown_and_close()
+
+
+def test_query_sse_forwards_conversation_id_and_echoes_it(monkeypatch):
+    """SSE /query/stream carries the conversation id through to final."""
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: {})
+
+    manager = _FakeManagerConversationAware()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={
+                "query": "follow up",
+                "conversation_id": "thread-a",
+                "scaffold": {},
+            },
+            headers={"Accept": "text/event-stream"},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        final = events[-1][1]
+        assert final["conversation_id"] == "thread-a"
+        assert final["answer"]["summary"] == "thread-a:follow up"
+        assert len(manager.queries) == 1
+        assert manager.queries[0][2] is not None
+        assert manager.queries[0][3] == "thread-a"
     finally:
         server.shutdown_and_close()
 

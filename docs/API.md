@@ -3307,6 +3307,28 @@ python -m tools server stop [--host 127.0.0.1] [--port 8765] [--state-file PATH]
 `last_warm_error` 暴露脱敏后的底层失败原因（例如 JSON-RPC 方法、错误码
 和简短 message），而不是仅暴露通用重试次数摘要。
 
+### `POST /query` 请求体
+
+```json
+{
+  "query": "过去三天我去过哪里？",
+  "conversation_id": "optional-client-thread-id",
+  "scaffold": {}
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `query` | string | 是 | 用户查询文本 |
+| `conversation_id` | string | 否 | 客户端会话/线程 ID；同一 ID 的后续查询会路由到同一 ACP 会话，省略时保持单轮兼容行为 |
+| `scaffold` | object | 否 | 已取证 scaffold；空对象会由网关通过确定性检索装配证据 |
+
+`conversation_id` 是产品级会话键，不等同于底层 ACP `sessionId`。
+网关只用它选择隔离的 ACP 会话；每一轮回答仍独立执行引证存在性、
+trace 和 summary 可溯校验，并独立返回 `GROUNDED` / `PARTIAL` /
+`UNGROUNDED` 标签。上下文可帮助宿主 agent 理解追问，但不会放宽
+grounding 判定。
+
 ### `POST /query` 返回值
 
 Unary query returns a rich `m35.agent_bridge_query.v0` envelope:
@@ -3318,6 +3340,7 @@ Unary query returns a rich `m35.agent_bridge_query.v0` envelope:
   "command": "agent-bridge query",
   "source": "host-agent",
   "query": "过去三天我去过哪里？",
+  "conversation_id": "optional-client-thread-id",
   "mode": "GROUNDED",
   "reason": null,
   "scaffold": {
@@ -3393,6 +3416,7 @@ honestly instead of retrying or presenting the answer as grounded.
 
 Streaming queries use the same rich contract. Both `/query` (with
 `Accept: text/event-stream`) and `/query/stream` emit server-sent events.
+When a request supplies `conversation_id`, the final rich envelope echoes it.
 
 Allowed event types (in order):
 
