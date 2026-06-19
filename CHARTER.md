@@ -5,7 +5,7 @@
 > **批准人**：Life Index Developer
 > **下次评审**：2026-07-23（每季度一次）
 > **修订次数**：9
-> **最近修订**：2026-06-19 — 新增 APEX 第 6 点「评估即咨询,非闸门(Evaluation is Advisory, not a Gate)」,收紧 APEX §1/§5(RFC-2026-06-19-evaluation-advisory-not-gate;owner 亲签)
+> **最近修订**：2026-06-19 — 新增 APEX 第 6 点「评估即咨询，非闸门（Evaluation is Advisory, not a Gate）」，收紧 APEX §1/§5（RFC-2026-06-19-evaluation-advisory-not-gate；owner 亲签）
 > **此前修订**：2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）；2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
 
 ---
