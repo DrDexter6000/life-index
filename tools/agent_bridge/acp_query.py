@@ -293,18 +293,22 @@ IMPORTANT:
   YYYY-MM --facet tag --facet task --facet project --facet location --json` to
   inspect the available value menu. You choose relevant values; the tool only
   enumerates.
-- For count questions, inspect tag, task, project, and location menus before
-  falling back to keyword search. If the menus expose relevant values, choose
-  them yourself and narrow with Index B before reading journals.
-  For example, sleep/routine questions should first look for relevant tag/task
-  values such as sleep, routine, late-night, 作息, 睡眠, or 失眠, then use
-  `index-tree navigate` if such values exist.
+- For concept-style questions, inspect the actual facet value menu first and
+  choose matching values from the data. Do not preload a fixed vocabulary for
+  any specific topic. If the menu does not expose useful values, fall back to
+  keyword/entity-weighted discovery.
 - After choosing values, run `life-index index-tree navigate --from YYYY-MM --to
   YYYY-MM --filter facet=value --filter other_facet=other_value --json` with
   explicit structured predicates. Repeated filters are deterministic
   intersections; VALUE1||VALUE2 is OR inside one facet. The tool is a
   deterministic executor; it must not infer predicates from natural language for
   you.
+- For clean facet count or enumeration questions, use `navigate`'s exhaustive
+  `count`, `entries`, and `entry_pointers` as the candidate/count source. Read
+  only the bounded journal entries needed to support the answer, such as
+  boundary dates, representative rows, or entries that disambiguate a date gap.
+  Do not restart with broad search after a successful exhaustive navigation
+  unless the user asks for semantic facts beyond the selected facets.
 - Only after deterministic candidate narrowing, read bounded candidates with
   `life-index journal batch-get --path Journals/YYYY/MM/name.md --path
   Journals/YYYY/MM/other.md`; use `life-index journal get --path

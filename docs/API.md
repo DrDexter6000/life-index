@@ -1103,7 +1103,7 @@ life-index index-tree materialize --from 2026-03 --to 2026-06 --incremental --js
 life-index index-tree freshness --from 2026-03 --to 2026-06 --json
 life-index index-tree ensure --from 2026-03 --to 2026-06 --json
 life-index index-tree discover --from 2026-03 --to 2026-06 --facet location --facet project --json
-life-index index-tree navigate --from 2026-03 --to 2026-06 --filter "location=Lagos, Nigeria" --filter "project=Life Index" --json
+life-index index-tree navigate --from 2026-03 --to 2026-06 --filter "location=London, United Kingdom" --filter "project=Life Index" --json
 python -m tools index-tree nodes --level month --json
 ```
 
@@ -1361,6 +1361,8 @@ entry pointers，调用方应直接读取这些 journal 条目，而不是把 In
 `discover` 在月份范围内返回一个紧凑的 facet 值菜单，供调用方 agent 自己选择相关值。
 它只接受显式 facet 名称，不接受自然语言查询，不做相关性判断。当前支持的 facet 与
 Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`people`。
+遇到概念类问题时，调用方应先检查实际 facet 值菜单并从数据中选择匹配值，不预设任何
+特定主题词表。
 
 ```json
 {
@@ -1412,6 +1414,9 @@ Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`pe
 本次范围涉及的 `navigation_docs`；刷新失败时可返回 journal fallback source。返回的
 `entry_pointers` 是候选 journal 路径，调用方仍需用 `journal batch-get` 或 `journal get`
 读取 journal 内容后才能引用为事实证据。
+对于干净的 facet 计数或枚举问题，`count`、`entries` 和 `entry_pointers` 是穷尽候选源；
+调用方应仅读取支撑答案所需的有界 journal 条目（例如边界日期、代表条目或用于消除日期
+缺口歧义的条目），不应在成功穷尽导航后默认重启宽泛搜索。
 
 ```json
 {
@@ -1430,7 +1435,7 @@ Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`pe
       {
         "type": "facet_value_filter",
         "facet": "location",
-        "values": ["Lagos, Nigeria"],
+        "values": ["London, United Kingdom"],
         "match": "any"
       },
       {
@@ -1449,7 +1454,7 @@ Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`pe
         "title": "Facet Work",
         "path": "Journals/2026/03/life-index_2026-03-14_001.md",
         "matched_facets": {
-          "location": ["Lagos, Nigeria"],
+          "location": ["London, United Kingdom"],
           "project": ["Life Index"]
         }
       }
