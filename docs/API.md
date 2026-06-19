@@ -3326,8 +3326,11 @@ python -m tools server stop [--host 127.0.0.1] [--port 8765] [--state-file PATH]
 `conversation_id` 是产品级会话键，不等同于底层 ACP `sessionId`。
 网关只用它选择隔离的 ACP 会话；每一轮回答仍独立执行引证存在性、
 trace 和 summary 可溯校验，并独立返回 `GROUNDED` / `PARTIAL` /
-`UNGROUNDED` 标签。上下文可帮助宿主 agent 理解追问，但不会放宽
-grounding 判定。
+`UNGROUNDED` 标签。带 `conversation_id` 时，trace 校验的已读范围为
+同一产品会话内本轮及此前各轮 ACP tool/read trace 的累计并集；这只承认
+宿主 agent 在本对话中真实读过的日志，且严格按 `conversation_id` 隔离。
+省略 `conversation_id` 时保持单轮兼容行为，trace 仍只来自当前请求。
+上下文可帮助宿主 agent 理解追问，但不会放宽 grounding 判定。
 
 ### `POST /query` 返回值
 
