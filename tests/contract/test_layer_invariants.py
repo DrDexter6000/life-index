@@ -34,9 +34,10 @@ L2_PRODUCTION_ROOTS = (
 L2_ALLOWED_FILES = {
     # L3 orchestrator lives beside search primitives for historical import
     # compatibility, but it is the explicit intelligence-layer boundary.
-    REPO_ROOT / "tools" / "search_journals" / "orchestrator.py",
-    # Backward-compatible lazy shim; direct provider code remains in tools/_optional.
-    REPO_ROOT / "tools" / "lib" / "llm_extract.py",
+    REPO_ROOT
+    / "tools"
+    / "search_journals"
+    / "orchestrator.py",
 }
 
 # Deterministic L2 module roots that MUST be covered by layer-invariant tests.

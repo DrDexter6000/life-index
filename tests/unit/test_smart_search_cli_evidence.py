@@ -75,14 +75,13 @@ def test_cli_include_evidence_flag_parsed():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch(),
         ) as MockCls:
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch("builtins.print"):
-                    from tools.smart_search.__main__ import main
+            with patch("builtins.print"):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit as e:
-                        assert e.code == 0
+                try:
+                    main()
+                except SystemExit as e:
+                    assert e.code == 0
             instance = MockCls.return_value
             call_kwargs = instance.search.call_args
     assert call_kwargs.kwargs.get("include_evidence") is True
@@ -96,17 +95,16 @@ def test_cli_default_no_evidence():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch(),
         ):
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch(
-                    "builtins.print",
-                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
-                ):
-                    from tools.smart_search.__main__ import main
+            with patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+            ):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit:
-                        pass
+                try:
+                    main()
+                except SystemExit:
+                    pass
     result = json.loads(captured[0])
     assert "evidence_pack" not in result
 
@@ -118,17 +116,16 @@ def test_cli_default_emits_agent_ready_scaffold():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch(),
         ):
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch(
-                    "builtins.print",
-                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
-                ):
-                    from tools.smart_search.__main__ import main
+            with patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+            ):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit:
-                        pass
+                try:
+                    main()
+                except SystemExit:
+                    pass
 
     result = json.loads(captured[0])
     assert result["smart_search_mode"] == "deterministic_scaffold"
@@ -137,45 +134,32 @@ def test_cli_default_emits_agent_ready_scaffold():
 
 
 def test_cli_default_does_not_initialize_llm():
-    """Default smart-search path must stay deterministic until --use-llm is passed."""
+    """Default smart-search path must construct the orchestrator without an LLM."""
     with patch("sys.argv", ["smart-search", "--query", "test"]):
         with patch(
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch(),
         ) as MockCls:
-            with patch(
-                "tools.smart_search.__main__._try_init_llm",
-                side_effect=AssertionError("LLM init must be opt-in"),
-            ):
-                with patch("builtins.print"):
-                    from tools.smart_search.__main__ import main
+            with patch("builtins.print"):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit as e:
-                        assert e.code == 0
+                try:
+                    main()
+                except SystemExit as e:
+                    assert e.code == 0
 
     MockCls.assert_called_once_with(llm_client=None)
 
 
-def test_cli_use_llm_opts_in_to_llm_initialization():
-    """--use-llm is the explicit opt-in for smart-search LLM orchestration."""
-    fake_llm = object()
+def test_cli_use_llm_is_not_accepted():
+    """smart-search must not expose an in-tool LLM opt-in flag."""
     with patch("sys.argv", ["smart-search", "--query", "test", "--use-llm"]):
-        with patch(
-            "tools.search_journals.orchestrator.SmartSearchOrchestrator",
-            return_value=_make_mock_orch(),
-        ) as MockCls:
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=fake_llm):
-                with patch("builtins.print"):
-                    from tools.smart_search.__main__ import main
+        from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit as e:
-                        assert e.code == 0
-
-    MockCls.assert_called_once_with(llm_client=fake_llm)
+        try:
+            main()
+        except SystemExit as e:
+            assert e.code == 2
 
 
 def test_cli_include_evidence_adds_pack():
@@ -186,17 +170,16 @@ def test_cli_include_evidence_adds_pack():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch(),
         ):
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch(
-                    "builtins.print",
-                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
-                ):
-                    from tools.smart_search.__main__ import main
+            with patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+            ):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit:
-                        pass
+                try:
+                    main()
+                except SystemExit:
+                    pass
     result = json.loads(captured[0])
     assert "evidence_pack" in result
     assert "items" in result["evidence_pack"]
@@ -274,14 +257,13 @@ def test_cli_synthesize_flag_parsed():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch_with_synthesis(),
         ) as MockCls:
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch("builtins.print"):
-                    from tools.smart_search.__main__ import main
+            with patch("builtins.print"):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit as e:
-                        assert e.code == 0
+                try:
+                    main()
+                except SystemExit as e:
+                    assert e.code == 0
             instance = MockCls.return_value
             call_kwargs = instance.search.call_args
     assert call_kwargs.kwargs.get("synthesize") is True
@@ -295,17 +277,16 @@ def test_cli_default_no_answer():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch_with_synthesis(),
         ):
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch(
-                    "builtins.print",
-                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
-                ):
-                    from tools.smart_search.__main__ import main
+            with patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+            ):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit:
-                        pass
+                try:
+                    main()
+                except SystemExit:
+                    pass
     result = json.loads(captured[0])
     assert "answer" not in result
 
@@ -324,7 +305,7 @@ def test_cli_help_includes_synthesize_flag():
 
     help_text = "".join(captured)
     assert "--synthesize" in help_text
-    assert "--use-llm" in help_text
+    assert "--use-llm" not in help_text
     assert "--no-llm" not in help_text
 
 
@@ -341,17 +322,16 @@ def test_cli_synthesize_output_includes_transparency_fields():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch_with_synthesis(),
         ):
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch(
-                    "builtins.print",
-                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
-                ):
-                    from tools.smart_search.__main__ import main
+            with patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+            ):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit:
-                        pass
+                try:
+                    main()
+                except SystemExit:
+                    pass
     result = json.loads(captured[0])
     assert "answer" in result
     answer = result["answer"]
@@ -413,17 +393,16 @@ def test_cli_evidence_includes_diagnostics():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch_with_diagnostics(),
         ):
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch(
-                    "builtins.print",
-                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
-                ):
-                    from tools.smart_search.__main__ import main
+            with patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+            ):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit:
-                        pass
+                try:
+                    main()
+                except SystemExit:
+                    pass
     result = json.loads(captured[0])
     assert "evidence_pack" in result
     assert "diagnostics" in result["evidence_pack"]
@@ -445,262 +424,18 @@ def test_cli_default_no_diagnostics():
             "tools.search_journals.orchestrator.SmartSearchOrchestrator",
             return_value=_make_mock_orch_with_diagnostics(),
         ):
-            with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                with patch(
-                    "builtins.print",
-                    side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
-                ):
-                    from tools.smart_search.__main__ import main
+            with patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
+            ):
+                from tools.smart_search.__main__ import main
 
-                    try:
-                        main()
-                    except SystemExit:
-                        pass
+                try:
+                    main()
+                except SystemExit:
+                    pass
     result = json.loads(captured[0])
     assert "evidence_pack" not in result
-
-
-# ---------------------------------------------------------------------------
-# S1O: LLM config alignment tests
-# ---------------------------------------------------------------------------
-
-
-def _clear_llm_env(monkeypatch):
-    """Clear all LLM-related env vars to ensure test isolation."""
-    for key in [
-        "OPENAI_API_KEY",
-        "LLM_API_KEY",
-        "OPENAI_BASE_URL",
-        "LLM_BASE_URL",
-        "LLM_MODEL",
-        "LIFE_INDEX_LLM_API_KEY",
-        "LIFE_INDEX_LLM_BASE_URL",
-        "LIFE_INDEX_LLM_MODEL",
-    ]:
-        monkeypatch.delenv(key, raising=False)
-
-
-def _install_fake_openai(monkeypatch):
-    """Install a fake openai module so tests do not require optional SDK."""
-    fake_openai = type(sys)("openai")
-    fake_openai.OpenAI = MagicMock()
-    monkeypatch.setitem(sys.modules, "openai", fake_openai)
-    return fake_openai.OpenAI
-
-
-def test_resolve_llm_config_life_index_env(monkeypatch):
-    """LIFE_INDEX_LLM_* env vars are used when OPENAI_*/LLM_* are absent."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-    monkeypatch.setenv("LIFE_INDEX_LLM_API_KEY", "li-key")
-    monkeypatch.setenv("LIFE_INDEX_LLM_BASE_URL", "https://li.example/v1")
-    monkeypatch.setenv("LIFE_INDEX_LLM_MODEL", "li-model")
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "li-key"
-    assert base_url == "https://li.example/v1"
-    assert model == "li-model"
-
-
-def test_resolve_llm_config_openai_env_overrides_life_index(monkeypatch):
-    """OPENAI_API_KEY selects legacy path; Life Index config is ignored."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
-    monkeypatch.setenv("LIFE_INDEX_LLM_API_KEY", "li-key")
-    monkeypatch.setenv("LIFE_INDEX_LLM_BASE_URL", "https://li.example/v1")
-    monkeypatch.setenv("LIFE_INDEX_LLM_MODEL", "li-model")
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "openai-key"
-    assert base_url is None
-    assert model == "gpt-4o-mini"
-
-
-def test_resolve_llm_config_llm_env_overrides_life_index(monkeypatch):
-    """LLM_API_KEY selects legacy path; Life Index config is ignored."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-    monkeypatch.setenv("LLM_API_KEY", "llm-key")
-    monkeypatch.setenv("LIFE_INDEX_LLM_API_KEY", "li-key")
-    monkeypatch.setenv("LIFE_INDEX_LLM_BASE_URL", "https://li.example/v1")
-    monkeypatch.setenv("LIFE_INDEX_LLM_MODEL", "li-model")
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "llm-key"
-    assert base_url is None
-    assert model == "gpt-4o-mini"
-
-
-def test_resolve_llm_config_config_file_fallback(monkeypatch):
-    """Config file values are used when no env vars are set."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr(
-        "tools.lib.config.USER_CONFIG",
-        {
-            "llm": {
-                "api_key": "cfg-key",
-                "base_url": "https://cfg.example/v1",
-                "model": "cfg-model",
-            }
-        },
-    )
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "cfg-key"
-    assert base_url == "https://cfg.example/v1"
-    assert model == "cfg-model"
-
-
-def test_resolve_llm_config_no_key_returns_none(monkeypatch):
-    """Missing key returns None for api_key."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key is None
-    assert model == "gpt-4o-mini"
-
-
-def test_try_init_llm_returns_none_without_key(monkeypatch):
-    """_try_init_llm returns None when no API key is available."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-
-    from tools.smart_search.__main__ import _try_init_llm
-
-    assert _try_init_llm() is None
-
-
-def test_try_init_llm_returns_client_with_life_index_key(monkeypatch):
-    """_try_init_llm initializes client with LIFE_INDEX_LLM_API_KEY."""
-    _clear_llm_env(monkeypatch)
-    _install_fake_openai(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-    monkeypatch.setenv("LIFE_INDEX_LLM_API_KEY", "test-li-key")
-    monkeypatch.setenv("LIFE_INDEX_LLM_BASE_URL", "https://api.openai.com/v1")
-    monkeypatch.setenv("LIFE_INDEX_LLM_MODEL", "gpt-4o-mini")
-
-    from tools.smart_search.__main__ import _try_init_llm
-
-    client = _try_init_llm()
-    assert client is not None
-    assert client._model == "gpt-4o-mini"
-
-
-def test_try_init_llm_openai_key_still_works(monkeypatch):
-    """Existing OPENAI_API_KEY path is preserved."""
-    _clear_llm_env(monkeypatch)
-    _install_fake_openai(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
-    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-
-    from tools.smart_search.__main__ import _try_init_llm
-
-    client = _try_init_llm()
-    assert client is not None
-
-
-def test_resolve_llm_config_legacy_key_no_cross_contamination(monkeypatch):
-    """Legacy API key + Life Index base_url/model: only legacy env/default used."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr(
-        "tools.lib.config.USER_CONFIG",
-        {
-            "llm": {
-                "api_key": "cfg-key",
-                "base_url": "https://cfg.example/v1",
-                "model": "cfg-model",
-            }
-        },
-    )
-    monkeypatch.setenv("OPENAI_API_KEY", "legacy-key")
-    monkeypatch.setenv("LIFE_INDEX_LLM_BASE_URL", "https://li.example/v1")
-    monkeypatch.setenv("LIFE_INDEX_LLM_MODEL", "li-model")
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "legacy-key"
-    assert base_url is None
-    assert model == "gpt-4o-mini"
-
-
-def test_resolve_llm_config_legacy_key_with_own_base_url(monkeypatch):
-    """Legacy API key + OPENAI_BASE_URL: legacy base_url is used."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-    monkeypatch.setenv("OPENAI_API_KEY", "legacy-key")
-    monkeypatch.setenv("OPENAI_BASE_URL", "https://legacy.example/v1")
-    monkeypatch.setenv("LIFE_INDEX_LLM_BASE_URL", "https://li.example/v1")
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "legacy-key"
-    assert base_url == "https://legacy.example/v1"
-
-
-def test_resolve_llm_config_legacy_key_llm_model_env(monkeypatch):
-    """Legacy API key + LLM_MODEL env: LLM_MODEL is honored."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-    monkeypatch.setenv("LLM_API_KEY", "legacy-key")
-    monkeypatch.setenv("LLM_MODEL", "legacy-model")
-    monkeypatch.setenv("LIFE_INDEX_LLM_MODEL", "li-model")
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "legacy-key"
-    assert model == "legacy-model"
-
-
-def test_resolve_llm_config_no_legacy_key_uses_life_index(monkeypatch):
-    """No legacy key: Life Index env/config provides all three fields atomically."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr(
-        "tools.lib.config.USER_CONFIG",
-        {
-            "llm": {
-                "api_key": "cfg-key",
-                "base_url": "https://cfg.example/v1",
-                "model": "cfg-model",
-            }
-        },
-    )
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "cfg-key"
-    assert base_url == "https://cfg.example/v1"
-    assert model == "cfg-model"
-
-
-def test_resolve_llm_config_llm_base_url_fallback_in_legacy(monkeypatch):
-    """LLM_API_KEY + LLM_BASE_URL (not OPENAI_BASE_URL) works in legacy path."""
-    _clear_llm_env(monkeypatch)
-    monkeypatch.setattr("tools.lib.config.USER_CONFIG", {})
-    monkeypatch.setenv("LLM_API_KEY", "legacy-key")
-    monkeypatch.setenv("LLM_BASE_URL", "https://llm-legacy.example/v1")
-
-    from tools.smart_search.__main__ import _resolve_llm_config
-
-    api_key, base_url, model = _resolve_llm_config()
-    assert api_key == "legacy-key"
-    assert base_url == "https://llm-legacy.example/v1"
 
 
 def test_emit_json_falls_back_to_ascii_when_console_rejects_unicode(monkeypatch):

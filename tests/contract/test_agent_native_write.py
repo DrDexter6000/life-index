@@ -3,7 +3,7 @@ Contract tests: Agent-Native write_journal default-no-LLM behavior.
 
 Verifies that:
 1. prepare_journal_metadata with default use_llm (omitted) does not call LLM
-2. prepare_journal_metadata with use_llm=True still works (opt-in path)
+2. prepare_journal_metadata with legacy use_llm=True still stays deterministic
 3. Importing tools.lib does not trigger llm_extract import
 4. VALID_TOPICS is importable from a deterministic module (not llm_extract)
 """
@@ -66,34 +66,20 @@ class TestDefaultNoLLM:
             assert result["llm_status"]["state"] == "disabled"
             mock_ext.assert_not_called()
 
-    def test_explicit_use_llm_true_calls_llm(self):
-        """Explicit use_llm=True still triggers LLM extraction."""
-        with (
-            patch("tools._optional.llm_extract.is_llm_available", return_value=True),
-            patch("tools._optional.llm_extract.extract_metadata_sync") as mock_ext,
-        ):
-            mock_ext.return_value = {
-                "title": "AI Title",
-                "abstract": "AI Abstract",
-            }
-            raw = {"content": "测试内容"}
-            result = prepare_journal_metadata(raw, use_llm=True)
+    def test_legacy_use_llm_true_does_not_import_optional_llm(self):
+        """Legacy use_llm=True must not trigger retired tool LLM extraction."""
+        _before = {k for k in sys.modules if "tools._optional.llm_extract" in k}
+        raw = {
+            "content": "测试内容",
+            "title": "Manual Title",
+            "topic": "life",
+        }
+        result = prepare_journal_metadata(raw, use_llm=True)
+        _after = {k for k in sys.modules if "tools._optional.llm_extract" in k}
 
-            mock_ext.assert_called_once()
-            assert result["field_sources"]["title"] == "ai"
-
-    def test_explicit_use_llm_true_without_provider_reports_unavailable(self):
-        """Explicit use_llm=True with no provider keeps rule fallback but reports unavailable."""
-        with patch("tools._optional.llm_extract.is_llm_available", return_value=False):
-            raw = {
-                "content": "测试内容",
-                "title": "Manual Title",
-                "topic": "life",
-            }
-            result = prepare_journal_metadata(raw, use_llm=True)
-
-            assert result["llm_status"]["state"] == "unavailable"
-            assert result["field_sources"]["title"] == "user"
+        assert _after - _before == set()
+        assert result["llm_status"]["state"] == "disabled"
+        assert result["field_sources"]["title"] == "user"
 
     def test_default_no_llm_topic_required(self):
         """When no LLM (default), topic must be provided by user."""

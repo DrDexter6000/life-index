@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Contract tests for the recall module (Phase E — gbrain #5).
 
-Covers 3 modes (default / recall / deep) x 3 cases (basic / no_results /
-opt_in_boundary) = 9 minimum tests.
+Covers deterministic default / recall / deep compatibility behavior.
 
 All tests run in isolated sandbox data directories via LIFE_INDEX_DATA_DIR.
 The recall module is an L3 module that consumes L2 search/smart-search via
@@ -93,7 +92,7 @@ def sandbox(tmp_path: Path):
 def _run_recall_cli(
     mode: str,
     query: str,
-    use_llm: bool = False,
+    extra_args: list[str] | None = None,
     env: Dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     """Invoke recall via subprocess."""
@@ -107,8 +106,8 @@ def _run_recall_cli(
         "--query",
         query,
     ]
-    if use_llm:
-        cmd.append("--use-llm")
+    if extra_args:
+        cmd.extend(extra_args)
     return subprocess.run(
         cmd,
         capture_output=True,
@@ -184,29 +183,13 @@ class TestDefaultMode:
         assert payload["mode"] == "default"
         assert payload["results"] == []
 
-    def test_default_opt_in_boundary(self, sandbox):
-        """default mode ignores --use-llm flag (pure FTS, no LLM)."""
+    def test_default_rejects_retired_use_llm_flag(self, sandbox):
+        """default mode no longer accepts the retired --use-llm flag."""
         data_dir, env = sandbox
-        subprocess.run(
-            [sys.executable, "-m", "tools", "index"],
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=60,
-        )
+        result = _run_recall_cli("default", "python", extra_args=["--use-llm"], env=env)
 
-        result = _run_recall_cli("default", "python", use_llm=True, env=env)
-        assert result.returncode == 0, (
-            f"Expected exit 0, got {result.returncode}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-
-        payload = json.loads(result.stdout)
-        assert payload["success"] is True
-        # default mode always uses search --no-semantic regardless of --use-llm
-        assert payload["mode"] == "default"
-        assert payload["effective_mode"] == "default"
-        assert payload["source_command"] == "search --no-semantic"
+        assert result.returncode == 2
+        assert "--use-llm" in result.stderr
 
 
 # ── RECALL MODE (delegates to search, keyword-only by default) ───────────────
@@ -277,38 +260,23 @@ class TestRecallMode:
         # results may or may not be empty (semantic may match)
         assert isinstance(payload["results"], list)
 
-    def test_recall_opt_in_boundary(self, sandbox):
-        """recall mode ignores --use-llm (it's deterministic hybrid search)."""
+    def test_recall_rejects_retired_use_llm_flag(self, sandbox):
+        """recall mode no longer accepts the retired --use-llm flag."""
         data_dir, env = sandbox
-        subprocess.run(
-            [sys.executable, "-m", "tools", "index"],
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=60,
-        )
+        result = _run_recall_cli("recall", "python", extra_args=["--use-llm"], env=env)
 
-        result = _run_recall_cli("recall", "python", use_llm=True, env=env)
-        assert result.returncode == 0, (
-            f"Expected exit 0, got {result.returncode}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
-
-        payload = json.loads(result.stdout)
-        assert payload["success"] is True
-        assert payload["mode"] == "recall"
-        assert payload["effective_mode"] == "recall"
-        assert payload["source_command"] == "search"
+        assert result.returncode == 2
+        assert "--use-llm" in result.stderr
 
 
-# ── DEEP MODE (smart-search with opt-in LLM) ──────────────────────────────
+# ── DEEP MODE (deterministic compatibility alias) ─────────────────────────
 
 
 class TestDeepMode:
-    """deep mode: delegates to smart-search --use-llm; degrades without opt-in."""
+    """deep mode: compatibility alias for deterministic recall."""
 
-    def test_deep_basic_with_llm(self, sandbox):
-        """deep mode with --use-llm delegates to smart-search."""
+    def test_deep_basic_deterministic(self, sandbox):
+        """deep mode executes deterministic recall, never smart-search LLM."""
         data_dir, env = sandbox
         subprocess.run(
             [sys.executable, "-m", "tools", "index"],
@@ -318,17 +286,26 @@ class TestDeepMode:
             timeout=60,
         )
 
-        result = _run_recall_cli("deep", "python", use_llm=True, env=env)
-        # smart-search may succeed or degrade depending on LLM availability
+        result = _run_recall_cli("deep", "python", env=env)
+        assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
         assert payload["success"] is True
         assert payload["mode"] == "deep"
-        assert payload["effective_mode"] == "deep"
-        assert payload["source_command"] == "smart-search --use-llm"
+        assert payload["effective_mode"] == "recall"
+        assert payload["source_command"] == "search"
         assert "results" in payload
+        assert "deterministic recall" in result.stderr
 
-    def test_deep_no_llm_degrades_to_recall(self, sandbox):
-        """deep mode without --use-llm degrades to recall mode."""
+    def test_deep_rejects_retired_use_llm_flag(self, sandbox):
+        """deep mode no longer accepts the retired --use-llm flag."""
+        data_dir, env = sandbox
+        result = _run_recall_cli("deep", "python", extra_args=["--use-llm"], env=env)
+
+        assert result.returncode == 2
+        assert "--use-llm" in result.stderr
+
+    def test_deep_degrades_to_recall(self, sandbox):
+        """deep mode is explicitly reported as deterministic recall."""
         data_dir, env = sandbox
         subprocess.run(
             [sys.executable, "-m", "tools", "index"],
@@ -338,7 +315,7 @@ class TestDeepMode:
             timeout=60,
         )
 
-        result = _run_recall_cli("deep", "python", use_llm=False, env=env)
+        result = _run_recall_cli("deep", "python", env=env)
         assert result.returncode == 0, (
             f"Expected exit 0, got {result.returncode}\n"
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
@@ -349,29 +326,7 @@ class TestDeepMode:
         assert payload["mode"] == "deep"
         assert payload["effective_mode"] == "recall"
         assert payload["source_command"] == "search"
-        # Must have stderr warning about degradation
-        assert (
-            "degrad" in result.stderr.lower() or "recall" in result.stderr.lower()
-        ), f"Expected degradation warning in stderr, got: {result.stderr}"
-
-    def test_deep_explicit_opt_in_required(self, sandbox):
-        """deep mode requires explicit --use-llm for LLM; no default LLM."""
-        data_dir, env = sandbox
-        subprocess.run(
-            [sys.executable, "-m", "tools", "index"],
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=60,
-        )
-
-        result = _run_recall_cli("deep", "python", use_llm=False, env=env)
-        payload = json.loads(result.stdout)
-
-        # Without --use-llm, effective_mode MUST be recall (not deep)
-        assert payload["effective_mode"] == "recall"
-        # source_command must NOT be smart-search
-        assert "smart-search" not in payload["source_command"]
+        assert "deterministic recall" in result.stderr
 
 
 # ── ADDITIONAL INVARIANT TESTS ────────────────────────────────────────────
@@ -450,5 +405,4 @@ class TestRecallInvariants:
         assert payload["source_command"] in [
             "search --no-semantic",
             "search",
-            "smart-search --use-llm",
         ]

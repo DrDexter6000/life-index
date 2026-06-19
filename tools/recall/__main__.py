@@ -3,7 +3,7 @@
 Life Index - Recall Command CLI Entry Point
 
 Usage:
-    life-index recall --mode {default|recall|deep} --query "..." [--use-llm]
+    life-index recall --mode {default|recall|deep} --query "..."
 """
 
 import argparse
@@ -32,12 +32,12 @@ def main() -> None:
 Modes:
   default  Pure FTS keyword search (fastest, most deterministic)
   recall   Hybrid search (FTS + semantic fallback)
-  deep     LLM-enhanced search (requires --use-llm; degrades to recall without it)
+  deep     Compatibility alias for deterministic recall
 
 Examples:
     life-index recall --mode default --query "python"
     life-index recall --mode recall --query "family memories"
-    life-index recall --mode deep --query "lessons from failures" --use-llm
+    life-index recall --mode deep --query "lessons from failures"
         """,
     )
 
@@ -45,7 +45,7 @@ Examples:
         "--mode",
         required=True,
         choices=["default", "recall", "deep"],
-        help="Search mode: default (FTS), recall (hybrid), deep (LLM opt-in)",
+        help="Search mode: default (FTS), recall (hybrid), deep (deterministic recall)",
     )
 
     parser.add_argument(
@@ -54,19 +54,11 @@ Examples:
         help="Search query string",
     )
 
-    parser.add_argument(
-        "--use-llm",
-        action="store_true",
-        default=False,
-        help="Explicit opt-in for LLM-assisted search (only affects deep mode)",
-    )
-
     args = parser.parse_args()
 
     result = run_recall(
         mode=args.mode,
         query=args.query,
-        use_llm=args.use_llm,
     )
 
     _emit_json(result)

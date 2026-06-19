@@ -642,17 +642,16 @@ class TestExplainFlag:
                 mock_orch = MagicMock()
                 mock_orch.search.return_value = mock_result.copy()
                 MockCls.return_value = mock_orch
-                with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                    with patch(
-                        "builtins.print",
-                        side_effect=lambda *a, **kw: captured.write(str(a[0])) if a else None,
-                    ):
-                        from tools.smart_search.__main__ import main
+                with patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured.write(str(a[0])) if a else None,
+                ):
+                    from tools.smart_search.__main__ import main
 
-                        try:
-                            main()
-                        except SystemExit:
-                            pass
+                    try:
+                        main()
+                    except SystemExit:
+                        pass
 
         result = json.loads(captured.getvalue())
         assert "agent_decisions" in result
@@ -683,17 +682,16 @@ class TestExplainFlag:
                 mock_orch = MagicMock()
                 mock_orch.search.return_value = mock_result.copy()
                 MockCls.return_value = mock_orch
-                with patch("tools.smart_search.__main__._try_init_llm", return_value=None):
-                    with patch(
-                        "builtins.print",
-                        side_effect=lambda *a, **kw: captured.write(str(a[0])) if a else None,
-                    ):
-                        from tools.smart_search.__main__ import main
+                with patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured.write(str(a[0])) if a else None,
+                ):
+                    from tools.smart_search.__main__ import main
 
-                        try:
-                            main()
-                        except SystemExit:
-                            pass
+                    try:
+                        main()
+                    except SystemExit:
+                        pass
 
         result = json.loads(captured.getvalue())
         assert "agent_decisions" not in result

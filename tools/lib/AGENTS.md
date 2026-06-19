@@ -1,6 +1,6 @@
 # AGENTS.md - tools/lib/
 
-> **最后更新**: 2026-05-31 | **版本**: v1.5 | **状态**: 活跃维护
+> **最后更新**: 2026-06-19 | **版本**: v1.6 | **状态**: 活跃维护
 
 ## OVERVIEW
 Shared infrastructure library for all Life Index atomic tools.
@@ -93,7 +93,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |
 | fts_search.py | search_journals | ✅ 活跃 | |
 | fts_update.py | build_index | ✅ 活跃 | |
-| llm_extract.py | write_journal(prepare) | ⬇️ 已迁移 | backward-compat shim；实际代码已移至 `tools/_optional/llm_extract.py` |
+| llm_extract.py | 无 | 🗄️ 已退役 | backward-compat shim 已删除；隔离实现仅保留在 `tools/_optional/llm_extract.py`，不在核心工具默认路径导入 |
 | logger.py | ALL tools | ✅ 活跃 | |
 | metadata_cache.py | search_journals, write_journal | ✅ 活跃 | |
 | path_contract.py | write_journal, edit_journal | ✅ 活跃 | |

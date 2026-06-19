@@ -7,8 +7,7 @@ Prepare journal metadata from user input.
 This module contains the core business logic for preparing journal data
 before writing. It handles:
 - Rule-based fallbacks (title/abstract from content)
-- Optional LLM-assisted metadata extraction when explicitly enabled
-- Project preservation from explicit input or opt-in extraction
+- Project preservation from explicit input
 - Weather query integration
 - Location normalization
 
@@ -108,28 +107,6 @@ def _compact_location(value: str) -> str:
     return f"{parts[0]}, {parts[-1]}"
 
 
-def _resolve_project(prepared: dict[str, Any], extracted: dict[str, Any]) -> str:
-    """Resolve project from explicit input or opt-in extraction.
-
-    The default no-LLM path must not infer semantic facets from content keywords.
-    Host agents are responsible for natural-language facet completion and should
-    pass project explicitly when they can infer it. Opt-in extraction may still
-    provide a project value through ``extracted``.
-
-    Args:
-        prepared: User-provided data dict
-        extracted: Opt-in extracted metadata dict
-
-    Returns:
-        Explicit project name or empty string
-    """
-    explicit = str(prepared.get("project") or extracted.get("project") or "").strip()
-    if explicit:
-        return explicit
-
-    return ""
-
-
 def _extract_weather_text(weather_result: dict[str, Any] | None) -> str:
     """Extract simple weather text from query result.
 
@@ -171,18 +148,17 @@ def prepare_journal_metadata(
 
     This is the core business logic for metadata preparation. It:
     1. Validates required fields (content)
-    2. Optionally calls LLM for metadata extraction (requires use_llm=True)
-    3. Applies rule-based fallbacks for missing fields
-    4. Infers project from content keywords
-    5. Auto-fills location and weather if not provided
-    6. Normalizes all text list fields
+    2. Applies rule-based fallbacks for missing fields
+    3. Infers project from explicit metadata
+    4. Auto-fills location and weather if not provided
+    5. Normalizes all text list fields
 
     Args:
         form_data: User-provided data dict with keys:
             - content (required): str
             - date: str (YYYY-MM-DD format)
-            - title: str (optional, will be extracted/fallback)
-            - abstract: str (optional, will be extracted/fallback)
+            - title: str (optional, will use rule fallback)
+            - abstract: str (optional, will use rule fallback)
             - topic: str or list (optional)
             - mood: str or list (optional)
             - tags: str or list (optional)
@@ -193,19 +169,19 @@ def prepare_journal_metadata(
             - attachments: list (optional)
             - attachment_urls: list (optional)
 
-        use_llm: Whether to use LLM extraction (default False).
-            Set True for opt-in LLM enrichment.
+        use_llm: Deprecated compatibility parameter; ignored. Tool metadata
+            preparation is deterministic.
 
     Returns:
         Prepared data dict with additional keys:
             - field_sources: dict[str, str] tracking field origin
-                ("user", "ai", "rule", "auto")
+                ("user", "rule", "auto")
             - llm_status: dict with state and message
-                state: "disabled" | "unavailable" | "idle" | "ready" | "fallback" | "failed"
+                state: "disabled"
             - All metadata fields normalized to proper types
 
     Raises:
-        ValueError: If content is empty, or if topic missing when LLM not used
+        ValueError: If content is empty, or if topic is missing
 
     Example:
         >>> result = prepare_journal_metadata({
@@ -226,24 +202,12 @@ def prepare_journal_metadata(
     # Track field sources
     field_sources: dict[str, str] = {}
 
-    # LLM status tracking
-    llm_available = False
-    if use_llm:
-        from tools._optional.llm_extract import is_llm_available as _is_llm_available
-
-        llm_available = _is_llm_available()
-    if not use_llm:
-        llm_status: dict[str, str | None] = {
-            "state": "disabled",
-            "message": "未请求 AI 提炼；将使用规则补全或手动字段。传入 --use-llm 可启用。",
-        }
-    elif not llm_available:
-        llm_status = {
-            "state": "unavailable",
-            "message": "未配置 AI 服务；已回退到规则补全或手动字段。",
-        }
-    else:
-        llm_status = {"state": "idle", "message": None}
+    # LLM extraction was retired from the tool path. Host agents may still
+    # enrich metadata before calling this deterministic helper.
+    llm_status: dict[str, str | None] = {
+        "state": "disabled",
+        "message": "工具内嵌 AI 提炼已退役；将使用规则补全或手动字段。",
+    }
 
     # Mark user-provided fields
     for field in (
@@ -268,51 +232,6 @@ def prepare_journal_metadata(
 
     if str(prepared.get("date", "")).strip():
         field_sources["date"] = "user"
-
-    # LLM extraction (only when use_llm=True and provider configured)
-    extracted: dict[str, Any] = {}
-    if llm_available:
-        from tools._optional.llm_extract import extract_metadata_sync
-
-        try:
-            extracted = extract_metadata_sync(content)
-        except Exception as exc:
-            logger.warning("LLM enrichment failed, continuing without: %s", exc)
-            extracted = {}
-            llm_status = {
-                "state": "failed",
-                "message": f"AI 提炼失败：{exc}；已回退到规则补全，请检查后重试。",
-            }
-        else:
-            if extracted:
-                llm_status = {
-                    "state": "ready",
-                    "message": "AI 已成功提炼可用元数据。",
-                }
-            else:
-                llm_status = {
-                    "state": "fallback",
-                    "message": "AI 未返回可用结果，已回退到规则补全或手动字段。",
-                }
-
-    # Apply extracted values for missing fields
-    for field in ("title", "abstract"):
-        if not prepared.get(field) and extracted.get(field):
-            prepared[field] = extracted[field]
-            field_sources[field] = "ai"
-
-    for field in ("mood", "tags", "people", "topic"):
-        if not normalize_text_list(prepared.get(field)):
-            if field in extracted:
-                normalized = normalize_text_list(extracted.get(field))
-                prepared[field] = normalized
-                field_sources[field] = "ai"
-
-    # Project is agent/user supplied by default; no keyword inference here.
-    inferred_project = _resolve_project(prepared, extracted)
-    if inferred_project and not str(prepared.get("project", "")).strip():
-        prepared["project"] = inferred_project
-        field_sources["project"] = "ai"
 
     # Rule-based fallbacks
     if not prepared.get("title"):
@@ -379,9 +298,9 @@ def prepare_journal_metadata(
     if "weather" in prepared:
         field_sources.setdefault("weather", "user")
 
-    # Validation: topic required when LLM unavailable
-    if not llm_available and not prepared["topic"]:
-        raise ValueError("LLM 不可用时，topic 为必填字段")
+    # Validation: topic is deterministic caller input.
+    if not prepared["topic"]:
+        raise ValueError("topic 为必填字段")
 
     prepared["field_sources"] = field_sources
     prepared["llm_status"] = llm_status

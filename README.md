@@ -405,8 +405,6 @@ life-index search --query "关键词"
 # 🔍 search · Agent 增强（默认输出 scaffold 给 Agent 合成，仍不调 LLM）
 life-index smart-search --query "我和女儿之间有哪些珍贵的回忆？"
 
-# 🔍 search · Agent 增强（显式启用 LLM 编排）
-life-index smart-search --query "..." --use-llm
 ```
 
 **前瞻 · MCP discovery layer (In Flight)**：为了让 MCP-compatible Agent 平台（Claude Desktop / Cursor / OpenClaw 衍生）能**零配置发现**这张矩阵中的每一格，我们在起草一份 thin MCP server —— 只读 discovery layer，不引入数据通路，三个 meta-tool（`list_capabilities` / `describe_tool` / `invoke_tool`），实际执行仍 subprocess 调用 `life-index` CLI。RFC 标记 `In Flight`，计划 2026-Q3 落地。
@@ -425,7 +423,7 @@ life-index smart-search --query "..." --use-llm
 |:---------------------- |:---:|:---------------------------------------------------------------------------------------------------------------------------------------- |
 | 日志写入 / 编辑              | ✅   | 结构化 Markdown + YAML 元数据，自动天气/情感/实体标注                                                                                                     |
 | 分层人生检索                 | ✅   | CLI Core 离线完成分层检索：关键词精确匹配 + Entity Graph 实体扩展；语义/向量召回为显式 opt-in，Agent 可选负责搜索前编排和搜索后表达                                                    |
-| 智能搜索编排器 (smart-search) | ✅   | 默认输出 agent-ready 确定性检索 scaffold；`--use-llm` 才启用 LLM 编排（query 改写 → 多轮检索 → 精筛），失败时降级回退 CLI Core                                            |
+| 智能搜索编排器 (smart-search) | ✅   | 输出 agent-ready 确定性检索 scaffold；query 改写、多轮检索策略与精筛由宿主 agent/Skill 完成，工具内不启用 LLM 编排                                            |
 | 搜索质量评估 (eval)          | ✅   | Cycle 2 多信号 fixture 锁定，**2026-05-25 完整 integrity audit PASS**；overall R@5=0.7857（keyword floor，相对 0.79 目标为边际 miss；C2 paraphrase 仍为已知 gap）· C3 temporal R@5=1.0 · recall-first 搜索质量门控 |
 | 实体图谱 + 质量审计 + 维护       | ✅   | 别名消解，关系推理，重复/孤立检测 + Agent 访谈修复；review hub + merge/delete/stats/check 维护命令                                                                |
 | Schema 迁移              | ✅   | 链式迁移框架，确定性字段补齐 + Agent 语义回填协作                                                                                                            |
