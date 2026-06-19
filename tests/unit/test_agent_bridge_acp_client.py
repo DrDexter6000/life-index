@@ -1344,3 +1344,61 @@ def test_acp_connection_rpc_can_forward_progress_updates_when_opted_in(monkeypat
     assert captured[0]["status"] == "running"
     assert captured[1] == "final json chunk"
     conn.close()
+
+
+def test_acp_connection_rpc_accepts_per_call_timeout_override(monkeypatch):
+    """A long-lived warm connection can use a shorter/longer timeout per RPC call."""
+    import io
+    import time
+    from tools.agent_bridge.acp_client import _ACPConnection
+    from tools.agent_bridge.config import BrainConfig
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+        acp_command=["dummy"],
+        acp_workdir=str(FIXTURE_PATH.parent),
+    )
+
+    stdout_text = "\n".join(_make_handshake_responses()) + "\n"
+
+    class _FakeStdout:
+        def __init__(self, text: str):
+            self._io = io.StringIO(text)
+
+        def readline(self) -> str:
+            return self._io.readline()
+
+        def close(self) -> None:
+            self._io.close()
+
+    class _FakeProc:
+        def __init__(self):
+            self.stdout = _FakeStdout(stdout_text)
+            self.stdin = io.StringIO()
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: _FakeProc())
+
+    conn = _ACPConnection(cfg, rpc_timeout=30)
+    conn.__enter__()
+
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match=r"ACP RPC deadline .* expired during session/prompt"):
+        conn.rpc("session/prompt", {"sessionId": "s1"}, rpc_timeout=0.01)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 1.0
+    conn.close()

@@ -22,6 +22,7 @@ QUERY_SCHEMA_VERSION = "m35.agent_bridge_query.v0"
 _MAX_EVIDENCE_ENTRIES = 10
 _REPAIR_RETRY_MAX = 1
 _PROMPT_RPC_RETRY_MAX = 1
+_QUERY_PROMPT_RPC_TIMEOUT = 1800.0
 _SKILL_PLAYBOOK_START = "<!-- GROUNDED_QUERY_SKILL_START -->"
 _SKILL_PLAYBOOK_END = "<!-- GROUNDED_QUERY_SKILL_END -->"
 _MAX_SKILL_PLAYBOOK_CHARS = 6000
@@ -630,6 +631,13 @@ def _supports_stream_progress(conn: _ACPConnection) -> bool:
         return False
 
 
+def _supports_rpc_timeout(conn: _ACPConnection) -> bool:
+    try:
+        return "rpc_timeout" in inspect.signature(conn.rpc).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 def _send_prompt_turn(
     conn: _ACPConnection,
     prompt_text: str,
@@ -646,6 +654,11 @@ def _send_prompt_turn(
     for _attempt in range(_PROMPT_RPC_RETRY_MAX + 1):
         start_len = len(conn.collected)
         try:
+            rpc_kwargs: dict[str, Any] = {}
+            if _supports_stream_progress(conn):
+                rpc_kwargs["stream_progress"] = True
+            if _supports_rpc_timeout(conn):
+                rpc_kwargs["rpc_timeout"] = _QUERY_PROMPT_RPC_TIMEOUT
             resp = conn.rpc(
                 "session/prompt",
                 {
@@ -653,7 +666,7 @@ def _send_prompt_turn(
                     "prompt": [{"type": "text", "text": prompt_text}],
                 },
                 stream_callback=stream_callback,
-                **({"stream_progress": True} if _supports_stream_progress(conn) else {}),
+                **rpc_kwargs,
             )
             return resp, conn.collected[start_len:]
         except Exception as exc:

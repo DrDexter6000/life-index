@@ -345,6 +345,7 @@ class _ACPConnection:
         params: dict | None = None,
         stream_callback: Callable[[Any], None] | None = None,
         stream_progress: bool = False,
+        rpc_timeout: float | None = None,
     ) -> dict[Any, Any]:
         """Send a JSON-RPC request and return the parsed response.
 
@@ -354,7 +355,10 @@ class _ACPConnection:
         incrementally as it arrives, enabling true streaming without final-
         buffer splitting in callers.  ``stream_progress`` additionally sends
         bounded non-answer progress dictionaries; it defaults off to preserve
-        the historical callback contract.
+        the historical callback contract.  ``rpc_timeout`` overrides the
+        connection default for this call only, which lets warm connections keep
+        short startup budgets while true agentic query prompts get a longer
+        delivery budget.
 
         Raises ``RuntimeError`` on deadline expiry, broken pipe,
         subprocess exit, or JSON-RPC error response.
@@ -376,9 +380,10 @@ class _ACPConnection:
         except (BrokenPipeError, OSError) as exc:
             raise RuntimeError(f"ACP subprocess closed before {method} completed: {exc}") from exc
 
-        rpc_deadline = time.monotonic() + self._rpc_timeout
+        effective_rpc_timeout = rpc_timeout if rpc_timeout is not None else self._rpc_timeout
+        rpc_deadline = time.monotonic() + effective_rpc_timeout
         deadline = rpc_deadline
-        deadline_label = f"ACP RPC deadline ({self._rpc_timeout:.0f}s)"
+        deadline_label = f"ACP RPC deadline ({effective_rpc_timeout:.0f}s)"
         if self._handshake_deadline is not None and self._handshake_deadline < deadline:
             deadline = self._handshake_deadline
             deadline_label = f"ACP handshake deadline ({self._handshake_timeout:.1f}s)"

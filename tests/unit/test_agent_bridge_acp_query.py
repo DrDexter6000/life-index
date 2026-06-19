@@ -1131,6 +1131,95 @@ def test_acp_query_adapter_retries_transient_prompt_rpc_failure():
     assert conn.calls == 2
 
 
+def test_acp_query_adapter_uses_long_rpc_timeout_for_real_prompt():
+    """Real evidence-bearing query prompts get the long prompt RPC budget."""
+    from tools.agent_bridge.acp_query import QUERY_SCHEMA_VERSION, acp_query_adapter
+    from tools.agent_bridge.config import BrainConfig
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+    )
+
+    valid_response = json.dumps(
+        {
+            "schema_version": "m35.agent_bridge_query.v0",
+            "status": "GROUNDED",
+            "answer": "A connective summary.",
+            "insights": [
+                {
+                    "quote": "Evidence one.",
+                    "interpretation": "The cited evidence supports the answer.",
+                    "evidence_refs": ["E1"],
+                }
+            ],
+            "evidence_refs": ["E1"],
+            "gap": None,
+            "provenance": {
+                "transport": "acp",
+                "model": "fake",
+                "runtime": "fake",
+                "degraded": False,
+            },
+            "usage": None,
+        },
+        ensure_ascii=False,
+    )
+
+    class TimeoutCapturingConnection:
+        session_id = "timeout-session"
+
+        def __init__(self) -> None:
+            self.collected: list[dict] = []
+            self.rpc_timeouts: list[float | None] = []
+
+        def rpc(
+            self,
+            method: str,
+            params: dict | None = None,
+            stream_callback=None,
+            stream_progress: bool = False,
+            rpc_timeout: float | None = None,
+        ) -> dict:
+            self.rpc_timeouts.append(rpc_timeout)
+            self.collected.append(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "session/update",
+                    "params": {
+                        "sessionId": "timeout-session",
+                        "update": {
+                            "content": {"text": valid_response, "type": "text"},
+                            "sessionUpdate": "agent_message_chunk",
+                        },
+                    },
+                }
+            )
+            return {"jsonrpc": "2.0", "id": len(self.rpc_timeouts), "result": {"status": "ok"}}
+
+    scaffold = {
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
+                    "snippet": "Evidence one.",
+                }
+            ]
+        }
+    }
+    conn = TimeoutCapturingConnection()
+
+    result = acp_query_adapter("long prompt query", scaffold, cfg, connection=conn)
+
+    assert result["schema_version"] == QUERY_SCHEMA_VERSION
+    assert result["status"] == "GROUNDED"
+    assert conn.rpc_timeouts == [1800.0]
+
+
 def test_acp_query_adapter_degrades_queued_prompt_without_json_repair():
     """Hermes queue placeholders are runtime-not-final, not JSON format failures."""
     from tools.agent_bridge.acp_query import acp_query_adapter
