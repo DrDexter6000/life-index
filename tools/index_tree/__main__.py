@@ -16,6 +16,7 @@ from .core import (
     build_shadow_payload,
 )
 from .materialize import build_materialize_payload
+from .materialize import build_ensure_payload, build_freshness_payload
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -51,8 +52,29 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     materialize.add_argument("--from", dest="date_from", help="Start month, YYYY-MM")
     materialize.add_argument("--to", dest="date_to", help="End month, YYYY-MM")
+    materialize.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Only rewrite stale Index B scope docs",
+    )
     materialize.add_argument("--dry-run", action="store_true", help="Plan docs without writing")
     materialize.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    freshness = subparsers.add_parser(
+        "freshness",
+        help="Check whether materialized Index B docs match journal hashes",
+    )
+    freshness.add_argument("--from", dest="date_from", help="Start month, YYYY-MM")
+    freshness.add_argument("--to", dest="date_to", help="End month, YYYY-MM")
+    freshness.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    ensure = subparsers.add_parser(
+        "ensure",
+        help="Ensure Index B is fresh or return journal fallback pointers",
+    )
+    ensure.add_argument("--from", dest="date_from", help="Start month, YYYY-MM")
+    ensure.add_argument("--to", dest="date_to", help="End month, YYYY-MM")
+    ensure.add_argument("--json", action="store_true", help="Emit JSON output")
 
     return parser.parse_args(argv)
 
@@ -71,12 +93,35 @@ def main(argv: list[str] | None = None) -> None:
                 date_from=args.date_from,
                 date_to=args.date_to,
                 dry_run=args.dry_run,
+                incremental=args.incremental,
             )
             payload = _success_payload("index-tree.materialize", data)
         except ValueError as exc:
             payload = _error_payload(
                 "index-tree.materialize",
                 "INDEX_TREE_MATERIALIZE_INVALID_RANGE",
+                str(exc),
+                {"date_from": args.date_from, "date_to": args.date_to},
+            )
+    elif args.subcommand == "freshness":
+        try:
+            data = build_freshness_payload(date_from=args.date_from, date_to=args.date_to)
+            payload = _success_payload("index-tree.freshness", data)
+        except ValueError as exc:
+            payload = _error_payload(
+                "index-tree.freshness",
+                "INDEX_TREE_FRESHNESS_INVALID_RANGE",
+                str(exc),
+                {"date_from": args.date_from, "date_to": args.date_to},
+            )
+    elif args.subcommand == "ensure":
+        try:
+            data = build_ensure_payload(date_from=args.date_from, date_to=args.date_to)
+            payload = _success_payload("index-tree.ensure", data)
+        except ValueError as exc:
+            payload = _error_payload(
+                "index-tree.ensure",
+                "INDEX_TREE_ENSURE_INVALID_RANGE",
                 str(exc),
                 {"date_from": args.date_from, "date_to": args.date_to},
             )

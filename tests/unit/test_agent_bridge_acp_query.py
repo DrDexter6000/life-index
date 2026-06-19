@@ -1604,7 +1604,7 @@ def test_build_query_prompt_embeds_grounded_query_skill_playbook():
     )
 
     assert "Grounded Query Skill Playbook" in prompt
-    assert "index-tree materialize" in prompt
+    assert "index-tree ensure" in prompt
     assert "journal get" in prompt
     assert "answer.insights[]" in prompt
     assert "aggregate count" in prompt

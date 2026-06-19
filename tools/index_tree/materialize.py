@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import re
+import hashlib
+import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,7 +17,9 @@ from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.paths import get_journals_dir, get_user_data_dir
 
 INDEX_B_SCHEMA_VERSION = "m31.index_tree.index_b.v0"
+INDEX_B_MANIFEST_SCHEMA_VERSION = "m31.index_tree.index_b.manifest.v0"
 INDEX_B_DIR = ".life-index/index-b"
+INDEX_B_MANIFEST = "manifest.json"
 _MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 _JOURNAL_DATE_RE = re.compile(r"life-index_(\d{4}-\d{2}-\d{2})_\d{3}\.md$")
 
@@ -34,6 +38,15 @@ class IndexBEntry:
     date: str
     title: str
     metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class IndexBDocSpec:
+    key: str
+    path: Path
+    rel_path: str
+    text: str
+    entries: tuple[IndexBEntry, ...]
 
 
 FACETS: tuple[FacetSpec, ...] = (
@@ -137,6 +150,32 @@ def _collect_entries(date_from: str | None, date_to: str | None) -> list[IndexBE
         if _entry_in_range(entry, date_from, date_to):
             entries.append(entry)
     return entries
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+    except OSError:
+        return "missing"
+    return digest.hexdigest()
+
+
+def _source_hash(data_dir: Path, entries: Iterable[IndexBEntry]) -> str:
+    digest = hashlib.sha256()
+    for entry in sorted(entries, key=lambda item: item.rel_path):
+        path = data_dir / entry.rel_path
+        digest.update(entry.rel_path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(_sha256_file(path).encode("ascii"))
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def _escape_cell(value: str) -> str:
@@ -272,11 +311,179 @@ def _write_text(path: Path, text: str, *, dry_run: bool) -> None:
     tmp_path.replace(path)
 
 
+def _build_doc_specs(
+    *,
+    data_dir: Path,
+    output_dir: Path,
+    entries: list[IndexBEntry],
+    years: dict[str, list[IndexBEntry]],
+    months_by_year: dict[str, dict[str, list[IndexBEntry]]],
+    date_from: str | None,
+    date_to: str | None,
+) -> list[IndexBDocSpec]:
+    specs: list[IndexBDocSpec] = []
+
+    root_path = output_dir / "INDEX.md"
+    root_text = _root_doc(entries, years, date_from, date_to)
+    specs.append(
+        IndexBDocSpec(
+            key="root",
+            path=root_path,
+            rel_path=safe_relative_path(root_path, data_dir),
+            text=root_text,
+            entries=tuple(entries),
+        )
+    )
+
+    for year, year_entries in sorted(years.items()):
+        year_path = output_dir / "Journals" / year / "index.md"
+        year_text = _year_doc(year, year_entries, months_by_year[year], date_from, date_to)
+        specs.append(
+            IndexBDocSpec(
+                key=f"year:{year}",
+                path=year_path,
+                rel_path=safe_relative_path(year_path, data_dir),
+                text=year_text,
+                entries=tuple(year_entries),
+            )
+        )
+        for month, month_entries in sorted(months_by_year[year].items()):
+            month_path = output_dir / "Journals" / year / month / "index.md"
+            month_text = _month_doc(year, month, month_entries, date_from, date_to)
+            specs.append(
+                IndexBDocSpec(
+                    key=f"month:{year}-{month}",
+                    path=month_path,
+                    rel_path=safe_relative_path(month_path, data_dir),
+                    text=month_text,
+                    entries=tuple(month_entries),
+                )
+            )
+    return specs
+
+
+def _manifest_path(data_dir: Path) -> Path:
+    return data_dir / INDEX_B_DIR / INDEX_B_MANIFEST
+
+
+def _read_manifest(data_dir: Path) -> dict[str, Any] | None:
+    path = _manifest_path(data_dir)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _build_manifest(
+    *,
+    data_dir: Path,
+    date_from: str | None,
+    date_to: str | None,
+    specs: list[IndexBDocSpec],
+) -> dict[str, Any]:
+    scopes: dict[str, dict[str, Any]] = {}
+    for spec in specs:
+        scopes[spec.key] = {
+            "doc": spec.rel_path,
+            "entry_count": len(spec.entries),
+            "source_hash": _source_hash(data_dir, spec.entries),
+            "doc_hash": _sha256_text(spec.text),
+        }
+    return {
+        "schema_version": INDEX_B_MANIFEST_SCHEMA_VERSION,
+        "generated_at": _generated_at(),
+        "artifact": "index-b",
+        "date_from": date_from,
+        "date_to": date_to,
+        "scopes": scopes,
+    }
+
+
+def _compare_freshness(
+    *,
+    data_dir: Path,
+    date_from: str | None,
+    date_to: str | None,
+    specs: list[IndexBDocSpec],
+    manifest: dict[str, Any] | None,
+) -> dict[str, Any]:
+    expected_keys = {spec.key for spec in specs}
+    stale_scopes: list[str] = []
+    fresh_scopes: list[str] = []
+    reasons: dict[str, str] = {}
+
+    scopes = manifest.get("scopes", {}) if manifest else {}
+    if not isinstance(scopes, dict):
+        scopes = {}
+
+    for spec in specs:
+        recorded = scopes.get(spec.key)
+        reason = ""
+        if manifest is None:
+            reason = "manifest_missing"
+        elif manifest.get("date_from") != date_from or manifest.get("date_to") != date_to:
+            reason = "range_mismatch"
+        elif not isinstance(recorded, dict):
+            reason = "scope_missing"
+        elif not spec.path.exists():
+            reason = "doc_missing"
+        elif recorded.get("source_hash") != _source_hash(data_dir, spec.entries):
+            reason = "source_hash_mismatch"
+        elif recorded.get("doc_hash") != _sha256_text(spec.text):
+            reason = "doc_hash_mismatch"
+
+        if reason:
+            stale_scopes.append(spec.key)
+            reasons[spec.key] = reason
+        else:
+            fresh_scopes.append(spec.key)
+
+    removed_scopes = sorted(set(scopes) - expected_keys)
+    return {
+        "fresh": not stale_scopes and not removed_scopes,
+        "stale_scopes": stale_scopes,
+        "fresh_scopes": fresh_scopes,
+        "removed_scopes": removed_scopes,
+        "reasons": reasons,
+        "manifest_present": manifest is not None,
+    }
+
+
+def _plan_materialization(date_from: str | None, date_to: str | None) -> tuple[
+    Path,
+    Path,
+    list[IndexBEntry],
+    dict[str, list[IndexBEntry]],
+    dict[str, dict[str, list[IndexBEntry]]],
+    list[IndexBDocSpec],
+]:
+    data_dir = get_user_data_dir()
+    output_dir = data_dir / INDEX_B_DIR
+    entries = _collect_entries(date_from, date_to)
+    years: dict[str, list[IndexBEntry]] = defaultdict(list)
+    months_by_year: dict[str, dict[str, list[IndexBEntry]]] = defaultdict(lambda: defaultdict(list))
+    for entry in entries:
+        years[entry.year].append(entry)
+        months_by_year[entry.year][entry.month].append(entry)
+    specs = _build_doc_specs(
+        data_dir=data_dir,
+        output_dir=output_dir,
+        entries=entries,
+        years=years,
+        months_by_year=months_by_year,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return data_dir, output_dir, entries, years, months_by_year, specs
+
+
 def build_materialize_payload(
     *,
     date_from: str | None = None,
     date_to: str | None = None,
     dry_run: bool = False,
+    incremental: bool = False,
 ) -> dict[str, Any]:
     """Build and optionally write deterministic Index B navigation docs."""
     start = _parse_month(date_from)
@@ -284,37 +491,33 @@ def build_materialize_payload(
     if start is not None and end is not None and end < start:
         raise ValueError("--to must be greater than or equal to --from")
 
-    data_dir = get_user_data_dir()
-    output_dir = data_dir / INDEX_B_DIR
-    entries = _collect_entries(start, end)
-    years: dict[str, list[IndexBEntry]] = defaultdict(list)
-    months_by_year: dict[str, dict[str, list[IndexBEntry]]] = defaultdict(lambda: defaultdict(list))
-    for entry in entries:
-        years[entry.year].append(entry)
-        months_by_year[entry.year][entry.month].append(entry)
+    data_dir, _output_dir, entries, years, months_by_year, specs = _plan_materialization(start, end)
+    freshness = _compare_freshness(
+        data_dir=data_dir,
+        date_from=start,
+        date_to=end,
+        specs=specs,
+        manifest=_read_manifest(data_dir),
+    )
+    stale_scope_set = set(freshness["stale_scopes"])
 
     written_docs: list[str] = []
+    skipped_fresh_docs: list[str] = []
 
-    root_path = output_dir / "INDEX.md"
-    _write_text(root_path, _root_doc(entries, years, start, end), dry_run=dry_run)
-    written_docs.append(safe_relative_path(root_path, data_dir))
+    for spec in specs:
+        if incremental and spec.key not in stale_scope_set:
+            skipped_fresh_docs.append(spec.rel_path)
+            continue
+        _write_text(spec.path, spec.text, dry_run=dry_run)
+        written_docs.append(spec.rel_path)
 
-    for year, year_entries in sorted(years.items()):
-        year_path = output_dir / "Journals" / year / "index.md"
+    manifest = _build_manifest(data_dir=data_dir, date_from=start, date_to=end, specs=specs)
+    manifest_path = _manifest_path(data_dir)
+    if not dry_run:
         _write_text(
-            year_path,
-            _year_doc(year, year_entries, months_by_year[year], start, end),
-            dry_run=dry_run,
+            manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", dry_run=False
         )
-        written_docs.append(safe_relative_path(year_path, data_dir))
-        for month, month_entries in sorted(months_by_year[year].items()):
-            month_path = output_dir / "Journals" / year / month / "index.md"
-            _write_text(
-                month_path,
-                _month_doc(year, month, month_entries, start, end),
-                dry_run=dry_run,
-            )
-            written_docs.append(safe_relative_path(month_path, data_dir))
+    written_docs.append(safe_relative_path(manifest_path, data_dir))
 
     return {
         "truth_source": "journals",
@@ -329,5 +532,98 @@ def build_materialize_payload(
         "month_count": sum(len(months) for months in months_by_year.values()),
         "facets": [spec.name for spec in FACETS],
         "written_docs": written_docs,
+        "skipped_fresh_docs": skipped_fresh_docs,
+        "incremental": incremental,
+        "freshness_before": freshness,
         "dry_run": dry_run,
     }
+
+
+def build_freshness_payload(
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    """Return deterministic Index B freshness status for the selected range."""
+    start = _parse_month(date_from)
+    end = _parse_month(date_to, fallback=start)
+    if start is not None and end is not None and end < start:
+        raise ValueError("--to must be greater than or equal to --from")
+
+    data_dir, _output_dir, entries, years, months_by_year, specs = _plan_materialization(start, end)
+    freshness = _compare_freshness(
+        data_dir=data_dir,
+        date_from=start,
+        date_to=end,
+        specs=specs,
+        manifest=_read_manifest(data_dir),
+    )
+    return {
+        "truth_source": "journals",
+        "artifact": "index-b",
+        "schema_version": INDEX_B_MANIFEST_SCHEMA_VERSION,
+        "date_from": start,
+        "date_to": end,
+        "entry_count": len(entries),
+        "year_count": len(years),
+        "month_count": sum(len(months) for months in months_by_year.values()),
+        **freshness,
+    }
+
+
+def _fallback_entries(entries: list[IndexBEntry]) -> list[dict[str, str]]:
+    return [
+        {
+            "date": entry.date,
+            "title": entry.title,
+            "path": entry.rel_path,
+        }
+        for entry in entries
+    ]
+
+
+def build_ensure_payload(
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    """Ensure Index B is fresh, falling back to journal pointers if refresh fails."""
+    start = _parse_month(date_from)
+    end = _parse_month(date_to, fallback=start)
+    if start is not None and end is not None and end < start:
+        raise ValueError("--to must be greater than or equal to --from")
+
+    freshness = build_freshness_payload(date_from=start, date_to=end)
+    if freshness["fresh"]:
+        return {
+            "source": "index-b",
+            "artifact": "index-b",
+            "date_from": start,
+            "date_to": end,
+            "freshness": freshness,
+            "fallback": {"used": False, "reason": None},
+        }
+
+    try:
+        materialized = build_materialize_payload(date_from=start, date_to=end, incremental=True)
+        return {
+            "source": "index-b",
+            "artifact": "index-b",
+            "date_from": start,
+            "date_to": end,
+            "freshness_before": freshness,
+            "materialized": materialized,
+            "fallback": {"used": False, "reason": None},
+        }
+    except Exception as exc:
+        entries = _collect_entries(start, end)
+        return {
+            "source": "journals",
+            "artifact": "index-b-fallback",
+            "date_from": start,
+            "date_to": end,
+            "entry_count": len(entries),
+            "entries": _fallback_entries(entries),
+            "freshness_before": freshness,
+            "fallback": {"used": True, "reason": str(exc)},
+        }
