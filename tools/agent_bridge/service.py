@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import queue
+import re
 import signal
 import socket
 import sys
@@ -46,6 +47,7 @@ _ACP_WARMUP_PROMPT_ENV = "LIFE_INDEX_ACP_WARMUP_PROMPT_ENABLED"
 _ACP_WARMUP_PROMPT_DISABLE_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 _PRESCAFFOLD_ENV = "LIFE_INDEX_GATEWAY_PRESCAFFOLD_ENABLED"
 _PRESCAFFOLD_DISABLE_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
+_CONVERSATION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 class ACPThreadingServer(ThreadingHTTPServer):
@@ -169,6 +171,39 @@ def _resolve_scaffold(query: str, scaffold: dict[str, Any]) -> dict[str, Any]:
     return handoff.build_gateway_scaffold(query)
 
 
+def _conversation_id_from_payload(payload: dict[str, Any]) -> str | None:
+    """Return an optional product-level conversation id from a query payload."""
+    value: Any = None
+    for key in ("conversation_id", "thread_id", "session_id"):
+        if key in payload:
+            value = payload[key]
+            break
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("conversation_id must be a string")
+
+    conversation_id = value.strip()
+    if not conversation_id:
+        return None
+    if _CONVERSATION_ID_RE.fullmatch(conversation_id) is None:
+        raise ValueError(
+            "conversation_id must be 1-128 characters of letters, numbers, dot, "
+            "underscore, colon, or hyphen"
+        )
+    return conversation_id
+
+
+def _attach_conversation_id(
+    envelope: dict[str, Any],
+    conversation_id: str | None,
+) -> dict[str, Any]:
+    if conversation_id:
+        envelope["conversation_id"] = conversation_id
+    return envelope
+
+
 def _progress_event_payload(data: Any, sequence: int) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "state": "working",
@@ -272,6 +307,11 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
         if not isinstance(scaffold, dict):
             self._send_json(400, {"error": "scaffold must be an object"})
             return
+        try:
+            conversation_id = _conversation_id_from_payload(payload)
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
 
         accept = self.headers.get("Accept", "")
         use_sse = "text/event-stream" in accept or parsed.path == "/query/stream"
@@ -292,6 +332,7 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
                 degraded,
                 host_agent=self._host_agent_label(),
             )
+            _attach_conversation_id(rich_degraded, conversation_id)
             if not use_sse:
                 self._send_json(200, rich_degraded)
                 return
@@ -314,19 +355,33 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
             return
 
         if not use_sse:
-            result = self.manager.query(query, resolved_scaffold)
+            if conversation_id:
+                result = self.manager.query(
+                    query,
+                    resolved_scaffold,
+                    conversation_id=conversation_id,
+                )
+            else:
+                result = self.manager.query(query, resolved_scaffold)
             rich = map_to_rich_envelope(
                 query,
                 resolved_scaffold,
                 result,
                 host_agent=self._host_agent_label(),
             )
+            _attach_conversation_id(rich, conversation_id)
             self._send_json(200, rich)
             return
 
-        self._handle_sse_query(query, resolved_scaffold)
+        self._handle_sse_query(query, resolved_scaffold, conversation_id=conversation_id)
 
-    def _handle_sse_query(self, query: str, scaffold: dict[str, Any]) -> None:
+    def _handle_sse_query(
+        self,
+        query: str,
+        scaffold: dict[str, Any],
+        *,
+        conversation_id: str | None = None,
+    ) -> None:
         """Stream query results as server-sent events using the GUI contract.
 
         *scaffold* is already resolved (either caller-supplied evidence-bearing
@@ -356,11 +411,19 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
 
         def run_query() -> None:
             try:
-                result = self.manager.query(
-                    query,
-                    scaffold,
-                    stream_callback=stream_callback,
-                )
+                if conversation_id:
+                    result = self.manager.query(
+                        query,
+                        scaffold,
+                        stream_callback=stream_callback,
+                        conversation_id=conversation_id,
+                    )
+                else:
+                    result = self.manager.query(
+                        query,
+                        scaffold,
+                        stream_callback=stream_callback,
+                    )
                 sse_queue.put(("result", result))
             except Exception as exc:
                 sse_queue.put(("error", exc))
@@ -440,6 +503,7 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
                 internal_result,
                 host_agent=self._host_agent_label(),
             )
+            _attach_conversation_id(rich, conversation_id)
 
             # Phase 3: evidence, a single text-only delta derived from the
             # final answer summary, and the final rich envelope.
@@ -459,6 +523,7 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
                 degraded,
                 host_agent=self._host_agent_label(),
             )
+            _attach_conversation_id(rich_degraded, conversation_id)
             try:
                 self._write_sse_event(
                     "error",

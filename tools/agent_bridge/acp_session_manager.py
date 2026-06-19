@@ -8,8 +8,10 @@ and one retry before returning a deterministic degraded envelope.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 import threading
+import time
 from typing import Any, Callable
 
 from tools.agent_bridge.acp_client import _ACPConnection
@@ -27,6 +29,8 @@ _WARM_RPC_TIMEOUT = 180.0
 _WARM_HANDSHAKE_TIMEOUT = 180.0
 _DEFAULT_WARM_ATTEMPTS = 3
 _MAX_WARM_ERROR_CHARS = 500
+_DEFAULT_MAX_CONVERSATION_SESSIONS = 16
+_DEFAULT_CONVERSATION_IDLE_TTL_SECONDS = 30 * 60
 
 _SENSITIVE_VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
@@ -62,6 +66,12 @@ _SENSITIVE_VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 _DATA_FREE_READY_PROMPT = "READY"
 
 
+@dataclass
+class _ConversationSession:
+    conn: _ACPConnection
+    last_used: float
+
+
 def _sanitize_warm_error(error: object) -> str:
     """Return a health-safe warm error string with secrets/user-data paths removed."""
     text = str(error)
@@ -85,6 +95,8 @@ class ACPWarmSessionManager:
         warm_attempts: int = _DEFAULT_WARM_ATTEMPTS,
         warm_rpc_timeout: float = _WARM_RPC_TIMEOUT,
         warm_handshake_timeout: float | None = _WARM_HANDSHAKE_TIMEOUT,
+        max_conversation_sessions: int = _DEFAULT_MAX_CONVERSATION_SESSIONS,
+        conversation_idle_ttl_seconds: float = _DEFAULT_CONVERSATION_IDLE_TTL_SECONDS,
     ) -> None:
         self._cfg = cfg
         self._connection_factory = connection_factory
@@ -92,9 +104,12 @@ class ACPWarmSessionManager:
         self._warm_attempts = max(1, warm_attempts)
         self._warm_rpc_timeout = warm_rpc_timeout
         self._warm_handshake_timeout = warm_handshake_timeout
+        self._max_conversation_sessions = max(1, max_conversation_sessions)
+        self._conversation_idle_ttl_seconds = max(1.0, conversation_idle_ttl_seconds)
 
         self._lock = threading.RLock()
         self._warm_conn: _ACPConnection | None = None
+        self._conversation_sessions: dict[str, _ConversationSession] = {}
         self._closed = False
         self._last_warm_error: str | None = None
 
@@ -146,6 +161,7 @@ class ACPWarmSessionManager:
         """Idempotently tear down the warm connection."""
         with self._lock:
             self._drop_warm_conn()
+            self._drop_all_conversation_sessions()
             self._closed = True
 
     def health(self) -> dict[str, Any]:
@@ -239,6 +255,7 @@ class ACPWarmSessionManager:
         scaffold: dict,
         cfg: BrainConfig | None = None,
         stream_callback: Callable[[Any], None] | None = None,
+        conversation_id: str | None = None,
     ) -> dict[str, Any]:
         """Run a query through the warm connection, reconnecting once if it died.
 
@@ -252,6 +269,15 @@ class ACPWarmSessionManager:
         with self._lock:
             if self._closed:
                 return self._degraded(cfg, "ACPWarmSessionManager is closed")
+
+            if conversation_id:
+                return self._query_conversation(
+                    conversation_id,
+                    query,
+                    scaffold,
+                    cfg,
+                    stream_callback,
+                )
 
             try:
                 conn = self.ensure_warm(cfg)
@@ -271,6 +297,72 @@ class ACPWarmSessionManager:
             return self._run_query(query, scaffold, cfg, conn, stream_callback)
 
     # ── Internals ───────────────────────────────────────────────────────
+
+    def _query_conversation(
+        self,
+        conversation_id: str,
+        query: str,
+        scaffold: dict,
+        cfg: BrainConfig,
+        stream_callback: Callable[[Any], None] | None,
+    ) -> dict[str, Any]:
+        try:
+            conn = self._ensure_conversation_conn(conversation_id, cfg)
+        except Exception as exc:
+            return self._degraded(cfg, f"ACP conversation session unavailable: {exc}")
+
+        result = self._run_query(query, scaffold, cfg, conn, stream_callback)
+        if self._is_alive(conn):
+            self._touch_conversation(conversation_id, conn)
+            return result
+
+        self._drop_conversation_session(conversation_id)
+        try:
+            conn = self._ensure_conversation_conn(conversation_id, cfg)
+        except Exception:
+            return result
+        result = self._run_query(query, scaffold, cfg, conn, stream_callback)
+        if self._is_alive(conn):
+            self._touch_conversation(conversation_id, conn)
+        return result
+
+    def _ensure_conversation_conn(self, conversation_id: str, cfg: BrainConfig) -> _ACPConnection:
+        now = time.monotonic()
+        self._prune_conversation_sessions(now)
+
+        session = self._conversation_sessions.get(conversation_id)
+        if session is not None and self._is_alive(session.conn):
+            session.last_used = now
+            return session.conn
+
+        self._drop_conversation_session(conversation_id)
+        self._evict_conversation_if_needed()
+
+        conn = self._connection_factory(
+            cfg,
+            rpc_timeout=self._warm_rpc_timeout,
+            handshake_timeout=self._warm_handshake_timeout,
+        )
+        try:
+            conn.__enter__()
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            raise
+
+        self._conversation_sessions[conversation_id] = _ConversationSession(
+            conn=conn,
+            last_used=now,
+        )
+        return conn
+
+    def _touch_conversation(self, conversation_id: str, conn: _ACPConnection) -> None:
+        session = self._conversation_sessions.get(conversation_id)
+        if session is None or session.conn is not conn:
+            return
+        session.last_used = time.monotonic()
 
     def _run_query(
         self,
@@ -305,6 +397,38 @@ class ACPWarmSessionManager:
                 conn.close()
             except Exception:
                 pass
+
+    def _drop_conversation_session(self, conversation_id: str) -> None:
+        session = self._conversation_sessions.pop(conversation_id, None)
+        if session is not None:
+            try:
+                session.conn.close()
+            except Exception:
+                pass
+
+    def _drop_all_conversation_sessions(self) -> None:
+        ids = list(self._conversation_sessions)
+        for conversation_id in ids:
+            self._drop_conversation_session(conversation_id)
+
+    def _prune_conversation_sessions(self, now: float) -> None:
+        stale: list[str] = []
+        for conversation_id, session in self._conversation_sessions.items():
+            if now - session.last_used > self._conversation_idle_ttl_seconds:
+                stale.append(conversation_id)
+            elif not self._is_alive(session.conn):
+                stale.append(conversation_id)
+        for conversation_id in stale:
+            self._drop_conversation_session(conversation_id)
+
+    def _evict_conversation_if_needed(self) -> None:
+        if len(self._conversation_sessions) < self._max_conversation_sessions:
+            return
+        oldest_id = min(
+            self._conversation_sessions,
+            key=lambda cid: self._conversation_sessions[cid].last_used,
+        )
+        self._drop_conversation_session(oldest_id)
 
     def _degraded(self, cfg: BrainConfig, gap: str) -> dict[str, Any]:
         provenance = build_provenance(cfg, conn_meta=None, degraded=True)

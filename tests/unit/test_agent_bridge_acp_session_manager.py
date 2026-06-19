@@ -165,6 +165,102 @@ def test_query_reuses_warm_connection():
     assert r2["answer"] == "q2"
 
 
+def test_query_with_same_conversation_id_reuses_conversation_connection():
+    """Queries with the same conversation id stay on one dedicated ACP session."""
+    created = []
+
+    def factory(*args, **kwargs):
+        created.append(_FakeConn(name=f"conn-{len(created) + 1}"))
+        created[-1].session_id = f"session-{len(created)}"
+        return created[-1]
+
+    calls = []
+
+    def adapter(query, scaffold, cfg, *, connection=None, stream_callback=None):
+        calls.append((query, connection))
+        return _success_envelope(answer=query)
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, adapter=adapter)
+
+    r1 = mgr.query("q1", {}, conversation_id="thread-a")
+    r2 = mgr.query("q2", {}, conversation_id="thread-a")
+
+    assert len(created) == 1
+    assert mgr._warm_conn is None
+    assert calls[0] == ("q1", created[0])
+    assert calls[1] == ("q2", created[0])
+    assert r1["answer"] == "q1"
+    assert r2["answer"] == "q2"
+
+
+def test_query_with_different_conversation_ids_uses_isolated_connections():
+    """Different conversation ids must not share ACP session memory."""
+    created = []
+
+    def factory(*args, **kwargs):
+        created.append(_FakeConn(name=f"conn-{len(created) + 1}"))
+        return created[-1]
+
+    calls = []
+
+    def adapter(query, scaffold, cfg, *, connection=None, stream_callback=None):
+        calls.append((query, connection))
+        return _success_envelope(answer=query)
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, adapter=adapter)
+
+    mgr.query("q-a", {}, conversation_id="thread-a")
+    mgr.query("q-b", {}, conversation_id="thread-b")
+
+    assert len(created) == 2
+    assert calls[0] == ("q-a", created[0])
+    assert calls[1] == ("q-b", created[1])
+    assert calls[0][1] is not calls[1][1]
+
+
+def test_conversation_query_keeps_grounding_degrade_without_retrying_alive_connection():
+    """Conversation context does not bypass per-turn grounding labels."""
+    created = []
+    calls = [0]
+
+    def factory(*args, **kwargs):
+        created.append(_FakeConn(name=f"conn-{len(created) + 1}", alive=True))
+        return created[-1]
+
+    def adapter(query, scaffold, cfg, *, connection=None, stream_callback=None):
+        calls[0] += 1
+        return _degraded_envelope(gap="citation validation failed")
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, adapter=adapter)
+
+    result = mgr.query("q", {}, conversation_id="thread-a")
+
+    assert len(created) == 1
+    assert calls[0] == 1
+    assert result["status"] == "UNGROUNDED"
+    assert "validation failed" in result["gap"]
+
+
+def test_close_tears_down_conversation_connections():
+    """close() also closes bounded conversation ACP sessions."""
+    created = []
+
+    def factory(*args, **kwargs):
+        created.append(_FakeConn(name=f"conn-{len(created) + 1}"))
+        return created[-1]
+
+    def adapter(query, scaffold, cfg, *, connection=None, stream_callback=None):
+        return _success_envelope(answer=query)
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, adapter=adapter)
+    mgr.query("q1", {}, conversation_id="thread-a")
+    mgr.query("q2", {}, conversation_id="thread-b")
+
+    mgr.close()
+
+    assert [conn.closed for conn in created] == [True, True]
+
+
 def test_query_reconnects_when_connection_dies():
     """A dead connection during query is replaced and the query is retried."""
     created = []
