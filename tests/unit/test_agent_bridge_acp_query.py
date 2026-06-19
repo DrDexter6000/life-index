@@ -1595,10 +1595,8 @@ def test_build_query_prompt_prioritizes_index_b_navigation_before_search_reads()
     assert "Do not preload a fixed vocabulary" in prompt
     assert "use `navigate`'s exhaustive" in prompt
     assert "Do not restart with broad search after a successful exhaustive navigation" in prompt
-    assert "late-night" not in prompt
-    assert "作息" not in prompt
-    assert "睡眠" not in prompt
-    assert "失眠" not in prompt
+    assert "For example" not in prompt
+    assert "questions should first look for relevant" not in prompt
     assert "journal get" in prompt
     assert "smart-search/search only for keyword/entity-weighted discovery" in prompt
     assert "Do NOT use grep" in prompt
