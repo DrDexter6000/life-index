@@ -277,3 +277,34 @@ def test_agent_bridge_query_rich_contract_shape():
     assert rich["synthesis"] == "A grounded summary."
     assert rich["provenance"]["evidence_source"] == "life-index search"
     assert rich["provenance"]["degraded"] is False
+
+
+def test_agent_bridge_query_rich_contract_preserves_ungrounded_answer_with_reason():
+    """UNGROUNDED rich final is an honest label, not answer suppression."""
+    from tools.agent_bridge.query_envelope import map_to_rich_envelope
+
+    internal = {
+        "schema_version": "m35.agent_bridge_query.v0",
+        "status": "UNGROUNDED",
+        "answer": "First pass answer text that failed grounding.",
+        "insights": [],
+        "evidence_refs": [],
+        "gap": "Unknown evidence IDs in response: Z99.",
+        "reason": "Unknown evidence IDs in response: Z99.",
+        "provenance": {
+            "transport": "acp",
+            "model": "hermes-agent",
+            "runtime": "fake-acp",
+            "degraded": True,
+        },
+    }
+
+    rich = map_to_rich_envelope("What happened?", {"intent": "recall"}, internal)
+
+    assert rich["mode"] == "UNGROUNDED"
+    assert rich["reason"] == "Unknown evidence IDs in response: Z99."
+    assert rich["answer"]["mode"] == "UNGROUNDED"
+    assert rich["answer"]["summary"] == "First pass answer text that failed grounding."
+    assert rich["answer"]["gap"] == "Unknown evidence IDs in response: Z99."
+    assert rich["synthesis"] == "First pass answer text that failed grounding."
+    assert rich["provenance"]["degraded"] is True

@@ -335,6 +335,9 @@ def build_answer(
     gap = internal.get("gap") if isinstance(internal, dict) else None
     if not isinstance(gap, str):
         gap = None
+    reason = internal.get("reason") if isinstance(internal, dict) else None
+    if not isinstance(reason, str):
+        reason = gap
 
     evidence_lookup = {e["id"]: e for e in evidence}
     valid_evidence_ids = set(evidence_lookup)
@@ -399,6 +402,7 @@ def build_answer(
         "insights": insights,
         "related_findings": [],
         "gap": gap,
+        "reason": reason,
         "explanation": gap if mode == "UNGROUNDED" else None,
         "what_was_found": [],
         "suggestions": [],
@@ -449,6 +453,9 @@ def map_to_rich_envelope(
     evidence = build_evidence(scaffold, evidence_refs)
     answer = build_answer(internal, evidence, scaffold)
     provenance = build_provenance(internal, host_agent)
+    reason = internal.get("reason")
+    if not isinstance(reason, str):
+        reason = answer.get("gap")
 
     return {
         "success": True,
@@ -457,6 +464,7 @@ def map_to_rich_envelope(
         "source": DEFAULT_SOURCE,
         "query": query,
         "mode": mode,
+        "reason": reason,
         "scaffold": clean_scaffold(scaffold),
         "evidence": evidence,
         "answer": answer,

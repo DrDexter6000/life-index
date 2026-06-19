@@ -20,7 +20,6 @@ QUERY_SCHEMA_VERSION = "m35.agent_bridge_query.v0"
 
 # ─── Constants ────────────────────────────────────────────────────────
 _MAX_EVIDENCE_ENTRIES = 10
-_REPAIR_RETRY_MAX = 1
 _PROMPT_RPC_RETRY_MAX = 1
 _QUERY_PROMPT_RPC_TIMEOUT = 1800.0
 _SKILL_PLAYBOOK_START = "<!-- GROUNDED_QUERY_SKILL_START -->"
@@ -100,6 +99,35 @@ def _try_loads(text: str) -> Any | None:
             return json.loads(repaired)
         except json.JSONDecodeError:
             pass
+    return None
+
+
+def _load_single_json_object(raw_text: str) -> dict | None:
+    """Parse one structured model JSON object without applying schema validation."""
+    stripped = raw_text.strip()
+    parsed = _try_loads(stripped)
+
+    if parsed is None:
+        match = _FENCE_RE.search(stripped)
+        if match:
+            parsed = _try_loads(match.group(1).strip())
+
+    if parsed is None:
+        matches = _JSON_OBJECT_RE.findall(stripped)
+        if len(matches) == 1:
+            parsed = _try_loads(matches[0])
+
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _extract_first_pass_answer(raw_text: str) -> str | None:
+    """Return only the structured ``answer`` field from a first-pass JSON body."""
+    parsed = _load_single_json_object(raw_text)
+    if not isinstance(parsed, dict):
+        return None
+    answer = parsed.get("answer")
+    if isinstance(answer, str) and answer.strip():
+        return answer.strip()
     return None
 
 
@@ -424,24 +452,12 @@ def parse_and_validate(  # noqa: C901
     """
     parsed: Any = None
 
-    # 1. Try direct parse (with bounded trailing-comma repair)
+    # 1. Try direct parse / markdown fence / exactly one top-level JSON object.
     stripped = raw_text.strip()
-    parsed = _try_loads(stripped)
-
-    # 2. Strip markdown JSON fence (one level)
-    if parsed is None:
-        m = _FENCE_RE.search(stripped)
-        if m:
-            inner = m.group(1).strip()
-            parsed = _try_loads(inner)
-
-    # 3. Extract exactly one top-level JSON object
-    if parsed is None:
-        matches = _JSON_OBJECT_RE.findall(stripped)
-        if len(matches) == 1:
-            parsed = _try_loads(matches[0])
-        elif len(matches) > 1:
-            return None, "Multiple JSON objects found in output — rejected as mixed prose"
+    matches = _JSON_OBJECT_RE.findall(stripped)
+    if len(matches) > 1 and _try_loads(stripped) is None:
+        return None, "Multiple JSON objects found in output — rejected as mixed prose"
+    parsed = _load_single_json_object(raw_text)
 
     if parsed is None:
         return None, "Failed to parse any valid JSON from model output"
@@ -559,26 +575,41 @@ def parse_and_validate(  # noqa: C901
     return parsed, None
 
 
-def build_degraded_result(status: str, gap: str, provenance: dict) -> dict:
-    """Build a deterministic degraded ``m35.agent_bridge_query.v0`` envelope.
+def build_degraded_result(
+    status: str,
+    gap: str,
+    provenance: dict,
+    *,
+    answer_text: str | None = None,
+    usage: dict | None = None,
+) -> dict:
+    """Build a deterministic labeled ``m35.agent_bridge_query.v0`` envelope.
 
     Never returns GROUNDED status.  Suitable for cases where model output
-    is unrecoverable or validation fails.
+    is unrecoverable or validation fails.  When a first-pass structured answer
+    can be extracted, it is preserved as display text while the status/reason
+    honestly labels the failed grounding.
     """
     if status not in ("PARTIAL", "UNGROUNDED"):
         status = "UNGROUNDED"
+    display_answer = answer_text.strip() if isinstance(answer_text, str) else ""
 
     return {
         "schema_version": QUERY_SCHEMA_VERSION,
         "status": status,
         "answer": (
-            None if status == "UNGROUNDED" else "Degraded: model output could not be validated."
+            display_answer
+            if display_answer
+            else (
+                None if status == "UNGROUNDED" else "Degraded: model output could not be validated."
+            )
         ),
         "insights": [],
         "evidence_refs": [],
         "gap": gap,
+        "reason": gap,
         "provenance": provenance,
-        "usage": None,
+        "usage": usage,
     }
 
 
@@ -726,8 +757,8 @@ def acp_query_adapter(
     3. Create or reuse an ``_ACPConnection``, send ``session/prompt``, collect text.
     4. Parse and validate the collected text.
     5. On success: map short evidence IDs back to real IDs and return the envelope.
-    6. On first failure: one bounded retry with a repair prompt.
-    7. On second failure: return a deterministic degraded result.
+    6. On validation/citation failure: return the first-pass answer text, if
+       safely extractable, with an honest UNGROUNDED label and reason.
     """
     # 1. Build evidence pack
     evidence_pack, id_mapping = build_evidence_pack(scaffold)
@@ -768,8 +799,11 @@ def acp_query_adapter(
 
         # 6. Parse and validate
         validated, error = parse_and_validate(collected_text, allowed_ids)
+        first_pass_answer = _extract_first_pass_answer(collected_text)
 
         if validated is not None:
+            if isinstance(validated.get("answer"), str) and validated["answer"].strip():
+                first_pass_answer = validated["answer"].strip()
             finalized, citation_error = _finalize_validated_envelope(
                 validated,
                 id_mapping=id_mapping,
@@ -787,61 +821,15 @@ def acp_query_adapter(
                 "UNGROUNDED",
                 "ACP runtime queued the prompt instead of returning a final answer.",
                 build_provenance(cfg, conn_meta, degraded=True),
+                usage=rpc_usage,
             )
 
-        # 7. First failure — bounded retry with repair prompt
-        repair_prompt = (
-            "Your previous response failed validation with the following error:\n"
-            f"  {error}\n\n"
-            "Please respond with ONLY the JSON object conforming to schema "
-            "m35.agent_bridge_query.v0.  Do NOT include any markdown fences, "
-            "explanations, or prose outside the JSON object. Do NOT create, edit, "
-            "patch, or write any files; return the JSON directly in this ACP "
-            "message. You may cite seed "
-            f"IDs from: {', '.join(sorted(allowed_ids)) if allowed_ids else '(none)'}, "
-            "and you may cite additional journal evidence as "
-            "Journals/YYYY/MM/life-index_YYYY-MM-DD_NNN.md if you read or searched it "
-            "during this ACP turn. Use the magazine model: answer is a concise "
-            "summary, and every substantive insight has quote, interpretation, "
-            "and evidence_refs. The summary may be connective prose without inline "
-            "ids, but it must not introduce dates, counts, locations, events, or "
-            "conclusions not covered by cited insights. The top-level evidence_refs "
-            "MUST exactly equal the union of all insights[].evidence_refs; do not "
-            "list every document you found or classified. Do not use non-file "
-            "citation phrases like [all March entries]. Avoid raw double quotes "
-            "inside JSON strings; use Chinese corner quotes instead.\n\n"
-            "Output:"
-        )
-
-        prompt_resp_retry, retry_messages = _send_prompt_turn(
-            conn,
-            repair_prompt,
-            stream_callback=stream_callback,
-        )
-        rpc_usage_retry = _extract_rpc_usage(prompt_resp_retry)
-
-        collected_text_retry = parse_acp_stream(retry_messages)
-
-        validated_retry, error_retry = parse_and_validate(collected_text_retry, allowed_ids)
-
-        if validated_retry is not None:
-            finalized_retry, citation_error_retry = _finalize_validated_envelope(
-                validated_retry,
-                id_mapping=id_mapping,
-                cfg=cfg,
-                conn_meta=conn_meta,
-                rpc_usage=rpc_usage_retry,
-                turn_messages=turn_messages + retry_messages,
-            )
-            if finalized_retry is not None:
-                return finalized_retry
-            error_retry = citation_error_retry
-
-        # 8. Both attempts failed — degrade
         return build_degraded_result(
             "UNGROUNDED",
-            f"Model output failed validation after retry: {error_retry}",
+            f"Model output failed validation: {error}",
             build_provenance(cfg, conn_meta, degraded=True),
+            answer_text=first_pass_answer,
+            usage=rpc_usage,
         )
 
     except Exception as exc:

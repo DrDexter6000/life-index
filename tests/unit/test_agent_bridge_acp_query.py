@@ -140,13 +140,11 @@ def test_markdown_fenced_json_repairs_successfully():
 # ─── Test 3: Mixed prose rejection ────────────────────────────────────
 
 
-def test_mixed_prose_rejected_then_repaired():
-    """Mixed prose rejected on first attempt, then repair retry succeeds.
+def test_mixed_prose_rejected_without_repair_retry():
+    """Mixed prose is labeled UNGROUNDED without a second ACP repair turn.
 
-    parse_and_validate rejects multi-JSON mixed prose.  The adapter
-    then sends a repair prompt; the fake agent (defaulting to valid
-    GROUNDED on the retry) produces valid output.  The adapter must
-    return the successful retry envelope.
+    parse_and_validate still rejects multi-JSON mixed prose.  The adapter no
+    longer hides the first-turn failure behind a repair retry.
     """
     from tools.agent_bridge.acp_query import (
         QUERY_SCHEMA_VERSION,
@@ -171,8 +169,8 @@ def test_mixed_prose_rejected_then_repaired():
     ), f"Expected 'Multiple JSON' error, got: {error}"
 
     # Now integration: full adapter path with MIXED_PROSE_TEST marker.
-    # The fake agent emits mixed prose on first turn (rejected), then
-    # the repair prompt triggers the default valid GROUNDED response.
+    # The fake agent would return valid GROUNDED on a second generic prompt;
+    # this must remain UNGROUNDED, proving no repair prompt was sent.
     fake_agent = sys.executable
     fake_script = str(FIXTURE_PATH / "fake_acp_agent_query.py")
 
@@ -204,10 +202,12 @@ def test_mixed_prose_rejected_then_repaired():
 
     result = acp_query_adapter("MIXED_PROSE_TEST query", scaffold, cfg)
 
-    # The retry succeeds (fake agent defaults to valid GROUNDED referencing E1)
     assert result["schema_version"] == QUERY_SCHEMA_VERSION
-    assert result["status"] == "GROUNDED"
-    assert result["provenance"]["degraded"] is False
+    assert result["status"] == "UNGROUNDED"
+    assert result["answer"] is None
+    assert result["reason"] == result["gap"]
+    assert "Multiple JSON objects" in result["reason"]
+    assert result["provenance"]["degraded"] is True
 
 
 # ─── Test 4: Unknown evidence ID rejection ────────────────────────────
@@ -368,6 +368,10 @@ def test_acp_handoff_does_not_call_openai_synthesize(monkeypatch):
                 {
                     "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
                     "snippet": "Test evidence.",
+                },
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-11_001.md"},
+                    "snippet": "Second test evidence.",
                 },
             ],
         },
@@ -646,8 +650,8 @@ def test_build_evidence_pack_bounds_to_max():
     assert len(mapping) <= 10
 
 
-def test_acp_query_adapter_two_turn_retry_succeeds():
-    """Full adapter: first turn invalid, second turn valid → success after retry."""
+def test_acp_query_adapter_invalid_first_turn_does_not_repair_retry():
+    """Full adapter: first turn invalid → honest label without repair retry."""
     from tools.agent_bridge.acp_query import QUERY_SCHEMA_VERSION, acp_query_adapter
     from tools.agent_bridge.config import BrainConfig
 
@@ -683,8 +687,9 @@ def test_acp_query_adapter_two_turn_retry_succeeds():
     result = acp_query_adapter("TWO_TURN_TEST query", scaffold, cfg)
 
     assert result["schema_version"] == QUERY_SCHEMA_VERSION
-    assert result["status"] == "GROUNDED"
-    assert result["answer"] is not None
+    assert result["status"] == "UNGROUNDED"
+    assert result["answer"] is None
+    assert "Failed to parse any valid JSON" in result["reason"]
 
 
 def test_acp_query_adapter_with_ungrounded_marker():
@@ -765,14 +770,8 @@ def test_acp_query_adapter_with_fenced_json():
     assert result["status"] == "GROUNDED"
 
 
-def test_acp_query_adapter_with_unknown_evidence_rejected_then_repaired():
-    """Full adapter with UNKNOWN_EVIDENCE_TEST: rejected, then repair retry succeeds.
-
-    The fake agent emits a GROUNDED response with fabricated Z99 on first
-    turn.  parse_and_validate rejects it (unknown evidence ID).  The
-    repair prompt triggers the default valid GROUNDED response (E1 only).
-    The adapter returns the successful retry envelope.
-    """
+def test_acp_query_adapter_with_unknown_evidence_returns_labeled_first_answer():
+    """Unknown evidence stays UNGROUNDED but preserves first-turn answer text."""
     from tools.agent_bridge.acp_query import QUERY_SCHEMA_VERSION, acp_query_adapter
     from tools.agent_bridge.config import BrainConfig
 
@@ -804,9 +803,12 @@ def test_acp_query_adapter_with_unknown_evidence_rejected_then_repaired():
     result = acp_query_adapter("UNKNOWN_EVIDENCE_TEST query", scaffold, cfg)
 
     assert result["schema_version"] == QUERY_SCHEMA_VERSION
-    # The retry succeeds (fake agent defaults to valid GROUNDED with E1)
-    assert result["status"] == "GROUNDED"
-    assert result["provenance"]["degraded"] is False
+    assert result["status"] == "UNGROUNDED"
+    assert result["answer"] == "Answer citing fabricated evidence."
+    assert result["reason"] == result["gap"]
+    assert "Unknown evidence IDs" in result["reason"]
+    assert result["evidence_refs"] == []
+    assert result["provenance"]["degraded"] is True
 
 
 def test_acp_query_adapter_rejects_nonexistent_real_journal_id_after_mapping(monkeypatch):
@@ -848,7 +850,7 @@ def test_acp_query_adapter_rejects_nonexistent_real_journal_id_after_mapping(mon
     result = acp_query_adapter("VALID_JSON_TEST query", scaffold, cfg)
 
     assert result["status"] == "UNGROUNDED"
-    assert result["answer"] is None
+    assert result["answer"] == "This is a valid grounded answer referencing supplied evidence [E1]."
     assert result["provenance"]["degraded"] is True
     assert "does not exist" in result["gap"]
 
@@ -1309,6 +1311,10 @@ def test_acp_query_adapter_provenance_uses_acp_metadata():
                     "document": {"doc_id": "Journals/2026/06/life-index_2026-06-10_001.md"},
                     "snippet": "Evidence snippet one.",
                 },
+                {
+                    "document": {"doc_id": "Journals/2026/06/life-index_2026-06-11_001.md"},
+                    "snippet": "Evidence snippet two.",
+                },
             ],
         },
     }
@@ -1435,8 +1441,8 @@ def test_acp_query_adapter_usage_null_when_rpc_omits_usage():
     assert result["usage"] is None
 
 
-def test_acp_query_adapter_retry_uses_rpc_usage():
-    """Retry success also sets usage from the second session/prompt RPC result."""
+def test_acp_query_adapter_failed_first_turn_uses_first_rpc_usage():
+    """Failure label uses the first turn's authoritative RPC usage; no retry usage."""
     from tools.agent_bridge.acp_query import QUERY_SCHEMA_VERSION, acp_query_adapter
     from tools.agent_bridge.config import BrainConfig
 
@@ -1469,12 +1475,10 @@ def test_acp_query_adapter_retry_uses_rpc_usage():
         },
     }
 
-    # TWO_TURN_TEST fails first turn, succeeds on repair. Both RPC responses
-    # include authoritative usage metadata, so the final envelope must too.
     result = acp_query_adapter("TWO_TURN_TEST query", scaffold, cfg)
 
     assert result["schema_version"] == QUERY_SCHEMA_VERSION
-    assert result["status"] == "GROUNDED"
+    assert result["status"] == "UNGROUNDED"
     assert result["usage"] == {"input_tokens": 7, "output_tokens": 13}
 
 
