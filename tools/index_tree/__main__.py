@@ -12,6 +12,7 @@ from .core import (
     _error_payload,
     _success_payload,
     build_lens_payload,
+    build_navigate_payload,
     build_nodes_payload,
     build_shadow_payload,
 )
@@ -76,7 +77,44 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ensure.add_argument("--to", dest="date_to", help="End month, YYYY-MM")
     ensure.add_argument("--json", action="store_true", help="Emit JSON output")
 
+    navigate = subparsers.add_parser(
+        "navigate",
+        help="Run deterministic structured navigation over Index B",
+    )
+    navigate.add_argument("--from", dest="date_from", help="Start month, YYYY-MM")
+    navigate.add_argument("--to", dest="date_to", help="End month, YYYY-MM")
+    navigate.add_argument(
+        "--filter",
+        action="append",
+        default=[],
+        metavar="FACET=VALUE",
+        help=(
+            "Explicit facet filter. Repeat for intersections. Use VALUE1||VALUE2 "
+            "for multiple allowed values in one facet."
+        ),
+    )
+    navigate.add_argument("--json", action="store_true", help="Emit JSON output")
+
     return parser.parse_args(argv)
+
+
+def _parse_filter_operations(filters: list[str]) -> list[dict[str, Any]]:
+    operations: list[dict[str, Any]] = []
+    for item in filters:
+        if "=" not in item:
+            operations.append({"type": "invalid_filter", "raw": item})
+            continue
+        facet, raw_values = item.split("=", 1)
+        values = [value.strip() for value in raw_values.split("||") if value.strip()]
+        operations.append(
+            {
+                "type": "facet_value_filter",
+                "facet": facet.strip(),
+                "values": values,
+                "match": "any",
+            }
+        )
+    return operations
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -125,6 +163,12 @@ def main(argv: list[str] | None = None) -> None:
                 str(exc),
                 {"date_from": args.date_from, "date_to": args.date_to},
             )
+    elif args.subcommand == "navigate":
+        payload = build_navigate_payload(
+            date_from=args.date_from,
+            date_to=args.date_to,
+            operations=_parse_filter_operations(args.filter),
+        )
     else:
         raise AssertionError(f"unreachable subcommand: {args.subcommand}")
 

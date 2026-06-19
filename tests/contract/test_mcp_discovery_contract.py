@@ -87,7 +87,17 @@ class TestListCapabilities:
 
         result = list_capabilities()
         names = {entry["name"] for entry in result}
-        expected = {"write", "search", "edit", "confirm", "entity", "health", "version"}
+        expected = {
+            "write",
+            "search",
+            "edit",
+            "confirm",
+            "entity",
+            "health",
+            "version",
+            "journal",
+            "index-tree",
+        }
         missing = expected - names
         assert not missing, f"Missing expected capabilities: {missing}"
 

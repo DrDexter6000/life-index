@@ -1062,6 +1062,7 @@ life-index index-tree materialize --from 2026-03 --to 2026-06 --json
 life-index index-tree materialize --from 2026-03 --to 2026-06 --incremental --json
 life-index index-tree freshness --from 2026-03 --to 2026-06 --json
 life-index index-tree ensure --from 2026-03 --to 2026-06 --json
+life-index index-tree navigate --from 2026-03 --to 2026-06 --filter "location=Lagos, Nigeria" --filter "project=Life Index" --json
 python -m tools index-tree nodes --level month --json
 ```
 
@@ -1073,8 +1074,9 @@ root/year/month Index Tree、frontmatter-derived lenses、Search Shadow Mode
 durable data。`materialize` 只写 `.life-index/index-b/` 下可重建的导航文档和
 `manifest.json` 哈希清单，不写 journal、attachment 或 durable truth source。
 `freshness` 只读并比较 journal 内容哈希；`ensure` 在 Index B 缺失或陈旧时尝试刷新，
-刷新失败则返回 journal fallback pointers。Journal 仍是唯一 truth source；index、
-lens、shadow report、Index B docs 和 manifest 都是可重建派生产物。
+刷新失败则返回 journal fallback pointers。`navigate` 只执行调用方给定的结构化谓词，
+不会从自然语言推断 facet。Journal 仍是唯一 truth source；index、lens、shadow report、
+Index B docs 和 manifest 都是可重建派生产物。
 
 ### 通用返回 Envelope
 
@@ -1308,6 +1310,77 @@ entry pointers，调用方应直接读取这些 journal 条目，而不是把 In
       }
     ],
     "fallback": {"used": true, "reason": "refresh failed"}
+  },
+  "errors": []
+}
+```
+
+### `navigate`
+
+`navigate` 在已物化的 Index B 范围上执行确定性结构化导航。它只接受显式谓词：
+`--filter facet=value`，重复 `--filter` 表示跨 facet 交集，同一个 filter 内的
+`value1||value2` 表示该 facet 的确定性 OR。当前支持的 facet 与 Index B 文档一致：
+`weather`、`location`、`task`、`project`、`tag`、`people`。工具不会从自然语言推断
+应该查哪个 facet；调用方 agent 负责规划和选择谓词。
+
+`navigate` 先执行 `ensure`。Index B fresh 或成功刷新时返回 `source: "index-b"` 和
+本次范围涉及的 `navigation_docs`；刷新失败时可返回 journal fallback source。返回的
+`entry_pointers` 是候选 journal 路径，调用方仍需用 `journal get` 读取 journal 内容后
+才能引用为事实证据。
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.navigate",
+  "data": {
+    "truth_source": "journals",
+    "privacy_level": "same_as_journals",
+    "source": "index-b",
+    "artifact": "index-b",
+    "date_from": "2026-03",
+    "date_to": "2026-06",
+    "operation_model": "deterministic_navigation.v1",
+    "operations": [
+      {
+        "type": "facet_value_filter",
+        "facet": "location",
+        "values": ["Lagos, Nigeria"],
+        "match": "any"
+      },
+      {
+        "type": "facet_value_filter",
+        "facet": "project",
+        "values": ["Life Index"],
+        "match": "any"
+      }
+    ],
+    "exhaustive": true,
+    "count": 1,
+    "entry_pointers": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+    "entries": [
+      {
+        "date": "2026-03-14",
+        "title": "Facet Work",
+        "path": "Journals/2026/03/life-index_2026-03-14_001.md",
+        "matched_facets": {
+          "location": ["Lagos, Nigeria"],
+          "project": ["Life Index"]
+        }
+      }
+    ],
+    "navigation_docs": [
+      ".life-index/index-b/INDEX.md",
+      ".life-index/index-b/Journals/2026/index.md",
+      ".life-index/index-b/Journals/2026/03/index.md"
+    ],
+    "coverage": {
+      "candidate_count_before_filters": 2,
+      "candidate_count_after_filters": 1,
+      "filter_count": 2
+    },
+    "fallback": {"used": false, "reason": null},
+    "extension_points": ["entity_neighbors"]
   },
   "errors": []
 }
@@ -3229,7 +3302,7 @@ Allowed event types (in order):
 |---|---|---|
 | `status` | `{"state": "active"}` | stream started |
 | `scaffold` | `{intent, date_from, date_to, queries, filters}` | search scaffold |
-| `thinking` | `{state, source, sequence, session_update?, tool?, status?}` | agentic progress / keepalive; not answer text |
+| `thinking` | `{state, source, sequence, session_update?, tool?, status?, index_b_paths?, matched_entries?, read_paths?}` | agentic progress / keepalive; optional sanitized path-level navigation/read trace; not answer text |
 | `evidence` | `evidence[]` | accepted evidence metadata |
 | `delta` | string | optional validated answer text update; answer text only |
 | `final` | full rich `m35.agent_bridge_query.v0` envelope | complete response |
@@ -3237,7 +3310,10 @@ Allowed event types (in order):
 
 `delta` carries answer text only and never includes evidence, mode, or
 provenance. `thinking` is progress/keepalive metadata only and must not be
-rendered as final answer content. `final` always carries the complete rich envelope.
+rendered as final answer content. When present, `index_b_paths`,
+`matched_entries`, and `read_paths` contain bounded relative paths only; raw
+tool output and model text are not forwarded through these fields. `final`
+always carries the complete rich envelope.
 
 ### 安全边界
 

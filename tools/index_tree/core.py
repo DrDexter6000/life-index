@@ -7,6 +7,14 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from tools.generate_index.builder import NAVIGABLE_SIGNALS, build_index_tree_model
+from tools.index_tree.materialize import (
+    FACETS,
+    INDEX_B_DIR,
+    build_ensure_payload,
+    _collect_entries,
+    _facet_values,
+    _parse_month,
+)
 
 SCHEMA_VERSION = "m31.index_tree.v1"
 
@@ -204,3 +212,168 @@ def _baseline_paths_by_scan(query: str, nodes: list[dict[str, Any]]) -> list[str
                 if isinstance(path, str) and path not in matches:
                     matches.append(path)
     return matches
+
+
+def _facet_specs_by_name() -> dict[str, Any]:
+    return {spec.name: spec for spec in FACETS}
+
+
+def _normalize_values(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        key = text.casefold()
+        if text and key not in seen:
+            seen.add(key)
+            normalized.append(text)
+    return normalized
+
+
+def _validate_navigation_operations(operations: list[Any]) -> str | None:
+    facet_specs = _facet_specs_by_name()
+    for operation in operations:
+        if not isinstance(operation, dict):
+            return "operation must be an object"
+        op_type = operation.get("type")
+        if op_type != "facet_value_filter":
+            return f"unsupported operation type: {op_type!r}"
+        facet = operation.get("facet")
+        if facet not in facet_specs:
+            return f"facet must be one of {sorted(facet_specs)}, got {facet!r}"
+        match = operation.get("match", "any")
+        if match not in ("any", "all"):
+            return f"match must be 'any' or 'all', got {match!r}"
+        values = _normalize_values(operation.get("values"))
+        if not values:
+            return "facet_value_filter requires at least one non-empty value"
+    return None
+
+
+def _entry_matches_operation(entry: Any, operation: dict[str, Any]) -> bool:
+    facet_specs = _facet_specs_by_name()
+    facet = str(operation["facet"])
+    spec = facet_specs[facet]
+    wanted = {value.casefold() for value in _normalize_values(operation["values"])}
+    actual = {value.casefold() for value in _facet_values(entry, spec)}
+    if operation.get("match", "any") == "all":
+        return wanted.issubset(actual)
+    return bool(actual & wanted)
+
+
+def _matched_facets(entry: Any, operations: list[dict[str, Any]]) -> dict[str, list[str]]:
+    facet_specs = _facet_specs_by_name()
+    facets: dict[str, list[str]] = {}
+    for operation in operations:
+        facet = str(operation["facet"])
+        spec = facet_specs[facet]
+        wanted = {value.casefold() for value in _normalize_values(operation["values"])}
+        matched = [value for value in _facet_values(entry, spec) if value.casefold() in wanted]
+        if matched:
+            facets[facet] = matched
+    return facets
+
+
+def _entry_payload(entry: Any, operations: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "date": entry.date,
+        "title": entry.title,
+        "path": entry.rel_path,
+        "matched_facets": _matched_facets(entry, operations),
+    }
+
+
+def _navigation_docs_for_entries(entries: list[Any]) -> list[str]:
+    docs: list[str] = [f"{INDEX_B_DIR}/INDEX.md"]
+    seen: set[str] = set(docs)
+    for entry in entries:
+        for rel in (
+            f"{INDEX_B_DIR}/Journals/{entry.year}/index.md",
+            f"{INDEX_B_DIR}/Journals/{entry.year}/{entry.month}/index.md",
+        ):
+            if rel not in seen:
+                seen.add(rel)
+                docs.append(rel)
+    return docs
+
+
+def build_navigate_payload(
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    operations: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Run deterministic structured navigation over the materialized Index B scope.
+
+    ``operations`` is intentionally typed as a list of explicit operations rather
+    than natural-language text.  P2a implements ``facet_value_filter`` only; P2b
+    can add sibling operations such as entity-neighbor traversal without
+    replacing this shape.
+    """
+    operations = operations or []
+    invalid = _validate_navigation_operations(operations)
+    if invalid:
+        return _error_payload(
+            "index-tree.navigate",
+            "INDEX_TREE_NAVIGATE_INVALID_OPERATION",
+            invalid,
+            {"operations": operations},
+        )
+
+    try:
+        start = _parse_month(date_from)
+        end = _parse_month(date_to, fallback=start)
+        if start is not None and end is not None and end < start:
+            raise ValueError("--to must be greater than or equal to --from")
+        ensured = build_ensure_payload(date_from=start, date_to=end)
+    except ValueError as exc:
+        return _error_payload(
+            "index-tree.navigate",
+            "INDEX_TREE_NAVIGATE_INVALID_RANGE",
+            str(exc),
+            {"date_from": date_from, "date_to": date_to},
+        )
+
+    scoped_entries = _collect_entries(start, end)
+    matched_entries = [
+        entry
+        for entry in scoped_entries
+        if all(_entry_matches_operation(entry, operation) for operation in operations)
+    ]
+
+    source = ensured.get("source") if isinstance(ensured, dict) else None
+    if source not in ("index-b", "journals"):
+        source = "index-b"
+
+    data = {
+        "truth_source": "journals",
+        "privacy_level": "same_as_journals",
+        "source": source,
+        "artifact": ensured.get("artifact") if isinstance(ensured, dict) else "index-b",
+        "date_from": start,
+        "date_to": end,
+        "operation_model": "deterministic_navigation.v1",
+        "operations": operations,
+        "exhaustive": True,
+        "count": len(matched_entries),
+        "entry_pointers": [entry.rel_path for entry in matched_entries],
+        "entries": [_entry_payload(entry, operations) for entry in matched_entries],
+        "navigation_docs": (
+            _navigation_docs_for_entries(scoped_entries) if source == "index-b" else []
+        ),
+        "coverage": {
+            "candidate_count_before_filters": len(scoped_entries),
+            "candidate_count_after_filters": len(matched_entries),
+            "filter_count": len(operations),
+        },
+        "freshness": (
+            ensured.get("freshness") or ensured.get("freshness_before")
+            if isinstance(ensured, dict)
+            else None
+        ),
+        "fallback": ensured.get("fallback") if isinstance(ensured, dict) else None,
+        "extension_points": ["entity_neighbors"],
+    }
+    return _success_payload("index-tree.navigate", data)

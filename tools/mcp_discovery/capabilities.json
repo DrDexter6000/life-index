@@ -12,6 +12,14 @@
     "description": "Search journals by keyword (FTS5), with optional filters for topic, date range, people, mood"
   },
   {
+    "name": "journal",
+    "description": "Read one journal or list recent journals through stable get/list JSON contracts"
+  },
+  {
+    "name": "index-tree",
+    "description": "Deterministic Index Tree and Index B navigation: nodes, lens, materialize, freshness, ensure, navigate"
+  },
+  {
     "name": "edit",
     "description": "Edit existing journal metadata or content fields"
   },

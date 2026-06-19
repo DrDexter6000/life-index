@@ -300,6 +300,47 @@ def test_materialize_manifest_freshness_and_incremental_refresh(tmp_path: Path) 
     assert fresh_again["data"]["fresh"] is True
 
 
+def test_navigate_json_contract_filters_materialized_index_b(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    journal = _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Facet Work",
+        extra_frontmatter=(
+            'project: "Life Index"\n' 'tags: ["ai"]\n' 'location: "Lagos, Nigeria"\n'
+        ),
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-15",
+        title="Facet Other",
+        extra_frontmatter='project: "Other"\ntags: ["ai"]\nlocation: "Lagos, Nigeria"',
+    )
+
+    result = _invoke(
+        data_dir,
+        "navigate",
+        "--from",
+        "2026-03",
+        "--to",
+        "2026-03",
+        "--filter",
+        "location=Lagos, Nigeria",
+        "--filter",
+        "project=Life Index",
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    assert payload["success"] is True
+    assert payload["command"] == "index-tree.navigate"
+    assert payload["data"]["source"] == "index-b"
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["entry_pointers"] == [journal.relative_to(data_dir).as_posix()]
+    assert str(data_dir) not in _all_strings(payload)
+
+
 def test_lens_invalid_signal_returns_structured_error(tmp_path: Path) -> None:
     data_dir = tmp_path / "Life-Index"
     _seed_data(data_dir)

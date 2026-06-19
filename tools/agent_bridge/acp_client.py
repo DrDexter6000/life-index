@@ -54,6 +54,54 @@ _CREDENTIAL_PATTERNS = re.compile(
     r"(_API_KEY|_TOKEN)$|SECRET|PASSWORD",
     re.IGNORECASE,
 )
+_JOURNAL_PATH_RE = re.compile(r"Journals/\d{4}/\d{2}/life-index_\d{4}-\d{2}-\d{2}_\d{3}\.md")
+_INDEX_B_PATH_RE = re.compile(
+    r"\.life-index/index-b/"
+    r"(?:INDEX\.md|manifest\.json|Journals/\d{4}/(?:index\.md|\d{2}/index\.md))"
+)
+
+
+def _unique_limited(values: list[str], *, limit: int = 25) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique.append(value)
+        if len(unique) >= limit:
+            break
+    return unique
+
+
+def _dump_update_for_path_scan(update: dict[str, Any]) -> str:
+    try:
+        return json.dumps(update, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return ""
+
+
+def _extract_journal_paths(update: dict[str, Any]) -> list[str]:
+    return _unique_limited(_JOURNAL_PATH_RE.findall(_dump_update_for_path_scan(update)))
+
+
+def _extract_index_b_paths(update: dict[str, Any]) -> list[str]:
+    return _unique_limited(_INDEX_B_PATH_RE.findall(_dump_update_for_path_scan(update)))
+
+
+def _tool_label(value: Any) -> str:
+    if isinstance(value, dict):
+        value = value.get("name") or value.get("title") or value.get("id")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _looks_like_index_b_navigation(tool: str, index_b_paths: list[str]) -> bool:
+    return bool(index_b_paths) or "index-tree" in tool.casefold() or "index tree" in tool.casefold()
+
+
+def _looks_like_journal_read(tool: str, session_update: str) -> bool:
+    label = f"{tool} {session_update}".casefold()
+    return "journal" in label or "read" in label
 
 
 def _build_acp_subprocess_env(
@@ -297,14 +345,21 @@ class _ACPConnection:
             "source": "acp",
             "session_update": session_update,
         }
-        tool = update.get("toolName") or update.get("tool") or update.get("name")
-        if isinstance(tool, dict):
-            tool = tool.get("name") or tool.get("title") or tool.get("id")
-        if isinstance(tool, str) and tool.strip():
-            payload["tool"] = tool.strip()[:120]
+        tool = _tool_label(update.get("toolName") or update.get("tool") or update.get("name"))
+        if tool:
+            payload["tool"] = tool[:120]
         status = update.get("status") or update.get("state")
         if isinstance(status, str) and status.strip():
             payload["status"] = status.strip()[:120]
+        journal_paths = _extract_journal_paths(update)
+        index_b_paths = _extract_index_b_paths(update)
+        if _looks_like_index_b_navigation(tool, index_b_paths):
+            if index_b_paths:
+                payload["index_b_paths"] = index_b_paths
+            if journal_paths:
+                payload["matched_entries"] = journal_paths
+        if journal_paths and _looks_like_journal_read(tool, session_update):
+            payload["read_paths"] = journal_paths
         return payload
 
     def _maybe_stream_chunk(

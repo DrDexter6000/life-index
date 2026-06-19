@@ -44,6 +44,8 @@ _SSE_MAX_DURATION = 1800.0
 # start.  Set to "0", "false", "no", or "off" to disable.  Default: enabled.
 _ACP_WARMUP_PROMPT_ENV = "LIFE_INDEX_ACP_WARMUP_PROMPT_ENABLED"
 _ACP_WARMUP_PROMPT_DISABLE_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
+_PRESCAFFOLD_ENV = "LIFE_INDEX_GATEWAY_PRESCAFFOLD_ENABLED"
+_PRESCAFFOLD_DISABLE_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 
 
 class ACPThreadingServer(ThreadingHTTPServer):
@@ -147,6 +149,10 @@ def _scaffold_has_evidence(scaffold: Any) -> bool:
     return False
 
 
+def _pre_scaffold_enabled() -> bool:
+    return os.environ.get(_PRESCAFFOLD_ENV, "").strip().lower() not in _PRESCAFFOLD_DISABLE_VALUES
+
+
 def _resolve_scaffold(query: str, scaffold: dict[str, Any]) -> dict[str, Any]:
     """Return an evidence-bearing scaffold, fetching one via L2 if necessary.
 
@@ -158,6 +164,8 @@ def _resolve_scaffold(query: str, scaffold: dict[str, Any]) -> dict[str, Any]:
     """
     if _scaffold_has_evidence(scaffold):
         return handoff.hydrate_gateway_scaffold(scaffold, query)
+    if not _pre_scaffold_enabled():
+        return scaffold
     return handoff.build_gateway_scaffold(query)
 
 
@@ -181,6 +189,17 @@ def _progress_event_payload(data: Any, sequence: int) -> dict[str, Any]:
     status = data.get("status")
     if isinstance(status, str) and status.strip():
         payload["status"] = status.strip()[:120]
+    for key in ("index_b_paths", "matched_entries", "read_paths"):
+        values = data.get(key)
+        if not isinstance(values, list):
+            continue
+        sanitized = [
+            item.strip()
+            for item in values
+            if isinstance(item, str) and item.strip() and len(item.strip()) <= 240
+        ][:25]
+        if sanitized:
+            payload[key] = sanitized
     return payload
 
 
