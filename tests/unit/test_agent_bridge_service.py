@@ -20,6 +20,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+import tools.agent_bridge.service as _service_mod
 from tools.agent_bridge.acp_session_manager import ACPWarmSessionManager
 from tools.agent_bridge.config import BrainConfig
 from tools.agent_bridge.service import (
@@ -771,6 +772,93 @@ def test_query_sse_final_carries_structured_insights_delta_stays_summary(monkeyp
         assert insight["quote"] == "ACP selected journal excerpt."
         assert insight["interpretation"] == "ACP interpretation is preserved."
         assert insight["evidence_refs"] == ["2026/06/life-index_2026-06-04_001"]
+    finally:
+        server.shutdown_and_close()
+
+
+def test_query_sse_emits_thinking_for_progress_without_raw_chunk_leak(monkeypatch):
+    """ACP progress updates become thinking events; raw JSON chunks stay hidden."""
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: {})
+
+    class _ProgressManager(_FakeManagerWarmOk):
+        def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+            self.queries.append((query, scaffold, stream_callback))
+            assert stream_callback is not None
+            stream_callback(
+                {
+                    "type": "progress",
+                    "source": "acp",
+                    "session_update": "tool_call",
+                    "tool": "index-tree",
+                    "status": "running",
+                }
+            )
+            stream_callback('{"schema_version":"m35.agent_bridge_query.v0"}')
+            return _success_envelope(answer="validated summary")
+
+    manager = _ProgressManager()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "progress please", "scaffold": {}},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
+        assert names == ["status", "scaffold", "thinking", "evidence", "delta", "final"]
+        assert events[2][1]["state"] == "working"
+        assert events[2][1]["source"] == "acp"
+        assert events[2][1]["session_update"] == "tool_call"
+        assert events[2][1]["tool"] == "index-tree"
+        assert events[4][1] == "validated summary"
+        assert "schema_version" not in json.dumps(
+            [event[1] for event in events if event[0] == "delta"]
+        )
+    finally:
+        server.shutdown_and_close()
+
+
+def test_query_sse_progress_keeps_idle_timeout_alive(monkeypatch):
+    """Repeated progress events prevent a long agentic phase from being cut off."""
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: {})
+    monkeypatch.setattr(_service_mod, "_SSE_KEEPALIVE_INTERVAL", 0.02)
+    monkeypatch.setattr(_service_mod, "_SSE_MAX_DURATION", 1.0)
+
+    class _SlowProgressManager(_FakeManagerWarmOk):
+        def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+            self.queries.append((query, scaffold, stream_callback))
+            assert stream_callback is not None
+            for idx in range(3):
+                stream_callback(
+                    {
+                        "type": "progress",
+                        "source": "acp",
+                        "session_update": "tool_update",
+                        "tool": "journal",
+                        "status": f"step-{idx}",
+                    }
+                )
+                time.sleep(0.01)
+            return _success_envelope(answer="done after progress")
+
+    manager = _SlowProgressManager()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "slow progress", "scaffold": {}},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [name for name, _data in events]
+        assert names.count("thinking") >= 3
+        assert names[-2:] == ["delta", "final"]
+        assert events[-2][1] == "done after progress"
     finally:
         server.shutdown_and_close()
 

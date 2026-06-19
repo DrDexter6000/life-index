@@ -238,7 +238,7 @@ class ACPWarmSessionManager:
         query: str,
         scaffold: dict,
         cfg: BrainConfig | None = None,
-        stream_callback: Callable[[str], None] | None = None,
+        stream_callback: Callable[[Any], None] | None = None,
     ) -> dict[str, Any]:
         """Run a query through the warm connection, reconnecting once if it died.
 
@@ -278,7 +278,7 @@ class ACPWarmSessionManager:
         scaffold: dict,
         cfg: BrainConfig,
         conn: _ACPConnection,
-        stream_callback: Callable[[str], None] | None,
+        stream_callback: Callable[[Any], None] | None,
     ) -> dict[str, Any]:
         try:
             return self._adapter(

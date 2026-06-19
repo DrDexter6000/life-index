@@ -1504,6 +1504,24 @@ def test_build_query_prompt_requests_magazine_insights_not_sentence_citation_jso
     assert "Do NOT create, edit, patch, or write any files" in prompt
 
 
+def test_build_query_prompt_embeds_grounded_query_skill_playbook():
+    """ACP query prompt must route the host agent through the grounded-query playbook."""
+    from tools.agent_bridge.acp_query import build_query_prompt
+
+    prompt = build_query_prompt(
+        "How many late-sleep days since March?",
+        {"E1": {"short_id": "E1", "text": "seed"}},
+        {"E1"},
+    )
+
+    assert "Grounded Query Skill Playbook" in prompt
+    assert "index-tree materialize" in prompt
+    assert "journal get" in prompt
+    assert "answer.insights[]" in prompt
+    assert "aggregate count" in prompt
+    assert "Do not put a count only in the summary" in prompt
+
+
 def test_build_query_prompt_remains_well_formed_with_no_evidence():
     """Empty evidence pack still yields a coherent prompt (no crash, contract intact)."""
     from tools.agent_bridge.acp_query import build_query_prompt

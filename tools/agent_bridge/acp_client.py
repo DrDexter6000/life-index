@@ -285,15 +285,41 @@ class _ACPConnection:
         """Idempotent teardown alias for the context manager exit path."""
         self._cleanup()
 
+    def _progress_payload_from_update(self, update: dict[str, Any]) -> dict[str, Any] | None:
+        session_update = update.get("sessionUpdate")
+        if not isinstance(session_update, str) or session_update == "agent_message_chunk":
+            return None
+        if "tool" not in session_update:
+            return None
+
+        payload: dict[str, Any] = {
+            "type": "progress",
+            "source": "acp",
+            "session_update": session_update,
+        }
+        tool = update.get("toolName") or update.get("tool") or update.get("name")
+        if isinstance(tool, dict):
+            tool = tool.get("name") or tool.get("title") or tool.get("id")
+        if isinstance(tool, str) and tool.strip():
+            payload["tool"] = tool.strip()[:120]
+        status = update.get("status") or update.get("state")
+        if isinstance(status, str) and status.strip():
+            payload["status"] = status.strip()[:120]
+        return payload
+
     def _maybe_stream_chunk(
         self,
         line_msg: dict,
-        stream_callback: Callable[[str], None] | None,
+        stream_callback: Callable[[Any], None] | None,
+        *,
+        stream_progress: bool = False,
     ) -> None:
-        """Forward a single ``agent_message_chunk`` to *stream_callback*.
+        """Forward safe streaming updates to *stream_callback*.
 
-        Isolated in a helper so the RPC loop is not broken by a misbehaving
-        callback and the control flow stays simple for static analysis.
+        By default only validated answer-producing ``agent_message_chunk`` text
+        is forwarded, preserving the original callback contract.  When
+        ``stream_progress`` is true, non-message ACP updates are also forwarded
+        as bounded structured progress dictionaries for SSE keepalive events.
         """
         if stream_callback is None:
             return
@@ -303,6 +329,10 @@ class _ACPConnection:
                 text = update.get("content", {}).get("text", "")
                 if isinstance(text, str) and text:
                     stream_callback(text)
+            elif stream_progress:
+                progress = self._progress_payload_from_update(update)
+                if progress is not None:
+                    stream_callback(progress)
         except Exception:
             # A misbehaving callback must not break the RPC loop.
             return
@@ -313,7 +343,8 @@ class _ACPConnection:
         self,
         method: str,
         params: dict | None = None,
-        stream_callback: Callable[[str], None] | None = None,
+        stream_callback: Callable[[Any], None] | None = None,
+        stream_progress: bool = False,
     ) -> dict[Any, Any]:
         """Send a JSON-RPC request and return the parsed response.
 
@@ -321,7 +352,9 @@ class _ACPConnection:
         matching response into ``self.collected``.  When ``stream_callback``
         is provided, each ``agent_message_chunk`` notification is forwarded
         incrementally as it arrives, enabling true streaming without final-
-        buffer splitting in callers.
+        buffer splitting in callers.  ``stream_progress`` additionally sends
+        bounded non-answer progress dictionaries; it defaults off to preserve
+        the historical callback contract.
 
         Raises ``RuntimeError`` on deadline expiry, broken pipe,
         subprocess exit, or JSON-RPC error response.
@@ -368,7 +401,11 @@ class _ACPConnection:
                 return line_msg
 
             self.collected.append(line_msg)
-            self._maybe_stream_chunk(line_msg, stream_callback)
+            self._maybe_stream_chunk(
+                line_msg,
+                stream_callback,
+                stream_progress=stream_progress,
+            )
 
     # ── Internals ─────────────────────────────────────────────────────
 

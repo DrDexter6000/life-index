@@ -82,6 +82,37 @@ triggers:
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先读 `AGENT_ONBOARDING.md`
 - 写入成功后的状态字段解释（`needs_confirmation` / `index_status` / `side_effects_status` / 附件处理计数）→ 读 `docs/API.md` 中 `write_journal` 返回语义
 
+<!-- GROUNDED_QUERY_SKILL_START -->
+## Grounded Query Skill Playbook
+
+Use this playbook for magazine-style analysis questions that need grounded
+journal evidence.
+
+1. Treat planning, multi-hop reasoning, interpretation, and synthesis as host
+   agent work. Life Index tools provide deterministic search, navigation, read,
+   and validation surfaces.
+2. Build or refresh Index B navigation for the requested time scope:
+   `life-index index-tree materialize --from YYYY-MM --to YYYY-MM --json`.
+   Read `.life-index/index-b/INDEX.md`, then the relevant year/month navigation
+   docs. Use their facet counts and child pointers to narrow the candidate
+   scope before reading journal entries.
+3. Use deterministic retrieval and read tools for evidence:
+   `life-index search ...`, `life-index index-tree nodes ...`, and
+   `life-index journal get --path Journals/YYYY/MM/name.md`. Prefer these
+   domain tools over ad hoc full-directory reads.
+4. Return the magazine answer shape:
+   `answer.insights[]` where each item has `quote`, `interpretation`, and
+   `evidence_refs`, plus `answer.summary` as connective prose. Every factual
+   date, count, location, event, or conclusion must be covered by cited
+   insights. If the answer includes an aggregate count, include a dedicated
+   insight whose `interpretation` repeats the exact count and whose
+   `evidence_refs` cover the counted journal entries.
+5. Never mark an answer `GROUNDED` with zero citations, missing journal IDs, or
+   facts that only come from hidden session memory. If evidence is insufficient
+   or validation fails, return `PARTIAL` or `UNGROUNDED` with a concrete gap.
+
+<!-- GROUNDED_QUERY_SKILL_END -->
+
 ## Project Structure
 
 ```
