@@ -8,7 +8,8 @@ and one retry before returning a deterministic degraded envelope.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import inspect
 import re
 import threading
 import time
@@ -31,6 +32,7 @@ _DEFAULT_WARM_ATTEMPTS = 3
 _MAX_WARM_ERROR_CHARS = 500
 _DEFAULT_MAX_CONVERSATION_SESSIONS = 16
 _DEFAULT_CONVERSATION_IDLE_TTL_SECONDS = 30 * 60
+_DEFAULT_MAX_CONVERSATION_TRACE_REFS = 256
 
 _SENSITIVE_VALUE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
@@ -70,6 +72,7 @@ _DATA_FREE_READY_PROMPT = "READY"
 class _ConversationSession:
     conn: _ACPConnection
     last_used: float
+    tool_trace_refs: list[str] = field(default_factory=list)
 
 
 def _sanitize_warm_error(error: object) -> str:
@@ -97,6 +100,7 @@ class ACPWarmSessionManager:
         warm_handshake_timeout: float | None = _WARM_HANDSHAKE_TIMEOUT,
         max_conversation_sessions: int = _DEFAULT_MAX_CONVERSATION_SESSIONS,
         conversation_idle_ttl_seconds: float = _DEFAULT_CONVERSATION_IDLE_TTL_SECONDS,
+        max_conversation_trace_refs: int = _DEFAULT_MAX_CONVERSATION_TRACE_REFS,
     ) -> None:
         self._cfg = cfg
         self._connection_factory = connection_factory
@@ -106,6 +110,7 @@ class ACPWarmSessionManager:
         self._warm_handshake_timeout = warm_handshake_timeout
         self._max_conversation_sessions = max(1, max_conversation_sessions)
         self._conversation_idle_ttl_seconds = max(1.0, conversation_idle_ttl_seconds)
+        self._max_conversation_trace_refs = max(1, max_conversation_trace_refs)
 
         self._lock = threading.RLock()
         self._warm_conn: _ACPConnection | None = None
@@ -311,17 +316,40 @@ class ACPWarmSessionManager:
         except Exception as exc:
             return self._degraded(cfg, f"ACP conversation session unavailable: {exc}")
 
-        result = self._run_query(query, scaffold, cfg, conn, stream_callback)
+        prior_trace_refs = self._conversation_trace_snapshot(conversation_id)
+        result = self._run_query(
+            query,
+            scaffold,
+            cfg,
+            conn,
+            stream_callback,
+            tool_trace_refs=prior_trace_refs,
+            turn_trace_callback=lambda refs: self._add_conversation_trace_refs(
+                conversation_id, conn, refs
+            ),
+        )
         if self._is_alive(conn):
             self._touch_conversation(conversation_id, conn)
             return result
 
+        prior_trace_refs = self._conversation_trace_snapshot(conversation_id)
         self._drop_conversation_session(conversation_id)
         try:
             conn = self._ensure_conversation_conn(conversation_id, cfg)
         except Exception:
             return result
-        result = self._run_query(query, scaffold, cfg, conn, stream_callback)
+        self._set_conversation_trace_refs(conversation_id, prior_trace_refs)
+        result = self._run_query(
+            query,
+            scaffold,
+            cfg,
+            conn,
+            stream_callback,
+            tool_trace_refs=prior_trace_refs,
+            turn_trace_callback=lambda refs: self._add_conversation_trace_refs(
+                conversation_id, conn, refs
+            ),
+        )
         if self._is_alive(conn):
             self._touch_conversation(conversation_id, conn)
         return result
@@ -364,6 +392,18 @@ class ACPWarmSessionManager:
             return
         session.last_used = time.monotonic()
 
+    def _conversation_trace_snapshot(self, conversation_id: str) -> list[str]:
+        session = self._conversation_sessions.get(conversation_id)
+        if session is None:
+            return []
+        return list(session.tool_trace_refs)
+
+    def _set_conversation_trace_refs(self, conversation_id: str, refs: list[str]) -> None:
+        session = self._conversation_sessions.get(conversation_id)
+        if session is None:
+            return
+        session.tool_trace_refs = refs[-self._max_conversation_trace_refs :]
+
     def _run_query(
         self,
         query: str,
@@ -371,17 +411,54 @@ class ACPWarmSessionManager:
         cfg: BrainConfig,
         conn: _ACPConnection,
         stream_callback: Callable[[Any], None] | None,
+        *,
+        tool_trace_refs: list[str] | None = None,
+        turn_trace_callback: Callable[[list[str]], None] | None = None,
     ) -> dict[str, Any]:
         try:
+            adapter_kwargs: dict[str, Any] = {
+                "connection": conn,
+                "stream_callback": stream_callback,
+            }
+            if tool_trace_refs is not None and self._adapter_supports_kw("tool_trace_refs"):
+                adapter_kwargs["tool_trace_refs"] = tool_trace_refs
+            if turn_trace_callback is not None and self._adapter_supports_kw("turn_trace_callback"):
+                adapter_kwargs["turn_trace_callback"] = turn_trace_callback
             return self._adapter(
                 query,
                 scaffold,
                 cfg,
-                connection=conn,
-                stream_callback=stream_callback,
+                **adapter_kwargs,
             )
         except Exception as exc:
             return self._degraded(cfg, f"ACP query adapter failed: {exc}")
+
+    def _adapter_supports_kw(self, name: str) -> bool:
+        try:
+            parameters = inspect.signature(self._adapter).parameters
+        except (TypeError, ValueError):
+            return False
+        return name in parameters or any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+        )
+
+    def _add_conversation_trace_refs(
+        self,
+        conversation_id: str,
+        conn: _ACPConnection,
+        refs: list[str],
+    ) -> None:
+        session = self._conversation_sessions.get(conversation_id)
+        if session is None or session.conn is not conn:
+            return
+        seen = set(session.tool_trace_refs)
+        for ref in refs:
+            if ref not in seen:
+                seen.add(ref)
+                session.tool_trace_refs.append(ref)
+        overflow = len(session.tool_trace_refs) - self._max_conversation_trace_refs
+        if overflow > 0:
+            del session.tool_trace_refs[:overflow]
 
     def _is_alive(self, conn: _ACPConnection) -> bool:
         try:

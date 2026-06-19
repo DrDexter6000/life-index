@@ -193,6 +193,87 @@ def test_query_with_same_conversation_id_reuses_conversation_connection():
     assert r2["answer"] == "q2"
 
 
+def test_conversation_id_accumulates_tool_trace_refs_by_turn():
+    """Same conversation id carries the union of journal refs read in prior turns."""
+    created = []
+    seen_trace_refs: list[list[str] | None] = []
+
+    def factory(*args, **kwargs):
+        created.append(_FakeConn(name=f"conn-{len(created) + 1}"))
+        return created[-1]
+
+    def adapter(
+        query,
+        scaffold,
+        cfg,
+        *,
+        connection=None,
+        stream_callback=None,
+        tool_trace_refs=None,
+        turn_trace_callback=None,
+    ):
+        seen_trace_refs.append(list(tool_trace_refs) if tool_trace_refs is not None else None)
+        if turn_trace_callback is not None:
+            turn_trace_callback([f"Journals/2026/06/{query}.md"])
+        return _success_envelope(answer=query)
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, adapter=adapter)
+
+    mgr.query("turn-1", {}, conversation_id="thread-a")
+    mgr.query("turn-2", {}, conversation_id="thread-a")
+
+    assert len(created) == 1
+    assert seen_trace_refs == [[], ["Journals/2026/06/turn-1.md"]]
+    assert mgr._conversation_sessions["thread-a"].tool_trace_refs == [
+        "Journals/2026/06/turn-1.md",
+        "Journals/2026/06/turn-2.md",
+    ]
+
+
+def test_conversation_tool_trace_refs_are_isolated_by_conversation_id():
+    """Conversation-scoped read traces must never leak between conversation ids."""
+    seen_trace_refs: list[tuple[str, list[str] | None]] = []
+
+    def factory(*args, **kwargs):
+        return _FakeConn()
+
+    def adapter(
+        query,
+        scaffold,
+        cfg,
+        *,
+        connection=None,
+        stream_callback=None,
+        tool_trace_refs=None,
+        turn_trace_callback=None,
+    ):
+        seen_trace_refs.append(
+            (query, list(tool_trace_refs) if tool_trace_refs is not None else None)
+        )
+        if turn_trace_callback is not None:
+            turn_trace_callback([f"Journals/2026/06/{query}.md"])
+        return _success_envelope(answer=query)
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, adapter=adapter)
+
+    mgr.query("thread-a-turn", {}, conversation_id="thread-a")
+    mgr.query("thread-b-turn", {}, conversation_id="thread-b")
+    mgr.query("thread-a-next", {}, conversation_id="thread-a")
+
+    assert seen_trace_refs == [
+        ("thread-a-turn", []),
+        ("thread-b-turn", []),
+        ("thread-a-next", ["Journals/2026/06/thread-a-turn.md"]),
+    ]
+    assert mgr._conversation_sessions["thread-a"].tool_trace_refs == [
+        "Journals/2026/06/thread-a-turn.md",
+        "Journals/2026/06/thread-a-next.md",
+    ]
+    assert mgr._conversation_sessions["thread-b"].tool_trace_refs == [
+        "Journals/2026/06/thread-b-turn.md",
+    ]
+
+
 def test_query_with_different_conversation_ids_uses_isolated_connections():
     """Different conversation ids must not share ACP session memory."""
     created = []
@@ -216,6 +297,38 @@ def test_query_with_different_conversation_ids_uses_isolated_connections():
     assert calls[0] == ("q-a", created[0])
     assert calls[1] == ("q-b", created[1])
     assert calls[0][1] is not calls[1][1]
+
+
+def test_query_without_conversation_id_does_not_accumulate_tool_trace_refs():
+    """No conversation id keeps the backward-compatible single-turn trace behavior."""
+    seen_trace_refs: list[list[str] | None] = []
+    callback_seen = [False]
+
+    def factory(*args, **kwargs):
+        return _FakeConn()
+
+    def adapter(
+        query,
+        scaffold,
+        cfg,
+        *,
+        connection=None,
+        stream_callback=None,
+        tool_trace_refs=None,
+        turn_trace_callback=None,
+    ):
+        seen_trace_refs.append(list(tool_trace_refs) if tool_trace_refs is not None else None)
+        callback_seen[0] = turn_trace_callback is not None
+        return _success_envelope(answer=query)
+
+    mgr = ACPWarmSessionManager(_brain_config(), connection_factory=factory, adapter=adapter)
+
+    mgr.query("q1", {})
+    mgr.query("q2", {})
+
+    assert seen_trace_refs == [None, None]
+    assert callback_seen[0] is False
+    assert mgr._conversation_sessions == {}
 
 
 def test_conversation_query_keeps_grounding_degrade_without_retrying_alive_connection():
@@ -259,6 +372,46 @@ def test_close_tears_down_conversation_connections():
     mgr.close()
 
     assert [conn.closed for conn in created] == [True, True]
+    assert mgr._conversation_sessions == {}
+
+
+def test_conversation_trace_refs_are_removed_when_session_is_evicted():
+    """Bounded conversation eviction removes the evicted session's accumulated trace."""
+    created = []
+
+    def factory(*args, **kwargs):
+        created.append(_FakeConn(name=f"conn-{len(created) + 1}"))
+        return created[-1]
+
+    def adapter(
+        query,
+        scaffold,
+        cfg,
+        *,
+        connection=None,
+        stream_callback=None,
+        tool_trace_refs=None,
+        turn_trace_callback=None,
+    ):
+        if turn_trace_callback is not None:
+            turn_trace_callback([f"Journals/2026/06/{query}.md"])
+        return _success_envelope(answer=query)
+
+    mgr = ACPWarmSessionManager(
+        _brain_config(),
+        connection_factory=factory,
+        adapter=adapter,
+        max_conversation_sessions=1,
+    )
+
+    mgr.query("thread-a-turn", {}, conversation_id="thread-a")
+    mgr.query("thread-b-turn", {}, conversation_id="thread-b")
+
+    assert created[0].closed is True
+    assert "thread-a" not in mgr._conversation_sessions
+    assert mgr._conversation_sessions["thread-b"].tool_trace_refs == [
+        "Journals/2026/06/thread-b-turn.md",
+    ]
 
 
 def test_query_reconnects_when_connection_dies():

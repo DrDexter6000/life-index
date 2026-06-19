@@ -658,10 +658,11 @@ def _finalize_validated_envelope(
     cfg: BrainConfig,
     conn_meta: dict,
     rpc_usage: dict | None,
-    turn_messages: list[dict],
+    current_turn_trace_refs: list[str],
+    tool_trace_refs: list[str] | None = None,
 ) -> tuple[dict | None, str | None]:
     """Run the deterministic citation gate and attach authoritative metadata."""
-    trace_refs = extract_tool_trace_journal_refs(turn_messages)
+    trace_refs = _merge_trace_refs(tool_trace_refs or [], current_turn_trace_refs)
     citation = validate_citation_gate(
         validated,
         short_id_mapping=id_mapping,
@@ -680,6 +681,17 @@ def _finalize_validated_envelope(
     validated["usage"] = rpc_usage
     validated.setdefault("schema_version", QUERY_SCHEMA_VERSION)
     return validated, None
+
+
+def _merge_trace_refs(*ref_lists: list[str]) -> list[str]:
+    refs: list[str] = []
+    seen: set[str] = set()
+    for ref_list in ref_lists:
+        for ref in ref_list:
+            if ref not in seen:
+                seen.add(ref)
+                refs.append(ref)
+    return refs
 
 
 def _is_queued_placeholder(text: str) -> bool:
@@ -747,6 +759,8 @@ def acp_query_adapter(
     *,
     connection: _ACPConnection | None = None,
     stream_callback: Callable[[Any], None] | None = None,
+    tool_trace_refs: list[str] | None = None,
+    turn_trace_callback: Callable[[list[str]], None] | None = None,
 ) -> dict:
     """Route an ACP transport query through ``session/prompt`` and return a validated
     ``m35.agent_bridge_query.v0`` envelope.
@@ -793,6 +807,9 @@ def acp_query_adapter(
             stream_callback=stream_callback,
         )
         rpc_usage = _extract_rpc_usage(prompt_resp)
+        current_turn_trace_refs = extract_tool_trace_journal_refs(turn_messages)
+        if turn_trace_callback is not None:
+            turn_trace_callback(current_turn_trace_refs)
 
         # 5. Collect text via parse_acp_stream from only new chunks
         collected_text = parse_acp_stream(turn_messages)
@@ -810,7 +827,8 @@ def acp_query_adapter(
                 cfg=cfg,
                 conn_meta=conn_meta,
                 rpc_usage=rpc_usage,
-                turn_messages=turn_messages,
+                current_turn_trace_refs=current_turn_trace_refs,
+                tool_trace_refs=tool_trace_refs,
             )
             if finalized is not None:
                 return finalized

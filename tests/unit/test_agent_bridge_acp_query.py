@@ -894,6 +894,158 @@ def test_citation_gate_rejects_trace_mismatch():
     assert "not observed" in result.error
 
 
+def _trace_checked_response(refs: list[str]) -> str:
+    return json.dumps(
+        {
+            "schema_version": "m35.agent_bridge_query.v0",
+            "status": "GROUNDED",
+            "answer": "A connective summary.",
+            "insights": [
+                {
+                    "quote": "A short cited excerpt.",
+                    "interpretation": "The cited evidence supports the follow-up.",
+                    "evidence_refs": refs,
+                }
+            ],
+            "evidence_refs": refs,
+            "gap": None,
+            "provenance": {
+                "transport": "acp",
+                "model": "fake",
+                "runtime": "fake",
+                "degraded": False,
+            },
+            "usage": None,
+        },
+        ensure_ascii=False,
+    )
+
+
+class _TraceCheckingConnection:
+    session_id = "trace-session"
+    collected: list[dict]
+
+    def __init__(self, *, response_text: str, current_trace_ref: str) -> None:
+        self.response_text = response_text
+        self.current_trace_ref = current_trace_ref
+        self.collected = []
+
+    def rpc(self, method: str, params: dict | None = None, stream_callback=None, **kwargs) -> dict:
+        self.collected.extend(
+            [
+                {
+                    "jsonrpc": "2.0",
+                    "method": "session/update",
+                    "params": {
+                        "sessionId": "trace-session",
+                        "update": {
+                            "sessionUpdate": "tool_call_update",
+                            "content": f"read {self.current_trace_ref}",
+                        },
+                    },
+                },
+                {
+                    "jsonrpc": "2.0",
+                    "method": "session/update",
+                    "params": {
+                        "sessionId": "trace-session",
+                        "update": {
+                            "content": {"text": self.response_text, "type": "text"},
+                            "sessionUpdate": "agent_message_chunk",
+                        },
+                    },
+                },
+            ]
+        )
+        return {"jsonrpc": "2.0", "id": 1, "result": {"status": "ok"}}
+
+
+def test_acp_query_adapter_uses_conversation_trace_union_for_citation_gate():
+    """When prior conversation trace is supplied, validator receives prior + current refs."""
+    from tools.agent_bridge.acp_query import acp_query_adapter
+    from tools.agent_bridge.config import BrainConfig
+
+    prior_ref = "Journals/2026/06/life-index_2026-06-10_001.md"
+    current_ref = "Journals/2026/06/life-index_2026-06-11_001.md"
+    conn = _TraceCheckingConnection(
+        response_text=_trace_checked_response(["E1"]),
+        current_trace_ref=current_ref,
+    )
+    callback_refs: list[list[str]] = []
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+    )
+    scaffold = {
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {"doc_id": prior_ref},
+                    "snippet": "Prior-turn evidence.",
+                }
+            ]
+        }
+    }
+
+    result = acp_query_adapter(
+        "follow-up query",
+        scaffold,
+        cfg,
+        connection=conn,
+        tool_trace_refs=[prior_ref],
+        turn_trace_callback=lambda refs: callback_refs.append(refs),
+    )
+
+    assert result["status"] == "GROUNDED"
+    assert result["evidence_refs"] == [prior_ref]
+    assert result["provenance"]["citation_trace_checked"] is True
+    assert result["provenance"]["citation_trace_refs"] == [prior_ref, current_ref]
+    assert callback_refs == [[current_ref]]
+
+
+def test_acp_query_adapter_without_conversation_trace_uses_current_turn_only():
+    """Without supplied conversation trace, prior-turn citations still fail the trace check."""
+    from tools.agent_bridge.acp_query import acp_query_adapter
+    from tools.agent_bridge.config import BrainConfig
+
+    prior_ref = "Journals/2026/06/life-index_2026-06-10_001.md"
+    current_ref = "Journals/2026/06/life-index_2026-06-11_001.md"
+    conn = _TraceCheckingConnection(
+        response_text=_trace_checked_response(["E1"]),
+        current_trace_ref=current_ref,
+    )
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+    )
+    scaffold = {
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {"doc_id": prior_ref},
+                    "snippet": "Prior-turn evidence.",
+                }
+            ]
+        }
+    }
+
+    result = acp_query_adapter("single-turn query", scaffold, cfg, connection=conn)
+
+    assert result["status"] == "UNGROUNDED"
+    assert "not observed" in result["gap"]
+    assert prior_ref in result["gap"]
+
+
 # ─── Lead-review regression tests ─────────────────────────────────────
 
 
