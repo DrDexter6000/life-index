@@ -3319,6 +3319,7 @@ Unary query returns a rich `m35.agent_bridge_query.v0` envelope:
   "source": "host-agent",
   "query": "过去三天我去过哪里？",
   "mode": "GROUNDED",
+  "reason": null,
   "scaffold": {
     "intent": "location",
     "date_from": "2026-06-03",
@@ -3350,6 +3351,7 @@ Unary query returns a rich `m35.agent_bridge_query.v0` envelope:
     ],
     "related_findings": [],
     "gap": null,
+    "reason": null,
     "explanation": null,
     "what_was_found": [],
     "suggestions": []
@@ -3364,11 +3366,17 @@ Unary query returns a rich `m35.agent_bridge_query.v0` envelope:
 }
 ```
 
-Degraded responses keep the same rich shape with `mode: "UNGROUNDED"` and
-`provenance.degraded: true`. If the local search index is still becoming
-ready, the gateway returns this degraded shape with an index readiness gap
-instead of sending an empty evidence scaffold to ACP synthesis. The gateway
-never falls back to a direct LLM.
+Degraded or ungrounded responses keep the same rich shape with
+`mode: "UNGROUNDED"` or `mode: "PARTIAL"`, a non-empty `reason`/`answer.gap`,
+and `provenance.degraded: true` when the gateway produced a failure label.
+The gateway does not hide the host agent's first structured answer solely
+because grounding validation failed: when a structured `answer` field can be
+safely extracted, it is returned as `answer.summary` / `synthesis` together
+with the honest mode label and reason. Clients must render the label/reason
+prominently and must not present `UNGROUNDED` as grounded. If the local search
+index is still becoming ready, the gateway returns this degraded shape with an
+index readiness gap instead of sending an empty evidence scaffold to ACP
+synthesis. The gateway never falls back to a direct LLM.
 
 For `GROUNDED` and `PARTIAL` responses, cited journal IDs are checked before
 the response is returned. Seed search results are hints, not the evidence
@@ -3378,8 +3386,8 @@ directory. The answer uses a magazine-style structure: `answer.summary`
 contains connective prose, while each substantive `answer.insights[]` item
 carries `quote`, `interpretation`, and validated `evidence_refs`. Summary text
 must not introduce dates, counts, events, or conclusions that are not covered
-by cited insights. Citation validation failure degrades honestly instead of
-returning an uncited answer.
+by cited insights. Citation validation failure labels the first answer
+honestly instead of retrying or presenting the answer as grounded.
 
 ### `POST /query/stream` SSE 返回值
 
@@ -3394,12 +3402,13 @@ Allowed event types (in order):
 | `scaffold` | `{intent, date_from, date_to, queries, filters}` | search scaffold |
 | `thinking` | `{state, source, sequence, session_update?, tool?, status?, index_b_paths?, matched_entries?, read_paths?}` | agentic progress / keepalive; optional sanitized path-level navigation/read trace; not answer text |
 | `evidence` | `evidence[]` | accepted evidence metadata |
-| `delta` | string | optional validated answer text update; answer text only |
+| `delta` | string | optional answer text update from the final rich envelope; answer text only |
 | `final` | full rich `m35.agent_bridge_query.v0` envelope | complete response |
 | `error` | `{message, envelope}` | unexpected failure with rich degraded envelope |
 
-`delta` carries answer text only and never includes evidence, mode, or
-provenance. `thinking` is progress/keepalive metadata only and must not be
+`delta` carries answer text only and never includes evidence, mode, reason, or
+provenance. The authoritative label/reason always arrives in `final`.
+`thinking` is progress/keepalive metadata only and must not be
 rendered as final answer content. When present, `index_b_paths`,
 `matched_entries`, and `read_paths` contain bounded relative paths only; raw
 tool output and model text are not forwarded through these fields. `final`

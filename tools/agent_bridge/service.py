@@ -334,7 +334,7 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
         vocabulary is fixed and ordered:
         ``status`` -> ``scaffold`` -> ``thinking`` (optional, repeatable)
         -> ``evidence`` -> ``delta`` (optional) -> ``final``.  ``delta``
-        carries the validated answer text only;
+        carries the final envelope answer text only;
         ``final`` carries the complete rich ``m35.agent_bridge_query.v0``
         envelope.  On unexpected failure an ``error`` event is emitted.
         """
@@ -344,8 +344,8 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
             """Collect raw provider chunks; they are not emitted as deltas.
 
             Raw model fragments (markdown fences, JSON, schema keys, etc.)
-            must never leak into ``delta`` events.  The validated answer text
-            is derived from the final rich envelope.  Structured progress
+            must never leak into ``delta`` events.  The answer text is derived
+            from the final rich envelope.  Structured progress
             dictionaries are emitted as ``thinking`` events and never treated
             as answer text.
             """
@@ -442,7 +442,7 @@ class ACPServiceHandler(BaseHTTPRequestHandler):
             )
 
             # Phase 3: evidence, a single text-only delta derived from the
-            # validated answer summary, and the final rich envelope.
+            # final answer summary, and the final rich envelope.
             self._write_sse_event("evidence", rich["evidence"])
             answer_summary = rich.get("answer", {}).get("summary")
             if isinstance(answer_summary, str) and answer_summary:
