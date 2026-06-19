@@ -79,6 +79,36 @@ def _seed_index_b_data(data_dir: Path) -> Path:
     return journal
 
 
+def _seed_index_b_multi_month_data(data_dir: Path) -> tuple[Path, Path]:
+    march = _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="March Work",
+        extra_frontmatter=(
+            'people: ["Alice"]\n'
+            'project: "Atlas"\n'
+            'tags: ["planning"]\n'
+            'task: ["review"]\n'
+            'location: "London, United Kingdom"\n'
+            'weather: "Cloudy 12C"'
+        ),
+    )
+    april = _write_journal(
+        data_dir,
+        date="2026-04-20",
+        title="April Home",
+        extra_frontmatter=(
+            'people: ["Bob"]\n'
+            'project: "Home"\n'
+            'tags: ["family"]\n'
+            'task: ["visit"]\n'
+            'location: "Cardiff, United Kingdom"\n'
+            'weather: "Sunny 18C"'
+        ),
+    )
+    return march, april
+
+
 def _invoke(data_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
@@ -204,6 +234,70 @@ def test_materialize_writes_index_b_navigation_docs(tmp_path: Path) -> None:
     month_rel = ".life-index/index-b/Journals/2026/03/index.md"
     assert year_rel in root_text
     assert month_rel in year_doc.read_text(encoding="utf-8")
+
+
+def test_materialize_manifest_freshness_and_incremental_refresh(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    march_journal, _april_journal = _seed_index_b_multi_month_data(data_dir)
+
+    result = _invoke(
+        data_dir,
+        "materialize",
+        "--from",
+        "2026-03",
+        "--to",
+        "2026-04",
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    assert ".life-index/index-b/manifest.json" in payload["data"]["written_docs"]
+
+    freshness = _payload(
+        _invoke(data_dir, "freshness", "--from", "2026-03", "--to", "2026-04", "--json")
+    )
+    assert freshness["success"] is True
+    assert freshness["command"] == "index-tree.freshness"
+    assert freshness["data"]["fresh"] is True
+    assert freshness["data"]["stale_scopes"] == []
+
+    march_text = march_journal.read_text(encoding="utf-8")
+    march_journal.write_text(
+        march_text.replace('location: "London, United Kingdom"', 'location: "Paris, France"'),
+        encoding="utf-8",
+    )
+
+    stale = _payload(
+        _invoke(data_dir, "freshness", "--from", "2026-03", "--to", "2026-04", "--json")
+    )
+    assert stale["data"]["fresh"] is False
+    assert "month:2026-03" in stale["data"]["stale_scopes"]
+    assert "month:2026-04" in stale["data"]["fresh_scopes"]
+
+    refresh = _payload(
+        _invoke(
+            data_dir,
+            "materialize",
+            "--from",
+            "2026-03",
+            "--to",
+            "2026-04",
+            "--incremental",
+            "--json",
+        )
+    )
+    assert refresh["success"] is True
+    assert ".life-index/index-b/Journals/2026/03/index.md" in refresh["data"]["written_docs"]
+    assert ".life-index/index-b/Journals/2026/04/index.md" in refresh["data"]["skipped_fresh_docs"]
+
+    month_doc = data_dir / ".life-index" / "index-b" / "Journals" / "2026" / "03" / "index.md"
+    assert "Paris, France" in month_doc.read_text(encoding="utf-8")
+
+    fresh_again = _payload(
+        _invoke(data_dir, "freshness", "--from", "2026-03", "--to", "2026-04", "--json")
+    )
+    assert fresh_again["data"]["fresh"] is True
 
 
 def test_lens_invalid_signal_returns_structured_error(tmp_path: Path) -> None:

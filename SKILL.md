@@ -91,11 +91,12 @@ journal evidence.
 1. Treat planning, multi-hop reasoning, interpretation, and synthesis as host
    agent work. Life Index tools provide deterministic search, navigation, read,
    and validation surfaces.
-2. Build or refresh Index B navigation for the requested time scope:
-   `life-index index-tree materialize --from YYYY-MM --to YYYY-MM --json`.
-   Read `.life-index/index-b/INDEX.md`, then the relevant year/month navigation
-   docs. Use their facet counts and child pointers to narrow the candidate
-   scope before reading journal entries.
+2. Ensure Index B navigation for the requested time scope:
+   `life-index index-tree ensure --from YYYY-MM --to YYYY-MM --json`. If the
+   response source is `index-b`, read `.life-index/index-b/INDEX.md`, then the
+   relevant year/month navigation docs. If the response source is `journals`,
+   use the returned fallback entry pointers directly. Use facet counts and child
+   pointers to narrow the candidate scope before reading journal entries.
 3. Use deterministic retrieval and read tools for evidence:
    `life-index search ...`, `life-index index-tree nodes ...`, and
    `life-index journal get --path Journals/YYYY/MM/name.md`. Prefer these

@@ -1059,6 +1059,9 @@ life-index index-tree lens --signal people --json
 life-index index-tree lens --signal project --json
 life-index index-tree shadow --query "Alpha" --json
 life-index index-tree materialize --from 2026-03 --to 2026-06 --json
+life-index index-tree materialize --from 2026-03 --to 2026-06 --incremental --json
+life-index index-tree freshness --from 2026-03 --to 2026-06 --json
+life-index index-tree ensure --from 2026-03 --to 2026-06 --json
 python -m tools index-tree nodes --level month --json
 ```
 
@@ -1067,9 +1070,11 @@ root/year/month Index Tree、frontmatter-derived lenses、Search Shadow Mode
 诊断以 JSON envelope 暴露给 GUI、`on-this-day`、`smart-search` 诊断路径和已批准的高级模块。
 
 `nodes`、`lens`、`shadow` 不会写入或修改 journal、index、cache、attachment 或任何
-durable data。`materialize` 只写 `.life-index/index-b/` 下可重建的导航文档，不写
-journal、attachment 或 durable truth source。Journal 仍是唯一 truth source；index、
-lens、shadow report、Index B docs 都是可重建派生产物。
+durable data。`materialize` 只写 `.life-index/index-b/` 下可重建的导航文档和
+`manifest.json` 哈希清单，不写 journal、attachment 或 durable truth source。
+`freshness` 只读并比较 journal 内容哈希；`ensure` 在 Index B 缺失或陈旧时尝试刷新，
+刷新失败则返回 journal fallback pointers。Journal 仍是唯一 truth source；index、
+lens、shadow report、Index B docs 和 manifest 都是可重建派生产物。
 
 ### 通用返回 Envelope
 
@@ -1205,7 +1210,10 @@ lens、shadow report、Index B docs 都是可重建派生产物。
 `materialize` 为指定月份范围写入确定性 Index B facet 导航文档。输出目录固定为
 `.life-index/index-b/`，以 root/year/month 三层组织。文档包含
 weather/location/task/project/tag/people facet 的计数，以及指向下层导航文档或 journal
-条目的相对路径。它不做 LLM 摘要，不改变 search / smart-search ranking。
+条目的相对路径。它同时写入 `manifest.json`，记录每个 root/year/month scope 的
+journal 内容哈希和文档哈希。它不做 LLM 摘要，不改变 search / smart-search ranking。
+带 `--incremental` 时，只重写陈旧 scope 及其受影响祖先，不重写仍 fresh 的 sibling
+月份文档。
 
 ```json
 {
@@ -1226,9 +1234,80 @@ weather/location/task/project/tag/people facet 的计数，以及指向下层导
     "written_docs": [
       ".life-index/index-b/INDEX.md",
       ".life-index/index-b/Journals/2026/index.md",
-      ".life-index/index-b/Journals/2026/03/index.md"
+      ".life-index/index-b/Journals/2026/03/index.md",
+      ".life-index/index-b/manifest.json"
     ],
+    "skipped_fresh_docs": [],
+    "incremental": false,
+    "freshness_before": {
+      "fresh": false,
+      "stale_scopes": ["root", "year:2026", "month:2026-03"],
+      "fresh_scopes": [],
+      "removed_scopes": [],
+      "manifest_present": false
+    },
     "dry_run": false
+  },
+  "errors": []
+}
+```
+
+### `freshness`
+
+`freshness` 只读当前 journals 和 `.life-index/index-b/manifest.json`，重算每个
+root/year/month scope 的 source hash。任何 journal 内容哈希、生成文档哈希、范围或
+scope 缺失不匹配都会标为 stale。它不写入任何文件。
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.freshness",
+  "data": {
+    "truth_source": "journals",
+    "artifact": "index-b",
+    "schema_version": "m31.index_tree.index_b.manifest.v0",
+    "date_from": "2026-03",
+    "date_to": "2026-06",
+    "entry_count": 42,
+    "year_count": 1,
+    "month_count": 4,
+    "fresh": false,
+    "stale_scopes": ["root", "year:2026", "month:2026-03"],
+    "fresh_scopes": ["month:2026-04", "month:2026-05", "month:2026-06"],
+    "removed_scopes": [],
+    "reasons": {"month:2026-03": "source_hash_mismatch"},
+    "manifest_present": true
+  },
+  "errors": []
+}
+```
+
+### `ensure`
+
+`ensure` 是 consumer-friendly guard。它先执行 freshness check；若 Index B 陈旧或缺失，
+则尝试 `materialize --incremental`。如果刷新失败，返回 `source: "journals"` 和 journal
+entry pointers，调用方应直接读取这些 journal 条目，而不是把 Index B 缺失当作查询失败。
+
+```json
+{
+  "success": true,
+  "schema_version": "m31.index_tree.v1",
+  "command": "index-tree.ensure",
+  "data": {
+    "source": "journals",
+    "artifact": "index-b-fallback",
+    "date_from": "2026-03",
+    "date_to": "2026-03",
+    "entry_count": 1,
+    "entries": [
+      {
+        "date": "2026-03-14",
+        "title": "Fallback Work",
+        "path": "Journals/2026/03/life-index_2026-03-14_001.md"
+      }
+    ],
+    "fallback": {"used": true, "reason": "refresh failed"}
   },
   "errors": []
 }
