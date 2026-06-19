@@ -1104,6 +1104,7 @@ life-index index-tree freshness --from 2026-03 --to 2026-06 --json
 life-index index-tree ensure --from 2026-03 --to 2026-06 --json
 life-index index-tree discover --from 2026-03 --to 2026-06 --facet location --facet project --json
 life-index index-tree navigate --from 2026-03 --to 2026-06 --filter "location=London, United Kingdom" --filter "project=Life Index" --json
+life-index index-tree navigate --entity-neighbors "Alice" --entity-relation works_on --json
 python -m tools index-tree nodes --level month --json
 ```
 
@@ -1116,7 +1117,7 @@ durable data。`materialize` 只写 `.life-index/index-b/` 下可重建的导航
 `manifest.json` 哈希清单，不写 journal、attachment 或 durable truth source。
 `freshness` 只读并比较 journal 内容哈希；`ensure` 在 Index B 缺失或陈旧时尝试刷新，
 刷新失败则返回 journal fallback pointers。`discover` 只枚举调用方请求的 facet 值菜单；
-`navigate` 只执行调用方给定的结构化谓词，不会从自然语言推断 facet。Journal 仍是唯一
+`navigate` 只执行调用方给定的结构化谓词，不会从自然语言推断 facet、实体或关系。Journal 仍是唯一
 truth source；index、lens、shadow report、Index B docs 和 manifest 都是可重建派生产物。
 
 ### 通用返回 Envelope
@@ -1410,6 +1411,13 @@ Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`pe
 `weather`、`location`、`task`、`project`、`tag`、`people`。工具不会从自然语言推断
 应该查哪个 facet；调用方 agent 负责规划和选择谓词。
 
+关系型问题可使用同级确定性 op：`--entity-neighbors ENTITY`。调用方 agent 选择实体、
+可选 `--entity-relation RELATION` 和 `--entity-max-hops N`；工具只遍历
+`entity_graph.yaml` 中显式存在的关系边，返回相邻实体、连接边、关系类型、权重和边上
+已经记录的 `supporting_journal_ids`。如果当前 graph 边没有支撑 journal id，工具不会猜测
+journal 候选，`entry_pointers` 可为空；调用方可用返回的实体邻居继续规划下一步确定性读取或
+搜索。
+
 `navigate` 先执行 `ensure`。Index B fresh 或成功刷新时返回 `source: "index-b"` 和
 本次范围涉及的 `navigation_docs`；刷新失败时可返回 journal fallback source。返回的
 `entry_pointers` 是候选 journal 路径，调用方仍需用 `journal batch-get` 或 `journal get`
@@ -1443,8 +1451,15 @@ Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`pe
         "facet": "project",
         "values": ["Life Index"],
         "match": "any"
+      },
+      {
+        "type": "entity_neighbors",
+        "entity": "Alice",
+        "max_hops": 1,
+        "relations": ["works_on"]
       }
     ],
+    "implemented_extensions": ["entity_neighbors"],
     "exhaustive": true,
     "count": 1,
     "entry_pointers": ["Journals/2026/03/life-index_2026-03-14_001.md"],
@@ -1459,6 +1474,43 @@ Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`pe
         }
       }
     ],
+    "entity_neighbors": [
+      {
+        "query": "Alice",
+        "status": "ok",
+        "resolved_entity": {
+          "id": "person-alice",
+          "type": "person",
+          "primary_name": "Alice",
+          "aliases": []
+        },
+        "max_hops": 1,
+        "relations": ["works_on"],
+        "exhaustive": true,
+        "neighbor_count": 1,
+        "neighbors": [
+          {
+            "entity_id": "project-atlas",
+            "entity_type": "project",
+            "primary_name": "Atlas",
+            "aliases": [],
+            "hops": 1,
+            "edges": [
+              {
+                "source": "person-alice",
+                "target": "project-atlas",
+                "relation": "works_on",
+                "direction": "outgoing",
+                "weight": 1.0,
+                "supporting_journal_ids": [
+                  "Journals/2026/03/life-index_2026-03-14_001.md"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
     "navigation_docs": [
       ".life-index/index-b/INDEX.md",
       ".life-index/index-b/Journals/2026/index.md",
@@ -1467,7 +1519,10 @@ Index B 文档一致：`weather`、`location`、`task`、`project`、`tag`、`pe
     "coverage": {
       "candidate_count_before_filters": 2,
       "candidate_count_after_filters": 1,
-      "filter_count": 2
+      "filter_count": 3,
+      "facet_filter_count": 2,
+      "entity_neighbor_operation_count": 1,
+      "entity_neighbor_supporting_journal_count": 1
     },
     "fallback": {"used": false, "reason": null},
     "extension_points": ["entity_neighbors"]

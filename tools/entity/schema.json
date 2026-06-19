@@ -62,5 +62,21 @@
         "created_at": "load-time ISO-8601"
       }
     }
+  },
+  "entity_graph_relationship_schema": {
+    "description": "Relationship edges are explicit deterministic graph facts. target and relation are required; weight and supporting_journal_ids are optional additive metadata.",
+    "relationship": {
+      "type": "object",
+      "properties": {
+        "target": {"type": "string"},
+        "relation": {"type": "string"},
+        "weight": {"type": "number"},
+        "supporting_journal_ids": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "required": ["target", "relation"]
+    }
   }
 }

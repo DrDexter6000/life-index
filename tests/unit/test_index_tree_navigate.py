@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import yaml
 
 
 def _write_journal(
@@ -233,3 +234,126 @@ def test_navigate_rejects_unknown_operation_without_natural_language_inference(
 
     assert payload["success"] is False
     assert payload["errors"][0]["code"] == "INDEX_TREE_NAVIGATE_INVALID_OPERATION"
+
+
+def test_navigate_entity_neighbors_returns_graph_neighbors_without_facet_interference(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tools.index_tree.core import build_navigate_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Atlas Work",
+        extra_frontmatter='project: "Atlas"\npeople: ["Alice"]\nlocation: "London, United Kingdom"',
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-15",
+        title="Home Work",
+        extra_frontmatter='project: "Home"\npeople: ["Bob"]\nlocation: "London, United Kingdom"',
+    )
+    (data_dir / "entity_graph.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "entities": [
+                    {
+                        "id": "person-alice",
+                        "type": "person",
+                        "primary_name": "Alice",
+                        "aliases": [],
+                        "relationships": [
+                            {
+                                "target": "project-atlas",
+                                "relation": "works_on",
+                                "supporting_journal_ids": [
+                                    "Journals/2026/03/life-index_2026-03-14_001.md"
+                                ],
+                            }
+                        ],
+                    },
+                    {
+                        "id": "project-atlas",
+                        "type": "project",
+                        "primary_name": "Atlas",
+                        "aliases": [],
+                        "relationships": [],
+                    },
+                    {
+                        "id": "person-bob",
+                        "type": "person",
+                        "primary_name": "Bob",
+                        "aliases": [],
+                        "relationships": [],
+                    },
+                ]
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_navigate_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        operations=[
+            {"type": "entity_neighbors", "entity": "Alice", "max_hops": 1},
+            {
+                "type": "facet_value_filter",
+                "facet": "location",
+                "values": ["London, United Kingdom"],
+                "match": "any",
+            },
+        ],
+    )
+
+    assert payload["success"] is True
+    assert payload["data"]["implemented_extensions"] == ["entity_neighbors"]
+    assert payload["data"]["entity_neighbors"][0]["resolved_entity"]["id"] == "person-alice"
+    assert payload["data"]["entity_neighbors"][0]["neighbors"][0]["entity_id"] == ("project-atlas")
+    assert payload["data"]["coverage"]["entity_neighbor_operation_count"] == 1
+    assert payload["data"]["coverage"]["facet_filter_count"] == 1
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["entry_pointers"] == ["Journals/2026/03/life-index_2026-03-14_001.md"]
+
+
+def test_navigate_rejects_invalid_entity_neighbors_operation(tmp_path: Path, monkeypatch) -> None:
+    from tools.index_tree.core import build_navigate_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+    payload = build_navigate_payload(
+        operations=[{"type": "entity_neighbors", "entity": "Alice", "max_hops": 0}]
+    )
+
+    assert payload["success"] is False
+    assert payload["errors"][0]["code"] == "INDEX_TREE_NAVIGATE_INVALID_OPERATION"
+    assert "max_hops" in payload["errors"][0]["message"]
+
+
+def test_navigate_entity_neighbors_invalid_graph_returns_structured_diagnostic(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tools.index_tree.core import build_navigate_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    data_dir.mkdir(parents=True)
+    (data_dir / "entity_graph.yaml").write_text(
+        "entities:\n- id: person-alice\n  type: person\n  primary_name: Alice\n"
+        "  relationships:\n  - target: missing\n    relation: works_on\n",
+        encoding="utf-8",
+    )
+
+    payload = build_navigate_payload(
+        operations=[{"type": "entity_neighbors", "entity": "Alice", "max_hops": 1}]
+    )
+
+    assert payload["success"] is True
+    assert payload["data"]["entity_neighbors"][0]["status"] == "entity_graph_invalid"
+    assert payload["data"]["entity_neighbors"][0]["neighbors"] == []
+    assert payload["data"]["count"] == 0

@@ -106,6 +106,12 @@ journal evidence.
    Read the reported root/year/month navigation docs and use the returned
    `entry_pointers` as the bounded candidate set. Repeated `--filter` arguments
    are intersections; `value1||value2` is a deterministic OR inside one facet.
+   For relationship-shaped questions, choose the relevant entity and optional
+   relation type yourself, then call
+   `life-index index-tree navigate --entity-neighbors "Entity Name" --entity-relation relation --json`.
+   This operation only traverses explicit `entity_graph.yaml` edges and returns
+   neighboring entities plus any edge-level supporting journal ids already
+   present in the graph; it does not infer relationships or journal evidence.
    If the response source is `journals`, use the returned fallback entry
    pointers directly.
    For clean facet count or enumeration questions, use `navigate`'s exhaustive
@@ -283,6 +289,8 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 ### Entity Graph（已实现）
 
 - CLI：`life-index entity --list|--add|--resolve|--update`
+- Deterministic relationship traversal is exposed through
+  `life-index index-tree navigate --entity-neighbors "Entity Name" --json`.
 - 存储：`~/Documents/Life-Index/entity_graph.yaml`
 - 操作规范：见 `docs/ENTITY_GRAPH.md`
 - 作用：

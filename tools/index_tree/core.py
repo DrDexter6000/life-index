@@ -8,6 +8,10 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from tools.generate_index.builder import NAVIGABLE_SIGNALS, build_index_tree_model
+from tools.entity.neighbors import MAX_HOPS_LIMIT, build_entity_neighbors_payload
+from tools.lib.entity_graph import load_entity_graph
+from tools.lib.entity_schema import EntityGraphValidationError
+from tools.lib.paths import get_user_data_dir
 from tools.index_tree.materialize import (
     FACETS,
     INDEX_B_DIR,
@@ -352,6 +356,21 @@ def _validate_navigation_operations(operations: list[Any]) -> str | None:
         if not isinstance(operation, dict):
             return "operation must be an object"
         op_type = operation.get("type")
+        if op_type == "entity_neighbors":
+            entity = operation.get("entity")
+            if not isinstance(entity, str) or not entity.strip():
+                return "entity_neighbors requires a non-empty entity"
+            max_hops = operation.get("max_hops", 1)
+            if not isinstance(max_hops, int) or not (1 <= max_hops <= MAX_HOPS_LIMIT):
+                return f"entity_neighbors max_hops must be between 1 and {MAX_HOPS_LIMIT}"
+            relations = operation.get("relations", [])
+            if relations is None:
+                relations = []
+            if not isinstance(relations, list) or any(
+                not isinstance(relation, str) or not relation.strip() for relation in relations
+            ):
+                return "entity_neighbors relations must be a list of non-empty strings"
+            continue
         if op_type != "facet_value_filter":
             return f"unsupported operation type: {op_type!r}"
         facet = operation.get("facet")
@@ -364,6 +383,14 @@ def _validate_navigation_operations(operations: list[Any]) -> str | None:
         if not values:
             return "facet_value_filter requires at least one non-empty value"
     return None
+
+
+def _facet_operations(operations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [operation for operation in operations if operation.get("type") == "facet_value_filter"]
+
+
+def _entity_neighbor_operations(operations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [operation for operation in operations if operation.get("type") == "entity_neighbors"]
 
 
 def _entry_matches_operation(entry: Any, operation: dict[str, Any]) -> bool:
@@ -413,6 +440,59 @@ def _navigation_docs_for_entries(entries: list[Any]) -> list[str]:
     return docs
 
 
+def _load_entity_graph() -> list[dict[str, Any]]:
+    return load_entity_graph(get_user_data_dir() / "entity_graph.yaml")
+
+
+def _entity_neighbor_payloads(operations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not operations:
+        return []
+    try:
+        graph = _load_entity_graph()
+    except EntityGraphValidationError as exc:
+        return [
+            {
+                "query": str(operation.get("entity", "")),
+                "status": "entity_graph_invalid",
+                "resolved_entity": None,
+                "max_hops": operation.get("max_hops", 1),
+                "relations": [str(item) for item in operation.get("relations", [])],
+                "exhaustive": False,
+                "neighbor_count": 0,
+                "neighbors": [],
+                "error": str(exc),
+            }
+            for operation in operations
+        ]
+    payloads: list[dict[str, Any]] = []
+    for operation in operations:
+        payloads.append(
+            build_entity_neighbors_payload(
+                graph,
+                str(operation["entity"]),
+                max_hops=int(operation.get("max_hops", 1)),
+                relations=[str(item) for item in operation.get("relations", [])],
+            )
+        )
+    return payloads
+
+
+def _supporting_journal_ids_from_neighbors(payloads: list[dict[str, Any]]) -> set[str]:
+    ids: set[str] = set()
+    for payload in payloads:
+        for neighbor in payload.get("neighbors", []) or []:
+            if not isinstance(neighbor, dict):
+                continue
+            for edge in neighbor.get("edges", []) or []:
+                if not isinstance(edge, dict):
+                    continue
+                for item in edge.get("supporting_journal_ids", []) or []:
+                    text = str(item).strip()
+                    if text:
+                        ids.add(text)
+    return ids
+
+
 def build_navigate_payload(
     *,
     date_from: str | None = None,
@@ -451,11 +531,21 @@ def build_navigate_payload(
         )
 
     scoped_entries = _collect_entries(start, end)
-    matched_entries = [
+    facet_ops = _facet_operations(operations)
+    entity_ops = _entity_neighbor_operations(operations)
+    facet_matched_entries = [
         entry
         for entry in scoped_entries
-        if all(_entry_matches_operation(entry, operation) for operation in operations)
+        if all(_entry_matches_operation(entry, operation) for operation in facet_ops)
     ]
+    entity_neighbors = _entity_neighbor_payloads(entity_ops)
+    supporting_journal_ids = _supporting_journal_ids_from_neighbors(entity_neighbors)
+    if entity_ops:
+        matched_entries = [
+            entry for entry in facet_matched_entries if entry.rel_path in supporting_journal_ids
+        ]
+    else:
+        matched_entries = facet_matched_entries
 
     source = ensured.get("source") if isinstance(ensured, dict) else None
     if source not in ("index-b", "journals"):
@@ -470,10 +560,12 @@ def build_navigate_payload(
         "date_to": end,
         "operation_model": "deterministic_navigation.v1",
         "operations": operations,
+        "implemented_extensions": ["entity_neighbors"],
         "exhaustive": True,
         "count": len(matched_entries),
         "entry_pointers": [entry.rel_path for entry in matched_entries],
-        "entries": [_entry_payload(entry, operations) for entry in matched_entries],
+        "entries": [_entry_payload(entry, facet_ops) for entry in matched_entries],
+        "entity_neighbors": entity_neighbors,
         "navigation_docs": (
             _navigation_docs_for_entries(scoped_entries) if source == "index-b" else []
         ),
@@ -481,6 +573,9 @@ def build_navigate_payload(
             "candidate_count_before_filters": len(scoped_entries),
             "candidate_count_after_filters": len(matched_entries),
             "filter_count": len(operations),
+            "facet_filter_count": len(facet_ops),
+            "entity_neighbor_operation_count": len(entity_ops),
+            "entity_neighbor_supporting_journal_count": len(supporting_journal_ids),
         },
         "freshness": (
             ensured.get("freshness") or ensured.get("freshness_before")

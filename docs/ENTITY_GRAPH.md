@@ -111,6 +111,10 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 | `sibling_of` | 当前 corpus 中无明确需求 |
 | `colleague_of` / `friend_of` | 边界模糊，易产生 orphan |
 
+关系边的必填字段是 `target` 与 `relation`。可选字段 `weight` 与
+`supporting_journal_ids` 仅记录已经确定的边强度和支撑日志路径；它们是给确定性导航工具消费的
+元数据，不得由工具从自然语言推断或自动编造。
+
 ### 4.2 Role Attribute 是过渡表达
 
 `attributes.role`（如 `child`, `spouse`, `parent`）用于**当前阶段**快速标注实体在家庭结构中的位置，但它:
