@@ -3384,17 +3384,18 @@ Unary query returns a rich `m35.agent_bridge_query.v0` envelope:
 }
 ```
 
-Degraded or ungrounded responses keep the same rich shape with
-`mode: "UNGROUNDED"` or `mode: "PARTIAL"`, a non-empty `reason`/`answer.gap`,
-and `provenance.degraded: true` when the gateway produced a failure label.
+Degraded, ungrounded, or unverifiable responses keep the same rich shape with
+`mode: "UNGROUNDED"`, `mode: "PARTIAL"`, or `mode: "UNVERIFIABLE"`, a
+non-empty `reason`/`answer.gap`, and `provenance.degraded: true` when the
+gateway produced a lower-trust label.
 The gateway does not hide the host agent's first structured answer solely
 because grounding validation failed: when a structured `answer` field can be
 safely extracted, it is returned as `answer.summary` / `synthesis` together
 with the honest mode label and reason. Clients must render the label/reason
-prominently and must not present `UNGROUNDED` as grounded. If the local search
-index is still becoming ready, the gateway returns this degraded shape with an
-index readiness gap instead of sending an empty evidence scaffold to ACP
-synthesis. The gateway never falls back to a direct LLM.
+prominently and must not present `UNGROUNDED` or `UNVERIFIABLE` as grounded.
+If the local search index is still becoming ready, the gateway returns this
+degraded shape with an index readiness gap instead of sending an empty evidence
+scaffold to ACP synthesis. The gateway never falls back to a direct LLM.
 
 For `GROUNDED` and `PARTIAL` responses, cited journal IDs are checked before
 the response is returned. Seed search results are hints, not the evidence
@@ -3406,6 +3407,14 @@ carries `quote`, `interpretation`, and validated `evidence_refs`. Summary text
 must not introduce dates, counts, events, or conclusions that are not covered
 by cited insights. Citation validation failure labels the first answer
 honestly instead of retrying or presenting the answer as grounded.
+When a runtime exposes no ACP read/tool trace signals at all, but the answer
+contains journal citations that otherwise pass deterministic existence and
+structure checks, the gateway labels the answer `UNVERIFIABLE` instead of
+`GROUNDED`. This means the cited files are listed and exist, but this runtime
+did not provide enough read-observability to prove the host agent actually read
+them. Runtimes that do expose read/tool trace stay on the normal
+`GROUNDED`/`UNGROUNDED` path: if trace exists and a cited journal was not
+observed in that trace, the response remains `UNGROUNDED`.
 
 ### `POST /query/stream` SSE 返回值
 

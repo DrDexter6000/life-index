@@ -188,6 +188,32 @@ def test_map_to_rich_envelope_degraded():
     assert result["provenance"]["degraded"] is True
 
 
+def test_map_to_rich_envelope_unverifiable_preserves_answer_and_reason():
+    """UNVERIFIABLE is an advisory label, not answer suppression."""
+    internal = _grounded_internal()
+    internal["status"] = "UNVERIFIABLE"
+    internal["gap"] = "Runtime could not verify cited journal reads."
+    internal["reason"] = "Runtime could not verify cited journal reads."
+    internal["provenance"]["degraded"] = True
+
+    result = map_to_rich_envelope(
+        "Where did I go?",
+        _sample_scaffold(),
+        internal,
+        host_agent="runtime-without-trace",
+    )
+
+    assert result["mode"] == "UNVERIFIABLE"
+    assert result["reason"] == "Runtime could not verify cited journal reads."
+    assert result["answer"]["mode"] == "UNVERIFIABLE"
+    assert result["answer"]["summary"] == "You visited the park on June 4th."
+    assert result["answer"]["gap"] == "Runtime could not verify cited journal reads."
+    assert result["answer"]["explanation"] == "Runtime could not verify cited journal reads."
+    assert result["synthesis"] == "You visited the park on June 4th."
+    assert result["evidence"][0]["id"] == "2026/06/life-index_2026-06-04_001"
+    assert result["provenance"]["degraded"] is True
+
+
 def test_build_evidence_filters_by_accepted_ids():
     """Only scaffold entries matching accepted IDs become evidence."""
     evidence = build_evidence(

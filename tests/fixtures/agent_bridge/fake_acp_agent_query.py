@@ -56,6 +56,23 @@ def _emit_chunk(text: str) -> None:
     sys.stdout.flush()
 
 
+def _emit_read_trace(*refs: str) -> None:
+    """Emit a fake tool/read trace update for cited journal refs."""
+    update = {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {
+            "sessionId": SESSION_ID,
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "content": "read " + " ".join(refs),
+            },
+        },
+    }
+    sys.stdout.write(json.dumps(update, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
 def _prompt_response(req_id, usage=None):
     """Build a session/prompt JSON-RPC response with optional usage metadata."""
     result: dict = {"status": "ok"}
@@ -223,14 +240,26 @@ def main() -> None:
                 if prompt_count == 1:
                     _emit_chunk("not valid json at all")
                 else:
+                    _emit_read_trace(
+                        "Journals/2026/06/life-index_2026-06-10_001.md",
+                        "Journals/2026/06/life-index_2026-06-11_001.md",
+                    )
                     _emit_chunk(_valid_grounded_json())
                 resp = _prompt_response(req_id, usage=rpc_usage)
 
             elif "VALID_JSON_TEST" in prompt_text:
+                _emit_read_trace(
+                    "Journals/2026/06/life-index_2026-06-10_001.md",
+                    "Journals/2026/06/life-index_2026-06-11_001.md",
+                )
                 _emit_chunk(_valid_grounded_json())
                 resp = _prompt_response(req_id, usage=rpc_usage)
 
             elif "FENCED_JSON_TEST" in prompt_text:
+                _emit_read_trace(
+                    "Journals/2026/06/life-index_2026-06-10_001.md",
+                    "Journals/2026/06/life-index_2026-06-11_001.md",
+                )
                 _emit_chunk(_fenced_json())
                 resp = _prompt_response(req_id, usage=rpc_usage)
 
@@ -253,21 +282,25 @@ def main() -> None:
             elif "NO_RPC_USAGE_TEST" in prompt_text:
                 # Model JSON has usage, but RPC omits it → final usage must be None.
                 # Check this before USAGE_TEST because the marker is a superstring.
+                _emit_read_trace("Journals/2026/06/life-index_2026-06-10_001.md")
                 _emit_chunk(_custom_usage_json({"input_tokens": 100, "output_tokens": 50}))
                 resp = _prompt_response(req_id, usage=None)
 
             elif "USAGE_TEST" in prompt_text:
                 # Model JSON invents usage; RPC result is authoritative.
+                _emit_read_trace("Journals/2026/06/life-index_2026-06-10_001.md")
                 _emit_chunk(_custom_usage_json({"input_tokens": 9999, "output_tokens": 9999}))
                 resp = _prompt_response(req_id, usage=RPC_USAGE)
 
             elif "INVALID_USAGE_TEST" in prompt_text:
                 # Model JSON provides malformed usage; RPC result saves it.
+                _emit_read_trace("Journals/2026/06/life-index_2026-06-10_001.md")
                 _emit_chunk(_custom_usage_json("not a dict"))
                 resp = _prompt_response(req_id, usage=RPC_USAGE)
 
             else:
                 # Default: valid GROUNDED referencing E1
+                _emit_read_trace("Journals/2026/06/life-index_2026-06-10_001.md")
                 simple = json.dumps(
                     {
                         "schema_version": "m35.agent_bridge_query.v0",
