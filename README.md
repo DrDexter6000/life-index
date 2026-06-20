@@ -551,10 +551,8 @@ python3 -m venv .venv
 
 > **提示**: 先 `source .venv/bin/activate`，之后所有命令无需 `.venv/bin/` 前缀。
 
-> **安全调试提示**：手工调试 / 验收时，优先使用隔离沙盒工具，而不是直接操作真实用户目录：
->
-> - `python -m tools.dev.run_with_temp_data_dir`
-> - `python -m tools.dev.run_with_temp_data_dir --seed`
+> **安全调试提示**：手工调试 / 验收时，显式设置临时 `LIFE_INDEX_DATA_DIR`，
+> 使用复制后的沙盒数据，而不是直接操作真实用户目录。
 
 </details>
 

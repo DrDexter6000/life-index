@@ -535,10 +535,9 @@ python3 -m venv .venv
 
 > **Tip**: activate the virtual environment once; after that, commands do not need the `.venv/bin/` prefix.
 
-> **Safe debugging**: for manual testing, prefer isolated sandbox helpers over real user data:
->
-> - `python -m tools.dev.run_with_temp_data_dir`
-> - `python -m tools.dev.run_with_temp_data_dir --seed`
+> **Safe debugging**: for manual testing, set a temporary `LIFE_INDEX_DATA_DIR`
+> explicitly and use copied sandbox data instead of operating directly on real
+> user data.
 
 </details>
 

@@ -145,7 +145,6 @@ RRF_K: int = 60
 #   - 0.005: P@5=0.3158 (too permissive, 10.2 avg results)
 #   - 0.008: P@5=0.7342 (+132% precision, 3.0 avg results) [SELECTED]
 #   - 0.012: identical to 0.008 (no marginal benefit)
-# See docs/adr/ADR-004-rrf-min-score.md for full experiment data.
 RRF_MIN_SCORE: float = 0.008
 
 
@@ -171,7 +170,6 @@ SEMANTIC_TOP_K_DEFAULT: int = 30
 # R4 root cause: FTS weight 1.0 vs semantic 0.4 caused semantically relevant results
 # (e.g. "想起女儿" → "想念小英雄") to be outranked by FTS noise.
 # Rollback window: before Phase 5 completion.
-# See docs/adr/ADR-010-rrf-weight-tuning.md for rationale.
 SEMANTIC_WEIGHT_DEFAULT: float = 0.6
 
 

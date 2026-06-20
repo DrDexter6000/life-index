@@ -21,9 +21,6 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - **Deterministic narrowing tools**: agents can discover facet values, combine
   selected values into bounded intersections, batch-read journal candidates, and
   traverse entity-neighbor relationships without moving reasoning into tools.
-- **Conversation-ready gateway**: agent-bridge queries can carry a conversation
-  id so follow-up questions reuse the intended ACP session while each turn keeps
-  independent grounding labels and trace metadata.
 - **Tool boundary hardening**: core CLI tools no longer expose embedded LLM modes;
   `smart-search` and related helpers remain deterministic scaffolds for host
   agents, guarded by a CI no-LLM check.
@@ -34,8 +31,6 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   incremental regeneration, and deletion fallback coverage.
 - Deterministic facet discovery, multi-signal navigation, bounded batch journal
   reads, and entity-neighbor navigation with qrels/eval coverage.
-- Agent-bridge advisory grounding labels, non-blocking validation outcomes,
-  `UNVERIFIABLE` mode, conversation ids, and per-turn trace metadata.
 - Retirement of core tool LLM flags and helpers, with `_optional` and eval-only
   LLM code kept isolated from default tool paths.
 - Public docs for the upgraded install/sync flow so existing installations can
@@ -60,25 +55,11 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - **Bootstrap manifest in wheel**: `bootstrap-manifest.json` is now included in
   the built wheel package, so `life-index bootstrap --json` works correctly from
   a `pip install` without a source checkout.
-- **Additive ACP transport**: `tools/agent_bridge/` adds a `transport="acp"` L3
-  adapter that drives any Agent-Client-Protocol runtime (e.g. Hermes) via stdio
-  JSON-RPC. Life Index never holds or injects user-managed LLM API keys into the
-  ACP subprocess — credentials are owned entirely by the runtime. The existing
-  `transport="openai"` path is completely unchanged; ACP is dormant until
-  explicitly configured via `brain.acp_command` in user config.
-
 ### Included in this release
 
 - P0 non-blocking onboarding: FTS-first index with async semantic fallback.
 - CI tiered gate hardening: PR-level blocker/contract/eval gates plus post-merge
   full-suite and package smoke.
-- ACP adapter: `_build_acp_subprocess_env()` with denylist + credential-pattern
-  stripping (`_API_KEY`, `_TOKEN`, `SECRET`, `PASSWORD`), `parse_acp_stream()`
-  for JSON-RPC message accumulation, `acp_synthesize()` for the full
-  initialize→authenticate→session/new→session/prompt lifecycle, and 21 unit
-  tests covering env redaction, stream parsing, transport routing, and config
-  resolution.
-- Fixture `acp_poc_run.jsonl` from real Hermes ACP session for contract tests.
 - CJK word-count fix for `word_count` metadata (previously undercounted CJK
   characters).
 - Write-journal flow refactoring and enforced coverage gate.
@@ -88,17 +69,6 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### What users get
 
-- Agent Bridge P1 spike: `tools/agent_bridge/` adds the L3 intelligence handoff
-  helper defined by RFC-2026-06-03. It provides deterministic brain-source
-  resolution (P0 → P1 → P2 → deterministic-only), an OpenAI-compatible
-  transport client with `data_exposure_ack` gating, and a `handoff_search()`
-  entry point that sub-processes the L2 CLI for a scaffold, resolves a brain,
-  and optionally synthesizes via the resolved endpoint. Layer-invariant tests
-  confirm L2 remains free of `agent_bridge` imports. The env-gated Hermes probe
-  harness and always-on degrade-path test are included, and live validation has
-  completed against a local Hermes OpenAI-compatible endpoint. `agent-bridge
-  probe --json` adds a no-journal-evidence operator preflight for endpoint,
-  model, ack, and token-presence checks.
 - `bootstrap --json` adds a read-only onboarding state detector for agents and
   maintainers. It reports existing data, installed and manifest versions,
   route decisions, human-needed blockers, and safe next steps without mutating
@@ -114,14 +84,8 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 - Public schema `m34.bootstrap.v0` and API documentation for
   `life-index bootstrap --json`.
-- Public schema `m35.agent_bridge_probe.v0` and API documentation for
-  `life-index agent-bridge probe --json`.
-- Optional `life-index[agent-bridge]` dependency extra for OpenAI-compatible
-  host-agent transport support.
 - Bootstrap unit and contract coverage for data detection, checkout assessment,
   route decisions, temp data-dir read-only behavior, and CLI exposure.
-- Agent Bridge unit, contract, layer-invariant, and env-gated Hermes integration
-  coverage for P1/degrade behavior and the no-journal-evidence probe.
 - Onboarding safety guidance aligned with `bootstrap-manifest.json` and the
   project data/code separation rules.
 
@@ -147,8 +111,6 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - Public schema family `m33.maintenance_audit.v0`,
   `m33.maintenance_plan.v0`, `m33.maintenance_repair.v0`, and
   `m33.maintenance_proposal.v0`.
-- Maintenance public promotion RFC:
-  `docs/rfc/RFC-2026-06-01-maintenance-cli-contract.md`.
 - Legacy `m16.maintenance.v0` and `m16.health.v0` compatibility preserved.
 
 ## [1.2.2] - 2026-05-31
@@ -167,10 +129,8 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 - Public schema family `m31.index_tree.v1` with `nodes`, `lens`, and `shadow`
   subcommands.
-- Index Tree public promotion RFC:
-  `docs/rfc/RFC-2026-05-31-index-tree-public-contract-promotion.md`.
-- GUI/consumer constraints: no `tools/dev` private artifact consumption, no
-  durable writes outside CLI owner commands, and all derived lenses remain
+- GUI/consumer constraints: no private artifact consumption, no durable writes
+  outside CLI owner commands, and all derived lenses remain
   rebuildable navigation aids rather than truth claims.
 
 ## [1.2.1] - 2026-05-26
@@ -184,15 +144,10 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - Search tool docstrings and CLI help text corrected to reflect the actual
   default behavior: keyword-only retrieval with `--semantic` as explicit
   opt-in for dual-pipeline parallel search.
-- `edit_journal` append-only revision history formalized as an accepted ADR
-  (`ADR-2026-05-25-edit-journal-append-only`) with passing contract tests
+- `edit_journal` append-only revision history has passing contract tests
   enforcing that `save_revision()` is called before every write, backing the
   P1 Growth Rings promise.
-- MCP discovery-only layer RFC accepted (`RFC-2026-05-25-mcp-discovery-only-layer`,
-  status `In Flight`, planned 2026-Q3). ADR-004 numbering collision between
-  the inline `ARCHITECTURE.md` ADR-004 (MCP migration) and the standalone
-  `docs/adr/ADR-004-rrf-min-score.md` is documented with a one-time
-  disambiguation rule.
+- MCP discovery-only layer accepted as a read-only capability discovery surface.
 
 ## [1.2.0] - 2026-05-24
 

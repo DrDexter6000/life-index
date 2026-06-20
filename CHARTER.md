@@ -22,7 +22,7 @@ Life Index 不是一个 side project。它承载着**一位父亲写给女儿的
 
 ## 第零条：本宪章的地位与效力
 
-1. **最高效力**：本宪章是 Life Index 项目的**最高治理文件**。在与任何其他公开项目文档（`docs/ARCHITECTURE.md`、`docs/API.md`、`SKILL.md`、任何 `docs/adr/ADR-*.md`）冲突时，**以本宪章为准**。
+1. **最高效力**：本宪章是 Life Index 项目的**最高治理文件**。在与任何其他公开项目文档（`docs/ARCHITECTURE.md`、`docs/API.md`、`SKILL.md` 等）冲突时，**以本宪章为准**。
 
 2. **跨越代码**：本宪章高于代码实现。若代码违反本宪章，代码错、宪章对 —— 必须修改代码，不得反向修改宪章以迁就代码。
 
@@ -549,7 +549,7 @@ Presentation（呈现层）：按调用方需求截断、格式化
 
 ### §5.2 修订流程
 
-1. **起草 RFC**：在 `docs/rfc/RFC-YYYY-MM-DD-<title>.md` 起草修订案
+1. **起草修订案**：起草一份明确的宪章修订案
    - 说明当前条款
    - 说明目标条款
    - 说明触发场景与证据
@@ -594,8 +594,6 @@ Presentation（呈现层）：按调用方需求截断、格式化
 CHARTER.md（本文件，最高权威）
     │
     ├── docs/ARCHITECTURE.md（当前实现如何满足宪章）
-    │       └── docs/adr/ADR-*.md（单个决策的上下文）
-    │
     ├── docs/API.md（CLI 接口契约）
     │
     ├── SKILL.md（Agent 技能入口）

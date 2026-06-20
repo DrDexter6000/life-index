@@ -37,7 +37,6 @@ Commands:
     health    Check installation health
               --data-audit  Audit data directory for anomalies
               --cache-audit  Read-only cache version audit (JSON)
-    server    Start/status/stop the shared loopback-only ACP gateway
     import    Import provider (plan, run, status, rollback)
     index-tree  Index Tree Evidence Navigation
     version   Show package and bootstrap manifest version info
@@ -519,7 +518,6 @@ def main() -> None:
         "eval": "tools.eval.__main__",
         "entity-graph-eval": "tools.eval.ablation.__main__",
         "smart-search": "tools.smart_search.__main__",
-        "agent-bridge": "tools.agent_bridge.__main__",
         "aggregate": "tools.aggregate.__main__",
         "analyze": "tools.aggregate.__main__",
         "on-this-day": "tools.on_this_day.__main__",
@@ -528,7 +526,6 @@ def main() -> None:
         "bootstrap": "tools.bootstrap.__main__",
         "sync-skill": "tools.sync_skill.__main__",
         "trajectory": "tools.trajectory.__main__",
-        "server": "tools.agent_bridge.server_cli",
         "import": "tools.ingest.__main__",
         "index-tree": "tools.index_tree.__main__",
     }
@@ -583,8 +580,6 @@ def print_usage() -> None:
     print("  bootstrap  Detect install/data state and route onboarding (read-only)")
     print("  sync-skill  Synchronize SKILL.md and references into host skill directory")
     print("  smart-search  Smart search with LLM orchestration")
-    print("  agent-bridge  L3 host-agent bridge probe/handoff")
-    print("  server    Start/status/stop the shared loopback-only ACP gateway")
     print("  aggregate  Deterministic aggregate/trend computation")
     print("  analyze   Alias for deterministic aggregate/trend computation")
     print("  health    Check installation health")

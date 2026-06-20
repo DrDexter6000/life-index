@@ -59,11 +59,6 @@ dev = [
 
 ]
 
-# Agent bridge - L3 OpenAI-compatible transport
-agent-bridge = [
-    "openai>=1.0.0",
-]
-
 # Semantic search - embedding model (heavy: pulls torch). Opt-in only.
 semantic = [
     "sentence-transformers>=2.6.0",
@@ -71,7 +66,7 @@ semantic = [
 
 # All optional dependencies - 所有可选依赖
 all = [
-    "life-index[dev,agent-bridge,semantic]",
+    "life-index[dev,semantic]",
 ]
 
 [project.urls]
