@@ -1008,6 +1008,77 @@ def test_acp_query_adapter_uses_conversation_trace_union_for_citation_gate():
     assert callback_refs == [[current_ref]]
 
 
+class _NoTraceConnection:
+    session_id = "no-trace-session"
+    collected: list[dict]
+
+    def __init__(self, *, response_text: str) -> None:
+        self.response_text = response_text
+        self.collected = []
+
+    def rpc(self, method: str, params: dict | None = None, stream_callback=None, **kwargs) -> dict:
+        self.collected.append(
+            {
+                "jsonrpc": "2.0",
+                "method": "session/update",
+                "params": {
+                    "sessionId": "no-trace-session",
+                    "update": {
+                        "content": {"text": self.response_text, "type": "text"},
+                        "sessionUpdate": "agent_message_chunk",
+                    },
+                },
+            }
+        )
+        return {"jsonrpc": "2.0", "id": 1, "result": {"status": "ok"}}
+
+
+def test_acp_query_adapter_marks_cited_answer_unverifiable_when_runtime_has_no_trace():
+    """No read/tool trace means cited answers are advisory, not GROUNDED."""
+    from tools.agent_bridge.acp_query import acp_query_adapter
+    from tools.agent_bridge.config import BrainConfig
+
+    cited_ref = "Journals/2026/06/life-index_2026-06-10_001.md"
+    conn = _NoTraceConnection(response_text=_trace_checked_response(["E1"]))
+    callback_refs: list[list[str]] = []
+
+    cfg = BrainConfig(
+        mode="host_agent",
+        endpoint=None,
+        transport="acp",
+        api_key=None,
+        model=None,
+        data_exposure_ack=True,
+    )
+    scaffold = {
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {"doc_id": cited_ref},
+                    "snippet": "Seed evidence that was listed but not read in trace.",
+                }
+            ]
+        }
+    }
+
+    result = acp_query_adapter(
+        "runtime without trace",
+        scaffold,
+        cfg,
+        connection=conn,
+        turn_trace_callback=lambda refs: callback_refs.append(refs),
+    )
+
+    assert result["status"] == "UNVERIFIABLE"
+    assert result["answer"] == "A connective summary."
+    assert result["evidence_refs"] == [cited_ref]
+    assert result["gap"] == result["reason"]
+    assert "could not verify cited journal reads" in result["reason"]
+    assert result["provenance"]["citation_trace_checked"] is False
+    assert result["provenance"]["degraded"] is True
+    assert callback_refs == [[]]
+
+
 def test_acp_query_adapter_without_conversation_trace_uses_current_turn_only():
     """Without supplied conversation trace, prior-turn citations still fail the trace check."""
     from tools.agent_bridge.acp_query import acp_query_adapter
@@ -1168,18 +1239,31 @@ def test_acp_query_adapter_ignores_preexisting_collected_chunks():
         ]
 
         def rpc(self, method: str, params: dict | None = None, stream_callback=None) -> dict:
-            self.collected.append(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "session/update",
-                    "params": {
-                        "sessionId": "warm-session",
-                        "update": {
-                            "content": {"text": valid_response, "type": "text"},
-                            "sessionUpdate": "agent_message_chunk",
+            self.collected.extend(
+                [
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": {
+                            "sessionId": "warm-session",
+                            "update": {
+                                "sessionUpdate": "tool_call_update",
+                                "content": "read Journals/2026/06/life-index_2026-06-10_001.md",
+                            },
                         },
                     },
-                }
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": {
+                            "sessionId": "warm-session",
+                            "update": {
+                                "content": {"text": valid_response, "type": "text"},
+                                "sessionUpdate": "agent_message_chunk",
+                            },
+                        },
+                    },
+                ]
             )
             return {"jsonrpc": "2.0", "id": 1, "result": {"status": "ok"}}
 
@@ -1250,18 +1334,31 @@ def test_acp_query_adapter_retries_transient_prompt_rpc_failure():
             self.calls += 1
             if self.calls == 1:
                 raise RuntimeError("temporary ACP prompt timeout")
-            self.collected.append(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "session/update",
-                    "params": {
-                        "sessionId": "flaky-session",
-                        "update": {
-                            "content": {"text": valid_response, "type": "text"},
-                            "sessionUpdate": "agent_message_chunk",
+            self.collected.extend(
+                [
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": {
+                            "sessionId": "flaky-session",
+                            "update": {
+                                "sessionUpdate": "tool_call_update",
+                                "content": "read Journals/2026/06/life-index_2026-06-10_001.md",
+                            },
                         },
                     },
-                }
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": {
+                            "sessionId": "flaky-session",
+                            "update": {
+                                "content": {"text": valid_response, "type": "text"},
+                                "sessionUpdate": "agent_message_chunk",
+                            },
+                        },
+                    },
+                ]
             )
             return {"jsonrpc": "2.0", "id": self.calls, "result": {"status": "ok"}}
 
@@ -1340,18 +1437,31 @@ def test_acp_query_adapter_uses_long_rpc_timeout_for_real_prompt():
             rpc_timeout: float | None = None,
         ) -> dict:
             self.rpc_timeouts.append(rpc_timeout)
-            self.collected.append(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "session/update",
-                    "params": {
-                        "sessionId": "timeout-session",
-                        "update": {
-                            "content": {"text": valid_response, "type": "text"},
-                            "sessionUpdate": "agent_message_chunk",
+            self.collected.extend(
+                [
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": {
+                            "sessionId": "timeout-session",
+                            "update": {
+                                "sessionUpdate": "tool_call_update",
+                                "content": "read Journals/2026/06/life-index_2026-06-10_001.md",
+                            },
                         },
                     },
-                }
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "session/update",
+                        "params": {
+                            "sessionId": "timeout-session",
+                            "update": {
+                                "content": {"text": valid_response, "type": "text"},
+                                "sessionUpdate": "agent_message_chunk",
+                            },
+                        },
+                    },
+                ]
             )
             return {"jsonrpc": "2.0", "id": len(self.rpc_timeouts), "result": {"status": "ok"}}
 

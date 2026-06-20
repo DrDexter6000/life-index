@@ -308,3 +308,57 @@ def test_agent_bridge_query_rich_contract_preserves_ungrounded_answer_with_reaso
     assert rich["answer"]["gap"] == "Unknown evidence IDs in response: Z99."
     assert rich["synthesis"] == "First pass answer text that failed grounding."
     assert rich["provenance"]["degraded"] is True
+
+
+def test_agent_bridge_query_rich_contract_preserves_unverifiable_answer_with_reason():
+    """UNVERIFIABLE rich final is advisory metadata, not answer suppression."""
+    from tools.agent_bridge.query_envelope import map_to_rich_envelope
+
+    internal = {
+        "schema_version": "m35.agent_bridge_query.v0",
+        "status": "UNVERIFIABLE",
+        "answer": "First pass answer text with citations.",
+        "insights": [
+            {
+                "quote": "Listed evidence.",
+                "interpretation": "The answer cites this evidence.",
+                "evidence_refs": ["Journals/2026/06/life-index_2026-06-10_001.md"],
+            }
+        ],
+        "evidence_refs": ["Journals/2026/06/life-index_2026-06-10_001.md"],
+        "gap": "Runtime could not verify cited journal reads.",
+        "reason": "Runtime could not verify cited journal reads.",
+        "provenance": {
+            "transport": "acp",
+            "model": "runtime-without-trace",
+            "runtime": "fake-acp",
+            "degraded": True,
+        },
+    }
+    scaffold = {
+        "intent": "recall",
+        "evidence_pack": {
+            "items": [
+                {
+                    "document": {
+                        "doc_id": "Journals/2026/06/life-index_2026-06-10_001.md",
+                        "title": "Trace-free runtime",
+                        "date": "2026-06-10",
+                    },
+                    "snippet": "Listed evidence.",
+                }
+            ]
+        },
+    }
+
+    rich = map_to_rich_envelope("What happened?", scaffold, internal)
+
+    assert rich["mode"] == "UNVERIFIABLE"
+    assert rich["reason"] == "Runtime could not verify cited journal reads."
+    assert rich["answer"]["mode"] == "UNVERIFIABLE"
+    assert rich["answer"]["summary"] == "First pass answer text with citations."
+    assert rich["answer"]["gap"] == "Runtime could not verify cited journal reads."
+    assert rich["answer"]["explanation"] == "Runtime could not verify cited journal reads."
+    assert rich["synthesis"] == "First pass answer text with citations."
+    assert rich["evidence"][0]["id"] == "2026/06/life-index_2026-06-10_001"
+    assert rich["provenance"]["degraded"] is True

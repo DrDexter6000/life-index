@@ -20,6 +20,7 @@ DEFAULT_SOURCE = "host-agent"
 DEFAULT_EVIDENCE_SOURCE = "life-index search"
 DEFAULT_HOST_AGENT = "configured provider label"
 _MAX_SNIPPET_CHARS = 500
+_KNOWN_MODES = ("GROUNDED", "PARTIAL", "UNGROUNDED", "UNVERIFIABLE")
 
 
 def _normalize_path_sep(pathish: str) -> str:
@@ -325,7 +326,7 @@ def build_answer(
 ) -> dict[str, Any]:
     """Map the internal envelope to the rich ``answer`` object."""
     mode = internal.get("status") if isinstance(internal, dict) else None
-    if mode not in ("GROUNDED", "PARTIAL", "UNGROUNDED"):
+    if mode not in _KNOWN_MODES:
         mode = "UNGROUNDED"
 
     summary = internal.get("answer") if isinstance(internal, dict) else None
@@ -403,7 +404,7 @@ def build_answer(
         "related_findings": [],
         "gap": gap,
         "reason": reason,
-        "explanation": gap if mode == "UNGROUNDED" else None,
+        "explanation": gap if mode in ("UNGROUNDED", "UNVERIFIABLE") else None,
         "what_was_found": [],
         "suggestions": [],
     }
@@ -443,7 +444,7 @@ def map_to_rich_envelope(
         internal = {}
 
     mode = internal.get("status")
-    if mode not in ("GROUNDED", "PARTIAL", "UNGROUNDED"):
+    if mode not in _KNOWN_MODES:
         mode = "UNGROUNDED"
 
     evidence_refs = internal.get("evidence_refs")

@@ -889,6 +889,45 @@ def test_query_sse_final_carries_structured_insights_delta_stays_summary(monkeyp
         server.shutdown_and_close()
 
 
+def test_query_sse_final_carries_unverifiable_label(monkeypatch):
+    """SSE final exposes UNVERIFIABLE while still streaming answer text."""
+    monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: {})
+
+    class _UnverifiableManager(_FakeManagerWarmOk):
+        def query(self, query: str, scaffold: dict, stream_callback: Any = None) -> dict:
+            self.queries.append((query, scaffold, stream_callback))
+            envelope = _envelope_with_real_evidence(answer="Advisory answer")
+            envelope["status"] = "UNVERIFIABLE"
+            envelope["gap"] = "Runtime could not verify cited journal reads."
+            envelope["reason"] = "Runtime could not verify cited journal reads."
+            envelope["provenance"]["degraded"] = True
+            return envelope
+
+    manager = _UnverifiableManager()
+    server = _start_server_with_manager(manager)
+    try:
+        status, raw = _request_raw(
+            server,
+            "/query/stream",
+            method="POST",
+            data={"query": "stream advisory", "scaffold": _scaffold_with_evidence()},
+        )
+        assert status == 200
+        events = _parse_sse_events(raw)
+        names = [e[0] for e in events]
+        assert names == ["status", "scaffold", "evidence", "delta", "final"], f"got {names}"
+
+        assert events[3][1] == "Advisory answer"
+        final = events[4][1]
+        assert final["mode"] == "UNVERIFIABLE"
+        assert final["answer"]["mode"] == "UNVERIFIABLE"
+        assert final["reason"] == "Runtime could not verify cited journal reads."
+        assert final["answer"]["explanation"] == "Runtime could not verify cited journal reads."
+        assert final["provenance"]["degraded"] is True
+    finally:
+        server.shutdown_and_close()
+
+
 def test_query_sse_emits_thinking_for_progress_without_raw_chunk_leak(monkeypatch):
     """ACP progress updates become thinking events; raw JSON chunks stay hidden."""
     monkeypatch.setattr(_handoff_mod, "_cli_smart_search", lambda _q: {})

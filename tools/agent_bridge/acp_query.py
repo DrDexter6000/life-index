@@ -17,6 +17,10 @@ from tools.agent_bridge.citation_validator import (
 from tools.agent_bridge.config import BrainConfig
 
 QUERY_SCHEMA_VERSION = "m35.agent_bridge_query.v0"
+UNVERIFIABLE_TRACE_REASON = (
+    "Runtime could not verify cited journal reads because no ACP read/tool trace "
+    "signals were available; answer is for reference only."
+)
 
 # ─── Constants ────────────────────────────────────────────────────────
 _MAX_EVIDENCE_ENTRIES = 10
@@ -590,7 +594,7 @@ def build_degraded_result(
     can be extracted, it is preserved as display text while the status/reason
     honestly labels the failed grounding.
     """
-    if status not in ("PARTIAL", "UNGROUNDED"):
+    if status not in ("PARTIAL", "UNGROUNDED", "UNVERIFIABLE"):
         status = "UNGROUNDED"
     display_answer = answer_text.strip() if isinstance(answer_text, str) else ""
 
@@ -672,10 +676,16 @@ def _finalize_validated_envelope(
     if not citation.ok:
         return None, citation.error or "Citation validation failed"
 
-    provenance = build_provenance(cfg, conn_meta, degraded=False)
+    unverifiable = bool(citation.evidence_refs) and not citation.trace_checked
+    provenance = build_provenance(cfg, conn_meta, degraded=unverifiable)
     provenance["citation_trace_checked"] = citation.trace_checked
     if citation.trace_checked:
         provenance["citation_trace_refs"] = trace_refs
+
+    if unverifiable:
+        validated["status"] = "UNVERIFIABLE"
+        validated["gap"] = UNVERIFIABLE_TRACE_REASON
+        validated["reason"] = UNVERIFIABLE_TRACE_REASON
 
     validated["provenance"] = provenance
     validated["usage"] = rpc_usage
