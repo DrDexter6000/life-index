@@ -111,7 +111,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | semantic_search.py | search_journals | ✅ 活跃 | |
 | text_normalize.py | search, fts | ✅ 活跃 | |
 | timing.py | write_journal | ✅ 活跃 | write_journal 使用 Timer 做性能计时；其他工具使用 trace.py |
-| topics.py | write_journal, normalize_topic_taxonomy | ✅ 活跃 | Charter 19 Phase 1 新增：deterministic VALID_TOPICS SSOT |
+| topics.py | write_journal | ✅ 活跃 | Charter 19 Phase 1 新增：deterministic VALID_TOPICS SSOT |
 | trace.py | search_journals, build_index, write_journal | ✅ 活跃 | Round 7 观测层：step-based context manager |
 | url_download.py | write_journal | ✅ 活跃 | |
 | vector_index_simple.py | build_index | ✅ 活跃 | |
@@ -122,4 +122,4 @@ Shared infrastructure library for all Life Index atomic tools.
 
 **This lib depends on**: Python 3.11+, pyyaml, numpy>=1.24.0, sentence-transformers>=2.6.0
 
-**Tools depend on this lib**: write_journal, search_journals, edit_journal, generate_index, build_index, query_weather, backup, dev/validate_data, dev/rebuild_indices, dev/run_with_temp_data_dir, Web GUI service layer helpers
+**Tools depend on this lib**: write_journal, search_journals, edit_journal, generate_index, build_index, query_weather, backup, Web GUI service layer helpers

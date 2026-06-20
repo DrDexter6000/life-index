@@ -3,8 +3,6 @@
 
 Verifies that edit_journal preserves prior content in human-readable
 revision history, satisfying README P1 (Growth Rings) promise.
-
-ADR: docs/adr/ADR-2026-05-25-edit-journal-append-only.md
 """
 
 from pathlib import Path
@@ -12,7 +10,6 @@ from unittest.mock import patch
 
 from tools.edit_journal import edit_journal
 from tools.lib.revisions import list_revisions
-
 
 # ---------------------------------------------------------------------------
 # Helpers

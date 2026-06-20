@@ -23,7 +23,6 @@ STABLE_COMMANDS = {
     "analyze",
     "journal",
     "bootstrap",
-    "agent-bridge",
     "import",
     "index-tree",
     "health",

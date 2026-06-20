@@ -68,7 +68,6 @@ DISALLOWED_PROVIDER_IMPORTS = {
 DISALLOWED_L3_IMPORTS = {
     "tools.smart_search",
     "tools.search_journals.orchestrator",
-    "tools.agent_bridge",
 }
 
 # L2 modules that must not import from L3 packages even if they are in
@@ -445,41 +444,3 @@ def test_boost_decay_not_imported_by_search_ranking() -> None:
     assert (
         offenders == []
     ), f"Search ranking/BM25/RRF/calibration files must not reference boost_decay: {offenders}"
-
-
-# --- RFC-2026-06-03: agent_bridge is L3 (LLM allowed) but must subprocess L2 ---
-
-AGENT_BRIDGE_ROOT = REPO_ROOT / "tools" / "agent_bridge"
-
-
-def _agent_bridge_files() -> list[Path]:
-    if not AGENT_BRIDGE_ROOT.exists():
-        return []
-    return sorted(AGENT_BRIDGE_ROOT.rglob("*.py"))
-
-
-def test_agent_bridge_does_not_import_l2_internals() -> None:
-    """agent_bridge must reach L2 only via the CLI subprocess, never import L2 internals."""
-    disallowed = {
-        "tools.search_journals",
-        "tools.write_journal",
-        "tools.edit_journal",
-        "tools.entity",
-        "tools.build_index",
-    }
-    offenders: list[str] = []
-    for path in _agent_bridge_files():
-        for imported in _imported_modules(path):
-            if any(imported == d or imported.startswith(f"{d}.") for d in disallowed):
-                offenders.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {imported}")
-    assert offenders == [], f"agent_bridge imports L2 internals (use subprocess): {offenders}"
-
-
-def test_agent_bridge_does_not_write_user_data() -> None:
-    """agent_bridge must never reference the user data dir (proposals go via CLI)."""
-    offenders: list[str] = []
-    for path in _agent_bridge_files():
-        content = path.read_text(encoding="utf-8")
-        if "Documents/Life-Index" in content or "USER_DATA_DIR" in content:
-            offenders.append(path.relative_to(REPO_ROOT).as_posix())
-    assert offenders == [], f"agent_bridge references user data dir: {offenders}"

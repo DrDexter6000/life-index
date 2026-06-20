@@ -67,20 +67,15 @@ tests/e2e/
 
 ### 手工调试 / 隔离验收推荐流程
 
-优先使用隔离沙盒工具，而不是直接拿真实用户目录做验收：
+优先使用显式配置的隔离沙盒，而不是直接拿真实用户目录做验收：
 
 ```bash
 # 创建一个全新的隔离调试沙盒
-python -m tools.dev.run_with_temp_data_dir
-
-# 如果需要复制当前用户数据做“仿真验收”
-python -m tools.dev.run_with_temp_data_dir --seed
+export LIFE_INDEX_DATA_DIR=/tmp/life-index-e2e-sandbox
 ```
 
-`--seed` 表示：
-- 先复制当前用户数据到临时目录
-- 再基于副本做隔离调试 / 验收
-- **不会回写真实用户目录**
+如果需要复制当前用户数据做“仿真验收”，先手动复制到 sandbox，再显式
+设置 `LIFE_INDEX_DATA_DIR` 指向副本。不要直接对真实用户目录跑 E2E。
 
 工具会打印：
 - 临时 `LIFE_INDEX_DATA_DIR`

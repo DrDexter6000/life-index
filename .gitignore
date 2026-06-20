@@ -69,21 +69,18 @@ fts_index/
 # ----- 开发阶段文档 -----
 docs/.dev-archive/
 /.archive/
+tools/dev/
+docs/adr/
+docs/rfc/
+docs/charter-history/
+docs/superpowers/
+docs/concepts/
 
 # ----- 本地诊断 / 过程报告（不公开）-----
 scripts/SEARCH_DIAGNOSTIC_REPORT.md
 tests/nl_query_diagnosis.md
 tests/fixtures/eval/synthetic/stage2a/reject_log.md
 tests/fixtures/eval/synthetic/stage2b/meta_issue_log.md
-tools/dev/anchor-drift-sweep.md
-tools/dev/block4-pilot-report.md
-tools/dev/month-part-alignment-audit.md
-tools/dev/v4-recall-diff.md
-tools/dev/v4-regression-analysis.md
-docs/charter-history/
-docs/concepts/CN-001-tool-scoped-progressive-disclosure.md
-docs/concepts/CN-002-life-index-terminal-architecture-discussion-record.md
-docs/concepts/CN-003-life-index-future-compatibility-review-record.md
 
 # ----- 内部战略与开发文档（不公开）-----
 .strategy/

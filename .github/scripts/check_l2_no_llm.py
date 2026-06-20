@@ -11,7 +11,6 @@ from typing import Iterable
 
 DEFAULT_EXCLUDED_TOOL_DIRS = {
     "_optional",
-    "agent_bridge",
     "dev",
     "eval",
 }

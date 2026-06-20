@@ -2,7 +2,7 @@
 
 > **本文档职责**: `entity_graph.yaml` 的操作规范与维护规则
 > **目标读者**: Agent、开发者、用户
-> **权威层级**: 本文档从属于 [`CHARTER.md`](../CHARTER.md) 与 [`ADR-024`](./adr/ADR-024-entity-schema-v0.md)。Schema 定义以 ADR-024 为准；操作准入、别名规则、生产写入约束以本文档为准。
+> **权威层级**: 本文档从属于 [`CHARTER.md`](../CHARTER.md)。Schema 定义、操作准入、别名规则、生产写入约束以本文档为准。
 > **起草日期**: 2026-05-05
 > **状态**: Active / 生效
 
@@ -194,7 +194,7 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 
 - `life-index entity --seed` **当前会真实写入 `entity_graph.yaml`**，不是 dry-run
 - 因此 **禁止在 production 用户数据目录运行 `--seed`**
-- 如需 seed，只能在 sandbox / 临时目录中运行（如 `python -m tools.dev.run_with_temp_data_dir`）
+- 如需 seed，只能在显式配置的 sandbox / 临时 `LIFE_INDEX_DATA_DIR` 中运行
 - 未来若要放开此限制，必须先实现真正的 `--dry-run` 参数并通过测试
 
 ### 6.3 Agent 可自主执行的只读操作
@@ -319,7 +319,7 @@ life-index entity --delete --id ENTITY_ID
 
 **执行前必须**：
 1. 手动备份 `entity_graph.yaml`
-2. 先用 `python -m tools.dev.run_with_temp_data_dir --seed` 创建 sandbox，再在 sandbox 对应的 `LIFE_INDEX_DATA_DIR` 下执行 delete/check/search 验证删除影响
+2. 先复制一份 sandbox 数据目录，并显式设置 `LIFE_INDEX_DATA_DIR` 指向该 sandbox，再执行 delete/check/search 验证删除影响
 
 **production 删除仍必须经过用户明确确认**（见 §6.1）。
 
@@ -340,7 +340,6 @@ life-index entity --delete --id ENTITY_ID
 
 | 文档 | 职责 | 本文档的补充 |
 |------|------|-------------|
-| [`ADR-024`](./adr/ADR-024-entity-schema-v0.md) | Schema v1 frozen（5 类型、字段定义、ID 规则） | 本文档聚焦**操作流程与写入约束**，不修改 schema |
 | [`docs/API.md`](./API.md) §entity | CLI 参数、返回值、错误码 | 本文档聚焦**何时调用、调用前检查什么、生产约束** |
 | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) | 技术实现 SSOT（架构、模块结构） | 本文档是 Entity Graph 的操作规范，被 ARCHITECTURE 引用 |
 | [`CHARTER.md`](../CHARTER.md) | 最高治理文件 | 本文档从属于宪章；数据主权、纯文本永久、CLI SSOT 等不变量由宪章保证 |
