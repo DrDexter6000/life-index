@@ -1364,6 +1364,13 @@ Index B 文档一致：`weather`、`location`、`topic`、`project`、`tag`、`p
 遇到概念类问题时，调用方应先检查实际 facet 值菜单并从数据中选择匹配值，不预设任何
 特定主题词表。
 
+`project`、`people`、`location` 和 `tag` facet 会使用用户数据目录中的
+`entity_graph.yaml` 显式 `primary_name` / `aliases` 做确定性规范化：`project` 只使用
+project 实体，`people` 只使用 person 实体，`location` 只使用 place 实体，`tag` 允许所有
+实体类型的精确图谱标签。`topic` 与 `weather` 不做规范化。无映射值保留 trim 后原值；
+歧义 label fail-closed 为原值并在 `canonicalization.diagnostics` 中报告。图谱缺失或加载
+失败不会阻断导航；加载失败时规范化降级为 no-op 并输出诊断。
+
 ```json
 {
   "success": true,
@@ -1389,10 +1396,16 @@ Index B 文档一致：`weather`、`location`、`topic`、`project`、`tag`、`p
             "count": 2,
             "sample_entry_pointers": [
               "Journals/2026/03/life-index_2026-03-14_001.md"
-            ]
+            ],
+            "raw_values": ["London, United Kingdom"]
           }
         ]
       }
+    },
+    "canonicalization": {
+      "status": "active",
+      "canonicalization_hash": "sha256-like-hex",
+      "diagnostics": []
     },
     "coverage": {"candidate_count": 2, "facet_count": 1},
     "navigation_docs": [".life-index/index-b/INDEX.md"],
@@ -1409,6 +1422,10 @@ Index B 文档一致：`weather`、`location`、`topic`、`project`、`tag`、`p
 `value1||value2` 表示该 facet 的确定性 OR。当前支持的 facet 与 Index B 文档一致：
 `weather`、`location`、`topic`、`project`、`tag`、`people`。工具不会从自然语言推断
 应该查哪个 facet；调用方 agent 负责规划和选择谓词。
+
+facet filter 与 `discover` 使用同一套确定性规范化。调用方可以传规范名或显式 alias；
+工具会在执行谓词前映射到同一 canonical value。规范化不改变 journal 事实来源，不猜测
+未写入图谱的同义词，也不做大小写启发式合并。
 
 关系型问题可使用同级确定性 op：`--entity-neighbors ENTITY`。调用方 agent 选择实体、
 可选 `--entity-relation RELATION` 和 `--entity-max-hops N`；工具只遍历
