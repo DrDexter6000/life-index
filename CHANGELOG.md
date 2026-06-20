@@ -6,6 +6,41 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-20
+
+### What users get
+
+- **Agent-native grounded query generation**: grounded answers now run through
+  host-agent ACP sessions with deterministic evidence validation and advisory
+  labels, so answers can be shown with `GROUNDED`, `PARTIAL`, `UNGROUNDED`, or
+  `UNVERIFIABLE` status instead of being hidden behind a blocking gate.
+- **Index B navigation and freshness**: materialized index-tree documents now
+  expose deterministic facet navigation, freshness checks, stale-subtree
+  regeneration, and safe fallback when navigation artifacts are missing or
+  stale.
+- **Deterministic narrowing tools**: agents can discover facet values, combine
+  selected values into bounded intersections, batch-read journal candidates, and
+  traverse entity-neighbor relationships without moving reasoning into tools.
+- **Conversation-ready gateway**: agent-bridge queries can carry a conversation
+  id so follow-up questions reuse the intended ACP session while each turn keeps
+  independent grounding labels and trace metadata.
+- **Tool boundary hardening**: core CLI tools no longer expose embedded LLM modes;
+  `smart-search` and related helpers remain deterministic scaffolds for host
+  agents, guarded by a CI no-LLM check.
+
+### Included in this release
+
+- Index-tree materialization, navigation, freshness manifest, stale detection,
+  incremental regeneration, and deletion fallback coverage.
+- Deterministic facet discovery, multi-signal navigation, bounded batch journal
+  reads, and entity-neighbor navigation with qrels/eval coverage.
+- Agent-bridge advisory grounding labels, non-blocking validation outcomes,
+  `UNVERIFIABLE` mode, conversation ids, and per-turn trace metadata.
+- Retirement of core tool LLM flags and helpers, with `_optional` and eval-only
+  LLM code kept isolated from default tool paths.
+- Public docs for the upgraded install/sync flow so existing installations can
+  detect the newer manifest and reinstall the refreshed package.
+
 ## [1.2.5] - 2026-06-08
 
 ### What users get

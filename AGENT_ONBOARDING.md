@@ -31,7 +31,19 @@ Do **not** recreate `.venv`, run `health`, adopt a checkout, delete anything, or
 - **No local Life Index checkout or command exists yet** (blank machine): you cannot refresh files you do not have. Skip the refresh in this sub-step and go straight to Step 4.1 to clone — **a fresh clone of the upstream default branch IS an up-to-date authority refresh**. After cloning, return to Step 0.2.
 - **A local checkout already exists**: refresh it before trusting it, as described below.
 
-Before trusting any local checkout, refresh `bootstrap-manifest.json` from the current upstream repository. Treat that manifest as the version/authority anchor and refresh **every file listed in its `required_authority_docs` array** before proceeding. Treat local copies as potentially stale.
+Before trusting any local checkout, refresh the checkout code and `bootstrap-manifest.json` from the current upstream repository. If the checkout is managed by the host agent platform, use that platform's skill sync/resync mechanism. Otherwise, run `git pull --ff-only` in the intended checkout. Treat the refreshed manifest as the version/authority anchor and refresh **every file listed in its `required_authority_docs` array** before proceeding. Treat local copies as potentially stale.
+
+If an older Life Index command is already installed, the code refresh alone is not enough. After the refreshed checkout is positively selected as the install target (host-managed or user-designated), reinstall the package from that checkout with the platform-matching venv command:
+
+```bash
+# Linux/macOS/WSL
+.venv/bin/pip install -e .
+
+# Windows PowerShell
+.venv\Scripts\pip install -e .
+```
+
+If the checkout is not yet positively selected, do not reinstall or repair it from this workflow. Run Step 0.2 with `--checkout-path` / `--checkout-origin` first and follow the returned `safe_next_steps`.
 
 This is the upstream freshness gate. `life-index bootstrap` does **not** perform network freshness checks; it only compares the installed package version against the local manifest version as `install_in_sync`.
 
@@ -86,7 +98,7 @@ If `needs_human` is non-empty, relay each item to the user and wait for resoluti
 | `fresh_install` | No existing journal data found | Execute `safe_next_steps` in order, then optional verification |
 | `upgrade` | Existing journal data found | Execute `safe_next_steps` in order only |
 
-If `safe_next_steps` is non-empty, run them in order and no others. On `upgrade`, `safe_next_steps` typically contains only `life-index health`. Do **not** append additional steps (index, write, search) beyond what `safe_next_steps` lists.
+If `safe_next_steps` is non-empty, run them in order and no others. On `upgrade`, `safe_next_steps` may begin with `pip install -e .` when the installed package version is older than the refreshed manifest, followed by migration checks and `life-index health`. Do **not** skip the reinstall step when present, and do **not** append additional steps (index, write, search) beyond what `safe_next_steps` lists.
 
 If `safe_next_steps` is empty, onboarding completes immediately after Step 0.
 
@@ -547,8 +559,8 @@ Keep it concise — this is a welcome message, not a manual.>
 | `life-index migrate --dry-run` | Preview schema migration |
 | `life-index migrate --apply` | Execute schema migration |
 | `life-index entity --audit` | Entity graph quality audit |
-| `life-index smart-search --query "..."` | Smart search deterministic scaffold; no LLM by default |
-| `life-index smart-search --query "..." --use-llm` | Explicitly enable LLM orchestration |
+| `life-index smart-search --query "..."` | Smart search deterministic scaffold; no tool-embedded LLM |
+| `life-index smart-search --query "..." --include-evidence` | Return deterministic evidence pack for host-agent synthesis |
 
 ---
 
