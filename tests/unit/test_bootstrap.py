@@ -231,6 +231,28 @@ def _checkout(verdict: str, safe: bool) -> dict:
 
 
 class TestDecideRoute:
+    def test_upgrade_steps_deploy_agent_artifacts_and_indexes(self):
+        result = decide_route(
+            _state(
+                has_user_data=True,
+                journal_count=2,
+                install_in_sync=False,
+                migration_needed=0,
+            )
+        )
+
+        assert result["route"] == "upgrade"
+        assert result["safe_next_steps"] == [
+            "pip install -e .",
+            "life-index migrate --dry-run",
+            "life-index index --rebuild",
+            "life-index index-tree materialize --json",
+            "life-index generate-index --all-months",
+            "life-index sync-skill",
+            "life-index health",
+        ]
+        assert not any(step.startswith("life-index entity") for step in result["safe_next_steps"])
+
     def test_no_user_data_routes_fresh_install_suggests_health(self):
         result = decide_route(_state(has_user_data=False))
 
@@ -260,6 +282,8 @@ class TestDecideRoute:
         assert "pip install -e ." in result["safe_next_steps"][0]
         assert result["safe_next_steps"][1] == "life-index migrate --dry-run"
         assert result["safe_next_steps"][2] == "life-index migrate --apply"
+        assert "life-index index --rebuild" in result["safe_next_steps"]
+        assert "life-index sync-skill" in result["safe_next_steps"]
         assert result["safe_next_steps"][-1] == "life-index health"
 
     def test_migration_check_failure_needs_human_and_keeps_health_last(self):

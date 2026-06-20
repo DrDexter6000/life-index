@@ -62,6 +62,7 @@ triggers:
 .venv/bin/life-index weather --location "Lagos,Nigeria"
 .venv/bin/life-index index           # 增量更新
 .venv/bin/life-index index --rebuild # 全量重建
+.venv/bin/life-index sync-skill      # 刷新 host agent 的 SKILL.md + references/
 .venv/bin/life-index health          # 安装健康检查
 
 # Windows 用户主动写入时可用文件参数；onboarding 不应创建首写验证日志
@@ -512,6 +513,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 日常写入 | 无需手动维护（Write-Through 自动更新） |
 | 搜索结果异常/缺失 | `.venv/bin/life-index index --rebuild` 全量重建 |
 | 首次安装 | `.venv/bin/life-index index` 初始化索引 |
+| 升级后刷新 Agent playbook | `.venv/bin/life-index sync-skill` 同步 `SKILL.md` + `references/` |
 | 手动编辑过日志文件 | `.venv/bin/life-index index` 增量更新 |
 
 ### 工作流6: Schema 迁移

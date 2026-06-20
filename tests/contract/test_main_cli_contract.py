@@ -29,6 +29,7 @@ STABLE_COMMANDS = {
     "health",
     "version",
     "on-this-day",
+    "sync-skill",
 }
 
 

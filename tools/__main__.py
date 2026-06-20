@@ -33,6 +33,7 @@ Commands:
     analyze   Alias for aggregate
     maintenance  Run maintenance cycle (dry-run health checks)
     bootstrap    Detect install/data state and route onboarding (read-only)
+    sync-skill    Synchronize SKILL.md and references into host skill directory
     health    Check installation health
               --data-audit  Audit data directory for anomalies
               --cache-audit  Read-only cache version audit (JSON)
@@ -525,6 +526,7 @@ def main() -> None:
         "recall": "tools.recall.__main__",
         "maintenance": "tools.maintenance.__main__",
         "bootstrap": "tools.bootstrap.__main__",
+        "sync-skill": "tools.sync_skill.__main__",
         "trajectory": "tools.trajectory.__main__",
         "server": "tools.agent_bridge.server_cli",
         "import": "tools.ingest.__main__",
@@ -579,6 +581,7 @@ def print_usage() -> None:
     print("  entity-graph-eval  Run graph ablation evaluation")
     print("  maintenance  Run maintenance cycle (dry-run health checks)")
     print("  bootstrap  Detect install/data state and route onboarding (read-only)")
+    print("  sync-skill  Synchronize SKILL.md and references into host skill directory")
     print("  smart-search  Smart search with LLM orchestration")
     print("  agent-bridge  L3 host-agent bridge probe/handoff")
     print("  server    Start/status/stop the shared loopback-only ACP gateway")

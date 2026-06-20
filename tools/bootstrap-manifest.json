@@ -16,5 +16,9 @@
     "docs/VERSIONING.md",
     "tools/lib/AGENTS.md",
     "README.md"
+  ],
+  "skill_artifacts": [
+    "SKILL.md",
+    "references/"
   ]
 }

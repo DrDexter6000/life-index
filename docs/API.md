@@ -3165,9 +3165,18 @@ python -m tools bootstrap --json
   "route": "upgrade",
   "route_reason": "Found 12 journal(s) in C:/Users/example/Documents/Life-Index",
   "needs_human": [],
-  "safe_next_steps": ["life-index health"]
+  "safe_next_steps": [
+    "life-index migrate --dry-run",
+    "life-index index --rebuild",
+    "life-index index-tree materialize --json",
+    "life-index generate-index --all-months",
+    "life-index sync-skill",
+    "life-index health"
+  ]
 }
 ```
+
+If `install_in_sync` is `false`, `safe_next_steps` begins with `pip install -e .`.
 
 ### route 值
 
@@ -5455,6 +5464,67 @@ python -m tools.dev.run_with_temp_data_dir [--seed] [--for-web] [--name LABEL] [
 
 ---
 
+## sync-skill
+
+### Endpoint
+
+```bash
+life-index sync-skill [--json] [--host-skill-dir <path>] [--source-root <path>]
+```
+
+### Purpose
+
+- Synchronize the current `SKILL.md` and `references/` artifacts into an existing host agent skill directory.
+- Preserve custom trigger phrases already present in the target `SKILL.md`.
+- Report a missing host skill directory as a non-fatal `skipped` diagnostic.
+
+### Behavior
+
+- The command never creates or guesses a new host skill directory.
+- The command does not read or write journal data.
+- `--host-skill-dir` may point to an existing host skill directory.
+- If `--host-skill-dir` is omitted, the command checks the documented host skill directory environment and default locations.
+- `--source-root` defaults to the current installed checkout root.
+
+### JSON contract
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.sync_skill.v0",
+  "command": "sync-skill",
+  "data": {
+    "status": "synced",
+    "target_dir": "<host-skill-dir>",
+    "copied": ["SKILL.md", "references/WEATHER_FLOW.md"],
+    "diagnostics": []
+  }
+}
+```
+
+When no host skill directory is available:
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.sync_skill.v0",
+  "command": "sync-skill",
+  "data": {
+    "status": "skipped",
+    "target_dir": null,
+    "copied": [],
+    "diagnostics": [
+      {
+        "code": "HOST_SKILL_DIR_NOT_FOUND",
+        "message": "No existing host skill directory was found; skill artifact sync was skipped."
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## CLI version / bootstrap authority
 
 ### 端点
@@ -5493,6 +5563,10 @@ life-index version
       "docs/VERSIONING.md",
       "tools/lib/AGENTS.md",
       "README.md"
+    ],
+    "skill_artifacts": [
+      "SKILL.md",
+      "references/"
     ]
   }
 }
