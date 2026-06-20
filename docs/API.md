@@ -3516,7 +3516,8 @@ always carries the complete rich envelope.
 > family adds stable `m33.maintenance_*.v0` JSON envelopes for user-data
 > maintenance. It coexists with the legacy `m16.maintenance.v0` dry-run cycle.
 > Audit, plan, repair dry-run, and proposal validation are read-only. Repair
-> apply is limited to low-risk rebuildable artifacts.
+> apply is limited to low-risk rebuildable artifacts and explicitly confirmed
+> safe archive moves.
 
 ### 端点
 
@@ -3542,7 +3543,7 @@ life-index maintenance proposal validate --file proposal.json --json [--data-dir
 | domain | CSV | all domains | Optional audit domain filter |
 | issue-id | string | — | Stable issue ID from `maintenance audit` |
 | file | path | — | Proposal JSON file for deterministic validation |
-| apply | flag | — | Apply an allowed low-risk derived-artifact repair |
+| apply | flag | — | Apply an allowed low-risk repair |
 
 ### 六项检查
 
@@ -3615,11 +3616,13 @@ life-index maintenance proposal validate --file proposal.json --json [--data-dir
 - **零生产写入**: maintenance 自身及其所有子进程调用均为只读操作
 - **Subprocess 边界**: 所有外部 CLI 调用通过 subprocess，不直接 import 被调用模块内部
 - **Legacy report-only**: `maintenance --dry-run` 只报告状态，不执行自动修复
-- **Data Doctor repair boundary**: `maintenance repair --apply` can only write
+- **Data Doctor repair boundary**: `maintenance repair --apply` can write only
   rebuildable derived artifacts such as generated Markdown indexes, `.index/`,
-  `.cache/`, and `.life-index/cache/`. It must not modify journals,
-  attachments, `entity_graph.yaml`, import source files, config secrets,
-  hand-curated Markdown, or migration state.
+  `.cache/`, and `.life-index/cache/`, or archive recognized non-canonical
+  timestamped journal copies from `Journals/` into `.trash/maintenance/` after
+  the canonical journal original still exists. It must not modify canonical
+  journals, attachments, `entity_graph.yaml`, import source files, config
+  secrets, hand-curated Markdown, or migration state.
 
 ### Data Doctor Audit Envelope
 
@@ -3700,10 +3703,14 @@ Human-judgment issues return `repairable: false` with a
 Schema: `m33.maintenance_repair.v0`
 
 `maintenance repair --dry-run` changes no files and reports `planned_paths`.
-`maintenance repair --apply` is implemented only for derived artifacts:
+`maintenance repair --apply` is implemented only for low-risk repairs:
 
 - generated Markdown indexes via `generate-index --rebuild`;
 - search index/cache artifacts via `index --rebuild --fts-only`.
+- loose timestamped journal copies such as
+  `life-index_YYYY-MM-DD_NNN_YYYYMMDD_HHMMSS_ffffff.md`, archived under
+  `.trash/maintenance/timestamped-journal-copies/` only when the matching
+  canonical `life-index_YYYY-MM-DD_NNN.md` file still exists.
 
 Unsafe or non-repairable issue IDs return structured errors such as
 `MAINTENANCE_REPAIR_NOT_ALLOWED`, `MAINTENANCE_REPAIR_COMMAND_FAILED`, or
