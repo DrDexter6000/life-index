@@ -1,0 +1,40 @@
+# Public surface allowlist.
+#
+# New tracked files in pull requests must match one of these patterns.
+# If a new public path is intentional, add the narrowest matching pattern in
+# the same PR. Private, local, process, or historical material must not be
+# added to the public repository.
+
+# Root product files
+SKILL.md
+AGENT_ONBOARDING.md
+CHARTER.md
+AGENTS.md
+README.md
+README.en.md
+LICENSE
+CHANGELOG.md
+pyproject.toml
+MANIFEST.in
+bootstrap-manifest.json
+config.example.yaml
+conftest.py
+.gitignore
+.flake8
+.pre-commit-config.yaml
+.clawhubignore
+
+# Public directories
+tools/**
+tests/**
+references/**
+scripts/**
+assets/**
+.github/**
+
+# Public docs
+docs/API.md
+docs/ARCHITECTURE.md
+docs/CI_HARD_CHECKS.md
+docs/ENTITY_GRAPH.md
+docs/VERSIONING.md

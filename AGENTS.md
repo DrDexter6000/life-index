@@ -143,6 +143,8 @@ Full command details live in `docs/API.md`.
 - Tests must use temporary directories or explicit sandbox data directories.
 - Public documentation must not include personal paths, credentials, operator
   workflow details, temporary report paths, or private runtime notes.
+- New public paths must match `.github/public-surface.allowlist`; update that
+  file deliberately when a new public surface is intentional.
 
 ## Design Floor
 

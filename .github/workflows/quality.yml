@@ -27,6 +27,22 @@ jobs:
       - name: Check public diff added lines
         run: python .github/scripts/check_public_diff_names.py
 
+  public-surface-allowlist:
+    runs-on: ubuntu-latest
+    name: Public Surface Allowlist Check
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Check added public paths
+        run: python .github/scripts/check_public_surface_allowlist.py
+
   doc-sync:
     runs-on: ubuntu-latest
     name: Documentation Sync Check

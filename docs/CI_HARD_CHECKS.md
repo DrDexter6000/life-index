@@ -19,7 +19,7 @@ inventory is drift.
 | Workflow file | Trigger | Tier | Notes |
 |---|---|---|---|
 | `.github/workflows/tests.yml` | push to main/develop and ready pull requests to main | Tier 1 + Tier 2 | blocker, contract, and search-eval are Tier 1; quarantine and coverage run after merge as Tier 2 |
-| `.github/workflows/quality.yml` | push to main/develop and pull requests to main | Tier 1 | doc sync, public diff name scan, L2 no-LLM scan, lint, format, security, and type checks |
+| `.github/workflows/quality.yml` | push to main/develop and pull requests to main | Tier 1 | doc sync, public diff name scan, public surface allowlist scan, L2 no-LLM scan, lint, format, security, and type checks |
 | `.github/workflows/nightly.yml` | push to main, scheduled run, and manual dispatch | Tier 2 | full suite and package/onboarding smoke |
 | `.github/workflows/benchmark.yml` | push to main and manual dispatch | Tier 2 | performance measurement |
 | `.github/workflows/release.yml` | manual dispatch | Release | publishing workflow, not part of PR readiness |
@@ -33,11 +33,12 @@ inventory is drift.
 | 3 | search-eval-gate | search evaluation test set listed in `tests.yml` | tests.yml | `scripts/tier1-gate.sh` |
 | 4 | doc-sync | `python .github/scripts/check_doc_sync.py` | quality.yml | same |
 | 5 | public-diff-names | `python .github/scripts/check_public_diff_names.py` | quality.yml | same |
-| 6 | l2-no-llm | `python .github/scripts/check_l2_no_llm.py` | quality.yml | same |
-| 7 | lint flake8 | `flake8 tools/ --count --max-complexity=40 --max-line-length=100 --show-source --statistics` | quality.yml | same |
-| 8 | format black | `black --check --diff tools/` | quality.yml | `python -m black --check tools/` |
-| 9 | security bandit | `bandit -r tools/ -ll -c pyproject.toml` | quality.yml | same |
-| 10 | typecheck mypy | `mypy tools/ --ignore-missing-imports` | quality.yml | same |
+| 6 | public-surface-allowlist | `python .github/scripts/check_public_surface_allowlist.py` | quality.yml | same |
+| 7 | l2-no-llm | `python .github/scripts/check_l2_no_llm.py` | quality.yml | same |
+| 8 | lint flake8 | `flake8 tools/ --count --max-complexity=40 --max-line-length=100 --show-source --statistics` | quality.yml | same |
+| 9 | format black | `black --check --diff tools/` | quality.yml | `python -m black --check tools/` |
+| 10 | security bandit | `bandit -r tools/ -ll -c pyproject.toml` | quality.yml | same |
+| 11 | typecheck mypy | `mypy tools/ --ignore-missing-imports` | quality.yml | same |
 
 ## Tier 2 Visible Checks
 
@@ -80,6 +81,7 @@ Before running the full gate, run cheap checks that match the current diff:
 git diff --check
 python .github/scripts/check_doc_sync.py
 python .github/scripts/check_public_diff_names.py
+python .github/scripts/check_public_surface_allowlist.py
 python .github/scripts/check_l2_no_llm.py
 ```
 
@@ -118,6 +120,7 @@ Tier 2 changes must update the corresponding workflow and this inventory.
 
 ## Version History
 
-- v0.4 (2026-06-17): added public-diff-names as a Tier 1 hard check.
+- v1.2-public (2026-06-20): added public-surface-allowlist as a Tier 1 hard check.
 - v1.1-public (2026-06-19): added L2 no-LLM scan as a Tier 1 hard check.
 - v1.0-public (2026-06-18): curated the CI inventory for public visibility.
+- v0.4 (2026-06-17): added public-diff-names as a Tier 1 hard check.
