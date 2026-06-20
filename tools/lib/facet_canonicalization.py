@@ -38,9 +38,10 @@ class FacetCanonicalizer:
         raw_value = _normalize_label(str(value or ""))
         if not raw_value:
             return CanonicalFacetValue(raw_value="", value="")
-        if raw_value in self._ambiguous.get(facet, set()):
+        key = _lookup_key(raw_value)
+        if key in self._ambiguous.get(facet, set()):
             return CanonicalFacetValue(raw_value=raw_value, value=raw_value)
-        canonical = self._aliases.get(facet, {}).get(raw_value, raw_value)
+        canonical = self._aliases.get(facet, {}).get(key, raw_value)
         return CanonicalFacetValue(raw_value=raw_value, value=canonical)
 
     def to_payload(self) -> dict[str, Any]:
@@ -53,6 +54,10 @@ class FacetCanonicalizer:
 
 def _normalize_label(value: str) -> str:
     return " ".join(value.strip().split())
+
+
+def _lookup_key(value: str) -> str:
+    return _normalize_label(value).casefold()
 
 
 def _hash_alias_map(aliases: dict[str, dict[str, str]], ambiguous: dict[str, set[str]]) -> str:
@@ -96,24 +101,25 @@ def _register_label(
     normalized = _normalize_label(label)
     if not normalized:
         return
-    if normalized in ambiguous[facet]:
+    key = _lookup_key(normalized)
+    if key in ambiguous[facet]:
         return
-    existing = aliases[facet].get(normalized)
-    existing_owner = owners[facet].get(normalized)
+    existing = aliases[facet].get(key)
+    existing_owner = owners[facet].get(key)
     if existing is None:
-        aliases[facet][normalized] = canonical
-        owners[facet][normalized] = entity_id
+        aliases[facet][key] = canonical
+        owners[facet][key] = entity_id
         return
     if existing == canonical and existing_owner == entity_id:
         return
-    aliases[facet].pop(normalized, None)
-    owners[facet].pop(normalized, None)
-    ambiguous[facet].add(normalized)
+    aliases[facet].pop(key, None)
+    owners[facet].pop(key, None)
+    ambiguous[facet].add(key)
     diagnostics.append(
         {
             "code": "ambiguous_alias",
             "facet": facet,
-            "label": normalized,
+            "label": key,
             "canonical_values": sorted({existing, canonical}),
             "entity_ids": sorted({str(existing_owner or ""), entity_id}),
         }

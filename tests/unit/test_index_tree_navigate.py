@@ -168,7 +168,7 @@ def test_discover_groups_canonical_facet_aliases_and_reports_raw_values(
                         "id": "project-life-index",
                         "type": "project",
                         "primary_name": "Life Index",
-                        "aliases": ["Life-Index", "Life Index 2.0"],
+                        "aliases": ["life-index", "Life Index 2.0"],
                     },
                     {
                         "id": "concept-ai",
@@ -255,7 +255,7 @@ def test_navigate_matches_canonicalized_facet_values_and_alias_filter(
                         "id": "project-life-index",
                         "type": "project",
                         "primary_name": "Life Index",
-                        "aliases": ["Life-Index", "Life Index 2.0"],
+                        "aliases": ["life-index", "Life Index 2.0"],
                     }
                 ]
             },
@@ -289,6 +289,18 @@ def test_navigate_matches_canonicalized_facet_values_and_alias_filter(
             }
         ],
     )
+    lower_alias_payload = build_navigate_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        operations=[
+            {
+                "type": "facet_value_filter",
+                "facet": "project",
+                "values": ["life-index"],
+                "match": "any",
+            }
+        ],
+    )
 
     expected = [
         "Journals/2026/03/life-index_2026-03-14_001.md",
@@ -298,6 +310,7 @@ def test_navigate_matches_canonicalized_facet_values_and_alias_filter(
     assert payload["data"]["count"] == 2
     assert payload["data"]["entry_pointers"] == expected
     assert alias_payload["data"]["entry_pointers"] == expected
+    assert lower_alias_payload["data"]["entry_pointers"] == expected
     assert payload["data"]["entries"][0]["matched_facets"] == {"project": ["Life Index"]}
 
 

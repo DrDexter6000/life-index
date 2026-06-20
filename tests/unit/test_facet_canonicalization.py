@@ -24,7 +24,7 @@ def test_canonicalizer_uses_entity_graph_aliases_by_allowed_facet_type(tmp_path:
                 "id": "project-life-index",
                 "type": "project",
                 "primary_name": "Life Index",
-                "aliases": ["Life-Index", "Life Index 2.0"],
+                "aliases": ["life-index", "Life Index 2.0"],
             },
             {
                 "id": "place-lagos",
@@ -51,6 +51,8 @@ def test_canonicalizer_uses_entity_graph_aliases_by_allowed_facet_type(tmp_path:
 
     assert canonicalizer.status == "active"
     assert canonicalizer.canonicalize("project", " Life-Index ").value == "Life Index"
+    assert canonicalizer.canonicalize("project", "life-index").value == "Life Index"
+    assert canonicalizer.canonicalize("project", "Life Index").value == "Life Index"
     assert canonicalizer.canonicalize("location", "Lagos").value == "Lagos, Nigeria"
     assert canonicalizer.canonicalize("people", "Alicia").value == "Alice"
     assert canonicalizer.canonicalize("tag", "ai").value == "AI"
@@ -76,7 +78,7 @@ def test_canonicalizer_fail_closes_ambiguous_labels(tmp_path: Path) -> None:
             {
                 "id": "place-phoenix",
                 "type": "place",
-                "primary_name": "Phoenix",
+                "primary_name": "PHOENIX",
                 "aliases": [],
             },
         ],
@@ -85,6 +87,7 @@ def test_canonicalizer_fail_closes_ambiguous_labels(tmp_path: Path) -> None:
     canonicalizer = load_facet_canonicalizer(data_dir)
 
     assert canonicalizer.canonicalize("tag", "Phoenix").value == "Phoenix"
+    assert canonicalizer.canonicalize("tag", "phoenix").value == "phoenix"
     assert any(item["code"] == "ambiguous_alias" for item in canonicalizer.diagnostics)
     assert canonicalizer.canonicalize("project", "Phoenix").value == "Phoenix"
 
