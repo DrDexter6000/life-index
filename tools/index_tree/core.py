@@ -11,6 +11,7 @@ from tools.generate_index.builder import NAVIGABLE_SIGNALS, build_index_tree_mod
 from tools.entity.neighbors import MAX_HOPS_LIMIT, build_entity_neighbors_payload
 from tools.lib.entity_graph import load_entity_graph
 from tools.lib.entity_schema import EntityGraphValidationError
+from tools.lib.facet_canonicalization import FacetCanonicalizer, load_facet_canonicalizer
 from tools.lib.paths import get_user_data_dir
 from tools.index_tree.materialize import (
     FACETS,
@@ -18,6 +19,7 @@ from tools.index_tree.materialize import (
     build_ensure_payload,
     _collect_entries,
     _facet_values,
+    _raw_facet_values,
     _parse_month,
 )
 
@@ -240,13 +242,23 @@ def _normalize_facets(facets: list[str] | None) -> list[str]:
     return normalized
 
 
-def _facet_menu(entries: list[Any], facet: str) -> dict[str, Any]:
+def _facet_menu(
+    entries: list[Any], facet: str, canonicalizer: FacetCanonicalizer
+) -> dict[str, Any]:
     spec = _facet_specs_by_name()[facet]
     counts: dict[str, int] = defaultdict(int)
     pointers: dict[str, list[str]] = defaultdict(list)
+    raw_values: dict[str, set[str]] = defaultdict(set)
     for entry in entries:
-        for value in _facet_values(entry, spec):
+        seen_for_entry: set[str] = set()
+        for raw_value in _raw_facet_values(entry, spec):
+            canonical_value = canonicalizer.canonicalize(facet, raw_value)
+            value = canonical_value.value
+            if not value or value in seen_for_entry:
+                continue
+            seen_for_entry.add(value)
             counts[value] += 1
+            raw_values[value].add(canonical_value.raw_value)
             if len(pointers[value]) < 5:
                 pointers[value].append(entry.rel_path)
 
@@ -255,6 +267,7 @@ def _facet_menu(entries: list[Any], facet: str) -> dict[str, Any]:
             "value": value,
             "count": count,
             "sample_entry_pointers": pointers[value],
+            "raw_values": sorted(raw_values[value]),
         }
         for value, count in counts.items()
     ]
@@ -303,6 +316,7 @@ def build_discover_payload(
         )
 
     scoped_entries = _collect_entries(start, end)
+    canonicalizer = load_facet_canonicalizer(get_user_data_dir())
     source = ensured.get("source") if isinstance(ensured, dict) else None
     if source not in ("index-b", "journals"):
         source = "index-b"
@@ -317,7 +331,10 @@ def build_discover_payload(
         "operation_model": "deterministic_navigation.v1",
         "selection_contract": "host_agent_selects_values; tool_executes_only",
         "exhaustive": True,
-        "facets": {facet: _facet_menu(scoped_entries, facet) for facet in selected_facets},
+        "facets": {
+            facet: _facet_menu(scoped_entries, facet, canonicalizer) for facet in selected_facets
+        },
+        "canonicalization": canonicalizer.to_payload(),
         "navigation_docs": (
             _navigation_docs_for_entries(scoped_entries) if source == "index-b" else []
         ),
@@ -393,36 +410,52 @@ def _entity_neighbor_operations(operations: list[dict[str, Any]]) -> list[dict[s
     return [operation for operation in operations if operation.get("type") == "entity_neighbors"]
 
 
-def _entry_matches_operation(entry: Any, operation: dict[str, Any]) -> bool:
+def _entry_matches_operation(
+    entry: Any, operation: dict[str, Any], canonicalizer: FacetCanonicalizer
+) -> bool:
     facet_specs = _facet_specs_by_name()
     facet = str(operation["facet"])
     spec = facet_specs[facet]
-    wanted = {value.casefold() for value in _normalize_values(operation["values"])}
-    actual = {value.casefold() for value in _facet_values(entry, spec)}
+    wanted = {
+        canonicalizer.canonicalize(facet, value).value.casefold()
+        for value in _normalize_values(operation["values"])
+    }
+    actual = {value.casefold() for value in _facet_values(entry, spec, canonicalizer)}
     if operation.get("match", "any") == "all":
         return wanted.issubset(actual)
     return bool(actual & wanted)
 
 
-def _matched_facets(entry: Any, operations: list[dict[str, Any]]) -> dict[str, list[str]]:
+def _matched_facets(
+    entry: Any, operations: list[dict[str, Any]], canonicalizer: FacetCanonicalizer
+) -> dict[str, list[str]]:
     facet_specs = _facet_specs_by_name()
     facets: dict[str, list[str]] = {}
     for operation in operations:
         facet = str(operation["facet"])
         spec = facet_specs[facet]
-        wanted = {value.casefold() for value in _normalize_values(operation["values"])}
-        matched = [value for value in _facet_values(entry, spec) if value.casefold() in wanted]
+        wanted = {
+            canonicalizer.canonicalize(facet, value).value.casefold()
+            for value in _normalize_values(operation["values"])
+        }
+        matched = [
+            value
+            for value in _facet_values(entry, spec, canonicalizer)
+            if value.casefold() in wanted
+        ]
         if matched:
             facets[facet] = matched
     return facets
 
 
-def _entry_payload(entry: Any, operations: list[dict[str, Any]]) -> dict[str, Any]:
+def _entry_payload(
+    entry: Any, operations: list[dict[str, Any]], canonicalizer: FacetCanonicalizer
+) -> dict[str, Any]:
     return {
         "date": entry.date,
         "title": entry.title,
         "path": entry.rel_path,
-        "matched_facets": _matched_facets(entry, operations),
+        "matched_facets": _matched_facets(entry, operations, canonicalizer),
     }
 
 
@@ -531,12 +564,13 @@ def build_navigate_payload(
         )
 
     scoped_entries = _collect_entries(start, end)
+    canonicalizer = load_facet_canonicalizer(get_user_data_dir())
     facet_ops = _facet_operations(operations)
     entity_ops = _entity_neighbor_operations(operations)
     facet_matched_entries = [
         entry
         for entry in scoped_entries
-        if all(_entry_matches_operation(entry, operation) for operation in facet_ops)
+        if all(_entry_matches_operation(entry, operation, canonicalizer) for operation in facet_ops)
     ]
     entity_neighbors = _entity_neighbor_payloads(entity_ops)
     supporting_journal_ids = _supporting_journal_ids_from_neighbors(entity_neighbors)
@@ -564,8 +598,9 @@ def build_navigate_payload(
         "exhaustive": True,
         "count": len(matched_entries),
         "entry_pointers": [entry.rel_path for entry in matched_entries],
-        "entries": [_entry_payload(entry, facet_ops) for entry in matched_entries],
+        "entries": [_entry_payload(entry, facet_ops, canonicalizer) for entry in matched_entries],
         "entity_neighbors": entity_neighbors,
+        "canonicalization": canonicalizer.to_payload(),
         "navigation_docs": (
             _navigation_docs_for_entries(scoped_entries) if source == "index-b" else []
         ),

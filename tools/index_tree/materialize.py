@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from tools.generate_index.builder import safe_relative_path
+from tools.lib.facet_canonicalization import FacetCanonicalizer, load_facet_canonicalizer
 from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.paths import get_journals_dir, get_user_data_dir
 
@@ -112,7 +113,7 @@ def _iter_values(value: Any) -> Iterable[str]:
         yield text
 
 
-def _facet_values(entry: IndexBEntry, spec: FacetSpec) -> list[str]:
+def _raw_facet_values(entry: IndexBEntry, spec: FacetSpec) -> list[str]:
     values: list[str] = []
     seen: set[str] = set()
     for field in spec.fields:
@@ -120,6 +121,23 @@ def _facet_values(entry: IndexBEntry, spec: FacetSpec) -> list[str]:
             if value not in seen:
                 seen.add(value)
                 values.append(value)
+    return values
+
+
+def _facet_values(
+    entry: IndexBEntry, spec: FacetSpec, canonicalizer: FacetCanonicalizer | None = None
+) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for raw_value in _raw_facet_values(entry, spec):
+        value = (
+            canonicalizer.canonicalize(spec.name, raw_value).value
+            if canonicalizer is not None
+            else raw_value
+        )
+        if value and value not in seen:
+            seen.add(value)
+            values.append(value)
     return values
 
 
@@ -202,12 +220,12 @@ def _frontmatter(scope: str, date_from: str | None, date_to: str | None, count: 
     return "\n".join(lines)
 
 
-def _facet_markdown(entries: list[IndexBEntry]) -> str:
+def _facet_markdown(entries: list[IndexBEntry], canonicalizer: FacetCanonicalizer) -> str:
     lines = ["## Facets", ""]
     for spec in FACETS:
         buckets: dict[str, list[str]] = defaultdict(list)
         for entry in entries:
-            for value in _facet_values(entry, spec):
+            for value in _facet_values(entry, spec, canonicalizer):
                 buckets[value].append(entry.rel_path)
         lines.extend([f"### {spec.name}", "", "| value | count | pointers |", "|---|---:|---|"])
         if not buckets:
@@ -239,6 +257,7 @@ def _root_doc(
     years: dict[str, list[IndexBEntry]],
     date_from: str | None,
     date_to: str | None,
+    canonicalizer: FacetCanonicalizer,
 ) -> str:
     lines = [
         _frontmatter("root", date_from, date_to, len(entries)),
@@ -256,7 +275,7 @@ def _root_doc(
         lines.append(f"| {year} | {len(year_entries)} | {_doc_rel('Journals', year, 'index.md')} |")
     if not years:
         lines.append("| (none) | 0 | |")
-    lines.extend(["", _facet_markdown(entries)])
+    lines.extend(["", _facet_markdown(entries, canonicalizer)])
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -266,6 +285,7 @@ def _year_doc(
     months: dict[str, list[IndexBEntry]],
     date_from: str | None,
     date_to: str | None,
+    canonicalizer: FacetCanonicalizer,
 ) -> str:
     lines = [
         _frontmatter(f"year:{year}", date_from, date_to, len(entries)),
@@ -281,7 +301,7 @@ def _year_doc(
             f"| {year}-{month} | {len(month_entries)} | "
             f"{_doc_rel('Journals', year, month, 'index.md')} |"
         )
-    lines.extend(["", _facet_markdown(entries)])
+    lines.extend(["", _facet_markdown(entries, canonicalizer)])
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -291,13 +311,14 @@ def _month_doc(
     entries: list[IndexBEntry],
     date_from: str | None,
     date_to: str | None,
+    canonicalizer: FacetCanonicalizer,
 ) -> str:
     lines = [
         _frontmatter(f"month:{year}-{month}", date_from, date_to, len(entries)),
         f"# Index B Month {year}-{month}",
         "",
         _entry_pointer_markdown(entries),
-        _facet_markdown(entries),
+        _facet_markdown(entries, canonicalizer),
     ]
     return "\n".join(lines).rstrip() + "\n"
 
@@ -320,11 +341,12 @@ def _build_doc_specs(
     months_by_year: dict[str, dict[str, list[IndexBEntry]]],
     date_from: str | None,
     date_to: str | None,
+    canonicalizer: FacetCanonicalizer,
 ) -> list[IndexBDocSpec]:
     specs: list[IndexBDocSpec] = []
 
     root_path = output_dir / "INDEX.md"
-    root_text = _root_doc(entries, years, date_from, date_to)
+    root_text = _root_doc(entries, years, date_from, date_to, canonicalizer)
     specs.append(
         IndexBDocSpec(
             key="root",
@@ -337,7 +359,9 @@ def _build_doc_specs(
 
     for year, year_entries in sorted(years.items()):
         year_path = output_dir / "Journals" / year / "index.md"
-        year_text = _year_doc(year, year_entries, months_by_year[year], date_from, date_to)
+        year_text = _year_doc(
+            year, year_entries, months_by_year[year], date_from, date_to, canonicalizer
+        )
         specs.append(
             IndexBDocSpec(
                 key=f"year:{year}",
@@ -349,7 +373,7 @@ def _build_doc_specs(
         )
         for month, month_entries in sorted(months_by_year[year].items()):
             month_path = output_dir / "Journals" / year / month / "index.md"
-            month_text = _month_doc(year, month, month_entries, date_from, date_to)
+            month_text = _month_doc(year, month, month_entries, date_from, date_to, canonicalizer)
             specs.append(
                 IndexBDocSpec(
                     key=f"month:{year}-{month}",
@@ -381,6 +405,7 @@ def _build_manifest(
     date_from: str | None,
     date_to: str | None,
     specs: list[IndexBDocSpec],
+    canonicalizer: FacetCanonicalizer,
 ) -> dict[str, Any]:
     scopes: dict[str, dict[str, Any]] = {}
     for spec in specs:
@@ -388,6 +413,7 @@ def _build_manifest(
             "doc": spec.rel_path,
             "entry_count": len(spec.entries),
             "source_hash": _source_hash(data_dir, spec.entries),
+            "canonicalization_hash": canonicalizer.canonicalization_hash,
             "doc_hash": _sha256_text(spec.text),
         }
     return {
@@ -406,6 +432,7 @@ def _compare_freshness(
     date_from: str | None,
     date_to: str | None,
     specs: list[IndexBDocSpec],
+    canonicalizer: FacetCanonicalizer,
     manifest: dict[str, Any] | None,
 ) -> dict[str, Any]:
     expected_keys = {spec.key for spec in specs}
@@ -430,6 +457,8 @@ def _compare_freshness(
             reason = "doc_missing"
         elif recorded.get("source_hash") != _source_hash(data_dir, spec.entries):
             reason = "source_hash_mismatch"
+        elif recorded.get("canonicalization_hash") != canonicalizer.canonicalization_hash:
+            reason = "canonicalization_hash_mismatch"
         elif recorded.get("doc_hash") != _sha256_text(spec.text):
             reason = "doc_hash_mismatch"
 
@@ -457,9 +486,11 @@ def _plan_materialization(date_from: str | None, date_to: str | None) -> tuple[
     dict[str, list[IndexBEntry]],
     dict[str, dict[str, list[IndexBEntry]]],
     list[IndexBDocSpec],
+    FacetCanonicalizer,
 ]:
     data_dir = get_user_data_dir()
     output_dir = data_dir / INDEX_B_DIR
+    canonicalizer = load_facet_canonicalizer(data_dir)
     entries = _collect_entries(date_from, date_to)
     years: dict[str, list[IndexBEntry]] = defaultdict(list)
     months_by_year: dict[str, dict[str, list[IndexBEntry]]] = defaultdict(lambda: defaultdict(list))
@@ -474,8 +505,9 @@ def _plan_materialization(date_from: str | None, date_to: str | None) -> tuple[
         months_by_year=months_by_year,
         date_from=date_from,
         date_to=date_to,
+        canonicalizer=canonicalizer,
     )
-    return data_dir, output_dir, entries, years, months_by_year, specs
+    return data_dir, output_dir, entries, years, months_by_year, specs, canonicalizer
 
 
 def build_materialize_payload(
@@ -491,12 +523,15 @@ def build_materialize_payload(
     if start is not None and end is not None and end < start:
         raise ValueError("--to must be greater than or equal to --from")
 
-    data_dir, _output_dir, entries, years, months_by_year, specs = _plan_materialization(start, end)
+    data_dir, _output_dir, entries, years, months_by_year, specs, canonicalizer = (
+        _plan_materialization(start, end)
+    )
     freshness = _compare_freshness(
         data_dir=data_dir,
         date_from=start,
         date_to=end,
         specs=specs,
+        canonicalizer=canonicalizer,
         manifest=_read_manifest(data_dir),
     )
     stale_scope_set = set(freshness["stale_scopes"])
@@ -511,7 +546,13 @@ def build_materialize_payload(
         _write_text(spec.path, spec.text, dry_run=dry_run)
         written_docs.append(spec.rel_path)
 
-    manifest = _build_manifest(data_dir=data_dir, date_from=start, date_to=end, specs=specs)
+    manifest = _build_manifest(
+        data_dir=data_dir,
+        date_from=start,
+        date_to=end,
+        specs=specs,
+        canonicalizer=canonicalizer,
+    )
     manifest_path = _manifest_path(data_dir)
     if not dry_run:
         _write_text(
@@ -531,6 +572,7 @@ def build_materialize_payload(
         "year_count": len(years),
         "month_count": sum(len(months) for months in months_by_year.values()),
         "facets": [spec.name for spec in FACETS],
+        "canonicalization": canonicalizer.to_payload(),
         "written_docs": written_docs,
         "skipped_fresh_docs": skipped_fresh_docs,
         "incremental": incremental,
@@ -550,12 +592,15 @@ def build_freshness_payload(
     if start is not None and end is not None and end < start:
         raise ValueError("--to must be greater than or equal to --from")
 
-    data_dir, _output_dir, entries, years, months_by_year, specs = _plan_materialization(start, end)
+    data_dir, _output_dir, entries, years, months_by_year, specs, canonicalizer = (
+        _plan_materialization(start, end)
+    )
     freshness = _compare_freshness(
         data_dir=data_dir,
         date_from=start,
         date_to=end,
         specs=specs,
+        canonicalizer=canonicalizer,
         manifest=_read_manifest(data_dir),
     )
     return {
@@ -567,6 +612,7 @@ def build_freshness_payload(
         "entry_count": len(entries),
         "year_count": len(years),
         "month_count": sum(len(months) for months in months_by_year.values()),
+        "canonicalization": canonicalizer.to_payload(),
         **freshness,
     }
 

@@ -99,14 +99,19 @@ journal evidence.
    `life-index index-tree discover --from YYYY-MM --to YYYY-MM --facet tag --facet topic --facet project --facet location --json`.
    For concept-style questions, inspect the actual facet value menu first and
    choose matching values from the data. Do not preload a fixed vocabulary for
-   any specific topic. If the menu does not expose useful values, fall back to
-   keyword/entity-weighted discovery.
+   any specific topic. Project, people, location, and tag menus may show
+   canonical values derived from explicit `entity_graph.yaml` aliases; use
+   `raw_values` only to understand which written labels were grouped. Do not
+   invent alias mappings that are not present in the graph. If the menu does
+   not expose useful values, fall back to keyword/entity-weighted discovery.
 3. Pick relevant facet values yourself from the discover menu, then use
    structured Index B navigation before journal reads:
    `life-index index-tree navigate --from YYYY-MM --to YYYY-MM --filter facet=value --json`.
    Read the reported root/year/month navigation docs and use the returned
    `entry_pointers` as the bounded candidate set. Repeated `--filter` arguments
    are intersections; `value1||value2` is a deterministic OR inside one facet.
+   Use discovered canonical values where available; explicit graph aliases are
+   also accepted by the navigation tool and resolve deterministically.
    For relationship-shaped questions, choose the relevant entity and optional
    relation type yourself, then call
    `life-index index-tree navigate --entity-neighbors "Entity Name" --entity-relation relation --json`.

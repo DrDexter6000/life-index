@@ -135,6 +135,225 @@ def test_navigate_rejects_removed_task_facet(tmp_path: Path, monkeypatch) -> Non
     assert "task" in payload["errors"][0]["message"]
 
 
+def test_discover_groups_canonical_facet_aliases_and_reports_raw_values(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tools.index_tree.core import build_discover_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Canonical Project A",
+        extra_frontmatter='project: "Life-Index"\ntags: ["ai"]\ntopic: ["work"]',
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-15",
+        title="Canonical Project B",
+        extra_frontmatter='project: "Life Index 2.0"\ntags: ["AI"]\ntopic: ["work"]',
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-16",
+        title="Canonical Topic Remains Raw",
+        extra_frontmatter='project: "Other"\ntopic: ["Life-Index"]',
+    )
+    (data_dir / "entity_graph.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "entities": [
+                    {
+                        "id": "project-life-index",
+                        "type": "project",
+                        "primary_name": "Life Index",
+                        "aliases": ["life-index", "Life Index 2.0"],
+                    },
+                    {
+                        "id": "concept-ai",
+                        "type": "concept",
+                        "primary_name": "AI",
+                        "aliases": ["ai"],
+                    },
+                ]
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_discover_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        facets=["project", "tag", "topic"],
+    )
+
+    assert payload["success"] is True
+    assert payload["data"]["canonicalization"]["status"] == "active"
+    assert payload["data"]["facets"]["project"]["values"][0] == {
+        "value": "Life Index",
+        "count": 2,
+        "sample_entry_pointers": [
+            "Journals/2026/03/life-index_2026-03-14_001.md",
+            "Journals/2026/03/life-index_2026-03-15_001.md",
+        ],
+        "raw_values": ["Life Index 2.0", "Life-Index"],
+    }
+    assert payload["data"]["facets"]["tag"]["values"][0]["value"] == "AI"
+    assert payload["data"]["facets"]["tag"]["values"][0]["raw_values"] == ["AI", "ai"]
+    assert payload["data"]["facets"]["topic"]["values"] == [
+        {
+            "value": "work",
+            "count": 2,
+            "sample_entry_pointers": [
+                "Journals/2026/03/life-index_2026-03-14_001.md",
+                "Journals/2026/03/life-index_2026-03-15_001.md",
+            ],
+            "raw_values": ["work"],
+        },
+        {
+            "value": "Life-Index",
+            "count": 1,
+            "sample_entry_pointers": ["Journals/2026/03/life-index_2026-03-16_001.md"],
+            "raw_values": ["Life-Index"],
+        },
+    ]
+
+
+def test_navigate_matches_canonicalized_facet_values_and_alias_filter(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tools.index_tree.core import build_navigate_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Life Index Alias A",
+        extra_frontmatter='project: "Life-Index"',
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-15",
+        title="Life Index Alias B",
+        extra_frontmatter='project: "Life Index 2.0"',
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-16",
+        title="Other Project",
+        extra_frontmatter='project: "Other"',
+    )
+    (data_dir / "entity_graph.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "entities": [
+                    {
+                        "id": "project-life-index",
+                        "type": "project",
+                        "primary_name": "Life Index",
+                        "aliases": ["life-index", "Life Index 2.0"],
+                    }
+                ]
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_navigate_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        operations=[
+            {
+                "type": "facet_value_filter",
+                "facet": "project",
+                "values": ["Life Index"],
+                "match": "any",
+            }
+        ],
+    )
+    alias_payload = build_navigate_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        operations=[
+            {
+                "type": "facet_value_filter",
+                "facet": "project",
+                "values": ["Life-Index"],
+                "match": "any",
+            }
+        ],
+    )
+    lower_alias_payload = build_navigate_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        operations=[
+            {
+                "type": "facet_value_filter",
+                "facet": "project",
+                "values": ["life-index"],
+                "match": "any",
+            }
+        ],
+    )
+
+    expected = [
+        "Journals/2026/03/life-index_2026-03-14_001.md",
+        "Journals/2026/03/life-index_2026-03-15_001.md",
+    ]
+    assert payload["success"] is True
+    assert payload["data"]["count"] == 2
+    assert payload["data"]["entry_pointers"] == expected
+    assert alias_payload["data"]["entry_pointers"] == expected
+    assert lower_alias_payload["data"]["entry_pointers"] == expected
+    assert payload["data"]["entries"][0]["matched_facets"] == {"project": ["Life Index"]}
+
+
+def test_discover_invalid_entity_graph_keeps_raw_values_with_diagnostic(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tools.index_tree.core import build_discover_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Raw Alias A",
+        extra_frontmatter='project: "Life-Index"',
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-15",
+        title="Raw Alias B",
+        extra_frontmatter='project: "Life Index 2.0"',
+    )
+    (data_dir / "entity_graph.yaml").write_text(
+        "entities:\n- id: person-alice\n  type: person\n  primary_name: Alice\n"
+        "  relationships:\n  - target: missing\n    relation: knows\n",
+        encoding="utf-8",
+    )
+
+    payload = build_discover_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        facets=["project"],
+    )
+
+    assert payload["success"] is True
+    assert payload["data"]["canonicalization"]["status"] == "disabled"
+    assert payload["data"]["canonicalization"]["diagnostics"][0]["code"] == "entity_graph_invalid"
+    assert [item["value"] for item in payload["data"]["facets"]["project"]["values"]] == [
+        "Life Index 2.0",
+        "Life-Index",
+    ]
+
+
 def test_discover_returns_scoped_facet_value_menu_without_natural_language_inference(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -193,11 +412,13 @@ def test_discover_returns_scoped_facet_value_menu_without_natural_language_infer
             "value": "Lagos, Nigeria",
             "count": 1,
             "sample_entry_pointers": [march_lagos.relative_to(data_dir).as_posix()],
+            "raw_values": ["Lagos, Nigeria"],
         },
         {
             "value": "London, United Kingdom",
             "count": 1,
             "sample_entry_pointers": ["Journals/2026/03/life-index_2026-03-15_001.md"],
+            "raw_values": ["London, United Kingdom"],
         },
     ]
     assert payload["data"]["facets"]["project"]["values"][0]["value"] == "Life Index"
@@ -207,11 +428,13 @@ def test_discover_returns_scoped_facet_value_menu_without_natural_language_infer
             "value": "life",
             "count": 1,
             "sample_entry_pointers": ["Journals/2026/03/life-index_2026-03-15_001.md"],
+            "raw_values": ["life"],
         },
         {
             "value": "work",
             "count": 1,
             "sample_entry_pointers": [march_lagos.relative_to(data_dir).as_posix()],
+            "raw_values": ["work"],
         },
     ]
     assert payload["data"]["selection_contract"] == (
