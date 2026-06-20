@@ -55,6 +55,7 @@ system.
 | Entity graph change | `docs/ENTITY_GRAPH.md` |
 | Version or release change | `docs/VERSIONING.md` and `CHANGELOG.md` |
 | Search behavior or ranking change | `CHARTER.md` search invariants and `docs/ARCHITECTURE.md` search sections |
+| Agent-facing behavior change (tools / retrieval / nav / entity) | `SKILL.md`, and dogfood the change as the host agent on real/authorized data |
 | CI hard-check or local gate change | `docs/CI_HARD_CHECKS.md` and the relevant workflow/script |
 
 Do not read historical documents by default. Use them only for explicit
@@ -77,6 +78,17 @@ historical research.
 - If a doc claims a code, schema, YAML, JSON, or config artifact changed, the
   same commit must include the actual artifact diff or mark the implementation
   as pending.
+- `SKILL.md` (+ references/) is a first-class deliverable. Any agent-facing
+  change (tools, retrieval/navigation, entity graph) updates `SKILL.md` in the
+  same change; install/upgrade must deliver the current `SKILL.md`, Index, and
+  entity graph to the host agent. Tools without the current playbook are
+  incomplete.
+- Done = the host-agent outcome on real data, not CI alone. Before claiming
+  done on an agent-facing change, operate it as the host agent would: read
+  `SKILL.md`, run the tools on real or owner-authorized data, and confirm the
+  user's actual question is answered (GROUNDED) — following `SKILL.md` literally
+  rather than relying on cleverness a weaker host agent lacks. CI is necessary,
+  not sufficient.
 - Treat CI as the merge-readiness authority for required checks. Local tests are
   useful diagnostics, not a substitute for required CI.
 
