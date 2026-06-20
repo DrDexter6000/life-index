@@ -4245,7 +4245,7 @@ life-index generate-index [options]
 |------|------|------|--------|------|
 | month | string | ❌ | - | 生成月度索引 (YYYY-MM)，输出 `index_YYYY-MM.md` |
 | year | int | ❌ | - | 生成年度索引 (YYYY)，输出 `index_YYYY.md` |
-| all-months | flag | ❌ | false | 与 year 一起使用，批量生成全年月度索引 |
+| all-months | flag | ❌ | false | 批量生成所有有日志月份的月度索引；与 `year` 一起使用时仅生成该年月份 |
 | rebuild | flag | ❌ | false | 全量重建三层索引树（月→年→根） |
 | dry-run | flag | ❌ | false | 预览模式 |
 
@@ -4476,7 +4476,7 @@ Additive standard checks may include:
 
 | check.name | status | meaning |
 |------------|--------|---------|
-| index_tree | ok / warning / info | Internal Index Tree freshness visibility. Warnings are non-critical; run `life-index generate-index` to refresh missing/stale tree nodes. |
+| index_tree | ok / warning / info | Internal Index Tree freshness visibility. Warnings are non-critical; run `life-index generate-index --all-months` to refresh missing/stale month nodes. |
 
 **`--data-audit` 模式**：
 

@@ -174,6 +174,27 @@ class TestHealthCheckIndexTree:
         it_check = next(c for c in payload["data"]["checks"] if c["name"] == "index_tree")
         assert it_check["status"] in ("warning", "info")
 
+    def test_index_tree_issue_suggests_runnable_generate_all_months_command(
+        self, tmp_path, monkeypatch
+    ):
+        from tools import __main__ as main_cli
+
+        data_dir = tmp_path / "life-index-data"
+        journal_dir = data_dir / "Journals" / "2026" / "03"
+        journal_dir.mkdir(parents=True)
+        (journal_dir / "life-index_2026-03-14_001.md").write_text(
+            "---\ndate: 2026-03-14\ntitle: Test\n---\n\n# Test\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+        check = main_cli._check_index_tree()
+
+        assert check["status"] == "warning"
+        assert check["suggested_command"] == "life-index generate-index --all-months"
+        assert "life-index generate-index --all-months" in check["issue"]
+        assert "run 'life-index generate-index'" not in check["issue"]
+
 
 class TestApplyPresentationLayer:
     """Regression tests for _apply_presentation_layer (lead review finding 2026-05-24).
