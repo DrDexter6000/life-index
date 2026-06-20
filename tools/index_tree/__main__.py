@@ -111,6 +111,29 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "for multiple allowed values in one facet."
         ),
     )
+    navigate.add_argument(
+        "--entity-neighbors",
+        action="append",
+        default=[],
+        metavar="ENTITY",
+        help=(
+            "Explicit entity-neighbor traversal. Repeat for multiple start entities. "
+            "The host agent chooses entities; the tool only traverses graph edges."
+        ),
+    )
+    navigate.add_argument(
+        "--entity-relation",
+        action="append",
+        default=[],
+        metavar="RELATION",
+        help="Optional relationship type filter for --entity-neighbors. Repeatable.",
+    )
+    navigate.add_argument(
+        "--entity-max-hops",
+        type=int,
+        default=1,
+        help="Maximum relationship traversal depth for --entity-neighbors.",
+    )
     navigate.add_argument("--json", action="store_true", help="Emit JSON output")
 
     return parser.parse_args(argv)
@@ -130,6 +153,30 @@ def _parse_filter_operations(filters: list[str]) -> list[dict[str, Any]]:
                 "facet": facet.strip(),
                 "values": values,
                 "match": "any",
+            }
+        )
+    return operations
+
+
+def _parse_entity_neighbor_operations(
+    entities: list[str],
+    *,
+    max_hops: int,
+    relations: list[str],
+) -> list[dict[str, Any]]:
+    operations: list[dict[str, Any]] = []
+    normalized_relations = [relation.strip() for relation in relations if relation.strip()]
+    for entity in entities:
+        text = entity.strip()
+        if not text:
+            operations.append({"type": "entity_neighbors", "entity": "", "max_hops": max_hops})
+            continue
+        operations.append(
+            {
+                "type": "entity_neighbors",
+                "entity": text,
+                "max_hops": max_hops,
+                "relations": normalized_relations,
             }
         )
     return operations
@@ -165,6 +212,13 @@ def _log_index_tree_call(
     else:
         result["count"] = data.get("count")
         result["entry_pointers"] = data.get("entry_pointers", [])
+        raw_entity_neighbors = data.get("entity_neighbors", [])
+        entity_neighbors: list[Any] = (
+            raw_entity_neighbors if isinstance(raw_entity_neighbors, list) else []
+        )
+        result["entity_neighbor_counts"] = [
+            item.get("neighbor_count") for item in entity_neighbors if isinstance(item, dict)
+        ]
         raw_coverage = data.get("coverage")
         navigate_coverage: dict[str, Any] = raw_coverage if isinstance(raw_coverage, dict) else {}
         result["candidate_count_before_filters"] = navigate_coverage.get(
@@ -187,6 +241,12 @@ def _log_index_tree_call(
     }
     if args.subcommand == "navigate":
         params["filters"] = list(getattr(args, "filter", []) or [])
+        entity_neighbors = list(getattr(args, "entity_neighbors", []) or [])
+        entity_relations = list(getattr(args, "entity_relation", []) or [])
+        if entity_neighbors:
+            params["entity_neighbors"] = entity_neighbors
+            params["entity_relations"] = entity_relations
+            params["entity_max_hops"] = getattr(args, "entity_max_hops", None)
     if args.subcommand == "discover":
         params["facets"] = list(getattr(args, "facet", []) or [])
 
@@ -254,10 +314,18 @@ def main(argv: list[str] | None = None) -> None:
             facets=args.facet,
         )
     elif args.subcommand == "navigate":
+        operations = _parse_filter_operations(args.filter)
+        operations.extend(
+            _parse_entity_neighbor_operations(
+                args.entity_neighbors,
+                max_hops=args.entity_max_hops,
+                relations=args.entity_relation,
+            )
+        )
         payload = build_navigate_payload(
             date_from=args.date_from,
             date_to=args.date_to,
-            operations=_parse_filter_operations(args.filter),
+            operations=operations,
         )
     else:
         raise AssertionError(f"unreachable subcommand: {args.subcommand}")

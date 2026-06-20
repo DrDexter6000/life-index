@@ -59,6 +59,21 @@ def _normalize_alias(alias: Any, load_time: str) -> tuple[str, dict[str, Any]]:
     raise EntityGraphValidationError("alias must be a string or an object")
 
 
+def _normalize_supporting_journal_ids(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise EntityGraphValidationError("relationship.supporting_journal_ids must be a list")
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = _ensure_non_empty_string(item, "relationship.supporting_journal_ids[]")
+        if text not in seen:
+            seen.add(text)
+            normalized.append(text)
+    return normalized
+
+
 def validate_entity_graph_payload(
     payload: dict[str, Any], load_time: str | None = None
 ) -> list[dict[str, Any]]:
@@ -110,7 +125,7 @@ def validate_entity_graph_payload(
         relationships = raw.get("relationships", []) or []
         if not isinstance(relationships, list):
             raise EntityGraphValidationError("relationships must be a list")
-        normalized_relationships: list[dict[str, str]] = []
+        normalized_relationships: list[dict[str, Any]] = []
         for relationship in relationships:
             if not isinstance(relationship, dict):
                 raise EntityGraphValidationError("relationship must be an object")
@@ -118,7 +133,17 @@ def validate_entity_graph_payload(
             relation = _ensure_non_empty_string(
                 relationship.get("relation"), "relationship.relation"
             )
-            normalized_relationships.append({"target": target, "relation": relation})
+            normalized_relationship: dict[str, Any] = {"target": target, "relation": relation}
+            if "weight" in relationship:
+                weight = relationship.get("weight")
+                if not isinstance(weight, (int, float)):
+                    raise EntityGraphValidationError("relationship.weight must be a number")
+                normalized_relationship["weight"] = float(weight)
+            if "supporting_journal_ids" in relationship:
+                normalized_relationship["supporting_journal_ids"] = (
+                    _normalize_supporting_journal_ids(relationship.get("supporting_journal_ids"))
+                )
+            normalized_relationships.append(normalized_relationship)
 
         validated.append(
             {

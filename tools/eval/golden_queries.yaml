@@ -1806,6 +1806,30 @@ queries:
   - typo_precision
   - anti-test
   - fuzzy
+- id: GQ159
+  query: 和 OpenClaw 相关的项目进展
+  category: entity_relationship
+  description: Relationship-shaped entity query; qrels anchor project-adjacent recall.
+  expected:
+    min_results: 1
+    must_contain_title:
+    - OpenClaw 部署优化
+  tags:
+  - entity
+  - relationship
+  - qrels
+- id: GQ160
+  query: 围绕 LobsterAI 项目的人和事
+  category: entity_relationship
+  description: Relationship-shaped project query; qrels anchor project-centric recall.
+  expected:
+    min_results: 1
+    must_contain_title:
+    - LobsterAI 项目启动
+  tags:
+  - entity
+  - relationship
+  - qrels
 
 aggregate_queries:
 - id: AGQ01

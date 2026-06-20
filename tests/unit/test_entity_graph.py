@@ -53,9 +53,7 @@ class TestEntitySchema:
         }
 
         assert RESERVED_RELATIONSHIP_TARGETS == set()
-        with pytest.raises(
-            EntityGraphValidationError, match="unknown relationship target"
-        ):
+        with pytest.raises(EntityGraphValidationError, match="unknown relationship target"):
             validate_entity_graph_payload(payload)
 
     def test_valid_entity_accepted(self) -> None:
@@ -101,9 +99,7 @@ class TestEntitySchema:
             validate_entity_graph_payload,
         )
 
-        payload = {
-            "entities": [{"id": "mama", "type": "animal", "primary_name": "妈妈"}]
-        }
+        payload = {"entities": [{"id": "mama", "type": "animal", "primary_name": "妈妈"}]}
 
         with pytest.raises(EntityGraphValidationError, match="invalid entity type"):
             validate_entity_graph_payload(payload)
@@ -125,10 +121,49 @@ class TestEntitySchema:
             ]
         }
 
-        with pytest.raises(
-            EntityGraphValidationError, match="unknown relationship target"
-        ):
+        with pytest.raises(EntityGraphValidationError, match="unknown relationship target"):
             validate_entity_graph_payload(payload)
+
+    def test_relationship_optional_metadata_is_preserved(self) -> None:
+        from tools.lib.entity_schema import validate_entity_graph_payload
+
+        payload = {
+            "entities": [
+                {
+                    "id": "person-alice",
+                    "type": "person",
+                    "primary_name": "Alice",
+                    "relationships": [
+                        {
+                            "target": "project-atlas",
+                            "relation": "works_on",
+                            "weight": 0.75,
+                            "supporting_journal_ids": [
+                                "Journals/2026/03/life-index_2026-03-14_001.md",
+                                "Journals/2026/03/life-index_2026-03-14_001.md",
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "id": "project-atlas",
+                    "type": "project",
+                    "primary_name": "Atlas",
+                    "relationships": [],
+                },
+            ]
+        }
+
+        validated = validate_entity_graph_payload(payload)
+
+        assert validated[0]["relationships"] == [
+            {
+                "target": "project-atlas",
+                "relation": "works_on",
+                "weight": 0.75,
+                "supporting_journal_ids": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+            }
+        ]
 
     def test_alias_no_duplicate_across_entities(self) -> None:
         from tools.lib.entity_schema import (
@@ -219,9 +254,7 @@ class TestEntityCache:
 
 
 class TestEntityCli:
-    def test_entity_list_cli(
-        self, isolated_data_dir: Path, monkeypatch, capsys
-    ) -> None:
+    def test_entity_list_cli(self, isolated_data_dir: Path, monkeypatch, capsys) -> None:
         from tools import __main__
         from tools.lib.entity_graph import save_entity_graph
 
@@ -236,18 +269,14 @@ class TestEntityCli:
         assert '"success": true' in captured.out
         assert '"mama"' in captured.out
 
-    def test_entity_resolve_cli(
-        self, isolated_data_dir: Path, monkeypatch, capsys
-    ) -> None:
+    def test_entity_resolve_cli(self, isolated_data_dir: Path, monkeypatch, capsys) -> None:
         from tools import __main__
         from tools.lib.entity_graph import save_entity_graph
 
         graph_path = isolated_data_dir / "entity_graph.yaml"
         save_entity_graph(_sample_entity_graph()["entities"], graph_path)
 
-        monkeypatch.setattr(
-            __main__.sys, "argv", ["life-index", "entity", "--resolve", "婆婆"]
-        )
+        monkeypatch.setattr(__main__.sys, "argv", ["life-index", "entity", "--resolve", "婆婆"])
 
         __main__.main()
         captured = capsys.readouterr()

@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 
 def _write_journal(
     data_dir: Path,
@@ -356,6 +358,57 @@ def test_navigate_json_contract_filters_materialized_index_b(tmp_path: Path) -> 
     assert str(data_dir) not in _all_strings(payload)
 
 
+def test_navigate_entity_neighbors_json_contract(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "entity_graph.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "entities": [
+                    {
+                        "id": "person-alice",
+                        "type": "person",
+                        "primary_name": "Alice",
+                        "aliases": ["A."],
+                        "relationships": [{"target": "project-atlas", "relation": "works_on"}],
+                    },
+                    {
+                        "id": "project-atlas",
+                        "type": "project",
+                        "primary_name": "Atlas",
+                        "aliases": [],
+                        "relationships": [],
+                    },
+                ]
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke(
+        data_dir,
+        "navigate",
+        "--entity-neighbors",
+        "Alice",
+        "--entity-relation",
+        "works_on",
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    payload = _payload(result)
+    assert payload["success"] is True
+    assert payload["command"] == "index-tree.navigate"
+    assert payload["data"]["entity_neighbors"][0]["resolved_entity"]["id"] == "person-alice"
+    assert payload["data"]["entity_neighbors"][0]["neighbors"][0]["entity_id"] == ("project-atlas")
+    assert payload["data"]["entity_neighbors"][0]["neighbors"][0]["edges"][0]["relation"] == (
+        "works_on"
+    )
+    assert str(data_dir) not in _all_strings(payload)
+
+
 def test_navigate_writes_validation_tool_call_log(tmp_path: Path) -> None:
     data_dir = tmp_path / "Life-Index"
     log_path = tmp_path / "tool-calls.jsonl"
@@ -394,6 +447,57 @@ def test_navigate_writes_validation_tool_call_log(tmp_path: Path) -> None:
     }
     assert records[0]["result"]["count"] == 1
     assert records[0]["result"]["entry_pointers"] == [journal.relative_to(data_dir).as_posix()]
+    assert str(data_dir) not in json.dumps(records, ensure_ascii=False)
+
+
+def test_navigate_entity_neighbors_validation_tool_call_log(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    log_path = tmp_path / "tool-calls.jsonl"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "entity_graph.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "entities": [
+                    {
+                        "id": "person-alice",
+                        "type": "person",
+                        "primary_name": "Alice",
+                        "aliases": [],
+                        "relationships": [{"target": "project-atlas", "relation": "works_on"}],
+                    },
+                    {
+                        "id": "project-atlas",
+                        "type": "project",
+                        "primary_name": "Atlas",
+                        "aliases": [],
+                        "relationships": [],
+                    },
+                ]
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke_with_env(
+        data_dir,
+        {
+            "LIFE_INDEX_VALIDATION_MODE": "1",
+            "LIFE_INDEX_TOOL_CALL_LOG": str(log_path),
+        },
+        "navigate",
+        "--entity-neighbors",
+        "Alice",
+        "--json",
+    )
+
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["tool"] == "index-tree.navigate"
+    assert records[0]["params"]["entity_neighbors"] == ["Alice"]
+    assert records[0]["params"]["entity_relations"] == []
+    assert records[0]["result"]["entity_neighbor_counts"] == [1]
     assert str(data_dir) not in json.dumps(records, ensure_ascii=False)
 
 
