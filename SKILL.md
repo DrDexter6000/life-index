@@ -95,7 +95,7 @@ journal evidence.
    language. For time-scoped, facet, count, enumerate, or cross-facet questions,
    first ensure Index B navigation and inspect the available value menu:
    `life-index index-tree ensure --from YYYY-MM --to YYYY-MM --json`.
-   `life-index index-tree discover --from YYYY-MM --to YYYY-MM --facet tag --facet task --facet project --facet location --json`.
+   `life-index index-tree discover --from YYYY-MM --to YYYY-MM --facet tag --facet topic --facet project --facet location --json`.
    For concept-style questions, inspect the actual facet value menu first and
    choose matching values from the data. Do not preload a fixed vocabulary for
    any specific topic. If the menu does not expose useful values, fall back to

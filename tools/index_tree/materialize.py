@@ -52,7 +52,7 @@ class IndexBDocSpec:
 FACETS: tuple[FacetSpec, ...] = (
     FacetSpec("weather", ("weather",)),
     FacetSpec("location", ("location",)),
-    FacetSpec("task", ("task", "tasks")),
+    FacetSpec("topic", ("topic", "topics")),
     FacetSpec("project", ("project", "projects")),
     FacetSpec("tag", ("tags", "tag")),
     FacetSpec("people", ("people",)),

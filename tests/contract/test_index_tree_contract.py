@@ -64,7 +64,6 @@ def _seed_index_b_data(data_dir: Path) -> Path:
             'people: ["Alice"]\n'
             'project: "Atlas"\n'
             'tags: ["planning"]\n'
-            'task: ["review"]\n'
             'location: "London, United Kingdom"\n'
             'weather: "Cloudy 12C"'
         ),
@@ -87,10 +86,10 @@ def _seed_index_b_multi_month_data(data_dir: Path) -> tuple[Path, Path]:
         date="2026-03-14",
         title="March Work",
         extra_frontmatter=(
+            'topic: ["work"]\n'
             'people: ["Alice"]\n'
             'project: "Atlas"\n'
             'tags: ["planning"]\n'
-            'task: ["review"]\n'
             'location: "London, United Kingdom"\n'
             'weather: "Cloudy 12C"'
         ),
@@ -100,10 +99,10 @@ def _seed_index_b_multi_month_data(data_dir: Path) -> tuple[Path, Path]:
         date="2026-04-20",
         title="April Home",
         extra_frontmatter=(
+            'topic: ["life"]\n'
             'people: ["Bob"]\n'
             'project: "Home"\n'
             'tags: ["family"]\n'
-            'task: ["visit"]\n'
             'location: "Cardiff, United Kingdom"\n'
             'weather: "Sunny 18C"'
         ),
@@ -236,11 +235,12 @@ def test_materialize_writes_index_b_navigation_docs(tmp_path: Path) -> None:
 
     month_text = month_doc.read_text(encoding="utf-8")
     assert "## Facets" in month_text
-    for facet in ("weather", "location", "task", "project", "tag", "people"):
+    for facet in ("weather", "location", "topic", "project", "tag", "people"):
         assert f"### {facet}" in month_text
+    assert "### task" not in month_text
     assert "| Cloudy 12C | 1 |" in month_text
     assert "| London, United Kingdom | 1 |" in month_text
-    assert "| review | 1 |" in month_text
+    assert "| work | 1 |" in month_text
     assert "| Atlas | 1 |" in month_text
     assert "| planning | 1 |" in month_text
     assert "| Alice | 1 |" in month_text
@@ -251,6 +251,18 @@ def test_materialize_writes_index_b_navigation_docs(tmp_path: Path) -> None:
     month_rel = ".life-index/index-b/Journals/2026/03/index.md"
     assert year_rel in root_text
     assert month_rel in year_doc.read_text(encoding="utf-8")
+
+
+def test_index_b_facets_include_write_schema_topic_ssot() -> None:
+    from tools.index_tree.materialize import FACETS
+    from tools.lib.topics import VALID_TOPICS
+
+    specs = {spec.name: spec for spec in FACETS}
+
+    assert VALID_TOPICS
+    assert "topic" in specs
+    assert specs["topic"].fields == ("topic", "topics")
+    assert "task" not in specs
 
 
 def test_materialize_manifest_freshness_and_incremental_refresh(tmp_path: Path) -> None:
@@ -509,7 +521,10 @@ def test_discover_json_contract_and_validation_tool_call_log(tmp_path: Path) -> 
         date="2026-03-14",
         title="Facet Work",
         extra_frontmatter=(
-            'project: "Life Index"\n' 'tags: ["ai"]\n' 'location: "London, United Kingdom"'
+            'topic: ["work"]\n'
+            'project: "Life Index"\n'
+            'tags: ["ai"]\n'
+            'location: "London, United Kingdom"'
         ),
     )
 
@@ -527,7 +542,7 @@ def test_discover_json_contract_and_validation_tool_call_log(tmp_path: Path) -> 
         "--facet",
         "location",
         "--facet",
-        "project",
+        "topic",
         "--json",
     )
 
@@ -536,7 +551,8 @@ def test_discover_json_contract_and_validation_tool_call_log(tmp_path: Path) -> 
     assert payload["success"] is True
     assert payload["command"] == "index-tree.discover"
     assert payload["data"]["facets"]["location"]["values"][0]["value"] == ("London, United Kingdom")
-    assert payload["data"]["facets"]["project"]["values"][0]["count"] == 1
+    assert payload["data"]["facets"]["topic"]["values"][0]["value"] == "work"
+    assert payload["data"]["facets"]["topic"]["values"][0]["count"] == 1
     assert str(data_dir) not in _all_strings(payload)
 
     records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
@@ -544,14 +560,27 @@ def test_discover_json_contract_and_validation_tool_call_log(tmp_path: Path) -> 
     assert records[0]["params"] == {
         "date_from": "2026-03",
         "date_to": "2026-03",
-        "facets": ["location", "project"],
+        "facets": ["location", "topic"],
     }
     assert records[0]["result"]["candidate_count"] == 1
     assert records[0]["result"]["facet_value_counts"] == {
         "location": 1,
-        "project": 1,
+        "topic": 1,
     }
     assert str(data_dir) not in json.dumps(records, ensure_ascii=False)
+
+
+def test_task_facet_is_not_a_supported_index_tree_facet(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    _seed_index_b_data(data_dir)
+
+    result = _invoke(data_dir, "discover", "--facet", "task", "--json")
+
+    assert result.returncode != 0
+    payload = _payload(result)
+    assert payload["success"] is False
+    assert payload["errors"][0]["code"] == "INDEX_TREE_DISCOVER_INVALID_FACET"
+    assert "task" in payload["errors"][0]["message"]
 
 
 def test_lens_invalid_signal_returns_structured_error(tmp_path: Path) -> None:

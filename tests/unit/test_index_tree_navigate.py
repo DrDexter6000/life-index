@@ -37,6 +37,7 @@ def test_navigate_filters_values_by_month_scope_and_intersects_facets(
         date="2026-03-14",
         title="AI Work Lagos",
         extra_frontmatter=(
+            'topic: ["work"]\n'
             'project: "Life Index"\n'
             'tags: ["ai", "planning"]\n'
             'location: "Lagos, Nigeria"\n'
@@ -48,7 +49,11 @@ def test_navigate_filters_values_by_month_scope_and_intersects_facets(
         date="2026-03-15",
         title="Other AI Lagos",
         extra_frontmatter=(
-            'project: "Other"\n' 'tags: ["ai"]\n' 'location: "Lagos, Nigeria"\n' 'people: ["Alice"]'
+            'topic: ["life"]\n'
+            'project: "Other"\n'
+            'tags: ["ai"]\n'
+            'location: "Lagos, Nigeria"\n'
+            'people: ["Alice"]'
         ),
     )
     _write_journal(
@@ -56,6 +61,7 @@ def test_navigate_filters_values_by_month_scope_and_intersects_facets(
         date="2026-04-01",
         title="AI Work London",
         extra_frontmatter=(
+            'topic: ["work"]\n'
             'project: "Life Index"\n'
             'tags: ["ai"]\n'
             'location: "London, United Kingdom"\n'
@@ -81,8 +87,8 @@ def test_navigate_filters_values_by_month_scope_and_intersects_facets(
             },
             {
                 "type": "facet_value_filter",
-                "facet": "tag",
-                "values": ["ai"],
+                "facet": "topic",
+                "values": ["work"],
                 "match": "any",
             },
         ],
@@ -99,6 +105,36 @@ def test_navigate_filters_values_by_month_scope_and_intersects_facets(
     assert ".life-index/index-b/Journals/2026/03/index.md" in payload["data"]["navigation_docs"]
 
 
+def test_navigate_rejects_removed_task_facet(tmp_path: Path, monkeypatch) -> None:
+    from tools.index_tree.core import build_navigate_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="Legacy Task Frontmatter",
+        extra_frontmatter='task: ["review"]\ntopic: ["work"]',
+    )
+
+    payload = build_navigate_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        operations=[
+            {
+                "type": "facet_value_filter",
+                "facet": "task",
+                "values": ["review"],
+                "match": "any",
+            }
+        ],
+    )
+
+    assert payload["success"] is False
+    assert payload["errors"][0]["code"] == "INDEX_TREE_NAVIGATE_INVALID_OPERATION"
+    assert "task" in payload["errors"][0]["message"]
+
+
 def test_discover_returns_scoped_facet_value_menu_without_natural_language_inference(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -112,26 +148,39 @@ def test_discover_returns_scoped_facet_value_menu_without_natural_language_infer
         date="2026-03-14",
         title="March Lagos AI",
         extra_frontmatter=(
-            'project: "Life Index"\n' 'tags: ["ai", "planning"]\n' 'location: "Lagos, Nigeria"\n'
+            'topic: ["work"]\n'
+            'project: "Life Index"\n'
+            'tags: ["ai", "planning"]\n'
+            'location: "Lagos, Nigeria"\n'
         ),
     )
     _write_journal(
         data_dir,
         date="2026-03-15",
         title="March London",
-        extra_frontmatter='project: "Other"\ntags: ["travel"]\nlocation: "London, United Kingdom"',
+        extra_frontmatter=(
+            'topic: ["life"]\n'
+            'project: "Other"\n'
+            'tags: ["travel"]\n'
+            'location: "London, United Kingdom"'
+        ),
     )
     _write_journal(
         data_dir,
         date="2026-04-01",
         title="April Lagos",
-        extra_frontmatter='project: "Life Index"\ntags: ["ai"]\nlocation: "Lagos, Nigeria"',
+        extra_frontmatter=(
+            'topic: ["work"]\n'
+            'project: "Life Index"\n'
+            'tags: ["ai"]\n'
+            'location: "Lagos, Nigeria"'
+        ),
     )
 
     payload = build_discover_payload(
         date_from="2026-03",
         date_to="2026-03",
-        facets=["location", "project", "tag"],
+        facets=["location", "project", "tag", "topic"],
     )
 
     assert payload["success"] is True
@@ -153,6 +202,18 @@ def test_discover_returns_scoped_facet_value_menu_without_natural_language_infer
     ]
     assert payload["data"]["facets"]["project"]["values"][0]["value"] == "Life Index"
     assert payload["data"]["facets"]["tag"]["values"][0]["value"] == "ai"
+    assert payload["data"]["facets"]["topic"]["values"] == [
+        {
+            "value": "life",
+            "count": 1,
+            "sample_entry_pointers": ["Journals/2026/03/life-index_2026-03-15_001.md"],
+        },
+        {
+            "value": "work",
+            "count": 1,
+            "sample_entry_pointers": [march_lagos.relative_to(data_dir).as_posix()],
+        },
+    ]
     assert payload["data"]["selection_contract"] == (
         "host_agent_selects_values; tool_executes_only"
     )
