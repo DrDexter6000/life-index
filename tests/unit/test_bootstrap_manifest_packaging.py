@@ -47,9 +47,21 @@ def test_packaging_config_declares_bootstrap_manifest_data() -> None:
     assert "bootstrap-manifest.json" in package_data["tools"]
 
 
+def test_root_and_packaged_manifest_declare_skill_artifacts() -> None:
+    root_manifest = _root_manifest()
+    packaged_manifest = json.loads(
+        (REPO_ROOT / "tools" / "bootstrap-manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert root_manifest["skill_artifacts"] == ["SKILL.md", "references/"]
+    assert packaged_manifest["skill_artifacts"] == root_manifest["skill_artifacts"]
+
+
 def test_manifest_in_includes_bootstrap_manifest_sources() -> None:
     """sdist inputs must include both the root authority file and package copy."""
     manifest_in = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
 
     assert "include bootstrap-manifest.json" in manifest_in
     assert "include tools/bootstrap-manifest.json" in manifest_in
+    assert "include SKILL.md" in manifest_in
+    assert "recursive-include references *.md" in manifest_in

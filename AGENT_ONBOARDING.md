@@ -98,7 +98,7 @@ If `needs_human` is non-empty, relay each item to the user and wait for resoluti
 | `fresh_install` | No existing journal data found | Execute `safe_next_steps` in order, then optional verification |
 | `upgrade` | Existing journal data found | Execute `safe_next_steps` in order only |
 
-If `safe_next_steps` is non-empty, run them in order and no others. On `upgrade`, `safe_next_steps` may begin with `pip install -e .` when the installed package version is older than the refreshed manifest, followed by migration checks and `life-index health`. Do **not** skip the reinstall step when present, and do **not** append additional steps (index, write, search) beyond what `safe_next_steps` lists.
+If `safe_next_steps` is non-empty, run them in order and no others. On `upgrade`, `safe_next_steps` may include `pip install -e .`, migration checks, search / Index Tree rebuilds, `life-index sync-skill`, generated index refresh, and `life-index health`. Do **not** skip the reinstall step when present, and do **not** append any extra steps beyond what `safe_next_steps` lists.
 
 If `safe_next_steps` is empty, onboarding completes immediately after Step 0.
 
@@ -250,27 +250,36 @@ This section is **conditional** on `bootstrap --json` output. Do not execute any
 
 - Run **only** the steps listed in `safe_next_steps`, in array order.
 - If `safe_next_steps` is empty, onboarding is complete after Step 0.
-- `safe_next_steps` may contain `life-index index`, `life-index health`, `life-index migrate --dry-run`, etc. Execute them exactly as listed.
+- `safe_next_steps` may contain package reinstall, migration, search index rebuild, Index Tree rebuild, skill sync, generated index refresh, and health commands. Execute them exactly as listed.
 
-### Step 5.1: Build Index (Only if in `safe_next_steps`)
+### Step 5.1: Run Artifact Commands (Only if in `safe_next_steps`)
 
 ```bash
 # Linux/macOS:
-.venv/bin/life-index index
+.venv/bin/life-index index --rebuild
+.venv/bin/life-index index-tree materialize --json
+.venv/bin/life-index generate-index --all-months
+.venv/bin/life-index sync-skill
 
 # Windows:
-.venv\Scripts\life-index index
+.venv\Scripts\life-index index --rebuild
+.venv\Scripts\life-index index-tree materialize --json
+.venv\Scripts\life-index generate-index --all-months
+.venv\Scripts\life-index sync-skill
 ```
 
 **What Happens**:
 1. Creates / updates the FTS5 keyword search index in the foreground
 2. Starts semantic / vector indexing in the background when supported
-3. Returns before model loading or embedding work blocks the onboarding flow
+3. Rebuilds deterministic Index Tree artifacts when listed
+4. Synchronizes `SKILL.md` and `references/` into the host skill directory when listed; missing host directories are reported as a non-fatal skip
+5. Returns before model loading or embedding work blocks the onboarding flow
 
 **Success Criteria**:
-- Command completes without errors
+- Each listed command completes without errors, or reports a documented non-fatal skip
 - Keyword / FTS indexing succeeds
 - Semantic status is reported as `building`, `ready`, `disabled`, or `failed`
+- Current skill artifacts are delivered when a host skill directory is available
 - No foreground model download is required for onboarding success
 
 **Expected Wait**: The foreground command should return promptly after FTS work. Do not wait for semantic model download in the onboarding foreground path.
@@ -372,7 +381,7 @@ Remove-Item Env:\LIFE_INDEX_DATA_DIR
 
 Run this step **only after** all `safe_next_steps` complete. This step is optional — skip if the user declines.
 
-**A. Trigger phrase** — Suggest the user set a custom trigger phrase in the form `/life-index <their phrase>` (e.g., `/life-index 记日志: 今天状态不错`). If agreed, update the trigger list in `SKILL.md` — keep `/life-index`, keep examples consistent, do not touch unrelated sections.
+**A. Trigger phrase** — Suggest the user set a custom trigger phrase in the form `/life-index <their phrase>` (e.g., `/life-index 记日志: 今天状态不错`). If agreed, update the trigger list in `SKILL.md` — keep `/life-index`, keep examples consistent, do not touch unrelated sections. Future `life-index sync-skill` runs may refresh the skill body while preserving custom triggers.
 
 **B. Default location** — Ask whether the user wants to override the default location (`Chongqing, China`). If agreed, write to `~/Documents/Life-Index/.life-index/config.yaml` using `config.example.yaml` as schema reference. You may report the preference was **saved** but must **not** claim it is runtime-active unless verified.
 
@@ -519,6 +528,7 @@ Keep it concise — this is a welcome message, not a manual.>
 ### Do:
 - Keep all user data in `~/Documents/Life-Index/` (separate from code)
 - Use venv paths exclusively for all commands
+- Treat `life-index sync-skill` as the supported way to refresh host agent skill artifacts when it appears in `safe_next_steps`
 - Report exact error messages on failure
 - Verify each step before proceeding
 - Clean up partial installations on failure (if requested by user)

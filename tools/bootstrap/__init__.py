@@ -18,6 +18,14 @@ from tools.lib.bootstrap_manifest import get_manifest_version
 from tools.migrate import scan_journals
 
 BOOTSTRAP_SCHEMA_VERSION = "m34.bootstrap.v0"
+PIP_INSTALL_STEP = "pip install -e ."
+MIGRATE_DRY_RUN_STEP = "life-index migrate --dry-run"
+MIGRATE_APPLY_STEP = "life-index migrate --apply"
+SEARCH_INDEX_REBUILD_STEP = "life-index index --rebuild"
+INDEX_B_REBUILD_STEP = "life-index index-tree materialize --json"
+INDEX_TREE_REBUILD_STEP = "life-index generate-index --all-months"
+SYNC_SKILL_STEP = "life-index sync-skill"
+HEALTH_STEP = "life-index health"
 
 CheckoutOrigin = Literal["discovered", "host_managed", "user_designated"]
 
@@ -212,8 +220,12 @@ def decide_route(
         route = "fresh_install"
         route_reason = "No existing journal data found"
 
+    def add_step(step: str) -> None:
+        if step not in safe_next_steps:
+            safe_next_steps.append(step)
+
     if data_state.get("install_in_sync") is False:
-        safe_next_steps.append("pip install -e .")
+        add_step(PIP_INSTALL_STEP)
 
     migration_needed = data_state.get("migration_needed")
     migration_error = data_state.get("migration_check_error")
@@ -228,13 +240,20 @@ def decide_route(
                 ),
             }
         )
-        safe_next_steps.append("life-index migrate --dry-run")
+        add_step(MIGRATE_DRY_RUN_STEP)
     elif migration_needed > 0:
-        safe_next_steps.append("life-index migrate --dry-run")
-        safe_next_steps.append("life-index migrate --apply")
+        add_step(MIGRATE_DRY_RUN_STEP)
+        add_step(MIGRATE_APPLY_STEP)
+
+    if route == "upgrade":
+        add_step(MIGRATE_DRY_RUN_STEP)
+        add_step(SEARCH_INDEX_REBUILD_STEP)
+        add_step(INDEX_B_REBUILD_STEP)
+        add_step(INDEX_TREE_REBUILD_STEP)
+        add_step(SYNC_SKILL_STEP)
 
     if route in ("upgrade", "fresh_install"):
-        safe_next_steps.append("life-index health")
+        add_step(HEALTH_STEP)
 
     return {
         "route": route,
