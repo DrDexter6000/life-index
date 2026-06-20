@@ -3,7 +3,7 @@
 #
 # Implements L4 from docs/PROJECT_WORKFLOW.md v1.2 §M3 (d) push 前置门
 # within-version revision. Runs all Tier 1 CI hard checks listed in
-# .agent-governance/CI_HARD_CHECKS.md.
+# docs/CI_HARD_CHECKS.md.
 #
 # For frequent WIP feedback, use scripts/tier1-gate.sh. This full gate is the
 # merge/push-batch verdict and should not run once per local commit.
@@ -39,7 +39,7 @@ echo "================================================"
 echo "Life Index pre-push gate"
 echo "Start: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "Repo:  $REPO_ROOT"
-echo "SSOT:  .agent-governance/CI_HARD_CHECKS.md"
+echo "SSOT:  docs/CI_HARD_CHECKS.md"
 echo "Expected shell: Git Bash (MSYSTEM set, non-WSL)"
 echo "Recommended outer watchdog: ${RECOMMENDED_WATCHDOG_SECONDS}s"
 echo "================================================"
@@ -125,6 +125,7 @@ check_environment
 
 # === quality.yml hard checks (tools/ scope) ===
 run_check "public-diff-names"   python .github/scripts/check_public_diff_names.py
+run_check "public-surface-allowlist" python .github/scripts/check_public_surface_allowlist.py
 run_check "doc-sync"            python .github/scripts/check_doc_sync.py
 run_check "l2-no-llm"           python .github/scripts/check_l2_no_llm.py
 run_check "black --check tools/" python -m black --check tools/

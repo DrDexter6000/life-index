@@ -22,7 +22,7 @@ echo "================================================"
 echo "Life Index Tier 1 fast gate"
 echo "Start: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "Repo:  $REPO_ROOT"
-echo "SSOT:  .agent-governance/CI_HARD_CHECKS.md"
+echo "SSOT:  docs/CI_HARD_CHECKS.md"
 echo "================================================"
 
 declare -a FAILED_CHECKS=()
@@ -52,6 +52,7 @@ run_check() {
 export LIFE_INDEX_INDEX_FTS_ONLY="${LIFE_INDEX_INDEX_FTS_ONLY:-1}"
 
 run_check "public-diff-names"    python .github/scripts/check_public_diff_names.py
+run_check "public-surface-allowlist" python .github/scripts/check_public_surface_allowlist.py
 run_check "doc-sync"             python .github/scripts/check_doc_sync.py
 run_check "l2-no-llm"            python .github/scripts/check_l2_no_llm.py
 run_check "black --check tools/"  python -m black --check tools/
