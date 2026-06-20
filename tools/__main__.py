@@ -60,6 +60,7 @@ from tools.lib.paths import (
 from tools.lib.bootstrap_manifest import read_bootstrap_manifest as _read_bootstrap_manifest
 
 HEALTH_SCHEMA_VERSION = "m16.health.v0"
+INDEX_TREE_REBUILD_COMMAND = "life-index generate-index --all-months"
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
 
@@ -297,6 +298,7 @@ def _check_index_tree() -> Dict[str, Any]:
         "freshness_status": None,
         "total_nodes": 0,
         "issues": [],
+        "suggested_command": None,
     }
 
     try:
@@ -309,7 +311,8 @@ def _check_index_tree() -> Dict[str, Any]:
 
         if result.get("status") == "empty_tree":
             check["status"] = "info"
-            check["issue"] = "Index Tree is empty — run 'life-index generate-index' to build"
+            check["issue"] = f"Index Tree is empty — run '{INDEX_TREE_REBUILD_COMMAND}' to build"
+            check["suggested_command"] = INDEX_TREE_REBUILD_COMMAND
         elif issues:
             check["status"] = "warning"
             check["issues"] = issues
@@ -321,8 +324,10 @@ def _check_index_tree() -> Dict[str, Any]:
             if missing_count:
                 parts.append(f"{missing_count} missing")
             check["issue"] = (
-                f"Index Tree has {' and '.join(parts)} nodes — run 'life-index generate-index'"
+                f"Index Tree has {' and '.join(parts)} nodes — run "
+                f"'{INDEX_TREE_REBUILD_COMMAND}'"
             )
+            check["suggested_command"] = INDEX_TREE_REBUILD_COMMAND
         else:
             check["status"] = "ok"
     except Exception as e:

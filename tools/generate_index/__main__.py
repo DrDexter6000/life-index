@@ -7,6 +7,7 @@ Life Index - Index Generator - CLI Entry Point
 import argparse
 import json
 import sys
+from collections.abc import Iterator
 
 from . import generate_monthly_abstract, generate_yearly_abstract, rebuild_index_tree
 from ..lib.config import ensure_dirs
@@ -14,6 +15,35 @@ from ..lib.paths import get_journals_dir
 from ..lib.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _iter_journal_months(year: int | None = None) -> Iterator[tuple[int, int]]:
+    journals_dir = get_journals_dir()
+    if year is not None:
+        year_dirs = [journals_dir / str(year)]
+    else:
+        year_dirs = (
+            [
+                path
+                for path in sorted(journals_dir.iterdir())
+                if path.is_dir() and path.name.isdigit()
+            ]
+            if journals_dir.exists()
+            else []
+        )
+
+    for year_dir in year_dirs:
+        if not year_dir.exists() or not year_dir.name.isdigit():
+            continue
+        year_value = int(year_dir.name)
+        for month_dir in sorted(year_dir.iterdir()):
+            if not month_dir.is_dir() or not month_dir.name.isdigit():
+                continue
+            month = int(month_dir.name)
+            if not 1 <= month <= 12:
+                continue
+            if any(month_dir.glob("life-index_*.md")):
+                yield year_value, month
 
 
 def main() -> None:
@@ -30,7 +60,10 @@ Examples:
     python -m tools.generate_index --year 2026
     python -m tools.generate_index --year 2026 --dry-run
 
-    # 批量生成全年月度索引
+    # 批量生成所有有日志月份的月度索引
+    python -m tools.generate_index --all-months
+
+    # 批量生成指定年份的月度索引
     python -m tools.generate_index --year 2026 --all-months
 
     # 同时生成年度和指定月度索引
@@ -45,7 +78,7 @@ Examples:
     parser.add_argument(
         "--all-months",
         action="store_true",
-        help="与 --year 一起使用，批量生成全年各月的月度索引",
+        help="批量生成有日志月份的月度索引；与 --year 一起使用时限制到指定年份",
     )
 
     parser.add_argument(
@@ -59,8 +92,8 @@ Examples:
     ensure_dirs()
 
     # 验证参数
-    if not args.rebuild and not args.month and not args.year:
-        parser.error("请指定 --month 或 --year 参数")
+    if not args.rebuild and not args.month and not args.year and not args.all_months:
+        parser.error("请指定 --month、--year 或 --all-months 参数")
 
     results = []
 
@@ -85,25 +118,18 @@ Examples:
         result = generate_yearly_abstract(args.year, args.dry_run)
         results.append(result)
 
-    # 批量生成全年月度摘要
-    if args.year and args.all_months:
-        logger.info(f"批量生成{args.year}年全年月度摘要")
-        year_dir = get_journals_dir() / str(args.year)
-        if year_dir.exists():
-            for month_dir in sorted(year_dir.iterdir()):
-                if month_dir.is_dir() and month_dir.name.isdigit():
-                    month = int(month_dir.name)
-                    result = generate_monthly_abstract(args.year, month, args.dry_run)
-                    results.append(result)
-        else:
-            logger.warning(f"{args.year}年目录不存在")
-            results.append(
-                {
-                    "type": "monthly",
-                    "year": args.year,
-                    "message": f"{args.year}年目录不存在",
-                }
-            )
+    # 批量生成月度摘要
+    if args.all_months:
+        scope = f"{args.year}年" if args.year else "所有年份"
+        logger.info(f"批量生成{scope}有日志月份的月度摘要")
+        month_pairs = list(_iter_journal_months(args.year))
+        for year, month in month_pairs:
+            result = generate_monthly_abstract(year, month, args.dry_run)
+            results.append(result)
+        if not month_pairs:
+            message = f"{args.year}年没有可生成的日志月份" if args.year else "没有可生成的日志月份"
+            logger.warning(message)
+            results.append({"type": "monthly", "year": args.year, "message": message})
 
     # 输出结果
     if args.json:

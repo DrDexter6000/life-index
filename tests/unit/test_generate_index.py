@@ -2,6 +2,8 @@
 """Unit tests for tools.generate_index Index Tree rebuild and generation."""
 
 from pathlib import Path
+import json
+import sys
 
 import pytest
 
@@ -72,3 +74,41 @@ class TestRebuildIgnoresNonYearDirectories:
         result = generate_root_index(dry_run=True)
         assert result["success"] is True
         assert result["journal_count"] >= 1
+
+
+class TestGenerateIndexCliAllMonths:
+    def test_all_months_without_year_generates_every_month_with_journals(
+        self, sandbox: Path, monkeypatch, capsys
+    ) -> None:
+        from tools.generate_index import __main__ as cli
+
+        journals_dir = sandbox / "Journals"
+        _write_journal(journals_dir, "2025-12-01", "december entry")
+        _write_journal(journals_dir, "2026-03-14", "march entry")
+        (journals_dir / "reports").mkdir(parents=True)
+
+        calls: list[tuple[int, int, bool]] = []
+
+        def fake_generate_monthly_abstract(year: int, month: int, dry_run: bool) -> dict:
+            calls.append((year, month, dry_run))
+            return {
+                "type": "monthly",
+                "year": year,
+                "month": month,
+                "updated": True,
+                "journal_count": 1,
+                "message": f"generated {year}-{month:02d}",
+            }
+
+        monkeypatch.setattr(cli, "generate_monthly_abstract", fake_generate_monthly_abstract)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["life-index generate-index", "--all-months", "--json"],
+        )
+
+        cli.main()
+
+        payload = json.loads(capsys.readouterr().out)
+        assert calls == [(2025, 12, False), (2026, 3, False)]
+        assert [(item["year"], item["month"]) for item in payload] == [(2025, 12), (2026, 3)]
