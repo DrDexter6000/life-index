@@ -46,6 +46,21 @@ def _plan_steps(issue: dict[str, Any]) -> list[dict[str, Any]]:
                 "write_class": "derived_artifact",
             }
         ]
+    if domain == "revisions" and issue_type == "loose_timestamped_journal_copy":
+        return [
+            {
+                "action": "archive_loose_timestamped_journal_copy",
+                "command": [
+                    "life-index",
+                    "maintenance",
+                    "repair",
+                    "--issue-id",
+                    "<issue-id>",
+                    "--apply",
+                ],
+                "write_class": "user_data_archive",
+            }
+        ]
     return []
 
 
@@ -85,15 +100,24 @@ def build_plan(data_dir: str | Path | None, issue_id: str) -> tuple[dict[str, An
         "preconditions": [
             "Issue ID must still be present in a fresh maintenance audit.",
             "Touched paths must remain inside LIFE_INDEX_DATA_DIR.",
+            "Archive repairs require the canonical journal original to still exist.",
         ],
         "post_check_command": _post_check_command(issue),
         "rollback_story": (
-            "Derived artifacts can be regenerated from Markdown truth; user source files "
-            "must remain unchanged."
-            if repairable and plan_steps
+            "Archived files are moved under .trash/maintenance inside LIFE_INDEX_DATA_DIR; "
+            "restore by moving the archived copy back to its original relative path."
+            if issue.get("domain") == "revisions"
+            and issue.get("type") == "loose_timestamped_journal_copy"
+            and repairable
+            and plan_steps
             else (
-                "No automatic rollback is defined because this issue requires human or "
-                "L3 proposal review."
+                "Derived artifacts can be regenerated from Markdown truth; user source files "
+                "must remain unchanged."
+                if repairable and plan_steps
+                else (
+                    "No automatic rollback is defined because this issue requires human or "
+                    "L3 proposal review."
+                )
             )
         ),
         "plan_steps": plan_steps,

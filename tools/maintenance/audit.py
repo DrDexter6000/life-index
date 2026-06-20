@@ -39,6 +39,10 @@ AUDIT_DOMAINS: tuple[str, ...] = (
 Issue = dict[str, Any]
 Detector = Callable[[Path], list[Issue]]
 
+_TIMESTAMPED_JOURNAL_COPY_RE = re.compile(
+    r"^(life-index_\d{4}-\d{2}-\d{2}_\d+)_\d{8}_\d{6}_\d{6}(?:_\d+)?\.md$"
+)
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -386,22 +390,64 @@ def _detect_attachments(data_dir: Path) -> list[Issue]:
 
 
 def _detect_revisions(data_dir: Path) -> list[Issue]:
+    issues: list[Issue] = []
+    journals_root = data_dir / "Journals"
+    if journals_root.exists():
+        for path in sorted(p for p in journals_root.rglob("life-index_*.md") if p.is_file()):
+            if ".revisions" in path.parts:
+                continue
+            match = _TIMESTAMPED_JOURNAL_COPY_RE.match(path.name)
+            if not match:
+                continue
+
+            canonical = path.with_name(f"{match.group(1)}.md")
+            rel = _rel_path(data_dir, path)
+            canonical_rel = _rel_path(data_dir, canonical)
+            repairable = canonical.exists() and canonical.is_file()
+            issues.append(
+                {
+                    "issue_id": f"revisions.loose_timestamped_journal_copy:{rel}",
+                    "domain": "revisions",
+                    "type": "loose_timestamped_journal_copy",
+                    "severity": "warning",
+                    "risk": "low" if repairable else "medium",
+                    "repair_class": "archive" if repairable else "review",
+                    "repairable": repairable,
+                    "message": (
+                        "Timestamped journal copy is loose in Journals; archive it "
+                        "outside the canonical journal tree."
+                        if repairable
+                        else (
+                            "Timestamped journal copy is loose in Journals but no "
+                            "canonical original exists."
+                        )
+                    ),
+                    "evidence": [
+                        {"path": rel, "kind": "duplicate"},
+                        {"path": canonical_rel, "kind": "canonical"},
+                    ],
+                }
+            )
+
     revisions_root = data_dir / ".revisions"
     if not revisions_root.exists():
-        return []
-    return [
-        _issue(
-            domain="revisions",
-            issue_type="loose_revision_candidate",
-            evidence_path=_rel_path(data_dir, path),
-            evidence_kind="orphan_candidate",
-            message="Revision sidecar needs review before any pruning.",
-            risk="medium",
-            repair_class="review",
-            repairable=False,
-        )
-        for path in sorted(p for p in revisions_root.rglob("*") if p.is_file())
-    ]
+        return issues
+    issues.extend(
+        [
+            _issue(
+                domain="revisions",
+                issue_type="loose_revision_candidate",
+                evidence_path=_rel_path(data_dir, path),
+                evidence_kind="orphan_candidate",
+                message="Revision sidecar needs review before any pruning.",
+                risk="medium",
+                repair_class="review",
+                repairable=False,
+            )
+            for path in sorted(p for p in revisions_root.rglob("*") if p.is_file())
+        ]
+    )
+    return issues
 
 
 def _load_entity_payload(data_dir: Path) -> dict[str, Any]:

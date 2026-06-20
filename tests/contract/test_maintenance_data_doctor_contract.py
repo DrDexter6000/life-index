@@ -159,6 +159,24 @@ def _write_repair_fixture(data_dir: Path) -> None:
     (import_dir / "rollback.json").write_text("{}", encoding="utf-8")
 
 
+def _write_timestamp_duplicate_fixture(data_dir: Path) -> tuple[Path, Path]:
+    _write_repair_fixture(data_dir)
+    month_dir = data_dir / "Journals" / "2026" / "06"
+    canonical = month_dir / "life-index_2026-06-01_001.md"
+    duplicate = month_dir / "life-index_2026-06-01_001_20260413_213643_663199.md"
+    duplicate.write_text(
+        "---\n"
+        "title: Prior Audit Fixture\n"
+        "date: 2026-06-01\n"
+        "topic: testing\n"
+        "---\n"
+        "# Prior Audit Fixture\n\n"
+        "This is a loose timestamped copy that should be archived, not counted.\n",
+        encoding="utf-8",
+    )
+    return canonical, duplicate
+
+
 def _write_proposal_fixture(data_dir: Path) -> str:
     _write_repair_fixture(data_dir)
     (data_dir / "entity_graph.yaml").write_text(
@@ -492,6 +510,100 @@ class TestMaintenanceRepairContract:
         assert payload["success"] is False
         assert payload["schema_version"] == "m33.maintenance_repair.v0"
         assert payload["error"]["code"] == "MAINTENANCE_REPAIR_NOT_ALLOWED"
+
+    def test_audit_reports_loose_timestamped_journal_copy_as_repairable(
+        self, tmp_path: Path
+    ) -> None:
+        _write_timestamp_duplicate_fixture(tmp_path)
+
+        audit = _parse_json(
+            _run_maintenance(["audit", "--domain", "revisions", "--json"], tmp_path)
+        )
+
+        issues = [
+            issue for issue in audit["issues"] if issue["type"] == "loose_timestamped_journal_copy"
+        ]
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue["repairable"] is True
+        assert issue["repair_class"] == "archive"
+        assert issue["risk"] == "low"
+        assert issue["evidence"][0]["path"] == (
+            "Journals/2026/06/life-index_2026-06-01_001_20260413_213643_663199.md"
+        )
+        assert issue["evidence"][1]["path"] == "Journals/2026/06/life-index_2026-06-01_001.md"
+
+    def test_repair_dry_run_for_loose_timestamped_copy_changes_no_files(
+        self, tmp_path: Path
+    ) -> None:
+        _write_timestamp_duplicate_fixture(tmp_path)
+        issue_id = (
+            "revisions.loose_timestamped_journal_copy:"
+            "Journals/2026/06/life-index_2026-06-01_001_20260413_213643_663199.md"
+        )
+        before = _file_hashes(tmp_path)
+
+        repair = _parse_json(
+            _run_maintenance(["repair", "--issue-id", issue_id, "--dry-run", "--json"], tmp_path)
+        )
+        after = _file_hashes(tmp_path)
+
+        assert after == before
+        assert repair["success"] is True
+        assert repair["dry_run"] is True
+        assert repair["applied"] is False
+        assert repair["planned_paths"] == [
+            "Journals/2026/06/life-index_2026-06-01_001.md",
+            "Journals/2026/06/life-index_2026-06-01_001_20260413_213643_663199.md",
+        ]
+        assert repair["changed_paths"] == []
+
+    def test_repair_apply_archives_loose_timestamped_copy_and_preserves_canonical(
+        self, tmp_path: Path
+    ) -> None:
+        canonical, duplicate = _write_timestamp_duplicate_fixture(tmp_path)
+        canonical_before = _sha256(canonical)
+        duplicate_text = duplicate.read_text(encoding="utf-8")
+        issue_id = (
+            "revisions.loose_timestamped_journal_copy:"
+            "Journals/2026/06/life-index_2026-06-01_001_20260413_213643_663199.md"
+        )
+
+        repair = _parse_json(
+            _run_maintenance(["repair", "--issue-id", issue_id, "--apply", "--json"], tmp_path)
+        )
+
+        archived = (
+            tmp_path
+            / ".trash"
+            / "maintenance"
+            / "timestamped-journal-copies"
+            / "Journals"
+            / "2026"
+            / "06"
+            / "life-index_2026-06-01_001_20260413_213643_663199.md"
+        )
+        assert repair["success"] is True
+        assert repair["applied"] is True
+        assert (
+            "Journals/2026/06/life-index_2026-06-01_001_20260413_213643_663199.md"
+            in repair["changed_paths"]
+        )
+        assert (
+            ".trash/maintenance/timestamped-journal-copies/Journals/2026/06/"
+            "life-index_2026-06-01_001_20260413_213643_663199.md"
+        ) in repair["changed_paths"]
+        assert canonical.exists()
+        assert _sha256(canonical) == canonical_before
+        assert not duplicate.exists()
+        assert archived.read_text(encoding="utf-8") == duplicate_text
+
+        post_audit = _parse_json(
+            _run_maintenance(["audit", "--domain", "revisions", "--json"], tmp_path)
+        )
+        assert all(
+            issue["type"] != "loose_timestamped_journal_copy" for issue in post_audit["issues"]
+        )
 
 
 class TestMaintenanceProposalValidation:
