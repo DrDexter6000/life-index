@@ -45,7 +45,10 @@ If an older Life Index command is already installed, the code refresh alone is n
 
 If the checkout is not yet positively selected, do not reinstall or repair it from this workflow. Run Step 0.2 with `--checkout-path` / `--checkout-origin` first and follow the returned `safe_next_steps`.
 
-This is the upstream freshness gate. `life-index bootstrap` does **not** perform network freshness checks; it only compares the installed package version against the local manifest version as `install_in_sync`.
+`life-index bootstrap` performs a bounded, non-fatal PyPI release check unless
+`LIFE_INDEX_NO_NET=1` is set. `freshness: "unknown"` means the network check was
+skipped or unavailable; it is not a failure. `install_in_sync` remains the local
+installed-version vs checkout-manifest comparison.
 
 ### Step 0.2: Run bootstrap detection
 
@@ -89,6 +92,7 @@ If `needs_human` is non-empty, relay each item to the user and wait for resoluti
 | `AMBIGUOUS_CHECKOUT` | A checkout looks complete but was only discovered, not positively authorized | Use a host-managed skill directory, ask the user to designate the target, or clone fresh |
 | `DEV_DIR_FOUND` | The checkout has development-directory signals | Do not adopt or repair it from this workflow; use a host-managed skill directory or ask the user |
 | `INVALID_CHECKOUT` | The checkout is missing required files | Delete/reclone only if it is inside the agent-managed install target; otherwise ask |
+| `INSTALL_REFRESH_UNKNOWN` | A package refresh may be needed, but bootstrap cannot identify the install type | Inspect how Life Index is installed and run the matching refresh command before continuing |
 | `MIGRATION_CHECK_FAILED` | Migration scan failed and cannot be treated as "no migration needed" | Run `life-index migrate --dry-run` manually and inspect output before proceeding |
 
 ### Step 0.4: Read the route and safe next steps
@@ -98,7 +102,13 @@ If `needs_human` is non-empty, relay each item to the user and wait for resoluti
 | `fresh_install` | No existing journal data found | Execute `safe_next_steps` in order, then optional verification |
 | `upgrade` | Existing journal data found | Execute `safe_next_steps` in order only |
 
-If `safe_next_steps` is non-empty, run them in order and no others. On `upgrade`, `safe_next_steps` may include `pip install -e .`, migration checks, search / Index Tree rebuilds, `life-index sync-skill`, generated index refresh, and `life-index health`. Do **not** skip the reinstall step when present, and do **not** append any extra steps beyond what `safe_next_steps` lists.
+If `safe_next_steps` is non-empty, run them in order and no others. On `upgrade`,
+`safe_next_steps` may begin with a refresh step matched to the install type
+(`git pull --ff-only && pip install -e .` for editable checkouts, or
+`pip install -U life-index` for package installs), followed by migration checks,
+search / Index Tree rebuilds, `life-index sync-skill`, generated index refresh,
+and `life-index health`. Do **not** skip the refresh step when present, and do
+**not** append any extra steps beyond what `safe_next_steps` lists.
 
 If `safe_next_steps` is empty, onboarding completes immediately after Step 0.
 

@@ -6,19 +6,25 @@ config.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from importlib.metadata import PackageNotFoundError
+from importlib.metadata import distribution as _pkg_distribution
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, Literal
+from urllib.request import Request, urlopen
 
 from tools.lib.journal_files import count_journal_files
 from tools.lib.bootstrap_manifest import get_manifest_version
 from tools.migrate import scan_journals
 
 BOOTSTRAP_SCHEMA_VERSION = "m34.bootstrap.v0"
-PIP_INSTALL_STEP = "pip install -e ."
+PYPI_JSON_URL = "https://pypi.org/pypi/life-index/json"
+PYPI_TIMEOUT_SECONDS = 2.0
+EDITABLE_REFRESH_STEP = "git pull --ff-only && pip install -e ."
+PACKAGE_REFRESH_STEP = "pip install -U life-index"
 MIGRATE_DRY_RUN_STEP = "life-index migrate --dry-run"
 MIGRATE_APPLY_STEP = "life-index migrate --apply"
 SEARCH_INDEX_REBUILD_STEP = "life-index index --rebuild"
@@ -28,6 +34,7 @@ SYNC_SKILL_STEP = "life-index sync-skill"
 HEALTH_STEP = "life-index health"
 
 CheckoutOrigin = Literal["discovered", "host_managed", "user_designated"]
+InstallType = Literal["editable", "package", "unknown"]
 
 _DEV_PATH_TOKENS_LOWER = frozenset({"projects", "workspace", "repos"})
 _DEV_TOOLS = frozenset({"pytest", "black", "mypy", "flake8", "isort", "playwright"})
@@ -56,6 +63,91 @@ def _get_manifest_version() -> str | None:
     return get_manifest_version()
 
 
+def _version_tuple(version: str | None) -> tuple[int, ...] | None:
+    if not version:
+        return None
+    public = version.split("+", 1)[0].split("-", 1)[0]
+    parts: list[int] = []
+    for piece in public.split("."):
+        if not piece.isdigit():
+            return None
+        parts.append(int(piece))
+    return tuple(parts)
+
+
+def _is_newer_version(candidate: str | None, current: str | None) -> bool:
+    candidate_parts = _version_tuple(candidate)
+    current_parts = _version_tuple(current)
+    if candidate_parts is None or current_parts is None:
+        return False
+    width = max(len(candidate_parts), len(current_parts))
+    candidate_padded = candidate_parts + (0,) * (width - len(candidate_parts))
+    current_padded = current_parts + (0,) * (width - len(current_parts))
+    return candidate_padded > current_padded
+
+
+def _query_latest_release() -> str:
+    request = Request(PYPI_JSON_URL, headers={"Accept": "application/json"})
+    with urlopen(request, timeout=PYPI_TIMEOUT_SECONDS) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    version = payload.get("info", {}).get("version")
+    if not isinstance(version, str) or not version:
+        raise ValueError("PyPI response did not include info.version")
+    return version
+
+
+def _detect_release_freshness(
+    installed_version: str | None,
+    manifest_version: str | None,
+) -> dict[str, str | None]:
+    if os.environ.get("LIFE_INDEX_NO_NET") == "1":
+        return {
+            "freshness": "unknown",
+            "latest_release": None,
+            "update_available": None,
+            "freshness_error": "disabled by LIFE_INDEX_NO_NET",
+        }
+
+    try:
+        latest = _query_latest_release()
+    except Exception as exc:
+        return {
+            "freshness": "unknown",
+            "latest_release": None,
+            "update_available": None,
+            "freshness_error": str(exc),
+        }
+
+    current = installed_version or manifest_version
+    update_available = latest if _is_newer_version(latest, current) else None
+    return {
+        "freshness": "update_available" if update_available else "current",
+        "latest_release": latest,
+        "update_available": update_available,
+        "freshness_error": None,
+    }
+
+
+def _detect_install_type() -> InstallType:
+    try:
+        dist = _pkg_distribution("life-index")
+    except PackageNotFoundError:
+        return "unknown"
+
+    direct_url_text = dist.read_text("direct_url.json")
+    if direct_url_text:
+        try:
+            direct_url = json.loads(direct_url_text)
+        except json.JSONDecodeError:
+            return "unknown"
+        dir_info = direct_url.get("dir_info")
+        if isinstance(dir_info, dict) and dir_info.get("editable") is True:
+            return "editable"
+        return "package"
+
+    return "package"
+
+
 def _check_migration(data_dir: Path) -> tuple[int | None, str | None]:
     journals_dir = data_dir / "Journals"
     if not journals_dir.exists():
@@ -74,6 +166,8 @@ def detect_data_state(data_dir: str | None = None) -> dict[str, Any]:
     journal_count = _count_journals(ddir)
     installed = _get_installed_version()
     manifest = _get_manifest_version()
+    install_type = _detect_install_type()
+    release_freshness = _detect_release_freshness(installed, manifest)
     install_in_sync: bool | None = None
     if installed is not None and manifest is not None:
         install_in_sync = installed == manifest
@@ -85,6 +179,8 @@ def detect_data_state(data_dir: str | None = None) -> dict[str, Any]:
         "installed_version": installed,
         "manifest_version": manifest,
         "install_in_sync": install_in_sync,
+        "install_type": install_type,
+        **release_freshness,
         "migration_needed": migration_needed,
         "migration_check_error": migration_error,
     }
@@ -224,8 +320,32 @@ def decide_route(
         if step not in safe_next_steps:
             safe_next_steps.append(step)
 
-    if data_state.get("install_in_sync") is False:
-        add_step(PIP_INSTALL_STEP)
+    def refresh_step() -> str | None:
+        install_type = data_state.get("install_type")
+        if install_type == "editable":
+            return EDITABLE_REFRESH_STEP
+        if install_type == "package":
+            return PACKAGE_REFRESH_STEP
+        return None
+
+    should_refresh_install = bool(data_state.get("update_available")) or (
+        data_state.get("install_in_sync") is False
+    )
+    if should_refresh_install:
+        step = refresh_step()
+        if step:
+            add_step(step)
+        else:
+            needs_human.append(
+                {
+                    "code": "INSTALL_REFRESH_UNKNOWN",
+                    "message": "A package refresh may be needed, but install type is unknown.",
+                    "suggested_action": (
+                        "Inspect how life-index is installed, then run the matching refresh "
+                        "command before continuing."
+                    ),
+                }
+            )
 
     migration_needed = data_state.get("migration_needed")
     migration_error = data_state.get("migration_check_error")

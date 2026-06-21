@@ -12,6 +12,7 @@ from pathlib import Path
 def _run_bootstrap(tmp_path: Path, extra_args: list[str] | None = None) -> dict:
     env = os.environ.copy()
     env["LIFE_INDEX_DATA_DIR"] = str(tmp_path / "Life-Index")
+    env["LIFE_INDEX_NO_NET"] = "1"
     cmd = [sys.executable, "-m", "tools", "bootstrap", "--json"] + (extra_args or [])
     result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
     assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
@@ -66,6 +67,11 @@ class TestBootstrapJsonContract:
             "installed_version",
             "manifest_version",
             "install_in_sync",
+            "install_type",
+            "freshness",
+            "latest_release",
+            "update_available",
+            "freshness_error",
             "migration_needed",
             "migration_check_error",
             "checkout_assessment",
