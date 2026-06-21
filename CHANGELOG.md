@@ -6,6 +6,20 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-06-21
+
+### Improved
+
+- **Install / upgrade update awareness**: `bootstrap` now checks the release
+  channel, reports whether a newer version is available, and suggests the
+  matching refresh step for editable and PyPI installs. Offline environments
+  degrade cleanly with `freshness: "unknown"` and can disable the check with
+  `LIFE_INDEX_NO_NET=1`.
+- **Simplified onboarding**: the installation / upgrade guide is now a
+  one-page bootstrap-driven script. `bootstrap --json` emits a structured
+  `execution_policy`, so host agents execute a deterministic plan instead of
+  reconstructing decisions from prose.
+
 ## [1.3.2] - 2026-06-21
 
 ### Fixed
