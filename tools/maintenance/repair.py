@@ -17,6 +17,7 @@ _TIMESTAMPED_JOURNAL_COPY_RE = re.compile(
     r"^(life-index_\d{4}-\d{2}-\d{2}_\d+)_\d{8}_\d{6}_\d{6}(?:_\d+)?\.md$"
 )
 _TIMESTAMPED_COPY_ARCHIVE_ROOT = ".trash/maintenance/timestamped-journal-copies"
+_ENTITY_GRAPH_BACKUP_ARCHIVE_ROOT = ".trash/maintenance/entity-graph-backups"
 
 
 def _data_dir(data_dir: str | Path | None) -> Path:
@@ -90,6 +91,18 @@ def _archive_destination(root: Path, rel_path: str, source_bytes: bytes) -> Path
     return base.with_name(f"{stem}.{digest}{suffix}")
 
 
+def _archive_destination_under(
+    root: Path, archive_root: str, rel_path: str, source_bytes: bytes
+) -> Path:
+    base = root / archive_root / rel_path
+    if not base.exists():
+        return base
+    stem = base.stem
+    suffix = base.suffix
+    digest = hashlib.sha256(source_bytes).hexdigest()[:12]
+    return base.with_name(f"{stem}.{digest}{suffix}")
+
+
 def _archive_loose_timestamped_copy(root: Path, planned_paths: list[str]) -> tuple[int, str]:
     duplicate_rel = next(
         (path for path in planned_paths if _canonical_rel_for_timestamped_copy(path) is not None),
@@ -122,6 +135,39 @@ def _archive_loose_timestamped_copy(root: Path, planned_paths: list[str]) -> tup
     source.replace(destination)
     if destination.read_bytes() != source_bytes:
         return 2, "Archived timestamped copy failed byte-for-byte verification."
+    return 0, ""
+
+
+def _archive_entity_graph_backup(root: Path, planned_paths: list[str]) -> tuple[int, str]:
+    backup_rel = next(
+        (path for path in planned_paths if Path(path).name.startswith("entity_graph.yaml.backup")),
+        None,
+    )
+    if backup_rel is None:
+        return 2, "No entity_graph.yaml backup path was present in the repair plan."
+
+    source = root / backup_rel
+    canonical = root / "entity_graph.yaml"
+    if not _is_relative_inside(root, source) or not _is_relative_inside(root, canonical):
+        return 2, "Repair path escapes LIFE_INDEX_DATA_DIR."
+    if not source.is_file():
+        return 2, "Entity graph backup copy is no longer present."
+    if not canonical.is_file():
+        return 2, "Canonical entity_graph.yaml is missing."
+    if source.name == "entity_graph.yaml":
+        return 2, "Refusing to archive the canonical entity_graph.yaml."
+
+    source_bytes = source.read_bytes()
+    canonical.read_bytes()
+    destination = _archive_destination_under(
+        root, _ENTITY_GRAPH_BACKUP_ARCHIVE_ROOT, backup_rel, source_bytes
+    )
+    if not _is_relative_inside(root, destination):
+        return 2, "Archive destination escapes LIFE_INDEX_DATA_DIR."
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    source.replace(destination)
+    if destination.read_bytes() != source_bytes:
+        return 2, "Archived entity graph backup failed byte-for-byte verification."
     return 0, ""
 
 
@@ -212,6 +258,20 @@ def run_repair(
 
         def allowed(path: str) -> bool:
             return path == duplicate_rel or path.startswith(f"{_TIMESTAMPED_COPY_ARCHIVE_ROOT}/")
+
+    elif issue_domain == "revisions" and issue_type == "entity_graph_backup_copy":
+        backup_rel = next(
+            (
+                path
+                for path in planned_paths
+                if Path(path).name.startswith("entity_graph.yaml.backup")
+            ),
+            "",
+        )
+        code, output = _archive_entity_graph_backup(root, planned_paths)
+
+        def allowed(path: str) -> bool:
+            return path == backup_rel or path.startswith(f"{_ENTITY_GRAPH_BACKUP_ARCHIVE_ROOT}/")
 
     else:
         payload["success"] = False
