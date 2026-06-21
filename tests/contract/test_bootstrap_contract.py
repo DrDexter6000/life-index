@@ -50,6 +50,7 @@ class TestBootstrapJsonContract:
             "detected_state",
             "route",
             "route_reason",
+            "execution_policy",
             "needs_human",
             "safe_next_steps",
         }
@@ -90,6 +91,17 @@ class TestBootstrapJsonContract:
         assert payload["route"] == "upgrade"
         assert payload["detected_state"]["journal_count"] == 1
         assert payload["safe_next_steps"][-1] == "life-index health"
+
+    def test_execution_policy_makes_bootstrap_self_sufficient(self, tmp_path):
+        payload = _run_bootstrap(tmp_path)
+
+        assert payload["execution_policy"] == {
+            "needs_human": "relay_items_and_stop",
+            "safe_next_steps": "run_in_order_without_additions",
+            "uncertain_or_failed_step": "stop_and_report_exact_output",
+            "data_safety": "never_delete_or_overwrite_user_data",
+            "default_recovery": "refresh_or_reinstall_code_only_then_rerun_bootstrap",
+        }
 
     def test_discovered_checkout_is_ambiguous(self, tmp_path):
         checkout = tmp_path / "Downloads" / "life-index"

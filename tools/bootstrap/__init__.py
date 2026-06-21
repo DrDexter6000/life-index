@@ -38,6 +38,13 @@ InstallType = Literal["editable", "package", "unknown"]
 
 _DEV_PATH_TOKENS_LOWER = frozenset({"projects", "workspace", "repos"})
 _DEV_TOOLS = frozenset({"pytest", "black", "mypy", "flake8", "isort", "playwright"})
+EXECUTION_POLICY = {
+    "needs_human": "relay_items_and_stop",
+    "safe_next_steps": "run_in_order_without_additions",
+    "uncertain_or_failed_step": "stop_and_report_exact_output",
+    "data_safety": "never_delete_or_overwrite_user_data",
+    "default_recovery": "refresh_or_reinstall_code_only_then_rerun_bootstrap",
+}
 
 
 def _resolve_data_dir(data_dir: str | None = None) -> Path:
@@ -378,6 +385,7 @@ def decide_route(
     return {
         "route": route,
         "route_reason": route_reason,
+        "execution_policy": dict(EXECUTION_POLICY),
         "needs_human": needs_human,
         "safe_next_steps": safe_next_steps,
     }

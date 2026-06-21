@@ -78,8 +78,8 @@ triggers:
 ```
 
 **安装 / 首次验证 / 故障恢复指针**：
-- 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`
-- `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先读 `AGENT_ONBOARDING.md`
+- 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
+- `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树
 - 写入成功后的状态字段解释（`needs_confirmation` / `index_status` / `side_effects_status` / 附件处理计数）→ 读 `docs/API.md` 中 `write_journal` 返回语义
 
 <!-- GROUNDED_QUERY_SKILL_START -->
@@ -369,8 +369,8 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - 必须区分：未保存 / 已保存但待确认 / 已保存但存在降级 side effects
 
 **安装后可选个性化与写入状态指针**：
-- 安装完成后的专用触发词 / 默认地址偏好配置 → 读 `AGENT_ONBOARDING.md` 的 optional customization step
-- 场景：想调整 trigger、设置默认地址、区分“已保存”与“已验证生效” → 先读 `AGENT_ONBOARDING.md`
+- 安装完成后的专用触发词 / 默认地址偏好配置 → 仅在用户明确要求时处理；安装本身只按 `bootstrap --json` 输出执行
+- 场景：想调整 trigger、设置默认地址、区分“已保存”与“已验证生效” → 先读相关 API / config 契约，别把它并入 onboarding 成败
 - 场景：需要解释 `write_journal` 的 `needs_confirmation` / `index_status` / `side_effects_status` / 附件处理结果 → 先读 `docs/API.md` 的 `write_journal` 返回语义
 - `SKILL.md` 保留 workflow 与职责边界；安装细节和返回字段契约不在此重复展开
 
@@ -545,7 +545,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 文档 | 用途 |
 |------|------|
 | [bootstrap-manifest.json](bootstrap-manifest.json) | authority / freshness 锚点；先刷新它，再按 `required_authority_docs` 获取当前权威文档 |
-| [AGENT_ONBOARDING.md](AGENT_ONBOARDING.md) | 基础安装、初始化、repair / route 判断入口 |
+| [AGENT_ONBOARDING.md](AGENT_ONBOARDING.md) | 一页 bootstrap 执行入口；按 `execution_policy` / `needs_human` / `safe_next_steps` 操作 |
 | [API.md](docs/API.md) | 工具 API 接口、参数详情、错误码与恢复策略 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计、核心原则、关键决策；**§1.5 定义人-Agent-CLI 三层信息流交互范式** |
 | [WEATHER_FLOW.md](references/WEATHER_FLOW.md) | 天气处理详细流程与故障 Fallback |

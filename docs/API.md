@@ -3209,6 +3209,13 @@ python -m tools bootstrap --json
   },
   "route": "upgrade",
   "route_reason": "Found 12 journal(s) in C:/Users/example/Documents/Life-Index",
+  "execution_policy": {
+    "needs_human": "relay_items_and_stop",
+    "safe_next_steps": "run_in_order_without_additions",
+    "uncertain_or_failed_step": "stop_and_report_exact_output",
+    "data_safety": "never_delete_or_overwrite_user_data",
+    "default_recovery": "refresh_or_reinstall_code_only_then_rerun_bootstrap"
+  },
   "needs_human": [],
   "safe_next_steps": [
     "life-index migrate --dry-run",
@@ -3245,6 +3252,7 @@ read-only.
 | `AMBIGUOUS_CHECKOUT` | checkout 结构完整但缺少 host/user 正向采纳授权 |
 | `DEV_DIR_FOUND` | checkout 有 development-directory 强信号 |
 | `INVALID_CHECKOUT` | checkout 缺少必要文件 |
+| `INSTALL_REFRESH_UNKNOWN` | 需要刷新安装但 bootstrap 无法识别安装类型；Agent 应停止并转达 |
 | `MIGRATION_CHECK_FAILED` | in-process migration scan 失败；不得当作无需迁移 |
 
 ---
@@ -5148,10 +5156,10 @@ life-index entity --candidate-edges --output=json
 
 详见 [config.example.yaml](../config.example.yaml)
 
-### 当前与 onboarding customization 相关的配置说明
+### 当前与安装后个性化相关的配置说明
 
 - 用户可在 `config.yaml` 中记录 `defaults.location`
-- onboarding agent 可在安装完成后的 optional customization step 中写入该偏好
+- 安装完成后，agent 仅可在用户明确要求时写入该偏好
 - 但是否被当前运行时写入链路自动消费，应以实际验证结果为准；Agent 不得在未验证时声称其已生效
 
 ---
