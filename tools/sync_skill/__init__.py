@@ -12,10 +12,30 @@ import yaml
 
 SYNC_SKILL_SCHEMA_VERSION = "m35.sync_skill.v0"
 HOST_SKILL_DIR_ENV = "LIFE_INDEX_HOST_SKILL_DIR"
+HOST_HOME_ENVS = ("CODEX_HOME", "AGENTS_HOME", "HERMES_HOME", "CLAUDE_HOME")
+DEFAULT_HOST_HOME_DIRS = (".codex", ".agents", ".hermes", ".claude")
 
 
 def _diagnostic(code: str, message: str) -> dict[str, str]:
     return {"code": code, "message": message}
+
+
+def _skill_dir_candidates_from_home(home: Path) -> list[Path]:
+    skills_dir = home.expanduser() / "skills"
+    candidates = [skills_dir / "life-index"]
+    candidates.extend(sorted(skills_dir.glob("*/life-index")))
+    return candidates
+
+
+def _dedupe_paths(paths: list[Path]) -> list[Path]:
+    seen: set[str] = set()
+    deduped: list[Path] = []
+    for path in paths:
+        key = str(path.expanduser())
+        if key not in seen:
+            seen.add(key)
+            deduped.append(path)
+    return deduped
 
 
 def find_host_skill_dir(
@@ -38,32 +58,49 @@ def find_host_skill_dir(
 
     env_dir = os.environ.get(HOST_SKILL_DIR_ENV)
     if env_dir:
-        candidates.append(Path(env_dir).expanduser())
-
-    codex_home = os.environ.get("CODEX_HOME")
-    if codex_home:
-        candidates.append(Path(codex_home).expanduser() / "skills" / "life-index")
-
-    agents_home = os.environ.get("AGENTS_HOME")
-    if agents_home:
-        candidates.append(Path(agents_home).expanduser() / "skills" / "life-index")
-
-    home = Path.home()
-    candidates.extend(
-        [
-            home / ".codex" / "skills" / "life-index",
-            home / ".agents" / "skills" / "life-index",
-        ]
-    )
-
-    for candidate in candidates:
+        candidate = Path(env_dir).expanduser()
         if candidate.is_dir():
             return candidate, diagnostics
+        return None, [
+            _diagnostic(
+                "HOST_SKILL_DIR_NOT_FOUND",
+                f"Host skill directory does not exist: {candidate}",
+            )
+        ]
 
+    for env_name in HOST_HOME_ENVS:
+        host_home = os.environ.get(env_name)
+        if host_home:
+            candidates.extend(_skill_dir_candidates_from_home(Path(host_home)))
+
+    home = Path.home()
+    for dirname in DEFAULT_HOST_HOME_DIRS:
+        candidates.extend(_skill_dir_candidates_from_home(home / dirname))
+
+    candidates = _dedupe_paths(candidates)
+    matches = [candidate for candidate in candidates if candidate.is_dir()]
+    if len(matches) == 1:
+        return matches[0], diagnostics
+    if len(matches) > 1:
+        formatted = "; ".join(str(path) for path in matches)
+        return None, [
+            _diagnostic(
+                "HOST_SKILL_DIR_AMBIGUOUS",
+                (
+                    "Multiple existing host skill directories were found; "
+                    f"pass --host-skill-dir explicitly. Matches: {formatted}"
+                ),
+            )
+        ]
+
+    checked = "; ".join(str(path) for path in candidates)
     return None, [
         _diagnostic(
             "HOST_SKILL_DIR_NOT_FOUND",
-            "No existing host skill directory was found; skill artifact sync was skipped.",
+            (
+                "No existing host skill directory was found; skill artifact sync was "
+                f"not delivered. Checked: {checked}"
+            ),
         )
     ]
 
@@ -168,6 +205,7 @@ def sync_skill_artifacts(source_root: Path, target_dir: Path | None) -> dict[str
             "command": "sync-skill",
             "data": {
                 "status": "skipped",
+                "delivered": False,
                 "target_dir": None,
                 "copied": [],
                 "diagnostics": diagnostics,
@@ -188,6 +226,7 @@ def sync_skill_artifacts(source_root: Path, target_dir: Path | None) -> dict[str
             "command": "sync-skill",
             "data": {
                 "status": "skipped",
+                "delivered": False,
                 "target_dir": None,
                 "copied": [],
                 "diagnostics": diagnostics,
@@ -202,6 +241,7 @@ def sync_skill_artifacts(source_root: Path, target_dir: Path | None) -> dict[str
             "command": "sync-skill",
             "data": {
                 "status": "failed",
+                "delivered": False,
                 "target_dir": str(target_dir),
                 "copied": [],
                 "diagnostics": [
@@ -222,6 +262,7 @@ def sync_skill_artifacts(source_root: Path, target_dir: Path | None) -> dict[str
         "command": "sync-skill",
         "data": {
             "status": "synced",
+            "delivered": True,
             "target_dir": str(target_dir),
             "copied": copied,
             "diagnostics": diagnostics,

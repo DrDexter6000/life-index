@@ -5155,14 +5155,19 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--source-root <path>]
 
 - Synchronize the current `SKILL.md` and `references/` artifacts into an existing host agent skill directory.
 - Preserve custom trigger phrases already present in the target `SKILL.md`.
-- Report a missing host skill directory as a non-fatal `skipped` diagnostic.
+- Report a missing or ambiguous host skill directory as a loud, non-fatal `skipped` diagnostic with `data.delivered=false`.
 
 ### Behavior
 
 - The command never creates or guesses a new host skill directory.
 - The command does not read or write journal data.
 - `--host-skill-dir` may point to an existing host skill directory.
-- If `--host-skill-dir` is omitted, the command checks the documented host skill directory environment and default locations.
+- If `--host-skill-dir` is omitted, the command checks the documented host skill
+  directory environment and default locations, including flat
+  `skills/life-index` and one-level nested `skills/<category>/life-index`
+  layouts.
+- If multiple existing host skill directories are found, the command does not
+  guess; it reports all matches and requires `--host-skill-dir`.
 - `--source-root` defaults to the current installed checkout root.
 
 ### JSON contract
@@ -5174,6 +5179,7 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--source-root <path>]
   "command": "sync-skill",
   "data": {
     "status": "synced",
+    "delivered": true,
     "target_dir": "<host-skill-dir>",
     "copied": ["SKILL.md", "references/WEATHER_FLOW.md"],
     "diagnostics": []
@@ -5190,17 +5196,22 @@ When no host skill directory is available:
   "command": "sync-skill",
   "data": {
     "status": "skipped",
+    "delivered": false,
     "target_dir": null,
     "copied": [],
     "diagnostics": [
       {
         "code": "HOST_SKILL_DIR_NOT_FOUND",
-        "message": "No existing host skill directory was found; skill artifact sync was skipped."
+        "message": "No existing host skill directory was found; skill artifact sync was not delivered. Checked: <candidate-list>"
       }
     ]
   }
 }
 ```
+
+`success=true` with `data.delivered=false` means the command completed but the
+host agent playbook was not updated. Onboarding and upgrade chains must surface
+that diagnostic instead of treating it as a completed delivery.
 
 ---
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -99,4 +100,99 @@ def test_sync_skill_cli_uses_host_skill_dir_env(tmp_path: Path, monkeypatch) -> 
     assert payload["success"] is True
     assert payload["command"] == "sync-skill"
     assert payload["data"]["status"] == "synced"
+    assert payload["data"]["delivered"] is True
     assert (target / "SKILL.md").exists()
+
+
+def test_find_host_skill_dir_detects_nested_hermes_skill_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import tools.sync_skill as sync_skill
+
+    target = tmp_path / ".hermes" / "skills" / "productivity" / "life-index"
+    target.mkdir(parents=True)
+    monkeypatch.setattr(sync_skill.Path, "home", lambda: tmp_path)
+    for name in (
+        "LIFE_INDEX_HOST_SKILL_DIR",
+        "CODEX_HOME",
+        "AGENTS_HOME",
+        "HERMES_HOME",
+        "CLAUDE_HOME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    found, diagnostics = sync_skill.find_host_skill_dir()
+
+    assert found == target
+    assert diagnostics == []
+
+
+def test_find_host_skill_dir_reports_ambiguous_nested_matches(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import tools.sync_skill as sync_skill
+
+    first = tmp_path / ".hermes" / "skills" / "productivity" / "life-index"
+    second = tmp_path / ".claude" / "skills" / "journaling" / "life-index"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+    monkeypatch.setattr(sync_skill.Path, "home", lambda: tmp_path)
+    for name in (
+        "LIFE_INDEX_HOST_SKILL_DIR",
+        "CODEX_HOME",
+        "AGENTS_HOME",
+        "HERMES_HOME",
+        "CLAUDE_HOME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    found, diagnostics = sync_skill.find_host_skill_dir()
+
+    assert found is None
+    assert diagnostics[0]["code"] == "HOST_SKILL_DIR_AMBIGUOUS"
+    assert str(first) in diagnostics[0]["message"]
+    assert str(second) in diagnostics[0]["message"]
+
+
+def test_sync_skill_cli_loudly_reports_undelivered_when_no_host_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_root = tmp_path / "checkout"
+    source_root.mkdir()
+    _write_source(source_root)
+    env = os.environ.copy()
+    for name in (
+        "LIFE_INDEX_HOST_SKILL_DIR",
+        "CODEX_HOME",
+        "AGENTS_HOME",
+        "HERMES_HOME",
+        "CLAUDE_HOME",
+    ):
+        env.pop(name, None)
+    env["HOME"] = str(tmp_path)
+    env["USERPROFILE"] = str(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.sync_skill",
+            "--source-root",
+            str(source_root),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "skipped"
+    assert payload["data"]["delivered"] is False
+    assert payload["data"]["diagnostics"][0]["code"] == "HOST_SKILL_DIR_NOT_FOUND"

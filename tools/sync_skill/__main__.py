@@ -52,7 +52,8 @@ def main() -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         status = payload["data"]["status"]
-        print(f"sync-skill: {status}")
+        delivered = "true" if payload["data"].get("delivered") else "false"
+        print(f"sync-skill: {status} (delivered={delivered})")
         for item in payload["data"]["copied"]:
             print(f"  {item}")
         for diagnostic in payload["data"]["diagnostics"]:
