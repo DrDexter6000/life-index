@@ -27,6 +27,16 @@ def _forbidden_terms() -> tuple[str, ...]:
 
 
 FORBIDDEN_TERMS = _forbidden_terms()
+RETIRED_FLAG_TERMS = ("--use" + "-llm",)
+RETIRED_FLAG_ALLOWED_CONTEXT = (
+    "retired",
+    "rejected",
+    "rejects",
+    "no longer accepts",
+    "not accepted",
+    "已退役",
+    "拒绝",
+)
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
@@ -67,6 +77,19 @@ def scan_diff_text(diff_text: str) -> list[Violation]:
             added_text = line[1:]
             for term in FORBIDDEN_TERMS:
                 if term in added_text:
+                    violations.append(
+                        Violation(
+                            path=current_path or "<unknown>",
+                            line=new_line,
+                            term=term,
+                            text=added_text,
+                        )
+                    )
+            lower_added_text = added_text.casefold()
+            for term in RETIRED_FLAG_TERMS:
+                if term in added_text and not any(
+                    context in lower_added_text for context in RETIRED_FLAG_ALLOWED_CONTEXT
+                ):
                     violations.append(
                         Violation(
                             path=current_path or "<unknown>",

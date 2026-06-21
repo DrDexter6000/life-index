@@ -15,6 +15,10 @@ def _private_report_dir_name() -> str:
     return "." + "agent" + "-reports"
 
 
+def _retired_llm_flag() -> str:
+    return "--use" + "-llm"
+
+
 def _load_checker():
     spec = importlib.util.spec_from_file_location("check_public_diff_names", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
@@ -54,6 +58,41 @@ def test_scanner_allows_clean_added_lines_and_ignores_headers() -> None:
             "@@ -1,0 +1,2 @@",
             "+state file lives under $PWD/.life-index-smoke/server.json",
             "+public docs stay product-generic",
+        ]
+    )
+
+    assert checker.scan_diff_text(diff) == []
+
+
+@pytest.mark.blocker
+def test_scanner_flags_retired_flag_reintroduced_as_usage() -> None:
+    checker = _load_checker()
+    diff = "\n".join(
+        [
+            "diff --git a/README.en.md b/README.en.md",
+            "+++ b/README.en.md",
+            "@@ -1,0 +1,1 @@",
+            '+life-index smart-search --query "..." ' + _retired_llm_flag(),
+        ]
+    )
+
+    violations = checker.scan_diff_text(diff)
+
+    assert len(violations) == 1
+    assert violations[0].path == "README.en.md"
+    assert violations[0].line == 1
+    assert violations[0].term == _retired_llm_flag()
+
+
+@pytest.mark.blocker
+def test_scanner_allows_retired_flag_rejection_context() -> None:
+    checker = _load_checker()
+    diff = "\n".join(
+        [
+            "diff --git a/docs/API.md b/docs/API.md",
+            "+++ b/docs/API.md",
+            "@@ -1,0 +1,1 @@",
+            "+`" + _retired_llm_flag() + "` is retired; passing it is rejected by the CLI.",
         ]
     )
 
