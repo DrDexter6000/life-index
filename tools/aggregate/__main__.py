@@ -20,7 +20,7 @@ SCHEMA_VERSION = "m16.aggregate.v0"
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="life-index aggregate",
-        description=("Deterministic aggregate/trend " "computation over journal entries."),
+        description=("Deterministic counts, buckets, and claim envelopes over journal entries."),
     )
     parser.add_argument(
         "--range",

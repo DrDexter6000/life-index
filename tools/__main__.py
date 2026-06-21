@@ -29,7 +29,7 @@ Commands:
     migrate   Schema migration tool
     eval      Run search evaluation gate
     entity-graph-eval  Run graph ablation evaluation (gbrain #1)
-    aggregate Deterministic aggregate/trend computation
+    aggregate Deterministic counts, buckets, and claim envelopes
     analyze   Alias for aggregate
     maintenance  Run maintenance cycle (dry-run health checks)
     bootstrap    Detect install/data state and route onboarding (read-only)
@@ -580,8 +580,8 @@ def print_usage() -> None:
     print("  bootstrap  Detect install/data state and route onboarding (read-only)")
     print("  sync-skill  Synchronize SKILL.md and references into host skill directory")
     print("  smart-search  Smart search with LLM orchestration")
-    print("  aggregate  Deterministic aggregate/trend computation")
-    print("  analyze   Alias for deterministic aggregate/trend computation")
+    print("  aggregate  Deterministic counts, buckets, and claim envelopes")
+    print("  analyze   Alias for deterministic aggregate counts")
     print("  health    Check installation health")
     print("            --data-audit  Audit data directory for anomalies")
     print("            --cache-audit  Read-only cache version audit (JSON)")
