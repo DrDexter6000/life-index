@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Deterministic aggregate intent router for smart-search.
 
-Detects aggregate/count/trend intent from natural language queries using
-regex pattern matching (no LLM). When matched, returns the parameters
-needed to call tools.aggregate.core.run_aggregate.
+Detects aggregate/count/bucketed-frequency intent from natural language
+queries using regex pattern matching (no LLM). When matched, returns the
+parameters needed to call tools.aggregate.core.run_aggregate.
 
 The orchestrator calls try_route_aggregate() before entering the
 normal search pipeline.

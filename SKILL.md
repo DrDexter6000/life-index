@@ -409,6 +409,18 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 `life-index recall` 仅为旧集成保留的兼容壳；新宿主 agent 流程直接选择上表中的 `search` / `smart-search`。
 
+**计数 vs 观测序列选择**:
+
+| 需求 | 使用 |
+|:---|:---|
+| 明确计数、分桶、频率、下限/上限、可核 claim envelope | `life-index aggregate --range ... --unit ... --predicate ... --json` |
+| 同一字段随时间变化的 typed observation series | `life-index trajectory --field ... --range YYYY-MM..YYYY-MM` |
+| 需要解释趋势含义、异常点、原因或叙述总结 | 先用 `trajectory` 或 `aggregate` 取确定性数据，再由宿主 agent 解释并引用来源 |
+
+`aggregate` owns counts, buckets, and claim envelopes. `trajectory` owns typed
+observation series. Do not use `trajectory` as a hidden counter, and do not use
+`aggregate` to extract field-value time series.
+
 **Agent consumption rule（smart-search v1）**:
 1. 默认先调用 `life-index smart-search --query "..." --include-evidence`。
 2. 使用返回的 `agent_instructions` 与 `answer_scaffold` 组织最终答复。

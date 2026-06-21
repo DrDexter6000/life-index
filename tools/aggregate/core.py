@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Life Index aggregate core — deterministic count/trend computation.
+"""Life Index aggregate core — deterministic counts, buckets, and claims.
 
 Read-only, no LLM dependency. Reads journals from get_journals_dir(),
 parses frontmatter, applies predicates, returns structured JSON.
