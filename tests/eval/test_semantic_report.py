@@ -40,9 +40,9 @@ def _make_queries_for_delta() -> list[dict]:
     return [
         {
             "id": "DQ01",
-            "query": "想念小英雄",
+            "query": "回忆小风筝",
             "category": "entity_expansion",
-            "expected": {"min_results": 1, "must_contain_title": ["想念小英雄"]},
+            "expected": {"min_results": 1, "must_contain_title": ["回忆小风筝"]},
         },
         {
             "id": "DQ02",
@@ -237,7 +237,7 @@ class TestOfficialFailuresUnaffected:
                 "id": "CF01",
                 "query": "nonexistent query that returns zero",
                 "category": "noise_rejection",
-                "expected": {"min_results": 1, "must_contain_title": ["想念小英雄"]},
+                "expected": {"min_results": 1, "must_contain_title": ["回忆小风筝"]},
             },
         ]
         gold_path = _make_temp_gold_set(tmp_path, queries)

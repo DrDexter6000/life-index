@@ -6,7 +6,6 @@ initialized, with suggested_action when missing.
 """
 
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -30,9 +29,7 @@ def _mock_fresh_index_state():
 class TestEntityGraphStatus:
     """Verify entity_graph_status appears in search response."""
 
-    def test_missing_graph_returns_not_initialized(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_missing_graph_returns_not_initialized(self, isolated_data_dir: Path) -> None:
         """When entity_graph.yaml doesn't exist, status = not_initialized."""
         from tools.lib.entity_graph import check_graph_status
 
@@ -65,7 +62,7 @@ class TestEntityGraphStatus:
             "entities:\n"
             "  - id: e1\n"
             "    type: person\n"
-            "    primary_name: 乐乐\n"
+            "    primary_name: 晴岚\n"
             "    aliases: []\n"
             "    attributes: {}\n"
             "    relationships: []\n",

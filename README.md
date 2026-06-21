@@ -26,7 +26,7 @@
 <!-- 承诺 Badges -->
 
 <p align="center">
-  <a href="./tests/fixtures/eval/gold/cycle2-multi-signal/README.md"><img src="https://img.shields.io/badge/Recall%405-0.7857_keyword_floor-4ecdc4" alt="Recall@5 keyword-only honest floor 0.7857"></a>
+  <a href="./docs/API.md"><img src="https://img.shields.io/badge/Recall%405-0.7857_keyword_floor-4ecdc4" alt="Recall@5 keyword-only honest floor 0.7857"></a>
   <a href="./CHARTER.md"><img src="https://img.shields.io/badge/CHARTER_§1.11-Recall--First_Guarantee-78206E" alt="CHARTER §1.11 Recall-First Guarantee"></a>
 </p>
 

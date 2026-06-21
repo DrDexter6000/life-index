@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from tools.search_journals.ambiguity_detector import detect_ambiguity
 from tools.search_journals.hints_builder import build_hints
@@ -60,25 +59,35 @@ class TestAmbiguityAggregation:
     def test_aggregation_severity_is_high(self):
         plan = _plan(intent_type=IntentType.COUNT)
         report = detect_ambiguity(plan, "多少次")
-        agg = [i for i in report.items if i.type == AmbiguityType.AGGREGATION_REQUIRES_AGENT_JUDGEMENT]
+        agg = [
+            i for i in report.items if i.type == AmbiguityType.AGGREGATION_REQUIRES_AGENT_JUDGEMENT
+        ]
         assert agg[0].severity == "high"
 
 
 class TestAmbiguityTimeRange:
     def test_relative_time_triggers_time_interpretation(self):
-        plan = _plan(date_range=DateRange(since="2026-02-16", until="2026-04-18", source="relative_time_parse"))
+        plan = _plan(
+            date_range=DateRange(
+                since="2026-02-16", until="2026-04-18", source="relative_time_parse"
+            )
+        )
         report = detect_ambiguity(plan, "过去60天我有多少次晚于10点睡觉？")
         types = [item.type for item in report.items]
         assert AmbiguityType.TIME_RANGE_INTERPRETATION in types
 
     def test_no_date_range_no_time_ambiguity(self):
         plan = _plan(date_range=None)
-        report = detect_ambiguity(plan, "乐乐")
+        report = detect_ambiguity(plan, "晴岚")
         types = [item.type for item in report.items]
         assert AmbiguityType.TIME_RANGE_INTERPRETATION not in types
 
     def test_time_ambiguity_has_candidates(self):
-        plan = _plan(date_range=DateRange(since="2026-03-01", until="2026-03-31", source="relative_time_parse"))
+        plan = _plan(
+            date_range=DateRange(
+                since="2026-03-01", until="2026-03-31", source="relative_time_parse"
+            )
+        )
         report = detect_ambiguity(plan, "上个月...")
         time_items = [i for i in report.items if i.type == AmbiguityType.TIME_RANGE_INTERPRETATION]
         assert len(time_items) == 1
@@ -98,8 +107,8 @@ class TestAmbiguityEntityMultipleCandidates:
 
     def test_single_entity_no_ambiguity(self):
         plan = _plan()
-        entity_hints = [{"matched_term": "乐乐", "entity_id": "e1"}]
-        report = detect_ambiguity(plan, "乐乐", entity_hints=entity_hints)
+        entity_hints = [{"matched_term": "晴岚", "entity_id": "e1"}]
+        report = detect_ambiguity(plan, "晴岚", entity_hints=entity_hints)
         types = [item.type for item in report.items]
         assert AmbiguityType.ENTITY_RESOLUTION_MULTIPLE_CANDIDATES not in types
 
@@ -120,8 +129,8 @@ class TestAmbiguityQueryTooBroad:
 
 class TestAmbiguityNoAmbiguity:
     def test_simple_recall_no_ambiguity(self):
-        plan = _plan(intent_type=IntentType.RECALL, keywords=["乐乐"])
-        report = detect_ambiguity(plan, "乐乐")
+        plan = _plan(intent_type=IntentType.RECALL, keywords=["晴岚"])
+        report = detect_ambiguity(plan, "晴岚")
         assert not report.has_ambiguity
         assert report.items == []
 
@@ -130,7 +139,9 @@ class TestAmbiguityMultipleSignals:
     def test_count_plus_time(self):
         plan = _plan(
             intent_type=IntentType.COUNT,
-            date_range=DateRange(since="2026-02-16", until="2026-04-18", source="relative_time_parse"),
+            date_range=DateRange(
+                since="2026-02-16", until="2026-04-18", source="relative_time_parse"
+            ),
             keywords=["睡觉"],
         )
         report = detect_ambiguity(plan, "过去60天我有多少次晚于10点睡觉？")
@@ -160,7 +171,7 @@ class TestHintsAggregation:
 
 class TestHintsNoAmbiguity:
     def test_recall_no_ambiguity_minimal_hints(self):
-        plan = _plan(intent_type=IntentType.RECALL, keywords=["乐乐"])
+        plan = _plan(intent_type=IntentType.RECALL, keywords=["晴岚"])
         ambiguity = AmbiguityReport(has_ambiguity=False, items=[])
         hints = build_hints(plan, ambiguity)
         assert len(hints) <= 1
@@ -169,7 +180,9 @@ class TestHintsNoAmbiguity:
 class TestHintsTimeRange:
     def test_parsed_time_range_hint(self):
         plan = _plan(
-            date_range=DateRange(since="2026-02-16", until="2026-04-18", source="relative_time_parse"),
+            date_range=DateRange(
+                since="2026-02-16", until="2026-04-18", source="relative_time_parse"
+            ),
         )
         ambiguity = AmbiguityReport(has_ambiguity=False, items=[])
         hints = build_hints(plan, ambiguity)
@@ -182,7 +195,9 @@ class TestHintsConstraints:
         # Construct a plan that triggers many hints
         plan = _plan(
             intent_type=IntentType.COUNT,
-            date_range=DateRange(since="2026-01-01", until="2026-12-31", source="relative_time_parse"),
+            date_range=DateRange(
+                since="2026-01-01", until="2026-12-31", source="relative_time_parse"
+            ),
             topic_hints=["work", "health"],
             entity_hints_used=[{"id": "e1"}],
         )
@@ -193,7 +208,9 @@ class TestHintsConstraints:
     def test_message_length_under_120(self):
         plan = _plan(
             intent_type=IntentType.COUNT,
-            date_range=DateRange(since="2026-01-01", until="2026-12-31", source="relative_time_parse"),
+            date_range=DateRange(
+                since="2026-01-01", until="2026-12-31", source="relative_time_parse"
+            ),
         )
         ambiguity = AmbiguityReport(has_ambiguity=True, items=[])
         hints = build_hints(plan, ambiguity)

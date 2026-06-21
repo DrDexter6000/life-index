@@ -40,7 +40,14 @@ def _load_allowlist(path: Path) -> tuple[str, ...]:
 
 def _is_allowed(path: str, allowlist: tuple[str, ...]) -> bool:
     normalized = _normalize_path(path)
-    return any(fnmatch.fnmatchcase(normalized, pattern) for pattern in allowlist)
+    for pattern in allowlist:
+        if pattern.startswith("!") and fnmatch.fnmatchcase(normalized, pattern[1:]):
+            return False
+    return any(
+        fnmatch.fnmatchcase(normalized, pattern)
+        for pattern in allowlist
+        if not pattern.startswith("!")
+    )
 
 
 def find_disallowed_paths(paths: list[str], allowlist: tuple[str, ...]) -> list[str]:

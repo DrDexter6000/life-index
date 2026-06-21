@@ -11,7 +11,6 @@ Validates graph cold-start from journal frontmatter:
 import json
 from pathlib import Path
 
-
 # ── Fixtures ────────────────────────────────────────────────────────────
 
 
@@ -71,9 +70,9 @@ class TestSeedCandidateCollection:
         """people field → type=person, counted per occurrence."""
         from tools.entity.seed import collect_candidates
 
-        # Create 2 journals mentioning "乐乐"
-        _create_journal(isolated_data_dir, "日记1", people=["乐乐"])
-        _create_journal(isolated_data_dir, "日记2", people=["乐乐", "妈妈"])
+        # Create 2 journals mentioning "晴岚"
+        _create_journal(isolated_data_dir, "日记1", people=["晴岚"])
+        _create_journal(isolated_data_dir, "日记2", people=["晴岚", "妈妈"])
         _create_journal(isolated_data_dir, "日记3", people=["妈妈"])
 
         candidates = collect_candidates(
@@ -82,10 +81,10 @@ class TestSeedCandidateCollection:
         )
 
         names = {c.primary_name for c in candidates}
-        assert "乐乐" in names
+        assert "晴岚" in names
         assert "妈妈" in names
 
-        tuantuan = next(c for c in candidates if c.primary_name == "乐乐")
+        tuantuan = next(c for c in candidates if c.primary_name == "晴岚")
         assert tuantuan.type == "person"
         assert tuantuan.frequency >= 2
 
@@ -142,8 +141,8 @@ class TestSeedCandidateCollection:
         """Entities appearing only once should NOT enter the graph."""
         from tools.entity.seed import collect_candidates
 
-        # "乐乐" appears once, "妈妈" appears twice
-        _create_journal(isolated_data_dir, "日记1", people=["乐乐"])
+        # "晴岚" appears once, "妈妈" appears twice
+        _create_journal(isolated_data_dir, "日记1", people=["晴岚"])
         _create_journal(isolated_data_dir, "日记2", people=["妈妈"])
         _create_journal(isolated_data_dir, "日记3", people=["妈妈"])
 
@@ -153,7 +152,7 @@ class TestSeedCandidateCollection:
         )
         names = {c.primary_name for c in candidates}
 
-        assert "乐乐" not in names, "Singleton should be filtered"
+        assert "晴岚" not in names, "Singleton should be filtered"
         assert "妈妈" in names
 
 
@@ -169,8 +168,8 @@ class TestSeedIdempotent:
 
         graph_path = isolated_data_dir / "entity_graph.yaml"
 
-        _create_journal(isolated_data_dir, "日记1", people=["乐乐", "妈妈"])
-        _create_journal(isolated_data_dir, "日记2", people=["乐乐", "妈妈"])
+        _create_journal(isolated_data_dir, "日记1", people=["晴岚", "妈妈"])
+        _create_journal(isolated_data_dir, "日记2", people=["晴岚", "妈妈"])
 
         result1 = seed_entity_graph(graph_path, isolated_data_dir / "Journals")
         assert len(result1["added"]) > 0
@@ -181,7 +180,7 @@ class TestSeedIdempotent:
 
     def test_preserves_existing_entity_aliases(self, isolated_data_dir: Path) -> None:
         """
-        If graph already has {primary_name: "乐乐", aliases: ["小英雄"]},
+        If graph already has {primary_name: "晴岚", aliases: ["小队长"]},
         seed must NOT modify aliases.
         """
         from tools.entity.seed import seed_entity_graph
@@ -189,42 +188,42 @@ class TestSeedIdempotent:
 
         graph_path = isolated_data_dir / "entity_graph.yaml"
 
-        # Pre-create graph with "乐乐" having alias "小英雄"
+        # Pre-create graph with "晴岚" having alias "小队长"
         from tools.lib.entity_graph import save_entity_graph
 
         initial_entities = [
             {
                 "id": "entity_tuantuan",
                 "type": "person",
-                "primary_name": "乐乐",
-                "aliases": ["小英雄"],
+                "primary_name": "晴岚",
+                "aliases": ["小队长"],
                 "attributes": {},
                 "relationships": [],
             }
         ]
         save_entity_graph(initial_entities, graph_path)
 
-        _create_journal(isolated_data_dir, "日记1", people=["乐乐", "妈妈"])
-        _create_journal(isolated_data_dir, "日记2", people=["乐乐", "妈妈"])
+        _create_journal(isolated_data_dir, "日记1", people=["晴岚", "妈妈"])
+        _create_journal(isolated_data_dir, "日记2", people=["晴岚", "妈妈"])
 
         result = seed_entity_graph(graph_path, isolated_data_dir / "Journals")
 
-        # "乐乐" should be in skipped_existing, not in added
+        # "晴岚" should be in skipped_existing, not in added
         added_names = {e["primary_name"] for e in result["added"]}
-        assert "乐乐" not in added_names
+        assert "晴岚" not in added_names
 
         # Verify aliases preserved
         entities = load_entity_graph(graph_path)
-        tuantuan = next(e for e in entities if e["primary_name"] == "乐乐")
-        assert tuantuan["aliases"] == ["小英雄"], "Existing aliases must be preserved"
+        tuantuan = next(e for e in entities if e["primary_name"] == "晴岚")
+        assert tuantuan["aliases"] == ["小队长"], "Existing aliases must be preserved"
 
     def test_output_structure(self, isolated_data_dir: Path) -> None:
         """Output must have added/skipped_existing/skipped_low_frequency lists."""
         from tools.entity.seed import seed_entity_graph
 
         graph_path = isolated_data_dir / "entity_graph.yaml"
-        _create_journal(isolated_data_dir, "日记1", people=["乐乐"])
-        _create_journal(isolated_data_dir, "日记2", people=["乐乐"])
+        _create_journal(isolated_data_dir, "日记1", people=["晴岚"])
+        _create_journal(isolated_data_dir, "日记2", people=["晴岚"])
 
         result = seed_entity_graph(graph_path, isolated_data_dir / "Journals")
 

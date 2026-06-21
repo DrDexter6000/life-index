@@ -75,5 +75,5 @@ class TestBuildSearchPlanAnchor:
         assert plan.date_range.since == expected_start.isoformat()
 
     def test_no_time_expression_no_date_range(self) -> None:
-        plan = build_search_plan("乐乐", reference_date=date(2026, 3, 15))
+        plan = build_search_plan("晴岚", reference_date=date(2026, 3, 15))
         assert plan.date_range is None

@@ -273,7 +273,7 @@ class TestQueryContext:
     def test_round_trip(self) -> None:
         qc = QueryContext(
             query="what did I write about family",
-            expanded_query="what did I write about family 团团",
+            expanded_query="what did I write about family 小云",
             semantic_policy="hybrid",
             warnings=["index_stale"],
             performance={"total_time_ms": 120.5},
@@ -281,7 +281,7 @@ class TestQueryContext:
         d = qc.to_dict()
         qc2 = QueryContext.from_dict(d)
         assert qc2 == qc
-        assert qc2.expanded_query == "what did I write about family 团团"
+        assert qc2.expanded_query == "what did I write about family 小云"
 
     def test_extra_survives(self) -> None:
         qc = QueryContext(
@@ -404,7 +404,7 @@ def _synthetic_search_result() -> dict:
         "success": True,
         "query_params": {
             "query": "family day out",
-            "expanded_query": "family day out 团团",
+            "expanded_query": "family day out 小云",
             "level": 3,
         },
         "merged_results": [
@@ -412,7 +412,7 @@ def _synthetic_search_result() -> dict:
                 "path": "Journals/2026/03/life-index_2026-03-07_001.md",
                 "title": "Family Day",
                 "date": "2026-03-07",
-                "snippet": "We went to the park with 团团",
+                "snippet": "We went to the park with 小云",
                 "source": "fts",
                 "relevance": 90,
                 "fts_score": 90.0,
@@ -425,7 +425,7 @@ def _synthetic_search_result() -> dict:
                     "topic": "family",
                     "tags": ["weekend"],
                     "mood": ["happy"],
-                    "people": ["团团"],
+                    "people": ["小云"],
                     "location": "Beijing",
                     "weather": "sunny",
                     "abstract": "A beautiful family day at the park.",
@@ -476,7 +476,7 @@ def _synthetic_search_result() -> dict:
         "no_confident_match": False,
         "semantic_effective_policy": "hybrid",
         "entity_hints": [
-            {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
         ],
         "search_plan": {"intent_type": "recall", "query_mode": "natural_language"},
         "warnings": [],
@@ -497,7 +497,7 @@ class TestBuildEvidencePack:
         assert pack.items[0].scores.source == "fts"
         assert pack.items[0].document.topic == ["family"]
         assert pack.items[0].document.metadata["weather"] == "sunny"
-        assert pack.items[0].snippet == "We went to the park with 团团"
+        assert pack.items[0].snippet == "We went to the park with 小云"
 
     def test_separates_semantic_candidates(self) -> None:
         result = _synthetic_search_result()
@@ -524,10 +524,10 @@ class TestBuildEvidencePack:
         pack = build_evidence_pack(result)
 
         assert pack.query_context.query == "family day out"
-        assert pack.query_context.expanded_query == "family day out 团团"
+        assert pack.query_context.expanded_query == "family day out 小云"
         assert pack.query_context.semantic_policy == "hybrid"
         assert pack.query_context.entity_hints == [
-            {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
         ]
         assert pack.query_context.performance == {"total_time_ms": 110.5}
 
@@ -1415,7 +1415,7 @@ class TestEntityMatch:
         em = EntityMatch(
             entity_id="tuan_tuan",
             entity_type="person",
-            matched_terms=["团团"],
+            matched_terms=["小云"],
             match_sources=["snippet"],
         )
         d = em.to_dict()
@@ -1423,7 +1423,7 @@ class TestEntityMatch:
         assert em2 == em
         assert em2.entity_id == "tuan_tuan"
         assert em2.entity_type == "person"
-        assert em2.matched_terms == ["团团"]
+        assert em2.matched_terms == ["小云"]
         assert em2.match_sources == ["snippet"]
 
     def test_round_trip_with_query_matched_term(self) -> None:
@@ -1476,11 +1476,11 @@ class TestEntityMatch:
         em = EntityMatch(
             entity_id="tuan_tuan",
             entity_type="person",
-            matched_terms=["团团", "团团", "小团团"],
+            matched_terms=["小云", "小云", "小小云"],
             match_sources=["snippet", "title", "snippet"],
         )
         d = em.to_dict()
-        assert d["matched_terms"] == ["团团", "小团团"]
+        assert d["matched_terms"] == ["小云", "小小云"]
         assert d["match_sources"] == ["snippet", "title"]
 
 
@@ -1509,7 +1509,7 @@ class TestEvidenceItemEntityMatches:
             EntityMatch(
                 entity_id="tuan_tuan",
                 entity_type="person",
-                matched_terms=["团团"],
+                matched_terms=["小云"],
                 match_sources=["snippet"],
             ),
         ]
@@ -1536,9 +1536,9 @@ class TestEvidenceItemEntityMatches:
             EntityMatch(
                 entity_id="tuan_tuan",
                 entity_type="person",
-                matched_terms=["团团"],
+                matched_terms=["小云"],
                 match_sources=["snippet"],
-                query_matched_term="团团",
+                query_matched_term="小云",
             ),
             EntityMatch(
                 entity_id="beijing",
@@ -1584,7 +1584,7 @@ class TestEvidenceItemEntityMatches:
             EntityMatch(
                 entity_id="tuan_tuan",
                 entity_type="person",
-                matched_terms=["团团"],
+                matched_terms=["小云"],
                 match_sources=["snippet"],
             ),
         ]
@@ -1596,7 +1596,7 @@ class TestEvidenceItemEntityMatches:
                     date="2026-03-07",
                 ),
                 scores=ScoreBreakdown(source="fts", rank=1, relevance=90.0, similarity=0.0),
-                snippet="团团 is here",
+                snippet="小云 is here",
                 entity_matches=matches,
             ),
         ]
@@ -1626,18 +1626,18 @@ class TestBuildEntityMatches:
         """Entity hint matched_term appears in item snippet → entity_match populated."""
         result = _synthetic_search_result()
         pack = build_evidence_pack(result)
-        # entity_hints has matched_term="团团", snippet has "团团"
+        # entity_hints has matched_term="小云", snippet has "小云"
         assert len(pack.items[0].entity_matches) == 1
         em = pack.items[0].entity_matches[0]
         assert em.entity_id == "tuan_tuan"
         assert em.entity_type == "person"
-        assert "团团" in em.matched_terms
+        assert "小云" in em.matched_terms
         assert "snippet" in em.match_sources
 
     def test_entity_hint_matched_via_metadata(self) -> None:
         """Entity hint matched_term appears in item metadata → entity_match populated."""
         result = _synthetic_search_result()
-        # "团团" is also in metadata.people for item 0
+        # "小云" is also in metadata.people for item 0
         pack = build_evidence_pack(result)
         em = pack.items[0].entity_matches[0]
         assert "metadata" in em.match_sources
@@ -1650,7 +1650,7 @@ class TestBuildEntityMatches:
             "merged_results": [
                 {
                     "path": "Journals/2026/03/test.md",
-                    "title": "团团 and me",
+                    "title": "小云 and me",
                     "date": "2026-03-07",
                     "snippet": "A normal day",
                     "source": "fts",
@@ -1668,7 +1668,7 @@ class TestBuildEntityMatches:
             "has_more": False,
             "no_confident_match": False,
             "entity_hints": [
-                {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
             ],
         }
         pack = build_evidence_pack(result)
@@ -1701,7 +1701,7 @@ class TestBuildEntityMatches:
             "has_more": False,
             "no_confident_match": False,
             "entity_hints": [
-                {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
             ],
         }
         pack = build_evidence_pack(result)
@@ -1741,7 +1741,7 @@ class TestBuildEntityMatches:
         result = _synthetic_search_result()
         pack = build_evidence_pack(result)
         em = pack.items[0].entity_matches[0]
-        assert em.query_matched_term == "团团"
+        assert em.query_matched_term == "小云"
 
     def test_multiple_entity_hints_matched(self) -> None:
         """Multiple entity hints matching a single item produce multiple entity_matches."""
@@ -1753,7 +1753,7 @@ class TestBuildEntityMatches:
                     "path": "Journals/2026/03/test.md",
                     "title": "Beijing Trip",
                     "date": "2026-03-07",
-                    "snippet": "Went to Beijing with 团团",
+                    "snippet": "Went to Beijing with 小云",
                     "source": "fts",
                     "relevance": 90,
                     "fts_score": 90.0,
@@ -1769,7 +1769,7 @@ class TestBuildEntityMatches:
             "has_more": False,
             "no_confident_match": False,
             "entity_hints": [
-                {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
                 {"matched_term": "Beijing", "entity_id": "beijing", "entity_type": "location"},
             ],
         }
@@ -1797,14 +1797,14 @@ class TestBuildEntityMatches:
                     "final_score": 90.0,
                     "search_rank": 1,
                     "confidence": "high",
-                    "metadata": {"abstract": "Spent time with 团团 today."},
+                    "metadata": {"abstract": "Spent time with 小云 today."},
                 },
             ],
             "total_available": 1,
             "has_more": False,
             "no_confident_match": False,
             "entity_hints": [
-                {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
             ],
         }
         pack = build_evidence_pack(result)
@@ -1814,7 +1814,7 @@ class TestBuildEntityMatches:
     def test_deterministic_stable_ordering(self) -> None:
         """Entity matches across sources produce stable deduplicated sources."""
         result = _synthetic_search_result()
-        # "团团" appears in snippet, metadata.people, and abstract
+        # "小云" appears in snippet, metadata.people, and abstract
         pack = build_evidence_pack(result)
         em = pack.items[0].entity_matches[0]
         # Sources should be sorted and deduplicated
@@ -1874,16 +1874,16 @@ class TestExpansionTermsMatching:
             "matched_term": "老婆",
             "entity_id": "wife",
             "entity_type": "person",
-            "expansion_terms": ["王某某", "乐乐妈", "老婆"],
+            "expansion_terms": ["王某某", "晴岚妈", "老婆"],
         }
-        # Item contains "乐乐妈" but NOT "老婆"
-        result = self._hint_result(hint, snippet="今天和乐乐妈去了公园")
+        # Item contains "晴岚妈" but NOT "老婆"
+        result = self._hint_result(hint, snippet="今天和晴岚妈去了公园")
         pack = build_evidence_pack(result)
 
         assert len(pack.items[0].entity_matches) == 1
         em = pack.items[0].entity_matches[0]
         assert em.entity_id == "wife"
-        assert "乐乐妈" in em.matched_terms
+        assert "晴岚妈" in em.matched_terms
         assert "老婆" not in em.matched_terms  # not found in item
         assert em.query_matched_term == "老婆"  # original matched_term preserved
 
@@ -1948,15 +1948,15 @@ class TestExpansionTermsMatching:
             "matched_term": "老婆",
             "entity_id": "wife",
             "entity_type": "person",
-            "expansion_terms": ["王某某", "乐乐妈", "老婆"],
+            "expansion_terms": ["王某某", "晴岚妈", "老婆"],
         }
-        # Item contains both "老婆" and "乐乐妈"
-        result = self._hint_result(hint, snippet="老婆和乐乐妈一起去逛街")
+        # Item contains both "老婆" and "晴岚妈"
+        result = self._hint_result(hint, snippet="老婆和晴岚妈一起去逛街")
         pack = build_evidence_pack(result)
 
         em = pack.items[0].entity_matches[0]
         # matched_terms should be in stable insertion order of candidate terms
-        assert em.matched_terms == ["老婆", "乐乐妈"]
+        assert em.matched_terms == ["老婆", "晴岚妈"]
         assert "王某某" not in em.matched_terms
 
     def test_no_candidate_found_omits_match(self) -> None:
@@ -1966,7 +1966,7 @@ class TestExpansionTermsMatching:
             "matched_term": "老婆",
             "entity_id": "wife",
             "entity_type": "person",
-            "expansion_terms": ["王某某", "乐乐妈", "老婆"],
+            "expansion_terms": ["王某某", "晴岚妈", "老婆"],
         }
         result = self._hint_result(hint, snippet="今天天气很好")
         pack = build_evidence_pack(result)
@@ -1976,31 +1976,31 @@ class TestExpansionTermsMatching:
     def test_empty_expansion_terms_falls_back_to_matched_term(self) -> None:
         """Empty or missing expansion_terms: behavior is unchanged from original."""
         hint = {
-            "matched_term": "团团",
+            "matched_term": "小云",
             "entity_id": "tuan_tuan",
             "entity_type": "person",
             "expansion_terms": [],
         }
-        result = self._hint_result(hint, snippet="和团团玩耍")
+        result = self._hint_result(hint, snippet="和小云玩耍")
         pack = build_evidence_pack(result)
 
         assert len(pack.items[0].entity_matches) == 1
-        assert "团团" in pack.items[0].entity_matches[0].matched_terms
+        assert "小云" in pack.items[0].entity_matches[0].matched_terms
 
     def test_expansion_terms_deduplication_preserves_order(self) -> None:
         """Duplicate candidate terms (across matched_term and expansion_terms)
         are deduplicated, preserving stable order (matched_term first)."""
         hint = {
-            "matched_term": "团团",
+            "matched_term": "小云",
             "entity_id": "tuan_tuan",
             "entity_type": "person",
-            "expansion_terms": ["团团", "小团团", "团团"],
+            "expansion_terms": ["小云", "小小云", "小云"],
         }
-        result = self._hint_result(hint, snippet="团团和小团团一起玩")
+        result = self._hint_result(hint, snippet="小云和小小云一起玩")
         pack = build_evidence_pack(result)
 
         em = pack.items[0].entity_matches[0]
-        assert em.matched_terms == ["团团", "小团团"]
+        assert em.matched_terms == ["小云", "小小云"]
 
     def test_query_matched_term_preserved_from_original(self) -> None:
         """query_matched_term is the original matched_term even when only an

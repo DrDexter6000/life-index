@@ -49,7 +49,7 @@ def test_llm_degradation_on_failure():
     with patch(
         "tools.search_journals.orchestrator._get_search_fn", return_value=lambda **kw: mock_result
     ):
-        result = orch.search("乐乐")
+        result = orch.search("晴岚")
     assert result.get("agent_unavailable") is True
     assert "filtered_results" in result
     assert isinstance(result["filtered_results"], list)
@@ -70,7 +70,7 @@ def test_output_schema():
     with patch(
         "tools.search_journals.orchestrator._get_search_fn", return_value=lambda **kw: mock_result
     ):
-        result = orch.search("乐乐")
+        result = orch.search("晴岚")
     required_fields = ["filtered_results", "summary", "citations", "agent_decisions"]
     for field in required_fields:
         assert field in result, f"Missing required field: {field}"
@@ -1376,16 +1376,16 @@ def test_rewrite_prompt_includes_entity_context_with_hints():
         {
             "entity_id": "lele",
             "entity_type": "person",
-            "matched_term": "乐乐",
-            "expansion_terms": ["乐乐", "小乐乐"],
+            "matched_term": "晴岚",
+            "expansion_terms": ["晴岚", "小晴岚"],
         }
     ]
-    prompt = orch._build_rewrite_prompt("乐乐的生日", entity_hints=hints)
+    prompt = orch._build_rewrite_prompt("晴岚的生日", entity_hints=hints)
     assert "Local entity graph matches" in prompt
     assert "lele" in prompt
     assert "person" in prompt
-    assert "乐乐" in prompt
-    assert "小乐乐" in prompt
+    assert "晴岚" in prompt
+    assert "小晴岚" in prompt
 
 
 def test_rewrite_prompt_no_entity_context_without_hints():
@@ -1418,15 +1418,15 @@ def test_rewrite_query_resolves_entity_hints_via_core():
         {
             "entity_id": "lele",
             "entity_type": "person",
-            "matched_term": "乐乐",
-            "expansion_terms": ["乐乐"],
+            "matched_term": "晴岚",
+            "expansion_terms": ["晴岚"],
         }
     ]
     with patch(
         "tools.search_journals.core.resolve_query_entities",
         return_value=mock_hints,
     ):
-        orch.rewrite_query("乐乐")
+        orch.rewrite_query("晴岚")
 
     assert fake_llm.rewrite_prompt is not None
     assert "lele" in fake_llm.rewrite_prompt
@@ -1438,8 +1438,8 @@ def test_rewrite_query_degradation_no_entity_call():
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
     orch = SmartSearchOrchestrator(llm_client=None)
-    result = orch.rewrite_query("乐乐")
-    assert result["rewritten_query"] == "乐乐"
+    result = orch.rewrite_query("晴岚")
+    assert result["rewritten_query"] == "晴岚"
     assert result["intent_type"] == "simple"
 
 
@@ -1495,8 +1495,8 @@ def test_multiple_entity_hints_in_prompt():
         {
             "entity_id": "lele",
             "entity_type": "person",
-            "matched_term": "乐乐",
-            "expansion_terms": ["乐乐"],
+            "matched_term": "晴岚",
+            "expansion_terms": ["晴岚"],
         },
         {
             "entity_id": "beijing",
@@ -1505,7 +1505,7 @@ def test_multiple_entity_hints_in_prompt():
             "expansion_terms": ["北京", "Beijing"],
         },
     ]
-    prompt = orch._build_rewrite_prompt("乐乐在北京", entity_hints=hints)
+    prompt = orch._build_rewrite_prompt("晴岚在北京", entity_hints=hints)
     assert prompt.count("matched") == 2
     assert "lele" in prompt
     assert "beijing" in prompt
@@ -1545,8 +1545,8 @@ def test_expansion_terms_capped_at_three_per_hint():
         {
             "entity_id": "lele",
             "entity_type": "person",
-            "matched_term": "乐乐",
-            "expansion_terms": ["乐乐", "小乐乐", "乐宝", "乐儿", "小乐"],
+            "matched_term": "晴岚",
+            "expansion_terms": ["晴岚", "小晴岚", "乐宝", "乐儿", "小乐"],
         }
     ]
     orch = SmartSearchOrchestrator()
@@ -1554,10 +1554,10 @@ def test_expansion_terms_capped_at_three_per_hint():
         "tools.search_journals.core.resolve_query_entities",
         return_value=hints,
     ):
-        result = orch._resolve_entity_hints("乐乐")
+        result = orch._resolve_entity_hints("晴岚")
     assert len(result) == 1
     assert len(result[0]["expansion_terms"]) == 3
-    assert result[0]["expansion_terms"] == ["乐乐", "小乐乐", "乐宝"]
+    assert result[0]["expansion_terms"] == ["晴岚", "小晴岚", "乐宝"]
 
 
 def test_expansion_term_length_capped():
@@ -1684,7 +1684,7 @@ def test_synthesis_prompt_includes_entity_matches_when_present():
                 {
                     "entity_id": "lele",
                     "entity_type": "person",
-                    "matched_terms": ["乐乐", "小乐乐"],
+                    "matched_terms": ["晴岚", "小晴岚"],
                     "match_sources": ["fts"],
                 }
             ],
@@ -1698,7 +1698,7 @@ def test_synthesis_prompt_includes_entity_matches_when_present():
                 {
                     "entity_id": "lele",
                     "entity_type": "person",
-                    "matched_terms": ["乐乐"],
+                    "matched_terms": ["晴岚"],
                     "match_sources": ["fts"],
                 },
             ],
@@ -1717,7 +1717,7 @@ def test_synthesis_prompt_includes_entity_matches_when_present():
     assert "entities:" in prompt, "Entity match context missing from synthesis prompt"
     assert "lele(person)" in prompt
     assert "beijing(place)" in prompt
-    assert "乐乐" in prompt
+    assert "晴岚" in prompt
     assert "北京" in prompt
 
 
@@ -1734,9 +1734,9 @@ def test_synthesis_prompt_no_entity_matches_no_leak():
                 {
                     "entity_id": "lele",
                     "entity_type": "person",
-                    "matched_terms": ["乐乐", "小乐乐"],
+                    "matched_terms": ["晴岚", "小晴岚"],
                     "match_sources": ["fts", "metadata"],
-                    "query_matched_term": "乐乐",
+                    "query_matched_term": "晴岚",
                 },
             ],
         ]
@@ -1776,9 +1776,9 @@ def test_evidence_to_synthesis_context_bounded_entity_matches():
                 {
                     "entity_id": "lele",
                     "entity_type": "person",
-                    "matched_terms": ["乐乐", "小乐乐"],
+                    "matched_terms": ["晴岚", "小晴岚"],
                     "match_sources": ["fts"],
-                    "query_matched_term": "乐乐",
+                    "query_matched_term": "晴岚",
                 },
             ],
         ]
@@ -1790,7 +1790,7 @@ def test_evidence_to_synthesis_context_bounded_entity_matches():
     em = item["entity_matches"][0]
     assert em["entity_id"] == "lele"
     assert em["entity_type"] == "person"
-    assert em["matched_terms"] == ["乐乐", "小乐乐"]
+    assert em["matched_terms"] == ["晴岚", "小晴岚"]
     assert "match_sources" not in em
     assert "query_matched_term" not in em
 

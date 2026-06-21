@@ -41,7 +41,7 @@ class TestFormatWithEntityMatches:
 
     def test_format_with_entity_matches(self) -> None:
         pack = EvidencePack(
-            query_context=QueryContext(query="乐乐妈"),
+            query_context=QueryContext(query="晴岚妈"),
             items=[
                 EvidenceItem(
                     document=DocumentRef(
@@ -51,12 +51,12 @@ class TestFormatWithEntityMatches:
                         path="Journals/2026/03/01.md",
                     ),
                     scores=ScoreBreakdown(source="fts", rank=1, confidence="high"),
-                    snippet="Went to park with 乐乐妈.",
+                    snippet="Went to park with 晴岚妈.",
                     entity_matches=[
                         EntityMatch(
                             entity_id="wife-001",
                             entity_type="person",
-                            matched_terms=["乐乐妈"],
+                            matched_terms=["晴岚妈"],
                             match_sources=["snippet", "metadata"],
                             query_matched_term="老婆",
                         )
@@ -72,7 +72,7 @@ class TestFormatWithEntityMatches:
         assert "Family Day" in text
         assert "wife-001" in text
         assert "person" in text
-        assert "乐乐妈" in text
+        assert "晴岚妈" in text
         assert "snippet, metadata" in text
         assert "query: 老婆" in text
 

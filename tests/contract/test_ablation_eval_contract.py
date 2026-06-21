@@ -13,8 +13,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from tools.eval.private_data import get_fixtures_dir
+
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE_PATH = WORKTREE_ROOT / "tests" / "fixtures" / "eval" / "ablation_queries.json"
+FIXTURE_PATH = get_fixtures_dir() / "ablation_queries.json"
 
 
 def test_ablation_cli_runs() -> None:
@@ -32,6 +36,8 @@ def test_ablation_cli_runs() -> None:
 
 def _run_ablation_json(data_dir: Path) -> dict[str, Any]:
     """Run ablation and return parsed JSON output."""
+    if not FIXTURE_PATH.exists():
+        pytest.skip("local/private ablation query fixture not present in public checkout")
     env = os.environ.copy()
     env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
 
@@ -154,6 +160,8 @@ def test_ablation_schema_version() -> None:
 
 def test_ablation_fixture_loads() -> None:
     """Verify the fixture JSON is well-formed."""
+    if not FIXTURE_PATH.exists():
+        pytest.skip("local/private ablation query fixture not present in public checkout")
     data = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
     assert isinstance(data, list), "Fixture must be a JSON array"
     assert len(data) >= 20, f"Fixture must have 20+ queries, got {len(data)}"

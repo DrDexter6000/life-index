@@ -21,27 +21,25 @@ Test categories:
 
 import importlib
 import os
-from pathlib import Path
 
 import pytest
 import yaml
 
-
 # ---------------------------------------------------------------------------
-# Test journal data (realistic content from the user's actual journals)
+# Test journal data (fictional content for public regression coverage)
 # ---------------------------------------------------------------------------
 
 JOURNALS = [
     {
         "filename": "life-index_2026-03-04_001.md",
-        "title": "想念小英雄",
+        "title": "回忆小风筝",
         "date": "2026-03-04T19:43:00",
         "tags": ["亲子", "回忆", "感伤"],
         "topic": "think",
         "content": (
-            "翻看女儿乐乐小时候的照片，那个只有2岁上下的小英雄。"
-            "突然有一种伤感——我好想再见她一面，好想再能体验一次把小肉坨坨抱在怀里的感觉。"
-            "小豆丁，爸爸想你了。"
+            "翻看女儿晴岚小时候的照片，那个只有2岁上下的小队长。"
+            "突然有一种伤感——我好想再见她一面，好想再能体验一次把小玩偶抱在怀里的感觉。"
+            "小风筝，朋友想你了。"
         ),
     },
     {
@@ -57,21 +55,21 @@ JOURNALS = [
     },
     {
         "filename": "life-index_2026-03-10_001.md",
-        "title": "乐乐不认真吃饭",
+        "title": "晴岚不认真吃饭",
         "date": "2026-03-10T18:00:00",
         "tags": ["亲子", "日常"],
         "topic": "life",
-        "content": "乐乐最近吃饭很不认真，总是跑来跑去。不过今天她主动帮我收拾玩具，还是挺懂事的。",
+        "content": "晴岚最近吃饭很不认真，总是跑来跑去。不过今天她主动帮我收拾玩具，还是挺懂事的。",
     },
     {
         "filename": "life-index_2026-03-12_001.md",
-        "title": "重庆过生日",
+        "title": "海边过生日",
         "date": "2026-03-12T12:00:00",
         "tags": ["生日", "家庭"],
         "topic": "life",
         "content": (
-            "在重庆过了一个简单的生日。妈妈做了长寿面，乐乐唱了生日歌。"
-            "虽然简单，但很温暖。数字灵魂的概念也在脑海中酝酿。"
+            "在海边过了一个简单的生日。妈妈做了长寿面，晴岚唱了生日歌。"
+            "虽然简单，但很温暖。记忆索引的概念也在脑海中酝酿。"
         ),
     },
     {
@@ -88,13 +86,13 @@ JOURNALS = [
     },
     {
         "filename": "life-index_2026-03-16_001.md",
-        "title": "想念我的女儿",
+        "title": "回忆海边花园",
         "date": "2026-03-16T22:00:00",
         "tags": ["思念", "亲情"],
         "topic": "think",
         "content": (
-            "深夜翻看乐乐的照片，那种幸福中带怅然若失的复杂情绪无法用言语表达。"
-            "好想把她再抱在怀里，那个让我神魂颠倒的小英雄。"
+            "深夜翻看晴岚的照片，那种幸福中带怅然若失的复杂情绪无法用言语表达。"
+            "好想把她再抱在怀里，那个让我神魂颠倒的小队长。"
         ),
     },
     {
@@ -105,18 +103,18 @@ JOURNALS = [
         "topic": "work",
         "content": (
             "LobsterAI项目正式启动。目标是用AI算力投资策略来解决个人知识管理问题。"
-            "乐乐说以后也要学编程。"
+            "晴岚说以后也要学编程。"
         ),
     },
     {
         "filename": "life-index_2026-03-20_001.md",
-        "title": "读《三体》有感",
+        "title": "读《星际寓言》有感",
         "date": "2026-03-20T20:00:00",
         "tags": ["读书", "思考"],
         "topic": "learn",
         "content": (
-            "重读《三体》，对黑暗森林法则有了新的理解。"
-            "科技发展的边界在哪里？数字灵魂是否可能存在？这些问题值得深思。"
+            "重读《星际寓言》，对星图法则法则有了新的理解。"
+            "科技发展的边界在哪里？记忆索引是否可能存在？这些问题值得深思。"
         ),
     },
     {
@@ -154,21 +152,21 @@ JOURNALS = [
 SEARCH_TEST_CASES = [
     # ---------- Chinese Recall (Q01-Q20) ----------
     # These queries MUST return >= 1 result — previously returned 0 without segmentation
-    ("想念我的女儿", 1, None, "chinese_recall", "Q01: Natural sentence"),
-    ("想念女儿", 1, None, "chinese_recall", "Q02: Without 的"),
+    ("回忆海边花园", 1, None, "chinese_recall", "Q01: Natural sentence"),
+    ("想念晴岚", 1, None, "chinese_recall", "Q02: Without 的"),
     ("AI算力投资策略", 2, None, "chinese_recall", "Q03: Mixed CN/EN"),
-    ("乐乐不认真吃饭", 1, None, "chinese_recall", "Q04: Stop word 不 in query"),
-    ("重庆过生日", 1, None, "chinese_recall", "Q05: Location + event"),
-    ("数字灵魂", 2, None, "chinese_recall", "Q06: Abstract concept"),
-    ("想念小英雄", 2, None, "chinese_recall", "Q07: Entity name"),
-    ("小豆丁", 1, None, "chinese_recall", "Q08: Entity alias"),
-    ("小英雄", 2, None, "chinese_recall", "Q09: Entity name variant"),
-    ("三体", 1, None, "chinese_recall", "Q10: Book title"),
-    ("黑暗森林", 1, None, "chinese_recall", "Q11: Concept from book"),
-    ("乐乐", 3, None, "chinese_recall", "Q12: Person entity"),
+    ("晴岚不认真吃饭", 1, None, "chinese_recall", "Q04: Stop word 不 in query"),
+    ("海边过生日", 1, None, "chinese_recall", "Q05: Location + event"),
+    ("记忆索引", 2, None, "chinese_recall", "Q06: Abstract concept"),
+    ("回忆小风筝", 2, None, "chinese_recall", "Q07: Entity name"),
+    ("小风筝", 1, None, "chinese_recall", "Q08: Entity alias"),
+    ("小队长", 2, None, "chinese_recall", "Q09: Entity name variant"),
+    ("星际寓言", 1, None, "chinese_recall", "Q10: Book title"),
+    ("星图法则", 1, None, "chinese_recall", "Q11: Concept from book"),
+    ("晴岚", 3, None, "chinese_recall", "Q12: Person entity"),
     ("双管道检索", 1, None, "chinese_recall", "Q13: Technical term"),
     ("长寿面", 1, None, "chinese_recall", "Q14: Food/culture"),
-    ("乐乐唱歌", 1, None, "chinese_recall", "Q15: Fuzzy — 唱歌 vs 唱了生日歌"),
+    ("晴岚唱歌", 1, None, "chinese_recall", "Q15: Fuzzy — 唱歌 vs 唱了生日歌"),
     ("编程", 1, None, "chinese_recall", "Q16: Skill/activity"),
     ("OpenClaw", 2, None, "chinese_recall", "Q17: English entity"),
     ("LobsterAI", 1, None, "chinese_recall", "Q18: English entity"),
@@ -179,7 +177,7 @@ SEARCH_TEST_CASES = [
     # Single stop words pass through _segment_query_for_fts (by design: we don't
     # silently discard valid single-character queries). They match FTS5 because
     # index mode preserves all tokens per MD4. In real usage, stop-word filtering
-    # works for multi-token queries like "想念我的女儿" where 的 is correctly removed.
+    # works for multi-token queries like "回忆海边花园" where 的 is correctly removed.
     # These tests verify the search doesn't crash on stop-word-only input.
     (
         "的",
@@ -210,7 +208,7 @@ SEARCH_TEST_CASES = [
     ("deployment", 2, None, "english_regression", "Q28: Common English word"),
     # ---------- Mixed CN/EN Regression (Q29-Q30) ----------
     (
-        "乐乐 OpenClaw",
+        "晴岚 OpenClaw",
         0,
         None,
         "mixed_regression",
@@ -218,7 +216,7 @@ SEARCH_TEST_CASES = [
     ),
     ("AI 算力", 2, None, "mixed_regression", "Q30: CN+EN mixed"),
     # ---------- Fuzzy Recall (Q31-Q36) ----------
-    ("那天乐乐哭了", 1, None, "fuzzy_recall", "Q31: Fuzzy memory around tuantuan"),
+    ("那天晴岚哭了", 1, None, "fuzzy_recall", "Q31: Fuzzy memory around tuantuan"),
     ("把她抱在怀里", 2, None, "fuzzy_recall", "Q32: Emotional memory phrase"),
     ("小时候的照片", 2, None, "fuzzy_recall", "Q33: Childhood memory"),
     ("生日歌", 1, None, "fuzzy_recall", "Q34: Event detail"),
@@ -239,14 +237,14 @@ SEARCH_TEST_CASES = [
     ("上周", 0, 0, "time_related", "Q47: Relative date not present"),
     ("凌晨", 0, 0, "time_related", "Q48: Time term absent from journals"),
     # ---------- Location / Geography (Q49-Q54) ----------
-    ("重庆", 1, None, "location_related", "Q49: Chinese location"),
+    ("海边", 1, None, "location_related", "Q49: Chinese location"),
     ("山城", 0, 0, "location_related", "Q50: Alias absent from journal content"),
     ("Lagos", 0, 0, "location_related", "Q51: Foreign location absent"),
     ("Port Harcourt", 0, 0, "location_related", "Q52: Foreign location absent"),
     ("边缘计算", 1, None, "location_related", "Q53: Deployment locality concept"),
     ("端侧部署", 1, None, "location_related", "Q54: Edge deployment phrase"),
     # ---------- Cross-language / Long-tail (Q55-Q58) ----------
-    ("my daughter 乐乐", 1, None, "cross_language", "Q55: EN + entity mix"),
+    ("my daughter 晴岚", 1, None, "cross_language", "Q55: EN + entity mix"),
     (
         "investment strategy",
         0,
@@ -272,7 +270,7 @@ def _setup_search_env(tmp_path_factory):
     """Build a temp Life Index environment with jieba-segmented FTS index.
 
     Creates the full directory structure, 10 Chinese/English journals,
-    entity_graph.yaml with 乐乐 aliases, then runs init_fts_db() + update_index().
+    entity_graph.yaml with 晴岚 aliases, then runs init_fts_db() + update_index().
 
     Returns (db_conn, data_dir) for direct FTS queries in tests.
     """
@@ -292,8 +290,8 @@ def _setup_search_env(tmp_path_factory):
             {
                 "id": "tuantuan",
                 "type": "person",
-                "primary_name": "乐乐",
-                "aliases": ["小豆丁", "小英雄"],
+                "primary_name": "晴岚",
+                "aliases": ["小风筝", "小队长"],
                 "attributes": {},
                 "relationships": [],
             },
@@ -395,9 +393,7 @@ def _setup_search_env(tmp_path_factory):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "query,min_results,max_results,category,note", SEARCH_TEST_CASES
-)
+@pytest.mark.parametrize("query,min_results,max_results,category,note", SEARCH_TEST_CASES)
 def test_search_quality(
     _setup_search_env,
     query,
@@ -421,9 +417,7 @@ def test_search_quality(
 
     # Replicate the production code path: segment → build FTS query → search
     segmented_query, was_segmented = _segment_query_for_fts(query)
-    fts_query, fallback_query = _build_fts_queries(
-        segmented_query, was_segmented=was_segmented
-    )
+    fts_query, fallback_query = _build_fts_queries(segmented_query, was_segmented=was_segmented)
 
     results = search_fts(fts_query)
 

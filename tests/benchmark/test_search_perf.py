@@ -17,7 +17,6 @@ from typing import TypedDict
 import pytest
 import yaml
 
-
 pytestmark = pytest.mark.benchmark
 
 
@@ -38,9 +37,9 @@ def _build_perf_journals(total: int = 56) -> list[PerfJournal]:
         month = (i % 3) + 1
         day = (i % 28) + 1
         if i % 4 == 0:
-            title = f"想念乐乐的第{i + 1}天"
+            title = f"想念晴岚的第{i + 1}天"
             content = (
-                "深夜翻看乐乐小时候的照片，想念那个让我神魂颠倒的小英雄。"
+                "深夜翻看晴岚小时候的照片，想念那个让我神魂颠倒的小队长。"
                 " 想再把她抱在怀里，也想记住这些幸福又感伤的瞬间。"
             )
             tags = ["亲子", "回忆"]
@@ -99,8 +98,8 @@ def _write_perf_corpus(tmp_dir: Path) -> int:
             {
                 "id": "tuantuan",
                 "type": "person",
-                "primary_name": "乐乐",
-                "aliases": ["小豆丁", "小英雄"],
+                "primary_name": "晴岚",
+                "aliases": ["小风筝", "小队长"],
                 "attributes": {},
                 "relationships": [],
             }
@@ -186,9 +185,7 @@ def _run_production_fts_query(query: str) -> list[dict[str, object]]:
     normalize_query = getattr(chinese_tokenizer, "normalize_query")
     normalized = normalize_query(query)
     segmented_query, was_segmented = _segment_query_for_fts(normalized)
-    fts_query, fallback_query = _build_fts_queries(
-        segmented_query, was_segmented=was_segmented
-    )
+    fts_query, fallback_query = _build_fts_queries(segmented_query, was_segmented=was_segmented)
 
     results = search_fts(fts_query)
     if fallback_query and len(results) < 3:
@@ -223,30 +220,28 @@ class TestSearchPerformanceRegression:
 
         update_index(incremental=False)
 
-        warmup_results = _run_production_fts_query("想念 乐乐")
+        warmup_results = _run_production_fts_query("想念 晴岚")
         assert warmup_results, "Chinese warmup query should return results"
 
         start = time.perf_counter()
-        results = _run_production_fts_query("想念乐乐")
+        results = _run_production_fts_query("想念晴岚")
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         print(f"\nChinese query path: {elapsed_ms:.2f}ms")
         assert results, "Chinese query should return results"
         assert elapsed_ms < 200, f"Chinese query path took {elapsed_ms:.2f}ms"
 
-    def test_english_query_path_has_no_material_regression(
-        self, perf_search_env
-    ) -> None:
+    def test_english_query_path_has_no_material_regression(self, perf_search_env) -> None:
         """English FTS queries should remain fast after jieba integration."""
         from tools.lib.search_index import update_index
 
         update_index(incremental=False)
 
-        _run_production_fts_query("想念乐乐")
+        _run_production_fts_query("想念晴岚")
         _run_production_fts_query("OpenClaw deployment")
 
         chinese_start = time.perf_counter()
-        chinese_results = _run_production_fts_query("想念乐乐")
+        chinese_results = _run_production_fts_query("想念晴岚")
         chinese_elapsed_ms = (time.perf_counter() - chinese_start) * 1000
 
         english_start = time.perf_counter()
@@ -259,9 +254,7 @@ class TestSearchPerformanceRegression:
         )
         assert chinese_results, "Chinese comparison query should return results"
         assert english_results, "English query should return results"
-        assert english_elapsed_ms < 200, (
-            f"English query path took {english_elapsed_ms:.2f}ms"
-        )
+        assert english_elapsed_ms < 200, f"English query path took {english_elapsed_ms:.2f}ms"
         assert english_elapsed_ms <= chinese_elapsed_ms + 50, (
             "English query path regressed materially after jieba integration: "
             f"english={english_elapsed_ms:.2f}ms chinese={chinese_elapsed_ms:.2f}ms"

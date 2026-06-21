@@ -77,18 +77,16 @@ class TestParseFrontmatter:
 
 
 class TestCollectJournals:
-    def test_collect_month_journals_includes_new_metadata_fields(
-        self, tmp_path: Path
-    ) -> None:
+    def test_collect_month_journals_includes_new_metadata_fields(self, tmp_path: Path) -> None:
         month_dir = tmp_path / "Journals" / "2026" / "03"
         month_dir.mkdir(parents=True)
         _write_journal(
             month_dir / "life-index_2026-03-04_001.md",
-            title="想念小英雄",
+            title="回忆小风筝",
             date="2026-03-04T19:43:02",
             topic='["think", "life"]',
             mood='["思念", "温暖"]',
-            people='["乐乐"]',
+            people='["晴岚"]',
             tags='["亲子", "回忆"]',
         )
 
@@ -97,7 +95,7 @@ class TestCollectJournals:
 
         assert len(result) == 1
         assert result[0]["location"] == "Lagos"
-        assert result[0]["people"] == ["乐乐"]
+        assert result[0]["people"] == ["晴岚"]
         assert result[0]["tags"] == ["亲子", "回忆"]
 
     def test_collect_year_journals_reads_multiple_months(self, tmp_path: Path) -> None:
@@ -129,12 +127,12 @@ class TestRenamedExportsAndMonthlyIndex:
                 "file": "life-index_2026-03-04_001.md",
                 "path": "./life-index_2026-03-04_001.md",
                 "date": "2026-03-04T19:43:02",
-                "title": "想念小英雄",
+                "title": "回忆小风筝",
                 "tags": ["亲子", "女儿"],
                 "project": "",
                 "topic": ["think", "life"],
                 "mood": ["思念", "温暖"],
-                "people": ["乐乐"],
+                "people": ["晴岚"],
                 "location": "Lagos",
                 "abstract": "翻看女儿照片",
             },
@@ -163,13 +161,14 @@ class TestRenamedExportsAndMonthlyIndex:
         assert "## 条目列表" in content
         assert "| 日期 | 标题 | 主题 | 情绪 | 地点 | 人物 |" in content
         assert (
-            "| 03-04 | [想念小英雄](life-index_2026-03-04_001.md) | think, life | 思念, 温暖 | Lagos | 乐乐 |"
+            "| 03-04 | [回忆小风筝](life-index_2026-03-04_001.md) | think, life | 思念, 温暖 | Lagos | 晴岚 |"
             in content
         )
-        assert (
-            "| 03-07 | [架构重构初稿](life-index_2026-03-07_001.md) | work, create | 专注 | Chongqing | Karpathy |"
-            in content
+        expected_row = (
+            "| 03-07 | [架构重构初稿](life-index_2026-03-07_001.md) | "
+            "work, create | 专注 | Chongqing | Karpathy |"
         )
+        assert expected_row in content
         assert "> *(由月度报告填写——`generate_index` 不生成此段)*" in content
         assert "*Total: 2 entries · Last updated: 2026-03-31*" in content
         assert "## 标签统计" not in content
@@ -183,11 +182,11 @@ class TestRenamedExportsAndMonthlyIndex:
         month_dir.mkdir(parents=True)
         _write_journal(
             month_dir / "life-index_2026-03-04_001.md",
-            title="想念小英雄",
+            title="回忆小风筝",
             date="2026-03-04T19:43:02",
             topic='["think", "life"]',
             mood='["思念"]',
-            people='["乐乐"]',
+            people='["晴岚"]',
             tags='["亲子"]',
         )
 
@@ -227,7 +226,7 @@ class TestYearlyIndex:
                 "topic": ["work", "create"],
                 "mood": ["专注"],
                 "location": "Shenzhen",
-                "people": ["乐乐"],
+                "people": ["晴岚"],
                 "tags": ["重构"],
             },
             {
@@ -274,7 +273,7 @@ class TestYearlyIndex:
                     "topics: {work: 2, life: 1}",
                     "moods: {专注: 2, 幸福: 1}",
                     "locations: [Shenzhen, Chongqing]",
-                    "people: [乐乐]",
+                    "people: [晴岚]",
                     "notable_tags: [重构, 假期]",
                     'date_range: "2026-01-01 — 2026-01-31"',
                     "---",
@@ -351,20 +350,17 @@ class TestRootIndex:
                 date_range="2025-01 — 2026-03",
             )
 
-        assert content.startswith(
-            '---\ntotal_entries: 365\ndate_range: "2025-01 — 2026-03"\n---'
+        assert content.startswith('---\ntotal_entries: 365\ndate_range: "2025-01 — 2026-03"\n---')
+        expected_year_row = (
+            "| [2026](Journals/2026/index_2026.md) | 89 | "
+            "Lagos, Shenzhen, Chongqing | work, create, think, life |"
         )
-        assert (
-            "| [2026](Journals/2026/index_2026.md) | 89 | Lagos, Shenzhen, Chongqing | work, create, think, life |"
-            in content
-        )
+        assert expected_year_row in content
         assert "- [主题_work.md](by-topic/主题_work.md) · work · (120)" in content
         assert "*Last updated: 2026-03-31 · Total entries: 365*" in content
         assert len(content.encode("utf-8")) < 2048
 
-    def test_generate_root_index_reads_yearly_indexes_and_topic_files(
-        self, tmp_path: Path
-    ) -> None:
+    def test_generate_root_index_reads_yearly_indexes_and_topic_files(self, tmp_path: Path) -> None:
         user_data_dir = tmp_path / "Life-Index"
         journals_dir = user_data_dir / "Journals"
         by_topic_dir = user_data_dir / "by-topic"
@@ -381,7 +377,7 @@ class TestRootIndex:
                     "topics: {work: 32, create: 18, think: 12, life: 15}",
                     "moods: {专注: 28}",
                     "locations: [Lagos, Shenzhen, Chongqing]",
-                    "people: [乐乐]",
+                    "people: [晴岚]",
                     "notable_tags: [重构] ",
                     "---",
                     "",

@@ -13,7 +13,7 @@ class TestShouldPromote:
         assert should_promote("重构搜索模块", "Life Index 搜索功能优化") is False
 
     def test_short_query_skips(self):
-        assert should_promote("团", "关于乐乐") is False  # < 3 non-stop chars
+        assert should_promote("团", "关于晴岚") is False  # < 3 non-stop chars
 
     def test_case_insensitive(self):
         assert should_promote("Claude Opus", "Claude Opus review") is True

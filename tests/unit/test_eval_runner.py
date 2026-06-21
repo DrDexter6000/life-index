@@ -7,27 +7,34 @@ import os
 from importlib import import_module
 from pathlib import Path
 
+import pytest
 import yaml
+
+from tools.eval.private_data import get_golden_queries_path
 
 
 def _load_eval_llm_module():
     return import_module("tools.eval.llm_client")
 
 
-GOLDEN_QUERIES_PATH = Path(__file__).resolve().parents[2] / "tools" / "eval" / "golden_queries.yaml"
+GOLDEN_QUERIES_PATH = get_golden_queries_path()
+pytestmark = pytest.mark.skipif(
+    not GOLDEN_QUERIES_PATH.exists(),
+    reason="local/private eval query set not present in public checkout",
+)
 
 
 JOURNALS = [
     {
         "filename": "life-index_2026-03-04_001.md",
-        "title": "想念小英雄",
+        "title": "回忆小风筝",
         "date": "2026-03-04T19:43:00",
         "tags": ["亲子", "回忆", "感伤"],
         "topic": "think",
         "content": (
-            "翻看女儿乐乐小时候的照片，那个只有2岁上下的小英雄。"
-            "突然有一种伤感——我好想再见她一面，好想再能体验一次把小肉坨坨抱在怀里的感觉。"
-            "小豆丁，爸爸想你了。"
+            "翻看女儿晴岚小时候的照片，那个只有2岁上下的小队长。"
+            "突然有一种伤感——我好想再见她一面，好想再能体验一次把小玩偶抱在怀里的感觉。"
+            "小风筝，朋友想你了。"
         ),
     },
     {
@@ -43,21 +50,21 @@ JOURNALS = [
     },
     {
         "filename": "life-index_2026-03-10_001.md",
-        "title": "乐乐不认真吃饭",
+        "title": "晴岚不认真吃饭",
         "date": "2026-03-10T18:00:00",
         "tags": ["亲子", "日常"],
         "topic": "life",
-        "content": "乐乐最近吃饭很不认真，总是跑来跑去。不过今天她主动帮我收拾玩具，还是挺懂事的。",
+        "content": "晴岚最近吃饭很不认真，总是跑来跑去。不过今天她主动帮我收拾玩具，还是挺懂事的。",
     },
     {
         "filename": "life-index_2026-03-12_001.md",
-        "title": "重庆过生日",
+        "title": "海边过生日",
         "date": "2026-03-12T12:00:00",
         "tags": ["生日", "家庭"],
         "topic": "life",
         "content": (
-            "在重庆过了一个简单的生日。妈妈做了长寿面，乐乐唱了生日歌。"
-            "虽然简单，但很温暖。数字灵魂的概念也在脑海中酝酿。"
+            "在海边过了一个简单的生日。妈妈做了长寿面，晴岚唱了生日歌。"
+            "虽然简单，但很温暖。记忆索引的概念也在脑海中酝酿。"
         ),
     },
     {
@@ -75,13 +82,13 @@ JOURNALS = [
     },
     {
         "filename": "life-index_2026-03-16_001.md",
-        "title": "想念我的女儿",
+        "title": "回忆海边花园",
         "date": "2026-03-16T22:00:00",
         "tags": ["思念", "亲情"],
         "topic": "think",
         "content": (
-            "深夜翻看乐乐的照片，那种幸福中带怅然若失的复杂情绪无法用言语表达。"
-            "好想把她再抱在怀里，那个让我神魂颠倒的小英雄。"
+            "深夜翻看晴岚的照片，那种幸福中带怅然若失的复杂情绪无法用言语表达。"
+            "好想把她再抱在怀里，那个让我神魂颠倒的小队长。"
         ),
     },
     {
@@ -92,18 +99,18 @@ JOURNALS = [
         "topic": "work",
         "content": (
             "LobsterAI项目正式启动。目标是用AI算力投资策略来解决个人知识管理问题。"
-            "乐乐说以后也要学编程。"
+            "晴岚说以后也要学编程。"
         ),
     },
     {
         "filename": "life-index_2026-03-20_001.md",
-        "title": "读《三体》有感",
+        "title": "读《星际寓言》有感",
         "date": "2026-03-20T20:00:00",
         "tags": ["读书", "思考"],
         "topic": "learn",
         "content": (
-            "重读《三体》，对黑暗森林法则有了新的理解。"
-            "科技发展的边界在哪里？数字灵魂是否可能存在？这些问题值得深思。"
+            "重读《星际寓言》，对星图法则法则有了新的理解。"
+            "科技发展的边界在哪里？记忆索引是否可能存在？这些问题值得深思。"
         ),
     },
     {
@@ -153,8 +160,8 @@ def _write_eval_fixture_data(data_dir: Path) -> None:
             {
                 "id": "tuantuan",
                 "type": "person",
-                "primary_name": "乐乐",
-                "aliases": ["小豆丁", "小英雄"],
+                "primary_name": "晴岚",
+                "aliases": ["小风筝", "小队长"],
                 "attributes": {},
                 "relationships": [],
             },
@@ -616,10 +623,10 @@ def test_eval_with_llm_judge_mock(monkeypatch) -> None:
         "daughter": {
             "merged_results": [
                 {
-                    "title": "想念我的女儿",
+                    "title": "回忆海边花园",
                     "date": "2026-03-16",
                     "abstract": "思念",
-                    "snippet": "乐乐",
+                    "snippet": "晴岚",
                 },
                 {
                     "title": "普通日志",
@@ -628,10 +635,10 @@ def test_eval_with_llm_judge_mock(monkeypatch) -> None:
                     "snippet": "无关",
                 },
                 {
-                    "title": "想念小英雄",
+                    "title": "回忆小风筝",
                     "date": "2026-03-04",
                     "abstract": "回忆",
-                    "snippet": "小英雄",
+                    "snippet": "小队长",
                 },
             ]
         },
@@ -709,10 +716,10 @@ def test_llm_scores_propagated_to_per_query(monkeypatch) -> None:
         lambda query, level, semantic: {
             "merged_results": [
                 {
-                    "title": "想念我的女儿",
+                    "title": "回忆海边花园",
                     "date": "2026-03-16",
                     "abstract": "思念",
-                    "snippet": "乐乐",
+                    "snippet": "晴岚",
                 },
                 {
                     "title": "普通日志",
@@ -757,7 +764,7 @@ def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
     queries = [
         {
             "id": "Q1",
-            "query": "乐乐",
+            "query": "晴岚",
             "category": "family",
             "expected": {"min_results": 1},
         }
@@ -769,11 +776,11 @@ def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
             [
                 {
                     "id": "Q1",
-                    "query": "乐乐",
+                    "query": "晴岚",
                     "category": "family",
                     "results_found": 1,
                     "expected_min_results": 1,
-                    "top_titles": ["乐乐不认真吃饭"],
+                    "top_titles": ["晴岚不认真吃饭"],
                     "precision_at_5": 0.2,
                     "reciprocal_rank": 1.0,
                     "first_relevant_rank": 1,
@@ -786,7 +793,7 @@ def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
     )
     monkeypatch.setattr(
         "tools.eval.run_eval._collect_all_journal_titles",
-        lambda: ["想念我的女儿", "重庆过生日", "乐乐不认真吃饭"],
+        lambda: ["回忆海边花园", "海边过生日", "晴岚不认真吃饭"],
     )
 
     result = run_evaluation(
@@ -794,7 +801,7 @@ def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
         live=True,
         llm_client=_load_eval_llm_module().MockLLMClient(
             responses=[
-                '{"expected_hits": ["想念我的女儿", "重庆过生日", "乐乐不认真吃饭"], "reason": "都和乐乐相关"}',
+                '{"expected_hits": ["回忆海边花园", "海边过生日", "晴岚不认真吃饭"], "reason": "都和晴岚相关"}',
             ]
         ),
     )
@@ -802,9 +809,9 @@ def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
     assert result["recall_gaps"] == [
         {
             "query_id": "Q1",
-            "query": "乐乐",
-            "expected_but_missed": ["想念我的女儿", "重庆过生日"],
-            "returned": ["乐乐不认真吃饭"],
+            "query": "晴岚",
+            "expected_but_missed": ["回忆海边花园", "海边过生日"],
+            "returned": ["晴岚不认真吃饭"],
             "recall_ratio": 0.33,
         }
     ]
@@ -961,8 +968,8 @@ def test_recall_ratio_computation() -> None:
 
     assert (
         _compute_recall_ratio(
-            ["想念我的女儿", "重庆过生日", "乐乐不认真吃饭"],
-            ["乐乐不认真吃饭"],
+            ["回忆海边花园", "海边过生日", "晴岚不认真吃饭"],
+            ["晴岚不认真吃饭"],
         )
         == 0.33
     )
@@ -1014,12 +1021,12 @@ def test_compare_with_llm_metrics(tmp_path: Path, monkeypatch) -> None:
                 "per_query": [
                     {
                         "id": "Q1",
-                        "query": "乐乐",
+                        "query": "晴岚",
                         "pass": True,
                         "first_relevant_rank": 1,
                     }
                 ],
-                "recall_gaps": [{"query_id": "Q1", "expected_but_missed": ["想念我的女儿"]}],
+                "recall_gaps": [{"query_id": "Q1", "expected_but_missed": ["回忆海边花园"]}],
             },
             ensure_ascii=False,
         ),
@@ -1034,8 +1041,8 @@ def test_compare_with_llm_metrics(tmp_path: Path, monkeypatch) -> None:
                 "precision_at_5": 0.8,
                 "ndcg_at_5": 0.88,
             },
-            "per_query": [{"id": "Q1", "query": "乐乐", "pass": True, "first_relevant_rank": 1}],
-            "recall_gaps": [{"query_id": "Q1", "expected_but_missed": ["重庆过生日"]}],
+            "per_query": [{"id": "Q1", "query": "晴岚", "pass": True, "first_relevant_rank": 1}],
+            "recall_gaps": [{"query_id": "Q1", "expected_but_missed": ["海边过生日"]}],
         },
     )
 
@@ -1046,8 +1053,8 @@ def test_compare_with_llm_metrics(tmp_path: Path, monkeypatch) -> None:
         {
             "query_id": "Q1",
             "query": "",
-            "baseline_missed": ["想念我的女儿"],
-            "current_missed": ["重庆过生日"],
+            "baseline_missed": ["回忆海边花园"],
+            "current_missed": ["海边过生日"],
             "current_expected_total": 1,
         }
     ]
@@ -1064,7 +1071,7 @@ def test_compare_detects_regression(tmp_path: Path, monkeypatch) -> None:
                 "per_query": [
                     {
                         "id": "Q1",
-                        "query": "乐乐",
+                        "query": "晴岚",
                         "pass": True,
                         "first_relevant_rank": 1,
                     }
@@ -1082,7 +1089,7 @@ def test_compare_detects_regression(tmp_path: Path, monkeypatch) -> None:
             "per_query": [
                 {
                     "id": "Q1",
-                    "query": "乐乐",
+                    "query": "晴岚",
                     "pass": False,
                     "first_relevant_rank": None,
                 }
@@ -1112,8 +1119,8 @@ def test_summary_lines_format() -> None:
             "recall_gap_changes": [
                 {
                     "query_id": "GQ05",
-                    "query": "乐乐",
-                    "current_missed": ["想念我的女儿", "重庆过生日"],
+                    "query": "晴岚",
+                    "current_missed": ["回忆海边花园", "海边过生日"],
                     "current_expected_total": 3,
                 }
             ],
@@ -1123,7 +1130,7 @@ def test_summary_lines_format() -> None:
     assert lines[0] == "═══ Search Eval Comparison ═══"
     assert "  MRR@5:        0.8500 → 0.9200  (▲ +0.0700)" in lines
     assert "  Recall@5:     0.9000 → 0.8800  (▼ -0.0200)" in lines
-    assert '  GQ05 "乐乐": 漏检 2/3 expected (想念我的女儿, 重庆过生日)' in lines
+    assert '  GQ05 "晴岚": 漏检 2/3 expected (回忆海边花园, 海边过生日)' in lines
 
 
 def test_eval_runner_includes_ir_eval_artifacts(isolated_data_dir: Path) -> None:
@@ -1179,12 +1186,12 @@ def test_eval_runner_includes_ir_eval_artifacts(isolated_data_dir: Path) -> None
     assert isinstance(run_cov["warnings"], list)
 
     # Privacy: no raw journal content, titles, or query text in coverage reports
-    for forbidden in ["想念小英雄", "乐乐", "重庆过生日", "小豆丁", "女儿"]:
+    for forbidden in ["回忆小风筝", "晴岚", "海边过生日", "小风筝", "女儿"]:
         assert forbidden not in str(qrel_cov), f"Privacy leak in qrel_coverage: {forbidden}"
         assert forbidden not in str(run_cov), f"Privacy leak in run_coverage: {forbidden}"
 
     # Privacy: no raw text in artifacts either
-    for forbidden in ["想念小英雄", "乐乐", "重庆过生日", "小豆丁", "女儿"]:
+    for forbidden in ["回忆小风筝", "晴岚", "海边过生日", "小风筝", "女儿"]:
         assert forbidden not in str(qrels), f"Privacy leak in qrels: {forbidden}"
         assert forbidden not in str(run_artifact), f"Privacy leak in run: {forbidden}"
 

@@ -249,7 +249,7 @@ def _extract_entity_names(graph_path: Path) -> list[str]:
 def load_entity_dict(graph_path: Path | None = None) -> None:
     """Load entity names from entity_graph.yaml into jieba's user dictionary.
 
-    This prevents jieba from splitting entity names like "乐乐" into "团 团".
+    This prevents jieba from splitting entity names like "晴岚" into "团 团".
     Called lazily on first segmentation use.
 
     Args:

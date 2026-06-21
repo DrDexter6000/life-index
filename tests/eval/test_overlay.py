@@ -440,7 +440,7 @@ class TestPerQueryOverlayApplied:
             yaml.dump(
                 {
                     "queries": {
-                        "GQ07": {"must_contain_title_override": ["想念尿片侠"]},
+                        "GQ07": {"must_contain_title_override": ["想念纸船侠"]},
                     }
                 }
             ),

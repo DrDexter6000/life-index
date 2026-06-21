@@ -5,13 +5,10 @@ Provides synthetic journal data for performance benchmarking.
 """
 
 import sqlite3
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Synthetic journal data generators
@@ -24,9 +21,13 @@ def _make_journals(n: int) -> List[Dict[str, Any]]:
     for i in range(n):
         month = (i % 12) + 1
         day = (i % 28) + 1
+        route_path = (
+            f"Journals/2026/{month:02d}/"
+            f"life-index_2026-{month:02d}-{day:02d}_{(i % 5) + 1:03d}.md"
+        )
         journals.append(
             {
-                "path": f"Journals/2026/{month:02d}/life-index_2026-{month:02d}-{day:02d}_{(i % 5) + 1:03d}.md",
+                "path": route_path,
                 "title": f"Benchmark journal entry {i}",
                 "date": f"2026-{month:02d}-{day:02d}",
                 "location": "Lagos, Nigeria" if i % 3 == 0 else "Chongqing, China",
@@ -35,12 +36,12 @@ def _make_journals(n: int) -> List[Dict[str, Any]]:
                 "project": ["LifeIndex", "Parenting"][i % 2],
                 "tags": ["benchmark", "test", f"tag_{i % 10}"],
                 "mood": ["专注", "充实"][i % 2],
-                "people": ["乐乐"] if i % 4 == 0 else [],
+                "people": ["晴岚"] if i % 4 == 0 else [],
                 "abstract": f"This is benchmark journal {i} about daily life and reflections.",
                 "content": (
                     f"# Benchmark journal entry {i}\n\n"
                     f"This is a test journal entry for benchmarking purposes. "
-                    f"It contains some keywords like 乐乐, LifeIndex, parenting, "
+                    f"It contains some keywords like 晴岚, LifeIndex, parenting, "
                     f"reflection, and other common terms used in real journals. "
                     f"Entry number {i} is about {'work' if i % 2 == 0 else 'life'}.\n\n"
                     f"Additional content paragraph to make the entry more realistic. "
@@ -55,15 +56,13 @@ def _build_fts_db(db_path: Path, journals: List[Dict[str, Any]]) -> None:
     """Build a FTS5 database from synthetic journal data."""
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(
             path, title, content, date, location, weather,
             topic, project, tags, mood, people,
             tokenize = 'unicode61'
         )
-    """
-    )
+    """)
     for j in journals:
         import json
 

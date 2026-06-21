@@ -82,6 +82,14 @@ tests/nl_query_diagnosis.md
 tests/fixtures/eval/synthetic/stage2a/reject_log.md
 tests/fixtures/eval/synthetic/stage2b/meta_issue_log.md
 
+# ----- 本地 / 私有评测语料（不公开）-----
+.eval/
+tools/eval/golden_queries.yaml
+tools/eval/baselines/*.json
+tests/eval/baselines/
+tests/fixtures/eval/
+tests/golden_rejection_queries.yaml
+
 # ----- 内部战略与开发文档（不公开）-----
 .strategy/
 

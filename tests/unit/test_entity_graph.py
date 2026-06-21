@@ -25,7 +25,7 @@ def _sample_entity_graph() -> dict:
             {
                 "id": "tuantuan",
                 "type": "person",
-                "primary_name": "乐乐",
+                "primary_name": "晴岚",
                 "aliases": ["圆圆"],
                 "relationships": [{"target": "mama", "relation": "granddaughter_of"}],
             },
@@ -182,7 +182,7 @@ class TestEntitySchema:
                 {
                     "id": "tuantuan",
                     "type": "person",
-                    "primary_name": "乐乐",
+                    "primary_name": "晴岚",
                     "aliases": ["老妈"],
                 },
             ]

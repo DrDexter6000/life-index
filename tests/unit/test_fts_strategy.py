@@ -58,10 +58,10 @@ class TestFTSStrategy:
                 }
                 mock_fts.return_value = []
 
-                run_keyword_pipeline(query="「乐乐」！", use_index=True)
+                run_keyword_pipeline(query="「晴岚」！", use_index=True)
 
         assert mock_fts.call_count == 1
-        assert mock_fts.call_args.args[0] == "乐乐"
+        assert mock_fts.call_args.args[0] == "晴岚"
 
     def test_multi_word_and_first(self) -> None:
         """多词查询应优先使用 AND：'团队 建设' 先走 AND 查询。"""
@@ -294,7 +294,7 @@ class TestFTSStrategy:
                 }
                 mock_fts.return_value = []
 
-                run_keyword_pipeline(query="想念我的女儿", use_index=True)
+                run_keyword_pipeline(query="回忆海边花园", use_index=True)
 
         assert mock_fts.call_count >= 1
         for call in mock_fts.call_args_list:
@@ -484,7 +484,7 @@ class TestFTSEntityBoundary:
         from tools.search_journals.keyword_pipeline import _segment_query_for_fts
 
         # Plain Chinese query — no operators, normal path
-        result, was_segmented = _segment_query_for_fts("想念我的女儿")
+        result, was_segmented = _segment_query_for_fts("回忆海边花园")
         assert isinstance(result, str)
         assert isinstance(was_segmented, bool)
 

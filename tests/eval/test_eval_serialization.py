@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -24,6 +23,7 @@ from tools.eval.eval_serialization import (
     load_eval_run,
     save_eval_run,
 )
+from tools.eval.private_data import get_baselines_dir
 from tools.eval.eval_types import (
     CategoryMetrics,
     EvalRun,
@@ -31,7 +31,7 @@ from tools.eval.eval_types import (
     RunResult,
 )
 
-BASELINE_PATH = Path("tests/eval/baselines/round-19-phase1d-baseline-v4.json")
+BASELINE_PATH = get_baselines_dir() / "round-19-phase1d-baseline-v4.json"
 
 
 # ---------------------------------------------------------------------------
@@ -39,6 +39,10 @@ BASELINE_PATH = Path("tests/eval/baselines/round-19-phase1d-baseline-v4.json")
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not BASELINE_PATH.exists(),
+    reason="local/private eval baseline not present in public checkout",
+)
 class TestBaselineRoundTrip:
     """Round-trip the real baseline through EvalRun.from_dict / to_dict."""
 

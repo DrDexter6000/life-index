@@ -32,6 +32,15 @@ scripts/**
 assets/**
 .github/**
 
+# Local/private eval data stays outside the public surface even though the
+# surrounding harness code is public.
+!.eval/**
+!tools/eval/golden_queries.yaml
+!tools/eval/baselines/**
+!tests/eval/baselines/**
+!tests/fixtures/eval/**
+!tests/golden_rejection_queries.yaml
+
 # Public docs
 docs/API.md
 docs/ARCHITECTURE.md

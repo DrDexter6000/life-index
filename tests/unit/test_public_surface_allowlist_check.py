@@ -58,6 +58,40 @@ def test_allows_added_path_matching_public_surface() -> None:
 
 
 @pytest.mark.blocker
+def test_deny_pattern_overrides_broad_public_directory_allowance() -> None:
+    checker = _load_checker()
+    allowlist = checker.parse_allowlist(
+        "\n".join(
+            [
+                "tools/**",
+                "tests/**",
+                ".*",
+                "!.eval/**",
+                "!tools/eval/golden_queries.yaml",
+                "!tests/fixtures/eval/**",
+            ]
+        )
+    )
+
+    violations = checker.find_disallowed_paths(
+        [
+            "tools/eval/run_eval.py",
+            "tools/eval/golden_queries.yaml",
+            ".eval/golden_queries.yaml",
+            "tests/fixtures/eval/local_queries.json",
+            "tests/unit/test_eval_runner.py",
+        ],
+        allowlist,
+    )
+
+    assert violations == [
+        "tools/eval/golden_queries.yaml",
+        ".eval/golden_queries.yaml",
+        "tests/fixtures/eval/local_queries.json",
+    ]
+
+
+@pytest.mark.blocker
 def test_allows_new_path_when_same_pr_updates_allowlist() -> None:
     checker = _load_checker()
     allowlist = checker.parse_allowlist(

@@ -357,30 +357,30 @@ def test_search_chinese_month_end_late_march(
 def test_search_mixed_query_date_plus_keyword(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """'二月份 团团' should apply February date filter and preserve '团团' keyword."""
+    """'二月份 小云' should apply February date filter and preserve '小云' keyword."""
     _patch_search_roots(monkeypatch, tmp_path)
 
     _write_journal(
         tmp_path / "Journals" / "2026" / "01" / "life-index_2026-01-20_001.md",
         title="January tuan",
         date="2026-01-20",
-        body="团团 content here",
+        body="小云 content here",
     )
     _write_journal(
         tmp_path / "Journals" / "2026" / "02" / "life-index_2026-02-15_001.md",
         title="February tuan",
         date="2026-02-15",
-        body="团团 content here",
+        body="小云 content here",
     )
 
     from tools.search_journals.query_preprocessor import build_search_plan
     from datetime import date
 
-    plan = build_search_plan("二月份 团团", reference_date=date(2026, 4, 18))
+    plan = build_search_plan("二月份 小云", reference_date=date(2026, 4, 18))
     assert plan.date_range is not None
     assert plan.date_range.since == "2026-02-01"
     assert plan.date_range.until == "2026-02-28"
-    assert "团团" in plan.keywords
+    assert "小云" in plan.keywords
 
     from tools.search_journals.core import build_l0_candidate_set
 

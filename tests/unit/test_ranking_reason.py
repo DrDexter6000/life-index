@@ -1,7 +1,5 @@
 """Tests for ranking_reason natural language explanation (D16 / T4.5)."""
 
-import pytest
-
 from tools.search_journals.ranking_reason import compose
 
 
@@ -26,7 +24,7 @@ class TestComposeRankingReason:
     def test_pure_semantic_hit(self):
         """Semantic-only result mentions similarity, no FTS."""
         result = {
-            "title": "想念小英雄",
+            "title": "回忆小风筝",
             "fts_score": 0,
             "semantic_score": 60,
             "source": "semantic",
@@ -66,12 +64,12 @@ class TestComposeRankingReason:
     def test_l2_no_pipeline_hit(self):
         """L2-only result (no FTS, no semantic) gets a sensible reason."""
         result = {
-            "title": "乐乐日记",
+            "title": "晴岚日记",
             "fts_score": 0,
             "semantic_score": 0,
             "source": "none",
             "title_promoted": False,
-            "query": "乐乐",
+            "query": "晴岚",
         }
         reason = compose(result)
         assert len(reason) > 0

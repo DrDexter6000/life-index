@@ -36,14 +36,14 @@ MODULES_TO_RELOAD = [
 
 TEST_JOURNALS = [
     {
-        "title": "想念小英雄",
-        "content": "看到女儿小时候的照片，感慨万分。小豆丁长大了。",
+        "title": "回忆小风筝",
+        "content": "看到女儿小时候的照片，感慨万分。小风筝长大了。",
         "date": "2026-03-01",
         "topic": "think",
     },
     {
-        "title": "乐乐不认真吃饭",
-        "content": "今天乐乐又不认真吃饭了，真是头疼。",
+        "title": "晴岚不认真吃饭",
+        "content": "今天晴岚又不认真吃饭了，真是头疼。",
         "date": "2026-03-02",
         "topic": "life",
     },
@@ -66,14 +66,14 @@ TEST_JOURNALS = [
         "topic": "work",
     },
     {
-        "title": "读《三体》有感",
-        "content": "读了三体，思考数字灵魂和宇宙文明。",
+        "title": "读《星际寓言》有感",
+        "content": "读了星际寓言，思考记忆索引和宇宙文明。",
         "date": "2026-03-06",
         "topic": "learn",
     },
     {
-        "title": "想念我的女儿",
-        "content": "想念乐乐，那个可爱的孩子。小豆丁长大了。",
+        "title": "回忆海边花园",
+        "content": "想念晴岚，那个可爱的孩子。小风筝长大了。",
         "date": "2026-03-07",
         "topic": "life",
     },
@@ -119,19 +119,19 @@ def search_env(tmp_path_factory):
 class TestPhase4E2E:
     """End-to-end validation of Phase 4 changes."""
 
-    def test_semantic_query_finds_daughter(self, search_env):
-        """T4.1: '想起女儿' should find daughter-related journals via semantic."""
+    def test_semantic_query_finds_character_memory(self, search_env):
+        """T4.1: character memory query should find related journals via semantic."""
         if os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1":
             pytest.skip("Semantic search unavailable in FTS-only mode (vector index skipped)")
 
-        result = search_env(query="想起女儿", level=3, semantic=True)
+        result = search_env(query="想念晴岚", level=3, semantic=True)
         merged = result.get("merged_results", [])
-        assert len(merged) >= 1, "Should find at least one result for '想起女儿'"
+        assert len(merged) >= 1, "Should find at least one result for character memory"
         top_title = str(merged[0].get("title", ""))
-        # Should match daughter-related journals, not unrelated ones
+        related_titles = {"回忆小风筝", "晴岚不认真吃饭", "回忆海边花园"}
         assert (
-            "乐乐" in top_title or "小英雄" in top_title or "女儿" in top_title
-        ), f"Top result '{top_title}' should be about daughter"
+            top_title in related_titles
+        ), f"Top result '{top_title}' should be about the character"
 
     def test_claude_opus_title_promoted(self, search_env):
         """T4.4: 'Claude Opus' query should promote the matching title."""
@@ -173,9 +173,9 @@ class TestPhase4E2E:
         pipeline is unavailable (e.g. no vector index in CI) so the quarantine
         gate stays green without weakening the hybrid check.
         """
-        result = search_env(query="想念女儿", level=3)
+        result = search_env(query="想念晴岚", level=3)
         merged = result.get("merged_results", [])
-        assert len(merged) >= 1, "Should find results for '想念女儿'"
+        assert len(merged) >= 1, "Should find results for character memory"
         hybrid = [r for r in merged if "semantic" in r.get("source", "")]
         if not hybrid:
             pytest.skip(
@@ -190,7 +190,7 @@ class TestPhase4E2E:
 
     def test_final_score_geq_rrf_score(self, search_env):
         """final_score >= rrf_score (title promotion can increase it)."""
-        result = search_env(query="乐乐不认真吃饭", level=3)
+        result = search_env(query="晴岚不认真吃饭", level=3)
         for r in result.get("merged_results", []):
             assert (
                 r["final_score"] >= r["rrf_score"] - 1e-6
@@ -212,7 +212,7 @@ class TestPhase4E2E:
 
     def test_title_promoted_field_on_all_results(self, search_env):
         """T4.4: Every result should have the title_promoted boolean."""
-        result = search_env(query="乐乐", level=3)
+        result = search_env(query="晴岚", level=3)
         for r in result.get("merged_results", []):
             assert "title_promoted" in r
             assert isinstance(r["title_promoted"], bool)

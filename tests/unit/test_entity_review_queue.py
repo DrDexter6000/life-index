@@ -11,7 +11,6 @@ Validates that:
 
 from pathlib import Path
 
-import pytest
 
 from tools.lib.entity_graph import save_entity_graph
 
@@ -27,7 +26,7 @@ def _conflict_graph() -> list[dict]:
             "id": "wife-001",
             "type": "person",
             "primary_name": "王晓丽",
-            "aliases": ["乐乐妈"],
+            "aliases": ["晴岚妈"],
             "attributes": {},
             "relationships": [{"target": "author-self", "relation": "spouse_of"}],
         },
@@ -51,7 +50,6 @@ def _conflict_graph() -> list[dict]:
 
 
 def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
-    from tools.lib.entity_graph import save_entity_graph
 
     save_entity_graph(entities, isolated_data_dir / "entity_graph.yaml")
 
@@ -74,9 +72,7 @@ class TestReviewQueueBuilding:
         assert isinstance(queue, list)
         assert len(queue) >= 1
 
-    def test_review_queue_items_have_required_fields(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_review_queue_items_have_required_fields(self, isolated_data_dir: Path) -> None:
         from tools.entity.review import build_review_queue
 
         _save_graph(_conflict_graph(), isolated_data_dir)
@@ -104,9 +100,9 @@ class TestReviewQueueBuilding:
         for i in range(len(queue) - 1):
             current_risk = risk_order.get(queue[i]["risk_level"], 99)
             next_risk = risk_order.get(queue[i + 1]["risk_level"], 99)
-            assert current_risk <= next_risk, (
-                f"Queue not sorted: {queue[i]['risk_level']} before {queue[i + 1]['risk_level']}"
-            )
+            assert (
+                current_risk <= next_risk
+            ), f"Queue not sorted: {queue[i]['risk_level']} before {queue[i + 1]['risk_level']}"
 
     def test_high_risk_items_have_merge_action(self, isolated_data_dir: Path) -> None:
         from tools.entity.review import build_review_queue
@@ -120,11 +116,8 @@ class TestReviewQueueBuilding:
         if high_items:
             for item in high_items:
                 assert (
-                    "merge" in item["action_choices"]
-                    or "merge_as_alias" in item["action_choices"]
+                    "merge" in item["action_choices"] or "merge_as_alias" in item["action_choices"]
                 )
-
-
 
 
 class TestReviewPreview:

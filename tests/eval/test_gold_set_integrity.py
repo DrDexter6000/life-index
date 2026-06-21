@@ -2,9 +2,16 @@
 
 from pathlib import Path
 
+import pytest
 import yaml
 
-GOLD_SET = Path("tools/eval/golden_queries.yaml")
+from tools.eval.private_data import get_baselines_dir, get_golden_queries_path
+
+GOLD_SET = get_golden_queries_path()
+pytestmark = pytest.mark.skipif(
+    not GOLD_SET.exists(),
+    reason="local/private eval query set not present in public checkout",
+)
 REQUIRED_CATEGORIES = {
     "entity_expansion",
     "chinese_recall",
@@ -47,7 +54,7 @@ def test_run_eval_script_exists() -> None:
 
 
 def test_baseline_json_exists() -> None:
-    baseline = Path("tests/eval/baselines/round-17-baseline.json")
+    baseline = get_baselines_dir() / "round-17-baseline.json"
     assert baseline.exists(), "round-17-baseline.json must exist"
 
 

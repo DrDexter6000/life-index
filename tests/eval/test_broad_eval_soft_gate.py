@@ -263,9 +263,9 @@ def test_exact_mrr_unchanged(monkeypatch, mock_precision, mock_global_matched, t
     queries = [
         {
             "id": "TEST06",
-            "query": "想念小英雄",
+            "query": "回忆小风筝",
             "category": "entity_expansion",
-            "expected": {"min_results": 1, "must_contain_title": ["想念小英雄"]},
+            "expected": {"min_results": 1, "must_contain_title": ["回忆小风筝"]},
         }
     ]
 
@@ -275,10 +275,10 @@ def test_exact_mrr_unchanged(monkeypatch, mock_precision, mock_global_matched, t
         lambda query, level, semantic: {
             "merged_results": [
                 {
-                    "title": "想念小英雄",
+                    "title": "回忆小风筝",
                     "date": "2026-03-04",
                     "abstract": "回忆",
-                    "snippet": "小英雄",
+                    "snippet": "小队长",
                 }
             ]
         },

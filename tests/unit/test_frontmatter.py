@@ -96,21 +96,26 @@ Body content.
 
     def test_malformed_legacy_content_field_recovers_metadata_and_body(self):
         """Legacy malformed content field should preserve metadata and body."""
-        content = """---
-title: "关于乐乐的事"
+        content = (
+            """---
+title: "关于晴岚的事"
 date: 2026-03-20T21:46:00+01:00
-attachments: [{"filename": "diary_tuantuan.png", "rel_path": "../../../attachments/2026/03/diary_tuantuan.png", "description": "日记配图"}]
-content: "今天多喝了点，脑子晕晕的
+"""
+            'attachments: [{"filename": "diary_tuantuan.png", '
+            '"rel_path": "../../../attachments/2026/03/diary_tuantuan.png", '
+            '"description": "日记配图"}]\n'
+            """content: "今天多喝了点，脑子晕晕的
 
-我想记录一下昨天关于乐乐的事"
+我想记录一下昨天关于晴岚的事"
 ---
 
 ## Attachments
 - [diary_tuantuan.png](../../../attachments/2026/03/diary_tuantuan.png) - 日记配图
 """
+        )
         metadata, body = parse_frontmatter(content)
 
-        assert metadata["title"] == "关于乐乐的事"
+        assert metadata["title"] == "关于晴岚的事"
         assert metadata["date"] == "2026-03-20T21:46:00+01:00"
         assert metadata["attachments"][0]["filename"] == "diary_tuantuan.png"
         assert "今天多喝了点" in body
@@ -210,18 +215,10 @@ class TestFormatFrontmatter:
 
         lines = result.strip().split("\n")
         # Find field positions
-        title_pos = next(
-            (i for i, line in enumerate(lines) if line.startswith("title:")), -1
-        )
-        date_pos = next(
-            (i for i, line in enumerate(lines) if line.startswith("date:")), -1
-        )
-        topic_pos = next(
-            (i for i, line in enumerate(lines) if line.startswith("topic:")), -1
-        )
-        tags_pos = next(
-            (i for i, line in enumerate(lines) if line.startswith("tags:")), -1
-        )
+        title_pos = next((i for i, line in enumerate(lines) if line.startswith("title:")), -1)
+        date_pos = next((i for i, line in enumerate(lines) if line.startswith("date:")), -1)
+        topic_pos = next((i for i, line in enumerate(lines) if line.startswith("topic:")), -1)
+        tags_pos = next((i for i, line in enumerate(lines) if line.startswith("tags:")), -1)
 
         # Verify order per FIELD_ORDER: title < date < tags < topic
         assert title_pos < date_pos
@@ -473,9 +470,7 @@ Content.
 """
         file_path.write_text(original_content, encoding="utf-8")
 
-        result = update_frontmatter_fields(
-            file_path, {"title": "Updated"}, dry_run=True
-        )
+        result = update_frontmatter_fields(file_path, {"title": "Updated"}, dry_run=True)
 
         assert result["success"] is True
         assert "title" in result["changes"]
@@ -499,9 +494,7 @@ Content.
 """
         file_path.write_text(original_content, encoding="utf-8")
 
-        result = update_frontmatter_fields(
-            file_path, {"title": "Updated"}, dry_run=False
-        )
+        result = update_frontmatter_fields(file_path, {"title": "Updated"}, dry_run=False)
 
         assert result["success"] is True
         assert "title" in result["changes"]
@@ -553,9 +546,7 @@ Content.
 """
         file_path.write_text(content, encoding="utf-8")
 
-        result = update_frontmatter_fields(
-            file_path, {"weather": "Sunny"}, dry_run=False
-        )
+        result = update_frontmatter_fields(file_path, {"weather": "Sunny"}, dry_run=False)
 
         assert result["success"] is True
         assert "weather" in result["changes"]
@@ -662,18 +653,23 @@ location: "北京，中国"
     def test_parse_legacy_malformed_content_field_preserves_attachments(self, tmp_path):
         """Legacy malformed content field should still expose attachments metadata."""
         file_path = tmp_path / "legacy.md"
-        content = """---
-title: "关于乐乐的事"
+        content = (
+            """---
+title: "关于晴岚的事"
 date: 2026-03-20T21:46:00+01:00
-attachments: [{"filename": "diary_tuantuan.png", "rel_path": "../../../attachments/2026/03/diary_tuantuan.png", "description": "日记配图"}]
-content: "今天多喝了点，脑子晕晕的
+"""
+            'attachments: [{"filename": "diary_tuantuan.png", '
+            '"rel_path": "../../../attachments/2026/03/diary_tuantuan.png", '
+            '"description": "日记配图"}]\n'
+            """content: "今天多喝了点，脑子晕晕的
 
-我想记录一下昨天关于乐乐的事"
+我想记录一下昨天关于晴岚的事"
 ---
 
 ## Attachments
 - [diary_tuantuan.png](../../../attachments/2026/03/diary_tuantuan.png) - 日记配图
 """
+        )
         file_path.write_text(content, encoding="utf-8")
 
         metadata = parse_journal_file(file_path)

@@ -199,7 +199,7 @@ class TestFTSTitleInsert:
         journals_dir = isolated_data_dir / "Journals" / "2026" / "03"
         journals_dir.mkdir(parents=True, exist_ok=True)
 
-        raw_title = "想念小英雄"
+        raw_title = "想念小风筝"
         file_path = journals_dir / "life-index_2026-03-04_001.md"
         frontmatter = f"""---
 title: "{raw_title}"
@@ -211,7 +211,7 @@ topic: ["think"]
 
 # {raw_title}
 
-看到乐乐小时候的照片。
+看到晴岚小时候的照片。
 """
         file_path.write_text(frontmatter, encoding="utf-8")
 
@@ -234,5 +234,5 @@ topic: ["think"]
             "想念" in tokens
         ), f"title_segmented should contain '想念', got '{doc['title_segmented']}'"
         assert any(
-            token.endswith("英雄") for token in tokens
-        ), f"title_segmented should contain an '英雄' token, got '{doc['title_segmented']}'"
+            token.endswith("风筝") for token in tokens
+        ), f"title_segmented should contain a '风筝' token, got '{doc['title_segmented']}'"

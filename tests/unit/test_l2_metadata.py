@@ -167,9 +167,9 @@ class TestMatchesFilters:
         from tools.search_journals.l2_metadata import _matches_filters
 
         metadata = {
-            "title": "团团最爱的玩具陪我继续睡觉",
+            "title": "小云最爱的玩具陪我继续睡觉",
             "abstract": "",
-            "tags": ["回家", "团团", "父女", "暖心", "毛绒玩具"],
+            "tags": ["回家", "小云", "父女", "暖心", "毛绒玩具"],
             "location": "Chongqing, China",
         }
         # Expanded query from GQ64: entity expansion of "在重庆发生过的事"
@@ -181,7 +181,7 @@ class TestMatchesFilters:
         from tools.search_journals.l2_metadata import _matches_filters
 
         metadata = {
-            "title": "团团最爱的玩具陪我继续睡觉",
+            "title": "小云最爱的玩具陪我继续睡觉",
             "tags": ["回家"],
             "location": "Chongqing, China",
         }
@@ -192,7 +192,7 @@ class TestMatchesFilters:
         from tools.search_journals.l2_metadata import _matches_filters
 
         metadata = {
-            "title": "团团最爱的玩具陪我继续睡觉",
+            "title": "小云最爱的玩具陪我继续睡觉",
             "tags": ["回家"],
             "location": "Beijing, China",
         }

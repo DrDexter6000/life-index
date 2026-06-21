@@ -12,7 +12,7 @@ Tests cover:
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from contextlib import ExitStack
 
 import pytest
@@ -43,21 +43,19 @@ class TestUpdateFtsIndex:
         """Basic FTS write-through inserts a row."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
-            "title": "想念女儿",
-            "content": "今天在阳台上看日落，想起了乐乐小时候的模样",
+            "title": "想念伙伴",
+            "content": "今天在阳台上看日落，想起了晴岚小时候的模样",
             "date": "2026-03-04T19:43:00",
             "location": "Lagos, Nigeria",
             "weather": "晴天 28C",
             "topic": ["think"],
             "tags": ["亲子", "回忆"],
             "mood": ["思念"],
-            "people": ["乐乐"],
+            "people": ["晴岚"],
             "project": "LifeIndex",
         }
 
@@ -87,9 +85,7 @@ class TestUpdateFtsIndex:
         """Calling twice with same path should not duplicate rows."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
@@ -123,14 +119,12 @@ class TestUpdateFtsIndex:
         """Chinese text should be segmented for FTS."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
-            "title": "想念女儿",
-            "content": "今天想起了乐乐小时候的模样",
+            "title": "想念伙伴",
+            "content": "今天想起了晴岚小时候的模样",
             "date": "2026-03-04",
         }
 
@@ -158,9 +152,7 @@ class TestUpdateFtsIndex:
         """Topic/tags/mood/people as lists should be normalized to comma-joined strings."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
@@ -170,7 +162,7 @@ class TestUpdateFtsIndex:
             "topic": ["work", "learn"],
             "tags": ["python", "ai"],
             "mood": ["专注", "充实"],
-            "people": ["乐乐", "朋友"],
+            "people": ["晴岚", "朋友"],
         }
 
         with (
@@ -193,16 +185,14 @@ class TestUpdateFtsIndex:
         assert "python" in row[1]
         assert "ai" in row[1]
         assert "专注" in row[2]
-        assert "乐乐" in row[3]
+        assert "晴岚" in row[3]
         conn.close()
 
     def test_index_meta_last_updated_refreshed(self, tmp_path: Path):
         """write_index_meta should be called, refreshing last_updated."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {"title": "Test", "content": "Content", "date": "2026-03-04"}
@@ -229,9 +219,7 @@ class TestUpdateFtsIndex:
         """Database error should return False, never raise."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {"title": "Test", "content": "Content", "date": "2026-03-04"}
@@ -254,9 +242,7 @@ class TestUpdateFtsIndex:
         """Missing/empty data fields should not crash."""
         from tools.write_journal.index_updater import update_fts_index
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {"date": "2026-03-04"}
@@ -282,9 +268,7 @@ class TestUpdateFtsIndex:
         from tools.write_journal.index_updater import update_fts_index
         from tools.lib.search_index import search_fts
 
-        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(
-            tmp_path
-        )
+        user_data_dir, journals_dir, index_dir, fts_db_path = self._setup_fts_env(tmp_path)
         journal_path = self._make_journal_path(journals_dir)
 
         data = {
@@ -309,10 +293,7 @@ class TestUpdateFtsIndex:
             results = search_fts("重构")
 
         assert len(results) >= 1
-        found = any(
-            "重构" in r.get("title", "") or "重构" in r.get("content", "")
-            for r in results
-        )
+        found = any("重构" in r.get("title", "") or "重构" in r.get("content", "") for r in results)
         assert found
 
 

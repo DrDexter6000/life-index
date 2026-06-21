@@ -16,6 +16,8 @@ from typing import Any, Iterator
 
 import yaml
 
+from tools.eval.private_data import get_baselines_dir, resolve_eval_file
+
 GOLDEN_QUERIES_PATH = Path(__file__).with_name("golden_queries.yaml")
 TOP_K = 5
 MODULES_TO_RELOAD = (
@@ -748,36 +750,84 @@ def _get_prompts_module() -> Any:
     return importlib.import_module("tools.eval.prompts")
 
 
-def load_golden_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
-    """Load the golden query set from YAML."""
-    payload = yaml.safe_load((file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8"))
+def _resolve_golden_queries_path(
+    file_path: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> Path:
+    return resolve_eval_file(file_path, "golden_queries.yaml", data_dir=data_dir)
+
+
+def _load_eval_yaml(
+    file_path: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Load eval YAML, treating the default local query set as optional."""
+    path = _resolve_golden_queries_path(file_path, data_dir=data_dir)
+    if not path.exists():
+        if file_path is None:
+            return {}
+        raise FileNotFoundError(f"Eval query file not found: {path}")
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else {}
+
+
+def eval_query_set_available(
+    file_path: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> bool:
+    """Return whether the selected eval query set is present on disk."""
+    return _resolve_golden_queries_path(file_path, data_dir=data_dir).exists()
+
+
+def load_golden_queries(
+    file_path: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Load the local/private golden query set from YAML when present."""
+    payload = _load_eval_yaml(file_path, data_dir=data_dir)
     queries = payload.get("queries", []) if isinstance(payload, dict) else []
     if not isinstance(queries, list):
         raise ValueError("golden_queries.yaml must contain a 'queries' list")
     return queries
 
 
-def load_aggregate_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
+def load_aggregate_queries(
+    file_path: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     """Load aggregate/analyze companion cases from the Gold Set YAML."""
-    payload = yaml.safe_load((file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8"))
+    payload = _load_eval_yaml(file_path, data_dir=data_dir)
     queries = payload.get("aggregate_queries", []) if isinstance(payload, dict) else []
     if not isinstance(queries, list):
         raise ValueError("golden_queries.yaml aggregate_queries must be a list when present")
     return queries
 
 
-def load_smart_aggregate_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
+def load_smart_aggregate_queries(
+    file_path: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     """Load smart-search aggregate route companion cases from the Gold Set YAML."""
-    payload = yaml.safe_load((file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8"))
+    payload = _load_eval_yaml(file_path, data_dir=data_dir)
     queries = payload.get("smart_aggregate_queries", []) if isinstance(payload, dict) else []
     if not isinstance(queries, list):
         raise ValueError("golden_queries.yaml smart_aggregate_queries must be a list when present")
     return queries
 
 
-def load_timeline_queries(file_path: Path | None = None) -> list[dict[str, Any]]:
+def load_timeline_queries(
+    file_path: Path | None = None,
+    *,
+    data_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     """Load timeline evidence-navigation companion cases from the Gold Set YAML."""
-    payload = yaml.safe_load((file_path or GOLDEN_QUERIES_PATH).read_text(encoding="utf-8"))
+    payload = _load_eval_yaml(file_path, data_dir=data_dir)
     queries = payload.get("timeline_queries", []) if isinstance(payload, dict) else []
     if not isinstance(queries, list):
         raise ValueError("golden_queries.yaml timeline_queries must be a list when present")
@@ -788,12 +838,13 @@ def _load_queries_with_overlay(
     queries_path: Path | None = None,
     overlay_path: Path | None = None,
     use_overlay: bool = True,
+    data_dir: Path | None = None,
 ) -> tuple[list[dict[str, Any]], int, list[str], set[str]]:
     """Load golden queries and optionally apply a private overlay.
 
     Returns (queries, overlay_applied_count, overlay_warnings, applied_query_ids).
     """
-    queries = load_golden_queries(queries_path)
+    queries = load_golden_queries(queries_path, data_dir=data_dir)
     if not use_overlay:
         return queries, 0, [], set()
 
@@ -823,20 +874,18 @@ def _find_latest_baseline(
     tools_dir: Path | None = None,
     tests_dir: Path | None = None,
 ) -> Path | None:
-    """Locate the most recent baseline file preferring tools/eval/baselines/.
+    """Locate the most recent local/private baseline file.
 
     Lookup policy (M4-B1):
-      1. Scan ``tools/eval/baselines/`` (canonical) first.
+      1. Scan the configured private eval ``baselines/`` directory first.
       2. Sort candidates deterministically by embedded ``frozen_at`` or
          ``anchor_date`` descending, then filename descending, using mtime
          only as the final tie-breaker.
-      3. If no tools baseline exists, fall back to
-         ``tests/eval/baselines/`` with the same deterministic sort.
+      3. If tests_dir is explicitly provided, fall back to that directory
+         with the same deterministic sort.
     """
-    canonical_dir = tools_dir or (Path(__file__).parent / "baselines")
-    fallback_dir = tests_dir or (
-        Path(__file__).parent.parent.parent / "tests" / "eval" / "baselines"
-    )
+    canonical_dir = tools_dir or get_baselines_dir()
+    fallback_dir = tests_dir
 
     def _sort_key(p: Path) -> tuple:
         """Deterministic sort key: all fields descending via reverse=True."""
@@ -859,7 +908,7 @@ def _find_latest_baseline(
             return tools_candidates[0]
 
     # Fallback to tests directory
-    if fallback_dir.exists():
+    if fallback_dir is not None and fallback_dir.exists():
         tests_candidates = sorted(
             fallback_dir.glob("round-*-baseline*.json"), key=_sort_key, reverse=True
         )
@@ -1227,6 +1276,8 @@ def _build_summary_lines(result: dict[str, Any]) -> list[str]:
     ]
     if "ndcg_at_5" in metrics:
         lines.append(f"nDCG@5: {metrics['ndcg_at_5']:.4f}")
+    if not result.get("eval_data_available", True):
+        lines.append("Eval data: local/private query set not present; data-dependent eval skipped")
     if result["failures"]:
         lines.append(f"Failures: {len(result['failures'])}")
         for failure in result["failures"][:5]:
@@ -1657,16 +1708,18 @@ def run_evaluation(
     _anchor = _get_eval_anchor_date()
     _inject_eval_anchor(_anchor)
 
+    eval_data_available = eval_query_set_available(queries_path, data_dir=data_dir)
     all_queries, overlay_applied_count, overlay_warnings, applied_query_ids = (
         _load_queries_with_overlay(
             queries_path=queries_path,
             overlay_path=overlay_path,
             use_overlay=use_overlay,
+            data_dir=data_dir,
         )
     )
-    aggregate_queries = load_aggregate_queries(queries_path)
-    smart_aggregate_queries = load_smart_aggregate_queries(queries_path)
-    timeline_queries = load_timeline_queries(queries_path)
+    aggregate_queries = load_aggregate_queries(queries_path, data_dir=data_dir)
+    smart_aggregate_queries = load_smart_aggregate_queries(queries_path, data_dir=data_dir)
+    timeline_queries = load_timeline_queries(queries_path, data_dir=data_dir)
     queries = []
     skipped_queries: list[dict[str, Any]] = []
     for q in all_queries:
@@ -1727,6 +1780,7 @@ def run_evaluation(
         "judge_mode": judge,
         "live_mode": live,
         "semantic_enabled": use_semantic,
+        "eval_data_available": eval_data_available,
         "total_queries": len(per_query),
         "skipped_queries": len(skipped_queries),
         "metrics": (

@@ -200,7 +200,7 @@ def _segment_query_for_fts(query: str, *, entity_expanded: bool = False) -> tupl
         return _segment_entity_expanded_query(query)
 
     # If query already has FTS operators or is all ASCII, pass through
-    # (entity expansion may have added operators like "乐乐 OR 小豆丁")
+    # (entity expansion may have added operators like "晴岚 OR 小风筝")
     if _has_explicit_fts_operator(query):
         return query, False
 

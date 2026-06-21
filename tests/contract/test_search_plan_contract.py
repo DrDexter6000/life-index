@@ -48,7 +48,7 @@ def result_with_keyword_query(tmp_path, monkeypatch):
     """Run hierarchical_search with a keyword query."""
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
 
-    return hierarchical_search(query="乐乐")
+    return hierarchical_search(query="晴岚")
 
 
 # ── Basic field existence (should be GREEN after placeholder) ──────────
@@ -62,13 +62,11 @@ class TestSearchPlanFieldBasic:
     def test_search_plan_is_dict_or_none(self, result_with_nl_query):
         r = result_with_nl_query
         sp = r["search_plan"]
-        assert sp is None or isinstance(sp, dict), \
-            "search_plan must be None or dict"
+        assert sp is None or isinstance(sp, dict), "search_plan must be None or dict"
 
     def test_search_plan_not_none_when_query_given(self, result_with_nl_query):
         r = result_with_nl_query
-        assert r["search_plan"] is not None, \
-            "search_plan should not be None when query is provided"
+        assert r["search_plan"] is not None, "search_plan should not be None when query is provided"
 
 
 class TestAmbiguityFieldBasic:

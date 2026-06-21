@@ -20,27 +20,26 @@ import pytest
 @pytest.fixture(autouse=True)
 def _setup_isolation(isolated_data_dir: Path) -> None:
     """Set up isolated data directory for all Phase 0 integration tests."""
-    self_data_dir = isolated_data_dir
     journals_dir = isolated_data_dir / "Journals" / "2026" / "03"
     journals_dir.mkdir(parents=True, exist_ok=True)
 
     # Create a test journal with Chinese title
     journal_content = """---
-title: "想念小英雄"
+title: "回忆小风筝"
 date: 2026-03-04T19:43:02
 location: "Chongqing, China"
 weather: "晴天（浮云、阵雨）"
 mood: ["思念", "温暖"]
-people: ["乐乐"]
+people: ["晴岚"]
 tags: ["亲子", "回忆"]
 project: "LifeIndex"
 topic: ["think", "create"]
-abstract: "翻看女儿乐乐小时候的照片。"
+abstract: "翻看女儿晴岚小时候的照片。"
 ---
 
-# 想念小英雄
+# 回忆小风筝
 
-看到乐乐小时候的照片，那个只有2岁上下的小英雄。
+看到晴岚小时候的照片，那个只有2岁上下的小队长。
 突然有一种伤感——我好想这个小娃娃。
 """
     journal_path = journals_dir / "life-index_2026-03-04_001.md"
@@ -60,7 +59,7 @@ class TestPhase0Integration:
         Validates:
         - CLI subprocess doesn't crash (R10 fix)
         - JSON output is valid
-        - Title is raw "想念小英雄", not "想念 尿片 侠" (R11 fix)
+        - Title is raw "回忆小风筝", not "想念 尿片 侠" (R11 fix)
         """
         # First, build the index via Python API
         import importlib
@@ -82,7 +81,7 @@ class TestPhase0Integration:
                 "-m",
                 "tools.search_journals",
                 "--query",
-                "乐乐",
+                "晴岚",
                 "--no-semantic",
             ],
             capture_output=True,
@@ -103,15 +102,11 @@ class TestPhase0Integration:
         results = output.get("merged_results", [])
         if results:
             title = results[0]["title"]
-            assert "想念 尿片" not in title, (
-                f"Title should be raw, not segmented: '{title}'"
-            )
-            assert title == "想念小英雄", f"Expected raw title, got: '{title}'"
+            assert "想念 尿片" not in title, f"Title should be raw, not segmented: '{title}'"
+            assert title == "回忆小风筝", f"Expected raw title, got: '{title}'"
 
     @pytest.mark.integration
-    def test_old_schema_auto_migrates_on_index_open(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_old_schema_auto_migrates_on_index_open(self, isolated_data_dir: Path) -> None:
         """
         Simulate a v1.x user upgrading: old schema DB auto-migrates.
 
@@ -141,9 +136,7 @@ class TestPhase0Integration:
                 file_hash UNINDEXED, modified_time UNINDEXED
             )
         """)
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)"
-        )
+        cursor.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
         cursor.execute(
             "INSERT OR REPLACE INTO index_meta VALUES (?, ?)",
             ("schema_version", "1"),
@@ -165,14 +158,12 @@ class TestPhase0Integration:
         assert "title_segmented" in columns
 
         # Verify search works with raw titles
-        results = search_fts("乐乐")
+        results = search_fts("晴岚")
         if results:
-            assert results[0]["title"] == "想念小英雄"
+            assert results[0]["title"] == "回忆小风筝"
 
     @pytest.mark.integration
-    def test_rebuild_produces_v2_schema_with_raw_titles(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_rebuild_produces_v2_schema_with_raw_titles(self, isolated_data_dir: Path) -> None:
         """
         Fresh `life-index index --rebuild` should produce v2 schema
         with raw titles and segmented title_segmented column.
@@ -187,9 +178,7 @@ class TestPhase0Integration:
         from tools.lib.search_index import (
             FTS_DB_PATH,
             update_index,
-            search_fts,
         )
-        from tools.lib.search_constants import TOKENIZER_VERSION
 
         result = update_index(incremental=False)
         assert result["success"]
@@ -212,6 +201,6 @@ class TestPhase0Integration:
         title, title_segmented = data_row
 
         # Title is raw
-        assert title == "想念小英雄"
+        assert title == "回忆小风筝"
         # Title_segmented has spaces from jieba
         assert " " in title_segmented

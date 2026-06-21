@@ -18,7 +18,7 @@ Usage:
     from tools.write_journal.prepare import prepare_journal_metadata
 
     result = prepare_journal_metadata({
-        "content": "今天看到乐乐以前的照片...",
+        "content": "今天看到晴岚以前的照片...",
         "date": "2026-03-29",
     })
 """
@@ -185,12 +185,12 @@ def prepare_journal_metadata(
 
     Example:
         >>> result = prepare_journal_metadata({
-        ...     "content": "今天看到乐乐以前的照片...",
+        ...     "content": "今天看到晴岚以前的照片...",
         ...     "date": "2026-03-29",
         ...     "topic": "life",
         ... })
         >>> result["title"]
-        '今天看到乐乐以前的照片...'
+        '今天看到晴岚以前的照片...'
     """
     content = str(form_data.get("content", "")).strip()
     if not content:

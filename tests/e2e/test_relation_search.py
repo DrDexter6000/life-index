@@ -15,39 +15,39 @@ import yaml
 RELATION_JOURNALS = [
     {
         "filename": "life-index_2026-03-04_001.md",
-        "title": "想念小英雄",
+        "title": "回忆小风筝",
         "date": "2026-03-04T19:43:00",
         "tags": ["亲子", "回忆", "感伤"],
         "topic": "think",
-        "people": ["乐乐"],
-        "content": ("翻看女儿乐乐小时候的照片，那个只有2岁上下的小英雄。小豆丁，爸爸想你了。"),
+        "people": ["晴岚"],
+        "content": ("翻看女儿晴岚小时候的照片，那个只有2岁上下的小队长。小风筝，朋友想你了。"),
     },
     {
         "filename": "life-index_2026-03-10_001.md",
-        "title": "乐乐不认真吃饭",
+        "title": "晴岚不认真吃饭",
         "date": "2026-03-10T18:00:00",
         "tags": ["亲子", "日常"],
         "topic": "life",
-        "people": ["乐乐"],
-        "content": "乐乐最近吃饭很不认真，总是跑来跑去，不过还是很可爱。",
+        "people": ["晴岚"],
+        "content": "晴岚最近吃饭很不认真，总是跑来跑去，不过还是很可爱。",
     },
     {
         "filename": "life-index_2026-03-12_001.md",
-        "title": "重庆过生日",
+        "title": "海边过生日",
         "date": "2026-03-12T12:00:00",
         "tags": ["生日", "家庭"],
         "topic": "life",
-        "people": ["妈妈", "乐乐"],
-        "content": "在重庆过了一个简单的生日。妈妈做了长寿面，乐乐唱了生日歌。",
+        "people": ["妈妈", "晴岚"],
+        "content": "在海边过了一个简单的生日。妈妈做了长寿面，晴岚唱了生日歌。",
     },
     {
         "filename": "life-index_2026-03-16_001.md",
-        "title": "想念我的女儿",
+        "title": "回忆海边花园",
         "date": "2026-03-16T22:00:00",
         "tags": ["思念", "亲情"],
         "topic": "think",
-        "people": ["乐乐"],
-        "content": "深夜翻看乐乐的照片，好想再把她抱在怀里。",
+        "people": ["晴岚"],
+        "content": "深夜翻看晴岚的照片，好想再把她抱在怀里。",
     },
     {
         "filename": "life-index_2026-03-20_001.md",
@@ -62,16 +62,16 @@ RELATION_JOURNALS = [
 
 
 SEARCH_CASES = [
-    ("我女儿", "想念小英雄", "child_of reverse lookup should find tuantuan journals"),
-    ("乐乐的奶奶", "重庆过生日", "grandmother relation should resolve to mama journal"),
-    ("我妈妈", "重庆过生日", "parent relation should resolve to mama journal"),
+    ("我女儿", "回忆小风筝", "child_of reverse lookup should find tuantuan journals"),
+    ("晴岚的奶奶", "海边过生日", "grandmother relation should resolve to mama journal"),
+    ("我妈妈", "海边过生日", "parent relation should resolve to mama journal"),
     ("我老婆", "和老婆看电影", "spouse relation should resolve to spouse journal"),
 ]
 
 
 EXPANSION_EXPECTATIONS = {
-    "我女儿": ["乐乐", "小英雄"],
-    "乐乐的奶奶": ["妈妈", "老妈"],
+    "我女儿": ["晴岚", "小队长"],
+    "晴岚的奶奶": ["妈妈", "老妈"],
     "我妈妈": ["妈妈", "老妈"],
     "我老婆": ["老婆", "妻子"],
 }
@@ -103,8 +103,8 @@ def _setup_relation_search_env(tmp_path_factory):
             {
                 "id": "tuantuan",
                 "type": "person",
-                "primary_name": "乐乐",
-                "aliases": ["小豆丁", "小英雄"],
+                "primary_name": "晴岚",
+                "aliases": ["小风筝", "小队长"],
                 "relationships": [{"target": "author-self", "relation": "child_of"}],
             },
             {

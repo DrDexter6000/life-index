@@ -19,9 +19,7 @@ def relation_patches(monkeypatch: pytest.MonkeyPatch) -> None:
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(
-        "tools.search_journals.ranking.init_metadata_cache", lambda: DummyConn()
-    )
+    monkeypatch.setattr("tools.search_journals.ranking.init_metadata_cache", lambda: DummyConn())
     monkeypatch.setattr(
         "tools.search_journals.ranking.get_backlinked_by",
         lambda conn, rel_path: [],
@@ -54,9 +52,7 @@ def _result(
 
 
 class TestSearchExplain:
-    def test_explain_result_has_explain_field(
-        self, relation_patches: None, tmp_path: Path
-    ) -> None:
+    def test_explain_result_has_explain_field(self, relation_patches: None, tmp_path: Path) -> None:
         path = str(tmp_path / "entry.md")
         l3_results, semantic_results = _result(path)
 
@@ -88,13 +84,11 @@ class TestSearchExplain:
             [], [], l3_results, semantic_results, query="entry", explain=True
         )
 
-        assert results[0]["explain"]["semantic_pipeline"][
-            "cosine_similarity"
-        ] == pytest.approx(0.83, abs=0.0001)
+        assert results[0]["explain"]["semantic_pipeline"]["cosine_similarity"] == pytest.approx(
+            0.83, abs=0.0001
+        )
 
-    def test_explain_contains_fusion(
-        self, relation_patches: None, tmp_path: Path
-    ) -> None:
+    def test_explain_contains_fusion(self, relation_patches: None, tmp_path: Path) -> None:
         path = str(tmp_path / "entry.md")
         l3_results, semantic_results = _result(path)
 
@@ -104,9 +98,7 @@ class TestSearchExplain:
 
         assert isinstance(results[0]["explain"]["fusion"]["rrf_score"], float)
 
-    def test_no_explain_by_default(
-        self, relation_patches: None, tmp_path: Path
-    ) -> None:
+    def test_no_explain_by_default(self, relation_patches: None, tmp_path: Path) -> None:
         path = str(tmp_path / "entry.md")
         l3_results, semantic_results = _result(path)
 
@@ -130,14 +122,14 @@ class TestExplainNonHybridFallback:
         l3_results = [
             {
                 "path": path,
-                "title": "乐乐日记",
+                "title": "晴岚日记",
                 "relevance": 85,
                 "metadata": {},
             }
         ]
 
         results = merge_and_rank_results(
-            [], [], l3_results, query="乐乐", min_score=0, explain=True
+            [], [], l3_results, query="晴岚", min_score=0, explain=True
         )
 
         assert len(results) == 1
@@ -186,9 +178,7 @@ class TestExplainNonHybridFallback:
         assert sem["cosine_similarity"] == 0.0
         assert sem["has_semantic_match"] is False
 
-    def test_non_hybrid_no_explain_by_default(
-        self, relation_patches: None, tmp_path: Path
-    ) -> None:
+    def test_non_hybrid_no_explain_by_default(self, relation_patches: None, tmp_path: Path) -> None:
         path = str(tmp_path / "entry.md")
         l3_results = [
             {
@@ -205,9 +195,7 @@ class TestExplainNonHybridFallback:
 
         assert "explain" not in results[0]
 
-    def test_hybrid_explain_not_regressed(
-        self, relation_patches: None, tmp_path: Path
-    ) -> None:
+    def test_hybrid_explain_not_regressed(self, relation_patches: None, tmp_path: Path) -> None:
         """Hybrid explain must still work after T3.4 changes."""
         path = str(tmp_path / "entry.md")
         l3_results, semantic_results = _result(path)

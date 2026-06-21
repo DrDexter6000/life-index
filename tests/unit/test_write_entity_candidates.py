@@ -6,10 +6,6 @@ even when entity graph doesn't exist (frontmatter fallback).
 """
 
 import json
-from pathlib import Path
-from typing import Any
-
-import pytest
 
 
 class TestEntityCandidatesFallback:
@@ -23,13 +19,13 @@ class TestEntityCandidatesFallback:
         from tools.lib.entity_candidates import extract_entity_candidates
 
         metadata = {
-            "people": ["乐乐"],
+            "people": ["晴岚"],
             "location": "Lagos",
             "tags": ["亲子"],
         }
         candidates = extract_entity_candidates(
             metadata=metadata,
-            content="看到乐乐很开心",
+            content="看到晴岚很开心",
             graph=[],  # Empty graph
         )
 
@@ -37,10 +33,10 @@ class TestEntityCandidatesFallback:
         assert len(candidates) > 0, "Should return frontmatter fallback candidates"
 
         names = {c["text"] for c in candidates}
-        assert "乐乐" in names
+        assert "晴岚" in names
 
         # Source should indicate fallback
-        tuantuan = next(c for c in candidates if c["text"] == "乐乐")
+        tuantuan = next(c for c in candidates if c["text"] == "晴岚")
         assert tuantuan["source"] == "frontmatter_fallback"
         assert tuantuan["suggested_action"] == "add_entity"
 
@@ -51,7 +47,7 @@ class TestEntityCandidatesFallback:
         """
         from tools.lib.entity_candidates import extract_entity_candidates
 
-        metadata = {"people": ["乐乐"]}
+        metadata = {"people": ["晴岚"]}
         candidates = extract_entity_candidates(
             metadata=metadata,
             content="",
@@ -67,13 +63,13 @@ class TestEntityCandidatesFallback:
         json_start = cmd.index("{")
         json_end = cmd.rindex("}") + 1
         entity_json = json.loads(cmd[json_start:json_end])
-        assert entity_json["primary_name"] == "乐乐"
+        assert entity_json["primary_name"] == "晴岚"
         assert entity_json["type"] == "person"
 
     def test_with_graph_returns_graph_delta_candidates(self) -> None:
         """
-        When graph exists and already contains "乐乐", new mention of
-        "乐乐" should show as confirm_match, while "新朋友" should show
+        When graph exists and already contains "晴岚", new mention of
+        "晴岚" should show as confirm_match, while "新朋友" should show
         as add_entity with source="frontmatter".
         """
         from tools.lib.entity_candidates import extract_entity_candidates
@@ -82,14 +78,14 @@ class TestEntityCandidatesFallback:
             {
                 "id": "e1",
                 "type": "person",
-                "primary_name": "乐乐",
+                "primary_name": "晴岚",
                 "aliases": [],
                 "attributes": {},
                 "relationships": [],
             }
         ]
 
-        metadata = {"people": ["乐乐", "新朋友"]}
+        metadata = {"people": ["晴岚", "新朋友"]}
         candidates = extract_entity_candidates(
             metadata=metadata,
             content="",
@@ -98,7 +94,7 @@ class TestEntityCandidatesFallback:
 
         assert len(candidates) > 0
 
-        tuantuan = next((c for c in candidates if c["text"] == "乐乐"), None)
+        tuantuan = next((c for c in candidates if c["text"] == "晴岚"), None)
         assert tuantuan is not None
         assert tuantuan["matched_entity_id"] == "e1"
         assert tuantuan["suggested_action"] == "confirm_match"

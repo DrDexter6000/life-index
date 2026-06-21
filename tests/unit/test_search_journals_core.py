@@ -44,7 +44,7 @@ DEFAULT_ENTITY_GRAPH = {
         {
             "id": "tuantuan",
             "type": "person",
-            "primary_name": "乐乐",
+            "primary_name": "晴岚",
             "aliases": ["圆圆"],
             "attributes": {},
             "relationships": [{"target": "mama", "relation": "granddaughter_of"}],
