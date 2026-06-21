@@ -113,6 +113,11 @@ class TestHelpSurface:
         result = _invoke("help")
         assert "Developer mode:" in result.stdout
 
+    def test_help_marks_recall_as_compatibility_wrapper(self):
+        result = _invoke("--help")
+        assert "recall    Deprecated compatibility wrapper over search" in result.stdout
+        assert "Recall search with mode selection" not in result.stdout
+
 
 class TestNoArgsSurface:
     def test_no_args_exits_non_zero(self):

@@ -1,1 +1,1 @@
-# tools/recall — Phase E recall module (gbrain #5)
+# tools/recall — deprecated compatibility wrapper over tools.search

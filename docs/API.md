@@ -4610,6 +4610,12 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 
 ## recall
 
+> **Deprecated compatibility wrapper**: `recall` is retained for existing
+> integrations for one compatibility window. New host-agent flows should call
+> `life-index search` directly. Use `life-index search --query "..." --no-semantic`
+> for strict FTS-only retrieval, and `life-index search --query "..."` for the
+> default deterministic search path.
+
 <!-- GBRAIN-E-CONTRACT: recall -->
 
 ### recall Public JSON Contract
@@ -4625,6 +4631,8 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 | `query` | string | yes | Search query string |
 | `results` | array | yes | Array of search result objects from L2 (may be empty) |
 | `source_command` | string | yes | L2 command used: `search --no-semantic` / `search` |
+| `deprecated` | bool | yes | Always `true`; marks `recall` as a compatibility wrapper |
+| `deprecation` | object | yes | Replacement guidance for new callers |
 | `performance` | object | yes | `{total_time_ms}` |
 | `error` | object\|null | yes | Structured error on failure; `null` on success |
 
@@ -4634,15 +4642,17 @@ python -m tools on-this-day [--date YYYY-MM-DD] [--years-back N] [--limit N] [--
 - `mode`: the mode requested by the caller.
 - `effective_mode`: the mode actually executed. `mode=deep` is retained as a compatibility alias and executes deterministic `recall`.
 - `source_command`: identifies which L2 command was used — confirms subprocess boundary.
-- `results`: extracted from L2 output (`merged_results` from `search`, `filtered_results` from `smart-search`).
+- `results`: extracted from L2 output (`merged_results` from `search`; `filtered_results` is tolerated for old internal compatibility).
+- `deprecated`: marks this command as compatibility-only.
+- `deprecation.replacement_command`: direct `search` command new callers should use.
 
 #### Mode Behavior
 
 | Mode | L2 Command | LLM? | Notes |
 |------|-----------|------|-------|
-| `default` | `search --no-semantic` | No | Pure FTS keyword search. |
-| `recall` | `search` | No | Default keyword-only search (FTS); zero-result semantic fallback per ADR-006. `--semantic` enables hybrid (FTS + semantic + RRF). |
-| `deep` | `search` | No | Compatibility alias for deterministic recall. Stderr warning emitted. `effective_mode=recall`. |
+| `default` | `search --no-semantic` | No | Compatibility alias for pure FTS keyword search. Use `search --no-semantic` directly in new flows. |
+| `recall` | `search` | No | Compatibility alias for the default search path. Use `search` directly in new flows. |
+| `deep` | `search` | No | Compatibility alias for deterministic recall. Stderr warning emitted. `effective_mode=recall`. Use `search` directly in new flows. |
 
 #### Error Behavior / Error Codes
 
@@ -4669,7 +4679,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `--mode` | enum | ✅ | - | 搜索模式：`default`（纯 FTS）、`recall`（混合）、`deep`（确定性 recall 兼容别名） |
+| `--mode` | enum | ✅ | - | 兼容模式：`default`（`search --no-semantic`）、`recall`（`search`）、`deep`（`search`，`effective_mode=recall`） |
 | `--query` | string | ✅ | - | 搜索查询字符串 |
 
 ### 返回值
@@ -4691,6 +4701,12 @@ python -m tools recall --mode {default|recall|deep} --query "..."
     }
   ],
   "source_command": "search --no-semantic",
+  "deprecated": true,
+  "deprecation": {
+    "message": "recall is a deprecated compatibility wrapper over search; new host-agent flows should call search directly.",
+    "replacement_command": "life-index search --query ... --no-semantic",
+    "compatibility_window": "command retained for existing integrations"
+  },
   "performance": {
     "total_time_ms": 50
   },
@@ -4702,6 +4718,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 - **只读**：不创建、修改或删除任何文件。
 - 通过 subprocess 调用 L2 `search`；不直接 import L2 内部模块。
+- `recall` 是兼容壳，不是独立检索能力。新调用方应直接使用 `search`。
 - `default` 和 `recall` 模式：零 LLM 调用。
 - `deep` 模式：作为确定性 `recall` 兼容别名执行，stderr 输出警告。
 - `--use-llm` 已退役；传入该 flag 会被 CLI 参数解析拒绝。

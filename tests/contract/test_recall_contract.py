@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Contract tests for the recall module (Phase E — gbrain #5).
+"""Contract tests for the deprecated recall compatibility wrapper.
 
 Covers deterministic default / recall / deep compatibility behavior.
 
 All tests run in isolated sandbox data directories via LIFE_INDEX_DATA_DIR.
-The recall module is an L3 module that consumes L2 search/smart-search via
-subprocess — mirroring the on_this_day pattern.
+The recall wrapper consumes L2 search via subprocess — mirroring the
+on_this_day pattern.
 """
 
 from __future__ import annotations
@@ -221,13 +221,15 @@ class TestRecallMode:
         assert payload["effective_mode"] == "recall"
         assert payload["source_command"] == "search"
         assert "results" in payload
+        assert payload["deprecated"] is True
+        assert payload["deprecation"]["replacement_command"] == "life-index search --query ..."
         assert payload["error"] is None
 
     def test_recall_no_results(self, tmp_path: Path):
         """recall mode returns success for non-matching query.
 
-        Note: recall mode uses hybrid search (FTS + semantic), which may
-        return semantic matches even for seemingly non-matching queries.
+        Note: recall mode delegates to search, whose result set may evolve as
+        the search implementation evolves.
         The contract guarantees success, not necessarily empty results.
         """
         data_dir = tmp_path / "Life-Index"
@@ -335,6 +337,20 @@ class TestDeepMode:
 class TestRecallInvariants:
     """Invariant tests: no-default-LLM, subprocess boundary, schema shape."""
 
+    def test_help_marks_recall_as_deprecated_compatibility_wrapper(self):
+        """Help must steer new callers to search, not present recall as new capability."""
+        result = subprocess.run(
+            [sys.executable, "-m", "tools", "recall", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        assert result.returncode == 0
+        assert "Deprecated recall compatibility wrapper" in result.stdout
+        assert 'life-index search --query "..." --no-semantic' in result.stdout
+        assert 'life-index search --query "..."' in result.stdout
+
     def test_output_schema_shape(self, sandbox):
         """Verify all required top-level fields are present."""
         data_dir, env = sandbox
@@ -357,6 +373,8 @@ class TestRecallInvariants:
             "query",
             "results",
             "source_command",
+            "deprecated",
+            "deprecation",
             "error",
         ]
         for field in required_fields:
