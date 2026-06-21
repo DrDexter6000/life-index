@@ -11,22 +11,31 @@ def _read(path: str) -> str:
     return (REPO_ROOT / path).read_text(encoding="utf-8")
 
 
-def test_onboarding_smoke_test_does_not_call_write_in_default_data_dir() -> None:
+def test_onboarding_is_bootstrap_driven_one_page() -> None:
     onboarding = _read("AGENT_ONBOARDING.md")
-    smoke_section = onboarding.split("### Step 5.3:", maxsplit=1)[1].split(
-        "### Step 5.4:", maxsplit=1
-    )[0]
 
-    assert "life-index write" not in smoke_section
-    assert "LIFE_INDEX_DATA_DIR" in smoke_section
-    assert "temporary sandbox" in smoke_section.lower()
+    assert len(onboarding.splitlines()) <= 140
+    assert "life-index bootstrap --json" in onboarding
+    assert "safe_next_steps" in onboarding
+    assert "needs_human" in onboarding
+    assert "Step 4.1" not in onboarding
+    assert "Step 5.3" not in onboarding
+    assert "CLI Quick Reference" not in onboarding
 
 
 def test_onboarding_forbids_waiting_for_semantic_ready() -> None:
     onboarding = _read("AGENT_ONBOARDING.md")
 
-    assert "Do not wait for `semantic_status: ready`" in onboarding
-    assert "Installation succeeds when keyword search is ready" in onboarding
+    assert "Do not wait for semantic indexing" in onboarding
+    assert "Keyword readiness is enough for onboarding" in onboarding
+
+
+def test_onboarding_data_safety_rule_stays_visible() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+
+    assert "Never delete" in onboarding
+    assert "~/Documents/Life-Index" in onboarding
+    assert "fresh install" in onboarding
 
 
 def test_readme_does_not_reference_real_first_entry_smoke_file() -> None:

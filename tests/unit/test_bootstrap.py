@@ -535,7 +535,14 @@ class TestDecideRoute:
     def test_result_keys_are_exact(self):
         result = decide_route(_state(has_user_data=False))
 
-        assert set(result) == {"route", "route_reason", "needs_human", "safe_next_steps"}
+        assert set(result) == {
+            "route",
+            "route_reason",
+            "execution_policy",
+            "needs_human",
+            "safe_next_steps",
+        }
+        assert result["execution_policy"]["safe_next_steps"] == "run_in_order_without_additions"
 
 
 class TestBuildBootstrapResult:
@@ -551,6 +558,7 @@ class TestBuildBootstrapResult:
             "detected_state",
             "route",
             "route_reason",
+            "execution_policy",
             "needs_human",
             "safe_next_steps",
         }

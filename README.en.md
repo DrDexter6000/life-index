@@ -484,9 +484,9 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 Requirements:
 1. Refresh and read the latest authority files before execution: refresh `bootstrap-manifest.json` first, then read every path listed in `required_authority_docs`; do not rely on a hard-coded list in this paragraph
-2. Before cloning, recreating `.venv`, running `health`, adopting a checkout, deleting any directory, or classifying fresh install / upgrade / repair, run `AGENT_ONBOARDING.md` Step 0 with `life-index bootstrap --json` or `python -m tools bootstrap --json`
+2. Before cloning, recreating `.venv`, running `health`, adopting a checkout, deleting any directory, or classifying fresh install / upgrade / repair, read `AGENT_ONBOARDING.md` and run `life-index bootstrap --json` or `python -m tools bootstrap --json`
 3. If a local checkout is discovered, assess it with bootstrap's `--checkout-path` / `--checkout-origin` rules; adopt it only when `safe_to_adopt: true`
-4. Handle `needs_human` first, then follow `route` and `safe_next_steps` in order; do not treat "clean slate", "fresh install", or "start from scratch" as permission to delete existing journal data
+4. Handle `needs_human` first, then follow `execution_policy` and `safe_next_steps` in order; do not treat "clean slate", "fresh install", or "start from scratch" as permission to delete existing journal data
 5. All Python/CLI commands must use the virtual environment path specified by the document
 6. If any step fails, stop immediately and report the exact error
 7. Report back in English using the format required by the document
@@ -559,10 +559,10 @@ Set `LIFE_INDEX_DATA_DIR` to a temporary sandbox, then run `index --fts-only` an
 Run `.venv/bin/life-index health` and check whether sentence-transformers is installed.
 
 **Virtual environment corrupted after Python upgrade or system migration**
-First confirm Step 0 has identified the current directory as the intended install target and that the `.venv` layout matches the current platform. Then delete `.venv` and run `python3 -m venv .venv && .venv/bin/pip install -e .`.
+First confirm `bootstrap --json` has identified the current directory as the intended install target. Then recreate the code environment without touching user data.
 
 **Upgrading to a new version**
-Refresh authority files and run the onboarding Step 0 bootstrap gate first, then follow the bootstrap / freshness / sync / repair rules in `AGENT_ONBOARDING.md`.
+Run the onboarding bootstrap gate first, then follow the returned `execution_policy` and `safe_next_steps`.
 
 </details>
 
