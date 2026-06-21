@@ -6,6 +6,13 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-06-21
+
+### Improved
+
+- Clearer tool surface for agents: `recall` 降为 `search` 的弃用兼容壳(改用 `search`/`smart-search`);`aggregate`(计数/分桶/claim envelope)与 `trajectory`(typed observation series)边界明确;`index-tree nodes/lens/shadow` 降为 debug-only legacy,宿主导航主路径为 `ensure → discover → navigate`。受影响命令均保留,仅指引/呈现变化。
+- Single data-doctor surface: `maintenance audit` 成为数据完整性问题检测的唯一来源,`health --data-audit` 改为指向它的摘要;`verify` 保留为只读完整性检查。data doctor 现可检出并安全归档散落的 `entity_graph.yaml.backup*` 副本(移入 `.trash`,canonical 图谱不动)。
+
 ## [1.3.3] - 2026-06-21
 
 ### Improved
