@@ -177,6 +177,33 @@ def _write_timestamp_duplicate_fixture(data_dir: Path) -> tuple[Path, Path]:
     return canonical, duplicate
 
 
+def _write_entity_graph_backup_fixture(
+    data_dir: Path, backup_name: str = "entity_graph.yaml.backup_20260621_120000"
+) -> tuple[Path, Path]:
+    _write_repair_fixture(data_dir)
+    canonical = data_dir / "entity_graph.yaml"
+    canonical.write_text(
+        "entities:\n"
+        "  - id: project-life-index\n"
+        "    type: project\n"
+        "    primary_name: Life Index\n"
+        "    aliases: [life-index]\n"
+        "    relationships: []\n",
+        encoding="utf-8",
+    )
+    backup = data_dir / backup_name
+    backup.write_text(
+        "entities:\n"
+        "  - id: old-project\n"
+        "    type: project\n"
+        "    primary_name: Old Project\n"
+        "    aliases: []\n"
+        "    relationships: []\n",
+        encoding="utf-8",
+    )
+    return canonical, backup
+
+
 def _write_proposal_fixture(data_dir: Path) -> str:
     _write_repair_fixture(data_dir)
     (data_dir / "entity_graph.yaml").write_text(
@@ -604,6 +631,141 @@ class TestMaintenanceRepairContract:
         assert all(
             issue["type"] != "loose_timestamped_journal_copy" for issue in post_audit["issues"]
         )
+
+    def test_audit_reports_entity_graph_backup_copy_as_repairable(self, tmp_path: Path) -> None:
+        _write_entity_graph_backup_fixture(tmp_path)
+
+        audit = _parse_json(
+            _run_maintenance(["audit", "--domain", "revisions", "--json"], tmp_path)
+        )
+
+        issues = [issue for issue in audit["issues"] if issue["type"] == "entity_graph_backup_copy"]
+        assert len(issues) == 1
+        issue = issues[0]
+        assert issue["repairable"] is True
+        assert issue["repair_class"] == "archive"
+        assert issue["risk"] == "low"
+        assert issue["evidence"][0]["path"] == "entity_graph.yaml.backup_20260621_120000"
+        assert issue["evidence"][1]["path"] == "entity_graph.yaml"
+
+    def test_repair_dry_run_for_entity_graph_backup_changes_no_files(self, tmp_path: Path) -> None:
+        _write_entity_graph_backup_fixture(tmp_path)
+        issue_id = "revisions.entity_graph_backup_copy:entity_graph.yaml.backup_20260621_120000"
+        before = _file_hashes(tmp_path)
+
+        repair = _parse_json(
+            _run_maintenance(["repair", "--issue-id", issue_id, "--dry-run", "--json"], tmp_path)
+        )
+        after = _file_hashes(tmp_path)
+
+        assert after == before
+        assert repair["success"] is True
+        assert repair["dry_run"] is True
+        assert repair["applied"] is False
+        assert repair["planned_paths"] == [
+            "entity_graph.yaml",
+            "entity_graph.yaml.backup_20260621_120000",
+        ]
+        assert repair["changed_paths"] == []
+
+    def test_repair_apply_archives_entity_graph_backup_and_preserves_canonical(
+        self, tmp_path: Path
+    ) -> None:
+        canonical, backup = _write_entity_graph_backup_fixture(tmp_path)
+        canonical_before = _sha256(canonical)
+        backup_text = backup.read_text(encoding="utf-8")
+        issue_id = "revisions.entity_graph_backup_copy:entity_graph.yaml.backup_20260621_120000"
+
+        repair = _parse_json(
+            _run_maintenance(["repair", "--issue-id", issue_id, "--apply", "--json"], tmp_path)
+        )
+
+        archived = (
+            tmp_path
+            / ".trash"
+            / "maintenance"
+            / "entity-graph-backups"
+            / "entity_graph.yaml.backup_20260621_120000"
+        )
+        assert repair["success"] is True
+        assert repair["applied"] is True
+        assert "entity_graph.yaml.backup_20260621_120000" in repair["changed_paths"]
+        assert (
+            ".trash/maintenance/entity-graph-backups/entity_graph.yaml.backup_20260621_120000"
+            in repair["changed_paths"]
+        )
+        assert canonical.exists()
+        assert _sha256(canonical) == canonical_before
+        assert not backup.exists()
+        assert archived.read_text(encoding="utf-8") == backup_text
+
+        post_audit = _parse_json(
+            _run_maintenance(["audit", "--domain", "revisions", "--json"], tmp_path)
+        )
+        assert all(issue["type"] != "entity_graph_backup_copy" for issue in post_audit["issues"])
+
+    def test_audit_detects_all_entity_graph_backup_name_variants(self, tmp_path: Path) -> None:
+        _write_entity_graph_backup_fixture(
+            tmp_path,
+            backup_name="entity_graph.yaml.backup_20260506_125632",
+        )
+        (tmp_path / "entity_graph.yaml.backup.2026-05-05-D5").write_text(
+            "entities: []\n",
+            encoding="utf-8",
+        )
+
+        audit = _parse_json(
+            _run_maintenance(["audit", "--domain", "revisions", "--json"], tmp_path)
+        )
+
+        issue_paths = {
+            issue["evidence"][0]["path"]
+            for issue in audit["issues"]
+            if issue["type"] == "entity_graph_backup_copy"
+        }
+        assert issue_paths == {
+            "entity_graph.yaml.backup_20260506_125632",
+            "entity_graph.yaml.backup.2026-05-05-D5",
+        }
+
+    def test_repair_apply_archives_dot_date_entity_graph_backup_variant(
+        self, tmp_path: Path
+    ) -> None:
+        canonical, backup = _write_entity_graph_backup_fixture(
+            tmp_path,
+            backup_name="entity_graph.yaml.backup.2026-05-05-D5",
+        )
+        canonical_before = _sha256(canonical)
+        backup_text = backup.read_text(encoding="utf-8")
+        issue_id = "revisions.entity_graph_backup_copy:entity_graph.yaml.backup.2026-05-05-D5"
+
+        repair = _parse_json(
+            _run_maintenance(["repair", "--issue-id", issue_id, "--apply", "--json"], tmp_path)
+        )
+
+        archived = (
+            tmp_path
+            / ".trash"
+            / "maintenance"
+            / "entity-graph-backups"
+            / "entity_graph.yaml.backup.2026-05-05-D5"
+        )
+        assert repair["success"] is True
+        assert repair["applied"] is True
+        assert "entity_graph.yaml.backup.2026-05-05-D5" in repair["changed_paths"]
+        assert (
+            ".trash/maintenance/entity-graph-backups/entity_graph.yaml.backup.2026-05-05-D5"
+            in repair["changed_paths"]
+        )
+        assert canonical.exists()
+        assert _sha256(canonical) == canonical_before
+        assert not backup.exists()
+        assert archived.read_text(encoding="utf-8") == backup_text
+
+        post_audit = _parse_json(
+            _run_maintenance(["audit", "--domain", "revisions", "--json"], tmp_path)
+        )
+        assert all(issue["type"] != "entity_graph_backup_copy" for issue in post_audit["issues"])
 
 
 class TestMaintenanceProposalValidation:

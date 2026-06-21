@@ -35,7 +35,7 @@ Commands:
     bootstrap    Detect install/data state and route onboarding (read-only)
     sync-skill    Synchronize SKILL.md and references into host skill directory
     health    Check installation health
-              --data-audit  Audit data directory for anomalies
+              --data-audit  Summarize Data Doctor audit and next steps
               --cache-audit  Read-only cache version audit (JSON)
     import    Import provider (plan, run, status, rollback)
     index-tree  Index Tree Evidence Navigation
@@ -442,25 +442,27 @@ def health_check() -> None:
 
 
 def _run_data_audit() -> None:
-    """Run data directory audit and print JSON result."""
-    from tools.lib.data_audit import audit_data_directory
+    """Run Data Doctor audit summary and print health-compatible JSON result."""
+    from tools.maintenance.audit import run_audit
 
-    report = audit_data_directory(get_user_data_dir())
+    audit = run_audit(data_dir=get_user_data_dir())
+    summary = audit.get("summary", {})
+    total_issues = int(summary.get("total_issues", 0) or 0)
+    preview_limit = 10
     result = {
         "success": True,
         "schema_version": HEALTH_SCHEMA_VERSION,
         "data": {
-            "file_count": report.file_count,
-            "anomalies": [
-                {
-                    "type": a.type,
-                    "severity": a.severity,
-                    "description": a.description,
-                    "path": a.path,
-                }
-                for a in report.anomalies
-            ],
-            "distribution": report.distribution,
+            "status": "ok" if total_issues == 0 else "issues_found",
+            "source": "maintenance audit",
+            "issue_count": total_issues,
+            "summary": summary,
+            "detectors": audit.get("detectors", []),
+            "issues_preview": (audit.get("issues", []) or [])[:preview_limit],
+            "preview_limit": preview_limit,
+            "truncated": total_issues > preview_limit,
+            "next_command": "life-index maintenance audit --json",
+            "plan_command_template": "life-index maintenance plan --issue-id <issue-id> --json",
         },
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -583,7 +585,7 @@ def print_usage() -> None:
     print("  aggregate  Deterministic counts, buckets, and claim envelopes")
     print("  analyze   Alias for deterministic aggregate counts")
     print("  health    Check installation health")
-    print("            --data-audit  Audit data directory for anomalies")
+    print("            --data-audit  Summarize Data Doctor audit and next steps")
     print("            --cache-audit  Read-only cache version audit (JSON)")
     print("  import    Import provider (plan, run, status, rollback)")
     print("  index-tree  Index Tree Evidence Navigation")

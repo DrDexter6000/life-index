@@ -3386,10 +3386,10 @@ life-index maintenance proposal validate --file proposal.json --json [--data-dir
 - **Data Doctor repair boundary**: `maintenance repair --apply` can write only
   rebuildable derived artifacts such as generated Markdown indexes, `.index/`,
   `.cache/`, and `.life-index/cache/`, or archive recognized non-canonical
-  timestamped journal copies from `Journals/` into `.trash/maintenance/` after
-  the canonical journal original still exists. It must not modify canonical
-  journals, attachments, `entity_graph.yaml`, import source files, config
-  secrets, hand-curated Markdown, or migration state.
+  timestamped journal copies from `Journals/` and loose `entity_graph.yaml.backup_*`
+  files into `.trash/maintenance/` after the canonical source still exists. It
+  must not modify canonical journals, attachments, `entity_graph.yaml`, import
+  source files, config secrets, hand-curated Markdown, or migration state.
 
 ### Data Doctor Audit Envelope
 
@@ -3478,6 +3478,10 @@ Schema: `m33.maintenance_repair.v0`
   `life-index_YYYY-MM-DD_NNN_YYYYMMDD_HHMMSS_ffffff.md`, archived under
   `.trash/maintenance/timestamped-journal-copies/` only when the matching
   canonical `life-index_YYYY-MM-DD_NNN.md` file still exists.
+- loose `entity_graph.yaml.backup_*` files, archived under
+  `.trash/maintenance/entity-graph-backups/` only when the canonical
+  `entity_graph.yaml` file still exists. The canonical graph is never modified
+  by this repair.
 
 Unsafe or non-repairable issue IDs return structured errors such as
 `MAINTENANCE_REPAIR_NOT_ALLOWED`, `MAINTENANCE_REPAIR_COMMAND_FAILED`, or
@@ -4181,10 +4185,15 @@ python -m tools.build_index [options]
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Always `true` |
 | `schema_version` | string | yes | `"m16.health.v0"` — top-level output schema version |
-| `data` | object | yes | `{file_count, anomalies[], distribution{}}` |
-| `data.file_count` | int | yes | Total journal file count |
-| `data.anomalies` | array | yes | Anomaly objects (`type`, `severity`, `description`, `path`) |
-| `data.distribution` | object | yes | Month → count mapping |
+| `data` | object | yes | Data Doctor summary and next-step commands |
+| `data.source` | string | yes | `"maintenance audit"` |
+| `data.status` | string | yes | `"ok"` or `"issues_found"` |
+| `data.issue_count` | int | yes | Total Data Doctor issue count |
+| `data.summary` | object | yes | `maintenance audit` summary object |
+| `data.detectors` | array | yes | Per-domain detector rows from Data Doctor |
+| `data.issues_preview` | array | yes | Bounded preview of audit issues |
+| `data.next_command` | string | yes | Full audit command (`life-index maintenance audit --json`) |
+| `data.plan_command_template` | string | yes | Plan command template for one issue id |
 
 #### Field Semantics
 
@@ -4192,7 +4201,9 @@ python -m tools.build_index [options]
 - `data.status`: the primary health indicator. `degraded` means partial functionality; `unhealthy` means critical issues.
 - `data.checks`: additive; new checks may be added (e.g., `index_tree` check).
 - `data.checks[name="data_directory"].journal_count`: counts only canonical journal filenames matching `life-index_YYYY-MM-DD_NNN.md`; this is the same journal enumeration used by `bootstrap` and `migrate --dry-run`.
-- `data.anomalies[].type`: `revision_file`, `naming`, `distribution`.
+- `health --data-audit`: compatibility summary over `maintenance audit`; Data
+  Doctor is the SSOT for data-health issue detection, planning, and low-risk
+  repairs.
 - `events`: piggyback notifications; same format as other commands.
 
 #### Error Behavior / Error Codes
@@ -4205,7 +4216,7 @@ python -m tools.build_index [options]
 
 #### schema_version Policy
 
-`health` emits a top-level `schema_version` field set to `"m16.health.v0"`. The output shape is stable; new `data.checks` entries and `data.anomalies` types may be added without a version bump. A `schema_version` bump will accompany any backward-incompatible change.
+`health` emits a top-level `schema_version` field set to `"m16.health.v0"`. The output shape is stable; new `data.checks` entries and additive `health --data-audit` summary fields may be added without a version bump. A `schema_version` bump will accompany any backward-incompatible change.
 
 <!-- /M16-CONTRACT -->
 
@@ -4263,25 +4274,28 @@ Additive standard checks may include:
 {
   "success": true,
   "data": {
-    "file_count": 53,
-    "anomalies": [
+    "status": "issues_found",
+    "source": "maintenance audit",
+    "issue_count": 1,
+    "summary": {"total_issues": 1, "domain_counts": {"revisions": 1}},
+    "detectors": [{"domain": "revisions", "status": "ok", "issue_count": 1}],
+    "issues_preview": [
       {
-        "type": "revision_file",
-        "severity": "warning",
-        "description": "Revision file found outside .revisions/: ...",
-        "path": "Journals/2026/03/life-index_2026-03-01_001_20260418_120000_000000.md"
+        "issue_id": "revisions.entity_graph_backup_copy:entity_graph.yaml.backup_20260621_120000",
+        "domain": "revisions",
+        "type": "entity_graph_backup_copy",
+        "repairable": true
       }
     ],
-    "distribution": {"2026-03": 12, "2026-04": 8}
+    "next_command": "life-index maintenance audit --json",
+    "plan_command_template": "life-index maintenance plan --issue-id <issue-id> --json"
   }
 }
 ```
 
-| 异常类型 | 严重级 | 说明 |
-|---------|--------|------|
-| revision_file | warning | 编辑修订文件遗留在 Journals/ 目录（非 .revisions/） |
-| naming | info | 非 `life-index_`/`index_`/`monthly_report_` 开头的 .md 文件 |
-| distribution | info | 某月日志数 > 3x 月均值 |
+`health --data-audit` 不再维护独立 detector 栈。它只显示 Data Doctor 摘要和跳转命令；
+完整 issue 列表、dry-run plan 和可确认 repair 均由 `maintenance audit|plan|repair`
+提供。
 
 ---
 

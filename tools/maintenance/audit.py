@@ -42,6 +42,7 @@ Detector = Callable[[Path], list[Issue]]
 _TIMESTAMPED_JOURNAL_COPY_RE = re.compile(
     r"^(life-index_\d{4}-\d{2}-\d{2}_\d+)_\d{8}_\d{6}_\d{6}(?:_\d+)?\.md$"
 )
+_ENTITY_GRAPH_BACKUP_RE = re.compile(r"^entity_graph\.yaml\.backup.*$")
 
 
 def _now_iso() -> str:
@@ -428,6 +429,38 @@ def _detect_revisions(data_dir: Path) -> list[Issue]:
                     ],
                 }
             )
+
+    primary_graph = data_dir / "entity_graph.yaml"
+    for path in sorted(p for p in data_dir.glob("entity_graph.yaml.backup*") if p.is_file()):
+        if not _ENTITY_GRAPH_BACKUP_RE.match(path.name):
+            continue
+        rel = _rel_path(data_dir, path)
+        primary_rel = _rel_path(data_dir, primary_graph)
+        repairable = primary_graph.exists() and primary_graph.is_file()
+        issues.append(
+            {
+                "issue_id": f"revisions.entity_graph_backup_copy:{rel}",
+                "domain": "revisions",
+                "type": "entity_graph_backup_copy",
+                "severity": "warning",
+                "risk": "low" if repairable else "medium",
+                "repair_class": "archive" if repairable else "review",
+                "repairable": repairable,
+                "message": (
+                    "Entity graph backup copy is loose in the data root; archive it "
+                    "outside the active graph path."
+                    if repairable
+                    else (
+                        "Entity graph backup copy is loose in the data root but no "
+                        "canonical entity_graph.yaml exists."
+                    )
+                ),
+                "evidence": [
+                    {"path": rel, "kind": "backup_copy"},
+                    {"path": primary_rel, "kind": "canonical"},
+                ],
+            }
+        )
 
     revisions_root = data_dir / ".revisions"
     if not revisions_root.exists():

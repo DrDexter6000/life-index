@@ -61,6 +61,21 @@ def _plan_steps(issue: dict[str, Any]) -> list[dict[str, Any]]:
                 "write_class": "user_data_archive",
             }
         ]
+    if domain == "revisions" and issue_type == "entity_graph_backup_copy":
+        return [
+            {
+                "action": "archive_entity_graph_backup_copy",
+                "command": [
+                    "life-index",
+                    "maintenance",
+                    "repair",
+                    "--issue-id",
+                    "<issue-id>",
+                    "--apply",
+                ],
+                "write_class": "user_data_archive",
+            }
+        ]
     return []
 
 
@@ -100,14 +115,14 @@ def build_plan(data_dir: str | Path | None, issue_id: str) -> tuple[dict[str, An
         "preconditions": [
             "Issue ID must still be present in a fresh maintenance audit.",
             "Touched paths must remain inside LIFE_INDEX_DATA_DIR.",
-            "Archive repairs require the canonical journal original to still exist.",
+            "Archive repairs require the canonical source file to still exist.",
         ],
         "post_check_command": _post_check_command(issue),
         "rollback_story": (
             "Archived files are moved under .trash/maintenance inside LIFE_INDEX_DATA_DIR; "
             "restore by moving the archived copy back to its original relative path."
             if issue.get("domain") == "revisions"
-            and issue.get("type") == "loose_timestamped_journal_copy"
+            and issue.get("type") in {"loose_timestamped_journal_copy", "entity_graph_backup_copy"}
             and repairable
             and plan_steps
             else (
