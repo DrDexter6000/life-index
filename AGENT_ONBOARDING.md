@@ -272,7 +272,7 @@ This section is **conditional** on `bootstrap --json` output. Do not execute any
 1. Creates / updates the FTS5 keyword search index in the foreground
 2. Starts semantic / vector indexing in the background when supported
 3. Rebuilds deterministic Index Tree artifacts when listed
-4. Synchronizes `SKILL.md` and `references/` into the host skill directory when listed; missing host directories are reported as a non-fatal skip
+4. Synchronizes `SKILL.md` and `references/` into the host skill directory when listed; missing or ambiguous host directories are reported as a non-fatal skip with `delivered=false`
 5. Returns before model loading or embedding work blocks the onboarding flow
 
 **Success Criteria**:
@@ -280,6 +280,7 @@ This section is **conditional** on `bootstrap --json` output. Do not execute any
 - Keyword / FTS indexing succeeds
 - Semantic status is reported as `building`, `ready`, `disabled`, or `failed`
 - Current skill artifacts are delivered when a host skill directory is available
+- If `sync-skill` reports `delivered=false`, surface that warning instead of treating playbook delivery as complete
 - No foreground model download is required for onboarding success
 
 **Expected Wait**: The foreground command should return promptly after FTS work. Do not wait for semantic model download in the onboarding foreground path.
