@@ -136,6 +136,8 @@ journal evidence.
    `life-index smart-search` or `life-index search` for keyword/entity-weighted
    discovery paths, then feed discovered exact paths back into `journal batch-get`
    or `journal get`.
+   Do not use `life-index recall` in new playbooks; it is a deprecated
+   compatibility wrapper over `search`.
    Do not use ad hoc `grep` or broad full-directory reads.
 5. Return the magazine answer shape:
    `answer.insights[]` where each item has `quote`, `interpretation`, and
@@ -395,6 +397,17 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 ```
 
 对于复杂自然语言查询，`smart-search` 返回确定性检索 scaffold；查询拆解、判断、过滤与总结由宿主 agent 按本 Skill 的 playbook 完成，详见 [ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
+
+**检索路径选择（不要使用 `recall` 作为新入口）**:
+
+| 需求 | 使用 |
+|:---|:---|
+| 严格关键词 / FTS-only，要求可复现精确匹配 | `life-index search --query "关键词" --no-semantic` |
+| 普通关键词、实体加权、结构化过滤检索 | `life-index search --query "关键词"` |
+| 复杂自然语言问题，需要 scaffold / evidence pack | `life-index smart-search --query "..." --include-evidence` |
+| 用户明确要求语义 / 向量召回补充 | `life-index search --query "..." --semantic --semantic-policy hybrid` |
+
+`life-index recall` 仅为旧集成保留的兼容壳；新宿主 agent 流程直接选择上表中的 `search` / `smart-search`。
 
 **Agent consumption rule（smart-search v1）**:
 1. 默认先调用 `life-index smart-search --query "..." --include-evidence`。

@@ -61,7 +61,7 @@
   },
   {
     "name": "recall",
-    "description": "Recall search with mode selection (default, recall, deep)"
+    "description": "Deprecated compatibility wrapper over search"
   },
   {
     "name": "trajectory",

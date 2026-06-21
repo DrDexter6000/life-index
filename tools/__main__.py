@@ -24,7 +24,7 @@ Commands:
     verify    Verify data integrity
     timeline  Output chronological summary stream
     on-this-day  Find prior-year entries on same month/day
-    recall    Recall search with mode selection (default/recall/deep)
+    recall    Deprecated compatibility wrapper over search
     trajectory  Typed observations (weight/sleep/mood/location/project)
     migrate   Schema migration tool
     eval      Run search evaluation gate
@@ -571,7 +571,7 @@ def print_usage() -> None:
     print("  verify    Verify data integrity")
     print("  timeline  Output chronological summary stream")
     print("  on-this-day  Find prior-year entries on same month/day")
-    print("  recall    Recall search with mode selection (default/recall/deep)")
+    print("  recall    Deprecated compatibility wrapper over search")
     print("  trajectory  Typed observations (weight/sleep/mood/location/project)")
     print("  migrate   Schema migration tool")
     print("  eval      Run search evaluation gate")

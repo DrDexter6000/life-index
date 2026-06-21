@@ -2,8 +2,8 @@
 """
 Life Index - Recall Module Core Logic
 
-L3 module that consumes L2 search/smart-search through subprocess delegation.
-Provides three search modes: default (pure FTS), recall (hybrid), deep (deterministic recall).
+Deprecated compatibility wrapper that consumes L2 search through subprocess
+delegation. New host-agent flows should call ``search`` directly.
 
 Mirrors the on_this_day subprocess pattern — never imports L2 internals directly.
 """
@@ -16,6 +16,18 @@ import time
 from typing import Any, Dict, List, Optional
 
 SCHEMA_VERSION = "gbrain.recall.v1"
+DEPRECATION_MESSAGE = (
+    "recall is a deprecated compatibility wrapper over search; "
+    "new host-agent flows should call search directly."
+)
+
+
+def _deprecation_payload(replacement_command: str) -> Dict[str, str]:
+    return {
+        "message": DEPRECATION_MESSAGE,
+        "replacement_command": replacement_command,
+        "compatibility_window": "command retained for existing integrations",
+    }
 
 
 def _error_result(
@@ -39,6 +51,8 @@ def _error_result(
         "query": None,
         "results": [],
         "source_command": None,
+        "deprecated": True,
+        "deprecation": _deprecation_payload("life-index search --query ..."),
         "error": err,
     }
 
@@ -79,7 +93,8 @@ def _call_search(
 def _extract_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extract result list from L2 search output.
 
-    L2 search returns 'merged_results'; smart-search returns 'filtered_results'.
+    L2 search returns 'merged_results'. 'filtered_results' is tolerated for
+    old internal compatibility.
     """
     if "merged_results" in payload:
         return list(payload["merged_results"])
@@ -94,10 +109,10 @@ def run_recall(
     use_llm: bool = False,
 ) -> Dict[str, Any]:
     """
-    Execute recall search across three modes.
+    Execute the deprecated recall compatibility wrapper across three modes.
 
     Args:
-        mode: Search mode — 'default', 'recall', or 'deep'.
+        mode: Compatibility mode — 'default', 'recall', or 'deep'.
         query: Search query string.
         use_llm: Legacy compatibility parameter; ignored. Tools are deterministic.
 
@@ -131,19 +146,22 @@ def run_recall(
 
     effective_mode = mode
     source_command = ""
+    replacement_command = ""
     stderr_warning = ""
     l2_payload: Dict[str, Any] = {}
 
     if mode == "default":
-        # Pure FTS — no semantic search
+        # Compatibility alias for the FTS-only search path.
         l2_payload = _call_search(query, no_semantic=True, env=env)
         source_command = "search --no-semantic"
+        replacement_command = "life-index search --query ... --no-semantic"
         # Legacy use_llm is ignored in default mode.
 
     elif mode == "recall":
-        # Default hybrid search (FTS + semantic fallback)
+        # Compatibility alias for default search.
         l2_payload = _call_search(query, no_semantic=False, env=env)
         source_command = "search"
+        replacement_command = "life-index search --query ..."
         # Legacy use_llm is ignored in recall mode.
 
     elif mode == "deep":
@@ -151,6 +169,7 @@ def run_recall(
         # accepted for compatibility, but execute the deterministic recall path.
         l2_payload = _call_search(query, no_semantic=False, env=env)
         source_command = "search"
+        replacement_command = "life-index search --query ..."
         effective_mode = "recall"
         stderr_warning = "recall: deep mode uses deterministic recall; in-tool LLM is retired."
 
@@ -179,6 +198,8 @@ def run_recall(
         "query": query,
         "results": results,
         "source_command": source_command,
+        "deprecated": True,
+        "deprecation": _deprecation_payload(replacement_command),
         "performance": {
             "total_time_ms": elapsed_ms,
         },

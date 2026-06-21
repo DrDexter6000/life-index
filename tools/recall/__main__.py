@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Life Index - Recall Command CLI Entry Point
+Life Index - Deprecated Recall Compatibility CLI Entry Point
 
 Usage:
     life-index recall --mode {default|recall|deep} --query "..."
@@ -26,13 +26,20 @@ def _emit_json(payload: dict) -> None:
 def main() -> None:
     """CLI entry point for recall command."""
     parser = argparse.ArgumentParser(
-        description="Life Index - Recall search (L3 module consuming L2 search)",
+        description=(
+            "Life Index - Deprecated recall compatibility wrapper over `life-index search`"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Deprecated compatibility command:
+  New host-agent flows should call search directly:
+    FTS-only retrieval: life-index search --query "..." --no-semantic
+    Normal retrieval:   life-index search --query "..."
+
 Modes:
-  default  Pure FTS keyword search (fastest, most deterministic)
-  recall   Hybrid search (FTS + semantic fallback)
-  deep     Compatibility alias for deterministic recall
+  default  Compatibility alias for search --no-semantic
+  recall   Compatibility alias for search
+  deep     Compatibility alias for search with effective_mode=recall
 
 Examples:
     life-index recall --mode default --query "python"
@@ -45,7 +52,10 @@ Examples:
         "--mode",
         required=True,
         choices=["default", "recall", "deep"],
-        help="Search mode: default (FTS), recall (hybrid), deep (deterministic recall)",
+        help=(
+            "Compatibility mode: default (search --no-semantic), "
+            "recall (search), deep (search with effective_mode=recall)"
+        ),
     )
 
     parser.add_argument(
