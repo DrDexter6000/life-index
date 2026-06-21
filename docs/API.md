@@ -3161,7 +3161,7 @@ python -m tools bootstrap --json
 
 `bootstrap` 是只读安装 / 数据状态检测命令，用于 Agent onboarding 前置判断。它不 clone、不 install、不 migrate、不 repair、不写入用户数据、不修改 `.venv`，也不删除任何 checkout。
 
-上游新鲜度仍由 onboarding Step 0.1 的 `bootstrap-manifest.json` authority refresh 负责；`bootstrap` 只报告本机安装包版本是否与当前 checkout manifest 版本一致，字段名为 `install_in_sync`。
+`bootstrap` 会以有界、非致命、只读方式查询最新发布版本。网络不可用、超时或设置 `LIFE_INDEX_NO_NET=1` 时，`freshness` 返回 `"unknown"` 并继续使用本地检测。`install_in_sync` 仍只表示本机安装包版本是否与当前 checkout manifest 版本一致。
 
 `journal_count` 使用共享 canonical journal-file 计数口径，只统计文件名匹配 `life-index_YYYY-MM-DD_NNN.md` 的日志文件；standard `health` 与 `migrate --dry-run` 使用同一口径。
 
@@ -3198,6 +3198,11 @@ python -m tools bootstrap --json
     "installed_version": "1.3.0",
     "manifest_version": "1.3.0",
     "install_in_sync": true,
+    "install_type": "editable",
+    "freshness": "current",
+    "latest_release": "1.3.0",
+    "update_available": null,
+    "freshness_error": null,
     "migration_needed": 0,
     "migration_check_error": null,
     "checkout_assessment": null
@@ -3216,7 +3221,15 @@ python -m tools bootstrap --json
 }
 ```
 
-If `install_in_sync` is `false`, `safe_next_steps` begins with `pip install -e .`.
+If `update_available` is set, or `install_in_sync` is `false`, `safe_next_steps`
+begins with the refresh command matching `install_type`:
+
+- `editable`: `git pull --ff-only && pip install -e .`
+- `package`: `pip install -U life-index`
+
+If release freshness cannot be checked, `freshness` is `"unknown"` and
+`freshness_error` explains why. This is diagnostic only; bootstrap remains
+read-only.
 
 ### route 值
 

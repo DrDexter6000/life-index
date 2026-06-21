@@ -502,10 +502,10 @@ https://github.com/DrDexter6000/life-index/blob/main/AGENT_ONBOARDING.md
 
 要求：
 1. 先刷新并阅读最新 authority files，再开始执行：如果本地已有 checkout，先用平台 skill sync/resync 或 `git pull --ff-only` 刷新代码，再按 `bootstrap-manifest.json` 的 `required_authority_docs` 逐个刷新并阅读，不要依赖本段文字中的旧列表；如果本地什么都没有（全新机器），直接按 `AGENT_ONBOARDING.md` Step 4.1 克隆，一次全新 clone 即等于把 authority 刷新到最新
-2. 如果这是已安装旧版的 checkout，按 `AGENT_ONBOARDING.md` Step 0.1 用对应 venv 执行 `pip install -e .` 重新安装刷新后的代码；然后再运行 `life-index bootstrap --json` 或 checkout 内 `python -m tools bootstrap --json`
+2. 如果这是已安装旧版的 checkout 或 package，先运行 `life-index bootstrap --json` 或 checkout 内 `python -m tools bootstrap --json`，再按返回的 `safe_next_steps` 首项执行匹配的刷新命令
 3. 在重建 `.venv`、运行 `health`、采纳 checkout、删除任何目录、或判断 fresh install / upgrade / repair 之前，先按 `AGENT_ONBOARDING.md` Step 0 运行 bootstrap gate；注意：全新机器必须先 clone 再 bootstrap
 4. 如果发现本地 checkout，必须通过 bootstrap 的 `--checkout-path` / `--checkout-origin` 规则评估；只有 `safe_to_adopt: true` 才能采纳
-5. 先处理 `needs_human`，再按 `route` 和 `safe_next_steps` 顺序执行；如果 `safe_next_steps` 包含 `pip install -e .`，必须先重装再执行后续 artifact rebuild / skill sync / migrate / health；不要把 "clean slate" / "fresh install" / "start from scratch" 理解为可以删除已有日志数据
+5. 先处理 `needs_human`，再按 `route` 和 `safe_next_steps` 顺序执行；如果 `safe_next_steps` 首项是刷新命令，必须先刷新再执行后续 artifact rebuild / skill sync / migrate / health；不要把 "clean slate" / "fresh install" / "start from scratch" 理解为可以删除已有日志数据
 6. 所有 Python/CLI 命令都必须使用文档指定的虚拟环境路径
 7. 如果某一步失败，立即停止并报告精确错误
 8. 最终请使用中文按文档要求向我汇报结果
