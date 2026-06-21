@@ -6,6 +6,37 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-06-21
+
+### What users get
+
+- **Topic navigation**: index-tree now exposes the `topic` facet, so agents can
+  navigate journals by topic (work/learn/health/relation/think/create/life);
+  the write-schema `topic` field was previously not navigable.
+- **Runnable health guidance**: when the index needs rebuilding, `health` now
+  suggests a command that actually runs (`generate-index --all-months`) instead
+  of an erroring hint.
+- **Entity-aware facet values**: facet values are canonicalized through the
+  entity graph, so variants like `Life Index` / `Life-Index` / `life-index`
+  collapse into one navigable bucket (case-insensitive lookup; canonical
+  display preserves your naming).
+- **Upgrade delivers the agent playbook**: upgrading now rebuilds the
+  search/navigation indexes and syncs the current `SKILL.md` + references to
+  the host agent (`sync-skill`), so tools and their usage playbook stay in sync.
+- **Data-doctor archive**: `maintenance` can detect and safely archive stray
+  timestamped journal copies (moved to `.trash`, never deleting the canonical
+  entry).
+- **Correct agent playbook**: `SKILL.md` no longer references a removed command;
+  it points to `life-index abstract` / `generate-index`.
+
+### Maintenance / internal
+
+- Evaluation data is now local-only; the public test suite skips quality-gate
+  checks when the private evaluation corpus is absent.
+- Repository hygiene: development-process surfaces removed from the public tree;
+  a public-surface allowlist check and a retired-flag check now guard the public
+  surface.
+
 ## [1.3.0] - 2026-06-20
 
 ### What users get
