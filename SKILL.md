@@ -127,6 +127,10 @@ journal evidence.
    gap. Do not restart with broad search after a successful exhaustive
    navigation unless the user asks for semantic facts beyond the selected
    facets.
+   Do not use `index-tree nodes`, `index-tree lens`, or `index-tree shadow`
+   for normal host-agent retrieval/navigation. They are debug-only legacy
+   diagnostics retained for compatibility; the agent-facing navigation path is
+   `ensure` -> `discover` -> `navigate`.
 4. Read only bounded candidates through stable domain tools:
    `life-index journal batch-get --path Journals/YYYY/MM/name.md --path Journals/YYYY/MM/other.md`.
    Do NOT call journal get repeatedly for multiple candidates; if there are

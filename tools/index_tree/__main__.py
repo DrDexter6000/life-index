@@ -39,15 +39,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
-    nodes = subparsers.add_parser("nodes", help="Emit Index Tree node summaries")
+    nodes = subparsers.add_parser(
+        "nodes",
+        help="Debug-only legacy: emit Index Tree node summaries",
+    )
     nodes.add_argument("--level", default="all", choices=["all", "root", "year", "month"])
     nodes.add_argument("--json", action="store_true", help="Emit JSON output")
 
-    lens = subparsers.add_parser("lens", help="Emit cross-time derived lens")
+    lens = subparsers.add_parser(
+        "lens",
+        help="Debug-only legacy: emit cross-time derived lens",
+    )
     lens.add_argument("--signal", required=True, help="Signal: topic, people, or project")
     lens.add_argument("--json", action="store_true", help="Emit JSON output")
 
-    shadow = subparsers.add_parser("shadow", help="Emit search-shadow diagnostics")
+    shadow = subparsers.add_parser(
+        "shadow",
+        help="Debug-only legacy: emit search-shadow diagnostics",
+    )
     shadow.add_argument("--query", required=True, help="Query to diagnose")
     shadow.add_argument("--json", action="store_true", help="Emit JSON output")
 
