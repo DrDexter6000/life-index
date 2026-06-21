@@ -32,7 +32,7 @@ triggers:
 | 历史同日 | "去年今天在做什么"、"历史上的今天"、"on-this-day"、"历史同日" | `on_this_day` |
 | 编辑日志 | "修改日志"、"补充日记"、"更新记录"、"edit journal"、"update log" | `edit_journal` |
 | 实体图谱 | "列出实体"、"解析人物关系"、"entity graph"、"谁是谁的..." | `entity` |
-| 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary" | `generate_abstract` |
+| 生成摘要 | "生成摘要"、"月度总结"、"年度总结"、"generate summary" | `life-index abstract` / `tools.generate_index` |
 | 修订历史 | "查看修订历史"、"编辑记录" | `edit_journal` |
 | 定时报告 | 日报/周报/月报/年报 | Life Index 无内置 scheduler；由宿主平台定时能力编排 CLI |
 
@@ -72,7 +72,7 @@ triggers:
 .venv/bin/python -m tools.write_journal --data '{...}'
 .venv/bin/python -m tools.search_journals --query "关键词"
 .venv/bin/python -m tools.edit_journal --journal "..."
-.venv/bin/python -m tools.generate_abstract --month 2026-03
+.venv/bin/python -m tools.generate_index --month 2026-03
 .venv/bin/python -m tools.query_weather --location "Lagos,Nigeria"
 .venv/bin/python -m tools.build_index
 ```
@@ -508,7 +508,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 ### 工作流4: 生成摘要
 
 1. **确定类型**：月度摘要（`--month YYYY-MM`）或年度摘要（`--year YYYY`）
-2. **执行生成**：`generate_abstract`
+2. **执行生成**：`life-index abstract`（或开发者模式 `python -m tools.generate_index`）
 3. **返回结果**：告知文件路径和统计信息
 
 ### 工作流5: 索引维护
