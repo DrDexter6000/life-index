@@ -57,7 +57,7 @@ triggers:
 .venv/bin/life-index on-this-day --date 2026-05-19 --years-back 3       # 历史同日回顾
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
 .venv/bin/life-index entity --list
-.venv/bin/life-index entity --resolve "乐乐的奶奶"
+.venv/bin/life-index entity --resolve "晴岚的奶奶"
 .venv/bin/life-index abstract --month 2026-03
 .venv/bin/life-index weather --location "Lagos,Nigeria"
 .venv/bin/life-index index           # 增量更新
@@ -409,7 +409,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 |:---|:---|
 | "关于工作的日志" | `--topic work` |
 | "去年的记录" | `--date-from 2025-01-01 --date-to 2025-12-31` |
-| "跟乐乐有关的" | `--people 乐乐` |
+| "跟晴岚有关的" | `--people 晴岚` |
 | "关于重构的" | `--query "重构"` |
 | "开心的回忆" | `--mood 开心` |
 | "LifeIndex项目" | `--project LifeIndex` |

@@ -310,7 +310,7 @@ def expand_query_with_entity_graph(query: str) -> str:
         return None
 
     for token in tokens:
-        # Try phrase pattern expansion first (e.g., 乐乐的奶奶)
+        # Try phrase pattern expansion first (e.g., 晴岚的奶奶)
         phrase_expansion = _expand_phrase_pattern(token)
         if phrase_expansion:
             expanded_tokens.append(phrase_expansion)

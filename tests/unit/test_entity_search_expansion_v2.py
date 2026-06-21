@@ -26,7 +26,7 @@ def _spouse_family_graph() -> list[dict]:
             "id": "wife-001",
             "type": "person",
             "primary_name": "王某某",
-            "aliases": ["乐乐妈", "老婆", "妻子"],
+            "aliases": ["晴岚妈", "老婆", "妻子"],
             "attributes": {},
             "relationships": [{"target": "author-self", "relation": "spouse_of"}],
         },
@@ -52,7 +52,7 @@ def _spouse_family_graph() -> list[dict]:
         {
             "id": "tuantuan",
             "type": "person",
-            "primary_name": "乐乐",
+            "primary_name": "晴岚",
             "aliases": ["圆圆"],
             "attributes": {},
             "relationships": [{"target": "author-self", "relation": "child_of"}],
@@ -84,7 +84,7 @@ class TestRoleLabelExpansion:
 
         expanded = expand_query_with_entity_graph("老婆")
 
-        assert "乐乐妈" in expanded
+        assert "晴岚妈" in expanded
         assert "妻子" in expanded
         assert "王某某" in expanded
 
@@ -104,12 +104,12 @@ class TestRelationshipPhrasePatterns:
     """Phrase patterns like X的奶奶 should use the registry."""
 
     def test_granddaughter_of_grandma(self, isolated_data_dir: Path) -> None:
-        """乐乐的奶奶 → expand mama entity names."""
+        """晴岚的奶奶 → expand mama entity names."""
         from tools.search_journals.core import expand_query_with_entity_graph
 
         _save_graph(_spouse_family_graph(), isolated_data_dir)
 
-        expanded = expand_query_with_entity_graph("乐乐的奶奶")
+        expanded = expand_query_with_entity_graph("晴岚的奶奶")
 
         assert "妈妈" in expanded
         assert "婆婆" in expanded
@@ -124,7 +124,7 @@ class TestRelationshipPhrasePatterns:
         expanded = expand_query_with_entity_graph("我的老婆")
 
         assert "王某某" in expanded
-        assert "乐乐妈" in expanded
+        assert "晴岚妈" in expanded
 
     def test_x_mother_phrase(self, isolated_data_dir: Path) -> None:
         """我的妈妈 → expand mama entity names."""
@@ -145,7 +145,7 @@ class TestRelationshipPhrasePatterns:
 
         expanded = expand_query_with_entity_graph("我女儿")
 
-        assert "乐乐" in expanded
+        assert "晴岚" in expanded
         assert "圆圆" in expanded
 
     def test_x_child_phrase(self, isolated_data_dir: Path) -> None:
@@ -156,7 +156,7 @@ class TestRelationshipPhrasePatterns:
 
         expanded = expand_query_with_entity_graph("我的孩子")
 
-        assert "乐乐" in expanded
+        assert "晴岚" in expanded
         assert "圆圆" in expanded
 
     def test_phrase_unknown_subject_passthrough(self, isolated_data_dir: Path) -> None:
@@ -416,7 +416,7 @@ class TestExpansionGrammarFix:
         expanded = expand_query_with_entity_graph("我的老婆")
 
         assert "王某某" in expanded
-        assert "乐乐妈" in expanded
+        assert "晴岚妈" in expanded
 
 
 # ---------------------------------------------------------------------------

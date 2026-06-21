@@ -168,7 +168,7 @@ SEMANTIC_TOP_K_DEFAULT: int = 30
 # ADR-010: Semantic weight in hybrid RRF ranking (Round 10 Phase 4 T4.1)
 # Raised from 0.4 to 0.6 to reduce FTS weak-hit dominance over semantic strong-hits.
 # R4 root cause: FTS weight 1.0 vs semantic 0.4 caused semantically relevant results
-# (e.g. "想起女儿" → "想念小英雄") to be outranked by FTS noise.
+# (e.g. "想起伙伴" → "回忆小风筝") to be outranked by FTS noise.
 # Rollback window: before Phase 5 completion.
 SEMANTIC_WEIGHT_DEFAULT: float = 0.6
 

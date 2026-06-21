@@ -20,7 +20,7 @@
 <!-- Promise Badges -->
 
 <p align="center">
-  <a href="./tests/fixtures/eval/gold/cycle2-multi-signal/README.md"><img src="https://img.shields.io/badge/Recall%405-0.7857_keyword_floor-4ecdc4" alt="Recall@5 keyword-only honest floor 0.7857"></a>
+  <a href="./docs/API.md"><img src="https://img.shields.io/badge/Recall%405-local_eval_floor-4ecdc4" alt="Recall@5 local eval floor"></a>
   <a href="./CHARTER.md"><img src="https://img.shields.io/badge/CHARTER_§1.11-Recall--First_Guarantee-78206E" alt="CHARTER §1.11 Recall-First Guarantee"></a>
 </p>
 
@@ -387,11 +387,8 @@ life-index write --data '{"title":"...","content":"...","date":"..."}'
 # search · CLI Core, default keyword-only honest floor
 life-index search --query "keyword"
 
-# search · Agent-ready scaffold, still no LLM inside CLI
+# search · Agent-ready deterministic scaffold
 life-index smart-search --query "What are my most precious memories with my daughter?"
-
-# search · explicit LLM orchestration
-life-index smart-search --query "..." --use-llm
 ```
 
 **Forward-looking MCP discovery layer (In Flight)**: to let MCP-compatible Agent platforms discover this matrix with zero setup, Life Index is drafting a thin MCP server. It is read-only discovery, not a new data path: three meta-tools (`list_capabilities`, `describe_tool`, `invoke_tool`), with real execution still delegated to the `life-index` CLI subprocess. RFC status: `In Flight`, planned for 2026-Q3.
@@ -410,8 +407,8 @@ life-index smart-search --query "..." --use-llm
 |:---|:---:|:---|
 | Journal write / edit | ✅ | Structured Markdown + YAML metadata, with weather/sentiment/entity support |
 | Layered life retrieval | ✅ | Offline CLI Core retrieval: keyword exact match + Entity Graph expansion; semantic/vector recall is explicit opt-in |
-| Smart search orchestrator | ✅ | Agent-ready deterministic scaffold by default; `--use-llm` enables LLM orchestration with fallback |
-| Search quality evaluation | ✅ | Cycle 2 multi-signal fixture locked; full integrity audit PASS on 2026-05-25; overall R@5=0.7857 keyword floor (marginal miss vs 0.79 target; C2 paraphrase gap remains) |
+| Smart search orchestrator | ✅ | Agent-ready deterministic scaffold by default |
+| Search quality evaluation | ✅ | Public harness with local/private eval data support; data-dependent checks skip explicitly when no local eval set is present |
 | Entity graph + quality audit + maintenance | ✅ | Alias resolution, relationship inference, duplicate/orphan detection, review hub, merge/delete/stats/check |
 | Schema migration | ✅ | Chain migration framework with deterministic backfill and optional Agent semantic enrichment |
 | Piggyback event notifications | ✅ | Zero cron, zero daemon; event reminders attached to CLI responses |

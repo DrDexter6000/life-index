@@ -41,7 +41,7 @@ def _d6_family_graph() -> list[dict]:
             "id": "person-chen-xiaohong",
             "type": "person",
             "primary_name": "陈小红",
-            "aliases": ["Mia", "小米", "乐乐妈", "小柏妈"],
+            "aliases": ["Mia", "小米", "晴岚妈", "小柏妈"],
             "attributes": {
                 "family_role_labels": {
                     "child_perspective": {"primary": "妈妈", "aliases": []},
@@ -57,8 +57,8 @@ def _d6_family_graph() -> list[dict]:
         {
             "id": "person-wang-lele",
             "type": "person",
-            "primary_name": "王乐乐",
-            "aliases": ["小豆丁", "小英雄"],
+            "primary_name": "王晴岚",
+            "aliases": ["小风筝", "小队长"],
             "attributes": {
                 "family_role_labels": {
                     "parent_perspective": {"primary": "女儿", "aliases": []},
@@ -191,21 +191,21 @@ class TestParentDirection:
 
     def test_limucheng_mother(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("王乐乐的妈妈")
+        expanded = expand_query_with_entity_graph("王晴岚的妈妈")
         assert "陈小红" in expanded
         assert "妈妈" in expanded
         assert "王大明" not in expanded  # filtered by child_perspective (爸爸 != 妈妈)
 
     def test_limucheng_father(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("王乐乐的爸爸")
+        expanded = expand_query_with_entity_graph("王晴岚的爸爸")
         assert "王大明" in expanded
         assert "爸爸" in expanded
         assert "陈小红" not in expanded  # filtered by child_perspective (妈妈 != 爸爸)
 
     def test_mother_entity_hint_only_mother(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        hints = resolve_query_entities("王乐乐的妈妈")
+        hints = resolve_query_entities("王晴岚的妈妈")
         ids = [h["entity_id"] for h in hints]
         assert "person-chen-xiaohong" in ids
         assert "person-wang-daming" not in ids
@@ -217,8 +217,8 @@ class TestChildDirection:
     def test_liweijie_daughter(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("王大明的女儿")
-        assert "王乐乐" in expanded
-        assert "小豆丁" in expanded
+        assert "王晴岚" in expanded
+        assert "小风筝" in expanded
         assert "女儿" in expanded
         # Must NOT include son or parents
         assert "王小柏" not in expanded
@@ -232,14 +232,14 @@ class TestChildDirection:
         assert "柏宝" in expanded
         assert "儿子" in expanded
         # Must NOT include daughter or parents
-        assert "王乐乐" not in expanded
+        assert "王晴岚" not in expanded
         assert "凃秀英" not in expanded
         assert "李建国" not in expanded
 
     def test_liweijie_children(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
         expanded = expand_query_with_entity_graph("王大明的孩子")
-        assert "王乐乐" in expanded
+        assert "王晴岚" in expanded
         assert "王小柏" in expanded
         assert "女儿" in expanded
         assert "儿子" in expanded
@@ -262,7 +262,7 @@ class TestGrandparentDirection:
 
     def test_limucheng_grandmother(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("王乐乐的外婆")
+        expanded = expand_query_with_entity_graph("王晴岚的外婆")
         assert "李玉兰" in expanded
         assert "外婆" in expanded
         assert "姥姥" in expanded
@@ -270,12 +270,12 @@ class TestGrandparentDirection:
 
     def test_limucheng_grandmother_alias_laolao(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("王乐乐的姥姥")
+        expanded = expand_query_with_entity_graph("王晴岚的姥姥")
         assert "李玉兰" in expanded
 
     def test_limucheng_grandfather(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("王乐乐的外公")
+        expanded = expand_query_with_entity_graph("王晴岚的外公")
         assert "张国强" in expanded
         assert "外公" in expanded
         assert "姥爷" in expanded
@@ -283,7 +283,7 @@ class TestGrandparentDirection:
 
     def test_limucheng_grandfather_alias_laoye(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        expanded = expand_query_with_entity_graph("王乐乐的姥爷")
+        expanded = expand_query_with_entity_graph("王晴岚的姥爷")
         assert "张国强" in expanded
 
     def test_limubai_grandmother(self, isolated_data_dir: Path) -> None:
@@ -309,7 +309,7 @@ class TestGrandparentDirection:
 
     def test_grandmother_entity_hint_only_grandmother(self, isolated_data_dir: Path) -> None:
         _save_graph(_d6_family_graph(), isolated_data_dir)
-        hints = resolve_query_entities("王乐乐的外婆")
+        hints = resolve_query_entities("王晴岚的外婆")
         ids = [h["entity_id"] for h in hints]
         assert "person-li-yulan" in ids
         assert "person-zhang-guoqiang" not in ids

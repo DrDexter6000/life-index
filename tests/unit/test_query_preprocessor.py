@@ -36,7 +36,7 @@ class TestNormalizeQuery:
         assert "60" in result
 
     def test_preserves_content(self):
-        assert normalize_query("乐乐") == "乐乐"
+        assert normalize_query("晴岚") == "晴岚"
 
     def test_empty_string(self):
         assert normalize_query("") == ""
@@ -76,7 +76,7 @@ class TestExtractTimeExpression:
         assert result is not None
 
     def test_no_time_expression(self):
-        assert extract_time_expression("乐乐") is None
+        assert extract_time_expression("晴岚") is None
 
     def test_no_time_expression_english(self):
         assert extract_time_expression("Claude Opus") is None
@@ -239,7 +239,7 @@ class TestClassifyIntent:
         assert classify_intent("对比一下上个月和这个月的工作效率") == IntentType.COMPARE
 
     def test_default_recall_keyword(self):
-        assert classify_intent("乐乐") == IntentType.RECALL
+        assert classify_intent("晴岚") == IntentType.RECALL
 
     def test_default_recall_english(self):
         assert classify_intent("Claude Opus") == IntentType.RECALL
@@ -257,8 +257,8 @@ class TestExtractKeywords:
         assert "睡觉" in kw or len(kw) > 0
 
     def test_simple_keyword(self):
-        kw = extract_keywords("乐乐")
-        assert "乐乐" in kw
+        kw = extract_keywords("晴岚")
+        assert "晴岚" in kw
 
     def test_english_keywords(self):
         kw = extract_keywords("Claude Opus")
@@ -291,7 +291,7 @@ class TestExtractTopicHints:
         assert "work" in hints
 
     def test_no_topic(self):
-        hints = extract_topic_hints("乐乐")
+        hints = extract_topic_hints("晴岚")
         assert hints == []
 
     def test_learning(self):
@@ -304,7 +304,7 @@ class TestExtractTopicHints:
 
 class TestClassifyQueryMode:
     def test_keyword_short(self):
-        assert classify_query_mode("乐乐") == QueryMode.KEYWORD
+        assert classify_query_mode("晴岚") == QueryMode.KEYWORD
 
     def test_keyword_space_separated(self):
         assert classify_query_mode("生日 重庆") == QueryMode.KEYWORD
@@ -333,10 +333,10 @@ class TestBuildSearchPlan:
         assert plan.pipelines["semantic"] is False
 
     def test_keyword_query(self):
-        plan = build_search_plan("乐乐", reference_date=self.REF_DATE)
+        plan = build_search_plan("晴岚", reference_date=self.REF_DATE)
         assert plan.intent_type == IntentType.RECALL
         assert plan.date_range is None
-        assert "乐乐" in plan.keywords
+        assert "晴岚" in plan.keywords
         assert plan.query_mode == QueryMode.KEYWORD
 
     def test_empty_query(self):
@@ -687,25 +687,25 @@ class TestChineseTemporalPatterns:
     # ── Mixed query: date filter + keyword preservation ──
 
     def test_build_plan_mixed_query(self):
-        plan = build_search_plan("二月份 团团", reference_date=self.REF_DATE)
+        plan = build_search_plan("二月份 小云", reference_date=self.REF_DATE)
         assert plan.date_range is not None
         assert plan.date_range.since == "2026-02-01"
         assert plan.date_range.until == "2026-02-28"
-        assert "团团" in plan.keywords
+        assert "小云" in plan.keywords
 
     def test_build_plan_mixed_query_end_of_month(self):
-        plan = build_search_plan("三月底 团团", reference_date=self.REF_DATE)
+        plan = build_search_plan("三月底 小云", reference_date=self.REF_DATE)
         assert plan.date_range is not None
         assert plan.date_range.since == "2026-03-21"
         assert plan.date_range.until == "2026-03-31"
-        assert "团团" in plan.keywords
+        assert "小云" in plan.keywords
 
     def test_build_plan_mixed_query_specific_date(self):
-        plan = build_search_plan("四月十五日 团团", reference_date=self.REF_DATE)
+        plan = build_search_plan("四月十五日 小云", reference_date=self.REF_DATE)
         assert plan.date_range is not None
         assert plan.date_range.since == "2026-04-15"
         assert plan.date_range.until == "2026-04-15"
-        assert "团团" in plan.keywords
+        assert "小云" in plan.keywords
 
     # ── Cross-year edge cases ──
 

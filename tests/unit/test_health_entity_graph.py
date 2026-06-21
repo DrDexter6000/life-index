@@ -6,9 +6,6 @@ when entity_graph.yaml doesn't exist or is empty.
 """
 
 from pathlib import Path
-from typing import Any
-
-import pytest
 
 
 class TestHealthEntityGraphCheck:
@@ -49,7 +46,7 @@ class TestHealthEntityGraphCheck:
             "entities:\n"
             "  - id: e1\n"
             "    type: person\n"
-            "    primary_name: 乐乐\n"
+            "    primary_name: 晴岚\n"
             "    aliases: []\n"
             "    attributes: {}\n"
             "    relationships: []\n",

@@ -12,10 +12,8 @@ Tests cover:
 
 import os
 import pytest
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 import sqlite3
-import tempfile
 
 
 class TestGetFileHash:
@@ -94,9 +92,7 @@ class TestInitFtsDb:
                 conn = search_index.init_fts_db()
 
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='journals'"
-        )
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='journals'")
         result = cursor.fetchone()
 
         assert result is not None
@@ -372,9 +368,7 @@ class TestUpdateIndex:
 
         with patch.object(search_index, "get_journals_dir", lambda: journals_dir):
             with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
-                ):
+                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
                     with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         result = search_index.update_index(incremental=False)
 
@@ -408,9 +402,7 @@ This is new content.
 
         with patch.object(search_index, "get_journals_dir", lambda: tmp_path / "Journals"):
             with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
-                ):
+                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
                     with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         result = search_index.update_index(incremental=True)
 
@@ -421,7 +413,6 @@ This is new content.
     def test_incremental_update_modified_file(self, tmp_path):
         """Incremental update detects modified files"""
         from tools.lib import search_index
-        import tools.lib.paths as paths_module
 
         # Setup directory structure
         journals_dir = tmp_path / "Journals" / "2026" / "03"
@@ -447,7 +438,9 @@ Original content.
                     with patch.object(
                         search_index, "get_fts_db_path", lambda: tmp_path / "test_fts.db"
                     ):
-                        with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
+                        with patch.object(
+                            search_index, "get_index_dir", lambda: tmp_path / ".index"
+                        ):
                             # First update - add file
                             result1 = search_index.update_index(incremental=True)
                             assert result1["success"] is True
@@ -473,7 +466,6 @@ Modified content.
     def test_incremental_remove_deleted_file(self, tmp_path):
         """Incremental update removes deleted files from index"""
         from tools.lib import search_index
-        import tools.lib.paths as paths_module
 
         # Setup directory structure
         journals_dir = tmp_path / "Journals" / "2026" / "03"
@@ -499,7 +491,9 @@ Content to delete.
                     with patch.object(
                         search_index, "get_fts_db_path", lambda: tmp_path / "test_fts.db"
                     ):
-                        with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
+                        with patch.object(
+                            search_index, "get_index_dir", lambda: tmp_path / ".index"
+                        ):
                             # Add file
                             result1 = search_index.update_index(incremental=True)
                             assert result1["added"] == 1
@@ -535,9 +529,7 @@ Content {i + 1}.
 
         with patch.object(search_index, "get_journals_dir", lambda: tmp_path / "Journals"):
             with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
-                ):
+                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
                     with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         # Incremental add
                         result1 = search_index.update_index(incremental=True)
@@ -578,9 +570,7 @@ Valid content.
 
         with patch.object(search_index, "get_journals_dir", lambda: journals_dir):
             with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
-                ):
+                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
                     with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         result = search_index.update_index(incremental=True)
 
@@ -618,9 +608,7 @@ Content.
 
         with patch.object(search_index, "get_journals_dir", lambda: journals_dir):
             with patch.object(search_index, "get_user_data_dir", lambda: tmp_path):
-                with patch.object(
-                    search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"
-                ):
+                with patch.object(search_index, "FTS_DB_PATH", tmp_path / "test_fts.db"):
                     with patch.object(search_index, "get_index_dir", lambda: tmp_path / ".index"):
                         result = search_index.update_index(incremental=False)
 
@@ -630,7 +618,6 @@ Content.
     def test_full_rebuild_reports_active_marker(self, tmp_path):
         """Active rebuild marker should block concurrent full rebuilds."""
         from tools.lib import search_index
-        import tools.lib.paths as paths_module
 
         journals_dir = tmp_path / "Journals"
         journals_dir.mkdir(parents=True)
@@ -657,7 +644,6 @@ Content.
     def test_full_rebuild_removes_stale_marker(self, tmp_path):
         """Stale rebuild marker should be cleaned before rebuild proceeds."""
         from tools.lib import search_index
-        import tools.lib.paths as paths_module
 
         journals_dir = tmp_path / "Journals" / "2026" / "03"
         journals_dir.mkdir(parents=True)
@@ -1038,15 +1024,13 @@ class TestSearchFtsEdgeCases:
 
         with patch.object(search_index, "get_fts_db_path", lambda: db_path):
             with patch.object(search_index.sqlite3, "connect", return_value=mock_conn):
-                normal_results = search_index.search_fts("乐乐")
+                normal_results = search_index.search_fts("晴岚")
                 high_freq_results = search_index.search_fts("OpenClaw")
 
         assert [result["path"] for result in normal_results] == ["mid.md"]
         assert high_freq_results == []
 
-    def test_search_fts_custom_min_relevance_overrides_high_frequency_default(
-        self, tmp_path
-    ):
+    def test_search_fts_custom_min_relevance_overrides_high_frequency_default(self, tmp_path):
         """Explicit min_relevance should still win over high-frequency defaults."""
         from tools.lib import search_index
 
@@ -1224,9 +1208,7 @@ class TestVersionMarker:
                 search_index.write_index_meta(conn)
 
                 cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT value FROM index_meta WHERE key = 'tokenizer_version'"
-                )
+                cursor.execute("SELECT value FROM index_meta WHERE key = 'tokenizer_version'")
                 row = cursor.fetchone()
                 conn.close()
 
@@ -1260,7 +1242,7 @@ class TestVersionMarker:
     def test_version_match_allows_incremental(self, tmp_path):
         """Matching tokenizer_version + dict_hash means no rebuild needed."""
         from tools.lib import search_index
-        from tools.lib.chinese_tokenizer import get_dict_hash, reset_tokenizer_state
+        from tools.lib.chinese_tokenizer import reset_tokenizer_state
 
         reset_tokenizer_state()
         db_path = tmp_path / "test_fts.db"
@@ -1317,7 +1299,6 @@ class TestVersionMarker:
         """Matching dict_hash means no rebuild from dict changes."""
         from tools.lib import search_index
         from tools.lib.chinese_tokenizer import (
-            get_dict_hash,
             load_entity_dict,
             reset_tokenizer_state,
         )
@@ -1326,7 +1307,6 @@ class TestVersionMarker:
         # Use a non-existent path so no entity dict is loaded (hash="")
         graph_path = tmp_path / "nonexistent_entity_graph.yaml"
         load_entity_dict(graph_path)
-        expected_hash = get_dict_hash()
 
         db_path = tmp_path / "test_fts2.db"
         with patch.object(search_index, "get_fts_db_path", lambda: db_path):

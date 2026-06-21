@@ -11,10 +11,12 @@ from pathlib import Path
 
 import pytest
 
+from tools.eval.private_data import get_baselines_dir
+
 CLOSURE_PATH = Path(".strategy/cli/round-18-plan/phase-7-closure.md")
 PRD_PATH = Path(".strategy/cli/round-18-prd.md")
-SEMANTIC_BASELINE = Path("tests/eval/baselines/round-18-semantic-baseline.json")
-KEYWORD_BASELINE = Path("tests/eval/baselines/round-18-keyword-baseline.json")
+SEMANTIC_BASELINE = get_baselines_dir() / "round-18-semantic-baseline.json"
+KEYWORD_BASELINE = get_baselines_dir() / "round-18-keyword-baseline.json"
 
 _STRATEGY_FILES = [CLOSURE_PATH, PRD_PATH]
 
@@ -93,11 +95,17 @@ class TestClosureBindsToPRD:
 class TestBaselineArtifactsExist:
     """M3: semantic baseline must exist with 5 metrics."""
 
+    def _require_baseline(self, path: Path) -> dict:
+        if not path.exists():
+            pytest.skip(f"local/private eval baseline not present: {path}")
+        return json.loads(path.read_text(encoding="utf-8"))
+
     def test_semantic_baseline_exists(self) -> None:
-        assert SEMANTIC_BASELINE.exists(), f"Missing: {SEMANTIC_BASELINE}"
+        if not SEMANTIC_BASELINE.exists():
+            pytest.skip(f"local/private eval baseline not present: {SEMANTIC_BASELINE}")
 
     def test_semantic_baseline_has_5_metrics(self) -> None:
-        data = json.loads(SEMANTIC_BASELINE.read_text(encoding="utf-8"))
+        data = self._require_baseline(SEMANTIC_BASELINE)
         metrics = data["data"]["metrics"]
         required = {"mrr_at_5", "recall_at_5", "recall_at_10", "precision_at_5", "ndcg_at_5"}
         assert required.issubset(
@@ -105,14 +113,15 @@ class TestBaselineArtifactsExist:
         ), f"Missing metrics: {required - set(metrics.keys())}"
 
     def test_semantic_baseline_flag(self) -> None:
-        data = json.loads(SEMANTIC_BASELINE.read_text(encoding="utf-8"))
+        data = self._require_baseline(SEMANTIC_BASELINE)
         assert data["data"]["semantic_enabled"] is True
 
     def test_keyword_baseline_exists(self) -> None:
-        assert KEYWORD_BASELINE.exists(), f"Missing: {KEYWORD_BASELINE}"
+        if not KEYWORD_BASELINE.exists():
+            pytest.skip(f"local/private eval baseline not present: {KEYWORD_BASELINE}")
 
     def test_keyword_baseline_has_core_metrics(self) -> None:
-        data = json.loads(KEYWORD_BASELINE.read_text(encoding="utf-8"))
+        data = self._require_baseline(KEYWORD_BASELINE)
         metrics = data["data"]["metrics"]
         required = {"mrr_at_5", "recall_at_5", "precision_at_5", "ndcg_at_5"}
         assert required.issubset(set(metrics.keys()))

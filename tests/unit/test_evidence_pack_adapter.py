@@ -23,7 +23,7 @@ def _synthetic_search_result() -> dict:
         "success": True,
         "query_params": {
             "query": "family day out",
-            "expanded_query": "family day out 团团",
+            "expanded_query": "family day out 小云",
             "level": 3,
         },
         "merged_results": [
@@ -31,7 +31,7 @@ def _synthetic_search_result() -> dict:
                 "path": "Journals/2026/03/life-index_2026-03-07_001.md",
                 "title": "Family Day",
                 "date": "2026-03-07",
-                "snippet": "We went to the park with 团团",
+                "snippet": "We went to the park with 小云",
                 "source": "fts",
                 "relevance": 90,
                 "fts_score": 90.0,
@@ -64,7 +64,7 @@ def _synthetic_search_result() -> dict:
         "no_confident_match": False,
         "semantic_effective_policy": "hybrid",
         "entity_hints": [
-            {"matched_term": "团团", "entity_id": "tuan_tuan", "entity_type": "person"},
+            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
         ],
         "search_plan": {"intent_type": "recall"},
         "warnings": [],
@@ -141,7 +141,7 @@ class TestExtractFromOrchestrator:
 
         assert pack.query_context.extra.get("rewritten_query") == "what did I do with family"
         # expanded_query must NOT be overwritten — it's entity expansion, not LLM rewrite
-        assert pack.query_context.expanded_query == "family day out 团团"
+        assert pack.query_context.expanded_query == "family day out 小云"
 
     def test_no_smart_result(self) -> None:
         from tools.evidence.adapter import extract_evidence_from_orchestrator

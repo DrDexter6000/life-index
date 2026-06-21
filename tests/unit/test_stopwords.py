@@ -33,7 +33,7 @@ class TestIsStopword:
             assert is_stopword(word), f"'{word}' should be a stopword"
 
     def test_content_words_are_not_stopwords(self):
-        for word in ["睡眠", "乐乐", "重构", "工作", "边缘", "计算", "编程", "量子"]:
+        for word in ["睡眠", "晴岚", "重构", "工作", "边缘", "计算", "编程", "量子"]:
             assert not is_stopword(word), f"'{word}' should NOT be a stopword"
 
 
@@ -92,8 +92,8 @@ class TestEnglishStopwords:
 
     def test_filter_zh_not_regressed_by_en(self) -> None:
         """Chinese stopword filtering must still work after adding English."""
-        result = filter_stopwords(["乐乐"], lang="zh")
-        assert result == ["乐乐"]
+        result = filter_stopwords(["晴岚"], lang="zh")
+        assert result == ["晴岚"]
 
     def test_is_stopword_en(self) -> None:
         assert is_stopword("the", lang="en")
@@ -132,5 +132,5 @@ class TestEnglishStopwordsInFTS:
         from tools.search_journals.keyword_pipeline import _build_fts_queries
 
         # Chinese queries should not have English stopword filtering applied
-        primary, fallback = _build_fts_queries("乐乐", was_segmented=True)
-        assert "乐乐" in primary
+        primary, fallback = _build_fts_queries("晴岚", was_segmented=True)
+        assert "晴岚" in primary

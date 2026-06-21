@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 
 def _entity_graph_payload() -> list[dict]:
     return [
@@ -27,7 +25,7 @@ def _entity_graph_payload() -> list[dict]:
         {
             "id": "tuantuan",
             "type": "person",
-            "primary_name": "乐乐",
+            "primary_name": "晴岚",
             "aliases": ["圆圆"],
             "relationships": [{"target": "author-self", "relation": "child_of"}],
         },
@@ -67,7 +65,7 @@ class TestEntityQueryExpansion:
 
         save_entity_graph(_entity_graph_payload(), isolated_data_dir / "entity_graph.yaml")
 
-        expanded = expand_query_with_entity_graph("乐乐的奶奶")
+        expanded = expand_query_with_entity_graph("晴岚的奶奶")
 
         assert "妈妈" in expanded
         assert "婆婆" in expanded
@@ -85,7 +83,7 @@ class TestEntityQueryExpansion:
 
         save_entity_graph(payload, isolated_data_dir / "entity_graph.yaml")
 
-        expanded = expand_query_with_entity_graph("乐乐的奶奶")
+        expanded = expand_query_with_entity_graph("晴岚的奶奶")
 
         assert "妈妈" in expanded
         assert "婆婆" in expanded
@@ -99,7 +97,7 @@ class TestEntityQueryExpansion:
 
         expanded = expand_query_with_entity_graph("我女儿")
 
-        assert "乐乐" in expanded
+        assert "晴岚" in expanded
         assert "圆圆" in expanded
 
     def test_place_alias(self, isolated_data_dir: Path) -> None:

@@ -227,7 +227,7 @@ def _extract_from_content(
         return
 
     # Sort by length descending to match longer aliases first
-    # (e.g., "乐乐妈" before "乐乐")
+    # (e.g., "晴岚妈" before "晴岚")
     lookup_keys = sorted(view.by_lookup.keys(), key=len, reverse=True)
 
     for key in lookup_keys:

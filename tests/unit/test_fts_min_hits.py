@@ -10,9 +10,7 @@ class TestComputeMinRequiredHits:
     def test_multi_token_query_requires_40_percent_rounded_up(self) -> None:
         from tools.search_journals.keyword_pipeline import _compute_min_required_hits
 
-        required, non_stop = _compute_min_required_hits(
-            ["量子", "计算", "机", "编程", "语言"]
-        )
+        required, non_stop = _compute_min_required_hits(["量子", "计算", "机", "编程", "语言"])
 
         assert required == 2
         assert non_stop == ["量子", "计算", "机", "编程", "语言"]
@@ -28,10 +26,10 @@ class TestComputeMinRequiredHits:
     def test_single_token_query_skips_filter(self) -> None:
         from tools.search_journals.keyword_pipeline import _compute_min_required_hits
 
-        required, non_stop = _compute_min_required_hits(["乐乐"])
+        required, non_stop = _compute_min_required_hits(["晴岚"])
 
         assert required == 0
-        assert non_stop == ["乐乐"]
+        assert non_stop == ["晴岚"]
 
     def test_single_non_stopword_after_stopword_filter_skips(self) -> None:
         from tools.search_journals.keyword_pipeline import _compute_min_required_hits
@@ -86,9 +84,7 @@ class TestPipelineFTSMinHits:
     def test_segmented_fts_results_are_post_filtered_by_distinct_hits(self) -> None:
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch(
                 "tools.search_journals.keyword_pipeline._segment_query_for_fts",
                 return_value=("量子 计算 编程 语言 未来", True),
@@ -131,9 +127,7 @@ class TestPipelineFTSMinHits:
     def test_segmented_query_with_single_non_stopword_skips_filter(self) -> None:
         from tools.search_journals.keyword_pipeline import run_keyword_pipeline
 
-        with patch(
-            "tools.search_journals.keyword_pipeline.search_l2_metadata"
-        ) as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch(
                 "tools.search_journals.keyword_pipeline._segment_query_for_fts",
                 return_value=("今天 最近 有点 累", True),

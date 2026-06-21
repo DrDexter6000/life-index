@@ -84,7 +84,7 @@ def test_diagnose_reads_jsonl(isolated_data_dir: Path) -> None:
         isolated_data_dir,
         _sample_record(
             ts=_iso_timestamp(1),
-            query="乐乐",
+            query="晴岚",
             latency_ms=150.0,
             result_count=2,
             pipeline_signal="fts_only",

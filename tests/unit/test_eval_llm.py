@@ -13,34 +13,32 @@ def _load_prompts_module():
 
 def test_precision_prompt_renders_correctly() -> None:
     prompt = _load_prompts_module().PRECISION_JUDGE_PROMPT.format(
-        query="想念我的女儿",
-        title="想念小英雄",
+        query="回忆海边花园",
+        title="回忆小风筝",
         date="2026-03-04",
-        abstract="翻看旧照片想起女儿。",
-        snippet="那个让我神魂颠倒的小英雄。",
+        abstract="翻看旧照片想起伙伴。",
+        snippet="那个让我神魂颠倒的小队长。",
     )
 
-    assert "想念我的女儿" in prompt
-    assert "想念小英雄" in prompt
+    assert "回忆海边花园" in prompt
+    assert "回忆小风筝" in prompt
     assert '仅返回 JSON: {"score": N, "reason": "一句话说明"}' in prompt
 
 
 def test_recall_gap_prompt_renders_correctly() -> None:
     prompt = _load_prompts_module().RECALL_GAP_PROMPT.format(
-        query="乐乐",
-        all_titles="- 想念我的女儿\n- 重庆过生日\n- 乐乐不认真吃饭",
+        query="晴岚",
+        all_titles="- 回忆海边花园\n- 海边过生日\n- 晴岚不认真吃饭",
     )
 
-    assert "乐乐" in prompt
-    assert "想念我的女儿" in prompt
-    assert "重庆过生日" in prompt
+    assert "晴岚" in prompt
+    assert "回忆海边花园" in prompt
+    assert "海边过生日" in prompt
     assert '"expected_hits": ["标题1", "标题2"]' in prompt
 
 
 def test_llm_client_parse_json_response() -> None:
-    parsed = _load_llm_module().parse_json_response(
-        '{"score": 3, "reason": "直接命中"}'
-    )
+    parsed = _load_llm_module().parse_json_response('{"score": 3, "reason": "直接命中"}')
 
     assert parsed["score"] == 3
     assert parsed["reason"] == "直接命中"
@@ -59,11 +57,11 @@ def test_llm_client_mock_mode() -> None:
     client = _load_llm_module().MockLLMClient(
         responses=[
             '{"score": 1, "reason": "间接相关"}',
-            '{"expected_hits": ["想念我的女儿"], "reason": "标题明显相关"}',
+            '{"expected_hits": ["回忆海边花园"], "reason": "标题明显相关"}',
         ]
     )
 
     assert client.query("prompt 1") == '{"score": 1, "reason": "间接相关"}'
     assert client.query("prompt 2") == (
-        '{"expected_hits": ["想念我的女儿"], "reason": "标题明显相关"}'
+        '{"expected_hits": ["回忆海边花园"], "reason": "标题明显相关"}'
     )

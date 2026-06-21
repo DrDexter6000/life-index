@@ -99,7 +99,7 @@ def _build_entity_augmented_query(query: str, entity_hints: list[dict[str, Any]]
     """Augment a semantic query with entity expansion terms.
 
     Appends unique expansion terms from entity hints so the embedding model
-    captures entity context (e.g., "我女儿" → "我女儿 乐乐 小豆丁 小英雄").
+    captures entity context (e.g., "我女儿" → "我女儿 晴岚 小风筝 小队长").
     Does NOT duplicate the keyword pipeline's OR-expression logic.
     """
     if not entity_hints:

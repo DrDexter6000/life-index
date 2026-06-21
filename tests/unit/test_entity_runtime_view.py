@@ -24,7 +24,7 @@ def _sample_graph() -> list[dict]:
             "id": "wife-001",
             "type": "person",
             "primary_name": "王某某",
-            "aliases": ["乐乐妈", "老婆"],
+            "aliases": ["晴岚妈", "老婆"],
             "attributes": {},
             "relationships": [{"target": "author-self", "relation": "spouse_of"}],
         },
@@ -50,7 +50,7 @@ def _sample_graph() -> list[dict]:
         {
             "id": "tuantuan",
             "type": "person",
-            "primary_name": "乐乐",
+            "primary_name": "晴岚",
             "aliases": ["圆圆"],
             "attributes": {},
             "relationships": [{"target": "author-self", "relation": "child_of"}],
@@ -73,7 +73,7 @@ class TestBuildRuntimeView:
         view = build_runtime_view(_sample_graph())
 
         assert view.by_lookup["老婆"]["id"] == "wife-001"
-        assert view.by_lookup["乐乐妈"]["id"] == "wife-001"
+        assert view.by_lookup["晴岚妈"]["id"] == "wife-001"
 
     def test_builds_lookup_by_primary_name(self) -> None:
         view = build_runtime_view(_sample_graph())
@@ -204,7 +204,7 @@ class TestCaseInsensitiveLookup:
 
     def test_alias_case_insensitive(self) -> None:
         view = build_runtime_view(_sample_graph())
-        result = resolve_via_runtime("乐乐妈", view)
+        result = resolve_via_runtime("晴岚妈", view)
         assert result is not None
         assert result["id"] == "wife-001"
 

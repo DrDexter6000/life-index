@@ -61,12 +61,12 @@ class TestSegmentForFTS:
 
     def test_pure_chinese_index(self):
         """Index mode keeps precise Chinese tokens."""
-        result = _tokens(segment_for_fts("想念我的女儿", mode="index"))
+        result = _tokens(segment_for_fts("想念我的伙伴", mode="index"))
 
         assert "想念" in result
         assert "我" in result
         assert "的" in result
-        assert "女儿" in result
+        assert "伙伴" in result
 
     def test_pure_english_index(self):
         """Pure English text is preserved."""
@@ -99,10 +99,10 @@ class TestSegmentForFTS:
 
     def test_pure_chinese_query(self):
         """Query mode keeps content words (stopwords are filtered separately)."""
-        result = _tokens(segment_for_fts("想念我的女儿", mode="query"))
+        result = _tokens(segment_for_fts("想念我的伙伴", mode="query"))
 
         assert "想念" in result
-        assert "女儿" in result
+        assert "伙伴" in result
         # "我" and "的" are stopwords — filtered in query mode (see TestStopWordFiltering)
 
     def test_search_mode_expansion(self):
@@ -132,10 +132,10 @@ class TestProcessText:
 
     def test_only_cjk(self):
         """Pure CJK text is segmented into Chinese tokens."""
-        result = _process_text("想念我的女儿", mode="index")
+        result = _process_text("想念我的伙伴", mode="index")
 
         assert "想念" in result
-        assert "女儿" in result
+        assert "伙伴" in result
 
     def test_only_english(self):
         """Pure English text is preserved token-by-token."""
@@ -163,33 +163,33 @@ class TestStopWordFiltering:
 
     def test_query_mode_filters_stopwords(self):
         """Query mode removes stop words like '的'."""
-        result = _tokens(segment_for_fts("想念我的女儿", mode="query"))
+        result = _tokens(segment_for_fts("想念我的伙伴", mode="query"))
 
         # "的" should be filtered in query mode
         assert "的" not in result
         # Content words should remain
         assert "想念" in result
-        assert "女儿" in result
+        assert "伙伴" in result
 
     def test_query_mode_preserves_negation_intent(self):
         """Query mode preserves '不' because it carries negation intent (B-4)."""
-        result = _tokens(segment_for_fts("乐乐不认真吃饭", mode="query"))
+        result = _tokens(segment_for_fts("晴岚不认真吃饭", mode="query"))
 
         # B-4: '不' is intentionally kept — it carries query intent
         assert "不" in result
-        assert "乐乐" in result
+        assert "晴岚" in result
         assert "认真" in result
         assert "吃饭" in result
 
     def test_index_mode_no_stopword_filtering(self):
         """Index mode preserves all tokens including stop words."""
-        result = _tokens(segment_for_fts("想念我的女儿", mode="index"))
+        result = _tokens(segment_for_fts("想念我的伙伴", mode="index"))
 
         assert "的" in result
 
     def test_content_words_not_filtered(self):
         """Important content words are never filtered."""
-        for word in ["想念", "女儿", "乐乐", "投资", "策略"]:
+        for word in ["想念", "伙伴", "晴岚", "投资", "策略"]:
             assert word not in CHINESE_STOP_WORDS
 
     def test_stopword_list_size(self):
@@ -231,7 +231,7 @@ class TestNormalizeQuery:
         assert normalize_query("AI算力投资策略！") == "AI算力投资策略"
 
     def test_strips_book_title_marks(self):
-        assert normalize_query("「乐乐」") == "乐乐"
+        assert normalize_query("「晴岚」") == "晴岚"
 
     def test_converts_fullwidth_space(self):
         assert normalize_query("Life　Index") == "Life Index"
@@ -248,7 +248,7 @@ class TestEntityDictionary:
         reset_tokenizer_state()
 
     def test_entity_name_not_split(self):
-        """Entity name '乐乐' stays as single token after dict loading."""
+        """Entity name '晴岚' stays as single token after dict loading."""
         with TemporaryDirectory() as tmp:
             graph_path = _make_entity_graph(
                 Path(tmp),
@@ -256,8 +256,8 @@ class TestEntityDictionary:
                     {
                         "id": "tuantuan",
                         "type": "person",
-                        "primary_name": "乐乐",
-                        "aliases": ["小豆丁"],
+                        "primary_name": "晴岚",
+                        "aliases": ["小风筝"],
                         "attributes": {},
                         "relationships": [],
                     }
@@ -265,11 +265,11 @@ class TestEntityDictionary:
             )
             load_entity_dict(graph_path)
 
-        result = _tokens(segment_for_fts("乐乐哭了", mode="index"))
-        assert "乐乐" in result
+        result = _tokens(segment_for_fts("晴岚哭了", mode="index"))
+        assert "晴岚" in result
 
     def test_multi_char_entity_alias(self):
-        """Multi-character alias like '小豆丁' stays intact."""
+        """Multi-character alias like '小风筝' stays intact."""
         with TemporaryDirectory() as tmp:
             graph_path = _make_entity_graph(
                 Path(tmp),
@@ -278,7 +278,7 @@ class TestEntityDictionary:
                         "id": "tuantuan",
                         "type": "person",
                         "primary_name": "圆圆",
-                        "aliases": ["乐乐", "小豆丁", "小英雄"],
+                        "aliases": ["晴岚", "小风筝", "小队长"],
                         "attributes": {},
                         "relationships": [],
                     }
@@ -286,8 +286,8 @@ class TestEntityDictionary:
             )
             load_entity_dict(graph_path)
 
-        result = _tokens(segment_for_fts("想念小英雄", mode="index"))
-        assert "小英雄" in result
+        result = _tokens(segment_for_fts("回忆小风筝", mode="index"))
+        assert "小风筝" in result
 
     def test_english_entity_name_ignored(self):
         """English entity names are not loaded into jieba dict."""
@@ -319,7 +319,7 @@ class TestEntityDictionary:
         load_entity_dict(graph_path)
 
         # Should still work with default jieba dictionary
-        result = segment_for_fts("想念我的女儿", mode="index")
+        result = segment_for_fts("想念我的伙伴", mode="index")
         assert "想念" in result
 
     def test_dict_hash_consistency(self):
@@ -331,7 +331,7 @@ class TestEntityDictionary:
                     {
                         "id": "tuantuan",
                         "type": "person",
-                        "primary_name": "乐乐",
+                        "primary_name": "晴岚",
                         "aliases": [],
                         "attributes": {},
                         "relationships": [],
@@ -358,7 +358,7 @@ class TestEntityDictionary:
                     {
                         "id": "a",
                         "type": "person",
-                        "primary_name": "乐乐",
+                        "primary_name": "晴岚",
                         "aliases": [],
                         "attributes": {},
                         "relationships": [],
@@ -396,7 +396,7 @@ class TestStopwordPreservesIntent:
     def test_negation_not_stripped(self) -> None:
         """'不' must survive stopword filtering in query mode."""
         reset_tokenizer_state()
-        result = segment_for_fts("乐乐不认真吃饭", mode="query")
+        result = segment_for_fts("晴岚不认真吃饭", mode="query")
         tokens = _tokens(result)
         assert "不" in tokens
 

@@ -203,7 +203,7 @@ Examples:
     python -m tools.write_journal --data @input.json --dry-run
 
     # Enrich metadata (for preview, deterministic by default)
-    python -m tools.write_journal enrich --data '{"content":"今天看到乐乐以前的照片..."}'
+    python -m tools.write_journal enrich --data '{"content":"今天看到晴岚以前的照片..."}'
     python -m tools.write_journal enrich --data @draft.json
         """,
     )

@@ -42,7 +42,7 @@ R11_REPRESENTATIVE_QUERIES: list[dict] = [
         "type": "entity_relation",
         "expect": {
             "search_plan_not_null": True,
-            "entity_hints_may_resolve": ["乐乐", "小英雄"],
+            "entity_hints_may_resolve": ["晴岚", "小队长"],
         },
     },
     {
@@ -65,7 +65,7 @@ R11_REPRESENTATIVE_QUERIES: list[dict] = [
     },
     {
         "id": "R11-Q07",
-        "query": "乐乐",
+        "query": "晴岚",
         "type": "entity_keyword",
         "expect": {
             "search_plan_not_null": True,

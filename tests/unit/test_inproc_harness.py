@@ -11,7 +11,6 @@ import time
 
 import pytest
 
-
 MODULES_TO_RELOAD = [
     "tools.lib.paths",
     "tools.lib.config",
@@ -46,9 +45,24 @@ def _setup_isolated_env(tmp_path_factory):
     from tools.write_journal.core import write_journal
 
     seed = [
-        {"title": "重构搜索模块的思考", "content": "重构搜索模块，使用 RRF 融合算法。", "date": "2026-03-01", "topic": "work"},
-        {"title": "想念小英雄", "content": "看到女儿小时候的照片，感慨万分。小豆丁长大了。", "date": "2026-03-02", "topic": "think"},
-        {"title": "Claude Opus 4.6 CTO 级技术评审", "content": "Claude Opus 4.6 发布，CTO 级技术能力引发讨论。", "date": "2026-03-03", "topic": "work"},
+        {
+            "title": "重构搜索模块的思考",
+            "content": "重构搜索模块，使用 RRF 融合算法。",
+            "date": "2026-03-01",
+            "topic": "work",
+        },
+        {
+            "title": "回忆小风筝",
+            "content": "看到女儿小时候的照片，感慨万分。小风筝长大了。",
+            "date": "2026-03-02",
+            "topic": "think",
+        },
+        {
+            "title": "Claude Opus 4.6 CTO 级技术评审",
+            "content": "Claude Opus 4.6 发布，CTO 级技术能力引发讨论。",
+            "date": "2026-03-03",
+            "topic": "work",
+        },
     ]
     for j in seed:
         write_journal(j)
@@ -60,12 +74,14 @@ class TestInprocHarnessStructure:
 
     def test_harness_returns_dict(self):
         from tests.nl_query_inproc import harness
+
         result = harness.search("重构搜索模块")
         assert isinstance(result, dict)
         assert result.get("success") is True
 
     def test_harness_has_merged_results(self):
         from tests.nl_query_inproc import harness
+
         result = harness.search("重构")
         assert "merged_results" in result
         assert isinstance(result["merged_results"], list)
@@ -73,13 +89,20 @@ class TestInprocHarnessStructure:
     def test_harness_result_fields_match_cli(self):
         """Every merged result must have the same fields as CLI output."""
         from tests.nl_query_inproc import harness
+
         result = harness.search("重构搜索模块", level=3)
         if result["merged_results"]:
             r = result["merged_results"][0]
             required_fields = [
-                "path", "title", "search_rank", "confidence",
-                "rrf_score", "final_score", "relevance_score",
-                "source", "title_promoted",
+                "path",
+                "title",
+                "search_rank",
+                "confidence",
+                "rrf_score",
+                "final_score",
+                "relevance_score",
+                "source",
+                "title_promoted",
             ]
             for field in required_fields:
                 assert field in r, f"Missing field: {field}"
@@ -93,24 +116,24 @@ class TestInprocHarnessStructure:
         only asserts explain fields when semantic was active.
         """
         from tests.nl_query_inproc import harness
+
         result = harness.search("重构搜索模块", explain=True)
         if result["merged_results"]:
             r = result["merged_results"][0]
             # ranking_reason is added post-rank in core.py (T4.5),
             # independent of the merge_and_rank code path
-            assert "ranking_reason" in r, (
-                "ranking_reason must be present in explain mode (T4.5)"
-            )
+            assert "ranking_reason" in r, "ranking_reason must be present in explain mode (T4.5)"
             # explain dict is only added inside merge_and_rank_results
             # when the semantic path is taken; fallback path skips it
             if result.get("semantic_available") and result.get("semantic_results"):
-                assert "explain" in r, (
-                    "explain dict must be present when semantic pipeline is active"
-                )
+                assert (
+                    "explain" in r
+                ), "explain dict must be present when semantic pipeline is active"
 
     def test_harness_non_explain_no_ranking_reason(self):
         """Non-explain mode should NOT include ranking_reason."""
         from tests.nl_query_inproc import harness
+
         result = harness.search("重构搜索模块", explain=False)
         for r in result.get("merged_results", []):
             assert "ranking_reason" not in r
@@ -122,6 +145,7 @@ class TestInprocHarnessPerformance:
     def test_repeated_queries_fast(self):
         """After first query (model loaded), subsequent queries should be <500ms each."""
         from tests.nl_query_inproc import harness
+
         # Warm up (load model)
         harness.search("重构")
 
@@ -137,13 +161,14 @@ class TestInprocHarnessPerformance:
 
     def test_three_queries_under_25s(self):
         """Three different queries should complete in <25s total (one cold-start)."""
-        from tests.nl_query_inproc import harness
+
         # Reload harness to ensure fresh cold-start measurement
         import tests.nl_query_inproc as mod
+
         importlib.reload(mod)
 
         start = time.perf_counter()
-        for q in ["重构", "乐乐", "Claude Opus"]:
+        for q in ["重构", "晴岚", "Claude Opus"]:
             mod.harness.search(q)
         total = time.perf_counter() - start
         assert total < 25.0, f"Three queries took {total:.1f}s (>25s)"
@@ -155,6 +180,7 @@ class TestInprocHarnessConsistency:
     def test_same_query_deterministic(self):
         """Same query should return same top result."""
         from tests.nl_query_inproc import harness
+
         r1 = harness.search("重构搜索模块")
         r2 = harness.search("重构搜索模块")
         if r1["merged_results"] and r2["merged_results"]:
@@ -163,5 +189,6 @@ class TestInprocHarnessConsistency:
     def test_semantic_available_flag(self):
         """Result should indicate semantic availability."""
         from tests.nl_query_inproc import harness
+
         result = harness.search("重构搜索模块")
         assert "semantic_available" in result

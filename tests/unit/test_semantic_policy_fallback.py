@@ -491,22 +491,22 @@ class TestCLISemanticDefaultKeywordOnly:
 
     def test_cli_default_semantic_false(self):
         """Regression: bare `life-index search "query"` must pass semantic=False."""
-        kwargs = self._run_cli(["search", "--query", "雁涵 团团"])
+        kwargs = self._run_cli(["search", "--query", "叶航 小云"])
         assert kwargs["semantic"] is False
 
     def test_cli_semantic_flag_enables(self):
         """`--semantic` flag must pass semantic=True."""
-        kwargs = self._run_cli(["search", "--query", "雁涵 团团", "--semantic"])
+        kwargs = self._run_cli(["search", "--query", "叶航 小云", "--semantic"])
         assert kwargs["semantic"] is True
 
     def test_cli_no_semantic_flag_valid(self):
         """`--no-semantic` flag must pass semantic=False (backward compat)."""
-        kwargs = self._run_cli(["search", "--query", "雁涵 团团", "--no-semantic"])
+        kwargs = self._run_cli(["search", "--query", "叶航 小云", "--no-semantic"])
         assert kwargs["semantic"] is False
 
     def test_cli_semantic_and_no_semantic_both_set(self):
         """If both flags are set, --no-semantic takes precedence (explicit disable)."""
-        kwargs = self._run_cli(["search", "--query", "雁涵 团团", "--semantic", "--no-semantic"])
+        kwargs = self._run_cli(["search", "--query", "叶航 小云", "--semantic", "--no-semantic"])
         assert kwargs["semantic"] is False
 
 

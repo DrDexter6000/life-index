@@ -15,7 +15,6 @@ These tests use synthetic data and mocked I/O to measure pure algorithmic
 performance, not disk/network latency.
 """
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
@@ -36,25 +35,19 @@ pytestmark = pytest.mark.benchmark
 class TestFTSSearchBenchmark:
     """Benchmark FTS5 full-text search performance."""
 
-    def test_fts_search_single_keyword_100(
-        self, benchmark: Any, fts_db_100: Path
-    ) -> None:
+    def test_fts_search_single_keyword_100(self, benchmark: Any, fts_db_100: Path) -> None:
         """FTS search with single keyword over 100 entries."""
         from tools.lib.fts_search import search_fts
 
         benchmark(search_fts, fts_db_100, "benchmark")
 
-    def test_fts_search_single_keyword_500(
-        self, benchmark: Any, fts_db_500: Path
-    ) -> None:
+    def test_fts_search_single_keyword_500(self, benchmark: Any, fts_db_500: Path) -> None:
         """FTS search with single keyword over 500 entries."""
         from tools.lib.fts_search import search_fts
 
         benchmark(search_fts, fts_db_500, "benchmark")
 
-    def test_fts_search_multi_keyword_or(
-        self, benchmark: Any, fts_db_500: Path
-    ) -> None:
+    def test_fts_search_multi_keyword_or(self, benchmark: Any, fts_db_500: Path) -> None:
         """FTS search with OR query over 500 entries."""
         from tools.lib.fts_search import search_fts
 
@@ -64,11 +57,9 @@ class TestFTSSearchBenchmark:
         """FTS search with Chinese keyword over 500 entries."""
         from tools.lib.fts_search import search_fts
 
-        benchmark(search_fts, fts_db_500, "乐乐")
+        benchmark(search_fts, fts_db_500, "晴岚")
 
-    def test_fts_search_with_date_filter(
-        self, benchmark: Any, fts_db_500: Path
-    ) -> None:
+    def test_fts_search_with_date_filter(self, benchmark: Any, fts_db_500: Path) -> None:
         """FTS search with date range filter over 500 entries."""
         from tools.lib.fts_search import search_fts
 
@@ -88,49 +79,61 @@ class TestFTSSearchBenchmark:
 
 def _make_l3_results(n: int) -> List[Dict[str, Any]]:
     """Generate n synthetic L3 (FTS) results for ranking tests."""
-    return [
-        {
-            "date": f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",
-            "title": f"Result {i}",
-            "path": f"Journals/2026/{(i % 12) + 1:02d}/life-index_2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}_{i:03d}.md",
-            "journal_route_path": f"Journals/2026/{(i % 12) + 1:02d}/life-index_2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}_{i:03d}.md",
-            "snippet": f"<mark>benchmark</mark> result {i}",
-            "match_count": 1,
-            "source": "fts_index",
-            "relevance": max(30, 100 - i),
-            "location": "",
-            "weather": "",
-            "topic": ["work"],
-            "project": "LifeIndex",
-            "tags": ["test"],
-            "mood": ["专注"],
-            "people": [],
-            "abstract": f"Abstract for result {i}",
-        }
-        for i in range(n)
-    ]
+    results = []
+    for i in range(n):
+        month = (i % 12) + 1
+        day = (i % 28) + 1
+        file_name = f"life-index_2026-{month:02d}-{day:02d}_{i:03d}.md"
+        route_path = f"Journals/2026/{month:02d}/{file_name}"
+        results.append(
+            {
+                "date": f"2026-{month:02d}-{day:02d}",
+                "title": f"Result {i}",
+                "path": route_path,
+                "journal_route_path": route_path,
+                "snippet": f"<mark>benchmark</mark> result {i}",
+                "match_count": 1,
+                "source": "fts_index",
+                "relevance": max(30, 100 - i),
+                "location": "",
+                "weather": "",
+                "topic": ["work"],
+                "project": "LifeIndex",
+                "tags": ["test"],
+                "mood": ["专注"],
+                "people": [],
+                "abstract": f"Abstract for result {i}",
+            }
+        )
+    return results
 
 
 def _make_semantic_results(n: int) -> List[Dict[str, Any]]:
     """Generate n synthetic semantic results for ranking tests."""
-    return [
-        {
-            "path": f"Journals/2026/{(i % 12) + 1:02d}/life-index_2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}_{i + 50:03d}.md",
-            "journal_route_path": f"Journals/2026/{(i % 12) + 1:02d}/life-index_2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}_{i + 50:03d}.md",
-            "title": f"Semantic result {i}",
-            "date": f"2026-{(i % 12) + 1:02d}-{(i % 28) + 1:02d}",
-            "similarity": max(0.3, 0.95 - i * 0.02),
-            "source": "semantic",
-            "location": "",
-            "weather": "",
-            "topic": ["think"],
-            "project": "",
-            "tags": ["semantic"],
-            "mood": [],
-            "people": [],
-        }
-        for i in range(n)
-    ]
+    results = []
+    for i in range(n):
+        month = (i % 12) + 1
+        day = (i % 28) + 1
+        file_name = f"life-index_2026-{month:02d}-{day:02d}_{i + 50:03d}.md"
+        route_path = f"Journals/2026/{month:02d}/{file_name}"
+        results.append(
+            {
+                "path": route_path,
+                "journal_route_path": route_path,
+                "title": f"Semantic result {i}",
+                "date": f"2026-{month:02d}-{day:02d}",
+                "similarity": max(0.3, 0.95 - i * 0.02),
+                "source": "semantic",
+                "location": "",
+                "weather": "",
+                "topic": ["think"],
+                "project": "",
+                "tags": ["semantic"],
+                "mood": [],
+                "people": [],
+            }
+        )
+    return results
 
 
 class TestRRFFusionBenchmark:
@@ -374,8 +377,7 @@ class TestHierarchicalSearchBenchmark:
         from tools.search_journals.core import hierarchical_search
 
         mock_l1.return_value = [
-            {"path": f"p{i}.md", "title": f"T{i}", "date": "2026-01-01"}
-            for i in range(50)
+            {"path": f"p{i}.md", "title": f"T{i}", "date": "2026-01-01"} for i in range(50)
         ]
         mock_scan.return_value = []
 
@@ -393,8 +395,7 @@ class TestHierarchicalSearchBenchmark:
         from tools.search_journals.core import hierarchical_search
 
         mock_l1.return_value = [
-            {"path": f"p{i}.md", "title": f"T{i}", "date": "2026-01-01"}
-            for i in range(30)
+            {"path": f"p{i}.md", "title": f"T{i}", "date": "2026-01-01"} for i in range(30)
         ]
         mock_l2.return_value = {
             "results": [

@@ -6,10 +6,11 @@ from __future__ import annotations
 import importlib
 import os
 import sys
-from pathlib import Path
 
 import pytest
 import yaml
+
+from tools.eval.private_data import get_golden_rejection_queries_path
 
 MODULES_TO_RELOAD = [
     "tools.lib.paths",
@@ -31,7 +32,9 @@ MODULES_TO_RELOAD = [
 
 @pytest.fixture(scope="module")
 def rejection_queries() -> list[dict]:
-    path = Path(__file__).parent.parent / "golden_rejection_queries.yaml"
+    path = get_golden_rejection_queries_path()
+    if not path.exists():
+        pytest.skip("local/private rejection query set not present in public checkout")
     with path.open("r", encoding="utf-8") as file:
         data = yaml.safe_load(file)
     return data["queries"]
@@ -59,26 +62,26 @@ def search_func(tmp_path_factory: pytest.TempPathFactory):
             "topic": "work",
         },
         {
-            "title": "想念我的女儿",
-            "content": "想念乐乐，那个可爱的孩子。",
+            "title": "回忆海边花园",
+            "content": "想念晴岚，那个可爱的孩子。",
             "date": "2026-03-02",
             "topic": "life",
         },
         {
-            "title": "想念小英雄",
-            "content": "看到女儿小时候的照片，感慨万分。小豆丁长大了。",
+            "title": "回忆小风筝",
+            "content": "看到女儿小时候的照片，感慨万分。小风筝长大了。",
             "date": "2026-03-03",
             "topic": "think",
         },
         {
-            "title": "重庆过生日",
-            "content": "在重庆庆祝生日，数字灵魂的思考。",
+            "title": "海边过生日",
+            "content": "在重庆庆祝生日，记忆索引的思考。",
             "date": "2026-03-04",
             "topic": "life",
         },
         {
-            "title": "乐乐不认真吃饭",
-            "content": "今天乐乐又不认真吃饭了，真是头疼。",
+            "title": "晴岚不认真吃饭",
+            "content": "今天晴岚又不认真吃饭了，真是头疼。",
             "date": "2026-03-05",
             "topic": "life",
         },
@@ -95,8 +98,8 @@ def search_func(tmp_path_factory: pytest.TempPathFactory):
             "topic": "work",
         },
         {
-            "title": "读《三体》有感",
-            "content": "读了三体，思考数字灵魂和宇宙文明。",
+            "title": "读《星际寓言》有感",
+            "content": "读了星际寓言，思考记忆索引和宇宙文明。",
             "date": "2026-03-08",
             "topic": "learn",
         },

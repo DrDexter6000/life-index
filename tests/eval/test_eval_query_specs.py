@@ -18,11 +18,16 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tools.eval.private_data import get_golden_queries_path
 from tools.eval.eval_query_specs import dicts_to_query_specs, load_query_specs
 from tools.eval.eval_serialization import assert_semantic_equal
 from tools.eval.eval_types import QuerySpec
 
-GOLDEN_QUERIES_PATH = Path("tools/eval/golden_queries.yaml")
+GOLDEN_QUERIES_PATH = get_golden_queries_path()
+pytestmark = pytest.mark.skipif(
+    not GOLDEN_QUERIES_PATH.exists(),
+    reason="local/private eval query set not present in public checkout",
+)
 
 
 def _load_raw_queries() -> list[dict]:
@@ -140,16 +145,16 @@ class TestOverlayQueryOverride:
             "description": "Rare alias should still find the parent-child journal",
             "expected": {
                 "min_results": 1,
-                "must_contain_title": ["想念小英雄"],
+                "must_contain_title": ["回忆小风筝"],
             },
             "tags": ["entity", "alias", "expansion"],
-            "_public_query": "小豆丁",
+            "_public_query": "小风筝",
         }
 
     def test_overlay_fields(self) -> None:
         spec = QuerySpec.from_dict(self._make_overlay_dict())
         assert spec.query == "private override query"
-        assert spec.public_query == "小豆丁"
+        assert spec.public_query == "小风筝"
         assert spec.overlay_applied is True
 
     def test_overlay_roundtrip(self) -> None:
@@ -157,7 +162,7 @@ class TestOverlayQueryOverride:
         spec = QuerySpec.from_dict(original)
         rt = spec.to_dict()
         assert rt["query"] == "private override query"
-        assert rt["_public_query"] == "小豆丁"
+        assert rt["_public_query"] == "小风筝"
         assert_semantic_equal(original, rt)
 
     def test_overlay_via_applied_query_ids(self) -> None:
@@ -205,12 +210,12 @@ class TestOverlayTitleModifications:
             "description": "test",
             "expected": {
                 "min_results": 3,
-                "must_contain_title": ["关于乐乐的事", "想念小英雄"],
+                "must_contain_title": ["关于晴岚的事", "回忆小风筝"],
             },
             "tags": ["test"],
         }
         spec = QuerySpec.from_dict(data)
-        assert spec.expected_must_contain_title == ["关于乐乐的事", "想念小英雄"]
+        assert spec.expected_must_contain_title == ["关于晴岚的事", "回忆小风筝"]
         assert_semantic_equal(data, spec.to_dict())
 
     def test_expected_titles_add(self) -> None:
@@ -223,9 +228,9 @@ class TestOverlayTitleModifications:
             "expected": {
                 "min_results": 3,
                 "must_contain_title": [
-                    "想念小英雄",
-                    "关于乐乐的事",
-                    "乐乐最爱的玩具陪我继续睡觉",
+                    "回忆小风筝",
+                    "关于晴岚的事",
+                    "晴岚最爱的玩具陪我继续睡觉",
                     "new title from overlay",
                 ],
             },
@@ -314,7 +319,7 @@ class TestUnknownFieldPreservation:
     def test_local_notes_preserved(self) -> None:
         data = {
             "id": "GQ07",
-            "query": "小豆丁",
+            "query": "小风筝",
             "category": "entity_expansion",
             "description": "test",
             "expected": {"min_results": 1},

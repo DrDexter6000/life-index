@@ -14,10 +14,12 @@ from typing import Any
 
 import yaml
 
+from tools.eval.private_data import get_eval_data_dir
+
 
 def get_default_overlay_path() -> Path:
     """Return the default private overlay path in the user's data directory."""
-    return Path.home() / "Documents" / "Life-Index" / "eval" / "golden_queries.local.yaml"
+    return get_eval_data_dir() / "golden_queries.local.yaml"
 
 
 def is_ci_environment() -> bool:

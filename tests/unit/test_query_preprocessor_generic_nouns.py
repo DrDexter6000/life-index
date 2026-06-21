@@ -77,9 +77,9 @@ class TestDateOnlyGenericNounNoRegression:
     REF_DATE = date(2026, 4, 18)
 
     def test_normal_keyword_query_unchanged(self) -> None:
-        """'乐乐' should still have '乐乐' in keywords."""
-        plan = build_search_plan("乐乐", reference_date=self.REF_DATE)
-        assert "乐乐" in plan.keywords
+        """'晴岚' should still have '晴岚' in keywords."""
+        plan = build_search_plan("晴岚", reference_date=self.REF_DATE)
+        assert "晴岚" in plan.keywords
 
     def test_date_query_with_real_keyword_unchanged(self) -> None:
         """'过去30天睡觉' should keep '睡觉' keyword."""

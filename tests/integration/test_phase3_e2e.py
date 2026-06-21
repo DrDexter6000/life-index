@@ -6,11 +6,11 @@ from __future__ import annotations
 import importlib
 import os
 import sys
-from pathlib import Path
 
 import pytest
 import yaml
 
+from tools.eval.private_data import get_golden_rejection_queries_path
 
 MODULES_TO_RELOAD = [
     "tools.lib.paths",
@@ -38,26 +38,26 @@ TEST_JOURNALS = [
         "topic": "work",
     },
     {
-        "title": "想念我的女儿",
-        "content": "想念乐乐，那个可爱的孩子。",
+        "title": "回忆海边花园",
+        "content": "想念晴岚，那个可爱的孩子。",
         "date": "2026-03-02",
         "topic": "life",
     },
     {
-        "title": "想念小英雄",
-        "content": "看到女儿小时候的照片，感慨万分。小豆丁长大了。",
+        "title": "回忆小风筝",
+        "content": "看到女儿小时候的照片，感慨万分。小风筝长大了。",
         "date": "2026-03-03",
         "topic": "think",
     },
     {
-        "title": "重庆过生日",
-        "content": "在重庆庆祝生日，数字灵魂的思考。",
+        "title": "海边过生日",
+        "content": "在重庆庆祝生日，记忆索引的思考。",
         "date": "2026-03-04",
         "topic": "life",
     },
     {
-        "title": "乐乐不认真吃饭",
-        "content": "今天乐乐又不认真吃饭了，真是头疼。",
+        "title": "晴岚不认真吃饭",
+        "content": "今天晴岚又不认真吃饭了，真是头疼。",
         "date": "2026-03-05",
         "topic": "life",
     },
@@ -74,8 +74,8 @@ TEST_JOURNALS = [
         "topic": "work",
     },
     {
-        "title": "读《三体》有感",
-        "content": "读了三体，思考数字灵魂和宇宙文明。",
+        "title": "读《星际寓言》有感",
+        "content": "读了星际寓言，思考记忆索引和宇宙文明。",
         "date": "2026-03-08",
         "topic": "learn",
     },
@@ -96,7 +96,9 @@ TEST_JOURNALS = [
 
 @pytest.fixture(scope="module")
 def rejection_queries() -> list[dict]:
-    path = Path(__file__).parent.parent / "golden_rejection_queries.yaml"
+    path = get_golden_rejection_queries_path()
+    if not path.exists():
+        pytest.skip("local/private rejection query set not present in public checkout")
     with path.open("r", encoding="utf-8") as file:
         data = yaml.safe_load(file)
     return data["queries"]
@@ -150,8 +152,7 @@ def test_ai_compute_query_retains_recall(search_func) -> None:
     merged = result.get("merged_results", [])
 
     assert len(merged) >= 3, (
-        "Expected >=3 hits for 'AI 算力', got "
-        f"{len(merged)}: {_titles_and_confidence(merged)}"
+        "Expected >=3 hits for 'AI 算力', got " f"{len(merged)}: {_titles_and_confidence(merged)}"
     )
     assert merged[0].get("confidence") in {"high", "medium"}, (
         "Top-1 confidence for 'AI 算力' should stay usable, got "
@@ -160,16 +161,14 @@ def test_ai_compute_query_retains_recall(search_func) -> None:
 
 
 def test_tuantuan_query_retains_family_recall(search_func) -> None:
-    result = search_func(query="乐乐", level=3)
+    result = search_func(query="晴岚", level=3)
     merged = result.get("merged_results", [])
 
     assert len(merged) >= 2, (
-        "Expected >=2 hits for '乐乐', got "
-        f"{len(merged)}: {_titles_and_confidence(merged)}"
+        "Expected >=2 hits for '晴岚', got " f"{len(merged)}: {_titles_and_confidence(merged)}"
     )
-    assert "乐乐" in str(merged[0].get("title", "")), (
-        "Top-1 title for '乐乐' should explicitly contain 乐乐, got "
-        f"{merged[0].get('title')}"
+    assert "晴岚" in str(merged[0].get("title", "")), (
+        "Top-1 title for '晴岚' should explicitly contain 晴岚, got " f"{merged[0].get('title')}"
     )
 
 
@@ -179,8 +178,7 @@ def test_edge_computing_query_keeps_expected_top1(search_func) -> None:
 
     assert len(merged) >= 1, "Expected at least one result for '边缘计算'"
     assert merged[0].get("title") == "Life Index 架构重构", (
-        "Top-1 for '边缘计算' regressed: "
-        f"{_titles_and_confidence(merged)}"
+        "Top-1 for '边缘计算' regressed: " f"{_titles_and_confidence(merged)}"
     )
 
 
@@ -219,13 +217,10 @@ def test_golden_rejection_queries_pass_rate_stays_at_or_above_90_percent(
     total = len(rejection_queries)
     rate = passed / total if total else 0.0
 
-    assert rate >= 0.90, (
-        f"Rejection pass-rate {rate:.1%} ({passed}/{total}) < 90%.\n"
-        + "\n".join(
-            f"  {item['id']}: '{item['query']}' → {item['results']} results, "
-            f"no_confident_match={item['no_confident_match']}, titles={item['titles']}"
-            for item in failed
-        )
+    assert rate >= 0.90, f"Rejection pass-rate {rate:.1%} ({passed}/{total}) < 90%.\n" + "\n".join(
+        f"  {item['id']}: '{item['query']}' → {item['results']} results, "
+        f"no_confident_match={item['no_confident_match']}, titles={item['titles']}"
+        for item in failed
     )
 
 
@@ -236,6 +231,6 @@ def test_english_cross_language_query_not_overfiltered_by_stopwords() -> None:
 
     assert not is_stopword("missing")
     assert not is_stopword("daughter")
-    assert "missing" in filtered and "daughter" in filtered, (
-        f"Core English content words were filtered out: {filtered}"
-    )
+    assert (
+        "missing" in filtered and "daughter" in filtered
+    ), f"Core English content words were filtered out: {filtered}"

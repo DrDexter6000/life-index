@@ -27,7 +27,7 @@ Entity Graph 是 Life Index 的**轻量级实体网络**，用于别名解析、
 | 概念 | 定义 | 示例 |
 |------|------|------|
 | **Entity** | 有独立身份的真实存在（人、地点、项目、事件、概念） | `person-wang-lele`, `place-chongqing` |
-| **Alias** | 指向同一实体的**稳定、无歧义**的替代名称 | `乐乐` → `person-wang-lele` |
+| **Alias** | 指向同一实体的**稳定、无歧义**的替代名称 | `晴岚` → `person-wang-lele` |
 | **Attribute** | 描述实体静态特征的键值对 | `role: child`, `subtype: family` |
 | **Relationship** | 实体与实体之间的有向边 | `child_of`, `parent_of`, `spouse_of` |
 
@@ -44,8 +44,8 @@ Entity Graph 是 Life Index 的**轻量级实体网络**，用于别名解析、
 
 | 类别 | 示例 | 理由 |
 |------|------|------|
-| 中文名 ↔ 英文名 | `乐乐` ↔ `Toto` | 跨语言检索刚需 |
-| 昵称/小名 | `小豆丁`, `小英雄` | 稳定、长期使用、日志中实际出现 |
+| 中文名 ↔ 英文名 | `晴岚` ↔ `Toto` | 跨语言检索刚需 |
+| 昵称/小名 | `小风筝`, `小队长` | 稳定、长期使用、日志中实际出现 |
 | 常见缩写 | `life-index` → `Life Index` | 项目/产品的标准缩写 |
 | 常见 typo | `life indx` -> `Life Index` | 频率高、无歧义、可预期重复出现 |
 | 地名变体 | `渝`, `山城` -> `重庆` | 行政区划简称或文化别称 |
@@ -62,15 +62,15 @@ Entity Graph 是 Life Index 的**轻量级实体网络**，用于别名解析、
 
 ### 3.3 为什么角色词不能进 Aliases
 
-若 `女儿` 是 `person-wang-lele` 的 alias，搜索 `女儿` 会匹配所有含 `乐乐` 的文档。但用户搜索 `女儿` 的意图可能是泛指概念，而非特指乐乐。结果：通用查询被固化 alias 污染，precision 下降。
+若 `女儿` 是 `person-wang-lele` 的 alias，搜索 `女儿` 会匹配所有含 `晴岚` 的文档。但用户搜索 `女儿` 的意图可能是泛指概念，而非特指晴岚。结果：通用查询被固化 alias 污染，precision 下降。
 
 **正确做法**:
 ```yaml
 # 错误
-aliases: [乐乐, 小豆丁, 小英雄, Toto, 女儿]
+aliases: [晴岚, 小风筝, 小队长, Toto, 女儿]
 
 # 正确
-aliases: [乐乐, 小豆丁, 小英雄, Toto]
+aliases: [晴岚, 小风筝, 小队长, Toto]
 attributes:
   role: child        # 过渡表达
   subtype: family
@@ -98,8 +98,8 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 
 | Relation | 方向 | 示例 | 说明 |
 |----------|------|------|------|
-| `child_of` | A → B | 乐乐 `child_of` 我 | A 是 B 的孩子 |
-| `parent_of` | A → B | 我 `parent_of` 乐乐 | A 是 B 的父母 |
+| `child_of` | A → B | 晴岚 `child_of` 我 | A 是 B 的孩子 |
+| `parent_of` | A → B | 我 `parent_of` 晴岚 | A 是 B 的父母 |
 | `spouse_of` | A ↔ B | 我 `spouse_of` 老婆 | 双向对称关系 |
 
 **暂缓的关系类型**（等图谱稳定后再评估）：
@@ -181,9 +181,9 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 - 修改 `primary_name`
 
 **什么算用户明确确认**:
-- ✅ "批准添加老婆实体，aliases: [王某某, 乐乐妈]"
+- ✅ "批准添加老婆实体，aliases: [王某某, 晴岚妈]"
 - ✅ "女儿不入 aliases，保持 role: child"
-- ✅ "同意将 Toto 添加为乐乐 alias"
+- ✅ "同意将 Toto 添加为晴岚 alias"
 
 **不算确认**:
 - ❌ "看着办"
@@ -296,7 +296,7 @@ life-index eval
 
 | 实体 | 候选理由 | 当前状态 |
 |------|----------|----------|
-| `老婆` / `妻子` | 高频人物，乐乐妈是常见称呼 | **候选池**，等用户确认 primary_name、aliases、是否建立 relationship |
+| `老婆` / `妻子` | 高频人物，晴岚妈是常见称呼 | **候选池**，等用户确认 primary_name、aliases、是否建立 relationship |
 | `妈妈` / `母亲` | 高频人物，多篇日志提及 | **候选池**，等用户确认 |
 | `Jordan` | GQ28 关联 | **阻塞**，需用户输入身份确认 |
 | AI 模型（Claude/Kimi 等） | 日志中多次出现 | **允许入图**，须用户明确批准并按 §8.2 固定规则执行（见 §8） |

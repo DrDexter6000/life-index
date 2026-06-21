@@ -123,9 +123,9 @@ def test_merge_and_rank_results_hybrid_default_threshold_rejects_single_low_rrf_
 def test_merge_and_rank_results_default_keeps_title_match_l2_result() -> None:
     merged = merge_and_rank_results(
         [],
-        [{"path": "meta.md", "title": "乐乐日记", "metadata": {}}],
+        [{"path": "meta.md", "title": "晴岚日记", "metadata": {}}],
         [],
-        query="乐乐",
+        query="晴岚",
     )
 
     assert len(merged) == 1
@@ -170,7 +170,7 @@ def test_merge_and_rank_results_hybrid_does_not_force_extra_backfill_when_one_st
             {"path": "semantic-noise-1.md", "similarity": 0.2},
             {"path": "semantic-noise-2.md", "similarity": 0.19},
         ],
-        query="小英雄",
+        query="小队长",
     )
 
     # With RRF_MIN_SCORE=0.008 (ADR-004) and SEMANTIC_WEIGHT_DEFAULT=0.6 (ADR-010),
@@ -190,13 +190,13 @@ def test_merge_and_rank_results_hybrid_prefers_stronger_lexical_result_over_weak
         [
             {
                 "path": "meta.md",
-                "title": "乐乐日记",
-                "metadata": {"abstract": "乐乐今天很好"},
+                "title": "晴岚日记",
+                "metadata": {"abstract": "晴岚今天很好"},
             }
         ],
         [],
         [{"path": "semantic.md", "similarity": 0.36}],
-        query="乐乐",
+        query="晴岚",
         min_rrf_score=0,
         min_non_rrf_score=0,
     )
@@ -231,7 +231,7 @@ def test_merge_and_rank_results_applies_entity_hint_bonus_to_people_and_tags() -
         {
             "path": "with-entity.md",
             "title": "With Entity",
-            "metadata": {"people": ["乐乐"], "tags": ["亲子"]},
+            "metadata": {"people": ["晴岚"], "tags": ["亲子"]},
         },
         {
             "path": "without-entity.md",
@@ -244,7 +244,7 @@ def test_merge_and_rank_results_applies_entity_hint_bonus_to_people_and_tags() -
             "matched_term": "我女儿",
             "entity_id": "tuantuan",
             "entity_type": "person",
-            "expansion_terms": ["乐乐", "小豆丁", "小英雄"],
+            "expansion_terms": ["晴岚", "小风筝", "小队长"],
             "reason": "phrase_match",
         }
     ]
@@ -350,14 +350,14 @@ class TestEntityBonusExpansion:
         l2_a = {
             "path": "with-entity.md",
             "title": "Meeting",
-            "metadata": {"people": ["乐乐"], "tags": []},
+            "metadata": {"people": ["晴岚"], "tags": []},
         }
         l2_b = {
             "path": "without-entity.md",
             "title": "Meeting",
             "metadata": {"people": [], "tags": []},
         }
-        entity_hints = [{"expansion_terms": ["乐乐", "小豆丁"]}]
+        entity_hints = [{"expansion_terms": ["晴岚", "小风筝"]}]
 
         merged = merge_and_rank_results(
             [],
@@ -374,7 +374,7 @@ class TestEntityBonusExpansion:
         """B-9: Entity bonus applies when expansion term appears in title only."""
         l2_a = {
             "path": "title-match.md",
-            "title": "想念乐乐",
+            "title": "想念晴岚",
             "metadata": {},
         }
         l2_b = {
@@ -382,10 +382,10 @@ class TestEntityBonusExpansion:
             "title": "日常记录",
             "metadata": {},
         }
-        entity_hints = [{"expansion_terms": ["乐乐", "小豆丁"]}]
+        entity_hints = [{"expansion_terms": ["晴岚", "小风筝"]}]
 
         merged = merge_and_rank_results(
-            [], [l2_a, l2_b], [], query="乐乐", min_score=0, entity_hints=entity_hints
+            [], [l2_a, l2_b], [], query="晴岚", min_score=0, entity_hints=entity_hints
         )
 
         assert merged[0]["path"] == "title-match.md"
@@ -395,7 +395,7 @@ class TestEntityBonusExpansion:
         l2_a = {
             "path": "snippet-match.md",
             "title": "Daily",
-            "snippet": "今天乐乐不认真吃饭",
+            "snippet": "今天晴岚不认真吃饭",
             "metadata": {},
         }
         l2_b = {
@@ -404,7 +404,7 @@ class TestEntityBonusExpansion:
             "snippet": "普通的一天",
             "metadata": {},
         }
-        entity_hints = [{"expansion_terms": ["乐乐"]}]
+        entity_hints = [{"expansion_terms": ["晴岚"]}]
 
         merged = merge_and_rank_results(
             [], [l2_a, l2_b], [], query="吃饭", min_score=0, entity_hints=entity_hints
@@ -451,7 +451,7 @@ class TestL2WeakMetadataDeprioritization:
         a very weak L3 FTS result — title match is a valid signal."""
         l2_title_match = {
             "path": "l2-title.md",
-            "title": "乐乐日记",
+            "title": "晴岚日记",
             "metadata": {},
         }
         l3_weak = {
@@ -464,7 +464,7 @@ class TestL2WeakMetadataDeprioritization:
             [],
             [l2_title_match],
             [l3_weak],
-            query="乐乐",
+            query="晴岚",
             min_score=0,
         )
 
@@ -511,7 +511,7 @@ class TestL2WeakMetadataDeprioritization:
         l2_with_entity = {
             "path": "l2-entity.md",
             "title": "Doc",
-            "metadata": {"people": ["乐乐"], "tags": ["亲子"]},
+            "metadata": {"people": ["晴岚"], "tags": ["亲子"]},
         }
         l2_weak = {
             "path": "l2-weak.md",
@@ -520,10 +520,10 @@ class TestL2WeakMetadataDeprioritization:
         }
         entity_hints = [
             {
-                "matched_term": "乐乐",
+                "matched_term": "晴岚",
                 "entity_id": "tuantuan",
                 "entity_type": "person",
-                "expansion_terms": ["乐乐", "小豆丁"],
+                "expansion_terms": ["晴岚", "小风筝"],
                 "reason": "alias_match",
             }
         ]
@@ -533,7 +533,7 @@ class TestL2WeakMetadataDeprioritization:
             [l2_with_entity, l2_weak],
             [],
             [],
-            query="乐乐",
+            query="晴岚",
             min_rrf_score=0,
             min_non_rrf_score=0,
             entity_hints=entity_hints,
@@ -547,9 +547,9 @@ class TestL2WeakMetadataDeprioritization:
         title-match L2 still surfaces for single-result queries."""
         merged = merge_and_rank_results(
             [],
-            [{"path": "meta.md", "title": "乐乐日记", "metadata": {}}],
+            [{"path": "meta.md", "title": "晴岚日记", "metadata": {}}],
             [],
-            query="乐乐",
+            query="晴岚",
         )
         assert len(merged) == 1
         assert merged[0]["path"] == "meta.md"

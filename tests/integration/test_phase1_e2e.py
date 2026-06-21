@@ -14,7 +14,6 @@ from __future__ import annotations
 import importlib
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -76,20 +75,20 @@ class TestPhase1Integration:
         _create_journal(
             month_dir,
             "life-index_2026-03-04_001.md",
-            "想念小英雄",
-            people=["乐乐"],
+            "回忆小风筝",
+            people=["晴岚"],
             tags=["亲子", "回忆"],
             location="Chongqing, China",
-            content="看到乐乐小时候的照片，那个只有2岁上下的小英雄。",
+            content="看到晴岚小时候的照片，那个只有2岁上下的小队长。",
         )
         _create_journal(
             month_dir,
             "life-index_2026-03-05_001.md",
-            "乐乐的生日",
-            people=["乐乐"],
+            "晴岚的生日",
+            people=["晴岚"],
             tags=["生日"],
             location="Lagos, Nigeria",
-            content="今天是乐乐的生日，祝她快乐。",
+            content="今天是晴岚的生日，祝她快乐。",
         )
 
         # ── Step 1: Verify graph doesn't exist ─────────────────────
@@ -104,11 +103,9 @@ class TestPhase1Integration:
         seed_result = seed_entity_graph(graph_path, journals_root)
 
         assert seed_result["success"] is True, f"Seed failed: {seed_result}"
-        # "乐乐" appears 2x in people → should be added
+        # "晴岚" appears 2x in people → should be added
         added_names = {e["primary_name"] for e in seed_result["added"]}
-        assert "乐乐" in added_names, (
-            f"Expected '乐乐' in added, got: {seed_result['added']}"
-        )
+        assert "晴岚" in added_names, f"Expected '晴岚' in added, got: {seed_result['added']}"
 
         # Graph file now exists
         assert graph_path.exists(), "Graph file should exist after seed"
@@ -129,13 +126,11 @@ class TestPhase1Integration:
         idx_result = update_index(incremental=False)
         assert idx_result["success"], f"Index build failed: {idx_result}"
 
-        search_result = hierarchical_search("乐乐", semantic=False)
+        search_result = hierarchical_search("晴岚", semantic=False)
         assert search_result["success"] is True
 
         graph_status = search_result["entity_graph_status"]
-        assert graph_status["status"] == "initialized", (
-            f"Expected initialized, got: {graph_status}"
-        )
+        assert graph_status["status"] == "initialized", f"Expected initialized, got: {graph_status}"
         assert graph_status["entity_count"] >= 1
 
         # ── Step 4: Health no longer reports graph missing ──────────
@@ -144,9 +139,10 @@ class TestPhase1Integration:
 
         graph_check_path = resolve_user_data_dir() / "entity_graph.yaml"
         graph_check = _check_entity_graph(graph_check_path)
-        assert graph_check["status"] in ("ok", "degraded"), (
-            f"Graph check should pass after seed, got: {graph_check}"
-        )
+        assert graph_check["status"] in (
+            "ok",
+            "degraded",
+        ), f"Graph check should pass after seed, got: {graph_check}"
 
         # ── Step 5: Write with new person → fallback candidates ────
         from tools.lib.entity_candidates import extract_entity_candidates
@@ -174,28 +170,26 @@ class TestPhase1Integration:
         # ── Step 6: Seed again → idempotent ─────────────────────────
         seed_result_2 = seed_entity_graph(graph_path, journals_root)
         assert seed_result_2["success"] is True
-        assert len(seed_result_2["added"]) == 0, (
-            f"Second seed should add nothing, got: {seed_result_2['added']}"
-        )
-        # "乐乐" should be in skipped_existing
+        assert (
+            len(seed_result_2["added"]) == 0
+        ), f"Second seed should add nothing, got: {seed_result_2['added']}"
+        # "晴岚" should be in skipped_existing
         skipped_names = {e["primary_name"] for e in seed_result_2["skipped_existing"]}
-        assert "乐乐" in skipped_names, (
-            f"'乐乐' should be skipped as existing, got: {seed_result_2['skipped_existing']}"
-        )
+        assert (
+            "晴岚" in skipped_names
+        ), f"'晴岚' should be skipped as existing, got: {seed_result_2['skipped_existing']}"
 
     @pytest.mark.integration
-    def test_search_before_seed_shows_not_initialized(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_search_before_seed_shows_not_initialized(self, isolated_data_dir: Path) -> None:
         """Before seeding, search should return entity_graph_status: not_initialized."""
         journals_dir = isolated_data_dir / "Journals" / "2026" / "03"
 
         _create_journal(
             journals_dir,
             "life-index_2026-03-04_001.md",
-            "想念小英雄",
-            people=["乐乐"],
-            content="乐乐很可爱。",
+            "回忆小风筝",
+            people=["晴岚"],
+            content="晴岚很可爱。",
         )
 
         import tools.lib.config as cfg_mod
@@ -214,16 +208,14 @@ class TestPhase1Integration:
         idx_result = update_index(incremental=False)
         assert idx_result["success"]
 
-        search_result = hierarchical_search("乐乐", semantic=False)
+        search_result = hierarchical_search("晴岚", semantic=False)
         graph_status = search_result["entity_graph_status"]
-        assert graph_status["status"] == "not_initialized", (
-            f"Expected not_initialized before seed, got: {graph_status}"
-        )
+        assert (
+            graph_status["status"] == "not_initialized"
+        ), f"Expected not_initialized before seed, got: {graph_status}"
 
     @pytest.mark.integration
-    def test_write_candidates_with_existing_graph(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_write_candidates_with_existing_graph(self, isolated_data_dir: Path) -> None:
         """With existing graph, write returns confirm_match for known, add_entity for new."""
         graph_path = isolated_data_dir / "entity_graph.yaml"
         journals_root = isolated_data_dir / "Journals"
@@ -233,16 +225,16 @@ class TestPhase1Integration:
         _create_journal(
             month_dir,
             "life-index_2026-03-04_001.md",
-            "想念小英雄",
-            people=["乐乐"],
-            content="乐乐很可爱。",
+            "回忆小风筝",
+            people=["晴岚"],
+            content="晴岚很可爱。",
         )
         _create_journal(
             month_dir,
             "life-index_2026-03-05_001.md",
-            "乐乐的日常",
-            people=["乐乐"],
-            content="乐乐今天很开心。",
+            "晴岚的日常",
+            people=["晴岚"],
+            content="晴岚今天很开心。",
         )
 
         import tools.lib.config as cfg_mod
@@ -261,14 +253,14 @@ class TestPhase1Integration:
         from tools.lib.entity_candidates import extract_entity_candidates
 
         candidates = extract_entity_candidates(
-            metadata={"people": ["乐乐", "新朋友"]},
-            content="乐乐和新朋友一起玩",
+            metadata={"people": ["晴岚", "新朋友"]},
+            content="晴岚和新朋友一起玩",
             graph=graph,
         )
 
-        # "乐乐" should match existing entity
-        tuantuan = next((c for c in candidates if c["text"] == "乐乐"), None)
-        assert tuantuan is not None, "Should find '乐乐' candidate"
+        # "晴岚" should match existing entity
+        tuantuan = next((c for c in candidates if c["text"] == "晴岚"), None)
+        assert tuantuan is not None, "Should find '晴岚' candidate"
         assert tuantuan["suggested_action"] == "confirm_match"
         assert tuantuan["matched_entity_id"] is not None
 

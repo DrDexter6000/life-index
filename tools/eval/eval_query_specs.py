@@ -23,8 +23,7 @@ from typing import Any
 import yaml
 
 from tools.eval.eval_types import QuerySpec
-
-_GOLDEN_QUERIES_PATH = Path(__file__).with_name("golden_queries.yaml")
+from tools.eval.private_data import resolve_eval_file
 
 
 def dicts_to_query_specs(
@@ -42,7 +41,11 @@ def load_query_specs(
     applied_query_ids: set[str] | None = None,
 ) -> list[QuerySpec]:
     """Load golden queries from YAML and convert to typed QuerySpec list."""
-    path = queries_path or _GOLDEN_QUERIES_PATH
+    path = resolve_eval_file(queries_path, "golden_queries.yaml")
+    if not path.exists():
+        if queries_path is None:
+            return []
+        raise FileNotFoundError(f"Eval query file not found: {path}")
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     queries = payload.get("queries", []) if isinstance(payload, dict) else []
     return dicts_to_query_specs(queries, applied_query_ids=applied_query_ids)

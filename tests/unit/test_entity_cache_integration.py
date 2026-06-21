@@ -11,14 +11,9 @@ Validates that:
 
 from pathlib import Path
 
-import pytest
 
 from tools.lib.entity_cache import build_entity_cache, query_entity_cache
-from tools.lib.entity_graph import save_entity_graph, load_entity_graph
-from tools.lib.entity_runtime import (
-    build_runtime_view,
-    resolve_via_runtime,
-)
+from tools.lib.entity_graph import save_entity_graph
 
 
 def _sample_entities() -> list[dict]:
@@ -27,7 +22,7 @@ def _sample_entities() -> list[dict]:
             "id": "wife-001",
             "type": "person",
             "primary_name": "王某某",
-            "aliases": ["乐乐妈", "老婆"],
+            "aliases": ["晴岚妈", "老婆"],
             "attributes": {},
             "relationships": [{"target": "author-self", "relation": "spouse_of"}],
         },

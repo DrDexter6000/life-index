@@ -4,7 +4,8 @@ Tests for Search Suggestion Output — Round 7 Phase 1 Task 4.
 
 Validates that:
 - search_journals() returns entity_hints in result
-- entity_hints contains structured fields: matched_term, entity_id, entity_type, expansion_terms, reason
+- entity_hints contains structured fields: matched_term, entity_id, entity_type,
+  expansion_terms, reason
 - entity_hints is empty list when no entity matches
 - entity_hints works with relationship phrase patterns
 - Backward compat: existing search results unchanged
@@ -38,7 +39,7 @@ def _sample_entities() -> list[dict]:
             "id": "wife-001",
             "type": "person",
             "primary_name": "王某某",
-            "aliases": ["乐乐妈", "老婆"],
+            "aliases": ["晴岚妈", "老婆"],
             "attributes": {},
             "relationships": [{"target": "author-self", "relation": "spouse_of"}],
         },
@@ -62,7 +63,6 @@ def _sample_entities() -> list[dict]:
 
 
 def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
-    from tools.lib.entity_graph import save_entity_graph
 
     save_entity_graph(entities, isolated_data_dir / "entity_graph.yaml")
 
@@ -70,9 +70,7 @@ def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
 class TestEntityHintsPresent:
     """entity_hints must be present in search response."""
 
-    def test_search_response_contains_entity_hints_key(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_search_response_contains_entity_hints_key(self, isolated_data_dir: Path) -> None:
         from tools.search_journals.core import hierarchical_search
 
         _save_graph(_sample_entities(), isolated_data_dir)
@@ -132,7 +130,7 @@ class TestEntityHintsStructure:
         assert hint["matched_term"] == "老婆"
         assert hint["entity_id"] == "wife-001"
         assert hint["entity_type"] == "person"
-        assert "乐乐妈" in hint["expansion_terms"]
+        assert "晴岚妈" in hint["expansion_terms"]
         assert "王某某" in hint["expansion_terms"]
         assert hint["reason"] == "alias_match"
 

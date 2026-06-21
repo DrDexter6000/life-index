@@ -67,8 +67,8 @@ def _setup_search_env(tmp_path_factory):
             {
                 "id": "tuantuan",
                 "type": "person",
-                "primary_name": "乐乐",
-                "aliases": ["小豆丁", "小英雄"],
+                "primary_name": "晴岚",
+                "aliases": ["小风筝", "小队长"],
                 "attributes": {},
                 "relationships": [],
             },
@@ -171,10 +171,10 @@ def test_chinese_query_under_200ms(_setup_search_env):
     # Warmup: first query triggers SQLite WAL init + metadata cache cold start,
     # which can take 400ms+. The perf regression gate should measure steady-state,
     # not one-time initialization cost.
-    core_mod.hierarchical_search(query="乐乐", level=3, semantic=False)
+    core_mod.hierarchical_search(query="晴岚", level=3, semantic=False)
 
     result = core_mod.hierarchical_search(
-        query="想念我的女儿",
+        query="回忆海边花园",
         level=3,
         semantic=False,
     )
@@ -214,14 +214,14 @@ def test_jieba_segmentation_under_50ms(_setup_search_env):
     from tools.lib.chinese_tokenizer import segment_for_fts
 
     queries = [
-        "想念我的女儿",
-        "想念女儿",
+        "回忆海边花园",
+        "想念伙伴",
         "AI算力投资策略",
-        "乐乐不认真吃饭",
-        "重庆过生日",
-        "数字灵魂",
-        "想念小英雄",
-        "小豆丁",
+        "晴岚不认真吃饭",
+        "海边过生日",
+        "记忆索引",
+        "回忆小风筝",
+        "小风筝",
         "双管道检索",
         "人工智能伦理讨论",
     ]
