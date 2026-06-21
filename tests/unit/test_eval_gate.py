@@ -17,6 +17,15 @@ For live ranking quality, use `life-index eval --live --judge llm`.
 import importlib
 from pathlib import Path
 
+import pytest
+
+from tools.eval.private_data import get_golden_queries_path
+
+pytestmark = pytest.mark.skipif(
+    not get_golden_queries_path().exists(),
+    reason="local/private eval query set not present in public checkout",
+)
+
 
 # ---------------------------------------------------------------------------
 # Eval profile constants — SSOT: tools/eval/golden_queries.yaml
