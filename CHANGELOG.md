@@ -6,6 +6,18 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-06-21
+
+### Fixed
+
+- **Reliable agent playbook delivery**: upgrades now reliably deliver the
+  current `SKILL.md` and references to the host skill library. `sync-skill`
+  automatically recognizes nested host layouts such as
+  `.hermes/skills/<category>/life-index` and
+  `.claude/skills/<category>/life-index`, and reports `delivered: false`
+  explicitly when no host directory is found instead of silently skipping
+  playbook delivery.
+
 ## [1.3.1] - 2026-06-21
 
 ### What users get
