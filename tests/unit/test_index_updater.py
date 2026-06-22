@@ -9,14 +9,11 @@ Tests cover:
 - Monthly abstract updates
 """
 
-import json
 import os
-import subprocess
 
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-import tempfile
 
 
 class TestUpdateTopicIndex:
@@ -77,6 +74,25 @@ class TestUpdateTopicIndex:
                 result = update_topic_index(["work", "learn"], journal_path, data)
 
         assert len(result) == 2
+
+    def test_comma_separated_topic_string_creates_topic_indices(self, tmp_path):
+        """Comma-separated topic strings should not become one combined topic."""
+        from tools.write_journal.index_updater import update_topic_index
+
+        index_dir = tmp_path / "by-topic"
+        index_dir.mkdir()
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("---\ntitle: Test\n---\nContent")
+
+        data = {"title": "Test", "date": "2026-03-10"}
+
+        with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
+            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+                result = update_topic_index("work,learn", journal_path, data)
+
+        assert sorted(path.name for path in result) == ["主题_learn.md", "主题_work.md"]
+        assert not (index_dir / "主题_work,learn.md").exists()
 
     def test_empty_topic_skipped(self, tmp_path):
         """Empty topic list should return empty"""
@@ -259,6 +275,28 @@ class TestUpdateTagIndices:
 
         assert len(result) == 2
 
+    def test_comma_separated_tag_string_creates_tag_indices(self, tmp_path):
+        """Comma-separated tag strings should not be iterated character by character."""
+        from tools.write_journal.index_updater import update_tag_indices
+
+        index_dir = tmp_path / "by-topic"
+        index_dir.mkdir()
+
+        journal_path = tmp_path / "journal.md"
+        journal_path.write_text("---\ntitle: Test\n---\nContent")
+
+        data = {"title": "Test", "date": "2026-03-10"}
+
+        with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
+            with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
+                result = update_tag_indices("会议,项目进展", journal_path, data)  # type: ignore[arg-type]
+
+        assert sorted(path.name for path in result) == ["标签_会议.md", "标签_项目进展.md"]
+        assert sorted(path.name for path in index_dir.glob("标签_*.md")) == [
+            "标签_会议.md",
+            "标签_项目进展.md",
+        ]
+
     def test_empty_tags_skipped(self, tmp_path):
         """Empty tags should return empty"""
         from tools.write_journal.index_updater import update_tag_indices
@@ -267,15 +305,11 @@ class TestUpdateTagIndices:
         assert result == []
 
     def test_none_tags_skipped(self, tmp_path):
-        """None tags should be handled gracefully"""
+        """None tags should be handled as an empty list"""
         from tools.write_journal.index_updater import update_tag_indices
 
-        # update_tag_indices doesn't handle None, only empty list
-        # This test documents the expected behavior
-        import pytest
-
-        with pytest.raises(TypeError):
-            update_tag_indices(None, tmp_path / "test.md", {})  # type: ignore
+        result = update_tag_indices(None, tmp_path / "test.md", {})
+        assert result == []
 
     def test_tag_with_empty_string_skipped(self, tmp_path):
         """Empty string in tags list should be skipped"""
@@ -291,9 +325,7 @@ class TestUpdateTagIndices:
 
         with patch("tools.write_journal.index_updater.get_by_topic_dir", return_value=index_dir):
             with patch("tools.write_journal.index_updater.get_journals_dir", return_value=tmp_path):
-                result = update_tag_indices(
-                    ["python", "", "testing"], journal_path, data
-                )
+                result = update_tag_indices(["python", "", "testing"], journal_path, data)
 
         # Should only create 2 files (skip empty string)
         assert len(result) == 2
@@ -598,9 +630,7 @@ class TestUpdateVectorIndex:
         mock_index = MagicMock()
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 with patch.dict(os.environ, {"LIFE_INDEX_DATA_DIR": str(tmp_path)}, clear=False):
                     result = update_vector_index(journal_path, data)
 
@@ -698,9 +728,7 @@ class TestUpdateVectorIndex:
         mock_index.add.side_effect = OSError("Disk full")
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 result = update_vector_index(journal_path, data)
 
         assert result is False
@@ -722,9 +750,7 @@ class TestUpdateVectorIndex:
         mock_index.add.side_effect = IOError("IO error")
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 result = update_vector_index(journal_path, data)
 
         assert result is False
@@ -746,9 +772,7 @@ class TestUpdateVectorIndex:
         mock_index.add.side_effect = RuntimeError("Runtime error")
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 result = update_vector_index(journal_path, data)
 
         assert result is False
@@ -769,9 +793,7 @@ class TestUpdateVectorIndex:
         mock_index = MagicMock()
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 with patch.dict(os.environ, {"LIFE_INDEX_DATA_DIR": str(tmp_path)}, clear=False):
                     result = update_vector_index(journal_path, data)
 
@@ -797,9 +819,7 @@ class TestUpdateVectorIndex:
         mock_index = MagicMock()
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 with patch.dict(os.environ, {"LIFE_INDEX_DATA_DIR": str(tmp_path)}, clear=False):
                     result = update_vector_index(journal_path, data)
 
@@ -823,9 +843,7 @@ class TestUpdateVectorIndex:
         mock_index = MagicMock()
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 with patch.dict(os.environ, {"LIFE_INDEX_DATA_DIR": str(tmp_path)}, clear=False):
                     result = update_vector_index(journal_path, data)
 
@@ -850,9 +868,7 @@ class TestUpdateVectorIndex:
         mock_index = MagicMock()
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 with patch.dict(os.environ, {"LIFE_INDEX_DATA_DIR": str(tmp_path)}, clear=False):
                     result = update_vector_index(journal_path, data)
 
@@ -895,9 +911,7 @@ class TestUpdateVectorIndex:
         mock_index = MagicMock()
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 with patch.dict(os.environ, {"LIFE_INDEX_DATA_DIR": str(tmp_path)}, clear=False):
                     result = update_vector_index(journal_path, data)
 
@@ -929,9 +943,7 @@ class TestUpdateVectorIndex:
         other_dir.mkdir()
 
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 with patch.dict(os.environ, {"LIFE_INDEX_DATA_DIR": str(other_dir)}, clear=False):
                     result = update_vector_index(journal_path, data)
 
@@ -959,9 +971,7 @@ class TestUpdateVectorIndex:
 
         # Make read_bytes raise an exception
         with patch("tools.lib.vector_index_simple.get_model", return_value=mock_model):
-            with patch(
-                "tools.lib.vector_index_simple.get_index", return_value=mock_index
-            ):
+            with patch("tools.lib.vector_index_simple.get_index", return_value=mock_index):
                 with patch.dict(os.environ, {"LIFE_INDEX_DATA_DIR": str(tmp_path)}, clear=False):
                     with patch.object(
                         type(journal_path),

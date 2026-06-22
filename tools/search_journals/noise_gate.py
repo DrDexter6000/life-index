@@ -27,9 +27,11 @@ Coverage on Round 19 corrected baseline noise_rejection + edge_case leaks:
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import unicodedata
+from typing import Any
 
 from tools.lib.search_constants import (
     FUZZY_TYPO_CANONICALS,
@@ -37,6 +39,11 @@ from tools.lib.search_constants import (
     FUZZY_TYPO_RATIO_THRESHOLD,
     NOISE_GATE_TYPO_NEAR_LOW,
 )
+
+
+def _levenshtein() -> Any:
+    return importlib.import_module("rapidfuzz.distance").Levenshtein
+
 
 # Regex for recognizable English words (≥3 letters)
 _ENGLISH_WORD_RE = re.compile(r"[a-zA-Z]{3,}")
@@ -147,8 +154,8 @@ def is_noise_query(query: str | None) -> tuple[bool, str | None]:
         for canonical in FUZZY_TYPO_CANONICALS:
             if abs(len(q) - len(canonical)) > FUZZY_TYPO_LEN_DIFF_MAX:
                 continue
-            from rapidfuzz.distance import Levenshtein
 
+            Levenshtein = _levenshtein()
             sim = Levenshtein.normalized_similarity(q, canonical)
             if sim is not None and NOISE_GATE_TYPO_NEAR_LOW <= sim < FUZZY_TYPO_RATIO_THRESHOLD:
                 return True, "typo_near_noise"

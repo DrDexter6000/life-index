@@ -11,6 +11,7 @@ Life Index - Simple Vector Index (Fallback)
 """
 
 import hashlib
+import importlib
 import json
 import logging
 import pickle
@@ -31,6 +32,11 @@ from .frontmatter import parse_frontmatter
 from .embedding_backends import SharedEmbeddingModel as EmbeddingModel
 
 logger = logging.getLogger(__name__)
+
+
+def _numpy() -> Any:
+    return importlib.import_module("numpy")
+
 
 # 索引存储目录 (deprecated: use getters)
 INDEX_DIR = get_index_dir()  # deprecated: use get_index_dir()
@@ -148,7 +154,7 @@ class SimpleVectorIndex:
 
     @staticmethod
     def _normalize_vector(embedding: List[float]) -> Any:
-        import numpy as np
+        np = _numpy()
 
         vector = np.asarray(embedding, dtype=np.float32)
         norm = np.linalg.norm(vector)
@@ -214,7 +220,7 @@ class SimpleVectorIndex:
 
     def _load_legacy_inline_pickle(self, payload: Dict[str, Any]) -> None:
         """Migrate old `{path: {embedding, ...}}` payload into split memory."""
-        import numpy as np
+        np = _numpy()
 
         vectors: Dict[str, Dict[str, Any]] = {}
         rows = []
@@ -254,7 +260,7 @@ class SimpleVectorIndex:
 
     def _load_matrix_sidecar(self) -> bool:
         """Load and validate the split-format matrix sidecar."""
-        import numpy as np
+        np = _numpy()
 
         if not self.vectors:
             self._reset_matrix(valid=True)
@@ -331,7 +337,7 @@ class SimpleVectorIndex:
             if not self._matrix_valid:
                 self._build_matrix()
 
-            import numpy as np
+            np = _numpy()
 
             matrix_path = get_vec_matrix_path()
             tmp_matrix = self._matrix_tmp_path()
@@ -410,7 +416,7 @@ class SimpleVectorIndex:
         Unchanged rows are copied from the previous matrix via `_row_of`; rows
         added/updated in this process come from `_pending_emb`.
         """
-        import numpy as np
+        np = _numpy()
 
         paths = list(self.vectors.keys())
         self._matrix_paths = paths
@@ -462,7 +468,7 @@ class SimpleVectorIndex:
             [(path, score), ...] 按相似度降序排列
         """
         try:
-            import numpy as np
+            np = _numpy()
         except ImportError:
             logger.warning("numpy not installed. Cannot perform vector search.")
             return []
@@ -486,7 +492,7 @@ class SimpleVectorIndex:
         if date_from or date_to:
             dates = self._matrix_dates
             has_date = dates != ""
-            keep = np.ones(len(scores), dtype=bool)
+            keep: Any = np.ones(len(scores), dtype=bool)
             if date_from:
                 keep &= ~(has_date & (dates < date_from))
             if date_to:
