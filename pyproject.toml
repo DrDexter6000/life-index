@@ -152,11 +152,37 @@ show_error_context = true
 
 # Module-specific settings - 模块特定设置
 [[tool.mypy.overrides]]
+module = "numpy"
+follow_imports = "skip"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "numpy.*"
+follow_imports = "skip"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "PIL"
+follow_imports = "skip"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "PIL.*"
+follow_imports = "skip"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "sentence_transformers.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "rapidfuzz"
+follow_imports = "skip"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "rapidfuzz.*"
+follow_imports = "skip"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

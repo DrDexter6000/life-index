@@ -5,9 +5,12 @@ distribution. This baseline reflects how similar randomly chosen documents
 are to each other in the embedding space.
 """
 
+import importlib
 from typing import Any
 
-import numpy as np
+
+def _numpy() -> Any:
+    return importlib.import_module("numpy")
 
 
 def compute_semantic_baseline(
@@ -31,7 +34,8 @@ def compute_semantic_baseline(
     if len(vectors) < 5 or sample_size <= 0:
         return 0.0
 
-    normalized_embeddings: list[np.ndarray] = []
+    np = _numpy()
+    normalized_embeddings: list[Any] = []
     for data in vectors.values():
         embedding = data.get("embedding")
         if not isinstance(embedding, list) or not embedding:
@@ -54,7 +58,7 @@ def compute_semantic_baseline(
 
 
 def compute_semantic_baseline_from_matrix(
-    embedding_matrix: np.ndarray | None, sample_size: int = 50, seed: int = 42
+    embedding_matrix: Any | None, sample_size: int = 50, seed: int = 42
 ) -> float:
     """Compute P25 baseline from a normalized embedding matrix.
 
@@ -69,6 +73,7 @@ def compute_semantic_baseline_from_matrix(
     if embedding_matrix is None or sample_size <= 0:
         return 0.0
 
+    np = _numpy()
     matrix = np.asarray(embedding_matrix, dtype=np.float32)
     if matrix.ndim != 2 or matrix.shape[0] < 5 or matrix.shape[1] == 0:
         return 0.0

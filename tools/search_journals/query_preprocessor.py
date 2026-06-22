@@ -9,8 +9,10 @@ and by callers (Agent, Web, test harness).
 
 from __future__ import annotations
 
+import importlib
 import re
 from datetime import date, timedelta
+from typing import Any
 
 from .query_types import DateRange, IntentType, QueryMode, SearchPlan
 from tools.lib.search_constants import (
@@ -127,6 +129,10 @@ _TYPO_CORRECTIONS: dict[str, str] = {
 }
 
 
+def _levenshtein() -> Any:
+    return importlib.import_module("rapidfuzz.distance").Levenshtein
+
+
 def _fuzzy_correct_typo(query: str) -> str | None:
     """Fuzzy typo correction fallback using standard Levenshtein similarity.
 
@@ -143,8 +149,8 @@ def _fuzzy_correct_typo(query: str) -> str | None:
             return None
         if abs(len(q) - len(canonical)) > FUZZY_TYPO_LEN_DIFF_MAX:
             continue
-        from rapidfuzz.distance import Levenshtein
 
+        Levenshtein = _levenshtein()
         sim = Levenshtein.normalized_similarity(q, canonical)
         if sim is not None and sim >= FUZZY_TYPO_RATIO_THRESHOLD:
             return canonical

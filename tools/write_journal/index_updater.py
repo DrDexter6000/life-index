@@ -12,6 +12,7 @@ from ..lib.paths import get_journals_dir, get_by_topic_dir, get_user_data_dir
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.frontmatter import get_summary
 from ..lib.path_contract import build_journal_path_fields, safe_relative_path
+from ..lib.text_normalize import normalize_text_list
 
 
 def _build_entry(data: Dict[str, Any], journal_path: Path) -> str:
@@ -45,15 +46,8 @@ def build_index_filename(kind: str, value: str) -> str:
 
 def update_topic_index(topic: Any, journal_path: Path, data: Dict[str, Any]) -> List[Path]:
     """更新主题索引文件 - 支持单个主题或主题列表"""
-    if not topic:
-        return []
-
-    # 统一处理为列表
-    if isinstance(topic, str):
-        topics = [topic]
-    elif isinstance(topic, list):
-        topics = topic
-    else:
+    topics = normalize_text_list(topic)
+    if not topics:
         return []
 
     entry = _build_entry(data, journal_path)
@@ -104,12 +98,12 @@ def update_project_index(project: str, journal_path: Path, data: Dict[str, Any])
     return index_file
 
 
-def update_tag_indices(tags: List[str], journal_path: Path, data: Dict[str, Any]) -> List[Path]:
+def update_tag_indices(tags: Any, journal_path: Path, data: Dict[str, Any]) -> List[Path]:
     """更新标签索引文件"""
     updated = []
 
     # 获取可配置的前缀
-    for tag in tags:
+    for tag in normalize_text_list(tags):
         if not tag:
             continue
 
