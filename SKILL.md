@@ -408,7 +408,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 |:---|:---|
 | 严格关键词 / FTS-only，要求可复现精确匹配 | `life-index search --query "关键词" --no-semantic` |
 | 普通关键词、实体加权、结构化过滤检索 | `life-index search --query "关键词"` |
-| 复杂自然语言问题，需要 scaffold / evidence pack | `life-index smart-search --query "..." --include-evidence` |
+| 开放回忆、关键词 / 实体加权发现，或需要 scaffold / evidence pack | `life-index smart-search --query "..." --include-evidence` |
 | 用户明确要求语义 / 向量召回补充 | `life-index search --query "..." --semantic --semantic-policy hybrid` |
 
 `life-index recall` 仅为旧集成保留的兼容壳；新宿主 agent 流程直接选择上表中的 `search` / `smart-search`。
@@ -425,12 +425,13 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 observation series. Do not use `trajectory` as a hidden counter, and do not use
 `aggregate` to extract field-value time series.
 
-**Agent consumption rule（smart-search v1）**:
-1. 默认先调用 `life-index smart-search --query "..." --include-evidence`。
-2. 使用返回的 `agent_instructions` 与 `answer_scaffold` 组织最终答复。
-3. 只引用 `filtered_results` / `evidence_pack` 中返回的来源，不得自行补造证据。
-4. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
-5. 只有需要 CLI 产出确定性答案 scaffold 字段时，才叠加 `--synthesize`。
+**Agent consumption rule（按问题形态选工具）**:
+1. 先判定问题形态，不把 `smart-search` 当作所有查询的强制首调。
+2. 结构化问题（计数、枚举、facet、跨 facet、趋势）优先按上方 Grounded Query Skill Playbook 走确定性路径：`index-tree ensure` -> `discover` -> `navigate`，或直接用 `aggregate` / `trajectory` 取得可核数据。
+3. 只有开放回忆、关键词 / 实体加权发现、或 facet 菜单无法提供有效候选时，才调用 `life-index smart-search --query "..." --include-evidence` 或 `life-index search`。
+4. 使用 `smart-search` 时，消费返回的 `agent_instructions`、`answer_scaffold`、`filtered_results` 与 `evidence_pack`；只引用返回或已读取的来源，不得自行补造证据。
+5. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
+6. 只有需要 CLI 产出确定性答案 scaffold 字段时，才叠加 `--synthesize`。
 
 **查询意图 → 参数映射**:
 
