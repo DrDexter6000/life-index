@@ -14,7 +14,7 @@ Commands:
     smart-search  Smart search with LLM orchestration
     edit      Edit a journal entry
     journal   Read journals through stable get/list contracts
-    attachment  Read/export archived attachments
+    attachment  Read/export/stream archived attachments
     entity    Manage entity graph
     weather   Query weather information
     index     Build/rebuild search index
@@ -563,7 +563,7 @@ def print_usage() -> None:
     print("  search    Search journals")
     print("  edit      Edit a journal entry")
     print("  journal   Read journals through stable get/list contracts")
-    print("  attachment  Read/export archived attachments")
+    print("  attachment  Read/export/stream archived attachments")
     print("  entity    Manage entity graph")
     print("  weather   Query weather information")
     print("  index     Build/rebuild search index")
