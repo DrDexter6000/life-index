@@ -817,8 +817,11 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 ```bash
 life-index attachment --info <path>
 life-index attachment --export <path>
+life-index attachment media <path> [--variant thumbnail|preview|original] [--max-px N] [--output PATH|-]
 python -m tools attachment --info <path>
 python -m tools attachment --export <path>
+python -m tools attachment media <path> [--variant thumbnail|preview|original] [--max-px N] [--output PATH|-]
+python -m tools.attachment media <path> [--variant thumbnail|preview|original] [--max-px N] [--output PATH|-]
 ```
 
 ### 参数
@@ -835,6 +838,88 @@ python -m tools attachment --export <path>
 - frontmatter 中保存的历史相对形式：`../../../attachments/2026/05/photo.png`
 
 绝对路径、空路径、NUL 字节、以及会逃逸出 `attachments/` 根目录的路径遍历输入必须被拒绝。
+
+### Media raw/file-export contract
+
+`attachment media` 是面向 GUI/backend 与 host agent 的 raw bytes 媒体契约。
+它不替代 `--export`；旧 `--export` 继续返回 JSON/base64。新契约用于
+thumbnail/preview/original 的 file-export 或 stdout streaming，避免把新媒体主路径
+建立在 base64 JSON 上。
+
+```bash
+life-index attachment media attachments/2026/05/photo.png --variant thumbnail --output thumb.png
+life-index attachment media attachments/2026/05/photo.png --variant preview --max-px 1400 --output preview.png
+life-index attachment media attachments/2026/05/video.mp4 --variant original --range bytes=0-1023 --output -
+```
+
+参数：
+
+| 名称 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| positional `<path>` | string | ✅ | - | 附件引用，规则同 `--info` / `--export` |
+| `--variant` | enum | ❌ | `original` | `thumbnail`、`preview` 或 `original` |
+| `--max-px` | int | ❌ | thumbnail=160；preview=1400 | thumbnail/preview 最大宽高；`original` 忽略 |
+| `--output` | path 或 `-` | ❌ | `-` | 输出文件；`-` 表示 raw bytes 写 stdout |
+| `--metadata-output` | path | ❌ | - | stdout streaming 时把 JSON metadata 写入此文件 |
+| `--range` | string | ❌ | - | 仅 `original` 支持单段 byte range，如 `bytes=0-1023` |
+| `--chunk-size` | int | ❌ | 1048576 | stdout/file streaming chunk 大小 |
+
+当 `--output` 是文件路径时，命令把 bytes 写入该文件，并在 stdout 返回 metadata：
+
+```json
+{
+  "success": true,
+  "schema_version": "m17.attachment-media.v1",
+  "data": {
+    "rel_path": "attachments/2026/05/photo.png",
+    "filename": "photo.png",
+    "variant": "preview",
+    "max_px": 1400,
+    "content_type": "image/png",
+    "size": 34567,
+    "sha256": "hex-encoded-output-sha256",
+    "source": {
+      "size": 1234567,
+      "sha256": "hex-encoded-source-sha256",
+      "mtime_ns": 1790000000000000000
+    },
+    "cache": {
+      "eligible": true,
+      "hit": false,
+      "key": "deterministic-cache-key",
+      "implementation": "v1"
+    },
+    "stream": {
+      "status_code": 200,
+      "range": null
+    },
+    "headers": {
+      "Content-Type": "image/png",
+      "Content-Length": "34567",
+      "ETag": "\"sha256-hex-encoded-source-sha256\"",
+      "Cache-Control": "private, max-age=3600",
+      "Content-Disposition": "attachment; filename=\"photo.png\"; filename*=UTF-8''photo.png"
+    },
+    "output": "preview.png"
+  },
+  "error": null
+}
+```
+
+When `--output -` is used, stdout is raw bytes only. Use `--metadata-output`
+to receive the same JSON metadata as a sidecar file. GUI/backend consumers
+should forward `headers` into their own HTTP response and stream stdout/file
+bytes without directly reading the Life Index data directory.
+
+`original` supports range streaming. A satisfiable range reports
+`stream.status_code = 206` and includes `Content-Range`; invalid ranges fail
+with `ATTACHMENT_RANGE_INVALID`.
+
+`thumbnail` and `preview` are deterministic image derivatives. They are cached
+under the Life Index cache directory, never in `Journals/` or the attachment
+source directory. The cache key includes the attachment reference, source
+content hash, source size/mtime, variant, max-px, output format, and
+implementation version, so source changes invalidate cached derivatives.
 
 ### 返回值
 
@@ -887,13 +972,19 @@ python -m tools attachment --export <path>
 | `ATTACHMENT_NOT_FOUND` | 附件文件不存在 |
 | `ATTACHMENT_NOT_FILE` | 附件引用不是文件 |
 | `ATTACHMENT_READ_FAILED` | 读取附件时发生 OS 错误 |
+| `ATTACHMENT_UNSUPPORTED_MEDIA` | 请求 thumbnail/preview 但附件不是支持的图片媒体 |
+| `ATTACHMENT_DECODE_FAILED` | 图片媒体解码失败 |
+| `ATTACHMENT_RANGE_INVALID` | byte range 语法无效、越界，或用于非 `original` variant |
+| `ATTACHMENT_DATA_DIR_INVALID` | validation mode 或数据目录边界拒绝当前数据目录 |
+| `ATTACHMENT_MEDIA_INVALID` | media 参数无效，例如 `--max-px <= 0` 或 `--chunk-size <= 0` |
 
 ### schema_version Policy
 
-`attachment` emits top-level `schema_version = "m16.attachment.v0"`.
-Top-level fields and `data` field names are stable; additive metadata fields may
-be added without a version bump. A version bump will accompany any
-backward-incompatible payload change.
+`attachment --info` and `attachment --export` emit top-level
+`schema_version = "m16.attachment.v0"`. `attachment media` emits
+`schema_version = "m17.attachment-media.v1"`. Top-level fields and `data` field
+names are stable; additive metadata fields may be added without a version bump.
+A version bump will accompany any backward-incompatible payload change.
 
 ---
 

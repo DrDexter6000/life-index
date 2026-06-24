@@ -298,6 +298,18 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - Agent Runtime 可读取 schema 发现参数/返回值契约
 - 高频意图："列出工具"、"工具参数"、"schema"
 
+### Attachment Media（已实现）
+
+- Use `life-index attachment --info <path>` or `--export <path>` for the legacy
+  JSON/base64 contract.
+- Use `life-index attachment media <path> --variant thumbnail|preview|original`
+  for raw bytes/file-export media delivery. `thumbnail` and `preview` are
+  deterministic cached image derivatives; `original` streams source bytes and
+  supports byte ranges.
+- GUI/backend consumers must call this CLI contract and forward the returned
+  media headers/bytes. They must not read the Life Index data directory
+  directly.
+
 ### Entity Graph（已实现）
 
 - CLI：`life-index entity --list|--add|--resolve|--update`
