@@ -49,6 +49,8 @@ def _changed_paths(before: dict[str, str], after: dict[str, str]) -> list[str]:
 def _allowed_generated_index_path(path: str) -> bool:
     if path == "INDEX.md":
         return True
+    if path.startswith(".life-index/index-b/"):
+        return True
     parts = path.split("/")
     if len(parts) == 3 and parts[0] == "Journals" and parts[2] == f"index_{parts[1]}.md":
         return True

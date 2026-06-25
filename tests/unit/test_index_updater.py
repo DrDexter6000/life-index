@@ -16,6 +16,34 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 
+class TestRefreshIndexB:
+    def test_refresh_index_b_returns_materialize_payload(self):
+        from tools.write_journal.index_updater import refresh_index_b
+
+        payload = {"artifact": "index-b", "written_docs": [".life-index/index-b/INDEX.md"]}
+        with patch("tools.index_tree.materialize.build_materialize_payload", return_value=payload):
+            result = refresh_index_b()
+
+        assert result["success"] is True
+        assert result["updated"] is True
+        assert result["artifact"] == "index-b"
+        assert result["payload"] == payload
+
+    def test_refresh_index_b_is_non_blocking_on_failure(self):
+        from tools.write_journal.index_updater import refresh_index_b
+
+        with patch(
+            "tools.index_tree.materialize.build_materialize_payload",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = refresh_index_b()
+
+        assert result["success"] is False
+        assert result["updated"] is False
+        assert result["artifact"] == "index-b"
+        assert result["error"]["code"] == "E0600"
+
+
 class TestUpdateTopicIndex:
     """Tests for update_topic_index function"""
 

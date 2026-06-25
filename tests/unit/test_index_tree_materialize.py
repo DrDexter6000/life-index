@@ -79,6 +79,21 @@ def test_ensure_payload_falls_back_to_journals_when_refresh_fails(tmp_path, monk
     assert payload["entries"][0]["path"] == journal.relative_to(data_dir).as_posix()
 
 
+def test_ensure_payload_reports_freshness_after_successful_refresh(tmp_path, monkeypatch):
+    from tools.index_tree import materialize
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+    _write_journal(data_dir)
+
+    payload = materialize.build_ensure_payload(date_from="2026-03", date_to="2026-03")
+
+    assert payload["source"] == "index-b"
+    assert payload["freshness_before"]["fresh"] is False
+    assert payload["freshness"]["fresh"] is True
+    assert payload["fallback"]["used"] is False
+
+
 def test_materialize_canonicalizes_entity_graph_aliases_and_records_hash(
     tmp_path: Path, monkeypatch
 ) -> None:

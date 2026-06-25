@@ -652,12 +652,14 @@ def build_ensure_payload(
 
     try:
         materialized = build_materialize_payload(date_from=start, date_to=end, incremental=True)
+        refreshed = build_freshness_payload(date_from=start, date_to=end)
         return {
             "source": "index-b",
             "artifact": "index-b",
             "date_from": start,
             "date_to": end,
             "freshness_before": freshness,
+            "freshness": refreshed,
             "materialized": materialized,
             "fallback": {"used": False, "reason": None},
         }

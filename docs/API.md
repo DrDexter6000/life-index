@@ -601,6 +601,11 @@ python -m tools.write_journal --data '<json>'
   "attachments_detected_count": 1,
   "attachments_processed_count": 1,
   "attachments_failed_count": 0,
+  "index_b_updated": {
+    "success": true,
+    "updated": true,
+    "artifact": "index-b"
+  },
   "location_used": "Beijing, China",
   "location_auto_filled": false,
   "weather_used": "Sunny 25°C",
@@ -1192,8 +1197,8 @@ life-index index-tree navigate --entity-neighbors "Alice" --entity-relation work
 python -m tools index-tree navigate --from 2026-03 --to 2026-06 --filter "project=Life Index" --json
 ```
 
-`index-tree` 是 Index Tree Evidence Navigation 公共契约。主路径是 Index B
-物化、freshness guard、facet 值发现、结构化导航和显式 entity-neighbor 遍历，供 host
+`index-tree` 是 Index Tree Evidence Navigation 公共契约。Canonical navigation
+主路径是 Index B 物化、freshness guard、facet 值发现、结构化导航和显式 entity-neighbor 遍历，供 host
 agent 做有界候选集规划和读取。`nodes`、`lens`、`shadow` 是 debug-only legacy
 诊断接口：保留兼容和内部排障，不作为 host-agent retrieval/navigation playbook，不应出现在
 agent 面向的主流程示例中。
@@ -1202,7 +1207,7 @@ agent 面向的主流程示例中。
 durable data。`materialize` 只写 `.life-index/index-b/` 下可重建的导航文档和
 `manifest.json` 哈希清单，不写 journal、attachment 或 durable truth source。
 `freshness` 只读并比较 journal 内容哈希；`ensure` 在 Index B 缺失或陈旧时尝试刷新，
-刷新失败则返回 journal fallback pointers。`discover` 只枚举调用方请求的 facet 值菜单；
+并在成功刷新后报告刷新后的 `freshness`。刷新失败则返回 journal fallback pointers。`discover` 只枚举调用方请求的 facet 值菜单；
 `navigate` 只执行调用方给定的结构化谓词，不会从自然语言推断 facet、实体或关系。Journal 仍是唯一
 truth source；index、lens、shadow report、Index B docs 和 manifest 都是可重建派生产物。
 
@@ -1435,8 +1440,10 @@ scope 缺失不匹配都会标为 stale。它不写入任何文件。
 ### `ensure`
 
 `ensure` 是 consumer-friendly guard。它先执行 freshness check；若 Index B 陈旧或缺失，
-则尝试 `materialize --incremental`。如果刷新失败，返回 `source: "journals"` 和 journal
-entry pointers，调用方应直接读取这些 journal 条目，而不是把 Index B 缺失当作查询失败。
+则尝试 `materialize --incremental`。刷新成功时返回 `source: "index-b"`，
+`freshness_before` 保存刷新前状态，`freshness` 保存刷新后状态。如果刷新失败，返回
+`source: "journals"` 和 journal entry pointers，调用方应直接读取这些 journal 条目，
+而不是把 Index B 缺失当作查询失败。
 
 ```json
 {
@@ -4069,7 +4076,7 @@ python -m tools.query_weather --location "<location>" [options]
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
-| `type` | string | conditional | Operation type: `"monthly"` / `"yearly"` / `"root"` / `"rebuild"` |
+| `type` | string | conditional | Operation type: `"monthly"` / `"yearly"` / `"root"` / `"rebuild"` / `"index-b"` |
 | `success` | bool | yes | Whether this specific operation succeeded |
 | `year` | int | conditional | Year (monthly/yearly results) |
 | `month` | int | conditional | Month (monthly results) |
@@ -4088,6 +4095,10 @@ python -m tools.query_weather --location "<location>" [options]
 - `success: true` on an element means that specific index generation succeeded.
 - Error objects from internal functions (`create_error_response`) are appended to the results array, not emitted as a separate top-level error envelope.
 - `journal_count`: number of journals covered by the generated index.
+- `generate-index --all-months` and `generate-index --rebuild` append an additive
+  `type: "index-b"` element that refreshes `.life-index/index-b/` navigation docs
+  and manifest. Legacy generated indexes remain compatibility artifacts; Index B
+  is the host-agent navigation surface.
 
 #### Error Behavior / Error Codes
 
@@ -4119,8 +4130,8 @@ life-index generate-index [options]
 |------|------|------|--------|------|
 | month | string | ❌ | - | 生成月度索引 (YYYY-MM)，输出 `index_YYYY-MM.md` |
 | year | int | ❌ | - | 生成年度索引 (YYYY)，输出 `index_YYYY.md` |
-| all-months | flag | ❌ | false | 批量生成所有有日志月份的月度索引；与 `year` 一起使用时仅生成该年月份 |
-| rebuild | flag | ❌ | false | 全量重建三层索引树（月→年→根） |
+| all-months | flag | ❌ | false | 批量生成所有有日志月份的月度索引，并同步刷新 Index B；与 `year` 一起使用时仅生成该年月份 |
+| rebuild | flag | ❌ | false | 全量重建 legacy 三层索引树（月→年→根），并同步刷新 Index B |
 | dry-run | flag | ❌ | false | 预览模式 |
 
 ### 返回值
@@ -4357,7 +4368,7 @@ Additive standard checks may include:
 
 | check.name | status | meaning |
 |------------|--------|---------|
-| index_tree | ok / warning / info | Internal Index Tree freshness visibility. Warnings are non-critical; run `life-index generate-index --all-months` to refresh missing/stale month nodes. |
+| index_tree | ok / warning / info | Internal Index Tree freshness visibility. Warnings are non-critical; run `life-index generate-index --all-months` to refresh missing/stale month nodes and Index B navigation docs. |
 
 **`--data-audit` 模式**：
 

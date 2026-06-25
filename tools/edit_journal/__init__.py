@@ -30,6 +30,7 @@ from ..lib.metadata_cache import init_metadata_cache, replace_entry_relations
 from ..lib.revisions import save_revision
 from ..lib.pending_writes import mark_pending
 from ..write_journal.attachments import process_attachments
+from ..write_journal.index_updater import refresh_index_b
 
 logger = get_logger(__name__)
 
@@ -583,6 +584,14 @@ def edit_journal(
                     result["pending_marked"] = True
                 except Exception as e:
                     logger.warning(f"标记 pending 失败（不影响编辑）：{e}")
+
+                index_b_result = refresh_index_b(False)
+                result["index_b_updated"] = index_b_result
+                if not index_b_result.get("success"):
+                    logger.warning(
+                        "Index B refresh failed after edit: %s",
+                        index_b_result.get("error") or index_b_result,
+                    )
 
         except LockTimeoutError as e:
             # 锁超时，返回结构化错误

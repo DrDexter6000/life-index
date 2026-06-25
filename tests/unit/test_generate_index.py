@@ -111,4 +111,7 @@ class TestGenerateIndexCliAllMonths:
 
         payload = json.loads(capsys.readouterr().out)
         assert calls == [(2025, 12, False), (2026, 3, False)]
-        assert [(item["year"], item["month"]) for item in payload] == [(2025, 12), (2026, 3)]
+        monthly = [item for item in payload if item.get("type") == "monthly"]
+        assert [(item["year"], item["month"]) for item in monthly] == [(2025, 12), (2026, 3)]
+        assert payload[-1]["type"] == "index-b"
+        assert payload[-1]["success"] is True

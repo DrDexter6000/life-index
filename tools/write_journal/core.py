@@ -55,6 +55,7 @@ from .index_updater import (
     update_project_index,
     update_tag_indices,
     update_monthly_abstract,
+    refresh_index_b,
 )
 from ..lib.pending_writes import mark_pending
 
@@ -640,14 +641,19 @@ def _commit_journal_to_disk(
         # 更新 metadata cache + pending
         _update_metadata_relations(journal_path, data)
 
+        # Refresh deterministic Index B navigation after the final file exists.
+        with timer.measure("index_b_update"):
+            index_b_result = refresh_index_b(False)
+
         result["journal_path"] = str(journal_path)
         result["monthly_abstract_updated"] = abstract_result
+        result["index_b_updated"] = index_b_result
         if abstract_error:
             result["monthly_abstract_error"] = abstract_error
         result["updated_indices"] = updated_indices
         result["index_status"] = IndexStatus.COMPLETE
 
-        if abstract_success:
+        if abstract_success and index_b_result.get("success"):
             result["side_effects_status"] = SideEffectsStatus.COMPLETE
         else:
             result["side_effects_status"] = SideEffectsStatus.DEGRADED

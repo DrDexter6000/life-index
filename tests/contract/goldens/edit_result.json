@@ -10,5 +10,15 @@
   },
   "content_modified": true,
   "indices_updated": [],
+  "index_b_updated": {
+    "success": true,
+    "updated": true,
+    "artifact": "index-b",
+    "payload": {
+      "written_docs": [
+        ".life-index/index-b/manifest.json"
+      ]
+    }
+  },
   "error": null
 }
