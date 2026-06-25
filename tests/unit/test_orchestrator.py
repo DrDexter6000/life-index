@@ -1434,13 +1434,14 @@ def test_rewrite_query_resolves_entity_hints_via_core():
 
 
 def test_rewrite_query_degradation_no_entity_call():
-    """Degradation mode (no LLM) returns raw query without entity resolution."""
+    """Degradation mode (no LLM) returns SearchPlan scaffold without entity resolution."""
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
     orch = SmartSearchOrchestrator(llm_client=None)
     result = orch.rewrite_query("晴岚")
     assert result["rewritten_query"] == "晴岚"
-    assert result["intent_type"] == "simple"
+    assert result["intent_type"] == "recall"
+    assert result["search_plan"]["entity_hints_used"] == []
 
 
 def test_resolve_entity_hints_returns_bounded_fields():

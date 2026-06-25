@@ -188,6 +188,57 @@ class SmartSearchOrchestrator:
 
     # ── Stage 1: Query Rewriting ──────────────────────────────────────────
 
+    @staticmethod
+    def _bounded_unique_strings(values: list[str]) -> list[str]:
+        """Return bounded, de-duplicated non-empty strings preserving order."""
+
+        normalized: list[str] = []
+        for item in values:
+            value = item.strip()
+            if not value or value in normalized:
+                continue
+            normalized.append(value[:_MAX_SMART_SEARCH_SUB_QUERY_LENGTH])
+            if len(normalized) >= _MAX_SMART_SEARCH_SUB_QUERIES:
+                break
+        return normalized
+
+    def _deterministic_rewrite_query(self, query: str) -> dict[str, Any]:
+        """Build the no-LLM smart-search scaffold from the shared search plan.
+
+        This does not infer user meaning. It reuses the deterministic search
+        preprocessor's already-extracted keywords so natural-language queries
+        are not sent to keyword search only as a single literal sentence.
+        """
+
+        from .query_preprocessor import build_search_plan
+
+        plan = build_search_plan(query)
+        plan_dict = plan.to_dict()
+        keywords = [kw for kw in plan.keywords if isinstance(kw, str) and kw.strip()]
+        query_mode = plan_dict.get("query_mode")
+        base_query = plan.expanded_query or plan.normalized_query or plan.raw_query or query
+
+        if query_mode in {"natural_language", "mixed"} and keywords:
+            sub_queries = self._bounded_unique_strings(keywords)
+            semantic_fallback_query = base_query
+        else:
+            sub_queries = self._bounded_unique_strings([base_query])
+            semantic_fallback_query = None
+
+        if not sub_queries:
+            sub_queries = [query[:_MAX_SMART_SEARCH_SUB_QUERY_LENGTH]]
+
+        return {
+            "core_terms": " ".join(keywords) if keywords else base_query,
+            "expanded_terms": [],
+            "time_range": plan_dict.get("date_range"),
+            "intent_type": plan_dict.get("intent_type", "unknown"),
+            "rewritten_query": base_query,
+            "sub_queries": sub_queries,
+            "semantic_fallback_query": semantic_fallback_query,
+            "search_plan": plan_dict,
+        }
+
     def _resolve_entity_hints(self, query: str) -> list[dict[str, Any]]:
         """Resolve entity hints from the query using the deterministic entity graph.
 
@@ -229,15 +280,7 @@ class SmartSearchOrchestrator:
             }
         """
         if self._llm is None:
-            # Degradation: pass through unchanged
-            return {
-                "core_terms": query,
-                "expanded_terms": [],
-                "time_range": None,
-                "intent_type": "simple",
-                "rewritten_query": query,
-                "sub_queries": [query],
-            }
+            return self._deterministic_rewrite_query(query)
 
         try:
             start = time.time()
@@ -384,15 +427,53 @@ class SmartSearchOrchestrator:
     ) -> str:
         """Select a truthful QueryPlan strategy label."""
 
-        if self._llm is None:
-            return "keyword_only"
         if len(sub_queries) > 1:
             return "keyword_multi_pass"
-        if rewritten.get("intent_type") == "temporal" and search_kwargs:
+        if search_kwargs:
+            return "keyword_temporal"
+        if self._llm is None:
+            return "keyword_only"
+        if rewritten.get("intent_type") == "temporal":
             return "keyword_temporal"
         if self._normalize_expanded_terms(rewritten):
             return "keyword_expanded"
         return "keyword_rewritten"
+
+    @staticmethod
+    def _strategy_with_semantic_fallback(strategy: str, fallback_used: bool) -> str:
+        """Make QueryPlan strategy reflect an actually used semantic fallback."""
+
+        if not fallback_used:
+            return strategy
+        if strategy == "keyword_multi_pass":
+            return "keyword_multi_pass_with_semantic_fallback"
+        return "keyword_with_semantic_fallback"
+
+    @staticmethod
+    def _should_try_raw_semantic_fallback(
+        result: dict[str, Any],
+        *,
+        semantic_fallback_query: str | None,
+        sub_queries: list[str],
+    ) -> bool:
+        """Return true when a raw natural-language semantic fallback should run.
+
+        SearchPlan keyword extraction is used for the keyword leg. Some valid
+        natural-language questions reduce to a short keyword that the semantic
+        noise gate intentionally bypasses. In that case, keep the extracted
+        keyword probe, then retry with the raw natural-language query so the
+        existing deterministic semantic fallback can operate on enough context.
+        """
+
+        if not semantic_fallback_query:
+            return False
+        if semantic_fallback_query in sub_queries:
+            return False
+        if result.get("semantic_fallback_used"):
+            return False
+        if result.get("merged_results"):
+            return False
+        return int(result.get("total_available", 0) or 0) == 0
 
     def execute_search(self, rewritten: dict[str, Any]) -> dict[str, Any]:
         """Execute search using deterministic primitives.
@@ -402,10 +483,27 @@ class SmartSearchOrchestrator:
         search_fn = _get_search_fn()
         sub_queries = self._normalize_sub_queries(rewritten)
         search_kwargs = self._resolve_time_range(rewritten)
+        search_kwargs_with_semantic: dict[str, Any] = {
+            **search_kwargs,
+            "semantic": True,
+            "semantic_policy": "fallback",
+        }
+        semantic_fallback_query = rewritten.get("semantic_fallback_query")
         strategy = self._select_search_strategy(rewritten, sub_queries, search_kwargs)
 
         if len(sub_queries) == 1:
-            result = search_fn(query=sub_queries[0], **search_kwargs)
+            result = search_fn(query=sub_queries[0], **search_kwargs_with_semantic)
+            semantic_fallback_query_used = None
+            if self._should_try_raw_semantic_fallback(
+                result,
+                semantic_fallback_query=semantic_fallback_query,
+                sub_queries=sub_queries,
+            ):
+                semantic_fallback_query_used = semantic_fallback_query
+                result = search_fn(
+                    query=semantic_fallback_query,
+                    **search_kwargs_with_semantic,
+                )
 
             # Apply data minimization: trim to max candidates
             merged = result.get("merged_results", [])
@@ -419,6 +517,7 @@ class SmartSearchOrchestrator:
                 "sub_queries": sub_queries,
                 "strategy": strategy,
                 "semantic_fallback_used": bool(result.get("semantic_fallback_used", False)),
+                "semantic_fallback_query": semantic_fallback_query_used,
             }
 
         raw_query_results: list[dict[str, Any]] = []
@@ -426,12 +525,15 @@ class SmartSearchOrchestrator:
         total_available = 0
         total_time_ms = 0.0
         semantic_fallback_used = False
+        semantic_fallback_query_used = None
+        warnings: list[str] = []
 
         for sub_query in sub_queries:
-            result = search_fn(query=sub_query, **search_kwargs)
+            result = search_fn(query=sub_query, **search_kwargs_with_semantic)
             raw_query_results.append({"query": sub_query, "result": result})
             total_available += int(result.get("total_available", 0) or 0)
             total_time_ms += float(result.get("performance", {}).get("total_time_ms", 0) or 0)
+            warnings.extend(str(w) for w in result.get("warnings", []) if w)
             semantic_fallback_used = semantic_fallback_used or bool(
                 result.get("semantic_fallback_used", False)
             )
@@ -457,6 +559,40 @@ class SmartSearchOrchestrator:
                             existing[merge_field] = candidate[merge_field]
                     existing["rrf_score"] = candidate_score
 
+        if not fused_by_key and not semantic_fallback_used:
+            probe_result = {
+                "merged_results": [],
+                "total_available": 0,
+                "semantic_fallback_used": False,
+            }
+            if self._should_try_raw_semantic_fallback(
+                probe_result,
+                semantic_fallback_query=semantic_fallback_query,
+                sub_queries=sub_queries,
+            ):
+                fallback_result = search_fn(
+                    query=semantic_fallback_query,
+                    **search_kwargs_with_semantic,
+                )
+                semantic_fallback_query_used = semantic_fallback_query
+                raw_query_results.append(
+                    {"query": semantic_fallback_query, "result": fallback_result}
+                )
+                total_available += int(fallback_result.get("total_available", 0) or 0)
+                total_time_ms += float(
+                    fallback_result.get("performance", {}).get("total_time_ms", 0) or 0
+                )
+                warnings.extend(str(w) for w in fallback_result.get("warnings", []) if w)
+                semantic_fallback_used = bool(fallback_result.get("semantic_fallback_used", False))
+
+                for item in fallback_result.get("merged_results", []):
+                    key = _result_identity(item)
+                    if not key:
+                        continue
+                    candidate = dict(item)
+                    candidate["source_queries"] = [semantic_fallback_query]
+                    fused_by_key[key] = candidate
+
         merged = sorted(
             fused_by_key.values(),
             key=lambda item: float(item.get("rrf_score", 0) or 0),
@@ -465,11 +601,23 @@ class SmartSearchOrchestrator:
 
         raw_results = {
             "success": True,
+            "query_params": {
+                "query": rewritten.get("rewritten_query") or " ".join(sub_queries),
+                "semantic": True,
+            },
             "merged_results": merged,
+            "semantic_results": [],
             "total_found": len(merged),
             "total_available": total_available,
+            "has_more": False,
+            "no_confident_match": len(merged) == 0,
             "performance": {"total_time_ms": round(total_time_ms, 2)},
+            "warnings": warnings,
+            "search_plan": rewritten.get("search_plan"),
+            "semantic_policy": "fallback",
+            "semantic_effective_policy": "fallback" if semantic_fallback_used else "off",
             "semantic_fallback_used": semantic_fallback_used,
+            "semantic_fallback_query": semantic_fallback_query_used,
             "multi_query_results": raw_query_results,
         }
 
@@ -480,6 +628,7 @@ class SmartSearchOrchestrator:
             "sub_queries": sub_queries,
             "strategy": strategy,
             "semantic_fallback_used": semantic_fallback_used,
+            "semantic_fallback_query": semantic_fallback_query_used,
         }
 
     # ── Stage 3: Post-Filter + Summarize ─────────────────────────────────
@@ -765,17 +914,19 @@ class SmartSearchOrchestrator:
         result_dict["answer_scaffold"] = _build_answer_scaffold(
             query, result_dict.get("filtered_results", [])
         )
-        result_dict["query_plan"] = QueryPlan(
+        query_plan = QueryPlan(
             raw_query=query,
             expanded_query=rewritten.get("rewritten_query"),
             sub_queries=search_result.get("sub_queries", [query]),
-            strategy=(
-                "keyword_with_semantic_fallback"
-                if semantic_fallback_used and search_result.get("strategy") == "keyword_only"
-                else search_result.get("strategy", "keyword_only")
+            strategy=self._strategy_with_semantic_fallback(
+                search_result.get("strategy", "keyword_only"),
+                semantic_fallback_used,
             ),
             fallback_decision=semantic_fallback_used,
         ).to_dict()
+        if search_result.get("semantic_fallback_query"):
+            query_plan["semantic_fallback_query"] = search_result["semantic_fallback_query"]
+        result_dict["query_plan"] = query_plan
         if answer_dict is not None:
             result_dict["answer"] = {
                 "answer_text": answer_dict["answer_text"],
