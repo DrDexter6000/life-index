@@ -221,7 +221,8 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
   "expanded_query": "我和女儿之间有哪些珍贵的回忆？",
   "sub_queries": [],
   "strategy": "keyword_only",
-  "fallback_decision": false
+  "fallback_decision": false,
+  "semantic_fallback_query": null
 }
 ```
 
@@ -233,6 +234,7 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 | `sub_queries` | string[] | 分解后的子查询（空列表表示未分解） |
 | `strategy` | string | 信号组合策略，如 `"keyword_only"`、`"keyword_with_semantic_fallback"`、`"keyword_and_semantic"` |
 | `fallback_decision` | bool | 是否选择了降级路径 |
+| `semantic_fallback_query` | string \| null | 可选字段；当自然语言关键词 probe 过短或无命中时，记录用于 semantic fallback 的原查询 |
 
 #### SearchPlan
 
@@ -2220,6 +2222,16 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 - `query_plan.strategy`: `keyword_only` for default no-fallback search,
   `keyword_with_semantic_fallback` when fallback was actually used,
   deterministic strategy names may be added for bounded tool-side routing.
+- In deterministic scaffold mode, natural-language queries reuse the shared
+  `SearchPlan` keywords as bounded `query_plan.sub_queries` instead of sending
+  only the whole sentence to keyword search. Each sub-query calls `search` with
+  `semantic_policy=fallback`, so semantic retrieval is used only when the
+  keyword leg returns zero results.
+- If the extracted keyword probe returns zero and semantic fallback is bypassed
+  by deterministic noise gating, `query_plan.semantic_fallback_query` records
+  the original natural-language query used for a second `search` fallback call.
+  This keeps keyword probing decomposed while giving the semantic vector leg
+  enough context to retrieve evidence.
 - `agent_unavailable`: diagnostic signal; UI should infer degraded state from `answer`/`summary` presence.
 - `performance`: non-stable; sub-fields may expand. Consumers should tolerate unknown keys.
 - `answer.confidence`: trust-gate calibrated (not LLM self-assessment). Values: `high` / `medium` / `low`.

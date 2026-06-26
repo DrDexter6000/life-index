@@ -412,7 +412,12 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
          最终结果
 ```
 
-对于复杂自然语言查询，`smart-search` 返回确定性检索 scaffold；查询拆解、判断、过滤与总结由宿主 agent 按本 Skill 的 playbook 完成，详见 [ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
+对于复杂自然语言查询，`smart-search` 返回确定性检索 scaffold；它会复用 SearchPlan
+已抽取的关键词作为 bounded 子查询，并在关键词零结果时通过现有 search 语义
+fallback 补召回；当唯一关键词过短而被 semantic noise gate 跳过时，`query_plan`
+会暴露原句 `semantic_fallback_query`，用原自然语言问题触发同一个 deterministic
+semantic fallback。判断、过滤与总结仍由宿主 agent 按本 Skill 的 playbook 完成，详见
+[ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
 
 **检索路径选择（不要使用 `recall` 作为新入口）**:
 
@@ -441,7 +446,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 1. 先判定问题形态，不把 `smart-search` 当作所有查询的强制首调。
 2. 结构化问题（计数、枚举、facet、跨 facet、趋势）优先按上方 Grounded Query Skill Playbook 走确定性路径：`index-tree ensure` -> `discover` -> `navigate`，或直接用 `aggregate` / `trajectory` 取得可核数据。
 3. 只有开放回忆、关键词 / 实体加权发现、或 facet 菜单无法提供有效候选时，才调用 `life-index smart-search --query "..." --include-evidence` 或 `life-index search`。
-4. 使用 `smart-search` 时，消费返回的 `agent_instructions`、`answer_scaffold`、`filtered_results` 与 `evidence_pack`；只引用返回或已读取的来源，不得自行补造证据。
+4. 使用 `smart-search` 时，检查 `query_plan.sub_queries`、`query_plan.strategy`、`query_plan.semantic_fallback_query`（如有）与 `semantic_fallback_used`，消费返回的 `agent_instructions`、`answer_scaffold`、`filtered_results` 与 `evidence_pack`；只引用返回或已读取的来源，不得自行补造证据。
 5. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
 6. 只有需要 CLI 产出确定性答案 scaffold 字段时，才叠加 `--synthesize`。
 

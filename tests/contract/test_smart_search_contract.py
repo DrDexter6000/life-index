@@ -106,6 +106,39 @@ def _mock_multi_query_search(query="", **kwargs):
     }
 
 
+def _mock_recording_search(calls):
+    """Build a search mock that records query/kwargs for contract assertions."""
+
+    def _search(query="", **kwargs):
+        calls.append({"query": query, "kwargs": kwargs})
+        return _mock_multi_query_search(query=query, **kwargs)
+
+    return _search
+
+
+def _mock_short_keyword_zero_then_sentence_fallback(calls):
+    """Record calls and simulate short-keyword semantic bypass then raw-query fallback."""
+
+    def _search(query="", **kwargs):
+        calls.append({"query": query, "kwargs": kwargs})
+        if query == "睡得":
+            return {
+                "success": True,
+                "merged_results": [],
+                "total_found": 0,
+                "total_available": 0,
+                "performance": {"total_time_ms": 10.0},
+                "semantic_fallback_used": False,
+                "warnings": ["noise_gate: semantic bypassed for '睡得' (too_short)"],
+            }
+
+        result = _mock_hierarchical_search(query=query, **kwargs)
+        result["semantic_fallback_used"] = True
+        return result
+
+    return _search
+
+
 class MultiQueryLLM:
     def chat(self, messages, *, max_tokens=2000):
         text = messages[0]["content"]
@@ -238,6 +271,63 @@ class TestDefaultOutputShape:
         result = orch.search("test query")
         assert result["semantic_fallback_used"] is True
 
+    def test_deterministic_scaffold_opts_into_search_semantic_fallback(self):
+        calls = []
+        with patch(
+            "tools.search_journals.orchestrator._get_search_fn",
+            return_value=_mock_recording_search(calls),
+        ):
+            orch = SmartSearchOrchestrator(llm_client=None)
+            result = orch.search("投资")
+
+        assert calls
+        assert calls[0]["query"] == "投资"
+        assert calls[0]["kwargs"]["semantic"] is True
+        assert calls[0]["kwargs"]["semantic_policy"] == "fallback"
+        assert result["query_plan"]["strategy"] == "keyword_only"
+
+    def test_natural_language_query_uses_extracted_keyword_sub_queries(self):
+        calls = []
+        with patch(
+            "tools.search_journals.orchestrator._get_search_fn",
+            return_value=_mock_recording_search(calls),
+        ):
+            orch = SmartSearchOrchestrator(llm_client=None)
+            result = orch.search("晚睡熬夜作息")
+
+        assert [call["query"] for call in calls] == ["晚睡", "熬夜", "作息"]
+        assert result["query_plan"]["sub_queries"] == ["晚睡", "熬夜", "作息"]
+        assert result["query_plan"]["strategy"] == "keyword_multi_pass"
+
+    def test_multi_query_scaffold_keeps_evidence_pack_shape(self):
+        calls = []
+        with patch(
+            "tools.search_journals.orchestrator._get_search_fn",
+            return_value=_mock_recording_search(calls),
+        ):
+            orch = SmartSearchOrchestrator(llm_client=None)
+            result = orch.search("晚睡熬夜作息", include_evidence=True)
+
+        assert "evidence_pack" in result
+        assert result["evidence_pack"]["query_context"]["query"] == "晚睡熬夜作息"
+        assert len(result["evidence_pack"]["items"]) == 3
+
+    def test_short_keyword_natural_language_keeps_raw_query_for_semantic_fallback(self):
+        calls = []
+        with patch(
+            "tools.search_journals.orchestrator._get_search_fn",
+            return_value=_mock_short_keyword_zero_then_sentence_fallback(calls),
+        ):
+            orch = SmartSearchOrchestrator(llm_client=None)
+            result = orch.search("最近睡得怎么样")
+
+        assert [call["query"] for call in calls] == ["睡得", "最近睡得怎么样"]
+        assert result["filtered_results"]
+        assert result["semantic_fallback_used"] is True
+        assert result["query_plan"]["sub_queries"] == ["睡得"]
+        assert result["query_plan"]["semantic_fallback_query"] == "最近睡得怎么样"
+        assert result["query_plan"]["strategy"] == "keyword_with_semantic_fallback"
+
     @patch(
         "tools.search_journals.orchestrator._get_search_fn",
         return_value=_mock_hierarchical_search,
@@ -324,7 +414,14 @@ class TestDefaultOutputShape:
             orch = SmartSearchOrchestrator(llm_client=TemporalRangeLLM())
             result = orch.search("2026年3月我和女儿有哪些回忆")
 
-        assert captured_kwargs == [{"date_from": "2026-03-01", "date_to": "2026-03-31"}]
+        assert captured_kwargs == [
+            {
+                "date_from": "2026-03-01",
+                "date_to": "2026-03-31",
+                "semantic": True,
+                "semantic_policy": "fallback",
+            }
+        ]
         assert result["query_plan"]["strategy"] == "keyword_temporal"
         assert result["query_plan"]["sub_queries"] == ["女儿 回忆"]
 
