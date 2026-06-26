@@ -46,6 +46,29 @@ def _iter_journal_months(year: int | None = None) -> Iterator[tuple[int, int]]:
                 yield year_value, month
 
 
+def _refresh_index_b_result(*, dry_run: bool) -> dict:
+    """Refresh Index B alongside legacy generated indexes."""
+    try:
+        from ..index_tree.materialize import build_materialize_payload
+
+        payload = build_materialize_payload(dry_run=dry_run, incremental=True)
+        return {
+            "type": "index-b",
+            "success": True,
+            "updated": not dry_run,
+            "message": "Index B navigation refreshed",
+            "index_b": payload,
+        }
+    except Exception as exc:
+        return {
+            "type": "index-b",
+            "success": False,
+            "updated": False,
+            "message": f"Index B navigation refresh failed: {exc}",
+            "error": str(exc),
+        }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Life Index 索引生成工具（月度/年度）",
@@ -100,6 +123,7 @@ Examples:
     if args.rebuild:
         logger.info("重建全部索引树")
         results.append(rebuild_index_tree(dry_run=args.dry_run))
+        results.append(_refresh_index_b_result(dry_run=args.dry_run))
 
     # 生成月度摘要
     if args.month:
@@ -130,6 +154,7 @@ Examples:
             message = f"{args.year}年没有可生成的日志月份" if args.year else "没有可生成的日志月份"
             logger.warning(message)
             results.append({"type": "monthly", "year": args.year, "message": message})
+        results.append(_refresh_index_b_result(dry_run=args.dry_run))
 
     # 输出结果
     if args.json:

@@ -188,6 +188,38 @@ def update_index(year: int, month: int, dry_run: bool = False) -> Dict[str, Any]
     return result
 
 
+def refresh_index_b(dry_run: bool = False) -> Dict[str, Any]:
+    """Refresh deterministic Index B navigation docs after journal changes.
+
+    Index B is rebuildable derived data. Refresh failures must be visible but
+    non-blocking for write/edit flows; consumers can still fall back to journal
+    pointers through index-tree ensure.
+    """
+
+    try:
+        from ..index_tree.materialize import build_materialize_payload
+
+        payload = build_materialize_payload(dry_run=dry_run, incremental=True)
+        return {
+            "success": True,
+            "updated": not dry_run,
+            "artifact": "index-b",
+            "payload": payload,
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "updated": False,
+            "artifact": "index-b",
+            **create_error_response(
+                ErrorCode.INDEX_BUILD_FAILED,
+                f"Index B refresh failed: {exc}",
+                {},
+                "Index B refresh is non-blocking; run life-index index-tree ensure to retry",
+            ),
+        }
+
+
 # Backward-compatible alias
 update_monthly_abstract = update_index
 

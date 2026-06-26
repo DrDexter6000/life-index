@@ -7,7 +7,6 @@ import pytest
 from tools.edit_journal import edit_journal
 from tools.edit_journal.__main__ import main
 
-
 pytestmark = pytest.mark.critical
 
 
@@ -31,6 +30,33 @@ def test_edit_journal_writes_frontmatter_and_body_with_triple_newline(
     written = journal_path.read_text(encoding="utf-8")
     assert 'title: "新标题"' in written
     assert "---\n\n\n新正文" in written
+
+
+def test_edit_journal_refreshes_index_b_after_write(tmp_path: Path) -> None:
+    journal_path = tmp_path / "life-index_2026-03-25_001.md"
+    journal_path.write_text(
+        '---\ntitle: "Original"\ndate: 2026-03-25\n---\n\n\nBody\n',
+        encoding="utf-8",
+    )
+
+    refresh_result = {
+        "success": True,
+        "updated": True,
+        "artifact": "index-b",
+        "payload": {"written_docs": [".life-index/index-b/manifest.json"]},
+    }
+    with (
+        patch("tools.edit_journal.mark_pending", return_value=True),
+        patch("tools.edit_journal.refresh_index_b", return_value=refresh_result) as refresh,
+    ):
+        result = edit_journal(
+            journal_path=journal_path,
+            frontmatter_updates={"title": "Updated"},
+        )
+
+    assert result["success"] is True
+    assert result["index_b_updated"] == refresh_result
+    refresh.assert_called_once_with(False)
 
 
 def test_edit_journal_normalizes_links_string_to_list(tmp_path: Path) -> None:
@@ -101,21 +127,15 @@ def test_edit_journal_normalizes_related_entries_string_to_list(tmp_path: Path) 
     with patch("tools.edit_journal.mark_pending", return_value=True):
         result = edit_journal(
             journal_path=journal_path,
-            frontmatter_updates={
-                "related_entries": "Journals/2026/03/a.md, Journals/2026/03/b.md"
-            },
+            frontmatter_updates={"related_entries": "Journals/2026/03/a.md, Journals/2026/03/b.md"},
         )
 
     assert result["success"] is True
     written = journal_path.read_text(encoding="utf-8")
-    assert (
-        'related_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]' in written
-    )
+    assert 'related_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]' in written
 
 
-def test_edit_journal_cli_parses_set_related_entries(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_edit_journal_cli_parses_set_related_entries(monkeypatch, tmp_path: Path) -> None:
     captured: dict = {}
 
     def fake_edit_journal(**kwargs):
@@ -155,7 +175,11 @@ def test_edit_journal_cli_parses_set_related_entries(
 def test_edit_journal_add_related_entry(tmp_path: Path) -> None:
     journal_path = tmp_path / "life-index_2026-03-25_001.md"
     journal_path.write_text(
-        '---\ntitle: "原标题"\ndate: 2026-03-25\nrelated_entries: ["Journals/2026/03/a.md"]\n---\n\n\n原正文\n',
+        "---\n"
+        'title: "原标题"\n'
+        "date: 2026-03-25\n"
+        'related_entries: ["Journals/2026/03/a.md"]\n'
+        "---\n\n\n原正文\n",
         encoding="utf-8",
     )
 
@@ -167,15 +191,17 @@ def test_edit_journal_add_related_entry(tmp_path: Path) -> None:
 
     assert result["success"] is True
     written = journal_path.read_text(encoding="utf-8")
-    assert (
-        'related_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]' in written
-    )
+    assert 'related_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]' in written
 
 
 def test_edit_journal_remove_related_entry(tmp_path: Path) -> None:
     journal_path = tmp_path / "life-index_2026-03-25_001.md"
     journal_path.write_text(
-        '---\ntitle: "原标题"\ndate: 2026-03-25\nrelated_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]\n---\n\n\n原正文\n',
+        "---\n"
+        'title: "原标题"\n'
+        "date: 2026-03-25\n"
+        'related_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]\n'
+        "---\n\n\n原正文\n",
         encoding="utf-8",
     )
 
@@ -194,7 +220,11 @@ def test_edit_journal_updates_relation_table_incrementally(tmp_path: Path) -> No
     journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
     journal_path.parent.mkdir(parents=True, exist_ok=True)
     journal_path.write_text(
-        '---\ntitle: "原标题"\ndate: 2026-03-25\nrelated_entries: ["Journals/2026/03/a.md"]\n---\n\n\n原正文\n',
+        "---\n"
+        'title: "原标题"\n'
+        "date: 2026-03-25\n"
+        'related_entries: ["Journals/2026/03/a.md"]\n'
+        "---\n\n\n原正文\n",
         encoding="utf-8",
     )
 
@@ -275,9 +305,7 @@ def test_edit_journal_cli_parses_add_related_entry(monkeypatch, tmp_path: Path) 
     ]
 
 
-def test_edit_journal_cli_parses_remove_related_entry(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_edit_journal_cli_parses_remove_related_entry(monkeypatch, tmp_path: Path) -> None:
     captured: dict = {}
 
     def fake_edit_journal(**kwargs):
@@ -308,6 +336,4 @@ def test_edit_journal_cli_parses_remove_related_entry(
         main()
 
     assert exc_info.value.code == 0
-    assert captured["frontmatter_updates"]["remove_related_entries"] == [
-        "Journals/2026/03/a.md"
-    ]
+    assert captured["frontmatter_updates"]["remove_related_entries"] == ["Journals/2026/03/a.md"]

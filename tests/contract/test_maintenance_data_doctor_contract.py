@@ -476,6 +476,7 @@ class TestMaintenanceRepairContract:
             if not path.endswith("index_2026.md")
             and not path.endswith("index_2026-06.md")
             and path != "INDEX.md"
+            and not path.startswith(".life-index/index-b/")
         }
 
         repair = _parse_json(
@@ -487,6 +488,10 @@ class TestMaintenanceRepairContract:
         assert repair["dry_run"] is False
         assert repair["applied"] is True
         assert set(repair["changed_paths"]) == {
+            ".life-index/index-b/INDEX.md",
+            ".life-index/index-b/Journals/2026/06/index.md",
+            ".life-index/index-b/Journals/2026/index.md",
+            ".life-index/index-b/manifest.json",
             "INDEX.md",
             "Journals/2026/index_2026.md",
             "Journals/2026/06/index_2026-06.md",

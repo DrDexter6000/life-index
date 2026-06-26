@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 from tools.edit_journal import edit_journal
 
-
 REQUIRED_EDIT_FIELDS = {
     "success",
     "journal_path",
@@ -15,14 +14,22 @@ REQUIRED_EDIT_FIELDS = {
     "changes",
     "content_modified",
     "indices_updated",
+    "index_b_updated",
     "error",
 }
 
 
 def _load_golden(name: str) -> dict:
-    return json.loads(
-        (Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8")
-    )
+    return json.loads((Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8"))
+
+
+def _index_b_refresh_fixture() -> dict:
+    return {
+        "success": True,
+        "updated": True,
+        "artifact": "index-b",
+        "payload": {"written_docs": [".life-index/index-b/manifest.json"]},
+    }
 
 
 def test_edit_response_has_all_required_fields(tmp_path: Path) -> None:
@@ -32,7 +39,10 @@ def test_edit_response_has_all_required_fields(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("tools.edit_journal.mark_pending"):
+    with (
+        patch("tools.edit_journal.mark_pending"),
+        patch("tools.edit_journal.refresh_index_b", return_value=_index_b_refresh_fixture()),
+    ):
         result = edit_journal(
             journal_path=journal_path,
             frontmatter_updates={"title": "Updated"},
@@ -52,6 +62,7 @@ def test_edit_result_matches_golden_snapshot(tmp_path: Path) -> None:
     with (
         patch("tools.edit_journal.mark_pending"),
         patch("tools.edit_journal.save_revision", return_value="REVISION_PATH"),
+        patch("tools.edit_journal.refresh_index_b", return_value=_index_b_refresh_fixture()),
     ):
         result = edit_journal(
             journal_path=journal_path,
