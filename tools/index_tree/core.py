@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timezone
+import re
 from typing import Any, Callable
 
 from tools.generate_index.builder import NAVIGABLE_SIGNALS, build_index_tree_model
@@ -12,6 +13,8 @@ from tools.entity.neighbors import MAX_HOPS_LIMIT, build_entity_neighbors_payloa
 from tools.lib.entity_graph import load_entity_graph
 from tools.lib.entity_schema import EntityGraphValidationError
 from tools.lib.facet_canonicalization import FacetCanonicalizer, load_facet_canonicalizer
+from tools.lib.chinese_tokenizer import segment_for_fts
+from tools.lib.frontmatter import parse_frontmatter
 from tools.lib.paths import get_user_data_dir
 from tools.index_tree.materialize import (
     FACETS,
@@ -24,6 +27,54 @@ from tools.index_tree.materialize import (
 )
 
 SCHEMA_VERSION = "m31.index_tree.v1"
+CONTENT_TERM_FACET = "content_term"
+CONTENT_TERM_MAX_VALUES = 5000
+CONTENT_TERM_STOPWORDS = {
+    "一个",
+    "一些",
+    "这个",
+    "那个",
+    "今天",
+    "最近",
+    "什么",
+    "哪些",
+    "怎么",
+    "怎么样",
+    "我们",
+    "自己",
+    "已经",
+    "就是",
+    "不是",
+    "没有",
+    "还有",
+    "因为",
+    "所以",
+    "如果",
+    "但是",
+    "以及",
+    "通过",
+    "进行",
+    "起来",
+    "时候",
+    "可以",
+    "需要",
+    "应该",
+    "不会",
+    "不能",
+    "为了",
+    "关于",
+    "成为",
+    "更加",
+    "非常",
+    "可能",
+    "还是",
+    "现在",
+    "这种",
+    "这次",
+    "第一",
+    "第二",
+}
+_CONTENT_TERM_STRIP_RE = re.compile(r"^[\W_]+|[\W_]+$", re.UNICODE)
 
 
 def _generated_at() -> str:
@@ -225,8 +276,16 @@ def _facet_specs_by_name() -> dict[str, Any]:
     return {spec.name: spec for spec in FACETS}
 
 
+def _supported_discover_facets() -> set[str]:
+    return set(_facet_specs_by_name()) | {CONTENT_TERM_FACET}
+
+
+def _supported_navigation_facets() -> set[str]:
+    return set(_facet_specs_by_name()) | {CONTENT_TERM_FACET}
+
+
 def _normalize_facets(facets: list[str] | None) -> list[str]:
-    facet_specs = _facet_specs_by_name()
+    facet_specs = _supported_discover_facets()
     if not facets:
         return [spec.name for spec in FACETS]
     normalized: list[str] = []
@@ -242,9 +301,91 @@ def _normalize_facets(facets: list[str] | None) -> list[str]:
     return normalized
 
 
+def _content_text(entry: Any) -> str:
+    path = get_user_data_dir() / entry.rel_path
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return str(entry.title or "")
+
+    body = text
+    if text.startswith("---"):
+        try:
+            _metadata, parsed_body = parse_frontmatter(text)
+            body = parsed_body
+        except (TypeError, ValueError):
+            body = text
+    return f"{entry.title}\n{body}"
+
+
+def _is_content_term_allowed(term: str) -> bool:
+    if not term:
+        return False
+    if term in CONTENT_TERM_STOPWORDS:
+        return False
+    if term.isdecimal():
+        return False
+    if len(term) == 1 and not term.isascii():
+        return False
+    if term.isascii() and len(term) < 2:
+        return False
+    return True
+
+
+def _content_terms(entry: Any) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in segment_for_fts(_content_text(entry)).split():
+        term = _CONTENT_TERM_STRIP_RE.sub("", raw).strip()
+        key = term.casefold()
+        if _is_content_term_allowed(term) and key not in seen:
+            seen.add(key)
+            terms.append(term)
+    return terms
+
+
+def _content_term_menu(entries: list[Any]) -> dict[str, Any]:
+    counts: dict[str, int] = defaultdict(int)
+    values_by_key: dict[str, str] = {}
+    pointers: dict[str, list[str]] = defaultdict(list)
+    for entry in entries:
+        for term in _content_terms(entry):
+            key = term.casefold()
+            values_by_key.setdefault(key, term)
+            counts[key] += 1
+            if len(pointers[key]) < 5:
+                pointers[key].append(entry.rel_path)
+
+    ordered = sorted(
+        counts,
+        key=lambda key: (-counts[key], values_by_key[key]),
+    )
+    values: list[dict[str, Any]] = [
+        {
+            "value": values_by_key[key],
+            "count": counts[key],
+            "sample_entry_pointers": pointers[key],
+        }
+        for key in ordered[:CONTENT_TERM_MAX_VALUES]
+    ]
+    return {
+        "facet": CONTENT_TERM_FACET,
+        "value_count": len(ordered),
+        "values": values,
+        "truncated": len(ordered) > len(values),
+        "max_values": CONTENT_TERM_MAX_VALUES,
+        "selection_hint": (
+            "Use content_term values as exact search terms or content_term navigation "
+            "filters; they are corpus-observed terms, not synonyms."
+        ),
+    }
+
+
 def _facet_menu(
     entries: list[Any], facet: str, canonicalizer: FacetCanonicalizer
 ) -> dict[str, Any]:
+    if facet == CONTENT_TERM_FACET:
+        return _content_term_menu(entries)
     spec = _facet_specs_by_name()[facet]
     counts: dict[str, int] = defaultdict(int)
     pointers: dict[str, list[str]] = defaultdict(list)
@@ -368,7 +509,7 @@ def _normalize_values(values: Any) -> list[str]:
 
 
 def _validate_navigation_operations(operations: list[Any]) -> str | None:
-    facet_specs = _facet_specs_by_name()
+    facet_specs = _supported_navigation_facets()
     for operation in operations:
         if not isinstance(operation, dict):
             return "operation must be an object"
@@ -415,12 +556,16 @@ def _entry_matches_operation(
 ) -> bool:
     facet_specs = _facet_specs_by_name()
     facet = str(operation["facet"])
-    spec = facet_specs[facet]
-    wanted = {
-        canonicalizer.canonicalize(facet, value).value.casefold()
-        for value in _normalize_values(operation["values"])
-    }
-    actual = {value.casefold() for value in _facet_values(entry, spec, canonicalizer)}
+    if facet == CONTENT_TERM_FACET:
+        wanted = {value.casefold() for value in _normalize_values(operation["values"])}
+        actual = {value.casefold() for value in _content_terms(entry)}
+    else:
+        spec = facet_specs[facet]
+        wanted = {
+            canonicalizer.canonicalize(facet, value).value.casefold()
+            for value in _normalize_values(operation["values"])
+        }
+        actual = {value.casefold() for value in _facet_values(entry, spec, canonicalizer)}
     if operation.get("match", "any") == "all":
         return wanted.issubset(actual)
     return bool(actual & wanted)
@@ -433,16 +578,20 @@ def _matched_facets(
     facets: dict[str, list[str]] = {}
     for operation in operations:
         facet = str(operation["facet"])
-        spec = facet_specs[facet]
-        wanted = {
-            canonicalizer.canonicalize(facet, value).value.casefold()
-            for value in _normalize_values(operation["values"])
-        }
-        matched = [
-            value
-            for value in _facet_values(entry, spec, canonicalizer)
-            if value.casefold() in wanted
-        ]
+        if facet == CONTENT_TERM_FACET:
+            wanted = {value.casefold() for value in _normalize_values(operation["values"])}
+            matched = [value for value in _content_terms(entry) if value.casefold() in wanted]
+        else:
+            spec = facet_specs[facet]
+            wanted = {
+                canonicalizer.canonicalize(facet, value).value.casefold()
+                for value in _normalize_values(operation["values"])
+            }
+            matched = [
+                value
+                for value in _facet_values(entry, spec, canonicalizer)
+                if value.casefold() in wanted
+            ]
         if matched:
             facets[facet] = matched
     return facets

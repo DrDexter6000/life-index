@@ -100,7 +100,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--facet",
         action="append",
         default=[],
-        help="Facet to include in the menu. Repeat to include multiple facets.",
+        help=(
+            "Facet to include in the menu. Repeat to include multiple facets. "
+            "Use content_term explicitly for observed journal-body terms."
+        ),
     )
     discover.add_argument("--json", action="store_true", help="Emit JSON output")
 
@@ -117,7 +120,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="FACET=VALUE",
         help=(
             "Explicit facet filter. Repeat for intersections. Use VALUE1||VALUE2 "
-            "for multiple allowed values in one facet."
+            "for multiple allowed values in one facet. Use content_term=VALUE only "
+            "with observed journal-body terms."
         ),
     )
     navigate.add_argument(
