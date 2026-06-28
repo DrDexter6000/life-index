@@ -11,6 +11,17 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+PUBLIC_GUI_REPO_TERM = "life-index" + "-gui"
+PUBLIC_GUI_REPO_URL = "github.com/DrDexter6000/" + PUBLIC_GUI_REPO_TERM
+_PUBLIC_GUI_URL_RE = re.compile(re.escape(PUBLIC_GUI_REPO_URL) + r"(?!-workshop)")
+_PUBLIC_GUI_MARKDOWN_RE = re.compile(
+    r"\[`?"
+    + re.escape(PUBLIC_GUI_REPO_TERM)
+    + r"`?\]\(https://"
+    + re.escape(PUBLIC_GUI_REPO_URL)
+    + r"(?!-workshop)[^)\s]*\)"
+)
+
 
 def _forbidden_terms() -> tuple[str, ...]:
     lower_legacy_orchestrator = "ma" + "estro"
@@ -18,7 +29,8 @@ def _forbidden_terms() -> tuple[str, ...]:
         "." + "agent" + "-reports",
         "." + "dev" + "/",
         "life-index" + "_gui",
-        "life-index" + "-gui",
+        PUBLIC_GUI_REPO_TERM,
+        "host" + "-bridge" + "-sandbox",
         "/" + "home" + "/" + "dexter",
         "Los" + "ter",
         lower_legacy_orchestrator,
@@ -57,6 +69,28 @@ def _path_from_diff_header(line: str) -> str:
     return raw
 
 
+def _public_gui_allowed_spans(text: str) -> tuple[tuple[int, int], ...]:
+    spans: list[tuple[int, int]] = []
+    for pattern in (_PUBLIC_GUI_MARKDOWN_RE, _PUBLIC_GUI_URL_RE):
+        spans.extend(match.span() for match in pattern.finditer(text))
+    return tuple(spans)
+
+
+def _is_within_spans(start: int, end: int, spans: tuple[tuple[int, int], ...]) -> bool:
+    return any(span_start <= start and end <= span_end for span_start, span_end in spans)
+
+
+def _has_forbidden_term(term: str, text: str) -> bool:
+    if term != PUBLIC_GUI_REPO_TERM:
+        return term in text
+
+    allowed_spans = _public_gui_allowed_spans(text)
+    for match in re.finditer(re.escape(term), text):
+        if not _is_within_spans(match.start(), match.end(), allowed_spans):
+            return True
+    return False
+
+
 def scan_diff_text(diff_text: str) -> list[Violation]:
     violations: list[Violation] = []
     current_path = ""
@@ -76,7 +110,7 @@ def scan_diff_text(diff_text: str) -> list[Violation]:
             new_line += 1
             added_text = line[1:]
             for term in FORBIDDEN_TERMS:
-                if term in added_text:
+                if _has_forbidden_term(term, added_text):
                     violations.append(
                         Violation(
                             path=current_path or "<unknown>",
