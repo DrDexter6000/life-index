@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pickle
 import re
 import sqlite3
 from dataclasses import asdict, dataclass, field
@@ -61,34 +60,6 @@ def _load_fts_paths() -> set[str]:
         return {str(row[0]).replace("\\", "/") for row in cursor.fetchall()}
     finally:
         conn.close()
-
-
-def _load_vector_paths() -> set[str]:
-    sqlite_db_path = get_user_data_dir() / ".index" / "journals_vec.db"
-    simple_index_path = get_user_data_dir() / ".index" / "vectors_simple.pkl"
-
-    if sqlite_db_path.exists():
-        db_path = sqlite_db_path
-        conn = sqlite3.connect(db_path)
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT path FROM journal_vectors")
-            return {str(row[0]).replace("\\", "/") for row in cursor.fetchall()}
-        except sqlite3.Error:
-            return set()
-        finally:
-            conn.close()
-
-    if simple_index_path.exists():
-        try:
-            with simple_index_path.open("rb") as fh:
-                payload = pickle.load(fh)
-            if isinstance(payload, dict):
-                return {str(path).replace("\\", "/") for path in payload.keys()}
-        except Exception:
-            return set()
-
-    return set()
 
 
 def _resolve_attachment_path(raw_path: str) -> Path:
@@ -194,21 +165,7 @@ def run_verify() -> Dict[str, Any]:
 
     result["checks"].append(asdict(fts_check))
 
-    # Check 3: Vector index consistency
-    vector_check = CheckResult(name="vector_consistency", status="ok", count=len(journal_files))
-    vector_paths = _load_vector_paths()
-    missing_vectors = sorted(journal_rel_paths - vector_paths)
-    orphan_vectors = sorted(vector_paths - journal_rel_paths)
-    if missing_vectors or orphan_vectors:
-        vector_check.status = "warning"
-    for path in missing_vectors:
-        vector_check.issues.append(f"missing: {path}")
-    for path in orphan_vectors:
-        vector_check.issues.append(f"orphan: {path}")
-
-    result["checks"].append(asdict(vector_check))
-
-    # Check 4: Attachment references in body
+    # Check 3: Attachment references in body
     attachment_check = CheckResult(name="attachment_refs", status="ok", count=0)
 
     for journal_file in journal_files:
@@ -231,7 +188,7 @@ def run_verify() -> Dict[str, Any]:
 
     result["checks"].append(asdict(attachment_check))
 
-    # Check 5: by-topic index consistency
+    # Check 4: by-topic index consistency
     topic_check = CheckResult(name="topic_consistency", status="ok", count=0)
     topic_links = _collect_topic_links()
     topic_check.count = len(topic_links)

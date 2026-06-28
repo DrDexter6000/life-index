@@ -24,14 +24,11 @@ MODULES_TO_RELOAD = (
     "tools.lib.paths",
     "tools.lib.config",
     "tools.lib.metadata_cache",
-    "tools.lib.vector_index_simple",
     "tools.lib.entity_runtime",
     "tools.lib.search_index",
     "tools.lib.fts_update",
     "tools.lib.fts_search",
     "tools.search_journals.query_preprocessor",
-    "tools.search_journals.semantic",
-    "tools.search_journals.semantic_pipeline",
     "tools.search_journals.keyword_pipeline",
     "tools.search_journals.core",
     "tools.aggregate.core",
@@ -844,7 +841,12 @@ def _load_queries_with_overlay(
 
     Returns (queries, overlay_applied_count, overlay_warnings, applied_query_ids).
     """
-    queries = load_golden_queries(queries_path, data_dir=data_dir)
+    try:
+        queries = load_golden_queries(queries_path)
+    except TypeError as exc:
+        if "data_dir" not in str(exc):
+            raise
+        queries = load_golden_queries(queries_path, data_dir=data_dir)
     if not use_overlay:
         return queries, 0, [], set()
 
@@ -1689,13 +1691,8 @@ def run_evaluation(
       and pass/fail gate remain from the keyword (use_semantic=False) run.
       Cannot be combined with save_baseline.
     """
-    if semantic_report and use_semantic:
-        raise ValueError(
-            "semantic report requires keyword/default top-level eval (use_semantic must be False)"
-        )
-
-    if semantic_report and save_baseline is not None:
-        raise ValueError("semantic report is diagnostic-only and cannot be saved as baseline")
+    semantic_noop_requested = use_semantic or semantic_report
+    use_semantic = False
 
     from tools.eval.overlay import is_ci_environment
 
@@ -1708,7 +1705,7 @@ def run_evaluation(
     _anchor = _get_eval_anchor_date()
     _inject_eval_anchor(_anchor)
 
-    eval_data_available = eval_query_set_available(queries_path, data_dir=data_dir)
+    eval_data_available = eval_query_set_available(queries_path)
     all_queries, overlay_applied_count, overlay_warnings, applied_query_ids = (
         _load_queries_with_overlay(
             queries_path=queries_path,
@@ -1717,9 +1714,9 @@ def run_evaluation(
             data_dir=data_dir,
         )
     )
-    aggregate_queries = load_aggregate_queries(queries_path, data_dir=data_dir)
-    smart_aggregate_queries = load_smart_aggregate_queries(queries_path, data_dir=data_dir)
-    timeline_queries = load_timeline_queries(queries_path, data_dir=data_dir)
+    aggregate_queries = load_aggregate_queries(queries_path)
+    smart_aggregate_queries = load_smart_aggregate_queries(queries_path)
+    timeline_queries = load_timeline_queries(queries_path)
     queries = []
     skipped_queries: list[dict[str, Any]] = []
     for q in all_queries:
@@ -1779,7 +1776,7 @@ def run_evaluation(
         ).TOKENIZER_VERSION,
         "judge_mode": judge,
         "live_mode": live,
-        "semantic_enabled": use_semantic,
+        "semantic_enabled": False,
         "eval_data_available": eval_data_available,
         "total_queries": len(per_query),
         "skipped_queries": len(skipped_queries),
@@ -1797,6 +1794,11 @@ def run_evaluation(
         "smart_aggregate_eval": smart_aggregate_eval,
         "timeline_eval": timeline_eval,
     }
+    if semantic_noop_requested:
+        result["semantic_noop"] = {
+            "status": "deprecated_noop",
+            "reason": "in-tool semantic/vector eval has been removed; keyword eval was used.",
+        }
 
     for category, items in by_category.items():
         result["by_category"][category] = {
@@ -1822,27 +1824,20 @@ def run_evaluation(
         )
 
     if semantic_report:
-        sem_context = _live_data_dir() if live else _temporary_data_dir(data_dir)
-        with sem_context:
-            sem_per_query, sem_failures = _evaluate_queries(
-                queries,
-                use_semantic=True,
-                judge=judge,
-                live=live,
-                llm_client=llm_client,
-                all_docs=all_docs,
-                applied_query_ids=applied_query_ids,
-            )
-        sem_metrics = (
-            _collect_llm_metrics(sem_per_query)
-            if judge == "llm"
-            else _collect_metrics(sem_per_query)
-        )
-        semantic_result = {
-            "metrics": sem_metrics,
-            "failures": sem_failures,
+        result["semantic_report"] = {
+            "enabled": False,
+            "metrics": {},
+            "failure_count": 0,
+            "failure_ids": [],
+            "fixed_by_semantic": [],
+            "regressed_by_semantic": [],
+            "still_failing_both": [f["id"] for f in failures],
+            "delta": {},
+            "status": "deprecated_noop",
+            "reason": (
+                "semantic report is disabled because in-tool semantic/vector search " "was removed."
+            ),
         }
-        result["semantic_report"] = _build_semantic_report(result, semantic_result)
 
     if save_baseline is not None:
         save_baseline.parent.mkdir(parents=True, exist_ok=True)

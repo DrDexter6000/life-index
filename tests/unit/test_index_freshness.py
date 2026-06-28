@@ -7,15 +7,13 @@ import pytest
 
 from tools.lib.index_freshness import check_full_freshness, FreshnessReport
 from tools.lib.index_manifest import IndexManifest, write_manifest
-from tools.lib.pending_writes import mark_pending, clear_pending
+from tools.lib.pending_writes import mark_pending
 
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch):
     """Isolate paths and pending queue to tmp_path."""
     import tools.lib.pending_writes as pw_mod
-    import tools.lib.config as cfg
-    import tools.lib.paths as paths
     import tools.lib.vector_index_simple as vi_mod
 
     idx = tmp_path / ".index"
@@ -37,11 +35,18 @@ class TestFullFreshness:
         """check_full_freshness returns a FreshnessReport with all fields."""
         index_dir = tmp_path / ".index"
         # Write a valid manifest
-        write_manifest(IndexManifest(
-            fts_count=5, vector_count=5, file_count=5,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=5,
+                vector_count=5,
+                file_count=5,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         with (
             patch("tools.lib.index_freshness.get_fts_count", return_value=5),
@@ -58,11 +63,18 @@ class TestFullFreshness:
     def test_fts_count_mismatch_marks_fts_stale(self, tmp_path: Path):
         """FTS count != manifest count → fts_fresh=False."""
         index_dir = tmp_path / ".index"
-        write_manifest(IndexManifest(
-            fts_count=10, vector_count=10, file_count=10,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=10,
+                vector_count=10,
+                file_count=10,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         with (
             patch("tools.lib.index_freshness.get_fts_count", return_value=7),
@@ -74,14 +86,21 @@ class TestFullFreshness:
         assert report.vector_fresh is True
         assert report.overall_fresh is False
 
-    def test_vector_count_mismatch_marks_vector_stale(self, tmp_path: Path):
-        """Vector count != manifest count → vector_fresh=False."""
+    def test_vector_count_mismatch_is_ignored(self, tmp_path: Path):
+        """Vector counts are legacy fields and no longer affect freshness."""
         index_dir = tmp_path / ".index"
-        write_manifest(IndexManifest(
-            fts_count=10, vector_count=10, file_count=10,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=10,
+                vector_count=10,
+                file_count=10,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         with (
             patch("tools.lib.index_freshness.get_fts_count", return_value=10),
@@ -90,8 +109,8 @@ class TestFullFreshness:
             report = check_full_freshness(index_dir)
 
         assert report.fts_fresh is True
-        assert report.vector_fresh is False
-        assert report.overall_fresh is False
+        assert report.vector_fresh is True
+        assert report.overall_fresh is True
 
     def test_no_manifest_marks_overall_stale(self, tmp_path: Path):
         """No manifest → overall_fresh=False (first install scenario)."""
@@ -105,11 +124,18 @@ class TestFullFreshness:
     def test_both_match_overall_fresh(self, tmp_path: Path):
         """Both FTS and vector match manifest → overall_fresh=True."""
         index_dir = tmp_path / ".index"
-        write_manifest(IndexManifest(
-            fts_count=8, vector_count=8, file_count=8,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=8,
+                vector_count=8,
+                file_count=8,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         with (
             patch("tools.lib.index_freshness.get_fts_count", return_value=8),
@@ -125,11 +151,18 @@ class TestFullFreshness:
     def test_pending_non_empty_marks_stale(self, tmp_path: Path):
         """Pending queue non-empty → overall_fresh=False."""
         index_dir = tmp_path / ".index"
-        write_manifest(IndexManifest(
-            fts_count=5, vector_count=5, file_count=5,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=5,
+                vector_count=5,
+                file_count=5,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         mark_pending("Journals/2026/03/test.md")
 
@@ -145,12 +178,19 @@ class TestFullFreshness:
     def test_partial_manifest_marks_stale(self, tmp_path: Path):
         """Partial manifest → overall_fresh=False."""
         index_dir = tmp_path / ".index"
-        write_manifest(IndexManifest(
-            fts_count=5, vector_count=0, file_count=5,
-            fts_checksum="a", vector_checksum="",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-            partial=True,
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=5,
+                vector_count=0,
+                file_count=5,
+                fts_checksum="a",
+                vector_checksum="",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+                partial=True,
+            ),
+            index_dir,
+        )
 
         with (
             patch("tools.lib.index_freshness.get_fts_count", return_value=5),
@@ -166,11 +206,18 @@ class TestFullFreshness:
         import json
 
         index_dir = tmp_path / ".index"
-        write_manifest(IndexManifest(
-            fts_count=3, vector_count=3, file_count=3,
-            fts_checksum="x", vector_checksum="y",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=3,
+                vector_count=3,
+                file_count=3,
+                fts_checksum="x",
+                vector_checksum="y",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         with (
             patch("tools.lib.index_freshness.get_fts_count", return_value=3),

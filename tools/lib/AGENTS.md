@@ -18,13 +18,13 @@ Shared infrastructure library for all Life Index atomic tools.
 | Fix FTS5 search issues | `search_index.py` | Supports auto-rebuild on corruption |
 | Debug FTS search queries | `fts_search.py` | BM25 ranking, snippet extraction, JSON field parsing |
 | Debug FTS index updates | `fts_update.py` | Incremental/full rebuild, file hashing, journal parsing |
-| Add semantic search feature | `semantic_search.py` | Uses shared sentence-transformers backend for multilingual embeddings |
+| Search retrieval behavior | `search_index.py`, `fts_search.py`, `metadata_cache.py`, `entity_runtime.py` | Active retrieval is keyword + Entity Graph |
 | Debug path normalization | `path_contract.py` | Canonical path normalization and route-safe path shaping |
 | Modify schema validation | `schema.py` | SCHEMA_VERSION, validate/migrate metadata, required/recommended fields |
 | Debug URL download pipeline | `url_download.py` | Shared remote-file download helper used by write/web flows |
 | Modify topic taxonomy | `topics.py` | Deterministic `VALID_TOPICS` SSOT (no LLM dependency) |
-| Vector index corruption | `vector_index_simple.py` | Pickle-based fallback when sqlite-vec unavailable |
-| Tune search parameters | `search_constants.py` | 50 constants (RRF, FTS, semantic, confidence, typo correction, structured metadata) with ADR annotations |
+| Legacy vector module questions | `vector_index_simple.py` | Deprecated compatibility module; not used by active indexing/search |
+| Tune search parameters | `search_constants.py` | 50 constants (legacy compatibility, FTS, confidence, typo correction, structured metadata) with ADR annotations |
 
 ## MODULES
 
@@ -45,11 +45,11 @@ Shared infrastructure library for all Life Index atomic tools.
 - **path_contract.py**: Shared path normalization helpers for route-safe, user-safe journal paths.
 - **schema.py**: Schema version management, metadata validation and migration. Extracted from frontmatter.py.
 - **search_index.py**: FTS5 index management (init, stats) + backward-compat wrappers for fts_search.py and fts_update.py.
-- **semantic_search.py**: Vector embedding search using BAAI/bge-m3 via shared sentence-transformers backend.
+- **semantic_search.py**: Deprecated legacy vector embedding module; active search/index paths do not import or call it.
 - **timing.py**: Performance timing utility for metrics collection. Used in tool outputs for monitoring.
 - **topics.py**: Deterministic topic taxonomy SSOT (`VALID_TOPICS`). Importable without LLM dependency.
 - **url_download.py**: Shared URL download helper for attachment ingestion and related flows.
-- **vector_index_simple.py**: Pure Python fallback vector index using numpy/pickle.
+- **vector_index_simple.py**: Deprecated legacy pure-Python vector index module using numpy/pickle; not used by active search/index paths.
 
 ## CONVENTIONS
 
@@ -59,7 +59,7 @@ Shared infrastructure library for all Life Index atomic tools.
 
 **File Locking**: All write operations (journal, edit, index) use `FileLock` to prevent concurrent conflicts. Lock timeout defaults to 30s for journals, 60s for index operations.
 
-**Semantic Search**: Uses sentence-transformers with BAAI/bge-m3 for multilingual embeddings, but L2 retrieval remains keyword-only by default. Semantic/vector retrieval is explicit opt-in or fallback behavior; do not make it the default path from `tools/lib`.
+**Semantic / vector search**: Removed from active L2 atomic tools. `--semantic*` flags are accepted by callers as deprecated no-ops, and active retrieval is keyword + Entity Graph. Do not add model loading, vector build, or semantic fallback to `tools/lib` without a new charter-level decision.
 
 ## ANTI-PATTERNS
 
@@ -67,7 +67,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **Never** hardcode paths. Use `config.USER_DATA_DIR` and derived constants.
 - **Never** duplicate `USER_DATA_DIR` resolution outside `tools/lib/config.py` (e.g., in `web/runtime.py`). Web/runtime code must import `config.USER_DATA_DIR` / `config.JOURNALS_DIR` directly, not recompute via `Path.home()`.
 - **Never** raise bare exceptions. Use `LifeIndexError` with structured codes.
-- **Never** skip error handling for vector index operations. Always use try/except with logging.
+- **Never** reintroduce vector index operations into active search/index/write paths without updating CHARTER, API, docs, and gates in the same change.
 - **Never** write journals/indexes without acquiring the appropriate lock first.
 
 ## MODULE REGISTRY
@@ -80,7 +80,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | config.py | ALL tools | ✅ 活跃 | 路径 SSOT |
 | content_analysis.py | write_journal | ✅ 活跃 | |
 | chinese_tokenizer.py | search_journals (fts_search, fts_update, keyword_pipeline) | ✅ 活跃 | Round 8 Phase 1 新增：jieba 中文分词模块（index/query 双模式） |
-| embedding_backends.py | semantic_search | ✅ 活跃 | |
+| embedding_backends.py | semantic_search | 🗄️ 兼容 | Legacy semantic module only |
 | entity_cache.py | entity_runtime 相关 helper / tests | ✅ 活跃 | Round 7 Phase 1 已落地 cache-first helper，但不是当前 search/write 主热路径 |
 | entity_candidates.py | write_journal | ✅ 活跃 | Round 7 Phase 2 新增：write-time candidate extraction |
 | entity_graph.py | write_journal, entity tool, entity_runtime | ✅ 活跃 | Round 7 Phase 1 runtime view 底层 |
@@ -108,18 +108,18 @@ Shared infrastructure library for all Life Index atomic tools.
 | search_diagnose.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 指标聚合最近搜索诊断摘要 |
 | search_index.py | build_index, search_journals | ✅ 活跃 | |
 | search_metrics.py | search_journals | ✅ 活跃 | Round 8 新增：按月 JSONL 追加搜索指标日志 |
-| semantic_search.py | search_journals | ✅ 活跃 | |
+| semantic_search.py | none active | 🗄️ 兼容 | Legacy module; not imported by active search/index paths |
 | text_normalize.py | search, fts | ✅ 活跃 | |
 | timing.py | write_journal | ✅ 活跃 | write_journal 使用 Timer 做性能计时；其他工具使用 trace.py |
 | topics.py | write_journal | ✅ 活跃 | Charter 19 Phase 1 新增：deterministic VALID_TOPICS SSOT |
 | trace.py | search_journals, build_index, write_journal | ✅ 活跃 | Round 7 观测层：step-based context manager |
 | url_download.py | write_journal | ✅ 活跃 | |
-| vector_index_simple.py | build_index | ✅ 活跃 | |
+| vector_index_simple.py | none active | 🗄️ 兼容 | Legacy module; not imported by active search/index paths |
 | workflow_signals.py | write_journal, errors | ✅ 活跃 | Round 5 Task 1 新增 |
 | yaml_utils.py | frontmatter | ✅ 活跃 | |
 
 ## DEPENDENCIES
 
-**This lib depends on**: Python 3.11+, pyyaml, numpy>=1.24.0, sentence-transformers>=2.6.0
+**This lib depends on**: Python 3.11+, pyyaml, numpy>=1.24.0
 
 **Tools depend on this lib**: write_journal, search_journals, edit_journal, generate_index, build_index, query_weather, backup, Web GUI service layer helpers

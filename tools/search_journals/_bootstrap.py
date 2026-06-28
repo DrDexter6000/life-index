@@ -45,7 +45,8 @@ def ensure_utf8_io() -> None:
     # Protection 2: Suppress transformers logging noise
     _suppress_transformers_logging()
 
-    # Protection 2b: Suppress sentence-transformers model loading prints to stdout
+    # Protection 2b: Suppress legacy model-loading prints to stdout if old
+    # integrations have already imported optional ML libraries.
     _suppress_st_stdout()
 
     # Protection 3: Windows non-TTY torch stderr redirect
@@ -66,11 +67,11 @@ def _suppress_transformers_logging() -> None:
 
 
 def _suppress_st_stdout() -> None:
-    """Suppress sentence-transformers print statements during model loading.
+    """Suppress legacy optional model-loading print statements.
 
-    sentence-transformers prints "Loading embedding model: ..." and
-    "Model loaded successfully." to stdout, which corrupts JSON output
-    when the CLI is called via subprocess.
+    Active search no longer loads embedding models, but this guard remains for
+    older integrations that may import optional ML libraries before CLI JSON is
+    emitted.
 
     Strategy: Patch SentenceTransformer.__init__ if the module is
     already loaded. If not loaded yet, no action needed — the prints

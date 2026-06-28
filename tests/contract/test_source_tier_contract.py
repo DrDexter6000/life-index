@@ -46,27 +46,14 @@ def mock_search_dependencies():
                             return_value=[],
                         ):
                             with patch(
-                                "tools.search_journals.semantic_pipeline.search_semantic",
-                                return_value=([], {}),
+                                "tools.lib.index_freshness.check_full_freshness",
+                                return_value=fresh_report,
                             ):
                                 with patch(
-                                    "tools.search_journals.semantic_pipeline."
-                                    "get_semantic_runtime_status",
-                                    return_value={
-                                        "available": True,
-                                        "reason": "",
-                                        "note": "",
-                                    },
+                                    "tools.lib.pending_writes.has_pending",
+                                    return_value=False,
                                 ):
-                                    with patch(
-                                        "tools.lib.index_freshness.check_full_freshness",
-                                        return_value=fresh_report,
-                                    ):
-                                        with patch(
-                                            "tools.lib.pending_writes.has_pending",
-                                            return_value=False,
-                                        ):
-                                            yield
+                                    yield
 
 
 class TestSourceTierDefaultBehavior:
@@ -97,23 +84,19 @@ class TestSourceTierFlag:
         assert result["success"] is True
         assert result["query_params"].get("enable_source_tier") is True
 
-    def test_enable_source_tier_passed_to_hybrid_ranking(self):
-        """When semantic results exist, enable_source_tier is passed to hybrid ranking."""
-        with patch("tools.search_journals.core.merge_and_rank_results_hybrid") as mock_hybrid:
-            mock_hybrid.return_value = []
-            with patch(
-                "tools.search_journals.semantic_pipeline.search_semantic",
-                return_value=([{"path": "x.md", "similarity": 0.5}], {}),
-            ):
-                hierarchical_search(
-                    query="test",
-                    level=3,
-                    semantic=True,
-                    semantic_policy="hybrid",
-                    enable_source_tier=True,
-                )
-                _, kwargs = mock_hybrid.call_args
-                assert kwargs.get("enable_source_tier") is True
+    def test_enable_source_tier_passed_with_deprecated_semantic_flags(self):
+        """Deprecated semantic flags still pass enable_source_tier to keyword ranking."""
+        with patch("tools.search_journals.core.merge_and_rank_results") as mock_merge:
+            mock_merge.return_value = []
+            hierarchical_search(
+                query="test",
+                level=3,
+                semantic=True,
+                semantic_policy="hybrid",
+                enable_source_tier=True,
+            )
+            _, kwargs = mock_merge.call_args
+            assert kwargs.get("enable_source_tier") is True
 
     def test_enable_source_tier_passed_to_keyword_ranking(self):
         """When no semantic results, enable_source_tier is passed to keyword ranking."""

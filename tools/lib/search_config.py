@@ -129,11 +129,11 @@ FILE_LOCK_TIMEOUT_REBUILD = 120  # 索引重建（批量操作需要更长时间
 
 
 # =============================================================================
-# Vector Embedding Model Configuration
+# Deprecated Vector Embedding Model Configuration
 # =============================================================================
 
-# 固定模型版本以确保嵌入一致性
-# bge-m3 由 sentence-transformers 加载，首次使用会自动下载模型缓存
+# Legacy metadata retained for deprecated compatibility modules only.
+# Active search/index paths do not load embedding models or build vector indexes.
 EMBEDDING_MODEL: Dict[str, Any] = {
     "name": "BAAI/bge-m3",
     "version": "3.0.0",  # 模型版本标识（递增触发自动重建）
@@ -143,11 +143,11 @@ EMBEDDING_MODEL: Dict[str, Any] = {
     "config_hash": "",
     # 模型元数据（用于追溯和日志记录）
     "metadata": {
-        "description": "BAAI bge-m3 多语言长上下文 embedding 模型，支持长日志检索",
+        "description": "Deprecated legacy embedding model metadata",
         "max_seq_length": 8192,
-        "recommended_for": "长日志检索、中英文语义搜索、跨语言检索",
+        "recommended_for": "legacy compatibility only",
         "supported_languages": "100+ languages including zh, en, ja, ko, fr, de, es, etc.",
-        "backend": "sentence-transformers",
+        "backend": "disabled",
     },
 }
 
@@ -192,7 +192,7 @@ __all__ = [
     # File lock
     "FILE_LOCK_TIMEOUT_DEFAULT",
     "FILE_LOCK_TIMEOUT_REBUILD",
-    # Vector model
+    # Legacy vector model metadata
     "EMBEDDING_MODEL",
     "get_model_cache_dir",
 ]

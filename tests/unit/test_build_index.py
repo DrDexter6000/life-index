@@ -33,19 +33,13 @@ class TestBuildAll:
             "removed": 1,
         }
 
-        # Mock vector index to fail (skip vector update)
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model.return_value.load.return_value = False
-            with patch("tools.lib.vector_index_simple.update_vector_index_simple") as mock_simple:
-                mock_simple.return_value = {"success": False, "error": "No model"}
-                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
-                    mock_simple_model.return_value.load.return_value = False
-
-                    result = build_all(incremental=True)
+        result = build_all(incremental=True)
 
         assert result["success"] is True
         assert result["fts"]["success"] is True
         assert result["fts"]["added"] == 5
+        assert result["vector"] is None
+        assert result["semantic_status"] == "disabled"
         mock_update_fts.assert_called_once_with(incremental=True)
 
     @patch("tools.build_index.get_index_lock_path")
@@ -64,17 +58,12 @@ class TestBuildAll:
             "error": "Database locked",
         }
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model.return_value.load.return_value = False
-            with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
-                    mock_simple_model.return_value.load.return_value = False
-
-                    result = build_all(incremental=True)
+        result = build_all(incremental=True)
 
         assert result["success"] is False
         assert result["fts"]["success"] is False
         assert "error" in result["fts"]
+        assert result["vector"] is None
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -89,17 +78,12 @@ class TestBuildAll:
 
         mock_update_fts.side_effect = RuntimeError("Unexpected error")
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model.return_value.load.return_value = False
-            with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
-                    mock_simple_model.return_value.load.return_value = False
-
-                    result = build_all(incremental=True)
+        result = build_all(incremental=True)
 
         assert result["success"] is False
         assert result["fts"]["success"] is False
         assert "Unexpected error" in result["fts"]["error"]
+        assert result["vector"] is None
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -135,13 +119,11 @@ class TestBuildAll:
         mock_lock.__exit__ = MagicMock(return_value=False)
         mock_update_fts.return_value = {"success": True, "added": 1}
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            result = build_all()
+        result = build_all()
 
         assert result["success"] is True
         assert result["fts"]["success"] is True
         assert result["vector"] is None
-        mock_model.assert_not_called()
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -172,27 +154,21 @@ class TestBuildAll:
         mock_lock.__enter__ = MagicMock(return_value=mock_lock)
         mock_lock.__exit__ = MagicMock(return_value=False)
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-            mock_model_instance.load.return_value = True
-
-            with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
-                mock_vec.return_value = {"success": True, "added": 3, "updated": 1}
-
-                result = build_all(vec_only=True)
+        result = build_all(vec_only=True)
 
         assert result["success"] is True
-        assert result["fts"] is None  # Should be None when vec_only=True
-        assert result["vector"]["success"] is True
+        assert result["fts"] is None
+        assert result["vector"] is None
+        assert result["semantic_status"] == "disabled"
+        assert any("deprecated_noop" in warning for warning in result["warnings"])
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_vector_with_sqlite_vec(
+    def test_build_all_does_not_build_sqlite_vec(
         self, mock_update_fts, mock_file_lock, mock_lock_path, monkeypatch
     ):
-        """Test vector index with sqlite-vec backend"""
+        """Default builds no longer call the sqlite-vec semantic backend."""
         monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -202,27 +178,24 @@ class TestBuildAll:
 
         mock_update_fts.return_value = {"success": True, "added": 0}
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-            mock_model_instance.load.return_value = True
-
-            with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
-                mock_vec.return_value = {"success": True, "added": 5, "updated": 2}
-
-                result = build_all(incremental=True)
+        with (
+            patch("tools.lib.semantic_search.get_model") as mock_model,
+            patch("tools.lib.semantic_search.update_vector_index") as mock_vec,
+        ):
+            result = build_all(incremental=True)
 
         assert result["success"] is True
-        assert result["vector"]["success"] is True
-        assert result["vector"]["added"] == 5
+        assert result["vector"] is None
+        mock_model.assert_not_called()
+        mock_vec.assert_not_called()
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
     @patch("tools.build_index.update_fts_index")
-    def test_build_all_vector_fallback_to_simple(
+    def test_build_all_does_not_build_simple_vector_fallback(
         self, mock_update_fts, mock_file_lock, mock_lock_path, monkeypatch
     ):
-        """Test vector index fallback to simple backend when sqlite-vec fails"""
+        """Default builds no longer fall back to the simple vector backend."""
         monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -232,24 +205,12 @@ class TestBuildAll:
 
         mock_update_fts.return_value = {"success": True, "added": 0}
 
-        # sqlite-vec fails (model.load returns False)
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-            mock_model_instance.load.return_value = False
-            # simple index succeeds
-            with patch("tools.lib.vector_index_simple.update_vector_index_simple") as mock_simple:
-                mock_simple.return_value = {"success": True, "added": 3}
-                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
-                    mock_simple_model_instance = MagicMock()
-                    mock_simple_model.return_value = mock_simple_model_instance
-                    mock_simple_model_instance.load.return_value = True
-
-                    result = build_all(incremental=True)
+        with patch("tools.lib.vector_index_simple.update_vector_index_simple") as mock_simple:
+            result = build_all(incremental=True)
 
         assert result["success"] is True
-        assert result["vector"]["success"] is True
-        assert result["vector"]["added"] == 3
+        assert result["vector"] is None
+        mock_simple.assert_not_called()
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -264,14 +225,7 @@ class TestBuildAll:
 
         mock_update_fts.return_value = {"success": True, "added": 10}
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-            mock_model_instance.load.return_value = True
-            with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
-                mock_vec.return_value = {"success": True, "added": 10}
-
-                result = build_all(incremental=False)
+        result = build_all(incremental=False)
 
         assert result["success"] is True
         # Verify incremental=False is passed
@@ -300,13 +254,7 @@ class TestBuildAll:
         mock_update_fts.return_value = {"success": True, "added": 10}
         mock_update_cache.return_value = {"updated": 42, "skipped": 0, "errors": 0}
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model.return_value.load.return_value = False
-            with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
-                    mock_simple_model.return_value.load.return_value = False
-
-                    build_all(incremental=False)
+        build_all(incremental=False)
 
         mock_invalidate_cache.assert_called_once_with()
         mock_update_cache.assert_called_once_with()
@@ -335,13 +283,7 @@ class TestBuildAll:
         mock_update_fts.return_value = {"success": True, "added": 10}
         mock_update_cache.return_value = {"updated": 42, "skipped": 0, "errors": 0}
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model.return_value.load.return_value = False
-            with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
-                    mock_simple_model.return_value.load.return_value = False
-
-                    build_all(incremental=False)
+        build_all(incremental=False)
 
         mock_rebuild_relations.assert_called_once()
 
@@ -383,17 +325,7 @@ class TestBuildAll:
 
         mock_update_fts.return_value = {"success": True, "added": 0}
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-            mock_model_instance.load.return_value = False
-            with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
-                    mock_simple_model_instance = MagicMock()
-                    mock_simple_model.return_value = mock_simple_model_instance
-                    mock_simple_model_instance.load.return_value = False
-
-                    result = build_all()
+        result = build_all()
 
         assert "duration_seconds" in result
         assert isinstance(result["duration_seconds"], (int, float))
@@ -412,13 +344,7 @@ class TestBuildAll:
 
         mock_update_fts.return_value = {"success": True, "added": 0}
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model.return_value.load.return_value = False
-            with patch("tools.lib.vector_index_simple.update_vector_index_simple"):
-                with patch("tools.lib.vector_index_simple.get_model") as mock_simple_model:
-                    mock_simple_model.return_value.load.return_value = False
-
-                    result = build_all()
+        result = build_all()
 
         assert "rebuild_hint" in result
         assert "life-index index --rebuild" in result["rebuild_hint"]
@@ -427,7 +353,7 @@ class TestBuildAll:
 class TestIndexCliNonBlockingDefault:
     """CLI-level contract for onboarding-safe index defaults."""
 
-    def test_index_cli_default_uses_fts_only_and_starts_background(self, monkeypatch, capsys):
+    def test_index_cli_default_uses_fts_only_without_background(self, monkeypatch, capsys):
         import tools.build_index.__main__ as index_cli
 
         monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
@@ -446,18 +372,11 @@ class TestIndexCliNonBlockingDefault:
         monkeypatch.setattr("sys.argv", ["life-index-index", "--json"])
         monkeypatch.setattr(index_cli, "build_all", fake_build_all)
         monkeypatch.setattr(index_cli, "ensure_dirs", lambda: None)
-        monkeypatch.setattr(
-            index_cli,
-            "start_background_semantic_build",
-            lambda *, incremental: {"status": "building", "pid": 1234},
-            raising=False,
-        )
-
         index_cli.main()
 
         payload = capsys.readouterr().out
         assert calls == [{"incremental": True, "fts_only": True, "vec_only": False}]
-        assert '"semantic_status": "building"' in payload
+        assert '"semantic_status": "disabled"' in payload
 
     def test_index_cli_fts_only_does_not_start_background(self, monkeypatch, capsys):
         import tools.build_index.__main__ as index_cli
@@ -579,8 +498,8 @@ class TestShowStats:
         mock_fts_stats.assert_called_once()
 
     @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_with_sqlite_vec(self, mock_fts_stats):
-        """Test show_stats with sqlite-vec backend"""
+    def test_show_stats_reports_vector_disabled(self, mock_fts_stats):
+        """Stats should explicitly report vector indexing as disabled."""
         mock_fts_stats.return_value = {
             "exists": True,
             "total_documents": 50,
@@ -588,22 +507,21 @@ class TestShowStats:
             "last_updated": "2026-03-14T10:00:00",
         }
 
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.return_value = {
-                "exists": True,
-                "total_vectors": 200,
-                "db_size_mb": 2.5,
-                "model_loaded": True,
-            }
-            with patch("tools.build_index.logger"):
-                show_stats()
+        with (
+            patch("tools.lib.semantic_search.get_stats") as mock_vec,
+            patch("tools.build_index.logger") as mock_logger,
+        ):
+            show_stats()
 
         mock_fts_stats.assert_called_once()
-        mock_vec.assert_called()
+        mock_vec.assert_not_called()
+        logged = "\n".join(str(call.args[0]) for call in mock_logger.info.call_args_list)
+        assert "Semantic/Vector Index" in logged
+        assert "Disabled" in logged
 
     @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_fallback_to_simple_index(self, mock_fts_stats):
-        """Test show_stats fallback to simple vector index"""
+    def test_show_stats_does_not_fallback_to_simple_vector_index(self, mock_fts_stats):
+        """Stats should not inspect legacy simple vector index files."""
         mock_fts_stats.return_value = {
             "exists": True,
             "total_documents": 30,
@@ -611,21 +529,16 @@ class TestShowStats:
             "last_updated": "2026-03-14T10:00:00",
         }
 
-        # Mock semantic_search.get_stats to raise ImportError to trigger fallback
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.side_effect = ImportError("No sqlite-vec")
-            with patch("tools.lib.vector_index_simple.get_index") as mock_get_index:
-                mock_index = MagicMock()
-                mock_get_index.return_value = mock_index
-                mock_index.stats.return_value = {
-                    "exists": True,
-                    "total_vectors": 100,
-                    "index_size_mb": 1.2,
-                }
-                with patch("tools.build_index.logger"):
-                    show_stats()
+        with (
+            patch("tools.lib.semantic_search.get_stats") as mock_vec,
+            patch("tools.lib.vector_index_simple.get_index") as mock_get_index,
+            patch("tools.build_index.logger"),
+        ):
+            show_stats()
 
         mock_fts_stats.assert_called_once()
+        mock_vec.assert_not_called()
+        mock_get_index.assert_not_called()
 
     @patch("tools.build_index.get_fts_stats")
     def test_show_stats_no_vector_backend(self, mock_fts_stats):
@@ -637,79 +550,40 @@ class TestShowStats:
             "last_updated": None,
         }
 
-        # Mock semantic_search.get_stats to raise ImportError
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.side_effect = ImportError("No sqlite-vec")
-            with patch("tools.lib.vector_index_simple.get_index") as mock_get_index:
-                mock_get_index.side_effect = ImportError("No simple index")
-                with patch("tools.build_index.logger"):
-                    show_stats()
+        with patch("tools.build_index.logger"):
+            show_stats()
 
         mock_fts_stats.assert_called_once()
 
-    @patch("tools.build_index.get_model_cache_dir")
     @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_cache_directory_exists(self, mock_fts_stats, mock_cache_dir_getter):
-        """Test show_stats with existing cache directory"""
+    @patch("tools.build_index.get_cache_stats")
+    def test_show_stats_reports_metadata_cache(self, mock_cache_stats, mock_fts_stats):
+        """Stats should still include metadata cache information."""
         mock_fts_stats.return_value = {
             "exists": True,
             "total_documents": 5,
             "db_size_mb": 0.1,
             "last_updated": None,
         }
-
-        # Create mock path for cache directory
-        mock_cache_dir = MagicMock()
-        mock_cache_dir.exists.return_value = True
-        mock_cache_dir.rglob.return_value = []
-        mock_cache_dir_getter.return_value = mock_cache_dir
-
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.return_value = {
-                "exists": True,
-                "total_vectors": 50,
-                "model_loaded": True,
-                "db_size_mb": 1.0,
-            }
-            with patch("tools.build_index.logger"):
-                show_stats()
-
-        mock_cache_dir.exists.assert_called()
-
-    @patch("tools.build_index.get_model_cache_dir")
-    @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_cache_directory_not_exists(self, mock_fts_stats, mock_cache_dir_getter):
-        """Test show_stats when cache directory doesn't exist"""
-        mock_fts_stats.return_value = {
-            "exists": False,
-            "total_documents": 0,
-            "db_size_mb": 0,
+        mock_cache_stats.return_value = {
+            "total_entries": 5,
+            "db_size_mb": 0.1,
             "last_updated": None,
+            "last_update": None,
+            "cache_path": "C:/tmp/metadata_cache.db",
+            "rebuild_hint": "",
         }
 
-        mock_cache_dir = MagicMock()
-        mock_cache_dir.exists.return_value = False
-        mock_cache_dir_getter.return_value = mock_cache_dir
+        with patch("tools.build_index.logger") as mock_logger:
+            show_stats()
 
-        # Mock semantic_search.get_stats to return existing vector index
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.return_value = {
-                "exists": True,
-                "total_vectors": 5,
-                "model_loaded": False,
-                "db_size_mb": 0.1,
-            }
-            with patch("tools.build_index.logger"):
-                show_stats()
+        logged = "\n".join(str(call.args[0]) for call in mock_logger.info.call_args_list)
+        assert "Metadata Cache" in logged
+        assert "Entries: 5" in logged
 
-        mock_cache_dir.exists.assert_called()
-
-    @patch("tools.build_index.get_model_cache_dir")
     @patch("tools.build_index.get_fts_stats")
     @patch("tools.build_index.get_cache_stats")
-    def test_show_stats_logs_metadata_cache_rebuild_hint(
-        self, mock_cache_stats, mock_fts_stats, mock_cache_dir_getter
-    ):
+    def test_show_stats_logs_metadata_cache_rebuild_hint(self, mock_cache_stats, mock_fts_stats):
         """Stats output should surface metadata cache rebuild guidance."""
         mock_fts_stats.return_value = {
             "exists": True,
@@ -725,66 +599,12 @@ class TestShowStats:
             "rebuild_hint": "如发现旧缓存路径格式导致的异常，可执行 `life-index index --rebuild` 进行重建。",
         }
 
-        mock_cache_dir = MagicMock()
-        mock_cache_dir.exists.return_value = False
-        mock_cache_dir_getter.return_value = mock_cache_dir
-
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.return_value = {
-                "exists": True,
-                "total_vectors": 5,
-                "model_loaded": False,
-                "db_size_mb": 0.1,
-            }
-            with patch("tools.build_index.logger") as mock_logger:
-                show_stats()
+        with patch("tools.build_index.logger") as mock_logger:
+            show_stats()
 
         logged = "\n".join(str(call.args[0]) for call in mock_logger.info.call_args_list)
         assert "metadata cache" in logged.lower()
         assert "life-index index --rebuild" in logged
-
-
-class TestShowStatsCacheRace:
-    """Regression tests for Windows cache stat race (V111 CI fix)."""
-
-    @patch("tools.build_index.get_model_cache_dir")
-    @patch("tools.build_index.get_fts_stats")
-    def test_show_stats_cache_file_disappears_during_stat(
-        self, mock_fts_stats, mock_cache_dir_getter
-    ):
-        """Cache files disappearing between rglob discovery and stat() must not crash show_stats."""
-        mock_fts_stats.return_value = {
-            "exists": True,
-            "total_documents": 5,
-            "db_size_mb": 0.1,
-            "last_updated": None,
-        }
-
-        mock_cache_dir = MagicMock()
-        mock_cache_dir.exists.return_value = True
-        vanishing_file = MagicMock()
-        vanishing_file.is_file.return_value = True
-        vanishing_file.stat.side_effect = FileNotFoundError("cache file vanished")
-        mock_cache_dir.rglob.return_value = [vanishing_file]
-        mock_cache_dir_getter.return_value = mock_cache_dir
-
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.return_value = {
-                "exists": True,
-                "total_vectors": 5,
-                "model_loaded": False,
-                "db_size_mb": 0.1,
-            }
-            with patch("tools.build_index.get_cache_stats") as mock_cache_stats:
-                mock_cache_stats.return_value = {
-                    "total_entries": 0,
-                    "db_size_mb": 0.0,
-                    "last_update": None,
-                    "cache_path": "/tmp/cache.db",
-                    "rebuild_hint": "",
-                }
-                with patch("tools.build_index.logger"):
-                    show_stats()
 
 
 class TestIntegration:
@@ -811,19 +631,8 @@ class TestIntegration:
             "removed": 2,
         }
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-            mock_model_instance.load.return_value = True
-
-            with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
-                mock_vec.return_value = {
-                    "success": True,
-                    "added": 8,
-                    "updated": 3,
-                }
-
-                result = build_all(incremental=True)
+        with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
+            result = build_all(incremental=True)
 
         # Verify result structure
         assert result["success"] is True
@@ -837,10 +646,8 @@ class TestIntegration:
         assert result["fts"]["updated"] == 5
         assert result["fts"]["removed"] == 2
 
-        # Verify vector result
-        assert result["vector"]["success"] is True
-        assert result["vector"]["added"] == 8
-        assert result["vector"]["updated"] == 3
+        assert result["vector"] is None
+        mock_vec.assert_not_called()
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -848,7 +655,7 @@ class TestIntegration:
     def test_partial_failure_continues(
         self, mock_update_fts, mock_file_lock, mock_lock_path, monkeypatch
     ):
-        """Test that FTS failure doesn't prevent vector index update"""
+        """FTS failure remains the overall failure; vector build is removed."""
         monkeypatch.delenv("LIFE_INDEX_INDEX_FTS_ONLY", raising=False)
         mock_lock_path.return_value = Path("/tmp/test.lock")
         mock_lock = MagicMock()
@@ -862,25 +669,13 @@ class TestIntegration:
             "error": "Database error",
         }
 
-        with patch("tools.lib.semantic_search.get_model") as mock_model:
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-            mock_model_instance.load.return_value = True
-
-            with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
-                # Vector succeeds
-                mock_vec.return_value = {
-                    "success": True,
-                    "added": 5,
-                    "updated": 0,
-                }
-
-                result = build_all(incremental=True)
+        with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
+            result = build_all(incremental=True)
 
         # Overall should fail because FTS failed
         assert result["success"] is False
-        # But vector should still have been updated
-        assert result["vector"]["success"] is True
+        assert result["vector"] is None
+        mock_vec.assert_not_called()
 
 
 if __name__ == "__main__":

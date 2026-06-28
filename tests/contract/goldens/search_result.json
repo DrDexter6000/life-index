@@ -37,13 +37,7 @@
       "content": "Golden hit"
     }
   ],
-  "semantic_results": [
-    {
-      "path": "C:/tmp/a.md",
-      "score": 0.91,
-      "title": "A semantic"
-    }
-  ],
+  "semantic_results": [],
   "merged_results": [
     {
       "path": "C:/tmp/a.md",
@@ -58,16 +52,15 @@
   "total_available": 1,
   "has_more": false,
   "no_confident_match": true,
-  "semantic_available": true,
+  "semantic_available": false,
   "semantic_policy": "fallback",
   "semantic_effective_policy": "off",
   "semantic_fallback_used": false,
-  "semantic_note": "keyword-only 模式（per CHARTER §1.11）。使用 --semantic 启用语义搜索。",
+  "semantic_note": "in-tool semantic/vector search is disabled; using keyword + Entity Graph.",
   "performance": {
     "l1_time_ms": 1.0,
     "l2_time_ms": 2.0,
     "l3_time_ms": 3.0,
-    "semantic_time_ms": 4.0,
     "total_time_ms": 10.0
   },
   "warnings": [],

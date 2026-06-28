@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
 Life Index - Build Index Tool - CLI Entry Point
-索引构建工具（FTS + 向量索引）
+索引构建工具（FTS only）
 """
 
 import argparse
 import json
-import os
 import sys
 
 from . import build_all, show_stats, check_index
 from ..lib.config import ensure_dirs
 from ..lib.metadata_cache import get_cache_stats
 from ..lib.observability import build_provenance_envelope
-from ..lib.semantic_status import start_background_semantic_build, write_semantic_status
 from ..lib.trace import Trace
 
 
@@ -48,12 +46,16 @@ Examples:
 
     parser.add_argument("--fts-only", action="store_true", help="Only update FTS index")
 
-    parser.add_argument("--vec-only", action="store_true", help="Only update vector index")
+    parser.add_argument(
+        "--vec-only",
+        action="store_true",
+        help="Deprecated no-op: vector index is no longer built",
+    )
 
     parser.add_argument(
         "--with-semantic",
         action="store_true",
-        help="Build semantic/vector index in the foreground (explicit opt-in)",
+        help="Deprecated no-op: semantic/vector index is no longer built",
     )
 
     parser.add_argument("--stats", action="store_true", help="Show index statistics")
@@ -105,12 +107,7 @@ Examples:
         show_stats()
         return
 
-    env_fts_only = os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1" and not args.vec_only
-    default_foreground_fts_only = not args.vec_only and not args.with_semantic
-    effective_fts_only = args.fts_only or env_fts_only or default_foreground_fts_only
-    should_start_background_semantic = (
-        not args.fts_only and not env_fts_only and not args.vec_only and not args.with_semantic
-    )
+    effective_fts_only = True
 
     # 执行索引构建
     with Trace("index") as trace:
@@ -121,15 +118,10 @@ Examples:
                 vec_only=args.vec_only,
             )
 
-    if result.get("success") and (args.fts_only or env_fts_only):
-        status = write_semantic_status("disabled")
-        result["semantic_status"] = status["status"]
-        result["semantic"] = status
-
-    if result.get("success") and should_start_background_semantic:
-        background_status = start_background_semantic_build(incremental=not args.rebuild)
-        result["semantic_status"] = background_status.get("status", "failed")
-        result["semantic_background"] = background_status
+    if args.with_semantic:
+        result.setdefault("warnings", []).append(
+            "deprecated_noop: --with-semantic is accepted but ignored; index builds FTS only."
+        )
 
     result["_trace"] = trace.to_dict()
 
@@ -148,15 +140,9 @@ Examples:
         fts_data = result.get("fts") or {}
         if isinstance(fts_data, dict) and "duration_seconds" in fts_data:
             latency_ms["fts"] = round(fts_data["duration_seconds"] * 1000, 2)
-        vec_data = result.get("vector") or {}
-        if isinstance(vec_data, dict) and "duration_seconds" in vec_data:
-            latency_ms["vector"] = round(vec_data["duration_seconds"] * 1000, 2)
-
         input_count = 0
         if isinstance(fts_data, dict):
             input_count += fts_data.get("added", 0) + fts_data.get("updated", 0)
-        if isinstance(vec_data, dict):
-            input_count += vec_data.get("added", 0) + vec_data.get("updated", 0)
 
         cache_stats = get_cache_stats()
         result["diagnostics"] = {

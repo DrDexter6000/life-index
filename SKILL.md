@@ -1,6 +1,6 @@
 ---
 name: life-index
-description: "Personal life journaling system with dual-dimension indexing. Use when user says 'record journal', 'log this', 'search logs', 'generate summary', '记日志', '写日记', '搜索记录', '生成摘要'. Features: auto weather, semantic search, attachment handling."
+description: "Personal life journaling system with deterministic keyword/entity retrieval. Use when user says 'record journal', 'log this', 'search logs', 'generate summary', '记日志', '写日记', '搜索记录', '生成摘要'. Features: auto weather, Entity Graph search, attachment handling."
 user-invocable: true
 disable-model-invocation: false
 metadata: {"clawdbot":{"emoji":"📖","requires":{"bins":["python"]}}}
@@ -50,7 +50,7 @@ triggers:
 # 统一 CLI（推荐）
 .venv/bin/life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
 .venv/bin/life-index search --query "关键词" --topic work --level 3
-.venv/bin/life-index search --query "学习"  # 默认 keyword-only；加 --semantic 启用语义搜索
+.venv/bin/life-index search --query "学习"  # 关键词 + Entity Graph；--semantic* 是兼容 no-op
 .venv/bin/life-index smart-search --query "我和女儿之间有哪些珍贵的回忆？"  # 确定性检索 scaffold（默认不调用 LLM）
 .venv/bin/life-index smart-search --query "..." --explain  # 展示 Agent 决策详情
 .venv/bin/life-index smart-search --query "..." --include-evidence  # 含 evidence pack + 检索诊断
@@ -163,12 +163,12 @@ life-index/                         # 技能根目录
 ├── SKILL.md                       # [本文件] 技能定义
 ├── tools/                         # 可执行工具目录
 │   ├── write_journal/             # 写入日志（天气查询、附件处理、索引更新）
-│   ├── search_journals/           # 搜索日志（L1/L2/L3 + 语义搜索）
+│   ├── search_journals/           # 搜索日志（L1/L2/L3 + Entity Graph）
 │   ├── smart_search/              # 确定性智能检索 scaffold；宿主 agent 负责合成
 │   ├── edit_journal/              # 编辑日志（修改元数据、追加内容）
 │   ├── entity/                    # 实体图谱（list/add/resolve/update）
 │   ├── generate_index/            # 生成索引树（monthly/yearly/root）
-│   ├── build_index/               # 构建索引（FTS5 + 向量索引）
+│   ├── build_index/               # 构建索引（FTS5 + metadata cache）
 │   ├── query_weather/             # 查询天气
 │   ├── backup/                    # 备份日志数据
 │   ├── verify/                    # 数据完整性校验
@@ -402,31 +402,29 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 ```
              用户查询
           ┌────┴────┐
-   ┌──────▼──────┐  ┌──────▼──────┐
-   │ Pipeline A  │  │ Pipeline B  │
-   │  关键词管道  │  │  语义管道   │
-   └──────┬──────┘  └──────┬──────┘
-          └────┬────┘
-     RRF 融合排序 (k=60)
+   ┌──────▼──────┐
+   │ 关键词/实体管道 │
+   │ FTS5 + metadata│
+   │ Entity Graph   │
+   └──────┬──────┘
+       确定性排序
              │
          最终结果
 ```
 
 对于复杂自然语言查询，`smart-search` 返回确定性检索 scaffold；它会复用 SearchPlan
-已抽取的关键词作为 bounded 子查询，并在关键词零结果时通过现有 search 语义
-fallback 补召回；当唯一关键词过短而被 semantic noise gate 跳过时，`query_plan`
-会暴露原句 `semantic_fallback_query`，用原自然语言问题触发同一个 deterministic
-semantic fallback。判断、过滤与总结仍由宿主 agent 按本 Skill 的 playbook 完成，详见
+已抽取的关键词作为 bounded 子查询。判断、过滤、query rewrite、多跳调用与总结仍由宿主
+agent 按本 Skill 的 playbook 完成，详见
 [ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
 
 **检索路径选择（不要使用 `recall` 作为新入口）**:
 
 | 需求 | 使用 |
 |:---|:---|
-| 严格关键词 / FTS-only，要求可复现精确匹配 | `life-index search --query "关键词" --no-semantic` |
+| 严格关键词 / FTS-only，要求可复现精确匹配 | `life-index search --query "关键词" --no-semantic`（兼容 no-op） |
 | 普通关键词、实体加权、结构化过滤检索 | `life-index search --query "关键词"` |
 | 开放回忆、关键词 / 实体加权发现，或需要 scaffold / evidence pack | `life-index smart-search --query "..." --include-evidence` |
-| 用户明确要求语义 / 向量召回补充 | `life-index search --query "..." --semantic --semantic-policy hybrid` |
+| 旧 GUI / Agent 仍传语义旗标 | `life-index search --query "..." --semantic --semantic-policy fallback`（接受但废弃的 no-op） |
 
 `life-index recall` 仅为旧集成保留的兼容壳；新宿主 agent 流程直接选择上表中的 `search` / `smart-search`。
 
@@ -446,7 +444,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 1. 先判定问题形态，不把 `smart-search` 当作所有查询的强制首调。
 2. 结构化问题（计数、枚举、facet、跨 facet、趋势）优先按上方 Grounded Query Skill Playbook 走确定性路径：`index-tree ensure` -> `discover` -> `navigate`，或直接用 `aggregate` / `trajectory` 取得可核数据。
 3. 只有开放回忆、关键词 / 实体加权发现、或 facet 菜单无法提供有效候选时，才调用 `life-index smart-search --query "..." --include-evidence` 或 `life-index search`。
-4. 使用 `smart-search` 时，检查 `query_plan.sub_queries`、`query_plan.strategy`、`query_plan.semantic_fallback_query`（如有）与 `semantic_fallback_used`，消费返回的 `agent_instructions`、`answer_scaffold`、`filtered_results` 与 `evidence_pack`；只引用返回或已读取的来源，不得自行补造证据。
+4. 使用 `smart-search` 时，检查 `query_plan.sub_queries`、`query_plan.strategy` 与检索诊断，消费返回的 `agent_instructions`、`answer_scaffold`、`filtered_results` 与 `evidence_pack`；只引用返回或已读取的来源，不得自行补造证据。
 5. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
 6. 只有需要 CLI 产出确定性答案 scaffold 字段时，才叠加 `--synthesize`。
 
@@ -464,8 +462,8 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 
 **步骤**:
 1. **解析查询意图**：从用户表述中识别过滤条件
-2. **执行搜索**：`search_journals`（默认 keyword-only；加 `--semantic` 启用语义/双管道）
-3. **呈现结果**：展示日志列表（按 RRF 分数排序）
+2. **执行搜索**：`search_journals`（关键词 + Entity Graph；`--semantic*` 仅兼容 no-op）
+3. **呈现结果**：展示日志列表（按确定性分数排序）
 
 **职责边界（强制）**：
 - `search_journals` 负责 retrieval execution，不负责替用户下结论

@@ -47,3 +47,6 @@ docs/ARCHITECTURE.md
 docs/CI_HARD_CHECKS.md
 docs/ENTITY_GRAPH.md
 docs/VERSIONING.md
+
+# Public execution reports for scoped work packages
+reports/WP-CLI-SEM-RM-drop-in-tool-semantic.md

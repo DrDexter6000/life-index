@@ -7,13 +7,6 @@ import subprocess
 import sys
 import pytest
 from pathlib import Path
-from dataclasses import asdict
-
-from tools.build_index.diagnostics import (
-    IndexHealthReport,
-    _read_fts_paths,
-    _read_vector_paths,
-)
 
 
 @pytest.fixture
@@ -92,7 +85,7 @@ class TestCheckIndexFunction:
     """Test the check_index() function that backs the CLI command."""
 
     def test_healthy_consistent_indexes(self, fresh_data_dir: Path):
-        """When all three indexes agree + manifest + freshness, healthy=True."""
+        """When FTS, manifest, and freshness agree, healthy=True."""
         from tools.build_index import check_index
         from tools.lib.index_manifest import IndexManifest, write_manifest
 
@@ -104,13 +97,21 @@ class TestCheckIndexFunction:
         _create_vector_pickle(index_dir, paths)
 
         # Round 12 Phase 3: healthy now requires manifest + freshness
-        write_manifest(IndexManifest(
-            fts_count=1, vector_count=1, file_count=1,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=1,
+                vector_count=1,
+                file_count=1,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         from unittest.mock import patch
+
         with (
             patch("tools.lib.index_freshness.get_fts_count", return_value=1),
             patch("tools.lib.index_freshness.get_vector_count", return_value=1),
@@ -119,7 +120,7 @@ class TestCheckIndexFunction:
 
         assert result["healthy"] is True
         assert result["fts_count"] == 1
-        assert result["vector_count"] == 1
+        assert result["vector_count"] == 0
         assert result["file_count"] == 1
         assert result["issues"] == []
 
@@ -178,11 +179,18 @@ class TestCheckIndexCLI:
         _create_vector_pickle(index_dir, paths)
 
         # Round 12 Phase 3: manifest required for healthy check
-        write_manifest(IndexManifest(
-            fts_count=1, vector_count=1, file_count=1,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=1,
+                vector_count=1,
+                file_count=1,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         result = subprocess.run(
             [sys.executable, "-m", "tools.build_index", "--check"],

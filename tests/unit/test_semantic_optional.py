@@ -1,9 +1,4 @@
-"""Contract: semantic search degrades gracefully without sentence-transformers.
-
-When sentence-transformers is not installed, `_check_sentence_transformers`
-must return a warning status (not crash) and the issue string must contain
-the `[semantic]` extra install hint so users know how to opt in.
-"""
+"""Contract: health no longer depends on sentence-transformers."""
 
 import sys
 
@@ -11,13 +6,21 @@ import pytest
 
 
 @pytest.mark.blocker
-def test_health_degrades_gracefully_without_sentence_transformers(monkeypatch):
-    """_check_sentence_transformers returns warning + life-index[semantic] hint."""
-    from tools.__main__ import _check_sentence_transformers
+def test_health_reports_semantic_disabled_without_sentence_transformers(monkeypatch, tmp_path):
+    """Missing sentence-transformers must not degrade health."""
+    from tools.__main__ import _check_index
 
+    data_dir = tmp_path / "Life-Index"
+    index_dir = data_dir / ".index"
+    index_dir.mkdir(parents=True)
+    (index_dir / "journals_fts.db").write_text("fts", encoding="utf-8")
+
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
     monkeypatch.setitem(sys.modules, "sentence_transformers", None)
-    check, issue = _check_sentence_transformers()
 
-    assert check["status"] == "warning"
-    assert check["version"] is None
-    assert "life-index[semantic]" in issue
+    check, issue = _check_index()
+
+    assert issue == ""
+    assert check["status"] == "ok"
+    assert check["semantic_status"] == "disabled"
+    assert check["semantic"]["status"] == "disabled"

@@ -1,7 +1,8 @@
-"""Index manifest — tracks last successful index build state.
+"""Index manifest — tracks last successful FTS index build state.
 
-Round 12 Phase 2 Task 2.1: Records FTS/vector counts, checksums, and build
-metadata so that index health checks can detect corruption or staleness.
+Records FTS counts, checksums, and build metadata so that index health checks
+can detect corruption or staleness. Vector fields are retained for legacy
+manifest compatibility but are not required.
 """
 
 import hashlib
@@ -32,7 +33,7 @@ class IndexManifest:
     vector_checksum: str
     build_timestamp: str
     build_version: str
-    partial: bool = False  # True if only FTS or only vector succeeded
+    partial: bool = False
     schema_version: str = SCHEMA_VERSION
 
 
@@ -86,8 +87,6 @@ def is_manifest_valid(manifest: IndexManifest, actual_file_count: int) -> bool:
     if manifest.partial:
         return False
     if manifest.fts_count != manifest.file_count:
-        return False
-    if manifest.vector_count != manifest.file_count:
         return False
     if manifest.file_count != actual_file_count:
         return False

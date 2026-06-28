@@ -59,14 +59,9 @@ dev = [
 
 ]
 
-# Semantic search - embedding model (heavy: pulls torch). Opt-in only.
-semantic = [
-    "sentence-transformers>=2.6.0",
-]
-
 # All optional dependencies - 所有可选依赖
 all = [
-    "life-index[dev,semantic]",
+    "life-index[dev]",
 ]
 
 [project.urls]
@@ -172,10 +167,6 @@ follow_imports = "skip"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "sentence_transformers.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = "rapidfuzz"
 follow_imports = "skip"
 ignore_missing_imports = true
@@ -225,7 +216,7 @@ markers = [
     "quarantine: known flaky or env-dependent, allowed to fail",
     "nightly: slow tests, not run on PR",
     "realdata: requires ~/Documents/Life-Index",
-    "semantic: requires embedding model / vector index",
+    "semantic: deprecated compatibility marker; semantic/vector search has been removed",
 ]
 
 # ========== Coverage - Test Coverage ==========
@@ -235,7 +226,7 @@ branch = true
 omit = [
     "*/tests/*",
     "*/test_*",
-    "tools/lib/vector_index_simple.py",  # Optional module
+    "tools/lib/vector_index_simple.py",  # Deprecated legacy module
     "tools/**/__main__.py",  # CLI entry points (tested via E2E)
 ]
 
@@ -266,7 +257,7 @@ skips = [
     "B311",  # random - not used for security purposes (no crypto operations)
     "B324",  # hashlib - MD5 used for file integrity, not security
     "B108",  # hardcoded_tmp_directory - temp paths are for file identification
-    "B301",  # pickle - used for vector index fallback storage, trusted local data only
+    "B301",  # pickle - retained in deprecated legacy modules for trusted local data only
     "B310",  # urllib_urlopen - used for weather API, trusted external services
     "B608",  # hardcoded_sql_expressions - all SQL uses hardcoded table/column names, no user input
 ]

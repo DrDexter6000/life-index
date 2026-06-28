@@ -1,4 +1,4 @@
-"""Index freshness — unified freshness detection for FTS + vector indexes.
+"""Index freshness — unified freshness detection for the FTS index.
 
 Round 12 Phase 3 Task 3.1: Checks manifest counts against actual index counts
 and pending queue status to determine whether indexes are up-to-date.
@@ -17,7 +17,11 @@ logger = get_logger(__name__)
 
 @dataclass
 class FreshnessReport:
-    """Comprehensive freshness status of FTS + vector indexes."""
+    """Comprehensive freshness status of the FTS index.
+
+    ``vector_fresh`` is retained as a legacy output field for callers that
+    already consume it. Vector indexes are no longer built or required.
+    """
 
     fts_fresh: bool
     vector_fresh: bool
@@ -53,30 +57,21 @@ def get_fts_count(index_dir: Path) -> int:
 
 
 def get_vector_count(index_dir: Path) -> int:
-    """Get vector count from the simple vector index."""
-    import pickle
+    """Legacy compatibility helper; vector indexes are no longer required."""
 
-    vec_pkl = index_dir / "vectors_simple.pkl"
-    if not vec_pkl.exists():
-        return 0
-    try:
-        with open(vec_pkl, "rb") as f:
-            vectors = pickle.load(f)
-        return len(vectors) if isinstance(vectors, dict) else 0
-    except Exception:
-        return 0
+    return 0
 
 
 def check_full_freshness(index_dir: Path) -> FreshnessReport:
-    """Check comprehensive freshness of FTS + vector indexes.
+    """Check freshness of the FTS index.
 
-    Compares actual counts against manifest records and checks for pending writes.
+    Compares actual FTS counts against manifest records and checks for pending writes.
 
     Args:
         index_dir: Path to the .index directory.
 
     Returns:
-        FreshnessReport with fts_fresh, vector_fresh, overall_fresh, and issues.
+        FreshnessReport with legacy vector_fresh=True.
     """
     issues: List[str] = []
 
@@ -85,7 +80,7 @@ def check_full_freshness(index_dir: Path) -> FreshnessReport:
     if manifest is None:
         return FreshnessReport(
             fts_fresh=False,
-            vector_fresh=False,
+            vector_fresh=True,
             overall_fresh=False,
             issues=["no_manifest: No index manifest found, run 'life-index index'"],
         )
@@ -94,29 +89,21 @@ def check_full_freshness(index_dir: Path) -> FreshnessReport:
     if manifest.partial:
         issues.append("partial_build: Last index build was incomplete")
 
-    # Get actual counts
     actual_fts = get_fts_count(index_dir)
-    actual_vector = get_vector_count(index_dir)
 
-    # Compare with manifest
     fts_fresh = actual_fts == manifest.fts_count
-    vector_fresh = actual_vector == manifest.vector_count
+    vector_fresh = True
 
     if not fts_fresh:
         issues.append(
             f"fts_stale: FTS has {actual_fts} docs, manifest expects {manifest.fts_count}"
-        )
-    if not vector_fresh:
-        issues.append(
-            f"vector_stale: Vector has {actual_vector} entries, "
-            f"manifest expects {manifest.vector_count}"
         )
 
     # Check pending queue
     if has_pending():
         issues.append("pending_writes: There are pending writes not yet indexed")
 
-    overall_fresh = fts_fresh and vector_fresh and len(issues) == 0
+    overall_fresh = fts_fresh and len(issues) == 0
 
     return FreshnessReport(
         fts_fresh=fts_fresh,

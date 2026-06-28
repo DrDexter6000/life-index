@@ -70,7 +70,7 @@ def _resolve_data_dir(data_dir: str | None = None) -> str:
 
 
 def check_index_freshness(data_dir: str | None = None) -> dict[str, Any]:
-    """Check FTS/vector index health via subprocess to build_index --check.
+    """Check FTS index health via subprocess to build_index --check.
 
     Invokes: python -m tools index --check --json
     """

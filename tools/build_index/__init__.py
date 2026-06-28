@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Life Index - Build Index Tool
-索引构建工具（FTS + 向量索引）
+索引构建工具（FTS only）
 
 Usage:
     python -m tools.build_index
@@ -12,13 +12,12 @@ Public API:
     result = build_all(incremental=True)
 """
 
-import os
 from typing import Dict, Any
 from pathlib import Path
 
 # 导入配置 (relative imports from parent tools package)
-from ..lib.config import get_model_cache_dir, FILE_LOCK_TIMEOUT_REBUILD
-from ..lib.paths import get_user_data_dir, get_vec_index_path
+from ..lib.config import FILE_LOCK_TIMEOUT_REBUILD
+from ..lib.paths import get_user_data_dir
 from ..lib.search_index import (
     update_index as update_fts_index,
     get_stats as get_fts_stats,
@@ -28,9 +27,7 @@ from ..lib.index_manifest import (
     write_manifest,
     read_manifest,
     compute_fts_checksum,
-    compute_vector_checksum,
 )
-from ..lib.semantic_status import write_semantic_status
 from ..lib.metadata_cache import (
     get_cache_stats,
     invalidate_cache,
@@ -45,6 +42,11 @@ from ..lib.logger import get_logger
 # 获取日志器
 logger = get_logger("build_index")
 
+SEMANTIC_INDEX_DEPRECATED_NOOP_WARNING = (
+    "deprecated_noop: semantic/vector index build options are accepted for compatibility "
+    "but ignored; index now builds FTS only."
+)
+
 
 def build_all(
     incremental: bool = True, fts_only: bool = False, vec_only: bool = False
@@ -54,15 +56,12 @@ def build_all(
 
     Args:
         incremental: True=增量更新，False=全量重建
-        fts_only: 仅更新 FTS 索引
-        vec_only: 仅更新向量索引
+        fts_only: 兼容参数；索引构建始终只更新 FTS
+        vec_only: 废弃兼容参数；接受但不构建向量索引
 
     Returns:
         构建结果
     """
-    if os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1" and not vec_only:
-        fts_only = True
-
     result: Dict[str, Any] = {
         "success": True,
         "fts": None,
@@ -70,8 +69,11 @@ def build_all(
         "duration_seconds": 0.0,
         "rebuild_hint": "",
         "auto_rebuild_triggered": False,  # Task 1.1.2: version mismatch auto-rebuild flag
-        "semantic_status": "disabled" if fts_only else "building",
+        "semantic_status": "disabled",
+        "warnings": [],
     }
+    if vec_only:
+        result["warnings"].append(SEMANTIC_INDEX_DEPRECATED_NOOP_WARNING)
 
     import time
 
@@ -112,135 +114,24 @@ def build_all(
                     result["fts"] = {"success": False, "error": str(e)}
                     result["success"] = False
 
-            # 更新向量索引
-            if not fts_only:
-                write_semantic_status("building")
-                logger.info("Updating vector index...")
-                vec_success = False
-
-                # 首先尝试 sqlite-vec
-                try:
-                    from ..lib.semantic_search import (
-                        update_vector_index,
-                        get_model,
-                    )
-
-                    model = get_model()
-                    if model.load():
-                        vec_result = update_vector_index(incremental=incremental)
-                        if vec_result.get("success"):
-                            result["vector"] = vec_result
-                            # Propagate auto_rebuild_triggered flag (Task 1.1.2)
-                            if vec_result.get("auto_rebuild_triggered"):
-                                result["auto_rebuild_triggered"] = True
-                            logger.info(
-                                f"  ✓ Vector (sqlite-vec): +{vec_result.get('added', 0)} added, "
-                                f"~{vec_result.get('updated', 0)} updated"
-                            )
-                            vec_success = True
-                except (ImportError, RuntimeError):
-                    pass  # 失败时尝试简单索引
-
-                # 如果 sqlite-vec 失败，使用简单向量索引
-                if not vec_success:
-                    try:
-                        from ..lib.vector_index_simple import (
-                            update_vector_index_simple,
-                            get_model as get_simple_model,
-                        )
-
-                        simple_model = get_simple_model()
-                        if simple_model.load():
-                            vec_result = update_vector_index_simple(
-                                simple_model.encode, incremental=incremental
-                            )
-                            result["vector"] = vec_result
-                            # Propagate auto_rebuild_triggered flag (Task 1.1.2)
-                            if vec_result.get("auto_rebuild_triggered"):
-                                result["auto_rebuild_triggered"] = True
-                            if vec_result.get("success"):
-                                logger.info(
-                                    f"  ✓ Vector (simple): +{vec_result.get('added', 0)} added, "
-                                    f"~{vec_result.get('updated', 0)} updated"
-                                )
-                            else:
-                                logger.warning(
-                                    "  ⚠ Vector (simple): "
-                                    f"{vec_result.get('error', 'Unknown error')}"
-                                )
-                        else:
-                            logger.info(
-                                "  ⚠ Embedding model not available. "
-                                "Install: pip install 'life-index[semantic]'"
-                            )
-                    except (RuntimeError, IOError, OSError) as e:
-                        logger.error(f"  ✗ Vector error: {e}")
-                        result["vector"] = {"success": False, "error": str(e)}
-
-                vector_result = result.get("vector") or {}
-                if not fts_only and vector_result.get("success"):
-                    simple_vector_ready = get_vec_index_path().exists()
-                    if simple_vector_ready:
-                        result["semantic_status"] = "ready"
-                        write_semantic_status("ready")
-                    else:
-                        result["semantic_status"] = "failed"
-                        write_semantic_status(
-                            "failed",
-                            error="simple vector index missing after vector build",
-                        )
-                    try:
-                        import sqlite3
-
-                        from ..lib.semantic_baseline import compute_semantic_baseline_from_matrix
-                        from ..lib.search_index import write_index_meta
-                        from ..lib.paths import get_fts_db_path
-                        from ..lib.vector_index_simple import get_index
-
-                        index = get_index()
-                        baseline_p25 = compute_semantic_baseline_from_matrix(index.get_matrix())
-                        if baseline_p25 > 0 and get_fts_db_path().exists():
-                            conn = sqlite3.connect(str(get_fts_db_path()))
-                            try:
-                                write_index_meta(conn, semantic_baseline_p25=baseline_p25)
-                            finally:
-                                conn.close()
-                            result["semantic_baseline_p25"] = baseline_p25
-                            logger.info(f"  ✓ Semantic baseline P25: {baseline_p25:.4f}")
-                    except Exception as e:
-                        logger.warning(f"  ⚠ Semantic baseline computation skipped: {e}")
-                elif not fts_only:
-                    result["semantic_status"] = "failed"
-                    write_semantic_status(
-                        "failed",
-                        error=str(vector_result.get("error") or "semantic index build failed"),
-                    )
-            else:
-                result["semantic_status"] = "disabled"
-
-            # Round 12 Phase 2: Write manifest after both phases complete
+            # Round 12 Phase 2: Write manifest after FTS completes
             from datetime import datetime as _dt
             from ..lib.paths import get_fts_db_path
 
             fts_success = (result.get("fts") or {}).get("success", False)
-            vec_success = (result.get("vector") or {}).get("success", False)
-            # In FTS-only mode, vector is intentionally skipped; partial = !fts_success
-            partial = not fts_success if fts_only else not (fts_success and vec_success)
+            partial = not fts_success
 
-            if fts_success or vec_success:
+            if fts_success:
                 try:
                     fts_data = result.get("fts") or {}
-                    vec_data = result.get("vector") or {}
                     manifest = IndexManifest(
                         fts_count=fts_data.get(
                             "total", fts_data.get("total_documents", fts_data.get("added", 0))
                         ),
-                        vector_count=vec_data.get(
-                            "total", vec_data.get("total_vectors", vec_data.get("added", 0))
-                        ),
+                        vector_count=0,
                         file_count=0,  # Will be filled by check_index
                         fts_checksum=compute_fts_checksum(get_fts_db_path()),
-                        vector_checksum=compute_vector_checksum(get_vec_index_path()),
+                        vector_checksum="",
                         build_timestamp=_dt.now().isoformat(),
                         build_version="2.0.0",
                         partial=partial,
@@ -286,48 +177,8 @@ def show_stats() -> None:
     if fts_stats["last_updated"]:
         logger.info(f"  Last Updated: {fts_stats['last_updated']}")
 
-    logger.info("\n🧠 Vector Index (Semantic Search):")
-    try:
-        from ..lib.semantic_search import get_stats as get_vec_stats
-
-        vec_stats = get_vec_stats()
-        if vec_stats["exists"] and vec_stats["total_vectors"] > 0:
-            logger.info("  Backend: sqlite-vec")
-            logger.info("  Exists: Yes")
-            logger.info(f"  Vectors: {vec_stats['total_vectors']}")
-            logger.info(f"  Size: {vec_stats['db_size_mb']} MB")
-            logger.info(f"  Model Loaded: {'Yes' if vec_stats['model_loaded'] else 'No'}")
-        else:
-            # sqlite-vec exists but empty, try simple index
-            raise ImportError("sqlite-vec empty, trying simple index")
-    except (ImportError, RuntimeError, Exception):
-        try:
-            from ..lib.vector_index_simple import get_index
-
-            simple_index = get_index()
-            simple_stats = simple_index.stats()
-            logger.info("  Backend: simple_numpy")
-            logger.info(f"  Exists: {'Yes' if simple_stats['exists'] else 'No'}")
-            logger.info(f"  Vectors: {simple_stats['total_vectors']}")
-            logger.info(f"  Size: {simple_stats['index_size_mb']} MB")
-        except (ImportError, RuntimeError):
-            logger.info("  Status: Not available")
-            logger.info("  Note: Install sentence-transformers for semantic search")
-
-    logger.info("\n💾 Cache Directory:")
-    cache_dir = get_model_cache_dir()
-    if cache_dir.exists():
-        total_size = 0
-        for f in cache_dir.rglob("*"):
-            if f.is_file():
-                try:
-                    total_size += f.stat().st_size
-                except (FileNotFoundError, OSError):
-                    pass
-        logger.info(f"  Location: {cache_dir}")
-        logger.info(f"  Size: {round(total_size / (1024 * 1024), 2)} MB")
-    else:
-        logger.info("  Not created yet")
+    logger.info("\n🔎 Semantic/Vector Index:")
+    logger.info("  Status: Disabled (removed from in-tool search/index pipeline)")
 
     logger.info("\n🗂 Metadata Cache:")
     cache_stats = get_cache_stats()
@@ -352,6 +203,7 @@ def check_index(data_dir: Path | None = None) -> Dict[str, Any]:
 
     Returns:
         Dict with keys: healthy, fts_count, vector_count, file_count, issues.
+        vector_count is retained as a legacy field and is always ignored for health.
     """
     from .diagnostics import check_index_health
 
@@ -364,11 +216,7 @@ def check_index(data_dir: Path | None = None) -> Dict[str, Any]:
     issues: list[str] = list(report.issues) if not report.consistency_ok else []
     healthy = report.consistency_ok
 
-    # In FTS-only mode, vector missing is expected; only FTS health matters
-    fts_only_mode = os.environ.get("LIFE_INDEX_INDEX_FTS_ONLY") == "1"
-    if fts_only_mode and not healthy:
-        issues = [i for i in issues if "Vector index" not in i]
-        healthy = report.fts_ok
+    healthy = report.fts_ok
 
     # Round 12 Phase 3: Enhanced check with manifest + freshness
     index_dir = data_dir / ".index"
@@ -378,10 +226,9 @@ def check_index(data_dir: Path | None = None) -> Dict[str, Any]:
     manifest_info: dict[str, object] = {"exists": manifest is not None}
     if manifest is not None:
         manifest_info["fts_count"] = manifest.fts_count
-        manifest_info["vector_count"] = manifest.vector_count
         manifest_info["partial"] = manifest.partial
         if manifest.partial:
-            issues.append("partial_build: Last index build was incomplete (vector or FTS missing)")
+            issues.append("partial_build: Last FTS index build was incomplete")
             healthy = False
     else:
         issues.append("no_manifest: No index manifest found, run 'life-index index --rebuild'")

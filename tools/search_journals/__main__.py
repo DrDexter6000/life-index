@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Life Index - Search Journals Tool - CLI Entry Point
-分层检索日志（默认 keyword-only；--semantic 启用双管道并行融合）
+分层检索日志（keyword/entity only；--semantic* 为废弃兼容 no-op）
 """
 
 # ── Encoding protection (R10 fix) ──────────────────────────────────────
@@ -96,7 +96,7 @@ Examples:
     python -m tools.search_journals --query "重构" --level 3
     python -m tools.search_journals --topic work --project Life-Index
     python -m tools.search_journals --date-from 2026-01-01 --date-to 2026-03-04
-    python -m tools.search_journals --query "学习笔记" --semantic
+    python -m tools.search_journals --query "学习笔记" --semantic  # deprecated no-op
         """,
     )
 
@@ -129,24 +129,24 @@ Examples:
     parser.add_argument(
         "--semantic",
         action="store_true",
-        help="启用语义搜索（默认关闭，per CHARTER §1.11）",
+        help="废弃兼容参数：接受但忽略，行为等同关键词/实体检索",
     )
     parser.add_argument(
         "--no-semantic",
         action="store_true",
-        help="显式禁用语义搜索（默认已关闭，此标志保持向后兼容）",
+        help="废弃兼容参数：接受但忽略，行为等同关键词/实体检索",
     )
     parser.add_argument(
         "--semantic-policy",
         choices=["fallback", "hybrid"],
         default="fallback",
-        help="语义搜索策略: fallback=仅零结果时启用, hybrid=并行融合 (默认: fallback)",
+        help="废弃兼容参数：接受 fallback/hybrid 但忽略",
     )
     parser.add_argument(
         "--semantic-weight",
         type=float,
         default=1.0,
-        help="语义搜索权重 (默认: 1.0)",
+        help="废弃兼容参数：接受但忽略",
     )
     parser.add_argument(
         "--fts-weight",

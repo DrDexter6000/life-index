@@ -20,6 +20,35 @@ def _clear_ci_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+def _write_minimal_eval_queries(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    eval_dir = tmp_path / ".eval"
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    (eval_dir / "golden_queries.yaml").write_text(
+        yaml.dump(
+            {
+                "queries": [
+                    {
+                        "id": "GQ07",
+                        "query": "test query seven",
+                        "category": "test",
+                        "expected": {"min_results": 0},
+                    },
+                    {
+                        "id": "GQ09",
+                        "query": "test query nine",
+                        "category": "test",
+                        "expected": {"min_results": 0},
+                    },
+                ]
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LIFE_INDEX_EVAL_DATA_DIR", str(eval_dir))
+
+
 class TestIsCiEnvironment:
     """Tests for is_ci_environment()."""
 
@@ -398,6 +427,7 @@ class TestOverlayCiAndBaselineDisable:
         from tools.eval.run_eval import run_evaluation
 
         _clear_ci_env(monkeypatch)
+        _write_minimal_eval_queries(tmp_path, monkeypatch)
         overlay_path = tmp_path / "overlay.yaml"
         overlay_path.write_text(
             yaml.dump({"queries": {"GQ07": {"must_contain_title_override": ["Should Apply"]}}}),
@@ -435,6 +465,7 @@ class TestPerQueryOverlayApplied:
         from tools.eval.run_eval import run_evaluation
 
         _clear_ci_env(monkeypatch)
+        _write_minimal_eval_queries(tmp_path, monkeypatch)
         overlay_path = tmp_path / "overlay.yaml"
         overlay_path.write_text(
             yaml.dump(
