@@ -24,10 +24,11 @@ def test_onboarding_is_bootstrap_driven_one_page() -> None:
 
 
 def test_onboarding_forbids_waiting_for_semantic_ready() -> None:
-    onboarding = _read("AGENT_ONBOARDING.md")
+    # whitespace-normalized so assertions survive doc line-wrapping
+    onboarding = " ".join(_read("AGENT_ONBOARDING.md").split())
 
-    assert "Do not wait for semantic indexing" in onboarding
-    assert "Keyword readiness is enough for onboarding" in onboarding
+    assert "no semantic/vector indexing to wait for" in onboarding
+    assert "keyword readiness is all onboarding needs" in onboarding
 
 
 def test_onboarding_data_safety_rule_stays_visible() -> None:

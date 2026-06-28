@@ -91,8 +91,10 @@ only if their exact commands appear in `safe_next_steps`.
 If `life-index sync-skill` reports `delivered=false`, surface that warning. Do
 not claim the agent playbook was delivered.
 
-Do not wait for semantic indexing. Keyword readiness is enough for onboarding.
-Report semantic status as informational when the commands expose it.
+Retrieval is keyword (FTS5) + Entity Graph — there is no semantic/vector
+indexing to wait for, so keyword readiness is all onboarding needs. The
+`--semantic*` flags are accepted as deprecated no-ops for backward
+compatibility (see WP-CLI-SEM-RM).
 
 ## 5. Completion Report
 
