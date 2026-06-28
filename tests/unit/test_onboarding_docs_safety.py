@@ -42,9 +42,10 @@ def test_readme_does_not_reference_real_first_entry_smoke_file() -> None:
     readme = _read("README.md")
     readme_en = _read("README.en.md")
     skill = _read("SKILL.md")
+    onboarding = _read("AGENT_ONBOARDING.md")
 
     assert "first-entry.json" not in readme
     assert "first-entry.json" not in readme_en
     assert "first-entry.json" not in skill
-    assert "sandbox" in readme.lower()
-    assert "sandbox" in readme_en.lower()
+    assert "sandbox" in onboarding.lower()
+    assert "LIFE_INDEX_DATA_DIR" in onboarding
