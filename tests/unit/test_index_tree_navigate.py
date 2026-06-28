@@ -11,6 +11,7 @@ def _write_journal(
     title: str,
     seq: str = "001",
     extra_frontmatter: str = "",
+    body: str = "Fixture body",
 ) -> Path:
     year, month, _day = date.split("-")
     journal_dir = data_dir / "Journals" / year / month
@@ -19,7 +20,7 @@ def _write_journal(
     lines = ["---", f'title: "{title}"', f"date: {date}"]
     if extra_frontmatter:
         lines.extend(extra_frontmatter.rstrip().splitlines())
-    lines.extend(["---", "", f"# {title}", "", "Fixture body"])
+    lines.extend(["---", "", f"# {title}", "", body])
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -440,6 +441,88 @@ def test_discover_returns_scoped_facet_value_menu_without_natural_language_infer
     assert payload["data"]["selection_contract"] == (
         "host_agent_selects_values; tool_executes_only"
     )
+
+
+def test_discover_content_term_is_explicit_corpus_vocabulary(tmp_path: Path, monkeypatch) -> None:
+    from tools.index_tree.core import build_discover_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+    sleep_entry = _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="睡眠和作息记录",
+        body="睡眠记录：作息恢复，晚上睡觉更稳定。",
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-15",
+        title="中东局势记录",
+        body="中东局势和国际新闻观察。",
+    )
+
+    default_payload = build_discover_payload(date_from="2026-03", date_to="2026-03")
+    assert "content_term" not in default_payload["data"]["facets"]
+
+    payload = build_discover_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        facets=["content_term"],
+    )
+
+    assert payload["success"] is True
+    assert set(payload["data"]["facets"]) == {"content_term"}
+    menu = payload["data"]["facets"]["content_term"]
+    values = {item["value"]: item for item in menu["values"]}
+    for term in ["睡眠", "作息", "睡觉"]:
+        assert values[term]["sample_entry_pointers"] == [
+            sleep_entry.relative_to(data_dir).as_posix()
+        ]
+    assert menu["selection_hint"] == (
+        "Use content_term values as exact search terms or content_term navigation "
+        "filters; they are corpus-observed terms, not synonyms."
+    )
+
+
+def test_navigate_content_term_filter_matches_body_terms_without_inference(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tools.index_tree.core import build_navigate_payload
+
+    data_dir = tmp_path / "Life-Index"
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+    hit = _write_journal(
+        data_dir,
+        date="2026-03-14",
+        title="作息记录",
+        body="睡眠记录：作息恢复，晚上睡觉更稳定。",
+    )
+    _write_journal(
+        data_dir,
+        date="2026-03-15",
+        title="中东局势记录",
+        body="中东局势和国际新闻观察。",
+    )
+
+    payload = build_navigate_payload(
+        date_from="2026-03",
+        date_to="2026-03",
+        operations=[
+            {
+                "type": "facet_value_filter",
+                "facet": "content_term",
+                "values": ["睡眠"],
+                "match": "any",
+            }
+        ],
+    )
+
+    assert payload["success"] is True
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["entry_pointers"] == [hit.relative_to(data_dir).as_posix()]
+    assert payload["data"]["entries"][0]["matched_facets"] == {"content_term": ["睡眠"]}
 
 
 def test_navigate_exhaustive_result_matches_full_scan(tmp_path: Path, monkeypatch) -> None:

@@ -102,8 +102,13 @@ journal evidence.
    any specific topic. Project, people, location, and tag menus may show
    canonical values derived from explicit `entity_graph.yaml` aliases; use
    `raw_values` only to understand which written labels were grouped. Do not
-   invent alias mappings that are not present in the graph. If the menu does
-   not expose useful values, fall back to keyword/entity-weighted discovery.
+   invent alias mappings that are not present in the graph. If the frontmatter
+   facet menu does not expose useful values, request observed journal-body terms
+   explicitly with
+   `life-index index-tree discover --from YYYY-MM --to YYYY-MM --facet content_term --json`.
+   Treat `content_term` values as exact corpus terms, not synonyms. If the menu
+   still does not expose useful values, fall back to keyword/entity-weighted
+   discovery.
 3. Pick relevant facet values yourself from the discover menu, then use
    structured Index B navigation before journal reads:
    `life-index index-tree navigate --from YYYY-MM --to YYYY-MM --filter facet=value --json`.
