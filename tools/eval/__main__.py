@@ -37,20 +37,17 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--semantic",
         action="store_true",
-        help="Enable semantic pipeline (default: disabled)",
+        help="Deprecated no-op: accepted but keyword eval is always used",
     )
     parser.add_argument(
         "--no-semantic",
         action="store_true",
-        help="Disable semantic pipeline (default: disabled)",
+        help="Deprecated no-op: accepted for compatibility",
     )
     parser.add_argument(
         "--semantic-report",
         action="store_true",
-        help=(
-            "Run a second semantic eval pass and append a semantic_report "
-            "section (diagnostic-only; cannot be used with --save-baseline)"
-        ),
+        help=("Deprecated no-op: append a disabled semantic_report section without a second pass"),
     )
     parser.add_argument(
         "--judge",
@@ -75,22 +72,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    use_semantic = args.semantic
-
-    if args.semantic_report and args.semantic:
-        parser.error(
-            "--semantic-report cannot be combined with --semantic; "
-            "top-level eval must remain keyword/default"
-        )
-
-    if args.semantic_report and args.save_baseline:
-        parser.error("--semantic-report cannot be used with --save-baseline")
+    use_semantic = False
 
     if args.compare_baseline:
         comparison: dict[str, Any] = compare_against_baseline(
             baseline_path=args.compare_baseline,
             data_dir=args.data_dir,
-            use_semantic=use_semantic,
+            use_semantic=False,
         )
         if args.json:
             payload = {"success": True, "data": comparison}

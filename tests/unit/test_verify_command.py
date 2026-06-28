@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pickle
 import sqlite3
 from pathlib import Path
 
@@ -36,8 +35,7 @@ def _create_fts_db(base_dir: Path, indexed_paths: list[str]) -> None:
     index_dir.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(index_dir / "journals_fts.db")
     try:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE journals (
                 path TEXT,
                 title TEXT,
@@ -51,8 +49,7 @@ def _create_fts_db(base_dir: Path, indexed_paths: list[str]) -> None:
                 file_hash TEXT,
                 modified_time TEXT
             )
-            """
-        )
+            """)
         for path in indexed_paths:
             conn.execute(
                 "INSERT INTO journals VALUES (?, '', '', '', '', '', '', '', '', '', '')",
@@ -63,23 +60,10 @@ def _create_fts_db(base_dir: Path, indexed_paths: list[str]) -> None:
         conn.close()
 
 
-def _create_vector_index(base_dir: Path, indexed_paths: list[str]) -> None:
-    index_dir = base_dir / ".index"
-    index_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        path: {"embedding": [0.1, 0.2], "date": "2026-04-03", "hash": "abc"}
-        for path in indexed_paths
-    }
-    with (index_dir / "vectors_simple.pkl").open("wb") as fh:
-        pickle.dump(payload, fh)
-
-
 def _create_topic_index(by_topic_dir: Path, links: list[str]) -> None:
     by_topic_dir.mkdir(parents=True, exist_ok=True)
     lines = ["# 主题: work", ""] + [f"- [2026-04-03] [Entry]({link})" for link in links]
-    (by_topic_dir / "主题_work.md").write_text(
-        "\n".join(lines) + "\n", encoding="utf-8"
-    )
+    (by_topic_dir / "主题_work.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _check(result: dict, name: str) -> dict:
@@ -127,18 +111,15 @@ class TestVerifyCommand:
             _rel_path(verify_paths["base_dir"], journal_b),
         ]
         _create_fts_db(verify_paths["base_dir"], indexed)
-        _create_vector_index(verify_paths["base_dir"], indexed)
         _create_topic_index(verify_paths["by_topic_dir"], indexed)
 
         result = run_verify()
 
         assert result["success"] is True
         assert result["issues_count"] == 0
-        assert len(result["checks"]) == 6
+        assert len(result["checks"]) == 5
 
-    def test_missing_required_field_detected(
-        self, verify_paths: dict[str, Path]
-    ) -> None:
+    def test_missing_required_field_detected(self, verify_paths: dict[str, Path]) -> None:
         _write_journal(
             verify_paths["journals_dir"],
             year="2026",
@@ -155,9 +136,7 @@ class TestVerifyCommand:
         assert any("missing title" in issue for issue in frontmatter_check["issues"])
 
     def test_orphan_fts_entry_detected(self, verify_paths: dict[str, Path]) -> None:
-        _create_fts_db(
-            verify_paths["base_dir"], ["Journals/2026/04/life-index_2026-04-03_001.md"]
-        )
+        _create_fts_db(verify_paths["base_dir"], ["Journals/2026/04/life-index_2026-04-03_001.md"])
 
         result = run_verify()
         fts_check = _check(result, "fts_consistency")
@@ -182,31 +161,7 @@ class TestVerifyCommand:
         assert fts_check["status"] != "ok"
         assert any("missing" in issue for issue in fts_check["issues"])
 
-    def test_vector_index_inconsistency_detected(
-        self, verify_paths: dict[str, Path]
-    ) -> None:
-        journal = _write_journal(
-            verify_paths["journals_dir"],
-            year="2026",
-            month="04",
-            filename="life-index_2026-04-03_001.md",
-            frontmatter='title: "A"\ndate: 2026-04-03',
-            body="Body",
-        )
-        _create_fts_db(
-            verify_paths["base_dir"], [_rel_path(verify_paths["base_dir"], journal)]
-        )
-        _create_vector_index(verify_paths["base_dir"], [])
-
-        result = run_verify()
-        vector_check = _check(result, "vector_consistency")
-
-        assert vector_check["status"] != "ok"
-        assert any("missing" in issue for issue in vector_check["issues"])
-
-    def test_broken_attachment_ref_detected(
-        self, verify_paths: dict[str, Path]
-    ) -> None:
+    def test_broken_attachment_ref_detected(self, verify_paths: dict[str, Path]) -> None:
         journal = _write_journal(
             verify_paths["journals_dir"],
             year="2026",
@@ -217,7 +172,6 @@ class TestVerifyCommand:
         )
         indexed = [_rel_path(verify_paths["base_dir"], journal)]
         _create_fts_db(verify_paths["base_dir"], indexed)
-        _create_vector_index(verify_paths["base_dir"], indexed)
 
         result = run_verify()
         attachment_check = _check(result, "attachment_refs")
@@ -227,7 +181,6 @@ class TestVerifyCommand:
 
     def test_topic_index_orphan_detected(self, verify_paths: dict[str, Path]) -> None:
         _create_fts_db(verify_paths["base_dir"], [])
-        _create_vector_index(verify_paths["base_dir"], [])
         _create_topic_index(
             verify_paths["by_topic_dir"],
             ["Journals/2026/04/life-index_2026-04-03_001.md"],

@@ -574,7 +574,7 @@ def edit_journal(
                     logger.info(f"已更新 {len(updated)} 个索引文件")
 
                 # 标记待索引更新 (Round 12 Phase 1: Pending Queue)
-                # 所有编辑（内容或元数据）都可能影响 FTS/向量索引
+                # 所有编辑（内容或元数据）都可能影响 FTS/metadata 索引
                 try:
                     rel_path = str(journal_path.relative_to(resolve_user_data_dir())).replace(
                         "\\", "/"

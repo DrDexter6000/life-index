@@ -77,10 +77,11 @@ def _mock_hierarchical_search(query="", **kwargs):
     }
 
 
-def _mock_semantic_fallback_search(query="", **kwargs):
-    """Mock deterministic search where semantic fallback was actually used."""
+def _mock_semantic_noop_search(query="", **kwargs):
+    """Mock deterministic search where deprecated semantic flags were requested."""
     result = _mock_hierarchical_search(query=query, **kwargs)
-    result["semantic_fallback_used"] = True
+    result["semantic_fallback_used"] = False
+    result["semantic_effective_policy"] = "deprecated_noop"
     return result
 
 
@@ -116,8 +117,8 @@ def _mock_recording_search(calls):
     return _search
 
 
-def _mock_short_keyword_zero_then_sentence_fallback(calls):
-    """Record calls and simulate short-keyword semantic bypass then raw-query fallback."""
+def _mock_short_keyword_zero(calls):
+    """Record calls and simulate a short-keyword zero-result path."""
 
     def _search(query="", **kwargs):
         calls.append({"query": query, "kwargs": kwargs})
@@ -132,9 +133,7 @@ def _mock_short_keyword_zero_then_sentence_fallback(calls):
                 "warnings": ["noise_gate: semantic bypassed for '睡得' (too_short)"],
             }
 
-        result = _mock_hierarchical_search(query=query, **kwargs)
-        result["semantic_fallback_used"] = True
-        return result
+        return _mock_hierarchical_search(query=query, **kwargs)
 
     return _search
 
@@ -264,14 +263,14 @@ class TestDefaultOutputShape:
 
     @patch(
         "tools.search_journals.orchestrator._get_search_fn",
-        return_value=_mock_semantic_fallback_search,
+        return_value=_mock_semantic_noop_search,
     )
-    def test_semantic_fallback_status_is_propagated(self, _mock):
+    def test_semantic_noop_status_is_propagated(self, _mock):
         orch = SmartSearchOrchestrator(llm_client=None)
         result = orch.search("test query")
-        assert result["semantic_fallback_used"] is True
+        assert result["semantic_fallback_used"] is False
 
-    def test_deterministic_scaffold_opts_into_search_semantic_fallback(self):
+    def test_deterministic_scaffold_uses_keyword_search(self):
         calls = []
         with patch(
             "tools.search_journals.orchestrator._get_search_fn",
@@ -282,8 +281,8 @@ class TestDefaultOutputShape:
 
         assert calls
         assert calls[0]["query"] == "投资"
-        assert calls[0]["kwargs"]["semantic"] is True
-        assert calls[0]["kwargs"]["semantic_policy"] == "fallback"
+        assert "semantic" not in calls[0]["kwargs"]
+        assert "semantic_policy" not in calls[0]["kwargs"]
         assert result["query_plan"]["strategy"] == "keyword_only"
 
     def test_natural_language_query_uses_extracted_keyword_sub_queries(self):
@@ -312,21 +311,21 @@ class TestDefaultOutputShape:
         assert result["evidence_pack"]["query_context"]["query"] == "晚睡熬夜作息"
         assert len(result["evidence_pack"]["items"]) == 3
 
-    def test_short_keyword_natural_language_keeps_raw_query_for_semantic_fallback(self):
+    def test_short_keyword_natural_language_does_not_retry_raw_semantic_fallback(self):
         calls = []
         with patch(
             "tools.search_journals.orchestrator._get_search_fn",
-            return_value=_mock_short_keyword_zero_then_sentence_fallback(calls),
+            return_value=_mock_short_keyword_zero(calls),
         ):
             orch = SmartSearchOrchestrator(llm_client=None)
             result = orch.search("最近睡得怎么样")
 
-        assert [call["query"] for call in calls] == ["睡得", "最近睡得怎么样"]
-        assert result["filtered_results"]
-        assert result["semantic_fallback_used"] is True
+        assert [call["query"] for call in calls] == ["睡得"]
+        assert result["filtered_results"] == []
+        assert result["semantic_fallback_used"] is False
         assert result["query_plan"]["sub_queries"] == ["睡得"]
-        assert result["query_plan"]["semantic_fallback_query"] == "最近睡得怎么样"
-        assert result["query_plan"]["strategy"] == "keyword_with_semantic_fallback"
+        assert "semantic_fallback_query" not in result["query_plan"]
+        assert result["query_plan"]["strategy"] == "keyword_temporal"
 
     @patch(
         "tools.search_journals.orchestrator._get_search_fn",
@@ -418,8 +417,6 @@ class TestDefaultOutputShape:
             {
                 "date_from": "2026-03-01",
                 "date_to": "2026-03-31",
-                "semantic": True,
-                "semantic_policy": "fallback",
             }
         ]
         assert result["query_plan"]["strategy"] == "keyword_temporal"

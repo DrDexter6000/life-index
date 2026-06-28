@@ -413,15 +413,13 @@ class TestHierarchicalSearchBenchmark:
 
         benchmark(hierarchical_search, query="benchmark", topic="work", level=2)
 
-    @patch("tools.search_journals.core.run_semantic_pipeline")
     @patch("tools.search_journals.core.run_keyword_pipeline")
-    def test_level_3_dual_pipeline(
+    def test_level_3_keyword_pipeline_with_deprecated_semantic_flag(
         self,
         mock_kw: MagicMock,
-        mock_sem: MagicMock,
         benchmark: Any,
     ) -> None:
-        """Level 3: dual pipeline (keyword + semantic) with RRF fusion."""
+        """Level 3: semantic flag accepted but keyword pipeline is benchmarked."""
         from tools.search_journals.core import hierarchical_search
 
         l3_results = _make_l3_results(30)
@@ -433,24 +431,16 @@ class TestHierarchicalSearchBenchmark:
             0,  # l2_total_available
             {"l1_time_ms": 1.0, "l2_time_ms": 5.0, "l3_time_ms": 10.0},  # perf
         )
-        mock_sem.return_value = (
-            _make_semantic_results(20),  # sem_results
-            {"semantic_time_ms": 50.0},  # perf
-            True,  # semantic_available
-            None,  # semantic_note
-        )
 
-        benchmark(hierarchical_search, query="benchmark", level=3)
+        benchmark(hierarchical_search, query="benchmark", level=3, semantic=True)
 
-    @patch("tools.search_journals.core.run_semantic_pipeline")
     @patch("tools.search_journals.core.run_keyword_pipeline")
-    def test_level_3_keyword_only_fallback(
+    def test_level_3_keyword_only_no_semantic_fallback(
         self,
         mock_kw: MagicMock,
-        mock_sem: MagicMock,
         benchmark: Any,
     ) -> None:
-        """Level 3: keyword-only fallback when semantic returns nothing."""
+        """Level 3: keyword-only path without semantic fallback."""
         from tools.search_journals.core import hierarchical_search
 
         mock_kw.return_value = (
@@ -460,12 +450,6 @@ class TestHierarchicalSearchBenchmark:
             False,
             0,
             {"l1_time_ms": 1.0, "l2_time_ms": 5.0, "l3_time_ms": 15.0},
-        )
-        mock_sem.return_value = (
-            [],  # no semantic results
-            {},
-            False,
-            "sentence-transformers not available",
         )
 
         benchmark(hierarchical_search, query="benchmark", level=3, semantic=False)

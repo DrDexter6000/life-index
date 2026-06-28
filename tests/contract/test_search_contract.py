@@ -11,7 +11,7 @@ documented in docs/API.md:
 
 Note: After Phase 2B refactoring, mock targets changed:
 - Level 1/2: patch at core module
-- Level 3: patch at keyword_pipeline and semantic_pipeline modules
+- Level 3: patch at keyword_pipeline; semantic/vector search is deprecated no-op
 """
 
 import json
@@ -135,7 +135,7 @@ def mock_search_dependencies():
             return_value={"results": [], "truncated": False, "total_available": 0},
         ):
             with patch("tools.search_journals.core.scan_all_indices", return_value=[]):
-                # Level 3 uses keyword_pipeline and semantic_pipeline modules
+                # Level 3 uses keyword_pipeline; semantic/vector search is disabled.
                 with patch(
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
@@ -153,27 +153,14 @@ def mock_search_dependencies():
                             return_value=[],
                         ):
                             with patch(
-                                "tools.search_journals.semantic_pipeline.search_semantic",
-                                return_value=([], {}),
+                                "tools.lib.index_freshness.check_full_freshness",
+                                return_value=fresh_report,
                             ):
                                 with patch(
-                                    "tools.search_journals.semantic_pipeline."
-                                    "get_semantic_runtime_status",
-                                    return_value={
-                                        "available": True,
-                                        "reason": "",
-                                        "note": "",
-                                    },
+                                    "tools.lib.pending_writes.has_pending",
+                                    return_value=False,
                                 ):
-                                    with patch(
-                                        "tools.lib.index_freshness.check_full_freshness",
-                                        return_value=fresh_report,
-                                    ):
-                                        with patch(
-                                            "tools.lib.pending_writes.has_pending",
-                                            return_value=False,
-                                        ):
-                                            yield
+                                    yield
 
 
 class TestSearchResponseShape:
@@ -231,14 +218,6 @@ class TestSearchResponseShape:
             patch(
                 "tools.search_journals.keyword_pipeline.search_l1_index",
                 return_value=[],
-            ),
-            patch(
-                "tools.search_journals.semantic_pipeline.search_semantic",
-                return_value=([], {}),
-            ),
-            patch(
-                "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
-                return_value={"available": True, "reason": "", "note": ""},
             ),
             patch(
                 "tools.lib.index_freshness.check_full_freshness",
@@ -401,7 +380,6 @@ class TestSearchGoldenSnapshots:
         l1_results = [{"path": "C:/tmp/a.md", "title": "A"}]
         l2_results = [{"path": "C:/tmp/a.md", "metadata": {"topic": ["work"]}}]
         l3_results = [{"path": "C:/tmp/a.md", "content": "Golden hit"}]
-        semantic_results = [{"path": "C:/tmp/a.md", "score": 0.91, "title": "A semantic"}]
         merged_results = [
             {
                 "path": "C:/tmp/a.md",
@@ -424,19 +402,7 @@ class TestSearchGoldenSnapshots:
                     {"l1_time_ms": 1.0, "l2_time_ms": 2.0, "l3_time_ms": 3.0},
                 ),
             ),
-            patch(
-                "tools.search_journals.core.run_semantic_pipeline",
-                return_value=(
-                    semantic_results,
-                    {"semantic_time_ms": 4.0},
-                    True,
-                    "",
-                ),
-            ),
-            patch(
-                "tools.search_journals.core.merge_and_rank_results_hybrid",
-                return_value=merged_results,
-            ),
+            patch("tools.search_journals.core.merge_and_rank_results", return_value=merged_results),
         ):
             result = hierarchical_search(query="golden", level=3)
 

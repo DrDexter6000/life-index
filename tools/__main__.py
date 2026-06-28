@@ -151,29 +151,6 @@ def _check_pyyaml() -> Tuple[Dict[str, Any], str, bool]:
         )
 
 
-def _check_sentence_transformers() -> Tuple[Dict[str, Any], str]:
-    """检查 sentence-transformers 依赖"""
-    try:
-        import sentence_transformers
-
-        st_version = getattr(sentence_transformers, "__version__", "unknown")
-        return {
-            "name": "sentence_transformers",
-            "status": "ok",
-            "version": st_version,
-        }, ""
-    except ImportError:
-        return (
-            {
-                "name": "sentence_transformers",
-                "status": "warning",
-                "version": None,
-            },
-            "sentence-transformers is not installed. Semantic search will be disabled. "
-            "To enable: pip install 'life-index[semantic]'",
-        )
-
-
 def _check_data_dir() -> Tuple[Dict[str, Any], str]:
     """检查数据目录"""
     data_dir = get_user_data_dir()
@@ -202,60 +179,23 @@ def _check_index() -> Tuple[Dict[str, Any], str]:
     data_dir = get_user_data_dir()
     index_dir = data_dir / ".index"
     fts_db = index_dir / "journals_fts.db"
-    vec_db = index_dir / "journals_vec.db"
-    vec_pkl = index_dir / "vectors_simple.pkl"
     data_exists = get_user_data_dir().exists()
-    from tools.lib.semantic_status import get_semantic_index_status
-
-    semantic = get_semantic_index_status(index_dir)
-    semantic_status = str(semantic.get("status", "disabled"))
+    semantic = {
+        "status": "disabled",
+        "reason": "in-tool semantic/vector search has been removed",
+    }
     check = {
         "name": "search_index",
         "status": "ok" if fts_db.exists() else "info",
         "fts_index_exists": fts_db.exists(),
-        "vector_index_exists": vec_db.exists() or vec_pkl.exists(),
-        "semantic_status": semantic_status,
+        "vector_index_exists": False,
+        "semantic_status": "disabled",
         "semantic": semantic,
         "path": str(index_dir),
     }
-    if semantic_status == "failed":
-        return check, f"Semantic index failed: {semantic.get('error', 'unknown error')}"
     if not fts_db.exists() and data_exists:
         return check, "Search index not built. Run: life-index index"
     return check, ""
-
-
-def _check_embedding_model() -> Dict[str, Any]:
-    try:
-        from tools.lib.paths import get_user_data_dir
-
-        model_dir = get_user_data_dir() / ".index" / "models"
-        check: Dict[str, Any] = {
-            "name": "embedding_model",
-            "status": "ok",
-            "downloaded": False,
-        }
-
-        if model_dir.exists() and any(model_dir.iterdir()):
-            check["downloaded"] = True
-        else:
-            # Check HuggingFace cache as fallback
-            hf_cache = Path.home() / ".cache" / "huggingface"
-            if hf_cache.exists():
-                check["downloaded"] = True
-            else:
-                check["status"] = "warning"
-                check["issue"] = (
-                    "Embedding model not cached — first semantic search will download (~2GB)"
-                )
-        return check
-    except Exception:
-        return {
-            "name": "embedding_model",
-            "status": "warning",
-            "downloaded": False,
-            "error": "Could not check model cache (config import failed)",
-        }
 
 
 def _check_entity_graph(graph_path: Path) -> Dict[str, Any]:
@@ -345,10 +285,8 @@ def health_check() -> None:
     1. Python 版本 (>=3.11)
     2. 虚拟环境状态
     3. 核心依赖 (pyyaml)
-    4. 语义搜索依赖 (sentence-transformers)
-    5. 数据目录
-    6. 索引状态
-    7. 嵌入模型缓存
+    4. 数据目录
+    5. 索引状态
     """
     checks: List[Dict[str, Any]] = []
     issues: List[str] = []
@@ -374,31 +312,19 @@ def health_check() -> None:
         issues.append(issue)
     has_critical = has_critical or critical
 
-    # 4. Semantic search dependency: sentence-transformers
-    check, issue = _check_sentence_transformers()
-    checks.append(check)
-    if issue:
-        issues.append(issue)
-
-    # 5. Data directory
+    # 4. Data directory
     check, issue = _check_data_dir()
     checks.append(check)
     if issue:
         issues.append(issue)
 
-    # 6. Index status
+    # 5. Index status
     check, issue = _check_index()
     checks.append(check)
     if issue:
         issues.append(issue)
 
-    # 7. Embedding model cache
-    check = _check_embedding_model()
-    checks.append(check)
-    if check.get("issue"):
-        issues.append(check["issue"])
-
-    # 8. Entity graph (Round 10, T1.3)
+    # 6. Entity graph (Round 10, T1.3)
     from tools.lib.paths import resolve_user_data_dir
 
     graph_path = resolve_user_data_dir() / "entity_graph.yaml"

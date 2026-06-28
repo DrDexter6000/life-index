@@ -83,8 +83,8 @@ class TestBuildAllAtomic:
         manifest = read_manifest(data_dir / ".index")
         assert manifest is not None, "Manifest should be written after build"
 
-    def test_vector_failure_marks_partial(self, tmp_path: Path, monkeypatch):
-        """When vector build fails, manifest is written with partial=True."""
+    def test_deprecated_vector_failure_does_not_mark_partial(self, tmp_path: Path, monkeypatch):
+        """Vector build is removed; FTS success writes a non-partial manifest."""
         import tools.build_index as bi
         import tools.lib.vector_index_simple as vi_mod
         import tools.lib.semantic_search as ss
@@ -108,7 +108,8 @@ class TestBuildAllAtomic:
         manifest = read_manifest((tmp_path / "Life-Index") / ".index")
         # Either partial=True or manifest exists with correct flags
         assert manifest is not None
-        assert manifest.partial is True, "Manifest should be marked partial when vector fails"
+        assert manifest.partial is False
+        assert manifest.vector_count == 0
 
     def test_manifest_not_written_on_fts_failure(self, tmp_path: Path, monkeypatch):
         """When FTS build fails, no manifest is written."""

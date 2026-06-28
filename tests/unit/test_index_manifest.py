@@ -127,7 +127,7 @@ class TestIndexManifest:
         assert is_manifest_valid(manifest, actual_file_count=10) is False
 
     def test_is_manifest_valid_when_vector_count_mismatch(self, index_dir: Path):
-        """is_manifest_valid returns False when vector_count != file_count."""
+        """Vector count is legacy and does not invalidate the manifest."""
         manifest = IndexManifest(
             fts_count=10,
             vector_count=7,
@@ -137,7 +137,7 @@ class TestIndexManifest:
             build_timestamp="2026-04-18T12:00:00",
             build_version="1.0.0",
         )
-        assert is_manifest_valid(manifest, actual_file_count=10) is False
+        assert is_manifest_valid(manifest, actual_file_count=10) is True
 
     def test_is_manifest_valid_when_actual_file_count_mismatch(self, index_dir: Path):
         """is_manifest_valid returns False when actual_file_count != file_count."""

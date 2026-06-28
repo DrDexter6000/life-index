@@ -121,16 +121,10 @@ class TestR11Q01Ambiguity:
 class TestR11Q06Rejection:
     """R11-Q06: 量子计算机编程 — rejection depends on corpus content.
 
-    In a sparse corpus, semantic search may still return results for this query.
-    The no_confident_match signal is corpus-dependent, not a guaranteed rejection.
-    Marked xfail(strict=False) as a best-effort check — passes when corpus
-    has no relevant content, xfail when semantic finds weak matches.
+    With in-tool semantic search removed, a sparse corpus should produce no
+    confident match for this out-of-domain query.
     """
 
-    @pytest.mark.xfail(
-        reason="Corpus-dependent: semantic may find weak matches in test data",
-        strict=False,
-    )
     def test_no_confident_match(self, isolated_search):
         r = isolated_search("量子计算机编程")
         assert r.get("no_confident_match") is True

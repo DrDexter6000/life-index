@@ -32,7 +32,10 @@ def _create_journal(journals_dir: Path, name: str, title: str = "Test") -> Path:
     month_dir = journals_dir / "2026" / "03"
     month_dir.mkdir(parents=True, exist_ok=True)
     p = month_dir / name
-    p.write_text(f"---\ntitle: \"{title}\"\ndate: 2026-03-01\ntopic: [life]\n---\n# {title}\nBody", encoding="utf-8")
+    p.write_text(
+        f'---\ntitle: "{title}"\ndate: 2026-03-01\ntopic: [life]\n---\n# {title}\nBody',
+        encoding="utf-8",
+    )
     return p
 
 
@@ -83,9 +86,13 @@ class TestIndexHealthReport:
 
     def test_report_is_json_serializable(self):
         report = IndexHealthReport(
-            fts_count=10, vector_count=10, file_count=10,
-            fts_orphans=set(), fts_missing=set(),
-            vec_orphans=set(), vec_missing=set(),
+            fts_count=10,
+            vector_count=10,
+            file_count=10,
+            fts_orphans=set(),
+            fts_missing=set(),
+            vec_orphans=set(),
+            vec_missing=set(),
             issues=[],
         )
         d = asdict(report)
@@ -153,11 +160,11 @@ class TestReadVectorPaths:
         paths = _read_vector_paths(fresh_data_dir / ".index")
         assert paths == set()
 
-    def test_reads_paths_from_pickle(self, fresh_data_dir: Path):
+    def test_ignores_legacy_vector_pickle(self, fresh_data_dir: Path):
         index_dir = fresh_data_dir / ".index"
         _create_vector_pickle(index_dir, ["Journals/2026/03/a.md", "Journals/2026/03/b.md"])
         paths = _read_vector_paths(index_dir)
-        assert paths == {"Journals/2026/03/a.md", "Journals/2026/03/b.md"}
+        assert paths == set()
 
 
 class TestCheckIndexHealth:
@@ -171,7 +178,7 @@ class TestCheckIndexHealth:
         assert report.consistency_ok is True
         assert report.issues == []
 
-    def test_all_three_consistent(self, fresh_data_dir: Path):
+    def test_fts_consistent(self, fresh_data_dir: Path):
         journals_dir = fresh_data_dir / "Journals"
         index_dir = fresh_data_dir / ".index"
         paths = ["Journals/2026/03/life-index_2026-03-01_001.md"]
@@ -182,10 +189,11 @@ class TestCheckIndexHealth:
         report = check_index_health(fresh_data_dir)
         assert report.file_count == 1
         assert report.fts_count == 1
-        assert report.vector_count == 1
+        assert report.vector_count == 0
         assert report.consistency_ok is True
         assert report.fts_ok is True
         assert report.vector_ok is True
+        assert report.vec_missing == set()
 
     def test_fts_missing_entries(self, fresh_data_dir: Path):
         """File exists on disk but not in FTS."""
@@ -199,7 +207,7 @@ class TestCheckIndexHealth:
         report = check_index_health(fresh_data_dir)
         assert report.fts_ok is False
         assert len(report.fts_missing) == 1
-        assert report.vector_ok is False
+        assert report.vector_ok is True
         assert len(report.issues) > 0
 
     def test_fts_stale_entries(self, fresh_data_dir: Path):
@@ -207,10 +215,13 @@ class TestCheckIndexHealth:
         journals_dir = fresh_data_dir / "Journals"
         index_dir = fresh_data_dir / ".index"
         _create_journal(journals_dir, "life-index_2026-03-01_001.md")
-        _create_fts_db(index_dir, [
-            "Journals/2026/03/life-index_2026-03-01_001.md",
-            "Journals/2026/03/life-index_2026-03-01_999.md",  # stale
-        ])
+        _create_fts_db(
+            index_dir,
+            [
+                "Journals/2026/03/life-index_2026-03-01_001.md",
+                "Journals/2026/03/life-index_2026-03-01_999.md",  # stale
+            ],
+        )
         _create_vector_pickle(index_dir, ["Journals/2026/03/life-index_2026-03-01_001.md"])
 
         report = check_index_health(fresh_data_dir)
@@ -218,8 +229,8 @@ class TestCheckIndexHealth:
         assert len(report.fts_orphans) == 1
         assert any("stale" in issue.lower() or "orphan" in issue.lower() for issue in report.issues)
 
-    def test_vector_missing_entries(self, fresh_data_dir: Path):
-        """File exists but not in vector index."""
+    def test_vector_missing_entries_are_ignored(self, fresh_data_dir: Path):
+        """Legacy vector index gaps no longer affect health."""
         journals_dir = fresh_data_dir / "Journals"
         index_dir = fresh_data_dir / ".index"
         path1 = "Journals/2026/03/life-index_2026-03-01_001.md"
@@ -230,8 +241,8 @@ class TestCheckIndexHealth:
         _create_vector_pickle(index_dir, [path1])  # missing path2
 
         report = check_index_health(fresh_data_dir)
-        assert report.vector_ok is False
-        assert len(report.vec_missing) == 1
+        assert report.vector_ok is True
+        assert report.vec_missing == set()
 
     def test_no_index_dir(self, tmp_path: Path):
         """data_dir exists but .index dir doesn't."""

@@ -57,12 +57,6 @@ def test_search_keeps_edit_pending_when_auto_index_returns_unsuccessful(
         "run_keyword_pipeline",
         lambda **kwargs: ([], [], [], False, 0, {}),
     )
-    monkeypatch.setattr(
-        search_core,
-        "run_semantic_pipeline",
-        lambda **kwargs: ([], {}, False, None),
-    )
-
     result = search_core.hierarchical_search(
         query="new search-impact token",
         semantic=False,

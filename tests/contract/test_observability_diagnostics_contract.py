@@ -227,7 +227,7 @@ class TestSmartSearchExplainDiagnostics:
             "citations": [],
             "agent_decisions": [],
             "agent_unavailable": True,
-            "semantic_fallback_used": True,
+            "semantic_fallback_used": False,
             "performance": {"total_time_ms": 10, "total_available": 1},
         }
 
@@ -249,9 +249,9 @@ class TestSmartSearchExplainDiagnostics:
                         pass
 
         result = json.loads(captured.getvalue())
-        assert result["diagnostics"]["fallback_path"] == "semantic"
-        assert result["query_plan"]["strategy"] == "keyword_with_semantic_fallback"
-        assert result["query_plan"]["fallback_decision"] is True
+        assert result["diagnostics"]["fallback_path"] is None
+        assert result["query_plan"]["strategy"] == "keyword_only"
+        assert result["query_plan"]["fallback_decision"] is False
 
     def test_smart_search_explain_preserves_orchestrator_query_plan(self):
         """CLI explain must not overwrite orchestrator multi-query plans."""

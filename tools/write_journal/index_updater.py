@@ -300,65 +300,11 @@ def update_fts_index(journal_path: Path, data: Dict[str, Any]) -> bool:
 
 
 def update_vector_index(journal_path: Path, data: Dict[str, Any]) -> bool:
+    """Deprecated compatibility no-op.
+
+    Life Index no longer maintains an in-tool vector index.  The function
+    remains importable for older callers, but it intentionally performs no
+    embedding/model work and reports successful no-op completion.
     """
-    写入后同步更新向量索引（Write-Through）
-
-    Args:
-        journal_path: 日志文件路径
-        data: 日志数据（包含 title, content, abstract, tags, topic 等）
-
-    Returns:
-        True 如果更新成功，False 如果失败（不影响主流程）
-    """
-    try:
-        from ..lib.vector_index_simple import get_model, get_index
-        from ..lib.semantic_search import build_embedding_text
-
-        model = get_model()
-        if not model.load():
-            return False
-
-        embed_text = build_embedding_text(
-            title=data.get("title"),
-            body=data.get("content"),
-            tags=data.get("tags"),
-            topic=data.get("topic"),
-        ).strip()
-        if not embed_text:
-            return False
-
-        # 生成嵌入向量
-        embeddings = model.encode([embed_text])
-        if not embeddings:
-            return False
-
-        # 计算相对路径
-        rel_path = build_journal_path_fields(
-            journal_path,
-            journals_dir=get_journals_dir(),
-            user_data_dir=get_user_data_dir(),
-        )["rel_path"]
-
-        # 更新索引
-        index = get_index()
-        date_str = str(data.get("date", ""))[:10]
-
-        # 计算文件哈希用于后续增量更新检测
-        import hashlib
-
-        try:
-            file_content = journal_path.read_bytes()
-            file_hash = hashlib.md5(file_content).hexdigest()[:16]
-        except Exception:
-            file_hash = ""
-
-        index.add(rel_path, embeddings[0], date_str, file_hash)
-        index.commit()
-
-        return True
-
-    except (ImportError, OSError, IOError, RuntimeError) as e:
-        # 向量索引更新失败不应阻塞日志写入
-        # 日志会在下次 cron 全量重建时补上
-        print(f"Warning: Failed to update vector index: {e}")
-        return False
+    _ = (journal_path, data)
+    return True

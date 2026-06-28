@@ -1,10 +1,9 @@
-"""Index consistency diagnostics — measure index health without fixing anything.
+"""Index consistency diagnostics — measure FTS index health without fixing anything.
 
-Round 12 Phase 0 Task 0.1: read-only diagnostic tools that compare FTS count,
-vector count, and actual journal file count, reporting discrepancies.
+Read-only diagnostic tools that compare FTS count and actual journal file count,
+reporting discrepancies. Vector fields are retained as legacy empty fields.
 """
 
-import pickle
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,11 +31,11 @@ class IndexHealthReport:
 
     @property
     def vector_ok(self) -> bool:
-        return not self.vec_orphans and not self.vec_missing
+        return True
 
     @property
     def consistency_ok(self) -> bool:
-        return self.fts_ok and self.vector_ok
+        return self.fts_ok
 
 
 def _scan_actual_journals(data_dir: Path) -> Set[str]:
@@ -76,23 +75,13 @@ def _read_fts_paths(index_dir: Path) -> Set[str]:
 
 
 def _read_vector_paths(index_dir: Path) -> Set[str]:
-    """Read all indexed paths from vector pickle."""
-    paths: Set[str] = set()
-    pkl_path = index_dir / "vectors_simple.pkl"
-    if not pkl_path.exists():
-        return paths
-    try:
-        with open(pkl_path, "rb") as f:
-            vec_data = pickle.load(f)
-        if isinstance(vec_data, dict):
-            paths = set(vec_data.keys())
-    except Exception:
-        pass
-    return paths
+    """Legacy compatibility helper; vector indexes are no longer required."""
+
+    return set()
 
 
 def check_index_health(data_dir: Path) -> IndexHealthReport:
-    """Check index consistency: compare FTS, vector, and actual file counts.
+    """Check index consistency: compare FTS and actual file counts.
 
     This is a read-only operation — it never modifies any index or data file.
     """
@@ -104,8 +93,8 @@ def check_index_health(data_dir: Path) -> IndexHealthReport:
 
     fts_orphans = fts_paths - actual_paths
     fts_missing = actual_paths - fts_paths
-    vec_orphans = vec_paths - actual_paths
-    vec_missing = actual_paths - vec_paths
+    vec_orphans: Set[str] = set()
+    vec_missing: Set[str] = set()
 
     issues: list[str] = []
     if fts_orphans:
@@ -114,12 +103,8 @@ def check_index_health(data_dir: Path) -> IndexHealthReport:
         )
     if fts_missing:
         issues.append(f"FTS missing {len(fts_missing)} file(s): on disk but not indexed")
-    if vec_orphans:
-        issues.append(f"Vector index has {len(vec_orphans)} orphan(s): vectors for deleted files")
-    if vec_missing:
-        issues.append(f"Vector index missing {len(vec_missing)} file(s): on disk but no vector")
-    if not fts_orphans and not fts_missing and not vec_orphans and not vec_missing and actual_paths:
-        issues.append("All indexes consistent with actual files")
+    if not fts_orphans and not fts_missing and actual_paths:
+        issues.append("FTS index consistent with actual files")
 
     return IndexHealthReport(
         fts_count=len(fts_paths),
