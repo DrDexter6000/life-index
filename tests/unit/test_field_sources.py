@@ -20,6 +20,32 @@ def test_field_sources_user_provided_fields():
     assert result["field_sources"]["topic"] == "user"
 
 
+def test_missing_date_defaults_to_today_with_auto_source(monkeypatch):
+    """Missing date is filled from local today and marked as auto."""
+    monkeypatch.setattr("tools.write_journal.prepare.current_local_date_iso", lambda: "2026-06-29")
+    raw = {"title": "Test", "content": "内容", "topic": "life"}
+
+    result = prepare_journal_metadata(raw)
+
+    assert result["date"] == "2026-06-29"
+    assert result["field_sources"]["date"] == "auto"
+
+
+def test_user_date_is_preserved_with_user_source(monkeypatch):
+    monkeypatch.setattr("tools.write_journal.prepare.current_local_date_iso", lambda: "2026-06-29")
+    raw = {
+        "title": "Test",
+        "content": "内容",
+        "topic": "life",
+        "date": "2026-03-14",
+    }
+
+    result = prepare_journal_metadata(raw)
+
+    assert result["date"] == "2026-03-14"
+    assert result["field_sources"]["date"] == "user"
+
+
 def test_field_sources_default_location():
     """默认填充的字段应标记为 'auto'"""
     raw = {"title": "Test", "content": "内容", "topic": "life"}

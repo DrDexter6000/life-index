@@ -88,6 +88,28 @@ class TestHealthCheck:
         assert search_index_check["semantic"]["status"] == "disabled"
         assert "removed" in search_index_check["semantic"]["reason"]
 
+    def test_health_groups_actionable_and_chronic_issues(self, tmp_path, monkeypatch, capsys):
+        data_dir = tmp_path / "life-index-data"
+        journals_dir = data_dir / "Journals"
+        journals_dir.mkdir(parents=True)
+        (journals_dir / "life-index_2026-01-01_001.md").write_text("# test\n", encoding="utf-8")
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
+
+        health_check()
+
+        payload = json.loads(capsys.readouterr().out)
+        data = payload["data"]
+
+        assert "actionable_issues" in data
+        assert "chronic_debt" in data
+        assert "issue_summary" in data
+        assert any("Search index not built" in item for item in data["actionable_issues"])
+        assert any("Entity graph" in item for item in data["chronic_debt"])
+        assert data["issue_summary"]["actionable_count"] == len(data["actionable_issues"])
+        assert data["issue_summary"]["chronic_debt_count"] == len(data["chronic_debt"])
+
 
 class TestMainCli:
     def test_serve_command_is_not_available(self, monkeypatch, capsys) -> None:

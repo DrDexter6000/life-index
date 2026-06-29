@@ -31,7 +31,7 @@ from tools.lib.text_normalize import normalize_text_list
 from tools.lib.topics import VALID_TOPICS
 
 logger = logging.getLogger(__name__)
-from tools.write_journal.utils import extract_explicit_metadata_from_content
+from tools.write_journal.utils import current_local_date_iso, extract_explicit_metadata_from_content
 from tools.write_journal.weather import normalize_location
 
 from .weather import query_weather_for_location
@@ -232,6 +232,9 @@ def prepare_journal_metadata(
 
     if str(prepared.get("date", "")).strip():
         field_sources["date"] = "user"
+    else:
+        prepared["date"] = current_local_date_iso()
+        field_sources["date"] = "auto"
 
     # Rule-based fallbacks
     if not prepared.get("title"):

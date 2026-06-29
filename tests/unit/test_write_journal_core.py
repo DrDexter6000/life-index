@@ -166,6 +166,43 @@ class TestWriteJournalBasic:
         # Dry run returns early without confirmation message
         assert result["needs_confirmation"] is False
 
+    def test_missing_date_defaults_to_today_dry_run(self, mock_deps, monkeypatch):
+        """Missing date should default to local today and preserve provenance."""
+        data = {
+            "title": "Test Journal",
+            "content": "This is test content.",
+            "topic": ["life"],
+        }
+
+        monkeypatch.setattr("tools.write_journal.core.current_local_date_iso", lambda: "2026-06-29")
+        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
+            with patch(
+                "tools.write_journal.core.get_journals_lock_path",
+                return_value=mock_deps["lock_path"],
+            ):
+                with patch(
+                    "tools.write_journal.core.query_weather_for_location",
+                    return_value="Sunny 25°C",
+                ):
+                    with patch(
+                        "tools.write_journal.core.normalize_location",
+                        return_value="Chongqing, China",
+                    ):
+                        with patch(
+                            "tools.write_journal.core.extract_file_paths_from_content",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "tools.write_journal.core.process_attachments",
+                                return_value=[],
+                            ):
+                                result = write_journal(data, dry_run=True)
+
+        assert result["success"] is True
+        assert data["date"] == "2026-06-29"
+        assert data["field_sources"]["date"] == "auto"
+        assert "life-index_2026-06-29_001.md" in result["journal_path"]
+
     def test_write_surfaces_related_candidates_in_dry_run(self, mock_deps, tmp_path):
         data = {
             "date": "2026-03-14",
@@ -795,31 +832,48 @@ class TestWriteJournalBasic:
 class TestWriteJournalValidation:
     """Tests for input validation"""
 
-    def test_missing_date_field(self):
-        """Test that missing date field raises error"""
+    def test_missing_date_field_defaults_to_today(self, tmp_path, monkeypatch):
+        """Missing date should default to local today."""
         data = {
             "title": "Test Journal",
             "content": "This is test content.",
+            "location": "Lagos, Nigeria",
+            "weather": "Sunny 25C",
         }
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
 
-        result = write_journal(data)
+        monkeypatch.setattr("tools.write_journal.core.current_local_date_iso", lambda: "2026-06-29")
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
+            with patch("tools.write_journal.core.get_journals_lock_path", return_value=lock_path):
+                result = write_journal(data, dry_run=True)
 
-        assert result["success"] is False
-        assert result["error"] is not None
-        assert "date" in result["error"].lower()
+        assert result["success"] is True
+        assert data["date"] == "2026-06-29"
+        assert data["field_sources"]["date"] == "auto"
 
-    def test_empty_date_field(self):
-        """Test that empty date field raises error"""
+    def test_empty_date_field_defaults_to_today(self, tmp_path, monkeypatch):
+        """Empty date should default to local today."""
         data = {
             "date": "",
             "title": "Test Journal",
             "content": "This is test content.",
+            "location": "Lagos, Nigeria",
+            "weather": "Sunny 25C",
         }
+        lock_path = tmp_path / ".cache" / "journals.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch()
 
-        result = write_journal(data)
+        monkeypatch.setattr("tools.write_journal.core.current_local_date_iso", lambda: "2026-06-29")
+        with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
+            with patch("tools.write_journal.core.get_journals_lock_path", return_value=lock_path):
+                result = write_journal(data, dry_run=True)
 
-        assert result["success"] is False
-        assert result["error"] is not None
+        assert result["success"] is True
+        assert data["date"] == "2026-06-29"
+        assert data["field_sources"]["date"] == "auto"
 
 
 class TestWriteJournalLocation:

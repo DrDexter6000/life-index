@@ -10,6 +10,15 @@ This document is intentionally short. `bootstrap` diagnoses the local state and
 prints the plan. The agent executes that plan; it does not rebuild a parallel
 decision tree from prose.
 
+## System Overview
+
+Life Index is a deterministic toolset for a host agent, not a standalone human-facing intelligent app.
+
+CLI (life-index) is the deterministic tool layer installed in the host agent environment. It records and retrieves journals through explicit commands and has no built-in LLM.
+Host agent (for example, Hermes) is the intelligence layer. It reads skills, plans work, orchestrates CLI tools, and synthesizes grounded answers.
+GUI is the optional UX layer over the same CLI-backed capabilities. It presents data and relays AI+ questions through /host-agent; the intelligence comes from your host agent, not from the GUI.
+Data stays separate from program code. Journals are your local data and remain independent from this repository.
+
 ## 1. Before You Start
 
 Verify the host has:
