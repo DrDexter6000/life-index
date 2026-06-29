@@ -5350,7 +5350,7 @@ life-index entity --candidate-edges --output=json
 ### Endpoint
 
 ```bash
-life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [--install] [--source-root <path>]
+life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [--install] [--uninstall] [--list] [--dry-run] [--source-root <path>]
 ```
 
 ### Purpose
@@ -5359,15 +5359,27 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
 - Preserve custom trigger phrases already present in the target `SKILL.md`.
 - Report a missing or ambiguous host skill directory as a loud, non-fatal `skipped` diagnostic with `data.delivered=false`.
 - Support explicit first delivery with `--install` when the caller provides a known host target.
+- List and remove Life Index-managed host agent skill artifacts without touching user data.
 
 ### Behavior
 
 - Bare `sync-skill` never creates or guesses a new host skill directory.
-- The command does not read or write journal data.
+- The command does not read, write, move, or delete journal data.
 - `--host-skill-dir` may point to an existing host skill directory. With
   `--install`, it may point to a skill directory to create.
 - `--install --host-home <path>` creates and syncs
   `<host-home>/skills/life-index`.
+- `--list` is read-only. It enumerates discovered Life Index skill directories
+  under the documented host homes (`.codex`, `.agents`, `.hermes`, `.claude`)
+  and matching host-home environment variables.
+- `--uninstall --host-home <path>` removes only managed Life Index skill
+  directories under that explicit host home: `<host-home>/skills/life-index`
+  and one-level nested `<host-home>/skills/<category>/life-index` variants.
+- `--uninstall --dry-run --host-home <path>` reports matching targets without
+  deleting them.
+- `--uninstall` without explicit `--host-home` is refused. The command never
+  deletes the host home, parent `skills/` directory, source checkouts, pip
+  packages, data directories, journals, or non-matching paths.
 - If `--host-skill-dir` is omitted, the command checks the documented host skill
   directory environment and default locations, including flat
   `skills/life-index` and one-level nested `skills/<category>/life-index`
@@ -5436,6 +5448,67 @@ When no host skill directory is available:
 `success=true` with `data.delivered=false` means the command completed but the
 host agent playbook was not updated. Onboarding and upgrade chains must surface
 that diagnostic instead of treating it as a completed delivery.
+
+Listing discovered agent skill artifacts:
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.sync_skill.v0",
+  "command": "sync-skill",
+  "data": {
+    "status": "listed",
+    "action": "list",
+    "discovered": ["<host-home>/skills/life-index"],
+    "removed": [],
+    "skipped": [],
+    "diagnostics": []
+  }
+}
+```
+
+Uninstalling managed agent skill artifacts:
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.sync_skill.v0",
+  "command": "sync-skill",
+  "data": {
+    "status": "uninstalled",
+    "action": "uninstall",
+    "host_home": "<host-home>",
+    "dry_run": false,
+    "removed": ["<host-home>/skills/life-index"],
+    "skipped": [],
+    "diagnostics": []
+  }
+}
+```
+
+If no explicit host home is supplied for uninstall, the command fails closed:
+
+```json
+{
+  "success": false,
+  "schema_version": "m35.sync_skill.v0",
+  "command": "sync-skill",
+  "data": {
+    "status": "refused",
+    "action": "uninstall",
+    "host_home": null,
+    "dry_run": false,
+    "removed": [],
+    "skipped": [],
+    "diagnostics": [
+      {
+        "code": "UNINSTALL_REQUIRES_HOST_HOME",
+        "message": "--uninstall requires explicit --host-home; no data, clone, or package paths are inferred."
+      }
+    ]
+  }
+}
+```
 
 ---
 

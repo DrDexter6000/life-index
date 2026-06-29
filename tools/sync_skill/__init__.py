@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +109,153 @@ def find_host_skill_dir(
 def install_target_from_host_home(host_home: str | Path) -> Path:
     """Resolve the canonical Life Index skill directory under a host home."""
     return Path(host_home).expanduser() / "skills" / "life-index"
+
+
+def _default_host_homes() -> list[Path]:
+    homes: list[Path] = []
+    for env_name in HOST_HOME_ENVS:
+        host_home = os.environ.get(env_name)
+        if host_home:
+            homes.append(Path(host_home))
+
+    home = Path.home()
+    homes.extend(home / dirname for dirname in DEFAULT_HOST_HOME_DIRS)
+    return _dedupe_paths(homes)
+
+
+def _managed_skill_dir_reason(path: Path, host_home: Path) -> str | None:
+    """Return None when path is a managed LI skill dir under host_home."""
+    try:
+        resolved_home = host_home.expanduser().resolve()
+        resolved_path = path.expanduser().resolve()
+        relative_parts = resolved_path.relative_to(resolved_home).parts
+    except ValueError:
+        return "outside_host_home"
+
+    if len(relative_parts) == 2 and relative_parts == ("skills", "life-index"):
+        return None
+    if (
+        len(relative_parts) == 3
+        and relative_parts[0] == "skills"
+        and relative_parts[2] == "life-index"
+    ):
+        return None
+    return "unmanaged_path"
+
+
+def list_host_skill_dirs(
+    host_homes: Sequence[str | Path] | None = None,
+) -> dict[str, Any]:
+    """List existing managed Life Index host skill directories without mutation."""
+    homes = [Path(home) for home in host_homes] if host_homes is not None else _default_host_homes()
+    discovered: list[str] = []
+    skipped: list[dict[str, str]] = []
+
+    for host_home in _dedupe_paths(homes):
+        for candidate in _dedupe_paths(_skill_dir_candidates_from_home(host_home)):
+            if not candidate.exists():
+                continue
+            reason = _managed_skill_dir_reason(candidate, host_home)
+            resolved = str(candidate.expanduser().resolve())
+            if reason is not None:
+                skipped.append({"path": resolved, "reason": reason})
+                continue
+            if candidate.is_symlink():
+                skipped.append({"path": resolved, "reason": "symlink_refused"})
+                continue
+            if candidate.is_dir():
+                discovered.append(resolved)
+
+    return {
+        "success": True,
+        "schema_version": SYNC_SKILL_SCHEMA_VERSION,
+        "command": "sync-skill",
+        "data": {
+            "status": "listed",
+            "action": "list",
+            "discovered": sorted(set(discovered)),
+            "removed": [],
+            "skipped": skipped,
+            "diagnostics": [],
+        },
+    }
+
+
+def uninstall_skill_artifacts(
+    *,
+    host_home: str | Path | None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Remove managed Life Index host skill directories under an explicit host home."""
+    if host_home is None:
+        return {
+            "success": False,
+            "schema_version": SYNC_SKILL_SCHEMA_VERSION,
+            "command": "sync-skill",
+            "data": {
+                "status": "refused",
+                "action": "uninstall",
+                "host_home": None,
+                "dry_run": dry_run,
+                "removed": [],
+                "skipped": [],
+                "diagnostics": [
+                    _diagnostic(
+                        "UNINSTALL_REQUIRES_HOST_HOME",
+                        (
+                            "--uninstall requires explicit --host-home; no data, "
+                            "clone, or package paths are inferred."
+                        ),
+                    )
+                ],
+            },
+        }
+
+    host_home_path = Path(host_home).expanduser()
+    removed: list[str] = []
+    skipped: list[dict[str, str]] = []
+    for candidate in _dedupe_paths(_skill_dir_candidates_from_home(host_home_path)):
+        resolved = str(candidate.expanduser().resolve())
+        reason = _managed_skill_dir_reason(candidate, host_home_path)
+        if reason is not None:
+            skipped.append({"path": resolved, "reason": reason})
+            continue
+        if not candidate.exists():
+            skipped.append({"path": resolved, "reason": "not_found"})
+            continue
+        if candidate.is_symlink():
+            skipped.append({"path": resolved, "reason": "symlink_refused"})
+            continue
+        if not candidate.is_dir():
+            skipped.append({"path": resolved, "reason": "not_directory"})
+            continue
+        if dry_run:
+            skipped.append({"path": resolved, "reason": "dry_run"})
+            continue
+
+        shutil.rmtree(candidate)
+        removed.append(resolved)
+
+    status = (
+        "dry_run" if dry_run and any(item["reason"] == "dry_run" for item in skipped) else "skipped"
+    )
+    if removed:
+        status = "uninstalled"
+
+    return {
+        "success": True,
+        "schema_version": SYNC_SKILL_SCHEMA_VERSION,
+        "command": "sync-skill",
+        "data": {
+            "status": status,
+            "action": "uninstall",
+            "host_home": str(host_home_path.resolve()),
+            "dry_run": dry_run,
+            "removed": removed,
+            "skipped": skipped,
+            "diagnostics": [],
+        },
+    }
 
 
 def _split_frontmatter(text: str) -> tuple[list[str], list[str]]:
