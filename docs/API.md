@@ -511,7 +511,7 @@ python -m tools.write_journal --data '<json>'
 |------|------|------|--------|------|
 | title | string | ❌ | 自动生成/调用方补齐 | 日志标题（≤20字） |
 | content | string | ⚠️ workflow 通常要求 | - | 日志正文（原样保留） |
-| date | string | ✅ | - | 日期（ISO 8601: YYYY-MM-DD） |
+| date | string | ❌ | today | 日期（ISO 8601: YYYY-MM-DD）；省略时使用本地今天日期并记录 `field_sources.date="auto"` |
 | location | string | ❌ | 默认地点兜底 | 地点；若正文中已明确写出地点，优先采用正文信息；仅在正文和入参都未提供时才使用默认地点 |
 | weather | string | ❌ | 自动查询/手动兜底 | 天气描述；若正文中已明确写出天气，优先采用正文信息 |
 | mood | array | ❌ | [] | 心情标签 |
@@ -645,7 +645,8 @@ python -m tools.write_journal --data '<json>'
 
 ### 当前源码校验语义
 
-- `write_journal()` 当前源码只对 `date` 做硬校验
+- `write_journal()` 会在缺少 `date` 时使用本地今天日期；显式传入 `date` 时保持原值
+- `prepare_journal_metadata()` 和直接 `write_journal()` 路径都会为自动日期记录 `field_sources.date="auto"`
 - `content` 在产品 / workflow 语义上通常应提供，但并非这里定义的同级硬校验项
 - `title` / `topic` / `abstract` 更准确地说是 **Agent / Web workflow 负责补齐**，不是 `write_journal()` 当前源码的硬必填
 
@@ -4295,11 +4296,14 @@ python -m tools.build_index [options]
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Always `true` (even when degraded) |
 | `schema_version` | string | yes | `"m16.health.v0"` — top-level output schema version |
-| `data` | object | yes | `{status, checks[], issues[], issue_count}` |
+| `data` | object | yes | `{status, checks[], issues[], issue_count, actionable_issues[], chronic_debt[], issue_summary}` |
 | `data.status` | string | yes | `"healthy"` / `"degraded"` / `"unhealthy"` |
 | `data.checks` | array | yes | Individual check results |
 | `data.issues` | array | yes | Issue descriptions |
 | `data.issue_count` | int | yes | Number of issues found |
+| `data.actionable_issues` | array | yes | Issues with immediate commands or setup fixes to run now |
+| `data.chronic_debt` | array | yes | Non-blocking recurring maintenance reminders |
+| `data.issue_summary` | object | yes | Counts for actionable and chronic issue groups |
 | `events` | array | no | Piggyback event notifications |
 
 **`--data-audit` mode:**
@@ -4323,6 +4327,8 @@ python -m tools.build_index [options]
 - `success`: always `true` for health checks. Degraded/unhealthy status is communicated via `data.status`, not via `success: false`.
 - `data.status`: the primary health indicator. `degraded` means partial functionality; `unhealthy` means critical issues.
 - `data.checks`: additive; new checks may be added (e.g., `index_tree` check).
+- `data.actionable_issues`: install/runtime or index-readiness items that can be acted on immediately.
+- `data.chronic_debt`: non-blocking maintenance reminders such as entity graph or Index Tree upkeep. These remain visible without implying an install failure.
 - `data.checks[name="data_directory"].journal_count`: counts only canonical journal filenames matching `life-index_YYYY-MM-DD_NNN.md`; this is the same journal enumeration used by `bootstrap` and `migrate --dry-run`.
 - `health --data-audit`: compatibility summary over `maintenance audit`; Data
   Doctor is the SSOT for data-health issue detection, planning, and low-risk
@@ -4366,7 +4372,15 @@ python -m tools health [options]
   "data": {
     "status": "healthy|degraded|unhealthy",
     "checks": [ ... ],
-    "issues": [ ... ]
+    "issues": [ ... ],
+    "issue_count": 0,
+    "actionable_issues": [ ... ],
+    "chronic_debt": [ ... ],
+    "issue_summary": {
+      "actionable_count": 0,
+      "chronic_debt_count": 0,
+      "non_blocking_count": 0
+    }
   },
   "events": [ ... ]
 }

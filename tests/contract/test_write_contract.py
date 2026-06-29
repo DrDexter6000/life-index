@@ -9,7 +9,7 @@ documented in docs/API.md and SKILL.md:
 3. Status field values are from documented enum sets
 4. needs_confirmation tracks location_auto_filled
 5. Error cases return structured error responses
-6. Validation rejects missing required fields
+6. Missing date defaults to local today
 """
 
 import json
@@ -265,8 +265,11 @@ class TestWriteJournalStatusEnums:
 
     def test_failure_sets_not_started_statuses(self, writable_env):
         """On failure, index_status and side_effects_status are 'not_started'."""
-        data = {}  # Missing required 'date' field
-        result = _run_write(data, writable_env)
+        with patch(
+            "tools.write_journal.core.current_local_date_iso",
+            side_effect=RuntimeError("test date failure"),
+        ):
+            result = _run_write({}, writable_env)
 
         assert result["success"] is False
         assert result["index_status"] == "not_started"
@@ -303,8 +306,11 @@ class TestWriteJournalStatusEnums:
 
     def test_failed_write_outcome_is_failed(self, writable_env):
         """Failed write → write_outcome is 'failed'."""
-        data = {}  # Missing required 'date' field
-        result = _run_write(data, writable_env)
+        with patch(
+            "tools.write_journal.core.current_local_date_iso",
+            side_effect=RuntimeError("test date failure"),
+        ):
+            result = _run_write({}, writable_env)
         assert result["success"] is False
         assert result["write_outcome"] == "failed"
 
@@ -676,14 +682,17 @@ class TestWriteJournalAttachmentResultContract:
 class TestWriteJournalValidation:
     """Input validation matches API.md error codes."""
 
-    def test_missing_date_returns_failure(self, writable_env):
-        """Missing 'date' field results in success=False."""
+    def test_missing_date_defaults_to_today(self, writable_env, monkeypatch):
+        """Missing 'date' field defaults to local today."""
         data = {
             "title": "No Date",
             "content": "Missing date field.",
         }
+        monkeypatch.setattr("tools.write_journal.core.current_local_date_iso", lambda: "2026-06-29")
         result = _run_write(data, writable_env)
-        assert result["success"] is False
+        assert result["success"] is True
+        assert data["date"] == "2026-06-29"
+        assert data["field_sources"]["date"] == "auto"
 
     def test_journal_path_is_string_on_success(self, writable_env):
         """On success, journal_path is a non-empty string."""
@@ -704,8 +713,11 @@ class TestWriteJournalValidation:
 
     def test_journal_path_is_none_on_failure(self, writable_env):
         """On failure, journal_path remains None."""
-        data = {}  # Missing everything
-        result = _run_write(data, writable_env)
+        with patch(
+            "tools.write_journal.core.current_local_date_iso",
+            side_effect=RuntimeError("test date failure"),
+        ):
+            result = _run_write({}, writable_env)
 
         assert result["success"] is False
         assert result["journal_path"] is None

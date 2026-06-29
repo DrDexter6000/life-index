@@ -88,7 +88,10 @@ def _run_write(data: dict, env: dict, dry_run: bool = False) -> dict:
             "tools.write_journal.core.query_weather_for_location",
             return_value="Sunny 25\u00b0C",
         ),
-        patch("tools.write_journal.core.update_topic_index", return_value=[]),
+        patch(
+            "tools.write_journal.core.update_topic_index",
+            return_value=[],
+        ),
         patch("tools.write_journal.core.update_project_index", return_value=None),
         patch("tools.write_journal.core.update_tag_indices", return_value=[]),
         patch(
@@ -107,9 +110,13 @@ def _run_write(data: dict, env: dict, dry_run: bool = False) -> dict:
 class TestWriteJournalFailureDictShape:
     """Pin the exact shape of the result dict when write_journal fails."""
 
-    def test_missing_date_returns_all_default_keys(self, writable_env):
+    def test_date_default_failure_returns_all_default_keys(self, writable_env):
         """On failure, result dict must contain every key from the initial template."""
-        result = _run_write({}, writable_env)
+        with patch(
+            "tools.write_journal.core.current_local_date_iso",
+            side_effect=RuntimeError("test date failure"),
+        ):
+            result = _run_write({}, writable_env)
 
         expected_keys = {
             "success",
@@ -140,7 +147,11 @@ class TestWriteJournalFailureDictShape:
 
     def test_failure_default_values(self, writable_env):
         """Pin the default values returned on failure."""
-        result = _run_write({}, writable_env)
+        with patch(
+            "tools.write_journal.core.current_local_date_iso",
+            side_effect=RuntimeError("test date failure"),
+        ):
+            result = _run_write({}, writable_env)
 
         assert result["success"] is False
         assert result["write_outcome"] == "failed"
@@ -161,11 +172,14 @@ class TestWriteJournalFailureDictShape:
         assert isinstance(result["error"], str)
         assert isinstance(result["metrics"], dict)
 
-    def test_failure_error_contains_date_message(self, writable_env):
-        """On missing date, the error string mentions 'date'."""
-        result = _run_write({}, writable_env)
+    def test_failure_error_is_populated(self, writable_env):
+        """On failure, the error string is populated."""
+        with patch(
+            "tools.write_journal.core.current_local_date_iso",
+            side_effect=RuntimeError("test date failure"),
+        ):
+            result = _run_write({}, writable_env)
         assert result["success"] is False
-        # The error message is in Chinese but should contain a reference to 'date'
         assert result["error"] is not None
         assert len(result["error"]) > 0
 

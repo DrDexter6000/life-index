@@ -61,6 +61,7 @@ from tools.lib.bootstrap_manifest import read_bootstrap_manifest as _read_bootst
 
 HEALTH_SCHEMA_VERSION = "m16.health.v0"
 INDEX_TREE_REBUILD_COMMAND = "life-index generate-index --all-months"
+CHRONIC_HEALTH_CHECKS = {"virtual_env", "data_directory", "entity_graph", "index_tree"}
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
 
@@ -277,6 +278,38 @@ def _check_index_tree() -> Dict[str, Any]:
     return check
 
 
+def _record_health_issue(check: Dict[str, Any], issue: str, issues: List[str]) -> None:
+    check["issue"] = issue
+    issues.append(issue)
+
+
+def _classify_health_issues(checks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    actionable: List[str] = []
+    chronic: List[str] = []
+
+    for check in checks:
+        issue = check.get("issue")
+        if not isinstance(issue, str) or not issue:
+            continue
+
+        if check.get("name") in CHRONIC_HEALTH_CHECKS:
+            check["issue_class"] = "chronic_debt"
+            chronic.append(issue)
+        else:
+            check["issue_class"] = "actionable"
+            actionable.append(issue)
+
+    return {
+        "actionable_issues": actionable,
+        "chronic_debt": chronic,
+        "issue_summary": {
+            "actionable_count": len(actionable),
+            "chronic_debt_count": len(chronic),
+            "non_blocking_count": len(chronic),
+        },
+    }
+
+
 def health_check() -> None:
     """
     检查 Life Index 安装健康状态。
@@ -296,33 +329,33 @@ def health_check() -> None:
     check, issue, critical = _check_python_version()
     checks.append(check)
     if issue:
-        issues.append(issue)
+        _record_health_issue(check, issue, issues)
     has_critical = has_critical or critical
 
     # 2. Virtual environment
     check, issue = _check_venv()
     checks.append(check)
     if issue:
-        issues.append(issue)
+        _record_health_issue(check, issue, issues)
 
     # 3. Core dependency: pyyaml
     check, issue, critical = _check_pyyaml()
     checks.append(check)
     if issue:
-        issues.append(issue)
+        _record_health_issue(check, issue, issues)
     has_critical = has_critical or critical
 
     # 4. Data directory
     check, issue = _check_data_dir()
     checks.append(check)
     if issue:
-        issues.append(issue)
+        _record_health_issue(check, issue, issues)
 
     # 5. Index status
     check, issue = _check_index()
     checks.append(check)
     if issue:
-        issues.append(issue)
+        _record_health_issue(check, issue, issues)
 
     # 6. Entity graph (Round 10, T1.3)
     from tools.lib.paths import resolve_user_data_dir
@@ -339,6 +372,8 @@ def health_check() -> None:
     if check.get("issue"):
         issues.append(check["issue"])
 
+    issue_groups = _classify_health_issues(checks)
+
     # Build result
     overall = "healthy" if not has_critical else "unhealthy"
     if not has_critical and issues:
@@ -352,6 +387,7 @@ def health_check() -> None:
             "checks": checks,
             "issues": issues,
             "issue_count": len(issues),
+            **issue_groups,
         },
     }
 

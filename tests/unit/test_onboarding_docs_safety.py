@@ -39,6 +39,20 @@ def test_onboarding_data_safety_rule_stays_visible() -> None:
     assert "fresh install" in onboarding
 
 
+def test_onboarding_explains_cli_gui_host_agent_relationship() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+
+    assert "System Overview" in onboarding
+    assert (
+        "Life Index is a deterministic toolset for a host agent, not a standalone "
+        "human-facing intelligent app."
+    ) in onboarding
+    assert "CLI (life-index) is the deterministic tool layer" in onboarding
+    assert "Host agent (for example, Hermes) is the intelligence layer." in onboarding
+    assert "GUI is the optional UX layer over the same CLI-backed capabilities." in onboarding
+    assert "Data stays separate from program code." in onboarding
+
+
 def test_readme_does_not_reference_real_first_entry_smoke_file() -> None:
     readme = _read("README.md")
     readme_en = _read("README.en.md")

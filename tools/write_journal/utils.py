@@ -7,7 +7,7 @@ Life Index - Write Journal Tool - Utilities
 import os
 import platform
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Tuple
 
 from ..lib.config import PATH_MAPPINGS
@@ -18,6 +18,11 @@ def get_year_month(date_str: str) -> Tuple[int, int]:
     """从日期字符串提取年和月"""
     dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
     return dt.year, dt.month
+
+
+def current_local_date_iso() -> str:
+    """Return today's local date as YYYY-MM-DD."""
+    return date.today().isoformat()
 
 
 def convert_path_for_platform(source_path: str) -> str:

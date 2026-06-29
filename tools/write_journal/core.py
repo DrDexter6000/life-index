@@ -42,6 +42,7 @@ logger = get_logger(__name__)
 
 # 导入子模块
 from .utils import (
+    current_local_date_iso,
     extract_explicit_metadata_from_content as _extract_explicit_metadata_from_content,
     generate_filename,
     get_next_sequence,
@@ -902,10 +903,15 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
     result = _init_write_result()
 
     try:
-        date_str = data.get("date")
+        date_str = str(data.get("date") or "").strip()
         if not date_str:
-            logger.error("缺少必需字段：date")
-            raise ValueError("缺少必需字段：date")
+            date_str = current_local_date_iso()
+            data["date"] = date_str
+            field_sources = data.get("field_sources")
+            if not isinstance(field_sources, dict):
+                field_sources = {}
+                data["field_sources"] = field_sources
+            field_sources["date"] = "auto"
 
         logger.info(f"开始写入日志：date={date_str}, title={data.get('title', 'N/A')}")
 
