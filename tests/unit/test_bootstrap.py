@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
 import tools.bootstrap as _mod
 from tools.bootstrap import (
     BOOTSTRAP_SCHEMA_VERSION,
+    EDITABLE_REFRESH_STEP,
     assess_checkout,
     build_bootstrap_result,
     decide_route,
@@ -27,12 +29,19 @@ def _freshness(
     latest_release: str | None = "1.2.3",
     update_available: str | None = None,
     freshness_error: str | None = None,
-) -> dict[str, str | None]:
+) -> dict[str, object]:
     return {
         "freshness": freshness,
         "latest_release": latest_release,
         "update_available": update_available,
+        "update_reasons": ["release"] if update_available else [],
         "freshness_error": freshness_error,
+        "suggested_refresh_step": None,
+        "git_freshness": "not_applicable",
+        "git_upstream": None,
+        "git_behind_count": None,
+        "git_ahead_count": None,
+        "git_error": None,
     }
 
 
@@ -41,9 +50,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: None)
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "unknown")
-        monkeypatch.setattr(
-            _mod, "_detect_release_freshness", lambda installed, manifest: _freshness()
-        )
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
         state = detect_data_state(data_dir=str(tmp_path / "Life-Index"))
         assert state["has_user_data"] is False
         assert state["journal_count"] == 0
@@ -54,9 +61,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "editable")
-        monkeypatch.setattr(
-            _mod, "_detect_release_freshness", lambda installed, manifest: _freshness()
-        )
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
         data_dir = tmp_path / "Life-Index"
         _write_journal(data_dir / "Journals" / "2026" / "01")
         (data_dir / "Journals" / "2026" / "01" / "README.md").write_text("ignore", encoding="utf-8")
@@ -70,9 +75,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: None)
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "unknown")
-        monkeypatch.setattr(
-            _mod, "_detect_release_freshness", lambda installed, manifest: _freshness()
-        )
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
         state = detect_data_state(data_dir=str(tmp_path / "Life-Index"))
         assert set(state) == {
             "has_user_data",
@@ -85,7 +88,14 @@ class TestDetectDataState:
             "freshness",
             "latest_release",
             "update_available",
+            "update_reasons",
             "freshness_error",
+            "suggested_refresh_step",
+            "git_freshness",
+            "git_upstream",
+            "git_behind_count",
+            "git_ahead_count",
+            "git_error",
             "migration_needed",
             "migration_check_error",
         }
@@ -94,9 +104,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "editable")
-        monkeypatch.setattr(
-            _mod, "_detect_release_freshness", lambda installed, manifest: _freshness()
-        )
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
         state = detect_data_state(data_dir=str(tmp_path / "Life-Index"))
         assert state["install_in_sync"] is True
 
@@ -104,9 +112,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.2.2")
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "package")
-        monkeypatch.setattr(
-            _mod, "_detect_release_freshness", lambda installed, manifest: _freshness()
-        )
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
         state = detect_data_state(data_dir=str(tmp_path / "Life-Index"))
         assert state["install_in_sync"] is False
 
@@ -114,9 +120,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: None)
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "unknown")
-        monkeypatch.setattr(
-            _mod, "_detect_release_freshness", lambda installed, manifest: _freshness()
-        )
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
         state = detect_data_state(data_dir=str(tmp_path / "Life-Index"))
         assert state["install_in_sync"] is None
 
@@ -124,9 +128,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "editable")
-        monkeypatch.setattr(
-            _mod, "_detect_release_freshness", lambda installed, manifest: _freshness()
-        )
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
         monkeypatch.setattr(_mod, "scan_journals", lambda p: {"needs_migration": 4})
         data_dir = tmp_path / "Life-Index"
         _write_journal(data_dir / "Journals" / "2026" / "01")
@@ -140,9 +142,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "editable")
-        monkeypatch.setattr(
-            _mod, "_detect_release_freshness", lambda installed, manifest: _freshness()
-        )
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
 
         def boom(path):
             raise RuntimeError("scan failed")
@@ -160,6 +160,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.3.1")
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.3.1")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "package")
+        monkeypatch.setattr(_mod, "_detect_git_checkout_path", lambda install_type: None)
         monkeypatch.setattr(_mod, "_query_latest_release", lambda: "1.3.2")
 
         state = detect_data_state(data_dir=str(tmp_path / "Life-Index"))
@@ -175,6 +176,7 @@ class TestDetectDataState:
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.3.1")
         monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.3.1")
         monkeypatch.setattr(_mod, "_detect_install_type", lambda: "editable")
+        monkeypatch.setattr(_mod, "_detect_git_checkout_path", lambda install_type: None)
 
         def timeout() -> str:
             raise TimeoutError("network timed out")
@@ -198,6 +200,7 @@ class TestDetectDataState:
             raise AssertionError("network should not be called")
 
         monkeypatch.setattr(_mod, "_query_latest_release", forbidden)
+        monkeypatch.setattr(_mod, "_run_git", forbidden)
 
         state = detect_data_state(data_dir=str(tmp_path / "Life-Index"))
 
@@ -205,6 +208,60 @@ class TestDetectDataState:
         assert state["latest_release"] is None
         assert state["update_available"] is None
         assert state["freshness_error"] == "disabled by LIFE_INDEX_NO_NET"
+        assert state["git_freshness"] == "unknown"
+
+    def test_git_checkout_detection_prefers_imported_checkout(self, monkeypatch):
+        def wrong_editable_path() -> Path | None:
+            raise AssertionError("editable metadata should not be consulted")
+
+        monkeypatch.setattr(_mod, "_detect_editable_checkout_path", wrong_editable_path)
+
+        checkout = _mod._detect_git_checkout_path("editable")
+
+        assert checkout == Path(_mod.__file__).resolve().parents[2]
+
+    def test_git_behind_same_version_reports_update_available(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_mod, "_query_latest_release", lambda: "1.3.4")
+        origin = tmp_path / "origin"
+        checkout = tmp_path / "checkout"
+        _git(origin.parent, "init", "origin")
+        _git(origin, "config", "user.email", "test@example.com")
+        _git(origin, "config", "user.name", "Test User")
+        (origin / "marker.txt").write_text("one\n", encoding="utf-8")
+        _git(origin, "add", "marker.txt")
+        _git(origin, "commit", "-m", "one")
+        _git(tmp_path, "clone", str(origin), str(checkout))
+        (origin / "marker.txt").write_text("two\n", encoding="utf-8")
+        _git(origin, "add", "marker.txt")
+        _git(origin, "commit", "-m", "two")
+
+        freshness = _mod._detect_release_freshness(
+            "1.3.4",
+            "1.3.4",
+            install_type="editable",
+            git_checkout=checkout,
+        )
+
+        assert freshness["freshness"] == "update_available"
+        assert freshness["update_available"] == "git-behind"
+        assert freshness["update_reasons"] == ["git_behind"]
+        assert freshness["git_freshness"] == "behind"
+        assert freshness["git_behind_count"] == 1
+        assert freshness["suggested_refresh_step"] == EDITABLE_REFRESH_STEP
+
+    def test_package_install_without_git_keeps_version_only_freshness(self, monkeypatch):
+        monkeypatch.setattr(_mod, "_query_latest_release", lambda: "1.3.4")
+
+        freshness = _mod._detect_release_freshness(
+            "1.3.4",
+            "1.3.4",
+            install_type="package",
+            git_checkout=None,
+        )
+
+        assert freshness["freshness"] == "current"
+        assert freshness["update_available"] is None
+        assert freshness["git_freshness"] == "not_applicable"
 
 
 class TestDetectInstallType:
@@ -242,6 +299,17 @@ def _make_checkout(path: Path) -> Path:
     for name in ("SKILL.md", "pyproject.toml", "bootstrap-manifest.json"):
         (path / name).write_text("x", encoding="utf-8")
     return path
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
 
 
 class TestAssessCheckout:
@@ -341,7 +409,9 @@ def _state(
     freshness: str = "current",
     latest_release: str | None = "1.2.3",
     update_available: str | None = None,
+    update_reasons: list[str] | None = None,
     freshness_error: str | None = None,
+    suggested_refresh_step: str | None = None,
 ) -> dict:
     return {
         "has_user_data": has_user_data,
@@ -354,7 +424,18 @@ def _state(
         "freshness": freshness,
         "latest_release": latest_release,
         "update_available": update_available,
+        "update_reasons": (
+            update_reasons
+            if update_reasons is not None
+            else (["release"] if update_available else [])
+        ),
         "freshness_error": freshness_error,
+        "suggested_refresh_step": suggested_refresh_step,
+        "git_freshness": "not_applicable",
+        "git_upstream": None,
+        "git_behind_count": None,
+        "git_ahead_count": None,
+        "git_error": None,
         "migration_needed": migration_needed,
         "migration_check_error": migration_check_error,
     }
@@ -426,6 +507,22 @@ class TestDecideRoute:
         assert result["safe_next_steps"][0] == "pip install -U life-index"
         assert "pip install -e ." not in result["safe_next_steps"]
         assert result["safe_next_steps"][-1] == "life-index health"
+
+    def test_suggested_refresh_step_overrides_install_type_default(self):
+        result = decide_route(
+            _state(
+                has_user_data=True,
+                journal_count=2,
+                install_in_sync=True,
+                install_type="package",
+                freshness="update_available",
+                update_available="git-behind",
+                update_reasons=["git_behind"],
+                suggested_refresh_step=EDITABLE_REFRESH_STEP,
+            )
+        )
+
+        assert result["safe_next_steps"][0] == "git pull --ff-only && pip install -e ."
 
     def test_local_version_mismatch_uses_package_refresh_for_package_install(self):
         result = decide_route(

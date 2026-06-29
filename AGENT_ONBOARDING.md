@@ -56,6 +56,10 @@ python -m venv .venv
 python -m tools bootstrap --json
 ```
 
+For an existing confirmed checkout, refresh code before trusting a same-version
+install. A matching package version does not prove the checkout is current. For
+editable git installs, use `git pull --ff-only && pip install -e .`.
+
 When evaluating an existing checkout, pass it to bootstrap instead of deciding
 from prose:
 
@@ -89,7 +93,14 @@ skills, modify `.venv`, or touch user journal content. Those actions happen
 only if their exact commands appear in `safe_next_steps`.
 
 If `life-index sync-skill` reports `delivered=false`, surface that warning. Do
-not claim the agent playbook was delivered.
+not claim the agent playbook was delivered. For explicit first install into a
+known host home, run:
+
+```bash
+life-index sync-skill --install --host-home <host-home> --json
+```
+
+Bare `sync-skill` still does not create host directories.
 
 Retrieval is keyword (FTS5) + Entity Graph — there is no semantic/vector
 indexing to wait for, so keyword readiness is all onboarding needs. The

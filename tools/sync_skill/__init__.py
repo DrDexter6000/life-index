@@ -105,6 +105,11 @@ def find_host_skill_dir(
     ]
 
 
+def install_target_from_host_home(host_home: str | Path) -> Path:
+    """Resolve the canonical Life Index skill directory under a host home."""
+    return Path(host_home).expanduser() / "skills" / "life-index"
+
+
 def _split_frontmatter(text: str) -> tuple[list[str], list[str]]:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -187,8 +192,13 @@ def _copy_references(source_root: Path, target_dir: Path) -> list[str]:
     return copied
 
 
-def sync_skill_artifacts(source_root: Path, target_dir: Path | None) -> dict[str, Any]:
-    """Copy SKILL.md and references into an existing host skill directory."""
+def sync_skill_artifacts(
+    source_root: Path,
+    target_dir: Path | None,
+    *,
+    install: bool = False,
+) -> dict[str, Any]:
+    """Copy SKILL.md and references into a host skill directory."""
     source_root = source_root.resolve()
     diagnostics: list[dict[str, str]] = []
 
@@ -213,25 +223,28 @@ def sync_skill_artifacts(source_root: Path, target_dir: Path | None) -> dict[str
         }
 
     target_dir = target_dir.expanduser().resolve()
-    if not target_dir.is_dir():
-        diagnostics.append(
-            _diagnostic(
-                "HOST_SKILL_DIR_NOT_FOUND",
-                f"Host skill directory does not exist: {target_dir}",
+    target_preexisting = target_dir.is_dir()
+    if not target_preexisting:
+        if not install:
+            diagnostics.append(
+                _diagnostic(
+                    "HOST_SKILL_DIR_NOT_FOUND",
+                    f"Host skill directory does not exist: {target_dir}",
+                )
             )
-        )
-        return {
-            "success": True,
-            "schema_version": SYNC_SKILL_SCHEMA_VERSION,
-            "command": "sync-skill",
-            "data": {
-                "status": "skipped",
-                "delivered": False,
-                "target_dir": None,
-                "copied": [],
-                "diagnostics": diagnostics,
-            },
-        }
+            return {
+                "success": True,
+                "schema_version": SYNC_SKILL_SCHEMA_VERSION,
+                "command": "sync-skill",
+                "data": {
+                    "status": "skipped",
+                    "delivered": False,
+                    "target_dir": None,
+                    "copied": [],
+                    "diagnostics": diagnostics,
+                },
+            }
+        target_dir.mkdir(parents=True, exist_ok=True)
 
     source_skill = source_root / "SKILL.md"
     if not source_skill.is_file():
@@ -261,7 +274,7 @@ def sync_skill_artifacts(source_root: Path, target_dir: Path | None) -> dict[str
         "schema_version": SYNC_SKILL_SCHEMA_VERSION,
         "command": "sync-skill",
         "data": {
-            "status": "synced",
+            "status": "synced" if target_preexisting else "installed",
             "delivered": True,
             "target_dir": str(target_dir),
             "copied": copied,

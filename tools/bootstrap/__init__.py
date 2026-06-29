@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import distribution as _pkg_distribution
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
 from tools.lib.journal_files import count_journal_files
@@ -23,6 +25,7 @@ from tools.migrate import scan_journals
 BOOTSTRAP_SCHEMA_VERSION = "m34.bootstrap.v0"
 PYPI_JSON_URL = "https://pypi.org/pypi/life-index/json"
 PYPI_TIMEOUT_SECONDS = 2.0
+GIT_TIMEOUT_SECONDS = 15.0
 EDITABLE_REFRESH_STEP = "git pull --ff-only && pip install -e ."
 PACKAGE_REFRESH_STEP = "pip install -U life-index"
 MIGRATE_DRY_RUN_STEP = "life-index migrate --dry-run"
@@ -103,35 +106,207 @@ def _query_latest_release() -> str:
     return version
 
 
-def _detect_release_freshness(
-    installed_version: str | None,
-    manifest_version: str | None,
-) -> dict[str, str | None]:
+def _path_from_file_url(url: str) -> Path | None:
+    parsed = urlparse(url)
+    if parsed.scheme != "file":
+        return None
+    path = unquote(parsed.path)
+    if os.name == "nt" and path.startswith("/") and len(path) > 2 and path[2] == ":":
+        path = path[1:]
+    return Path(path)
+
+
+def _detect_editable_checkout_path() -> Path | None:
+    try:
+        dist = _pkg_distribution("life-index")
+    except PackageNotFoundError:
+        return None
+
+    direct_url_text = dist.read_text("direct_url.json")
+    if not direct_url_text:
+        return None
+    try:
+        direct_url = json.loads(direct_url_text)
+    except json.JSONDecodeError:
+        return None
+    dir_info = direct_url.get("dir_info")
+    if not isinstance(dir_info, dict) or dir_info.get("editable") is not True:
+        return None
+    url = direct_url.get("url")
+    if not isinstance(url, str):
+        return None
+    return _path_from_file_url(url)
+
+
+def _detect_git_checkout_path(install_type: InstallType) -> Path | None:
+    checkout_root = Path(__file__).resolve().parents[2]
+    if (checkout_root / ".git").exists():
+        return checkout_root
+
+    if install_type == "editable":
+        editable_path = _detect_editable_checkout_path()
+        if editable_path and (editable_path / ".git").exists():
+            return editable_path
+
+    return None
+
+
+def _run_git(checkout: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(checkout),
+        capture_output=True,
+        text=True,
+        timeout=GIT_TIMEOUT_SECONDS,
+        check=False,
+    )
+
+
+def _git_ref_exists(checkout: Path, ref: str) -> bool:
+    result = _run_git(checkout, ["rev-parse", "--verify", "--quiet", ref])
+    return result.returncode == 0
+
+
+def _detect_git_freshness(checkout: Path | None) -> dict[str, Any]:
+    if checkout is None:
+        return {
+            "git_freshness": "not_applicable",
+            "git_upstream": None,
+            "git_behind_count": None,
+            "git_ahead_count": None,
+            "git_error": None,
+        }
+
     if os.environ.get("LIFE_INDEX_NO_NET") == "1":
         return {
-            "freshness": "unknown",
-            "latest_release": None,
-            "update_available": None,
-            "freshness_error": "disabled by LIFE_INDEX_NO_NET",
+            "git_freshness": "unknown",
+            "git_upstream": None,
+            "git_behind_count": None,
+            "git_ahead_count": None,
+            "git_error": "disabled by LIFE_INDEX_NO_NET",
         }
 
     try:
-        latest = _query_latest_release()
+        fetch = _run_git(checkout, ["fetch", "--quiet"])
+        if fetch.returncode != 0:
+            detail = (fetch.stderr or fetch.stdout or "git fetch failed").strip()
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": None,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": detail,
+            }
+
+        upstream_result = _run_git(
+            checkout,
+            ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        )
+        upstream = upstream_result.stdout.strip() if upstream_result.returncode == 0 else ""
+        if not upstream:
+            upstream = "origin/main" if _git_ref_exists(checkout, "origin/main") else ""
+        if not upstream:
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": None,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": "No upstream branch or origin/main ref found",
+            }
+
+        count_result = _run_git(
+            checkout,
+            ["rev-list", "--left-right", "--count", f"HEAD...{upstream}"],
+        )
+        if count_result.returncode != 0:
+            detail = (count_result.stderr or count_result.stdout or "git rev-list failed").strip()
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": detail,
+            }
+
+        parts = count_result.stdout.strip().split()
+        ahead = int(parts[0])
+        behind = int(parts[1])
+        return {
+            "git_freshness": "behind" if behind > 0 else "current",
+            "git_upstream": upstream,
+            "git_behind_count": behind,
+            "git_ahead_count": ahead,
+            "git_error": None,
+        }
     except Exception as exc:
+        return {
+            "git_freshness": "unknown",
+            "git_upstream": None,
+            "git_behind_count": None,
+            "git_ahead_count": None,
+            "git_error": str(exc),
+        }
+
+
+def _detect_release_freshness(
+    installed_version: str | None,
+    manifest_version: str | None,
+    install_type: InstallType = "unknown",
+    git_checkout: Path | None = None,
+) -> dict[str, Any]:
+    if os.environ.get("LIFE_INDEX_NO_NET") == "1":
+        git_status = _detect_git_freshness(git_checkout)
         return {
             "freshness": "unknown",
             "latest_release": None,
             "update_available": None,
-            "freshness_error": str(exc),
+            "update_reasons": [],
+            "freshness_error": "disabled by LIFE_INDEX_NO_NET",
+            "suggested_refresh_step": None,
+            **git_status,
         }
 
+    latest: str | None = None
+    release_error: str | None = None
+    try:
+        latest = _query_latest_release()
+    except Exception as exc:
+        release_error = str(exc)
+
     current = installed_version or manifest_version
-    update_available = latest if _is_newer_version(latest, current) else None
+    release_update = latest if _is_newer_version(latest, current) else None
+    git_status = _detect_git_freshness(git_checkout)
+    git_behind = int(git_status.get("git_behind_count") or 0)
+
+    update_reasons: list[str] = []
+    if release_update:
+        update_reasons.append("release")
+    if git_behind > 0:
+        update_reasons.append("git_behind")
+
+    errors = [error for error in (release_error, git_status.get("git_error")) if error]
+    if update_reasons:
+        freshness = "update_available"
+    elif errors:
+        freshness = "unknown"
+    else:
+        freshness = "current"
+
+    suggested_refresh_step: str | None = None
+    if update_reasons:
+        if git_behind > 0 or install_type == "editable":
+            suggested_refresh_step = EDITABLE_REFRESH_STEP
+        elif install_type == "package":
+            suggested_refresh_step = PACKAGE_REFRESH_STEP
+
     return {
-        "freshness": "update_available" if update_available else "current",
+        "freshness": freshness,
         "latest_release": latest,
-        "update_available": update_available,
-        "freshness_error": None,
+        "update_available": release_update or ("git-behind" if git_behind > 0 else None),
+        "update_reasons": update_reasons,
+        "freshness_error": "; ".join(errors) if errors else None,
+        "suggested_refresh_step": suggested_refresh_step,
+        **git_status,
     }
 
 
@@ -174,7 +349,13 @@ def detect_data_state(data_dir: str | None = None) -> dict[str, Any]:
     installed = _get_installed_version()
     manifest = _get_manifest_version()
     install_type = _detect_install_type()
-    release_freshness = _detect_release_freshness(installed, manifest)
+    git_checkout = _detect_git_checkout_path(install_type)
+    release_freshness = _detect_release_freshness(
+        installed,
+        manifest,
+        install_type=install_type,
+        git_checkout=git_checkout,
+    )
     install_in_sync: bool | None = None
     if installed is not None and manifest is not None:
         install_in_sync = installed == manifest
@@ -328,6 +509,9 @@ def decide_route(
             safe_next_steps.append(step)
 
     def refresh_step() -> str | None:
+        suggested = data_state.get("suggested_refresh_step")
+        if isinstance(suggested, str) and suggested:
+            return suggested
         install_type = data_state.get("install_type")
         if install_type == "editable":
             return EDITABLE_REFRESH_STEP
