@@ -109,7 +109,9 @@ known host home, run:
 life-index sync-skill --install --host-home <host-home> --json
 ```
 
-Bare `sync-skill` still does not create host directories.
+Bare `sync-skill` still does not create host directories. To inspect prior agent playbook delivery, run `life-index sync-skill --list --json`; to reverse it, run `life-index sync-skill --uninstall --host-home <host-home> --json`.
+
+`sync-skill --uninstall` only removes agent skill artifacts under `<host-home>/skills/life-index` or `<host-home>/skills/<category>/life-index`; it never deletes journals, the data directory, source checkouts, packages, or host-home parent directories.
 
 Retrieval is keyword (FTS5) + Entity Graph — there is no semantic/vector
 indexing to wait for, so keyword readiness is all onboarding needs. The

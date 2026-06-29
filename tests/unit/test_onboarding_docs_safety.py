@@ -39,6 +39,15 @@ def test_onboarding_data_safety_rule_stays_visible() -> None:
     assert "fresh install" in onboarding
 
 
+def test_onboarding_documents_reversible_skill_install_safety() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+
+    assert "life-index sync-skill --list --json" in onboarding
+    assert "life-index sync-skill --uninstall --host-home <host-home> --json" in onboarding
+    assert "only removes agent skill artifacts" in onboarding
+    assert "never deletes journals" in onboarding
+
+
 def test_onboarding_explains_cli_gui_host_agent_relationship() -> None:
     onboarding = _read("AGENT_ONBOARDING.md")
 
