@@ -3325,7 +3325,14 @@ python -m tools bootstrap --json
     "freshness": "current",
     "latest_release": "1.3.0",
     "update_available": null,
+    "update_reasons": [],
     "freshness_error": null,
+    "suggested_refresh_step": null,
+    "git_freshness": "current",
+    "git_upstream": "origin/main",
+    "git_behind_count": 0,
+    "git_ahead_count": 0,
+    "git_error": null,
     "migration_needed": 0,
     "migration_check_error": null,
     "checkout_assessment": null
@@ -3356,6 +3363,13 @@ begins with the refresh command matching `install_type`:
 
 - `editable`: `git pull --ff-only && pip install -e .`
 - `package`: `pip install -U life-index`
+
+For editable/git checkouts, bootstrap also fetches the configured upstream and
+reports `git_freshness`, `git_upstream`, `git_behind_count`, and
+`git_ahead_count`. A checkout that is behind upstream is treated as stale even
+when the package version is unchanged: `update_available` is `"git-behind"`,
+`update_reasons` includes `"git_behind"`, and `suggested_refresh_step` is
+`git pull --ff-only && pip install -e .`.
 
 If release freshness cannot be checked, `freshness` is `"unknown"` and
 `freshness_error` explains why. This is diagnostic only; bootstrap remains
@@ -5322,7 +5336,7 @@ life-index entity --candidate-edges --output=json
 ### Endpoint
 
 ```bash
-life-index sync-skill [--json] [--host-skill-dir <path>] [--source-root <path>]
+life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [--install] [--source-root <path>]
 ```
 
 ### Purpose
@@ -5330,12 +5344,16 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--source-root <path>]
 - Synchronize the current `SKILL.md` and `references/` artifacts into an existing host agent skill directory.
 - Preserve custom trigger phrases already present in the target `SKILL.md`.
 - Report a missing or ambiguous host skill directory as a loud, non-fatal `skipped` diagnostic with `data.delivered=false`.
+- Support explicit first delivery with `--install` when the caller provides a known host target.
 
 ### Behavior
 
-- The command never creates or guesses a new host skill directory.
+- Bare `sync-skill` never creates or guesses a new host skill directory.
 - The command does not read or write journal data.
-- `--host-skill-dir` may point to an existing host skill directory.
+- `--host-skill-dir` may point to an existing host skill directory. With
+  `--install`, it may point to a skill directory to create.
+- `--install --host-home <path>` creates and syncs
+  `<host-home>/skills/life-index`.
 - If `--host-skill-dir` is omitted, the command checks the documented host skill
   directory environment and default locations, including flat
   `skills/life-index` and one-level nested `skills/<category>/life-index`
@@ -5355,6 +5373,24 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--source-root <path>]
     "status": "synced",
     "delivered": true,
     "target_dir": "<host-skill-dir>",
+    "copied": ["SKILL.md", "references/WEATHER_FLOW.md"],
+    "diagnostics": []
+  }
+}
+```
+
+When `--install` creates the target skill directory, `data.status` is
+`"installed"` and `data.delivered` is `true`:
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.sync_skill.v0",
+  "command": "sync-skill",
+  "data": {
+    "status": "installed",
+    "delivered": true,
+    "target_dir": "<host-home>/skills/life-index",
     "copied": ["SKILL.md", "references/WEATHER_FLOW.md"],
     "diagnostics": []
   }
