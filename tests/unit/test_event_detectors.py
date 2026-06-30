@@ -2,7 +2,7 @@
 
 import os
 import time
-import pytest
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -50,29 +50,43 @@ class TestMonthlyReviewDueDetector:
         """Last month without report file should trigger event."""
         from tools.lib.event_detectors import check_monthly_review_due
 
-        journals_dir = tmp_path / "Journals" / "2026" / "03"
+        check_date = datetime.now() - timedelta(days=30)
+        month_str = f"{check_date.year}-{check_date.month:02d}"
+        journals_dir = (
+            tmp_path / "Journals" / f"{check_date.year}" / f"{check_date.month:02d}"
+        )
         journals_dir.mkdir(parents=True)
-        (journals_dir / "life-index_2026-03-15_001.md").write_text(
+        (journals_dir / f"life-index_{month_str}-15_001.md").write_text(
             "---\ntitle: test\n---\n", encoding="utf-8"
         )
 
         events = check_monthly_review_due({"journals_dir": tmp_path / "Journals"})
-        has_review_due = any(e.type == "monthly_review_due" for e in events)
+        has_review_due = any(
+            e.type == "monthly_review_due" and e.data.get("month") == month_str
+            for e in events
+        )
         assert has_review_due
 
     def test_no_event_if_report_exists(self, tmp_path: Path):
         """Existing report file should not trigger event."""
         from tools.lib.event_detectors import check_monthly_review_due
 
-        journals_dir = tmp_path / "Journals" / "2026" / "03"
+        check_date = datetime.now() - timedelta(days=30)
+        month_str = f"{check_date.year}-{check_date.month:02d}"
+        journals_dir = (
+            tmp_path / "Journals" / f"{check_date.year}" / f"{check_date.month:02d}"
+        )
         journals_dir.mkdir(parents=True)
-        (journals_dir / "report_2026-03.md").write_text("# Report", encoding="utf-8")
+        (journals_dir / f"life-index_{month_str}-15_001.md").write_text(
+            "---\ntitle: test\n---\n", encoding="utf-8"
+        )
+        (journals_dir / f"report_{month_str}.md").write_text("# Report", encoding="utf-8")
 
         events = check_monthly_review_due({"journals_dir": tmp_path / "Journals"})
         review_events = [
             e
             for e in events
-            if e.type == "monthly_review_due" and "2026-03" in e.data.get("month", "")
+            if e.type == "monthly_review_due" and e.data.get("month") == month_str
         ]
         assert len(review_events) == 0
 
