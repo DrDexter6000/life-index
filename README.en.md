@@ -208,7 +208,15 @@ CLI, natural language, and GUI are not three "editions" — they are three **int
 | 🖥️ **CLI** | 🗣️ **Natural language** | 🎨 **GUI** |
 |:---:|:---:|:---:|
 | *Developers · hackers · integrators* | *Users with an Agent platform* | *Everyone* |
-| Drive the terminal directly, control every parameter. | Tell your Agent "record how I felt today" and let it call the CLI. **Recommended today.** | Look, click, remember. *(Separate repo, in development.)* |
+| Drive the terminal directly, control every parameter. | Tell your Agent "record how I felt today" and let it call the CLI. **Recommended today.** | Look, click, remember. *([Separate public repo](https://github.com/DrDexter6000/life-index-gui))* |
+
+### CLI and GUI: Serving Agents and People
+
+**Life Index CLI serves Agents**: CLI is the deterministic native tool layer built for Agents, and its native language is the command line. It is installed in the host agent environment, records and retrieves journals through explicit commands, and has no built-in LLM.
+
+**Life Index GUI serves human users**: GUI is the experience layer built on the same CLI foundation for human writing, reading, searching, and mobile use. It aims for UI/UX with the craft of an artistic indie game, and for out-of-home mobility: the Agent and local data can stay on the home host while Life Index reaches the phone through a secure tunnel for everyday capture and recall.
+
+Public GUI repo: [life-index-gui](https://github.com/DrDexter6000/life-index-gui). Intelligence still comes from your host agent, not from the GUI; data stays separate from program code.
 
 **No API key, no embedding model, no cloud service** — CLI Core runs offline by default.
 
