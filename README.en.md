@@ -26,6 +26,7 @@
 <p align="center">
   <a href="#why-life-index-exists">Core Capabilities</a>  •
   <a href="#four-promises">Our USP</a>  •
+  <a href="https://github.com/DrDexter6000/life-index-gui">Visual GUI</a>  •
   <a href="#quick-start">Quick Start</a>  •
   <a href="#vision--architecture">Vision & Architecture</a>  •
   <a href="#design-decisions">Design Decisions</a>
@@ -52,6 +53,25 @@ life-index write --data '{"title":"Missing the Diaper Hero","content":"...","dat
 life-index search --query "Tuan Tuan"
 # -> hits every relevant entry you ever wrote, with a trace_id and an auditable ranking
 ```
+
+<details>
+<summary>🎨 Visual GUI (Separate Public Repo)</summary>
+
+<br>
+
+CLI Core is the foundation; the GUI is the human experience layer built on that foundation. The current public GUI overview, real interface screenshots, mobile access, and quick start live in the separate public repository [`life-index-gui`](https://github.com/DrDexter6000/life-index-gui).
+
+The GUI does not replace the CLI and does not add its own intelligence layer; AI+ only performs handoff and evidence presentation, while intelligence still belongs to your host agent.
+
+<p align="center">
+  <a href="https://github.com/DrDexter6000/life-index-gui">
+    <img src="https://raw.githubusercontent.com/DrDexter6000/life%2Dindex%2Dgui/main/public/launch/life%2Dindex%2Dgui%2Dhero%2Dscreen%2Den.webp" alt="Life Index GUI hero screen animation in English mode" width="760">
+  </a>
+  <br>
+  <em>GUI hero screen rendered against sanitized fictional demo entries. More screenshots and quick start live in the GUI public repo.</em>
+</p>
+
+</details>
 
 ---
 
@@ -186,39 +206,11 @@ To keep the four promises above, Life Index deliberately gives up a batch of "in
 
 **✕ Cloud sync · ✕ Rich-text editing · ✕ Real-time collaboration · ✕ Bundled LLM / embedding model by default · ✕ In-tool Vector RAG · ✕ AI that thinks for you**
 
-Two of these matter most to the core philosophy:
-
-**No cloud storage — because program and data are fully separated.** Your life data is a plain-Markdown asset that lives **independently of the software**, in your own local directory, on no one's servers. The Life Index program can be upgraded or vanish someday; your data stays put and stays readable. In other words: **the program is rented; the data is yours.** This is the engineering form of data sovereignty (see [Design Decisions · Data Sovereignty](#design-decisions)).
-
-**No in-tool Vector RAG — because it measured as zero gain.** In 2026 nearly every retrieval system reaches for vectors by default. We built it, then deliberately removed it — for the personal-journal use case it is negative-ROI over-engineering.
-
-| 108-query golden set (2026-06-28) | MRR@5 | Recall@5 | Precision@5 | nDCG@5 |
-| --- | --- | --- | --- | --- |
-| Keyword + Entity Graph | 0.6259 | 0.9231 | 0.5351 | 0.6602 |
-| Keyword + `--semantic` | 0.6259 | 0.9231 | 0.5351 | 0.6602 |
-
-**Identical to four decimals; not one of the 5 failing queries was recovered by semantics.** The full four-layer argument (architecture / retrieval / measurement / engineering) is in → [Design Decisions · Why no in-tool vector RAG](#design-decisions).
+For the detailed reasoning behind these trade-offs, see → [Design Decisions](#design-decisions).
 
 ---
 
 ## Quick Start
-
-CLI, natural language, and GUI are not three "editions" — they are three **interaction modes** for different people:
-
-| 🖥️ **CLI** | 🗣️ **Natural language** | 🎨 **GUI** |
-|:---:|:---:|:---:|
-| *Developers · hackers · integrators* | *Users with an Agent platform* | *Everyone* |
-| Drive the terminal directly, control every parameter. | Tell your Agent "record how I felt today" and let it call the CLI. **Recommended today.** | Look, click, remember. *([Separate public repo](https://github.com/DrDexter6000/life-index-gui))* |
-
-### CLI and GUI: Serving Agents and People
-
-**Life Index CLI serves Agents**: CLI is the deterministic native tool layer built for Agents, and its native language is the command line. It is installed in the host agent environment, records and retrieves journals through explicit commands, and has no built-in LLM.
-
-**Life Index GUI serves human users**: GUI is the experience layer built on the same CLI foundation for human writing, reading, searching, and mobile use. It aims for UI/UX with the craft of an artistic indie game, and for out-of-home mobility: the Agent and local data can stay on the home host while Life Index reaches the phone through a secure tunnel for everyday capture and recall.
-
-Public GUI repo: [life-index-gui](https://github.com/DrDexter6000/life-index-gui). Intelligence still comes from your host agent, not from the GUI; data stays separate from program code.
-
-**No API key, no embedding model, no cloud service** — CLI Core runs offline by default.
 
 <details>
 <summary>🗣️ End users: hand the project to your Agent to install (click to expand)</summary>
@@ -396,7 +388,7 @@ Life Index fits into a 2×2 matrix — the vertical axis is the **two things** i
 
 ### Roadmap
 
-**CLI Core's current stable line (1.3.4)** is in daily use — not a prototype, not a demo, but a system with 2,400+ unit tests, green CI, and real personal use. **The foundation is laid; the current main line is standing up the experience layer (GUI v1).**
+**CLI Core's current stable line (1.3.4)** is in daily use — not a prototype, not a demo, but a system with 2,400+ unit tests, green CI, and real personal use. **The foundation is laid; the GUI experience layer now lives in its own public repository, while this CLI repo keeps the deterministic tool layer and the CLI/GUI relationship entry point.**
 
 <details>
 <summary>🧱 The foundation already built (CLI Core 1.3.4, click to expand)</summary>
@@ -419,20 +411,6 @@ Life Index fits into a 2×2 matrix — the vertical axis is the **two things** i
 | Cross-platform | ✅ | Windows / macOS / Linux, Python 3.11+ |
 
 </details>
-
-#### 🎨 In Construction: GUI v1 Experience Layer
-
-CLI Core is the foundation; the GUI is the building you see. Life Index's GUI experience layer is developed in a separate public repository, [`life-index-gui`](https://github.com/DrDexter6000/life-index-gui) — turning **write (+ smart metadata)** and **search (+ smart-search)** into a graphical interface anyone can use without technical knowledge. Its design language is "**Soul Shrine · 灵魂神龛**," blending Monument Valley's meditative geometry with East Asian literati sensibility.
-
-<p align="center">
-  <img src="./assets/GUI_prototype.png" alt="GUI experience layer prototype" width="700">
-  <br>
-  <em>GUI experience layer prototype — The Core view</em>
-</p>
-
-<p align="center">
-  <a href="https://raw.githack.com/DrDexter6000/life-index/main/assets/GUI_prototype.html"><strong>🔗 Open the interactive prototype in your browser</strong></a>
-</p>
 
 <details>
 <summary>🔭 Future modules (click to expand)</summary>
