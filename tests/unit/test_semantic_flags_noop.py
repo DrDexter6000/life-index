@@ -113,10 +113,8 @@ def test_index_semantic_options_do_not_build_vectors(monkeypatch: pytest.MonkeyP
         build_index, "update_fts_index", lambda incremental=True: {"success": True, "added": 1}
     )
 
-    with patch("tools.lib.semantic_search.get_model") as semantic_model:
-        result = build_index.build_all(incremental=True, fts_only=False, vec_only=True)
+    result = build_index.build_all(incremental=True, fts_only=False, vec_only=True)
 
-    semantic_model.assert_not_called()
     assert result["success"] is True
     assert result["vector"] is None
     assert result["semantic_status"] == "disabled"

@@ -640,11 +640,9 @@ class TestUpdateVectorIndex:
         journal_path = tmp_path / "journal.md"
         journal_path.write_text("---\ntitle: Test\n---\nContent", encoding="utf-8")
 
-        with patch("tools.lib.vector_index_simple.get_model") as mock_get_model:
-            result = update_vector_index(journal_path, {"title": "Test"})
+        result = update_vector_index(journal_path, {"title": "Test"})
 
         assert result is True
-        mock_get_model.assert_not_called()
 
 
 if __name__ == "__main__":

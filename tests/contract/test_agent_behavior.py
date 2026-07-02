@@ -13,7 +13,6 @@ Agent behavior tests verify **decision-relevant semantics**:
   "Given this input, what does the Agent see, and can it make the right decision?"
 """
 
-import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -71,7 +70,6 @@ def _run_write_scenario(scenario: dict, writable_env: dict) -> dict:
     weather_return = mocks.get("weather_return", "Sunny 25°C")
     index_return = mocks.get("index_return", [])
     index_raises = mocks.get("index_raises")
-    vector_return = mocks.get("vector_return", False)
 
     with patch(
         "tools.write_journal.core.get_journals_dir",
@@ -81,21 +79,15 @@ def _run_write_scenario(scenario: dict, writable_env: dict) -> dict:
             "tools.write_journal.core.get_journals_lock_path",
             return_value=writable_env["lock_path"],
         ):
-            with patch(
-                "tools.write_journal.core.get_year_month", return_value=(2026, 4)
-            ):
-                with patch(
-                    "tools.write_journal.core.get_next_sequence", return_value=1
-                ):
+            with patch("tools.write_journal.core.get_year_month", return_value=(2026, 4)):
+                with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                     with patch(
                         "tools.write_journal.core.query_weather_for_location",
                         return_value=weather_return,
                     ):
                         # Index update mock — can raise or return
                         if index_raises:
-                            topic_mock = MagicMock(
-                                side_effect=RuntimeError("test index failure")
-                            )
+                            topic_mock = MagicMock(side_effect=RuntimeError("test index failure"))
                         else:
                             topic_mock = MagicMock(return_value=index_return)
 
@@ -126,9 +118,9 @@ def _check_write_assertions(result: dict, assertions: dict, scenario_id: str) ->
     prefix = f"[{scenario_id}]"
 
     if "success" in assertions:
-        assert result["success"] is assertions["success"], (
-            f"{prefix} success: expected {assertions['success']}, got {result['success']}"
-        )
+        assert (
+            result["success"] is assertions["success"]
+        ), f"{prefix} success: expected {assertions['success']}, got {result['success']}"
 
     if "write_outcome" in assertions:
         assert result["write_outcome"] == assertions["write_outcome"], (
@@ -173,25 +165,25 @@ def _check_write_assertions(result: dict, assertions: dict, scenario_id: str) ->
         )
 
     if assertions.get("error_is_null"):
-        assert result.get("error") is None, (
-            f"{prefix} error should be null, got {result.get('error')!r}"
-        )
+        assert (
+            result.get("error") is None
+        ), f"{prefix} error should be null, got {result.get('error')!r}"
 
     if assertions.get("error_is_structured"):
         err = result.get("error")
-        assert isinstance(err, dict), (
-            f"{prefix} error should be structured dict, got {type(err).__name__}: {err!r}"
-        )
+        assert isinstance(
+            err, dict
+        ), f"{prefix} error should be structured dict, got {type(err).__name__}: {err!r}"
         assert "code" in err, f"{prefix} structured error must have 'code'"
-        assert "recovery_strategy" in err, (
-            f"{prefix} structured error must have 'recovery_strategy'"
-        )
+        assert (
+            "recovery_strategy" in err
+        ), f"{prefix} structured error must have 'recovery_strategy'"
 
     if assertions.get("error_is_string"):
         err = result.get("error")
-        assert isinstance(err, str) and len(err) > 0, (
-            f"{prefix} error should be a non-empty string, got {type(err).__name__}: {err!r}"
-        )
+        assert (
+            isinstance(err, str) and len(err) > 0
+        ), f"{prefix} error should be a non-empty string, got {type(err).__name__}: {err!r}"
 
     if "error_recovery_strategy" in assertions:
         err = result.get("error", {})
@@ -202,15 +194,11 @@ def _check_write_assertions(result: dict, assertions: dict, scenario_id: str) ->
 
     if assertions.get("confirmation_has_location"):
         confirmation = result.get("confirmation", {})
-        assert "location" in confirmation, (
-            f"{prefix} confirmation must contain 'location'"
-        )
+        assert "location" in confirmation, f"{prefix} confirmation must contain 'location'"
 
     if assertions.get("confirmation_has_weather"):
         confirmation = result.get("confirmation", {})
-        assert "weather" in confirmation, (
-            f"{prefix} confirmation must contain 'weather'"
-        )
+        assert "weather" in confirmation, f"{prefix} confirmation must contain 'weather'"
 
 
 # ── Search Behavior Helpers ──
@@ -223,15 +211,8 @@ def _run_search_scenario(scenario: dict) -> dict:
     level = scenario["input"].get("level", 3)
 
     l1_return = mocks.get("l1_return", [])
-    l2_return = mocks.get(
-        "l2_return", {"results": [], "truncated": False, "total_available": 0}
-    )
+    l2_return = mocks.get("l2_return", {"results": [], "truncated": False, "total_available": 0})
     l3_return = mocks.get("l3_return", [])
-    semantic_cfg = mocks.get("semantic_return", {})
-    semantic_results = semantic_cfg.get("results", [])
-    semantic_status = semantic_cfg.get(
-        "status", {"available": True, "reason": "", "note": ""}
-    )
     freshness = MagicMock()
     freshness.overall_fresh = True
     freshness.issues = []
@@ -242,9 +223,7 @@ def _run_search_scenario(scenario: dict) -> dict:
             "tools.search_journals.core.search_l2_metadata",
             return_value=l2_return,
         ):
-            with patch(
-                "tools.search_journals.core.scan_all_indices", return_value=l1_return
-            ):
+            with patch("tools.search_journals.core.scan_all_indices", return_value=l1_return):
                 with patch(
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=l3_return,
@@ -262,26 +241,16 @@ def _run_search_scenario(scenario: dict) -> dict:
                                 return_value=[],
                             ):
                                 with patch(
-                                    "tools.search_journals.semantic_pipeline.search_semantic",
-                                    return_value=(semantic_results, {}),
+                                    "tools.lib.pending_writes.has_pending",
+                                    return_value=False,
                                 ):
-                                    with patch(
-                                        "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
-                                        return_value=semantic_status,
-                                    ):
+                                    with patch("tools.lib.pending_writes.clear_pending"):
                                         with patch(
-                                            "tools.lib.pending_writes.has_pending",
-                                            return_value=False,
+                                            "tools.lib.index_freshness.check_full_freshness",
+                                            return_value=freshness,
                                         ):
-                                            with patch("tools.lib.pending_writes.clear_pending"):
-                                                with patch(
-                                                    "tools.lib.index_freshness.check_full_freshness",
-                                                    return_value=freshness,
-                                                ):
-                                                    with patch("tools.build_index.build_all"):
-                                                        return hierarchical_search(
-                                                            query=query, level=level
-                                                        )
+                                            with patch("tools.build_index.build_all"):
+                                                return hierarchical_search(query=query, level=level)
 
 
 def _check_search_assertions(result: dict, assertions: dict, scenario_id: str) -> None:
@@ -289,9 +258,9 @@ def _check_search_assertions(result: dict, assertions: dict, scenario_id: str) -
     prefix = f"[{scenario_id}]"
 
     if "success" in assertions:
-        assert result["success"] is assertions["success"], (
-            f"{prefix} success: expected {assertions['success']}, got {result['success']}"
-        )
+        assert (
+            result["success"] is assertions["success"]
+        ), f"{prefix} success: expected {assertions['success']}, got {result['success']}"
 
     if "total_found" in assertions:
         assert result["total_found"] == assertions["total_found"], (
@@ -306,19 +275,17 @@ def _check_search_assertions(result: dict, assertions: dict, scenario_id: str) -
         )
 
     if assertions.get("merged_results_not_empty"):
-        assert len(result.get("merged_results", [])) > 0, (
-            f"{prefix} merged_results should not be empty"
-        )
+        assert (
+            len(result.get("merged_results", [])) > 0
+        ), f"{prefix} merged_results should not be empty"
 
     if assertions.get("merged_results_empty"):
-        assert len(result.get("merged_results", [])) == 0, (
-            f"{prefix} merged_results should be empty"
-        )
+        assert (
+            len(result.get("merged_results", [])) == 0
+        ), f"{prefix} merged_results should be empty"
 
     if assertions.get("l1_results_not_empty"):
-        assert len(result.get("l1_results", [])) > 0, (
-            f"{prefix} l1_results should not be empty"
-        )
+        assert len(result.get("l1_results", [])) > 0, f"{prefix} l1_results should not be empty"
 
     if assertions.get("warnings_empty"):
         warnings = result.get("warnings", [])

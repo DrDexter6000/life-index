@@ -13,7 +13,6 @@ def _isolate(tmp_path: Path, monkeypatch):
     """Isolate paths and modules to tmp_path."""
     import tools.lib.config as cfg
     import tools.lib.paths as paths
-    import tools.lib.vector_index_simple as vi_mod
     import tools.edit_journal as edit_mod
     import tools.write_journal.core as write_core
 
@@ -28,11 +27,6 @@ def _isolate(tmp_path: Path, monkeypatch):
     for module in (cfg, paths, edit_mod, write_core):
         monkeypatch.setattr(module, "get_user_data_dir", lambda _t=tmp_path: _t, raising=False)
         monkeypatch.setattr(module, "get_journals_dir", lambda _j=journals_dir: _j, raising=False)
-
-    monkeypatch.setattr(vi_mod, "INDEX_DIR", idx)
-    monkeypatch.setattr(vi_mod, "VEC_INDEX_PATH", idx / "vectors_simple.pkl")
-    monkeypatch.setattr(vi_mod, "META_PATH", idx / "vectors_simple_meta.json")
-    monkeypatch.setattr(vi_mod, "get_user_data_dir", lambda _t=tmp_path: _t, raising=False)
 
 
 def _mock_search_deps(monkeypatch):

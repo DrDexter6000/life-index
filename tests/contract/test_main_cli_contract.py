@@ -118,6 +118,16 @@ class TestHelpSurface:
         assert "recall    Deprecated compatibility wrapper over search" in result.stdout
         assert "Recall search with mode selection" not in result.stdout
 
+    def test_help_describes_smart_search_as_host_agent_scaffold(self):
+        result = _invoke("--help")
+        assert "smart-search  Deterministic evidence scaffold for host agents" in result.stdout
+        assert "LLM orchestration" not in result.stdout
+
+    def test_help_subcommand_does_not_claim_smart_search_llm_orchestration(self):
+        result = _invoke("help")
+        assert "smart-search  Deterministic evidence scaffold for host agents" in result.stdout
+        assert "LLM orchestration" not in result.stdout
+
 
 class TestNoArgsSurface:
     def test_no_args_exits_non_zero(self):

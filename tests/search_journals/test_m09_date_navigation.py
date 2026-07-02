@@ -80,7 +80,6 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
     import tools.search_journals.keyword_pipeline as keyword_pipeline
     import tools.search_journals.l2_metadata as l2_metadata
     import tools.search_journals.l3_content as l3_content
-    import tools.search_journals.semantic as semantic_module
     import tools.lib.pending_writes as pw_mod
     import tools.lib.index_freshness as freshness_mod
 
@@ -94,18 +93,11 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         keyword_pipeline,
         l2_metadata,
         l3_content,
-        semantic_module,
     ):
         monkeypatch.setattr(module, "get_user_data_dir", lambda _t=tmp_path: _t, raising=False)
         monkeypatch.setattr(module, "get_journals_dir", lambda _j=journals_dir: _j, raising=False)
 
     monkeypatch.setattr(l2_metadata, "ENABLE_CACHE", False)
-    monkeypatch.setattr(
-        semantic_module,
-        "SEMANTIC_INDEX_PATH",
-        idx_dir / "vectors_simple.pkl",
-        raising=False,
-    )
     monkeypatch.setattr(pw_mod, "get_index_dir", lambda: idx_dir)
     monkeypatch.setattr(pw_mod, "has_pending", lambda: False)
     monkeypatch.setattr(

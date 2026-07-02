@@ -178,16 +178,10 @@ class TestBuildAll:
 
         mock_update_fts.return_value = {"success": True, "added": 0}
 
-        with (
-            patch("tools.lib.semantic_search.get_model") as mock_model,
-            patch("tools.lib.semantic_search.update_vector_index") as mock_vec,
-        ):
-            result = build_all(incremental=True)
+        result = build_all(incremental=True)
 
         assert result["success"] is True
         assert result["vector"] is None
-        mock_model.assert_not_called()
-        mock_vec.assert_not_called()
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -205,12 +199,10 @@ class TestBuildAll:
 
         mock_update_fts.return_value = {"success": True, "added": 0}
 
-        with patch("tools.lib.vector_index_simple.update_vector_index_simple") as mock_simple:
-            result = build_all(incremental=True)
+        result = build_all(incremental=True)
 
         assert result["success"] is True
         assert result["vector"] is None
-        mock_simple.assert_not_called()
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -462,15 +454,8 @@ class TestShowStats:
             "last_updated": "2026-03-14T10:00:00",
         }
 
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.return_value = {
-                "exists": True,
-                "total_vectors": 200,
-                "model_loaded": True,
-                "db_size_mb": 2.5,
-            }
-            with patch("tools.build_index.logger"):
-                show_stats()
+        with patch("tools.build_index.logger"):
+            show_stats()
 
         mock_fts_stats.assert_called_once()
 
@@ -484,16 +469,8 @@ class TestShowStats:
             "last_updated": None,
         }
 
-        # Mock semantic_search.get_stats to return existing vector index
-        with patch("tools.lib.semantic_search.get_stats") as mock_vec:
-            mock_vec.return_value = {
-                "exists": True,
-                "total_vectors": 10,
-                "model_loaded": False,
-                "db_size_mb": 0.5,
-            }
-            with patch("tools.build_index.logger"):
-                show_stats()
+        with patch("tools.build_index.logger"):
+            show_stats()
 
         mock_fts_stats.assert_called_once()
 
@@ -507,14 +484,10 @@ class TestShowStats:
             "last_updated": "2026-03-14T10:00:00",
         }
 
-        with (
-            patch("tools.lib.semantic_search.get_stats") as mock_vec,
-            patch("tools.build_index.logger") as mock_logger,
-        ):
+        with patch("tools.build_index.logger") as mock_logger:
             show_stats()
 
         mock_fts_stats.assert_called_once()
-        mock_vec.assert_not_called()
         logged = "\n".join(str(call.args[0]) for call in mock_logger.info.call_args_list)
         assert "Semantic/Vector Index" in logged
         assert "Disabled" in logged
@@ -529,16 +502,10 @@ class TestShowStats:
             "last_updated": "2026-03-14T10:00:00",
         }
 
-        with (
-            patch("tools.lib.semantic_search.get_stats") as mock_vec,
-            patch("tools.lib.vector_index_simple.get_index") as mock_get_index,
-            patch("tools.build_index.logger"),
-        ):
+        with patch("tools.build_index.logger"):
             show_stats()
 
         mock_fts_stats.assert_called_once()
-        mock_vec.assert_not_called()
-        mock_get_index.assert_not_called()
 
     @patch("tools.build_index.get_fts_stats")
     def test_show_stats_no_vector_backend(self, mock_fts_stats):
@@ -631,8 +598,7 @@ class TestIntegration:
             "removed": 2,
         }
 
-        with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
-            result = build_all(incremental=True)
+        result = build_all(incremental=True)
 
         # Verify result structure
         assert result["success"] is True
@@ -647,7 +613,6 @@ class TestIntegration:
         assert result["fts"]["removed"] == 2
 
         assert result["vector"] is None
-        mock_vec.assert_not_called()
 
     @patch("tools.build_index.get_index_lock_path")
     @patch("tools.build_index.FileLock")
@@ -669,13 +634,11 @@ class TestIntegration:
             "error": "Database error",
         }
 
-        with patch("tools.lib.semantic_search.update_vector_index") as mock_vec:
-            result = build_all(incremental=True)
+        result = build_all(incremental=True)
 
         # Overall should fail because FTS failed
         assert result["success"] is False
         assert result["vector"] is None
-        mock_vec.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -85,79 +85,23 @@ triggers:
 <!-- GROUNDED_QUERY_SKILL_START -->
 ## Grounded Query Skill Playbook
 
-Use this playbook for magazine-style analysis questions that need grounded
-journal evidence.
+Use the compact routing rules here for ordinary search. Load the Full grounded query playbook from `references/GROUNDED_QUERY_PLAYBOOK.md` only when the user asks for magazine-style analysis, time-scoped evidence, facet/count/enumeration answers, cross-facet questions, or explicit `GROUNDED` / `PARTIAL` / `UNGROUNDED` status.
 
-1. Treat planning, multi-hop reasoning, interpretation, and synthesis as host
-   agent work. Life Index tools provide deterministic search, navigation, read,
-   and validation surfaces.
-2. Classify the query shape yourself, then use deterministic tools as
-   executors. The tools must not infer which facets to search from natural
-   language. For time-scoped, facet, count, enumerate, or cross-facet questions,
-   first ensure Index B navigation and inspect the available value menu:
-   `life-index index-tree ensure --from YYYY-MM --to YYYY-MM --json`.
-   `life-index index-tree discover --from YYYY-MM --to YYYY-MM --facet tag --facet topic --facet project --facet location --json`.
-   For concept-style questions, inspect the actual facet value menu first and
-   choose matching values from the data. Do not preload a fixed vocabulary for
-   any specific topic. Project, people, location, and tag menus may show
-   canonical values derived from explicit `entity_graph.yaml` aliases; use
-   `raw_values` only to understand which written labels were grouped. Do not
-   invent alias mappings that are not present in the graph. If the frontmatter
-   facet menu does not expose useful values, request observed journal-body terms
-   explicitly with
-   `life-index index-tree discover --from YYYY-MM --to YYYY-MM --facet content_term --json`.
-   Treat `content_term` values as exact corpus terms, not synonyms. If the menu
-   still does not expose useful values, fall back to keyword/entity-weighted
-   discovery.
-3. Pick relevant facet values yourself from the discover menu, then use
-   structured Index B navigation before journal reads:
-   `life-index index-tree navigate --from YYYY-MM --to YYYY-MM --filter facet=value --json`.
-   Read the reported root/year/month navigation docs and use the returned
-   `entry_pointers` as the bounded candidate set. Repeated `--filter` arguments
-   are intersections; `value1||value2` is a deterministic OR inside one facet.
-   Use discovered canonical values where available; explicit graph aliases are
-   also accepted by the navigation tool and resolve deterministically.
-   For relationship-shaped questions, choose the relevant entity and optional
-   relation type yourself, then call
-   `life-index index-tree navigate --entity-neighbors "Entity Name" --entity-relation relation --json`.
-   This operation only traverses explicit `entity_graph.yaml` edges and returns
-   neighboring entities plus any edge-level supporting journal ids already
-   present in the graph; it does not infer relationships or journal evidence.
-   If the response source is `journals`, use the returned fallback entry
-   pointers directly.
-   For clean facet count or enumeration questions, use `navigate`'s exhaustive
-   `count`, `entries`, and `entry_pointers` as the candidate/count source. Read
-   only the bounded journal entries needed to support the answer, such as
-   boundary dates, representative rows, or entries that disambiguate a date
-   gap. Do not restart with broad search after a successful exhaustive
-   navigation unless the user asks for semantic facts beyond the selected
-   facets.
-   Do not use `index-tree nodes`, `index-tree lens`, or `index-tree shadow`
+Minimal deterministic path:
+
+1. For count, enumerate, facet, cross-facet, and bounded time-range questions,
+   use `index-tree ensure`, then the agent-facing `ensure` -> `discover` -> `navigate`
+   path before journal reads.
+2. Use `journal batch-get` for two or more returned paths; use `journal get`
+   only for one path.
+3. Use `aggregate` for counts/buckets and `trajectory` for typed observation
+   series.
+4. Use `search` or `smart-search --include-evidence` only for open recall or
+   keyword/entity-weighted discovery, then read bounded returned paths.
+5. Do not use `index-tree nodes`, `index-tree lens`, or `index-tree shadow`
    for normal host-agent retrieval/navigation. They are debug-only legacy
-   diagnostics retained for compatibility; the agent-facing navigation path is
-   `ensure` -> `discover` -> `navigate`.
-4. Read only bounded candidates through stable domain tools:
-   `life-index journal batch-get --path Journals/YYYY/MM/name.md --path Journals/YYYY/MM/other.md`.
-   Do NOT call journal get repeatedly for multiple candidates; if there are
-   two or more paths, use one `journal batch-get`.
-   Use `life-index journal get --path Journals/YYYY/MM/name.md` for a single
-   candidate. Use
-   `life-index smart-search` or `life-index search` for keyword/entity-weighted
-   discovery paths, then feed discovered exact paths back into `journal batch-get`
-   or `journal get`.
-   Do not use `life-index recall` in new playbooks; it is a deprecated
-   compatibility wrapper over `search`.
-   Do not use ad hoc `grep` or broad full-directory reads.
-5. Return the magazine answer shape:
-   `answer.insights[]` where each item has `quote`, `interpretation`, and
-   `evidence_refs`, plus `answer.summary` as connective prose. Every factual
-   date, count, location, event, or conclusion must be covered by cited
-   insights. If the answer includes an aggregate count, include a dedicated
-   insight whose `interpretation` repeats the exact count and whose
-   `evidence_refs` cover the counted journal entries.
-6. Never mark an answer `GROUNDED` with zero citations, missing journal IDs, or
-   facts that only come from hidden session memory. If evidence is insufficient
-   or validation fails, return `PARTIAL` or `UNGROUNDED` with a concrete gap.
+   diagnostics retained for compatibility.
+6. Do not use `recall`, broad grep, or full-directory reads for new playbooks.
 
 <!-- GROUNDED_QUERY_SKILL_END -->
 

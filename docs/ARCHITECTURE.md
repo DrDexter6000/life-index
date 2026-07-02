@@ -233,6 +233,18 @@ tags: ["重构", "优化"]
 
 **结论**: 对 Life Index 而言，渐进式披露的 token 节约 > MCP 的协议便利。除非出现强制要求 MCP 的 Agent 宿主（且无 CLI fallback），否则不迁移。
 
+**2026-07-02 解释性补充（thin MCP projection boundary）**:
+
+ADR-004 禁止的是“把 MCP 当作新的产品接口或并行数据路径来迁移”，不是禁止所有 MCP 形态。一个薄 MCP 投影只有同时满足以下条件才是合宪的：
+
+1. It is a **1:1 projection** of existing CLI commands and documented JSON envelopes.
+2. It preserves the **CLI JSON contract** exactly: field names, schema-version policy, error behavior, and compatibility fields remain owned by `docs/API.md` and the CLI implementation.
+3. It adds **zero new capability**: no new retrieval mode, no ranking change, no hidden planning/orchestration, no LLM/provider/client initialization.
+4. It adds **zero new write path**: writes must pass through the same CLI command, lock, validation, audit, and data-boundary logic as direct CLI use.
+5. **CLI remains the authority**: MCP may describe or invoke CLI tools, but must not become the contract owner for schemas, behavior, or persistence.
+
+Therefore the existing `tools/mcp_discovery` discovery stub is constitutional: it is static, read-only, and does not touch user data. A future stdio JSON-RPC shim can be constitutional only if it remains a CLI passthrough that returns the CLI JSON output unchanged. Any MCP implementation that diverges from CLI behavior, owns schemas independently, directly reads/writes the journal data directory, or adds in-tool reasoning/orchestration falls under CHARTER §4.1 “parallel interface” risk.
+
 ---
 
 ## 4. 目录结构

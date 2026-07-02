@@ -74,27 +74,14 @@ def mock_search_dependencies():
                             return_value=[],
                         ):
                             with patch(
-                                "tools.search_journals.semantic_pipeline.search_semantic",
-                                return_value=([], {}),
+                                "tools.lib.index_freshness.check_full_freshness",
+                                return_value=fresh_report,
                             ):
                                 with patch(
-                                    "tools.search_journals.semantic_pipeline."
-                                    "get_semantic_runtime_status",
-                                    return_value={
-                                        "available": True,
-                                        "reason": "",
-                                        "note": "",
-                                    },
+                                    "tools.lib.pending_writes.has_pending",
+                                    return_value=False,
                                 ):
-                                    with patch(
-                                        "tools.lib.index_freshness.check_full_freshness",
-                                        return_value=fresh_report,
-                                    ):
-                                        with patch(
-                                            "tools.lib.pending_writes.has_pending",
-                                            return_value=False,
-                                        ):
-                                            yield
+                                    yield
 
 
 class TestSearchExplainDiagnostics:

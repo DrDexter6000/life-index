@@ -66,13 +66,11 @@ def _create_fts_db(index_dir: Path, paths: list[str]) -> Path:
 
 def _create_vector_pickle(index_dir: Path, paths: list[str]) -> Path:
     """Create a minimal vector pickle with given paths."""
-    import numpy as np
-
     pkl_path = index_dir / "vectors_simple.pkl"
     vectors = {}
     for p in paths:
         vectors[p] = {
-            "embedding": np.random.rand(10).tolist(),
+            "embedding": [float(i) / 10 for i in range(10)],
             "date": "2026-03-01",
             "hash": "abc123",
         }

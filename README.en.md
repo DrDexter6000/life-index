@@ -179,7 +179,7 @@ Life Index CLI Core does two things: **write a life (`write`) and search a life 
 
 > The industry habit is to publish a polished **end-to-end + LLM-synthesized** score, making it look like the retrieval system's own ability. Life Index does the opposite — **CLI Core proves its own floor; LLM enhancement is explicit opt-in**: search results come from deterministic code (auditable, reproducible, zero-token, fully offline); switching between Claude / GPT / DeepSeek / a local Llama changes nothing on the CLI Core side. **The LLM is frosting, not foundation; the foundation already stands.**
 > · **Constraint**: [CHARTER](./CHARTER.md) §1.5 + §1.9 + §1.10 + §1.11 (§1.11 is in the §5.3 non-weakenable list)
-> · **Current measurement**: 20+ CLI commands · 2,400+ unit tests · keyword-only Recall@5 = **0.7857** (cycle2 fixture · 56 queries; ≈0.79, a marginal miss vs the 0.79 target; C2 paraphrase remains a known gap) · full integrity audit PASS on 2026-05-25
+> · **Current measurement**: 20+ CLI commands · 4,200+ pytest-collected tests · 108-query keyword-only Recall@5 = **0.9231** (2026-06-28 golden set; semantic/vector RAG added no four-decimal gain) · full integrity audit PASS on 2026-05-25
 > · **Falsification**: (a) a default L2 retrieval path adds precision-threshold truncation that drops token-match candidates; (b) any default-path module implicitly bundles an LLM / initializes a provider client / reads an API key; (c) the default path introduces an embedding model or vector-index build — any one is a breach.
 
 **P3 · Plain Markdown Forever**
@@ -388,10 +388,10 @@ Life Index fits into a 2×2 matrix — the vertical axis is the **two things** i
 
 ### Roadmap
 
-**CLI Core's current stable line (1.3.4)** is in daily use — not a prototype, not a demo, but a system with 2,400+ unit tests, green CI, and real personal use. **The foundation is laid; the GUI experience layer now lives in its own public repository, while this CLI repo keeps the deterministic tool layer and the CLI/GUI relationship entry point.**
+**CLI Core's current stable line** is in daily use — not a prototype, not a demo, but a system with 4,200+ pytest-collected tests, green CI, and real personal use; the current package version is owned by `life-index --version` and [CHANGELOG.md](./CHANGELOG.md). **The foundation is laid; the GUI experience layer now lives in its own public repository, while this CLI repo keeps the deterministic tool layer and the CLI/GUI relationship entry point.**
 
 <details>
-<summary>🧱 The foundation already built (CLI Core 1.3.4, click to expand)</summary>
+<summary>🧱 The foundation already built (CLI Core, click to expand)</summary>
 
 <br>
 

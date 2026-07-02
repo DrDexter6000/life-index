@@ -60,6 +60,10 @@ block pull request readiness, but failures must be triaged.
 - The search evaluation gate is Tier 1 because it protects search quality.
 - Full suite, quarantine, coverage, package smoke, and benchmarks are visible
   Tier 2 checks, not PR-blocking checks.
+- Benchmark tests run on shared GitHub runners. Hard assertions use
+  shared-runner-safe fail-safes; exact local performance targets should be read
+  from printed measurements or a dedicated benchmark environment, not from
+  sub-100ms wall-clock gates.
 
 ## Local Gate Entrypoints
 
@@ -120,6 +124,8 @@ Tier 2 changes must update the corresponding workflow and this inventory.
 
 ## Version History
 
+- v1.2.1-public (2026-07-02): clarified Tier 2 benchmark thresholds as
+  shared-runner fail-safes, not precise local performance gates.
 - v1.2-public (2026-06-20): added public-surface-allowlist as a Tier 1 hard check.
 - v1.1-public (2026-06-19): added L2 no-LLM scan as a Tier 1 hard check.
 - v1.0-public (2026-06-18): curated the CI inventory for public visibility.

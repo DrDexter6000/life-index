@@ -16,14 +16,11 @@ Lower values (k=20-40) give more weight to top-ranked items.
 Higher values (k=80-100) flatten the score distribution.
 k=60 is the industry standard that works well for most hybrid search scenarios.
 
-ADR-002 / ADR-006: Semantic threshold floor + adaptive baseline
----------------------------------------------------------------
-Semantic search now uses an absolute floor of 0.40 plus an adaptive layer:
-`max(0.40, semantic_baseline_p25 + 0.02)`.
-
-ADR-006 records the rationale: the old 0.15 floor was too permissive and let
-semantic noise leak into results. Rebuild-time corpus calibration persists the
-baseline P25 into `index_meta`, allowing future corpus growth to auto-adjust.
+ADR-002 / ADR-005 / ADR-010: Deprecated semantic compatibility defaults
+-----------------------------------------------------------------------
+Semantic/vector retrieval has been removed from the active tool pipeline.
+These values remain only as defaults for deprecated CLI/API parameters so
+old callers can pass `--semantic*` flags without breaking.
 
 ADR-003: FTS min_relevance=25
 ----------------------------
@@ -149,27 +146,16 @@ RRF_MIN_SCORE: float = 0.008
 
 
 # =============================================================================
-# Semantic Pipeline Constants
+# Deprecated Semantic Compatibility Defaults
 # =============================================================================
 
-# ADR-002 / ADR-006: Minimum cosine similarity floor for semantic results
-# SEMANTIC_MIN_SIMILARITY is the canonical name; SEMANTIC_ABSOLUTE_FLOOR is a deprecated alias.
+# Accepted no-op flag default retained for CLI/API compatibility.
 SEMANTIC_MIN_SIMILARITY: float = 0.40
 
-# ADR-006: Adaptive baseline offset (added to corpus P25 to compute dynamic threshold)
-SEMANTIC_BASELINE_OFFSET: float = 0.02
-
-# [DEPRECATED] Use SEMANTIC_MIN_SIMILARITY instead. Kept for backward compat.
-SEMANTIC_ABSOLUTE_FLOOR: float = SEMANTIC_MIN_SIMILARITY  # synonym since Round 17 Phase 6-A
-
-# ADR-005: Maximum semantic candidates to retrieve
+# Accepted no-op flag default retained for CLI/API compatibility.
 SEMANTIC_TOP_K_DEFAULT: int = 30
 
-# ADR-010: Semantic weight in hybrid RRF ranking (Round 10 Phase 4 T4.1)
-# Raised from 0.4 to 0.6 to reduce FTS weak-hit dominance over semantic strong-hits.
-# R4 root cause: FTS weight 1.0 vs semantic 0.4 caused semantically relevant results
-# (e.g. "想起伙伴" → "回忆小风筝") to be outranked by FTS noise.
-# Rollback window: before Phase 5 completion.
+# Accepted no-op flag default retained for CLI/API compatibility.
 SEMANTIC_WEIGHT_DEFAULT: float = 0.6
 
 
@@ -263,14 +249,6 @@ MAX_RESULTS_DEFAULT: int = 20
 # relevance = max(0, min(100, int(BM25_RELEVANCE_BASE - bm25_score * BM25_RELEVANCE_MULTIPLIER)))
 BM25_RELEVANCE_BASE: int = 70
 BM25_RELEVANCE_MULTIPLIER: int = 5
-
-
-# =============================================================================
-# Performance Thresholds
-# =============================================================================
-
-# Snippet length for semantic results (characters)
-SEMANTIC_SNIPPET_LENGTH: int = 200
 
 
 # =============================================================================
@@ -386,8 +364,6 @@ __all__ = [
     "RRF_MIN_SCORE",
     # Semantic
     "SEMANTIC_MIN_SIMILARITY",
-    "SEMANTIC_BASELINE_OFFSET",
-    "SEMANTIC_ABSOLUTE_FLOOR",
     "SEMANTIC_TOP_K_DEFAULT",
     "SEMANTIC_WEIGHT_DEFAULT",
     # FTS
@@ -414,8 +390,6 @@ __all__ = [
     # BM25
     "BM25_RELEVANCE_BASE",
     "BM25_RELEVANCE_MULTIPLIER",
-    # Performance
-    "SEMANTIC_SNIPPET_LENGTH",
     # Tokenizer
     "TOKENIZER_VERSION",
     # Confidence Thresholds

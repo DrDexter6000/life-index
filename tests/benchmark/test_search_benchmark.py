@@ -303,61 +303,6 @@ class TestKeywordPipelineBenchmark:
 
 
 # ===========================================================================
-# Semantic Pipeline Benchmarks (mocked model)
-# ===========================================================================
-
-
-class TestSemanticPipelineBenchmark:
-    """Benchmark semantic pipeline with mocked embedding model."""
-
-    @patch("tools.search_journals.semantic_pipeline.get_semantic_runtime_status")
-    @patch("tools.search_journals.semantic_pipeline.search_semantic")
-    def test_semantic_pipeline_available(
-        self,
-        mock_search: MagicMock,
-        mock_status: MagicMock,
-        benchmark: Any,
-    ) -> None:
-        """Semantic pipeline when model is available."""
-        from tools.search_journals.semantic_pipeline import run_semantic_pipeline
-
-        mock_status.return_value = {"available": True, "reason": "", "note": ""}
-        mock_search.return_value = (
-            _make_semantic_results(20),
-            {"semantic_time_ms": 50.0},
-        )
-
-        benchmark(run_semantic_pipeline, query="benchmark test")
-
-    @patch("tools.search_journals.semantic_pipeline.get_semantic_runtime_status")
-    @patch("tools.search_journals.semantic_pipeline.search_semantic")
-    def test_semantic_pipeline_degraded(
-        self,
-        mock_search: MagicMock,
-        mock_status: MagicMock,
-        benchmark: Any,
-    ) -> None:
-        """Semantic pipeline when model is unavailable (graceful degradation).
-
-        Note: because search_semantic is patched with a Mock, the pipeline's
-        ``isinstance(search_semantic, Mock)`` check returns True, bypassing
-        the early return.  We therefore must provide a valid return value so
-        the function can proceed without ValueError.
-        """
-        from tools.search_journals.semantic_pipeline import run_semantic_pipeline
-
-        mock_status.return_value = {
-            "available": False,
-            "reason": "model_not_loaded",
-            "note": "sentence-transformers not available",
-        }
-        # Even though unavailable, the Mock isinstance check lets it through
-        mock_search.return_value = ([], {"semantic_time_ms": 0.0})
-
-        benchmark(run_semantic_pipeline, query="benchmark test")
-
-
-# ===========================================================================
 # hierarchical_search() Integration Benchmarks (all mocked)
 # ===========================================================================
 

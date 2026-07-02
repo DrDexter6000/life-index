@@ -136,6 +136,24 @@ class TestInvokeTool:
             invoke_tool("write", {"title": "test"})
 
 
+class TestMcpArchitectureBoundary:
+    """ARCHITECTURE.md must define the constitutional MCP boundary."""
+
+    def test_architecture_documents_thin_projection_boundary(self):
+        text = (REPO_ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+        required_phrases = [
+            "2026-07-02",
+            "1:1 projection",
+            "CLI JSON contract",
+            "zero new capability",
+            "zero new write path",
+            "CLI remains the authority",
+        ]
+        for phrase in required_phrases:
+            assert phrase in text
+
+
 # Boundary / source-audit tests
 
 

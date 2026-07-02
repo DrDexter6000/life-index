@@ -5,27 +5,10 @@ Life Index - Search Journals Tool - Ranking
 """
 
 from importlib import import_module
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..lib.metadata_cache import get_backlinked_by, init_metadata_cache
-from .l2_metadata import _query_matches_tags, _query_matches_text
-
-
-def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = 60) -> Dict[str, float]:
-    """Compute RRF scores for items across multiple ranked lists.
-
-    Each list is a sequence of document identifiers ordered by relevance.
-    Returns a dict mapping each identifier to its fused RRF score.
-    """
-    scores: Dict[str, float] = {}
-    for lst in ranked_lists:
-        for rank_minus_one, doc_id in enumerate(lst):
-            rank = rank_minus_one + 1
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
-    return scores
-
-
-from .semantic import enrich_semantic_result
 from ..lib.search_constants import (
     RRF_K,
     RRF_MIN_SCORE,
@@ -45,6 +28,61 @@ from ..lib.search_constants import (
     FTS_MIN_RELEVANCE,
     SOURCE_TIER_WEIGHTS,
 )
+from .l2_metadata import _query_matches_tags, _query_matches_text
+from .utils import parse_frontmatter
+
+
+def reciprocal_rank_fusion(ranked_lists: List[List[str]], k: int = 60) -> Dict[str, float]:
+    """Compute RRF scores for items across multiple ranked lists.
+
+    Each list is a sequence of document identifiers ordered by relevance.
+    Returns a dict mapping each identifier to its fused RRF score.
+    """
+    scores: Dict[str, float] = {}
+    for lst in ranked_lists:
+        for rank_minus_one, doc_id in enumerate(lst):
+            rank = rank_minus_one + 1
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
+def enrich_semantic_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Lightweight metadata enrichment for legacy semantic-score inputs.
+
+    Active search no longer calls a semantic backend, but ranking tests and
+    adapter code can still pass precomputed semantic-like rows. Enrichment must
+    stay deterministic and must not import model/vector runtime.
+    """
+    enriched = result.copy()
+    path = enriched.get("path")
+    if not path:
+        return enriched
+
+    try:
+        file_path = Path(str(path))
+        if not file_path.exists():
+            return enriched
+        metadata, _body = parse_frontmatter(file_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return enriched
+
+    if not enriched.get("title") and metadata.get("title"):
+        enriched["title"] = metadata["title"]
+
+    for field in (
+        "abstract",
+        "tags",
+        "topic",
+        "mood",
+        "project",
+        "location",
+        "weather",
+        "people",
+    ):
+        if metadata.get(field):
+            enriched[field] = metadata[field]
+    enriched["metadata"] = metadata
+    return enriched
 
 
 def _to_string_list(value: Any) -> list[str]:
