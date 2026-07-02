@@ -200,6 +200,10 @@ Known PyPI-used versions:
 ```text
 1.0.0
 1.3.0
+1.3.1
+1.3.2
+1.3.3
+1.3.4
 1.4.0
 1.5.0
 1.5.5
@@ -217,6 +221,11 @@ authoritative Life Index CLI release.
 
 PyPI publishing is manual-only until explicitly re-enabled. Tag pushes must not
 automatically publish to PyPI.
+
+Before publishing a PyPI release, check `https://pypi.org/pypi/life-index/json`
+for the target version. If the upload succeeds, add that version to the
+known-used list in the next release-maintenance change so future filename
+availability checks stay accurate.
 
 ## 10. Public Release Readiness
 
