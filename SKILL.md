@@ -90,14 +90,18 @@ Use the compact routing rules here for ordinary search. Load the Full grounded q
 Minimal deterministic path:
 
 1. For count, enumerate, facet, cross-facet, and bounded time-range questions,
-   use `index-tree ensure` -> `discover` -> `navigate` before journal reads.
+   use `index-tree ensure`, then the agent-facing `ensure` -> `discover` -> `navigate`
+   path before journal reads.
 2. Use `journal batch-get` for two or more returned paths; use `journal get`
    only for one path.
 3. Use `aggregate` for counts/buckets and `trajectory` for typed observation
    series.
 4. Use `search` or `smart-search --include-evidence` only for open recall or
    keyword/entity-weighted discovery, then read bounded returned paths.
-5. Do not use `recall`, broad grep, or full-directory reads for new playbooks.
+5. Do not use `index-tree nodes`, `index-tree lens`, or `index-tree shadow`
+   for normal host-agent retrieval/navigation. They are debug-only legacy
+   diagnostics retained for compatibility.
+6. Do not use `recall`, broad grep, or full-directory reads for new playbooks.
 
 <!-- GROUNDED_QUERY_SKILL_END -->
 
