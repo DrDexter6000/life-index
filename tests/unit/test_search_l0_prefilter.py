@@ -8,9 +8,7 @@ import pytest
 from tools.lib.index_freshness import FreshnessReport
 
 
-def _write_journal(
-    path: Path, *, title: str, date: str, body: str, topic: str = "work"
-) -> None:
+def _write_journal(path: Path, *, title: str, date: str, body: str, topic: str = "work") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         f'---\ntitle: "{title}"\ndate: {date}\ntopic: [{topic}]\n---\n\n{body}\n',
@@ -19,13 +17,10 @@ def _write_journal(
 
 
 def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import tools.lib.config as config_module
-    import tools.lib.paths as paths_module
     import tools.search_journals.core as core_module
     import tools.search_journals.keyword_pipeline as keyword_pipeline
     import tools.search_journals.l2_metadata as l2_metadata
     import tools.search_journals.l3_content as l3_content
-    import tools.search_journals.semantic as semantic_module
 
     journals_dir = tmp_path / "Journals"
 
@@ -37,18 +32,11 @@ def _patch_search_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         keyword_pipeline,
         l2_metadata,
         l3_content,
-        semantic_module,
     ):
         monkeypatch.setattr(module, "get_user_data_dir", lambda _t=tmp_path: _t, raising=False)
         monkeypatch.setattr(module, "get_journals_dir", lambda _j=journals_dir: _j, raising=False)
 
     monkeypatch.setattr(l2_metadata, "ENABLE_CACHE", False)
-    monkeypatch.setattr(
-        semantic_module,
-        "SEMANTIC_INDEX_PATH",
-        tmp_path / ".index" / "vectors_simple.pkl",
-        raising=False,
-    )
     fresh_report = FreshnessReport(
         fts_fresh=True,
         vector_fresh=True,
@@ -131,15 +119,15 @@ def test_search_month_without_year_still_searches_all(
 
     matched_paths = {Path(item["path"]).as_posix() for item in result["l3_results"]}
     assert (
-        str(
-            tmp_path / "Journals" / "2025" / "03" / "life-index_2025-03-01_001.md"
-        ).replace("\\", "/")
+        str(tmp_path / "Journals" / "2025" / "03" / "life-index_2025-03-01_001.md").replace(
+            "\\", "/"
+        )
         in matched_paths
     )
     assert (
-        str(
-            tmp_path / "Journals" / "2026" / "04" / "life-index_2026-04-01_001.md"
-        ).replace("\\", "/")
+        str(tmp_path / "Journals" / "2026" / "04" / "life-index_2026-04-01_001.md").replace(
+            "\\", "/"
+        )
         in matched_paths
     )
 

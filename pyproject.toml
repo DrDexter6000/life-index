@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "life-index"
-version = "1.3.4"
+version = "1.3.5"
 description = "Personal life journaling system with dual-dimension indexing"
 readme = "README.md"
 license = "Apache-2.0"
@@ -31,7 +31,6 @@ requires-python = ">=3.11"
 dependencies = [
     # Core dependencies - 核心依赖
     "pyyaml>=6.0",
-    "numpy>=1.24.0",
     "httpx>=0.24",
     "jieba>=0.42.1",
     "rapidfuzz>=3.14.0",
@@ -147,16 +146,6 @@ show_error_context = true
 
 # Module-specific settings - 模块特定设置
 [[tool.mypy.overrides]]
-module = "numpy"
-follow_imports = "skip"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "numpy.*"
-follow_imports = "skip"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = "PIL"
 follow_imports = "skip"
 ignore_missing_imports = true
@@ -226,7 +215,6 @@ branch = true
 omit = [
     "*/tests/*",
     "*/test_*",
-    "tools/lib/vector_index_simple.py",  # Deprecated legacy module
     "tools/**/__main__.py",  # CLI entry points (tested via E2E)
 ]
 

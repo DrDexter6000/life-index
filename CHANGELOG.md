@@ -6,6 +6,36 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-07-02
+
+### Removed
+
+- Purged the retired semantic/vector runtime implementation and old
+  vector-specific tests after the 108-query golden set showed no four-decimal
+  gain from in-tool semantic retrieval. Deprecated `--semantic*` and vector
+  flags remain accepted as no-op compatibility inputs.
+- Removed `numpy` from the core install path now that the legacy vector runtime
+  is gone.
+
+### Fixed
+
+- Corrected the top-level `smart-search` help text so it describes deterministic
+  host-agent evidence scaffolding instead of claiming in-tool LLM orchestration.
+- Stopped writing new `semantic_baseline_p25` index metadata; existing old
+  databases are left untouched because no active read path consumes it.
+- Relaxed entity-graph benchmark hard assertions to shared-runner-safe
+  fail-safes while keeping printed measurements for trend review.
+
+### Documentation
+
+- Added the MCP architecture boundary: a future MCP layer is constitutional only
+  as a 1:1 CLI JSON projection with zero new capability and zero new write path.
+- Split the full grounded query playbook into `references/` so ordinary host
+  agents keep a smaller always-loaded `SKILL.md` and load the detailed query
+  playbook only when needed.
+- Updated README metrics to the 108-query `Recall@5 = 0.9231` baseline and
+  current pytest-collected scale.
+
 ## [1.3.4] - 2026-06-21
 
 ### Improved

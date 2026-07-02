@@ -11,7 +11,7 @@ Commands:
     write     Write a journal entry
     confirm   Apply write confirmation updates
     search    Search journals (pure dual-pipeline)
-    smart-search  Smart search with LLM orchestration
+    smart-search  Deterministic evidence scaffold for host agents
     edit      Edit a journal entry
     journal   Read journals through stable get/list contracts
     attachment  Read/export/stream archived attachments
@@ -543,7 +543,7 @@ def print_usage() -> None:
     print("  maintenance  Run maintenance cycle (dry-run health checks)")
     print("  bootstrap  Detect install/data state and route onboarding (read-only)")
     print("  sync-skill  Synchronize SKILL.md and references into host skill directory")
-    print("  smart-search  Smart search with LLM orchestration")
+    print("  smart-search  Deterministic evidence scaffold for host agents")
     print("  aggregate  Deterministic counts, buckets, and claim envelopes")
     print("  analyze   Alias for deterministic aggregate counts")
     print("  health    Check installation health")

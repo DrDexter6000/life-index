@@ -5,11 +5,9 @@ from pathlib import Path
 
 import pytest
 
-
 PRODUCTION_FILES = [
     "tools/search_journals/keyword_pipeline.py",
     "tools/lib/schema.py",
-    "tools/search_journals/semantic_pipeline.py",
     "tools/lib/fts_search.py",
     "tools/lib/fts_update.py",
 ]

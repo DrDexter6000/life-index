@@ -10,7 +10,7 @@ Tests cover:
 
 Note: After Phase 2B refactoring, mock targets changed:
 - Level 3 keyword pipeline: patch at keyword_pipeline module
-- Level 3 semantic pipeline: patch at semantic_pipeline module
+- Semantic/vector flags: deprecated no-op compatibility only
 - Level 1/2: still patch at core module
 """
 
@@ -513,27 +513,24 @@ class TestHierarchicalSearch:
         """v1.2: semantic=False disables semantic pipeline"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
-            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
-                with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
-                    with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
-                        mock_l2.return_value = {
-                            "results": [],
-                            "truncated": False,
-                            "total_available": 0,
-                        }
-                        mock_l3.return_value = [{"path": "test.md", "relevance": 80}]
-                        mock_rank.return_value = [{"path": "test.md", "score": 0.8}]
-                        result = hierarchical_search(
-                            query="test", level=3, semantic=False, use_index=False
-                        )
+        with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+            with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+                with patch("tools.search_journals.core.merge_and_rank_results") as mock_rank:
+                    mock_l2.return_value = {
+                        "results": [],
+                        "truncated": False,
+                        "total_available": 0,
+                    }
+                    mock_l3.return_value = [{"path": "test.md", "relevance": 80}]
+                    mock_rank.return_value = [{"path": "test.md", "score": 0.8}]
+                    result = hierarchical_search(
+                        query="test", level=3, semantic=False, use_index=False
+                    )
 
         assert result["success"] is True
         assert result["semantic_results"] == []
         assert result["semantic_available"] is False
         assert "semantic_note" in result
-        # semantic pipeline should not have been called
-        mock_sem.assert_not_called()
 
     def test_search_semantic_missing_index_degrades_to_keyword_only(self):
         """Missing semantic index should degrade gracefully with a user-facing note."""
@@ -821,15 +818,13 @@ class TestSearchWarnings:
 
         with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
             with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
-                with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
-                    mock_l2.return_value = {
-                        "results": [],
-                        "truncated": False,
-                        "total_available": 0,
-                    }
-                    mock_l3.return_value = []
-                    mock_sem.return_value = ([], {})
-                    result = hierarchical_search(query="test", level=3)
+                mock_l2.return_value = {
+                    "results": [],
+                    "truncated": False,
+                    "total_available": 0,
+                }
+                mock_l3.return_value = []
+                result = hierarchical_search(query="test", level=3)
 
         assert "warnings" in result
         assert isinstance(result["warnings"], list)
@@ -838,28 +833,19 @@ class TestSearchWarnings:
         """语义搜索不可用时，warnings 应包含原因"""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
-            return_value={
-                "available": False,
-                "reason": "vector index not found",
-                "note": "向量索引未建立",
-            },
-        ):
-            with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
-                with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
-                    mock_l2.return_value = {
-                        "results": [],
-                        "truncated": False,
-                        "total_available": 0,
-                    }
-                    mock_l3.return_value = []
-                    result = hierarchical_search(
-                        query="test", level=3, semantic=True, use_index=False
-                    )
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                mock_l2.return_value = {
+                    "results": [],
+                    "truncated": False,
+                    "total_available": 0,
+                }
+                mock_l3.return_value = []
+                result = hierarchical_search(query="test", level=3, semantic=True, use_index=False)
 
         assert len(result["warnings"]) >= 1
-        assert any("semantic" in w.lower() for w in result["warnings"])
+        assert any("deprecated_noop" in w for w in result["warnings"])
+        assert result["semantic_effective_policy"] == "deprecated_noop"
 
     def test_warnings_empty_when_all_pipelines_ok(self):
         """所有管道正常时，warnings 应为空列表"""
@@ -871,41 +857,23 @@ class TestSearchWarnings:
             fts_fresh=True, vector_fresh=True, overall_fresh=True, issues=[]
         )
 
-        with patch(
-            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-        ) as mock_semantic_status:
-            with patch("tools.search_journals.semantic_pipeline.search_semantic") as mock_sem:
-                with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+        with patch("tools.search_journals.keyword_pipeline.search_l2_metadata") as mock_l2:
+            with patch("tools.search_journals.keyword_pipeline.search_l3_content") as mock_l3:
+                with patch(
+                    "tools.lib.index_freshness.check_full_freshness",
+                    return_value=fresh_report,
+                ):
                     with patch(
-                        "tools.search_journals.keyword_pipeline.search_l3_content"
-                    ) as mock_l3:
-                        with patch(
-                            "tools.lib.index_freshness.check_full_freshness",
-                            return_value=fresh_report,
-                        ):
-                            with patch(
-                                "tools.lib.pending_writes.has_pending",
-                                return_value=False,
-                            ):
-                                mock_semantic_status.return_value = {
-                                    "available": True,
-                                    "reason": None,
-                                    "note": None,
-                                }
-                                mock_sem.return_value = (
-                                    [{"path": "test.md", "similarity": 0.8}],
-                                    {
-                                        "semantic_encode_ms": 1.0,
-                                        "semantic_search_ms": 2.0,
-                                    },
-                                )
-                                mock_l2.return_value = {
-                                    "results": [],
-                                    "truncated": False,
-                                    "total_available": 0,
-                                }
-                                mock_l3.return_value = []
-                                result = hierarchical_search(query="test", level=3, use_index=False)
+                        "tools.lib.pending_writes.has_pending",
+                        return_value=False,
+                    ):
+                        mock_l2.return_value = {
+                            "results": [],
+                            "truncated": False,
+                            "total_available": 0,
+                        }
+                        mock_l3.return_value = []
+                        result = hierarchical_search(query="test", level=3, use_index=False)
 
         assert result["warnings"] == []
 

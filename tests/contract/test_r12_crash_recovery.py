@@ -1,7 +1,7 @@
 """Round 12 Phase 2 Task 2.4: Crash recovery contract tests.
 
 Validates that the system recovers gracefully from various crash scenarios:
-1. Missing vector index → search still works (degraded)
+1. Missing removed vector index → search still works
 2. Missing FTS index → search reports unhealthy but doesn't crash
 3. Pending writes not consumed → next search auto-consumes
 4. Partial manifest → index --check reports unhealthy
@@ -18,8 +18,6 @@ from tools.lib.index_manifest import IndexManifest, write_manifest
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch):
     """Isolate all paths to tmp_path with a zero-count fresh manifest."""
-    import tools.lib.vector_index_simple as vi_mod
-
     idx = tmp_path / ".index"
     idx.mkdir()
     d = tmp_path / "Life-Index"
@@ -29,9 +27,6 @@ def _isolate(tmp_path: Path, monkeypatch):
     (d / ".cache" / "journals.lock").touch()
 
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(d))
-    monkeypatch.setattr(vi_mod, "INDEX_DIR", idx)
-    monkeypatch.setattr(vi_mod, "VEC_INDEX_PATH", idx / "vectors_simple.pkl")
-    monkeypatch.setattr(vi_mod, "META_PATH", idx / "vectors_simple_meta.json")
 
     write_manifest(
         IndexManifest(
@@ -50,8 +45,8 @@ def _isolate(tmp_path: Path, monkeypatch):
 
 class TestCrashRecovery:
 
-    def test_missing_vector_index_search_degraded(self, tmp_path: Path, monkeypatch):
-        """When vectors_simple.pkl is missing, search works in degraded mode."""
+    def test_missing_removed_vector_index_search_still_works(self, tmp_path: Path, monkeypatch):
+        """Search no longer depends on vectors_simple.pkl."""
         import tools.build_index as bi
         import tools.search_journals.core as search_core
 

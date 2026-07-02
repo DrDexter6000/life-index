@@ -5399,7 +5399,11 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
     "status": "synced",
     "delivered": true,
     "target_dir": "<host-skill-dir>",
-    "copied": ["SKILL.md", "references/WEATHER_FLOW.md"],
+    "copied": [
+      "SKILL.md",
+      "references/GROUNDED_QUERY_PLAYBOOK.md",
+      "references/WEATHER_FLOW.md"
+    ],
     "diagnostics": []
   }
 }
@@ -5417,7 +5421,11 @@ When `--install` creates the target skill directory, `data.status` is
     "status": "installed",
     "delivered": true,
     "target_dir": "<host-home>/skills/life-index",
-    "copied": ["SKILL.md", "references/WEATHER_FLOW.md"],
+    "copied": [
+      "SKILL.md",
+      "references/GROUNDED_QUERY_PLAYBOOK.md",
+      "references/WEATHER_FLOW.md"
+    ],
     "diagnostics": []
   }
 }

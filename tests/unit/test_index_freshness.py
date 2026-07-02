@@ -14,7 +14,6 @@ from tools.lib.pending_writes import mark_pending
 def _isolate(tmp_path: Path, monkeypatch):
     """Isolate paths and pending queue to tmp_path."""
     import tools.lib.pending_writes as pw_mod
-    import tools.lib.vector_index_simple as vi_mod
 
     idx = tmp_path / ".index"
     idx.mkdir(parents=True)
@@ -23,9 +22,6 @@ def _isolate(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(pw_mod, "get_index_dir", lambda: idx)
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(d))
-    monkeypatch.setattr(vi_mod, "get_index_dir", lambda: idx)
-    monkeypatch.setattr(vi_mod, "get_vec_index_path", lambda: idx / "vectors_simple.pkl")
-    monkeypatch.setattr(vi_mod, "get_user_data_dir", lambda: d)
 
 
 class TestFullFreshness:

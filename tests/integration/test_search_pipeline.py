@@ -3,17 +3,17 @@
 Life Index Integration Tests - Search Pipeline
 =============================================
 
-Tests cover the complete dual-pipeline search architecture:
+Tests cover the current keyword/entity search architecture:
 - Pipeline A (Keyword): L1 index → L2 metadata → L3 FTS content
-- Pipeline B (Semantic): Vector similarity search
-- Fusion: RRF (Reciprocal Rank Fusion, k=60)
+- Deprecated semantic flags as no-op compatibility
+- Ranking helper behavior, including legacy semantic score inputs
 
 This module provides integration-level tests that verify the complete
 search pipeline from query input to merged results output.
 
 Note: After Phase 2B refactoring, mock targets changed:
 - Level 1/2: patch at core module (still correct)
-- Level 3: patch at keyword_pipeline and semantic_pipeline modules
+- Level 3: patch at keyword_pipeline modules
 
 Usage:
     python -m pytest tests/integration/test_search_pipeline.py -v
@@ -49,7 +49,7 @@ def mock_fresh_index_state():
 
 @pytest.fixture
 def mock_level3_pipelines():
-    """Mock Level 3 pipeline dependencies (keyword_pipeline + semantic_pipeline)."""
+    """Mock Level 3 keyword pipeline dependencies."""
     with patch("tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]):
         with patch(
             "tools.search_journals.keyword_pipeline.search_l2_metadata",
@@ -60,15 +60,7 @@ def mock_level3_pipelines():
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status",
-                            return_value={"available": True, "reason": "", "note": ""},
-                        ):
-                            yield
+                    yield
 
 
 class TestDualPipelineParallelExecution:
@@ -117,8 +109,8 @@ class TestDualPipelineParallelExecution:
         assert result["semantic_effective_policy"] == "deprecated_noop"
         assert [name for name, _ in execution_log] == ["l1_start", "l1_end"]
 
-    def test_keyword_pipeline_completes_when_semantic_unavailable(self):
-        """Keyword pipeline should complete when semantic is unavailable."""
+    def test_keyword_pipeline_completes_with_deprecated_semantic_flag(self):
+        """Keyword pipeline should complete when deprecated semantic flags are passed."""
         from tools.search_journals.core import hierarchical_search
 
         def mock_l3(*args, **kwargs):
@@ -137,26 +129,12 @@ class TestDualPipelineParallelExecution:
                         "tools.search_journals.keyword_pipeline.search_l3_content",
                         side_effect=mock_l3,
                     ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.search_semantic",
-                            return_value=([], {}),
-                        ):
-                            with patch(
-                                "tools.search_journals.semantic_pipeline."
-                                "get_semantic_runtime_status"
-                            ) as mock_status:
-                                mock_status.return_value = {
-                                    "available": False,
-                                    "reason": "vector index not found",
-                                    "note": "向量索引未建立，请运行 life-index index",
-                                }
-
-                                result = hierarchical_search(
-                                    query="test",
-                                    level=3,
-                                    semantic=True,
-                                    semantic_policy="hybrid",
-                                )
+                        result = hierarchical_search(
+                            query="test",
+                            level=3,
+                            semantic=True,
+                            semantic_policy="hybrid",
+                        )
 
         # Should still return FTS results with graceful degradation
         assert result["success"] is True
@@ -169,17 +147,8 @@ class TestDualPipelineParallelExecution:
         """ThreadPoolExecutor should shut down cleanly after search."""
         from tools.search_journals.core import hierarchical_search
 
-        with patch(
-            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-        ) as mock_status:
-            mock_status.return_value = {
-                "available": False,
-                "reason": "test",
-                "note": "",
-            }
-
-            # Should complete without hanging
-            result = hierarchical_search(query="test", level=3)
+        # Should complete without hanging
+        result = hierarchical_search(query="test", level=3)
 
         assert result["success"] is True
 
@@ -252,20 +221,7 @@ class TestRRFFusion:
                             },
                         ],
                     ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.search_semantic",
-                            return_value=([], {}),
-                        ):
-                            with patch(
-                                "tools.search_journals.semantic_pipeline."
-                                "get_semantic_runtime_status"
-                            ) as mock_status:
-                                mock_status.return_value = {
-                                    "available": False,
-                                    "reason": "",
-                                    "note": "",
-                                }
-                                result = hierarchical_search(query="test", level=3)
+                        result = hierarchical_search(query="test", level=3)
 
         merged = result["merged_results"]
         assert len(merged) == 2
@@ -334,8 +290,8 @@ class TestSemanticSearchDegradation:
         assert "semantic_note" in result
         assert "disabled" in result["semantic_note"]
 
-    def test_search_degrades_when_sentence_transformers_not_installed(self):
-        """Search should degrade when sentence-transformers is not installed."""
+    def test_search_semantic_flag_reports_deprecated_noop(self):
+        """Deprecated semantic flag should report no-op compatibility state."""
         from tools.search_journals.core import hierarchical_search
 
         with patch("tools.search_journals.keyword_pipeline.search_l1_index", return_value=[]):
@@ -347,23 +303,16 @@ class TestSemanticSearchDegradation:
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "sentence-transformers dependency is not installed",
-                                "note": "sentence-transformers 未安装，当前已降级为关键词搜索。",
-                            }
-
-                            result = hierarchical_search(query="test", level=3)
+                    result = hierarchical_search(
+                        query="test",
+                        level=3,
+                        semantic=True,
+                        semantic_policy="hybrid",
+                    )
 
         assert result["success"] is True
         assert result["semantic_available"] is False
+        assert result["semantic_effective_policy"] == "deprecated_noop"
 
     def test_no_semantic_flag_disables_semantic(self):
         """--no-semantic flag should disable semantic search entirely."""
@@ -400,20 +349,7 @@ class TestEndToEndSearch:
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "",
-                                "note": "",
-                            }
-
-                            result = hierarchical_search(query="test query", level=3)
+                    result = hierarchical_search(query="test query", level=3)
 
         # Verify complete structure
         assert "success" in result
@@ -444,20 +380,7 @@ class TestEndToEndSearch:
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "",
-                                "note": "",
-                            }
-
-                            result = hierarchical_search(query="test", level=3)
+                    result = hierarchical_search(query="test", level=3)
 
         assert "total_time_ms" in result["performance"]
         # Note: total_time_ms can be 0 when all pipeline stages are mocked
@@ -544,25 +467,12 @@ class TestSearchWithFilters:
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "",
-                                "note": "",
-                            }
-
-                            hierarchical_search(
-                                query="test",
-                                date_from="2026-01-01",
-                                date_to="2026-03-31",
-                                level=3,
-                            )
+                    hierarchical_search(
+                        query="test",
+                        date_from="2026-01-01",
+                        date_to="2026-03-31",
+                        level=3,
+                    )
 
         mock_l2.assert_called_once()
         call_kwargs = mock_l2.call_args[1]
@@ -583,20 +493,7 @@ class TestSearchWithFilters:
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "",
-                                "note": "",
-                            }
-
-                            hierarchical_search(topic="work", level=3)
+                    hierarchical_search(topic="work", level=3)
 
         mock_l1.assert_called_with("topic", "work")
 
@@ -614,20 +511,7 @@ class TestSearchWithFilters:
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "",
-                                "note": "",
-                            }
-
-                            hierarchical_search(tags=["python", "testing"], level=3)
+                    hierarchical_search(tags=["python", "testing"], level=3)
 
         # Should call search_l1_index for each tag
         assert mock_l1.call_count == 2
@@ -651,26 +535,13 @@ class TestSearchWeights:
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "",
-                                "note": "",
-                            }
-
-                            # Should not raise
-                            result = hierarchical_search(
-                                query="test",
-                                level=3,
-                                fts_weight=0.7,
-                                semantic_weight=0.3,
-                            )
+                    # Should not raise
+                    result = hierarchical_search(
+                        query="test",
+                        level=3,
+                        fts_weight=0.7,
+                        semantic_weight=0.3,
+                    )
 
         assert result["success"] is True
 
@@ -687,20 +558,7 @@ class TestSearchWeights:
                     "tools.search_journals.keyword_pipeline.search_l3_content",
                     return_value=[],
                 ):
-                    with patch(
-                        "tools.search_journals.semantic_pipeline.search_semantic",
-                        return_value=([], {}),
-                    ):
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.get_semantic_runtime_status"
-                        ) as mock_status:
-                            mock_status.return_value = {
-                                "available": False,
-                                "reason": "",
-                                "note": "",
-                            }
-
-                            result = hierarchical_search(query="test", level=3, semantic_weight=0.5)
+                    result = hierarchical_search(query="test", level=3, semantic_weight=0.5)
 
         assert result["success"] is True
 
@@ -739,21 +597,7 @@ class TestSearchWeights:
                             },
                         ],
                     ) as mock_l3:
-                        with patch(
-                            "tools.search_journals.semantic_pipeline.search_semantic",
-                            return_value=([], {}),
-                        ):
-                            with patch(
-                                "tools.search_journals.semantic_pipeline."
-                                "get_semantic_runtime_status"
-                            ) as mock_status:
-                                mock_status.return_value = {
-                                    "available": False,
-                                    "reason": "",
-                                    "note": "",
-                                }
-
-                                result = hierarchical_search(query="补搜测试", level=3)
+                        result = hierarchical_search(query="补搜测试", level=3)
 
         assert result["success"] is True
         assert mock_l3.call_count == 1

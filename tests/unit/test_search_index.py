@@ -1196,6 +1196,14 @@ class TestGetStatsEdgeCases:
 class TestVersionMarker:
     """T1.4: Tests for tokenizer version marker and auto-rebuild (Phase 1)."""
 
+    def test_write_index_meta_signature_is_conn_only(self):
+        """Index metadata writer should not expose semantic calibration knobs."""
+        import inspect
+
+        from tools.lib import search_index
+
+        assert list(inspect.signature(search_index.write_index_meta).parameters) == ["conn"]
+
     def test_new_index_has_tokenizer_version(self, tmp_path):
         """Newly created index should have tokenizer_version in index_meta."""
         from tools.lib import search_index
@@ -1214,6 +1222,23 @@ class TestVersionMarker:
 
                 assert row is not None
                 assert int(row[0]) == TOKENIZER_VERSION
+
+    def test_write_index_meta_does_not_write_semantic_baseline(self, tmp_path):
+        """New index metadata should not persist retired semantic baseline values."""
+        from tools.lib import search_index
+
+        db_path = tmp_path / "test_fts.db"
+        with patch.object(search_index, "get_fts_db_path", lambda: db_path):
+            with patch.object(search_index, "get_index_dir", lambda: tmp_path):
+                conn = search_index.init_fts_db()
+                search_index.write_index_meta(conn)
+
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM index_meta WHERE key = 'semantic_baseline_p25'")
+                row = cursor.fetchone()
+                conn.close()
+
+                assert row is None
 
     def test_version_mismatch_triggers_rebuild(self, tmp_path):
         """Mismatched tokenizer_version causes needs_rebuild=True."""

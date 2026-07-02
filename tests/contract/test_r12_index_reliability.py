@@ -9,51 +9,11 @@
 所有测试使用 isolated_data_dir fixture，永不触碰真实数据目录。
 """
 
-# ============================================================
-# 模块级注入：修复 FTS_DB_PATH 导入链断裂
-# ============================================================
-# semantic_pipeline.py 仍执行 `from ..lib.search_index import FTS_DB_PATH`，
-# 但 search_index.py 已将 FTS_DB_PATH 注释掉（迁移到 get_fts_db_path()）。
-# 必须在 conftest.py 的 isolated_data_dir fixture 触发
-# `import tools.search_journals.semantic` 之前注入此属性，
-# 否则 conftest 第 58 行会抛出 ImportError。
-# 此处为模块级代码，pytest 收集阶段即执行，早于任何 fixture。
-import tools.lib.search_index as _si
-
-if not hasattr(_si, "FTS_DB_PATH"):
-    _si.FTS_DB_PATH = _si.get_fts_db_path()
-
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from tools.build_index import build_all, check_index
 from tools.lib.pending_writes import clear_pending
-
-
-@pytest.fixture(autouse=True)
-def _isolate_vector_backend(isolated_data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep index reliability tests off network-backed embedding model loading."""
-    import tools.lib.semantic_search as semantic_mod
-    import tools.lib.vector_index_simple as simple_mod
-
-    class UnavailableSqliteModel:
-        def load(self) -> bool:
-            return False
-
-    class FakeSimpleModel:
-        def load(self) -> bool:
-            return True
-
-        def encode(self, texts: list[str]) -> list[list[float]]:
-            return [[1.0] + [0.0] * (simple_mod.EMBEDDING_DIM - 1) for _ in texts]
-
-    simple_mod._index_instance = None
-    monkeypatch.setattr(semantic_mod, "get_model", lambda: UnavailableSqliteModel())
-    monkeypatch.setattr(simple_mod, "get_model", lambda: FakeSimpleModel())
-    monkeypatch.setattr(simple_mod, "CACHE_DIR", isolated_data_dir / ".cache" / "models")
-
 
 # ============================================================
 # Helper: 在隔离目录中写入一篇日志

@@ -169,7 +169,7 @@ def ensure_fts_schema() -> Dict[str, Any]:
     return result
 
 
-def write_index_meta(conn: sqlite3.Connection, semantic_baseline_p25: float | None = None) -> None:
+def write_index_meta(conn: sqlite3.Connection) -> None:
     """Write tokenizer_version, dict_hash, schema_version, and last_updated.
 
     These values are written into the index_meta table.
@@ -194,11 +194,6 @@ def write_index_meta(conn: sqlite3.Connection, semantic_baseline_p25: float | No
         "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
         ("last_updated", datetime.now(timezone.utc).isoformat()),
     )
-    if semantic_baseline_p25 is not None:
-        cursor.execute(
-            "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
-            ("semantic_baseline_p25", f"{semantic_baseline_p25:.6f}"),
-        )
     conn.commit()
 
 

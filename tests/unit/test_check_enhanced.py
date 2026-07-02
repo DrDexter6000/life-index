@@ -11,17 +11,12 @@ from tools.lib.index_manifest import IndexManifest, write_manifest
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch):
     """Isolate paths to tmp_path."""
-    import tools.lib.vector_index_simple as vi_mod
-
     d = tmp_path / "Life-Index"
     idx = d / ".index"
     (d / "Journals" / "2026" / "03").mkdir(parents=True)
     idx.mkdir(parents=True)
 
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(d))
-    monkeypatch.setattr(vi_mod, "get_index_dir", lambda: idx)
-    monkeypatch.setattr(vi_mod, "get_vec_index_path", lambda: idx / "vectors_simple.pkl")
-    monkeypatch.setattr(vi_mod, "get_user_data_dir", lambda: d)
 
 
 class TestEnhancedCheckIndex:
@@ -33,11 +28,18 @@ class TestEnhancedCheckIndex:
         data_dir = tmp_path / "Life-Index"
         index_dir = data_dir / ".index"
 
-        write_manifest(IndexManifest(
-            fts_count=5, vector_count=5, file_count=5,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=5,
+                vector_count=5,
+                file_count=5,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         result = check_index()
         assert "manifest" in result
@@ -51,11 +53,18 @@ class TestEnhancedCheckIndex:
         data_dir = tmp_path / "Life-Index"
         index_dir = data_dir / ".index"
 
-        write_manifest(IndexManifest(
-            fts_count=5, vector_count=5, file_count=5,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=5,
+                vector_count=5,
+                file_count=5,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         result = check_index()
         assert "freshness" in result
@@ -71,11 +80,18 @@ class TestEnhancedCheckIndex:
         data_dir = tmp_path / "Life-Index"
         index_dir = data_dir / ".index"
 
-        write_manifest(IndexManifest(
-            fts_count=5, vector_count=5, file_count=5,
-            fts_checksum="a", vector_checksum="b",
-            build_timestamp="2026-04-18T12:00:00", build_version="1.0.0",
-        ), index_dir)
+        write_manifest(
+            IndexManifest(
+                fts_count=5,
+                vector_count=5,
+                file_count=5,
+                fts_checksum="a",
+                vector_checksum="b",
+                build_timestamp="2026-04-18T12:00:00",
+                build_version="1.0.0",
+            ),
+            index_dir,
+        )
 
         with (
             patch("tools.lib.index_freshness.get_fts_count", return_value=5),
