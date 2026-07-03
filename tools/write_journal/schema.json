@@ -36,6 +36,7 @@
               "type": "object",
               "properties": {
                 "rel_path": {"type": "string"},
+                "candidate_id": {"type": "integer"},
                 "title": {"type": "string"},
                 "date": {"type": "string"},
                 "abstract": {"type": "string"},
@@ -56,6 +57,7 @@
           "type": "object",
           "properties": {
             "rel_path": {"type": "string"},
+            "candidate_id": {"type": "integer"},
             "title": {"type": "string"},
             "date": {"type": "string"},
             "abstract": {"type": "string"},
