@@ -6,6 +6,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+HOST_ENV_VARS = (
+    "LIFE_INDEX_HOST_SKILL_DIR",
+    "CODEX_HOME",
+    "AGENTS_HOME",
+    "HERMES_HOME",
+    "CLAUDE_HOME",
+)
+
 
 def _write_source(root: Path) -> None:
     (root / "references").mkdir(parents=True)
@@ -22,6 +30,15 @@ triggers:
         encoding="utf-8",
     )
     (root / "references" / "WEATHER_FLOW.md").write_text("# Weather\n", encoding="utf-8")
+
+
+def _isolated_subprocess_env(home: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    for name in HOST_ENV_VARS:
+        env.pop(name, None)
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    return env
 
 
 def test_sync_skill_copies_skill_and_references_preserving_custom_triggers(tmp_path: Path) -> None:
@@ -448,9 +465,7 @@ def test_sync_skill_cli_list_is_read_only_across_default_host_homes(
     for path in (codex_target, hermes_nested):
         path.mkdir(parents=True)
         (path / "SKILL.md").write_text(path.name, encoding="utf-8")
-    env = os.environ.copy()
-    env["HOME"] = str(tmp_path)
-    env["USERPROFILE"] = str(tmp_path)
+    env = _isolated_subprocess_env(tmp_path)
 
     result = subprocess.run(
         [
@@ -478,9 +493,7 @@ def test_sync_skill_cli_list_is_read_only_across_default_host_homes(
 
 
 def test_sync_skill_cli_uninstall_without_explicit_target_is_refused(tmp_path: Path) -> None:
-    env = os.environ.copy()
-    env["HOME"] = str(tmp_path)
-    env["USERPROFILE"] = str(tmp_path)
+    env = _isolated_subprocess_env(tmp_path)
 
     result = subprocess.run(
         [
@@ -585,22 +598,11 @@ def test_find_host_skill_dir_reports_ambiguous_nested_matches(
 
 def test_sync_skill_cli_loudly_reports_undelivered_when_no_host_dir(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     source_root = tmp_path / "checkout"
     source_root.mkdir()
     _write_source(source_root)
-    env = os.environ.copy()
-    for name in (
-        "LIFE_INDEX_HOST_SKILL_DIR",
-        "CODEX_HOME",
-        "AGENTS_HOME",
-        "HERMES_HOME",
-        "CLAUDE_HOME",
-    ):
-        env.pop(name, None)
-    env["HOME"] = str(tmp_path)
-    env["USERPROFILE"] = str(tmp_path)
+    env = _isolated_subprocess_env(tmp_path)
 
     result = subprocess.run(
         [
