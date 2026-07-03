@@ -82,6 +82,11 @@ triggers:
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树
 - 写入成功后的状态字段解释（`needs_confirmation` / `index_status` / `side_effects_status` / 附件处理计数）→ 读 `docs/API.md` 中 `write_journal` 返回语义
 
+**会话 freshness 信号（升级摩擦 UF-1）**：
+- 每次新会话首次使用 Life Index 前，运行 `life-index health --json` 并读取 `data.upgrade_freshness`
+- 若 `data.upgrade_freshness.freshness == "update_available"` 或 `git_freshness == "behind"`，先执行返回的 `suggested_refresh_step`，再运行 `life-index sync-skill --install`
+- 这是会话面提示，不替代 `bootstrap --json` 的安装/repair authority；旧版本无法自带新检测码时，以 `bootstrap-manifest.json` + `CHANGELOG.md` 为人工校验锚点
+
 <!-- GROUNDED_QUERY_SKILL_START -->
 ## Grounded Query Skill Playbook
 

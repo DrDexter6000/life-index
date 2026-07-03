@@ -262,6 +262,133 @@ def test_sync_skill_cli_install_host_home(tmp_path: Path) -> None:
     assert (target / "SKILL.md").exists()
 
 
+def test_sync_skill_cli_install_dry_run_reports_nested_duplicate_without_mutation(
+    tmp_path: Path,
+) -> None:
+    """UF-2: install dry-run previews nested duplicate cleanup without deleting files."""
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".codex"
+    canonical = host_home / "skills" / "life-index"
+    nested = canonical / "life-index"
+    source_root.mkdir()
+    nested.mkdir(parents=True)
+    _write_source(source_root)
+    (nested / "SKILL.md").write_text(
+        """---
+name: life-index
+triggers:
+  - "/life-index nested"
+---
+
+# Nested Skill
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--host-home",
+            str(host_home),
+            "--dry-run",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "dry_run"
+    assert payload["data"]["delivered"] is False
+    assert payload["data"]["dedupe"]["status"] == "would_remove"
+    assert payload["data"]["dedupe"]["nested_dir"] == str(nested.resolve())
+    assert not (canonical / "SKILL.md").exists()
+    assert (nested / "SKILL.md").exists()
+
+
+def test_sync_skill_install_collapses_nested_duplicate_preserving_custom_triggers(
+    tmp_path: Path,
+) -> None:
+    """UF-2: install converges skills/life-index/life-index to the canonical slot."""
+    from tools.sync_skill import install_target_from_host_home, sync_skill_artifacts
+
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".codex"
+    target = install_target_from_host_home(host_home)
+    nested = target / "life-index"
+    source_root.mkdir()
+    nested.mkdir(parents=True)
+    _write_source(source_root)
+    (nested / "SKILL.md").write_text(
+        """---
+name: life-index
+triggers:
+  - "/life-index nested"
+---
+
+# Nested Skill
+""",
+        encoding="utf-8",
+    )
+    (nested / "references").mkdir()
+    (nested / "references" / "OLD.md").write_text("# old\n", encoding="utf-8")
+
+    payload = sync_skill_artifacts(source_root=source_root, target_dir=target, install=True)
+
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "installed"
+    assert payload["data"]["dedupe"]["status"] == "removed"
+    assert payload["data"]["dedupe"]["nested_dir"] == str(nested.resolve())
+    assert (target / "SKILL.md").exists()
+    assert not nested.exists()
+    synced_skill = (target / "SKILL.md").read_text(encoding="utf-8")
+    assert "# Current Skill" in synced_skill
+    assert '  - "/life-index nested"' in synced_skill
+
+
+def test_sync_skill_reports_playbook_unchanged_with_changelog_pointer(
+    tmp_path: Path,
+) -> None:
+    """UF-3: upgrade path reports when code changed but playbook did not."""
+    source_root = tmp_path / "checkout"
+    target = tmp_path / "host" / "skills" / "life-index"
+    source_root.mkdir()
+    target.mkdir(parents=True)
+    _write_source(source_root)
+    (target / "SKILL.md").write_text(
+        (source_root / "SKILL.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--host-skill-dir",
+            str(target),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "playbook unchanged; changelog: CHANGELOG.md" in result.stdout
+
+
 def test_sync_skill_cli_uninstall_host_home_roundtrip(tmp_path: Path) -> None:
     source_root = tmp_path / "checkout"
     host_home = tmp_path / ".hermes"

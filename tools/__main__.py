@@ -44,6 +44,7 @@ Commands:
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any, Dict, List, Tuple
 
@@ -62,6 +63,7 @@ from tools.lib.bootstrap_manifest import read_bootstrap_manifest as _read_bootst
 HEALTH_SCHEMA_VERSION = "m16.health.v0"
 INDEX_TREE_REBUILD_COMMAND = "life-index generate-index --all-months"
 CHRONIC_HEALTH_CHECKS = {"virtual_env", "data_directory", "entity_graph", "index_tree"}
+CHANGELOG_POINTER = "CHANGELOG.md"
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
 
@@ -89,6 +91,190 @@ def get_version_info() -> Dict[str, Any]:
         "package_version": get_package_version(),
         "bootstrap_manifest": read_bootstrap_manifest(),
     }
+
+
+def _raw_installed_package_version() -> str | None:
+    try:
+        return package_version("life-index")
+    except PackageNotFoundError:
+        return None
+
+
+def _run_git_local(checkout: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=checkout,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+
+
+def _detect_local_git_freshness(checkout: Path | None) -> Dict[str, Any]:
+    if checkout is None or not (checkout / ".git").exists():
+        return {
+            "git_freshness": "not_applicable",
+            "git_upstream": None,
+            "git_behind_count": None,
+            "git_ahead_count": None,
+            "git_error": None,
+        }
+
+    try:
+        upstream_result = _run_git_local(
+            checkout,
+            ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        )
+        upstream = upstream_result.stdout.strip() if upstream_result.returncode == 0 else ""
+        if not upstream:
+            ref_result = _run_git_local(checkout, ["rev-parse", "--verify", "origin/main"])
+            upstream = "origin/main" if ref_result.returncode == 0 else ""
+        if not upstream:
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": None,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": "No upstream branch or origin/main ref found",
+            }
+
+        count_result = _run_git_local(
+            checkout,
+            ["rev-list", "--left-right", "--count", f"HEAD...{upstream}"],
+        )
+        if count_result.returncode != 0:
+            detail = (count_result.stderr or count_result.stdout or "git rev-list failed").strip()
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": detail,
+            }
+
+        ahead_text, behind_text = count_result.stdout.strip().split()[:2]
+        ahead = int(ahead_text)
+        behind = int(behind_text)
+        return {
+            "git_freshness": "behind" if behind > 0 else "current",
+            "git_upstream": upstream,
+            "git_behind_count": behind,
+            "git_ahead_count": ahead,
+            "git_error": None,
+        }
+    except Exception as exc:
+        return {
+            "git_freshness": "unknown",
+            "git_upstream": None,
+            "git_behind_count": None,
+            "git_ahead_count": None,
+            "git_error": str(exc),
+        }
+
+
+def _detect_upgrade_freshness_state() -> Dict[str, Any]:
+    """Local-only session freshness signal for health output."""
+    manifest = read_bootstrap_manifest()
+    manifest_version = manifest.get("repo_version")
+    if not isinstance(manifest_version, str):
+        manifest_version = None
+
+    installed_version = _raw_installed_package_version()
+    checkout = BOOTSTRAP_MANIFEST_PATH.parent
+    install_type = "editable" if (checkout / ".git").exists() else "package"
+    git_status = _detect_local_git_freshness(checkout if install_type == "editable" else None)
+
+    update_reasons: list[str] = []
+    if installed_version and manifest_version and installed_version != manifest_version:
+        update_reasons.append("install_mismatch")
+    if int(git_status.get("git_behind_count") or 0) > 0:
+        update_reasons.append("git_behind")
+
+    suggested_refresh_step: str | None = None
+    if update_reasons:
+        if "git_behind" in update_reasons or install_type == "editable":
+            suggested_refresh_step = "git pull --ff-only && python -m pip install -e ."
+        else:
+            suggested_refresh_step = "python -m pip install -U life-index"
+
+    return {
+        "installed_version": installed_version,
+        "manifest_version": manifest_version,
+        "install_type": install_type,
+        "freshness": "update_available" if update_reasons else "current",
+        "update_available": (
+            ("git-behind" if "git_behind" in update_reasons else "install-mismatch")
+            if update_reasons
+            else None
+        ),
+        "update_reasons": update_reasons,
+        "suggested_refresh_step": suggested_refresh_step,
+        "freshness_error": git_status.get("git_error"),
+        **git_status,
+    }
+
+
+def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
+    try:
+        state = _detect_upgrade_freshness_state()
+    except Exception as exc:
+        check: Dict[str, Any] = {
+            "name": "upgrade_freshness",
+            "status": "info",
+            "freshness": "unknown",
+            "installed_version": None,
+            "manifest_version": None,
+            "install_type": "unknown",
+            "update_available": None,
+            "update_reasons": [],
+            "suggested_refresh_step": None,
+            "freshness_error": str(exc),
+            "changelog": CHANGELOG_POINTER,
+            "git": {
+                "freshness": "unknown",
+                "upstream": None,
+                "behind_count": None,
+                "ahead_count": None,
+                "error": str(exc),
+            },
+        }
+        return check, ""
+
+    update_reasons = list(state.get("update_reasons") or [])
+    status = "warning" if update_reasons else "ok"
+    check = {
+        "name": "upgrade_freshness",
+        "status": status,
+        "freshness": state.get("freshness", "unknown"),
+        "installed_version": state.get("installed_version"),
+        "manifest_version": state.get("manifest_version"),
+        "install_type": state.get("install_type", "unknown"),
+        "update_available": state.get("update_available"),
+        "update_reasons": update_reasons,
+        "suggested_refresh_step": state.get("suggested_refresh_step"),
+        "freshness_error": state.get("freshness_error"),
+        "changelog": CHANGELOG_POINTER,
+        "git": {
+            "freshness": state.get("git_freshness"),
+            "upstream": state.get("git_upstream"),
+            "behind_count": state.get("git_behind_count"),
+            "ahead_count": state.get("git_ahead_count"),
+            "error": state.get("git_error"),
+        },
+    }
+
+    if not update_reasons:
+        return check, ""
+
+    reason = str(state.get("update_available") or ",".join(update_reasons))
+    step = state.get("suggested_refresh_step") or "life-index bootstrap --json"
+    issue = (
+        f"Life Index upgrade freshness reports {reason}; run: {step}; "
+        f"then run life-index sync-skill --install. See {CHANGELOG_POINTER}."
+    )
+    check["issue"] = issue
+    return check, issue
 
 
 def _check_python_version() -> Tuple[Dict[str, Any], str, bool]:
@@ -372,6 +558,12 @@ def health_check() -> None:
     if check.get("issue"):
         issues.append(check["issue"])
 
+    # Session-visible upgrade freshness; non-blocking unless an update signal is present.
+    upgrade_check, issue = _check_upgrade_freshness()
+    checks.append(upgrade_check)
+    if issue:
+        _record_health_issue(upgrade_check, issue, issues)
+
     issue_groups = _classify_health_issues(checks)
 
     # Build result
@@ -385,6 +577,7 @@ def health_check() -> None:
         "data": {
             "status": overall,
             "checks": checks,
+            "upgrade_freshness": upgrade_check,
             "issues": issues,
             "issue_count": len(issues),
             **issue_groups,

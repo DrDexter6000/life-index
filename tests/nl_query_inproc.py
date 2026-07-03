@@ -14,9 +14,7 @@ with module-level reload isolation and model persistence.
 
 from __future__ import annotations
 
-import importlib
-import os
-import sys
+import time
 from typing import Any
 
 
@@ -73,6 +71,31 @@ class InprocHarness:
             use_index=use_index,
             semantic=semantic,
             **kwargs,
+        )
+
+    def measure_time_to_first_grounded_answer(self, query: str, **kwargs: Any) -> dict[str, Any]:
+        """Measure elapsed time until the harness returns a grounded evidence set."""
+        start = time.perf_counter()
+        result = self.search(query, **kwargs)
+        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        result_count = len(result.get("merged_results", []) or [])
+        status = "GROUNDED" if result.get("success") and result_count > 0 else "UNGROUNDED"
+        return {
+            "metric": "time_to_first_grounded_answer_ms",
+            "elapsed_ms": elapsed_ms,
+            "status": status,
+            "result_count": result_count,
+            "query": query,
+        }
+
+    @staticmethod
+    def format_metric_line(metric: dict[str, Any]) -> str:
+        """Render a single dogfood metric line for console/report output."""
+        return (
+            f"{metric['metric']}={metric['elapsed_ms']} "
+            f"status={metric['status']} "
+            f"result_count={metric['result_count']} "
+            f"query={metric['query']!r}"
         )
 
 

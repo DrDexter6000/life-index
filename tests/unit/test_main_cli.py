@@ -110,6 +110,57 @@ class TestHealthCheck:
         assert data["issue_summary"]["actionable_count"] == len(data["actionable_issues"])
         assert data["issue_summary"]["chronic_debt_count"] == len(data["chronic_debt"])
 
+    def test_health_exposes_upgrade_freshness_session_signal(self, tmp_path, monkeypatch, capsys):
+        """UF-1: host agents must see stale-checkout signals on the session surface."""
+        data_dir = tmp_path / "life-index-data"
+        journals_dir = data_dir / "Journals"
+        journals_dir.mkdir(parents=True)
+        (journals_dir / "life-index_2026-01-01_001.md").write_text("# test\n", encoding="utf-8")
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
+
+        def fake_detect_upgrade_freshness_state():
+            return {
+                "installed_version": "1.3.4",
+                "manifest_version": "1.3.5",
+                "install_type": "editable",
+                "freshness": "update_available",
+                "update_available": "git-behind",
+                "update_reasons": ["git_behind"],
+                "suggested_refresh_step": "git pull --ff-only && python -m pip install -e .",
+                "freshness_error": None,
+                "git_freshness": "behind",
+                "git_upstream": "origin/main",
+                "git_behind_count": 2,
+                "git_ahead_count": 0,
+                "git_error": None,
+            }
+
+        monkeypatch.setattr(
+            "tools.__main__._detect_upgrade_freshness_state",
+            fake_detect_upgrade_freshness_state,
+            raising=False,
+        )
+
+        health_check()
+
+        payload = json.loads(capsys.readouterr().out)
+        freshness = payload["data"]["upgrade_freshness"]
+        assert freshness["freshness"] == "update_available"
+        assert freshness["git"]["freshness"] == "behind"
+        assert freshness["git"]["behind_count"] == 2
+        assert freshness["suggested_refresh_step"] == (
+            "git pull --ff-only && python -m pip install -e ."
+        )
+        assert freshness["changelog"] == "CHANGELOG.md"
+
+        check = next(
+            item for item in payload["data"]["checks"] if item["name"] == "upgrade_freshness"
+        )
+        assert check["status"] == "warning"
+        assert "git-behind" in check["issue"]
+
 
 class TestMainCli:
     def test_serve_command_is_not_available(self, monkeypatch, capsys) -> None:
