@@ -167,6 +167,28 @@ class TestDeprecatedSemanticNoop:
         assert result["semantic_effective_policy"] == "off"
         assert not any("deprecated_noop" in warning for warning in result["warnings"])
 
+    def test_cli_default_semantic_weight_value_reports_semantic_off(self):
+        from tools.search_journals.core import hierarchical_search
+
+        with (
+            patch(
+                "tools.search_journals.core.run_keyword_pipeline",
+                return_value=_mock_keyword_results(2),
+            ),
+            patch(
+                "tools.search_journals.core._filter_results_by_candidates",
+                side_effect=lambda x, _: x,
+            ),
+            patch(
+                "tools.search_journals.core.merge_and_rank_results",
+                side_effect=lambda l1, l2, l3, *a, **kw: l3,
+            ),
+        ):
+            result = hierarchical_search(query="test query", semantic_weight=1.0)
+
+        assert result["semantic_effective_policy"] == "off"
+        assert not any("deprecated_noop" in warning for warning in result["warnings"])
+
 
 class TestCLISemanticPolicyFlags:
     """CLI must keep accepting deprecated semantic flags."""

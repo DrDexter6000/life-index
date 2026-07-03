@@ -2010,7 +2010,7 @@ python -m tools.search_journals [options]
 | --no-semantic | flag | ❌ | false | Deprecated compatibility no-op；接受但行为等同关键词 + Entity Graph |
 | --semantic-policy | enum | ❌ | fallback | Deprecated compatibility no-op；`fallback` / `hybrid` 均不触发向量检索 |
 | --semantic-weight | float | ❌ | 1.0 | Deprecated compatibility no-op；不影响排序 |
-| --fts-weight | float | ❌ | 1.0 | FTS 搜索权重 (默认: 1.0) |
+| --fts-weight | float | ❌ | 1.0 | Deprecated compatibility no-op；不影响排序 |
 | --limit | int | ❌ | 20 | 返回结果数量限制（默认 20）；传入 0 时返回全量结果（跳过呈现层截断） |
 | --offset | int | ❌ | 0 | 结果偏移量（分页起始位置） |
 | --read-top | int | ❌ | 0 | 读取前 N 条结果的完整正文（默认 0 不读取） |

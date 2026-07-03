@@ -3,9 +3,7 @@ Performance benchmark tests for Life Index search subsystem.
 
 Uses pytest-benchmark to measure and track performance of:
 - FTS5 full-text search (L3)
-- RRF fusion ranking
 - Keyword pipeline (L1 → L2 → L3)
-- Semantic pipeline (mocked embedding model)
 - hierarchical_search() at all levels
 
 Run: pytest tests/benchmark/ --benchmark-only -v
@@ -73,7 +71,7 @@ class TestFTSSearchBenchmark:
 
 
 # ===========================================================================
-# RRF Fusion Benchmarks
+# Keyword Ranking Benchmarks
 # ===========================================================================
 
 
@@ -108,60 +106,8 @@ def _make_l3_results(n: int) -> List[Dict[str, Any]]:
     return results
 
 
-def _make_semantic_results(n: int) -> List[Dict[str, Any]]:
-    """Generate n synthetic semantic results for ranking tests."""
-    results = []
-    for i in range(n):
-        month = (i % 12) + 1
-        day = (i % 28) + 1
-        file_name = f"life-index_2026-{month:02d}-{day:02d}_{i + 50:03d}.md"
-        route_path = f"Journals/2026/{month:02d}/{file_name}"
-        results.append(
-            {
-                "path": route_path,
-                "journal_route_path": route_path,
-                "title": f"Semantic result {i}",
-                "date": f"2026-{month:02d}-{day:02d}",
-                "similarity": max(0.3, 0.95 - i * 0.02),
-                "source": "semantic",
-                "location": "",
-                "weather": "",
-                "topic": ["think"],
-                "project": "",
-                "tags": ["semantic"],
-                "mood": [],
-                "people": [],
-            }
-        )
-    return results
-
-
-class TestRRFFusionBenchmark:
-    """Benchmark RRF fusion ranking performance."""
-
-    def test_rrf_fusion_small(self, benchmark: Any) -> None:
-        """RRF fusion with small result sets (10 FTS + 10 semantic)."""
-        from tools.search_journals.ranking import merge_and_rank_results_hybrid
-
-        l3 = _make_l3_results(10)
-        sem = _make_semantic_results(10)
-        benchmark(merge_and_rank_results_hybrid, [], [], l3, sem, "benchmark")
-
-    def test_rrf_fusion_medium(self, benchmark: Any) -> None:
-        """RRF fusion with medium result sets (50 FTS + 30 semantic)."""
-        from tools.search_journals.ranking import merge_and_rank_results_hybrid
-
-        l3 = _make_l3_results(50)
-        sem = _make_semantic_results(30)
-        benchmark(merge_and_rank_results_hybrid, [], [], l3, sem, "benchmark")
-
-    def test_rrf_fusion_large(self, benchmark: Any) -> None:
-        """RRF fusion with large result sets (200 FTS + 100 semantic)."""
-        from tools.search_journals.ranking import merge_and_rank_results_hybrid
-
-        l3 = _make_l3_results(200)
-        sem = _make_semantic_results(100)
-        benchmark(merge_and_rank_results_hybrid, [], [], l3, sem, "benchmark")
+class TestRankingBenchmark:
+    """Benchmark keyword-only ranking performance."""
 
     def test_keyword_only_ranking_medium(self, benchmark: Any) -> None:
         """Keyword-only ranking (no semantic) with 50 results."""

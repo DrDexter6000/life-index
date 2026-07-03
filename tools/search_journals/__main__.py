@@ -4,10 +4,12 @@ Life Index - Search Journals Tool - CLI Entry Point
 分层检索日志（keyword/entity only；--semantic* 为废弃兼容 no-op）
 """
 
+# ruff: noqa: E402
+
 # ── Encoding protection (R10 fix) ──────────────────────────────────────
-# MUST run before any imports that might trigger torch/transformers output.
-# On Windows, torch emits GBK-encoded bytes to stderr which corrupts
-# subprocess output when the parent process reads with encoding='utf-8'.
+# MUST run before imports that might emit subprocess-visible output.
+# On Windows, non-UTF-8 bytes on stderr can corrupt JSON callers that read
+# with encoding='utf-8'.
 from ._bootstrap import ensure_utf8_io
 
 ensure_utf8_io()
@@ -152,7 +154,7 @@ Examples:
         "--fts-weight",
         type=float,
         default=1.0,
-        help="FTS 搜索权重 (默认: 1.0)",
+        help="废弃兼容参数：接受但忽略",
     )
     parser.add_argument(
         "--limit",

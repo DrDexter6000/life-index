@@ -46,47 +46,6 @@ def test_non_hybrid_ranking_returns_full_set():
     )
 
 
-def test_hybrid_ranking_returns_full_set():
-    """merge_and_rank_results_hybrid should return ALL results, not truncated."""
-    from tools.search_journals.ranking import merge_and_rank_results_hybrid
-
-    # Create 30 L3 results and 30 semantic results
-    l3 = [
-        {
-            "path": f"journal_{i:03d}.md",
-            "relevance": 100 - i,
-            "title_match": False,
-            "source": "content_search",
-            "title": f"Test {i}",
-            "date": "2026-01-01",
-        }
-        for i in range(30)
-    ]
-    semantic = [
-        {
-            "path": f"journal_{i:03d}.md",
-            "similarity": 0.9 - i * 0.01,
-            "source": "semantic_search",
-            "title": f"Test {i}",
-            "date": "2026-01-01",
-        }
-        for i in range(30)
-    ]
-    result = merge_and_rank_results_hybrid(
-        l1_results=[],
-        l2_results=[],
-        l3_results=l3,
-        semantic_results=semantic,
-        query="test",
-        max_results=20,
-    )
-    # After refactor: should return all results (no internal truncation)
-    assert len(result) > 20, (
-        f"hybrid ranking should return >20 results, got {len(result)}. "
-        "Internal truncation violates R/P separation."
-    )
-
-
 def test_no_truncation_in_ranking():
     """grep check: ranking.py must not contain [:max_results] truncation."""
     ranking_file = REPO_ROOT / "tools" / "search_journals" / "ranking.py"

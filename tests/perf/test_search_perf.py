@@ -16,8 +16,7 @@ from tests.e2e.test_search_quality import JOURNALS
 def _install_ranking_stub() -> types.ModuleType:
     """Install a lightweight ranking stub for perf tests.
 
-    The workspace currently has a syntax error in tools.search_journals.ranking,
-    but these perf regressions only need hierarchical_search timing and success.
+    These perf regressions only need hierarchical_search timing and success.
     """
 
     def _merge_unique(*groups):
@@ -37,13 +36,6 @@ def _install_ranking_stub() -> types.ModuleType:
         ranking_stub,
         "merge_and_rank_results",
         lambda l1, l2, l3, query, **kwargs: _merge_unique(l3, l2, l1),
-    )
-    setattr(
-        ranking_stub,
-        "merge_and_rank_results_hybrid",
-        lambda l1, l2, l3, semantic_results, query, **kwargs: _merge_unique(
-            l3, semantic_results, l2, l1
-        ),
     )
     sys.modules["tools.search_journals.ranking"] = ranking_stub
     return ranking_stub
