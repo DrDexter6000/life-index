@@ -6,6 +6,18 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Migration
+
+- Semantic/vector compatibility switches are now documentation-only migration
+  surfaces. `search --semantic`, `search --no-semantic`,
+  `search --semantic-policy`, `search --semantic-weight`, `index --vec-only`,
+  `index --with-semantic`, `eval --semantic`, and `eval --semantic-report`
+  are accepted for old scripts but do not build, read, or rank with a vector
+  index. `health` reports `semantic_status: "disabled"`.
+- Scripts, skills, or dashboards that depended on in-tool semantic/vector
+  behavior should migrate to deterministic `smart-search --include-evidence`
+  plus host-agent query rewriting, multi-pass retrieval, and synthesis.
+
 ## [1.3.5] - 2026-07-02
 
 ### Removed
