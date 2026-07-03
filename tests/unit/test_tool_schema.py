@@ -5,9 +5,7 @@ from pathlib import Path
 
 
 def test_write_journal_schema_declares_links_and_related_entries() -> None:
-    schema = json.loads(
-        (Path("tools/write_journal") / "schema.json").read_text(encoding="utf-8")
-    )
+    schema = json.loads((Path("tools/write_journal") / "schema.json").read_text(encoding="utf-8"))
 
     properties = schema["parameters"]["properties"]
 
@@ -16,9 +14,7 @@ def test_write_journal_schema_declares_links_and_related_entries() -> None:
 
 
 def test_write_journal_schema_declares_structured_confirmation_returns() -> None:
-    schema = json.loads(
-        (Path("tools/write_journal") / "schema.json").read_text(encoding="utf-8")
-    )
+    schema = json.loads((Path("tools/write_journal") / "schema.json").read_text(encoding="utf-8"))
 
     returns = schema["returns"]["properties"]
     assert returns["confirmation"]["type"] == "object"
@@ -30,17 +26,13 @@ def test_write_journal_schema_declares_structured_confirmation_returns() -> None
 
 
 def test_write_journal_schema_has_examples() -> None:
-    schema = json.loads(
-        (Path("tools/write_journal") / "schema.json").read_text(encoding="utf-8")
-    )
+    schema = json.loads((Path("tools/write_journal") / "schema.json").read_text(encoding="utf-8"))
 
     assert schema["examples"]
 
 
 def test_edit_journal_schema_declares_links_and_related_entries_support() -> None:
-    schema = json.loads(
-        (Path("tools/edit_journal") / "schema.json").read_text(encoding="utf-8")
-    )
+    schema = json.loads((Path("tools/edit_journal") / "schema.json").read_text(encoding="utf-8"))
 
     updates = schema["parameters"]["properties"]["updates"]
     assert updates["type"] == "object"
@@ -178,9 +170,7 @@ def test_all_tool_schemas_valid() -> None:
 
 def test_confirm_schema_declares_applied_and_ignored_feedback() -> None:
     schema = json.loads(
-        (Path("tools/write_journal/confirm") / "schema.json").read_text(
-            encoding="utf-8"
-        )
+        (Path("tools/write_journal/confirm") / "schema.json").read_text(encoding="utf-8")
     )
 
     params = schema["parameters"]["properties"]
@@ -201,3 +191,16 @@ def test_confirm_schema_declares_applied_and_ignored_feedback() -> None:
     assert "rejected_related_entries" in returns
     assert "rejected_candidate_ids" in returns
     assert "approval_summary" in returns
+
+
+def test_write_schema_declares_related_candidate_ids() -> None:
+    schema = json.loads((Path("tools/write_journal") / "schema.json").read_text(encoding="utf-8"))
+
+    returns = schema["returns"]["properties"]
+    confirmation_candidate = returns["confirmation"]["properties"]["related_candidates"]["items"][
+        "properties"
+    ]
+    top_level_candidate = returns["related_candidates"]["items"]["properties"]
+
+    assert confirmation_candidate["candidate_id"] == {"type": "integer"}
+    assert top_level_candidate["candidate_id"] == {"type": "integer"}

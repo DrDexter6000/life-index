@@ -659,6 +659,7 @@ python -m tools.write_journal --data '<json>'
 - 如果用户要求修正地点/天气，后续应进入 correction flow，而不是把原写入描述为失败
 - `confirmation` 是 machine-readable 的确认载荷；`confirmation_message` 是面向人类的展示文本
 - `confirmation.supports_related_entry_approval: true` 表示调用方可在确认阶段直接批准候选 `related_candidates` 并写回 `related_entries`
+- `related_candidates[*].rel_path` 是候选日志的稳定关联键；`candidate_id` 是写入响应内的展示/兼容 ID，不应在丢失写入时确认快照后重新计算使用
 
 ### 写入结果解读（Agent / Web 调用方）
 
@@ -695,7 +696,8 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 - `confirm` 会调用 `apply_confirmation_updates()`
 - 可同时修正 `location` / `weather`
 - 可通过重复 `--approve-related` 参数批准多个候选关联日志并写回
-- 可通过重复 `--approve-related-id` / `--reject-related-id` 传入候选 ID（需同时携带 `candidate_context` 才能稳定解析）
+- 可通过重复 `--approve-related-id` / `--reject-related-id` 传入候选 ID；新调用方应优先传 `--approve-related` / `--reject-related` 的 `rel_path`
+- 数字候选 ID 会优先按写入时保存的确认快照解析；旧日志没有快照时，必须传回原始 `candidate_context`，不要用重新 suggest 后的候选列表替代
 - 可通过重复 `--reject-related` 参数显式标记拒绝的候选关联日志
 - 内部统一委托到 `edit_journal`，不另起一套写入逻辑
 
@@ -752,9 +754,9 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 - `ignored_fields`：本次请求里提供了，但最终未发生变化的字段（例如与原值相同）
 - `approved_related_entries`：本次真正写回成功的关联日志
 - `requested_related_entries`：调用方请求批准写回的关联日志列表
-- `approved_candidate_ids`：本次被成功解析并批准的候选 ID
+- `approved_candidate_ids`：本次被成功解析并批准的候选 ID；用于兼容和展示，稳定写回结果以 `approved_related_entries` 为准
 - `rejected_related_entries`：本次显式拒绝的候选关联日志列表
-- `rejected_candidate_ids`：本次被成功解析并拒绝的候选 ID
+- `rejected_candidate_ids`：本次被成功解析并拒绝的候选 ID；用于兼容和展示，稳定拒绝结果以 `rejected_related_entries` 为准
 - `approval_summary`：为 GUI/service 准备的批准/拒绝摘要；每项都包含 `candidate_id/rel_path/title`
 - `relation_summary`：确认完成后的新鲜关联关系摘要，避免调用方再额外跑一次 search 才知道 `related_entries/backlinked_by` 当前状态
 - `relation_summary.source_entry.backlinked_by`：有哪些日志当前指向本条日志

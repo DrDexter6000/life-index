@@ -4,6 +4,8 @@ Life Index - Write Journal Tool - Core
 核心协调模块
 """
 
+import json
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Sequence
 
@@ -36,11 +38,6 @@ from ..lib.related_candidates import suggest_related_entries
 from ..lib import content_analysis
 from ..lib.timing import Timer
 from ..lib.logger import get_logger
-
-# 初始化日志器
-logger = get_logger(__name__)
-
-# 导入子模块
 from .utils import (
     current_local_date_iso,
     extract_explicit_metadata_from_content as _extract_explicit_metadata_from_content,
@@ -60,9 +57,155 @@ from .index_updater import (
 )
 from ..lib.pending_writes import mark_pending
 
+# 初始化日志器
+logger = get_logger(__name__)
+
 # ---------------------------------------------------------------------------
 # Module-level private helpers (extracted from apply_confirmation_updates)
 # ---------------------------------------------------------------------------
+
+_CONFIRMATION_CANDIDATE_SNAPSHOT_FILE = "confirmation_candidates.json"
+
+
+def _confirmation_snapshot_key(journal_path: Path) -> str:
+    """Return the canonical key used for a journal confirmation snapshot."""
+    return str(journal_path.resolve())
+
+
+def _confirmation_snapshot_path(journal_path: Path) -> Path:
+    """Store confirmation snapshots next to index state for this data tree."""
+    resolved = journal_path.resolve()
+    parts = list(resolved.parts)
+    if "Journals" in parts:
+        journals_index = parts.index("Journals")
+        if journals_index > 0:
+            data_dir = Path(*parts[:journals_index])
+            return data_dir / ".index" / _CONFIRMATION_CANDIDATE_SNAPSHOT_FILE
+    return resolved.parent / _CONFIRMATION_CANDIDATE_SNAPSHOT_FILE
+
+
+def _candidate_snapshot(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep only stable, public candidate fields needed by confirm."""
+    snapshot: list[dict[str, Any]] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue  # type: ignore[unreachable]
+        rel_path = str(candidate.get("rel_path") or "").strip()
+        if not rel_path:
+            continue
+        candidate_id = candidate.get("candidate_id")
+        snapshot.append(
+            {
+                "candidate_id": candidate_id if isinstance(candidate_id, int) else None,
+                "rel_path": rel_path,
+                "title": str(candidate.get("title") or ""),
+            }
+        )
+    return snapshot
+
+
+def _write_confirmation_candidate_snapshot(
+    journal_path: Path,
+    candidates: list[dict[str, Any]],
+) -> None:
+    """Persist the write-time candidate_id -> rel_path snapshot for confirm."""
+    snapshot = _candidate_snapshot(candidates)
+    if not snapshot:
+        return
+
+    snapshot_path = _confirmation_snapshot_path(journal_path)
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    key = _confirmation_snapshot_key(journal_path)
+    payload: dict[str, Any] = {"snapshots": {}}
+    if snapshot_path.exists():
+        try:
+            existing = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            if isinstance(existing, dict) and isinstance(existing.get("snapshots"), dict):
+                payload = existing
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            payload = {"snapshots": {}}
+
+    payload["snapshots"][key] = {
+        "journal_path": key,
+        "related_candidates": snapshot,
+    }
+    rendered = json.dumps(payload, ensure_ascii=False, indent=2)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(snapshot_path.parent),
+        prefix=f"{_CONFIRMATION_CANDIDATE_SNAPSHOT_FILE}.tmp",
+    )
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(rendered)
+        Path(tmp_path).replace(snapshot_path)
+    except Exception:
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def _read_confirmation_candidate_snapshot(
+    journal_path: Path,
+) -> list[dict[str, Any]] | None:
+    """Load the write-time confirmation candidate snapshot, if present."""
+    snapshot_path = _confirmation_snapshot_path(journal_path)
+    if not snapshot_path.exists():
+        return None
+    try:
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("snapshots"), dict):
+        return None
+    snapshot = payload["snapshots"].get(_confirmation_snapshot_key(journal_path))
+    if not isinstance(snapshot, dict):
+        return None
+    candidates = snapshot.get("related_candidates")
+    if not isinstance(candidates, list):
+        return None
+    return _candidate_snapshot(candidates)
+
+
+def _has_candidate_id_refs(
+    refs: Sequence[str | int] | None,
+    candidate_ids: Sequence[int] | None,
+) -> bool:
+    """Return True when a confirm request uses unstable numeric references."""
+    if candidate_ids:
+        return True
+    if not refs:
+        return False
+    for ref in refs:
+        if isinstance(ref, int):
+            return True
+        if isinstance(ref, str) and ref.strip().isdigit():
+            return True
+    return False
+
+
+def _confirmation_candidate_context(
+    journal_path: Path,
+    *,
+    candidate_context: list[dict[str, Any]] | None,
+    approved_related_entries: Sequence[str | int] | None,
+    approved_related_candidate_ids: Sequence[int] | None,
+    rejected_related_entries: Sequence[str | int] | None,
+    rejected_related_candidate_ids: Sequence[int] | None,
+) -> list[dict[str, Any]] | None:
+    """Prefer write-time snapshot when confirm uses numeric candidate refs."""
+    uses_candidate_ids = _has_candidate_id_refs(
+        approved_related_entries,
+        approved_related_candidate_ids,
+    ) or _has_candidate_id_refs(
+        rejected_related_entries,
+        rejected_related_candidate_ids,
+    )
+    if not uses_candidate_ids:
+        return candidate_context
+    snapshot = _read_confirmation_candidate_snapshot(journal_path)
+    return snapshot if snapshot is not None else candidate_context
 
 
 def _normalize_candidate_context(
@@ -691,6 +834,10 @@ def _build_post_write_confirmation(
         weather=weather,
         related_candidates=result["related_candidates"],
     )
+    try:
+        _write_confirmation_candidate_snapshot(journal_path, result["related_candidates"])
+    except (OSError, RuntimeError) as e:
+        logger.warning(f"保存确认候选快照失败（不影响日志写入）：{e}")
 
     result["confirmation_message"] = (
         f"日志已保存至：{journal_path}\n\n"
@@ -819,6 +966,15 @@ def apply_confirmation_updates(
     if not journal_path_obj.exists():
         return _missing_journal_error(journal_path_obj, approved_related_entries)
 
+    effective_candidate_context = _confirmation_candidate_context(
+        journal_path_obj,
+        candidate_context=candidate_context,
+        approved_related_entries=approved_related_entries,
+        approved_related_candidate_ids=approved_related_candidate_ids,
+        rejected_related_entries=rejected_related_entries,
+        rejected_related_candidate_ids=rejected_related_candidate_ids,
+    )
+
     (
         resolved_approved_entries,
         approved_candidates,
@@ -828,7 +984,7 @@ def apply_confirmation_updates(
         journal_path_obj=journal_path_obj,
         refs=approved_related_entries,
         candidate_ids=approved_related_candidate_ids,
-        candidate_context=candidate_context,
+        candidate_context=effective_candidate_context,
         approved_related_entries=approved_related_entries,
     )
     if approval_error is not None:
@@ -843,7 +999,7 @@ def apply_confirmation_updates(
         journal_path_obj=journal_path_obj,
         refs=rejected_related_entries,
         candidate_ids=rejected_related_candidate_ids,
-        candidate_context=candidate_context,
+        candidate_context=effective_candidate_context,
         approved_related_entries=approved_related_entries,
     )
     if rejection_error is not None:
