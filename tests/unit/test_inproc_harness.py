@@ -170,6 +170,20 @@ class TestInprocHarnessPerformance:
         total = time.perf_counter() - start
         assert total < 25.0, f"Three queries took {total:.1f}s (>25s)"
 
+    def test_time_to_first_grounded_answer_metric_is_printable(self):
+        """Dogfood: harness exposes TTGF as an explicit printable metric."""
+        from tests.nl_query_inproc import harness
+
+        metric = harness.measure_time_to_first_grounded_answer("重构")
+        assert metric["metric"] == "time_to_first_grounded_answer_ms"
+        assert metric["status"] == "GROUNDED"
+        assert metric["elapsed_ms"] >= 0
+        assert metric["result_count"] >= 1
+
+        line = harness.format_metric_line(metric)
+        assert "time_to_first_grounded_answer_ms=" in line
+        assert "status=GROUNDED" in line
+
 
 class TestInprocHarnessConsistency:
     """Verify harness output is consistent with hierarchical_search."""

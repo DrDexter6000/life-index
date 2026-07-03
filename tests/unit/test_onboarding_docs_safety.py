@@ -109,3 +109,11 @@ def test_skill_uses_progressive_disclosure_for_grounded_query_playbook() -> None
     assert "life-index journal batch-get" in playbook
     assert "answer.insights[]" in playbook
     assert "ensure` -> `discover` -> `navigate" in playbook
+
+
+def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:
+    skill = _read("SKILL.md")
+
+    assert "life-index health --json" in skill
+    assert "upgrade_freshness" in skill
+    assert "git_freshness" in skill

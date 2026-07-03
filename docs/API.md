@@ -4296,9 +4296,10 @@ python -m tools.build_index [options]
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Always `true` (even when degraded) |
 | `schema_version` | string | yes | `"m16.health.v0"` — top-level output schema version |
-| `data` | object | yes | `{status, checks[], issues[], issue_count, actionable_issues[], chronic_debt[], issue_summary}` |
+| `data` | object | yes | `{status, checks[], upgrade_freshness, issues[], issue_count, actionable_issues[], chronic_debt[], issue_summary}` |
 | `data.status` | string | yes | `"healthy"` / `"degraded"` / `"unhealthy"` |
 | `data.checks` | array | yes | Individual check results |
+| `data.upgrade_freshness` | object | yes | Session-visible local freshness signal for host agents |
 | `data.issues` | array | yes | Issue descriptions |
 | `data.issue_count` | int | yes | Number of issues found |
 | `data.actionable_issues` | array | yes | Issues with immediate commands or setup fixes to run now |
@@ -4327,6 +4328,10 @@ python -m tools.build_index [options]
 - `success`: always `true` for health checks. Degraded/unhealthy status is communicated via `data.status`, not via `success: false`.
 - `data.status`: the primary health indicator. `degraded` means partial functionality; `unhealthy` means critical issues.
 - `data.checks`: additive; new checks may be added (e.g., `index_tree` check).
+- `data.upgrade_freshness`: non-blocking session signal. It reports local
+  installed/manifest mismatch and checkout-vs-upstream metadata, including
+  `suggested_refresh_step` when a local update signal is visible. It does not
+  replace `bootstrap --json`.
 - `data.actionable_issues`: install/runtime or index-readiness items that can be acted on immediately.
 - `data.chronic_debt`: non-blocking maintenance reminders such as entity graph or Index Tree upkeep. These remain visible without implying an install failure.
 - `data.checks[name="data_directory"].journal_count`: counts only canonical journal filenames matching `life-index_YYYY-MM-DD_NNN.md`; this is the same journal enumeration used by `bootstrap` and `migrate --dry-run`.
@@ -5360,6 +5365,8 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
 - Report a missing or ambiguous host skill directory as a loud, non-fatal `skipped` diagnostic with `data.delivered=false`.
 - Support explicit first delivery with `--install` when the caller provides a known host target.
 - List and remove Life Index-managed host agent skill artifacts without touching user data.
+- Surface playbook freshness (`playbook_status`) and `CHANGELOG.md` pointer so
+  upgrade agents can distinguish code changes from unchanged playbook content.
 
 ### Behavior
 
@@ -5369,6 +5376,15 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
   `--install`, it may point to a skill directory to create.
 - `--install --host-home <path>` creates and syncs
   `<host-home>/skills/life-index`.
+- `--install --dry-run --host-home <path>` reports the planned install and any
+  nested duplicate cleanup without creating, copying, or deleting files.
+- During `--install`, if the legacy double slot
+  `<host-home>/skills/life-index/life-index` contains a managed Life Index
+  skill tree, the command merges its custom triggers into the canonical
+  `<host-home>/skills/life-index/SKILL.md` and removes the duplicate only after
+  the canonical playbook is written. Symlinks, non-directories, missing
+  `SKILL.md`, or trees with extra top-level files are reported in
+  `data.dedupe.skipped` and are not removed.
 - `--list` is read-only. It enumerates discovered Life Index skill directories
   under the documented host homes (`.codex`, `.agents`, `.hermes`, `.claude`)
   and matching host-home environment variables.
@@ -5404,6 +5420,14 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
       "references/GROUNDED_QUERY_PLAYBOOK.md",
       "references/WEATHER_FLOW.md"
     ],
+    "playbook_status": "updated",
+    "changelog": "CHANGELOG.md",
+    "dedupe": {
+      "status": "not_applicable",
+      "nested_dir": null,
+      "removed": [],
+      "skipped": []
+    },
     "diagnostics": []
   }
 }
@@ -5426,6 +5450,40 @@ When `--install` creates the target skill directory, `data.status` is
       "references/GROUNDED_QUERY_PLAYBOOK.md",
       "references/WEATHER_FLOW.md"
     ],
+    "playbook_status": "installed",
+    "changelog": "CHANGELOG.md",
+    "dedupe": {
+      "status": "not_applicable",
+      "nested_dir": null,
+      "removed": [],
+      "skipped": []
+    },
+    "diagnostics": []
+  }
+}
+```
+
+When `--install --dry-run` previews an install or nested cleanup, no files are
+created, copied, or removed:
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.sync_skill.v0",
+  "command": "sync-skill",
+  "data": {
+    "status": "dry_run",
+    "delivered": false,
+    "target_dir": "<host-home>/skills/life-index",
+    "copied": [],
+    "playbook_status": "would_install",
+    "changelog": "CHANGELOG.md",
+    "dedupe": {
+      "status": "would_remove",
+      "nested_dir": "<host-home>/skills/life-index/life-index",
+      "removed": [],
+      "skipped": []
+    },
     "diagnostics": []
   }
 }
@@ -5443,6 +5501,14 @@ When no host skill directory is available:
     "delivered": false,
     "target_dir": null,
     "copied": [],
+    "playbook_status": "not_delivered",
+    "changelog": "CHANGELOG.md",
+    "dedupe": {
+      "status": "not_applicable",
+      "nested_dir": null,
+      "removed": [],
+      "skipped": []
+    },
     "diagnostics": [
       {
         "code": "HOST_SKILL_DIR_NOT_FOUND",
@@ -5572,9 +5638,12 @@ life-index version
 - `package_version` mirrors `pyproject.toml` `[project].version`
 - `bootstrap_manifest.repo_version` mirrors `bootstrap-manifest.json`
 - Formal releases require those two values to match
-- `life-index health` 只回答运行时健康，不回答 checkout freshness
-- `life-index --version` 用于 freshness / authority 校验
-- onboarding agent 不得用 `health` 替代 `--version` / manifest freshness gate
+- `life-index health` 会在 `data.upgrade_freshness` 暴露会话可见的本地
+  freshness 信号（installed/manifest mismatch、checkout vs upstream ref）。
+- `life-index --version` 仍用于 authority/version 校验；`bootstrap --json`
+  仍是安装、升级、repair route 的权威状态机。
+- onboarding agent 不得用 `health` 替代 `bootstrap --json` / manifest
+  freshness gate；health 信号只用于提醒宿主 agent 先刷新代码/playbook。
 
 ---
 

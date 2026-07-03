@@ -52,6 +52,16 @@ def _emit_payload(payload: dict, *, as_json: bool) -> None:
         print(f"sync-skill: {status} (delivered={delivered})")
         for item in payload["data"]["copied"]:
             print(f"  {item}")
+        playbook_status = payload["data"].get("playbook_status")
+        changelog = payload["data"].get("changelog")
+        if playbook_status and changelog:
+            if playbook_status == "unchanged":
+                print(f"  playbook unchanged; changelog: {changelog}")
+            else:
+                print(f"  playbook {playbook_status}; changelog: {changelog}")
+        dedupe = payload["data"].get("dedupe") or {}
+        if dedupe.get("status") in {"would_remove", "removed"}:
+            print(f"  nested duplicate {dedupe['status']}: {dedupe['nested_dir']}")
 
     for diagnostic in payload["data"]["diagnostics"]:
         print(f"  [{diagnostic['code']}] {diagnostic['message']}", file=sys.stderr)
@@ -130,10 +140,10 @@ def main() -> int:
         )
         _emit_payload(payload, as_json=args.json)
         return 1
-    if args.dry_run and not args.uninstall:
+    if args.dry_run and not (args.uninstall or args.install):
         payload = _refused_payload(
-            "DRY_RUN_REQUIRES_UNINSTALL",
-            "--dry-run is only valid with --uninstall.",
+            "DRY_RUN_REQUIRES_INSTALL_OR_UNINSTALL",
+            "--dry-run is only valid with --install or --uninstall.",
         )
         _emit_payload(payload, as_json=args.json)
         return 1
@@ -168,6 +178,7 @@ def main() -> int:
         source_root=source_root,
         target_dir=target_dir,
         install=args.install,
+        dry_run=args.dry_run,
     )
     if diagnostics and payload["data"]["status"] != "synced":
         payload["data"]["diagnostics"] = diagnostics

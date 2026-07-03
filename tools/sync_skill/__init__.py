@@ -15,6 +15,7 @@ SYNC_SKILL_SCHEMA_VERSION = "m35.sync_skill.v0"
 HOST_SKILL_DIR_ENV = "LIFE_INDEX_HOST_SKILL_DIR"
 HOST_HOME_ENVS = ("CODEX_HOME", "AGENTS_HOME", "HERMES_HOME", "CLAUDE_HOME")
 DEFAULT_HOST_HOME_DIRS = (".codex", ".agents", ".hermes", ".claude")
+CHANGELOG_POINTER = "CHANGELOG.md"
 
 
 def _diagnostic(code: str, message: str) -> dict[str, str]:
@@ -340,11 +341,74 @@ def _copy_references(source_root: Path, target_dir: Path) -> list[str]:
     return copied
 
 
+def _empty_dedupe() -> dict[str, Any]:
+    return {
+        "status": "not_applicable",
+        "nested_dir": None,
+        "removed": [],
+        "skipped": [],
+    }
+
+
+def _nested_duplicate_dir(target_dir: Path) -> Path:
+    return target_dir / "life-index"
+
+
+def _managed_nested_skill_tree_reason(path: Path) -> str | None:
+    if not path.exists():
+        return "not_found"
+    if path.is_symlink():
+        return "symlink_refused"
+    if not path.is_dir():
+        return "not_directory"
+    if not (path / "SKILL.md").is_file():
+        return "missing_skill"
+
+    for child in path.iterdir():
+        if child.name == "SKILL.md":
+            continue
+        if child.name == "references" and child.is_dir() and not child.is_symlink():
+            continue
+        return "extra_files_refused"
+    return None
+
+
+def _detect_nested_dedupe(target_dir: Path) -> dict[str, Any]:
+    nested = _nested_duplicate_dir(target_dir)
+    if not nested.exists():
+        return _empty_dedupe()
+
+    resolved = str(nested.resolve())
+    reason = _managed_nested_skill_tree_reason(nested)
+    if reason is not None:
+        return {
+            "status": "skipped",
+            "nested_dir": resolved,
+            "removed": [],
+            "skipped": [{"path": resolved, "reason": reason}],
+        }
+    return {
+        "status": "ready",
+        "nested_dir": resolved,
+        "removed": [],
+        "skipped": [],
+    }
+
+
+def _merge_existing_skill_texts(source_text: str, existing_texts: list[str | None]) -> str:
+    merged = source_text
+    for existing_text in existing_texts:
+        if existing_text:
+            merged = _merge_skill_text(merged, existing_text)
+    return merged
+
+
 def sync_skill_artifacts(
     source_root: Path,
     target_dir: Path | None,
     *,
     install: bool = False,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Copy SKILL.md and references into a host skill directory."""
     source_root = source_root.resolve()
@@ -366,13 +430,21 @@ def sync_skill_artifacts(
                 "delivered": False,
                 "target_dir": None,
                 "copied": [],
+                "playbook_status": "not_delivered",
+                "changelog": CHANGELOG_POINTER,
+                "dedupe": _empty_dedupe(),
                 "diagnostics": diagnostics,
             },
         }
 
     target_dir = target_dir.expanduser().resolve()
-    target_preexisting = target_dir.is_dir()
-    if not target_preexisting:
+    target_skill = target_dir / "SKILL.md"
+    target_dir_exists = target_dir.is_dir()
+    nested_duplicate_exists = _nested_duplicate_dir(target_dir).exists()
+    target_preexisting = target_dir_exists and not (
+        install and not target_skill.is_file() and nested_duplicate_exists
+    )
+    if not target_dir_exists:
         if not install:
             diagnostics.append(
                 _diagnostic(
@@ -389,10 +461,14 @@ def sync_skill_artifacts(
                     "delivered": False,
                     "target_dir": None,
                     "copied": [],
+                    "playbook_status": "not_delivered",
+                    "changelog": CHANGELOG_POINTER,
+                    "dedupe": _empty_dedupe(),
                     "diagnostics": diagnostics,
                 },
             }
-        target_dir.mkdir(parents=True, exist_ok=True)
+        if not dry_run:
+            target_dir.mkdir(parents=True, exist_ok=True)
 
     source_skill = source_root / "SKILL.md"
     if not source_skill.is_file():
@@ -405,18 +481,62 @@ def sync_skill_artifacts(
                 "delivered": False,
                 "target_dir": str(target_dir),
                 "copied": [],
+                "playbook_status": "not_delivered",
+                "changelog": CHANGELOG_POINTER,
+                "dedupe": _empty_dedupe(),
                 "diagnostics": [
                     _diagnostic("SOURCE_SKILL_NOT_FOUND", f"Missing source skill: {source_skill}")
                 ],
             },
         }
 
-    target_skill = target_dir / "SKILL.md"
     source_text = source_skill.read_text(encoding="utf-8")
     existing_text = target_skill.read_text(encoding="utf-8") if target_skill.is_file() else None
-    target_skill.write_text(_merge_skill_text(source_text, existing_text), encoding="utf-8")
+    dedupe = _detect_nested_dedupe(target_dir)
+    nested_text: str | None = None
+    nested_dir = _nested_duplicate_dir(target_dir)
+    nested_skill = nested_dir / "SKILL.md"
+    if dedupe["status"] == "ready" and nested_skill.is_file():
+        nested_text = nested_skill.read_text(encoding="utf-8")
+
+    merged_text = _merge_existing_skill_texts(source_text, [existing_text, nested_text])
+    playbook_status = "unchanged" if existing_text == merged_text else "updated"
+    if not target_preexisting:
+        playbook_status = "would_install" if dry_run else "installed"
+    elif dry_run and playbook_status == "updated":
+        playbook_status = "would_update"
+
+    if dry_run:
+        if dedupe["status"] == "ready":
+            dedupe = {**dedupe, "status": "would_remove"}
+        return {
+            "success": True,
+            "schema_version": SYNC_SKILL_SCHEMA_VERSION,
+            "command": "sync-skill",
+            "data": {
+                "status": "dry_run",
+                "delivered": False,
+                "target_dir": str(target_dir),
+                "copied": [],
+                "playbook_status": playbook_status,
+                "changelog": CHANGELOG_POINTER,
+                "dedupe": dedupe,
+                "diagnostics": diagnostics,
+            },
+        }
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_skill.write_text(merged_text, encoding="utf-8")
 
     copied = ["SKILL.md", *_copy_references(source_root, target_dir)]
+    if dedupe["status"] == "ready":
+        shutil.rmtree(nested_dir)
+        nested_resolved = str(nested_dir.resolve())
+        dedupe = {
+            **dedupe,
+            "status": "removed",
+            "removed": [nested_resolved],
+        }
     return {
         "success": True,
         "schema_version": SYNC_SKILL_SCHEMA_VERSION,
@@ -426,6 +546,9 @@ def sync_skill_artifacts(
             "delivered": True,
             "target_dir": str(target_dir),
             "copied": copied,
+            "playbook_status": playbook_status,
+            "changelog": CHANGELOG_POINTER,
+            "dedupe": dedupe,
             "diagnostics": diagnostics,
         },
     }

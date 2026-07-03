@@ -103,9 +103,10 @@ only if their exact commands appear in `safe_next_steps`.
 
 If `life-index sync-skill` reports `delivered=false`, surface that warning. Do
 not claim the agent playbook was delivered. For explicit first install into a
-known host home, run:
+known host home, preview first, then apply:
 
 ```bash
+life-index sync-skill --install --host-home <host-home> --dry-run --json
 life-index sync-skill --install --host-home <host-home> --json
 ```
 
