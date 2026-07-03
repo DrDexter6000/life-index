@@ -153,45 +153,8 @@ class TestDualPipelineParallelExecution:
         assert result["success"] is True
 
 
-class TestRRFFusion:
-    """Tests for RRF (Reciprocal Rank Fusion) integration."""
-
-    def test_rrf_fuses_fts_and_semantic_rankings(self):
-        """RRF should fuse FTS and semantic rankings correctly."""
-        from tools.search_journals.ranking import (
-            merge_and_rank_results_hybrid,
-        )
-
-        # FTS ranks doc_a first, doc_b second
-        fts_results = [
-            {"path": "/test/doc_a.md", "title": "Doc A", "relevance": 80},
-            {"path": "/test/doc_b.md", "title": "Doc B", "relevance": 60},
-        ]
-
-        # Semantic ranks doc_b first, doc_a second
-        semantic_results = [
-            {"path": "/test/doc_b.md", "title": "Doc B", "similarity": 0.9},
-            {"path": "/test/doc_a.md", "title": "Doc A", "similarity": 0.8},
-        ]
-
-        with patch("tools.search_journals.ranking.enrich_semantic_result") as mock_enrich:
-
-            def enrich_side_effect(r):
-                return {"path": r["path"], "title": r["title"]}
-
-            mock_enrich.side_effect = enrich_side_effect
-
-            merged = merge_and_rank_results_hybrid(
-                [], [], fts_results, semantic_results, query="test"
-            )
-
-        # Equal weights (1.0, 1.0): RRF scores are equal for both docs.
-        # doc_a ranks first because it has higher FTS score (80 > 60),
-        # which is the secondary sort key after RRF score.
-        assert len(merged) == 2
-        doc_a_score = next(r["relevance_score"] for r in merged if "doc_a" in r["path"])
-        doc_b_score = next(r["relevance_score"] for r in merged if "doc_b" in r["path"])
-        assert doc_a_score > doc_b_score
+class TestKeywordFallback:
+    """Tests for keyword-only search fallback integration."""
 
     def test_rrf_with_empty_semantic_results(self):
         """Core search falls back to pure keyword ranking when semantic is empty."""
@@ -227,32 +190,6 @@ class TestRRFFusion:
         assert len(merged) == 2
         assert merged[0]["path"] == "/test/doc_a.md"
         assert merged[1]["path"] == "/test/doc_b.md"
-
-    def test_rrf_k60_parameter(self):
-        """RRF should use k=60 as specified in architecture.
-
-        Verify the RRF formula inline: score(d) = sum(1/(k + rank_i)).
-        The standalone helper was removed in Round 8, so we test the
-        formula correctness directly.
-        """
-        # RRF(k=60) formula verification
-        k = 60
-        ranked_lists = [
-            ["doc_a", "doc_b"],
-            ["doc_a", "doc_b"],
-        ]
-
-        # Compute RRF scores manually
-        scores: dict[str, float] = {}
-        for ranked_list in ranked_lists:
-            for rank_0, doc_id in enumerate(ranked_list):
-                scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank_0 + 1)
-
-        # doc_a at rank 1 in both lists: 1/(60+1) + 1/(60+1) = 2/61
-        # doc_b at rank 2 in both lists: 1/(60+2) + 1/(60+2) = 2/62
-        assert scores["doc_a"] > scores["doc_b"]
-        assert abs(scores["doc_a"] - 2 / 61) < 1e-9
-        assert abs(scores["doc_b"] - 2 / 62) < 1e-9
 
 
 class TestSemanticSearchDegradation:

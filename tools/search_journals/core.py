@@ -984,7 +984,7 @@ def hierarchical_search(
 
     start_time = time.time()
 
-    # Pre-compute topic hints / date range for ranking (used by both fallback and hybrid paths)
+    # Pre-compute topic hints / date range for keyword ranking.
     _topic_hints = _plan.topic_hints if _plan else None
     _date_range = _date_range_dict_from_plan(_plan)
 

@@ -6,16 +6,6 @@ Centralized constants for search pipelines with ADR rationale.
 This module is the SSOT for all search-related magic numbers.
 Any change to these values must be documented with the rationale.
 
-ADR-001: RRF k=60
------------------
-The Reciprocal Rank Fusion smoothing constant k=60 is a well-established
-default from Cormack et al. (SIGIR 2009). It balances rank position influence
-vs. score distribution across heterogeneous retrieval pipelines.
-
-Lower values (k=20-40) give more weight to top-ranked items.
-Higher values (k=80-100) flatten the score distribution.
-k=60 is the industry standard that works well for most hybrid search scenarios.
-
 ADR-002 / ADR-005 / ADR-010: Deprecated semantic compatibility defaults
 -----------------------------------------------------------------------
 Semantic/vector retrieval has been removed from the active tool pipeline.
@@ -29,24 +19,15 @@ are typically fragment hits or stop-word contamination.
 
 This value ensures only meaningful keyword matches appear in results.
 
-ADR-004: RRF min_score=0.008
-----------------------------
-Minimum RRF score for hybrid results. Below this threshold, documents have
-very weak evidence from BOTH pipelines and should be excluded.
+ADR-004: Deprecated RRF min_score=0.008
+---------------------------------------
+Retained only as a default for the deprecated `rrf_min_score` compatibility
+parameter. Active search no longer runs an RRF or hybrid ranking path.
 
-Calculated from typical RRF score distribution:
-- Strong matches: 0.02-0.05
-- Moderate matches: 0.01-0.02
-- Weak matches: 0.005-0.01
-- Noise: < 0.005
-
-ADR-005: Semantic top_k=30
---------------------------
-Maximum semantic candidates to retrieve. Higher values increase recall but
-may dilute precision and slow down the pipeline.
-
-30 is a good balance: captures most relevant semantic matches while keeping
-the ranking phase efficient.
+ADR-005: Deprecated semantic top_k=30
+------------------------------------
+Retained only as a default for deprecated semantic compatibility parameters.
+Active search does not retrieve semantic candidates.
 
 ADR-006: Max results=20
 -----------------------
@@ -111,18 +92,6 @@ Queries dominated by ubiquitous project terms like "Life Index" and "OpenClaw"
 produce many weak matches. For these terms, we apply a stricter default FTS
 relevance threshold while still allowing explicit `min_relevance` overrides.
 
-ADR-014: Score dimension normalization in hybrid ranking
---------------------------------------------------------
-Within each priority bucket, scores from different sources have different scales:
-- RRF scores: ~0.01-0.05 (rank-based, dimensionless)
-- L2 absolute scores: ~30-40 (metadata match bonuses)
-
-Without normalization, a single L2-only result with score 30+ would dominate
-all RRF results (max ~0.05) within the same priority bucket. Solution: normalize
-fts_score and semantic_score to [0, 1] per bucket, then combine with RRF
-contribution. Non-RRF items get their absolute score normalized to [0, 1] range
-as well, ensuring fair comparison.
-
 ADR-015: Tukey IQR fence for dynamic thresholds
 ------------------------------------------------
 Dynamic thresholds use Tukey's IQR fence method instead of mean-1.5σ.
@@ -131,17 +100,10 @@ The minimum sample size remains 8 — below this, the base threshold is used unc
 """
 
 # =============================================================================
-# RRF (Reciprocal Rank Fusion) Constants
+# Deprecated RRF Compatibility Defaults
 # =============================================================================
 
-# ADR-001: Industry standard RRF smoothing constant
-RRF_K: int = 60
-
-# ADR-004: Minimum RRF score for hybrid results (Round 10 Phase 2 T2.0 A/B experiment)
-# Selected via A/B experiment on {0.005, 0.008, 0.012}:
-#   - 0.005: P@5=0.3158 (too permissive, 10.2 avg results)
-#   - 0.008: P@5=0.7342 (+132% precision, 3.0 avg results) [SELECTED]
-#   - 0.012: identical to 0.008 (no marginal benefit)
+# Accepted no-op default retained for the deprecated rrf_min_score parameter.
 RRF_MIN_SCORE: float = 0.008
 
 
@@ -156,7 +118,7 @@ SEMANTIC_MIN_SIMILARITY: float = 0.40
 SEMANTIC_TOP_K_DEFAULT: int = 30
 
 # Accepted no-op flag default retained for CLI/API compatibility.
-SEMANTIC_WEIGHT_DEFAULT: float = 0.6
+SEMANTIC_WEIGHT_DEFAULT: float = 1.0
 
 
 # =============================================================================
@@ -166,7 +128,7 @@ SEMANTIC_WEIGHT_DEFAULT: float = 0.6
 # ADR-003: Minimum BM25 relevance (0-100) for FTS results
 FTS_MIN_RELEVANCE: int = 25
 
-# FTS weight in hybrid ranking (vs semantic)
+# Accepted no-op default retained for the deprecated fts_weight parameter.
 FTS_WEIGHT_DEFAULT: float = 1.0
 
 # Maximum FTS results to retrieve
@@ -209,10 +171,10 @@ SCORE_LOCATION_MATCH_BONUS: int = 15
 
 # ADR-016: Topic hint ranking boost (Phase 4 T4.2)
 # Conservative 1.1x multiplier applied to results whose topic matches search_plan.topic_hints.
-# Must not override large FTS/RRF score gaps — only breaks close ties.
+# Must not override large keyword score gaps — only breaks close ties.
 TOPIC_HINT_BOOST: float = 1.1
 
-# Minimum score for non-RRF results (pure keyword/semantic)
+# Minimum score for keyword metadata/index results.
 NON_RRF_MIN_SCORE: int = 10
 
 # R1-Prep: Enable structured metadata retrieval when search_plan provides
@@ -220,12 +182,6 @@ NON_RRF_MIN_SCORE: int = 10
 # with pure metadata matches (no keyword filtering) to recall logs whose
 # body lacks query keywords but whose topic/date align with user intent.
 STRUCTURED_RETRIEVAL_ENABLED: bool = True
-
-# R1: Narrow bonus for candidates whose frontmatter date AND topic both match
-# the search_plan's inferred date_range + topic_hints.
-# Hybrid path: added to RRF final_score. Semantic-only structured matches
-# remain in the semantic bucket; bonus only helps within-bucket ordering.
-STRUCTURED_INTENT_MATCH_BONUS: float = 0.035
 
 # Keyword-only path: added to raw score (0-100 scale). 50 lifts GQ53 L2 target
 # from base 30 to 80, but keyword L3 floor (~128) still keeps it outside top5.
@@ -359,8 +315,7 @@ SOURCE_TIER_WEIGHTS = {
 # =============================================================================
 
 __all__ = [
-    # RRF
-    "RRF_K",
+    # Deprecated RRF compatibility defaults
     "RRF_MIN_SCORE",
     # Semantic
     "SEMANTIC_MIN_SIMILARITY",
@@ -423,7 +378,6 @@ __all__ = [
     # body lacks query keywords but whose topic/date match the intent.
     "STRUCTURED_RETRIEVAL_ENABLED",
     # R1-safe-bonus: conservative structured-intent boost (does not guarantee top5)
-    "STRUCTURED_INTENT_MATCH_BONUS",
     "STRUCTURED_INTENT_MATCH_BONUS_KEYWORD",
     # Source-tier ranking boost (gbrain absorption Phase B)
     "SOURCE_TIER_WEIGHTS",

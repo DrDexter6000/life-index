@@ -28,6 +28,18 @@ LEGACY_RUNTIME_MODULES = {
     "tools.search_journals.semantic_pipeline",
 }
 
+REMOVED_HYBRID_RANKING_SYMBOLS = {
+    "reciprocal_rank_fusion",
+    "merge_and_rank_results_hybrid",
+    "_hybrid_priority",
+    "_hybrid_backfill_score",
+}
+
+REMOVED_HYBRID_ONLY_CONSTANT_IMPORTS = {
+    "FTS_WEIGHT_DEFAULT",
+    "SEMANTIC_WEIGHT_DEFAULT",
+}
+
 
 def _module_is_blocked(module: str) -> bool:
     return module in LEGACY_RUNTIME_MODULES or any(
@@ -64,6 +76,11 @@ def _imported_modules(path: Path) -> set[str]:
             if resolved:
                 modules.add(resolved)
     return modules
+
+
+def _parsed_module(relative_path: str) -> ast.Module:
+    path = REPO_ROOT / relative_path
+    return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
 
 
 def test_legacy_semantic_runtime_files_are_removed() -> None:
@@ -105,5 +122,36 @@ def test_active_tools_code_does_not_import_removed_runtime_modules() -> None:
         blocked = sorted(module for module in _imported_modules(path) if _module_is_blocked(module))
         if blocked:
             offenders.append(f"{relative}: {', '.join(blocked)}")
+
+    assert offenders == []
+
+
+def test_ranking_module_does_not_expose_legacy_hybrid_fusion_engine() -> None:
+    tree = _parsed_module("tools/search_journals/ranking.py")
+    function_names = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+
+    assert function_names.isdisjoint(REMOVED_HYBRID_RANKING_SYMBOLS)
+
+
+def test_ranking_module_does_not_import_hybrid_only_weight_defaults() -> None:
+    tree = _parsed_module("tools/search_journals/ranking.py")
+    imported_names: set[str] = set()
+    for node in tree.body:
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 2
+            and node.module == "lib.search_constants"
+        ):
+            imported_names.update(alias.name for alias in node.names)
+
+    assert imported_names.isdisjoint(REMOVED_HYBRID_ONLY_CONSTANT_IMPORTS)
+
+
+def test_active_search_tools_do_not_use_removed_hybrid_priority_field() -> None:
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "tools" / "search_journals").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if "_hybrid_priority" in text:
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
 
     assert offenders == []

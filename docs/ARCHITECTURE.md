@@ -311,7 +311,7 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
 - **搜索诊断入口**：`life-index search --diagnose` 聚合最近搜索行为，输出退化线索（zero-result queries、degraded searches、latency outliers）
 - **Eval 质量闸门**：CI 集成搜索 eval gate，验证 golden query 覆盖、噪声拒绝、正向召回、baseline 比较
 - **中文分词模块**：jieba 集成（index/query 双模式），支持 FTS5 中文精确匹配
-- **17 个 ADR 常量集中管理**：所有搜索参数（RRF k、min_relevance、score weights 等）通过 `search_constants.py` 集中管理，每个参数有 ADR 编号和决策记录
+- **搜索常量集中管理**：活跃 keyword/entity 搜索参数（min_relevance、score weights 等）通过 `search_constants.py` 集中管理；已退役 semantic/RRF 参数仅作为兼容 no-op 默认值保留
 
 ### 5.6 不做什么（本轮实现层约束）
 
@@ -353,7 +353,7 @@ Round 19 Phase 1-D 在搜索子系统中新增以下能力：
 - **Eval Anchor 确定性注入**（F1）：`LIFE_INDEX_TIME_ANCHOR` 环境变量使 eval baseline 在任意日期产出 byte-identical metric，解决相对时间漂移问题。`run_eval.py` 启动时读取 baseline `frozen_at` 注入 env。
 - **Fuzzy Typo Correction**（C1-a）：`FUZZY_TYPO_*` 常量组（阈值 0.85, 长度差 ≤2, 规范字符串 `("life index",)`）在 `query_preprocessor.py` 中做 Levenshtein 模糊匹配，覆盖 GQ80 等拼写错误查询。
 - **Bilingual Alias Expansion**（C1-b）：`query_preprocessor.py` 内置中英别名映射（如 `birthday↔生日`），覆盖 GQ81 等跨语言查询。
-- **Structured Intent Match Bonus**（R1 safe）：`STRUCTURED_*` 常量组在 keyword-only 路径上对同时命中 date_range + topic_hints 的候选结果加分（+50 keyword path, +0.035 hybrid path），安全实现不做全局排序补丁。
+- **Structured Intent Match Bonus**（R1 safe）：`STRUCTURED_*` 常量组在 keyword-only 路径上对同时命中 date_range + topic_hints 的候选结果加分（+50 keyword path），安全实现不做全局排序补丁。
 - **Broad Eval Soft Gate**：15 个 broad recall 查询从 MRR 强塞转为 `predicate_precision@5` 评估，precision < 0.8 / min_results fail / broad_eval_error 进入 failures；exact MRR 查询完全隔离，旧 metrics zero-drift 验证通过。
 
 ---
