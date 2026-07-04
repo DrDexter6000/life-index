@@ -6,6 +6,18 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.3.6] - 2026-07-03
+
+### What users get
+
+- More trustworthy journal linking: confirming a related-entry association now
+  binds to the entry you saw at write time, even if the candidate list changes
+  before you confirm — no more silent mis-association.
+- Clearer upgrades: `health --json` surfaces an `upgrade_freshness` signal your
+  host agent can read each session, and `sync-skill --install` repairs nested
+  skill duplicates.
+- A migration section documenting the removal of legacy semantic/vector search.
+
 ### Migration
 
 - Semantic/vector compatibility switches are now documentation-only migration
@@ -17,6 +29,13 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - Scripts, skills, or dashboards that depended on in-tool semantic/vector
   behavior should migrate to deterministic `smart-search --include-evidence`
   plus host-agent query rewriting, multi-pass retrieval, and synthesis.
+
+### Included in this release
+
+- fix(confirm): resolve related ids from a write-time snapshot (#109).
+- fix(upgrade): expose freshness and repair skill install (#107); host-env test
+  isolation + semantic/vector purge migration doc (#110).
+- chore(search): purge the legacy hybrid ranking dead-code tail (#105).
 
 ## [1.3.5] - 2026-07-02
 
