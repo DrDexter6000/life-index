@@ -372,6 +372,125 @@ triggers:
     assert '  - "/life-index nested"' in synced_skill
 
 
+def test_sync_skill_cli_install_auto_converges_managed_nested_duplicate(
+    tmp_path: Path,
+) -> None:
+    """Install without explicit dir converges canonical + managed nested duplicate."""
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    canonical = host_home / "skills" / "life-index"
+    nested = canonical / "life-index"
+    source_root.mkdir()
+    canonical.mkdir(parents=True)
+    nested.mkdir(parents=True)
+    _write_source(source_root)
+    (canonical / "SKILL.md").write_text(
+        """---
+name: life-index
+triggers:
+  - "/life-index canonical"
+---
+
+# Canonical Skill
+""",
+        encoding="utf-8",
+    )
+    (nested / "SKILL.md").write_text(
+        """---
+name: life-index
+triggers:
+  - "/life-index nested"
+---
+
+# Nested Skill
+""",
+        encoding="utf-8",
+    )
+    (nested / "references").mkdir()
+    (nested / "references" / "OLD.md").write_text("# old\n", encoding="utf-8")
+    env = _isolated_subprocess_env(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "synced"
+    assert payload["data"]["target_dir"] == str(canonical.resolve())
+    assert payload["data"]["dedupe"]["status"] == "removed"
+    assert payload["data"]["dedupe"]["nested_dir"] == str(nested.resolve())
+    assert not nested.exists()
+    synced_skill = (canonical / "SKILL.md").read_text(encoding="utf-8")
+    assert "# Current Skill" in synced_skill
+    assert '  - "/life-index canonical"' in synced_skill
+    assert '  - "/life-index nested"' in synced_skill
+    diagnostics = payload["data"]["diagnostics"]
+    assert diagnostics[0]["code"] == "HOST_SKILL_DIR_NESTED_DUPLICATE_AUTOCONVERGED"
+    assert str(canonical.resolve()) in diagnostics[0]["message"]
+    assert str(nested.resolve()) in diagnostics[0]["message"]
+
+
+def test_sync_skill_cli_install_refuses_autoconverge_for_unmanaged_nested_content(
+    tmp_path: Path,
+) -> None:
+    """Nested duplicates with extra user content remain fail-closed and untouched."""
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    canonical = host_home / "skills" / "life-index"
+    nested = canonical / "life-index"
+    source_root.mkdir()
+    canonical.mkdir(parents=True)
+    nested.mkdir(parents=True)
+    _write_source(source_root)
+    (canonical / "SKILL.md").write_text("# Canonical Skill\n", encoding="utf-8")
+    (nested / "SKILL.md").write_text("# Nested Skill\n", encoding="utf-8")
+    user_note = nested / "notes.md"
+    user_note.write_text("user content", encoding="utf-8")
+    env = _isolated_subprocess_env(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "skipped"
+    assert payload["data"]["delivered"] is False
+    assert payload["data"]["diagnostics"][0]["code"] == "HOST_SKILL_DIR_AMBIGUOUS"
+    assert nested.exists()
+    assert user_note.read_text(encoding="utf-8") == "user content"
+    assert (canonical / "SKILL.md").read_text(encoding="utf-8") == "# Canonical Skill\n"
+
+
 def test_sync_skill_reports_playbook_unchanged_with_changelog_pointer(
     tmp_path: Path,
 ) -> None:

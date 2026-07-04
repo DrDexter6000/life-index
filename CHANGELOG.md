@@ -6,6 +6,14 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Fixed
+
+- `sync-skill --install` now auto-converges a managed
+  `skills/life-index/life-index` duplicate into the canonical
+  `skills/life-index` slot when that nested duplicate is the only discovery
+  ambiguity. Unrelated or unsafe duplicate candidates still fail closed with
+  `HOST_SKILL_DIR_AMBIGUOUS`.
+
 ## [1.3.6] - 2026-07-03
 
 ### What users get

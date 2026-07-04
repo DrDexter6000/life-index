@@ -5387,6 +5387,12 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
   the canonical playbook is written. Symlinks, non-directories, missing
   `SKILL.md`, or trees with extra top-level files are reported in
   `data.dedupe.skipped` and are not removed.
+- If `--install` is run without `--host-skill-dir` or `--host-home`, and the
+  only discovery ambiguity is the canonical slot plus its managed nested
+  duplicate (`skills/life-index` and `skills/life-index/life-index`), the
+  command auto-selects the canonical slot, emits
+  `HOST_SKILL_DIR_NESTED_DUPLICATE_AUTOCONVERGED`, and then applies the same
+  safe dedupe behavior above.
 - `--list` is read-only. It enumerates discovered Life Index skill directories
   under the documented host homes (`.codex`, `.agents`, `.hermes`, `.claude`)
   and matching host-home environment variables.
@@ -5402,8 +5408,9 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
   directory environment and default locations, including flat
   `skills/life-index` and one-level nested `skills/<category>/life-index`
   layouts.
-- If multiple existing host skill directories are found, the command does not
-  guess; it reports all matches and requires `--host-skill-dir`.
+- If multiple unrelated host skill directories are found, or if the nested
+  duplicate contains unmanaged top-level content, the command does not guess;
+  it reports all matches and requires `--host-skill-dir`.
 - `--source-root` defaults to the current installed checkout root.
 
 ### JSON contract
@@ -5487,6 +5494,42 @@ created, copied, or removed:
       "skipped": []
     },
     "diagnostics": []
+  }
+}
+```
+
+When `--install` auto-converges a managed nested duplicate discovered without
+an explicit target, `data.target_dir` is the canonical single-level slot and
+`data.diagnostics` records the convergence:
+
+```json
+{
+  "success": true,
+  "schema_version": "m35.sync_skill.v0",
+  "command": "sync-skill",
+  "data": {
+    "status": "synced",
+    "delivered": true,
+    "target_dir": "<host-home>/skills/life-index",
+    "copied": [
+      "SKILL.md",
+      "references/GROUNDED_QUERY_PLAYBOOK.md",
+      "references/WEATHER_FLOW.md"
+    ],
+    "playbook_status": "updated",
+    "changelog": "CHANGELOG.md",
+    "dedupe": {
+      "status": "removed",
+      "nested_dir": "<host-home>/skills/life-index/life-index",
+      "removed": ["<host-home>/skills/life-index/life-index"],
+      "skipped": []
+    },
+    "diagnostics": [
+      {
+        "code": "HOST_SKILL_DIR_NESTED_DUPLICATE_AUTOCONVERGED",
+        "message": "Managed nested Life Index skill duplicate found; using canonical host skill directory <host-home>/skills/life-index and converging nested duplicate <host-home>/skills/life-index/life-index."
+      }
+    ]
   }
 }
 ```

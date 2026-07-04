@@ -85,6 +85,7 @@ triggers:
 **会话 freshness 信号（升级摩擦 UF-1）**：
 - 每次新会话首次使用 Life Index 前，运行 `life-index health --json` 并读取 `data.upgrade_freshness`
 - 若 `data.upgrade_freshness.freshness == "update_available"` 或 `git_freshness == "behind"`，先执行返回的 `suggested_refresh_step`，再运行 `life-index sync-skill --install`
+- `sync-skill --install` 会自动收敛本管理树的 `skills/life-index/life-index` 嵌套重复；若返回 `HOST_SKILL_DIR_AMBIGUOUS`，说明存在多个无关或不安全候选，需让用户指定 `--host-skill-dir`
 - 这是会话面提示，不替代 `bootstrap --json` 的安装/repair authority；旧版本无法自带新检测码时，以 `bootstrap-manifest.json` + `CHANGELOG.md` 为人工校验锚点
 
 <!-- GROUNDED_QUERY_SKILL_START -->
