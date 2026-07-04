@@ -529,15 +529,23 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 
 ### 工作流7: 实体图谱访谈
 
-**触发**：用户说“整理人物/谁是谁/检查实体”、`entity --seed` 后，或 `health` 建议维护图谱。
-
+**原则**：三权分立。CLI 只做确定性 JSON 原语；agent 可读证据、分桶、提出带理由建议；用户是确认态图谱的权威来源。建议自由，写入必须有人判（逐条确认或批量授权均可）。
+**触发**：用户说“整理人物/谁是谁/检查实体”；写日志时出现新候选；`health` 的 `entity_maintenance.traffic_light` 为 yellow/red；月度整理。
 **筛 → 荐 → 问 → 写**：先 `life-index entity --review`，按 `evidence` 指针读原文，把候选按人物分桶为很确定 same / 很确定 different / 拿不准 / 低价值可缓；再给带理由建议，而不是复述队列；每轮 ≤5 组，问用户 Same / Different / Not-sure，也接受批量授权（如“你确定的那批照办”）。
 
-确认后才写：合并前 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`，再 `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`；关系先 `... --action preview --id SOURCE_ID --target-id TARGET_ID --relation RELATION`，再 `life-index entity --review --action add_relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION`；加别名用 `life-index entity --add-alias ALIAS --id ENTITY_ID`；撤销合并用 `life-index entity --unmerge --id MERGED_ID --target-id TARGET_ID`。
+确认后才写：合并前 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`，再 `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`；关系先 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID --relation RELATION`，再 `life-index entity --review --action add_relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION`；候选确认用 `life-index entity --review --action confirm_candidate --id ENTITY_ID` 或带 `--target-id TARGET_ID --relation RELATION`；加别名用 `life-index entity --add-alias ALIAS --id ENTITY_ID`；撤销合并用 `life-index entity --unmerge --id MERGED_ID --target-id TARGET_ID`。
 
-队列外：agent 读日记自行发现的对齐假设可直接建议；确认后经 `life-index entity --merge SOURCE_ID --id SOURCE_ID --target-id TARGET_ID` / `--add-alias` 写入。写后运行 `life-index entity --check` 并汇报 action、证据和跳过项。
+**冷启动家庭录入**：用户口述家人/关系时，先问清身份和关系方向，再逐条复述确认；确认后用 `life-index entity --add '<json>'` 创建 `source=user,status=confirmed` 实体，用 review/add_relationship 原语写边；写完运行 `life-index entity --check` 并汇报结果。`evidence=[]` 对用户确认事实是健康态。
 
-**红线**：建议自由，写入必须有人判；仅经 CLI 原语写图；工具内无 LLM、无 TUI、无零人判自动合并。高置信候选也只排队。
+**批量录入**：不要要求用户遵守固定模板。用户可给 Excel/CSV/Markdown 表、一段话或照片转写；agent 理解后复述结构（例如“我理解为 12 人、15 条关系、2 个重名待裁决”），拿到批量授权后生成 JSON/YAML 批文件，先 `life-index entity --apply-batch FILE --preview`，再 `life-index entity --apply-batch FILE`，最后 `life-index entity --check`。重名冲突不会自动合并，会进入 `entity --review`。
+
+**表格/直编通道**：偏好表格时，`life-index entity --review --export csv --output review.csv` 或 `--export xlsx`，用户填 decision 列后 `life-index entity --review --import review.csv`；高级用户可直接编辑 `entity_graph.yaml`，随后必须 `life-index entity --check`，必要时再 `life-index smart-search --query "..."` 验证。
+
+**队列外观察义务**：写日志或读 evidence 时，如果注意到新人名/新关系线索，轻提一句或用 `life-index entity --propose '<json>'` 静默放入候选池；候选不会影响 confirmed 检索，等下一轮访谈再裁决。
+
+**维护节律**：事件触发（新候选）轻提 1 句；周检 1 分钟看 `life-index health` 的 `entity_maintenance` 灯和 `pending_count`；月理 10 分钟过 ≤5 组访谈；用户说“整理人物”则直接进入筛 → 荐 → 问 → 写。
+
+**红线**：仅经 CLI 原语写图；工具内无 LLM、无 TUI、无零人判自动合并。高置信候选也只排队或等待用户批量授权。
 
 ### 响应中的 events 和 _trace
 

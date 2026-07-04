@@ -9,6 +9,8 @@ ENTITY_TYPES = {"person", "place", "project", "event", "concept"}
 RESERVED_RELATIONSHIP_TARGETS: set[str] = set()
 RELATIONSHIP_SOURCES = {"seed", "review", "user", "agent", "system"}
 RELATIONSHIP_STATUSES = {"confirmed", "candidate"}
+ENTITY_SOURCES = RELATIONSHIP_SOURCES
+ENTITY_STATUSES = RELATIONSHIP_STATUSES
 
 BOOST_DECAY_DEFAULTS = {
     "formula": "1 / (1 + k * (n - 1)^2)",
@@ -126,6 +128,12 @@ def _normalize_relationship(relationship: Any, load_time: str) -> dict[str, Any]
         raise EntityGraphValidationError("relationship.status must be confirmed or candidate")
     normalized_relationship["status"] = status
 
+    if "reason" in relationship:
+        reason = relationship.get("reason")
+        if not isinstance(reason, str):
+            raise EntityGraphValidationError("relationship.reason must be a string")
+        normalized_relationship["reason"] = reason
+
     for field in ("start", "end"):
         if field in relationship and relationship[field] is not None:
             normalized_relationship[field] = _ensure_non_empty_string(
@@ -175,7 +183,7 @@ def _normalize_entity_core(
     if not isinstance(relationships, list):
         raise EntityGraphValidationError("relationships must be a list")
 
-    return {
+    normalized_entity = {
         "id": entity_id,
         "type": entity_type,
         "primary_name": primary_name,
@@ -186,6 +194,37 @@ def _normalize_entity_core(
             _normalize_relationship(relationship, load_time) for relationship in relationships
         ],
     }
+
+    if "source" in raw:
+        source = raw.get("source")
+        if source not in ENTITY_SOURCES:
+            raise EntityGraphValidationError("entity.source must be one of the allowed sources")
+        normalized_entity["source"] = source
+
+    if "status" in raw:
+        status = raw.get("status")
+        if status not in ENTITY_STATUSES:
+            raise EntityGraphValidationError("entity.status must be confirmed or candidate")
+        normalized_entity["status"] = status
+
+    if "created_at" in raw:
+        created_at = raw.get("created_at")
+        if not isinstance(created_at, str):
+            raise EntityGraphValidationError("entity.created_at must be a string")
+        normalized_entity["created_at"] = created_at
+
+    if "evidence" in raw:
+        normalized_entity["evidence"] = _normalize_string_list(
+            raw.get("evidence"), "entity.evidence"
+        )
+
+    if "reason" in raw:
+        reason = raw.get("reason")
+        if not isinstance(reason, str):
+            raise EntityGraphValidationError("entity.reason must be a string")
+        normalized_entity["reason"] = reason
+
+    return normalized_entity
 
 
 def _normalize_merged_entities(value: Any, load_time: str) -> list[dict[str, Any]]:

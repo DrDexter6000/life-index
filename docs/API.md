@@ -3473,7 +3473,7 @@ life-index maintenance proposal validate --file proposal.json --json [--data-dir
 | 检查 | 说明 | 调用的 CLI |
 |------|------|-----------|
 | `index_freshness` | FTS index health and freshness | `index --check --json` |
-| `entity_audit` | Entity graph quality audit (duplicates, orphans, incomplete relationships) | `entity --audit` |
+| `entity_audit` | Entity graph quality audit (duplicates, pending candidates, incomplete relationships) | `entity --audit` |
 | `orphan_related_entries` | Journal `related_entries` referencing unknown entities | Read-only file inspection |
 | `search_eval_smoke` | Minimal ablation eval smoke test (3 queries) | `entity-graph-eval --queries <fixture>` |
 | `backup_verification` | Backup destination accessibility check | `backup --list --dest <path>` |
@@ -4329,10 +4329,11 @@ python -m tools.build_index [options]
 |-------|------|----------------|-------------|
 | `success` | bool | yes | Always `true` (even when degraded) |
 | `schema_version` | string | yes | `"m16.health.v0"` — top-level output schema version |
-| `data` | object | yes | `{status, checks[], upgrade_freshness, issues[], issue_count, actionable_issues[], chronic_debt[], issue_summary}` |
+| `data` | object | yes | `{status, checks[], upgrade_freshness, entity_maintenance, issues[], issue_count, actionable_issues[], chronic_debt[], issue_summary}` |
 | `data.status` | string | yes | `"healthy"` / `"degraded"` / `"unhealthy"` |
 | `data.checks` | array | yes | Individual check results |
 | `data.upgrade_freshness` | object | yes | Session-visible local freshness signal for host agents |
+| `data.entity_maintenance` | object | yes | Entity graph rhythm signal: traffic light, pending count, audit age, duplicate count, and review command |
 | `data.issues` | array | yes | Issue descriptions |
 | `data.issue_count` | int | yes | Number of issues found |
 | `data.actionable_issues` | array | yes | Issues with immediate commands or setup fixes to run now |
@@ -4365,6 +4366,11 @@ python -m tools.build_index [options]
   installed/manifest mismatch and checkout-vs-upstream metadata, including
   `suggested_refresh_step` when a local update signal is visible. It does not
   replace `bootstrap --json`.
+- `data.entity_maintenance`: `traffic_light` is `green` when pending review is
+  clear and the graph was touched within 30 days; `yellow` when candidates are
+  pending or the audit is stale; `red` when structural errors or duplicate
+  confirmed names need review. Entity suggestions point to
+  `life-index entity --review`.
 - `data.actionable_issues`: install/runtime or index-readiness items that can be acted on immediately.
 - `data.chronic_debt`: non-blocking maintenance reminders such as entity graph or Index Tree upkeep. These remain visible without implying an install failure.
 - `data.checks[name="data_directory"].journal_count`: counts only canonical journal filenames matching `life-index_YYYY-MM-DD_NNN.md`; this is the same journal enumeration used by `bootstrap` and `migrate --dry-run`.
@@ -4938,7 +4944,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 `entity` has multiple subcommand shapes. All share a common envelope pattern but with known deviations:
 
-**Standard envelope** (used by `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`):
+**Standard envelope** (used by `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`, `--propose`, `--apply-batch`):
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
@@ -4973,7 +4979,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 - `error`: on most subcommands, `null` for success. Known deviations:
   - `--resolve` returns a plain string error message on failure (not a structured error object).
   - `--merge`, `--unmerge`, and `--review --action ...` return flat action objects without `data` wrapper.
-- `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`.
+- `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`, and neutral `facts{}`.
 - `--stats` data contains: `total_entities`, `by_type{}`, `total_aliases`, `total_relationships`, `top_referenced[]`, `top_cooccurrence[]`.
 - `--check` data contains: `total_entities`, `issues[]`, `summary{}`.
 
@@ -5014,13 +5020,15 @@ python -m tools.entity [options]
 | `--review` | flag | ❌ | false | 打开 Review Hub（风险优先审订队列） |
 | `--merge` | string | ❌ | - | 合并实体（需 `--id` 和 `--target-id`） |
 | `--unmerge` | flag | ❌ | false | 按 merge 墓碑复原实体（需 `--id` 和 `--target-id`） |
+| `--propose` | string | ❌ | - | 宿主 agent 提交实体/关系假设（JSON），只写 `status=candidate` |
+| `--apply-batch` | string | ❌ | - | 应用用户确认后的 JSON/YAML 批量实体/关系文件 |
 | `--delete` | flag | ❌ | false | 删除指定实体（需 `--id`） |
-| `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `--delete`） |
+| `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `--delete` / `--apply-batch` / `--review --action preview`） |
 | `--id` | string | 条件必填 | - | 源实体 ID |
 | `--target-id` | string | 条件必填 | - | 目标实体 ID（用于 merge） |
 | `--relation` | string | 条件必填 | - | `--review --action add_relationship` 的关系类型 |
 | `--add-alias` | string | ❌ | - | 为实体添加别名（配合 `--update`） |
-| `--action` | enum | ❌ | - | `merge_as_alias` / `add_relationship` / `keep_separate` / `skip` / `preview` |
+| `--action` | enum | ❌ | - | `merge_as_alias` / `add_relationship` / `confirm_candidate` / `reject_candidate` / `keep_separate` / `skip` / `preview` |
 | `--export` | enum | ❌ | - | 导出格式：`csv` / `xlsx`（配合 `--review`） |
 | `--import` | string | ❌ | - | 从文件导入审订结果（配合 `--review`） |
 | `--output` | string | ❌ | - | 指定输出文件路径（配合 `--review --export`） |
@@ -5057,26 +5065,36 @@ life-index entity --audit
       {
         "type": "possible_duplicate",
         "severity": "high",
-        "entities": ["妈妈", "母亲"],
+        "entities": ["Morgan A", "Morgan"],
         "entity_ids": ["p001", "p002"],
         "confidence": 0.9,
         "evidence": "alias overlap: ...",
         "suggested_action": "merge"
       },
       {
-        "type": "orphan_entity",
-        "severity": "medium",
+        "type": "candidate_entity",
+        "severity": "low",
         "entity_id": "p003",
-        "primary_name": "旧同事A",
-        "message": "实体 '旧同事A' 在日志中零引用",
-        "suggested_action": "archive"
+        "primary_name": "Morgan",
+        "message": "Candidate entity 'Morgan' awaits human review",
+        "why": "human review required before confirmation: repeated unknown person mention",
+        "evidence_paths": ["Journals/2026/07/life-index_2026-07-02_001.md"],
+        "suggested_action": "review"
       }
     ],
-    "summary": {"high": 1, "medium": 1, "low": 0}
+    "summary": {"high": 1, "medium": 0, "low": 1},
+    "facts": {
+      "zero_journal_reference_entities": ["p004"]
+    }
   },
   "error": null
 }
 ```
+
+`zero_journal_reference_entities` is a neutral fact for observability. A
+`source=user,status=confirmed` entity or relationship with `evidence=[]` is
+healthy and is not an archive/delete recommendation. Questions enter review as
+`candidate_entity` or `candidate_relationship` with `suggested_action: "review"`.
 
 #### `entity --stats`
 
@@ -5208,6 +5226,69 @@ life-index entity --review
   "error": null
 }
 ```
+
+Queue items include `why`, `evidence`, and `action_choices`. Candidate items
+are neutral pending questions, not tool-side decisions. Confirm/reject actions
+are deterministic writes after user judgment:
+
+```bash
+life-index entity --review --action confirm_candidate --id person-morgan
+life-index entity --review --action reject_candidate --id person-morgan
+life-index entity --review --action confirm_candidate --id person-alice --target-id person-bob --relation friend_of
+```
+
+Confirming an entity candidate changes it to `status: confirmed`; confirming a
+relationship candidate changes that edge to `status: confirmed`. Rejecting
+removes only the candidate entity or edge.
+
+#### `entity --propose`
+
+Host agents can persist a hypothesis as a candidate. This is the agent lane of
+the candidate pool and never writes confirmed graph state:
+
+```bash
+life-index entity --propose '{"kind":"entity","id":"person-morgan","entity_type":"person","primary_name":"Morgan","reason":"Host agent saw repeated evidence.","evidence":["Journals/2026/07/life-index_2026-07-02_001.md"]}'
+life-index entity --propose '{"kind":"relationship","source_id":"person-alice","target_id":"person-bob","relation":"friend_of","reason":"Host agent hypothesis.","evidence":["Journals/2026/07/life-index_2026-07-03_001.md"]}'
+```
+
+Candidates are persisted with `source: agent,status: candidate` and appear in
+`entity --review`. Candidate entities and relationships do not participate in
+entity expansion/search until confirmed.
+
+The deterministic write lane also promotes repeated unknown
+person/place/project frontmatter values into `source: seed,status: candidate`
+after `LIFE_INDEX_ENTITY_CANDIDATE_THRESHOLD` occurrences (default `2`).
+
+#### `entity --apply-batch`
+
+Applies a user-confirmed JSON/YAML batch file with entities and relationships.
+Run preview first, then apply:
+
+```bash
+life-index entity --apply-batch batch.json --preview
+life-index entity --apply-batch batch.json
+```
+
+Input shape:
+
+```json
+{
+  "entities": [
+    {"id": "person-alice", "type": "person", "primary_name": "Alice", "aliases": []},
+    {"id": "person-bob", "type": "person", "primary_name": "Bob", "aliases": []}
+  ],
+  "relationships": [
+    {"source": "person-alice", "target": "person-bob", "relation": "friend_of"}
+  ]
+}
+```
+
+Preview/apply data reports `new_entities`, `new_relationships`, `conflicts`,
+and `duplicates_skipped`. Clean batch assertions write
+`source: user,status: confirmed,evidence: []`. Name conflicts are never merged
+automatically; they become `status: candidate` review items while clean rows
+still apply. Invalid batches fail atomically without changing the graph. Reusing
+the same batch is idempotent.
 
 #### `entity --merge`
 

@@ -125,8 +125,9 @@ def build_review_queue(
 
     action_map = {
         "possible_duplicate": ["merge_as_alias", "keep_separate", "skip"],
-        "orphan_entity": ["keep", "archive", "skip"],
         "incomplete_relationship": ["add_relationship", "skip"],
+        "candidate_entity": ["confirm_candidate", "reject_candidate", "skip"],
+        "candidate_relationship": ["confirm_candidate", "reject_candidate", "skip"],
     }
 
     for issue in issues:
@@ -160,6 +161,10 @@ def build_review_queue(
                 "why": str(why),
                 "evidence": evidence,
                 "suggested_action": issue.get("suggested_action", ""),
+                "primary_name": issue.get("primary_name", ""),
+                "source": issue.get("source", ""),
+                "status": issue.get("status", ""),
+                "relation": issue.get("relation", ""),
             }
         )
 
@@ -248,6 +253,16 @@ def generate_preview(
             }
         ]
 
+    elif action in {"confirm_candidate", "reject_candidate"} and source_id:
+        preview["changes"] = [
+            {
+                "type": action,
+                "source_id": source_id,
+                "target_id": target_id,
+                "relation": relation,
+            }
+        ]
+
     elif action == "skip":
         preview["changes"] = [{"type": "no_change"}]
 
@@ -289,6 +304,42 @@ def apply_action(
 
     if action == "keep_separate":
         return {"success": True, "action": "keep_separate", "changes": []}
+
+    if action in {"confirm_candidate", "reject_candidate"}:
+        if not source_id:
+            return {
+                "success": False,
+                "action": action,
+                "error": "source_id required for candidate review",
+            }
+        graph_path = graph_path or _graph_path()
+        graph = load_entity_graph(graph_path)
+        source_entity = _find_entity(graph, source_id)
+        if source_entity is None:
+            return {
+                "success": False,
+                "action": action,
+                "error": f"Source entity not found: {source_id}",
+            }
+
+        if target_id and relation:
+            return _apply_candidate_relationship_action(
+                action=action,
+                graph=graph,
+                graph_path=graph_path,
+                source_entity=source_entity,
+                target_id=target_id,
+                relation=relation,
+                source=source,
+            )
+
+        return _apply_candidate_entity_action(
+            action=action,
+            graph=graph,
+            graph_path=graph_path,
+            source_entity=source_entity,
+            source=source,
+        )
 
     if action == "add_relationship":
         if not source_id or not target_id or not relation:
@@ -446,6 +497,99 @@ def apply_action(
         }
 
     return {"success": False, "action": action, "error": f"Unknown action: {action}"}
+
+
+def _apply_candidate_entity_action(
+    *,
+    action: str,
+    graph: list[dict[str, Any]],
+    graph_path: Path,
+    source_entity: dict[str, Any],
+    source: str,
+) -> dict[str, Any]:
+    if source_entity.get("status") != "candidate":
+        return {
+            "success": False,
+            "action": action,
+            "error": f"Entity is not a candidate: {source_entity['id']}",
+        }
+
+    if action == "reject_candidate":
+        graph = [entity for entity in graph if entity["id"] != source_entity["id"]]
+        save_entity_graph(graph, graph_path)
+        return {
+            "success": True,
+            "action": action,
+            "rejected_id": source_entity["id"],
+        }
+
+    source_entity["status"] = "confirmed"
+    source_entity["source"] = source
+    source_entity["created_at"] = _now_iso()
+    source_entity.setdefault("evidence", [])
+    save_entity_graph(graph, graph_path)
+    return {
+        "success": True,
+        "action": action,
+        "confirmed_id": source_entity["id"],
+    }
+
+
+def _apply_candidate_relationship_action(
+    *,
+    action: str,
+    graph: list[dict[str, Any]],
+    graph_path: Path,
+    source_entity: dict[str, Any],
+    target_id: str,
+    relation: str,
+    source: str,
+) -> dict[str, Any]:
+    relationships = source_entity.get("relationships", []) or []
+    relationship = next(
+        (
+            item
+            for item in relationships
+            if item.get("target") == target_id
+            and item.get("relation") == relation
+            and item.get("status", "confirmed") == "candidate"
+        ),
+        None,
+    )
+    if relationship is None:
+        return {
+            "success": False,
+            "action": action,
+            "error": (
+                "Candidate relationship not found: " f"{source_entity['id']} {relation} {target_id}"
+            ),
+        }
+
+    if action == "reject_candidate":
+        source_entity["relationships"] = [
+            item for item in relationships if item is not relationship
+        ]
+        save_entity_graph(graph, graph_path)
+        return {
+            "success": True,
+            "action": action,
+            "source_id": source_entity["id"],
+            "target_id": target_id,
+            "relation": relation,
+        }
+
+    relationship["status"] = "confirmed"
+    relationship["source"] = source
+    relationship["created_at"] = _now_iso()
+    relationship.setdefault("evidence", [])
+    save_entity_graph(graph, graph_path)
+    return {
+        "success": True,
+        "action": action,
+        "source_id": source_entity["id"],
+        "target_id": target_id,
+        "relation": relation,
+    }
 
 
 def unmerge_entity(

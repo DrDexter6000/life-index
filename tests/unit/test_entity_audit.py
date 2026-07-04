@@ -1,6 +1,5 @@
 """Tests for entity --audit functionality."""
 
-import pytest
 import yaml
 from pathlib import Path
 
@@ -76,8 +75,8 @@ class TestEntityAuditDuplicates:
 
 
 class TestEntityAuditOrphans:
-    def test_detects_orphan_entities(self, tmp_path: Path):
-        """Entities with zero references in journals should be flagged."""
+    def test_zero_journal_references_are_neutral_facts(self, tmp_path: Path):
+        """Zero journal references are not a reason to archive confirmed entities."""
         from tools.entity.audit import audit_entity_graph
 
         graph_path = tmp_path / "entity_graph.yaml"
@@ -102,9 +101,9 @@ class TestEntityAuditOrphans:
         )
 
         report = audit_entity_graph(graph_path, journals_dir=tmp_path / "Journals")
-        orphans = [i for i in report["issues"] if i["type"] == "orphan_entity"]
-        assert len(orphans) >= 1
-        assert orphans[0]["entity_id"] == "person_001"
+        assert [i for i in report["issues"] if i["type"] == "orphan_entity"] == []
+        assert "facts" in report
+        assert report["facts"]["zero_journal_reference_entities"] == ["person_001"]
 
 
 class TestEntityAuditIncompleteRelationships:
@@ -143,9 +142,7 @@ class TestEntityAuditIncompleteRelationships:
             )
 
         report = audit_entity_graph(graph_path, journals_dir=tmp_path / "Journals")
-        incomplete = [
-            i for i in report["issues"] if i["type"] == "incomplete_relationship"
-        ]
+        incomplete = [i for i in report["issues"] if i["type"] == "incomplete_relationship"]
         assert len(incomplete) >= 1
 
 

@@ -56,6 +56,7 @@ from .index_updater import (
     refresh_index_b,
 )
 from ..lib.pending_writes import mark_pending
+from ..entity.candidate_pool import capture_write_time_candidates
 
 # 初始化日志器
 logger = get_logger(__name__)
@@ -494,6 +495,7 @@ def _init_write_result() -> Dict[str, Any]:
         "related_candidates": [],
         "new_entities_detected": [],
         "entity_candidates": [],
+        "entity_candidate_pool": {},
         "error": None,
         "metrics": {},
     }
@@ -1099,6 +1101,11 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     month=month,
                     full_content=full_content,
                     timer=timer,
+                )
+                result["entity_candidate_pool"] = capture_write_time_candidates(
+                    metadata=data,
+                    candidates=result.get("entity_candidates", []),
+                    journal_path=journal_path,
                 )
 
         except LockTimeoutError as e:

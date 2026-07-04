@@ -12,6 +12,7 @@ Validates that build_runtime_view produces correct:
 from pathlib import Path
 
 from tools.lib.entity_runtime import (
+    _expand_related_entities,
     build_runtime_view,
     load_runtime_view,
     resolve_via_runtime,
@@ -155,6 +156,42 @@ class TestBuildRuntimeView:
         assert relation_by_suffix["的女儿"] == "child_of"
         assert relation_by_suffix["的儿子"] == "child_of"
         assert relation_by_suffix["的孩子"] == "child_of"
+
+    def test_candidate_relationships_are_not_runtime_edges(self) -> None:
+        graph = [
+            {
+                "id": "person-alice",
+                "type": "person",
+                "primary_name": "Alice",
+                "aliases": [],
+                "relationships": [
+                    {
+                        "target": "person-bob",
+                        "relation": "friend_of",
+                        "status": "candidate",
+                    }
+                ],
+            },
+            {
+                "id": "person-bob",
+                "type": "person",
+                "primary_name": "Bob",
+                "aliases": [],
+                "relationships": [],
+            },
+        ]
+        view = build_runtime_view(graph)
+        alice = resolve_via_runtime("Alice", view)
+        assert alice is not None
+
+        related = _expand_related_entities(
+            source=alice,
+            relation="friend_of",
+            view=view,
+            direction="forward",
+        )
+
+        assert related == []
 
 
 class TestResolveViaRuntime:

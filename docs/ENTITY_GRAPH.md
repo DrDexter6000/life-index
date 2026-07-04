@@ -162,11 +162,13 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 | 7 | 无 alias 冲突（不与其他实体的 alias/primary_name 重叠） | `entity --check` 验证 |
 | 8 | 有明确的添加理由（修复某个查询失败 / 提升 recall / 用户要求） | 文档化在激活报告中 |
 
-### 5.3 禁止批量准入
+### 5.3 批量准入必须两段式
 
 - 不通过 `--seed` 自动落盘（见 §6.2）
-- 不通过 LLM 静默写 graph
-- 不一次性添加 >3 个实体（控制变更范围，便于回滚）
+- 不通过 LLM 静默写 confirmed graph
+- 批量新增必须先 `entity --apply-batch FILE --preview`，向用户复述新建数、关系数、冲突数和重复跳过数
+- 用户逐条确认或批量授权后，才可 `entity --apply-batch FILE`
+- 重名冲突永不自动合并；冲突项进入 `status=candidate` review 队列
 
 ---
 
@@ -195,6 +197,9 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 - ❌ "你觉得呢"
 - ❌ 沉默或默许
 
+用户是 confirmed 图谱的权威来源。`source=user,status=confirmed,evidence=[]` 是健康态；
+日志只是证据流之一，不能因为零日志引用而建议归档或删除用户确认的人物/关系。
+
 ### 6.2 `--seed` 禁止在 Production 运行
 
 - `life-index entity --seed` **当前会真实写入 `entity_graph.yaml`**，不是 dry-run
@@ -202,13 +207,14 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 - 如需 seed，只能在显式配置的 sandbox / 临时 `LIFE_INDEX_DATA_DIR` 中运行
 - 未来若要放开此限制，必须先实现真正的 `--dry-run` 参数并通过测试
 
-### 6.3 Agent 可自主执行的只读操作
+### 6.3 Agent 可自主执行的低风险操作
 
 | 操作 | 说明 |
 |------|------|
 | `entity --check` / `--stats` / `--audit` | 只读，无风险 |
 | `entity --list` / `--resolve` | 只读查询 |
 | `entity --review` | 只读队列；包含 why/evidence/action_choices |
+| `entity --propose` | 写入 `status=candidate` 假设，不进入 confirmed 检索语义 |
 | `search --query` | 检索验证 |
 | 提出 patch 草案 | 写成 YAML 片段供用户审阅，不直接落盘 |
 
@@ -216,10 +222,15 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 
 ### 6.4 Review Hub 与可逆合并
 
-`entity --review` 只生成候选队列。高置信重复、疑似关系、孤立实体都只能排队，
-不得自动合并或自动写入。宿主 agent 负责向用户访谈；用户确认后，agent 只能通过
-`entity --review --action ...`、`entity --update/--add-alias`、`entity --merge` 或
-`entity --unmerge` 等 CLI 原语修改图谱。
+`entity --review` 只生成候选队列。高置信重复、疑似关系、重复未知名和 agent
+假设都只能排队，不得自动合并或自动写入 confirmed 图谱。宿主 agent 负责读取
+`evidence`、分桶、向用户访谈；用户确认后，agent 只能通过
+`entity --review --action ...`、`entity --update/--add-alias`、`entity --merge`、
+`entity --unmerge` 或 `entity --apply-batch` 等 CLI 原语修改 confirmed 图谱。
+
+候选池持久化在 `entity_graph.yaml` 中，使用 `source=seed|agent|user` 与
+`status=candidate` 标记。candidate 实体/边不参与 entity expansion 或 confirmed
+检索语义；确认后才转为 `status=confirmed`。
 
 `entity --merge` 会在目标实体下保存 `merged_entities[]` 墓碑，包含被吸收实体的完整
 原始记录以及本次合并新增的 alias、转移关系和反向引用改写。`entity --unmerge --id
@@ -313,13 +324,15 @@ life-index eval
 
 | 实体 | 候选理由 | 当前状态 |
 |------|----------|----------|
-| `老婆` / `妻子` | 高频人物，晴岚妈是常见称呼 | **候选池**，等用户确认 primary_name、aliases、是否建立 relationship |
-| `妈妈` / `母亲` | 高频人物，多篇日志提及 | **候选池**，等用户确认 |
-| `Jordan` | GQ28 关联 | **阻塞**，需用户输入身份确认 |
+| `Morgan` | 多篇日志中重复出现但未确认身份 | **candidate**，等用户确认 primary_name、aliases、是否建立 relationship |
+| `Alice` / `A. Example` | 批量导入时与现有实体重名 | **candidate**，等用户裁决是否同一人 |
+| `Project Atlas` | 宿主 agent 读 evidence 后提出的项目假设 | **candidate**，等用户确认 |
 | AI 模型（Claude/Kimi 等） | 日志中多次出现 | **允许入图**，须用户明确批准并按 §8.2 固定规则执行（见 §8） |
 
 **候选池管理原则**:
-- 候选信息可记录在 `.kimi-learnings/` 或任务报告中，**不写入 `entity_graph.yaml`**
+- 候选可持久化在 `entity_graph.yaml`，但必须标记 `status=candidate`
+- candidate 实体/边不参与 confirmed 检索语义或 relationship expansion
+- agent 可用 `entity --propose` 写候选；确定性写入路径可在重复未知名达到阈值时写候选
 - 每次用户确认一个候选后，按 §5 准入条件 + §7 验证清单执行激活
 
 ---
@@ -367,5 +380,6 @@ life-index entity --delete --id ENTITY_ID
 
 | 版本 | 日期 | 变更 | 作者 |
 |------|------|------|------|
+| v1.2 | 2026-07-04 | 明确用户是 confirmed 图谱权威来源；candidate 可持久化在 `entity_graph.yaml` 但不参与 confirmed 检索；新增批量 apply、agent propose、review 节律说明 | Codex |
 | v1.1 | 2026-05-06 | §8 AI 模型实体规则更新：从"暂缓入图"改为"允许入图，须用户明确批准"；固定 `person`+`subtype=ai`+`role=ai_assistant` 规则；明确 provider 属性表达、禁止泛词 alias、批次 ≤3 等约束；同步更新 §9 候选池状态 | Kimi |
 | v1.0 | 2026-05-05 | 基于 D0.3 草案正式落盘为 `docs/ENTITY_GRAPH.md`，收紧生产写入规则，明确 relationship 过渡策略，定义验证清单 | Kimi |

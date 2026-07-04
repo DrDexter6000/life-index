@@ -420,6 +420,8 @@ def _expand_related_entities(
 
     if direction in ("symmetric", "forward"):
         for rel in source.get("relationships", []):
+            if rel.get("status", "confirmed") != "confirmed":
+                continue
             if _match(str(rel.get("relation", ""))):
                 _add(resolve_via_runtime(rel["target"], view))
 
@@ -443,7 +445,12 @@ def build_runtime_view(graph: list[dict[str, Any]]) -> EntityRuntimeView:
     by_lookup: dict[str, dict[str, Any]] = {}
     reverse_relationships: dict[str, list[tuple[str, str]]] = {}
 
-    for entity in graph:
+    serving_entities = [
+        entity for entity in graph if entity.get("status", "confirmed") == "confirmed"
+    ]
+    serving_ids = {entity["id"] for entity in serving_entities}
+
+    for entity in serving_entities:
         lookup_keys = {
             entity["id"],
             entity["primary_name"],
@@ -454,14 +461,18 @@ def build_runtime_view(graph: list[dict[str, Any]]) -> EntityRuntimeView:
             by_lookup[key.lower()] = entity
 
         for rel in entity.get("relationships", []):
+            if rel.get("status", "confirmed") != "confirmed":
+                continue
             target_id = rel["target"]
+            if target_id not in serving_ids:
+                continue
             relation = rel["relation"]
             if target_id not in reverse_relationships:
                 reverse_relationships[target_id] = []
             reverse_relationships[target_id].append((entity["id"], relation))
 
     return EntityRuntimeView(
-        entities=list(graph),  # shallow copy
+        entities=list(serving_entities),  # shallow copy
         by_lookup=by_lookup,
         reverse_relationships=reverse_relationships,
         phrase_patterns=list(RELATION_PHRASE_PATTERNS),

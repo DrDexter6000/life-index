@@ -15,6 +15,14 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   legacy bare `{target, relation}` edges still load as confirmed.
 - `entity --unmerge --id MERGED_ID --target-id TARGET_ID` restores an entity
   from the merge tombstone created by `entity --merge`.
+- Entity maintenance rhythm is now visible in `health` through an
+  `entity_maintenance` traffic light, pending review count, audit age, and
+  `life-index entity --review` next step.
+- `entity --propose` lets host agents persist entity/relationship hypotheses as
+  `status=candidate` review items without affecting confirmed search expansion.
+- `entity --apply-batch <file>` previews and applies user-confirmed JSON/YAML
+  batches with idempotent clean writes, conflict queuing, and atomic failure on
+  invalid rows.
 
 ### Fixed
 
@@ -26,6 +34,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - `entity --merge` is now reversible: merges preserve the absorbed entity's
   original record, transferred aliases, transferred relationships, and rewired
   reverse references for later `--unmerge`.
+- Entity audit now treats zero journal references as a neutral fact. User-owned
+  `source=user,status=confirmed,evidence=[]` facts are healthy and are not
+  framed as archive/delete recommendations.
 
 ## [1.3.6] - 2026-07-03
 
