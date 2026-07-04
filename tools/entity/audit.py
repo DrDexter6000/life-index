@@ -236,6 +236,7 @@ def _detect_incomplete_relationships(
 
     # Count co-occurrences in journal frontmatter people/entities fields
     co_occurrence: Counter[frozenset[str]] = Counter()
+    co_occurrence_paths: dict[frozenset[str], list[str]] = {}
     pattern = re.compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
 
     if journals_dir.exists():
@@ -265,6 +266,8 @@ def _detect_incomplete_relationships(
                     for j in range(i + 1, len(names_list)):
                         pair = frozenset([names_list[i], names_list[j]])
                         co_occurrence[pair] += 1
+                        rel_path = md_file.relative_to(journals_dir.parent).as_posix()
+                        co_occurrence_paths.setdefault(pair, []).append(rel_path)
             except Exception:
                 continue
 
@@ -286,8 +289,14 @@ def _detect_incomplete_relationships(
                 "type": "incomplete_relationship",
                 "severity": "low",
                 "entities": names,
+                "entity_ids": ids,
                 "co_occurrence_count": count,
-                "message": f"'{names[0]}' 和 '{names[1]}' 在 {count} 篇日志中共现但无关系记录",
+                "message": (
+                    f"'{names[0]}' and '{names[1]}' co-occur in {count} journals "
+                    "without an explicit relationship"
+                ),
+                "why": "co-occurred in journals without explicit relationship",
+                "evidence_paths": sorted(dict.fromkeys(co_occurrence_paths.get(pair, []))),
                 "suggested_action": "add_relationship",
             }
         )

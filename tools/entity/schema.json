@@ -64,7 +64,7 @@
     }
   },
   "entity_graph_relationship_schema": {
-    "description": "Relationship edges are explicit deterministic graph facts. target and relation are required; weight and supporting_journal_ids are optional additive metadata.",
+    "description": "v1.2 relationship edge metadata extension — backward compatible with bare {target, relation} edges",
     "relationship": {
       "type": "object",
       "properties": {
@@ -74,9 +74,48 @@
         "supporting_journal_ids": {
           "type": "array",
           "items": {"type": "string"}
-        }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": []
+        },
+        "source": {
+          "type": "string",
+          "enum": ["seed", "review", "user", "agent", "system"],
+          "default": "system"
+        },
+        "created_at": {"type": "string", "format": "date-time"},
+        "status": {
+          "type": "string",
+          "enum": ["confirmed", "candidate"],
+          "default": "confirmed"
+        },
+        "start": {"type": "string"},
+        "end": {"type": "string"}
       },
       "required": ["target", "relation"]
+    },
+    "backcompat": {
+      "legacy_bare_edge_defaults": {
+        "evidence": [],
+        "source": "system",
+        "created_at": "load-time ISO-8601",
+        "status": "confirmed"
+      }
+    },
+    "merge_tombstones": {
+      "description": "Merged entities are preserved under target.merged_entities[] so entity --unmerge can restore the absorbed record.",
+      "required_fields": [
+        "id",
+        "target_id",
+        "source",
+        "merged_at",
+        "entity",
+        "transferred_aliases",
+        "transferred_relationships",
+        "rewired_relationships"
+      ]
     }
   }
 }

@@ -154,7 +154,8 @@ class TestEntitySchema:
             ]
         }
 
-        validated = validate_entity_graph_payload(payload)
+        fixed_time = "2026-07-04T00:00:00+00:00"
+        validated = validate_entity_graph_payload(payload, load_time=fixed_time)
 
         assert validated[0]["relationships"] == [
             {
@@ -162,6 +163,10 @@ class TestEntitySchema:
                 "relation": "works_on",
                 "weight": 0.75,
                 "supporting_journal_ids": ["Journals/2026/03/life-index_2026-03-14_001.md"],
+                "evidence": [],
+                "source": "system",
+                "created_at": fixed_time,
+                "status": "confirmed",
             }
         ]
 

@@ -10,6 +10,8 @@ CLI entry: `life-index entity review`
 
 from __future__ import annotations
 
+from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +33,58 @@ except ImportError:
 
 def _graph_path() -> Path:
     return get_user_data_dir() / "entity_graph.yaml"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _dedupe_strings(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
+
+
+def _stamp_relationship(
+    relationship: dict[str, Any],
+    *,
+    source: str,
+    created_at: str,
+    status: str = "confirmed",
+    evidence: list[str] | None = None,
+) -> dict[str, Any]:
+    stamped = dict(relationship)
+    stamped["source"] = source
+    stamped["created_at"] = created_at
+    stamped["status"] = status
+    stamped["evidence"] = _dedupe_strings(
+        evidence if evidence is not None else stamped.get("evidence")
+    )
+    return stamped
+
+
+def _relationship_key(relationship: dict[str, Any]) -> tuple[str, str]:
+    return (str(relationship.get("target", "")), str(relationship.get("relation", "")))
+
+
+def _find_entity(graph: list[dict[str, Any]], entity_id: str) -> dict[str, Any] | None:
+    return next((entity for entity in graph if entity["id"] == entity_id), None)
+
+
+def _remove_aliases(entity: dict[str, Any], aliases: list[str]) -> None:
+    to_remove = set(aliases)
+    entity["aliases"] = [alias for alias in entity.get("aliases", []) if alias not in to_remove]
+    alias_metadata = entity.get("alias_metadata")
+    if isinstance(alias_metadata, dict):
+        for alias in to_remove:
+            alias_metadata.pop(alias, None)
 
 
 def build_review_queue(
@@ -59,7 +113,11 @@ def build_review_queue(
     # Import audit lazily to avoid circular imports
     from tools.entity.audit import audit_entity_graph
 
-    report = audit_entity_graph(graph_path, journals_dir=None)
+    journals_dir = graph_path.parent / "Journals"
+    report = audit_entity_graph(
+        graph_path,
+        journals_dir=journals_dir if journals_dir.exists() else None,
+    )
     issues = report.get("issues", [])
 
     queue: list[dict[str, Any]] = []
@@ -79,6 +137,18 @@ def build_review_queue(
         # Use severity directly for risk level, mapping to our 3-tier system
         risk_level = severity if severity in ("high", "medium", "low") else "medium"
 
+        entity_ids = issue.get("entity_ids")
+        if not isinstance(entity_ids, list):
+            entity_ids = (
+                issue.get("entities", [])
+                if isinstance(issue.get("entities"), list)
+                else [issue.get("entity_id", "")]
+            )
+        evidence = issue.get("evidence_paths", [])
+        if not isinstance(evidence, list):
+            evidence = []
+        why = issue.get("why") or issue.get("message") or issue.get("evidence", "")
+
         queue.append(
             {
                 "item_id": f"review-{item_counter}",
@@ -86,11 +156,9 @@ def build_review_queue(
                 "category": issue_type,
                 "description": issue.get("evidence") or issue.get("message", ""),
                 "action_choices": action_map.get(issue_type, ["skip"]),
-                "entity_ids": (
-                    issue.get("entities", [])
-                    if isinstance(issue.get("entities"), list)
-                    else [issue.get("entity_id", "")]
-                ),
+                "entity_ids": entity_ids,
+                "why": str(why),
+                "evidence": evidence,
                 "suggested_action": issue.get("suggested_action", ""),
             }
         )
@@ -108,6 +176,7 @@ def generate_preview(
     action: str,
     source_id: str | None = None,
     target_id: str | None = None,
+    relation: str | None = None,
     graph_path: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a preview of what an action will do before committing.
@@ -117,6 +186,7 @@ def generate_preview(
         action: The action to preview.
         source_id: Source entity id (for merge).
         target_id: Target entity id (for merge).
+        relation: Relationship label for add_relationship preview.
         graph_path: Optional override for entity graph path (testing).
 
     Returns:
@@ -164,6 +234,20 @@ def generate_preview(
     elif action == "keep_separate":
         preview["changes"] = [{"type": "no_change"}]
 
+    elif action == "add_relationship" and source_id and target_id and relation:
+        preview["changes"] = [
+            {
+                "type": "add_relationship",
+                "source_id": source_id,
+                "target_id": target_id,
+                "relation": relation,
+                "result": {
+                    "source": "review",
+                    "status": "confirmed",
+                },
+            }
+        ]
+
     elif action == "skip":
         preview["changes"] = [{"type": "no_change"}]
 
@@ -175,6 +259,9 @@ def apply_action(
     action: str,
     source_id: str | None = None,
     target_id: str | None = None,
+    relation: str | None = None,
+    evidence: list[str] | None = None,
+    source: str = "review",
     graph_path: Path | None = None,
 ) -> dict[str, Any]:
     """Apply a review action to the entity graph.
@@ -182,12 +269,16 @@ def apply_action(
     Supported actions:
     - merge_as_alias: Merge source into target (source's names become target's aliases)
     - keep_separate: No change, acknowledge as distinct
+    - add_relationship: Add a confirmed edge from source to target
     - skip: Skip this review item
 
     Args:
         action: The action to apply.
         source_id: Source entity id.
         target_id: Target entity id (for merge).
+        relation: Relationship label for add_relationship.
+        evidence: Journal rel_paths supporting the action.
+        source: Provenance source for graph writes.
         graph_path: Optional override for entity graph path (testing).
 
     Returns:
@@ -198,6 +289,55 @@ def apply_action(
 
     if action == "keep_separate":
         return {"success": True, "action": "keep_separate", "changes": []}
+
+    if action == "add_relationship":
+        if not source_id or not target_id or not relation:
+            return {
+                "success": False,
+                "action": action,
+                "error": "source_id, target_id, and relation required for add_relationship",
+            }
+
+        graph_path = graph_path or _graph_path()
+        graph = load_entity_graph(graph_path)
+        source_entity = _find_entity(graph, source_id)
+        target_entity = _find_entity(graph, target_id)
+        if source_entity is None:
+            return {
+                "success": False,
+                "action": action,
+                "error": f"Source entity not found: {source_id}",
+            }
+        if target_entity is None:
+            return {
+                "success": False,
+                "action": action,
+                "error": f"Target entity not found: {target_id}",
+            }
+
+        created_at = _now_iso()
+        relationships = source_entity.setdefault("relationships", [])
+        key = (target_id, relation)
+        existing = next((rel for rel in relationships if _relationship_key(rel) == key), None)
+        stamped = _stamp_relationship(
+            {"target": target_id, "relation": relation},
+            source=source,
+            created_at=created_at,
+            evidence=evidence,
+        )
+        if existing is None:
+            relationships.append(stamped)
+        else:
+            existing.update(stamped)
+
+        save_entity_graph(graph, graph_path)
+        return {
+            "success": True,
+            "action": "add_relationship",
+            "source_id": source_id,
+            "target_id": target_id,
+            "relation": relation,
+        }
 
     if action == "merge_as_alias":
         if not source_id or not target_id:
@@ -210,10 +350,10 @@ def apply_action(
         graph_path = graph_path or _graph_path()
         graph = load_entity_graph(graph_path)
 
-        source = next((e for e in graph if e["id"] == source_id), None)
-        target = next((e for e in graph if e["id"] == target_id), None)
+        source_entity = _find_entity(graph, source_id)
+        target = _find_entity(graph, target_id)
 
-        if source is None:
+        if source_entity is None:
             return {
                 "success": False,
                 "action": action,
@@ -226,32 +366,74 @@ def apply_action(
                 "error": f"Target entity not found: {target_id}",
             }
 
+        created_at = _now_iso()
+        source_snapshot = deepcopy(source_entity)
+
         # Transfer source's primary_name + aliases to target's aliases
-        names_to_transfer = [source["primary_name"], *source.get("aliases", [])]
+        names_to_transfer = [source_entity["primary_name"], *source_entity.get("aliases", [])]
         target_aliases = target.setdefault("aliases", [])
+        target_alias_metadata = target.setdefault("alias_metadata", {})
+        transferred_aliases: list[str] = []
 
         for name in names_to_transfer:
             if name not in target_aliases and name != target["primary_name"]:
                 target_aliases.append(name)
+                target_alias_metadata[name] = {
+                    "source": source,
+                    "confidence": 1.0,
+                    "created_at": created_at,
+                }
+                transferred_aliases.append(name)
 
         # Transfer source's relationships to target (avoid duplicates)
         target_rels = target.setdefault("relationships", [])
-        existing_rels = {(r["target"], r["relation"]) for r in target_rels}
+        existing_rels = {_relationship_key(r) for r in target_rels}
+        transferred_relationships: list[dict[str, Any]] = []
 
-        for rel in source.get("relationships", []):
-            key = (rel["target"], rel["relation"])
+        for rel in source_entity.get("relationships", []):
+            key = _relationship_key(rel)
             if key not in existing_rels:
-                target_rels.append(rel)
+                stamped = _stamp_relationship(deepcopy(rel), source=source, created_at=created_at)
+                target_rels.append(stamped)
+                transferred_relationships.append(deepcopy(stamped))
                 existing_rels.add(key)
 
         # Remove source entity
         graph = [e for e in graph if e["id"] != source_id]
 
         # Update reverse references: any entity pointing to source now points to target
+        rewired_relationships: list[dict[str, Any]] = []
         for entity in graph:
             for rel in entity.get("relationships", []):
                 if rel["target"] == source_id:
+                    rewired_relationships.append(
+                        {
+                            "entity_id": entity["id"],
+                            "relationship": deepcopy(rel),
+                        }
+                    )
                     rel["target"] = target_id
+                    rel.update(
+                        _stamp_relationship(
+                            rel,
+                            source=source,
+                            created_at=created_at,
+                            evidence=rel.get("evidence"),
+                        )
+                    )
+
+        target.setdefault("merged_entities", []).append(
+            {
+                "id": source_id,
+                "target_id": target_id,
+                "source": source,
+                "merged_at": created_at,
+                "entity": source_snapshot,
+                "transferred_aliases": transferred_aliases,
+                "transferred_relationships": transferred_relationships,
+                "rewired_relationships": rewired_relationships,
+            }
+        )
 
         save_entity_graph(graph, graph_path)
 
@@ -264,3 +446,76 @@ def apply_action(
         }
 
     return {"success": False, "action": action, "error": f"Unknown action: {action}"}
+
+
+def unmerge_entity(
+    *,
+    merged_id: str,
+    target_id: str,
+    graph_path: Path | None = None,
+) -> dict[str, Any]:
+    """Restore an entity from a merge tombstone."""
+    graph_path = graph_path or _graph_path()
+    graph = load_entity_graph(graph_path)
+    target = _find_entity(graph, target_id)
+    if target is None:
+        return {
+            "success": False,
+            "action": "unmerge",
+            "error": f"Target entity not found: {target_id}",
+        }
+    if _find_entity(graph, merged_id) is not None:
+        return {
+            "success": False,
+            "action": "unmerge",
+            "error": f"Entity already exists: {merged_id}",
+        }
+
+    tombstones = target.get("merged_entities", []) or []
+    tombstone = next((item for item in tombstones if item.get("id") == merged_id), None)
+    if tombstone is None:
+        return {
+            "success": False,
+            "action": "unmerge",
+            "error": f"Merge tombstone not found: {merged_id}",
+        }
+
+    restored = deepcopy(tombstone["entity"])
+    _remove_aliases(target, tombstone.get("transferred_aliases", []) or [])
+
+    transferred_keys = {
+        _relationship_key(relationship)
+        for relationship in tombstone.get("transferred_relationships", []) or []
+    }
+    if transferred_keys:
+        target["relationships"] = [
+            relationship
+            for relationship in target.get("relationships", []) or []
+            if _relationship_key(relationship) not in transferred_keys
+        ]
+
+    for rewired in tombstone.get("rewired_relationships", []) or []:
+        owner = _find_entity(graph, rewired.get("entity_id", ""))
+        original = rewired.get("relationship", {})
+        if owner is None or not original:
+            continue
+        for index, relationship in enumerate(owner.get("relationships", []) or []):
+            if relationship.get("target") == target_id and relationship.get(
+                "relation"
+            ) == original.get("relation"):
+                owner["relationships"][index] = deepcopy(original)
+                break
+
+    remaining_tombstones = [item for item in tombstones if item.get("id") != merged_id]
+    if remaining_tombstones:
+        target["merged_entities"] = remaining_tombstones
+    else:
+        target.pop("merged_entities", None)
+    graph.append(restored)
+    save_entity_graph(graph, graph_path)
+    return {
+        "success": True,
+        "action": "unmerge",
+        "restored_id": merged_id,
+        "target_id": target_id,
+    }

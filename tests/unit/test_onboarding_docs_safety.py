@@ -117,3 +117,16 @@ def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:
     assert "life-index health --json" in skill
     assert "upgrade_freshness" in skill
     assert "git_freshness" in skill
+
+
+def test_skill_entity_interview_teaches_agent_recommend_user_confirm_write() -> None:
+    skill = _read("SKILL.md")
+
+    assert "筛 → 荐 → 问 → 写" in skill
+    assert "按 `evidence` 指针读原文" in skill
+    assert "带理由建议" in skill
+    assert "批量授权" in skill
+    assert "队列外" in skill
+    assert "写入必须有人判" in skill
+    assert "life-index entity --review --action add_relationship" in skill
+    assert "life-index entity --unmerge" in skill

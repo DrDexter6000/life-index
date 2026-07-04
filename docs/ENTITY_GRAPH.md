@@ -111,9 +111,13 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 | `sibling_of` | 当前 corpus 中无明确需求 |
 | `colleague_of` / `friend_of` | 边界模糊，易产生 orphan |
 
-关系边的必填字段是 `target` 与 `relation`。可选字段 `weight` 与
-`supporting_journal_ids` 仅记录已经确定的边强度和支撑日志路径；它们是给确定性导航工具消费的
-元数据，不得由工具从自然语言推断或自动编造。
+关系边的必填字段是 `target` 与 `relation`。v1.2 起，边可带
+`evidence`（支撑该关系的 journal rel_path 列表）、`source`
+（`seed`/`review`/`user`/`agent`/`system`）、`created_at`、`status`
+（`confirmed`/`candidate`）以及可选 `start`/`end`。旧裸边不强迁；加载时按
+`source=system`、`status=confirmed`、`evidence=[]` 补默认值。可选字段
+`weight` 与 `supporting_journal_ids` 继续兼容，仍仅记录已经确定的边强度和支撑日志路径。
+这些元数据是给确定性导航工具消费的，不得由工具从自然语言推断或自动编造。
 
 ### 4.2 Role Attribute 是过渡表达
 
@@ -178,6 +182,7 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 - 添加/修改 relationship
 - 删除实体
 - 合并实体
+- 复原已合并实体
 - 修改 `primary_name`
 
 **什么算用户明确确认**:
@@ -203,10 +208,22 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 |------|------|
 | `entity --check` / `--stats` / `--audit` | 只读，无风险 |
 | `entity --list` / `--resolve` | 只读查询 |
+| `entity --review` | 只读队列；包含 why/evidence/action_choices |
 | `search --query` | 检索验证 |
 | 提出 patch 草案 | 写成 YAML 片段供用户审阅，不直接落盘 |
 
 ---
+
+### 6.4 Review Hub 与可逆合并
+
+`entity --review` 只生成候选队列。高置信重复、疑似关系、孤立实体都只能排队，
+不得自动合并或自动写入。宿主 agent 负责向用户访谈；用户确认后，agent 只能通过
+`entity --review --action ...`、`entity --update/--add-alias`、`entity --merge` 或
+`entity --unmerge` 等 CLI 原语修改图谱。
+
+`entity --merge` 会在目标实体下保存 `merged_entities[]` 墓碑，包含被吸收实体的完整
+原始记录以及本次合并新增的 alias、转移关系和反向引用改写。`entity --unmerge --id
+MERGED_ID --target-id TARGET_ID` 使用该墓碑完整复原，并移除合并产生的 alias / 转移关系。
 
 ## 7. 变更后验证清单
 

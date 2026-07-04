@@ -6,6 +6,16 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Added
+
+- Entity Graph HITL review now exposes `why`, `evidence`, and
+  `action_choices` so host agents can interview users before applying entity
+  decisions. Relationship edges support v1.2 additive metadata
+  (`evidence`, `source`, `created_at`, `status`, optional `start`/`end`) while
+  legacy bare `{target, relation}` edges still load as confirmed.
+- `entity --unmerge --id MERGED_ID --target-id TARGET_ID` restores an entity
+  from the merge tombstone created by `entity --merge`.
+
 ### Fixed
 
 - `sync-skill --install` now auto-converges a managed
@@ -13,6 +23,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   `skills/life-index` slot when that nested duplicate is the only discovery
   ambiguity. Unrelated or unsafe duplicate candidates still fail closed with
   `HOST_SKILL_DIR_AMBIGUOUS`.
+- `entity --merge` is now reversible: merges preserve the absorbed entity's
+  original record, transferred aliases, transferred relationships, and rewired
+  reverse references for later `--unmerge`.
 
 ## [1.3.6] - 2026-07-03
 
