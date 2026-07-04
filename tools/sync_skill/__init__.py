@@ -84,6 +84,9 @@ def find_host_skill_dir(
     if len(matches) == 1:
         return matches[0], diagnostics
     if len(matches) > 1:
+        converged = _autoconverge_managed_nested_duplicate(matches)
+        if converged is not None:
+            return converged
         formatted = "; ".join(str(path) for path in matches)
         return None, [
             _diagnostic(
@@ -370,6 +373,38 @@ def _managed_nested_skill_tree_reason(path: Path) -> str | None:
         if child.name == "references" and child.is_dir() and not child.is_symlink():
             continue
         return "extra_files_refused"
+    return None
+
+
+def _autoconverge_managed_nested_duplicate(
+    matches: list[Path],
+) -> tuple[Path, list[dict[str, str]]] | None:
+    if len(matches) != 2:
+        return None
+
+    resolved_matches = {str(match.expanduser().resolve()): match for match in matches}
+    for canonical in matches:
+        if canonical.is_symlink():
+            continue
+        nested = _nested_duplicate_dir(canonical)
+        nested_key = str(nested.expanduser().resolve())
+        if nested_key not in resolved_matches:
+            continue
+        reason = _managed_nested_skill_tree_reason(nested)
+        if reason is not None:
+            return None
+        canonical_resolved = str(canonical.expanduser().resolve())
+        nested_resolved = str(nested.expanduser().resolve())
+        return canonical, [
+            _diagnostic(
+                "HOST_SKILL_DIR_NESTED_DUPLICATE_AUTOCONVERGED",
+                (
+                    "Managed nested Life Index skill duplicate found; "
+                    f"using canonical host skill directory {canonical_resolved} "
+                    f"and converging nested duplicate {nested_resolved}."
+                ),
+            )
+        ]
     return None
 
 

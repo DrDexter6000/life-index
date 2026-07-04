@@ -180,8 +180,16 @@ def main() -> int:
         install=args.install,
         dry_run=args.dry_run,
     )
-    if diagnostics and payload["data"]["status"] != "synced":
-        payload["data"]["diagnostics"] = diagnostics
+    if diagnostics:
+        existing_diagnostics = payload["data"].get("diagnostics", [])
+        if (
+            payload["data"]["status"] == "skipped"
+            and existing_diagnostics
+            and existing_diagnostics[0]["code"] == "HOST_SKILL_DIR_NOT_FOUND"
+        ):
+            payload["data"]["diagnostics"] = diagnostics
+        else:
+            payload["data"]["diagnostics"] = [*diagnostics, *existing_diagnostics]
 
     _emit_payload(payload, as_json=args.json)
 
