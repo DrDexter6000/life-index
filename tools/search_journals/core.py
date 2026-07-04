@@ -236,6 +236,7 @@ def expand_query_with_entity_graph(query: str) -> str:
         return query
 
     view = build_runtime_view(graph)
+    serving_graph = view.entities
 
     def _expand_entity_names(entity: dict[str, Any]) -> str:
         names = [entity["primary_name"]]
@@ -327,7 +328,7 @@ def expand_query_with_entity_graph(query: str) -> str:
             # build the result from accepted spans so generated OR groups are
             # never scanned for additional matches.
             spans: list[tuple[int, int, dict[str, Any]]] = []
-            for entity in graph:
+            for entity in serving_graph:
                 for name in [entity["primary_name"], *entity.get("aliases", [])]:
                     if len(str(name).strip()) < 2:
                         continue
@@ -407,6 +408,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
         return []
 
     view = build_runtime_view(graph)
+    serving_graph = view.entities
     hints: list[dict[str, Any]] = []
     seen_entity_ids: set[str] = set()
 
@@ -503,7 +505,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
             # identical guardrails: two-char minimum, position-aware
             # non-overlapping, longest-match-wins, ASCII word boundaries.
             spans: list[tuple[int, int, dict[str, Any]]] = []
-            for entity in graph:
+            for entity in serving_graph:
                 for name in [entity["primary_name"], *entity.get("aliases", [])]:
                     if len(str(name).strip()) < 2:
                         continue

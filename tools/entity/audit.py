@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from tools.lib.entity_graph import load_entity_graph
 from tools.lib.entity_schema import get_boost_decay_defaults
 
 # Kinship term mapping for semantic duplicate detection
@@ -31,7 +32,7 @@ def audit_entity_graph(
 
     Detection types:
     1. possible_duplicate — primary_name/alias overlap or high similarity
-    2. orphan_entity — zero references in journals
+    2. candidate_entity/candidate_relationship — pending human judgment
     3. incomplete_relationship — frequent co-occurrence without relationship record
 
     Returns:
@@ -50,17 +51,24 @@ def audit_entity_graph(
     with graph_path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {"entities": []}
 
-    entities: list[dict[str, Any]] = data.get("entities", [])
+    entities = load_entity_graph(graph_path)
     issues: list[dict[str, Any]] = []
+    facts: dict[str, Any] = {"zero_journal_reference_entities": []}
 
     # 1. Duplicate detection
     issues.extend(_detect_duplicates(entities))
 
-    # 2. Orphan detection (requires journals_dir)
+    # 2. Zero-reference facts (requires journals_dir). User-confirmed graph
+    # entries are authoritative; a missing journal reference is not an issue.
     if journals_dir is not None:
-        issues.extend(_detect_orphans(entities, journals_dir))
+        facts["zero_journal_reference_entities"] = _detect_zero_reference_entities(
+            entities, journals_dir
+        )
 
-    # 3. Incomplete relationships (requires journals_dir)
+    # 3. Pending candidate review
+    issues.extend(_detect_candidate_items(entities))
+
+    # 4. Incomplete relationships (requires journals_dir)
     if journals_dir is not None:
         issues.extend(_detect_incomplete_relationships(entities, journals_dir))
 
@@ -76,6 +84,7 @@ def audit_entity_graph(
         "total_entities": len(entities),
         "issues": issues,
         "summary": summary,
+        "facts": facts,
         "boost_decay": _load_boost_decay(data),
     }
 
@@ -83,10 +92,13 @@ def audit_entity_graph(
 def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Detect possible duplicate entities."""
     issues: list[dict[str, Any]] = []
+    confirmed_entities = [
+        entity for entity in entities if entity.get("status", "confirmed") == "confirmed"
+    ]
 
     # Build alias → entity_id map
     name_to_ids: dict[str, list[str]] = {}
-    for entity in entities:
+    for entity in confirmed_entities:
         eid = entity["id"]
         primary = entity.get("primary_name", "")
         if primary:
@@ -96,8 +108,8 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     # Check alias/primary_name overlap between different entities
     seen_pairs: set[frozenset[str]] = set()
-    for entity_a in entities:
-        for entity_b in entities:
+    for entity_a in confirmed_entities:
+        for entity_b in confirmed_entities:
             if entity_a["id"] >= entity_b["id"]:
                 continue
             pair = frozenset([entity_a["id"], entity_b["id"]])
@@ -162,11 +174,14 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return issues
 
 
-def _detect_orphans(
+def _detect_zero_reference_entities(
     entities: list[dict[str, Any]],
     journals_dir: Path,
-) -> list[dict[str, Any]]:
-    """Detect entities with zero references in journals."""
+) -> list[str]:
+    """Return confirmed/candidate entity IDs with zero journal references.
+
+    This is a neutral fact for observability only, not an audit issue.
+    """
     import re
 
     # Collect all referenced names from journal frontmatter
@@ -196,24 +211,74 @@ def _detect_orphans(
             except Exception:
                 continue
 
-    issues: list[dict[str, Any]] = []
+    zero_reference_entity_ids: list[str] = []
     for entity in entities:
         names = {entity.get("primary_name", "")}
         names.update(entity.get("aliases", []))
         names.discard("")
 
         if not names.intersection(referenced_names):
+            zero_reference_entity_ids.append(entity["id"])
+
+    return zero_reference_entity_ids
+
+
+def _detect_candidate_items(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Surface pending candidate entities/edges as neutral review questions."""
+    issues: list[dict[str, Any]] = []
+    for entity in entities:
+        if entity.get("status") == "candidate":
+            evidence = entity.get("evidence", [])
+            if not isinstance(evidence, list):
+                evidence = []
+            reason = entity.get("reason") or "candidate awaits human review"
             issues.append(
                 {
-                    "type": "orphan_entity",
-                    "severity": "medium",
+                    "type": "candidate_entity",
+                    "severity": "low",
                     "entity_id": entity["id"],
+                    "entity_ids": [entity["id"]],
                     "primary_name": entity.get("primary_name", ""),
-                    "message": f"实体 '{entity.get('primary_name', '')}' 在日志中零引用",
-                    "suggested_action": "archive",
+                    "source": entity.get("source", "system"),
+                    "status": "candidate",
+                    "message": (
+                        f"Candidate entity '{entity.get('primary_name', '')}' awaits "
+                        "human review"
+                    ),
+                    "why": f"human review required before confirmation: {reason}",
+                    "evidence_paths": sorted(dict.fromkeys(str(item) for item in evidence)),
+                    "suggested_action": "review",
                 }
             )
 
+        for relationship in entity.get("relationships", []) or []:
+            if relationship.get("status") != "candidate":
+                continue
+            evidence = relationship.get("evidence", [])
+            if not isinstance(evidence, list):
+                evidence = []
+            issues.append(
+                {
+                    "type": "candidate_relationship",
+                    "severity": "low",
+                    "entity_id": entity["id"],
+                    "entity_ids": [entity["id"], relationship.get("target", "")],
+                    "relation": relationship.get("relation", ""),
+                    "source": relationship.get("source", "system"),
+                    "status": "candidate",
+                    "message": (
+                        f"Candidate relationship {entity['id']} "
+                        f"{relationship.get('relation', '')} "
+                        f"{relationship.get('target', '')} awaits human review"
+                    ),
+                    "why": (
+                        "human review required before confirmation: "
+                        f"{relationship.get('reason') or 'candidate relationship'}"
+                    ),
+                    "evidence_paths": sorted(dict.fromkeys(str(item) for item in evidence)),
+                    "suggested_action": "review",
+                }
+            )
     return issues
 
 
@@ -225,13 +290,22 @@ def _detect_incomplete_relationships(
     import re
     from collections import Counter
 
+    confirmed_entities = [
+        entity for entity in entities if entity.get("status", "confirmed") == "confirmed"
+    ]
+    confirmed_ids = {entity["id"] for entity in confirmed_entities}
+
     # Build existing relationship pairs
     existing_pairs: set[frozenset[str]] = set()
     entity_by_name: dict[str, str] = {}
-    for entity in entities:
+    for entity in confirmed_entities:
         entity_by_name[entity.get("primary_name", "")] = entity["id"]
         for rel in entity.get("relationships", []):
+            if rel.get("status", "confirmed") != "confirmed":
+                continue
             target = rel.get("target", "")
+            if target not in confirmed_ids:
+                continue
             existing_pairs.add(frozenset([entity["id"], target]))
 
     # Count co-occurrences in journal frontmatter people/entities fields

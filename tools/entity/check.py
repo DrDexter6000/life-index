@@ -6,9 +6,9 @@ Provides `entity --check` CLI command for quick integrity validation.
 
 CLI entry: `life-index entity --check`
 
-Unlike `--audit` (which focuses on quality issues like duplicates and orphans),
-`--check` focuses on structural integrity: dangling refs, schema violations,
-and lookup consistency.
+Unlike `--audit` (which focuses on quality issues like duplicates, candidates,
+and incomplete relationships), `--check` focuses on structural integrity:
+dangling refs, schema violations, and lookup consistency.
 """
 
 from __future__ import annotations

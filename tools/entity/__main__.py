@@ -36,6 +36,10 @@ def _alias_name(alias: Any) -> str | None:
 
 def _stamp_entity_write(entity: dict[str, Any], *, source: str) -> None:
     created_at = _now_iso()
+    entity.setdefault("source", source)
+    entity.setdefault("status", "confirmed")
+    entity.setdefault("created_at", created_at)
+    entity.setdefault("evidence", [])
     alias_metadata = entity.setdefault("alias_metadata", {})
     for alias in entity.get("aliases", []) or []:
         if isinstance(alias, dict):
@@ -100,6 +104,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--review", action="store_true")
     parser.add_argument("--merge")
     parser.add_argument("--unmerge", action="store_true")
+    parser.add_argument("--propose")
+    parser.add_argument("--apply-batch", dest="apply_batch")
     parser.add_argument("--delete", action="store_true", dest="delete_entity")
     parser.add_argument(
         "--preview", action="store_true", help="Preview only, do not mutate the graph"
@@ -114,6 +120,8 @@ def main(argv: list[str] | None = None) -> None:
         choices=[
             "merge_as_alias",
             "add_relationship",
+            "confirm_candidate",
+            "reject_candidate",
             "keep_separate",
             "skip",
             "preview",
@@ -134,6 +142,27 @@ def main(argv: list[str] | None = None) -> None:
 
     graph_path = _graph_path()
     entities = load_entity_graph(graph_path)
+
+    if args.apply_batch:
+        from tools.entity.batch import apply_batch_file
+
+        result = apply_batch_file(
+            batch_path=Path(args.apply_batch),
+            graph_path=graph_path,
+            preview=args.preview,
+        )
+        _print(result)
+        return
+
+    if args.propose:
+        from tools.entity.propose import apply_proposal
+
+        payload = json.loads(args.propose)
+        if not isinstance(payload, dict):
+            raise SystemExit("--propose requires JSON object")
+        result = apply_proposal(payload=payload, graph_path=graph_path)
+        _print(result)
+        return
 
     if args.list_entities:
         results = entities

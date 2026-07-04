@@ -396,8 +396,9 @@ def _check_entity_graph(graph_path: Path) -> Dict[str, Any]:
 
     if not graph_path.exists():
         check["status"] = "warning"
-        check["issue"] = "Entity graph not found — search may miss alias-based expansion"
-        check["suggested_command"] = "life-index entity --seed"
+        check["issue"] = "Entity graph not found — run review when candidates appear"
+        check["suggested_command"] = "life-index entity --review"
+        check["maintenance"] = _build_entity_maintenance(graph_path, exists=False)
         return check
 
     try:
@@ -405,16 +406,104 @@ def _check_entity_graph(graph_path: Path) -> Dict[str, Any]:
 
         entities = load_entity_graph(graph_path)
         check["entity_count"] = len(entities)
+        maintenance = _build_entity_maintenance(graph_path, entities=entities)
+        check["maintenance"] = maintenance
 
         if len(entities) == 0:
             check["status"] = "warning"
-            check["issue"] = "Entity graph is empty — run seed to create initial graph"
-            check["suggested_command"] = "life-index entity --seed"
+            check["issue"] = "Entity graph is empty — run review when candidates appear"
+            check["suggested_command"] = "life-index entity --review"
+        elif maintenance["traffic_light"] == "red":
+            check["status"] = "warning"
+            check["issue"] = "Entity graph needs review — run life-index entity --review"
+            check["suggested_command"] = "life-index entity --review"
+        elif maintenance["traffic_light"] == "yellow":
+            check["status"] = "warning"
+            check["issue"] = "Entity graph has pending maintenance — run life-index entity --review"
+            check["suggested_command"] = "life-index entity --review"
     except Exception as e:
         check["status"] = "warning"
         check["issue"] = f"Entity graph error: {e}"
+        check["suggested_command"] = "life-index entity --review"
+        check["maintenance"] = _build_entity_maintenance(
+            graph_path,
+            exists=True,
+            structure_error=str(e),
+        )
 
     return check
+
+
+def _build_entity_maintenance(
+    graph_path: Path,
+    *,
+    entities: List[Dict[str, Any]] | None = None,
+    exists: bool = True,
+    structure_error: str | None = None,
+) -> Dict[str, Any]:
+    """Build the session-visible entity maintenance traffic light."""
+    from datetime import datetime, timezone
+
+    review_command = "life-index entity --review"
+    audit_age_days: int | None = None
+    if graph_path.exists():
+        modified = datetime.fromtimestamp(graph_path.stat().st_mtime, tz=timezone.utc)
+        audit_age_days = (datetime.now(timezone.utc) - modified).days
+
+    pending_count = 0
+    duplicate_count = 0
+    if entities is None:
+        entities = []
+
+    if structure_error is None and entities:
+        pending_count = sum(
+            1 for entity in entities if entity.get("status", "confirmed") == "candidate"
+        )
+        pending_count += sum(
+            1
+            for entity in entities
+            for relationship in entity.get("relationships", []) or []
+            if relationship.get("status", "confirmed") == "candidate"
+        )
+        duplicate_count = _count_confirmed_duplicate_names(entities)
+
+    if structure_error or duplicate_count:
+        traffic_light = "red"
+        reason = structure_error or "duplicate confirmed entities require review"
+    elif pending_count or (audit_age_days is not None and audit_age_days > 30) or not exists:
+        traffic_light = "yellow"
+        reason = "pending review items or stale audit"
+    else:
+        traffic_light = "green"
+        reason = "no pending entity review items"
+
+    return {
+        "traffic_light": traffic_light,
+        "pending_count": pending_count,
+        "audit_age_days": audit_age_days,
+        "duplicate_count": duplicate_count,
+        "review_command": review_command,
+        "suggested_next_step": {
+            "command": review_command,
+            "reason": reason,
+        },
+    }
+
+
+def _count_confirmed_duplicate_names(entities: List[Dict[str, Any]]) -> int:
+    names: Dict[str, int] = {}
+    for entity in entities:
+        if entity.get("status", "confirmed") != "confirmed":
+            continue
+        values = [entity.get("primary_name", ""), *entity.get("aliases", [])]
+        seen_entity_names: set[str] = set()
+        for value in values:
+            if not isinstance(value, str) or not value.strip():
+                continue
+            seen_entity_names.add(" ".join(value.casefold().split()))
+        for name in seen_entity_names:
+            names[name] = names.get(name, 0) + 1
+    return sum(1 for count in names.values() if count > 1)
 
 
 def _check_index_tree() -> Dict[str, Any]:
@@ -548,6 +637,7 @@ def health_check() -> None:
 
     graph_path = resolve_user_data_dir() / "entity_graph.yaml"
     check = _check_entity_graph(graph_path)
+    entity_maintenance = check.get("maintenance", {})
     checks.append(check)
     if check.get("issue"):
         issues.append(check["issue"])
@@ -578,6 +668,7 @@ def health_check() -> None:
             "status": overall,
             "checks": checks,
             "upgrade_freshness": upgrade_check,
+            "entity_maintenance": entity_maintenance,
             "issues": issues,
             "issue_count": len(issues),
             **issue_groups,
