@@ -37,6 +37,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - Entity audit now treats zero journal references as a neutral fact. User-owned
   `source=user,status=confirmed,evidence=[]` facts are healthy and are not
   framed as archive/delete recommendations.
+- `entity --review --action keep_separate` now persists user-confirmed
+  non-duplicate decisions and audit respects them; `undo_keep_separate` removes
+  that mark so the pair can be reviewed again.
 
 ## [1.3.6] - 2026-07-03
 

@@ -181,7 +181,7 @@ class TestReviewApplyAction:
         assert "王晓里" in wife["aliases"]
         assert "小王" in wife["aliases"]
 
-    def test_keep_separate_no_change(self, isolated_data_dir: Path) -> None:
+    def test_keep_separate_marks_pair_without_merging(self, isolated_data_dir: Path) -> None:
         from tools.lib.entity_graph import load_entity_graph
         from tools.entity.review import apply_action
 
@@ -191,15 +191,20 @@ class TestReviewApplyAction:
         result = apply_action(
             action="keep_separate",
             source_id="wife-002",
+            target_id="wife-001",
             graph_path=gp,
         )
 
         assert result["success"] is True
 
-        # Verify: graph unchanged
+        # Verify: both entities remain and the non-duplicate decision is recorded.
         graph = load_entity_graph(gp)
         ids = {e["id"] for e in graph}
         assert "wife-002" in ids
+        wife_001 = next(e for e in graph if e["id"] == "wife-001")
+        wife_002 = next(e for e in graph if e["id"] == "wife-002")
+        assert wife_001["not_duplicate_of"][0]["target"] == "wife-002"
+        assert wife_002["not_duplicate_of"][0]["target"] == "wife-001"
 
     def test_skip_action(self, isolated_data_dir: Path) -> None:
         from tools.entity.review import apply_action

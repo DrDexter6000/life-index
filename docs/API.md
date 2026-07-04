@@ -5028,7 +5028,7 @@ python -m tools.entity [options]
 | `--target-id` | string | 条件必填 | - | 目标实体 ID（用于 merge） |
 | `--relation` | string | 条件必填 | - | `--review --action add_relationship` 的关系类型 |
 | `--add-alias` | string | ❌ | - | 为实体添加别名（配合 `--update`） |
-| `--action` | enum | ❌ | - | `merge_as_alias` / `add_relationship` / `confirm_candidate` / `reject_candidate` / `keep_separate` / `skip` / `preview` |
+| `--action` | enum | ❌ | - | `merge_as_alias` / `add_relationship` / `confirm_candidate` / `reject_candidate` / `keep_separate` / `undo_keep_separate` / `skip` / `preview` |
 | `--export` | enum | ❌ | - | 导出格式：`csv` / `xlsx`（配合 `--review`） |
 | `--import` | string | ❌ | - | 从文件导入审订结果（配合 `--review`） |
 | `--output` | string | ❌ | - | 指定输出文件路径（配合 `--review --export`） |
@@ -5095,6 +5095,8 @@ life-index entity --audit
 `source=user,status=confirmed` entity or relationship with `evidence=[]` is
 healthy and is not an archive/delete recommendation. Questions enter review as
 `candidate_entity` or `candidate_relationship` with `suggested_action: "review"`.
+Pairs marked with `not_duplicate_of[]` by `keep_separate` are user judgments
+and are not reported again as `possible_duplicate` unless that mark is undone.
 
 #### `entity --stats`
 
@@ -5235,11 +5237,17 @@ are deterministic writes after user judgment:
 life-index entity --review --action confirm_candidate --id person-morgan
 life-index entity --review --action reject_candidate --id person-morgan
 life-index entity --review --action confirm_candidate --id person-alice --target-id person-bob --relation friend_of
+life-index entity --review --action keep_separate --id person-alan --target-id person-alen
+life-index entity --review --action undo_keep_separate --id person-alan --target-id person-alen
 ```
 
 Confirming an entity candidate changes it to `status: confirmed`; confirming a
 relationship candidate changes that edge to `status: confirmed`. Rejecting
-removes only the candidate entity or edge.
+removes only the candidate entity or edge. `keep_separate` writes symmetric
+`not_duplicate_of[]` records with `source: user` and `created_at` so audit
+respects the user's non-duplicate decision. `undo_keep_separate` removes that
+mark and lets future audit runs report the pair again if it still matches a
+duplicate heuristic.
 
 #### `entity --propose`
 

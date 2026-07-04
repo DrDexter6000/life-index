@@ -143,6 +143,39 @@ def _normalize_relationship(relationship: Any, load_time: str) -> dict[str, Any]
     return normalized_relationship
 
 
+def _normalize_not_duplicate_of(value: Any, load_time: str) -> list[dict[str, str]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise EntityGraphValidationError("not_duplicate_of must be a list")
+
+    normalized: list[dict[str, str]] = []
+    seen_targets: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise EntityGraphValidationError("not_duplicate_of[] must be an object")
+        target = _ensure_non_empty_string(item.get("target"), "not_duplicate_of.target")
+        if target in seen_targets:
+            continue
+        source = item.get("source", "system")
+        if source not in RELATIONSHIP_SOURCES:
+            raise EntityGraphValidationError(
+                "not_duplicate_of.source must be one of the allowed sources"
+            )
+        created_at = item.get("created_at", load_time)
+        if not isinstance(created_at, str):
+            raise EntityGraphValidationError("not_duplicate_of.created_at must be a string")
+        normalized.append(
+            {
+                "target": target,
+                "source": source,
+                "created_at": created_at,
+            }
+        )
+        seen_targets.add(target)
+    return normalized
+
+
 def _normalize_entity_core(
     raw: dict[str, Any],
     load_time: str,
@@ -223,6 +256,10 @@ def _normalize_entity_core(
         if not isinstance(reason, str):
             raise EntityGraphValidationError("entity.reason must be a string")
         normalized_entity["reason"] = reason
+
+    not_duplicate_of = _normalize_not_duplicate_of(raw.get("not_duplicate_of"), load_time)
+    if not_duplicate_of:
+        normalized_entity["not_duplicate_of"] = not_duplicate_of
 
     return normalized_entity
 
@@ -320,5 +357,12 @@ def validate_entity_graph_payload(
                 raise EntityGraphValidationError(
                     f"unknown relationship target: {relationship['target']}"
                 )
+        for distinct_record in entity.get("not_duplicate_of", []):
+            if distinct_record["target"] not in valid_targets:
+                raise EntityGraphValidationError(
+                    f"unknown not_duplicate_of target: {distinct_record['target']}"
+                )
+            if distinct_record["target"] == entity["id"]:
+                raise EntityGraphValidationError("not_duplicate_of target cannot be self")
 
     return validated

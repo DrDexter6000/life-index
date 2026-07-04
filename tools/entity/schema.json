@@ -116,6 +116,25 @@
         "transferred_relationships",
         "rewired_relationships"
       ]
+    },
+    "distinct_review_records": {
+      "description": "User-confirmed non-duplicate decisions are preserved per entity under not_duplicate_of[]; keep_separate writes symmetric records and undo_keep_separate removes them.",
+      "not_duplicate_of": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "target": {"type": "string"},
+            "source": {
+              "type": "string",
+              "enum": ["seed", "review", "user", "agent", "system"],
+              "default": "user"
+            },
+            "created_at": {"type": "string", "format": "date-time"}
+          },
+          "required": ["target", "source", "created_at"]
+        }
+      }
     }
   }
 }

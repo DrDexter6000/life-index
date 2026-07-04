@@ -95,6 +95,12 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
     confirmed_entities = [
         entity for entity in entities if entity.get("status", "confirmed") == "confirmed"
     ]
+    reviewed_distinct_pairs = {
+        frozenset([entity["id"], record.get("target", "")])
+        for entity in confirmed_entities
+        for record in entity.get("not_duplicate_of", []) or []
+        if record.get("target")
+    }
 
     # Build alias → entity_id map
     name_to_ids: dict[str, list[str]] = {}
@@ -114,6 +120,9 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
             pair = frozenset([entity_a["id"], entity_b["id"]])
             if pair in seen_pairs:
+                continue
+            if pair in reviewed_distinct_pairs:
+                seen_pairs.add(pair)
                 continue
 
             # Exact alias overlap

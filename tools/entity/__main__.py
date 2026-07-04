@@ -123,6 +123,7 @@ def main(argv: list[str] | None = None) -> None:
             "confirm_candidate",
             "reject_candidate",
             "keep_separate",
+            "undo_keep_separate",
             "skip",
             "preview",
         ],
@@ -302,7 +303,8 @@ def main(argv: list[str] | None = None) -> None:
             _print({"success": True, "data": preview, "error": None})
             return
 
-        # --review --action merge_as_alias|keep_separate|skip --id ... --target-id ...
+        # --review --action merge_as_alias|keep_separate|undo_keep_separate|skip
+        # with --id ... --target-id ...
         result = apply_action(
             action=args.review_action,
             source_id=args.entity_id,
