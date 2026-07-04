@@ -83,6 +83,11 @@ skill tree plus its own nested duplicate:
   - `Success: no issues found in 196 source files`.
 - `git ls-files | git check-ignore --stdin`
   - no output.
+- `.venv\Scripts\python.exe .github\scripts\check_public_surface_allowlist.py`
+  - initially failed after adding this report because
+    `reports/WP-CLI-SYNC-SKILL-AUTOCONVERGE-report.md` was a new public path.
+  - fixed by adding that exact path to `.github/public-surface.allowlist`;
+    rerun passed.
 
 ## Audit Notes
 
