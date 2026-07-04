@@ -18,6 +18,54 @@ def _graph_path() -> Path:
     return get_user_data_dir() / "entity_graph.yaml"
 
 
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _alias_name(alias: Any) -> str | None:
+    if isinstance(alias, str):
+        return alias
+    if isinstance(alias, dict):
+        name = alias.get("name")
+        if isinstance(name, str):
+            return name
+    return None
+
+
+def _stamp_entity_write(entity: dict[str, Any], *, source: str) -> None:
+    created_at = _now_iso()
+    alias_metadata = entity.setdefault("alias_metadata", {})
+    for alias in entity.get("aliases", []) or []:
+        if isinstance(alias, dict):
+            alias.setdefault("source", source)
+            alias.setdefault("created_at", created_at)
+            alias.setdefault("confidence", 1.0)
+        name = _alias_name(alias)
+        if name:
+            alias_metadata.setdefault(
+                name,
+                {
+                    "source": alias.get("source", source) if isinstance(alias, dict) else source,
+                    "confidence": (
+                        alias.get("confidence", 1.0) if isinstance(alias, dict) else 1.0
+                    ),
+                    "created_at": (
+                        alias.get("created_at", created_at)
+                        if isinstance(alias, dict)
+                        else created_at
+                    ),
+                },
+            )
+
+    for relationship in entity.get("relationships", []) or []:
+        relationship.setdefault("source", source)
+        relationship.setdefault("created_at", created_at)
+        relationship.setdefault("status", "confirmed")
+        relationship.setdefault("evidence", [])
+
+
 def _attach_provenance(payload: dict[str, Any]) -> dict[str, Any]:
     provenance_envelope = build_provenance_envelope(
         source_data=payload.get("data", {}),
@@ -51,18 +99,21 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--check", action="store_true", dest="run_check")
     parser.add_argument("--review", action="store_true")
     parser.add_argument("--merge")
+    parser.add_argument("--unmerge", action="store_true")
     parser.add_argument("--delete", action="store_true", dest="delete_entity")
     parser.add_argument(
         "--preview", action="store_true", help="Preview only, do not mutate the graph"
     )
     parser.add_argument("--id", dest="entity_id")
     parser.add_argument("--target-id", dest="target_id")
+    parser.add_argument("--relation", dest="relation")
     parser.add_argument("--add-alias", dest="add_alias")
     parser.add_argument(
         "--action",
         dest="review_action",
         choices=[
             "merge_as_alias",
+            "add_relationship",
             "keep_separate",
             "skip",
             "preview",
@@ -106,19 +157,25 @@ def main(argv: list[str] | None = None) -> None:
         payload = json.loads(args.add)
         if not isinstance(payload, dict):
             raise SystemExit("--add requires JSON object")
+        _stamp_entity_write(payload, source="user")
         entities.append(payload)
         save_entity_graph(entities, graph_path)
         _print({"success": True, "data": payload, "error": None})
         return
 
-    if args.update:
+    if args.update or args.add_alias:
         if not args.entity_id or not args.add_alias:
-            raise SystemExit("--update requires --id and --add-alias")
+            raise SystemExit("--update/--add-alias requires --id and --add-alias")
         for entity in entities:
             if entity["id"] == args.entity_id:
                 aliases = entity.setdefault("aliases", [])
                 if args.add_alias not in aliases:
                     aliases.append(args.add_alias)
+                entity.setdefault("alias_metadata", {})[args.add_alias] = {
+                    "source": "user",
+                    "confidence": 1.0,
+                    "created_at": _now_iso(),
+                }
                 save_entity_graph(entities, graph_path)
                 _print({"success": True, "data": entity, "error": None})
                 return
@@ -204,11 +261,13 @@ def main(argv: list[str] | None = None) -> None:
         if args.review_action == "preview":
             if not args.entity_id:
                 raise SystemExit("--action preview requires --id (item_id)")
+            preview_action = "add_relationship" if args.relation else "merge_as_alias"
             preview = generate_preview(
                 item_id=args.entity_id,
-                action="merge_as_alias",
+                action=preview_action,
                 source_id=args.entity_id,
                 target_id=args.target_id,
+                relation=args.relation,
                 graph_path=graph_path,
             )
             _print({"success": True, "data": preview, "error": None})
@@ -219,6 +278,8 @@ def main(argv: list[str] | None = None) -> None:
             action=args.review_action,
             source_id=args.entity_id,
             target_id=args.target_id,
+            relation=args.relation,
+            source="review",
             graph_path=graph_path,
         )
         _print(result)
@@ -232,6 +293,20 @@ def main(argv: list[str] | None = None) -> None:
         result = apply_action(
             action="merge_as_alias",
             source_id=args.entity_id,
+            target_id=args.target_id,
+            source="user",
+            graph_path=graph_path,
+        )
+        _print(result)
+        return
+
+    if args.unmerge:
+        if not args.entity_id or not args.target_id:
+            raise SystemExit("--unmerge requires --id (merged entity) and --target-id (target)")
+        from tools.entity.review import unmerge_entity
+
+        result = unmerge_entity(
+            merged_id=args.entity_id,
             target_id=args.target_id,
             graph_path=graph_path,
         )

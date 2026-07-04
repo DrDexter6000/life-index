@@ -527,11 +527,17 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 2. **执行**：`life-index migrate --apply` 自动迁移 + 获取 `needs_agent` 列表
 3. **语义回填**：Agent 逐条处理 `needs_agent`（读取正文 → LLM 提取 abstract/mood → `life-index edit` 更新）
 
-### 工作流7: Entity 审计
+### 工作流7: 实体图谱访谈
 
-1. **检测**：`life-index entity --audit` 获取质量报告
-2. **访谈**：Agent 逐项询问用户（合并？归档？添加别名？添加关系？）
-3. **执行**：Agent 调用 `life-index entity --update` 应用用户决策
+**触发**：用户说“整理人物/谁是谁/检查实体”、`entity --seed` 后，或 `health` 建议维护图谱。
+
+**筛 → 荐 → 问 → 写**：先 `life-index entity --review`，按 `evidence` 指针读原文，把候选按人物分桶为很确定 same / 很确定 different / 拿不准 / 低价值可缓；再给带理由建议，而不是复述队列；每轮 ≤5 组，问用户 Same / Different / Not-sure，也接受批量授权（如“你确定的那批照办”）。
+
+确认后才写：合并前 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`，再 `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`；关系先 `... --action preview --id SOURCE_ID --target-id TARGET_ID --relation RELATION`，再 `life-index entity --review --action add_relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION`；加别名用 `life-index entity --add-alias ALIAS --id ENTITY_ID`；撤销合并用 `life-index entity --unmerge --id MERGED_ID --target-id TARGET_ID`。
+
+队列外：agent 读日记自行发现的对齐假设可直接建议；确认后经 `life-index entity --merge SOURCE_ID --id SOURCE_ID --target-id TARGET_ID` / `--add-alias` 写入。写后运行 `life-index entity --check` 并汇报 action、证据和跳过项。
+
+**红线**：建议自由，写入必须有人判；仅经 CLI 原语写图；工具内无 LLM、无 TUI、无零人判自动合并。高置信候选也只排队。
 
 ### 响应中的 events 和 _trace
 

@@ -34,7 +34,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **entity_graph.py**: YAML entity graph load/save/resolve. Foundational module for entity operations.
 - **entity_relations.py**: Relation vocabulary normalization (Round 7 Phase 3). Canonical mapping + alias helper for search/review/check.
 - **entity_runtime.py**: Runtime serving layer for entity graph (Round 7 Phase 1). Provides `EntityRuntimeView` with O(1) by_lookup, reverse_relationships, and phrase pattern registry.
-- **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES, alias conflict detection, relationship target verification.
+- **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES, alias conflict detection, relationship target verification, v1.2 relationship metadata defaults, and merge tombstone validation.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.
@@ -83,7 +83,7 @@ Shared infrastructure library for all Life Index atomic tools.
 | entity_relations.py | entity_runtime, check, review | ✅ 活跃 | Round 7 Phase 3 新增：relation vocabulary normalization |
 | index_manifest.py | build_index | ✅ 活跃 | Round 12 Phase 2 新增：索引构建状态 manifest（counts + checksums + partial flag） |
 | entity_runtime.py | search_journals | ✅ 活跃 | Round 7 Phase 1 新增：runtime serving layer（by_lookup + reverse_relationships + phrase patterns） |
-| entity_schema.py | write_journal, entity_graph | ✅ 活跃 | Round 7 Phase 1 确认活跃 |
+| entity_schema.py | write_journal, entity_graph | ✅ 活跃 | Round 7 Phase 1 确认活跃；v1.2 负责 relationship metadata defaults 与 merge tombstone validation |
 | errors.py | write_journal(core), query_weather, generate_index | ⚠️ 部分集成 | Round 5 Task 3 将全面激活 |
 | file_lock.py | write_journal, edit_journal, build_index | ✅ 活跃 | |
 | frontmatter.py | write_journal, edit_journal, search | ✅ 活跃 | SSOT |

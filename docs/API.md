@@ -359,6 +359,37 @@ aliases:
 
 旧文件无 `source` 时默认 `system`，无 `confidence` 时默认 `1.0`，无 `created_at` 时默认加载时间。
 
+#### Entity Graph Relationship Metadata (v1.2 additive)
+
+`entity_graph.yaml` 中的 `relationships[]` 仍以 `target` 与 `relation` 为必填字段。v1.2
+起支持边级可选元数据，旧裸边不强迁；加载时补默认值：
+
+```yaml
+relationships:
+  - target: person-bob
+    relation: friend_of
+    evidence:
+      - Journals/2026/07/life-index_2026-07-01_001.md
+    source: review
+    created_at: "2026-07-04T00:00:00+00:00"
+    status: confirmed
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `target` | string | 目标实体 ID（必填） |
+| `relation` | string | 关系类型（必填） |
+| `evidence` | string[] | 支撑该关系的 journal rel_path 列表；旧边默认 `[]` |
+| `source` | enum | `seed` / `review` / `user` / `agent` / `system`；旧边默认 `system` |
+| `created_at` | string | ISO 8601 时间戳；旧边默认加载时间 |
+| `status` | enum | `confirmed` / `candidate`；旧边默认 `confirmed` |
+| `start` / `end` | string | 可选时间边界，不强制 |
+| `weight` | number | 兼容既有可选权重 |
+| `supporting_journal_ids` | string[] | 兼容既有支撑日志字段 |
+
+`entity --merge` 会把被吸收实体的完整记录保存在目标实体的 `merged_entities[]`
+墓碑中；`entity --unmerge --id MERGED_ID --target-id TARGET_ID` 用该墓碑完整复原。
+
 #### boost_decay Echo-Only Placeholder (B4.2)
 
 `entity --audit` 和 `entity --stats` 输出包含 `boost_decay` 字段，作为 v1.2.0 Cycle 2 校准的 schema 占位：
@@ -4917,15 +4948,15 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 | `data` | object\|array | yes | Subcommand-specific result payload |
 | `error` | null\|string | yes | `null` on success; string on some error paths |
 
-**`--merge` deviation** (flat envelope, no `data` wrapper):
+**action deviations** (`--merge`, `--unmerge`, `--review --action ...`; flat envelope, no `data` wrapper):
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `success` | bool | Whether the merge succeeded |
-| `action` | string | `"merge_as_alias"` |
-| `source_id` | string | Source entity ID |
-| `target_id` | string | Target entity ID |
-| `transferred_names` | array | Names/aliases transferred from source to target |
+| `success` | bool | Whether the action succeeded |
+| `action` | string | `"merge_as_alias"`, `"add_relationship"`, `"unmerge"`, etc. |
+| `source_id` | string | Source entity ID when applicable |
+| `target_id` | string | Target entity ID when applicable |
+| `transferred_names` | array | Names/aliases transferred from source to target for merge |
 
 **`--resolve` envelope:**
 
@@ -4941,7 +4972,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 - `data`: subcommand-specific payload. Shape varies by subcommand (see per-subcommand examples below).
 - `error`: on most subcommands, `null` for success. Known deviations:
   - `--resolve` returns a plain string error message on failure (not a structured error object).
-  - `--merge` returns a flat object without `data` wrapper.
+  - `--merge`, `--unmerge`, and `--review --action ...` return flat action objects without `data` wrapper.
 - `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`.
 - `--stats` data contains: `total_entities`, `by_type{}`, `total_aliases`, `total_relationships`, `top_referenced[]`, `top_cooccurrence[]`.
 - `--check` data contains: `total_entities`, `issues[]`, `summary{}`.
@@ -4951,7 +4982,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 **Known deviations**: `entity` error handling is inconsistent across subcommands.
 
 - Most read subcommands (`--audit`, `--stats`, `--check`, `--review`) use the standard `{success, data, error}` envelope with `error: null` on success.
-- `--merge` returns a **flat shape** without a `data` wrapper — this is a documented deviation from the standard envelope.
+- `--merge`, `--unmerge`, and `--review --action ...` return a **flat shape** without a `data` wrapper — this is a documented deviation from the standard envelope.
 - `--resolve` returns `error` as a **plain string** (e.g., `"Entity not found"`) instead of a structured error object with `code`/`message`/`recovery_strategy`.
 - Parser errors (missing required flags) raise `SystemExit` with a plain text message, not a JSON error envelope.
 - Runtime alignment to the unified error format is deferred to a post-M16 milestone.
@@ -4982,12 +5013,14 @@ python -m tools.entity [options]
 | `--check` | flag | ❌ | false | 执行图谱完整性检查 |
 | `--review` | flag | ❌ | false | 打开 Review Hub（风险优先审订队列） |
 | `--merge` | string | ❌ | - | 合并实体（需 `--id` 和 `--target-id`） |
+| `--unmerge` | flag | ❌ | false | 按 merge 墓碑复原实体（需 `--id` 和 `--target-id`） |
 | `--delete` | flag | ❌ | false | 删除指定实体（需 `--id`） |
 | `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `--delete`） |
 | `--id` | string | 条件必填 | - | 源实体 ID |
 | `--target-id` | string | 条件必填 | - | 目标实体 ID（用于 merge） |
+| `--relation` | string | 条件必填 | - | `--review --action add_relationship` 的关系类型 |
 | `--add-alias` | string | ❌ | - | 为实体添加别名（配合 `--update`） |
-| `--action` | enum | ❌ | - | `merge_as_alias` / `keep_separate` / `skip` / `preview` |
+| `--action` | enum | ❌ | - | `merge_as_alias` / `add_relationship` / `keep_separate` / `skip` / `preview` |
 | `--export` | enum | ❌ | - | 导出格式：`csv` / `xlsx`（配合 `--review`） |
 | `--import` | string | ❌ | - | 从文件导入审订结果（配合 `--review`） |
 | `--output` | string | ❌ | - | 指定输出文件路径（配合 `--review --export`） |
@@ -5165,6 +5198,8 @@ life-index entity --review
         "description": "alias overlap: ...",
         "action_choices": ["merge_as_alias", "keep_separate", "skip"],
         "entity_ids": ["p001", "p002"],
+        "why": "alias overlap: ...",
+        "evidence": [],
         "suggested_action": "merge"
       }
     ],
@@ -5193,6 +5228,39 @@ life-index entity --merge p001 --id p001 --target-id p002
   "transferred_names": ["旧名字", "别名A"]
 }
 ```
+
+合并是可逆的：目标实体会保存被吸收实体的完整墓碑，包括原始
+`primary_name`、`aliases`、`relationships`、合并新增 alias、转移关系和反向引用改写。
+
+#### `entity --unmerge`
+
+按 merge 墓碑恢复被吸收实体，并移除合并产生的 alias / 转移关系：
+
+```bash
+life-index entity --unmerge --id p001 --target-id p002
+```
+
+返回：
+
+```json
+{
+  "success": true,
+  "action": "unmerge",
+  "restored_id": "p001",
+  "target_id": "p002"
+}
+```
+
+#### `entity --review --action add_relationship`
+
+用户确认关系后，Agent 可用 review action 写入 confirmed 边；工具只执行确定性写入，不判断关系真伪：
+
+```bash
+life-index entity --review --action preview --id p001 --target-id p002 --relation friend_of
+life-index entity --review --action add_relationship --id p001 --target-id p002 --relation friend_of
+```
+
+写入的边会带 `source: review`、`status: confirmed`、`created_at` 和 `evidence` 字段。
 
 #### `entity --delete --id ENTITY_ID`
 
