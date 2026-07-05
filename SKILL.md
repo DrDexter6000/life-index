@@ -56,7 +56,6 @@ triggers:
 .venv/bin/life-index smart-search --query "..." --include-evidence  # 含 evidence pack + 检索诊断
 .venv/bin/life-index on-this-day --date 2026-05-19 --years-back 3       # 历史同日回顾
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
-.venv/bin/life-index entity audit --json
 .venv/bin/life-index entity --list
 .venv/bin/life-index entity --resolve "晴岚的奶奶"
 .venv/bin/life-index abstract --month 2026-03
