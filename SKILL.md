@@ -535,7 +535,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 
 确认后才写：合并前 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`，再 `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`；明确不同人/物时用 `life-index entity --review --action keep_separate --id SOURCE_ID --target-id TARGET_ID` 持久化人判，误标后用 `life-index entity --review --action undo_keep_separate --id SOURCE_ID --target-id TARGET_ID` 撤销；关系先 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID --relation RELATION`，再 `life-index entity --review --action add_relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION`；候选确认用 `life-index entity --review --action confirm_candidate --id ENTITY_ID` 或带 `--target-id TARGET_ID --relation RELATION`；加别名用 `life-index entity --add-alias ALIAS --id ENTITY_ID`；撤销合并用 `life-index entity --unmerge --id MERGED_ID --target-id TARGET_ID`。
 
-**冷启动家庭录入**：用户口述家人/关系时，先问清身份和关系方向，再逐条复述确认；确认后用 `life-index entity --add '<json>'` 创建 `source=user,status=confirmed` 实体，用 review/add_relationship 原语写边；写完运行 `life-index entity --check` 并汇报结果。`evidence=[]` 对用户确认事实是健康态。
+**冷启动录入**：已有日志先 `life-index entity build --from-journals --preview --json` 看候选，读 evidence 后访谈确认；用户口述家人/关系时，先问清身份和方向，再逐条复述确认；确认后用 `life-index entity --add '<json>'` 创建 `source=user,status=confirmed` 实体，用 review/add_relationship 原语写边；写完 `life-index entity --check`。`evidence=[]` 对用户确认事实是健康态。
 
 **批量录入**：不要要求固定模板。用户可给 Excel/CSV/Markdown 表、一段话或照片转写；agent 复述结构并拿到批量授权后生成 JSON/YAML 批文件，先 `life-index entity build --from-batch FILE --preview --json`，再 `--apply --json`，最后 `life-index entity --check`。重名冲突会进入 `entity --review`。
 

@@ -1,10 +1,16 @@
 # Entity Graph UX Surface Spec
 
-> Status: Draft for implementation planning
+> Status: Active implementation reference
 > Date: 2026-07-05
 > Scope: Entity Graph user-facing workflow surface, primitive audit, and future
-> migration/normalization direction. This document does not claim any new CLI
-> facade is implemented yet.
+> migration/normalization direction.
+
+Implemented slices as of 2026-07-05:
+
+- `entity audit --json`
+- `entity maintain --normalize --preview/--apply --backup --json`
+- `entity build --from-batch FILE --preview/--apply --json`
+- `entity build --from-journals --preview --json`
 
 This spec is subordinate to `CHARTER.md`, `docs/API.md`, and
 `docs/ENTITY_GRAPH.md`. It does not deprecate or remove any existing public
@@ -241,7 +247,7 @@ Required behavior:
 4. Add `entity build --from-batch FILE --preview/--apply` tests that delegate to
    existing batch behavior without changing output semantics.
 5. Add `entity build --from-journals --preview` test that proves no graph write;
-   then wrap or replace `--seed` behind preview-first planning.
+   then wrap or replace `--seed` behind preview-first planning. **Implemented.**
 6. Add `entity maintain --normalize --preview` tests for old-type graph planning
    with no writes.
 7. Add `entity maintain --normalize --apply --backup` tests for atomic write,

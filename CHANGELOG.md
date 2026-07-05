@@ -18,6 +18,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - `entity build --from-batch FILE --preview/--apply --json` provides the
   workflow-facing facade over user-confirmed batch entity imports while
   preserving the existing `--apply-batch` primitive contract.
+- `entity build --from-journals --preview --json` previews journal-frontmatter
+  seed candidates without mutating `entity_graph.yaml`, replacing direct
+  `--seed` in the primary cold-start workflow.
 - Entity Graph HITL review now exposes `why`, `evidence`, and
   `action_choices` so host agents can interview users before applying entity
   decisions. Relationship edges support v1.2 additive metadata

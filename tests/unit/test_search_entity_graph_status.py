@@ -38,7 +38,10 @@ class TestEntityGraphStatus:
 
         assert status["status"] == "not_initialized"
         assert status["suggested_action"] is not None
-        assert "entity --seed" in status["suggested_action"]["command"]
+        assert (
+            status["suggested_action"]["command"]
+            == "life-index entity build --from-journals --preview --json"
+        )
 
     def test_empty_graph_returns_empty(self, isolated_data_dir: Path) -> None:
         """When entity_graph.yaml exists but has empty entities list."""

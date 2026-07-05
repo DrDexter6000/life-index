@@ -132,12 +132,24 @@ def _run_maintain_workflow(argv: list[str]) -> None:
 def _run_build_workflow(argv: list[str]) -> None:
     build_parser = argparse.ArgumentParser(prog="life-index entity build")
     build_parser.add_argument("--from-batch", dest="from_batch")
+    build_parser.add_argument("--from-journals", action="store_true")
     build_parser.add_argument("--preview", action="store_true")
     build_parser.add_argument("--apply", action="store_true")
     build_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
     build_args = build_parser.parse_args(argv)
+    if build_args.from_batch and build_args.from_journals:
+        raise SystemExit("entity build accepts only one source")
+    if build_args.from_journals:
+        if not build_args.preview or build_args.apply:
+            raise SystemExit("entity build --from-journals currently supports --preview only")
+        from tools.entity.seed import preview_seed_entity_graph
+        from tools.lib.paths import get_journals_dir
+
+        result = preview_seed_entity_graph(_graph_path(), get_journals_dir())
+        _print(result)
+        return
     if not build_args.from_batch:
-        raise SystemExit("entity build currently requires --from-batch FILE")
+        raise SystemExit("entity build currently requires --from-batch FILE or --from-journals")
     if build_args.preview == build_args.apply:
         raise SystemExit("entity build --from-batch requires exactly one of --preview/--apply")
     from tools.entity.batch import apply_batch_file
@@ -175,6 +187,7 @@ def main(argv: list[str] | None = None) -> None:
         description="Life Index Entity Graph tools",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Primary workflow:
+  life-index entity build --from-journals --preview --json
   life-index entity build --from-batch FILE --preview --json
   life-index entity audit --json    Combined read-only graph health facade
   life-index entity maintain --normalize --preview --json
