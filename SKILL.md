@@ -56,6 +56,7 @@ triggers:
 .venv/bin/life-index smart-search --query "..." --include-evidence  # 含 evidence pack + 检索诊断
 .venv/bin/life-index on-this-day --date 2026-05-19 --years-back 3       # 历史同日回顾
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
+.venv/bin/life-index entity audit --json
 .venv/bin/life-index entity --list
 .venv/bin/life-index entity --resolve "晴岚的奶奶"
 .venv/bin/life-index abstract --month 2026-03
@@ -530,8 +531,8 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 ### 工作流7: 实体图谱访谈
 
 **原则**：三权分立。CLI 只做确定性 JSON 原语；agent 可读证据、分桶、提出带理由建议；用户是确认态图谱的权威来源。建议自由，写入必须有人判（逐条确认或批量授权均可）。
-**触发**：用户说“整理人物/谁是谁/检查实体”；写日志时出现新候选；`health` 的 `entity_maintenance.traffic_light` 为 yellow/red；月度整理。
-**筛 → 荐 → 问 → 写**：先 `life-index entity --review`，按 `evidence` 指针读原文，把候选按人物分桶为很确定 same / 很确定 different / 拿不准 / 低价值可缓；再给带理由建议，而不是复述队列；每轮 ≤5 组，问用户 Same / Different / Not-sure，也接受批量授权（如“你确定的那批照办”）。
+**触发**：用户说“整理人物/谁是谁/检查实体”；写日志时出现新候选；`life-index entity audit --json` 或 `health` 的实体维护灯为 yellow/red；月度整理。
+**查 → 筛 → 荐 → 问 → 写**：先 `life-index entity audit --json` 看 `traffic_light`、`pending_count`、`structural_issue_count` 和 `next_step.command`；需要访谈时再 `life-index entity --review`，按 `evidence` 指针读原文，把候选按人物分桶为很确定 same / 很确定 different / 拿不准 / 低价值可缓；再给带理由建议，而不是复述队列；每轮 ≤5 组，问用户 Same / Different / Not-sure，也接受批量授权（如“你确定的那批照办”）。
 
 确认后才写：合并前 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`，再 `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`；明确不同人/物时用 `life-index entity --review --action keep_separate --id SOURCE_ID --target-id TARGET_ID` 持久化人判，误标后用 `life-index entity --review --action undo_keep_separate --id SOURCE_ID --target-id TARGET_ID` 撤销；关系先 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID --relation RELATION`，再 `life-index entity --review --action add_relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION`；候选确认用 `life-index entity --review --action confirm_candidate --id ENTITY_ID` 或带 `--target-id TARGET_ID --relation RELATION`；加别名用 `life-index entity --add-alias ALIAS --id ENTITY_ID`；撤销合并用 `life-index entity --unmerge --id MERGED_ID --target-id TARGET_ID`。
 
@@ -543,7 +544,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 
 **队列外观察义务**：写日志或读 evidence 时，如果注意到新人名/新关系线索，轻提一句或用 `life-index entity --propose '<json>'` 静默放入候选池；候选不会影响 confirmed 检索，等下一轮访谈再裁决。
 
-**维护节律**：事件触发（新候选）轻提 1 句；周检 1 分钟看 `life-index health` 的 `entity_maintenance` 灯和 `pending_count`；月理 10 分钟过 ≤5 组访谈；用户说“整理人物”则直接进入筛 → 荐 → 问 → 写。
+**维护节律**：事件触发（新候选）轻提 1 句；周检 1 分钟跑 `life-index entity audit --json` 看 `traffic_light` 和 `pending_count`；月理 10 分钟过 ≤5 组访谈；用户说“整理人物”则直接进入查 → 筛 → 荐 → 问 → 写。
 
 **红线**：仅经 CLI 原语写图；工具内无 LLM、无 TUI、无零人判自动合并。高置信候选也只排队或等待用户批量授权。
 

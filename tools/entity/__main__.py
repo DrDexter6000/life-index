@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -92,7 +93,37 @@ def _print(payload: dict[str, Any]) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="life-index entity")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "audit":
+        audit_parser = argparse.ArgumentParser(prog="life-index entity audit")
+        audit_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+        audit_parser.parse_args(argv[1:])
+        from tools.entity.audit_facade import build_audit_facade
+        from tools.lib.paths import get_journals_dir
+
+        graph_path = _graph_path()
+        journals_dir = get_journals_dir()
+        result = build_audit_facade(
+            graph_path=graph_path,
+            journals_dir=journals_dir if journals_dir.exists() else None,
+        )
+        _print(result)
+        return
+
+    parser = argparse.ArgumentParser(
+        prog="life-index entity",
+        description="Life Index Entity Graph tools",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Primary workflow:
+  life-index entity audit --json    Combined read-only graph health facade
+
+Advanced primitives:
+  life-index entity --review        Human-in-the-loop review queue
+  life-index entity --check         Structural graph check
+  life-index entity --audit         Low-level quality audit
+  life-index entity --stats         Graph statistics
+""",
+    )
     parser.add_argument("--list", action="store_true", dest="list_entities")
     parser.add_argument("--type", dest="entity_type")
     parser.add_argument("--add")
