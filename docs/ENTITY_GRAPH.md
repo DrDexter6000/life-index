@@ -384,6 +384,7 @@ life-index entity --delete --id ENTITY_ID
 |------|------|-------------|
 | [`docs/API.md`](./API.md) §entity | CLI 参数、返回值、错误码 | 本文档聚焦**何时调用、调用前检查什么、生产约束** |
 | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) | 技术实现 SSOT（架构、模块结构） | 本文档是 Entity Graph 的操作规范，被 ARCHITECTURE 引用 |
+| [`docs/ENTITY_GRAPH_UX_SURFACE_SPEC.md`](./ENTITY_GRAPH_UX_SURFACE_SPEC.md) | 用户心智入口与未来收敛计划 | 本文档定义当前生产规则；UX spec 仅定义未来 build/audit/maintain 收敛方向 |
 | [`CHARTER.md`](../CHARTER.md) | 最高治理文件 | 本文档从属于宪章；数据主权、纯文本永久、CLI SSOT 等不变量由宪章保证 |
 
 ---
