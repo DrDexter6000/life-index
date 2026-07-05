@@ -4944,7 +4944,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 `entity` has multiple subcommand shapes. All share a common envelope pattern but with known deviations:
 
-**Standard envelope** (used by `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`, `--propose`, `--apply-batch`):
+**Standard envelope** (used by `audit --json`, `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`, `--propose`, `--apply-batch`):
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
@@ -4980,6 +4980,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
   - `--resolve` returns a plain string error message on failure (not a structured error object).
   - `--merge`, `--unmerge`, and `--review --action ...` return flat action objects without `data` wrapper.
 - `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`, and neutral `facts{}`.
+- `audit --json` data is a read-only workflow facade containing `workflow: "audit"`, `traffic_light`, `pending_count`, `structural_issue_count`, `quality_issue_count`, `duplicate_count`, `next_step{}`, and `components{check,audit,stats}`.
 - `--stats` data contains: `total_entities`, `by_type{}`, `total_aliases`, `total_relationships`, `top_referenced[]`, `top_cooccurrence[]`.
 - `--check` data contains: `total_entities`, `issues[]`, `summary{}`.
 
@@ -5003,12 +5004,14 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 ```bash
 python -m tools.entity [options]
+python -m tools.entity audit --json
 ```
 
 ### 参数
 
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
+| `audit --json` | subcommand | ❌ | - | 聚合 `--check` / `--audit` / `--stats` 的只读健康 facade |
 | `--list` | flag | ❌ | false | 列出实体图谱中的所有实体 |
 | `--type` | string | ❌ | - | 按类型过滤（如 `person`, `place`, `concept`） |
 | `--add` | string | ❌ | - | 添加新实体（JSON 格式） |
@@ -5035,6 +5038,56 @@ python -m tools.entity [options]
 | `--seed` | flag | ❌ | false | 从 journal frontmatter 冷启动图谱 |
 
 ### 主要操作模式
+
+#### `entity audit --json`
+
+聚合结构检查、质量审计与统计信息，给宿主 agent 一个低认知负担的只读健康入口：
+
+```bash
+life-index entity audit --json
+```
+
+返回（标准 envelope）：
+
+```json
+{
+  "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.x",
+    "generated_at": "2026-07-05T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
+  "data": {
+    "workflow": "audit",
+    "traffic_light": "yellow",
+    "pending_count": 1,
+    "structural_issue_count": 0,
+    "quality_issue_count": 1,
+    "duplicate_count": 0,
+    "next_step": {
+      "command": "life-index entity --review",
+      "reason": "pending entity review items"
+    },
+    "components": {
+      "check": {"total_entities": 2, "issues": [], "summary": {}},
+      "audit": {"audit_date": "2026-07-05", "summary": {}, "issues": [], "facts": {}},
+      "stats": {"total_entities": 2, "by_type": {"person": 2}}
+    },
+    "component_errors": {}
+  },
+  "error": null
+}
+```
+
+`traffic_light` is `green` when no pending or structural item needs attention,
+`yellow` when there are pending review/quality items, and `red` when structural
+or duplicate confirmed-entity issues require review. If the graph is malformed,
+the facade still returns a red payload from `--check`; failing subcomponents are
+reported in `component_errors` instead of crashing.
 
 #### `entity --audit`
 
