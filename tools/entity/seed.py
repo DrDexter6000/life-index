@@ -165,31 +165,11 @@ def _extract_frontmatter_entities(md_file: Path, counter: Counter[tuple[str, str
 # ── Seed operation ──────────────────────────────────────────────────────
 
 
-def seed_entity_graph(
+def _build_seed_plan(
     graph_path: Path,
     journals_dir: Path,
     min_frequency: int = 2,
-) -> dict[str, Any]:
-    """
-    Cold-start entity graph from journal frontmatter.
-
-    Idempotent: existing entities are never modified.
-    Only new primary_names not already in the graph are added.
-
-    Args:
-        graph_path: Path to entity_graph.yaml
-        journals_dir: Path to Journals/ directory
-        min_frequency: Minimum occurrences to include
-
-    Returns:
-        {
-            "success": bool,
-            "added": list[dict],
-            "skipped_existing": list[dict],
-            "skipped_low_frequency": list[dict],
-            "error": str | None,
-        }
-    """
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     result: dict[str, Any] = {
         "success": False,
         "added": [],
@@ -262,15 +242,74 @@ def seed_entity_graph(
                     }
                 )
 
-        # Append new entities to existing graph
-        if new_entities:
-            merged = existing + new_entities
-            save_entity_graph(merged, graph_path)
-
         result["success"] = True
 
     except (OSError, ValueError) as e:
         result["error"] = str(e)
         logger.error("seed_entity_graph failed: %s", e)
 
+    return result, new_entities if result["success"] else []
+
+
+def preview_seed_entity_graph(
+    graph_path: Path,
+    journals_dir: Path,
+    min_frequency: int = 2,
+) -> dict[str, Any]:
+    """Preview journal-derived seed candidates without mutating the graph."""
+    result, _new_entities = _build_seed_plan(graph_path, journals_dir, min_frequency)
+    return {
+        "success": result["success"],
+        "data": (
+            {
+                "preview": True,
+                "source": "journals",
+                "new_entities": len(result["added"]),
+                "added": result["added"],
+                "skipped_existing": result["skipped_existing"],
+                "skipped_low_frequency": result["skipped_low_frequency"],
+            }
+            if result["success"]
+            else None
+        ),
+        "error": result["error"],
+    }
+
+
+def seed_entity_graph(
+    graph_path: Path,
+    journals_dir: Path,
+    min_frequency: int = 2,
+) -> dict[str, Any]:
+    """
+    Cold-start entity graph from journal frontmatter.
+
+    Idempotent: existing entities are never modified.
+    Only new primary_names not already in the graph are added.
+
+    Args:
+        graph_path: Path to entity_graph.yaml
+        journals_dir: Path to Journals/ directory
+        min_frequency: Minimum occurrences to include
+
+    Returns:
+        {
+            "success": bool,
+            "added": list[dict],
+            "skipped_existing": list[dict],
+            "skipped_low_frequency": list[dict],
+            "error": str | None,
+        }
+    """
+    result, new_entities = _build_seed_plan(graph_path, journals_dir, min_frequency)
+    if not result["success"]:
+        return result
+    try:
+        if new_entities:
+            existing = load_entity_graph(graph_path)
+            save_entity_graph(existing + new_entities, graph_path)
+    except (OSError, ValueError) as e:
+        result["success"] = False
+        result["error"] = str(e)
+        logger.error("seed_entity_graph failed: %s", e)
     return result

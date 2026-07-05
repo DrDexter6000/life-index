@@ -10,6 +10,8 @@ import yaml
 from tools.lib.entity_schema import EntityGraphValidationError
 from tools.lib.entity_schema import validate_entity_graph_payload
 
+BUILD_FROM_JOURNALS_PREVIEW_COMMAND = "life-index entity build --from-journals --preview --json"
+
 
 def load_entity_graph(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
@@ -64,8 +66,10 @@ def check_graph_status(graph_path: Path) -> dict[str, Any]:
         "status": "not_initialized",
         "entity_count": 0,
         "suggested_action": {
-            "command": "life-index entity --seed",
-            "reason": "entity graph not found; search results may miss alias-based expansion",
+            "command": BUILD_FROM_JOURNALS_PREVIEW_COMMAND,
+            "reason": (
+                "entity graph not found; preview journal-derived candidates before any graph write"
+            ),
         },
     }
 
@@ -77,10 +81,11 @@ def check_graph_status(graph_path: Path) -> dict[str, Any]:
     except EntityGraphValidationError:
         result["status"] = "not_initialized"
         result["suggested_action"] = {
-            "command": "life-index entity --seed",
+            "command": BUILD_FROM_JOURNALS_PREVIEW_COMMAND,
             "reason": (
                 "entity graph is invalid or legacy; "
-                "search will continue without graph expansion until it is repaired"
+                "search will continue without graph expansion until it is repaired; "
+                "use preview-only build output before choosing any write path"
             ),
         }
         return result

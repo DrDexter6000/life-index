@@ -4980,6 +4980,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
   - `--resolve` returns a plain string error message on failure (not a structured error object).
   - `--merge`, `--unmerge`, and `--review --action ...` return flat action objects without `data` wrapper.
 - `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`, and neutral `facts{}`.
+- `build --from-journals --preview --json` previews journal-frontmatter seed candidates without mutating `entity_graph.yaml`; `data` contains `preview`, `source`, `new_entities`, `added[]`, `skipped_existing[]`, and `skipped_low_frequency[]`.
 - `build --from-batch FILE --preview/--apply --json` delegates to `--apply-batch` and preserves its `data` shape: `preview`, `new_entities`, `new_relationships`, `conflicts`, `duplicates_skipped`, and `conflict_items`.
 - `audit --json` data is a read-only workflow facade containing `workflow: "audit"`, `traffic_light`, `pending_count`, `structural_issue_count`, `quality_issue_count`, `duplicate_count`, `next_step{}`, and `components{check,audit,stats}`.
 - `maintain --normalize --preview/--apply --backup --json` data contains `workflow: "maintain.normalize"`, `preview`, `applied`, `summary{entity_count,change_count,review_question_count}`, `changes[]`, `review_questions[]`, and `backup_path`.
@@ -5006,6 +5007,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 ```bash
 python -m tools.entity [options]
+python -m tools.entity build --from-journals --preview --json
 python -m tools.entity build --from-batch batch.yaml --preview --json
 python -m tools.entity build --from-batch batch.yaml --apply --json
 python -m tools.entity audit --json
@@ -5017,6 +5019,7 @@ python -m tools.entity maintain --normalize --apply --backup --json
 
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
+| `build --from-journals --preview --json` | subcommand | ❌ | - | 预览 journal frontmatter 冷启动候选，零写入 |
 | `build --from-batch FILE --preview --json` | subcommand | ❌ | - | 预览用户确认批量实体/关系导入，零写入 |
 | `build --from-batch FILE --apply --json` | subcommand | ❌ | - | 应用用户确认批量实体/关系导入；委托 `--apply-batch` |
 | `audit --json` | subcommand | ❌ | - | 聚合 `--check` / `--audit` / `--stats` 的只读健康 facade |
@@ -5045,7 +5048,7 @@ python -m tools.entity maintain --normalize --apply --backup --json
 | `--export` | enum | ❌ | - | 导出格式：`csv` / `xlsx`（配合 `--review`） |
 | `--import` | string | ❌ | - | 从文件导入审订结果（配合 `--review`） |
 | `--output` | string | ❌ | - | 指定输出文件路径（配合 `--review --export`） |
-| `--seed` | flag | ❌ | false | 从 journal frontmatter 冷启动图谱 |
+| `--seed` | flag | ❌ | false | 高级兼容写入：从 journal frontmatter 直接冷启动图谱；主路径使用 `build --from-journals --preview` |
 
 ### 主要操作模式
 
@@ -5139,6 +5142,47 @@ life-index entity build --from-batch batch.yaml --apply --json
 `entity --apply-batch FILE`. Exactly one of `--preview` or `--apply` is required.
 Name conflicts are not merged automatically; they are routed into the review
 queue by the underlying batch primitive.
+
+#### `entity build --from-journals`
+
+从 journal frontmatter 生成冷启动候选计划。该 facade 当前只支持
+`--preview`，用于替代主路径里的直接 `--seed` 写入。
+
+```bash
+life-index entity build --from-journals --preview --json
+```
+
+返回（标准 envelope）：
+
+```json
+{
+  "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.x",
+    "generated_at": "2026-07-05T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
+  "data": {
+    "preview": true,
+    "source": "journals",
+    "new_entities": 3,
+    "added": [
+      {"id": "seed_person_alice", "primary_name": "Alice", "type": "person", "frequency": 2}
+    ],
+    "skipped_existing": [],
+    "skipped_low_frequency": []
+  },
+  "error": null
+}
+```
+
+`--preview` is read-only. `--apply` is intentionally unsupported for
+`--from-journals`; confirmed graph writes still require user judgment through
+batch authorization, review actions, or explicit advanced primitives.
 
 #### `entity maintain --normalize`
 

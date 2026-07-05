@@ -1,4 +1,4 @@
-"""Contract tests for the Entity Graph build-from-batch facade."""
+"""Contract tests for the Entity Graph build facade."""
 
 from __future__ import annotations
 
@@ -59,6 +59,16 @@ def _write_batch(path: Path) -> None:
     )
 
 
+def _write_journal(path: Path, frontmatter: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\n"
+        + yaml.safe_dump(frontmatter, sort_keys=False, allow_unicode=True)
+        + "---\n\nJournal body.\n",
+        encoding="utf-8",
+    )
+
+
 def test_entity_build_from_batch_preview_delegates_without_writes(
     isolated_data_dir: Path,
 ) -> None:
@@ -104,3 +114,61 @@ def test_entity_build_from_batch_apply_delegates_to_batch_apply(
     assert graph["actor-alice"]["status"] == "confirmed"
     assert graph["actor-alice"]["attributes"]["kind"] == "human"
     assert graph["actor-alice"]["relationships"][0]["target"] == "place-garden"
+
+
+def test_entity_build_from_journals_preview_plans_seed_without_writes(
+    isolated_data_dir: Path,
+) -> None:
+    """Build facade can preview journal-derived seed candidates without mutation."""
+    graph_path = isolated_data_dir / "entity_graph.yaml"
+    save_entity_graph(
+        [
+            {
+                "id": "person-existing",
+                "type": "person",
+                "primary_name": "Existing Person",
+                "aliases": [],
+                "relationships": [],
+            }
+        ],
+        graph_path,
+    )
+    journals_dir = isolated_data_dir / "Journals" / "2026" / "01"
+    _write_journal(
+        journals_dir / "life-index_2026-01-01_001.md",
+        {
+            "title": "One",
+            "date": "2026-01-01",
+            "people": ["Alice", "Existing Person", "Single Mention"],
+            "location": "Garden",
+            "tags": ["Project Atlas"],
+        },
+    )
+    _write_journal(
+        journals_dir / "life-index_2026-01-02_001.md",
+        {
+            "title": "Two",
+            "date": "2026-01-02",
+            "people": ["Alice", "Existing Person"],
+            "location": "Garden",
+            "tags": ["Project Atlas"],
+        },
+    )
+    before = graph_path.read_text(encoding="utf-8")
+
+    payload = _run_entity_cli(["build", "--from-journals", "--preview", "--json"])
+
+    assert graph_path.read_text(encoding="utf-8") == before
+    assert payload["success"] is True
+    assert payload["data"]["preview"] is True
+    assert payload["data"]["source"] == "journals"
+    assert payload["data"]["new_entities"] == 3
+    assert payload["data"]["skipped_existing"] == [
+        {"primary_name": "Existing Person", "type": "person", "frequency": 2}
+    ]
+    assert payload["data"]["skipped_low_frequency"] == [
+        {"primary_name": "Single Mention", "type": "person", "frequency": 1}
+    ]
+    planned_names = {item["primary_name"] for item in payload["data"]["added"]}
+    assert planned_names == {"Alice", "Garden", "Project Atlas"}
+    assert payload["error"] is None
