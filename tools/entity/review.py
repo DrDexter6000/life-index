@@ -78,6 +78,32 @@ def _find_entity(graph: list[dict[str, Any]], entity_id: str) -> dict[str, Any] 
     return next((entity for entity in graph if entity["id"] == entity_id), None)
 
 
+def _distinct_record(target_id: str, *, source: str, created_at: str) -> dict[str, str]:
+    return {"target": target_id, "source": source, "created_at": created_at}
+
+
+def _upsert_distinct_record(
+    entity: dict[str, Any], target_id: str, *, source: str, created_at: str
+) -> None:
+    records = [
+        record
+        for record in entity.get("not_duplicate_of", []) or []
+        if record.get("target") != target_id
+    ]
+    records.append(_distinct_record(target_id, source=source, created_at=created_at))
+    entity["not_duplicate_of"] = records
+
+
+def _remove_distinct_record(entity: dict[str, Any], target_id: str) -> bool:
+    records = entity.get("not_duplicate_of", []) or []
+    remaining = [record for record in records if record.get("target") != target_id]
+    if remaining:
+        entity["not_duplicate_of"] = remaining
+    else:
+        entity.pop("not_duplicate_of", None)
+    return len(remaining) != len(records)
+
+
 def _remove_aliases(entity: dict[str, Any], aliases: list[str]) -> None:
     to_remove = set(aliases)
     entity["aliases"] = [alias for alias in entity.get("aliases", []) if alias not in to_remove]
@@ -236,8 +262,27 @@ def generate_preview(
                 }
             ]
 
+    elif action == "keep_separate" and source_id and target_id:
+        preview["changes"] = [
+            {
+                "type": "mark_distinct",
+                "source_id": source_id,
+                "target_id": target_id,
+                "result": {"source": "user"},
+            }
+        ]
+
+    elif action == "undo_keep_separate" and source_id and target_id:
+        preview["changes"] = [
+            {
+                "type": "remove_distinct_mark",
+                "source_id": source_id,
+                "target_id": target_id,
+            }
+        ]
+
     elif action == "keep_separate":
-        preview["changes"] = [{"type": "no_change"}]
+        preview["changes"] = [{"type": "mark_distinct"}]
 
     elif action == "add_relationship" and source_id and target_id and relation:
         preview["changes"] = [
@@ -283,7 +328,8 @@ def apply_action(
 
     Supported actions:
     - merge_as_alias: Merge source into target (source's names become target's aliases)
-    - keep_separate: No change, acknowledge as distinct
+    - keep_separate: Persist a user-confirmed non-duplicate decision
+    - undo_keep_separate: Remove a previously persisted non-duplicate decision
     - add_relationship: Add a confirmed edge from source to target
     - skip: Skip this review item
 
@@ -302,8 +348,61 @@ def apply_action(
     if action == "skip":
         return {"success": True, "action": "skip", "skipped": True}
 
-    if action == "keep_separate":
-        return {"success": True, "action": "keep_separate", "changes": []}
+    if action in {"keep_separate", "undo_keep_separate"}:
+        if not source_id or not target_id:
+            return {
+                "success": False,
+                "action": action,
+                "error": "source_id and target_id required for keep_separate",
+            }
+
+        graph_path = graph_path or _graph_path()
+        graph = load_entity_graph(graph_path)
+        source_entity = _find_entity(graph, source_id)
+        target_entity = _find_entity(graph, target_id)
+        if source_entity is None:
+            return {
+                "success": False,
+                "action": action,
+                "error": f"Source entity not found: {source_id}",
+            }
+        if target_entity is None:
+            return {
+                "success": False,
+                "action": action,
+                "error": f"Target entity not found: {target_id}",
+            }
+
+        if action == "undo_keep_separate":
+            removed_source = _remove_distinct_record(source_entity, target_id)
+            removed_target = _remove_distinct_record(target_entity, source_id)
+            save_entity_graph(graph, graph_path)
+            return {
+                "success": True,
+                "action": "undo_keep_separate",
+                "source_id": source_id,
+                "target_id": target_id,
+                "removed": removed_source or removed_target,
+            }
+
+        created_at = _now_iso()
+        _upsert_distinct_record(source_entity, target_id, source="user", created_at=created_at)
+        _upsert_distinct_record(target_entity, source_id, source="user", created_at=created_at)
+        save_entity_graph(graph, graph_path)
+        return {
+            "success": True,
+            "action": "keep_separate",
+            "source_id": source_id,
+            "target_id": target_id,
+            "changes": [
+                {
+                    "type": "mark_distinct",
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "source": "user",
+                }
+            ],
+        }
 
     if action in {"confirm_candidate", "reject_candidate"}:
         if not source_id:

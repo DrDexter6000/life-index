@@ -119,6 +119,12 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 `weight` 与 `supporting_journal_ids` 继续兼容，仍仅记录已经确定的边强度和支撑日志路径。
 这些元数据是给确定性导航工具消费的，不得由工具从自然语言推断或自动编造。
 
+实体可选字段 `not_duplicate_of[]` 记录用户已判定“不是同一实体”的重复审订结果。
+每条记录包含 `target`、`source` 和 `created_at`；`entity --review --action
+keep_separate --id A --target-id B` 会在 A/B 两侧写入对称记录，audit 必须尊重
+该用户判决，不再把该 pair 报为 `possible_duplicate`。`entity --review --action
+undo_keep_separate --id A --target-id B` 会撤销该标记，让 audit 重新检测该 pair。
+
 ### 4.2 Role Attribute 是过渡表达
 
 `attributes.role`（如 `child`, `spouse`, `parent`）用于**当前阶段**快速标注实体在家庭结构中的位置，但它:
@@ -185,6 +191,7 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 - 删除实体
 - 合并实体
 - 复原已合并实体
+- 标记或撤销“保持分离”重复审订结果
 - 修改 `primary_name`
 
 **什么算用户明确确认**:
@@ -235,6 +242,11 @@ Entity Graph 的 alias 准入仍以“稳定、无歧义”为前提；搜索端
 `entity --merge` 会在目标实体下保存 `merged_entities[]` 墓碑，包含被吸收实体的完整
 原始记录以及本次合并新增的 alias、转移关系和反向引用改写。`entity --unmerge --id
 MERGED_ID --target-id TARGET_ID` 使用该墓碑完整复原，并移除合并产生的 alias / 转移关系。
+
+`entity --review --action keep_separate --id A --target-id B` 持久化用户对疑似重复
+pair 的“不是同一人/物”判决，写入 `source=user` 与 `created_at`。该记录是可逆的；
+`entity --review --action undo_keep_separate --id A --target-id B` 删除标记后，下次
+audit 会重新报告仍符合规则的 `possible_duplicate`。
 
 ## 7. 变更后验证清单
 
@@ -380,6 +392,6 @@ life-index entity --delete --id ENTITY_ID
 
 | 版本 | 日期 | 变更 | 作者 |
 |------|------|------|------|
-| v1.2 | 2026-07-04 | 明确用户是 confirmed 图谱权威来源；candidate 可持久化在 `entity_graph.yaml` 但不参与 confirmed 检索；新增批量 apply、agent propose、review 节律说明 | Codex |
+| v1.2 | 2026-07-04 | 明确用户是 confirmed 图谱权威来源；candidate 可持久化在 `entity_graph.yaml` 但不参与 confirmed 检索；新增批量 apply、agent propose、review 节律说明；`keep_separate` 持久化为可撤销的 `not_duplicate_of` 用户判决 | Codex |
 | v1.1 | 2026-05-06 | §8 AI 模型实体规则更新：从"暂缓入图"改为"允许入图，须用户明确批准"；固定 `person`+`subtype=ai`+`role=ai_assistant` 规则；明确 provider 属性表达、禁止泛词 alias、批次 ≤3 等约束；同步更新 §9 候选池状态 | Kimi |
 | v1.0 | 2026-05-05 | 基于 D0.3 草案正式落盘为 `docs/ENTITY_GRAPH.md`，收紧生产写入规则，明确 relationship 过渡策略，定义验证清单 | Kimi |
