@@ -387,7 +387,7 @@ relationships:
 | `weight` | number | 兼容既有可选权重 |
 | `supporting_journal_ids` | string[] | 兼容既有支撑日志字段 |
 
-`entity --merge` 会把被吸收实体的完整记录保存在目标实体的 `merged_entities[]`
+`entity --review --action merge_as_alias` 会把被吸收实体的完整记录保存在目标实体的 `merged_entities[]`
 墓碑中；`entity --unmerge --id MERGED_ID --target-id TARGET_ID` 用该墓碑完整复原。
 
 #### boost_decay Echo-Only Placeholder (B4.2)
@@ -4944,7 +4944,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 `entity` has multiple subcommand shapes. All share a common envelope pattern but with known deviations:
 
-**Standard envelope** (used by `build --from-batch`, `audit --json`, `maintain --normalize`, `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`, `--propose`, `--apply-batch`):
+**Standard envelope** (used by `build --from-batch`, `audit --json`, `maintain --normalize`, `maintain --delete`, `--audit`, `--stats`, `--check`, `--review`, `--list`, `--propose`, `--apply-batch`):
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
@@ -4954,7 +4954,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 | `data` | object\|array | yes | Subcommand-specific result payload |
 | `error` | null\|string | yes | `null` on success; string on some error paths |
 
-**action deviations** (`--merge`, `--unmerge`, `--review --action ...`; flat envelope, no `data` wrapper):
+**action deviations** (`--unmerge`, `--review --action ...`; flat envelope, no `data` wrapper):
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -4978,12 +4978,13 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 - `data`: subcommand-specific payload. Shape varies by subcommand (see per-subcommand examples below).
 - `error`: on most subcommands, `null` for success. Known deviations:
   - `--resolve` returns a plain string error message on failure (not a structured error object).
-  - `--merge`, `--unmerge`, and `--review --action ...` return flat action objects without `data` wrapper.
+  - `--unmerge` and `--review --action ...` return flat action objects without `data` wrapper.
 - `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`, and neutral `facts{}`.
 - `build --from-journals --preview --json` previews journal-frontmatter seed candidates without mutating `entity_graph.yaml`; `data` contains `preview`, `source`, `new_entities`, `added[]`, `skipped_existing[]`, and `skipped_low_frequency[]`.
 - `build --from-batch FILE --preview/--apply --json` delegates to `--apply-batch` and preserves its `data` shape: `preview`, `new_entities`, `new_relationships`, `conflicts`, `duplicates_skipped`, and `conflict_items`.
 - `audit --json` data is a read-only workflow facade containing `workflow: "audit"`, `traffic_light`, `pending_count`, `structural_issue_count`, `quality_issue_count`, `duplicate_count`, `next_step{}`, and `components{check,audit,stats}`.
 - `maintain --normalize --preview/--apply --backup --json` data contains `workflow: "maintain.normalize"`, `preview`, `applied`, `summary{entity_count,change_count,review_question_count}`, `changes[]`, `review_questions[]`, and `backup_path`.
+- `maintain --delete --id ENTITY_ID --preview/--apply --backup --json` data contains `workflow: "maintain.delete"`, `preview`, `applied`, `backup_path`, `deleted_id`, `deleted_name`, and `cleaned_refs[]`.
 - `--stats` data contains: `total_entities`, `by_type{}`, `total_aliases`, `total_relationships`, `top_referenced[]`, `top_cooccurrence[]`.
 - `--check` data contains: `total_entities`, `issues[]`, `summary{}`.
 
@@ -4992,7 +4993,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 **Known deviations**: `entity` error handling is inconsistent across subcommands.
 
 - Most read subcommands (`--audit`, `--stats`, `--check`, `--review`) use the standard `{success, data, error}` envelope with `error: null` on success.
-- `--merge`, `--unmerge`, and `--review --action ...` return a **flat shape** without a `data` wrapper — this is a documented deviation from the standard envelope.
+- `--unmerge` and `--review --action ...` return a **flat shape** without a `data` wrapper — this is a documented deviation from the standard envelope.
 - `--resolve` returns `error` as a **plain string** (e.g., `"Entity not found"`) instead of a structured error object with `code`/`message`/`recovery_strategy`.
 - Parser errors (missing required flags) raise `SystemExit` with a plain text message, not a JSON error envelope.
 - Runtime alignment to the unified error format is deferred to a post-M16 milestone.
@@ -5013,6 +5014,8 @@ python -m tools.entity build --from-batch batch.yaml --apply --json
 python -m tools.entity audit --json
 python -m tools.entity maintain --normalize --preview --json
 python -m tools.entity maintain --normalize --apply --backup --json
+python -m tools.entity maintain --delete --id ENTITY_ID --preview --json
+python -m tools.entity maintain --delete --id ENTITY_ID --apply --backup --json
 ```
 
 ### 参数
@@ -5025,30 +5028,42 @@ python -m tools.entity maintain --normalize --apply --backup --json
 | `audit --json` | subcommand | ❌ | - | 聚合 `--check` / `--audit` / `--stats` 的只读健康 facade |
 | `maintain --normalize --preview --json` | subcommand | ❌ | - | 预览旧实体类型到 `type` + `attributes.kind` 的迁移计划，零写入 |
 | `maintain --normalize --apply --backup --json` | subcommand | ❌ | - | 应用 deterministic normalize plan；必须创建 `entity_graph.yaml.backup_*` |
+| `maintain --delete --id ENTITY_ID --preview --json` | subcommand | ❌ | - | 预览实体删除影响，零写入 |
+| `maintain --delete --id ENTITY_ID --apply --backup --json` | subcommand | ❌ | - | 删除实体并清理引用；必须创建 `entity_graph.yaml.backup_*` |
 | `--list` | flag | ❌ | false | 列出实体图谱中的所有实体 |
 | `--type` | string | ❌ | - | 按类型过滤（如 `actor`, `artifact`, `place`, 兼容旧 `person`） |
 | `--add` | string | ❌ | - | 添加新实体（JSON 格式） |
 | `--resolve` | string | ❌ | - | 解析实体名称歧义 |
-| `--update` | flag | ❌ | false | 更新实体属性（需 `--id` 和 `--add-alias`） |
 | `--audit` | flag | ❌ | false | 执行实体质量审计 |
 | `--stats` | flag | ❌ | false | 输出图谱统计 |
 | `--check` | flag | ❌ | false | 执行图谱完整性检查 |
 | `--review` | flag | ❌ | false | 打开 Review Hub（风险优先审订队列） |
-| `--merge` | string | ❌ | - | 合并实体（需 `--id` 和 `--target-id`） |
 | `--unmerge` | flag | ❌ | false | 按 merge 墓碑复原实体（需 `--id` 和 `--target-id`） |
 | `--propose` | string | ❌ | - | 宿主 agent 提交实体/关系假设（JSON），只写 `status=candidate` |
 | `--apply-batch` | string | ❌ | - | 应用用户确认后的 JSON/YAML 批量实体/关系文件 |
-| `--delete` | flag | ❌ | false | 删除指定实体（需 `--id`） |
-| `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `--delete` / `--apply-batch` / `--review --action preview`） |
+| `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `maintain --delete` / `--apply-batch` / `--review --action preview`） |
 | `--id` | string | 条件必填 | - | 源实体 ID |
 | `--target-id` | string | 条件必填 | - | 目标实体 ID（用于 merge） |
 | `--relation` | string | 条件必填 | - | `--review --action add_relationship` 的关系类型 |
-| `--add-alias` | string | ❌ | - | 为实体添加别名（配合 `--update`） |
+| `--add-alias` | string | ❌ | - | 为实体添加别名（需 `--id`） |
 | `--action` | enum | ❌ | - | `merge_as_alias` / `add_relationship` / `confirm_candidate` / `reject_candidate` / `keep_separate` / `undo_keep_separate` / `skip` / `preview` |
 | `--export` | enum | ❌ | - | 导出格式：`csv` / `xlsx`（配合 `--review`） |
 | `--import` | string | ❌ | - | 从文件导入审订结果（配合 `--review`） |
 | `--output` | string | ❌ | - | 指定输出文件路径（配合 `--review --export`） |
-| `--seed` | flag | ❌ | false | 高级兼容写入：从 journal frontmatter 直接冷启动图谱；主路径使用 `build --from-journals --preview` |
+
+#### Retired top-level primitives
+
+Owner decision on 2026-07-05: Life Index has no historical install base that
+depends on these top-level flags, so the compatibility-demotion plan was
+replaced by a clean cutover. Calls return `ENTITY_PRIMITIVE_REMOVED` with a
+replacement command.
+
+| Retired flag | Replacement |
+|---|---|
+| `--seed` | `entity build --from-journals --preview --json`, then user-authorized batch/review apply |
+| `--update` | `entity --add-alias ALIAS --id ENTITY_ID` |
+| `--merge` | `entity --review --action preview`, then `entity --review --action merge_as_alias` |
+| `--delete` | `entity maintain --delete --id ENTITY_ID --preview --json`, then `entity maintain --delete --id ENTITY_ID --apply --backup --json` |
 
 ### 主要操作模式
 
@@ -5146,7 +5161,7 @@ queue by the underlying batch primitive.
 #### `entity build --from-journals`
 
 从 journal frontmatter 生成冷启动候选计划。该 facade 当前只支持
-`--preview`，用于替代主路径里的直接 `--seed` 写入。
+`--preview`，用于替代旧的直接冷启动写盘入口。
 
 ```bash
 life-index entity build --from-journals --preview --json
@@ -5503,12 +5518,13 @@ automatically; they become `status: candidate` review items while clean rows
 still apply. Invalid batches fail atomically without changing the graph. Reusing
 the same batch is idempotent.
 
-#### `entity --merge`
+#### `entity --review --action merge_as_alias`
 
-合并实体。`--merge` 需要一个参数值（当前实现中该值未被使用，实际 source 以 `--id` 为准）：
+用户确认两实体是同一对象后，通过 review action 合并。合并前应先 preview：
 
 ```bash
-life-index entity --merge p001 --id p001 --target-id p002
+life-index entity --review --action preview --id p001 --target-id p002
+life-index entity --review --action merge_as_alias --id p001 --target-id p002
 ```
 
 返回：
@@ -5556,12 +5572,14 @@ life-index entity --review --action add_relationship --id p001 --target-id p002 
 
 写入的边会带 `source: review`、`status: confirmed`、`created_at` 和 `evidence` 字段。
 
-#### `entity --delete --id ENTITY_ID`
+#### `entity maintain --delete`
 
-删除实体。执行前会报告引用该实体的其他实体：
+删除实体必须通过 maintain facade，两段式执行：先 preview，用户确认后 apply，
+并强制创建 `entity_graph.yaml.backup_*`。
 
 ```bash
-life-index entity --delete --id p003
+life-index entity maintain --delete --id p003 --preview --json
+life-index entity maintain --delete --id p003 --apply --backup --json
 ```
 
 返回：
@@ -5572,63 +5590,25 @@ life-index entity --delete --id p003
   "schema_version": "v1.1.1",
   "provenance": {
     "source_hash": "sha256:...",
-    "tool_version": "1.1.1",
-    "generated_at": "2026-05-23T10:00:00+00:00",
+    "tool_version": "1.x",
+    "generated_at": "2026-07-05T10:00:00+00:00",
     "generator": "entity",
     "params_hash": "sha256:...",
     "fixture_version": null
   },
   "data": {
+    "workflow": "maintain.delete",
+    "preview": true,
+    "applied": false,
+    "backup_path": null,
     "deleted_id": "p003",
-    "deleted_name": "旧同事A",
+    "deleted_name": "Old Contact A",
     "cleaned_refs": [
       {"entity_id": "p001", "relation": "colleague"}
     ]
   },
   "error": null
 }
-```
-
-##### `--delete --preview --id ENTITY_ID`
-
-预览删除影响，不修改实体图谱。返回与实际删除相同的 JSON 结构（`deleted_id`、`deleted_name`、`cleaned_refs`），但**不会移除实体或清理引用**：
-
-```bash
-life-index entity --delete --preview --id p003
-```
-
-返回：
-
-```json
-{
-  "success": true,
-  "data": {
-    "deleted_id": "p003",
-    "deleted_name": "旧同事A",
-    "cleaned_refs": [
-      {"entity_id": "p001", "relation": "colleague"}
-    ]
-  },
-  "error": null
-}
-```
-
-> **注意**: `--preview` 仅配合 `--delete` 使用，对其他子命令无效。不带 `--preview` 的 `--delete` 行为不变（立即删除并落盘）。
-
-#### `entity --seed`
-
-高级兼容原语。它会直接从现有 journal frontmatter 冷启动/补充
-`entity_graph.yaml` 并写盘；主路径应先使用 preview-first facade：
-
-```bash
-life-index entity build --from-journals --preview --json
-```
-
-只有在用户审阅候选并明确授权后，才经 batch/review/显式写入原语落盘。
-旧 `--seed` 默认仅用于 sandbox 或明确的高级维护场景。
-
-```bash
-life-index entity --seed
 ```
 
 #### `entity --candidate-edges`
@@ -5688,9 +5668,9 @@ life-index entity --candidate-edges --output=json
 
 - **review / merge / delete 是高风险操作**，必须在调用前明确目标实体和确认策略
 - `--audit` 结果中的 `suggested_action` 仅为建议，最终合并/删除决策需用户确认
-- `--seed` 是高级兼容原语，会直接写入图谱；主路径必须先 `life-index entity build --from-journals --preview --json`
+- 冷启动主路径必须先 `life-index entity build --from-journals --preview --json`
+- 删除主路径必须先 `life-index entity maintain --delete --id ENTITY_ID --preview --json`，确认后再 `--apply --backup`
 - `--check` 应在 `--audit` 之前运行，作为快速健康检查
-- `--merge` 的接口设计有历史包袱：必须传一个参数值，但实际 source 由 `--id` 指定
 
 ---
 

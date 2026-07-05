@@ -41,6 +41,15 @@ def _invoke(*extra_args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _invoke_entity(*extra_args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, "-m", "tools.entity", *extra_args],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
 class TestHelpSurface:
     def test_dash_dash_help_exits_0(self):
         result = _invoke("--help")
@@ -127,6 +136,23 @@ class TestHelpSurface:
         result = _invoke("help")
         assert "smart-search  Deterministic evidence scaffold for host agents" in result.stdout
         assert "LLM orchestration" not in result.stdout
+
+    def test_entity_help_removes_retired_top_level_primitives(self):
+        result = _invoke_entity("--help")
+
+        assert result.returncode == 0
+        assert "Primary workflow:" in result.stdout
+        assert "life-index entity build --from-journals --preview --json" in result.stdout
+        assert "life-index entity audit --json" in result.stdout
+        assert "life-index entity maintain --normalize --preview --json" in result.stdout
+        assert (
+            "life-index entity maintain --delete --id ENTITY_ID --preview --json" in result.stdout
+        )
+        assert "Advanced compatibility / high-risk primitives:" not in result.stdout
+        for retired_flag in ("--seed", "--merge", "--update"):
+            assert retired_flag not in result.stdout
+        assert "  --delete" not in result.stdout
+        assert "[--delete]" not in result.stdout
 
 
 class TestNoArgsSurface:

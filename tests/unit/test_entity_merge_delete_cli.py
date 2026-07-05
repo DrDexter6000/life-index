@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Tests for entity --merge / --delete CLI operations — Round 7 Phase 2 Task 8.
+Tests for entity review merge and maintain delete CLI operations.
 
 Validates that:
-- merge combines aliases and preserves relationships
-- delete reports and cleans dangling refs
-- both operations produce structured JSON output
+- review merge combines aliases and preserves relationships
+- maintain delete reports and cleans dangling refs
+- destructive delete goes through preview/apply with backup
 """
 
 import json
@@ -63,7 +63,7 @@ def _graph_path_for(isolated_data_dir: Path) -> Path:
 
 
 class TestMergeCLI:
-    """entity --merge combines aliases and preserves relationships."""
+    """review merge_as_alias combines aliases and preserves relationships."""
 
     def test_merge_combines_aliases(self, isolated_data_dir: Path) -> None:
         from tools.entity.review import apply_action
@@ -130,8 +130,8 @@ class TestMergeCLI:
         assert "person-b" in targets
 
 
-class TestDeleteCLI:
-    """entity --delete removes entity and reports/cleans refs."""
+class TestMaintainDeleteCLI:
+    """entity maintain --delete removes entity and reports/cleans refs."""
 
     class _TeeStdout:
         """Simulate pytest tee-sys where reported encoding and write path diverge."""
@@ -160,7 +160,7 @@ class TestDeleteCLI:
         _save_graph(_sample_graph(), isolated_data_dir)
         gp = _graph_path_for(isolated_data_dir)
 
-        main(["--delete", "--id", "person-b"])
+        main(["maintain", "--delete", "--id", "person-b", "--apply", "--backup", "--json"])
 
         graph = load_entity_graph(gp)
         ids = {e["id"] for e in graph}
@@ -173,7 +173,7 @@ class TestDeleteCLI:
         _save_graph(_sample_graph(), isolated_data_dir)
         gp = _graph_path_for(isolated_data_dir)
 
-        main(["--delete", "--id", "person-a"])
+        main(["maintain", "--delete", "--id", "person-a", "--apply", "--backup", "--json"])
 
         graph = load_entity_graph(gp)
         person_c = next(e for e in graph if e["id"] == "person-c")
@@ -192,7 +192,7 @@ class TestDeleteCLI:
         fake_stdout = io.TextIOWrapper(buffer, encoding="cp1252", errors="strict")
         monkeypatch.setattr(sys, "stdout", fake_stdout)
 
-        main(["--delete", "--id", "person-a"])
+        main(["maintain", "--delete", "--id", "person-a", "--apply", "--backup", "--json"])
 
         fake_stdout.flush()
         output = buffer.getvalue().decode("ascii")
@@ -210,7 +210,7 @@ class TestDeleteCLI:
         fake_stdout = self._TeeStdout()
         monkeypatch.setattr(sys, "stdout", fake_stdout)
 
-        main(["--delete", "--id", "person-a"])
+        main(["maintain", "--delete", "--id", "person-a", "--apply", "--backup", "--json"])
 
         fake_stdout.flush()
         captured_output = fake_stdout.captured_buffer.getvalue().decode("utf-8")
@@ -227,29 +227,35 @@ class TestDeleteCLI:
         gp = _graph_path_for(isolated_data_dir)
 
         # Should not crash — outputs JSON with success=false
-        main(["--delete", "--id", "nonexistent"])
+        main(["maintain", "--delete", "--id", "nonexistent", "--apply", "--backup", "--json"])
 
         # Graph should be unchanged
         graph = load_entity_graph(gp)
         ids = {e["id"] for e in graph}
         assert "person-a" in ids  # nothing was deleted
 
-    def test_delete_without_id_raises(self, isolated_data_dir: Path) -> None:
+    def test_delete_without_id_returns_structured_error(
+        self,
+        isolated_data_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         from tools.entity.__main__ import main
 
         _save_graph(_sample_graph(), isolated_data_dir)
 
-        with pytest.raises(SystemExit):
-            main(["--delete"])
+        main(["maintain", "--delete", "--apply", "--backup", "--json"])
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["success"] is False
+        assert payload["error"]["code"] == "ENTITY_MAINTAIN_DELETE_ID_REQUIRED"
 
 
-class TestDeletePreviewCLI:
-    """entity --delete --preview reports impact without mutating the graph."""
+class TestMaintainDeletePreviewCLI:
+    """entity maintain --delete --preview reports impact without mutating the graph."""
 
     def test_preview_reports_deleted_id_name_and_cleaned_refs(
         self, isolated_data_dir: Path
     ) -> None:
-        """--delete --preview --id person-a reports deleted_id, deleted_name, and cleaned_refs."""
+        """maintain delete preview reports deleted_id, deleted_name, and cleaned_refs."""
         from tools.entity.__main__ import main
 
         _save_graph(_sample_graph(), isolated_data_dir)
@@ -259,7 +265,7 @@ class TestDeletePreviewCLI:
         old_stdout = sys.stdout
         sys.stdout = buffer
         try:
-            main(["--delete", "--preview", "--id", "person-a"])
+            main(["maintain", "--delete", "--preview", "--id", "person-a", "--json"])
         finally:
             sys.stdout = old_stdout
 
@@ -282,7 +288,7 @@ class TestDeletePreviewCLI:
         old_stdout = sys.stdout
         sys.stdout = buffer
         try:
-            main(["--delete", "--preview", "--id", "person-a"])
+            main(["maintain", "--delete", "--preview", "--id", "person-a", "--json"])
         finally:
             sys.stdout = old_stdout
 
@@ -301,7 +307,7 @@ class TestDeletePreviewCLI:
         old_stdout = sys.stdout
         sys.stdout = buffer
         try:
-            main(["--delete", "--preview", "--id", "person-a"])
+            main(["maintain", "--delete", "--preview", "--id", "person-a", "--json"])
         finally:
             sys.stdout = old_stdout
 

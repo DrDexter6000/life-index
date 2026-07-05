@@ -114,3 +114,55 @@ def test_merge_then_unmerge_restores_absorbed_entity_and_removes_merge_aliases(
     assert {(rel["target"], rel["relation"]) for rel in morgan["relationships"]} == {
         ("person-bob", "friend_of")
     }
+
+
+def test_review_merge_cli_stores_complete_tombstone_and_unmerge_roundtrips(
+    isolated_data_dir: Path,
+    capsys,
+) -> None:
+    from tools.entity.__main__ import main
+
+    graph_path = _save_graph(isolated_data_dir)
+
+    main(
+        [
+            "--review",
+            "--action",
+            "merge_as_alias",
+            "--id",
+            "person-bob",
+            "--target-id",
+            "person-alice",
+        ]
+    )
+    payload = capsys.readouterr().out
+    assert '"success": true' in payload
+
+    graph = load_entity_graph(graph_path)
+    alice = next(entity for entity in graph if entity["id"] == "person-alice")
+    tombstone = alice["merged_entities"][0]
+    assert set(tombstone) == {
+        "id",
+        "target_id",
+        "source",
+        "merged_at",
+        "entity",
+        "transferred_aliases",
+        "transferred_relationships",
+        "rewired_relationships",
+    }
+    assert tombstone["source"] == "review"
+    assert tombstone["entity"]["id"] == "person-bob"
+    assert tombstone["entity"]["primary_name"] == "Bob"
+    assert tombstone["transferred_aliases"] == ["Bob", "B. Example"]
+    assert tombstone["transferred_relationships"][0]["target"] == "person-morgan"
+    assert tombstone["rewired_relationships"][0]["entity_id"] == "person-morgan"
+
+    main(["--unmerge", "--id", "person-bob", "--target-id", "person-alice"])
+    capsys.readouterr()
+    graph = load_entity_graph(graph_path)
+    assert {entity["id"] for entity in graph} == {
+        "person-alice",
+        "person-bob",
+        "person-morgan",
+    }

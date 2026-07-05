@@ -172,3 +172,52 @@ def test_entity_build_from_journals_preview_plans_seed_without_writes(
     planned_names = {item["primary_name"] for item in payload["data"]["added"]}
     assert planned_names == {"Alice", "Garden", "Project Atlas"}
     assert payload["error"] is None
+
+
+def test_entity_build_from_journals_preview_to_batch_apply_closes_cold_start_loop(
+    isolated_data_dir: Path,
+) -> None:
+    """Cold-start build uses previewed journal candidates followed by batch apply."""
+    graph_path = isolated_data_dir / "entity_graph.yaml"
+    journals_dir = isolated_data_dir / "Journals" / "2026" / "01"
+    _write_journal(
+        journals_dir / "life-index_2026-01-01_001.md",
+        {
+            "title": "One",
+            "date": "2026-01-01",
+            "people": ["Alice"],
+            "location": "Garden",
+            "tags": [],
+        },
+    )
+    _write_journal(
+        journals_dir / "life-index_2026-01-02_001.md",
+        {
+            "title": "Two",
+            "date": "2026-01-02",
+            "people": ["Alice"],
+            "location": "Garden",
+            "tags": [],
+        },
+    )
+
+    preview = _run_entity_cli(["build", "--from-journals", "--preview", "--json"])
+    assert preview["success"] is True
+    assert not graph_path.exists()
+
+    batch_path = isolated_data_dir / "journal-seed-batch.yaml"
+    batch_path.write_text(
+        yaml.safe_dump(
+            {"entities": preview["data"]["added"], "relationships": []},
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    applied = _run_entity_cli(["build", "--from-batch", str(batch_path), "--apply", "--json"])
+
+    assert applied["success"] is True
+    graph = {entity["primary_name"]: entity for entity in load_entity_graph(graph_path)}
+    assert set(graph) == {"Alice", "Garden"}
+    assert all(entity["source"] == "user" for entity in graph.values())
+    assert all(entity["status"] == "confirmed" for entity in graph.values())

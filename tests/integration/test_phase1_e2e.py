@@ -2,18 +2,20 @@
 Phase 1 Integration Test — Entity graph cold-start + search + health + write (Round 10).
 
 End-to-end verification that T1.1–T1.4 work together:
-1. Graph doesn't exist → seed → graph is created
+1. Graph doesn't exist → build preview → batch apply → graph is created
 2. Search exposes graph status (not_initialized → initialized)
-3. Health detects graph missing → fixed after seed
+3. Health detects graph missing → fixed after build
 4. Write with new person returns frontmatter_fallback candidates + suggested_command
-5. Seed again → idempotent (added: [])
+5. Build preview again → existing names are skipped
 """
 
 from __future__ import annotations
 
 import importlib
+import io
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -53,19 +55,46 @@ abstract: "测试日志"
     return path
 
 
+def _run_entity_cli(argv: list[str]) -> dict:
+    from tools.entity.__main__ import main
+
+    buffer = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = buffer
+    try:
+        main(argv)
+    finally:
+        sys.stdout = old_stdout
+    return json.loads(buffer.getvalue())
+
+
+def _build_graph_from_journal_preview(data_dir: Path) -> tuple[dict, dict]:
+    preview = _run_entity_cli(["build", "--from-journals", "--preview", "--json"])
+    batch_path = data_dir / "journal-seed-batch.json"
+    batch_path.write_text(
+        json.dumps(
+            {"entities": preview["data"]["added"], "relationships": []},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    applied = _run_entity_cli(["build", "--from-batch", str(batch_path), "--apply", "--json"])
+    return preview, applied
+
+
 class TestPhase1Integration:
-    """Phase 1 E2E: graph cold-start → search → health → write → seed again."""
+    """Phase 1 E2E: graph cold-start → search → health → write → build again."""
 
     @pytest.mark.integration
     def test_full_phase1_chain(self, isolated_data_dir: Path) -> None:
         """
         Complete Phase 1 chain:
         1. Empty state: graph doesn't exist
-        2. Seed → graph created with entities
+        2. Build preview + batch apply → graph created with entities
         3. Search returns entity_graph_status: initialized
         4. Health no longer reports entity_graph_missing
         5. Write with new person → frontmatter_fallback candidates
-        6. Seed again → idempotent (no new additions)
+        6. Build preview again → existing names are skipped
         """
         journals_root = isolated_data_dir / "Journals"
         month_dir = journals_root / "2026" / "03"
@@ -94,21 +123,23 @@ class TestPhase1Integration:
         # ── Step 1: Verify graph doesn't exist ─────────────────────
         assert not graph_path.exists(), "Graph should not exist initially"
 
-        # ── Step 2: Seed → graph created ───────────────────────────
+        # ── Step 2: Build preview → batch apply → graph created ───
         import tools.lib.config as cfg_mod
 
         importlib.reload(cfg_mod)
-        from tools.entity.seed import seed_entity_graph
 
-        seed_result = seed_entity_graph(graph_path, journals_root)
+        seed_result, apply_result = _build_graph_from_journal_preview(isolated_data_dir)
 
         assert seed_result["success"] is True, f"Seed failed: {seed_result}"
+        assert apply_result["success"] is True, f"Batch apply failed: {apply_result}"
         # "晴岚" appears 2x in people → should be added
-        added_names = {e["primary_name"] for e in seed_result["added"]}
-        assert "晴岚" in added_names, f"Expected '晴岚' in added, got: {seed_result['added']}"
+        added_names = {e["primary_name"] for e in seed_result["data"]["added"]}
+        assert (
+            "晴岚" in added_names
+        ), f"Expected '晴岚' in added, got: {seed_result['data']['added']}"
 
         # Graph file now exists
-        assert graph_path.exists(), "Graph file should exist after seed"
+        assert graph_path.exists(), "Graph file should exist after build apply"
 
         # ── Step 3: Search exposes graph status ─────────────────────
         import tools.lib.search_index as si_mod
@@ -167,17 +198,17 @@ class TestPhase1Integration:
         assert entity_json["primary_name"] == "新朋友"
         assert entity_json["type"] == "person"
 
-        # ── Step 6: Seed again → idempotent ─────────────────────────
-        seed_result_2 = seed_entity_graph(graph_path, journals_root)
+        # ── Step 6: Preview again → existing names are skipped ─────
+        seed_result_2 = _run_entity_cli(["build", "--from-journals", "--preview", "--json"])
         assert seed_result_2["success"] is True
         assert (
-            len(seed_result_2["added"]) == 0
-        ), f"Second seed should add nothing, got: {seed_result_2['added']}"
+            len(seed_result_2["data"]["added"]) == 0
+        ), f"Second preview should add nothing, got: {seed_result_2['data']['added']}"
         # "晴岚" should be in skipped_existing
-        skipped_names = {e["primary_name"] for e in seed_result_2["skipped_existing"]}
+        skipped_names = {e["primary_name"] for e in seed_result_2["data"]["skipped_existing"]}
         assert (
             "晴岚" in skipped_names
-        ), f"'晴岚' should be skipped as existing, got: {seed_result_2['skipped_existing']}"
+        ), f"'晴岚' should be skipped as existing, got: {seed_result_2['data']['skipped_existing']}"
 
     @pytest.mark.integration
     def test_search_before_seed_shows_not_initialized(self, isolated_data_dir: Path) -> None:
@@ -240,9 +271,7 @@ class TestPhase1Integration:
         import tools.lib.config as cfg_mod
 
         importlib.reload(cfg_mod)
-        from tools.entity.seed import seed_entity_graph
-
-        seed_entity_graph(graph_path, journals_root)
+        _build_graph_from_journal_preview(isolated_data_dir)
 
         # Now test entity_candidates WITH the loaded graph
         from tools.lib.entity_graph import load_entity_graph

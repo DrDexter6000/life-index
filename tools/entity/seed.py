@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..lib.entity_graph import load_entity_graph, save_entity_graph
+from ..lib.entity_graph import load_entity_graph
 from ..lib.frontmatter import parse_frontmatter
 
 logger = logging.getLogger(__name__)
@@ -274,42 +274,3 @@ def preview_seed_entity_graph(
         ),
         "error": result["error"],
     }
-
-
-def seed_entity_graph(
-    graph_path: Path,
-    journals_dir: Path,
-    min_frequency: int = 2,
-) -> dict[str, Any]:
-    """
-    Cold-start entity graph from journal frontmatter.
-
-    Idempotent: existing entities are never modified.
-    Only new primary_names not already in the graph are added.
-
-    Args:
-        graph_path: Path to entity_graph.yaml
-        journals_dir: Path to Journals/ directory
-        min_frequency: Minimum occurrences to include
-
-    Returns:
-        {
-            "success": bool,
-            "added": list[dict],
-            "skipped_existing": list[dict],
-            "skipped_low_frequency": list[dict],
-            "error": str | None,
-        }
-    """
-    result, new_entities = _build_seed_plan(graph_path, journals_dir, min_frequency)
-    if not result["success"]:
-        return result
-    try:
-        if new_entities:
-            existing = load_entity_graph(graph_path)
-            save_entity_graph(existing + new_entities, graph_path)
-    except (OSError, ValueError) as e:
-        result["success"] = False
-        result["error"] = str(e)
-        logger.error("seed_entity_graph failed: %s", e)
-    return result

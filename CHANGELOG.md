@@ -15,19 +15,22 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   applies deterministic Entity Graph type normalization from legacy `person`
   records toward stable `type` + `attributes.kind`, preserving IDs, user
   assertions, relationships, tombstones, and distinct-review records.
+- `entity maintain --delete --id ENTITY_ID --preview/--apply --backup --json`
+  provides the only destructive entity deletion path: preview first, apply with
+  an automatic `entity_graph.yaml.backup_*`.
 - `entity build --from-batch FILE --preview/--apply --json` provides the
   workflow-facing facade over user-confirmed batch entity imports while
   preserving the existing `--apply-batch` primitive contract.
 - `entity build --from-journals --preview --json` previews journal-frontmatter
-  seed candidates without mutating `entity_graph.yaml`, replacing direct
-  `--seed` in the primary cold-start workflow.
+  seed candidates without mutating `entity_graph.yaml`, replacing the retired
+  direct cold-start write path in the primary workflow.
 - Entity Graph HITL review now exposes `why`, `evidence`, and
   `action_choices` so host agents can interview users before applying entity
   decisions. Relationship edges support v1.2 additive metadata
   (`evidence`, `source`, `created_at`, `status`, optional `start`/`end`) while
   legacy bare `{target, relation}` edges still load as confirmed.
 - `entity --unmerge --id MERGED_ID --target-id TARGET_ID` restores an entity
-  from the merge tombstone created by `entity --merge`.
+  from the merge tombstone created by `entity --review --action merge_as_alias`.
 - Entity maintenance rhythm is now visible in `health` through an
   `entity_maintenance` traffic light, pending review count, audit age, and
   `life-index entity --review` next step.
@@ -36,6 +39,20 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - `entity --apply-batch <file>` previews and applies user-confirmed JSON/YAML
   batches with idempotent clean writes, conflict queuing, and atomic failure on
   invalid rows.
+
+### Breaking
+
+- Removed the top-level Entity Graph primitives `--seed`, `--update`,
+  `--merge`, and `--delete` by owner decision on 2026-07-05. Replacements:
+  `entity build --from-journals --preview --json`, `entity --add-alias`,
+  `entity --review --action preview/merge_as_alias`, and
+  `entity maintain --delete --preview/--apply --backup`. Calls to removed
+  flags return `ENTITY_PRIMITIVE_REMOVED` with the replacement command.
+
+### Changed
+
+- Entity help, API docs, and SKILL quick references now route primary graph
+  usage through `entity build`, `entity audit`, and `entity maintain`.
 
 ### Fixed
 
@@ -47,9 +64,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   `skills/life-index` slot when that nested duplicate is the only discovery
   ambiguity. Unrelated or unsafe duplicate candidates still fail closed with
   `HOST_SKILL_DIR_AMBIGUOUS`.
-- `entity --merge` is now reversible: merges preserve the absorbed entity's
-  original record, transferred aliases, transferred relationships, and rewired
-  reverse references for later `--unmerge`.
+- `entity --review --action merge_as_alias` is reversible: merges preserve the
+  absorbed entity's original record, transferred aliases, transferred
+  relationships, and rewired reverse references for later `--unmerge`.
 - Entity audit now treats zero journal references as a neutral fact. User-owned
   `source=user,status=confirmed,evidence=[]` facts are healthy and are not
   framed as archive/delete recommendations.

@@ -56,8 +56,9 @@ triggers:
 .venv/bin/life-index smart-search --query "..." --include-evidence  # 含 evidence pack + 检索诊断
 .venv/bin/life-index on-this-day --date 2026-05-19 --years-back 3       # 历史同日回顾
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"
-.venv/bin/life-index entity --list
-.venv/bin/life-index entity --resolve "晴岚的奶奶"
+.venv/bin/life-index entity audit --json
+.venv/bin/life-index entity build --from-journals --preview --json
+.venv/bin/life-index entity maintain --normalize --preview --json
 .venv/bin/life-index abstract --month 2026-03
 .venv/bin/life-index weather --location "Lagos,Nigeria"
 .venv/bin/life-index index           # 增量更新
@@ -76,7 +77,6 @@ triggers:
 .venv/bin/python -m tools.query_weather --location "Lagos,Nigeria"
 .venv/bin/python -m tools.build_index
 ```
-
 **安装 / 首次验证 / 故障恢复指针**：
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树
@@ -121,7 +121,7 @@ life-index/                         # 技能根目录
 │   ├── search_journals/           # 搜索日志（L1/L2/L3 + Entity Graph）
 │   ├── smart_search/              # 确定性智能检索 scaffold；宿主 agent 负责合成
 │   ├── edit_journal/              # 编辑日志（修改元数据、追加内容）
-│   ├── entity/                    # 实体图谱（list/add/resolve/update）
+│   ├── entity/                    # 实体图谱（build/audit/maintain + review）
 │   ├── generate_index/            # 生成索引树（monthly/yearly/root）
 │   ├── build_index/               # 构建索引（FTS5 + metadata cache）
 │   ├── query_weather/             # 查询天气
@@ -267,7 +267,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 ### Entity Graph（已实现）
 
-- CLI：`life-index entity --list|--add|--resolve|--update`
+- 主入口：`life-index entity build ...` / `life-index entity audit --json` / `life-index entity maintain --normalize --preview --json` / `life-index entity maintain --delete --id ENTITY_ID --preview --json`
 - Deterministic relationship traversal is exposed through
   `life-index index-tree navigate --entity-neighbors "Entity Name" --json`.
 - 存储：`~/Documents/Life-Index/entity_graph.yaml`
@@ -543,7 +543,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 
 **队列外观察义务**：写日志或读 evidence 时，如果注意到新人名/新关系线索，轻提一句或用 `life-index entity --propose '<json>'` 静默放入候选池；候选不会影响 confirmed 检索，等下一轮访谈再裁决。
 
-**维护节律**：事件触发（新候选）轻提 1 句；周检 1 分钟跑 `life-index entity audit --json` 看灯号；类型旧时先 `life-index entity maintain --normalize --preview --json`，用户批准后 `--apply --backup`；月理 10 分钟过 ≤5 组访谈。
+**维护节律**：事件触发（新候选）轻提 1 句；周检 1 分钟跑 `life-index entity audit --json` 看灯号；类型旧时先 `life-index entity maintain --normalize --preview --json`，用户批准后 `--apply --backup`；删除实体先 `life-index entity maintain --delete --id ENTITY_ID --preview --json`，用户确认后 `--apply --backup`；月理 10 分钟过 ≤5 组访谈。
 
 **红线**：仅经 CLI 原语写图；工具内无 LLM、无 TUI、无零人判自动合并。高置信候选也只排队或等待用户批量授权。
 
