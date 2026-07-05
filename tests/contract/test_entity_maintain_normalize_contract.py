@@ -105,6 +105,30 @@ def _write_old_type_graph(graph_path: Path) -> None:
     )
 
 
+def _write_delete_graph(graph_path: Path) -> None:
+    save_entity_graph(
+        [
+            {
+                "id": "person-alice",
+                "type": "person",
+                "primary_name": "Alice",
+                "aliases": [],
+                "relationships": [
+                    {"target": "person-bob", "relation": "friend_of"},
+                ],
+            },
+            {
+                "id": "person-bob",
+                "type": "person",
+                "primary_name": "Bob",
+                "aliases": [],
+                "relationships": [],
+            },
+        ],
+        graph_path,
+    )
+
+
 def test_maintain_normalize_preview_returns_plan_without_writes(
     isolated_data_dir: Path,
 ) -> None:
@@ -147,6 +171,62 @@ def test_maintain_normalize_preview_returns_plan_without_writes(
         },
     ]
     assert payload["data"]["backup_path"] is None
+
+
+def test_maintain_delete_preview_reports_impact_without_writes(
+    isolated_data_dir: Path,
+) -> None:
+    """Maintain delete preview reports the exact impact without mutating the graph."""
+    graph_path = isolated_data_dir / "entity_graph.yaml"
+    _write_delete_graph(graph_path)
+    before = graph_path.read_text(encoding="utf-8")
+
+    payload = _run_entity_cli(["maintain", "--delete", "--id", "person-bob", "--preview", "--json"])
+
+    assert graph_path.read_text(encoding="utf-8") == before
+    assert payload["success"] is True
+    assert payload["data"] == {
+        "workflow": "maintain.delete",
+        "preview": True,
+        "applied": False,
+        "backup_path": None,
+        "deleted_id": "person-bob",
+        "deleted_name": "Bob",
+        "cleaned_refs": [{"entity_id": "person-alice", "relation": "friend_of"}],
+    }
+
+
+def test_maintain_delete_apply_requires_backup_and_removes_refs(
+    isolated_data_dir: Path,
+) -> None:
+    """Destructive delete is only available through maintain apply with backup."""
+    graph_path = isolated_data_dir / "entity_graph.yaml"
+    _write_delete_graph(graph_path)
+    before = graph_path.read_text(encoding="utf-8")
+
+    missing_backup = _run_entity_cli(
+        ["maintain", "--delete", "--id", "person-bob", "--apply", "--json"]
+    )
+
+    assert missing_backup["success"] is False
+    assert missing_backup["error"]["code"] == "ENTITY_MAINTAIN_DELETE_BACKUP_REQUIRED"
+    assert graph_path.read_text(encoding="utf-8") == before
+    assert list(isolated_data_dir.glob("entity_graph.yaml.backup_*")) == []
+
+    payload = _run_entity_cli(
+        ["maintain", "--delete", "--id", "person-bob", "--apply", "--backup", "--json"]
+    )
+
+    assert payload["success"] is True
+    assert payload["data"]["workflow"] == "maintain.delete"
+    assert payload["data"]["preview"] is False
+    assert payload["data"]["applied"] is True
+    backup_path = Path(payload["data"]["backup_path"])
+    assert backup_path.exists()
+    assert backup_path.parent == isolated_data_dir
+    graph = {entity["id"]: entity for entity in load_entity_graph(graph_path)}
+    assert set(graph) == {"person-alice"}
+    assert graph["person-alice"]["relationships"] == []
 
 
 def test_maintain_normalize_apply_requires_backup_and_preserves_graph_records(
@@ -389,11 +469,15 @@ def test_maintain_normalize_invalid_plan_returns_error_without_backup_or_write(
     assert list(isolated_data_dir.glob("entity_graph.yaml.backup_*")) == []
 
 
-def test_api_docs_mark_seed_as_advanced_compatibility() -> None:
-    """API docs must not teach direct --seed as the primary production path."""
+def test_api_docs_record_retired_entity_primitives_and_replacements() -> None:
+    """API docs must record owner-approved replacements for removed primitives."""
     api_md = Path(__file__).resolve().parents[2] / "docs" / "API.md"
     text = api_md.read_text(encoding="utf-8")
 
-    assert "#### `entity --seed`" in text
-    assert "高级兼容原语" in text
-    assert "life-index entity build --from-journals --preview --json" in text
+    assert "Retired top-level primitives" in text
+    assert "`--seed`" in text
+    assert "`entity build --from-journals --preview --json`" in text
+    assert "`--merge`" in text
+    assert "`entity --review --action merge_as_alias`" in text
+    assert "`--delete`" in text
+    assert "`entity maintain --delete --id ENTITY_ID --preview --json`" in text

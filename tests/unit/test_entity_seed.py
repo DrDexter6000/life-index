@@ -156,34 +156,36 @@ class TestSeedCandidateCollection:
         assert "妈妈" in names
 
 
-# ── Idempotent write tests ─────────────────────────────────────────────
+# ── Preview plan tests ─────────────────────────────────────────────────
 
 
-class TestSeedIdempotent:
-    """Verify entity --seed is idempotent and preserves existing data."""
+class TestSeedPlan:
+    """Verify journal seed planning is read-only and preserves existing data."""
 
-    def test_second_run_no_changes(self, isolated_data_dir: Path) -> None:
-        """Running seed twice should produce no new additions."""
-        from tools.entity.seed import seed_entity_graph
+    def test_preview_does_not_create_graph_file(self, isolated_data_dir: Path) -> None:
+        """Previewing seed candidates should not write entity_graph.yaml."""
+        from tools.entity.seed import preview_seed_entity_graph
 
         graph_path = isolated_data_dir / "entity_graph.yaml"
 
         _create_journal(isolated_data_dir, "日记1", people=["晴岚", "妈妈"])
         _create_journal(isolated_data_dir, "日记2", people=["晴岚", "妈妈"])
 
-        result1 = seed_entity_graph(graph_path, isolated_data_dir / "Journals")
-        assert len(result1["added"]) > 0
+        result = preview_seed_entity_graph(graph_path, isolated_data_dir / "Journals")
 
-        result2 = seed_entity_graph(graph_path, isolated_data_dir / "Journals")
-        assert len(result2["added"]) == 0, "Second run should add nothing"
-        assert len(result2["skipped_existing"]) > 0
+        assert result["success"] is True
+        assert result["data"]["preview"] is True
+        assert result["data"]["new_entities"] > 0
+        assert not graph_path.exists()
 
-    def test_preserves_existing_entity_aliases(self, isolated_data_dir: Path) -> None:
+    def test_plan_skips_existing_entity_and_does_not_mutate_aliases(
+        self, isolated_data_dir: Path
+    ) -> None:
         """
         If graph already has {primary_name: "晴岚", aliases: ["小队长"]},
-        seed must NOT modify aliases.
+        planning must skip it and leave aliases untouched.
         """
-        from tools.entity.seed import seed_entity_graph
+        from tools.entity.seed import preview_seed_entity_graph
         from tools.lib.entity_graph import load_entity_graph
 
         graph_path = isolated_data_dir / "entity_graph.yaml"
@@ -206,11 +208,13 @@ class TestSeedIdempotent:
         _create_journal(isolated_data_dir, "日记1", people=["晴岚", "妈妈"])
         _create_journal(isolated_data_dir, "日记2", people=["晴岚", "妈妈"])
 
-        result = seed_entity_graph(graph_path, isolated_data_dir / "Journals")
+        result = preview_seed_entity_graph(graph_path, isolated_data_dir / "Journals")
 
         # "晴岚" should be in skipped_existing, not in added
-        added_names = {e["primary_name"] for e in result["added"]}
+        added_names = {e["primary_name"] for e in result["data"]["added"]}
         assert "晴岚" not in added_names
+        skipped_names = {e["primary_name"] for e in result["data"]["skipped_existing"]}
+        assert "晴岚" in skipped_names
 
         # Verify aliases preserved
         entities = load_entity_graph(graph_path)
@@ -219,17 +223,18 @@ class TestSeedIdempotent:
 
     def test_output_structure(self, isolated_data_dir: Path) -> None:
         """Output must have added/skipped_existing/skipped_low_frequency lists."""
-        from tools.entity.seed import seed_entity_graph
+        from tools.entity.seed import preview_seed_entity_graph
 
         graph_path = isolated_data_dir / "entity_graph.yaml"
         _create_journal(isolated_data_dir, "日记1", people=["晴岚"])
         _create_journal(isolated_data_dir, "日记2", people=["晴岚"])
 
-        result = seed_entity_graph(graph_path, isolated_data_dir / "Journals")
+        result = preview_seed_entity_graph(graph_path, isolated_data_dir / "Journals")
 
-        assert "added" in result
-        assert "skipped_existing" in result
-        assert "skipped_low_frequency" in result
-        assert isinstance(result["added"], list)
-        assert isinstance(result["skipped_existing"], list)
-        assert isinstance(result["skipped_low_frequency"], list)
+        data = result["data"]
+        assert "added" in data
+        assert "skipped_existing" in data
+        assert "skipped_low_frequency" in data
+        assert isinstance(data["added"], list)
+        assert isinstance(data["skipped_existing"], list)
+        assert isinstance(data["skipped_low_frequency"], list)

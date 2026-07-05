@@ -130,3 +130,34 @@ def test_skill_entity_interview_teaches_agent_recommend_user_confirm_write() -> 
     assert "写入必须有人判" in skill
     assert "life-index entity --review --action add_relationship" in skill
     assert "life-index entity --unmerge" in skill
+
+
+def test_skill_entity_reference_teaches_workflow_facades_not_update_shortcut() -> None:
+    skill = _read("SKILL.md")
+
+    assert "life-index entity build --from-journals --preview --json" in skill
+    assert "life-index entity audit --json" in skill
+    assert "life-index entity maintain --normalize --preview --json" in skill
+    assert "life-index entity maintain --delete --id ENTITY_ID --preview --json" in skill
+    assert "life-index entity --list|--add|--resolve|--update" not in skill
+    for retired in (
+        "life-index entity --seed",
+        "life-index entity --merge",
+        "life-index entity --delete",
+        "life-index entity --update",
+    ):
+        assert retired not in skill
+
+
+def test_api_marks_retired_entity_primitives_as_removed_with_replacements() -> None:
+    api = _read("docs/API.md")
+
+    assert "Retired top-level primitives" in api
+    assert "`--seed`" in api
+    assert "`entity build --from-journals --preview --json`" in api
+    assert "`--update`" in api
+    assert "`entity --add-alias ALIAS --id ENTITY_ID`" in api
+    assert "`--merge`" in api
+    assert "`entity --review --action preview`" in api
+    assert "`--delete`" in api
+    assert "`entity maintain --delete --id ENTITY_ID --preview --json`" in api

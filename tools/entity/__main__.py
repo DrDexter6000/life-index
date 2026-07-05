@@ -92,6 +92,37 @@ def _print(payload: dict[str, Any]) -> None:
         print(fallback_text, flush=True)
 
 
+_RETIRED_TOP_LEVEL_PRIMITIVES = {
+    "--seed": "life-index entity build --from-journals --preview --json",
+    "--update": "life-index entity --add-alias ALIAS --id ENTITY_ID",
+    "--merge": "life-index entity --review --action preview",
+    "--delete": "life-index entity maintain --delete --id ENTITY_ID --preview --json",
+}
+
+
+def _handle_retired_top_level_primitives(argv: list[str]) -> None:
+    if argv and argv[0] in {"build", "audit", "maintain"}:
+        return
+    retired_flag = next((flag for flag in _RETIRED_TOP_LEVEL_PRIMITIVES if flag in argv), None)
+    if retired_flag is None:
+        return
+    replacement = _RETIRED_TOP_LEVEL_PRIMITIVES[retired_flag]
+    _print(
+        {
+            "success": False,
+            "data": {
+                "retired_flag": retired_flag,
+                "replacement_command": replacement,
+            },
+            "error": {
+                "code": "ENTITY_PRIMITIVE_REMOVED",
+                "message": f"{retired_flag} was removed. Use: {replacement}",
+            },
+        }
+    )
+    raise SystemExit(2)
+
+
 def _run_audit_workflow(argv: list[str]) -> None:
     audit_parser = argparse.ArgumentParser(prog="life-index entity audit")
     audit_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
@@ -111,13 +142,29 @@ def _run_audit_workflow(argv: list[str]) -> None:
 def _run_maintain_workflow(argv: list[str]) -> None:
     maintain_parser = argparse.ArgumentParser(prog="life-index entity maintain")
     maintain_parser.add_argument("--normalize", action="store_true")
+    maintain_parser.add_argument("--delete", action="store_true")
+    maintain_parser.add_argument("--id", dest="entity_id")
     maintain_parser.add_argument("--preview", action="store_true")
     maintain_parser.add_argument("--apply", action="store_true")
     maintain_parser.add_argument("--backup", action="store_true")
     maintain_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
     maintain_args = maintain_parser.parse_args(argv)
-    if not maintain_args.normalize:
-        raise SystemExit("entity maintain currently requires --normalize")
+    if maintain_args.normalize and maintain_args.delete:
+        raise SystemExit("entity maintain accepts only one operation at a time")
+    if not maintain_args.normalize and not maintain_args.delete:
+        raise SystemExit("entity maintain currently requires --normalize or --delete")
+    if maintain_args.delete:
+        from tools.entity.delete import run_delete
+
+        result = run_delete(
+            graph_path=_graph_path(),
+            entity_id=maintain_args.entity_id,
+            preview=maintain_args.preview,
+            apply=maintain_args.apply,
+            backup=maintain_args.backup,
+        )
+        _print(result)
+        return
     from tools.entity.normalize import run_normalize
 
     result = run_normalize(
@@ -179,6 +226,7 @@ def _run_workflow_command(argv: list[str]) -> bool:
 
 def main(argv: list[str] | None = None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
+    _handle_retired_top_level_primitives(argv)
     if _run_workflow_command(argv):
         return
 
@@ -191,6 +239,7 @@ def main(argv: list[str] | None = None) -> None:
   life-index entity build --from-batch FILE --preview --json
   life-index entity audit --json    Combined read-only graph health facade
   life-index entity maintain --normalize --preview --json
+  life-index entity maintain --delete --id ENTITY_ID --preview --json
 
 Advanced primitives:
   life-index entity --review        Human-in-the-loop review queue
@@ -203,16 +252,13 @@ Advanced primitives:
     parser.add_argument("--type", dest="entity_type")
     parser.add_argument("--add")
     parser.add_argument("--resolve")
-    parser.add_argument("--update", action="store_true")
     parser.add_argument("--audit", action="store_true")
     parser.add_argument("--stats", action="store_true")
     parser.add_argument("--check", action="store_true", dest="run_check")
     parser.add_argument("--review", action="store_true")
-    parser.add_argument("--merge")
     parser.add_argument("--unmerge", action="store_true")
     parser.add_argument("--propose")
     parser.add_argument("--apply-batch", dest="apply_batch")
-    parser.add_argument("--delete", action="store_true", dest="delete_entity")
     parser.add_argument(
         "--preview", action="store_true", help="Preview only, do not mutate the graph"
     )
@@ -237,9 +283,6 @@ Advanced primitives:
     parser.add_argument("--export", dest="export_format", choices=["csv", "xlsx"])
     parser.add_argument("--import", dest="import_file")
     parser.add_argument("--output", dest="output_file")
-    parser.add_argument(
-        "--seed", action="store_true", help="Cold-start graph from journal frontmatter"
-    )
     parser.add_argument(
         "--candidate-edges",
         action="store_true",
@@ -299,9 +342,9 @@ Advanced primitives:
         _print({"success": True, "data": payload, "error": None})
         return
 
-    if args.update or args.add_alias:
+    if args.add_alias:
         if not args.entity_id or not args.add_alias:
-            raise SystemExit("--update/--add-alias requires --id and --add-alias")
+            raise SystemExit("--add-alias requires --id and --add-alias")
         for entity in entities:
             if entity["id"] == args.entity_id:
                 aliases = entity.setdefault("aliases", [])
@@ -422,21 +465,6 @@ Advanced primitives:
         _print(result)
         return
 
-    if args.merge:
-        if not args.entity_id or not args.target_id:
-            raise SystemExit("--merge requires --id (source) and --target-id (target)")
-        from tools.entity.review import apply_action
-
-        result = apply_action(
-            action="merge_as_alias",
-            source_id=args.entity_id,
-            target_id=args.target_id,
-            source="user",
-            graph_path=graph_path,
-        )
-        _print(result)
-        return
-
     if args.unmerge:
         if not args.entity_id or not args.target_id:
             raise SystemExit("--unmerge requires --id (merged entity) and --target-id (target)")
@@ -447,75 +475,6 @@ Advanced primitives:
             target_id=args.target_id,
             graph_path=graph_path,
         )
-        _print(result)
-        return
-
-    if args.delete_entity:
-        if not args.entity_id:
-            raise SystemExit("--delete requires --id")
-        entity_id = args.entity_id
-
-        source = next((e for e in entities if e["id"] == entity_id), None)
-        if source is None:
-            _print(
-                {
-                    "success": False,
-                    "data": None,
-                    "error": f"Entity not found: {entity_id}",
-                }
-            )
-            return
-
-        # Report entities that reference this one
-        refs = []
-        for entity in entities:
-            for rel in entity.get("relationships", []):
-                if rel["target"] == entity_id:
-                    refs.append({"entity_id": entity["id"], "relation": rel["relation"]})
-
-        # Preview-only path: report impact without mutating the graph
-        if args.preview:
-            _print(
-                {
-                    "success": True,
-                    "data": {
-                        "deleted_id": entity_id,
-                        "deleted_name": source.get("primary_name", ""),
-                        "cleaned_refs": refs,
-                    },
-                    "error": None,
-                }
-            )
-            return
-
-        # Remove entity
-        entities = [e for e in entities if e["id"] != entity_id]
-
-        # Clean up dangling relationship references
-        for entity in entities:
-            entity["relationships"] = [
-                r for r in entity.get("relationships", []) if r["target"] != entity_id
-            ]
-
-        save_entity_graph(entities, graph_path)
-        _print(
-            {
-                "success": True,
-                "data": {
-                    "deleted_id": entity_id,
-                    "deleted_name": source.get("primary_name", ""),
-                    "cleaned_refs": refs,
-                },
-                "error": None,
-            }
-        )
-        return
-
-    if args.seed:
-        from tools.entity.seed import seed_entity_graph
-        from tools.lib.paths import get_journals_dir
-
-        result = seed_entity_graph(graph_path, get_journals_dir())
         _print(result)
         return
 

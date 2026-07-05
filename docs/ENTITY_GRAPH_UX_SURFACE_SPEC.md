@@ -95,7 +95,7 @@ Build maps to existing primitives:
 - `--propose` for host-agent hypotheses that should enter review as candidates.
 - write-time candidate capture for repeated unknown names.
 - `--candidate-edges` as a read-only evidence discovery helper.
-- `--seed` only behind a preview-first facade or sandbox-only workflow.
+- build-from-journals preview for journal-derived cold-start candidates.
 
 Build must never silently write confirmed graph state from host-agent inference.
 When a user provides a table, paragraph, spreadsheet, or image-derived
@@ -143,9 +143,9 @@ life-index entity maintain --rebuild --preview --preserve-user-assertions --json
 Maintain maps to existing primitives:
 
 - `--review` queue, preview, export/import, and actions.
-- `--merge` / `--unmerge` through review-backed or user-confirmed actions.
+- review-backed merge actions plus `--unmerge` for reversibility.
 - `keep_separate` / `undo_keep_separate` for durable non-duplicate decisions.
-- `--add-alias`, `--update`, `--add`, and future typed update primitives.
+- `--add-alias`, `--add`, and future typed update primitives.
 - future `normalize` / `migrate-types` planner and applier.
 
 The default maintenance path is repair/normalize/review. Full rebuild is a
@@ -158,39 +158,45 @@ last-resort mode and must preserve user assertions by default.
 | `--list` | Read graph entities, optionally by type | Audit / advanced inspect | Keep | Keep as read-only primitive; not a primary user workflow. |
 | `--resolve` | Resolve name/id/alias to one entity | Audit / host-agent navigation | Keep | Keep; future type schema must preserve behavior for confirmed entities. |
 | `--add` | Direct confirmed entity write from JSON | Build / maintain | Keep but gate | Keep as advanced primitive; facade should prefer batch preview or explicit confirmed add. Add preview/validation contract before making it user-facing. |
-| `--update` | Currently only works with `--add-alias` | Maintain | Misleading | Either implement real typed update or deprecate as a synonym for `--add-alias`. Do not teach it as general update until fixed. |
+| `--update` | Historical alias-only flag | Maintain | Removed | Use `--add-alias ALIAS --id ENTITY_ID`. |
 | `--add-alias` | Add confirmed alias metadata | Maintain | Keep | Keep; requires user confirmation in production. |
 | `--audit` | Quality audit and candidate questions | Audit | Keep | Make it a component of `entity audit`; ensure issue wording stays neutral. |
 | `--check` | Structural integrity check | Audit | Keep | Keep as low-level structural primitive; combine into `entity audit`. |
 | `--stats` | Counts and graph summary | Audit | Keep but demote | Keep as advanced inspect; user-facing health should consume it. |
 | `--review` | Queue, preview, import/export, action apply | Maintain | Keep | Core HITL primitive. User-facing docs should teach the workflow, not every action first. |
 | `--review --export/--import` | Table round-trip for decisions | Maintain | Keep | Keep as efficient batch decision channel; teach under advanced maintain. |
-| `--merge` | Direct merge via historical flag shape | Maintain | Keep compatible, hide | Keep for compatibility. Primary facade should route through preview/review semantics. The required unused positional value is historical burden. |
+| `--merge` | Direct merge via historical flag shape | Maintain | Removed | Use `--review --action preview`, then `--review --action merge_as_alias`. |
 | `--unmerge` | Restore merge tombstone | Maintain | Keep | Core reversibility primitive. |
 | `keep_separate` / `undo_keep_separate` | Persist or remove user non-duplicate decision | Maintain | Keep | Core authority primitive. Audit must respect it. |
 | `--propose` | Host-agent candidate lane | Build / maintain | Keep | Keep; it writes candidate state only and fits the double-lane model. |
 | `--apply-batch` | User-confirmed batch apply | Build | Keep | Strong build primitive. Keep preview/apply and idempotency as hard contract. |
-| `--delete --preview` | Preview entity deletion impact | Maintain / advanced | Keep but high-risk | Keep advanced only. Future facade should require preview and backup before destructive delete. |
-| `--delete` | Immediate entity deletion and reference cleanup | Maintain / advanced | Risky | Keep compatible but do not teach as normal maintenance. Consider backup/confirm guard in future. |
-| `--seed` | Cold-start from journal frontmatter; writes graph | Build | Deprecated as primary | Do not teach as production workflow. Replace with preview-first build-from-journals facade. |
+| `maintain --delete` | Preview/apply entity deletion with backup | Maintain | Keep | Destructive delete path; preview first, apply requires backup. |
+| `--delete` | Immediate entity deletion and reference cleanup | Maintain | Removed | Use `maintain --delete --id ENTITY_ID --preview`, then `--apply --backup`. |
+| `--seed` | Cold-start from journal frontmatter; writes graph | Build | Removed | Use preview-first build-from-journals plus user-authorized batch/review apply. |
 | `--candidate-edges` | Read-only candidate relationship report | Build / maintain evidence | Keep but rename semantics | Keep as evidence helper. Its `auto-confirm-recommended` wording should be renamed because no CLI path may auto-confirm. |
 | write-time candidate capture | Deterministic repeated unknown-name candidate pool | Build / maintain | Keep | Keep. It writes candidate state only and respects threshold config. |
-| `check_graph_status()` suggested `--seed` | Search/health graph status hint | Audit / health | Needs update | Future hints should point to preview-first build/audit, not direct `--seed`. |
+| `check_graph_status()` suggested direct seed | Search/health graph status hint | Audit / health | Fixed | Hints point to preview-first build/audit, not direct cold-start writes. |
 
-## 6. Retirement And Demotion Policy
+## 6. Retirement Decision
 
-The project should not remove primitives merely because the top-level UX is
-being simplified. Use this order:
+Owner decision on 2026-07-05 replaces the earlier conservative two-minor
+demotion policy for this work package. Life Index has no historical install
+base depending on the legacy top-level entity flags, so the safer path is a
+single clean cutover with structured replacement errors.
 
-1. Keep compatibility and stop teaching the primitive as a primary entry.
-2. Add facade coverage and tests for the new workflow.
-3. Mark the old primitive as advanced or deprecated in docs/help.
-4. After two minor releases, delete only if no public contract or consumer uses
-   it and the replacement is proven by dogfood.
+Removed top-level primitives and replacements:
 
-Immediate deletion candidates are not identified in this spec. Immediate
-demotion candidates are `--seed`, direct `--merge`, direct `--delete`, and
-misleading `--update`.
+| Removed primitive | Replacement |
+| --- | --- |
+| `--seed` | `entity build --from-journals --preview --json`, then user-authorized batch/review apply |
+| `--update` | `entity --add-alias ALIAS --id ENTITY_ID` |
+| `--merge` | `entity --review --action preview`, then `entity --review --action merge_as_alias` |
+| `--delete` | `entity maintain --delete --id ENTITY_ID --preview --json`, then `--apply --backup` |
+
+Any call to a removed top-level primitive must return structured
+`ENTITY_PRIMITIVE_REMOVED` JSON with the replacement command. This is an
+intentional contract break for 1.3.7 accumulation, not a hidden argparse
+failure.
 
 ## 7. Normalize And Migration Model
 
@@ -246,33 +252,32 @@ Required behavior:
    one traffic-light payload and points next steps to review/maintain.
 4. Add `entity build --from-batch FILE --preview/--apply` tests that delegate to
    existing batch behavior without changing output semantics.
-5. Add `entity build --from-journals --preview` test that proves no graph write;
-   then wrap or replace `--seed` behind preview-first planning. **Implemented.**
+5. Add `entity build --from-journals --preview` test that proves no graph write,
+   then route cold-start through preview-first planning. **Implemented.**
 6. Add `entity maintain --normalize --preview` tests for old-type graph planning
    with no writes.
 7. Add `entity maintain --normalize --apply --backup` tests for atomic write,
    backup creation, ID preservation, and tombstone/not-duplicate preservation.
 8. Add help/docs tests that primary SKILL guidance teaches only Build / Audit /
-   Maintain while advanced primitive references remain available.
-9. Add compatibility tests proving old flags still work through at least two
-   minor releases.
+   Maintain.
+9. Add successor tests proving removed top-level flags return structured
+   replacement errors.
 10. Dogfood on owner-authorized data: read SKILL literally, run audit, run one
     preview-only build/normalize path, and confirm the host-agent workflow is
     understandable without reading primitive docs.
 
-## 10. First Implementation PR Recommendation
+## 10. Implementation Status
 
-The first runtime PR should not delete any primitive. It should add the facade
-parser and a read-only `entity audit --json` workflow because that gives users
-an immediate lower-cognitive-load entry without risking data writes.
+The initial facade slices have landed. Owner decision on 2026-07-05 changed the
+primitive retirement plan from long demotion to a clean cutover for the four
+legacy top-level flags listed in §6.
 
 Recommended first slice:
 
 - `entity audit --json`
-- help text grouping primary workflows and advanced primitives
+- help text grouping primary workflows and remaining advanced primitives
 - SKILL update: route entity tasks through Build / Audit / Maintain
 - no schema migration yet
 
-The second slice should implement normalize preview/apply. Build-from-journals
-should wait until preview semantics replace the unsafe production `--seed`
-path.
+Later slices should continue reducing surface area only after the replacement
+workflow has an explicit facade and successor tests.
