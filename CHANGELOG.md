@@ -39,6 +39,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### Fixed
 
+- `entity maintain --normalize --apply --backup` validates the full normalize
+  plan before backup/write and fails closed with a structured error if the plan
+  is invalid.
 - `sync-skill --install` now auto-converges a managed
   `skills/life-index/life-index` duplicate into the canonical
   `skills/life-index` slot when that nested duplicate is the only discovery

@@ -9,6 +9,7 @@ from typing import Any
 
 from tools.lib.entity_graph import load_entity_graph
 from tools.lib.entity_graph import save_entity_graph
+from tools.lib.entity_schema import EntityGraphValidationError
 from tools.lib.entity_schema import validate_entity_graph_payload
 
 _AI_ASSISTANT_SIGNALS = {"ai", "ai_assistant", "software_agent"}
@@ -46,6 +47,9 @@ def run_normalize(
         )
 
     plan = build_normalize_plan(graph_path=graph_path)
+    plan_error = _validate_plan(plan)
+    if plan_error is not None:
+        return plan_error
     if preview:
         return _success(plan=plan, preview=True, applied=False, backup_path=None)
 
@@ -195,6 +199,14 @@ def _write_graph_atomically(*, graph_path: Path, entities: list[dict[str, Any]])
     tmp_path = graph_path.with_name(f"{graph_path.name}.tmp")
     save_entity_graph(entities, tmp_path)
     tmp_path.replace(graph_path)
+
+
+def _validate_plan(plan: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        validate_entity_graph_payload({"entities": plan["normalized_entities"]})
+    except (EntityGraphValidationError, KeyError, TypeError) as exc:
+        return _error("ENTITY_NORMALIZE_PLAN_INVALID", str(exc))
+    return None
 
 
 def _success(

@@ -5617,7 +5617,15 @@ life-index entity --delete --preview --id p003
 
 #### `entity --seed`
 
-从现有 journal frontmatter 中冷启动实体图谱：
+高级兼容原语。它会直接从现有 journal frontmatter 冷启动/补充
+`entity_graph.yaml` 并写盘；主路径应先使用 preview-first facade：
+
+```bash
+life-index entity build --from-journals --preview --json
+```
+
+只有在用户审阅候选并明确授权后，才经 batch/review/显式写入原语落盘。
+旧 `--seed` 默认仅用于 sandbox 或明确的高级维护场景。
 
 ```bash
 life-index entity --seed
@@ -5680,7 +5688,7 @@ life-index entity --candidate-edges --output=json
 
 - **review / merge / delete 是高风险操作**，必须在调用前明确目标实体和确认策略
 - `--audit` 结果中的 `suggested_action` 仅为建议，最终合并/删除决策需用户确认
-- `--seed` 会从 journal frontmatter 冷启动/补充 `entity_graph.yaml`；已有实体不会被修改。首次启用或批量补充前建议备份现有图谱
+- `--seed` 是高级兼容原语，会直接写入图谱；主路径必须先 `life-index entity build --from-journals --preview --json`
 - `--check` 应在 `--audit` 之前运行，作为快速健康检查
 - `--merge` 的接口设计有历史包袱：必须传一个参数值，但实际 source 由 `--id` 指定
 
