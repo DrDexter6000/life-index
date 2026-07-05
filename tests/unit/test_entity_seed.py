@@ -1,5 +1,5 @@
 """
-Tests for entity --seed command (Round 10, T1.1).
+Tests for journal seed plan preview (Round 10, T1.1).
 
 Validates graph cold-start from journal frontmatter:
 - Extract candidates from people/tags/location fields

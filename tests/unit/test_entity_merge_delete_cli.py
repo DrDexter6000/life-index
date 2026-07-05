@@ -63,7 +63,7 @@ def _graph_path_for(isolated_data_dir: Path) -> Path:
 
 
 class TestMergeCLI:
-    """entity --merge combines aliases and preserves relationships."""
+    """review merge_as_alias combines aliases and preserves relationships."""
 
     def test_merge_combines_aliases(self, isolated_data_dir: Path) -> None:
         from tools.entity.review import apply_action
