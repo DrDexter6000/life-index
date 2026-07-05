@@ -4944,7 +4944,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 `entity` has multiple subcommand shapes. All share a common envelope pattern but with known deviations:
 
-**Standard envelope** (used by `audit --json`, `maintain --normalize`, `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`, `--propose`, `--apply-batch`):
+**Standard envelope** (used by `build --from-batch`, `audit --json`, `maintain --normalize`, `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`, `--propose`, `--apply-batch`):
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
@@ -4980,6 +4980,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
   - `--resolve` returns a plain string error message on failure (not a structured error object).
   - `--merge`, `--unmerge`, and `--review --action ...` return flat action objects without `data` wrapper.
 - `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`, and neutral `facts{}`.
+- `build --from-batch FILE --preview/--apply --json` delegates to `--apply-batch` and preserves its `data` shape: `preview`, `new_entities`, `new_relationships`, `conflicts`, `duplicates_skipped`, and `conflict_items`.
 - `audit --json` data is a read-only workflow facade containing `workflow: "audit"`, `traffic_light`, `pending_count`, `structural_issue_count`, `quality_issue_count`, `duplicate_count`, `next_step{}`, and `components{check,audit,stats}`.
 - `maintain --normalize --preview/--apply --backup --json` data contains `workflow: "maintain.normalize"`, `preview`, `applied`, `summary{entity_count,change_count,review_question_count}`, `changes[]`, `review_questions[]`, and `backup_path`.
 - `--stats` data contains: `total_entities`, `by_type{}`, `total_aliases`, `total_relationships`, `top_referenced[]`, `top_cooccurrence[]`.
@@ -5005,6 +5006,8 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 ```bash
 python -m tools.entity [options]
+python -m tools.entity build --from-batch batch.yaml --preview --json
+python -m tools.entity build --from-batch batch.yaml --apply --json
 python -m tools.entity audit --json
 python -m tools.entity maintain --normalize --preview --json
 python -m tools.entity maintain --normalize --apply --backup --json
@@ -5014,6 +5017,8 @@ python -m tools.entity maintain --normalize --apply --backup --json
 
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
+| `build --from-batch FILE --preview --json` | subcommand | ❌ | - | 预览用户确认批量实体/关系导入，零写入 |
+| `build --from-batch FILE --apply --json` | subcommand | ❌ | - | 应用用户确认批量实体/关系导入；委托 `--apply-batch` |
 | `audit --json` | subcommand | ❌ | - | 聚合 `--check` / `--audit` / `--stats` 的只读健康 facade |
 | `maintain --normalize --preview --json` | subcommand | ❌ | - | 预览旧实体类型到 `type` + `attributes.kind` 的迁移计划，零写入 |
 | `maintain --normalize --apply --backup --json` | subcommand | ❌ | - | 应用 deterministic normalize plan；必须创建 `entity_graph.yaml.backup_*` |
@@ -5093,6 +5098,47 @@ life-index entity audit --json
 or duplicate confirmed-entity issues require review. If the graph is malformed,
 the facade still returns a red payload from `--check`; failing subcomponents are
 reported in `component_errors` instead of crashing.
+
+#### `entity build --from-batch`
+
+用户已确认的结构化实体/关系批量录入 workflow facade。该入口复用
+`entity --apply-batch` 原语；返回 shape 与 `--apply-batch` 保持一致。
+
+```bash
+life-index entity build --from-batch batch.yaml --preview --json
+life-index entity build --from-batch batch.yaml --apply --json
+```
+
+返回（标准 envelope）：
+
+```json
+{
+  "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.x",
+    "generated_at": "2026-07-05T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
+  "data": {
+    "preview": true,
+    "new_entities": 2,
+    "new_relationships": 1,
+    "conflicts": 0,
+    "duplicates_skipped": 0,
+    "conflict_items": []
+  },
+  "error": null
+}
+```
+
+`--preview` is read-only. `--apply` writes the same confirmed graph changes as
+`entity --apply-batch FILE`. Exactly one of `--preview` or `--apply` is required.
+Name conflicts are not merged automatically; they are routed into the review
+queue by the underlying batch primitive.
 
 #### `entity maintain --normalize`
 

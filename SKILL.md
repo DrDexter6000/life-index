@@ -537,7 +537,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 
 **冷启动家庭录入**：用户口述家人/关系时，先问清身份和关系方向，再逐条复述确认；确认后用 `life-index entity --add '<json>'` 创建 `source=user,status=confirmed` 实体，用 review/add_relationship 原语写边；写完运行 `life-index entity --check` 并汇报结果。`evidence=[]` 对用户确认事实是健康态。
 
-**批量录入**：不要要求用户遵守固定模板。用户可给 Excel/CSV/Markdown 表、一段话或照片转写；agent 理解后复述结构（例如“我理解为 12 人、15 条关系、2 个重名待裁决”），拿到批量授权后生成 JSON/YAML 批文件，先 `life-index entity --apply-batch FILE --preview`，再 `life-index entity --apply-batch FILE`，最后 `life-index entity --check`。重名冲突不会自动合并，会进入 `entity --review`。
+**批量录入**：不要要求固定模板。用户可给 Excel/CSV/Markdown 表、一段话或照片转写；agent 复述结构并拿到批量授权后生成 JSON/YAML 批文件，先 `life-index entity build --from-batch FILE --preview --json`，再 `--apply --json`，最后 `life-index entity --check`。重名冲突会进入 `entity --review`。
 
 **表格/直编通道**：偏好表格时，`life-index entity --review --export csv --output review.csv` 或 `--export xlsx`，用户填 decision 列后 `life-index entity --review --import review.csv`；高级用户可直接编辑 `entity_graph.yaml`，随后必须 `life-index entity --check`，必要时再 `life-index smart-search --query "..."` 验证。
 

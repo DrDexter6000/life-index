@@ -129,9 +129,33 @@ def _run_maintain_workflow(argv: list[str]) -> None:
     _print(result)
 
 
+def _run_build_workflow(argv: list[str]) -> None:
+    build_parser = argparse.ArgumentParser(prog="life-index entity build")
+    build_parser.add_argument("--from-batch", dest="from_batch")
+    build_parser.add_argument("--preview", action="store_true")
+    build_parser.add_argument("--apply", action="store_true")
+    build_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    build_args = build_parser.parse_args(argv)
+    if not build_args.from_batch:
+        raise SystemExit("entity build currently requires --from-batch FILE")
+    if build_args.preview == build_args.apply:
+        raise SystemExit("entity build --from-batch requires exactly one of --preview/--apply")
+    from tools.entity.batch import apply_batch_file
+
+    result = apply_batch_file(
+        batch_path=Path(build_args.from_batch),
+        graph_path=_graph_path(),
+        preview=build_args.preview,
+    )
+    _print(result)
+
+
 def _run_workflow_command(argv: list[str]) -> bool:
     if not argv:
         return False
+    if argv[0] == "build":
+        _run_build_workflow(argv[1:])
+        return True
     if argv[0] == "audit":
         _run_audit_workflow(argv[1:])
         return True
@@ -151,6 +175,7 @@ def main(argv: list[str] | None = None) -> None:
         description="Life Index Entity Graph tools",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Primary workflow:
+  life-index entity build --from-batch FILE --preview --json
   life-index entity audit --json    Combined read-only graph health facade
   life-index entity maintain --normalize --preview --json
 
