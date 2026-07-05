@@ -15,6 +15,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   applies deterministic Entity Graph type normalization from legacy `person`
   records toward stable `type` + `attributes.kind`, preserving IDs, user
   assertions, relationships, tombstones, and distinct-review records.
+- `entity build --from-batch FILE --preview/--apply --json` provides the
+  workflow-facing facade over user-confirmed batch entity imports while
+  preserving the existing `--apply-batch` primitive contract.
 - Entity Graph HITL review now exposes `why`, `evidence`, and
   `action_choices` so host agents can interview users before applying entity
   decisions. Relationship edges support v1.2 additive metadata
