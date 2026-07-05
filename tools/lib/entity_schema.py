@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-ENTITY_TYPES = {"person", "place", "project", "event", "concept"}
+ENTITY_TYPES = {"actor", "artifact", "person", "place", "project", "event", "concept"}
 RESERVED_RELATIONSHIP_TARGETS: set[str] = set()
 RELATIONSHIP_SOURCES = {"seed", "review", "user", "agent", "system"}
 RELATIONSHIP_STATUSES = {"confirmed", "candidate"}

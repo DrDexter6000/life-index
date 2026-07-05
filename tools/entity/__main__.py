@@ -92,22 +92,58 @@ def _print(payload: dict[str, Any]) -> None:
         print(fallback_text, flush=True)
 
 
+def _run_audit_workflow(argv: list[str]) -> None:
+    audit_parser = argparse.ArgumentParser(prog="life-index entity audit")
+    audit_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    audit_parser.parse_args(argv)
+    from tools.entity.audit_facade import build_audit_facade
+    from tools.lib.paths import get_journals_dir
+
+    graph_path = _graph_path()
+    journals_dir = get_journals_dir()
+    result = build_audit_facade(
+        graph_path=graph_path,
+        journals_dir=journals_dir if journals_dir.exists() else None,
+    )
+    _print(result)
+
+
+def _run_maintain_workflow(argv: list[str]) -> None:
+    maintain_parser = argparse.ArgumentParser(prog="life-index entity maintain")
+    maintain_parser.add_argument("--normalize", action="store_true")
+    maintain_parser.add_argument("--preview", action="store_true")
+    maintain_parser.add_argument("--apply", action="store_true")
+    maintain_parser.add_argument("--backup", action="store_true")
+    maintain_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    maintain_args = maintain_parser.parse_args(argv)
+    if not maintain_args.normalize:
+        raise SystemExit("entity maintain currently requires --normalize")
+    from tools.entity.normalize import run_normalize
+
+    result = run_normalize(
+        graph_path=_graph_path(),
+        preview=maintain_args.preview,
+        apply=maintain_args.apply,
+        backup=maintain_args.backup,
+    )
+    _print(result)
+
+
+def _run_workflow_command(argv: list[str]) -> bool:
+    if not argv:
+        return False
+    if argv[0] == "audit":
+        _run_audit_workflow(argv[1:])
+        return True
+    if argv[0] == "maintain":
+        _run_maintain_workflow(argv[1:])
+        return True
+    return False
+
+
 def main(argv: list[str] | None = None) -> None:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "audit":
-        audit_parser = argparse.ArgumentParser(prog="life-index entity audit")
-        audit_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
-        audit_parser.parse_args(argv[1:])
-        from tools.entity.audit_facade import build_audit_facade
-        from tools.lib.paths import get_journals_dir
-
-        graph_path = _graph_path()
-        journals_dir = get_journals_dir()
-        result = build_audit_facade(
-            graph_path=graph_path,
-            journals_dir=journals_dir if journals_dir.exists() else None,
-        )
-        _print(result)
+    if _run_workflow_command(argv):
         return
 
     parser = argparse.ArgumentParser(
@@ -116,6 +152,7 @@ def main(argv: list[str] | None = None) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Primary workflow:
   life-index entity audit --json    Combined read-only graph health facade
+  life-index entity maintain --normalize --preview --json
 
 Advanced primitives:
   life-index entity --review        Human-in-the-loop review queue
