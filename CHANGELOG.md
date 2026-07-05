@@ -11,6 +11,10 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - `entity audit --json` provides a read-only Entity Graph health facade that
   combines structural checks, quality audit results, graph statistics, and a
   traffic-light next step for host agents.
+- `entity maintain --normalize --preview/--apply --backup --json` previews and
+  applies deterministic Entity Graph type normalization from legacy `person`
+  records toward stable `type` + `attributes.kind`, preserving IDs, user
+  assertions, relationships, tombstones, and distinct-review records.
 - Entity Graph HITL review now exposes `why`, `evidence`, and
   `action_choices` so host agents can interview users before applying entity
   decisions. Relationship edges support v1.2 additive metadata

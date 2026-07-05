@@ -4944,7 +4944,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 `entity` has multiple subcommand shapes. All share a common envelope pattern but with known deviations:
 
-**Standard envelope** (used by `audit --json`, `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`, `--propose`, `--apply-batch`):
+**Standard envelope** (used by `audit --json`, `maintain --normalize`, `--audit`, `--stats`, `--check`, `--review`, `--delete`, `--list`, `--propose`, `--apply-batch`):
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
@@ -4981,6 +4981,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
   - `--merge`, `--unmerge`, and `--review --action ...` return flat action objects without `data` wrapper.
 - `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`, and neutral `facts{}`.
 - `audit --json` data is a read-only workflow facade containing `workflow: "audit"`, `traffic_light`, `pending_count`, `structural_issue_count`, `quality_issue_count`, `duplicate_count`, `next_step{}`, and `components{check,audit,stats}`.
+- `maintain --normalize --preview/--apply --backup --json` data contains `workflow: "maintain.normalize"`, `preview`, `applied`, `summary{entity_count,change_count,review_question_count}`, `changes[]`, `review_questions[]`, and `backup_path`.
 - `--stats` data contains: `total_entities`, `by_type{}`, `total_aliases`, `total_relationships`, `top_referenced[]`, `top_cooccurrence[]`.
 - `--check` data contains: `total_entities`, `issues[]`, `summary{}`.
 
@@ -5005,6 +5006,8 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 ```bash
 python -m tools.entity [options]
 python -m tools.entity audit --json
+python -m tools.entity maintain --normalize --preview --json
+python -m tools.entity maintain --normalize --apply --backup --json
 ```
 
 ### 参数
@@ -5012,8 +5015,10 @@ python -m tools.entity audit --json
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `audit --json` | subcommand | ❌ | - | 聚合 `--check` / `--audit` / `--stats` 的只读健康 facade |
+| `maintain --normalize --preview --json` | subcommand | ❌ | - | 预览旧实体类型到 `type` + `attributes.kind` 的迁移计划，零写入 |
+| `maintain --normalize --apply --backup --json` | subcommand | ❌ | - | 应用 deterministic normalize plan；必须创建 `entity_graph.yaml.backup_*` |
 | `--list` | flag | ❌ | false | 列出实体图谱中的所有实体 |
-| `--type` | string | ❌ | - | 按类型过滤（如 `person`, `place`, `concept`） |
+| `--type` | string | ❌ | - | 按类型过滤（如 `actor`, `artifact`, `place`, 兼容旧 `person`） |
 | `--add` | string | ❌ | - | 添加新实体（JSON 格式） |
 | `--resolve` | string | ❌ | - | 解析实体名称歧义 |
 | `--update` | flag | ❌ | false | 更新实体属性（需 `--id` 和 `--add-alias`） |
@@ -5088,6 +5093,63 @@ life-index entity audit --json
 or duplicate confirmed-entity issues require review. If the graph is malformed,
 the facade still returns a red payload from `--check`; failing subcomponents are
 reported in `component_errors` instead of crashing.
+
+#### `entity maintain --normalize`
+
+预览或应用实体类型归一化计划。该 facade 用于从旧的
+`person`/`place`/`project`/`event`/`concept` 心智模型，逐步迁移到稳定
+L1 `type` + 开放 `attributes.kind`。它不重建图谱、不改 entity ID；关系、
+alias、证据、source/status/created_at、merge tombstone 与
+`not_duplicate_of` 记录必须保留。
+
+```bash
+life-index entity maintain --normalize --preview --json
+life-index entity maintain --normalize --apply --backup --json
+```
+
+返回（标准 envelope）：
+
+```json
+{
+  "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.x",
+    "generated_at": "2026-07-05T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
+  "data": {
+    "workflow": "maintain.normalize",
+    "preview": true,
+    "applied": false,
+    "summary": {
+      "entity_count": 4,
+      "change_count": 3,
+      "review_question_count": 0
+    },
+    "changes": [
+      {
+        "entity_id": "person-alice",
+        "primary_name": "Alice",
+        "from": {"type": "person", "kind": null},
+        "to": {"type": "actor", "kind": "human"},
+        "reason": "person entity maps to actor/human"
+      }
+    ],
+    "review_questions": [],
+    "backup_path": null
+  },
+  "error": null
+}
+```
+
+`--preview` is read-only. `--apply` requires `--backup`; the backup is written
+next to `entity_graph.yaml` as `entity_graph.yaml.backup_*` before the atomic
+replacement. Ambiguous mappings are reported in `review_questions` instead of
+being rewritten.
 
 #### `entity --audit`
 

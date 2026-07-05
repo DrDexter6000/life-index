@@ -34,7 +34,7 @@ Shared infrastructure library for all Life Index atomic tools.
 - **entity_graph.py**: YAML entity graph load/save/resolve. Foundational module for entity operations.
 - **entity_relations.py**: Relation vocabulary normalization (Round 7 Phase 3). Canonical mapping + alias helper for search/review/check.
 - **entity_runtime.py**: Runtime serving layer for entity graph (Round 7 Phase 1). Provides `EntityRuntimeView` with O(1) by_lookup, reverse_relationships, and phrase pattern registry.
-- **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES, alias conflict detection, relationship target verification, v1.2 relationship metadata defaults, and merge tombstone validation.
+- **entity_schema.py**: Entity graph schema validation. ENTITY_TYPES (new actor/artifact plus legacy person), alias conflict detection, relationship target verification, v1.2 relationship metadata defaults, and merge tombstone validation.
 - **errors.py**: Structured error codes (E{module}{type}) with recovery strategies for Agent decision-making.
 - **file_lock.py**: Cross-platform file locking for concurrent access control. Uses fcntl (Unix) and msvcrt (Windows).
 - **frontmatter.py**: SSOT for YAML frontmatter parsing/formatting. Re-exports attachment.py and schema.py for backward compat.

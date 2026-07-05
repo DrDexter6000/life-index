@@ -543,7 +543,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 
 **队列外观察义务**：写日志或读 evidence 时，如果注意到新人名/新关系线索，轻提一句或用 `life-index entity --propose '<json>'` 静默放入候选池；候选不会影响 confirmed 检索，等下一轮访谈再裁决。
 
-**维护节律**：事件触发（新候选）轻提 1 句；周检 1 分钟跑 `life-index entity audit --json` 看 `traffic_light` 和 `pending_count`；月理 10 分钟过 ≤5 组访谈；用户说“整理人物”则直接进入查 → 筛 → 荐 → 问 → 写。
+**维护节律**：事件触发（新候选）轻提 1 句；周检 1 分钟跑 `life-index entity audit --json` 看灯号；类型旧时先 `life-index entity maintain --normalize --preview --json`，用户批准后 `--apply --backup`；月理 10 分钟过 ≤5 组访谈。
 
 **红线**：仅经 CLI 原语写图；工具内无 LLM、无 TUI、无零人判自动合并。高置信候选也只排队或等待用户批量授权。
 
