@@ -6,90 +6,61 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
-### Added
+## [1.3.7] - 2026-07-06
 
-- `entity audit --json` provides a read-only Entity Graph health facade that
-  combines structural checks, quality audit results, graph statistics, and a
-  traffic-light next step for host agents.
-- `entity maintain --normalize --preview/--apply --backup --json` previews and
-  applies deterministic Entity Graph type normalization from legacy `person`
-  records toward stable `type` + `attributes.kind`, preserving IDs, user
-  assertions, relationships, tombstones, and distinct-review records.
-- `entity maintain --delete --id ENTITY_ID --preview/--apply --backup --json`
-  provides the only destructive entity deletion path: preview first, apply with
-  an automatic `entity_graph.yaml.backup_*`.
-- `entity build --from-batch FILE --preview/--apply --json` provides the
-  workflow-facing facade over user-confirmed batch entity imports while
-  preserving the existing `--apply-batch` primitive contract.
-- `entity build --from-journals --preview --json` previews journal-frontmatter
-  seed candidates without mutating `entity_graph.yaml`, replacing the retired
-  direct cold-start write path in the primary workflow.
-- Entity Graph HITL review now exposes `why`, `evidence`, and
-  `action_choices` so host agents can interview users before applying entity
-  decisions. Relationship edges support v1.2 additive metadata
-  (`evidence`, `source`, `created_at`, `status`, optional `start`/`end`) while
-  legacy bare `{target, relation}` edges still load as confirmed.
-- `entity --unmerge --id MERGED_ID --target-id TARGET_ID` restores an entity
-  from the merge tombstone created by `entity --review --action merge_as_alias`.
-- Entity maintenance rhythm is now visible in `health` through an
-  `entity_maintenance` traffic light, pending review count, audit age, and
-  `life-index entity --review` next step.
-- `entity --propose` lets host agents persist entity/relationship hypotheses as
-  `status=candidate` review items without affecting confirmed search expansion.
-- `entity --apply-batch <file>` previews and applies user-confirmed JSON/YAML
-  batches with idempotent clean writes, conflict queuing, and atomic failure on
-  invalid rows.
+### What users get
+
+- Entity Graph is now a human-in-the-loop maintenance surface: review items
+  carry `why`, `evidence`, and action choices; relationship edges carry
+  provenance; merge decisions are reversible; keep-separate judgments persist;
+  and host-agent proposals stay in the candidate lane until a user confirms
+  them.
+- Entity maintenance is easier to operate through three workflow gates:
+  `entity build`, `entity audit`, and `entity maintain`. Cold-start journal
+  scanning is preview-only, batch imports are preview/apply and idempotent, and
+  destructive deletion now requires the maintain facade plus backup.
+- Entity schema has cut over to the stable `type` +
+  `attributes.kind` model. Active entities now use
+  `actor`, `place`, `project`, `event`, `artifact`, or `concept`; legacy graphs
+  fail closed with a clear normalize command instead of being silently guessed.
+- Agent-facing signals are cleaner: read-only entity commands emit
+  `workflow_hint`, `health` exposes the entity maintenance light, zero journal
+  references are marked as neutral facts, and monthly review prompts point at
+  the real `life-index abstract --month YYYY-MM` artifact generator.
+- Upgrade delivery is smoother because `sync-skill --install` can auto-converge
+  the managed nested `skills/life-index/life-index` duplicate into the
+  canonical single skill slot while leaving unrelated ambiguities fail-closed.
 
 ### Breaking
 
 - BREAKING: Entity Graph schema now accepts only the cutover L1 types
-  `actor`, `place`, `project`, `event`, `artifact`, and `concept`. Legacy
-  graphs containing `type: person` fail closed with `ENTITY_SCHEMA_LEGACY` and
-  point agents to `entity maintain --normalize --preview --json`; normalize
-  migrates active entities and merge tombstones before apply.
-- Removed the top-level Entity Graph primitives `--seed`, `--update`,
+  `actor`, `place`, `project`, `event`, `artifact`, and `concept`. Legacy graphs
+  containing `type: person` fail closed with `ENTITY_SCHEMA_LEGACY` and point
+  agents to `entity maintain --normalize --preview --json`; normalize migrates
+  active entities and merge tombstones before apply.
+- BREAKING: Removed the top-level Entity Graph primitives `--seed`, `--update`,
   `--merge`, and `--delete` by owner decision on 2026-07-05. Replacements:
   `entity build --from-journals --preview --json`, `entity --add-alias`,
   `entity --review --action preview/merge_as_alias`, and
-  `entity maintain --delete --preview/--apply --backup`. Calls to removed
-  flags return `ENTITY_PRIMITIVE_REMOVED` with the replacement command.
+  `entity maintain --delete --preview/--apply --backup`. Calls to removed flags
+  return `ENTITY_PRIMITIVE_REMOVED` with the replacement command.
 
-### Changed
+### Included in this release
 
-- Entity help, API docs, and SKILL quick references now route primary graph
-  usage through `entity build`, `entity audit`, and `entity maintain`.
-- Entity advanced read-only primitives (`--audit`, `--check`, `--stats`,
-  `--review`) now include `workflow_hint` so host agents can route back to the
-  build/audit/maintain workflow gates.
-- `monthly_review_due` now checks the generated `index_YYYY-MM.md` monthly
-  artifact and returns a concrete `life-index abstract --month YYYY-MM`
-  command instead of pointing at a non-generated report file.
-
-### Fixed
-
-- `entity maintain --normalize` now maps legacy `person` records with
-  `family_role_labels` to `actor` + `attributes.kind=human` and sends explicit
-  organization-like or conflicting `person` signals to review instead of
-  silently rewriting them.
-- `entity maintain --normalize --apply --backup` validates the full normalize
-  plan before backup/write and fails closed with a structured error if the plan
-  is invalid.
-- `sync-skill --install` now auto-converges a managed
-  `skills/life-index/life-index` duplicate into the canonical
-  `skills/life-index` slot when that nested duplicate is the only discovery
-  ambiguity. Unrelated or unsafe duplicate candidates still fail closed with
-  `HOST_SKILL_DIR_AMBIGUOUS`.
-- `entity --review --action merge_as_alias` is reversible: merges preserve the
-  absorbed entity's original record, transferred aliases, transferred
-  relationships, and rewired reverse references for later `--unmerge`.
-- Entity audit now treats zero journal references as a neutral fact. User-owned
-  `source=user,status=confirmed,evidence=[]` facts are healthy and are not
-  framed as action recommendations.
-- Entity audit now labels `zero_journal_reference_entities` with explicit
-  neutral-fact metadata so host agents do not treat the fact as an issue.
-- `entity --review --action keep_separate` now persists user-confirmed
-  non-duplicate decisions and audit respects them; `undo_keep_separate` removes
-  that mark so the pair can be reviewed again.
+- fix(sync-skill): auto-converge managed nested duplicates (#114).
+- feat(entity): add HITL relationship provenance, reversible merge tombstones,
+  and the interview playbook (#116).
+- feat(entity): add source-authority audit semantics, candidate dual lane,
+  `--propose`, batch apply, and entity maintenance rhythm (#118).
+- fix(entity): persist and undo keep-separate decisions (#120).
+- docs(entity): specify the build/audit/maintain UX surface (#121).
+- feat(entity): add audit, normalize, build-batch, and journal-build facades
+  (#122, #123, #124, #125).
+- fix(entity): harden normalize migration and keep family-role records human
+  (#126, #128).
+- feat(entity): remove retired primitive surface and cut over schema types
+  (#127, #129).
+- feat(entity): add workflow hints and signal hygiene for host agents (#130).
 
 ## [1.3.6] - 2026-07-03
 
