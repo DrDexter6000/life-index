@@ -5001,6 +5001,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 - `--audit` data contains: `audit_date`, `total_entities`, `issues[]`, `summary{}`, and neutral `facts{}`.
 - `build --from-journals --preview --json` previews journal-frontmatter seed candidates without mutating `entity_graph.yaml`; `data` contains `preview`, `source`, `new_entities`, `added[]`, `skipped_existing[]`, and `skipped_low_frequency[]`.
 - `build --from-batch FILE --preview/--apply --json` delegates to `--apply-batch` and preserves its `data` shape: `preview`, `new_entities`, `new_relationships`, `conflicts`, `duplicates_skipped`, and `conflict_items`.
+- `profile --id ENTITY_ID --json` and `profile --name NAME --json` assemble a confirmed entity profile from `entity_graph.yaml` plus the FTS index; `data` contains `identity`, `relationships`, `mentions`, `evidence`, and `stats`. Candidate entities fail closed and point to `entity --review`.
 - `audit --json` data is a read-only workflow facade containing `workflow: "audit"`, `traffic_light`, `pending_count`, `structural_issue_count`, `quality_issue_count`, `duplicate_count`, `next_step{}`, and `components{check,audit,stats}`.
 - `maintain --normalize --preview/--apply --backup --json` data contains `workflow: "maintain.normalize"`, `preview`, `applied`, `summary{entity_count,change_count,review_question_count}`, `changes[]`, `review_questions[]`, and `backup_path`.
 - `maintain --delete --id ENTITY_ID --preview/--apply --backup --json` data contains `workflow: "maintain.delete"`, `preview`, `applied`, `backup_path`, `deleted_id`, `deleted_name`, and `cleaned_refs[]`.
@@ -5030,6 +5031,8 @@ python -m tools.entity [options]
 python -m tools.entity build --from-journals --preview --json
 python -m tools.entity build --from-batch batch.yaml --preview --json
 python -m tools.entity build --from-batch batch.yaml --apply --json
+python -m tools.entity profile --id ENTITY_ID --json
+python -m tools.entity profile --name NAME --json
 python -m tools.entity audit --json
 python -m tools.entity maintain --normalize --preview --json
 python -m tools.entity maintain --normalize --apply --backup --json
@@ -5044,6 +5047,8 @@ python -m tools.entity maintain --delete --id ENTITY_ID --apply --backup --json
 | `build --from-journals --preview --json` | subcommand | ❌ | - | 预览 journal frontmatter 冷启动候选，零写入 |
 | `build --from-batch FILE --preview --json` | subcommand | ❌ | - | 预览用户确认批量实体/关系导入，零写入 |
 | `build --from-batch FILE --apply --json` | subcommand | ❌ | - | 应用用户确认批量实体/关系导入；委托 `--apply-batch` |
+| `profile --id ENTITY_ID --json` | subcommand | ❌ | - | 装配 confirmed 实体档案，按稳定 ID 选择 |
+| `profile --name NAME --json` | subcommand | ❌ | - | 装配 confirmed 实体档案；名称必须唯一，否则 fail-closed 返回候选 |
 | `audit --json` | subcommand | ❌ | - | 聚合 `--check` / `--audit` / `--stats` 的只读健康 facade |
 | `maintain --normalize --preview --json` | subcommand | ❌ | - | 预览旧实体类型到 `type` + `attributes.kind` 的迁移计划，零写入 |
 | `maintain --normalize --apply --backup --json` | subcommand | ❌ | - | 应用 deterministic normalize plan；必须创建 `entity_graph.yaml.backup_*` |
@@ -5085,6 +5090,75 @@ replacement command.
 | `--delete` | `entity maintain --delete --id ENTITY_ID --preview --json`, then `entity maintain --delete --id ENTITY_ID --apply --backup --json` |
 
 ### 主要操作模式
+
+#### `entity profile`
+
+只读装配 confirmed 实体档案，用于回答“关于某人/某项目/某实体”的问题时先取
+结构化上下文，再按 `mentions` 指针下钻日志。输入可用稳定 ID，或唯一名称/alias。
+名称歧义时不会猜测；candidate 实体不会生成 confirmed profile。
+
+```bash
+life-index entity profile --id actor-alice --json
+life-index entity profile --name Alice --json
+```
+
+返回（标准 envelope）：
+
+```json
+{
+  "success": true,
+  "schema_version": "v1.1.1",
+  "provenance": {
+    "source_hash": "sha256:...",
+    "tool_version": "1.x",
+    "generated_at": "2026-07-06T10:00:00+00:00",
+    "generator": "entity",
+    "params_hash": "sha256:...",
+    "fixture_version": null
+  },
+  "data": {
+    "identity": {
+      "entity_id": "actor-alice",
+      "primary_name": "Alice",
+      "aliases": ["Ally"],
+      "type": "actor",
+      "kind": "human",
+      "status": "confirmed"
+    },
+    "relationships": [
+      {
+        "target": "actor-bob",
+        "target_name": "Bob",
+        "relation": "friend_of",
+        "source": "user",
+        "created_at": "2026-07-01T00:00:00+00:00",
+        "status": "confirmed",
+        "evidence": ["Journals/2026/03/life-index_2026-03-15_001.md"]
+      }
+    ],
+    "mentions": [
+      {
+        "rel_path": "Journals/2026/03/life-index_2026-03-15_001.md",
+        "date": "2026-03-15",
+        "title": "Primary Mention"
+      }
+    ],
+    "evidence": ["Journals/2026/03/life-index_2026-03-15_001.md"],
+    "stats": {
+      "first_mention": "2026-03-15",
+      "latest_mention": "2026-03-15",
+      "mention_count": 1,
+      "relationship_count": 1
+    }
+  },
+  "error": null
+}
+```
+
+`mentions` scans the FTS index for the entity primary name and aliases, returns
+at most 20 journal pointers, and sorts newest first. `relationships` includes
+confirmed outgoing edges whose target entity is also confirmed; candidate
+entities or candidate edges are excluded.
 
 #### `entity audit --json`
 

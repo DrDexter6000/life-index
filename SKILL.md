@@ -267,13 +267,13 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 ### Entity Graph（已实现）
 
-- 主入口：`life-index entity build ...` / `life-index entity audit --json` / `life-index entity maintain --normalize --preview --json` / `life-index entity maintain --delete --id ENTITY_ID --preview --json`
+- 主入口：`life-index entity build ...` / `life-index entity profile --id ENTITY_ID --json` / `life-index entity audit --json` / `life-index entity maintain --normalize --preview --json` / `life-index entity maintain --delete --id ENTITY_ID --preview --json`
 - Deterministic relationship traversal is exposed through
   `life-index index-tree navigate --entity-neighbors "Entity Name" --json`.
 - 存储：`~/Documents/Life-Index/entity_graph.yaml`
 - 操作规范：见 `docs/ENTITY_GRAPH.md`
 - 作用：
-  - 搜索时做 alias / relationship query expansion
+  - 搜索时做 alias / relationship query expansion；回答“关于某实体”先取 `entity profile`
   - 写入时标记 `new_entities_detected`
 - 当前最小支持类型：`actor` / `place` / `project` / `event` / `artifact` / `concept`；人物、组织、宿主 agent 用 `actor` + `attributes.kind`；实体 ID 不透明且长期稳定，前缀没有语义
 

@@ -113,6 +113,7 @@ def test_entity_help_uses_single_workflow_vocabulary() -> None:
     advanced_pos = help_text.index("Advanced primitives appendix")
     assert workflow_pos < advanced_pos
     assert "life-index entity build --from-journals --preview --json" in help_text
+    assert "life-index entity profile --id ENTITY_ID --json" in help_text
     assert "life-index entity audit --json" in help_text
     assert "life-index entity maintain --normalize --preview --json" in help_text
     assert "--json" in help_text
