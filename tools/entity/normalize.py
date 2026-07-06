@@ -14,7 +14,6 @@ from tools.lib.entity_schema import validate_entity_graph_payload
 
 _AI_ASSISTANT_SIGNALS = {"ai", "ai_assistant", "software_agent"}
 _ORGANIZATION_SIGNALS = {"organization", "company", "institution", "school"}
-_GROUP_SIGNALS = {"group", "family", "team"}
 _ARTIFACT_KIND_BY_SIGNAL = {
     "ai_model": "ai_model",
     "model": "ai_model",
@@ -125,15 +124,28 @@ def _target_type_and_kind(entity: dict[str, Any]) -> dict[str, Any]:
             "needs_review": False,
         }
 
-    signals = {
-        _lower(attributes.get("kind")),
-        _lower(attributes.get("subtype")),
-        _lower(attributes.get("role")),
-        _lower(attributes.get("category")),
-    }
+    subtype = _lower(attributes.get("subtype"))
+    role = _lower(attributes.get("role"))
+    category = _lower(attributes.get("category"))
+    signals = {kind, subtype, role, category}
     signals.discard("")
 
     artifact_signals = signals & set(_ARTIFACT_KIND_BY_SIGNAL)
+    ai_signals = signals & _AI_ASSISTANT_SIGNALS
+    organization_signals = signals & _ORGANIZATION_SIGNALS
+    human_signal = kind == "human" or bool(attributes.get("family_role_labels"))
+    target_families = sum(
+        bool(signal_set)
+        for signal_set in (artifact_signals, ai_signals, organization_signals, human_signal)
+    )
+    if target_families > 1:
+        return {
+            "type": entity_type,
+            "kind": attributes.get("kind"),
+            "reason": "person has conflicting normalization signals",
+            "needs_review": True,
+        }
+
     if artifact_signals:
         signal = sorted(artifact_signals)[0]
         return {
@@ -143,7 +155,7 @@ def _target_type_and_kind(entity: dict[str, Any]) -> dict[str, Any]:
             "needs_review": False,
         }
 
-    if signals & _AI_ASSISTANT_SIGNALS:
+    if ai_signals:
         return {
             "type": "actor",
             "kind": "software_agent",
@@ -151,7 +163,15 @@ def _target_type_and_kind(entity: dict[str, Any]) -> dict[str, Any]:
             "needs_review": False,
         }
 
-    if signals & _ORGANIZATION_SIGNALS:
+    if kind in _ORGANIZATION_SIGNALS:
+        return {
+            "type": entity_type,
+            "kind": attributes.get("kind"),
+            "reason": f"person kind '{attributes.get('kind')}' is ambiguous",
+            "needs_review": True,
+        }
+
+    if organization_signals:
         return {
             "type": "actor",
             "kind": "organization",
@@ -159,11 +179,11 @@ def _target_type_and_kind(entity: dict[str, Any]) -> dict[str, Any]:
             "needs_review": False,
         }
 
-    if signals & _GROUP_SIGNALS:
+    if attributes.get("family_role_labels"):
         return {
             "type": "actor",
-            "kind": "group",
-            "reason": "group signals map to actor/group",
+            "kind": "human",
+            "reason": "family_role_labels identify a human role-bearing individual",
             "needs_review": False,
         }
 

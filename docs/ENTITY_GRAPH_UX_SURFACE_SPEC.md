@@ -62,7 +62,7 @@ The future schema should use a small stable `type` set plus open-ended
 
 | Top-level type | Purpose | Typical `attributes.kind` values |
 | --- | --- | --- |
-| `actor` | Agents that can act or be related to actions | `human`, `organization`, `software_agent`, `group` |
+| `actor` | Agents that can act or be related to actions | `human`, `organization`, `software_agent` |
 | `place` | Physical or logical locations | `city`, `country`, `home`, `venue` |
 | `project` | Ongoing efforts with lifecycle and work context | `personal`, `work`, `product`, `research` |
 | `event` | Time-bounded happenings | `trip`, `meeting`, `birthday`, `milestone` |
@@ -215,6 +215,7 @@ Required behavior:
 - Clear mappings can apply automatically:
   - `person` with human signals -> `actor` + `attributes.kind=human`
   - `person` with AI assistant signals -> `actor` + `attributes.kind=software_agent`
+  - `person` with family role labels -> `actor` + `attributes.kind=human`
   - organization-like entities -> `actor` + `attributes.kind=organization`
   - model/app/book/document/device-like entities -> `artifact` with matching kind
   - `place`, `project`, `event`, `concept` mostly preserve type unless a rule is
