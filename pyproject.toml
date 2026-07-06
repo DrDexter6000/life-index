@@ -11,7 +11,7 @@ name = "life-index"
 version = "1.3.7"
 description = "Personal life journaling system with dual-dimension indexing"
 readme = "README.md"
-license = "Apache-2.0"
+license = "AGPL-3.0-only"
 authors = [
     {name = "Life Index Team"}
 ]
