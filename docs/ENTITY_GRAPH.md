@@ -299,7 +299,7 @@ life-index eval
 ### 8.1 当前立场：允许入图，须用户明确批准
 
 - AI 模型/助手**允许入图**，但**不默认自动添加**
-- 旧图中的 `person` + `subtype=ai` + `role=ai_assistant` 仍兼容；归一化后表达为 `actor` + `attributes.kind=software_agent`
+- `maintain --normalize` 会迁移所有旧 `person` 到 `actor`；旧图中的 `person` + `subtype=ai` + `role=ai_assistant` 仍兼容，归一化后表达为 `actor` + `attributes.kind=software_agent`
 - 每个 AI 实体仍需**用户明确确认**后方可写入 production（见 §6.1）
 
 ### 8.2 AI 实体固定规则

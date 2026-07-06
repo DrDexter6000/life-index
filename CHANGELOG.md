@@ -56,6 +56,10 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### Fixed
 
+- `entity maintain --normalize` now maps legacy `person` records with
+  `family_role_labels` to `actor` + `attributes.kind=human` and sends explicit
+  organization-like or conflicting `person` signals to review instead of
+  silently rewriting them.
 - `entity maintain --normalize --apply --backup` validates the full normalize
   plan before backup/write and fails closed with a structured error if the plan
   is invalid.

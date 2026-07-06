@@ -409,6 +409,119 @@ def test_maintain_normalize_ambiguous_kind_becomes_review_question(
     ]
 
 
+def test_maintain_normalize_family_role_labels_map_to_actor_human(
+    isolated_data_dir: Path,
+) -> None:
+    """Family role labels are evidence of a human individual, never actor/group."""
+    graph_path = isolated_data_dir / "entity_graph.yaml"
+    save_entity_graph(
+        [
+            {
+                "id": "person-alice",
+                "type": "person",
+                "primary_name": "Alice",
+                "attributes": {
+                    "role": "family",
+                    "family_role_labels": {
+                        "parent_perspective": {"primary": "daughter", "aliases": ["child"]},
+                        "by_observer": {
+                            "person-bob": {"primary": "mother", "aliases": ["mom"]},
+                        },
+                    },
+                },
+                "relationships": [],
+            },
+            {
+                "id": "person-bob",
+                "type": "person",
+                "primary_name": "Bob",
+                "attributes": {"kind": "human"},
+                "relationships": [],
+            },
+        ],
+        graph_path,
+    )
+    before = graph_path.read_text(encoding="utf-8")
+
+    payload = _run_entity_cli(["maintain", "--normalize", "--preview", "--json"])
+
+    assert graph_path.read_text(encoding="utf-8") == before
+    assert payload["success"] is True
+    assert payload["data"]["summary"]["change_count"] == 2
+    assert payload["data"]["summary"]["review_question_count"] == 0
+    alice_change = next(
+        change for change in payload["data"]["changes"] if change["entity_id"] == "person-alice"
+    )
+    assert alice_change["to"] == {"type": "actor", "kind": "human"}
+    assert "family_role_labels" in alice_change["reason"]
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert '"group"' not in serialized
+
+
+def test_maintain_normalize_person_with_explicit_org_like_kind_needs_review(
+    isolated_data_dir: Path,
+) -> None:
+    """A person with explicit organization-like kind is ambiguous and fail-closed."""
+    graph_path = isolated_data_dir / "entity_graph.yaml"
+    save_entity_graph(
+        [
+            {
+                "id": "person-acme",
+                "type": "person",
+                "primary_name": "Acme",
+                "attributes": {"kind": "organization"},
+                "relationships": [],
+            }
+        ],
+        graph_path,
+    )
+
+    payload = _run_entity_cli(["maintain", "--normalize", "--preview", "--json"])
+
+    assert payload["success"] is True
+    assert payload["data"]["summary"]["change_count"] == 0
+    assert payload["data"]["summary"]["review_question_count"] == 1
+    assert payload["data"]["review_questions"] == [
+        {
+            "entity_id": "person-acme",
+            "primary_name": "Acme",
+            "reason": "person kind 'organization' is ambiguous",
+        }
+    ]
+
+
+def test_maintain_normalize_conflicting_person_signals_need_review(
+    isolated_data_dir: Path,
+) -> None:
+    """Conflicting human and organization signals must not silently rewrite."""
+    graph_path = isolated_data_dir / "entity_graph.yaml"
+    save_entity_graph(
+        [
+            {
+                "id": "person-morgan",
+                "type": "person",
+                "primary_name": "Morgan",
+                "attributes": {"kind": "human", "role": "company"},
+                "relationships": [],
+            }
+        ],
+        graph_path,
+    )
+
+    payload = _run_entity_cli(["maintain", "--normalize", "--preview", "--json"])
+
+    assert payload["success"] is True
+    assert payload["data"]["summary"]["change_count"] == 0
+    assert payload["data"]["summary"]["review_question_count"] == 1
+    assert payload["data"]["review_questions"] == [
+        {
+            "entity_id": "person-morgan",
+            "primary_name": "Morgan",
+            "reason": "person has conflicting normalization signals",
+        }
+    ]
+
+
 def test_maintain_normalize_invalid_plan_returns_error_without_backup_or_write(
     isolated_data_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
