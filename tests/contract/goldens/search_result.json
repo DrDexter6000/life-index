@@ -65,6 +65,10 @@
   },
   "warnings": [],
   "entity_hints": [],
+  "entity_expansion": {
+    "applied": false,
+    "expansions": []
+  },
   "entity_graph_status": {
     "status": "__normalized__",
     "entity_count": "__normalized__",

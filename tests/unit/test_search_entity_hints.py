@@ -62,9 +62,51 @@ def _sample_entities() -> list[dict]:
     ]
 
 
+def _payoff_entities() -> list[dict]:
+    return [
+        {
+            "id": "actor-alice",
+            "type": "actor",
+            "primary_name": "Alice",
+            "aliases": ["Ally"],
+            "attributes": {"kind": "human"},
+            "relationships": [],
+            "source": "user",
+            "status": "confirmed",
+        },
+        {
+            "id": "actor-morgan",
+            "type": "actor",
+            "primary_name": "Morgan",
+            "aliases": [],
+            "attributes": {"kind": "human"},
+            "relationships": [],
+            "source": "user",
+            "status": "confirmed",
+        },
+    ]
+
+
 def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
 
     save_entity_graph(entities, isolated_data_dir / "entity_graph.yaml")
+
+
+def _write_search_fixture_journal(isolated_data_dir: Path) -> Path:
+    journal_dir = isolated_data_dir / "Journals" / "2026" / "03"
+    journal_dir.mkdir(parents=True, exist_ok=True)
+    journal_path = journal_dir / "life-index_2026-03-15_001.md"
+    journal_path.write_text(
+        "---\n"
+        'title: "Project Status Fixture"\n'
+        "date: 2026-03-15\n"
+        "topic: [work]\n"
+        "tags: [projectstatus]\n"
+        "---\n\n"
+        "Alice shared projectstatus notes after lunch.\n",
+        encoding="utf-8",
+    )
+    return journal_path
 
 
 class TestEntityHintsPresent:
@@ -187,3 +229,58 @@ class TestEntityHintsBackwardCompat:
 
         # expanded_query should still exist
         assert "expanded_query" in result["query_params"] or result["entity_hints"]
+
+
+class TestEntityExpansionAttribution:
+    """S1 payoff: search explains deterministic Entity Graph query expansion."""
+
+    def test_alias_only_query_reports_entity_expansion_attribution(
+        self, isolated_data_dir: Path
+    ) -> None:
+        from tools.lib.search_index import update_index
+        from tools.search_journals.core import hierarchical_search
+
+        _save_graph(_payoff_entities(), isolated_data_dir)
+        journal_path = _write_search_fixture_journal(isolated_data_dir)
+        assert update_index(incremental=False)["success"] is True
+
+        result = hierarchical_search(query="Ally projectstatus", level=3, semantic=False)
+
+        assert any(
+            str(item.get("path", "")).endswith(journal_path.name)
+            for item in result["merged_results"]
+        )
+        assert result["entity_expansion"] == {
+            "applied": True,
+            "expansions": [
+                {
+                    "from": "Ally",
+                    "to": ["Alice"],
+                    "via": "alias",
+                    "entity_id": "actor-alice",
+                }
+            ],
+        }
+
+    def test_no_entity_match_reports_empty_entity_expansion(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import hierarchical_search
+
+        _save_graph(_payoff_entities(), isolated_data_dir)
+
+        result = hierarchical_search(query="unrelated projectstatus", level=3, semantic=False)
+
+        assert result["entity_expansion"] == {"applied": False, "expansions": []}
+
+    def test_entity_expansion_shape_is_stable(self, isolated_data_dir: Path) -> None:
+        from tools.search_journals.core import hierarchical_search
+
+        _save_graph(_payoff_entities(), isolated_data_dir)
+
+        result = hierarchical_search(query="Ally", level=1, semantic=False)
+        expansion = result["entity_expansion"]
+
+        assert set(expansion) == {"applied", "expansions"}
+        assert isinstance(expansion["applied"], bool)
+        assert isinstance(expansion["expansions"], list)
+        assert set(expansion["expansions"][0]) == {"from", "to", "via", "entity_id"}
+        assert expansion["expansions"][0]["via"] in {"alias", "relation"}

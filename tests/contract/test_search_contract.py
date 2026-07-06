@@ -39,6 +39,7 @@ REQUIRED_RESPONSE_FIELDS = {
     "has_more",
     "performance",
     "warnings",  # Phase 2C: added warnings field
+    "entity_expansion",  # S1 payoff: attribution for Entity Graph query expansion
     "index_status",  # Phase B: index observability (emitted on both paths)
 }
 
@@ -291,6 +292,14 @@ class TestSearchFieldTypes:
         """warnings field is a list."""
         result = hierarchical_search(query="test", level=3)
         assert isinstance(result["warnings"], list)
+
+    def test_entity_expansion_has_stable_shape(self):
+        """entity_expansion is always present with attribution shape."""
+        result = hierarchical_search(query="test", level=3)
+
+        assert set(result["entity_expansion"]) == {"applied", "expansions"}
+        assert isinstance(result["entity_expansion"]["applied"], bool)
+        assert isinstance(result["entity_expansion"]["expansions"], list)
 
     def test_total_matches_is_int(self):
         """total_matches is an integer (PRD §4.4)."""

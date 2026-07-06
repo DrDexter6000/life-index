@@ -1962,6 +1962,7 @@ Tranche A 将以下内容纳入兼容性承诺：
 | `l3_results` | array | yes | Level-3 (full-text) results |
 | `semantic_results` | array | yes | Semantic pipeline results (empty if unavailable) |
 | `entity_hints` | array | yes | Entity graph match hints for the query |
+| `entity_expansion` | object | yes | Attribution block for deterministic Entity Graph query expansion: `{applied, expansions}` |
 | `total_found` | int | yes | Number of results in this response (after `--limit` applied) |
 | `total_matches` | int | yes | Total results matched (complete candidate set before truncation); always present, includes zero. `total_matches >= total_found` always holds. |
 | `total_available` | int | yes | Total results available (may exceed page); alias for `total_matches` (backward compatibility) |
@@ -1986,6 +1987,7 @@ Tranche A 将以下内容纳入兼容性承诺：
 - `total_matches`: complete candidate set size before presentation-layer truncation. Invariant: `total_matches >= total_found` always holds. Per CHARTER §1.11, the retrieval/ranking layer must not silently hard-cap results.
 - `display_summary`: human-readable count such as "Showing 5 of 56 results" or "Showing all 20 results" (when `--limit 0` or no truncation applied).
 - `query_params`: exact echo of all CLI inputs, including defaults filled in.
+- `entity_expansion`: caller-facing attribution for Entity Graph query expansion. `applied` is true when at least one expansion was applied; `expansions[]` entries contain `from`, `to`, `via`, and `entity_id`. S1 emits `via: "alias"`; relation attribution uses the same shape when relation-aware expansion is enabled. This field is a hint, not a gate, and is block-level attribution rather than per-result attribution.
 - `performance.total_time_ms`: end-to-end search wall-clock time in milliseconds.
 - `index_status`: two mutually exclusive paths — `freshness` (no pending writes) or `pending_before_search`/`auto_updated`/`pending_consumed` (writes in queue).
 - `search_plan.intent_type`: `recall` / `count` / `compare` / `summarize` / `unknown`.
@@ -2083,6 +2085,17 @@ python -m tools.search_journals [options]
       "reason": "alias_match"
     }
   ],
+  "entity_expansion": {
+    "applied": true,
+    "expansions": [
+      {
+        "from": "Ally",
+        "to": ["Alice"],
+        "via": "alias",
+        "entity_id": "actor-alice"
+      }
+    ]
+  },
   "total_found": 5,
   "total_matches": 56,
   "total_available": 56,
@@ -2100,6 +2113,8 @@ python -m tools.search_journals [options]
 - `entity_hints`：search 对 query 中实体命中结果的结构化解释字段
 - 每个 hint 包含：`matched_term` / `entity_id` / `entity_type` / `expansion_terms` / `reason`
 - `entity_hints` 属于 read-only suggestion layer，不会修改 query 语义本身；它与 `query_params.expanded_query` 互补存在
+- `entity_expansion`：search 对 Entity Graph 扩展的块级归因字段，形状为 `{applied, expansions}`；每个 expansion 包含 `from` / `to` / `via` / `entity_id`
+- `entity_expansion.applied=false` 时 `expansions=[]`；该字段只解释确定性扩展来源，不决定是否展示或过滤任何结果
 
 ### Round 11 新增返回字段
 

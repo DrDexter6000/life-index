@@ -837,6 +837,38 @@ def _semantic_noop_requested(
     return semantic or semantic_policy != "fallback" or semantic_weight != SEMANTIC_WEIGHT_DEFAULT
 
 
+def _build_entity_expansion_attribution(entity_hints: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build caller-facing attribution for deterministic Entity Graph expansion."""
+
+    expansions: list[dict[str, Any]] = []
+    for hint in entity_hints:
+        if hint.get("reason") not in {
+            "alias_match",
+            "primary_name_match",
+            "embedded_name_match",
+        }:
+            continue
+        matched_term = str(hint.get("matched_term") or "").strip()
+        if not matched_term:
+            continue
+        targets: list[str] = []
+        for term in hint.get("expansion_terms") or []:
+            term_str = str(term).strip()
+            if term_str and term_str != matched_term and term_str not in targets:
+                targets.append(term_str)
+        if not targets:
+            continue
+        expansions.append(
+            {
+                "from": matched_term,
+                "to": targets,
+                "via": "alias",
+                "entity_id": hint.get("entity_id"),
+            }
+        )
+    return {"applied": bool(expansions), "expansions": expansions}
+
+
 def hierarchical_search(
     query: Optional[str] = None,
     topic: Optional[str] = None,
@@ -908,6 +940,7 @@ def hierarchical_search(
         "performance": {},
         "warnings": [],  # Phase 2C: 降级警告收集
         "entity_hints": [],  # Round 7 Phase 1: structured entity suggestion hints
+        "entity_expansion": {"applied": False, "expansions": []},
         # Round 11 Phase 0: query understanding output placeholders
         "search_plan": None,  # Phase 1 implementation: structured query understanding
         "ambiguity": {"has_ambiguity": False, "items": []},  # Phase 2 implementation
@@ -937,6 +970,7 @@ def hierarchical_search(
     # Round 7 Phase 1: Resolve entity hints before expansion
     entity_hints = resolve_query_entities(query) if query else []
     result["entity_hints"] = entity_hints
+    result["entity_expansion"] = _build_entity_expansion_attribution(entity_hints)
 
     # Round 11 Phase 0→1: Query understanding via preprocessor
     _plan = None
