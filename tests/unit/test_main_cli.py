@@ -2,6 +2,7 @@
 """Unit tests for tools.__main__ CLI helpers."""
 
 import json
+import subprocess
 import sys
 import types
 
@@ -160,6 +161,111 @@ class TestHealthCheck:
         )
         assert check["status"] == "warning"
         assert "git-behind" in check["issue"]
+
+    def test_local_git_freshness_reports_dirty_worktree(self, tmp_path):
+        """Dirty editable checkouts should be visible to host agents before upgrade."""
+        from tools import __main__ as main_cli
+
+        repo = tmp_path / "checkout"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+        (repo / "friction.md").write_text("agent note in the wrong place\n", encoding="utf-8")
+
+        dirty = main_cli._detect_local_git_freshness(repo)
+
+        assert dirty["git_worktree_dirty"] is True
+        assert dirty["git_worktree_dirty_count"] == 1
+        assert dirty["git_worktree_dirty_error"] is None
+
+        (repo / "friction.md").unlink()
+        clean = main_cli._detect_local_git_freshness(repo)
+
+        assert clean["git_worktree_dirty"] is False
+        assert clean["git_worktree_dirty_count"] == 0
+
+    def test_upgrade_freshness_dirty_worktree_is_warning_hint_not_issue(
+        self,
+        monkeypatch,
+    ):
+        """Dirty clones should warn with recovery guidance without blocking health."""
+        from tools import __main__ as main_cli
+
+        def fake_detect_upgrade_freshness_state():
+            return {
+                "installed_version": "1.3.7",
+                "manifest_version": "1.3.7",
+                "install_type": "editable",
+                "freshness": "current",
+                "update_available": None,
+                "update_reasons": [],
+                "suggested_refresh_step": None,
+                "freshness_error": None,
+                "git_freshness": "current",
+                "git_upstream": "origin/main",
+                "git_behind_count": 0,
+                "git_ahead_count": 0,
+                "git_error": None,
+                "git_worktree_dirty": True,
+                "git_worktree_dirty_count": 2,
+                "git_worktree_dirty_error": None,
+            }
+
+        monkeypatch.setattr(
+            main_cli,
+            "_detect_upgrade_freshness_state",
+            fake_detect_upgrade_freshness_state,
+        )
+
+        check, issue = main_cli._check_upgrade_freshness()
+
+        assert issue == ""
+        assert check["status"] == "warning"
+        assert check["warning"] == (
+            "Repository clone has uncommitted changes; dirty clones can cause "
+            "Life Index upgrades to fail."
+        )
+        assert check["suggested_command"] == "git checkout -- ."
+        assert check["git"]["dirty"] is True
+        assert check["git"]["dirty_count"] == 2
+        assert "issue" not in check
+
+    def test_upgrade_freshness_clean_worktree_has_no_dirty_warning(self, monkeypatch):
+        """Clean editable checkouts should not surface a dirty-clone hint."""
+        from tools import __main__ as main_cli
+
+        def fake_detect_upgrade_freshness_state():
+            return {
+                "installed_version": "1.3.7",
+                "manifest_version": "1.3.7",
+                "install_type": "editable",
+                "freshness": "current",
+                "update_available": None,
+                "update_reasons": [],
+                "suggested_refresh_step": None,
+                "freshness_error": None,
+                "git_freshness": "current",
+                "git_upstream": "origin/main",
+                "git_behind_count": 0,
+                "git_ahead_count": 0,
+                "git_error": None,
+                "git_worktree_dirty": False,
+                "git_worktree_dirty_count": 0,
+                "git_worktree_dirty_error": None,
+            }
+
+        monkeypatch.setattr(
+            main_cli,
+            "_detect_upgrade_freshness_state",
+            fake_detect_upgrade_freshness_state,
+        )
+
+        check, issue = main_cli._check_upgrade_freshness()
+
+        assert issue == ""
+        assert check["status"] == "ok"
+        assert "warning" not in check
+        assert check["suggested_command"] is None
+        assert check["git"]["dirty"] is False
 
 
 class TestMainCli:

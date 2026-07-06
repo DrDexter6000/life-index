@@ -64,6 +64,11 @@ HEALTH_SCHEMA_VERSION = "m16.health.v0"
 INDEX_TREE_REBUILD_COMMAND = "life-index generate-index --all-months"
 CHRONIC_HEALTH_CHECKS = {"virtual_env", "data_directory", "entity_graph", "index_tree"}
 CHANGELOG_POINTER = "CHANGELOG.md"
+DIRTY_WORKTREE_WARNING = (
+    "Repository clone has uncommitted changes; dirty clones can cause "
+    "Life Index upgrades to fail."
+)
+DIRTY_WORKTREE_SUGGESTED_COMMAND = "git checkout -- ."
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
 
@@ -111,6 +116,30 @@ def _run_git_local(checkout: Path, args: list[str]) -> subprocess.CompletedProce
     )
 
 
+def _detect_local_git_worktree(checkout: Path) -> Dict[str, Any]:
+    try:
+        result = _run_git_local(checkout, ["status", "--porcelain"])
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "git status failed").strip()
+            return {
+                "git_worktree_dirty": None,
+                "git_worktree_dirty_count": None,
+                "git_worktree_dirty_error": detail,
+            }
+        dirty_lines = [line for line in result.stdout.splitlines() if line.strip()]
+        return {
+            "git_worktree_dirty": bool(dirty_lines),
+            "git_worktree_dirty_count": len(dirty_lines),
+            "git_worktree_dirty_error": None,
+        }
+    except Exception as exc:
+        return {
+            "git_worktree_dirty": None,
+            "git_worktree_dirty_count": None,
+            "git_worktree_dirty_error": str(exc),
+        }
+
+
 def _detect_local_git_freshness(checkout: Path | None) -> Dict[str, Any]:
     if checkout is None or not (checkout / ".git").exists():
         return {
@@ -119,7 +148,12 @@ def _detect_local_git_freshness(checkout: Path | None) -> Dict[str, Any]:
             "git_behind_count": None,
             "git_ahead_count": None,
             "git_error": None,
+            "git_worktree_dirty": False,
+            "git_worktree_dirty_count": 0,
+            "git_worktree_dirty_error": None,
         }
+
+    worktree_status = _detect_local_git_worktree(checkout)
 
     try:
         upstream_result = _run_git_local(
@@ -137,6 +171,7 @@ def _detect_local_git_freshness(checkout: Path | None) -> Dict[str, Any]:
                 "git_behind_count": None,
                 "git_ahead_count": None,
                 "git_error": "No upstream branch or origin/main ref found",
+                **worktree_status,
             }
 
         count_result = _run_git_local(
@@ -151,6 +186,7 @@ def _detect_local_git_freshness(checkout: Path | None) -> Dict[str, Any]:
                 "git_behind_count": None,
                 "git_ahead_count": None,
                 "git_error": detail,
+                **worktree_status,
             }
 
         ahead_text, behind_text = count_result.stdout.strip().split()[:2]
@@ -162,6 +198,7 @@ def _detect_local_git_freshness(checkout: Path | None) -> Dict[str, Any]:
             "git_behind_count": behind,
             "git_ahead_count": ahead,
             "git_error": None,
+            **worktree_status,
         }
     except Exception as exc:
         return {
@@ -170,6 +207,7 @@ def _detect_local_git_freshness(checkout: Path | None) -> Dict[str, Any]:
             "git_behind_count": None,
             "git_ahead_count": None,
             "git_error": str(exc),
+            **worktree_status,
         }
 
 
@@ -237,12 +275,17 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
                 "behind_count": None,
                 "ahead_count": None,
                 "error": str(exc),
+                "dirty": None,
+                "dirty_count": None,
+                "dirty_error": str(exc),
             },
+            "suggested_command": None,
         }
         return check, ""
 
     update_reasons = list(state.get("update_reasons") or [])
-    status = "warning" if update_reasons else "ok"
+    dirty_worktree = state.get("git_worktree_dirty") is True
+    status = "warning" if update_reasons or dirty_worktree else "ok"
     check = {
         "name": "upgrade_freshness",
         "status": status,
@@ -261,8 +304,15 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
             "behind_count": state.get("git_behind_count"),
             "ahead_count": state.get("git_ahead_count"),
             "error": state.get("git_error"),
+            "dirty": state.get("git_worktree_dirty"),
+            "dirty_count": state.get("git_worktree_dirty_count"),
+            "dirty_error": state.get("git_worktree_dirty_error"),
         },
+        "suggested_command": (DIRTY_WORKTREE_SUGGESTED_COMMAND if dirty_worktree else None),
     }
+
+    if dirty_worktree:
+        check["warning"] = DIRTY_WORKTREE_WARNING
 
     if not update_reasons:
         return check, ""

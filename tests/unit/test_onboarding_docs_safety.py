@@ -119,6 +119,19 @@ def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:
     assert "git_freshness" in skill
 
 
+def test_skill_teaches_host_agent_ops_discipline() -> None:
+    skill = _read("SKILL.md")
+    playbook = _read("references/ENTITY_MAINTENANCE_PLAYBOOK.md")
+
+    assert "运维纪律" in skill
+    assert "不是开发者" in skill
+    assert "不要向产品仓库克隆 commit/push" in skill
+    assert "git status --porcelain" in skill
+    assert "git checkout -- ." in skill
+    assert "<data>/frictions/" in skill
+    assert "运维纪律" in playbook
+
+
 def test_skill_entity_interview_teaches_agent_recommend_user_confirm_write() -> None:
     skill = _read("SKILL.md")
 
