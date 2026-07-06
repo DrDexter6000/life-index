@@ -86,7 +86,8 @@ def _dedupe_evidence(relationships: list[dict[str, Any]]) -> list[str]:
 def _mentions_for_terms(terms: list[str]) -> list[dict[str, Any]]:
     by_path: dict[str, dict[str, Any]] = {}
     for term in terms:
-        for item in search_fts(term, limit=MENTION_SCAN_LIMIT, min_relevance=0):
+        phrase_query = '"' + term.replace('"', '""') + '"'
+        for item in search_fts(phrase_query, limit=MENTION_SCAN_LIMIT, min_relevance=0):
             rel_path = str(item.get("rel_path") or item.get("path") or "")
             if not rel_path or rel_path in by_path:
                 continue

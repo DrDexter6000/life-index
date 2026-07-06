@@ -18,8 +18,8 @@ Commands:
     entity    Manage entity graph
     weather   Query weather information
     index     Build/rebuild search index
-    generate-index  Generate index tree (monthly/yearly/root)
-    abstract  (alias for generate-index)
+    generate-index  Generate index tree and entity profile docs
+    abstract  Alias for generate-index
     backup    Backup journal data
     verify    Verify data integrity
     timeline  Output chronological summary stream
@@ -863,8 +863,8 @@ def print_usage() -> None:
     print("  entity    Manage entity graph")
     print("  weather   Query weather information")
     print("  index     Build/rebuild search index")
-    print("  generate-index  Generate index tree (monthly/yearly/root)")
-    print("  abstract        (alias for generate-index)")
+    print("  generate-index  Generate index tree and entity profile docs")
+    print("  abstract        Alias for generate-index")
     print("  backup    Backup journal data")
     print("  verify    Verify data integrity")
     print("  timeline  Output chronological summary stream")

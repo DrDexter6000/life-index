@@ -188,6 +188,39 @@ def test_profile_by_unique_name_resolves_alias(isolated_data_dir: Path) -> None:
     assert result["data"]["identity"]["entity_id"] == "actor-alice"
 
 
+def test_profile_mentions_treat_entity_names_as_literals(isolated_data_dir: Path) -> None:
+    from tools.lib.search_index import update_index
+
+    save_entity_graph(
+        [
+            {
+                "id": "project-life-index",
+                "type": "project",
+                "primary_name": "Life Index 4.1",
+                "aliases": [],
+                "attributes": {},
+                "relationships": [],
+                "source": "user",
+                "status": "confirmed",
+            }
+        ],
+        isolated_data_dir / "entity_graph.yaml",
+    )
+    _write_journal(
+        isolated_data_dir,
+        filename="life-index_2026-03-17_001.md",
+        title="Version Mention",
+        date="2026-03-17",
+        body="Life Index 4.1 shipped with profile docs.",
+    )
+    assert update_index(incremental=False)["success"] is True
+
+    result = _run_entity_profile(isolated_data_dir, "--id", "project-life-index")
+
+    assert result["success"] is True
+    assert [mention["title"] for mention in result["data"]["mentions"]] == ["Version Mention"]
+
+
 def test_candidate_entity_profile_fails_closed(isolated_data_dir: Path) -> None:
     _setup_profile_fixture(isolated_data_dir)
 

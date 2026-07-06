@@ -11,6 +11,7 @@ from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.frontmatter import parse_journal_file
 from ..lib.logger import get_logger
+from .entity_profiles import materialize_entity_profiles, root_entities_section
 
 logger = get_logger(__name__)
 
@@ -397,6 +398,8 @@ def generate_root_index_content(
         "",
         "> 个人人生日志系统 · 始于 2025",
         "",
+        root_entities_section(),
+        "",
         "## 日志总览",
         "",
         "| 年份 | 条目 | 全部地点 | 全部主题 |",
@@ -697,6 +700,7 @@ __all__ = [
     "generate_monthly_index",
     "generate_yearly_index",
     "generate_root_index",
+    "materialize_entity_profiles",
     "rebuild_index_tree",
     "generate_monthly_abstract_content",
     "generate_yearly_abstract_content",
