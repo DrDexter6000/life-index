@@ -23,6 +23,6 @@ No separate Contributor License Agreement is required for ordinary
 contributions at this time. If that changes, the requirement must be stated
 publicly before a contribution is merged.
 
-By contributing, you also grant the project maintainers permission to relicense
-your contribution under AGPL-3.0-only or a future OSI-approved open-source
-license for Life Index.
+By submitting a contribution, you additionally grant the project owner a
+perpetual, worldwide, non-exclusive, royalty-free right to relicense the
+contribution under other license terms, including commercial terms.
