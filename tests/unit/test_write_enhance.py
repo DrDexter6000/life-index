@@ -124,7 +124,7 @@ def test_write_populates_entities_from_people_location(isolated_data_dir: Path) 
         [
             {
                 "id": "mama",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "妈妈",
                 "aliases": [],
                 "relationships": [],

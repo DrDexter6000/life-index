@@ -44,14 +44,14 @@ def _infer_type_from_source(source_field: str, value: str) -> str:
     """Infer entity type from the frontmatter field it came from.
 
     Rules:
-    - people → person
+    - people → actor
     - location → place
     - tags + matches TOOL_PATTERN → concept (v1 schema has no "tool" type)
     - tags + doesn't match → concept
     - project → project
     """
     if source_field == "people":
-        return "person"
+        return "actor"
     if source_field == "location":
         return "place"
     if source_field == "tags":
@@ -65,8 +65,9 @@ def _infer_type_from_source(source_field: str, value: str) -> str:
 
 def _build_suggested_command(text: str, entity_type: str) -> str:
     """Build a valid `life-index entity --add` command for fallback candidates."""
+    attributes = {"kind": "human"} if entity_type == "actor" else {}
     entity_data = json.dumps(
-        {"primary_name": text, "type": entity_type},
+        {"primary_name": text, "type": entity_type, "attributes": attributes},
         ensure_ascii=False,
     )
     return f"life-index entity --add '{entity_data}'"
@@ -190,7 +191,7 @@ def _extract_from_frontmatter(
 ) -> None:
     """Extract candidates from frontmatter people/location/project fields."""
     field_to_kind = {
-        "people": "person",
+        "people": "actor",
         "location": "place",
         "project": "project",
     }

@@ -2,7 +2,6 @@
 
 import os
 import time
-import pytest
 from pathlib import Path
 
 
@@ -32,14 +31,14 @@ class TestEventEntityAuditIntegration:
                     "entities": [
                         {
                             "id": "p1",
-                            "type": "person",
+                            "type": "actor",
                             "primary_name": "妈妈",
                             "aliases": [],
                             "relationships": [],
                         },
                         {
                             "id": "p2",
-                            "type": "person",
+                            "type": "actor",
                             "primary_name": "母亲",
                             "aliases": [],
                             "relationships": [],
@@ -83,4 +82,5 @@ class TestEventEntityAuditIntegration:
         events = registry.detect_all(context=context, timeout_ms=50)
         elapsed_ms = (time.monotonic() - start) * 1000
 
+        assert isinstance(events, list)
         assert elapsed_ms < 100  # Relaxed for CI

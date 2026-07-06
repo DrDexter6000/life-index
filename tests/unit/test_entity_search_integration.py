@@ -7,14 +7,14 @@ def _entity_graph_payload() -> list[dict]:
     return [
         {
             "id": "author-self",
-            "type": "person",
+            "type": "actor",
             "primary_name": "我",
             "aliases": ["作者", "自己"],
             "relationships": [],
         },
         {
             "id": "mama",
-            "type": "person",
+            "type": "actor",
             "primary_name": "妈妈",
             "aliases": ["老妈", "婆婆", "王阿姨"],
             "relationships": [
@@ -24,7 +24,7 @@ def _entity_graph_payload() -> list[dict]:
         },
         {
             "id": "tuantuan",
-            "type": "person",
+            "type": "actor",
             "primary_name": "晴岚",
             "aliases": ["圆圆"],
             "relationships": [{"target": "author-self", "relation": "child_of"}],

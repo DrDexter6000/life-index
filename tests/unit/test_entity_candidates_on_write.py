@@ -21,18 +21,18 @@ def _wife_graph() -> list[dict]:
     return [
         {
             "id": "wife-001",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王某某",
             "aliases": ["晴岚妈"],
-            "attributes": {},
+            "attributes": {"kind": "human"},
             "relationships": [{"target": "author-self", "relation": "spouse_of"}],
         },
         {
             "id": "author-self",
-            "type": "person",
+            "type": "actor",
             "primary_name": "我",
             "aliases": [],
-            "attributes": {},
+            "attributes": {"kind": "human"},
             "relationships": [],
         },
         {
@@ -110,7 +110,7 @@ class TestEntityCandidatesFromContent:
         c = wife_candidates[0]
         assert c["source"] == "content"
         assert c["text"] == "晴岚妈"
-        assert c["kind"] == "person"
+        assert c["kind"] == "actor"
         assert c["matched_entity_id"] == "wife-001"
 
     def test_content_place_alias_match(self, isolated_data_dir: Path) -> None:

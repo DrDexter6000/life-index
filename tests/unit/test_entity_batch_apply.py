@@ -20,7 +20,7 @@ def _base_graph(data_dir: Path) -> Path:
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": [],
                 "source": "user",
@@ -38,13 +38,13 @@ def _batch_payload() -> dict:
         "entities": [
             {
                 "id": "person-bob",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Bob",
                 "aliases": ["B. Example"],
             },
             {
                 "id": "person-alice-conflict",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": [],
             },
@@ -138,7 +138,7 @@ def test_apply_batch_is_atomic_when_entity_row_is_invalid(
         {
             "entities": [
                 {"id": "person-bob", "primary_name": "Bob"},
-                {"id": "person-morgan", "type": "person", "primary_name": "Morgan"},
+                {"id": "person-morgan", "type": "actor", "primary_name": "Morgan"},
             ],
             "relationships": [],
         },
@@ -164,7 +164,7 @@ def test_apply_batch_is_atomic_when_relationship_row_is_invalid(
         isolated_data_dir / "invalid-relationship-batch.json",
         {
             "entities": [
-                {"id": "person-bob", "type": "person", "primary_name": "Bob"},
+                {"id": "person-bob", "type": "actor", "primary_name": "Bob"},
             ],
             "relationships": [
                 {

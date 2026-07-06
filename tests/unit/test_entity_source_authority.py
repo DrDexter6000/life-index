@@ -25,7 +25,7 @@ def test_user_confirmed_entity_and_relationship_need_no_journal_evidence(
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": [],
                 "source": "user",
@@ -42,7 +42,7 @@ def test_user_confirmed_entity_and_relationship_need_no_journal_evidence(
             },
             {
                 "id": "person-bob",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Bob",
                 "aliases": [],
                 "source": "user",
@@ -69,7 +69,7 @@ def test_audit_and_review_use_neutral_pending_language_not_archive_decisions(
         [
             {
                 "id": "person-morgan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Morgan",
                 "aliases": [],
                 "source": "seed",

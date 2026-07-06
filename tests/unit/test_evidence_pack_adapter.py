@@ -64,7 +64,7 @@ def _synthetic_search_result() -> dict:
         "no_confident_match": False,
         "semantic_effective_policy": "hybrid",
         "entity_hints": [
-            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
+            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
         ],
         "search_plan": {"intent_type": "recall"},
         "warnings": [],

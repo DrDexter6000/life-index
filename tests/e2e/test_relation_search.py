@@ -91,7 +91,7 @@ def _setup_relation_search_env(tmp_path_factory):
         "entities": [
             {
                 "id": "author-self",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "我",
                 "aliases": [],
                 "relationships": [
@@ -102,14 +102,14 @@ def _setup_relation_search_env(tmp_path_factory):
             },
             {
                 "id": "tuantuan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "晴岚",
                 "aliases": ["小风筝", "小队长"],
                 "relationships": [{"target": "author-self", "relation": "child_of"}],
             },
             {
                 "id": "mama",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "妈妈",
                 "aliases": ["老妈"],
                 "relationships": [
@@ -119,7 +119,7 @@ def _setup_relation_search_env(tmp_path_factory):
             },
             {
                 "id": "wife",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "老婆",
                 "aliases": ["妻子"],
                 "relationships": [],

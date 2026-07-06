@@ -32,7 +32,7 @@ def _confirmed_graph() -> list[dict]:
     return [
         {
             "id": "person-alice",
-            "type": "person",
+            "type": "actor",
             "primary_name": "Alice",
             "source": "user",
             "status": "confirmed",
@@ -68,7 +68,7 @@ def test_health_entity_maintenance_yellow_for_pending_candidates(
         + [
             {
                 "id": "person-morgan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Morgan",
                 "source": "agent",
                 "status": "candidate",
@@ -112,13 +112,13 @@ def test_health_entity_maintenance_red_for_duplicates(
         [
             {
                 "id": "person-morgan-a",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Morgan",
                 "relationships": [],
             },
             {
                 "id": "person-morgan-b",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Morgan",
                 "relationships": [],
             },

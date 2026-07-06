@@ -46,11 +46,11 @@ def run_normalize(
         )
 
     plan = build_normalize_plan(graph_path=graph_path)
+    if preview:
+        return _success(plan=plan, preview=True, applied=False, backup_path=None)
     plan_error = _validate_plan(plan)
     if plan_error is not None:
         return plan_error
-    if preview:
-        return _success(plan=plan, preview=True, applied=False, backup_path=None)
 
     backup_path = _create_backup(graph_path)
     _write_graph_atomically(graph_path=graph_path, entities=plan["normalized_entities"])
@@ -59,45 +59,32 @@ def run_normalize(
 
 def build_normalize_plan(*, graph_path: Path) -> dict[str, Any]:
     """Build a deterministic type-normalization plan without writing."""
-    entities = load_entity_graph(graph_path)
+    entities = load_entity_graph(graph_path, allow_legacy_entity_types=True)
     normalized_entities = deepcopy(entities)
     changes: list[dict[str, Any]] = []
     review_questions: list[dict[str, Any]] = []
 
     for entity in normalized_entities:
-        decision = _target_type_and_kind(entity)
-        if decision["needs_review"]:
-            review_questions.append(
-                {
-                    "entity_id": entity["id"],
-                    "primary_name": entity.get("primary_name", ""),
-                    "reason": decision["reason"],
-                }
-            )
-            continue
-
-        target_type = decision["type"]
-        target_kind = decision["kind"]
-        attributes = entity.setdefault("attributes", {})
-        current_type = entity.get("type")
-        current_kind = attributes.get("kind")
-
-        if current_type == target_type and current_kind == target_kind:
-            continue
-
-        changes.append(
-            {
-                "entity_id": entity["id"],
-                "primary_name": entity.get("primary_name", ""),
-                "from": {"type": current_type, "kind": current_kind},
-                "to": {"type": target_type, "kind": target_kind},
-                "reason": decision["reason"],
-            }
+        _normalize_entity_in_place(
+            entity,
+            changes=changes,
+            review_questions=review_questions,
+            record_change=True,
         )
-        entity["type"] = target_type
-        attributes["kind"] = target_kind
+        for tombstone in entity.get("merged_entities", []) or []:
+            tombstone_entity = tombstone.get("entity")
+            if isinstance(tombstone_entity, dict):
+                _normalize_entity_in_place(
+                    tombstone_entity,
+                    changes=changes,
+                    review_questions=review_questions,
+                    record_change=False,
+                )
 
-    validate_entity_graph_payload({"entities": normalized_entities})
+    validate_entity_graph_payload(
+        {"entities": normalized_entities},
+        allow_legacy_entity_types=bool(review_questions),
+    )
     return {
         "workflow": "maintain.normalize",
         "normalized_entities": normalized_entities,
@@ -109,6 +96,50 @@ def build_normalize_plan(*, graph_path: Path) -> dict[str, Any]:
         "changes": changes,
         "review_questions": review_questions,
     }
+
+
+def _normalize_entity_in_place(
+    entity: dict[str, Any],
+    *,
+    changes: list[dict[str, Any]],
+    review_questions: list[dict[str, Any]],
+    record_change: bool,
+) -> None:
+    decision = _target_type_and_kind(entity)
+    if decision["needs_review"]:
+        review_questions.append(
+            {
+                "entity_id": entity["id"],
+                "primary_name": entity.get("primary_name", ""),
+                "reason": decision["reason"],
+            }
+        )
+        return
+
+    target_type = decision["type"]
+    target_kind = decision["kind"]
+    attributes = entity.setdefault("attributes", {})
+    current_type = entity.get("type")
+    current_kind = attributes.get("kind")
+
+    if current_type == target_type and current_kind == target_kind:
+        return
+
+    if record_change:
+        changes.append(
+            {
+                "entity_id": entity["id"],
+                "primary_name": entity.get("primary_name", ""),
+                "from": {"type": current_type, "kind": current_kind},
+                "to": {"type": target_type, "kind": target_kind},
+                "reason": decision["reason"],
+            }
+        )
+    entity["type"] = target_type
+    if target_kind is None:
+        attributes.pop("kind", None)
+    else:
+        attributes["kind"] = target_kind
 
 
 def _target_type_and_kind(entity: dict[str, Any]) -> dict[str, Any]:

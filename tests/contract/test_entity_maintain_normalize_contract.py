@@ -9,10 +9,18 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from tools.lib.entity_graph import load_entity_graph
-from tools.lib.entity_graph import resolve_entity
 from tools.lib.entity_graph import save_entity_graph
+
+
+def _write_raw_graph(graph_path: Path, entities: list[dict[str, Any]]) -> None:
+    graph_path.parent.mkdir(parents=True, exist_ok=True)
+    graph_path.write_text(
+        yaml.safe_dump({"entities": entities}, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
 
 
 def _run_entity_cli(argv: list[str]) -> dict[str, Any]:
@@ -29,7 +37,8 @@ def _run_entity_cli(argv: list[str]) -> dict[str, Any]:
 
 
 def _write_old_type_graph(graph_path: Path) -> None:
-    save_entity_graph(
+    _write_raw_graph(
+        graph_path,
         [
             {
                 "id": "person-alice",
@@ -101,31 +110,32 @@ def _write_old_type_graph(graph_path: Path) -> None:
                 "relationships": [],
             },
         ],
-        graph_path,
     )
 
 
 def _write_delete_graph(graph_path: Path) -> None:
-    save_entity_graph(
+    _write_raw_graph(
+        graph_path,
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": [],
+                "attributes": {"kind": "human"},
                 "relationships": [
                     {"target": "person-bob", "relation": "friend_of"},
                 ],
             },
             {
                 "id": "person-bob",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Bob",
                 "aliases": [],
+                "attributes": {"kind": "human"},
                 "relationships": [],
             },
         ],
-        graph_path,
     )
 
 
@@ -265,7 +275,8 @@ def test_maintain_normalize_apply_requires_backup_and_preserves_graph_records(
     assert graph["person-alice"]["relationships"][0]["evidence"] == []
     assert graph["person-alice"]["not_duplicate_of"][0]["target"] == "person-alen"
     assert graph["person-alice"]["merged_entities"][0]["entity"]["id"] == "person-ally"
-    assert graph["person-alice"]["merged_entities"][0]["entity"]["type"] == "person"
+    assert graph["person-alice"]["merged_entities"][0]["entity"]["type"] == "actor"
+    assert graph["person-alice"]["merged_entities"][0]["entity"]["attributes"]["kind"] == "human"
     assert graph["person-deepseek"]["type"] == "actor"
     assert graph["person-deepseek"]["attributes"]["kind"] == "software_agent"
     assert graph["person-alen"]["type"] == "actor"
@@ -281,14 +292,15 @@ def test_maintain_normalize_apply_requires_backup_and_preserves_graph_records(
     }
 
 
-def test_legacy_person_graph_loads_resolves_and_expands_before_normalize(
+def test_legacy_person_graph_load_fails_closed_with_normalize_guidance(
     isolated_data_dir: Path,
 ) -> None:
-    """Old `type=person` graphs remain valid and searchable before migration."""
-    from tools.search_journals.core import expand_query_with_entity_graph
+    """Old `type=person` graphs now fail closed and point to normalize."""
+    from tools.lib.entity_schema import EntityGraphValidationError
 
     graph_path = isolated_data_dir / "entity_graph.yaml"
-    save_entity_graph(
+    _write_raw_graph(
+        graph_path,
         [
             {
                 "id": "person-alice",
@@ -305,16 +317,13 @@ def test_legacy_person_graph_loads_resolves_and_expands_before_normalize(
                 "relationships": [],
             },
         ],
-        graph_path,
     )
 
-    graph = load_entity_graph(graph_path)
-    assert resolve_entity("Ally", graph)["id"] == "person-alice"
+    with pytest.raises(EntityGraphValidationError) as exc_info:
+        load_entity_graph(graph_path)
 
-    expanded = expand_query_with_entity_graph("Ally")
-
-    assert "Alice" in expanded
-    assert "Ally" in expanded
+    assert exc_info.value.code == "ENTITY_SCHEMA_LEGACY"
+    assert "maintain --normalize" in str(exc_info.value)
 
 
 def test_maintain_normalize_keeps_candidate_state_out_of_runtime(
@@ -324,7 +333,8 @@ def test_maintain_normalize_keeps_candidate_state_out_of_runtime(
     from tools.lib.entity_runtime import load_runtime_view
 
     graph_path = isolated_data_dir / "entity_graph.yaml"
-    save_entity_graph(
+    _write_raw_graph(
+        graph_path,
         [
             {
                 "id": "person-alice",
@@ -356,7 +366,6 @@ def test_maintain_normalize_keeps_candidate_state_out_of_runtime(
                 "relationships": [],
             },
         ],
-        graph_path,
     )
 
     payload = _run_entity_cli(["maintain", "--normalize", "--apply", "--backup", "--json"])
@@ -380,7 +389,8 @@ def test_maintain_normalize_ambiguous_kind_becomes_review_question(
 ) -> None:
     """Ambiguous old person kinds must not be silently rewritten."""
     graph_path = isolated_data_dir / "entity_graph.yaml"
-    save_entity_graph(
+    _write_raw_graph(
+        graph_path,
         [
             {
                 "id": "person-morgan",
@@ -390,7 +400,6 @@ def test_maintain_normalize_ambiguous_kind_becomes_review_question(
                 "relationships": [],
             }
         ],
-        graph_path,
     )
     before = graph_path.read_text(encoding="utf-8")
 
@@ -414,7 +423,8 @@ def test_maintain_normalize_family_role_labels_map_to_actor_human(
 ) -> None:
     """Family role labels are evidence of a human individual, never actor/group."""
     graph_path = isolated_data_dir / "entity_graph.yaml"
-    save_entity_graph(
+    _write_raw_graph(
+        graph_path,
         [
             {
                 "id": "person-alice",
@@ -439,7 +449,6 @@ def test_maintain_normalize_family_role_labels_map_to_actor_human(
                 "relationships": [],
             },
         ],
-        graph_path,
     )
     before = graph_path.read_text(encoding="utf-8")
 
@@ -463,7 +472,8 @@ def test_maintain_normalize_person_with_explicit_org_like_kind_needs_review(
 ) -> None:
     """A person with explicit organization-like kind is ambiguous and fail-closed."""
     graph_path = isolated_data_dir / "entity_graph.yaml"
-    save_entity_graph(
+    _write_raw_graph(
+        graph_path,
         [
             {
                 "id": "person-acme",
@@ -473,7 +483,6 @@ def test_maintain_normalize_person_with_explicit_org_like_kind_needs_review(
                 "relationships": [],
             }
         ],
-        graph_path,
     )
 
     payload = _run_entity_cli(["maintain", "--normalize", "--preview", "--json"])
@@ -495,7 +504,8 @@ def test_maintain_normalize_conflicting_person_signals_need_review(
 ) -> None:
     """Conflicting human and organization signals must not silently rewrite."""
     graph_path = isolated_data_dir / "entity_graph.yaml"
-    save_entity_graph(
+    _write_raw_graph(
+        graph_path,
         [
             {
                 "id": "person-morgan",
@@ -505,7 +515,6 @@ def test_maintain_normalize_conflicting_person_signals_need_review(
                 "relationships": [],
             }
         ],
-        graph_path,
     )
 
     payload = _run_entity_cli(["maintain", "--normalize", "--preview", "--json"])
@@ -534,8 +543,9 @@ def test_maintain_normalize_invalid_plan_returns_error_without_backup_or_write(
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
+                "attributes": {"kind": "human"},
                 "relationships": [],
             }
         ],

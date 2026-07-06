@@ -11,17 +11,13 @@ Validates that:
 
 from pathlib import Path
 
-import pytest
-
-from tools.lib.entity_graph import save_entity_graph
-
 
 def _conflict_graph() -> list[dict]:
     """Graph with audit-triggering entities."""
     return [
         {
             "id": "person-a",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王晓丽",
             "aliases": ["小王"],
             "attributes": {},
@@ -29,7 +25,7 @@ def _conflict_graph() -> list[dict]:
         },
         {
             "id": "person-b",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王晓里",
             "aliases": ["老王"],
             "attributes": {},
@@ -37,7 +33,7 @@ def _conflict_graph() -> list[dict]:
         },
         {
             "id": "person-c",
-            "type": "person",
+            "type": "actor",
             "primary_name": "李四",
             "aliases": [],
             "attributes": {},
@@ -90,9 +86,7 @@ class TestCSVExport:
             headers = reader.fieldnames or []
 
         required = {"item_id", "risk_level", "category", "action_choices"}
-        assert required.issubset(set(headers)), (
-            f"Missing columns: {required - set(headers)}"
-        )
+        assert required.issubset(set(headers)), f"Missing columns: {required - set(headers)}"
 
     def test_export_csv_has_rows(self, isolated_data_dir: Path) -> None:
         import csv as csv_mod
@@ -154,9 +148,7 @@ class TestCSVImport:
 
         # Create empty CSV with headers
         empty_path = isolated_data_dir / "empty.csv"
-        empty_path.write_text(
-            "item_id,risk_level,category,decision\n", encoding="utf-8"
-        )
+        empty_path.write_text("item_id,risk_level,category,decision\n", encoding="utf-8")
 
         result = import_review_csv(
             input_path=empty_path,

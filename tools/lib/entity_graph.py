@@ -13,14 +13,21 @@ from tools.lib.entity_schema import validate_entity_graph_payload
 BUILD_FROM_JOURNALS_PREVIEW_COMMAND = "life-index entity build --from-journals --preview --json"
 
 
-def load_entity_graph(path: Path) -> list[dict[str, Any]]:
+def load_entity_graph(
+    path: Path,
+    *,
+    allow_legacy_entity_types: bool = False,
+) -> list[dict[str, Any]]:
     if not path.exists():
         return []
 
     with path.open("r", encoding="utf-8") as f:
         payload = yaml.safe_load(f) or {"entities": []}
 
-    return validate_entity_graph_payload(payload)
+    return validate_entity_graph_payload(
+        payload,
+        allow_legacy_entity_types=allow_legacy_entity_types,
+    )
 
 
 def save_entity_graph(entities: list[dict[str, Any]], path: Path) -> None:
@@ -78,8 +85,17 @@ def check_graph_status(graph_path: Path) -> dict[str, Any]:
 
     try:
         entities = load_entity_graph(graph_path)
-    except EntityGraphValidationError:
+    except EntityGraphValidationError as exc:
         result["status"] = "not_initialized"
+        if exc.code == "ENTITY_SCHEMA_LEGACY":
+            result["suggested_action"] = {
+                "command": "life-index entity maintain --normalize --preview --json",
+                "reason": (
+                    "entity graph uses legacy entity types; preview maintain --normalize "
+                    "before applying a schema cutover migration"
+                ),
+            }
+            return result
         result["suggested_action"] = {
             "command": BUILD_FROM_JOURNALS_PREVIEW_COMMAND,
             "reason": (

@@ -24,7 +24,7 @@ def _conflict_graph() -> list[dict]:
     return [
         {
             "id": "wife-001",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王晓丽",
             "aliases": ["晴岚妈"],
             "attributes": {},
@@ -32,7 +32,7 @@ def _conflict_graph() -> list[dict]:
         },
         {
             "id": "wife-002",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王晓里",  # edit distance 1 from 王晓丽
             "aliases": ["小王"],
             "attributes": {},
@@ -40,7 +40,7 @@ def _conflict_graph() -> list[dict]:
         },
         {
             "id": "author-self",
-            "type": "person",
+            "type": "actor",
             "primary_name": "我",
             "aliases": [],
             "attributes": {},

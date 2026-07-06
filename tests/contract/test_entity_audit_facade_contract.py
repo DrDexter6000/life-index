@@ -34,7 +34,7 @@ def test_entity_audit_facade_reports_combined_health_without_writes(
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "source": "user",
                 "status": "confirmed",
@@ -42,7 +42,7 @@ def test_entity_audit_facade_reports_combined_health_without_writes(
             },
             {
                 "id": "person-morgan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Morgan",
                 "source": "agent",
                 "status": "candidate",
@@ -81,7 +81,7 @@ def test_entity_audit_facade_reports_red_for_structural_issues(
                 "entities": [
                     {
                         "id": "person-alice",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "Alice",
                         "relationships": [{"target": "person-missing", "relation": "knows"}],
                     }

@@ -16,14 +16,14 @@ def _write_graph(data_dir: Path) -> None:
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": [],
                 "relationships": [],
             },
             {
                 "id": "person-bob",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Bob",
                 "aliases": [],
                 "relationships": [],

@@ -34,7 +34,7 @@ def test_canonicalizer_uses_entity_graph_aliases_by_allowed_facet_type(tmp_path:
             },
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": ["Alicia"],
             },
@@ -101,7 +101,7 @@ def test_canonicalizer_degrades_invalid_graph_to_noop_with_diagnostic(tmp_path: 
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "relationships": [{"target": "missing", "relation": "knows"}],
             }

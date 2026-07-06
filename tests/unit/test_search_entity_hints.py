@@ -37,7 +37,7 @@ def _sample_entities() -> list[dict]:
     return [
         {
             "id": "wife-001",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王某某",
             "aliases": ["晴岚妈", "老婆"],
             "attributes": {},
@@ -45,7 +45,7 @@ def _sample_entities() -> list[dict]:
         },
         {
             "id": "author-self",
-            "type": "person",
+            "type": "actor",
             "primary_name": "我",
             "aliases": [],
             "attributes": {},
@@ -129,7 +129,7 @@ class TestEntityHintsStructure:
         hint = wife_hints[0]
         assert hint["matched_term"] == "老婆"
         assert hint["entity_id"] == "wife-001"
-        assert hint["entity_type"] == "person"
+        assert hint["entity_type"] == "actor"
         assert "晴岚妈" in hint["expansion_terms"]
         assert "王某某" in hint["expansion_terms"]
         assert hint["reason"] == "alias_match"

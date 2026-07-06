@@ -59,6 +59,7 @@ def apply_batch_file(
             evidence=[],
             requested_id=conflict["candidate_id"],
             aliases=[],
+            attributes=conflict.get("attributes", {}),
         )
         changed = changed or created or updated
 
@@ -120,13 +121,16 @@ def _normalize_batch(payload: dict[str, Any]) -> dict[str, Any]:
         aliases = raw.get("aliases", []) or []
         if not isinstance(aliases, list):
             raise ValueError(f"entities[{index}].aliases must be a list")
+        attributes = raw.get("attributes", {}) or {}
+        if not isinstance(attributes, dict):
+            raise ValueError(f"entities[{index}].attributes must be an object")
         entities.append(
             {
                 "id": entity_id,
                 "type": str(raw["type"]).strip(),
                 "primary_name": str(raw["primary_name"]).strip(),
                 "aliases": _string_list(aliases),
-                "attributes": raw.get("attributes", {}) or {},
+                "attributes": attributes,
                 "relationships": [],
                 "source": "user",
                 "status": "confirmed",
@@ -176,6 +180,7 @@ def _plan_batch(graph: list[dict[str, Any]], batch: dict[str, Any]) -> dict[str,
                     "id": entity["id"],
                     "primary_name": entity["primary_name"],
                     "type": entity["type"],
+                    "attributes": entity.get("attributes", {}),
                     "reason": reason,
                     "candidate_id": stable_candidate_id(
                         entity_type=entity["type"],

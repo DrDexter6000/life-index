@@ -59,7 +59,8 @@ class TestAliasMetadataBackcompat:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": ["AliasA", "AliasB"],
                 }
@@ -86,7 +87,8 @@ class TestAliasMetadataBackcompat:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": [
                         {
@@ -120,7 +122,8 @@ class TestAliasMetadataBackcompat:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": ["AliasA", "AliasB"],
                     "alias_metadata": {
@@ -148,7 +151,8 @@ class TestAliasMetadataBackcompat:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": [
                         "AliasA",
@@ -178,7 +182,8 @@ class TestAliasMetadataRoundtrip:
         entities = [
             {
                 "id": "person-test",
-                "type": "person",
+                "type": "actor",
+                "attributes": {"kind": "human"},
                 "primary_name": "Test",
                 "aliases": ["AliasA", "AliasB"],
                 "alias_metadata": {
@@ -218,7 +223,8 @@ class TestAliasBackcompatConsumers:
         graph = [
             {
                 "id": "person-test",
-                "type": "person",
+                "type": "actor",
+                "attributes": {"kind": "human"},
                 "primary_name": "Test",
                 "aliases": ["AliasA"],
                 "relationships": [],
@@ -233,7 +239,8 @@ class TestAliasBackcompatConsumers:
         graph = [
             {
                 "id": "person-test",
-                "type": "person",
+                "type": "actor",
+                "attributes": {"kind": "human"},
                 "primary_name": "Test",
                 "aliases": ["AliasA"],
                 "alias_metadata": {"AliasA": {"source": "manual", "confidence": 0.9}},
@@ -253,13 +260,15 @@ class TestAliasBackcompatConsumers:
             "entities": [
                 {
                     "id": "person-a",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "A",
                     "aliases": [{"name": "Shared", "source": "manual"}],
                 },
                 {
                     "id": "person-b",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "B",
                     "aliases": [{"name": "Shared", "source": "journal"}],
                 },
@@ -278,7 +287,8 @@ class TestAliasBackcompatConsumers:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": [{"source": "manual"}],
                 }
@@ -297,7 +307,8 @@ class TestEntityCliAliasBackcompat:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": ["AliasA", "AliasB"],
                     "alias_metadata": {
@@ -321,7 +332,8 @@ class TestEntityCliAliasBackcompat:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": ["AliasA"],
                     "alias_metadata": {
@@ -346,7 +358,8 @@ class TestEntityCliAliasBackcompat:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": ["AliasA"],
                     "alias_metadata": {
@@ -386,7 +399,8 @@ class TestBoostDecayPlaceholder:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": ["AliasA"],
                     "relationships": [],
@@ -415,7 +429,8 @@ class TestBoostDecayPlaceholder:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": ["AliasA"],
                     "relationships": [],
@@ -444,7 +459,8 @@ class TestBoostDecayPlaceholder:
             "entities": [
                 {
                     "id": "person-test",
-                    "type": "person",
+                    "type": "actor",
+                    "attributes": {"kind": "human"},
                     "primary_name": "Test",
                     "aliases": ["AliasA"],
                     "relationships": [],

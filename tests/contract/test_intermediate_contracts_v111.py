@@ -43,7 +43,7 @@ def _valid_entity_runtime_view() -> EntityRuntimeView:
         entities=[
             {
                 "id": "e1",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": ["Ali"],
             }
@@ -361,7 +361,7 @@ class TestEntityExpansionSchemaVersion:
             {
                 "matched_term": "Ali",
                 "entity_id": "e1",
-                "entity_type": "person",
+                "entity_type": "actor",
                 "expansion_terms": ["Alice", "Ali"],
                 "reason": "alias_match",
             }
@@ -376,7 +376,7 @@ class TestEntityExpansionSchemaVersion:
                 {
                     "matched_term": "X",
                     "entity_id": "e1",
-                    "entity_type": "person",
+                    "entity_type": "actor",
                     "expansion_terms": ["Y"],
                     "reason": "alias_match",
                 }
@@ -413,7 +413,7 @@ class TestEntityExpansionSchemaVersion:
                 {
                     "matched_term": "a",
                     "entity_id": "x",
-                    "entity_type": "person",
+                    "entity_type": "actor",
                     "expansion_terms": ["a"],
                     "reason": "alias_match",
                 }
@@ -463,7 +463,7 @@ class TestHintsBuilderEntityExpansionContract:
                 {
                     "matched_term": "x",
                     "entity_id": "e1",
-                    "entity_type": "person",
+                    "entity_type": "actor",
                     "expansion_terms": ["y"],
                     "reason": "alias_match",
                 }

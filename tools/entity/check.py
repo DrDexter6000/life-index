@@ -29,6 +29,8 @@ except ImportError:
 
 import yaml
 
+from tools.lib.entity_schema import EntityGraphValidationError, validate_entity_graph_payload
+
 
 def _default_graph_path() -> Path:
     return resolve_user_data_dir() / "entity_graph.yaml"
@@ -147,6 +149,22 @@ def run_check(
                     "description": f"Entity missing required fields: {sorted(missing)}",
                 }
             )
+
+    try:
+        validate_entity_graph_payload(data)
+    except EntityGraphValidationError as exc:
+        if not str(exc).startswith("unknown relationship target:"):
+            issue: dict[str, Any] = {
+                "type": "schema_issue",
+                "severity": "high",
+                "code": exc.code,
+                "description": str(exc),
+                "details": exc.details,
+            }
+            replacement_command = exc.details.get("replacement_command")
+            if replacement_command:
+                issue["suggested_action"] = {"command": replacement_command}
+            issues.append(issue)
 
     # Summary
     summary = {

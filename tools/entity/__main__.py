@@ -291,6 +291,13 @@ Advanced primitives:
     args = parser.parse_args(argv)
 
     graph_path = _graph_path()
+    if args.run_check:
+        from tools.entity.check import run_check
+
+        result = run_check(graph_path=graph_path)
+        _print(result)
+        return
+
     entities = load_entity_graph(graph_path)
 
     if args.apply_batch:
@@ -377,13 +384,6 @@ Advanced primitives:
         from tools.entity.stats import compute_stats
 
         result = compute_stats(graph_path=graph_path)
-        _print(result)
-        return
-
-    if args.run_check:
-        from tools.entity.check import run_check
-
-        result = run_check(graph_path=graph_path)
         _print(result)
         return
 

@@ -628,7 +628,7 @@ def test_navigate_entity_neighbors_returns_graph_neighbors_without_facet_interfe
                 "entities": [
                     {
                         "id": "person-alice",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "Alice",
                         "aliases": [],
                         "relationships": [
@@ -650,7 +650,7 @@ def test_navigate_entity_neighbors_returns_graph_neighbors_without_facet_interfe
                     },
                     {
                         "id": "person-bob",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "Bob",
                         "aliases": [],
                         "relationships": [],

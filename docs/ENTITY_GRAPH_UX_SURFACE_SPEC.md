@@ -69,10 +69,11 @@ The future schema should use a small stable `type` set plus open-ended
 | `artifact` | Created or used objects and media | `ai_model`, `app`, `book`, `document`, `device` |
 | `concept` | Abstract ideas, topics, themes, and categories | `topic`, `value`, `method`, `theme` |
 
-Current schema types (`person`, `place`, `project`, `event`, `concept`) remain
-backward-compatible during migration. The first migration should preserve
-entity IDs and move meaning into `type` + `attributes`; ID renaming is a later
-optional cleanup only if it is proven safe.
+Current schema types are `actor`, `place`, `project`, `event`, `artifact`, and
+`concept`. Legacy `type: person` graphs fail closed in normal loaders and must
+go through `entity maintain --normalize`; migration preserves entity IDs and
+moves meaning into `type` + `attributes`. ID renaming is not part of the schema
+cutover because IDs are opaque and permanent.
 
 ## 4. User-Facing Workflows
 

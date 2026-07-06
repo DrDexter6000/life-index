@@ -29,7 +29,7 @@ def generate_entity_graph(num_entities: int) -> dict:
         entities.append(
             {
                 "id": f"entity_{i}",
-                "type": "person",
+                "type": "actor",
                 "primary_name": f"Person {i}",
                 "aliases": [f"P{i}", f"人物{i}"],
                 "relationships": [

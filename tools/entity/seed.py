@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,8 @@ class EntityCandidate:
     """A candidate entity extracted from journal frontmatter."""
 
     primary_name: str
-    type: str  # person | place | project | event | concept
+    type: str
+    attributes: dict[str, Any] = field(default_factory=dict)
     frequency: int = 1
     source_field: str = ""  # people | location | tags
 
@@ -48,13 +49,13 @@ def _infer_type_from_source(source_field: str, value: str) -> str:
     Infer entity type from the frontmatter field it came from.
 
     Rules:
-    - people → person
+    - people → actor
     - location → place
     - tags + matches TOOL_PATTERN → concept (v1 schema has no "tool" type)
     - tags + doesn't match → concept
     """
     if source_field == "people":
-        return "person"
+        return "actor"
     if source_field == "location":
         return "place"
     if source_field == "tags":
@@ -62,6 +63,14 @@ def _infer_type_from_source(source_field: str, value: str) -> str:
             return "concept"
         return "concept"
     return "concept"
+
+
+def _infer_attributes_from_source(source_field: str, value: str) -> dict[str, Any]:
+    """Infer schema-cutover attributes for frontmatter-derived candidates."""
+    del value
+    if source_field == "people":
+        return {"kind": "human"}
+    return {}
 
 
 # ── Candidate collection ────────────────────────────────────────────────
@@ -114,10 +123,12 @@ def collect_candidates(
     for name, data in name_data.items():
         if data["frequency"] >= min_frequency:
             entity_type = _infer_type_from_source(data["source_field"], data["value"])
+            attributes = _infer_attributes_from_source(data["source_field"], data["value"])
             candidates.append(
                 EntityCandidate(
                     primary_name=name,
                     type=entity_type,
+                    attributes=attributes,
                     frequency=data["frequency"],
                     source_field=data["source_field"],
                 )
@@ -194,6 +205,7 @@ def _build_seed_plan(
                     {
                         "primary_name": candidate.primary_name,
                         "type": candidate.type,
+                        "attributes": dict(candidate.attributes),
                         "frequency": candidate.frequency,
                     }
                 )
@@ -213,6 +225,7 @@ def _build_seed_plan(
                 "primary_name": candidate.primary_name,
                 "aliases": [],
                 "attributes": {
+                    **candidate.attributes,
                     "seed_source": "frontmatter",
                     "seed_field": candidate.source_field,
                     "occurrence_count": candidate.frequency,
@@ -225,6 +238,7 @@ def _build_seed_plan(
                     "id": entity_id,
                     "primary_name": candidate.primary_name,
                     "type": candidate.type,
+                    "attributes": dict(candidate.attributes),
                     "frequency": candidate.frequency,
                 }
             )
@@ -237,7 +251,8 @@ def _build_seed_plan(
                 result["skipped_low_frequency"].append(
                     {
                         "primary_name": c.primary_name,
-                        "type": _infer_type_from_source(c.source_field, c.primary_name),
+                        "type": c.type,
+                        "attributes": dict(c.attributes),
                         "frequency": c.frequency,
                     }
                 )

@@ -20,7 +20,7 @@ def _d6_family_graph() -> list[dict]:
     return [
         {
             "id": "person-wang-daming",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王大明",
             "aliases": ["Dexter"],
             "attributes": {
@@ -39,7 +39,7 @@ def _d6_family_graph() -> list[dict]:
         },
         {
             "id": "person-chen-xiaohong",
-            "type": "person",
+            "type": "actor",
             "primary_name": "陈小红",
             "aliases": ["Mia", "小米", "晴岚妈", "小柏妈"],
             "attributes": {
@@ -56,7 +56,7 @@ def _d6_family_graph() -> list[dict]:
         },
         {
             "id": "person-wang-lele",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王晴岚",
             "aliases": ["小风筝", "小队长"],
             "attributes": {
@@ -71,7 +71,7 @@ def _d6_family_graph() -> list[dict]:
         },
         {
             "id": "person-wang-xiaobai",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王小柏",
             "aliases": ["柏宝", "小柏"],
             "attributes": {
@@ -86,7 +86,7 @@ def _d6_family_graph() -> list[dict]:
         },
         {
             "id": "person-tu-xiuying",
-            "type": "person",
+            "type": "actor",
             "primary_name": "凃秀英",
             "aliases": [],
             "attributes": {
@@ -100,7 +100,7 @@ def _d6_family_graph() -> list[dict]:
         },
         {
             "id": "person-li-jianguo",
-            "type": "person",
+            "type": "actor",
             "primary_name": "李建国",
             "aliases": [],
             "attributes": {
@@ -114,7 +114,7 @@ def _d6_family_graph() -> list[dict]:
         },
         {
             "id": "person-li-yulan",
-            "type": "person",
+            "type": "actor",
             "primary_name": "李玉兰",
             "aliases": ["岳母"],
             "attributes": {
@@ -134,7 +134,7 @@ def _d6_family_graph() -> list[dict]:
         },
         {
             "id": "person-zhang-guoqiang",
-            "type": "person",
+            "type": "actor",
             "primary_name": "张国强",
             "aliases": ["岳父"],
             "attributes": {
@@ -322,7 +322,7 @@ class TestBackwardCompatNoLabels:
         graph = [
             {
                 "id": "parent",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Parent",
                 "aliases": [],
                 "attributes": {},  # no family_role_labels
@@ -330,7 +330,7 @@ class TestBackwardCompatNoLabels:
             },
             {
                 "id": "child",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Child",
                 "aliases": [],
                 "attributes": {},

@@ -58,7 +58,7 @@ def _setup_search_env(tmp_path_factory):
         "entities": [
             {
                 "id": "tuantuan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "晴岚",
                 "aliases": ["小风筝", "小队长"],
                 "attributes": {},
@@ -154,6 +154,9 @@ def _setup_search_env(tmp_path_factory):
         sys.modules["tools.search_journals.ranking"] = original_ranking_module
     else:
         sys.modules.pop("tools.search_journals.ranking", None)
+    import tools.search_journals.core as core_mod
+
+    importlib.reload(core_mod)
 
 
 @pytest.mark.perf

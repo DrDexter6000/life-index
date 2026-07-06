@@ -9,9 +9,6 @@ Validates that:
 
 from pathlib import Path
 
-import pytest
-
-from tools.lib.entity_graph import load_entity_graph, save_entity_graph
 import yaml
 
 
@@ -20,7 +17,7 @@ def _rich_graph() -> list[dict]:
     return [
         {
             "id": "person-a",
-            "type": "person",
+            "type": "actor",
             "primary_name": "张三",
             "aliases": ["老张", "张哥"],
             "attributes": {},
@@ -31,7 +28,7 @@ def _rich_graph() -> list[dict]:
         },
         {
             "id": "person-b",
-            "type": "person",
+            "type": "actor",
             "primary_name": "李四",
             "aliases": [],
             "attributes": {},
@@ -63,7 +60,7 @@ def _graph_with_issues() -> list[dict]:
     return [
         {
             "id": "person-x",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王五",
             "aliases": [],
             "attributes": {},
@@ -73,7 +70,7 @@ def _graph_with_issues() -> list[dict]:
         },
         {
             "id": "person-y",
-            "type": "person",
+            "type": "actor",
             "primary_name": "赵六",
             "aliases": [],
             "attributes": {},
@@ -96,9 +93,7 @@ def _save_graph_raw(entities: list[dict], path: Path) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
-        yaml.dump(
-            {"entities": entities}, f, allow_unicode=True, default_flow_style=False
-        )
+        yaml.dump({"entities": entities}, f, allow_unicode=True, default_flow_style=False)
 
 
 def _graph_path_for(isolated_data_dir: Path) -> Path:
@@ -126,7 +121,7 @@ class TestEntityStats:
         result = compute_stats(graph_path=_graph_path_for(isolated_data_dir))
 
         by_type = result["data"]["by_type"]
-        assert by_type["person"] == 2
+        assert by_type["actor"] == 2
         assert by_type["place"] == 1
         assert by_type["project"] == 1
 
@@ -175,9 +170,7 @@ class TestEntityStats:
 class TestEntityCheck:
     """entity --check reports integrity issues."""
 
-    def test_check_reports_dangling_relationships(
-        self, isolated_data_dir: Path
-    ) -> None:
+    def test_check_reports_dangling_relationships(self, isolated_data_dir: Path) -> None:
         from tools.entity.check import run_check
 
         # Must bypass validation — save_entity_graph rejects dangling refs

@@ -239,7 +239,7 @@ class TestCandidateEdgesContract:
 
         # Seed a minimal entity graph to ensure it exists
         graph_path.write_text(
-            'entities:\n- id: "person-alice"\n  type: "person"\n  primary_name: "Alice"\n',
+            ('entities:\n- id: "person-alice"\n  type: "actor"\n' '  primary_name: "Alice"\n'),
             encoding="utf-8",
         )
 

@@ -97,7 +97,7 @@ def _write_perf_corpus(tmp_dir: Path) -> int:
         "entities": [
             {
                 "id": "tuantuan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "晴岚",
                 "aliases": ["小风筝", "小队长"],
                 "attributes": {},

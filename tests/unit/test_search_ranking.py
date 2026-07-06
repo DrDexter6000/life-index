@@ -118,7 +118,7 @@ def test_merge_and_rank_results_applies_entity_hint_bonus_to_people_and_tags() -
         {
             "matched_term": "我女儿",
             "entity_id": "tuantuan",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": ["晴岚", "小风筝", "小队长"],
             "reason": "phrase_match",
         }

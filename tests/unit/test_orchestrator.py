@@ -1375,7 +1375,7 @@ def test_rewrite_prompt_includes_entity_context_with_hints():
     hints = [
         {
             "entity_id": "lele",
-            "entity_type": "person",
+            "entity_type": "actor",
             "matched_term": "晴岚",
             "expansion_terms": ["晴岚", "小晴岚"],
         }
@@ -1383,7 +1383,7 @@ def test_rewrite_prompt_includes_entity_context_with_hints():
     prompt = orch._build_rewrite_prompt("晴岚的生日", entity_hints=hints)
     assert "Local entity graph matches" in prompt
     assert "lele" in prompt
-    assert "person" in prompt
+    assert "actor" in prompt
     assert "晴岚" in prompt
     assert "小晴岚" in prompt
 
@@ -1417,7 +1417,7 @@ def test_rewrite_query_resolves_entity_hints_via_core():
     mock_hints = [
         {
             "entity_id": "lele",
-            "entity_type": "person",
+            "entity_type": "actor",
             "matched_term": "晴岚",
             "expansion_terms": ["晴岚"],
         }
@@ -1495,7 +1495,7 @@ def test_multiple_entity_hints_in_prompt():
     hints = [
         {
             "entity_id": "lele",
-            "entity_type": "person",
+            "entity_type": "actor",
             "matched_term": "晴岚",
             "expansion_terms": ["晴岚"],
         },
@@ -1520,7 +1520,7 @@ def test_entity_hint_count_capped_at_five():
     many_hints = [
         {
             "entity_id": f"e{i}",
-            "entity_type": "person",
+            "entity_type": "actor",
             "matched_term": f"term{i}",
             "expansion_terms": [f"term{i}"],
         }
@@ -1545,7 +1545,7 @@ def test_expansion_terms_capped_at_three_per_hint():
     hints = [
         {
             "entity_id": "lele",
-            "entity_type": "person",
+            "entity_type": "actor",
             "matched_term": "晴岚",
             "expansion_terms": ["晴岚", "小晴岚", "乐宝", "乐儿", "小乐"],
         }
@@ -1570,7 +1570,7 @@ def test_expansion_term_length_capped():
     hints = [
         {
             "entity_id": "test",
-            "entity_type": "person",
+            "entity_type": "actor",
             "matched_term": "test",
             "expansion_terms": [long_term, "short"],
         }
@@ -1593,7 +1593,7 @@ def test_rewrite_prompt_capped_entity_hints():
     hints = [
         {
             "entity_id": f"e{i}",
-            "entity_type": "person",
+            "entity_type": "actor",
             "matched_term": f"term{i}",
             "expansion_terms": [f"exp{i}"],
         }
@@ -1684,7 +1684,7 @@ def test_synthesis_prompt_includes_entity_matches_when_present():
             [
                 {
                     "entity_id": "lele",
-                    "entity_type": "person",
+                    "entity_type": "actor",
                     "matched_terms": ["晴岚", "小晴岚"],
                     "match_sources": ["fts"],
                 }
@@ -1698,7 +1698,7 @@ def test_synthesis_prompt_includes_entity_matches_when_present():
                 },
                 {
                     "entity_id": "lele",
-                    "entity_type": "person",
+                    "entity_type": "actor",
                     "matched_terms": ["晴岚"],
                     "match_sources": ["fts"],
                 },
@@ -1716,7 +1716,7 @@ def test_synthesis_prompt_includes_entity_matches_when_present():
         evidence_context,
     )
     assert "entities:" in prompt, "Entity match context missing from synthesis prompt"
-    assert "lele(person)" in prompt
+    assert "lele(actor)" in prompt
     assert "beijing(place)" in prompt
     assert "晴岚" in prompt
     assert "北京" in prompt
@@ -1734,7 +1734,7 @@ def test_synthesis_prompt_no_entity_matches_no_leak():
             [
                 {
                     "entity_id": "lele",
-                    "entity_type": "person",
+                    "entity_type": "actor",
                     "matched_terms": ["晴岚", "小晴岚"],
                     "match_sources": ["fts", "metadata"],
                     "query_matched_term": "晴岚",
@@ -1763,7 +1763,7 @@ def test_synthesis_prompt_no_entity_matches_no_leak():
     assert "Alice" not in prompt
     assert "match_sources" not in prompt
     assert "query_matched_term" not in prompt
-    assert "lele(person)" in prompt
+    assert "lele(actor)" in prompt
 
 
 def test_evidence_to_synthesis_context_bounded_entity_matches():
@@ -1776,7 +1776,7 @@ def test_evidence_to_synthesis_context_bounded_entity_matches():
             [
                 {
                     "entity_id": "lele",
-                    "entity_type": "person",
+                    "entity_type": "actor",
                     "matched_terms": ["晴岚", "小晴岚"],
                     "match_sources": ["fts"],
                     "query_matched_term": "晴岚",
@@ -1790,7 +1790,7 @@ def test_evidence_to_synthesis_context_bounded_entity_matches():
     assert "entity_matches" in item
     em = item["entity_matches"][0]
     assert em["entity_id"] == "lele"
-    assert em["entity_type"] == "person"
+    assert em["entity_type"] == "actor"
     assert em["matched_terms"] == ["晴岚", "小晴岚"]
     assert "match_sources" not in em
     assert "query_matched_term" not in em
@@ -1812,8 +1812,7 @@ def test_entity_matches_capped_at_three_per_item():
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
     many_em = [
-        {"entity_id": f"e{i}", "entity_type": "person", "matched_terms": [f"t{i}"]}
-        for i in range(6)
+        {"entity_id": f"e{i}", "entity_type": "actor", "matched_terms": [f"t{i}"]} for i in range(6)
     ]
     pack = _mock_evidence_pack_with_entity_matches(entity_matches_per_item=[many_em])
     ctx = SmartSearchOrchestrator._evidence_to_synthesis_context(pack)
@@ -1829,7 +1828,7 @@ def test_matched_terms_capped_at_three_per_entity():
             [
                 {
                     "entity_id": "lele",
-                    "entity_type": "person",
+                    "entity_type": "actor",
                     "matched_terms": ["a", "b", "c", "d", "e"],
                 }
             ]

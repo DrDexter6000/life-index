@@ -289,7 +289,7 @@ def _setup_search_env(tmp_path_factory):
         "entities": [
             {
                 "id": "tuantuan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "晴岚",
                 "aliases": ["小风筝", "小队长"],
                 "attributes": {},
