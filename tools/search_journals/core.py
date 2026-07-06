@@ -19,11 +19,12 @@ from typing import Any, Dict, List, Literal, Optional
 from ..lib.entity_graph import load_entity_graph
 from ..lib.entity_runtime import (
     EntityRuntimeView,
+    _expand_related_entities,
     build_runtime_view,
     _iter_entity_term_spans,
     resolve_via_runtime,
 )
-from ..lib.entity_relations import normalize_relation
+from ..lib.entity_relations import normalize_relation, relation_aliases
 from ..lib.entity_schema import EntityGraphValidationError
 from ..lib.search_constants import (
     SEMANTIC_TOP_K_DEFAULT,
@@ -216,6 +217,75 @@ def _join_entity_expanded_tokens_for_fts(expanded_tokens: list[str]) -> str:
     return "".join(joined).strip()
 
 
+def _entity_expansion_terms(entity: dict[str, Any], *, min_alias_length: int = 1) -> list[str]:
+    terms = [str(entity["primary_name"]).strip()]
+    for alias in entity.get("aliases", []):
+        alias_str = str(alias).strip()
+        if len(alias_str) >= min_alias_length:
+            terms.append(alias_str)
+
+    deduped: list[str] = []
+    for term in terms:
+        if term and term not in deduped:
+            deduped.append(term)
+    return deduped
+
+
+def _bare_relation_suffix(pattern: dict[str, Any]) -> str:
+    suffix = str(pattern.get("suffix") or "").strip()
+    if suffix.startswith("的"):
+        return suffix[1:]
+    return suffix
+
+
+def _relation_patterns_for_token(token: str, view: EntityRuntimeView) -> list[dict[str, Any]]:
+    token_str = token.strip()
+    if not token_str:
+        return []
+
+    direct_patterns = [
+        pattern for pattern in view.phrase_patterns if _bare_relation_suffix(pattern) == token_str
+    ]
+    if direct_patterns:
+        return direct_patterns
+
+    canonical = normalize_relation(token_str)
+    if canonical == token_str and not relation_aliases(canonical):
+        return []
+
+    return [
+        pattern
+        for pattern in view.phrase_patterns
+        if normalize_relation(str(pattern.get("relation") or "")) == canonical
+    ]
+
+
+def _relation_token_entities(token: str, view: EntityRuntimeView) -> list[dict[str, Any]]:
+    """Resolve a bare relation term to confirmed one-hop related entities."""
+
+    matches: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for pattern in _relation_patterns_for_token(token, view):
+        relation = str(pattern["relation"])
+        direction = str(pattern.get("direction", "symmetric"))
+        role_filter = pattern.get("role_filter")
+        for source in view.entities:
+            for target in _expand_related_entities(
+                source=source,
+                relation=relation,
+                view=view,
+                direction=direction,
+                role_filter=role_filter,
+                observer_id=source["id"],
+            ):
+                entity_id = str(target["id"])
+                if entity_id in seen_ids:
+                    continue
+                seen_ids.add(entity_id)
+                matches.append(target)
+    return matches
+
+
 def expand_query_with_entity_graph(query: str) -> str:
     """Expand a search query using entity graph aliases and relationship phrases.
 
@@ -239,15 +309,7 @@ def expand_query_with_entity_graph(query: str) -> str:
     serving_graph = view.entities
 
     def _expand_entity_names(entity: dict[str, Any]) -> str:
-        names = [entity["primary_name"]]
-        for alias in entity.get("aliases", []):
-            if len(str(alias).strip()) >= 2:
-                names.append(alias)
-        deduped: list[str] = []
-        for name in names:
-            if name not in deduped:
-                deduped.append(name)
-        return "(" + " OR ".join(deduped) + ")"
+        return "(" + " OR ".join(_entity_expansion_terms(entity, min_alias_length=2)) + ")"
 
     def _iter_subject_candidates(token: str, suffix: str) -> list[str]:
         subjects: list[str] = []
@@ -276,7 +338,7 @@ def expand_query_with_entity_graph(query: str) -> str:
 
     def _expand_phrase_pattern(token: str) -> str | None:
         """Try to match a relationship phrase pattern like X的老婆, X的奶奶."""
-        from tools.lib.entity_runtime import _expand_related_entities, _get_matching_role_labels
+        from tools.lib.entity_runtime import _get_matching_role_labels
 
         for pattern in view.phrase_patterns:
             suffix = pattern["suffix"]
@@ -322,6 +384,16 @@ def expand_query_with_entity_graph(query: str) -> str:
         if matched_entity:
             expanded_tokens.append(_expand_entity_names(matched_entity))
         else:
+            relation_entities = _relation_token_entities(token, view)
+            if relation_entities:
+                relation_terms: list[str] = []
+                for entity in relation_entities:
+                    for term in _entity_expansion_terms(entity, min_alias_length=2):
+                        if term not in relation_terms:
+                            relation_terms.append(term)
+                expanded_tokens.append("(" + " OR ".join(relation_terms) + ")")
+                continue
+
             # Substring replacement: position-aware, non-overlapping.
             # Collect all (start, end, entity) matches in the original token,
             # prefer longest match at the same start, skip overlaps, then
@@ -416,18 +488,12 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
         if entity["id"] in seen_entity_ids:
             return
         seen_entity_ids.add(entity["id"])
-        expansion_terms = [entity["primary_name"], *entity.get("aliases", [])]
-        # Deduplicate while preserving order
-        deduped_terms: list[str] = []
-        for term in expansion_terms:
-            if term not in deduped_terms:
-                deduped_terms.append(term)
         hints.append(
             {
                 "matched_term": matched_term,
                 "entity_id": entity["id"],
                 "entity_type": entity["type"],
-                "expansion_terms": deduped_terms,
+                "expansion_terms": _entity_expansion_terms(entity),
                 "reason": reason,
             }
         )
@@ -475,8 +541,6 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
                 if source is None:
                     continue
 
-                from tools.lib.entity_runtime import _expand_related_entities
-
                 for target in _expand_related_entities(
                     source=source,
                     relation=relation,
@@ -500,6 +564,12 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
             reason = "primary_name_match" if token == matched["primary_name"] else "alias_match"
             _add_hint(matched, token, reason)
         else:
+            relation_entities = _relation_token_entities(token, view)
+            if relation_entities:
+                for entity in relation_entities:
+                    _add_hint(entity, token, "relation_match")
+                continue
+
             # Substring scanning for entity names embedded in unsplit CJK tokens.
             # Mirrors expand_query_with_entity_graph's Path 1 logic with
             # identical guardrails: two-char minimum, position-aware
@@ -842,10 +912,12 @@ def _build_entity_expansion_attribution(entity_hints: list[dict[str, Any]]) -> d
 
     expansions: list[dict[str, Any]] = []
     for hint in entity_hints:
-        if hint.get("reason") not in {
+        reason = hint.get("reason")
+        if reason not in {
             "alias_match",
             "primary_name_match",
             "embedded_name_match",
+            "relation_match",
         }:
             continue
         matched_term = str(hint.get("matched_term") or "").strip()
@@ -862,7 +934,7 @@ def _build_entity_expansion_attribution(entity_hints: list[dict[str, Any]]) -> d
             {
                 "from": matched_term,
                 "to": targets,
-                "via": "alias",
+                "via": "relation" if reason == "relation_match" else "alias",
                 "entity_id": hint.get("entity_id"),
             }
         )

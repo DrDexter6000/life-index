@@ -2112,6 +2112,9 @@ python -m tools.search_journals [options]
 
 - `entity_hints`：search 对 query 中实体命中结果的结构化解释字段
 - 每个 hint 包含：`matched_term` / `entity_id` / `entity_type` / `expansion_terms` / `reason`
+- `entity_hints[].reason` includes direct entity/alias reasons such as `alias_match`,
+  plus `relation_match` when a controlled relationship term expands through confirmed
+  graph edges.
 - `entity_hints` 属于 read-only suggestion layer，不会修改 query 语义本身；它与 `query_params.expanded_query` 互补存在
 - `entity_expansion`：search 对 Entity Graph 扩展的块级归因字段，形状为 `{applied, expansions}`；每个 expansion 包含 `from` / `to` / `via` / `entity_id`
 - `entity_expansion.applied=false` 时 `expansions=[]`；该字段只解释确定性扩展来源，不决定是否展示或过滤任何结果
