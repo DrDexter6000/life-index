@@ -99,6 +99,46 @@ _RETIRED_TOP_LEVEL_PRIMITIVES = {
     "--delete": "life-index entity maintain --delete --id ENTITY_ID --preview --json",
 }
 
+_WORKFLOW_HINTS = {
+    "--check": {
+        "workflow": "audit",
+        "preferred_command": "life-index entity audit --json",
+        "reason": (
+            "Use the audit workflow facade for graph health; "
+            "--check is a low-level structural component."
+        ),
+    },
+    "--audit": {
+        "workflow": "audit",
+        "preferred_command": "life-index entity audit --json",
+        "reason": (
+            "Use the audit workflow facade for graph health; "
+            "--audit is a low-level quality component."
+        ),
+    },
+    "--stats": {
+        "workflow": "audit",
+        "preferred_command": "life-index entity audit --json",
+        "reason": (
+            "Use the audit workflow facade for graph health; "
+            "--stats is a low-level statistics component."
+        ),
+    },
+    "--review": {
+        "workflow": "maintain",
+        "preferred_command": "life-index entity audit --json",
+        "reason": (
+            "Start from the audit workflow facade, then follow its review "
+            "next_step when human judgment is needed."
+        ),
+    },
+}
+
+
+def _with_workflow_hint(payload: dict[str, Any], primitive: str) -> dict[str, Any]:
+    payload["workflow_hint"] = dict(_WORKFLOW_HINTS[primitive])
+    return payload
+
 
 def _handle_retired_top_level_primitives(argv: list[str]) -> None:
     if argv and argv[0] in {"build", "audit", "maintain"}:
@@ -234,18 +274,23 @@ def main(argv: list[str] | None = None) -> None:
         prog="life-index entity",
         description="Life Index Entity Graph tools",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Primary workflow:
+        epilog="""Workflow gates:
   life-index entity build --from-journals --preview --json
   life-index entity build --from-batch FILE --preview --json
-  life-index entity audit --json    Combined read-only graph health facade
+  life-index entity build --from-batch FILE --apply --json
+  life-index entity audit --json
   life-index entity maintain --normalize --preview --json
   life-index entity maintain --delete --id ENTITY_ID --preview --json
 
-Advanced primitives:
-  life-index entity --review        Human-in-the-loop review queue
-  life-index entity --check         Structural graph check
-  life-index entity --audit         Low-level quality audit
-  life-index entity --stats         Graph statistics
+JSON contract:
+  --json emits the stable machine-readable contract. Advanced read-only
+  primitives accept --json for host-agent compatibility and include workflow_hint.
+
+Advanced primitives appendix:
+  life-index entity --review --json        Human-in-the-loop review queue
+  life-index entity --check --json         Structural graph check component
+  life-index entity --audit --json         Low-level quality audit component
+  life-index entity --stats --json         Graph statistics component
 """,
     )
     parser.add_argument("--list", action="store_true", dest="list_entities")
@@ -288,6 +333,7 @@ Advanced primitives:
         action="store_true",
         help="Generate candidate relationship edges report (read-only, zero graph writes)",
     )
+    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
     args = parser.parse_args(argv)
 
     graph_path = _graph_path()
@@ -295,7 +341,7 @@ Advanced primitives:
         from tools.entity.check import run_check
 
         result = run_check(graph_path=graph_path)
-        _print(result)
+        _print(_with_workflow_hint(result, "--check"))
         return
 
     entities = load_entity_graph(graph_path)
@@ -377,14 +423,14 @@ Advanced primitives:
             graph_path,
             journals_dir=_journals_dir if _journals_dir.exists() else None,
         )
-        _print({"success": True, "data": report, "error": None})
+        _print(_with_workflow_hint({"success": True, "data": report, "error": None}, "--audit"))
         return
 
     if args.stats:
         from tools.entity.stats import compute_stats
 
         result = compute_stats(graph_path=graph_path)
-        _print(result)
+        _print(_with_workflow_hint(result, "--stats"))
         return
 
     if args.review:
@@ -428,11 +474,14 @@ Advanced primitives:
         if not args.review_action:
             queue = build_review_queue(graph_path=graph_path)
             _print(
-                {
-                    "success": True,
-                    "data": {"queue": queue, "total": len(queue)},
-                    "error": None,
-                }
+                _with_workflow_hint(
+                    {
+                        "success": True,
+                        "data": {"queue": queue, "total": len(queue)},
+                        "error": None,
+                    },
+                    "--review",
+                )
             )
             return
 

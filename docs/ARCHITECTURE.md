@@ -53,9 +53,8 @@
 │   │   │   ├── index_2026-01.md          ← 月度索引：逐条全量元数据 + 回顾 placeholder
 │   │   │   └── life-index_2026-01-05_001.md
 │   │   └── 03/
-│   │       ├── index_2026-03.md
-│   │       ├── life-index_2026-03-04_001.md
-│   │       └── report_2026-03.md         ← 月度叙事报告（Agent 生成）
+│   │       ├── index_2026-03.md          ← `life-index abstract --month 2026-03`
+│   │       └── life-index_2026-03-04_001.md
 │   └── 2025/
 │       └── index_2025.md
 ├── by-topic/                             ← legacy compatibility indexes
@@ -288,9 +287,9 @@ Therefore the existing `tools/mcp_discovery` discovery stub is constitutional: i
 
 ### 5.3 Entity 质量审计（Round 6）
 
-- `life-index entity --audit` — CLI 检测 + Agent 访谈协作模式
-- 检测：重复实体、孤立实体、频繁共现无关系
-- Agent 逐项访谈用户决定 merge/archive/add_relationship
+- `life-index entity audit --json` — check/audit/stats 聚合门面，输出灯号和下一步
+- 检测：重复实体、待裁候选、频繁共现无关系；零日志引用是 neutral fact，不是归档建议
+- Agent 逐项访谈用户决定 merge_as_alias/keep_separate/add_relationship；写入必须有人判
 
 > Entity Graph 的操作规范（别名准入、生产写入铁律、验证清单、回滚策略）见 [`docs/ENTITY_GRAPH.md`](./ENTITY_GRAPH.md)。
 >

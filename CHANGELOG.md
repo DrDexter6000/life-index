@@ -58,6 +58,12 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 - Entity help, API docs, and SKILL quick references now route primary graph
   usage through `entity build`, `entity audit`, and `entity maintain`.
+- Entity advanced read-only primitives (`--audit`, `--check`, `--stats`,
+  `--review`) now include `workflow_hint` so host agents can route back to the
+  build/audit/maintain workflow gates.
+- `monthly_review_due` now checks the generated `index_YYYY-MM.md` monthly
+  artifact and returns a concrete `life-index abstract --month YYYY-MM`
+  command instead of pointing at a non-generated report file.
 
 ### Fixed
 
@@ -78,7 +84,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   relationships, and rewired reverse references for later `--unmerge`.
 - Entity audit now treats zero journal references as a neutral fact. User-owned
   `source=user,status=confirmed,evidence=[]` facts are healthy and are not
-  framed as archive/delete recommendations.
+  framed as action recommendations.
+- Entity audit now labels `zero_journal_reference_entities` with explicit
+  neutral-fact metadata so host agents do not treat the fact as an issue.
 - `entity --review --action keep_separate` now persists user-confirmed
   non-duplicate decisions and audit respects them; `undo_keep_separate` removes
   that mark so the pair can be reviewed again.

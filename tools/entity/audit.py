@@ -54,6 +54,16 @@ def audit_entity_graph(
     entities = load_entity_graph(graph_path)
     issues: list[dict[str, Any]] = []
     facts: dict[str, Any] = {"zero_journal_reference_entities": []}
+    fact_annotations: dict[str, Any] = {
+        "zero_journal_reference_entities": {
+            "classification": "neutral_fact",
+            "is_issue": False,
+            "message": (
+                "Zero journal references are neutral facts for observability, "
+                "not an issue and not an action recommendation."
+            ),
+        }
+    }
 
     # 1. Duplicate detection
     issues.extend(_detect_duplicates(entities))
@@ -85,6 +95,7 @@ def audit_entity_graph(
         "issues": issues,
         "summary": summary,
         "facts": facts,
+        "fact_annotations": fact_annotations,
         "boost_decay": _load_boost_decay(data),
     }
 
@@ -417,5 +428,16 @@ def _empty_report() -> dict[str, Any]:
         "total_entities": 0,
         "issues": [],
         "summary": {"high": 0, "medium": 0, "low": 0},
+        "facts": {"zero_journal_reference_entities": []},
+        "fact_annotations": {
+            "zero_journal_reference_entities": {
+                "classification": "neutral_fact",
+                "is_issue": False,
+                "message": (
+                    "Zero journal references are neutral facts for observability, "
+                    "not an issue and not an action recommendation."
+                ),
+            }
+        },
         "boost_decay": get_boost_decay_defaults(),
     }

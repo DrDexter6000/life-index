@@ -530,9 +530,9 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 ### 工作流7: 实体图谱访谈
 
 **原则**：三权分立。CLI 只做确定性 JSON 原语；agent 可读证据、分桶、提出带理由建议；用户是确认态图谱的权威来源。建议自由，写入必须有人判（逐条确认或批量授权均可）。
+**实体维护速查**：任何“检查/维护/整理实体图谱”任务，第一步先运行 `life-index health --json`。若 `data.upgrade_freshness.suggested_refresh_step` 存在，先按该步骤刷新代码与 playbook，再继续；然后看 `data.entity_maintenance.traffic_light`、`pending_count` 和 `next_step.command`。绿灯且无待决即可结束；黄/红灯再运行 `life-index entity audit --json`，按返回的 `next_step` 进入 `entity --review` 或 `entity maintain ... --preview`。详细契约见 `docs/API.md` 与 `docs/ENTITY_GRAPH.md`。
 **触发**：用户说“整理人物/谁是谁/检查实体”；写日志时出现新候选；`life-index entity audit --json` 或 `health` 的实体维护灯为 yellow/red；月度整理。
 **查 → 筛 → 荐 → 问 → 写**：先 `life-index entity audit --json` 看 `traffic_light`、`pending_count`、`structural_issue_count` 和 `next_step.command`；需要访谈时再 `life-index entity --review`，按 `evidence` 指针读原文，把候选按人物分桶为很确定 same / 很确定 different / 拿不准 / 低价值可缓；再给带理由建议，而不是复述队列；每轮 ≤5 组，问用户 Same / Different / Not-sure，也接受批量授权（如“你确定的那批照办”）。
-
 确认后才写：合并前 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`，再 `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`；明确不同人/物时用 `life-index entity --review --action keep_separate --id SOURCE_ID --target-id TARGET_ID` 持久化人判，误标后用 `life-index entity --review --action undo_keep_separate --id SOURCE_ID --target-id TARGET_ID` 撤销；关系先 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID --relation RELATION`，再 `life-index entity --review --action add_relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION`；候选确认用 `life-index entity --review --action confirm_candidate --id ENTITY_ID` 或带 `--target-id TARGET_ID --relation RELATION`；加别名用 `life-index entity --add-alias ALIAS --id ENTITY_ID`；撤销合并用 `life-index entity --unmerge --id MERGED_ID --target-id TARGET_ID`。
 
 **冷启动录入**：已有日志先 `life-index entity build --from-journals --preview --json` 看候选，读 evidence 后访谈确认；用户口述家人/关系时，先问清身份和方向，再逐条复述确认；确认后用 `life-index entity --add '<json>'` 创建 `source=user,status=confirmed` 实体，用 review/add_relationship 原语写边；写完 `life-index entity --check`。`evidence=[]` 对用户确认事实是健康态。

@@ -141,13 +141,14 @@ class TestHelpSurface:
         result = _invoke_entity("--help")
 
         assert result.returncode == 0
-        assert "Primary workflow:" in result.stdout
+        assert "Workflow gates:" in result.stdout
         assert "life-index entity build --from-journals --preview --json" in result.stdout
         assert "life-index entity audit --json" in result.stdout
         assert "life-index entity maintain --normalize --preview --json" in result.stdout
         assert (
             "life-index entity maintain --delete --id ENTITY_ID --preview --json" in result.stdout
         )
+        assert "Advanced primitives appendix:" in result.stdout
         assert "Advanced compatibility / high-risk primitives:" not in result.stdout
         for retired_flag in ("--seed", "--merge", "--update"):
             assert retired_flag not in result.stdout

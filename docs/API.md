@@ -5263,7 +5263,7 @@ being rewritten.
 执行实体质量审计：
 
 ```bash
-life-index entity --audit
+life-index entity --audit --json
 ```
 
 返回（标准 envelope）：
@@ -5307,7 +5307,19 @@ life-index entity --audit
     "summary": {"high": 1, "medium": 0, "low": 1},
     "facts": {
       "zero_journal_reference_entities": ["p004"]
+    },
+    "fact_annotations": {
+      "zero_journal_reference_entities": {
+        "classification": "neutral_fact",
+        "is_issue": false,
+        "message": "Zero journal references are neutral facts for observability, not an issue and not an action recommendation."
+      }
     }
+  },
+  "workflow_hint": {
+    "workflow": "audit",
+    "preferred_command": "life-index entity audit --json",
+    "reason": "Use the audit workflow facade for graph health; --audit is a low-level quality component."
   },
   "error": null
 }
@@ -5315,7 +5327,7 @@ life-index entity --audit
 
 `zero_journal_reference_entities` is a neutral fact for observability. A
 `source=user,status=confirmed` entity or relationship with `evidence=[]` is
-healthy and is not an archive/delete recommendation. Questions enter review as
+healthy and is not an action recommendation. Questions enter review as
 `candidate_entity` or `candidate_relationship` with `suggested_action: "review"`.
 Pairs marked with `not_duplicate_of[]` by `keep_separate` are user judgments
 and are not reported again as `possible_duplicate` unless that mark is undone.
@@ -6256,7 +6268,7 @@ python -m tools trajectory --field weight --range 2025-01..2025-12
 | 事件类型 | 触发条件 | 严重级 |
 |---------|---------|--------|
 | `no_journal_streak` | 连续 7+ 天未记日志 | info |
-| `monthly_review_due` | 上月 report 文件缺失 | info |
+| `monthly_review_due` | 有日志月份缺少生成的 `index_YYYY-MM.md`；事件给出 `life-index abstract --month YYYY-MM` | info |
 | `entity_audit_due` | entity_graph.yaml 30+ 天未修改 | low |
 | `schema_migration_available` | 存在旧 schema 版本日志 | info |
 | `index_stale` | 日志比索引更新 | low |
