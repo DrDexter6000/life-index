@@ -4153,7 +4153,7 @@ python -m tools.query_weather --location "<location>" [options]
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
-| `type` | string | conditional | Operation type: `"monthly"` / `"yearly"` / `"root"` / `"rebuild"` / `"index-b"` |
+| `type` | string | conditional | Operation type: `"monthly"` / `"yearly"` / `"root"` / `"rebuild"` / `"index-b"` / `"entity-profiles"` |
 | `success` | bool | yes | Whether this specific operation succeeded |
 | `year` | int | conditional | Year (monthly/yearly results) |
 | `month` | int | conditional | Month (monthly results) |
@@ -4165,6 +4165,9 @@ python -m tools.query_weather --location "<location>" [options]
 | `yearly_indexes_rebuilt` | int | conditional | Rebuild mode: count of yearly indexes rebuilt |
 | `root_index_rebuilt` | bool | conditional | Rebuild mode: whether root was rebuilt |
 | `errors` | array | conditional | Rebuild mode: failed result objects |
+| `profile_count` | int | conditional | Entity profile materialization: number of profile docs generated |
+| `profile_paths` | array<string> | conditional | Entity profile materialization: generated profile doc paths relative to data root |
+| `source_hash` | string | conditional | Entity profile materialization: source entity graph hash used in generated docs |
 
 #### Field Semantics
 
@@ -4209,6 +4212,8 @@ life-index generate-index [options]
 | year | int | ❌ | - | 生成年度索引 (YYYY)，输出 `index_YYYY.md` |
 | all-months | flag | ❌ | false | 批量生成所有有日志月份的月度索引，并同步刷新 Index B；与 `year` 一起使用时仅生成该年月份 |
 | rebuild | flag | ❌ | false | 全量重建 legacy 三层索引树（月→年→根），并同步刷新 Index B |
+| entities | flag | ❌ | false | 物化 confirmed 实体档案，输出 `Entities/index.md` 与 `Entities/<entity_id>.md`，并在根 `INDEX.md` 加入口 |
+| id | string | ❌ | - | 与 `entities` 一起使用时，仅物化指定实体 ID 的档案 |
 | dry-run | flag | ❌ | false | 预览模式 |
 
 ### 返回值
@@ -4238,6 +4243,38 @@ life-index generate-index [options]
   "errors": []
 }
 ```
+
+实体档案物化：
+
+```bash
+life-index abstract --entities --json
+life-index abstract --entities --id actor-alice --json
+```
+
+```json
+{
+  "success": true,
+  "type": "entity-profiles",
+  "updated": true,
+  "dry_run": false,
+  "entity_id": null,
+  "profile_count": 2,
+  "skipped_candidate_count": 1,
+  "source_hash": "sha256:...",
+  "index_path": "~/Documents/Life-Index/Entities/index.md",
+  "root_index_path": "~/Documents/Life-Index/INDEX.md",
+  "profile_paths": [
+    "Entities/actor-alice.md",
+    "Entities/actor-bob.md"
+  ],
+  "removed_stale_profiles": [],
+  "message": "Generated 2 entity profile(s)"
+}
+```
+
+`Entities/*.md` 是派生视图：只读 `entity_graph.yaml` 和搜索索引生成，不回写图谱。
+candidate 实体不会进入清单或档案。档案文件名使用稳定 opaque `entity_id`；
+frontmatter 含 `entity_id`、`type`、`kind`、`status`、`generated_at` 与 `source_hash`。
 
 ---
 
@@ -5104,6 +5141,16 @@ replacement command.
 life-index entity profile --id actor-alice --json
 life-index entity profile --name Alice --json
 ```
+
+若需要给宿主 agent 一个可直接阅读的持久档案目录，运行：
+
+```bash
+life-index abstract --entities --json
+```
+
+该命令将 `entity profile` 的 confirmed-only 装配结果确定性渲染到
+`Entities/index.md` 和 `Entities/<entity_id>.md`，并在根 `INDEX.md` 加入口。
+这些文件是派生视图；编辑它们不会回流到 `entity_graph.yaml`。
 
 返回（标准 envelope）：
 

@@ -9,7 +9,12 @@ import json
 import sys
 from collections.abc import Iterator
 
-from . import generate_monthly_abstract, generate_yearly_abstract, rebuild_index_tree
+from . import (
+    generate_monthly_abstract,
+    generate_yearly_abstract,
+    materialize_entity_profiles,
+    rebuild_index_tree,
+)
 from ..lib.config import ensure_dirs
 from ..lib.paths import get_journals_dir
 from ..lib.logger import get_logger
@@ -89,6 +94,10 @@ Examples:
     # 批量生成指定年份的月度索引
     python -m tools.generate_index --year 2026 --all-months
 
+    # 生成实体档案文档
+    python -m tools.generate_index --entities
+    python -m tools.generate_index --entities --id actor-alice
+
     # 同时生成年度和指定月度索引
     python -m tools.generate_index --year 2026 --month 2026-03
         """,
@@ -110,13 +119,23 @@ Examples:
 
     parser.add_argument("--json", action="store_true", help="输出结果为 JSON 格式")
     parser.add_argument("--rebuild", action="store_true", help="重建全部索引树")
+    parser.add_argument("--entities", action="store_true", help="生成实体档案文档")
+    parser.add_argument("--id", dest="entity_id", help="仅生成指定实体 ID 的档案")
 
     args = parser.parse_args()
     ensure_dirs()
 
     # 验证参数
-    if not args.rebuild and not args.month and not args.year and not args.all_months:
-        parser.error("请指定 --month、--year 或 --all-months 参数")
+    if (
+        not args.rebuild
+        and not args.month
+        and not args.year
+        and not args.all_months
+        and not args.entities
+    ):
+        parser.error("请指定 --month、--year、--all-months 或 --entities 参数")
+    if args.entity_id and not args.entities:
+        parser.error("--id requires --entities")
 
     results = []
 
@@ -124,6 +143,10 @@ Examples:
         logger.info("重建全部索引树")
         results.append(rebuild_index_tree(dry_run=args.dry_run))
         results.append(_refresh_index_b_result(dry_run=args.dry_run))
+
+    if args.entities:
+        logger.info("生成实体档案文档")
+        results.append(materialize_entity_profiles(entity_id=args.entity_id, dry_run=args.dry_run))
 
     # 生成月度摘要
     if args.month:

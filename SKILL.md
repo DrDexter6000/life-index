@@ -268,12 +268,11 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 ### Entity Graph（已实现）
 
 - 主入口：`life-index entity build ...` / `life-index entity profile --id ENTITY_ID --json` / `life-index entity audit --json` / `life-index entity maintain --normalize --preview --json` / `life-index entity maintain --delete --id ENTITY_ID --preview --json`
-- Deterministic relationship traversal is exposed through
-  `life-index index-tree navigate --entity-neighbors "Entity Name" --json`.
+- Deterministic relationship traversal: `life-index index-tree navigate --entity-neighbors "Entity Name" --json`.
 - 存储：`~/Documents/Life-Index/entity_graph.yaml`
 - 操作规范：见 `docs/ENTITY_GRAPH.md`
 - 作用：
-  - 搜索时做 alias / relationship query expansion；回答“关于某实体”先取 `entity profile`
+  - 搜索时做 alias / relationship query expansion；回答“关于某实体”优先读 `Entities/<entity_id>.md`；缺失时运行 `life-index abstract --entities --json`，再按 `mentions` 下钻
   - 写入时标记 `new_entities_detected`
 - 当前最小支持类型：`actor` / `place` / `project` / `event` / `artifact` / `concept`；人物、组织、宿主 agent 用 `actor` + `attributes.kind`；实体 ID 不透明且长期稳定，前缀没有语义
 
@@ -531,6 +530,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 
 **原则**：三权分立。CLI 只做确定性 JSON 原语；agent 可读证据、分桶、提出带理由建议；用户是确认态图谱的权威来源。建议自由，写入必须有人判（逐条确认或批量授权均可）。
 **实体维护速查**：任何“检查/维护/整理实体图谱”任务，第一步先运行 `life-index health --json`。若 `data.upgrade_freshness.suggested_refresh_step` 存在，先按该步骤刷新代码与 playbook，再继续；然后看 `data.entity_maintenance.traffic_light`、`pending_count` 和 `next_step.command`。绿灯且无待决即可结束；黄/红灯再运行 `life-index entity audit --json`，按返回的 `next_step` 进入 `entity --review` 或 `entity maintain ... --preview`。详细步骤见 `references/ENTITY_MAINTENANCE_PLAYBOOK.md`；契约见 `docs/API.md` 与 `docs/ENTITY_GRAPH.md`。
+**实体档案回报**：回答“关于某人/项目/实体”时，先定位实体 ID，优先读取 `<data>/Entities/<entity_id>.md`；若档案不存在，运行 `life-index abstract --entities --id ENTITY_ID --json`（或全量 `life-index abstract --entities --json`）生成；档案是派生视图，不回写 `entity_graph.yaml`。
 **触发**：用户说“整理人物/谁是谁/检查实体”；写日志时出现新候选；`life-index entity audit --json` 或 `health` 的实体维护灯为 yellow/red；月度整理。
 **查 → 筛 → 荐 → 问 → 写**：先 `life-index entity audit --json` 看 `traffic_light`、`pending_count`、`structural_issue_count` 和 `next_step.command`；需要访谈时再 `life-index entity --review`，按 `evidence` 指针读原文，把候选按人物分桶为很确定 same / 很确定 different / 拿不准 / 低价值可缓；再给带理由建议，而不是复述队列；每轮 ≤5 组，问用户 Same / Different / Not-sure，也接受批量授权（如“你确定的那批照办”）。
 确认后才写：合并前 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`，再 `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`；明确不同人/物时用 `life-index entity --review --action keep_separate --id SOURCE_ID --target-id TARGET_ID` 持久化人判，误标后用 `life-index entity --review --action undo_keep_separate --id SOURCE_ID --target-id TARGET_ID` 撤销；关系先 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID --relation RELATION`，再 `life-index entity --review --action add_relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION`；候选确认用 `life-index entity --review --action confirm_candidate --id ENTITY_ID` 或带 `--target-id TARGET_ID --relation RELATION`；加别名用 `life-index entity --add-alias ALIAS --id ENTITY_ID`；撤销合并用 `life-index entity --unmerge --id MERGED_ID --target-id TARGET_ID`。
