@@ -57,6 +57,23 @@ def test_health_entity_maintenance_green_when_current_and_no_pending(
     assert entity["review_command"] == "life-index entity --review"
 
 
+def test_health_reports_entity_profiles_stale_event(
+    isolated_data_dir: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    _save_graph(isolated_data_dir, _confirmed_graph())
+
+    payload = _run_health(isolated_data_dir, monkeypatch, capsys)
+
+    events = payload["events"]
+    matching = [event for event in events if event["type"] == "entity_profiles_stale"]
+    assert len(matching) == 1
+    assert matching[0]["severity"] == "info"
+    assert "life-index abstract --entities" in matching[0]["message"]
+    assert matching[0]["data"]["suggested_command"] == "life-index abstract --entities"
+
+
 def test_health_entity_maintenance_yellow_for_pending_candidates(
     isolated_data_dir: Path,
     monkeypatch,

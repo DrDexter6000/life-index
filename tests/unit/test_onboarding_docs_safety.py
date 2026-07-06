@@ -165,6 +165,24 @@ def test_skill_entity_reference_teaches_workflow_facades_not_update_shortcut() -
         assert retired not in skill
 
 
+def test_skill_and_entity_playbook_teach_profile_docs_payoff_path() -> None:
+    skill = _read("SKILL.md")
+    playbook = _read("references/ENTITY_MAINTENANCE_PLAYBOOK.md")
+
+    for doc in (skill, playbook):
+        assert "Entities/<entity_id>.md" in doc
+        assert "mentions" in doc
+        assert "search" in doc
+        assert "entity_expansion" in doc
+
+
+def test_api_documents_entity_profiles_stale_event() -> None:
+    api = _read("docs/API.md")
+
+    assert "`entity_profiles_stale`" in api
+    assert "life-index abstract --entities" in api
+
+
 def test_api_marks_retired_entity_primitives_as_removed_with_replacements() -> None:
     api = _read("docs/API.md")
 

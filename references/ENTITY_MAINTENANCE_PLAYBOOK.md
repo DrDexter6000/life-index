@@ -17,6 +17,15 @@ logs or other notes into the product checkout.
 
 Stop when the light is green and `pending_count` is zero.
 
+## Answer With Profiles
+
+For "about this person/project/entity" questions, resolve the entity ID and
+read `<data>/Entities/<entity_id>.md` first. Follow the profile's `mentions`
+pointers into journals; if the profile is missing or insufficient, run
+`life-index abstract --entities --id ENTITY_ID --json`, then use `search`.
+When search expands aliases or relationships, use the `entity_expansion`
+attribution block to explain why a result matched.
+
 ## Audit
 
 Use `life-index entity audit --json` for the full read-only facade. Treat

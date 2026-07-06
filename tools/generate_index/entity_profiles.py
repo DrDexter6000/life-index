@@ -24,7 +24,7 @@ def _safe_rel(path: Path, data_dir: Path) -> str:
     return path.relative_to(data_dir).as_posix()
 
 
-def _graph_source_hash(graph_path: Path) -> str:
+def entity_graph_source_hash(graph_path: Path) -> str:
     data = graph_path.read_bytes() if graph_path.exists() else b""
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
@@ -289,7 +289,7 @@ def materialize_entity_profiles(
     entities_dir = data_dir / ENTITIES_DIR_NAME
     index_path = entities_dir / "index.md"
     root_index_path = data_dir / "INDEX.md"
-    source_hash = _graph_source_hash(graph_path)
+    source_hash = entity_graph_source_hash(graph_path)
 
     try:
         entities = load_entity_graph(graph_path)

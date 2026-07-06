@@ -1,9 +1,16 @@
 """Tests for built-in event detectors."""
 
 import os
+import json
+import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from tools.lib.entity_graph import save_entity_graph
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class TestNoJournalStreakDetector:
@@ -118,6 +125,134 @@ class TestEntityAuditDueDetector:
 
         events = check_entity_audit_due({"data_dir": tmp_path})
         assert events == []
+
+
+class TestEntityProfilesStaleDetector:
+    def test_missing_profiles_emit_suggested_materialize_command(self, tmp_path: Path):
+        """Existing confirmed graph without generated profiles should trigger a hint."""
+        from tools.lib.event_detectors import check_entity_profiles_stale
+
+        save_entity_graph(
+            [
+                {
+                    "id": "actor-alice",
+                    "type": "actor",
+                    "primary_name": "Alice",
+                    "aliases": [],
+                    "attributes": {"kind": "human"},
+                    "relationships": [],
+                    "source": "user",
+                    "status": "confirmed",
+                }
+            ],
+            tmp_path / "entity_graph.yaml",
+        )
+
+        events = check_entity_profiles_stale({"data_dir": tmp_path})
+
+        assert len(events) == 1
+        event = events[0]
+        assert event.type == "entity_profiles_stale"
+        assert event.severity.value == "info"
+        assert "life-index abstract --entities" in event.message
+        assert event.data["suggested_command"] == "life-index abstract --entities"
+        assert event.data["reason"] == "missing_profiles"
+
+    def test_materializing_profiles_clears_stale_signal(self, tmp_path: Path, monkeypatch):
+        """stale -> materialize -> no stale event."""
+        from tools.generate_index.entity_profiles import materialize_entity_profiles
+        from tools.lib.event_detectors import check_entity_profiles_stale
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        save_entity_graph(
+            [
+                {
+                    "id": "actor-alice",
+                    "type": "actor",
+                    "primary_name": "Alice",
+                    "aliases": [],
+                    "attributes": {"kind": "human"},
+                    "relationships": [],
+                    "source": "user",
+                    "status": "confirmed",
+                }
+            ],
+            tmp_path / "entity_graph.yaml",
+        )
+
+        assert [event.type for event in check_entity_profiles_stale({"data_dir": tmp_path})] == [
+            "entity_profiles_stale"
+        ]
+
+        result = materialize_entity_profiles(data_dir=tmp_path)
+
+        assert result["success"] is True
+        assert check_entity_profiles_stale({"data_dir": tmp_path}) == []
+
+    def test_cli_materialization_clears_stale_signal(self, tmp_path: Path):
+        """The public command clears the health freshness hint."""
+        from tools.lib.event_detectors import check_entity_profiles_stale
+
+        save_entity_graph(
+            [
+                {
+                    "id": "actor-alice",
+                    "type": "actor",
+                    "primary_name": "Alice",
+                    "aliases": [],
+                    "attributes": {"kind": "human"},
+                    "relationships": [],
+                    "source": "user",
+                    "status": "confirmed",
+                }
+            ],
+            tmp_path / "entity_graph.yaml",
+        )
+        assert check_entity_profiles_stale({"data_dir": tmp_path})
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "tools", "abstract", "--entities", "--json"],
+            cwd=REPO_ROOT,
+            env={**os.environ, "LIFE_INDEX_DATA_DIR": str(tmp_path)},
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        assert json.loads(proc.stdout)[0]["success"] is True
+        assert check_entity_profiles_stale({"data_dir": tmp_path}) == []
+
+    def test_graph_hash_change_re_emits_stale_signal(self, tmp_path: Path, monkeypatch):
+        """A changed graph hash should make existing profile docs stale."""
+        from tools.generate_index.entity_profiles import materialize_entity_profiles
+        from tools.lib.event_detectors import check_entity_profiles_stale
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
+        entities = [
+            {
+                "id": "actor-alice",
+                "type": "actor",
+                "primary_name": "Alice",
+                "aliases": [],
+                "attributes": {"kind": "human"},
+                "relationships": [],
+                "source": "user",
+                "status": "confirmed",
+            }
+        ]
+        save_entity_graph(entities, tmp_path / "entity_graph.yaml")
+        assert materialize_entity_profiles(data_dir=tmp_path)["success"] is True
+
+        entities[0]["aliases"] = ["Ally"]
+        save_entity_graph(entities, tmp_path / "entity_graph.yaml")
+
+        events = check_entity_profiles_stale({"data_dir": tmp_path})
+
+        assert len(events) == 1
+        assert events[0].data["reason"] == "source_hash_mismatch"
 
 
 class TestSchemaMigrationAvailableDetector:
