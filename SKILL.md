@@ -82,9 +82,9 @@ triggers:
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树
 - 写入成功后的状态字段解释（`needs_confirmation` / `index_status` / `side_effects_status` / 附件处理计数）→ 读 `docs/API.md` 中 `write_journal` 返回语义
 
-**会话 freshness 信号（升级摩擦 UF-1）**：
-- 每次新会话首次使用 Life Index 前，运行 `life-index health --json` 并读取 `data.upgrade_freshness`
-- 若 `data.upgrade_freshness.freshness == "update_available"` 或 `git_freshness == "behind"`，先执行返回的 `suggested_refresh_step`，再运行 `life-index sync-skill --install`
+**会话 freshness / 运维纪律（升级摩擦 UF-1 + Ops）**：
+- 每次新会话首次使用 Life Index 前，运行 `life-index health --json` 并读取 `data.upgrade_freshness`；若 `freshness == "update_available"` 或 `git_freshness == "behind"`，先执行 `suggested_refresh_step`，再运行 `life-index sync-skill --install`
+- 你是 Life Index 的使用者/运维者，不是开发者：不要向产品仓库克隆 commit/push；仓库克隆保持零改动，升级前 `git status --porcelain` 必须为空，脏了先 `git checkout -- .` 恢复；friction/笔记写到 `<data>/frictions/`，永不写进仓库克隆
 - `sync-skill --install` 会自动收敛本管理树的 `skills/life-index/life-index` 嵌套重复；若返回 `HOST_SKILL_DIR_AMBIGUOUS`，说明存在多个无关或不安全候选，需让用户指定 `--host-skill-dir`
 - 这是会话面提示，不替代 `bootstrap --json` 的安装/repair authority；旧版本无法自带新检测码时，以 `bootstrap-manifest.json` + `CHANGELOG.md` 为人工校验锚点；GUI 栈升级/运维见 GUI 仓 `docs/AGENT_UPDATE_PLAYBOOK.md`
 

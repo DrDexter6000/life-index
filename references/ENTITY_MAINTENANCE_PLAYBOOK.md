@@ -12,6 +12,9 @@ user interview. Confirmed graph writes still require user judgment.
 3. Read `data.entity_maintenance.traffic_light`, `pending_count`, and
    `next_step.command`.
 
+For repository-clone 运维纪律, follow `SKILL.md`; do not duplicate friction
+logs or other notes into the product checkout.
+
 Stop when the light is green and `pending_count` is zero.
 
 ## Audit

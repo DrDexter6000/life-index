@@ -4381,7 +4381,10 @@ python -m tools.build_index [options]
 - `data.upgrade_freshness`: non-blocking session signal. It reports local
   installed/manifest mismatch and checkout-vs-upstream metadata, including
   `suggested_refresh_step` when a local update signal is visible. It does not
-  replace `bootstrap --json`.
+  replace `bootstrap --json`. Editable checkouts also report dirty worktree
+  hints under `git.dirty` / `git.dirty_count`; a dirty-only checkout adds
+  `warning` plus `suggested_command: "git checkout -- ."` without adding a
+  health issue or blocking other operations.
 - `data.entity_maintenance`: `traffic_light` is `green` when pending review is
   clear and the graph was touched within 30 days; `yellow` when candidates are
   pending or the audit is stale; `red` when structural errors or duplicate
