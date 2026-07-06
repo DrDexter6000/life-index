@@ -59,14 +59,14 @@ class TestMonthlyReviewDueDetector:
         )
 
         events = check_monthly_review_due({"journals_dir": tmp_path / "Journals"})
-        has_review_due = any(
-            e.type == "monthly_review_due"
-            and e.data.get("month") == month_str
-            and e.data.get("expected_artifact") == f"index_{month_str}.md"
-            and e.data.get("suggested_command") == f"life-index abstract --month {month_str}"
-            for e in events
-        )
-        assert has_review_due
+        matching_events = [
+            e for e in events if e.type == "monthly_review_due" and e.data.get("month") == month_str
+        ]
+        assert len(matching_events) == 1
+        event = matching_events[0]
+        assert event.data.get("expected_artifact") == f"index_{month_str}.md"
+        assert event.data.get("suggested_command") == f"life-index abstract --month {month_str}"
+        assert f"life-index abstract --month {month_str}" in event.message
 
     def test_no_event_if_monthly_index_exists(self, tmp_path: Path):
         """Existing generated monthly index should not trigger event."""

@@ -127,3 +127,19 @@ def test_skill_requires_health_first_for_entity_maintenance() -> None:
     assert "suggested_refresh_step" in skill_text
     assert "实体维护速查" in skill_text
     assert "life-index entity audit --json" in skill_text
+
+
+def test_skill_links_operational_and_entity_maintenance_playbooks() -> None:
+    """Agent-facing maintenance guidance should point to compact playbooks."""
+    skill_text = Path("SKILL.md").read_text(encoding="utf-8")
+    playbook_path = Path("references/ENTITY_MAINTENANCE_PLAYBOOK.md")
+
+    assert "docs/AGENT_UPDATE_PLAYBOOK.md" in skill_text
+    assert "references/ENTITY_MAINTENANCE_PLAYBOOK.md" in skill_text
+    assert playbook_path.exists()
+
+    playbook = playbook_path.read_text(encoding="utf-8")
+    assert "life-index health --json" in playbook
+    assert "life-index entity audit --json" in playbook
+    assert "life-index entity --review" in playbook
+    assert "life-index entity maintain --normalize --preview --json" in playbook
