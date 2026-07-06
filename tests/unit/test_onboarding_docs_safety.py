@@ -149,6 +149,7 @@ def test_skill_entity_reference_teaches_workflow_facades_not_update_shortcut() -
     skill = _read("SKILL.md")
 
     assert "life-index entity build --from-journals --preview --json" in skill
+    assert "life-index entity profile --id ENTITY_ID --json" in skill
     assert "life-index entity audit --json" in skill
     assert "life-index entity maintain --normalize --preview --json" in skill
     assert "life-index entity maintain --delete --id ENTITY_ID --preview --json" in skill
@@ -166,6 +167,8 @@ def test_api_marks_retired_entity_primitives_as_removed_with_replacements() -> N
     api = _read("docs/API.md")
 
     assert "Retired top-level primitives" in api
+    assert "profile --id ENTITY_ID --json" in api
+    assert "candidate entities fail closed" in api.lower()
     assert "`--seed`" in api
     assert "`entity build --from-journals --preview --json`" in api
     assert "`--update`" in api

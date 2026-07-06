@@ -143,6 +143,7 @@ class TestHelpSurface:
         assert result.returncode == 0
         assert "Workflow gates:" in result.stdout
         assert "life-index entity build --from-journals --preview --json" in result.stdout
+        assert "life-index entity profile --id ENTITY_ID --json" in result.stdout
         assert "life-index entity audit --json" in result.stdout
         assert "life-index entity maintain --normalize --preview --json" in result.stdout
         assert (

@@ -249,6 +249,22 @@ def _run_build_workflow(argv: list[str]) -> None:
     _print(result)
 
 
+def _run_profile_workflow(argv: list[str]) -> None:
+    profile_parser = argparse.ArgumentParser(prog="life-index entity profile")
+    profile_parser.add_argument("--id", dest="entity_id")
+    profile_parser.add_argument("--name", dest="name")
+    profile_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
+    profile_args = profile_parser.parse_args(argv)
+    from tools.entity.profile import build_entity_profile
+
+    result = build_entity_profile(
+        graph_path=_graph_path(),
+        entity_id=profile_args.entity_id,
+        name=profile_args.name,
+    )
+    _print(result)
+
+
 def _run_workflow_command(argv: list[str]) -> bool:
     if not argv:
         return False
@@ -260,6 +276,9 @@ def _run_workflow_command(argv: list[str]) -> bool:
         return True
     if argv[0] == "maintain":
         _run_maintain_workflow(argv[1:])
+        return True
+    if argv[0] == "profile":
+        _run_profile_workflow(argv[1:])
         return True
     return False
 
@@ -278,6 +297,7 @@ def main(argv: list[str] | None = None) -> None:
   life-index entity build --from-journals --preview --json
   life-index entity build --from-batch FILE --preview --json
   life-index entity build --from-batch FILE --apply --json
+  life-index entity profile --id ENTITY_ID --json
   life-index entity audit --json
   life-index entity maintain --normalize --preview --json
   life-index entity maintain --delete --id ENTITY_ID --preview --json
