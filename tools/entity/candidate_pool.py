@@ -112,6 +112,17 @@ def stable_candidate_id(
     return f"{prefix}-{entity_type}-{slug}-{digest[:8]}"
 
 
+def cutover_entity_shape(kind: str | None) -> tuple[str, dict[str, Any]]:
+    """Map legacy frontmatter candidate kinds to schema-cutover entity shape."""
+    if kind in {"person", "actor"}:
+        return "actor", {"kind": "human"}
+    if kind == "place":
+        return "place", {}
+    if kind == "project":
+        return "project", {}
+    return "concept", {}
+
+
 def upsert_candidate_entity(
     graph: list[dict[str, Any]],
     *,
@@ -122,6 +133,7 @@ def upsert_candidate_entity(
     evidence: list[str] | None = None,
     requested_id: str | None = None,
     aliases: list[str] | None = None,
+    attributes: dict[str, Any] | None = None,
     created_at: str | None = None,
 ) -> tuple[dict[str, Any], bool, bool]:
     """Insert or update a candidate entity.
@@ -130,6 +142,7 @@ def upsert_candidate_entity(
     """
     evidence = _dedupe_strings(evidence or [])
     aliases = _dedupe_strings(aliases or [])
+    attributes = dict(attributes or {})
     created_at = created_at or now_iso()
 
     entity_id = requested_id or stable_candidate_id(
@@ -149,7 +162,7 @@ def upsert_candidate_entity(
             "type": entity_type,
             "primary_name": primary_name,
             "aliases": aliases,
-            "attributes": {},
+            "attributes": attributes,
             "relationships": [],
             "source": source,
             "status": "candidate",
@@ -181,6 +194,16 @@ def upsert_candidate_entity(
         if merged_aliases != existing.get("aliases", []):
             existing["aliases"] = merged_aliases
             changed = True
+    if attributes:
+        existing_attributes = existing.setdefault("attributes", {})
+        if not isinstance(existing_attributes, dict):
+            existing_attributes = {}
+            existing["attributes"] = existing_attributes
+            changed = True
+        for key, value in attributes.items():
+            if existing_attributes.get(key) != value:
+                existing_attributes[key] = value
+                changed = True
     return existing, False, changed
 
 
@@ -259,7 +282,7 @@ def capture_write_time_candidates(
         if candidate.get("matched_entity_id") is None
         and str(candidate.get("text", "")).strip()
         and candidate.get("source") in {"frontmatter", "frontmatter_fallback"}
-        and candidate.get("kind") in {"person", "place", "project"}
+        and candidate.get("kind") in {"person", "actor", "place", "project"}
     ]
     if not unknowns:
         return {"threshold": threshold, "created": [], "updated": []}
@@ -277,16 +300,18 @@ def capture_write_time_candidates(
             continue
         if has_confirmed_name(graph, text):
             continue
+        entity_type, attributes = cutover_entity_shape(str(candidate.get("kind") or "concept"))
         entity, was_created, changed = upsert_candidate_entity(
             graph,
             primary_name=text,
-            entity_type=str(candidate.get("kind") or "concept"),
+            entity_type=entity_type,
             source="seed",
             reason=(
                 f"Repeated unknown {candidate.get('kind') or 'entity'} mention "
                 f"reached threshold {threshold}."
             ),
             evidence=evidence,
+            attributes=attributes,
         )
         item = {"id": entity["id"], "primary_name": entity["primary_name"], "evidence": evidence}
         if was_created:

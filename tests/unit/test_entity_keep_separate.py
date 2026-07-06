@@ -16,7 +16,7 @@ def _graph_path(root: Path) -> Path:
 def _entity(entity_id: str, name: str) -> dict:
     return {
         "id": entity_id,
-        "type": "person",
+        "type": "actor",
         "primary_name": name,
         "aliases": [],
         "attributes": {},

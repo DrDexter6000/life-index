@@ -10,16 +10,18 @@ def _base_entities(relationship: dict) -> list[dict]:
     return [
         {
             "id": "person-alice",
-            "type": "person",
+            "type": "actor",
             "primary_name": "Alice",
             "aliases": [],
+            "attributes": {"kind": "human"},
             "relationships": [relationship],
         },
         {
             "id": "person-bob",
-            "type": "person",
+            "type": "actor",
             "primary_name": "Bob",
             "aliases": [],
+            "attributes": {"kind": "human"},
             "relationships": [],
         },
     ]
@@ -107,9 +109,10 @@ class TestEntityRuntimeMixedRelationshipShapes:
             [
                 {
                     "id": "person-alice",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "Alice",
                     "aliases": [],
+                    "attributes": {"kind": "human"},
                     "relationships": [
                         {"target": "person-bob", "relation": "friend_of"},
                         {
@@ -124,16 +127,18 @@ class TestEntityRuntimeMixedRelationshipShapes:
                 },
                 {
                     "id": "person-bob",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "Bob",
                     "aliases": [],
+                    "attributes": {"kind": "human"},
                     "relationships": [],
                 },
                 {
                     "id": "person-morgan",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "Morgan",
                     "aliases": [],
+                    "attributes": {"kind": "human"},
                     "relationships": [],
                 },
             ],

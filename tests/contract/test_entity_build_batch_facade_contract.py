@@ -125,9 +125,10 @@ def test_entity_build_from_journals_preview_plans_seed_without_writes(
         [
             {
                 "id": "person-existing",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Existing Person",
                 "aliases": [],
+                "attributes": {"kind": "human"},
                 "relationships": [],
             }
         ],
@@ -164,10 +165,20 @@ def test_entity_build_from_journals_preview_plans_seed_without_writes(
     assert payload["data"]["source"] == "journals"
     assert payload["data"]["new_entities"] == 3
     assert payload["data"]["skipped_existing"] == [
-        {"primary_name": "Existing Person", "type": "person", "frequency": 2}
+        {
+            "primary_name": "Existing Person",
+            "type": "actor",
+            "attributes": {"kind": "human"},
+            "frequency": 2,
+        }
     ]
     assert payload["data"]["skipped_low_frequency"] == [
-        {"primary_name": "Single Mention", "type": "person", "frequency": 1}
+        {
+            "primary_name": "Single Mention",
+            "type": "actor",
+            "attributes": {"kind": "human"},
+            "frequency": 1,
+        }
     ]
     planned_names = {item["primary_name"] for item in payload["data"]["added"]}
     assert planned_names == {"Alice", "Garden", "Project Atlas"}
@@ -219,5 +230,7 @@ def test_entity_build_from_journals_preview_to_batch_apply_closes_cold_start_loo
     assert applied["success"] is True
     graph = {entity["primary_name"]: entity for entity in load_entity_graph(graph_path)}
     assert set(graph) == {"Alice", "Garden"}
+    assert graph["Alice"]["type"] == "actor"
+    assert graph["Alice"]["attributes"]["kind"] == "human"
     assert all(entity["source"] == "user" for entity in graph.values())
     assert all(entity["status"] == "confirmed" for entity in graph.values())

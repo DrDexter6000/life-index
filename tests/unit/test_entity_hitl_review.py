@@ -12,7 +12,7 @@ def _graph() -> list[dict]:
     return [
         {
             "id": "person-alice",
-            "type": "person",
+            "type": "actor",
             "primary_name": "Alice",
             "aliases": [],
             "attributes": {},
@@ -20,7 +20,7 @@ def _graph() -> list[dict]:
         },
         {
             "id": "person-bob",
-            "type": "person",
+            "type": "actor",
             "primary_name": "Bob",
             "aliases": [],
             "attributes": {},
@@ -189,14 +189,14 @@ def test_high_confidence_duplicate_is_queued_not_auto_merged(
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": ["A. Example"],
                 "relationships": [],
             },
             {
                 "id": "person-allyce",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alyce",
                 "aliases": [],
                 "relationships": [],

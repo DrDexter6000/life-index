@@ -10,21 +10,21 @@ def _sample_entity_graph() -> dict:
         "entities": [
             {
                 "id": "author-self",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "我",
                 "aliases": ["作者", "自己"],
                 "relationships": [],
             },
             {
                 "id": "mama",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "妈妈",
                 "aliases": ["老妈", "婆婆"],
                 "relationships": [{"target": "author-self", "relation": "mother_of"}],
             },
             {
                 "id": "tuantuan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "晴岚",
                 "aliases": ["圆圆"],
                 "relationships": [{"target": "mama", "relation": "granddaughter_of"}],
@@ -45,7 +45,7 @@ class TestEntitySchema:
             "entities": [
                 {
                     "id": "mama",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "妈妈",
                     "relationships": [{"target": "unknown", "relation": "mother_of"}],
                 }
@@ -72,7 +72,7 @@ class TestEntitySchema:
             validate_entity_graph_payload,
         )
 
-        payload = {"entities": [{"id": "mama", "type": "person"}]}
+        payload = {"entities": [{"id": "mama", "type": "actor"}]}
 
         with pytest.raises(EntityGraphValidationError, match="primary_name"):
             validate_entity_graph_payload(payload)
@@ -85,8 +85,8 @@ class TestEntitySchema:
 
         payload = {
             "entities": [
-                {"id": "mama", "type": "person", "primary_name": "妈妈"},
-                {"id": "mama", "type": "person", "primary_name": "老妈"},
+                {"id": "mama", "type": "actor", "primary_name": "妈妈"},
+                {"id": "mama", "type": "actor", "primary_name": "老妈"},
             ]
         }
 
@@ -114,7 +114,7 @@ class TestEntitySchema:
             "entities": [
                 {
                     "id": "mama",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "妈妈",
                     "relationships": [{"target": "unknown", "relation": "mother_of"}],
                 }
@@ -131,7 +131,7 @@ class TestEntitySchema:
             "entities": [
                 {
                     "id": "person-alice",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "Alice",
                     "relationships": [
                         {
@@ -180,13 +180,13 @@ class TestEntitySchema:
             "entities": [
                 {
                     "id": "mama",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "妈妈",
                     "aliases": ["老妈"],
                 },
                 {
                     "id": "tuantuan",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "晴岚",
                     "aliases": ["老妈"],
                 },

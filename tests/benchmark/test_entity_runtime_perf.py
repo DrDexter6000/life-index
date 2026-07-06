@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from tools.lib.entity_graph import save_entity_graph
 from tools.lib.entity_runtime import build_runtime_view, resolve_via_runtime
 
 
@@ -23,7 +22,7 @@ def _generate_entities(n: int) -> list[dict[str, Any]]:
         entities.append(
             {
                 "id": f"entity_{i}",
-                "type": "person",
+                "type": "actor",
                 "primary_name": f"人物{i}",
                 "aliases": [f"P{i}", f"别名{i}"],
                 "attributes": {},
@@ -54,7 +53,7 @@ class TestEntityRuntimePerformance:
     def test_build_runtime_view_500_entities_under_200ms(self, tmp_path: Path) -> None:
         entities = _generate_entities(500)
         start = time.perf_counter()
-        view = build_runtime_view(entities)
+        _ = build_runtime_view(entities)
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         print(f"\n[500 entities] Runtime view build: {elapsed_ms:.2f}ms")

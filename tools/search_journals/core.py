@@ -390,7 +390,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
     Each hint contains:
         - matched_term: the token that matched
         - entity_id: the resolved entity's id
-        - entity_type: person/place/project/event/concept
+        - entity_type: actor/place/project/event/artifact/concept
         - expansion_terms: all names/aliases for the entity
         - reason: how the match happened (alias_match / primary_name_match / phrase_match)
     """

@@ -66,8 +66,8 @@ topic: {topic_yaml}
 class TestSeedCandidateCollection:
     """Verify collect_candidates() extracts from frontmatter correctly."""
 
-    def test_extracts_people_as_person_type(self, isolated_data_dir: Path) -> None:
-        """people field → type=person, counted per occurrence."""
+    def test_extracts_people_as_actor_human_type(self, isolated_data_dir: Path) -> None:
+        """people field -> actor/human, counted per occurrence."""
         from tools.entity.seed import collect_candidates
 
         # Create 2 journals mentioning "晴岚"
@@ -85,7 +85,8 @@ class TestSeedCandidateCollection:
         assert "妈妈" in names
 
         tuantuan = next(c for c in candidates if c.primary_name == "晴岚")
-        assert tuantuan.type == "person"
+        assert tuantuan.type == "actor"
+        assert tuantuan.attributes["kind"] == "human"
         assert tuantuan.frequency >= 2
 
     def test_extracts_location_as_place_type(self, isolated_data_dir: Path) -> None:
@@ -196,7 +197,7 @@ class TestSeedPlan:
         initial_entities = [
             {
                 "id": "entity_tuantuan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "晴岚",
                 "aliases": ["小队长"],
                 "attributes": {},

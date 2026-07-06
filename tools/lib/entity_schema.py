@@ -5,7 +5,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-ENTITY_TYPES = {"actor", "artifact", "person", "place", "project", "event", "concept"}
+ENTITY_TYPES = {"actor", "artifact", "place", "project", "event", "concept"}
+LEGACY_ENTITY_TYPES = {"person"}
+ENTITY_KIND_VALUES = {
+    "human",
+    "software_agent",
+    "organization",
+    "ai_model",
+    "app",
+    "book",
+    "document",
+    "device",
+}
+ENTITY_NORMALIZE_PREVIEW_COMMAND = "life-index entity maintain --normalize --preview --json"
 RESERVED_RELATIONSHIP_TARGETS: set[str] = set()
 RELATIONSHIP_SOURCES = {"seed", "review", "user", "agent", "system"}
 RELATIONSHIP_STATUSES = {"confirmed", "candidate"}
@@ -24,7 +36,16 @@ def get_boost_decay_defaults() -> dict[str, Any]:
 
 
 class EntityGraphValidationError(ValueError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "ENTITY_SCHEMA_INVALID",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
 
 
 def _ensure_non_empty_string(value: Any, field: str) -> str:
@@ -180,6 +201,8 @@ def _normalize_entity_core(
     raw: dict[str, Any],
     load_time: str,
     alias_owners: dict[str, str] | None = None,
+    *,
+    allow_legacy_entity_types: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise EntityGraphValidationError("each entity must be an object")
@@ -188,8 +211,32 @@ def _normalize_entity_core(
     entity_type = _ensure_non_empty_string(raw.get("type"), "type")
     primary_name = _ensure_non_empty_string(raw.get("primary_name"), "primary_name")
 
-    if entity_type not in ENTITY_TYPES:
+    if entity_type in LEGACY_ENTITY_TYPES and not allow_legacy_entity_types:
+        raise EntityGraphValidationError(
+            (
+                f"legacy entity type '{entity_type}' is no longer accepted; "
+                f"run `{ENTITY_NORMALIZE_PREVIEW_COMMAND}` first"
+            ),
+            code="ENTITY_SCHEMA_LEGACY",
+            details={
+                "legacy_type": entity_type,
+                "replacement_command": ENTITY_NORMALIZE_PREVIEW_COMMAND,
+            },
+        )
+    if entity_type not in ENTITY_TYPES and not (
+        allow_legacy_entity_types and entity_type in LEGACY_ENTITY_TYPES
+    ):
         raise EntityGraphValidationError(f"invalid entity type: {entity_type}")
+    attributes = raw.get("attributes", {}) or {}
+    if not isinstance(attributes, dict):
+        raise EntityGraphValidationError("attributes must be an object")
+    kind = attributes.get("kind")
+    if (
+        kind is not None
+        and kind not in ENTITY_KIND_VALUES
+        and not (allow_legacy_entity_types and entity_type in LEGACY_ENTITY_TYPES)
+    ):
+        raise EntityGraphValidationError(f"invalid entity kind: {kind}")
 
     aliases = raw.get("aliases", []) or []
     if not isinstance(aliases, list):
@@ -222,7 +269,7 @@ def _normalize_entity_core(
         "primary_name": primary_name,
         "aliases": normalized_aliases,
         "alias_metadata": alias_metadata,
-        "attributes": raw.get("attributes", {}) or {},
+        "attributes": attributes,
         "relationships": [
             _normalize_relationship(relationship, load_time) for relationship in relationships
         ],
@@ -264,7 +311,12 @@ def _normalize_entity_core(
     return normalized_entity
 
 
-def _normalize_merged_entities(value: Any, load_time: str) -> list[dict[str, Any]]:
+def _normalize_merged_entities(
+    value: Any,
+    load_time: str,
+    *,
+    allow_legacy_entity_types: bool = False,
+) -> list[dict[str, Any]]:
     if value is None:
         return []
     if not isinstance(value, list):
@@ -277,7 +329,11 @@ def _normalize_merged_entities(value: Any, load_time: str) -> list[dict[str, Any
         raw_entity = item.get("entity")
         if not isinstance(raw_entity, dict):
             raise EntityGraphValidationError("merged_entities[].entity must be an object")
-        entity = _normalize_entity_core(raw_entity, load_time)
+        entity = _normalize_entity_core(
+            raw_entity,
+            load_time,
+            allow_legacy_entity_types=allow_legacy_entity_types,
+        )
         tombstone: dict[str, Any] = {
             "id": _ensure_non_empty_string(item.get("id"), "merged_entities[].id"),
             "target_id": _ensure_non_empty_string(
@@ -322,7 +378,10 @@ def _normalize_merged_entities(value: Any, load_time: str) -> list[dict[str, Any
 
 
 def validate_entity_graph_payload(
-    payload: dict[str, Any], load_time: str | None = None
+    payload: dict[str, Any],
+    load_time: str | None = None,
+    *,
+    allow_legacy_entity_types: bool = False,
 ) -> list[dict[str, Any]]:
     if load_time is None:
         load_time = datetime.now(timezone.utc).isoformat()
@@ -343,8 +402,17 @@ def validate_entity_graph_payload(
 
         if entity_id in seen_ids:
             raise EntityGraphValidationError(f"duplicate entity id: {entity_id}")
-        normalized_entity = _normalize_entity_core(raw, load_time, alias_owners)
-        merged_entities = _normalize_merged_entities(raw.get("merged_entities", []), load_time)
+        normalized_entity = _normalize_entity_core(
+            raw,
+            load_time,
+            alias_owners,
+            allow_legacy_entity_types=allow_legacy_entity_types,
+        )
+        merged_entities = _normalize_merged_entities(
+            raw.get("merged_entities", []),
+            load_time,
+            allow_legacy_entity_types=allow_legacy_entity_types,
+        )
         if merged_entities:
             normalized_entity["merged_entities"] = merged_entities
         validated.append(normalized_entity)

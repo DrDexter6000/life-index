@@ -45,10 +45,11 @@ class TestHealthEntityGraphCheck:
         graph_path.write_text(
             "entities:\n"
             "  - id: e1\n"
-            "    type: person\n"
+            "    type: actor\n"
             "    primary_name: 晴岚\n"
             "    aliases: []\n"
-            "    attributes: {}\n"
+            "    attributes:\n"
+            "      kind: human\n"
             "    relationships: []\n",
             encoding="utf-8",
         )

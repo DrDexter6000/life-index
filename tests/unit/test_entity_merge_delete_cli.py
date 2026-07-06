@@ -23,7 +23,7 @@ def _sample_graph() -> list[dict]:
     return [
         {
             "id": "person-a",
-            "type": "person",
+            "type": "actor",
             "primary_name": "张三",
             "aliases": ["老张"],
             "attributes": {},
@@ -33,7 +33,7 @@ def _sample_graph() -> list[dict]:
         },
         {
             "id": "person-b",
-            "type": "person",
+            "type": "actor",
             "primary_name": "张叁",
             "aliases": ["小张"],
             "attributes": {},
@@ -43,7 +43,7 @@ def _sample_graph() -> list[dict]:
         },
         {
             "id": "person-c",
-            "type": "person",
+            "type": "actor",
             "primary_name": "李四",
             "aliases": [],
             "attributes": {},

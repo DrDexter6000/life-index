@@ -21,14 +21,14 @@ class TestEntityAuditDuplicates:
             [
                 {
                     "id": "person_001",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "妈妈",
                     "aliases": [],
                     "relationships": [],
                 },
                 {
                     "id": "person_002",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "母亲",
                     "aliases": [],
                     "relationships": [],
@@ -54,14 +54,14 @@ class TestEntityAuditDuplicates:
             [
                 {
                     "id": "person_001",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "张三",
                     "aliases": ["小张"],
                     "relationships": [],
                 },
                 {
                     "id": "person_002",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "小张",
                     "aliases": [],
                     "relationships": [],
@@ -85,7 +85,7 @@ class TestEntityAuditOrphans:
             [
                 {
                     "id": "person_001",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "无人引用",
                     "aliases": [],
                     "relationships": [],
@@ -117,14 +117,14 @@ class TestEntityAuditIncompleteRelationships:
             [
                 {
                     "id": "person_001",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "爸爸",
                     "aliases": [],
                     "relationships": [],
                 },
                 {
                     "id": "person_002",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "妈妈",
                     "aliases": [],
                     "relationships": [],
@@ -157,7 +157,7 @@ class TestEntityAuditOutputFormat:
             [
                 {
                     "id": "p1",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "测试人",
                     "aliases": [],
                     "relationships": [],
@@ -183,14 +183,14 @@ class TestEntityAuditOutputFormat:
             [
                 {
                     "id": "p1",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "A",
                     "aliases": ["B"],
                     "relationships": [],
                 },
                 {
                     "id": "p2",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "B",
                     "aliases": [],
                     "relationships": [],

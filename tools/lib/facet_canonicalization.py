@@ -14,7 +14,7 @@ from tools.lib.entity_schema import ENTITY_TYPES
 
 _FACET_ENTITY_TYPES: dict[str, set[str]] = {
     "project": {"project"},
-    "people": {"person"},
+    "people": {"actor"},
     "location": {"place"},
     "tag": set(ENTITY_TYPES),
 }

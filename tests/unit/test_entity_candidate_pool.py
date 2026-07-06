@@ -42,6 +42,8 @@ def test_unknown_person_is_persisted_only_after_repeated_write_threshold(
 
     graph = load_entity_graph(isolated_data_dir / "entity_graph.yaml")
     candidate = next(entity for entity in graph if entity["primary_name"] == "Morgan")
+    assert candidate["type"] == "actor"
+    assert candidate["attributes"]["kind"] == "human"
     assert candidate["status"] == "candidate"
     assert candidate["source"] == "seed"
     assert len(candidate["evidence"]) == 2
@@ -77,9 +79,10 @@ def test_agent_propose_entity_persists_candidate_without_search_expansion(
 
     proposal = {
         "kind": "entity",
-        "id": "person-morgan",
-        "entity_type": "person",
+        "id": "actor-morgan",
+        "entity_type": "actor",
         "primary_name": "Morgan",
+        "attributes": {"kind": "human"},
         "reason": "Host agent saw repeated evidence.",
         "evidence": ["Journals/2026/07/life-index_2026-07-02_001.md"],
     }
@@ -89,7 +92,9 @@ def test_agent_propose_entity_persists_candidate_without_search_expansion(
     assert payload["success"] is True
 
     graph = load_entity_graph(isolated_data_dir / "entity_graph.yaml")
-    candidate = next(entity for entity in graph if entity["id"] == "person-morgan")
+    candidate = next(entity for entity in graph if entity["id"] == "actor-morgan")
+    assert candidate["type"] == "actor"
+    assert candidate["attributes"]["kind"] == "human"
     assert candidate["status"] == "candidate"
     assert candidate["source"] == "agent"
     assert candidate["reason"] == "Host agent saw repeated evidence."
@@ -107,9 +112,10 @@ def test_agent_propose_entity_does_not_downgrade_confirmed_entity(
         [
             {
                 "id": "person-morgan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Morgan",
                 "aliases": [],
+                "attributes": {"kind": "human"},
                 "source": "user",
                 "status": "confirmed",
                 "relationships": [],
@@ -121,8 +127,9 @@ def test_agent_propose_entity_does_not_downgrade_confirmed_entity(
     proposal = {
         "kind": "entity",
         "id": "person-morgan-candidate",
-        "entity_type": "person",
+        "entity_type": "actor",
         "primary_name": "Morgan",
+        "attributes": {"kind": "human"},
         "reason": "Host agent hypothesis.",
         "evidence": [],
     }
@@ -149,16 +156,18 @@ def test_agent_propose_relationship_is_candidate_and_not_runtime_edge(
         [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": [],
+                "attributes": {"kind": "human"},
                 "relationships": [],
             },
             {
                 "id": "person-bob",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Bob",
                 "aliases": [],
+                "attributes": {"kind": "human"},
                 "relationships": [],
             },
         ],

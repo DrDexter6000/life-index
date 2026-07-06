@@ -159,7 +159,7 @@ def _write_eval_fixture_data(data_dir: Path) -> None:
         "entities": [
             {
                 "id": "tuantuan",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "晴岚",
                 "aliases": ["小风筝", "小队长"],
                 "attributes": {},

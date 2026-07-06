@@ -27,7 +27,7 @@ DEFAULT_ENTITY_GRAPH = {
     "entities": [
         {
             "id": "author-self",
-            "type": "person",
+            "type": "actor",
             "primary_name": "我",
             "aliases": ["作者", "自己"],
             "attributes": {},
@@ -35,7 +35,7 @@ DEFAULT_ENTITY_GRAPH = {
         },
         {
             "id": "mama",
-            "type": "person",
+            "type": "actor",
             "primary_name": "妈妈",
             "aliases": ["老妈", "婆婆", "王阿姨"],
             "attributes": {},
@@ -43,7 +43,7 @@ DEFAULT_ENTITY_GRAPH = {
         },
         {
             "id": "tuantuan",
-            "type": "person",
+            "type": "actor",
             "primary_name": "晴岚",
             "aliases": ["圆圆"],
             "attributes": {},
@@ -575,7 +575,7 @@ class TestHierarchicalSearch:
             "entities": [
                 {
                     "id": "mama",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "妈妈",
                     "aliases": ["老妈"],
                     "attributes": {},

@@ -24,7 +24,7 @@ def _spouse_family_graph() -> list[dict]:
     return [
         {
             "id": "wife-001",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王某某",
             "aliases": ["晴岚妈", "老婆", "妻子"],
             "attributes": {},
@@ -32,7 +32,7 @@ def _spouse_family_graph() -> list[dict]:
         },
         {
             "id": "author-self",
-            "type": "person",
+            "type": "actor",
             "primary_name": "我",
             "aliases": [],
             "attributes": {},
@@ -40,7 +40,7 @@ def _spouse_family_graph() -> list[dict]:
         },
         {
             "id": "mama",
-            "type": "person",
+            "type": "actor",
             "primary_name": "妈妈",
             "aliases": ["老妈", "婆婆"],
             "attributes": {},
@@ -51,7 +51,7 @@ def _spouse_family_graph() -> list[dict]:
         },
         {
             "id": "tuantuan",
-            "type": "person",
+            "type": "actor",
             "primary_name": "晴岚",
             "aliases": ["圆圆"],
             "attributes": {},
@@ -234,7 +234,7 @@ def _chongqing_with_short_alias_graph() -> list[dict]:
     return [
         {
             "id": "person-zhouyu",
-            "type": "person",
+            "type": "actor",
             "primary_name": "周渝",
             "aliases": [],
             "attributes": {},
@@ -541,7 +541,7 @@ class TestCaseInsensitiveExpansion:
                 },
                 {
                     "id": "alice-person",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "Alice",
                     "aliases": ["Ali"],
                     "attributes": {},
@@ -639,7 +639,7 @@ class TestMultiWordAliasHintResolution:
             + [
                 {
                     "id": "alice-person",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "Alice",
                     "aliases": ["Ali"],
                     "attributes": {},
@@ -731,7 +731,7 @@ def _chongqing_with_city_graph() -> list[dict]:
     return [
         {
             "id": "person-zhouyu",
-            "type": "person",
+            "type": "actor",
             "primary_name": "周渝",
             "aliases": [],
             "attributes": {},
@@ -809,7 +809,7 @@ class TestResolveQueryEntitiesEmbeddedCjk:
             [
                 {
                     "id": "alice-person",
-                    "type": "person",
+                    "type": "actor",
                     "primary_name": "Alice",
                     "aliases": ["Ali"],
                     "attributes": {},

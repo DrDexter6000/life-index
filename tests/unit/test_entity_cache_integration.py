@@ -20,7 +20,7 @@ def _sample_entities() -> list[dict]:
     return [
         {
             "id": "wife-001",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王某某",
             "aliases": ["晴岚妈", "老婆"],
             "attributes": {},
@@ -28,7 +28,7 @@ def _sample_entities() -> list[dict]:
         },
         {
             "id": "author-self",
-            "type": "person",
+            "type": "actor",
             "primary_name": "我",
             "aliases": [],
             "attributes": {},
@@ -111,7 +111,7 @@ class TestCacheFreshness:
         updated = _sample_entities() + [
             {
                 "id": "new-entity",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "新人",
                 "aliases": [],
                 "attributes": {},
@@ -211,7 +211,7 @@ class TestResolveEntityCached:
         updated = _sample_entities() + [
             {
                 "id": "stale-test",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "测试人员",
                 "aliases": [],
                 "attributes": {},

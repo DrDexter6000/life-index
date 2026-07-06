@@ -64,7 +64,8 @@ class TestEntityCandidatesFallback:
         json_end = cmd.rindex("}") + 1
         entity_json = json.loads(cmd[json_start:json_end])
         assert entity_json["primary_name"] == "晴岚"
-        assert entity_json["type"] == "person"
+        assert entity_json["type"] == "actor"
+        assert entity_json["attributes"]["kind"] == "human"
 
     def test_with_graph_returns_graph_delta_candidates(self) -> None:
         """
@@ -77,7 +78,7 @@ class TestEntityCandidatesFallback:
         graph = [
             {
                 "id": "e1",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "晴岚",
                 "aliases": [],
                 "attributes": {},

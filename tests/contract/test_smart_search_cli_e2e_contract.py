@@ -251,8 +251,10 @@ class TestSeededEntityMatchContract:
         entity_graph.write_text(
             "entities:\n"
             "- id: person-test-001\n"
-            "  type: person\n"
+            "  type: actor\n"
             "  primary_name: TestPerson\n"
+            "  attributes:\n"
+            "    kind: human\n"
             "  aliases:\n"
             "  - TP\n"
             "  - TAlias\n",
@@ -469,8 +471,10 @@ class TestFormatEntityAnnotatedContract:
         entity_graph.write_text(
             "entities:\n"
             "- id: person-fmt-001\n"
-            "  type: person\n"
+            "  type: actor\n"
             "  primary_name: FormatPerson\n"
+            "  attributes:\n"
+            "    kind: human\n"
             "  aliases:\n"
             "  - FAlias\n",
             encoding="utf-8",
@@ -588,8 +592,10 @@ class TestCaseInsensitiveSeededEntityMatchContract:
         entity_graph.write_text(
             "entities:\n"
             "- id: person-ci-001\n"
-            "  type: person\n"
+            "  type: actor\n"
             "  primary_name: TestCasePerson\n"
+            "  attributes:\n"
+            "    kind: human\n"
             "  aliases:\n"
             "  - TCI\n"
             "  - CaseAlias\n",

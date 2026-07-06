@@ -12,7 +12,7 @@ def _roundtrip_graph() -> list[dict]:
     return [
         {
             "id": "person-alice",
-            "type": "person",
+            "type": "actor",
             "primary_name": "Alice",
             "aliases": ["A. Example"],
             "attributes": {"role": "owner"},
@@ -22,7 +22,7 @@ def _roundtrip_graph() -> list[dict]:
         },
         {
             "id": "person-bob",
-            "type": "person",
+            "type": "actor",
             "primary_name": "Bob",
             "aliases": ["B. Example"],
             "attributes": {"role": "candidate"},
@@ -32,7 +32,7 @@ def _roundtrip_graph() -> list[dict]:
         },
         {
             "id": "person-morgan",
-            "type": "person",
+            "type": "actor",
             "primary_name": "Morgan",
             "aliases": [],
             "attributes": {},

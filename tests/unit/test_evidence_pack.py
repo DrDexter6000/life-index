@@ -476,7 +476,7 @@ def _synthetic_search_result() -> dict:
         "no_confident_match": False,
         "semantic_effective_policy": "hybrid",
         "entity_hints": [
-            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
+            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
         ],
         "search_plan": {"intent_type": "recall", "query_mode": "natural_language"},
         "warnings": [],
@@ -527,7 +527,7 @@ class TestBuildEvidencePack:
         assert pack.query_context.expanded_query == "family day out 小云"
         assert pack.query_context.semantic_policy == "hybrid"
         assert pack.query_context.entity_hints == [
-            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
+            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
         ]
         assert pack.query_context.performance == {"total_time_ms": 110.5}
 
@@ -1630,7 +1630,7 @@ class TestBuildEntityMatches:
         assert len(pack.items[0].entity_matches) == 1
         em = pack.items[0].entity_matches[0]
         assert em.entity_id == "tuan_tuan"
-        assert em.entity_type == "person"
+        assert em.entity_type == "actor"
         assert "小云" in em.matched_terms
         assert "snippet" in em.match_sources
 
@@ -1668,7 +1668,7 @@ class TestBuildEntityMatches:
             "has_more": False,
             "no_confident_match": False,
             "entity_hints": [
-                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
             ],
         }
         pack = build_evidence_pack(result)
@@ -1701,7 +1701,7 @@ class TestBuildEntityMatches:
             "has_more": False,
             "no_confident_match": False,
             "entity_hints": [
-                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
             ],
         }
         pack = build_evidence_pack(result)
@@ -1769,7 +1769,7 @@ class TestBuildEntityMatches:
             "has_more": False,
             "no_confident_match": False,
             "entity_hints": [
-                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
                 {"matched_term": "Beijing", "entity_id": "beijing", "entity_type": "location"},
             ],
         }
@@ -1804,7 +1804,7 @@ class TestBuildEntityMatches:
             "has_more": False,
             "no_confident_match": False,
             "entity_hints": [
-                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "person"},
+                {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
             ],
         }
         pack = build_evidence_pack(result)
@@ -1873,7 +1873,7 @@ class TestExpansionTermsMatching:
         hint = {
             "matched_term": "老婆",
             "entity_id": "wife",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": ["王某某", "晴岚妈", "老婆"],
         }
         # Item contains "晴岚妈" but NOT "老婆"
@@ -1947,7 +1947,7 @@ class TestExpansionTermsMatching:
         hint = {
             "matched_term": "老婆",
             "entity_id": "wife",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": ["王某某", "晴岚妈", "老婆"],
         }
         # Item contains both "老婆" and "晴岚妈"
@@ -1965,7 +1965,7 @@ class TestExpansionTermsMatching:
         hint = {
             "matched_term": "老婆",
             "entity_id": "wife",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": ["王某某", "晴岚妈", "老婆"],
         }
         result = self._hint_result(hint, snippet="今天天气很好")
@@ -1978,7 +1978,7 @@ class TestExpansionTermsMatching:
         hint = {
             "matched_term": "小云",
             "entity_id": "tuan_tuan",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": [],
         }
         result = self._hint_result(hint, snippet="和小云玩耍")
@@ -1993,7 +1993,7 @@ class TestExpansionTermsMatching:
         hint = {
             "matched_term": "小云",
             "entity_id": "tuan_tuan",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": ["小云", "小小云", "小云"],
         }
         result = self._hint_result(hint, snippet="小云和小小云一起玩")
@@ -2027,7 +2027,7 @@ class TestCaseInsensitiveEntityMatching:
         hint = {
             "matched_term": "talias",
             "entity_id": "person-test-001",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": ["TestPerson", "talias"],
         }
         result = {
@@ -2102,7 +2102,7 @@ class TestCaseInsensitiveEntityMatching:
         hint = {
             "matched_term": "Ali",
             "entity_id": "alice-person",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": ["Alice", "Ali"],
         }
         result = {
@@ -2139,7 +2139,7 @@ class TestCaseInsensitiveEntityMatching:
         hint = {
             "matched_term": "Ali",
             "entity_id": "alice-person",
-            "entity_type": "person",
+            "entity_type": "actor",
             "expansion_terms": ["Alice", "Ali"],
         }
         result = {

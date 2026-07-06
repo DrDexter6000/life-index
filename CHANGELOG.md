@@ -42,6 +42,11 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### Breaking
 
+- BREAKING: Entity Graph schema now accepts only the cutover L1 types
+  `actor`, `place`, `project`, `event`, `artifact`, and `concept`. Legacy
+  graphs containing `type: person` fail closed with `ENTITY_SCHEMA_LEGACY` and
+  point agents to `entity maintain --normalize --preview --json`; normalize
+  migrates active entities and merge tombstones before apply.
 - Removed the top-level Entity Graph primitives `--seed`, `--update`,
   `--merge`, and `--delete` by owner decision on 2026-07-05. Replacements:
   `entity build --from-journals --preview --json`, `entity --add-alias`,

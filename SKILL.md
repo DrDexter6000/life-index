@@ -275,7 +275,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - 作用：
   - 搜索时做 alias / relationship query expansion
   - 写入时标记 `new_entities_detected`
-- 当前最小支持类型：`person` / `place` / `project` / `event` / `concept`
+- 当前最小支持类型：`actor` / `place` / `project` / `event` / `artifact` / `concept`；人物、组织、宿主 agent 用 `actor` + `attributes.kind`；实体 ID 不透明且长期稳定，前缀没有语义
 
 ### Topic 分类（必填）
 

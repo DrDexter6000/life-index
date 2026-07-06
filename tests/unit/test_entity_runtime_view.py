@@ -23,7 +23,7 @@ def _sample_graph() -> list[dict]:
     return [
         {
             "id": "wife-001",
-            "type": "person",
+            "type": "actor",
             "primary_name": "王某某",
             "aliases": ["晴岚妈", "老婆"],
             "attributes": {},
@@ -31,7 +31,7 @@ def _sample_graph() -> list[dict]:
         },
         {
             "id": "author-self",
-            "type": "person",
+            "type": "actor",
             "primary_name": "我",
             "aliases": [],
             "attributes": {},
@@ -39,7 +39,7 @@ def _sample_graph() -> list[dict]:
         },
         {
             "id": "mama",
-            "type": "person",
+            "type": "actor",
             "primary_name": "妈妈",
             "aliases": ["老妈", "婆婆"],
             "attributes": {},
@@ -50,7 +50,7 @@ def _sample_graph() -> list[dict]:
         },
         {
             "id": "tuantuan",
-            "type": "person",
+            "type": "actor",
             "primary_name": "晴岚",
             "aliases": ["圆圆"],
             "attributes": {},
@@ -161,7 +161,7 @@ class TestBuildRuntimeView:
         graph = [
             {
                 "id": "person-alice",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Alice",
                 "aliases": [],
                 "relationships": [
@@ -174,7 +174,7 @@ class TestBuildRuntimeView:
             },
             {
                 "id": "person-bob",
-                "type": "person",
+                "type": "actor",
                 "primary_name": "Bob",
                 "aliases": [],
                 "relationships": [],

@@ -62,6 +62,9 @@ def _propose_entity(*, payload: dict[str, Any], graph_path: Path) -> dict[str, A
         evidence=_string_list(payload.get("evidence")),
         requested_id=str(payload["id"]).strip() if payload.get("id") else None,
         aliases=_string_list(payload.get("aliases")),
+        attributes=(
+            payload.get("attributes") if isinstance(payload.get("attributes"), dict) else None
+        ),
     )
     if created or changed:
         save_entity_graph(graph, graph_path)

@@ -255,7 +255,7 @@ class TestEntityDictionary:
                 [
                     {
                         "id": "tuantuan",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "晴岚",
                         "aliases": ["小风筝"],
                         "attributes": {},
@@ -276,7 +276,7 @@ class TestEntityDictionary:
                 [
                     {
                         "id": "tuantuan",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "圆圆",
                         "aliases": ["晴岚", "小风筝", "小队长"],
                         "attributes": {},
@@ -330,7 +330,7 @@ class TestEntityDictionary:
                 [
                     {
                         "id": "tuantuan",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "晴岚",
                         "aliases": [],
                         "attributes": {},
@@ -357,7 +357,7 @@ class TestEntityDictionary:
                 [
                     {
                         "id": "a",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "晴岚",
                         "aliases": [],
                         "attributes": {},
@@ -370,7 +370,7 @@ class TestEntityDictionary:
                 [
                     {
                         "id": "b",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "豆豆",
                         "aliases": [],
                         "attributes": {},

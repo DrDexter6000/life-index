@@ -379,7 +379,7 @@ def test_navigate_entity_neighbors_json_contract(tmp_path: Path) -> None:
                 "entities": [
                     {
                         "id": "person-alice",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "Alice",
                         "aliases": ["A."],
                         "relationships": [{"target": "project-atlas", "relation": "works_on"}],
@@ -472,7 +472,7 @@ def test_navigate_entity_neighbors_validation_tool_call_log(tmp_path: Path) -> N
                 "entities": [
                     {
                         "id": "person-alice",
-                        "type": "person",
+                        "type": "actor",
                         "primary_name": "Alice",
                         "aliases": [],
                         "relationships": [{"target": "project-atlas", "relation": "works_on"}],

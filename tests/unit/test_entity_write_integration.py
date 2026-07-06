@@ -7,7 +7,7 @@ def _entity_graph_payload() -> list[dict]:
     return [
         {
             "id": "mama",
-            "type": "person",
+            "type": "actor",
             "primary_name": "妈妈",
             "aliases": ["老妈", "婆婆"],
             "relationships": [],
