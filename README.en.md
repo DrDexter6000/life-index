@@ -16,7 +16,7 @@
   <a href="https://github.com/DrDexter6000/life-index/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/DrDexter6000/life-index/tests.yml?branch=main&label=CI" alt="CI"></a>
   <img src="https://img.shields.io/badge/Retrieval-Keyword_+_Index_Tree_+_Entity_Graph-78206E" alt="Retrieval: Keyword + Index Tree + Entity Graph, no Vector RAG">
   <img src="https://img.shields.io/badge/python-≥3.11-3776AB?logo=python&logoColor=white" alt="Python ≥3.11">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License"></a>
 </p>
 
 <p align="center">
@@ -558,7 +558,9 @@ Life Index is still personally driven, but the idea has already outgrown "a fath
 
 ## License
 
-[Apache License 2.0](./LICENSE) — your life data belongs to you, and so does this code.
+[GNU Affero General Public License v3.0](./LICENSE) (`AGPL-3.0-only`) — your life data belongs to you.
+
+Plain-language summary: local use, personal journaling, and running Life Index on your own machine are unaffected. If you offer a hosted or networked derivative service based on a modified version, AGPL requires you to publish the corresponding service source and modifications.
 
 ---
 

@@ -6,6 +6,11 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Changed
+
+- License changed to AGPL-3.0-only for the next released version. Local use is
+  unaffected; hosted derivative services must publish corresponding source.
+
 ## [1.3.7] - 2026-07-06
 
 ### What users get
