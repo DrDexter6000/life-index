@@ -8,11 +8,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from tools.lib.events import Event, EventSeverity, register_detector
+from tools.lib.frontmatter import parse_frontmatter
 
 logger = __import__("logging").getLogger(__name__)
 
 NO_JOURNAL_THRESHOLD_DAYS = 7
 ENTITY_AUDIT_THRESHOLD_DAYS = 30
+ENTITY_PROFILES_COMMAND = "life-index abstract --entities"
 
 _JOURNAL_PATTERN = __import__("re").compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
 
@@ -139,6 +141,59 @@ def check_entity_audit_due(context: dict) -> list[Event]:
             )
         ]
     return []
+
+
+def check_entity_profiles_stale(context: dict) -> list[Event]:
+    """Detect missing or stale generated entity profile documents."""
+    data_dir = context.get("data_dir")
+    if not data_dir:
+        return []
+    data_dir = Path(data_dir)
+    graph_path = data_dir / "entity_graph.yaml"
+    if not graph_path.exists():
+        return []
+
+    try:
+        from tools.generate_index.entity_profiles import entity_graph_source_hash
+        from tools.lib.entity_graph import load_entity_graph
+
+        entities = load_entity_graph(graph_path)
+    except Exception:
+        return []
+
+    if not any(entity.get("status", "confirmed") == "confirmed" for entity in entities):
+        return []
+
+    index_path = data_dir / "Entities" / "index.md"
+    current_hash = entity_graph_source_hash(graph_path)
+    profile_hash = None
+    reason = "missing_profiles"
+    if index_path.exists():
+        try:
+            metadata, _body = parse_frontmatter(index_path.read_text(encoding="utf-8"))
+            raw_hash = metadata.get("source_hash")
+            profile_hash = raw_hash if isinstance(raw_hash, str) else None
+        except OSError:
+            profile_hash = None
+        reason = "source_hash_mismatch" if profile_hash else "missing_source_hash"
+
+    if profile_hash == current_hash:
+        return []
+
+    return [
+        Event(
+            type="entity_profiles_stale",
+            severity=EventSeverity.INFO,
+            message=("Entity profile docs are stale or missing; run " f"{ENTITY_PROFILES_COMMAND}"),
+            data={
+                "reason": reason,
+                "current_source_hash": current_hash,
+                "profile_source_hash": profile_hash,
+                "expected_artifact": "Entities/index.md",
+                "suggested_command": ENTITY_PROFILES_COMMAND,
+            },
+        )
+    ]
 
 
 def check_schema_migration_available(context: dict) -> list[Event]:
@@ -275,5 +330,6 @@ def register_all_detectors() -> None:
     register_detector("no_journal_streak", check_no_journal_streak)
     register_detector("monthly_review_due", check_monthly_review_due)
     register_detector("entity_audit_due", check_entity_audit_due)
+    register_detector("entity_profiles_stale", check_entity_profiles_stale)
     register_detector("schema_migration_available", check_schema_migration_available)
     register_detector("index_stale", check_index_stale)

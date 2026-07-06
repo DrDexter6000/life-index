@@ -6412,6 +6412,7 @@ python -m tools trajectory --field weight --range 2025-01..2025-12
 | `no_journal_streak` | 连续 7+ 天未记日志 | info |
 | `monthly_review_due` | 有日志月份缺少生成的 `index_YYYY-MM.md`；事件给出 `life-index abstract --month YYYY-MM` | info |
 | `entity_audit_due` | entity_graph.yaml 30+ 天未修改 | low |
+| `entity_profiles_stale` | `Entities/index.md` 缺失或其 `source_hash` 与当前 `entity_graph.yaml` 不一致；事件给出 `life-index abstract --entities` | info |
 | `schema_migration_available` | 存在旧 schema 版本日志 | info |
 | `index_stale` | 日志比索引更新 | low |
 
