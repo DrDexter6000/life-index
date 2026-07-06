@@ -423,7 +423,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 **职责边界（强制）**：
 - `search_journals` 负责 retrieval execution，不负责替用户下结论
 - Agent 必须区分“搜索结果为空”与“搜索执行失败”
-- Agent 负责解释结果、回答用户真正的问题，并在需要时建议 refinement / follow-up
+- Agent 负责解释结果、回答用户真正的问题，并在需要时建议 refinement / follow-up；可读取 `entity_expansion` 解释别名扩展来源，但不得把它当作过滤或裁决依据
 
 **Evidence Pack 检索诊断消费（`--include-evidence`）**：
 
