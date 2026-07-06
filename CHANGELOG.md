@@ -42,7 +42,7 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### Breaking
 
-- Entity Graph schema now accepts only the cutover L1 types
+- BREAKING: Entity Graph schema now accepts only the cutover L1 types
   `actor`, `place`, `project`, `event`, `artifact`, and `concept`. Legacy
   graphs containing `type: person` fail closed with `ENTITY_SCHEMA_LEGACY` and
   point agents to `entity maintain --normalize --preview --json`; normalize
