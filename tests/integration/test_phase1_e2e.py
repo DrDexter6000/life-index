@@ -196,7 +196,8 @@ class TestPhase1Integration:
         json_end = cmd.rindex("}") + 1
         entity_json = json.loads(cmd[json_start:json_end])
         assert entity_json["primary_name"] == "新朋友"
-        assert entity_json["type"] == "person"
+        assert entity_json["type"] == "actor"
+        assert entity_json["attributes"]["kind"] == "human"
 
         # ── Step 6: Preview again → existing names are skipped ─────
         seed_result_2 = _run_entity_cli(["build", "--from-journals", "--preview", "--json"])
