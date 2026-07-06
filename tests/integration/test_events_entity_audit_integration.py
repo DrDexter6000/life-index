@@ -17,7 +17,7 @@ class TestEventEntityAuditIntegration:
 
         events = check_entity_audit_due({"data_dir": tmp_path})
         assert len(events) == 1
-        assert events[0].data["suggested_command"] == "life-index entity --audit"
+        assert events[0].data["suggested_command"] == "life-index entity audit --json"
 
     def test_audit_report_actionable_by_agent(self, tmp_path: Path):
         """Audit report issues should each contain suggested_action."""

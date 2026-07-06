@@ -70,6 +70,7 @@ def build_audit_facade(*, graph_path: Path, journals_dir: Path | None = None) ->
                     "summary": audit_summary,
                     "issues": audit_report.get("issues", []),
                     "facts": audit_report.get("facts", {}),
+                    "fact_annotations": audit_report.get("fact_annotations", {}),
                 },
                 "stats": stats_data,
             },
@@ -92,6 +93,7 @@ def _empty_audit_report() -> dict[str, Any]:
         "issues": [],
         "summary": {"high": 0, "medium": 0, "low": 0},
         "facts": {},
+        "fact_annotations": {},
     }
 
 

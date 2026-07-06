@@ -47,14 +47,12 @@ class TestNoJournalStreakDetector:
 
 class TestMonthlyReviewDueDetector:
     def test_detects_missing_review(self, tmp_path: Path):
-        """Last month without report file should trigger event."""
+        """Last month without generated monthly index should trigger event."""
         from tools.lib.event_detectors import check_monthly_review_due
 
         check_date = datetime.now() - timedelta(days=30)
         month_str = f"{check_date.year}-{check_date.month:02d}"
-        journals_dir = (
-            tmp_path / "Journals" / f"{check_date.year}" / f"{check_date.month:02d}"
-        )
+        journals_dir = tmp_path / "Journals" / f"{check_date.year}" / f"{check_date.month:02d}"
         journals_dir.mkdir(parents=True)
         (journals_dir / f"life-index_{month_str}-15_001.md").write_text(
             "---\ntitle: test\n---\n", encoding="utf-8"
@@ -62,31 +60,30 @@ class TestMonthlyReviewDueDetector:
 
         events = check_monthly_review_due({"journals_dir": tmp_path / "Journals"})
         has_review_due = any(
-            e.type == "monthly_review_due" and e.data.get("month") == month_str
+            e.type == "monthly_review_due"
+            and e.data.get("month") == month_str
+            and e.data.get("expected_artifact") == f"index_{month_str}.md"
+            and e.data.get("suggested_command") == f"life-index abstract --month {month_str}"
             for e in events
         )
         assert has_review_due
 
-    def test_no_event_if_report_exists(self, tmp_path: Path):
-        """Existing report file should not trigger event."""
+    def test_no_event_if_monthly_index_exists(self, tmp_path: Path):
+        """Existing generated monthly index should not trigger event."""
         from tools.lib.event_detectors import check_monthly_review_due
 
         check_date = datetime.now() - timedelta(days=30)
         month_str = f"{check_date.year}-{check_date.month:02d}"
-        journals_dir = (
-            tmp_path / "Journals" / f"{check_date.year}" / f"{check_date.month:02d}"
-        )
+        journals_dir = tmp_path / "Journals" / f"{check_date.year}" / f"{check_date.month:02d}"
         journals_dir.mkdir(parents=True)
         (journals_dir / f"life-index_{month_str}-15_001.md").write_text(
             "---\ntitle: test\n---\n", encoding="utf-8"
         )
-        (journals_dir / f"report_{month_str}.md").write_text("# Report", encoding="utf-8")
+        (journals_dir / f"index_{month_str}.md").write_text("# Index", encoding="utf-8")
 
         events = check_monthly_review_due({"journals_dir": tmp_path / "Journals"})
         review_events = [
-            e
-            for e in events
-            if e.type == "monthly_review_due" and e.data.get("month") == month_str
+            e for e in events if e.type == "monthly_review_due" and e.data.get("month") == month_str
         ]
         assert len(review_events) == 0
 
@@ -135,9 +132,7 @@ class TestSchemaMigrationAvailableDetector:
             encoding="utf-8",
         )
 
-        events = check_schema_migration_available(
-            {"journals_dir": tmp_path / "Journals"}
-        )
+        events = check_schema_migration_available({"journals_dir": tmp_path / "Journals"})
         assert len(events) == 1
         assert events[0].type == "schema_migration_available"
 
@@ -160,9 +155,7 @@ class TestIndexStaleDetector:
         old_time = time.time() - 3600
         os.utime(fts_db, (old_time, old_time))
 
-        events = check_index_stale(
-            {"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"}
-        )
+        events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
         assert any(e.type == "index_stale" for e in events)
 
     def test_no_event_if_index_fresh(self, tmp_path: Path):
@@ -185,12 +178,8 @@ class TestIndexStaleDetector:
 
         fts_db = index_dir / "journals_fts.db"
         conn = sqlite3.connect(str(fts_db))
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)"
-        )
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)"
-        )
+        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)")
+        conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
         conn.execute(
             "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
             ("tokenizer_version", str(TOKENIZER_VERSION)),
@@ -209,9 +198,7 @@ class TestIndexStaleDetector:
         # Index is newer (current time)
         os.utime(fts_db, None)
 
-        events = check_index_stale(
-            {"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"}
-        )
+        events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
         assert not any(e.type == "index_stale" for e in events)
 
     def test_detects_version_mismatch(self, tmp_path: Path):
@@ -232,12 +219,8 @@ class TestIndexStaleDetector:
         # Create FTS DB with outdated tokenizer version
         fts_db = index_dir / "journals_fts.db"
         conn = sqlite3.connect(str(fts_db))
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)"
-        )
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)"
-        )
+        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)")
+        conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
         # Write a stale tokenizer version
         conn.execute(
             "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
@@ -258,9 +241,7 @@ class TestIndexStaleDetector:
         os.utime(fts_db, None)
         os.utime(journal, (time.time() - 3600, time.time() - 3600))
 
-        events = check_index_stale(
-            {"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"}
-        )
+        events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
         stale_events = [e for e in events if e.type == "index_stale"]
         assert len(stale_events) >= 1
         assert stale_events[0].data.get("reason") == "version_mismatch"
@@ -283,12 +264,8 @@ class TestIndexStaleDetector:
 
         fts_db = index_dir / "journals_fts.db"
         conn = sqlite3.connect(str(fts_db))
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)"
-        )
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)"
-        )
+        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS journals USING fts5(path, title, content)")
+        conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
         conn.execute(
             "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
             ("tokenizer_version", str(TOKENIZER_VERSION)),
@@ -308,7 +285,5 @@ class TestIndexStaleDetector:
         os.utime(fts_db, None)
         os.utime(journal, (time.time() - 3600, time.time() - 3600))
 
-        events = check_index_stale(
-            {"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"}
-        )
+        events = check_index_stale({"data_dir": tmp_path, "journals_dir": tmp_path / "Journals"})
         assert not any(e.type == "index_stale" for e in events)

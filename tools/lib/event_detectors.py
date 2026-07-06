@@ -55,7 +55,12 @@ def check_no_journal_streak(context: dict) -> list[Event]:
 
 
 def check_monthly_review_due(context: dict) -> list[Event]:
-    """Detect months that have journals but no report file."""
+    """Detect months that have journals but no generated monthly index.
+
+    The historical detector looked for a non-generated report file. The
+    actionable artifact is the monthly index created by
+    ``life-index abstract --month YYYY-MM``.
+    """
     journals_dir = context.get("journals_dir")
     if not journals_dir:
         return []
@@ -83,15 +88,23 @@ def check_monthly_review_due(context: dict) -> list[Event]:
         if not has_journals:
             continue
 
-        report_path = month_dir / f"report_{year}-{month:02d}.md"
-        if not report_path.exists():
-            month_str = f"{year}-{month:02d}"
+        month_str = f"{year}-{month:02d}"
+        artifact_name = f"index_{month_str}.md"
+        artifact_path = month_dir / artifact_name
+        if not artifact_path.exists():
             events.append(
                 Event(
                     type="monthly_review_due",
                     severity=EventSeverity.INFO,
-                    message=f"{check_date.year}年{check_date.month}月月度回顾尚未生成",
-                    data={"month": month_str},
+                    message=(
+                        f"{year}年{month:02d}月月度索引尚未生成；"
+                        f"运行 life-index abstract --month {month_str}"
+                    ),
+                    data={
+                        "month": month_str,
+                        "expected_artifact": artifact_name,
+                        "suggested_command": f"life-index abstract --month {month_str}",
+                    },
                 )
             )
 
@@ -121,7 +134,7 @@ def check_entity_audit_due(context: dict) -> list[Event]:
                 message=f"Entity graph 已 {int(days_since)} 天未审计",
                 data={
                     "days_since_last_audit": int(days_since),
-                    "suggested_command": "life-index entity --audit",
+                    "suggested_command": "life-index entity audit --json",
                 },
             )
         ]
