@@ -38,7 +38,7 @@ def _entity_graph() -> list[dict]:
             "type": "actor",
             "primary_name": "Alice",
             "aliases": ["Ally"],
-            "attributes": {"kind": "human"},
+            "attributes": {"kind": "human", "self": True},
             "relationships": [
                 {
                     "target": "actor-bob",
@@ -178,6 +178,8 @@ def test_abstract_entities_materializes_profiles_idempotently_and_readonly(
     assert "type: actor" in profile
     assert "kind: human" in profile
     assert "status: confirmed" in profile
+    assert "is_self: true" in profile
+    assert "- Self: `true`" in profile
     assert "# Alice" in profile
     assert "friend_of" in profile
     assert "Journals/2026/03/life-index_2026-03-14_001.md" in profile

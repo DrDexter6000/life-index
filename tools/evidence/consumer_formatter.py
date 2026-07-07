@@ -129,9 +129,13 @@ def _render_item(lines: list[str], item: EvidenceItem, idx: int) -> None:
             terms = ", ".join(em.matched_terms) if em.matched_terms else "—"
             sources = ", ".join(em.match_sources) if em.match_sources else "—"
             query_term = f" (query: {em.query_matched_term})" if em.query_matched_term else ""
+            label = em.primary_name or em.entity_id
+            if label and label != em.entity_id:
+                entity_display = f"`{label}` (`{em.entity_id}`, {em.entity_type})"
+            else:
+                entity_display = f"`{em.entity_id}` ({em.entity_type})"
             lines.append(
-                f"     - `{em.entity_id}` ({em.entity_type}) — "
-                f"matched: {terms}{query_term} | sources: {sources}"
+                f"     - {entity_display} — matched: {terms}{query_term} | sources: {sources}"
             )
 
     lines.append("")

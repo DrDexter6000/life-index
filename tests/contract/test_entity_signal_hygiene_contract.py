@@ -61,6 +61,76 @@ def _write_minimal_graph(data_dir: Path) -> Path:
     return graph_path
 
 
+def _write_two_person_graph(data_dir: Path) -> Path:
+    graph_path = data_dir / "entity_graph.yaml"
+    save_entity_graph(
+        [
+            {
+                "id": "actor-alice",
+                "type": "actor",
+                "primary_name": "Alice",
+                "attributes": {"kind": "human"},
+                "source": "user",
+                "status": "confirmed",
+                "relationships": [],
+            },
+            {
+                "id": "actor-bob",
+                "type": "actor",
+                "primary_name": "Bob",
+                "attributes": {"kind": "human"},
+                "source": "user",
+                "status": "confirmed",
+                "relationships": [],
+            },
+        ],
+        graph_path,
+    )
+    return graph_path
+
+
+def test_set_self_and_unset_self_are_explicit_human_judgment_paths(
+    isolated_data_dir: Path,
+) -> None:
+    graph_path = _write_two_person_graph(isolated_data_dir)
+
+    set_payload = _run_entity_cli(["--set-self", "--id", "actor-alice", "--json"])
+
+    assert set_payload["success"] is True
+    assert set_payload["data"]["self_entity"] == {
+        "entity_id": "actor-alice",
+        "primary_name": "Alice",
+    }
+    graph = graph_path.read_text(encoding="utf-8")
+    assert "self: true" in graph
+    assert "primary_name: Alice" in graph
+
+    unset_payload = _run_entity_cli(["--unset-self", "--json"])
+
+    assert unset_payload["success"] is True
+    assert unset_payload["data"]["previous_self_entity"] == {
+        "entity_id": "actor-alice",
+        "primary_name": "Alice",
+    }
+    assert "self: true" not in graph_path.read_text(encoding="utf-8")
+
+
+def test_check_reports_missing_self_as_neutral_info_not_issue(isolated_data_dir: Path) -> None:
+    _write_two_person_graph(isolated_data_dir)
+
+    payload = _run_entity_cli(["--check", "--json"])
+
+    assert payload["data"]["issues"] == []
+    assert payload["data"]["info"] == [
+        {
+            "type": "self_anchor_missing",
+            "severity": "info",
+            "message": "Entity graph has confirmed actor entities but no self anchor.",
+            "suggested_command": "life-index entity --set-self --id ENTITY_ID --json",
+        }
+    ]
+
+
 def test_read_only_primitives_emit_workflow_hints(isolated_data_dir: Path) -> None:
     """Advanced read-only primitives should point agents back to the workflow gates."""
     _write_minimal_graph(isolated_data_dir)
@@ -95,7 +165,9 @@ def test_audit_marks_zero_reference_entities_as_neutral_facts(
     payload = _run_entity_cli(["--audit", "--json"])
 
     facts = payload["data"]["facts"]
-    assert facts["zero_journal_reference_entities"] == ["actor-alice"]
+    assert facts["zero_journal_reference_entities"] == [
+        {"entity_id": "actor-alice", "primary_name": "Alice"}
+    ]
     annotation = payload["data"]["fact_annotations"]["zero_journal_reference_entities"]
     assert annotation["classification"] == "neutral_fact"
     assert annotation["is_issue"] is False

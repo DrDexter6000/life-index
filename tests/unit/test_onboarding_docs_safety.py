@@ -176,6 +176,15 @@ def test_skill_and_entity_playbook_teach_profile_docs_payoff_path() -> None:
         assert "entity_expansion" in doc
 
 
+def test_skill_teaches_self_anchor_and_proactive_relationship_updates() -> None:
+    skill = _read("SKILL.md")
+
+    assert "life-index entity --set-self --id ENTITY_ID --json" in skill
+    assert "哪个实体是你本人" in skill
+    assert "用户口述/纠正人物关系事实" in skill
+    assert "主动复述并提议写入图谱" in skill
+
+
 def test_api_documents_entity_profiles_stale_event() -> None:
     api = _read("docs/API.md")
 

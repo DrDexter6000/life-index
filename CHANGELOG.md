@@ -6,10 +6,19 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Added
+
+- Entity Graph self anchors via `entity --set-self` / `entity --unset-self`;
+  search can deterministically expand standard "my + relationship" queries
+  such as "my mother" or "我妈妈" from the confirmed self entity.
+
 ### Changed
 
 - License changed to AGPL-3.0-only for the next released version. Local use is
   unaffected; hosted derivative services must publish corresponding source.
+- Entity-facing JSON now carries deterministic `primary_name` fields beside
+  entity IDs across stats, audit/review, write-time candidates, search hints,
+  and evidence-pack entity matches.
 
 ## [1.3.7] - 2026-07-06
 

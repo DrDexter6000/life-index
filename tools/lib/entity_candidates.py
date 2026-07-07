@@ -89,7 +89,8 @@ def extract_entity_candidates(
 
     Returns:
         List of candidate dicts, each with:
-            text, source, kind, matched_entity_id, suggested_action, risk_level
+            text, source, kind, matched_entity_id, matched_primary_name,
+            suggested_action, risk_level
             When graph is empty (fallback mode), also includes suggested_command.
     """
     if not graph:
@@ -104,6 +105,7 @@ def extract_entity_candidates(
         source: str,
         kind: str,
         matched_entity_id: str | None,
+        matched_primary_name: str | None = None,
     ) -> None:
         dedup_key = f"{text}|{source}"
         if dedup_key in seen_keys:
@@ -123,6 +125,7 @@ def extract_entity_candidates(
                 "source": source,
                 "kind": kind,
                 "matched_entity_id": matched_entity_id,
+                "matched_primary_name": matched_primary_name or "",
                 "suggested_action": suggested_action,
                 "risk_level": risk_level,
             }
@@ -175,6 +178,7 @@ def _extract_frontmatter_fallback(
                     "source": source,
                     "kind": kind,
                     "matched_entity_id": None,
+                    "matched_primary_name": "",
                     "suggested_action": "add_entity",
                     "risk_level": "medium",
                     "suggested_command": _build_suggested_command(item, kind),
@@ -211,6 +215,7 @@ def _extract_from_frontmatter(
                 source="frontmatter",
                 kind=kind,
                 matched_entity_id=entity["id"] if entity else None,
+                matched_primary_name=entity.get("primary_name", "") if entity else "",
             )
 
 
@@ -240,4 +245,5 @@ def _extract_from_content(
                 source="content",
                 kind=kind,
                 matched_entity_id=entity["id"],
+                matched_primary_name=entity.get("primary_name", ""),
             )

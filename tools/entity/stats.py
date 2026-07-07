@@ -83,6 +83,7 @@ def compute_stats(
     total_relationships = sum(len(e.get("relationships", []) or []) for e in entities)
 
     # Top referenced entities (incoming relationship count)
+    name_by_id = {entity["id"]: entity.get("primary_name", "") for entity in entities}
     incoming: dict[str, int] = {}
     for entity in entities:
         for rel in entity.get("relationships", []):
@@ -92,7 +93,7 @@ def compute_stats(
 
     top_referenced_items: list[tuple[str, int]] = list(incoming.items())
     top_referenced = [
-        {"entity_id": eid, "incoming_count": count}
+        {"entity_id": eid, "primary_name": name_by_id.get(eid, ""), "incoming_count": count}
         for eid, count in sorted(
             top_referenced_items,
             key=lambda item: item[1],
@@ -111,7 +112,13 @@ def compute_stats(
 
     top_cooccurrence_items: list[tuple[frozenset[str], int]] = list(pair_counts.items())
     top_cooccurrence = [
-        {"entities": sorted(list(pair)), "cooccurrence": count}
+        {
+            "entities": [
+                {"entity_id": eid, "primary_name": name_by_id.get(eid, "")}
+                for eid in sorted(list(pair))
+            ],
+            "cooccurrence": count,
+        }
         for pair, count in sorted(
             top_cooccurrence_items,
             key=lambda item: item[1],

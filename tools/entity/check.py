@@ -31,9 +31,31 @@ import yaml
 
 from tools.lib.entity_schema import EntityGraphValidationError, validate_entity_graph_payload
 
+SELF_ANCHOR_COMMAND = "life-index entity --set-self --id ENTITY_ID --json"
+
 
 def _default_graph_path() -> Path:
     return resolve_user_data_dir() / "entity_graph.yaml"
+
+
+def _self_anchor_info(entities: list[dict[str, Any]]) -> list[dict[str, str]]:
+    has_confirmed_human_actor = any(
+        entity.get("type") == "actor"
+        and entity.get("status", "confirmed") == "confirmed"
+        and (entity.get("attributes") or {}).get("kind", "human") == "human"
+        for entity in entities
+    )
+    has_self = any((entity.get("attributes") or {}).get("self") is True for entity in entities)
+    if not has_confirmed_human_actor or has_self:
+        return []
+    return [
+        {
+            "type": "self_anchor_missing",
+            "severity": "info",
+            "message": "Entity graph has confirmed actor entities but no self anchor.",
+            "suggested_command": SELF_ANCHOR_COMMAND,
+        }
+    ]
 
 
 def run_check(
@@ -63,6 +85,7 @@ def run_check(
             "data": {
                 "total_entities": 0,
                 "issues": [],
+                "info": [],
                 "summary": {
                     "dangling_relationships": 0,
                     "duplicate_lookups": 0,
@@ -83,6 +106,7 @@ def run_check(
             "data": {
                 "total_entities": 0,
                 "issues": [],
+                "info": [],
                 "summary": {
                     "dangling_relationships": 0,
                     "duplicate_lookups": 0,
@@ -93,6 +117,7 @@ def run_check(
         }
 
     entity_ids = {e["id"] for e in entities}
+    names_by_id = {e["id"]: e.get("primary_name", "") for e in entities}
     issues: list[dict[str, Any]] = []
 
     # 1. Dangling relationships
@@ -105,6 +130,7 @@ def run_check(
                         "type": "dangling_relationship",
                         "severity": "high",
                         "entity_id": entity["id"],
+                        "primary_name": entity.get("primary_name", ""),
                         "target": target,
                         "relation": rel.get("relation", ""),
                         "description": (
@@ -131,6 +157,10 @@ def run_check(
                     "severity": "medium",
                     "name": name,
                     "entity_ids": unique_ids,
+                    "entities": [
+                        {"entity_id": entity_id, "primary_name": names_by_id.get(entity_id, "")}
+                        for entity_id in unique_ids
+                    ],
                     "description": f"Name '{name}' resolves to multiple entities: {unique_ids}",
                 }
             )
@@ -178,6 +208,7 @@ def run_check(
         "data": {
             "total_entities": len(entities),
             "issues": issues,
+            "info": _self_anchor_info(entities),
             "summary": summary,
         },
         "error": None,

@@ -276,6 +276,7 @@ class TestMaintainDeletePreviewCLI:
         # person-c has a relationship pointing to person-a
         assert len(output["data"]["cleaned_refs"]) == 1
         assert output["data"]["cleaned_refs"][0]["entity_id"] == "person-c"
+        assert output["data"]["cleaned_refs"][0]["primary_name"] == "李四"
 
     def test_preview_does_not_remove_entity(self, isolated_data_dir: Path) -> None:
         """Preview does not remove the target entity from the graph."""

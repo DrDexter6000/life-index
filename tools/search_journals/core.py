@@ -462,6 +462,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
     Each hint contains:
         - matched_term: the token that matched
         - entity_id: the resolved entity's id
+        - primary_name: deterministic display name for the entity
         - entity_type: actor/place/project/event/artifact/concept
         - expansion_terms: all names/aliases for the entity
         - reason: how the match happened (alias_match / primary_name_match / phrase_match)
@@ -492,6 +493,7 @@ def resolve_query_entities(query: str) -> list[dict[str, Any]]:
             {
                 "matched_term": matched_term,
                 "entity_id": entity["id"],
+                "primary_name": entity["primary_name"],
                 "entity_type": entity["type"],
                 "expansion_terms": _entity_expansion_terms(entity),
                 "reason": reason,
@@ -918,6 +920,7 @@ def _build_entity_expansion_attribution(entity_hints: list[dict[str, Any]]) -> d
             "primary_name_match",
             "embedded_name_match",
             "relation_match",
+            "phrase_match",
         }:
             continue
         matched_term = str(hint.get("matched_term") or "").strip()
@@ -934,8 +937,9 @@ def _build_entity_expansion_attribution(entity_hints: list[dict[str, Any]]) -> d
             {
                 "from": matched_term,
                 "to": targets,
-                "via": "relation" if reason == "relation_match" else "alias",
+                "via": "relation" if reason in {"relation_match", "phrase_match"} else "alias",
                 "entity_id": hint.get("entity_id"),
+                "primary_name": hint.get("primary_name"),
             }
         )
     return {"applied": bool(expansions), "expansions": expansions}

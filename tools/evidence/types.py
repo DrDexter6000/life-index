@@ -166,11 +166,13 @@ class EntityMatch:
     matched_terms: list[str]
     match_sources: list[str]
     query_matched_term: str | None = None
+    primary_name: str = ""
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
 
     _KNOWN_KEYS = frozenset(
         {
             "entity_id",
+            "primary_name",
             "entity_type",
             "matched_terms",
             "match_sources",
@@ -182,6 +184,7 @@ class EntityMatch:
     def from_dict(cls, data: dict[str, Any]) -> EntityMatch:
         return cls(
             entity_id=str(data.get("entity_id", "")),
+            primary_name=str(data.get("primary_name", "")),
             entity_type=str(data.get("entity_type", "")),
             matched_terms=list(dict.fromkeys(data.get("matched_terms", []))),
             match_sources=list(dict.fromkeys(data.get("match_sources", []))),
@@ -192,6 +195,7 @@ class EntityMatch:
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
             "entity_id": self.entity_id,
+            "primary_name": self.primary_name,
             "entity_type": self.entity_type,
             "matched_terms": list(dict.fromkeys(self.matched_terms)),
             "match_sources": list(dict.fromkeys(self.match_sources)),
