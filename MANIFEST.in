@@ -2,3 +2,5 @@ include bootstrap-manifest.json
 include tools/bootstrap-manifest.json
 include SKILL.md
 recursive-include references *.md
+include tools/_skill_artifacts/SKILL.md
+recursive-include tools/_skill_artifacts/references *.md

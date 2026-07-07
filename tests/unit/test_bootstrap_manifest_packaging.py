@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import importlib
 import json
+import subprocess
+import sys
 import tomllib
+import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PACKAGED_SKILL_ROOT = REPO_ROOT / "tools" / "_skill_artifacts"
 
 
 def _root_manifest() -> dict[str, object]:
@@ -45,6 +49,61 @@ def test_packaging_config_declares_bootstrap_manifest_data() -> None:
 
     assert setuptools_config["include-package-data"] is True
     assert "bootstrap-manifest.json" in package_data["tools"]
+    assert "_skill_artifacts/SKILL.md" in package_data["tools"]
+    assert "_skill_artifacts/references/*.md" in package_data["tools"]
+
+
+def test_packaged_skill_artifacts_match_root_skill_sources() -> None:
+    """Root SKILL.md and references remain the development SSOT."""
+    assert (PACKAGED_SKILL_ROOT / "SKILL.md").read_bytes() == (REPO_ROOT / "SKILL.md").read_bytes()
+
+    root_references = sorted(
+        path.relative_to(REPO_ROOT / "references")
+        for path in (REPO_ROOT / "references").rglob("*.md")
+    )
+    packaged_references = sorted(
+        path.relative_to(PACKAGED_SKILL_ROOT / "references")
+        for path in (PACKAGED_SKILL_ROOT / "references").rglob("*.md")
+    )
+    assert packaged_references == root_references
+    for relative_path in root_references:
+        assert (PACKAGED_SKILL_ROOT / "references" / relative_path).read_bytes() == (
+            REPO_ROOT / "references" / relative_path
+        ).read_bytes()
+
+
+def test_built_wheel_contains_packaged_skill_artifacts(tmp_path: Path) -> None:
+    """PyPI wheels must carry sync-skill artifacts in an importable package path."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            str(REPO_ROOT),
+            "--no-deps",
+            "--wheel-dir",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    wheel = next(tmp_path.glob("life_index-*.whl"))
+
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+
+    assert "tools/_skill_artifacts/SKILL.md" in names
+    for relative_path in (REPO_ROOT / "references").rglob("*.md"):
+        wheel_path = (
+            Path("tools")
+            / "_skill_artifacts"
+            / "references"
+            / relative_path.relative_to(REPO_ROOT / "references")
+        )
+        assert wheel_path.as_posix() in names
 
 
 def test_root_and_packaged_manifest_declare_skill_artifacts() -> None:
@@ -65,3 +124,5 @@ def test_manifest_in_includes_bootstrap_manifest_sources() -> None:
     assert "include tools/bootstrap-manifest.json" in manifest_in
     assert "include SKILL.md" in manifest_in
     assert "recursive-include references *.md" in manifest_in
+    assert "include tools/_skill_artifacts/SKILL.md" in manifest_in
+    assert "recursive-include tools/_skill_artifacts/references *.md" in manifest_in
