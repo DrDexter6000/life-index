@@ -195,3 +195,42 @@ def test_abstract_entities_stdout_is_direct_json_when_dependency_import_is_noisy
     assert payload[0]["success"] is True
     assert payload[0]["type"] == "entity-profiles"
     assert "FAKE_YAML" not in result.stdout
+
+
+def test_entity_maintain_add_relationship_stdout_is_direct_json(tmp_path: Path) -> None:
+    """The user-confirmed relationship primitive must emit parseable JSON stdout."""
+    data_dir = tmp_path / "Life-Index"
+    _write_entity_graph_json(data_dir)
+
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "entity",
+            "maintain",
+            "--add-relationship",
+            "--id",
+            "actor-alice",
+            "--target-id",
+            "actor-bob",
+            "--relation",
+            "friend_of",
+            "--preview",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=WORKTREE_ROOT,
+        env=env,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["workflow"] == "maintain.add_relationship"

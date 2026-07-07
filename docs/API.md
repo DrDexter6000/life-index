@@ -5009,7 +5009,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 
 `entity` has multiple subcommand shapes. All share a common envelope pattern but with known deviations:
 
-**Standard envelope** (used by `build --from-batch`, `audit --json`, `maintain --normalize`, `maintain --delete`, `--audit`, `--stats`, `--check`, `--review`, `--list`, `--propose`, `--apply-batch`):
+**Standard envelope** (used by `build --from-batch`, `audit --json`, `maintain --normalize`, `maintain --delete`, `maintain --add-relationship`, `--audit`, `--stats`, `--check`, `--review`, `--list`, `--propose`, `--apply-batch`):
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
@@ -5051,6 +5051,7 @@ python -m tools recall --mode {default|recall|deep} --query "..."
 - `audit --json` data is a read-only workflow facade containing `workflow: "audit"`, `traffic_light`, `pending_count`, `structural_issue_count`, `quality_issue_count`, `duplicate_count`, `next_step{}`, and `components{check,audit,stats}`.
 - `maintain --normalize --preview/--apply --backup --json` data contains `workflow: "maintain.normalize"`, `preview`, `applied`, `summary{entity_count,change_count,review_question_count}`, `changes[]`, `review_questions[]`, and `backup_path`.
 - `maintain --delete --id ENTITY_ID --preview/--apply --backup --json` data contains `workflow: "maintain.delete"`, `preview`, `applied`, `backup_path`, `deleted_id`, `deleted_name`, and `cleaned_refs[]`.
+- `maintain --add-relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION --preview/--apply --json` data contains `workflow: "maintain.add_relationship"`, `preview`, `applied`, `source_id`, `source_name`, `target_id`, `target_name`, `relation`, `input_relation`, `operation`, and `changed`. Applies only to confirmed source and target entities. It writes `source: user,status: confirmed,evidence: []`; existing candidate edges are promoted instead of duplicated.
 - `--stats` data contains: `total_entities`, `by_type{}`, `total_aliases`, `total_relationships`, `top_referenced[]`, `top_cooccurrence[]`.
 - `--check` data contains: `total_entities`, `issues[]`, `summary{}`.
 
@@ -5084,6 +5085,8 @@ python -m tools.entity maintain --normalize --preview --json
 python -m tools.entity maintain --normalize --apply --backup --json
 python -m tools.entity maintain --delete --id ENTITY_ID --preview --json
 python -m tools.entity maintain --delete --id ENTITY_ID --apply --backup --json
+python -m tools.entity maintain --add-relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION --preview --json
+python -m tools.entity maintain --add-relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION --apply --json
 python -m tools.entity --set-self --id ENTITY_ID --json
 python -m tools.entity --unset-self --json
 ```
@@ -5115,10 +5118,10 @@ python -m tools.entity --unset-self --json
 | `--apply-batch` | string | ❌ | - | 应用用户确认后的 JSON/YAML 批量实体/关系文件 |
 | `--set-self` | flag | ❌ | false | 将 `--id` 指定的 confirmed 实体设为唯一 self 锚点；显式用户判决写路径 |
 | `--unset-self` | flag | ❌ | false | 撤销当前 self 锚点，不删除实体 |
-| `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `maintain --delete` / `--apply-batch` / `--review --action preview`） |
+| `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `maintain --delete` / `maintain --add-relationship` / `--apply-batch` / `--review --action preview`） |
 | `--id` | string | 条件必填 | - | 源实体 ID |
 | `--target-id` | string | 条件必填 | - | 目标实体 ID（用于 merge） |
-| `--relation` | string | 条件必填 | - | `--review --action add_relationship` 的关系类型 |
+| `--relation` | string | 条件必填 | - | `maintain --add-relationship` 或 `--review --action add_relationship` 的关系类型 |
 | `--add-alias` | string | ❌ | - | 为实体添加别名（需 `--id`） |
 | `--action` | enum | ❌ | - | `merge_as_alias` / `add_relationship` / `confirm_candidate` / `reject_candidate` / `keep_separate` / `undo_keep_separate` / `skip` / `preview` |
 | `--export` | enum | ❌ | - | 导出格式：`csv` / `xlsx`（配合 `--review`） |
@@ -5742,9 +5745,49 @@ life-index entity --unmerge --id p001 --target-id p002
 }
 ```
 
+#### `entity maintain --add-relationship`
+
+用户口头或书面确认一条自由关系事实后，使用 maintain 关系原语两段式写入 confirmed 边：
+
+```bash
+life-index entity maintain --add-relationship --id actor-alice --target-id actor-bob --relation friend_of --preview --json
+life-index entity maintain --add-relationship --id actor-alice --target-id actor-bob --relation friend_of --apply --json
+```
+
+返回（标准 envelope）：
+
+```json
+{
+  "success": true,
+  "data": {
+    "workflow": "maintain.add_relationship",
+    "preview": false,
+    "applied": true,
+    "source_id": "actor-alice",
+    "source_name": "Alice",
+    "target_id": "actor-bob",
+    "target_name": "Bob",
+    "relation": "friend_of",
+    "input_relation": "friend_of",
+    "operation": "add",
+    "changed": true
+  },
+  "error": null
+}
+```
+
+规则：
+
+- `--preview` 只读，不修改 `entity_graph.yaml`。
+- `--apply` 写入 `source: user,status: confirmed,created_at,evidence: []`。
+- 已存在同一 `(source_id,target_id,relation)` confirmed 边时幂等，不重复写入。
+- 已存在同一 candidate 边时提升为 `source: user,status: confirmed`，保留并去重既有 `evidence`。
+- source/target 必须存在且是 confirmed 实体；candidate 实体 fail-closed 并指向 `entity --review`。
+- `relation` 必须在受控关系词表内。已知别名会归一到 canonical relation；未知关系不落盘。
+
 #### `entity --review --action add_relationship`
 
-用户确认关系后，Agent 可用 review action 写入 confirmed 边；工具只执行确定性写入，不判断关系真伪：
+Review 队列中已有关系候选时，Agent 可用 review action 写入 confirmed 边；工具只执行确定性写入，不判断关系真伪。用户直接确认的自由关系事实应使用 `entity maintain --add-relationship`：
 
 ```bash
 life-index entity --review --action preview --id p001 --target-id p002 --relation friend_of
