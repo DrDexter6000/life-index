@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import contextlib
 import re
+import sys
 import tempfile
 import unicodedata
 from collections.abc import Iterable
@@ -184,7 +186,8 @@ def _get_jieba_module() -> Any:
     """Import jieba lazily to avoid work during module import."""
     global _jieba_module
     if _jieba_module is None:
-        _jieba_module = importlib.import_module("jieba")
+        with contextlib.redirect_stdout(sys.stderr):
+            _jieba_module = importlib.import_module("jieba")
     return _jieba_module
 
 
@@ -193,7 +196,8 @@ def _ensure_jieba_initialized() -> Any:
     global _jieba_initialized
     jieba_module = _get_jieba_module()
     if not _jieba_initialized:
-        jieba_module.initialize()
+        with contextlib.redirect_stdout(sys.stderr):
+            jieba_module.initialize()
         _jieba_initialized = True
     return jieba_module
 
@@ -284,7 +288,8 @@ def load_entity_dict(graph_path: Path | None = None) -> None:
                 tmp.write(f"{name}\n")
             tmp_path = tmp.name
 
-        jieba_module.load_userdict(tmp_path)
+        with contextlib.redirect_stdout(sys.stderr):
+            jieba_module.load_userdict(tmp_path)
     finally:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)

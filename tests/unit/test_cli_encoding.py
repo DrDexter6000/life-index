@@ -81,13 +81,7 @@ class TestCLIEncodingSubprocess:
         # Exit code 0 (success) — not a crash from encoding
         assert result.returncode == 0, f"CLI crashed. stderr:\n{result.stderr}"
 
-        # stdout may contain model loading messages before JSON;
-        # extract the JSON object by finding the first '{'
-        stdout_text = result.stdout
-        json_start = stdout_text.find("{")
-        assert json_start >= 0, f"No JSON found in stdout:\n{stdout_text}"
-        json_text = stdout_text[json_start:]
-        parsed = json.loads(json_text)
+        parsed = json.loads(result.stdout)
         assert "success" in parsed
         assert parsed["success"] is True
 
@@ -120,10 +114,7 @@ class TestCLIEncodingSubprocess:
         )
 
         assert result.returncode == 0
-        stdout_text = result.stdout
-        json_start = stdout_text.find("{")
-        assert json_start >= 0, f"No JSON found in stdout:\n{stdout_text}"
-        parsed = json.loads(stdout_text[json_start:])
+        parsed = json.loads(result.stdout)
         # No results expected in empty data dir, but JSON must be valid
         assert isinstance(parsed.get("merged_results", []), list)
 
