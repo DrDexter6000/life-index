@@ -6,6 +6,10 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+- Fix `sync-skill --install` to always converge on the canonical host skill
+  slot `<host-home>/skills/life-index`, including safe recovery from the
+  `1.4.2` parent-slot install state.
+
 ## [1.4.2] - 2026-07-07
 
 ### What users get

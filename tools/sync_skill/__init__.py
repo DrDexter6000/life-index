@@ -16,6 +16,7 @@ HOST_SKILL_DIR_ENV = "LIFE_INDEX_HOST_SKILL_DIR"
 HOST_HOME_ENVS = ("CODEX_HOME", "AGENTS_HOME", "HERMES_HOME", "CLAUDE_HOME")
 DEFAULT_HOST_HOME_DIRS = (".codex", ".agents", ".hermes", ".claude")
 CHANGELOG_POINTER = "CHANGELOG.md"
+CANONICAL_SKILL_SLOT = "life-index"
 
 
 def _diagnostic(code: str, message: str) -> dict[str, str]:
@@ -24,9 +25,34 @@ def _diagnostic(code: str, message: str) -> dict[str, str]:
 
 def _skill_dir_candidates_from_home(home: Path) -> list[Path]:
     skills_dir = home.expanduser() / "skills"
-    candidates = [skills_dir / "life-index"]
-    candidates.extend(sorted(skills_dir.glob("*/life-index")))
+    candidates = [skills_dir / CANONICAL_SKILL_SLOT]
+    candidates.extend(sorted(skills_dir.glob(f"*/{CANONICAL_SKILL_SLOT}")))
     return candidates
+
+
+def _is_canonical_skill_leaf(path: Path) -> bool:
+    parts = path.expanduser().parts
+    if len(parts) < 3 or parts[-1] != CANONICAL_SKILL_SLOT:
+        return False
+    if parts[-2] == "skills":
+        return True
+    return len(parts) >= 4 and parts[-3] == "skills"
+
+
+def _normalize_host_skill_dir_parent(path: Path) -> tuple[Path, list[dict[str, str]]]:
+    candidate = path.expanduser()
+    if candidate.name != "skills":
+        return candidate, []
+    normalized = candidate / CANONICAL_SKILL_SLOT
+    return normalized, [
+        _diagnostic(
+            "HOST_SKILL_DIR_PARENT_NORMALIZED",
+            (
+                "Host skill directory pointed at a skills parent; using canonical "
+                f"Life Index skill slot {normalized}."
+            ),
+        )
+    ]
 
 
 def _dedupe_paths(paths: list[Path]) -> list[Path]:
@@ -48,26 +74,28 @@ def find_host_skill_dir(
     diagnostics: list[dict[str, str]] = []
 
     if explicit_dir:
-        candidate = Path(explicit_dir).expanduser()
+        candidate, normalization_diagnostics = _normalize_host_skill_dir_parent(Path(explicit_dir))
         if candidate.is_dir():
-            return candidate, diagnostics
+            return candidate, [*diagnostics, *normalization_diagnostics]
         return None, [
+            *normalization_diagnostics,
             _diagnostic(
                 "HOST_SKILL_DIR_NOT_FOUND",
                 f"Host skill directory does not exist: {candidate}",
-            )
+            ),
         ]
 
     env_dir = os.environ.get(HOST_SKILL_DIR_ENV)
     if env_dir:
-        candidate = Path(env_dir).expanduser()
+        candidate, normalization_diagnostics = _normalize_host_skill_dir_parent(Path(env_dir))
         if candidate.is_dir():
-            return candidate, diagnostics
+            return candidate, [*diagnostics, *normalization_diagnostics]
         return None, [
+            *normalization_diagnostics,
             _diagnostic(
                 "HOST_SKILL_DIR_NOT_FOUND",
                 f"Host skill directory does not exist: {candidate}",
-            )
+            ),
         ]
 
     for env_name in HOST_HOME_ENVS:
@@ -110,9 +138,22 @@ def find_host_skill_dir(
     ]
 
 
+def _host_skill_candidates_from_default_homes() -> list[Path]:
+    candidates: list[Path] = []
+    for env_name in HOST_HOME_ENVS:
+        host_home = os.environ.get(env_name)
+        if host_home:
+            candidates.extend(_skill_dir_candidates_from_home(Path(host_home)))
+
+    home = Path.home()
+    for dirname in DEFAULT_HOST_HOME_DIRS:
+        candidates.extend(_skill_dir_candidates_from_home(home / dirname))
+    return _dedupe_paths(candidates)
+
+
 def install_target_from_host_home(host_home: str | Path) -> Path:
     """Resolve the canonical Life Index skill directory under a host home."""
-    return Path(host_home).expanduser() / "skills" / "life-index"
+    return Path(host_home).expanduser() / "skills" / CANONICAL_SKILL_SLOT
 
 
 def _default_host_homes() -> list[Path]:
@@ -376,6 +417,156 @@ def _managed_nested_skill_tree_reason(path: Path) -> str | None:
     return None
 
 
+def _is_life_index_managed_skill_text(text: str) -> bool:
+    frontmatter, _body = _split_frontmatter(text)
+    if not frontmatter:
+        return False
+    try:
+        parsed = yaml.safe_load("\n".join(frontmatter)) or {}
+    except yaml.YAMLError:
+        return False
+    return parsed.get("name") == "life-index"
+
+
+def _reference_source_files(source_root: Path) -> dict[Path, Path]:
+    references_root = source_root / "references"
+    if not references_root.is_dir():
+        return {}
+    return {
+        path.relative_to(references_root): path
+        for path in references_root.rglob("*")
+        if path.is_file()
+    }
+
+
+def _parent_stray_artifact_status(
+    source_root: Path,
+    target_dir: Path,
+) -> dict[str, Any]:
+    parent_dir = target_dir.parent
+    parent_skill = parent_dir / "SKILL.md"
+    parent_references = parent_dir / "references"
+    if not parent_skill.exists() and not parent_references.exists():
+        return {"status": "not_applicable", "skill_text": None}
+
+    if not parent_skill.is_file():
+        return {"status": "preserved", "skill_text": None, "reason": "missing_managed_skill"}
+
+    try:
+        skill_text = parent_skill.read_text(encoding="utf-8")
+    except OSError:
+        return {"status": "preserved", "skill_text": None, "reason": "skill_unreadable"}
+    if not _is_life_index_managed_skill_text(skill_text):
+        return {"status": "preserved", "skill_text": None, "reason": "unmanaged_skill"}
+
+    if parent_references.exists():
+        if parent_references.is_symlink() or not parent_references.is_dir():
+            return {"status": "preserved", "skill_text": None, "reason": "references_not_directory"}
+
+        source_references = _reference_source_files(source_root)
+        for stray_path in sorted(path for path in parent_references.rglob("*") if path.is_file()):
+            relative_path = stray_path.relative_to(parent_references)
+            source_path = source_references.get(relative_path)
+            if source_path is None:
+                return {"status": "preserved", "skill_text": None, "reason": "extra_reference"}
+            try:
+                if stray_path.read_bytes() != source_path.read_bytes():
+                    return {
+                        "status": "preserved",
+                        "skill_text": None,
+                        "reason": "changed_reference",
+                    }
+            except OSError:
+                return {
+                    "status": "preserved",
+                    "skill_text": None,
+                    "reason": "reference_unreadable",
+                }
+
+    return {
+        "status": "managed",
+        "skill_text": skill_text,
+        "skill_path": parent_skill,
+        "references_path": parent_references,
+    }
+
+
+def find_install_target_dir(
+    source_root: Path,
+    explicit_dir: str | Path | None = None,
+) -> tuple[Path | None, list[dict[str, str]]]:
+    """Resolve an install target without guessing a new host unless recovery is provable."""
+    if explicit_dir:
+        candidate, normalization_diagnostics = _normalize_host_skill_dir_parent(Path(explicit_dir))
+        return candidate, normalization_diagnostics
+
+    env_dir = os.environ.get(HOST_SKILL_DIR_ENV)
+    if env_dir:
+        candidate, normalization_diagnostics = _normalize_host_skill_dir_parent(Path(env_dir))
+        return candidate, normalization_diagnostics
+
+    candidates = _host_skill_candidates_from_default_homes()
+    matches = [candidate for candidate in candidates if candidate.is_dir()]
+    if len(matches) == 1:
+        return matches[0], []
+    if len(matches) > 1:
+        converged = _autoconverge_managed_nested_duplicate(matches)
+        if converged is not None:
+            return converged
+        formatted = "; ".join(str(path) for path in matches)
+        return None, [
+            _diagnostic(
+                "HOST_SKILL_DIR_AMBIGUOUS",
+                (
+                    "Multiple existing host skill directories were found; "
+                    f"pass --host-skill-dir explicitly. Matches: {formatted}"
+                ),
+            )
+        ]
+
+    recovery_targets: list[Path] = []
+    for host_home in _default_host_homes():
+        target = install_target_from_host_home(host_home)
+        parent_stray = _parent_stray_artifact_status(source_root.resolve(), target)
+        if parent_stray["status"] == "managed":
+            recovery_targets.append(target)
+
+    recovery_targets = _dedupe_paths(recovery_targets)
+    if len(recovery_targets) == 1:
+        target = recovery_targets[0]
+        return target, [
+            _diagnostic(
+                "HOST_SKILL_DIR_PARENT_STRAY_RECOVERY_SELECTED",
+                (
+                    "Managed Life Index skill artifacts were found in the host skills "
+                    f"parent; recovering the canonical skill slot {target}."
+                ),
+            )
+        ]
+    if len(recovery_targets) > 1:
+        formatted = "; ".join(str(path) for path in recovery_targets)
+        return None, [
+            _diagnostic(
+                "HOST_SKILL_DIR_AMBIGUOUS",
+                (
+                    "Multiple parent-level Life Index skill recovery targets were found; "
+                    f"pass --host-skill-dir or --host-home explicitly. Matches: {formatted}"
+                ),
+            )
+        ]
+
+    checked = "; ".join(str(path) for path in candidates)
+    return None, [
+        _diagnostic(
+            "HOST_SKILL_DIR_NOT_FOUND",
+            (
+                "No existing host skill directory or managed parent-level recovery "
+                f"artifact was found; skill artifact sync was not delivered. Checked: {checked}"
+            ),
+        )
+    ]
+
+
 def _autoconverge_managed_nested_duplicate(
     matches: list[Path],
 ) -> tuple[Path, list[dict[str, str]]] | None:
@@ -473,6 +664,32 @@ def sync_skill_artifacts(
         }
 
     target_dir = target_dir.expanduser().resolve()
+    if not _is_canonical_skill_leaf(target_dir):
+        diagnostics.append(
+            _diagnostic(
+                "HOST_SKILL_DIR_NOT_CANONICAL",
+                (
+                    "Refusing to sync into a non-canonical host skill directory; "
+                    "target must be a life-index leaf such as "
+                    "<host-home>/skills/life-index."
+                ),
+            )
+        )
+        return {
+            "success": False,
+            "schema_version": SYNC_SKILL_SCHEMA_VERSION,
+            "command": "sync-skill",
+            "data": {
+                "status": "refused",
+                "delivered": False,
+                "target_dir": str(target_dir),
+                "copied": [],
+                "playbook_status": "not_delivered",
+                "changelog": CHANGELOG_POINTER,
+                "dedupe": _empty_dedupe(),
+                "diagnostics": diagnostics,
+            },
+        }
     target_skill = target_dir / "SKILL.md"
     target_dir_exists = target_dir.is_dir()
     nested_duplicate_exists = _nested_duplicate_dir(target_dir).exists()
@@ -527,6 +744,17 @@ def sync_skill_artifacts(
 
     source_text = source_skill.read_text(encoding="utf-8")
     existing_text = target_skill.read_text(encoding="utf-8") if target_skill.is_file() else None
+    parent_stray = _parent_stray_artifact_status(source_root, target_dir)
+    if parent_stray["status"] == "preserved":
+        diagnostics.append(
+            _diagnostic(
+                "HOST_SKILL_DIR_PARENT_STRAY_PRESERVED",
+                (
+                    "Found parent-level skill artifacts that cannot be proven to be "
+                    "Life Index managed; leaving them untouched."
+                ),
+            )
+        )
     dedupe = _detect_nested_dedupe(target_dir)
     nested_text: str | None = None
     nested_dir = _nested_duplicate_dir(target_dir)
@@ -534,7 +762,11 @@ def sync_skill_artifacts(
     if dedupe["status"] == "ready" and nested_skill.is_file():
         nested_text = nested_skill.read_text(encoding="utf-8")
 
-    merged_text = _merge_existing_skill_texts(source_text, [existing_text, nested_text])
+    parent_stray_text = parent_stray.get("skill_text")
+    merged_text = _merge_existing_skill_texts(
+        source_text,
+        [existing_text, nested_text, parent_stray_text],
+    )
     playbook_status = "unchanged" if existing_text == merged_text else "updated"
     if not target_preexisting:
         playbook_status = "would_install" if dry_run else "installed"
@@ -572,6 +804,22 @@ def sync_skill_artifacts(
             "status": "removed",
             "removed": [nested_resolved],
         }
+    if parent_stray["status"] == "managed":
+        parent_skill = parent_stray["skill_path"]
+        parent_references = parent_stray["references_path"]
+        if parent_skill.exists():
+            parent_skill.unlink()
+        if parent_references.exists():
+            shutil.rmtree(parent_references)
+        diagnostics.append(
+            _diagnostic(
+                "HOST_SKILL_DIR_PARENT_STRAY_CLEANED",
+                (
+                    "Removed managed Life Index skill artifacts from the host skills "
+                    "parent after installing the canonical skills/life-index slot."
+                ),
+            )
+        )
     return {
         "success": True,
         "schema_version": SYNC_SKILL_SCHEMA_VERSION,

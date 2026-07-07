@@ -5960,12 +5960,26 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
 
 - Bare `sync-skill` never creates or guesses a new host skill directory.
 - The command does not read, write, move, or delete journal data.
-- `--host-skill-dir` may point to an existing host skill directory. With
-  `--install`, it may point to a skill directory to create.
+- `--host-skill-dir` must resolve to the canonical Life Index skill leaf
+  `<host-home>/skills/life-index`. With `--install`, if the provided path is
+  the host `skills/` parent, the command normalizes it to
+  `<host-home>/skills/life-index` and emits
+  `HOST_SKILL_DIR_PARENT_NORMALIZED`.
 - `--install --host-home <path>` creates and syncs
   `<host-home>/skills/life-index`.
 - `--install --dry-run --host-home <path>` reports the planned install and any
   nested duplicate cleanup without creating, copying, or deleting files.
+- During `--install`, if a prior broken install left managed Life Index
+  artifacts at `<host-home>/skills/SKILL.md` and
+  `<host-home>/skills/references/`, the command installs the canonical slot
+  first, then removes only those parent-level artifacts and emits
+  `HOST_SKILL_DIR_PARENT_STRAY_CLEANED`. If the parent artifacts contain
+  non-Life Index content or cannot be proven managed, they are preserved and
+  reported with `HOST_SKILL_DIR_PARENT_STRAY_PRESERVED`.
+- If `--install` is run without `--host-skill-dir` or `--host-home`, the
+  command may select a missing canonical slot only when a default host home has
+  provably managed 1.4.2 parent-level Life Index artifacts to recover. It does
+  not guess a new host target from unmanaged parent files.
 - During `--install`, if the legacy double slot
   `<host-home>/skills/life-index/life-index` contains a managed Life Index
   skill tree, the command merges its custom triggers into the canonical
@@ -5997,7 +6011,8 @@ life-index sync-skill [--json] [--host-skill-dir <path>] [--host-home <path>] [-
 - If multiple unrelated host skill directories are found, or if the nested
   duplicate contains unmanaged top-level content, the command does not guess;
   it reports all matches and requires `--host-skill-dir`.
-- `--source-root` defaults to the current installed checkout root.
+- `--source-root` defaults to the current installed checkout root, falling back
+  to packaged wheel skill artifacts when no checkout root is present.
 
 ### JSON contract
 
