@@ -9,8 +9,10 @@ and by callers (Agent, Web, test harness).
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import re
+import sys
 from datetime import date, timedelta
 from typing import Any
 
@@ -840,9 +842,10 @@ def _tokenize(text: str) -> list[str]:
 
     # Single CJK string: try jieba if available, else character-level extraction
     try:
-        import jieba
+        with contextlib.redirect_stdout(sys.stderr):
+            import jieba
 
-        return [t for t in jieba.cut(text) if t.strip()]
+            return [t for t in jieba.cut(text) if t.strip()]
     except ImportError:
         # Fallback: extract 2+ char CJK segments
         return re.findall(r"[\u4e00-\u9fff]+|[a-zA-Z]+", text)
