@@ -6,6 +6,27 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-07
+
+### What users get
+
+- JSON stdout is clean for Entity profile materialization:
+  `life-index abstract --entities --json` can be parsed directly with
+  `json.loads(stdout)`.
+- User-confirmed relationship facts now have a preview-first primitive:
+  `life-index entity maintain --add-relationship --preview/--apply --json`.
+- `health --help` is real help; health suggested commands include side-effect
+  metadata; green Entity maintenance no longer suggests unnecessary review.
+- `v1.4.0` was tagged on GitHub but intentionally skipped on PyPI. `v1.4.1`
+  is the first PyPI release carrying the 1.4 Entity Graph payoff surface.
+
+### Included in this release
+
+- fix(abstract): keep `abstract --entities --json` stdout pure JSON (#147).
+- feat(entity): add `maintain --add-relationship` preview/apply primitive
+  (#148).
+- fix(health): harden pre-release help and side-effect metadata (#149).
+
 ## [1.4.0] - 2026-07-07
 
 ### What users get
