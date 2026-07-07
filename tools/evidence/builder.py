@@ -215,6 +215,7 @@ def _build_entity_matches(
             matches.append(
                 EntityMatch(
                     entity_id=str(hint.get("entity_id", "")),
+                    primary_name=str(hint.get("primary_name", "")),
                     entity_type=str(hint.get("entity_type", "")),
                     matched_terms=found_terms,
                     match_sources=sorted(set(sources)),

@@ -66,6 +66,7 @@ def _build_delete_plan(*, graph_path: Path, entity_id: str) -> dict[str, Any]:
                 refs.append(
                     {
                         "entity_id": entity["id"],
+                        "primary_name": entity.get("primary_name", ""),
                         "relation": relationship.get("relation", ""),
                     }
                 )

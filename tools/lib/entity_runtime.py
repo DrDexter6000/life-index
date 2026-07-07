@@ -256,6 +256,7 @@ class EntityRuntimeView:
     by_lookup: dict[str, dict[str, Any]] = field(default_factory=dict)
     reverse_relationships: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     phrase_patterns: list[dict[str, Any]] = field(default_factory=list)
+    self_entity_id: str | None = None
     schema_version: str = SCHEMA_VERSION
 
 
@@ -449,6 +450,14 @@ def build_runtime_view(graph: list[dict[str, Any]]) -> EntityRuntimeView:
         entity for entity in graph if entity.get("status", "confirmed") == "confirmed"
     ]
     serving_ids = {entity["id"] for entity in serving_entities}
+    self_entity = next(
+        (
+            entity
+            for entity in serving_entities
+            if (entity.get("attributes") or {}).get("self") is True
+        ),
+        None,
+    )
 
     for entity in serving_entities:
         lookup_keys = {
@@ -471,11 +480,17 @@ def build_runtime_view(graph: list[dict[str, Any]]) -> EntityRuntimeView:
                 reverse_relationships[target_id] = []
             reverse_relationships[target_id].append((entity["id"], relation))
 
+    if self_entity is not None:
+        for pronoun in ("我", "本人", "自己", "me", "myself"):
+            by_lookup.setdefault(pronoun, self_entity)
+            by_lookup.setdefault(pronoun.lower(), self_entity)
+
     return EntityRuntimeView(
         entities=list(serving_entities),  # shallow copy
         by_lookup=by_lookup,
         reverse_relationships=reverse_relationships,
         phrase_patterns=list(RELATION_PHRASE_PATTERNS),
+        self_entity_id=self_entity["id"] if self_entity is not None else None,
     )
 
 

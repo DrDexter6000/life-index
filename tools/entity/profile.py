@@ -148,6 +148,7 @@ def _profile_payload(entity: dict[str, Any], entities: list[dict[str, Any]]) -> 
             "type": entity["type"],
             "kind": (entity.get("attributes") or {}).get("kind"),
             "status": entity.get("status", "confirmed"),
+            "is_self": (entity.get("attributes") or {}).get("self") is True,
         },
         "relationships": relationships,
         "mentions": mentions,

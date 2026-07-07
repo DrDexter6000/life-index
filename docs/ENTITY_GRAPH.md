@@ -125,6 +125,15 @@ keep_separate --id A --target-id B` 会在 A/B 两侧写入对称记录，audit 
 该用户判决，不再把该 pair 报为 `possible_duplicate`。`entity --review --action
 undo_keep_separate --id A --target-id B` 会撤销该标记，让 audit 重新检测该 pair。
 
+唯一 self 锚点使用实体自身的 `attributes.self: true` 表达，而不是顶层
+metadata。理由：现有写路径统一以实体列表重写 `entity_graph.yaml`，顶层 metadata
+容易被旧写路径擦除；`attributes` 已被 schema 和所有写路径保留。`entity --set-self
+--id ENTITY_ID --json` 是显式、需人判的设置路径；`entity --unset-self --json` 可撤销。
+schema 与 `entity --check` 都会强制最多一个 self 实体。设置后，查询如“我妈妈/我的女儿”
+会把“我”确定性解析为该实体，再沿 confirmed relationship 单跳扩展。未设置 self 时，
+这些查询不扩展、不报错。工具只解析标准关系词表；地域性称谓必须由用户经 HITL 写入
+alias/标签，不得在工具中硬编码文化对照表。
+
 ### 4.2 Role Attribute 是过渡表达
 
 `attributes.role`（如 `child`, `spouse`, `parent`）用于**当前阶段**快速标注实体在家庭结构中的位置，但它:

@@ -138,6 +138,44 @@ def _relationship_payoff_entities() -> list[dict]:
     ]
 
 
+def _self_anchor_relationship_entities() -> list[dict]:
+    return [
+        {
+            "id": "actor-alice",
+            "type": "actor",
+            "primary_name": "Alice",
+            "aliases": ["Ally"],
+            "attributes": {"kind": "human", "self": True},
+            "relationships": [],
+            "source": "user",
+            "status": "confirmed",
+        },
+        {
+            "id": "actor-bob",
+            "type": "actor",
+            "primary_name": "Bob",
+            "aliases": ["Bobby"],
+            "attributes": {
+                "kind": "human",
+                "family_role_labels": {
+                    "child_perspective": {"primary": "妈妈", "aliases": ["母亲"]}
+                },
+            },
+            "relationships": [
+                {
+                    "target": "actor-alice",
+                    "relation": "parent_of",
+                    "source": "user",
+                    "status": "confirmed",
+                    "created_at": "2026-07-07T00:00:00Z",
+                }
+            ],
+            "source": "user",
+            "status": "confirmed",
+        },
+    ]
+
+
 def _save_graph(entities: list[dict], isolated_data_dir: Path) -> None:
 
     save_entity_graph(entities, isolated_data_dir / "entity_graph.yaml")
@@ -221,6 +259,7 @@ class TestEntityHintsStructure:
         hint = result["entity_hints"][0]
         assert "matched_term" in hint
         assert "entity_id" in hint
+        assert "primary_name" in hint
         assert "entity_type" in hint
         assert "expansion_terms" in hint
         assert "reason" in hint
@@ -239,6 +278,7 @@ class TestEntityHintsStructure:
         hint = wife_hints[0]
         assert hint["matched_term"] == "老婆"
         assert hint["entity_id"] == "wife-001"
+        assert hint["primary_name"] == "王某某"
         assert hint["entity_type"] == "actor"
         assert "晴岚妈" in hint["expansion_terms"]
         assert "王某某" in hint["expansion_terms"]
@@ -257,6 +297,7 @@ class TestEntityHintsStructure:
 
         hint = place_hints[0]
         assert hint["matched_term"] == "老家"
+        assert hint["primary_name"] == "重庆"
         assert hint["entity_type"] == "place"
         assert "重庆" in hint["expansion_terms"]
 
@@ -326,6 +367,7 @@ class TestEntityExpansionAttribution:
                     "to": ["Alice"],
                     "via": "alias",
                     "entity_id": "actor-alice",
+                    "primary_name": "Alice",
                 }
             ],
         }
@@ -350,7 +392,13 @@ class TestEntityExpansionAttribution:
         assert set(expansion) == {"applied", "expansions"}
         assert isinstance(expansion["applied"], bool)
         assert isinstance(expansion["expansions"], list)
-        assert set(expansion["expansions"][0]) == {"from", "to", "via", "entity_id"}
+        assert set(expansion["expansions"][0]) == {
+            "from",
+            "to",
+            "via",
+            "entity_id",
+            "primary_name",
+        }
         assert expansion["expansions"][0]["via"] in {"alias", "relation"}
 
     def test_relation_query_expands_confirmed_edges_for_search(
@@ -374,10 +422,12 @@ class TestEntityExpansionAttribution:
             "to": ["Alice", "Ally"],
             "via": "relation",
             "entity_id": "actor-alice",
+            "primary_name": "Alice",
         } in result["entity_expansion"]["expansions"]
         assert {
             "matched_term": "女儿",
             "entity_id": "actor-alice",
+            "primary_name": "Alice",
             "entity_type": "actor",
             "expansion_terms": ["Alice", "Ally"],
             "reason": "relation_match",
@@ -400,12 +450,14 @@ class TestEntityExpansionAttribution:
             "to": ["Alice", "Ally"],
             "via": "relation",
             "entity_id": "actor-alice",
+            "primary_name": "Alice",
         } in relation_expansions
         assert {
             "from": "女儿",
             "to": ["Clara", "Cee"],
             "via": "relation",
             "entity_id": "actor-clara",
+            "primary_name": "Clara",
         } in relation_expansions
 
     def test_relation_query_without_graph_keeps_empty_expansion(
@@ -418,5 +470,51 @@ class TestEntityExpansionAttribution:
         assert update_index(incremental=False)["success"] is True
 
         result = hierarchical_search(query="女儿 睡眠", level=3, semantic=False)
+
+        assert result["entity_expansion"] == {"applied": False, "expansions": []}
+
+    def test_self_relation_query_expands_from_self_anchor(self, isolated_data_dir: Path) -> None:
+        from tools.lib.search_index import update_index
+        from tools.search_journals.core import hierarchical_search
+
+        _save_graph(_self_anchor_relationship_entities(), isolated_data_dir)
+        journal_dir = isolated_data_dir / "Journals" / "2026" / "05"
+        journal_dir.mkdir(parents=True, exist_ok=True)
+        journal_path = journal_dir / "life-index_2026-05-01_001.md"
+        journal_path.write_text(
+            "---\n"
+            'title: "Care Fixture"\n'
+            "date: 2026-05-01\n"
+            "topic: [relation]\n"
+            "---\n\n"
+            "Bob wrote carefixture notes.\n",
+            encoding="utf-8",
+        )
+        assert update_index(incremental=False)["success"] is True
+
+        result = hierarchical_search(query="我妈妈 carefixture", level=3, semantic=False)
+
+        assert any(
+            str(item.get("path", "")).endswith(journal_path.name)
+            for item in result["merged_results"]
+        )
+        assert {
+            "from": "我妈妈",
+            "to": ["Bob", "Bobby"],
+            "via": "relation",
+            "entity_id": "actor-bob",
+            "primary_name": "Bob",
+        } in result["entity_expansion"]["expansions"]
+
+    def test_self_relation_query_without_self_anchor_does_not_expand(
+        self, isolated_data_dir: Path
+    ) -> None:
+        from tools.search_journals.core import hierarchical_search
+
+        entities = _self_anchor_relationship_entities()
+        entities[0]["attributes"].pop("self")
+        _save_graph(entities, isolated_data_dir)
+
+        result = hierarchical_search(query="我妈妈", level=1, semantic=False)
 
         assert result["entity_expansion"] == {"applied": False, "expansions": []}

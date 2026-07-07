@@ -55,6 +55,7 @@ class TestFormatWithEntityMatches:
                     entity_matches=[
                         EntityMatch(
                             entity_id="wife-001",
+                            primary_name="Alice",
                             entity_type="person",
                             matched_terms=["晴岚妈"],
                             match_sources=["snippet", "metadata"],
@@ -70,6 +71,7 @@ class TestFormatWithEntityMatches:
         )
         text = format_entity_annotated(pack)
         assert "Family Day" in text
+        assert "Alice" in text
         assert "wife-001" in text
         assert "person" in text
         assert "晴岚妈" in text

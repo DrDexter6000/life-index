@@ -98,11 +98,13 @@ class TestEntityCandidatesFallback:
         tuantuan = next((c for c in candidates if c["text"] == "晴岚"), None)
         assert tuantuan is not None
         assert tuantuan["matched_entity_id"] == "e1"
+        assert tuantuan["matched_primary_name"] == "晴岚"
         assert tuantuan["suggested_action"] == "confirm_match"
 
         new_friend = next((c for c in candidates if c["text"] == "新朋友"), None)
         assert new_friend is not None
         assert new_friend["matched_entity_id"] is None
+        assert new_friend["matched_primary_name"] == ""
         assert new_friend["suggested_action"] == "add_entity"
 
     def test_empty_metadata_no_candidates(self) -> None:

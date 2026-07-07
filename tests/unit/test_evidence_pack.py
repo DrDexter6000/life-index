@@ -476,7 +476,12 @@ def _synthetic_search_result() -> dict:
         "no_confident_match": False,
         "semantic_effective_policy": "hybrid",
         "entity_hints": [
-            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
+            {
+                "matched_term": "小云",
+                "entity_id": "tuan_tuan",
+                "primary_name": "小云",
+                "entity_type": "actor",
+            },
         ],
         "search_plan": {"intent_type": "recall", "query_mode": "natural_language"},
         "warnings": [],
@@ -527,7 +532,12 @@ class TestBuildEvidencePack:
         assert pack.query_context.expanded_query == "family day out 小云"
         assert pack.query_context.semantic_policy == "hybrid"
         assert pack.query_context.entity_hints == [
-            {"matched_term": "小云", "entity_id": "tuan_tuan", "entity_type": "actor"},
+            {
+                "matched_term": "小云",
+                "entity_id": "tuan_tuan",
+                "primary_name": "小云",
+                "entity_type": "actor",
+            },
         ]
         assert pack.query_context.performance == {"total_time_ms": 110.5}
 
@@ -1422,9 +1432,26 @@ class TestEntityMatch:
         em2 = EntityMatch.from_dict(d)
         assert em2 == em
         assert em2.entity_id == "tuan_tuan"
+        assert em2.primary_name == ""
         assert em2.entity_type == "person"
         assert em2.matched_terms == ["小云"]
         assert em2.match_sources == ["snippet"]
+
+    def test_round_trip_with_primary_name(self) -> None:
+        from tools.evidence.types import EntityMatch
+
+        em = EntityMatch(
+            entity_id="actor-alice",
+            primary_name="Alice",
+            entity_type="actor",
+            matched_terms=["Ally"],
+            match_sources=["snippet"],
+        )
+        d = em.to_dict()
+        assert d["primary_name"] == "Alice"
+        em2 = EntityMatch.from_dict(d)
+        assert em2 == em
+        assert em2.primary_name == "Alice"
 
     def test_round_trip_with_query_matched_term(self) -> None:
         from tools.evidence.types import EntityMatch
@@ -1630,6 +1657,7 @@ class TestBuildEntityMatches:
         assert len(pack.items[0].entity_matches) == 1
         em = pack.items[0].entity_matches[0]
         assert em.entity_id == "tuan_tuan"
+        assert em.primary_name == "小云"
         assert em.entity_type == "actor"
         assert "小云" in em.matched_terms
         assert "snippet" in em.match_sources

@@ -50,6 +50,11 @@ When human judgment is needed:
 Use `keep_separate` when the user says two similar names are distinct:
 `life-index entity --review --action keep_separate --id SOURCE_ID --target-id TARGET_ID`.
 
+When the user states or corrects a relationship fact, restate the proposed graph
+change and ask for confirmation. After confirmation, use the review/add-alias
+primitives to write it; do not wait for the user to ask why the graph was not
+updated.
+
 ## Normalize
 
 When the audit or health output points to schema normalization:
@@ -82,6 +87,10 @@ YAML batch file, ask the user to confirm the parsed structure, then run:
 3. `life-index entity --check`
 
 Name conflicts go to review. Do not auto-merge them.
+
+During first family/person cold start, ask which entity represents the user.
+After user confirmation, run `life-index entity --set-self --id ENTITY_ID --json`.
+If the user later revokes that anchor, run `life-index entity --unset-self --json`.
 
 ## Red Lines
 

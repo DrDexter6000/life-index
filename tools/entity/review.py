@@ -132,6 +132,7 @@ def build_review_queue(
     """
     graph_path = graph_path or _graph_path()
     graph = load_entity_graph(graph_path)
+    entity_names_by_id = {entity["id"]: entity.get("primary_name", "") for entity in graph}
 
     if not graph:
         return []
@@ -175,6 +176,16 @@ def build_review_queue(
         if not isinstance(evidence, list):
             evidence = []
         why = issue.get("why") or issue.get("message") or issue.get("evidence", "")
+        entity_refs = issue.get("entity_refs")
+        if not isinstance(entity_refs, list):
+            entity_refs = [
+                {
+                    "entity_id": str(entity_id),
+                    "primary_name": entity_names_by_id.get(str(entity_id), ""),
+                }
+                for entity_id in entity_ids
+                if entity_id
+            ]
 
         queue.append(
             {
@@ -184,6 +195,7 @@ def build_review_queue(
                 "description": issue.get("evidence") or issue.get("message", ""),
                 "action_choices": action_map.get(issue_type, ["skip"]),
                 "entity_ids": entity_ids,
+                "entities": entity_refs,
                 "why": str(why),
                 "evidence": evidence,
                 "suggested_action": issue.get("suggested_action", ""),

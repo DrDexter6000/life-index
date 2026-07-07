@@ -6,7 +6,7 @@ Validates that:
 - write_journal returns structured entity_candidates
 - entity_candidates covers frontmatter + content sources
 - Each candidate has required fields: text, source, kind, matched_entity_id,
-  suggested_action, risk_level
+  matched_primary_name, suggested_action, risk_level
 - new_entities_detected remains as legacy output (backward compat)
 - dry_run returns entity_candidates without writing to disk
 """
@@ -112,6 +112,7 @@ class TestEntityCandidatesFromContent:
         assert c["text"] == "晴岚妈"
         assert c["kind"] == "actor"
         assert c["matched_entity_id"] == "wife-001"
+        assert c["matched_primary_name"] == "王某某"
 
     def test_content_place_alias_match(self, isolated_data_dir: Path) -> None:
         from tools.write_journal.core import write_journal
@@ -223,6 +224,7 @@ class TestEntityCandidatesStructure:
             "source",
             "kind",
             "matched_entity_id",
+            "matched_primary_name",
             "suggested_action",
             "risk_level",
         }
@@ -248,6 +250,7 @@ class TestEntityCandidatesStructure:
         matched = [c for c in result["entity_candidates"] if c["matched_entity_id"] is not None]
         assert len(matched) >= 1
         assert matched[0]["suggested_action"] == "confirm_match"
+        assert matched[0]["matched_primary_name"] == "王某某"
 
     def test_unmatched_candidate_suggests_add(self, isolated_data_dir: Path) -> None:
         from tools.write_journal.core import write_journal
@@ -267,6 +270,7 @@ class TestEntityCandidatesStructure:
         unmatched = [c for c in result["entity_candidates"] if c["matched_entity_id"] is None]
         assert len(unmatched) >= 1
         assert unmatched[0]["suggested_action"] == "add_entity"
+        assert unmatched[0]["matched_primary_name"] == ""
 
 
 class TestEntityCandidatesBackwardCompat:

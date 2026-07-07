@@ -103,7 +103,9 @@ class TestEntityAuditOrphans:
         report = audit_entity_graph(graph_path, journals_dir=tmp_path / "Journals")
         assert [i for i in report["issues"] if i["type"] == "orphan_entity"] == []
         assert "facts" in report
-        assert report["facts"]["zero_journal_reference_entities"] == ["person_001"]
+        assert report["facts"]["zero_journal_reference_entities"] == [
+            {"entity_id": "person_001", "primary_name": "无人引用"}
+        ]
 
 
 class TestEntityAuditIncompleteRelationships:

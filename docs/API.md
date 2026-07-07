@@ -311,6 +311,7 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
     {
       "matched_term": "老婆",
       "entity_id": "wife-001",
+      "primary_name": "王某某",
       "entity_type": "actor",
       "expansion_terms": ["王某某", "晴岚妈", "老婆"],
       "reason": "alias_match"
@@ -322,7 +323,7 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `schema_version` | string | 固定为 `"v1.1.1"` |
-| `entity_hints` | array | 实体命中 hint 列表，每项含 `matched_term` / `entity_id` / `entity_type` / `expansion_terms` / `reason` |
+| `entity_hints` | array | 实体命中 hint 列表，每项含 `matched_term` / `entity_id` / `primary_name` / `entity_type` / `expansion_terms` / `reason` |
 
 #### Entity Graph Alias Metadata (B4.1)
 
@@ -659,6 +660,7 @@ python -m tools.write_journal --data '<json>'
       "source": "content",
       "kind": "person",
       "matched_entity_id": "wife-001",
+      "matched_primary_name": "王某某",
       "suggested_action": "confirm_match",
       "risk_level": "low"
     }
@@ -672,6 +674,7 @@ python -m tools.write_journal --data '<json>'
 ### Round 7 新增返回字段
 
 - `entity_candidates`：write-time candidate layer 输出。来自 frontmatter + 正文中的实体候选匹配；只作为候选，不直接写回 `entity_graph.yaml`
+- `entity_candidates[].matched_primary_name`：当 `matched_entity_id` 非空时提供确定性显示名；未匹配时为空字符串，调用方不得从 ID 猜测人名
 - `new_entities_detected`：向后兼容字段；语义比 `entity_candidates` 更粗糙，后续调用方应优先消费 `entity_candidates`
 
 ### 当前源码校验语义
@@ -1987,7 +1990,7 @@ Tranche A 将以下内容纳入兼容性承诺：
 - `total_matches`: complete candidate set size before presentation-layer truncation. Invariant: `total_matches >= total_found` always holds. Per CHARTER §1.11, the retrieval/ranking layer must not silently hard-cap results.
 - `display_summary`: human-readable count such as "Showing 5 of 56 results" or "Showing all 20 results" (when `--limit 0` or no truncation applied).
 - `query_params`: exact echo of all CLI inputs, including defaults filled in.
-- `entity_expansion`: caller-facing attribution for Entity Graph query expansion. `applied` is true when at least one expansion was applied; `expansions[]` entries contain `from`, `to`, `via`, and `entity_id`. S1 emits `via: "alias"`; relation attribution uses the same shape when relation-aware expansion is enabled. This field is a hint, not a gate, and is block-level attribution rather than per-result attribution.
+- `entity_expansion`: caller-facing attribution for Entity Graph query expansion. `applied` is true when at least one expansion was applied; `expansions[]` entries contain `from`, `to`, `via`, `entity_id`, and `primary_name`. S1 emits `via: "alias"`; relation attribution uses the same shape when relation-aware expansion is enabled. This field is a hint, not a gate, and is block-level attribution rather than per-result attribution.
 - `performance.total_time_ms`: end-to-end search wall-clock time in milliseconds.
 - `index_status`: two mutually exclusive paths — `freshness` (no pending writes) or `pending_before_search`/`auto_updated`/`pending_consumed` (writes in queue).
 - `search_plan.intent_type`: `recall` / `count` / `compare` / `summarize` / `unknown`.
@@ -2080,6 +2083,7 @@ python -m tools.search_journals [options]
     {
       "matched_term": "老婆",
       "entity_id": "wife-001",
+      "primary_name": "王某某",
       "entity_type": "actor",
       "expansion_terms": ["王某某", "晴岚妈", "老婆"],
       "reason": "alias_match"
@@ -2092,7 +2096,8 @@ python -m tools.search_journals [options]
         "from": "Ally",
         "to": ["Alice"],
         "via": "alias",
-        "entity_id": "actor-alice"
+        "entity_id": "actor-alice",
+        "primary_name": "Alice"
       }
     ]
   },
@@ -2111,12 +2116,12 @@ python -m tools.search_journals [options]
 ### Round 7 新增返回字段
 
 - `entity_hints`：search 对 query 中实体命中结果的结构化解释字段
-- 每个 hint 包含：`matched_term` / `entity_id` / `entity_type` / `expansion_terms` / `reason`
+- 每个 hint 包含：`matched_term` / `entity_id` / `primary_name` / `entity_type` / `expansion_terms` / `reason`
 - `entity_hints[].reason` includes direct entity/alias reasons such as `alias_match`,
   plus `relation_match` when a controlled relationship term expands through confirmed
   graph edges.
 - `entity_hints` 属于 read-only suggestion layer，不会修改 query 语义本身；它与 `query_params.expanded_query` 互补存在
-- `entity_expansion`：search 对 Entity Graph 扩展的块级归因字段，形状为 `{applied, expansions}`；每个 expansion 包含 `from` / `to` / `via` / `entity_id`
+- `entity_expansion`：search 对 Entity Graph 扩展的块级归因字段，形状为 `{applied, expansions}`；每个 expansion 包含 `from` / `to` / `via` / `entity_id` / `primary_name`
 - `entity_expansion.applied=false` 时 `expansions=[]`；该字段只解释确定性扩展来源，不决定是否展示或过滤任何结果
 
 ### Round 11 新增返回字段
@@ -2610,6 +2615,7 @@ python -m tools.smart_search --query "..." [options]
 | 子字段 | 类型 | 说明 |
 |--------|------|------|
 | `entity_id` | string | 实体唯一标识 |
+| `primary_name` | string | 实体确定性显示名；旧 payload 可能为空字符串 |
 | `entity_type` | string | 实体类型（如 `actor`、`place`、`project`、`event`、`artifact`、`concept`） |
 | `matched_terms` | array\<string\> | 匹配到的实体术语（已去重）。来源包括 `entity_hints[].matched_term` 和 `entity_hints[].expansion_terms` 中的别名，仅包含在 item 文本中实际出现的术语 |
 | `match_sources` | array\<string\> | 匹配来源字段（如 `title`、`snippet`、`metadata`、`abstract`，已排序去重） |
@@ -5078,6 +5084,8 @@ python -m tools.entity maintain --normalize --preview --json
 python -m tools.entity maintain --normalize --apply --backup --json
 python -m tools.entity maintain --delete --id ENTITY_ID --preview --json
 python -m tools.entity maintain --delete --id ENTITY_ID --apply --backup --json
+python -m tools.entity --set-self --id ENTITY_ID --json
+python -m tools.entity --unset-self --json
 ```
 
 ### 参数
@@ -5105,6 +5113,8 @@ python -m tools.entity maintain --delete --id ENTITY_ID --apply --backup --json
 | `--unmerge` | flag | ❌ | false | 按 merge 墓碑复原实体（需 `--id` 和 `--target-id`） |
 | `--propose` | string | ❌ | - | 宿主 agent 提交实体/关系假设（JSON），只写 `status=candidate` |
 | `--apply-batch` | string | ❌ | - | 应用用户确认后的 JSON/YAML 批量实体/关系文件 |
+| `--set-self` | flag | ❌ | false | 将 `--id` 指定的 confirmed 实体设为唯一 self 锚点；显式用户判决写路径 |
+| `--unset-self` | flag | ❌ | false | 撤销当前 self 锚点，不删除实体 |
 | `--preview` | flag | ❌ | false | 仅预览影响，不修改图谱（配合 `maintain --delete` / `--apply-batch` / `--review --action preview`） |
 | `--id` | string | 条件必填 | - | 源实体 ID |
 | `--target-id` | string | 条件必填 | - | 目标实体 ID（用于 merge） |
@@ -5173,7 +5183,8 @@ life-index abstract --entities --json
       "aliases": ["Ally"],
       "type": "actor",
       "kind": "human",
-      "status": "confirmed"
+      "status": "confirmed",
+      "is_self": true
     },
     "relationships": [
       {
@@ -5431,6 +5442,10 @@ life-index entity --audit --json
         "severity": "high",
         "entities": ["Morgan A", "Morgan"],
         "entity_ids": ["p001", "p002"],
+        "entity_refs": [
+          {"entity_id": "p001", "primary_name": "Morgan A"},
+          {"entity_id": "p002", "primary_name": "Morgan"}
+        ],
         "confidence": 0.9,
         "evidence": "alias overlap: ...",
         "suggested_action": "merge"
@@ -5439,6 +5454,8 @@ life-index entity --audit --json
         "type": "candidate_entity",
         "severity": "low",
         "entity_id": "p003",
+        "entity_ids": ["p003"],
+        "entity_refs": [{"entity_id": "p003", "primary_name": "Morgan"}],
         "primary_name": "Morgan",
         "message": "Candidate entity 'Morgan' awaits human review",
         "why": "human review required before confirmation: repeated unknown person mention",
@@ -5448,7 +5465,9 @@ life-index entity --audit --json
     ],
     "summary": {"high": 1, "medium": 0, "low": 1},
     "facts": {
-      "zero_journal_reference_entities": ["p004"]
+      "zero_journal_reference_entities": [
+        {"entity_id": "p004", "primary_name": "Alice"}
+      ]
     },
     "fact_annotations": {
       "zero_journal_reference_entities": {
@@ -5502,10 +5521,16 @@ life-index entity --stats
     "total_aliases": 23,
     "total_relationships": 56,
     "top_referenced": [
-      {"entity_id": "p001", "incoming_count": 12}
+      {"entity_id": "p001", "primary_name": "Alice", "incoming_count": 12}
     ],
     "top_cooccurrence": [
-      {"entities": ["p001", "p002"], "cooccurrence": 5}
+      {
+        "entities": [
+          {"entity_id": "p001", "primary_name": "Alice"},
+          {"entity_id": "p002", "primary_name": "Bob"}
+        ],
+        "cooccurrence": 5
+      }
     ]
   },
   "error": null
@@ -5760,7 +5785,7 @@ life-index entity maintain --delete --id p003 --apply --backup --json
     "deleted_id": "p003",
     "deleted_name": "Old Contact A",
     "cleaned_refs": [
-      {"entity_id": "p001", "relation": "colleague"}
+      {"entity_id": "p001", "primary_name": "Alice", "relation": "colleague"}
     ]
   },
   "error": null

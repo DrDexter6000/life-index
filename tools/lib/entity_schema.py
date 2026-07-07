@@ -230,6 +230,9 @@ def _normalize_entity_core(
     attributes = raw.get("attributes", {}) or {}
     if not isinstance(attributes, dict):
         raise EntityGraphValidationError("attributes must be an object")
+    self_anchor = attributes.get("self")
+    if self_anchor is not None and not isinstance(self_anchor, bool):
+        raise EntityGraphValidationError("attributes.self must be a boolean")
     kind = attributes.get("kind")
     if (
         kind is not None
@@ -432,5 +435,21 @@ def validate_entity_graph_payload(
                 )
             if distinct_record["target"] == entity["id"]:
                 raise EntityGraphValidationError("not_duplicate_of target cannot be self")
+
+    self_entities = [
+        entity for entity in validated if (entity.get("attributes") or {}).get("self") is True
+    ]
+    if len(self_entities) > 1:
+        raise EntityGraphValidationError(
+            "entity graph must contain exactly one self entity when attributes.self is set",
+            code="ENTITY_SCHEMA_SELF_ANCHOR",
+            details={"self_entity_ids": [entity["id"] for entity in self_entities]},
+        )
+    if self_entities and self_entities[0].get("status", "confirmed") != "confirmed":
+        raise EntityGraphValidationError(
+            "self entity must be confirmed",
+            code="ENTITY_SCHEMA_SELF_ANCHOR",
+            details={"self_entity_id": self_entities[0]["id"]},
+        )
 
     return validated

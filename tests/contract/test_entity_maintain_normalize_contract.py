@@ -202,7 +202,13 @@ def test_maintain_delete_preview_reports_impact_without_writes(
         "backup_path": None,
         "deleted_id": "person-bob",
         "deleted_name": "Bob",
-        "cleaned_refs": [{"entity_id": "person-alice", "relation": "friend_of"}],
+        "cleaned_refs": [
+            {
+                "entity_id": "person-alice",
+                "primary_name": "Alice",
+                "relation": "friend_of",
+            }
+        ],
     }
 
 

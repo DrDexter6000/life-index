@@ -535,13 +535,13 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 **查 → 筛 → 荐 → 问 → 写**：先 `life-index entity audit --json` 看 `traffic_light`、`pending_count`、`structural_issue_count` 和 `next_step.command`；需要访谈时再 `life-index entity --review`，按 `evidence` 指针读原文，把候选按人物分桶为很确定 same / 很确定 different / 拿不准 / 低价值可缓；再给带理由建议，而不是复述队列；每轮 ≤5 组，问用户 Same / Different / Not-sure，也接受批量授权（如“你确定的那批照办”）。
 确认后才写：合并前 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`，再 `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`；明确不同人/物时用 `life-index entity --review --action keep_separate --id SOURCE_ID --target-id TARGET_ID` 持久化人判，误标后用 `life-index entity --review --action undo_keep_separate --id SOURCE_ID --target-id TARGET_ID` 撤销；关系先 `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID --relation RELATION`，再 `life-index entity --review --action add_relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION`；候选确认用 `life-index entity --review --action confirm_candidate --id ENTITY_ID` 或带 `--target-id TARGET_ID --relation RELATION`；加别名用 `life-index entity --add-alias ALIAS --id ENTITY_ID`；撤销合并用 `life-index entity --unmerge --id MERGED_ID --target-id TARGET_ID`。
 
-**冷启动录入**：已有日志先 `life-index entity build --from-journals --preview --json` 看候选，读 evidence 后访谈确认；用户口述家人/关系时，先问清身份和方向，再逐条复述确认；确认后用 `life-index entity --add '<json>'` 创建 `source=user,status=confirmed` 实体，用 review/add_relationship 原语写边；写完 `life-index entity --check`。`evidence=[]` 对用户确认事实是健康态。
+**冷启动录入**：已有日志先 `life-index entity build --from-journals --preview --json` 看候选，读 evidence 后访谈确认；用户口述家人/关系时，先问清身份和方向，并询问“哪个实体是你本人”；逐条复述确认后用 `life-index entity --add '<json>'` 创建 `source=user,status=confirmed` 实体，用 review/add_relationship 原语写边，再运行 `life-index entity --set-self --id ENTITY_ID --json` 设置“我”的锚点；写完 `life-index entity --check`。`evidence=[]` 对用户确认事实是健康态。
 
 **批量录入**：不要要求固定模板。用户可给 Excel/CSV/Markdown 表、一段话或照片转写；agent 复述结构并拿到批量授权后生成 JSON/YAML 批文件，先 `life-index entity build --from-batch FILE --preview --json`，再 `--apply --json`，最后 `life-index entity --check`。重名冲突会进入 `entity --review`。
 
 **表格/直编通道**：偏好表格时，`life-index entity --review --export csv --output review.csv` 或 `--export xlsx`，用户填 decision 列后 `life-index entity --review --import review.csv`；高级用户可直接编辑 `entity_graph.yaml`，随后必须 `life-index entity --check`，必要时再 `life-index smart-search --query "..."` 验证。
 
-**队列外观察义务**：写日志或读 evidence 时，如果注意到新人名/新关系线索，轻提一句或用 `life-index entity --propose '<json>'` 静默放入候选池；候选不会影响 confirmed 检索，等下一轮访谈再裁决。
+**队列外观察义务**：写日志或读 evidence 时，如果注意到新人名/新关系线索，轻提一句或用 `life-index entity --propose '<json>'` 静默放入候选池；候选不会影响 confirmed 检索，等下一轮访谈再裁决。用户口述/纠正人物关系事实时，agent 应主动复述并提议写入图谱；建议自由，写入仍必须有人判。
 
 **维护节律**：事件触发（新候选）轻提 1 句；周检 1 分钟跑 `life-index entity audit --json` 看灯号；类型旧时先 `life-index entity maintain --normalize --preview --json`，用户批准后 `--apply --backup`；删除实体先 `life-index entity maintain --delete --id ENTITY_ID --preview --json`，用户确认后 `--apply --backup`；月理 10 分钟过 ≤5 组访谈。
 

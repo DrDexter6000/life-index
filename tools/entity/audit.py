@@ -11,6 +11,8 @@ import yaml
 from tools.lib.entity_graph import load_entity_graph
 from tools.lib.entity_schema import get_boost_decay_defaults
 
+SELF_ANCHOR_COMMAND = "life-index entity --set-self --id ENTITY_ID --json"
+
 # Kinship term mapping for semantic duplicate detection
 _KINSHIP_MAP: dict[str, set[str]] = {
     "妈妈": {"母亲", "妈", "老妈", "mom", "mother"},
@@ -54,6 +56,7 @@ def audit_entity_graph(
     entities = load_entity_graph(graph_path)
     issues: list[dict[str, Any]] = []
     facts: dict[str, Any] = {"zero_journal_reference_entities": []}
+    info: list[dict[str, str]] = []
     fact_annotations: dict[str, Any] = {
         "zero_journal_reference_entities": {
             "classification": "neutral_fact",
@@ -78,7 +81,10 @@ def audit_entity_graph(
     # 3. Pending candidate review
     issues.extend(_detect_candidate_items(entities))
 
-    # 4. Incomplete relationships (requires journals_dir)
+    # 4. Neutral self-anchor hint
+    info.extend(_detect_self_anchor_info(entities))
+
+    # 5. Incomplete relationships (requires journals_dir)
     if journals_dir is not None:
         issues.extend(_detect_incomplete_relationships(entities, journals_dir))
 
@@ -96,8 +102,51 @@ def audit_entity_graph(
         "summary": summary,
         "facts": facts,
         "fact_annotations": fact_annotations,
+        "info": info,
         "boost_decay": _load_boost_decay(data),
     }
+
+
+def _entity_ref(entity: dict[str, Any]) -> dict[str, str]:
+    return {"entity_id": entity["id"], "primary_name": entity.get("primary_name", "")}
+
+
+def _entity_refs_by_ids(
+    entities: list[dict[str, Any]], ids: list[str | None]
+) -> list[dict[str, str]]:
+    by_id = {entity["id"]: entity for entity in entities}
+    refs: list[dict[str, str]] = []
+    for entity_id in ids:
+        if not entity_id:
+            continue
+        entity = by_id.get(entity_id)
+        refs.append(
+            {
+                "entity_id": str(entity_id),
+                "primary_name": entity.get("primary_name", "") if entity else "",
+            }
+        )
+    return refs
+
+
+def _detect_self_anchor_info(entities: list[dict[str, Any]]) -> list[dict[str, str]]:
+    has_confirmed_human_actor = any(
+        entity.get("type") == "actor"
+        and entity.get("status", "confirmed") == "confirmed"
+        and (entity.get("attributes") or {}).get("kind", "human") == "human"
+        for entity in entities
+    )
+    has_self = any((entity.get("attributes") or {}).get("self") is True for entity in entities)
+    if not has_confirmed_human_actor or has_self:
+        return []
+    return [
+        {
+            "type": "self_anchor_missing",
+            "severity": "info",
+            "message": "Entity graph has confirmed actor entities but no self anchor.",
+            "suggested_command": SELF_ANCHOR_COMMAND,
+        }
+    ]
 
 
 def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -151,6 +200,7 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             entity_b.get("primary_name", ""),
                         ],
                         "entity_ids": [entity_a["id"], entity_b["id"]],
+                        "entity_refs": [_entity_ref(entity_a), _entity_ref(entity_b)],
                         "confidence": 1.0,
                         "evidence": f"alias overlap: {overlap}",
                         "suggested_action": "merge",
@@ -169,6 +219,7 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "severity": "high",
                         "entities": [name_a, name_b],
                         "entity_ids": [entity_a["id"], entity_b["id"]],
+                        "entity_refs": [_entity_ref(entity_a), _entity_ref(entity_b)],
                         "confidence": 0.9,
                         "evidence": f"kinship synonyms: {name_a} ↔ {name_b}",
                         "suggested_action": "merge",
@@ -185,6 +236,7 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "severity": "medium",
                         "entities": [name_a, name_b],
                         "entity_ids": [entity_a["id"], entity_b["id"]],
+                        "entity_refs": [_entity_ref(entity_a), _entity_ref(entity_b)],
                         "confidence": 0.7,
                         "evidence": "similar names: edit distance ≤ 1",
                         "suggested_action": "merge",
@@ -197,8 +249,8 @@ def _detect_duplicates(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _detect_zero_reference_entities(
     entities: list[dict[str, Any]],
     journals_dir: Path,
-) -> list[str]:
-    """Return confirmed/candidate entity IDs with zero journal references.
+) -> list[dict[str, str]]:
+    """Return confirmed/candidate entity refs with zero journal references.
 
     This is a neutral fact for observability only, not an audit issue.
     """
@@ -231,16 +283,16 @@ def _detect_zero_reference_entities(
             except Exception:
                 continue
 
-    zero_reference_entity_ids: list[str] = []
+    zero_reference_entities: list[dict[str, str]] = []
     for entity in entities:
         names = {entity.get("primary_name", "")}
         names.update(entity.get("aliases", []))
         names.discard("")
 
         if not names.intersection(referenced_names):
-            zero_reference_entity_ids.append(entity["id"])
+            zero_reference_entities.append(_entity_ref(entity))
 
-    return zero_reference_entity_ids
+    return zero_reference_entities
 
 
 def _detect_candidate_items(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -258,6 +310,7 @@ def _detect_candidate_items(entities: list[dict[str, Any]]) -> list[dict[str, An
                     "severity": "low",
                     "entity_id": entity["id"],
                     "entity_ids": [entity["id"]],
+                    "entity_refs": [_entity_ref(entity)],
                     "primary_name": entity.get("primary_name", ""),
                     "source": entity.get("source", "system"),
                     "status": "candidate",
@@ -283,11 +336,15 @@ def _detect_candidate_items(entities: list[dict[str, Any]]) -> list[dict[str, An
                     "severity": "low",
                     "entity_id": entity["id"],
                     "entity_ids": [entity["id"], relationship.get("target", "")],
+                    "entity_refs": _entity_refs_by_ids(
+                        entities,
+                        [entity["id"], relationship.get("target", "")],
+                    ),
                     "relation": relationship.get("relation", ""),
                     "source": relationship.get("source", "system"),
                     "status": "candidate",
                     "message": (
-                        f"Candidate relationship {entity['id']} "
+                        f"Candidate relationship {entity.get('primary_name', entity['id'])} "
                         f"{relationship.get('relation', '')} "
                         f"{relationship.get('target', '')} awaits human review"
                     ),
@@ -384,6 +441,7 @@ def _detect_incomplete_relationships(
                 "severity": "low",
                 "entities": names,
                 "entity_ids": ids,
+                "entity_refs": _entity_refs_by_ids(entities, ids),
                 "co_occurrence_count": count,
                 "message": (
                     f"'{names[0]}' and '{names[1]}' co-occur in {count} journals "
@@ -439,5 +497,6 @@ def _empty_report() -> dict[str, Any]:
                 ),
             }
         },
+        "info": [],
         "boost_decay": get_boost_decay_defaults(),
     }

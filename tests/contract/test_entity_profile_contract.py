@@ -38,7 +38,7 @@ def _profile_graph() -> list[dict]:
             "type": "actor",
             "primary_name": "Alice",
             "aliases": ["Ally"],
-            "attributes": {"kind": "human"},
+            "attributes": {"kind": "human", "self": True},
             "relationships": [
                 {
                     "target": "actor-bob",
@@ -144,6 +144,7 @@ def test_profile_by_id_returns_identity_relationships_mentions_and_stats(
         "type": "actor",
         "kind": "human",
         "status": "confirmed",
+        "is_self": True,
     }
     assert data["relationships"] == [
         {

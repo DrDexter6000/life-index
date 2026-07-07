@@ -140,6 +140,91 @@ def _with_workflow_hint(payload: dict[str, Any], primitive: str) -> dict[str, An
     return payload
 
 
+def _entity_ref(entity: dict[str, Any]) -> dict[str, str]:
+    return {
+        "entity_id": str(entity["id"]),
+        "primary_name": str(entity.get("primary_name", "")),
+    }
+
+
+def _set_self_anchor(
+    entities: list[dict[str, Any]],
+    *,
+    entity_id: str,
+    graph_path: Path,
+) -> dict[str, Any]:
+    target = next((entity for entity in entities if entity["id"] == entity_id), None)
+    if target is None:
+        return {
+            "success": False,
+            "data": {"entity_id": entity_id},
+            "error": {"code": "ENTITY_NOT_FOUND", "message": "entity not found"},
+        }
+    if target.get("status", "confirmed") != "confirmed":
+        return {
+            "success": False,
+            "data": {"entity_id": entity_id, "status": target.get("status", "candidate")},
+            "error": {
+                "code": "ENTITY_SELF_REQUIRES_CONFIRMED",
+                "message": "self anchor can only be set on a confirmed entity",
+            },
+        }
+
+    created_at = _now_iso()
+    previous = next(
+        (
+            _entity_ref(entity)
+            for entity in entities
+            if (entity.get("attributes") or {}).get("self") is True
+        ),
+        None,
+    )
+    for entity in entities:
+        attributes = entity.setdefault("attributes", {})
+        attributes.pop("self", None)
+        attributes.pop("self_source", None)
+        attributes.pop("self_created_at", None)
+    target_attributes = target.setdefault("attributes", {})
+    target_attributes["self"] = True
+    target_attributes["self_source"] = "user"
+    target_attributes["self_created_at"] = created_at
+    save_entity_graph(entities, graph_path)
+    return {
+        "success": True,
+        "data": {
+            "self_entity": _entity_ref(target),
+            "previous_self_entity": previous,
+            "source": "user",
+            "created_at": created_at,
+        },
+        "error": None,
+    }
+
+
+def _unset_self_anchor(entities: list[dict[str, Any]], *, graph_path: Path) -> dict[str, Any]:
+    previous_entity: dict[str, Any] | None = None
+    changed = False
+    for entity in entities:
+        attributes = entity.setdefault("attributes", {})
+        if attributes.get("self") is True and previous_entity is None:
+            previous_entity = entity
+        for key in ("self", "self_source", "self_created_at"):
+            if key in attributes:
+                attributes.pop(key, None)
+                changed = True
+    if changed:
+        save_entity_graph(entities, graph_path)
+    return {
+        "success": True,
+        "data": {
+            "previous_self_entity": (
+                _entity_ref(previous_entity) if previous_entity is not None else None
+            )
+        },
+        "error": None,
+    }
+
+
 def _handle_retired_top_level_primitives(argv: list[str]) -> None:
     if argv and argv[0] in {"build", "audit", "maintain"}:
         return
@@ -311,6 +396,9 @@ Advanced primitives appendix:
   life-index entity --check --json         Structural graph check component
   life-index entity --audit --json         Low-level quality audit component
   life-index entity --stats --json         Graph statistics component
+  life-index entity --set-self --id ENTITY_ID --json
+                                        Set the unique self anchor
+  life-index entity --unset-self --json  Clear the self anchor
 """,
     )
     parser.add_argument("--list", action="store_true", dest="list_entities")
@@ -324,6 +412,8 @@ Advanced primitives appendix:
     parser.add_argument("--unmerge", action="store_true")
     parser.add_argument("--propose")
     parser.add_argument("--apply-batch", dest="apply_batch")
+    parser.add_argument("--set-self", action="store_true")
+    parser.add_argument("--unset-self", action="store_true")
     parser.add_argument(
         "--preview", action="store_true", help="Preview only, do not mutate the graph"
     )
@@ -365,6 +455,19 @@ Advanced primitives appendix:
         return
 
     entities = load_entity_graph(graph_path)
+
+    if args.set_self and args.unset_self:
+        raise SystemExit("choose only one of --set-self or --unset-self")
+
+    if args.set_self:
+        if not args.entity_id:
+            raise SystemExit("--set-self requires --id ENTITY_ID")
+        _print(_set_self_anchor(entities, entity_id=args.entity_id, graph_path=graph_path))
+        return
+
+    if args.unset_self:
+        _print(_unset_self_anchor(entities, graph_path=graph_path))
+        return
 
     if args.apply_batch:
         from tools.entity.batch import apply_batch_file

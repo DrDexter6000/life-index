@@ -255,6 +255,7 @@ class SmartSearchOrchestrator:
                 bounded.append(
                     {
                         "entity_id": h["entity_id"],
+                        "primary_name": h.get("primary_name", ""),
                         "entity_type": h["entity_type"],
                         "matched_term": h["matched_term"],
                         "expansion_terms": terms,
@@ -933,7 +934,12 @@ class SmartSearchOrchestrator:
                     em_parts = []
                     for em in ev["entity_matches"]:
                         terms = ", ".join(em.get("matched_terms", []))
-                        em_parts.append(f"{em['entity_id']}({em['entity_type']})[{terms}]")
+                        entity_id = em["entity_id"]
+                        label = em.get("primary_name") or entity_id
+                        display = (
+                            f"{label}<{entity_id}>" if label and label != entity_id else entity_id
+                        )
+                        em_parts.append(f"{display}({em['entity_type']})[{terms}]")
                     extras.append(f"entities: {'; '.join(em_parts)}")
                 if extras:
                     line += "\n   " + ", ".join(extras)
@@ -997,6 +1003,7 @@ class SmartSearchOrchestrator:
                     bounded.append(
                         {
                             "entity_id": em.entity_id[:_MAX_ENTITY_ID_LENGTH],
+                            "primary_name": em.primary_name[:_MAX_MATCHED_TERM_LENGTH],
                             "entity_type": em.entity_type[:_MAX_ENTITY_TYPE_LENGTH],
                             "matched_terms": [
                                 t[:_MAX_MATCHED_TERM_LENGTH]
@@ -1263,8 +1270,14 @@ class SmartSearchOrchestrator:
                     t[:_MAX_EXPANSION_TERM_LENGTH]
                     for t in h["expansion_terms"][:_MAX_EXPANSION_TERMS_PER_HINT]
                 )
+                name = h.get("primary_name") or h["entity_id"]
+                display = (
+                    f"{name} <{h['entity_id']}>"
+                    if name and name != h["entity_id"]
+                    else h["entity_id"]
+                )
                 lines.append(
-                    f"- matched \"{h['matched_term']}\" -> {h['entity_id']} "
+                    f"- matched \"{h['matched_term']}\" -> {display} "
                     f"({h['entity_type']}); also known as: {terms}"
                 )
             entity_block = (
@@ -1347,15 +1360,18 @@ class SmartSearchOrchestrator:
                 entity_parts = []
                 for em in entity_matches[:_MAX_ENTITY_MATCHES_PER_ITEM]:
                     entity_id = str(em.get("entity_id", ""))[:_MAX_ENTITY_ID_LENGTH]
+                    primary_name = str(em.get("primary_name", ""))[:_MAX_MATCHED_TERM_LENGTH]
                     entity_type = str(em.get("entity_type", ""))[:_MAX_ENTITY_TYPE_LENGTH]
                     matched_terms = [
                         str(t)[:_MAX_MATCHED_TERM_LENGTH]
                         for t in em.get("matched_terms", [])[:_MAX_MATCHED_TERMS_PER_ENTITY]
                     ]
                     if entity_id and entity_type:
-                        entity_parts.append(
-                            f"{entity_id}({entity_type})[{', '.join(matched_terms)}]"
+                        label = primary_name or entity_id
+                        display = (
+                            f"{label}<{entity_id}>" if label and label != entity_id else entity_id
                         )
+                        entity_parts.append(f"{display}({entity_type})[{', '.join(matched_terms)}]")
                 if entity_parts:
                     lines.append(f"   entities: {'; '.join(entity_parts)}")
 

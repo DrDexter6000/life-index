@@ -5,6 +5,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tools.lib.entity_schema import EntityGraphValidationError
+from tools.lib.entity_schema import validate_entity_graph_payload
+
 
 def _base_entities(relationship: dict) -> list[dict]:
     return [
@@ -29,8 +32,6 @@ def _base_entities(relationship: dict) -> list[dict]:
 
 class TestRelationshipMetadataBackcompat:
     def test_legacy_bare_relationship_loads_with_v12_defaults(self) -> None:
-        from tools.lib.entity_schema import validate_entity_graph_payload
-
         fixed_time = "2026-07-04T00:00:00+00:00"
         validated = validate_entity_graph_payload(
             {"entities": _base_entities({"target": "person-bob", "relation": "friend_of"})},
@@ -149,3 +150,57 @@ class TestEntityRuntimeMixedRelationshipShapes:
 
         assert view.reverse_relationships["person-bob"] == [("person-alice", "friend_of")]
         assert view.reverse_relationships["person-morgan"] == [("person-alice", "colleague_of")]
+
+
+class TestSelfAnchorSchema:
+    def test_schema_accepts_exactly_one_self_anchor(self) -> None:
+        payload = {
+            "entities": [
+                {
+                    "id": "actor-alice",
+                    "type": "actor",
+                    "primary_name": "Alice",
+                    "attributes": {"kind": "human", "self": True},
+                    "relationships": [],
+                },
+                {
+                    "id": "actor-bob",
+                    "type": "actor",
+                    "primary_name": "Bob",
+                    "attributes": {"kind": "human"},
+                    "relationships": [],
+                },
+            ]
+        }
+
+        validated = validate_entity_graph_payload(payload)
+
+        assert validated[0]["attributes"]["self"] is True
+
+    def test_schema_rejects_multiple_self_anchors(self) -> None:
+        payload = {
+            "entities": [
+                {
+                    "id": "actor-alice",
+                    "type": "actor",
+                    "primary_name": "Alice",
+                    "attributes": {"kind": "human", "self": True},
+                    "relationships": [],
+                },
+                {
+                    "id": "actor-bob",
+                    "type": "actor",
+                    "primary_name": "Bob",
+                    "attributes": {"kind": "human", "self": True},
+                    "relationships": [],
+                },
+            ]
+        }
+
+        try:
+            validate_entity_graph_payload(payload)
+        except EntityGraphValidationError as exc:
+            assert exc.code == "ENTITY_SCHEMA_SELF_ANCHOR"
+            assert "exactly one self entity" in str(exc)
+        else:
+            raise AssertionError("multiple self anchors must fail schema validation")
