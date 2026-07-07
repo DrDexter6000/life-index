@@ -6,19 +6,79 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-07
+
+### What users get
+
+- Entity Graph now pays visible rent in retrieval: search JSON explains entity
+  expansion attribution, relationship-aware queries can expand from confirmed
+  graph edges, and standard "my + relationship" queries resolve from an
+  explicit self anchor.
+- Entity profiles are first-class deterministic views. Agents can ask for
+  `entity profile`, then read materialized `Entities/<entity_id>.md` profile
+  documents and follow recent mention pointers before falling back to search.
+- Entity outputs have a deterministic name floor: stats, audit/review,
+  candidates, search hints, and evidence-pack entity matches carry
+  `primary_name` beside opaque entity IDs so weaker host agents do not
+  reconstruct names from IDs.
+- Agent-facing maintenance signals are cleaner: read-only entity primitives
+  advertise workflow hints, profile freshness appears in `health`, dirty host
+  checkouts are warned during upgrade freshness checks, and JSON stdout remains
+  directly parseable even when Chinese tokenization dependencies log while
+  loading.
+- License changed to AGPL-3.0-only from this release. Local use is unaffected;
+  hosted derivative services must publish corresponding source.
+
+### Breaking and migration
+
+- BREAKING: Entity Graph uses the cutover L1 type vocabulary
+  `actor`, `place`, `project`, `event`, `artifact`, and `concept`, with
+  `attributes.kind` for finer distinctions. Legacy graphs containing
+  `type: person` fail closed with `ENTITY_SCHEMA_LEGACY`; migrate with
+  `life-index entity maintain --normalize --preview --json`, then apply after
+  reviewing the plan.
+- BREAKING: The project license is AGPL-3.0-only starting with v1.4.0. Existing
+  local personal use is unchanged; hosted derivative services need to comply
+  with AGPL source-sharing obligations.
+
 ### Added
 
 - Entity Graph self anchors via `entity --set-self` / `entity --unset-self`;
   search can deterministically expand standard "my + relationship" queries
   such as "my mother" or "我妈妈" from the confirmed self entity.
+- `entity profile` assembles identity, confirmed relationships, mentions,
+  evidence, and stats for one entity.
+- `life-index abstract --entities` materializes deterministic profile
+  documents under `Entities/` and links them from the root Index.
 
 ### Changed
 
-- License changed to AGPL-3.0-only for the next released version. Local use is
-  unaffected; hosted derivative services must publish corresponding source.
+- License changed to AGPL-3.0-only from v1.4.0. Local use is unaffected; hosted
+  derivative services must publish corresponding source.
 - Entity-facing JSON now carries deterministic `primary_name` fields beside
   entity IDs across stats, audit/review, write-time candidates, search hints,
   and evidence-pack entity matches.
+- Search JSON now exposes entity expansion attribution so agents can explain
+  whether a query expanded through aliases or confirmed relationships.
+
+### Fixed
+
+- JSON-mode search stdout is pure JSON; dependency loading messages are kept
+  off stdout so callers can use `json.loads(stdout)` directly.
+
+### Included in this release
+
+- docs: switch project license to AGPL-3.0-only and preserve owner relicense
+  terms (#134, #135).
+- docs(entity): tighten signal hygiene playbook (#136).
+- feat(search): expose entity expansion attribution (#138).
+- feat(entity): add profile assembly primitive (#139).
+- feat(health): warn on dirty host checkouts (#140).
+- feat(search): add relation-aware entity expansion (#141).
+- feat(entity): materialize profile docs (#142).
+- feat(entity): signal stale profile docs (#143).
+- feat(entity): add self anchor and name floor (#144).
+- fix(cli): keep JSON stdout pure (#145).
 
 ## [1.3.7] - 2026-07-06
 
