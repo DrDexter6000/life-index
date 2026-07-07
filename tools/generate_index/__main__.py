@@ -5,24 +5,24 @@ Life Index - Index Generator - CLI Entry Point
 """
 
 import argparse
+import contextlib
 import json
+import logging
 import sys
 from collections.abc import Iterator
 
 from . import (
     generate_monthly_abstract,
     generate_yearly_abstract,
-    materialize_entity_profiles,
     rebuild_index_tree,
 )
-from ..lib.config import ensure_dirs
-from ..lib.paths import get_journals_dir
-from ..lib.logger import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _iter_journal_months(year: int | None = None) -> Iterator[tuple[int, int]]:
+    from ..lib.paths import get_journals_dir
+
     journals_dir = get_journals_dir()
     if year is not None:
         year_dirs = [journals_dir / str(year)]
@@ -74,6 +74,60 @@ def _refresh_index_b_result(*, dry_run: bool) -> dict:
         }
 
 
+def _ensure_data_dirs() -> None:
+    from ..lib.config import ensure_dirs
+
+    ensure_dirs()
+
+
+def _build_results(args: argparse.Namespace) -> list[dict]:
+    results: list[dict] = []
+
+    if args.rebuild:
+        logger.info("重建全部索引树")
+        results.append(rebuild_index_tree(dry_run=args.dry_run))
+        results.append(_refresh_index_b_result(dry_run=args.dry_run))
+
+    if args.entities:
+        from .entity_profiles import materialize_entity_profiles
+
+        logger.info("生成实体档案文档")
+        results.append(materialize_entity_profiles(entity_id=args.entity_id, dry_run=args.dry_run))
+
+    # 生成月度摘要
+    if args.month:
+        try:
+            year, month = map(int, args.month.split("-"))
+            logger.info(f"生成月度摘要：{year}年{month:02d}月")
+            result = generate_monthly_abstract(year, month, args.dry_run)
+            results.append(result)
+        except ValueError:
+            logger.error("--month 参数格式应为 YYYY-MM (如 2026-03)")
+            sys.exit(1)
+
+    # 生成年度摘要
+    if args.year and not args.all_months:
+        logger.info(f"生成年度摘要：{args.year}年")
+        result = generate_yearly_abstract(args.year, args.dry_run)
+        results.append(result)
+
+    # 批量生成月度摘要
+    if args.all_months:
+        scope = f"{args.year}年" if args.year else "所有年份"
+        logger.info(f"批量生成{scope}有日志月份的月度摘要")
+        month_pairs = list(_iter_journal_months(args.year))
+        for year, month in month_pairs:
+            result = generate_monthly_abstract(year, month, args.dry_run)
+            results.append(result)
+        if not month_pairs:
+            message = f"{args.year}年没有可生成的日志月份" if args.year else "没有可生成的日志月份"
+            logger.warning(message)
+            results.append({"type": "monthly", "year": args.year, "message": message})
+        results.append(_refresh_index_b_result(dry_run=args.dry_run))
+
+    return results
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Life Index 索引生成工具（月度/年度）",
@@ -123,7 +177,12 @@ Examples:
     parser.add_argument("--id", dest="entity_id", help="仅生成指定实体 ID 的档案")
 
     args = parser.parse_args()
-    ensure_dirs()
+
+    if args.json:
+        with contextlib.redirect_stdout(sys.stderr):
+            _ensure_data_dirs()
+    else:
+        _ensure_data_dirs()
 
     # 验证参数
     if (
@@ -137,47 +196,11 @@ Examples:
     if args.entity_id and not args.entities:
         parser.error("--id requires --entities")
 
-    results = []
-
-    if args.rebuild:
-        logger.info("重建全部索引树")
-        results.append(rebuild_index_tree(dry_run=args.dry_run))
-        results.append(_refresh_index_b_result(dry_run=args.dry_run))
-
-    if args.entities:
-        logger.info("生成实体档案文档")
-        results.append(materialize_entity_profiles(entity_id=args.entity_id, dry_run=args.dry_run))
-
-    # 生成月度摘要
-    if args.month:
-        try:
-            year, month = map(int, args.month.split("-"))
-            logger.info(f"生成月度摘要：{year}年{month:02d}月")
-            result = generate_monthly_abstract(year, month, args.dry_run)
-            results.append(result)
-        except ValueError:
-            logger.error("--month 参数格式应为 YYYY-MM (如 2026-03)")
-            sys.exit(1)
-
-    # 生成年度摘要
-    if args.year and not args.all_months:
-        logger.info(f"生成年度摘要：{args.year}年")
-        result = generate_yearly_abstract(args.year, args.dry_run)
-        results.append(result)
-
-    # 批量生成月度摘要
-    if args.all_months:
-        scope = f"{args.year}年" if args.year else "所有年份"
-        logger.info(f"批量生成{scope}有日志月份的月度摘要")
-        month_pairs = list(_iter_journal_months(args.year))
-        for year, month in month_pairs:
-            result = generate_monthly_abstract(year, month, args.dry_run)
-            results.append(result)
-        if not month_pairs:
-            message = f"{args.year}年没有可生成的日志月份" if args.year else "没有可生成的日志月份"
-            logger.warning(message)
-            results.append({"type": "monthly", "year": args.year, "message": message})
-        results.append(_refresh_index_b_result(dry_run=args.dry_run))
+    if args.json:
+        with contextlib.redirect_stdout(sys.stderr):
+            results = _build_results(args)
+    else:
+        results = _build_results(args)
 
     # 输出结果
     if args.json:

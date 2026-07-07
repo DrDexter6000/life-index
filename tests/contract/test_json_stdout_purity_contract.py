@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -48,6 +50,64 @@ def cut_for_search(text):
 
 def load_userdict(path):
     print("FAKE_JIEBA_USERDICT_STDOUT")
+""",
+        encoding="utf-8",
+    )
+
+
+def _write_entity_graph_json(data_dir: Path) -> None:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "entity_graph.yaml").write_text(
+        json.dumps(
+            {
+                "entities": [
+                    {
+                        "id": "actor-alice",
+                        "type": "actor",
+                        "primary_name": "Alice",
+                        "aliases": ["Ally"],
+                        "attributes": {"kind": "human"},
+                        "relationships": [],
+                        "source": "user",
+                        "status": "confirmed",
+                    },
+                    {
+                        "id": "actor-bob",
+                        "type": "actor",
+                        "primary_name": "Bob",
+                        "aliases": [],
+                        "attributes": {"kind": "human"},
+                        "relationships": [],
+                        "source": "user",
+                        "status": "confirmed",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_noisy_yaml(fake_module_dir: Path) -> None:
+    fake_module_dir.mkdir(parents=True, exist_ok=True)
+    (fake_module_dir / "yaml.py").write_text(
+        """print("FAKE_YAML_IMPORT_STDOUT")
+import json
+
+class YAMLError(Exception):
+    pass
+
+def safe_load(stream):
+    print("FAKE_YAML_SAFE_LOAD_STDOUT")
+    text = stream.read() if hasattr(stream, "read") else str(stream)
+    return json.loads(text) if text.strip() else None
+
+def safe_dump(payload, stream=None, **kwargs):
+    text = json.dumps(payload, ensure_ascii=False)
+    if stream is not None:
+        stream.write(text)
+        return None
+    return text
 """,
         encoding="utf-8",
     )
@@ -93,3 +153,45 @@ def test_search_stdout_is_direct_json_when_jieba_loads_noisily(tmp_path: Path) -
     payload = json.loads(result.stdout)
     assert payload["success"] is True
     assert "FAKE_JIEBA" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        [sys.executable, "-m", "tools", "abstract", "--entities", "--json"],
+        [sys.executable, "-m", "tools.generate_index", "--entities", "--json"],
+    ],
+)
+def test_abstract_entities_stdout_is_direct_json_when_dependency_import_is_noisy(
+    command: list[str],
+    tmp_path: Path,
+) -> None:
+    """The entity profile materializer must keep JSON stdout parseable."""
+    data_dir = tmp_path / "Life-Index"
+    fake_module_dir = tmp_path / "fake_yaml"
+    _write_entity_graph_json(data_dir)
+    _write_noisy_yaml(fake_module_dir)
+
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    env["PYTHONPATH"] = (
+        str(fake_module_dir)
+        if not env.get("PYTHONPATH")
+        else os.pathsep.join([str(fake_module_dir), env["PYTHONPATH"]])
+    )
+
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=WORKTREE_ROOT,
+        env=env,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload[0]["success"] is True
+    assert payload[0]["type"] == "entity-profiles"
+    assert "FAKE_YAML" not in result.stdout
