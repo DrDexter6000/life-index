@@ -4424,21 +4424,31 @@ python -m tools.build_index [options]
 - `success`: always `true` for health checks. Degraded/unhealthy status is communicated via `data.status`, not via `success: false`.
 - `data.status`: the primary health indicator. `degraded` means partial functionality; `unhealthy` means critical issues.
 - `data.checks`: additive; new checks may be added (e.g., `index_tree` check).
+- Suggested commands in `data.checks`, `data.upgrade_freshness`, and
+  `events[].data` may include additive `side_effect: "read" | "write"` and
+  `side_effect_note` metadata. Host agents should inspect this metadata before
+  executing a suggestion. `write` may still mean a derived-artifact refresh
+  rather than source-data mutation; the note states the boundary.
 - `data.upgrade_freshness`: non-blocking session signal. It reports local
   installed/manifest mismatch and checkout-vs-upstream metadata, including
   `suggested_refresh_step` when a local update signal is visible. It does not
   replace `bootstrap --json`. Editable checkouts also report dirty worktree
   hints under `git.dirty` / `git.dirty_count`; a dirty-only checkout adds
-  `warning` plus `suggested_command: "git checkout -- ."` without adding a
-  health issue or blocking other operations.
+  `warning` plus `suggested_command: "git checkout -- ."` with
+  `side_effect: "write"` without adding a health issue or blocking other
+  operations.
 - `data.entity_maintenance`: `traffic_light` is `green` when pending review is
   clear and the graph was touched within 30 days; `yellow` when candidates are
   pending or the audit is stale; `red` when structural errors or duplicate
   confirmed names need review. Entity suggestions point to
-  `life-index entity --review`.
+  `life-index entity --review`. When `traffic_light == "green"` and
+  `pending_count == 0`, `suggested_next_step.command` is `null`.
 - `data.actionable_issues`: install/runtime or index-readiness items that can be acted on immediately.
 - `data.chronic_debt`: non-blocking maintenance reminders such as entity graph or Index Tree upkeep. These remain visible without implying an install failure.
 - `data.checks[name="data_directory"].journal_count`: counts only canonical journal filenames matching `life-index_YYYY-MM-DD_NNN.md`; this is the same journal enumeration used by `bootstrap` and `migrate --dry-run`.
+- `data.checks[name="data_directory"].last_journal_date`: newest canonical
+  journal filename date (`YYYY-MM-DD`) or `null` when no canonical journals
+  exist.
 - `health --data-audit`: compatibility summary over `maintenance audit`; Data
   Doctor is the SSOT for data-health issue detection, planning, and low-risk
   repairs.
@@ -4468,8 +4478,10 @@ python -m tools health [options]
 
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
+| json | flag | ❌ | true | 输出 JSON（默认行为） |
 | data-audit | flag | ❌ | false | 数据目录清洁度审计 |
 | cache-audit | flag | ❌ | false | Cache 版本只读审计（JSON） |
+| help / h | flag | ❌ | false | 显示 usage/help 文本，不执行 health checks |
 
 ### 返回值
 

@@ -15,6 +15,11 @@ logger = __import__("logging").getLogger(__name__)
 NO_JOURNAL_THRESHOLD_DAYS = 7
 ENTITY_AUDIT_THRESHOLD_DAYS = 30
 ENTITY_PROFILES_COMMAND = "life-index abstract --entities"
+DERIVED_ENTITY_PROFILES_NOTE = (
+    "Writes derived Entities/ profile docs only; entity_graph.yaml is not modified."
+)
+DERIVED_INDEX_NOTE = "Writes derived index artifacts only; source journals are not modified."
+ENTITY_AUDIT_READ_NOTE = "Read-only entity audit/review/check command."
 
 _JOURNAL_PATTERN = __import__("re").compile(r"^life-index_\d{4}-\d{2}-\d{2}_\d+\.md$")
 
@@ -106,6 +111,8 @@ def check_monthly_review_due(context: dict) -> list[Event]:
                         "month": month_str,
                         "expected_artifact": artifact_name,
                         "suggested_command": f"life-index abstract --month {month_str}",
+                        "side_effect": "write",
+                        "side_effect_note": DERIVED_INDEX_NOTE,
                     },
                 )
             )
@@ -137,6 +144,8 @@ def check_entity_audit_due(context: dict) -> list[Event]:
                 data={
                     "days_since_last_audit": int(days_since),
                     "suggested_command": "life-index entity audit --json",
+                    "side_effect": "read",
+                    "side_effect_note": ENTITY_AUDIT_READ_NOTE,
                 },
             )
         ]
@@ -191,6 +200,8 @@ def check_entity_profiles_stale(context: dict) -> list[Event]:
                 "profile_source_hash": profile_hash,
                 "expected_artifact": "Entities/index.md",
                 "suggested_command": ENTITY_PROFILES_COMMAND,
+                "side_effect": "write",
+                "side_effect_note": DERIVED_ENTITY_PROFILES_NOTE,
             },
         )
     ]
@@ -294,7 +305,12 @@ def check_index_stale(context: dict) -> list[Event]:
                 type="index_stale",
                 severity=EventSeverity.LOW,
                 message="索引可能已过时，建议运行 life-index index",
-                data={"reason": "newer_journals"},
+                data={
+                    "reason": "newer_journals",
+                    "suggested_command": "life-index index",
+                    "side_effect": "write",
+                    "side_effect_note": DERIVED_INDEX_NOTE,
+                },
             )
         ]
 
@@ -316,7 +332,12 @@ def check_index_stale(context: dict) -> list[Event]:
                     type="index_stale",
                     severity=EventSeverity.LOW,
                     message="索引 schema/分词器已变更，建议运行 life-index index --rebuild",
-                    data={"reason": "version_mismatch"},
+                    data={
+                        "reason": "version_mismatch",
+                        "suggested_command": "life-index index --rebuild",
+                        "side_effect": "write",
+                        "side_effect_note": DERIVED_INDEX_NOTE,
+                    },
                 )
             ]
     except Exception:

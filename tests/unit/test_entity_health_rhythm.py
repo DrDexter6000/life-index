@@ -55,6 +55,8 @@ def test_health_entity_maintenance_green_when_current_and_no_pending(
     assert entity["pending_count"] == 0
     assert entity["audit_age_days"] <= 30
     assert entity["review_command"] == "life-index entity --review"
+    assert entity["suggested_next_step"]["command"] is None
+    assert entity["suggested_next_step"]["reason"] == "no pending entity review items"
 
 
 def test_health_reports_entity_profiles_stale_event(
@@ -72,6 +74,9 @@ def test_health_reports_entity_profiles_stale_event(
     assert matching[0]["severity"] == "info"
     assert "life-index abstract --entities" in matching[0]["message"]
     assert matching[0]["data"]["suggested_command"] == "life-index abstract --entities"
+    assert matching[0]["data"]["side_effect"] == "write"
+    assert "derived" in matching[0]["data"]["side_effect_note"]
+    assert "entity_graph.yaml" in matching[0]["data"]["side_effect_note"]
 
 
 def test_health_entity_maintenance_yellow_for_pending_candidates(

@@ -234,3 +234,27 @@ def test_entity_maintain_add_relationship_stdout_is_direct_json(tmp_path: Path) 
     payload = json.loads(result.stdout)
     assert payload["success"] is True
     assert payload["data"]["workflow"] == "maintain.add_relationship"
+
+
+def test_health_json_stdout_is_direct_json(tmp_path: Path) -> None:
+    """The health command must keep JSON stdout parseable without caller recovery."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True)
+
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "tools", "health", "--json"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=WORKTREE_ROOT,
+        env=env,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["schema_version"] == "m16.health.v0"

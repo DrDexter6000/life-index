@@ -56,7 +56,27 @@ class TestHealthCheck:
 
         assert data_directory_check["path"] == str(data_dir)
         assert data_directory_check["journal_count"] == 1
+        assert data_directory_check["last_journal_date"] == "2026-01-01"
         assert search_index_check["path"] == str(index_dir)
+
+    def test_health_data_directory_reports_null_last_journal_date_without_journals(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Empty data dirs should expose a nullable deterministic last_journal_date."""
+        data_dir = tmp_path / "life-index-data"
+        (data_dir / "Journals").mkdir(parents=True)
+
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+        monkeypatch.setitem(sys.modules, "yaml", types.SimpleNamespace(__version__="test"))
+
+        health_check()
+
+        payload = json.loads(capsys.readouterr().out)
+        data_directory_check = next(
+            check for check in payload["data"]["checks"] if check["name"] == "data_directory"
+        )
+        assert data_directory_check["journal_count"] == 0
+        assert data_directory_check["last_journal_date"] is None
 
     def test_health_reports_semantic_index_disabled(self, tmp_path, monkeypatch, capsys):
         data_dir = tmp_path / "life-index-data"
@@ -154,6 +174,8 @@ class TestHealthCheck:
         assert freshness["suggested_refresh_step"] == (
             "git pull --ff-only && python -m pip install -e ."
         )
+        assert freshness["suggested_refresh_step_side_effect"] == "write"
+        assert "Python environment" in freshness["suggested_refresh_step_side_effect_note"]
         assert freshness["changelog"] == "CHANGELOG.md"
 
         check = next(
@@ -225,6 +247,8 @@ class TestHealthCheck:
             "Life Index upgrades to fail."
         )
         assert check["suggested_command"] == "git checkout -- ."
+        assert check["side_effect"] == "write"
+        assert "repository clone" in check["side_effect_note"]
         assert check["git"]["dirty"] is True
         assert check["git"]["dirty_count"] == 2
         assert "issue" not in check
@@ -265,6 +289,7 @@ class TestHealthCheck:
         assert check["status"] == "ok"
         assert "warning" not in check
         assert check["suggested_command"] is None
+        assert "side_effect" not in check
         assert check["git"]["dirty"] is False
 
 
@@ -321,6 +346,9 @@ class TestHealthCheckIndexTree:
         it_check = next(c for c in checks if c["name"] == "index_tree")
         assert "status" in it_check
         assert it_check["status"] in ("ok", "warning", "info")
+        if it_check.get("suggested_command"):
+            assert it_check["side_effect"] == "write"
+            assert "derived" in it_check["side_effect_note"]
 
     def test_health_index_tree_not_critical_when_missing(self, tmp_path, monkeypatch, capsys):
         data_dir = tmp_path / "life-index-data"
@@ -374,8 +402,26 @@ class TestHealthCheckIndexTree:
 
         assert check["status"] == "warning"
         assert check["suggested_command"] == "life-index generate-index --all-months"
+        assert check["side_effect"] == "write"
+        assert "derived" in check["side_effect_note"]
         assert "life-index generate-index --all-months" in check["issue"]
         assert "run 'life-index generate-index'" not in check["issue"]
+
+    def test_health_help_does_not_run_health_checks(self, monkeypatch, capsys):
+        """health --help must return usage text before running detectors/checks."""
+        from tools import __main__ as main_cli
+
+        def fail_if_called() -> None:
+            raise AssertionError("health_check should not run for health --help")
+
+        monkeypatch.setattr(main_cli.sys, "argv", ["life-index", "health", "--help"])
+        monkeypatch.setattr(main_cli, "health_check", fail_if_called)
+
+        main_cli.main()
+
+        captured = capsys.readouterr()
+        assert "Usage: life-index health [options]" in captured.out
+        assert not captured.out.lstrip().startswith("{")
 
 
 class TestApplyPresentationLayer:
