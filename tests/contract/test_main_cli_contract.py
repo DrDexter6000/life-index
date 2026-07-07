@@ -157,6 +157,38 @@ class TestHelpSurface:
         assert "[--delete]" not in result.stdout
 
 
+class TestHealthHelpSurface:
+    def _assert_health_help_text(self, result: subprocess.CompletedProcess) -> None:
+        assert result.returncode == 0, (
+            f"Expected exit code 0, got {result.returncode}\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        stdout = result.stdout
+        assert "Usage: life-index health [options]" in stdout
+        assert "--json" in stdout
+        assert "--data-audit" in stdout
+        assert "--cache-audit" in stdout
+        assert not stdout.lstrip().startswith("{")
+        assert "schema_version" not in stdout
+        assert "data_directory" not in stdout
+
+    def test_health_dash_dash_help_is_text_not_json(self):
+        result = _invoke("health", "--help")
+        self._assert_health_help_text(result)
+
+    def test_health_dash_h_is_text_not_json(self):
+        result = _invoke("health", "-h")
+        self._assert_health_help_text(result)
+
+    def test_health_data_audit_help_is_text_not_audit_json(self):
+        result = _invoke("health", "--data-audit", "--help")
+        self._assert_health_help_text(result)
+
+    def test_health_cache_audit_help_is_text_not_audit_json(self):
+        result = _invoke("health", "--cache-audit", "--help")
+        self._assert_health_help_text(result)
+
+
 class TestNoArgsSurface:
     def test_no_args_exits_non_zero(self):
         result = _invoke()

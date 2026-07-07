@@ -156,6 +156,9 @@ class TestEntityProfilesStaleDetector:
         assert event.severity.value == "info"
         assert "life-index abstract --entities" in event.message
         assert event.data["suggested_command"] == "life-index abstract --entities"
+        assert event.data["side_effect"] == "write"
+        assert "derived" in event.data["side_effect_note"]
+        assert "entity_graph.yaml" in event.data["side_effect_note"]
         assert event.data["reason"] == "missing_profiles"
 
     def test_materializing_profiles_clears_stale_signal(self, tmp_path: Path, monkeypatch):

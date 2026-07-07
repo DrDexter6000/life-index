@@ -80,6 +80,15 @@ DIRTY_WORKTREE_WARNING = (
     "Life Index upgrades to fail."
 )
 DIRTY_WORKTREE_SUGGESTED_COMMAND = "git checkout -- ."
+DERIVED_INDEX_NOTE = "Writes derived index artifacts only; source journals are not modified."
+DERIVED_ENTITY_PROFILES_NOTE = (
+    "Writes derived Entities/ profile docs only; entity_graph.yaml is not modified."
+)
+REPO_RECOVERY_NOTE = "Writes to the repository clone by discarding uncommitted checkout changes."
+UPGRADE_REFRESH_NOTE = "Writes to the local checkout or Python environment to refresh Life Index."
+READ_ONLY_ENTITY_REVIEW_NOTE = (
+    "Read-only review queue/audit command unless an explicit action is supplied."
+)
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
 
@@ -90,6 +99,38 @@ def _restore_import_stdout() -> None:
         return
     sys.stdout = _IMPORT_STDOUT_ORIGINAL
     _IMPORT_STDOUT_ORIGINAL = None
+
+
+def _canonical_journal_date(filename: str) -> str | None:
+    if not filename.startswith("life-index_") or not filename.endswith(".md"):
+        return None
+    date_part = filename[len("life-index_") : len("life-index_") + 10]
+    suffix = filename[len("life-index_") + 10 : -3]
+    if (
+        len(date_part) == 10
+        and date_part[4] == "-"
+        and date_part[7] == "-"
+        and date_part[:4].isdigit()
+        and date_part[5:7].isdigit()
+        and date_part[8:10].isdigit()
+        and suffix.startswith("_")
+        and suffix[1:].isdigit()
+    ):
+        return date_part
+    return None
+
+
+def _latest_journal_date(journals_dir: Path) -> str | None:
+    latest: str | None = None
+    if not journals_dir.exists():
+        return None
+    for path in journals_dir.rglob("*.md"):
+        if not path.is_file():
+            continue
+        journal_date = _canonical_journal_date(path.name)
+        if journal_date and (latest is None or journal_date > latest):
+            latest = journal_date
+    return latest
 
 
 def read_bootstrap_manifest() -> Dict[str, Any]:
@@ -330,8 +371,14 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
         "suggested_command": (DIRTY_WORKTREE_SUGGESTED_COMMAND if dirty_worktree else None),
     }
 
+    if check["suggested_refresh_step"]:
+        check["suggested_refresh_step_side_effect"] = "write"
+        check["suggested_refresh_step_side_effect_note"] = UPGRADE_REFRESH_NOTE
+
     if dirty_worktree:
         check["warning"] = DIRTY_WORKTREE_WARNING
+        check["side_effect"] = "write"
+        check["side_effect_note"] = REPO_RECOVERY_NOTE
 
     if not update_reasons:
         return check, ""
@@ -419,6 +466,7 @@ def _check_data_dir() -> Tuple[Dict[str, Any], str]:
         "path": str(data_dir),
         "exists": data_exists,
         "journal_count": journal_count,
+        "last_journal_date": _latest_journal_date(journals_dir),
     }
     if not data_exists:
         issue = (
@@ -450,6 +498,9 @@ def _check_index() -> Tuple[Dict[str, Any], str]:
         "path": str(index_dir),
     }
     if not fts_db.exists() and data_exists:
+        check["suggested_command"] = "life-index index"
+        check["side_effect"] = "write"
+        check["side_effect_note"] = DERIVED_INDEX_NOTE
         return check, "Search index not built. Run: life-index index"
     return check, ""
 
@@ -467,6 +518,8 @@ def _check_entity_graph(graph_path: Path) -> Dict[str, Any]:
         check["status"] = "warning"
         check["issue"] = "Entity graph not found — run review when candidates appear"
         check["suggested_command"] = "life-index entity --review"
+        check["side_effect"] = "read"
+        check["side_effect_note"] = READ_ONLY_ENTITY_REVIEW_NOTE
         check["maintenance"] = _build_entity_maintenance(graph_path, exists=False)
         return check
 
@@ -482,18 +535,26 @@ def _check_entity_graph(graph_path: Path) -> Dict[str, Any]:
             check["status"] = "warning"
             check["issue"] = "Entity graph is empty — run review when candidates appear"
             check["suggested_command"] = "life-index entity --review"
+            check["side_effect"] = "read"
+            check["side_effect_note"] = READ_ONLY_ENTITY_REVIEW_NOTE
         elif maintenance["traffic_light"] == "red":
             check["status"] = "warning"
             check["issue"] = "Entity graph needs review — run life-index entity --review"
             check["suggested_command"] = "life-index entity --review"
+            check["side_effect"] = "read"
+            check["side_effect_note"] = READ_ONLY_ENTITY_REVIEW_NOTE
         elif maintenance["traffic_light"] == "yellow":
             check["status"] = "warning"
             check["issue"] = "Entity graph has pending maintenance — run life-index entity --review"
             check["suggested_command"] = "life-index entity --review"
+            check["side_effect"] = "read"
+            check["side_effect_note"] = READ_ONLY_ENTITY_REVIEW_NOTE
     except Exception as e:
         check["status"] = "warning"
         check["issue"] = f"Entity graph error: {e}"
         check["suggested_command"] = "life-index entity --review"
+        check["side_effect"] = "read"
+        check["side_effect_note"] = READ_ONLY_ENTITY_REVIEW_NOTE
         check["maintenance"] = _build_entity_maintenance(
             graph_path,
             exists=True,
@@ -546,16 +607,25 @@ def _build_entity_maintenance(
         traffic_light = "green"
         reason = "no pending entity review items"
 
+    suggested_next_step: Dict[str, Any] = {
+        "command": review_command,
+        "reason": reason,
+        "side_effect": "read",
+        "side_effect_note": READ_ONLY_ENTITY_REVIEW_NOTE,
+    }
+    if traffic_light == "green" and pending_count == 0:
+        suggested_next_step = {
+            "command": None,
+            "reason": "no pending entity review items",
+        }
+
     return {
         "traffic_light": traffic_light,
         "pending_count": pending_count,
         "audit_age_days": audit_age_days,
         "duplicate_count": duplicate_count,
         "review_command": review_command,
-        "suggested_next_step": {
-            "command": review_command,
-            "reason": reason,
-        },
+        "suggested_next_step": suggested_next_step,
     }
 
 
@@ -598,6 +668,8 @@ def _check_index_tree() -> Dict[str, Any]:
             check["status"] = "info"
             check["issue"] = f"Index Tree is empty — run '{INDEX_TREE_REBUILD_COMMAND}' to build"
             check["suggested_command"] = INDEX_TREE_REBUILD_COMMAND
+            check["side_effect"] = "write"
+            check["side_effect_note"] = DERIVED_INDEX_NOTE
         elif issues:
             check["status"] = "warning"
             check["issues"] = issues
@@ -613,6 +685,8 @@ def _check_index_tree() -> Dict[str, Any]:
                 f"'{INDEX_TREE_REBUILD_COMMAND}'"
             )
             check["suggested_command"] = INDEX_TREE_REBUILD_COMMAND
+            check["side_effect"] = "write"
+            check["side_effect_note"] = DERIVED_INDEX_NOTE
         else:
             check["status"] = "ok"
     except Exception as e:
@@ -783,6 +857,18 @@ def _run_data_audit() -> None:
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def print_health_usage() -> None:
+    """Print health command usage without running health checks."""
+    print("Usage: life-index health [options]")
+    print("       python -m tools health [options]")
+    print()
+    print("Options:")
+    print("  --json         Emit health JSON output (default).")
+    print("  --data-audit   Summarize Data Doctor audit and next steps (JSON).")
+    print("  --cache-audit  Run read-only cache version audit (JSON).")
+    print("  --help, -h     Show this help text.")
+
+
 def main() -> None:
     """Unified CLI entry point"""
     _restore_import_stdout()
@@ -791,6 +877,10 @@ def main() -> None:
         sys.exit(1)
 
     subcmd = sys.argv[1]
+    if subcmd == "health" and any(arg in ("--help", "-h", "help") for arg in sys.argv[2:]):
+        print_health_usage()
+        return
+
     if subcmd not in ("--help", "-h", "help"):
         try:
             enforce_validation_mode_data_dir()
