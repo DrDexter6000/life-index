@@ -50,15 +50,26 @@ from typing import Any, Dict, List, Tuple
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 
-from tools.lib.journal_files import count_journal_files
-from tools.lib.config import get_model_cache_dir  # noqa: F401 — used via monkeypatch in tests
-from tools.lib.paths import (
+
+def _should_guard_import_stdout(argv: list[str]) -> bool:
+    return len(argv) > 1 and argv[1] in {"abstract", "generate-index"} and "--json" in argv[2:]
+
+
+_IMPORT_STDOUT_ORIGINAL = sys.stdout if _should_guard_import_stdout(sys.argv) else None
+if _IMPORT_STDOUT_ORIGINAL is not None:
+    sys.stdout = sys.stderr
+
+from tools.lib.journal_files import count_journal_files  # noqa: E402
+from tools.lib.config import get_model_cache_dir  # noqa: E402,F401 — used via monkeypatch in tests
+from tools.lib.paths import (  # noqa: E402
     ValidationModeDataDirError,
     enforce_validation_mode_data_dir,
     get_journals_dir,
     get_user_data_dir,
 )
-from tools.lib.bootstrap_manifest import read_bootstrap_manifest as _read_bootstrap_manifest
+from tools.lib.bootstrap_manifest import (  # noqa: E402
+    read_bootstrap_manifest as _read_bootstrap_manifest,
+)
 
 HEALTH_SCHEMA_VERSION = "m16.health.v0"
 INDEX_TREE_REBUILD_COMMAND = "life-index generate-index --all-months"
@@ -71,6 +82,14 @@ DIRTY_WORKTREE_WARNING = (
 DIRTY_WORKTREE_SUGGESTED_COMMAND = "git checkout -- ."
 
 BOOTSTRAP_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "bootstrap-manifest.json"
+
+
+def _restore_import_stdout() -> None:
+    global _IMPORT_STDOUT_ORIGINAL
+    if _IMPORT_STDOUT_ORIGINAL is None:
+        return
+    sys.stdout = _IMPORT_STDOUT_ORIGINAL
+    _IMPORT_STDOUT_ORIGINAL = None
 
 
 def read_bootstrap_manifest() -> Dict[str, Any]:
@@ -766,6 +785,7 @@ def _run_data_audit() -> None:
 
 def main() -> None:
     """Unified CLI entry point"""
+    _restore_import_stdout()
     if len(sys.argv) < 2:
         print_usage()
         sys.exit(1)

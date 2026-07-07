@@ -2,22 +2,67 @@
 """Life Index index generation utilities."""
 
 import calendar
+import logging
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
-from ..lib.paths import get_journals_dir, get_user_data_dir
-from ..lib.errors import ErrorCode, create_error_response
-from ..lib.frontmatter import parse_journal_file
-from ..lib.logger import get_logger
-from .entity_profiles import materialize_entity_profiles, root_entities_section
+logger = logging.getLogger(__name__)
 
-logger = get_logger(__name__)
+
+def get_journals_dir() -> Path:
+    from ..lib.paths import get_journals_dir as _get_journals_dir
+
+    return _get_journals_dir()
+
+
+def get_user_data_dir() -> Path:
+    from ..lib.paths import get_user_data_dir as _get_user_data_dir
+
+    return _get_user_data_dir()
+
+
+def _get_journals_dir() -> Path:
+    return get_journals_dir()
+
+
+def _get_user_data_dir() -> Path:
+    return get_user_data_dir()
+
+
+def _write_failed_response(
+    message: str,
+    details: dict[str, Any],
+    suggestion: str,
+) -> Dict[str, Any]:
+    from ..lib.errors import ErrorCode, create_error_response
+
+    return create_error_response(ErrorCode.WRITE_FAILED, message, details, suggestion)
+
+
+def __getattr__(name: str) -> Any:
+    if name == "materialize_entity_profiles":
+        from .entity_profiles import materialize_entity_profiles
+
+        return materialize_entity_profiles
+    if name == "root_entities_section":
+        from .entity_profiles import root_entities_section
+
+        return root_entities_section
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _root_entities_section() -> str:
+    from .entity_profiles import root_entities_section
+
+    return root_entities_section()
 
 
 def parse_frontmatter(file_path: Path) -> Dict[str, Any]:
     """Parse journal frontmatter via shared SSOT parser."""
+    from ..lib.frontmatter import parse_journal_file
+
     result = parse_journal_file(file_path)
     if "_error" in result:
         return {}
@@ -216,7 +261,8 @@ def _read_year_summary(year_dir: Path) -> tuple[list[Dict[str, Any]], Dict[str, 
 
 def _count_topic_entries(topic_name: str) -> int:
     count = 0
-    for year_dir in sorted(get_journals_dir().iterdir()) if get_journals_dir().exists() else []:
+    journals_dir = _get_journals_dir()
+    for year_dir in sorted(journals_dir.iterdir()) if journals_dir.exists() else []:
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
         year = int(year_dir.name)
@@ -230,7 +276,7 @@ def _count_topic_entries(topic_name: str) -> int:
 def collect_month_journals(year: int, month: int) -> list[Dict[str, Any]]:
     """Collect all journals in a given month."""
     journals: list[Dict[str, Any]] = []
-    month_dir = get_journals_dir() / str(year) / f"{month:02d}"
+    month_dir = _get_journals_dir() / str(year) / f"{month:02d}"
 
     if not month_dir.exists():
         logger.debug(f"目录不存在：{month_dir}")
@@ -261,7 +307,7 @@ def collect_month_journals(year: int, month: int) -> list[Dict[str, Any]]:
 def collect_year_journals(year: int) -> list[Dict[str, Any]]:
     """Collect all journals in a given year."""
     journals: list[Dict[str, Any]] = []
-    year_dir = get_journals_dir() / str(year)
+    year_dir = _get_journals_dir() / str(year)
 
     if not year_dir.exists():
         logger.debug(f"目录不存在：{year_dir}")
@@ -398,7 +444,7 @@ def generate_root_index_content(
         "",
         "> 个人人生日志系统 · 始于 2025",
         "",
-        root_entities_section(),
+        _root_entities_section(),
         "",
         "## 日志总览",
         "",
@@ -444,7 +490,7 @@ def generate_monthly_index(year: int, month: int, dry_run: bool = False) -> Dict
     }
 
     try:
-        month_dir = get_journals_dir() / str(year) / f"{month:02d}"
+        month_dir = _get_journals_dir() / str(year) / f"{month:02d}"
         output_path = month_dir / f"index_{year}-{month:02d}.md"
         journals = collect_month_journals(year, month)
         result["journal_count"] = len(journals)
@@ -469,8 +515,7 @@ def generate_monthly_index(year: int, month: int, dry_run: bool = False) -> Dict
         result["message"] = f"月度索引已保存：{output_path}"
     except (IOError, OSError) as e:
         logger.error(f"写入月度索引失败：{e}")
-        return create_error_response(
-            ErrorCode.WRITE_FAILED,
+        return _write_failed_response(
             f"写入月度索引失败：{e}",
             {"year": year, "month": month},
             "请检查目录权限或磁盘空间",
@@ -492,7 +537,7 @@ def generate_yearly_index(year: int, dry_run: bool = False) -> Dict[str, Any]:
     }
 
     try:
-        year_dir = get_journals_dir() / str(year)
+        year_dir = _get_journals_dir() / str(year)
         output_path = year_dir / f"index_{year}.md"
         journals: list[Dict[str, Any]] = []
         monthly_summaries: list[Dict[str, Any]] = []
@@ -529,8 +574,7 @@ def generate_yearly_index(year: int, dry_run: bool = False) -> Dict[str, Any]:
         result["message"] = f"年度索引已保存：{output_path}"
     except (IOError, OSError) as e:
         logger.error(f"写入年度索引失败：{e}")
-        return create_error_response(
-            ErrorCode.WRITE_FAILED,
+        return _write_failed_response(
             f"写入年度索引失败：{e}",
             {"year": year},
             "请检查目录权限或磁盘空间",
@@ -551,12 +595,13 @@ def generate_root_index(dry_run: bool = False) -> Dict[str, Any]:
     }
 
     try:
-        output_path = get_user_data_dir() / "INDEX.md"
+        output_path = _get_user_data_dir() / "INDEX.md"
         yearly_summaries: list[Dict[str, Any]] = []
         fallback_journals: list[Dict[str, Any]] = []
 
-        if get_journals_dir().exists():
-            for year_dir in sorted(get_journals_dir().iterdir(), reverse=True):
+        journals_dir = _get_journals_dir()
+        if journals_dir.exists():
+            for year_dir in sorted(journals_dir.iterdir(), reverse=True):
                 if not year_dir.is_dir() or not year_dir.name.isdigit():
                     continue
                 journals, summary = _read_year_summary(year_dir)
@@ -574,7 +619,7 @@ def generate_root_index(dry_run: bool = False) -> Dict[str, Any]:
         date_range = f"{years[0]}-01 — {years[-1]}-12"
         if years:
             latest_year = years[-1]
-            latest_year_dir = get_journals_dir() / str(latest_year)
+            latest_year_dir = _get_journals_dir() / str(latest_year)
             month_names = (
                 sorted(
                     month_dir.name
@@ -587,7 +632,7 @@ def generate_root_index(dry_run: bool = False) -> Dict[str, Any]:
             if month_names:
                 date_range = f"{years[0]}-01 — {latest_year}-{month_names[-1]}"
 
-        by_topic_dir = get_user_data_dir() / "by-topic"
+        by_topic_dir = _get_user_data_dir() / "by-topic"
         topic_summaries: list[Dict[str, Any]] = []
         if by_topic_dir.exists():
             for topic_file in sorted(by_topic_dir.glob("主题_*.md")):
@@ -617,8 +662,7 @@ def generate_root_index(dry_run: bool = False) -> Dict[str, Any]:
         result["message"] = f"根索引已保存：{output_path}"
     except (IOError, OSError) as e:
         logger.error(f"写入根索引失败：{e}")
-        return create_error_response(
-            ErrorCode.WRITE_FAILED,
+        return _write_failed_response(
             f"写入根索引失败：{e}",
             {},
             "请检查目录权限或磁盘空间",
@@ -636,7 +680,8 @@ def rebuild_index_tree(dry_run: bool = False) -> Dict[str, Any]:
         "errors": [],
     }
 
-    if not get_journals_dir().exists():
+    journals_dir = _get_journals_dir()
+    if not journals_dir.exists():
         root_result = generate_root_index(dry_run=dry_run)
         report["root_index_rebuilt"] = bool(root_result.get("success"))
         if not root_result.get("success"):
@@ -645,7 +690,7 @@ def rebuild_index_tree(dry_run: bool = False) -> Dict[str, Any]:
 
     years_with_journals: set[int] = set()
 
-    for year_dir in sorted(get_journals_dir().iterdir()):
+    for year_dir in sorted(journals_dir.iterdir()):
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
 
