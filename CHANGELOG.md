@@ -6,6 +6,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+- Fix PyPI wheel `sync-skill --install` delivery for 1.4.2 by packaging
+  `SKILL.md` and `references/` inside the importable `tools` package.
+
 ## [1.4.1] - 2026-07-07
 
 ### What users get

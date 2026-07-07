@@ -279,6 +279,78 @@ def test_sync_skill_cli_install_host_home(tmp_path: Path) -> None:
     assert (target / "SKILL.md").exists()
 
 
+def test_sync_skill_default_source_root_falls_back_to_packaged_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Wheel installs must deliver SKILL.md without a checkout root beside tools."""
+    import tools.sync_skill.__main__ as sync_main
+    from tools.sync_skill import sync_skill_artifacts
+
+    fake_installed_main = (
+        tmp_path / "venv" / "Lib" / "site-packages" / "tools" / "sync_skill" / "__main__.py"
+    )
+    fake_installed_main.parent.mkdir(parents=True)
+    fake_installed_main.write_text("# installed entrypoint placeholder\n", encoding="utf-8")
+    cwd_without_skill = tmp_path / "cwd"
+    cwd_without_skill.mkdir()
+    target = tmp_path / ".codex" / "skills" / "life-index"
+    monkeypatch.setattr(sync_main, "__file__", str(fake_installed_main))
+    monkeypatch.chdir(cwd_without_skill)
+
+    payload = sync_skill_artifacts(
+        source_root=sync_main._default_source_root(),
+        target_dir=target,
+        install=True,
+    )
+
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "installed"
+    assert payload["data"]["delivered"] is True
+    assert "SKILL.md" in payload["data"]["copied"]
+    assert (target / "SKILL.md").is_file()
+    assert sorted(path.name for path in (target / "references").glob("*.md")) == [
+        "ENTITY_MAINTENANCE_PLAYBOOK.md",
+        "GROUNDED_QUERY_PLAYBOOK.md",
+        "WEATHER_FLOW.md",
+    ]
+
+
+def test_sync_skill_default_source_root_ignores_cwd_decoy_in_installed_layout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Implicit source roots must not trust cwd; use --source-root for custom sources."""
+    import tools.sync_skill.__main__ as sync_main
+    from tools.sync_skill import sync_skill_artifacts
+
+    fake_installed_main = (
+        tmp_path / "venv" / "Lib" / "site-packages" / "tools" / "sync_skill" / "__main__.py"
+    )
+    fake_installed_main.parent.mkdir(parents=True)
+    fake_installed_main.write_text("# installed entrypoint placeholder\n", encoding="utf-8")
+    decoy_cwd = tmp_path / "decoy-cwd"
+    decoy_cwd.mkdir()
+    (decoy_cwd / "SKILL.md").write_text("# Decoy Skill\n", encoding="utf-8")
+    (decoy_cwd / "references").mkdir()
+    (decoy_cwd / "references" / "DECOY.md").write_text("# decoy\n", encoding="utf-8")
+    target = tmp_path / ".codex" / "skills" / "life-index"
+    monkeypatch.setattr(sync_main, "__file__", str(fake_installed_main))
+    monkeypatch.chdir(decoy_cwd)
+
+    source_root = sync_main._default_source_root()
+    payload = sync_skill_artifacts(source_root=source_root, target_dir=target, install=True)
+
+    assert source_root.name == "_skill_artifacts"
+    assert payload["success"] is True
+    assert payload["data"]["delivered"] is True
+    installed_skill = (target / "SKILL.md").read_text(encoding="utf-8")
+    assert "# Decoy Skill" not in installed_skill
+    assert installed_skill == (source_root / "SKILL.md").read_text(encoding="utf-8")
+    assert not (target / "references" / "DECOY.md").exists()
+    assert (target / "references" / "GROUNDED_QUERY_PLAYBOOK.md").is_file()
+
+
 def test_sync_skill_cli_install_dry_run_reports_nested_duplicate_without_mutation(
     tmp_path: Path,
 ) -> None:

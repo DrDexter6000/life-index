@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from importlib import import_module
 from pathlib import Path
 
 from tools.sync_skill import (
@@ -18,9 +19,15 @@ from tools.sync_skill import (
 
 
 def _default_source_root() -> Path:
+    tools_package = import_module("tools")
+    package_artifact_roots = [
+        Path(raw_path) / "_skill_artifacts"
+        for raw_path in getattr(tools_package, "__path__", ())
+        if Path(raw_path).is_dir()
+    ]
     candidates = [
         Path(__file__).resolve().parents[2],
-        Path.cwd(),
+        *package_artifact_roots,
     ]
     for candidate in candidates:
         if (candidate / "SKILL.md").is_file():

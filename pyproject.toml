@@ -78,7 +78,11 @@ life-index = "tools.__main__:main"
 include-package-data = true
 
 [tool.setuptools.package-data]
-tools = ["bootstrap-manifest.json"]
+tools = [
+    "bootstrap-manifest.json",
+    "_skill_artifacts/SKILL.md",
+    "_skill_artifacts/references/*.md",
+]
 "tools.backup" = ["schema.json"]
 "tools.build_index" = ["schema.json"]
 "tools.edit_journal" = ["schema.json"]
