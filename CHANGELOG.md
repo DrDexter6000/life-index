@@ -6,8 +6,17 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
-- Fix PyPI wheel `sync-skill --install` delivery for 1.4.2 by packaging
-  `SKILL.md` and `references/` inside the importable `tools` package.
+## [1.4.2] - 2026-07-07
+
+### What users get
+
+- Fix PyPI wheel `sync-skill --install` delivery by packaging `SKILL.md` and
+  `references/` into wheel-accessible package data.
+- `1.4.2` supersedes `1.4.1` for PyPI clean installs.
+
+### Included in this release
+
+- fix(sync-skill): package skill artifacts in wheels (#151).
 
 ## [1.4.1] - 2026-07-07
 
