@@ -268,16 +268,26 @@ def _run_maintain_workflow(argv: list[str]) -> None:
     maintain_parser = argparse.ArgumentParser(prog="life-index entity maintain")
     maintain_parser.add_argument("--normalize", action="store_true")
     maintain_parser.add_argument("--delete", action="store_true")
+    maintain_parser.add_argument("--add-relationship", action="store_true")
     maintain_parser.add_argument("--id", dest="entity_id")
+    maintain_parser.add_argument("--target-id", dest="target_id")
+    maintain_parser.add_argument("--relation", dest="relation")
     maintain_parser.add_argument("--preview", action="store_true")
     maintain_parser.add_argument("--apply", action="store_true")
     maintain_parser.add_argument("--backup", action="store_true")
     maintain_parser.add_argument("--json", action="store_true", help="Emit JSON output.")
     maintain_args = maintain_parser.parse_args(argv)
-    if maintain_args.normalize and maintain_args.delete:
+    operations = [
+        maintain_args.normalize,
+        maintain_args.delete,
+        maintain_args.add_relationship,
+    ]
+    if sum(1 for enabled in operations if enabled) > 1:
         raise SystemExit("entity maintain accepts only one operation at a time")
-    if not maintain_args.normalize and not maintain_args.delete:
-        raise SystemExit("entity maintain currently requires --normalize or --delete")
+    if not any(operations):
+        raise SystemExit(
+            "entity maintain currently requires --normalize, --delete, or --add-relationship"
+        )
     if maintain_args.delete:
         from tools.entity.delete import run_delete
 
@@ -287,6 +297,19 @@ def _run_maintain_workflow(argv: list[str]) -> None:
             preview=maintain_args.preview,
             apply=maintain_args.apply,
             backup=maintain_args.backup,
+        )
+        _print(result)
+        return
+    if maintain_args.add_relationship:
+        from tools.entity.relationship import run_add_relationship
+
+        result = run_add_relationship(
+            graph_path=_graph_path(),
+            source_id=maintain_args.entity_id,
+            target_id=maintain_args.target_id,
+            relation=maintain_args.relation,
+            preview=maintain_args.preview,
+            apply=maintain_args.apply,
         )
         _print(result)
         return
@@ -386,6 +409,8 @@ def main(argv: list[str] | None = None) -> None:
   life-index entity audit --json
   life-index entity maintain --normalize --preview --json
   life-index entity maintain --delete --id ENTITY_ID --preview --json
+  life-index entity maintain --add-relationship --id SOURCE_ID \
+--target-id TARGET_ID --relation RELATION --preview --json
 
 JSON contract:
   --json emits the stable machine-readable contract. Advanced read-only
@@ -445,6 +470,33 @@ Advanced primitives appendix:
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON output.")
     args = parser.parse_args(argv)
+
+    if args.review_action and not args.review:
+        if args.review_action == "add_relationship":
+            replacement = (
+                "life-index entity maintain --add-relationship --id SOURCE_ID "
+                "--target-id TARGET_ID --relation RELATION --preview --json"
+            )
+            _print(
+                {
+                    "success": False,
+                    "data": {
+                        "action": args.review_action,
+                        "replacement_command": replacement,
+                    },
+                    "error": {
+                        "code": "ENTITY_RELATIONSHIP_ACTION_REQUIRES_REVIEW",
+                        "message": (
+                            "--action add_relationship is only valid with --review. "
+                            "For a user-confirmed relationship fact, use the maintain "
+                            "preview/apply relationship primitive."
+                        ),
+                        "suggested_command": replacement,
+                    },
+                }
+            )
+            raise SystemExit(2)
+        raise SystemExit("--action requires --review")
 
     graph_path = _graph_path()
     if args.run_check:

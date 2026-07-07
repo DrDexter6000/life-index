@@ -51,9 +51,17 @@ Use `keep_separate` when the user says two similar names are distinct:
 `life-index entity --review --action keep_separate --id SOURCE_ID --target-id TARGET_ID`.
 
 When the user states or corrects a relationship fact, restate the proposed graph
-change and ask for confirmation. After confirmation, use the review/add-alias
-primitives to write it; do not wait for the user to ask why the graph was not
-updated.
+change and ask for confirmation. After confirmation, preview and apply:
+
+```bash
+life-index entity maintain --add-relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION --preview --json
+life-index entity maintain --add-relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION --apply --json
+```
+
+Use
+`entity --review --action add_relationship` only for a relationship item that
+came from the review queue. Do not wait for the user to ask why the graph was
+not updated.
 
 ## Normalize
 

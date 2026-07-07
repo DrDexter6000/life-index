@@ -184,6 +184,7 @@ alias/标签，不得在工具中硬编码文化对照表。
 - 从既有日志冷启动时，先 `entity build --from-journals --preview --json` 生成候选计划，访谈确认后再走 batch/review/显式写入原语
 - 批量新增必须先 `entity build --from-batch FILE --preview --json`，向用户复述新建数、关系数、冲突数和重复跳过数
 - 用户逐条确认或批量授权后，才可 `entity build --from-batch FILE --apply --json`
+- 用户直接确认的自由关系事实走 `entity maintain --add-relationship --id SOURCE_ID --target-id TARGET_ID --relation RELATION --preview --json`，复述 preview 后再 `--apply --json`；review 队列中的关系候选仍走 `entity --review --action add_relationship`
 - 重名冲突永不自动合并；冲突项进入 `status=candidate` review 队列
 
 ---
@@ -243,7 +244,7 @@ alias/标签，不得在工具中硬编码文化对照表。
 `entity --review` 只生成候选队列。高置信重复、疑似关系、重复未知名和 agent
 假设都只能排队，不得自动合并或自动写入 confirmed 图谱。宿主 agent 负责读取
 `evidence`、分桶、向用户访谈；用户确认后，agent 只能通过
-`entity --review --action ...`、`entity --add-alias`、`entity --unmerge`、
+`entity --review --action ...`、`entity maintain --add-relationship`、`entity --add-alias`、`entity --unmerge`、
 `entity --apply-batch` 或 `entity maintain --delete` 等 CLI 原语修改 confirmed 图谱。
 
 候选池持久化在 `entity_graph.yaml` 中，使用 `source=seed|agent|user` 与

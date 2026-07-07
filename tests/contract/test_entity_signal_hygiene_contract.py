@@ -188,6 +188,7 @@ def test_entity_help_uses_single_workflow_vocabulary() -> None:
     assert "life-index entity profile --id ENTITY_ID --json" in help_text
     assert "life-index entity audit --json" in help_text
     assert "life-index entity maintain --normalize --preview --json" in help_text
+    assert "life-index entity maintain --add-relationship" in help_text
     assert "--json" in help_text
     assert "Legacy" not in help_text
 
@@ -200,6 +201,7 @@ def test_skill_requires_health_first_for_entity_maintenance() -> None:
     assert "suggested_refresh_step" in skill_text
     assert "实体维护速查" in skill_text
     assert "life-index entity audit --json" in skill_text
+    assert "life-index entity maintain --add-relationship" in skill_text
 
 
 def test_skill_links_operational_and_entity_maintenance_playbooks() -> None:
