@@ -32,6 +32,30 @@ triggers:
     (root / "references" / "WEATHER_FLOW.md").write_text("# Weather\n", encoding="utf-8")
 
 
+def _write_managed_parent_stray(skills_parent: Path, trigger: str = "/life-index parent") -> None:
+    skills_parent.mkdir(parents=True, exist_ok=True)
+    (skills_parent / "SKILL.md").write_text(
+        f"""---
+name: life-index
+triggers:
+  - "{trigger}"
+---
+
+# Parent Stray Skill
+""",
+        encoding="utf-8",
+    )
+    (skills_parent / "references").mkdir()
+    (skills_parent / "references" / "WEATHER_FLOW.md").write_text("# Weather\n", encoding="utf-8")
+
+
+def _write_unmanaged_parent_stray(skills_parent: Path) -> None:
+    skills_parent.mkdir(parents=True, exist_ok=True)
+    (skills_parent / "SKILL.md").write_text("# Personal Skill\n", encoding="utf-8")
+    (skills_parent / "references").mkdir()
+    (skills_parent / "references" / "DECOY.md").write_text("# decoy\n", encoding="utf-8")
+
+
 def _isolated_subprocess_env(home: Path) -> dict[str, str]:
     env = os.environ.copy()
     for name in HOST_ENV_VARS:
@@ -277,6 +301,386 @@ def test_sync_skill_cli_install_host_home(tmp_path: Path) -> None:
     assert payload["data"]["delivered"] is True
     assert payload["data"]["target_dir"] == str(target.resolve())
     assert (target / "SKILL.md").exists()
+
+
+def test_sync_skill_cli_install_env_parent_normalizes_to_canonical_slot(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A host skills parent is not a skill slot; install must use skills/life-index."""
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    canonical.mkdir(parents=True)
+    _write_source(source_root)
+    (canonical / "SKILL.md").write_text(
+        """---
+name: life-index
+triggers:
+  - "/life-index canonical"
+---
+
+# Existing Canonical Skill
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LIFE_INDEX_HOST_SKILL_DIR", str(skills_parent))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["target_dir"] == str(canonical.resolve())
+    assert payload["data"]["diagnostics"][0]["code"] == "HOST_SKILL_DIR_PARENT_NORMALIZED"
+    assert not (skills_parent / "SKILL.md").exists()
+    assert not (skills_parent / "references").exists()
+    assert (canonical / "SKILL.md").exists()
+    synced_skill = (canonical / "SKILL.md").read_text(encoding="utf-8")
+    assert "# Current Skill" in synced_skill
+    assert '  - "/life-index canonical"' in synced_skill
+
+
+def test_sync_skill_cli_install_host_skill_dir_parent_normalizes_to_canonical_slot(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    skills_parent.mkdir(parents=True)
+    _write_source(source_root)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--host-skill-dir",
+            str(skills_parent),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["target_dir"] == str(canonical.resolve())
+    assert payload["data"]["diagnostics"][0]["code"] == "HOST_SKILL_DIR_PARENT_NORMALIZED"
+    assert not (skills_parent / "SKILL.md").exists()
+    assert (canonical / "SKILL.md").exists()
+
+
+def test_sync_skill_cli_install_env_parent_recovers_missing_canonical_from_managed_stray(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    _write_source(source_root)
+    _write_managed_parent_stray(skills_parent, trigger="/life-index parent-env")
+    monkeypatch.setenv("LIFE_INDEX_HOST_SKILL_DIR", str(skills_parent))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "installed"
+    assert payload["data"]["delivered"] is True
+    assert payload["data"]["target_dir"] == str(canonical.resolve())
+    assert not (skills_parent / "SKILL.md").exists()
+    assert not (skills_parent / "references").exists()
+    synced_skill = (canonical / "SKILL.md").read_text(encoding="utf-8")
+    assert "# Current Skill" in synced_skill
+    assert '  - "/life-index parent-env"' in synced_skill
+    codes = [item["code"] for item in payload["data"]["diagnostics"]]
+    assert "HOST_SKILL_DIR_PARENT_NORMALIZED" in codes
+    assert "HOST_SKILL_DIR_PARENT_STRAY_CLEANED" in codes
+
+
+def test_sync_skill_cli_install_default_home_recovers_missing_canonical_from_managed_stray(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    _write_source(source_root)
+    _write_managed_parent_stray(skills_parent, trigger="/life-index parent-default")
+    env = _isolated_subprocess_env(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "installed"
+    assert payload["data"]["delivered"] is True
+    assert payload["data"]["target_dir"] == str(canonical.resolve())
+    assert not (skills_parent / "SKILL.md").exists()
+    assert not (skills_parent / "references").exists()
+    synced_skill = (canonical / "SKILL.md").read_text(encoding="utf-8")
+    assert '  - "/life-index parent-default"' in synced_skill
+    codes = [item["code"] for item in payload["data"]["diagnostics"]]
+    assert "HOST_SKILL_DIR_PARENT_STRAY_RECOVERY_SELECTED" in codes
+    assert "HOST_SKILL_DIR_PARENT_STRAY_CLEANED" in codes
+
+
+def test_sync_skill_cli_install_default_home_does_not_guess_unmanaged_parent_stray(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    _write_source(source_root)
+    _write_unmanaged_parent_stray(skills_parent)
+    env = _isolated_subprocess_env(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "skipped"
+    assert payload["data"]["delivered"] is False
+    assert not canonical.exists()
+    assert (skills_parent / "SKILL.md").read_text(encoding="utf-8") == "# Personal Skill\n"
+    assert (skills_parent / "references" / "DECOY.md").exists()
+
+
+def test_sync_skill_cli_non_install_env_parent_missing_canonical_does_not_create(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    _write_source(source_root)
+    _write_managed_parent_stray(skills_parent)
+    monkeypatch.setenv("LIFE_INDEX_HOST_SKILL_DIR", str(skills_parent))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "skipped"
+    assert payload["data"]["delivered"] is False
+    assert not canonical.exists()
+    assert (skills_parent / "SKILL.md").exists()
+
+
+def test_sync_skill_refuses_non_canonical_target_without_writing_parent(
+    tmp_path: Path,
+) -> None:
+    from tools.sync_skill import sync_skill_artifacts
+
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    canonical.mkdir(parents=True)
+    _write_source(source_root)
+    (canonical / "SKILL.md").write_text("# Existing Canonical\n", encoding="utf-8")
+
+    payload = sync_skill_artifacts(source_root=source_root, target_dir=skills_parent, install=True)
+
+    assert payload["success"] is False
+    assert payload["data"]["status"] == "refused"
+    assert payload["data"]["diagnostics"][0]["code"] == "HOST_SKILL_DIR_NOT_CANONICAL"
+    assert not (skills_parent / "SKILL.md").exists()
+    assert (canonical / "SKILL.md").read_text(encoding="utf-8") == "# Existing Canonical\n"
+
+
+def test_sync_skill_refuses_life_index_leaf_outside_host_skills_layout(
+    tmp_path: Path,
+) -> None:
+    from tools.sync_skill import sync_skill_artifacts
+
+    source_root = tmp_path / "checkout"
+    target = tmp_path / "not-a-host-slot" / "life-index"
+    source_root.mkdir()
+    target.mkdir(parents=True)
+    _write_source(source_root)
+
+    payload = sync_skill_artifacts(source_root=source_root, target_dir=target, install=True)
+
+    assert payload["success"] is False
+    assert payload["data"]["status"] == "refused"
+    assert payload["data"]["diagnostics"][0]["code"] == "HOST_SKILL_DIR_NOT_CANONICAL"
+    assert not (target / "SKILL.md").exists()
+
+
+def test_sync_skill_install_recovers_managed_parent_stray_artifacts(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    _write_source(source_root)
+    _write_managed_parent_stray(skills_parent)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--host-home",
+            str(host_home),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["data"]["target_dir"] == str(canonical.resolve())
+    assert not (skills_parent / "SKILL.md").exists()
+    assert not (skills_parent / "references").exists()
+    synced_skill = (canonical / "SKILL.md").read_text(encoding="utf-8")
+    assert "# Current Skill" in synced_skill
+    assert '  - "/life-index parent"' in synced_skill
+    codes = [item["code"] for item in payload["data"]["diagnostics"]]
+    assert "HOST_SKILL_DIR_PARENT_STRAY_CLEANED" in codes
+
+
+def test_sync_skill_install_preserves_unmanaged_parent_stray_artifacts(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "checkout"
+    host_home = tmp_path / ".hermes"
+    skills_parent = host_home / "skills"
+    canonical = skills_parent / "life-index"
+    source_root.mkdir()
+    _write_source(source_root)
+    _write_unmanaged_parent_stray(skills_parent)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools",
+            "sync-skill",
+            "--source-root",
+            str(source_root),
+            "--install",
+            "--host-home",
+            str(host_home),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert (skills_parent / "SKILL.md").read_text(encoding="utf-8") == "# Personal Skill\n"
+    assert (skills_parent / "references" / "DECOY.md").exists()
+    assert (canonical / "SKILL.md").exists()
+    codes = [item["code"] for item in payload["data"]["diagnostics"]]
+    assert "HOST_SKILL_DIR_PARENT_STRAY_PRESERVED" in codes
 
 
 def test_sync_skill_default_source_root_falls_back_to_packaged_artifacts(

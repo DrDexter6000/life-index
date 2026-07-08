@@ -11,6 +11,7 @@ from pathlib import Path
 from tools.sync_skill import (
     SYNC_SKILL_SCHEMA_VERSION,
     find_host_skill_dir,
+    find_install_target_dir,
     install_target_from_host_home,
     list_host_skill_dirs,
     sync_skill_artifacts,
@@ -102,7 +103,11 @@ def main() -> int:
     parser.add_argument(
         "--host-skill-dir",
         default=None,
-        help="Host skill directory to update; with --install it may be created.",
+        help=(
+            "Host skill directory to update. Canonical target is "
+            "<host-home>/skills/life-index; with --install, a <host-home>/skills "
+            "parent is normalized to that slot."
+        ),
     )
     parser.add_argument(
         "--host-home",
@@ -166,21 +171,23 @@ def main() -> int:
         _emit_payload(payload, as_json=args.json)
         return 0 if payload["success"] else 1
 
+    source_root = Path(args.source_root) if args.source_root else _default_source_root()
     target_dir: Path | None
     diagnostics: list[dict[str, str]]
     if args.install:
         if args.host_skill_dir:
-            target_dir = Path(args.host_skill_dir)
-            diagnostics = []
+            target_dir, diagnostics = find_install_target_dir(
+                source_root,
+                explicit_dir=args.host_skill_dir,
+            )
         elif args.host_home:
             target_dir = install_target_from_host_home(args.host_home)
             diagnostics = []
         else:
-            target_dir, diagnostics = find_host_skill_dir()
+            target_dir, diagnostics = find_install_target_dir(source_root)
     else:
         target_dir, diagnostics = find_host_skill_dir(args.host_skill_dir)
 
-    source_root = Path(args.source_root) if args.source_root else _default_source_root()
     payload = sync_skill_artifacts(
         source_root=source_root,
         target_dir=target_dir,
