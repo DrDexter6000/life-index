@@ -5632,7 +5632,41 @@ life-index entity --review
         "risk_level": "high",
         "category": "possible_duplicate",
         "description": "alias overlap: ...",
-        "action_choices": ["merge_as_alias", "keep_separate", "skip"],
+        "action_choices": [
+          {
+            "action": "merge_as_alias",
+            "source_id": "p001",
+            "target_id": "p002",
+            "relation": null,
+            "evidence": [],
+            "preview_required": true,
+            "label": "Same",
+            "description": "Preview merging the source entity into the target entity as aliases."
+          },
+          {
+            "action": "keep_separate",
+            "source_id": "p001",
+            "target_id": "p002",
+            "relation": null,
+            "evidence": [],
+            "preview_required": true,
+            "label": "Different",
+            "description": "Persist a user-confirmed non-duplicate decision."
+          },
+          {
+            "action": "skip",
+            "source_id": "p001",
+            "target_id": "p002",
+            "relation": null,
+            "evidence": [],
+            "preview_required": false,
+            "label": "Not-sure",
+            "description": "Leave the item unchanged for later review."
+          }
+        ],
+        "action_names": ["merge_as_alias", "keep_separate", "skip"],
+        "source_id": "p001",
+        "target_id": "p002",
         "entity_ids": ["p001", "p002"],
         "why": "alias overlap: ...",
         "evidence": [],
@@ -5645,17 +5679,34 @@ life-index entity --review
 }
 ```
 
-Queue items include `why`, `evidence`, and `action_choices`. Candidate items
-are neutral pending questions, not tool-side decisions. Confirm/reject actions
-are deterministic writes after user judgment:
+Queue items include `why`, `evidence`, and structured `action_choices`.
+Each action choice is the GUI/host-agent payload: `action`, `source_id`,
+`target_id`, `relation`, `evidence`, and `preview_required`. `action_names`
+is a compatibility summary only; consumers that preview/apply should use the
+structured `action_choices[]` payload.
+
+Preview a specific review action with the queue item id and action payload:
 
 ```bash
-life-index entity --review --action confirm_candidate --id person-morgan
-life-index entity --review --action reject_candidate --id person-morgan
-life-index entity --review --action confirm_candidate --id person-alice --target-id person-bob --relation friend_of
-life-index entity --review --action keep_separate --id person-alan --target-id person-alen
-life-index entity --review --action undo_keep_separate --id person-alan --target-id person-alen
+life-index entity --review --action preview --review-action merge_as_alias --id review-1 --source-id p001 --target-id p002 --json
+life-index entity --review --action preview --review-action keep_separate --id review-1 --source-id p001 --target-id p002 --json
+life-index entity --review --action preview --review-action add_relationship --id review-2 --source-id p001 --target-id p002 --relation friend_of --json
 ```
+
+Apply only after user judgment:
+
+```bash
+life-index entity --review --action merge_as_alias --id review-1 --source-id p001 --target-id p002 --json
+life-index entity --review --action keep_separate --id review-1 --source-id p001 --target-id p002 --json
+life-index entity --review --action confirm_candidate --id review-3 --source-id person-morgan --json
+life-index entity --review --action reject_candidate --id review-3 --source-id person-morgan --json
+life-index entity --review --action confirm_candidate --id review-4 --source-id person-alice --target-id person-bob --relation friend_of --json
+life-index entity --review --action undo_keep_separate --id review-5 --source-id person-alan --target-id person-alen --json
+```
+
+For backwards compatibility, older calls that pass the source entity through
+`--id` without `--source-id` still work. New GUI and host-agent integrations
+should treat `--id` as the review item id and pass `--source-id` explicitly.
 
 Confirming an entity candidate changes it to `status: confirmed`; confirming a
 relationship candidate changes that edge to `status: confirmed`. Rejecting

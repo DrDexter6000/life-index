@@ -6,6 +6,12 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Added
+
+- Entity review queue actions now expose stable GUI/host-agent payloads and
+  `entity --review --action preview` can preview a specific review action with
+  explicit `--review-action` and `--source-id`.
+
 ## [1.4.3] - 2026-07-08
 
 ### What users get

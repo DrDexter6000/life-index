@@ -38,17 +38,19 @@ parallel repair path.
 When human judgment is needed:
 
 1. Run `life-index entity --review`.
-2. Read evidence referenced by each queue item.
+2. Read evidence referenced by each queue item and keep the selected
+   `action_choices[]` payload (`action`, `source_id`, `target_id`, `relation`,
+   `evidence`, `preview_required`).
 3. Group at most five items by person, place, project, or artifact.
 4. Present reasoned recommendations to the user: Same, Different, Not-sure, or
    batch authorization for the items the user accepts.
 5. Preview before writing:
-   `life-index entity --review --action preview --id SOURCE_ID --target-id TARGET_ID`.
+   `life-index entity --review --action preview --review-action merge_as_alias --id REVIEW_ITEM_ID --source-id SOURCE_ID --target-id TARGET_ID --json`.
 6. Apply only after user confirmation:
-   `life-index entity --review --action merge_as_alias --id SOURCE_ID --target-id TARGET_ID`.
+   `life-index entity --review --action merge_as_alias --id REVIEW_ITEM_ID --source-id SOURCE_ID --target-id TARGET_ID --json`.
 
 Use `keep_separate` when the user says two similar names are distinct:
-`life-index entity --review --action keep_separate --id SOURCE_ID --target-id TARGET_ID`.
+`life-index entity --review --action keep_separate --id REVIEW_ITEM_ID --source-id SOURCE_ID --target-id TARGET_ID --json`.
 
 When the user states or corrects a relationship fact, restate the proposed graph
 change and ask for confirmation. After confirmation, preview and apply:
@@ -59,9 +61,11 @@ life-index entity maintain --add-relationship --id SOURCE_ID --target-id TARGET_
 ```
 
 Use
-`entity --review --action add_relationship` only for a relationship item that
-came from the review queue. Do not wait for the user to ask why the graph was
-not updated.
+`entity --review --action preview --review-action add_relationship ...` and
+`entity --review --action add_relationship ...` only for a relationship item
+that came from the review queue. Pass the queue `REVIEW_ITEM_ID` through `--id`
+and the payload entity through `--source-id`. Do not wait for the user to ask
+why the graph was not updated.
 
 ## Normalize
 

@@ -53,6 +53,20 @@ _EXPORT_COLUMNS = [
 ]
 
 
+def _action_choices_cell(item: dict[str, Any]) -> str:
+    choices = item.get("action_choices", []) or []
+    actions: list[str] = []
+    for choice in choices:
+        if isinstance(choice, dict):
+            action = choice.get("action", "")
+        else:
+            action = choice
+        action_text = str(action).strip()
+        if action_text:
+            actions.append(action_text)
+    return "|".join(actions)
+
+
 def export_review_csv(
     *,
     output_path: Path,
@@ -86,7 +100,7 @@ def export_review_csv(
                 "description": item.get("description", ""),
                 "why": item.get("why", ""),
                 "evidence": "|".join(item.get("evidence", [])),
-                "action_choices": "|".join(item.get("action_choices", [])),
+                "action_choices": _action_choices_cell(item),
                 "entity_ids": "|".join(str(e) for e in item.get("entity_ids", [])),
                 "suggested_action": item.get("suggested_action", ""),
                 "decision": "",
@@ -221,7 +235,7 @@ def export_review_xlsx(
                 item.get("description", ""),
                 item.get("why", ""),
                 "|".join(item.get("evidence", [])),
-                "|".join(item.get("action_choices", [])),
+                _action_choices_cell(item),
                 "|".join(str(e) for e in item.get("entity_ids", [])),
                 item.get("suggested_action", ""),
                 "",  # decision (to be filled by user)

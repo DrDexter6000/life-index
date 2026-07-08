@@ -232,7 +232,7 @@ alias/标签，不得在工具中硬编码文化对照表。
 | `entity --list` / `--resolve` | 只读查询 |
 | `entity profile --id ENTITY_ID --json` | 只读装配 confirmed 实体档案；candidate fail-closed |
 | `abstract --entities [--id ENTITY_ID] --json` | 只读图谱并物化 `Entities/` 派生档案；不回写 `entity_graph.yaml`，candidate 不输出 |
-| `entity --review` | 只读队列；包含 why/evidence/action_choices |
+| `entity --review` | 只读队列；包含 why/evidence/结构化 action_choices |
 | `entity --propose` | 写入 `status=candidate` 假设，不进入 confirmed 检索语义 |
 | `search --query` | 检索验证 |
 | 提出 patch 草案 | 写成 YAML 片段供用户审阅，不直接落盘 |
@@ -251,14 +251,22 @@ alias/标签，不得在工具中硬编码文化对照表。
 `status=candidate` 标记。candidate 实体/边不参与 entity expansion 或 confirmed
 检索语义；确认后才转为 `status=confirmed`。
 
+队列项的 `action_choices[]` 是 GUI/宿主 agent 的稳定执行 payload，包含 `action`、
+`source_id`、`target_id`、`relation`、`evidence` 与 `preview_required`。写入前先用
+`life-index entity --review --action preview --review-action ACTION --id REVIEW_ITEM_ID --source-id SOURCE_ID ...`
+预览；用户确认后再用同一 payload 执行 `entity --review --action ACTION ...`。旧式
+`--id SOURCE_ID` 调用仍兼容，但新集成应显式传 `--source-id`。
+
 `entity --review --action merge_as_alias` 会在目标实体下保存 `merged_entities[]` 墓碑，
 包含被吸收实体的完整原始记录以及本次合并新增的 alias、转移关系和反向引用改写。
 `entity --unmerge --id MERGED_ID --target-id TARGET_ID` 使用该墓碑完整复原，并移除合并
 产生的 alias / 转移关系。
 
-`entity --review --action keep_separate --id A --target-id B` 持久化用户对疑似重复
+`entity --review --action keep_separate --id REVIEW_ITEM_ID --source-id A --target-id B`
+持久化用户对疑似重复
 pair 的“不是同一人/物”判决，写入 `source=user` 与 `created_at`。该记录是可逆的；
-`entity --review --action undo_keep_separate --id A --target-id B` 删除标记后，下次
+`entity --review --action undo_keep_separate --id REVIEW_ITEM_ID --source-id A --target-id B`
+删除标记后，下次
 audit 会重新报告仍符合规则的 `possible_duplicate`。
 
 ## 7. 变更后验证清单

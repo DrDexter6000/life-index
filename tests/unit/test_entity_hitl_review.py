@@ -65,7 +65,13 @@ def test_review_queue_exposes_why_evidence_and_choices(isolated_data_dir: Path) 
     item = next(item for item in queue if item["category"] == "incomplete_relationship")
     assert "co-occur" in item["why"]
     assert item["evidence"] == evidence_paths
-    assert item["action_choices"] == ["add_relationship", "skip"]
+    assert [choice["action"] for choice in item["action_choices"]] == [
+        "add_relationship",
+        "skip",
+    ]
+    assert item["action_choices"][0]["source_id"] == "person-alice"
+    assert item["action_choices"][0]["target_id"] == "person-bob"
+    assert item["action_choices"][0]["evidence"] == evidence_paths
     assert item["entity_ids"] == ["person-alice", "person-bob"]
 
 
