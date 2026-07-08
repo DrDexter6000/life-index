@@ -29,6 +29,7 @@ STABLE_COMMANDS = {
     "version",
     "on-this-day",
     "sync-skill",
+    "upgrade",
 }
 
 

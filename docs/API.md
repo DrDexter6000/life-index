@@ -3330,6 +3330,152 @@ The queries fixture is a JSON array of objects:
 
 ---
 
+## upgrade
+
+### Endpoint
+
+```bash
+life-index upgrade --plan --json
+life-index upgrade --apply --json
+python -m tools upgrade --plan --json
+python -m tools upgrade --apply --json
+```
+
+### Purpose
+
+`upgrade` is a deterministic host-agent operations primitive for refreshing an
+installed Life Index CLI. It does not replace the developer release workflow:
+PR review, CI, merge, tag, GitHub Release, PyPI publish, and release smoke stay
+outside this command.
+
+`--plan` is read-only. It reports installed package version, bootstrap manifest
+`repo_version`, PyPI release/yank status, optional git checkout freshness plus a
+read-only remote probe, `health --json` parseability, sync-skill discovery
+status, and recommended actions.
+
+`--apply` executes only actions that the plan marks safe:
+
+- package installs may upgrade to a recommended non-yanked PyPI version;
+- editable/source checkouts may refresh remote refs and run `git pull --ff-only`
+  only when clean, behind, and not ahead;
+- dirty, ahead, or diverged checkouts fail closed and require a human;
+- any plan action with `safe_to_run=false` or `requires_human=true` blocks
+  `--apply` before write actions;
+- `health --json` is run and parsed;
+- `sync-skill --install --json` is run through the existing sync-skill command.
+
+The command contains no LLM calls and never writes user journals.
+
+### JSON contract
+
+```json
+{
+  "success": true,
+  "schema_version": "m36.upgrade.v0",
+  "command": "upgrade",
+  "mode": "plan",
+  "data": {
+    "installed": {
+      "package_version": "1.4.4",
+      "bootstrap_manifest_repo_version": "1.4.4",
+      "install_type": "package|editable|unknown",
+      "repo_path": null
+    },
+    "pypi": {
+      "status": "ok|partial",
+      "error": null,
+      "latest_non_yanked": "1.4.4",
+      "recommended_version": null,
+      "current_version_yanked": false,
+      "current_yanked_reason": null
+    },
+    "git": null,
+    "health": {
+      "command": "life-index health --json",
+      "returncode": 0,
+      "json_parseable": true,
+      "parse_error": null,
+      "data": {}
+    },
+    "sync_skill": {
+      "command": "life-index sync-skill --list --json",
+      "returncode": 0,
+      "json_parseable": true,
+      "parse_error": null,
+      "data": {}
+    },
+    "actions": [
+      {
+        "id": "sync_skill_install",
+        "description": "Refresh the host-agent Life Index skill playbook.",
+        "side_effect": "write",
+        "command": "life-index sync-skill --install --json",
+        "reason": "Tools without the matching SKILL.md/references are incomplete.",
+        "safe_to_run": true,
+        "requires_human": false
+      }
+    ],
+    "recommended_next_step": {},
+    "partial": false
+  }
+}
+```
+
+Every `actions[]` item contains:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Stable action id |
+| `description` | string | Human-readable action summary |
+| `side_effect` | string | `"read"` or `"write"` |
+| `command` | string \| null | Command host agents may show or run |
+| `reason` | string | Why the action exists |
+| `safe_to_run` | bool | Whether apply may execute it automatically |
+| `requires_human` | bool | Whether host agent must stop and ask the user |
+
+### Git freshness rules
+
+Version equality is not sufficient. If `package_version` and
+`bootstrap_manifest_repo_version` match but an editable/source checkout is
+behind upstream or the read-only remote probe sees commits not visible in local
+tracking refs, `--plan` still recommends a safe refresh/fast-forward path.
+Remote probe failure marks the report partial and does not claim git freshness is
+current. Dirty, ahead-only, or diverged checkouts return unsafe actions and
+`--apply` fails closed. The command never stashes, resets, rebases, merges, or
+pushes.
+
+### PyPI / yank rules
+
+PyPI metadata is advisory and non-fatal. Network failure returns
+`data.pypi.status = "partial"` and does not block local git, health, or
+sync-skill checks. Yanked releases are never recommended as targets. If the
+current installed version is yanked, `current_version_yanked` is true and
+`recommended_version` points to the latest non-yanked release when one exists.
+
+### Error behavior
+
+`--plan` normally returns `success: true` even when metadata is partial.
+`--apply` returns `success: false` with structured error codes when a write path
+is unsafe or a subprocess fails. Common codes include:
+
+| Code | Meaning |
+|---|---|
+| `UPGRADE_DIRTY_WORKTREE` | Source checkout has uncommitted changes |
+| `UPGRADE_GIT_REQUIRES_HUMAN` | Checkout is ahead, diverged, or not proven fast-forward safe |
+| `UPGRADE_REQUIRES_HUMAN` | Plan contains an unsafe or human-required action |
+| `UPGRADE_GIT_REFRESH_FAILED` | Remote ref refresh failed before a fast-forward attempt |
+| `UPGRADE_GIT_PULL_FAILED` | `git pull --ff-only` failed |
+| `UPGRADE_PIP_INSTALL_FAILED` | Package upgrade subprocess failed |
+| `UPGRADE_SYNC_SKILL_NOT_DELIVERED` | `sync-skill --install` did not report `delivered=true` |
+
+### schema_version Policy
+
+`upgrade` emits top-level `schema_version = "m36.upgrade.v0"`. Fields are
+additive within this version. Backward-incompatible shape or semantic changes
+require a new schema version.
+
+---
+
 ## bootstrap
 
 ### 端点
