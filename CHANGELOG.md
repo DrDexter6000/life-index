@@ -6,15 +6,24 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
-### Added
+## [1.4.5] - 2026-07-08
 
-- `life-index upgrade --plan/--apply --json` provides a deterministic host-agent
-  upgrade atom: PyPI yank-aware planning, dirty/ahead/behind git checkout
-  detection, parseable health validation, and `sync-skill --install` delivery
-  in one JSON contract.
-- Editable/source upgrades now include `pip install -e <repo>` after safe
-  fast-forward updates or package/manifest drift, and quiet current plans no
-  longer surface `sync-skill --install` as a low-value next step.
+### Fixed
+
+- Added and hardened `life-index upgrade --plan/--apply --json` as a
+  deterministic host-agent upgrade atom.
+- Completed editable/source upgrade loops: safe git fast-forward,
+  `python -m pip install -e <repo>`, version consistency check,
+  `sync-skill` delivery, and health verification.
+- Kept current states quiet: when code, package metadata, health, and skill
+  delivery are current, `recommended_next_step.id` is `none`.
+- Preserved fail-closed behavior for dirty/ahead/diverged checkouts, unknown
+  installs, and unreachable git remotes.
+
+### Notes
+
+- `upgrade` is for host-agent CLI upgrades only. It does not replace the
+  developer release workflow and does not operate the GUI repository.
 
 ## [1.4.4] - 2026-07-08
 
