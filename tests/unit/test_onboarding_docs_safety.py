@@ -119,6 +119,17 @@ def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:
     assert "git_freshness" in skill
 
 
+def test_skill_teaches_upgrade_atom_before_apply() -> None:
+    skill = _read("SKILL.md")
+
+    assert "life-index upgrade --plan --json" in skill
+    assert "life-index upgrade --apply --json" in skill
+    assert "safe_to_run=true" in skill
+    assert "requires_human=false" in skill
+    assert "不替代开发者发布流程" in skill
+    assert "不操作 GUI 仓" in skill
+
+
 def test_skill_teaches_host_agent_ops_discipline() -> None:
     skill = _read("SKILL.md")
     playbook = _read("references/ENTITY_MAINTENANCE_PLAYBOOK.md")

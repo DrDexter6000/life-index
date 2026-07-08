@@ -6,6 +6,13 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Added
+
+- `life-index upgrade --plan/--apply --json` provides a deterministic host-agent
+  upgrade atom: PyPI yank-aware planning, dirty/ahead/behind git checkout
+  detection, parseable health validation, and `sync-skill --install` delivery
+  in one JSON contract.
+
 ## [1.4.4] - 2026-07-08
 
 ### What users get

@@ -81,8 +81,8 @@ triggers:
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树
 - 写入成功后的状态字段解释（`needs_confirmation` / `index_status` / `side_effects_status` / 附件处理计数）→ 读 `docs/API.md` 中 `write_journal` 返回语义
-
 **会话 freshness / 运维纪律（升级摩擦 UF-1 + Ops）**：
+- 升级 Life Index CLI 时，优先运行 `life-index upgrade --plan --json`，读取 `actions[]` 和 `recommended_next_step`。只有当计划中的动作 `safe_to_run=true` 且 `requires_human=false` 时，才可运行 `life-index upgrade --apply --json`；dirty checkout、ahead/diverged commits、remote probe 不可达、未知安装方式、yanked 目标版本等情况必须停下来转述给用户。`upgrade` 不替代开发者发布流程，也不操作 GUI 仓。
 - 每次新会话首次使用 Life Index 前，运行 `life-index health --json` 并读取 `data.upgrade_freshness`；若 `freshness == "update_available"` 或 `git_freshness == "behind"`，先执行 `suggested_refresh_step`，再运行 `life-index sync-skill --install`；执行 health 建议命令前先看同一对象的 `side_effect` / `side_effect_note`，`write` 需用户确认或确认只是派生物刷新
 - 你是 Life Index 的使用者/运维者，不是开发者：不要向产品仓库克隆 commit/push；仓库克隆保持零改动，升级前 `git status --porcelain` 必须为空，脏了先 `git checkout -- .` 恢复；friction/笔记写到 `<data>/frictions/`，永不写进仓库克隆
 - `sync-skill --install` 的目标槽位始终是 `<host-home>/skills/life-index/`；若传入 `<host-home>/skills` parent，会自动归一化到 canonical slot，并可清理已知 1.4.2 parent-slot 坏状态；它也会自动收敛本管理树的 `skills/life-index/life-index` 嵌套重复；若返回 `HOST_SKILL_DIR_AMBIGUOUS`，说明存在多个无关或不安全候选，需让用户指定 `--host-skill-dir`

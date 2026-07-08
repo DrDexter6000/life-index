@@ -88,6 +88,10 @@
     "description": "Synchronize SKILL.md and references into an existing host agent skill directory"
   },
   {
+    "name": "upgrade",
+    "description": "Plan or apply deterministic host-agent CLI upgrade steps"
+  },
+  {
     "name": "smart-search",
     "description": "Deterministic search scaffold for host-agent synthesis"
   },

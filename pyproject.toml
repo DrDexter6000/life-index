@@ -91,6 +91,7 @@ tools = [
 "tools.mcp_discovery" = ["capabilities.json"]
 "tools.query_weather" = ["schema.json"]
 "tools.search_journals" = ["schema.json", "stopwords_*.txt"]
+"tools.upgrade" = ["schema.json"]
 "tools.write_journal" = ["schema.json", "confirm/schema.json"]
 
 [tool.setuptools.packages.find]

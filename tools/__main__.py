@@ -933,6 +933,7 @@ def main() -> None:
         "maintenance": "tools.maintenance.__main__",
         "bootstrap": "tools.bootstrap.__main__",
         "sync-skill": "tools.sync_skill.__main__",
+        "upgrade": "tools.upgrade.__main__",
         "trajectory": "tools.trajectory.__main__",
         "import": "tools.ingest.__main__",
         "index-tree": "tools.index_tree.__main__",
@@ -987,6 +988,7 @@ def print_usage() -> None:
     print("  maintenance  Run maintenance cycle (dry-run health checks)")
     print("  bootstrap  Detect install/data state and route onboarding (read-only)")
     print("  sync-skill  Synchronize SKILL.md and references into host skill directory")
+    print("  upgrade   Plan/apply deterministic host-agent CLI upgrade steps")
     print("  smart-search  Deterministic evidence scaffold for host agents")
     print("  aggregate  Deterministic counts, buckets, and claim envelopes")
     print("  analyze   Alias for deterministic aggregate counts")

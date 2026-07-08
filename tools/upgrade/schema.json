@@ -1,0 +1,56 @@
+{
+  "name": "upgrade",
+  "description": "Plan or apply deterministic Life Index CLI upgrade steps for host agents.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "plan": {
+        "type": "boolean",
+        "description": "Build a read-only upgrade plan."
+      },
+      "apply": {
+        "type": "boolean",
+        "description": "Apply safe upgrade actions only."
+      },
+      "json": {
+        "type": "boolean",
+        "description": "Emit JSON output."
+      }
+    },
+    "oneOf": [
+      {
+        "required": ["plan"]
+      },
+      {
+        "required": ["apply"]
+      }
+    ]
+  },
+  "output": {
+    "type": "object",
+    "required": ["success", "schema_version", "command", "mode", "data"],
+    "properties": {
+      "success": {
+        "type": "boolean"
+      },
+      "schema_version": {
+        "type": "string",
+        "const": "m36.upgrade.v0"
+      },
+      "command": {
+        "type": "string",
+        "const": "upgrade"
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["plan", "apply"]
+      },
+      "data": {
+        "type": "object"
+      },
+      "error": {
+        "type": "object"
+      }
+    }
+  }
+}

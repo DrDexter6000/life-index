@@ -46,6 +46,7 @@ assets/**
 # Public docs
 docs/API.md
 docs/ARCHITECTURE.md
+docs/AGENT_UPGRADE_ATOM.md
 docs/CI_HARD_CHECKS.md
 docs/ENTITY_GRAPH.md
 docs/ENTITY_GRAPH_UX_SURFACE_SPEC.md
