@@ -6,11 +6,20 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
-### Added
+## [1.4.4] - 2026-07-08
+
+### What users get
 
 - Entity review queue actions now expose stable GUI/host-agent payloads and
-  `entity --review --action preview` can preview a specific review action with
+  structured `action_choices[]` data for review cards.
+- `entity --review --action preview` can preview a specific review action with
   explicit `--review-action` and `--source-id`.
+- Review queue items now carry stable `source_id` and `target_id` fields so
+  GUI review consent cards do not need private guessing rules.
+
+### Included in this release
+
+- feat(entity): stabilize review action contract (#155).
 
 ## [1.4.3] - 2026-07-08
 
