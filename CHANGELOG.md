@@ -6,9 +6,17 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
-- Fix `sync-skill --install` to always converge on the canonical host skill
-  slot `<host-home>/skills/life-index`, including safe recovery from the
-  `1.4.2` parent-slot install state.
+## [1.4.3] - 2026-07-08
+
+### What users get
+
+- Fix `sync-skill --install` canonical host skill slot.
+- Recover safely from the `1.4.2` parent-slot bad state.
+- `1.4.3` supersedes `1.4.2` for skill delivery.
+
+### Included in this release
+
+- fix(sync-skill): enforce canonical host skill slot (#153).
 
 ## [1.4.2] - 2026-07-07
 
