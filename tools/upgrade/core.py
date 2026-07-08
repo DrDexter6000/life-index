@@ -431,6 +431,60 @@ def _display_command(command: list[str]) -> list[str]:
     return command
 
 
+def _quote_command_arg(value: str | Path) -> str:
+    text = str(value)
+    if not text:
+        return '""'
+    if any(char.isspace() for char in text):
+        return '"' + text.replace('"', '\\"') + '"'
+    return text
+
+
+def _editable_install_command(repo_path: Path) -> str:
+    return f"python -m pip install -e {_quote_command_arg(repo_path)}"
+
+
+def _sync_skill_list_current(sync_skill_status: dict[str, Any]) -> bool:
+    if not sync_skill_status.get("json_parseable"):
+        return False
+    payload = sync_skill_status.get("data")
+    if not isinstance(payload, dict):
+        return False
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return False
+    if data.get("status") != "listed":
+        return False
+    discovered = data.get("discovered")
+    if not isinstance(discovered, list):
+        return False
+    canonical = [
+        item
+        for item in discovered
+        if isinstance(item, str) and item.replace("\\", "/").endswith("skills/life-index")
+    ]
+    return len(canonical) == 1 and len(discovered) == 1
+
+
+def _editable_reinstall_safe(
+    *,
+    git_state: GitState | None,
+    remote_probe: dict[str, Any] | None,
+    needs_git_update: bool,
+) -> bool:
+    if git_state is None:
+        return False
+    if git_state.dirty is not False:
+        return False
+    if int(git_state.ahead_count or 0) > 0:
+        return False
+    if remote_probe and remote_probe.get("status") in {"unreachable", "unknown"}:
+        return False
+    if needs_git_update and int(git_state.behind_count or 0) > 0:
+        return bool(git_state.can_fast_forward)
+    return True
+
+
 def build_upgrade_plan(
     *,
     context: InstallContext | None = None,
@@ -467,6 +521,14 @@ def build_upgrade_plan(
 
     actions: list[dict[str, Any]] = []
     git_payload = _git_payload(git_state, remote_probe)
+    health_status = _run_json_check(
+        command_runner, [sys.executable, "-m", "tools", "health", "--json"]
+    )
+    sync_skill_status = _run_json_check(
+        command_runner,
+        [sys.executable, "-m", "tools", "sync-skill", "--list", "--json"],
+    )
+    git_update_action_needed = False
 
     if git_state and git_state.dirty:
         actions.append(
@@ -493,6 +555,7 @@ def build_upgrade_plan(
             )
         )
     elif git_state and (git_state.behind_count or 0) > 0:
+        git_update_action_needed = True
         actions.append(
             _action(
                 action_id="git_pull_ff_only",
@@ -505,6 +568,7 @@ def build_upgrade_plan(
             )
         )
     elif git_state and remote_probe and remote_probe.get("status") == "behind_remote":
+        git_update_action_needed = True
         actions.append(
             _action(
                 action_id="git_refresh_then_pull_ff_only",
@@ -530,6 +594,39 @@ def build_upgrade_plan(
                 reason=remote_probe.get("error") or "Remote freshness could not be verified.",
                 safe_to_run=False,
                 requires_human=True,
+            )
+        )
+
+    editable_version_drift = bool(
+        context.install_type == "editable"
+        and context.package_version
+        and context.manifest_version
+        and context.package_version != context.manifest_version
+    )
+    if (
+        context.install_type == "editable"
+        and context.repo_path
+        and (git_update_action_needed or editable_version_drift)
+    ):
+        safe_to_run = _editable_reinstall_safe(
+            git_state=git_state,
+            remote_probe=remote_probe,
+            needs_git_update=git_update_action_needed,
+        )
+        reason = (
+            "Editable package metadata differs from the bootstrap manifest."
+            if editable_version_drift
+            else "Editable installs need reinstall after source checkout updates."
+        )
+        actions.append(
+            _action(
+                action_id="pip_install_editable",
+                description="Reinstall the editable source checkout into the active environment.",
+                side_effect="write",
+                command=_editable_install_command(context.repo_path),
+                reason=reason,
+                safe_to_run=safe_to_run,
+                requires_human=not safe_to_run,
             )
         )
 
@@ -570,25 +667,18 @@ def build_upgrade_plan(
             requires_human=False,
         )
     )
-    actions.append(
-        _action(
-            action_id="sync_skill_install",
-            description="Refresh the host-agent Life Index skill playbook.",
-            side_effect="write",
-            command="life-index sync-skill --install --json",
-            reason="Tools without the matching SKILL.md/references are incomplete.",
-            safe_to_run=True,
-            requires_human=False,
+    if not _sync_skill_list_current(sync_skill_status):
+        actions.append(
+            _action(
+                action_id="sync_skill_install",
+                description="Refresh the host-agent Life Index skill playbook.",
+                side_effect="write",
+                command="life-index sync-skill --install --json",
+                reason="Tools without the matching SKILL.md/references are incomplete.",
+                safe_to_run=True,
+                requires_human=False,
+            )
         )
-    )
-
-    health_status = _run_json_check(
-        command_runner, [sys.executable, "-m", "tools", "health", "--json"]
-    )
-    sync_skill_status = _run_json_check(
-        command_runner,
-        [sys.executable, "-m", "tools", "sync-skill", "--list", "--json"],
-    )
 
     recommended_next_step = next((action for action in actions if not action["safe_to_run"]), None)
     if recommended_next_step is None:
@@ -784,6 +874,7 @@ def apply_upgrade(
             {"blocking_actions": blocking_actions, "applied_actions": applied},
         )
 
+    plan_action_ids = {action.get("id") for action in plan["data"].get("actions", [])}
     recommended = plan["data"]["pypi"].get("recommended_version")
     if recommended and context.install_type == "package":
         pip = command_runner.run(
@@ -803,6 +894,20 @@ def apply_upgrade(
                 plan,
             )
         applied.append({"id": "pip_install_upgrade", "returncode": pip.returncode})
+
+    if "pip_install_editable" in plan_action_ids:
+        assert context.repo_path is not None
+        pip_editable = command_runner.run(
+            [sys.executable, "-m", "pip", "install", "-e", str(context.repo_path)]
+        )
+        if pip_editable.returncode != 0:
+            return _error_result(
+                "UPGRADE_EDITABLE_INSTALL_FAILED",
+                pip_editable.stderr or pip_editable.stdout or "pip install -e failed",
+                plan,
+                {"applied_actions": applied},
+            )
+        applied.append({"id": "pip_install_editable", "returncode": pip_editable.returncode})
 
     version_check = _run_json_check(command_runner, [sys.executable, "-m", "tools", "--version"])
     if not version_check.get("json_parseable"):
@@ -825,40 +930,32 @@ def apply_upgrade(
             manifest_payload.get("repo_version") if isinstance(manifest_payload, dict) else None
         )
         if package and repo_version and package != repo_version:
+            suggested_command = None
+            if context.install_type == "editable" and context.repo_path:
+                suggested_command = _editable_install_command(context.repo_path)
+            error_code = (
+                "UPGRADE_VERSION_INCONSISTENT"
+                if context.install_type == "editable"
+                else "UPGRADE_VERSION_CHECK_FAILED"
+            )
             return {
                 "success": False,
                 "schema_version": UPGRADE_SCHEMA_VERSION,
                 "command": "upgrade",
                 "mode": "apply",
                 "error": {
-                    "code": "UPGRADE_VERSION_CHECK_FAILED",
+                    "code": error_code,
                     "message": "package_version and bootstrap manifest repo_version differ.",
                 },
                 "data": {
                     **plan["data"],
                     "applied_actions": applied,
                     "version_check": version_check,
+                    "package_version": package,
+                    "repo_version": repo_version,
+                    "suggested_command": suggested_command,
                 },
             }
-
-    health = _run_json_check(command_runner, [sys.executable, "-m", "tools", "health", "--json"])
-    if not health.get("json_parseable"):
-        return {
-            "success": False,
-            "schema_version": UPGRADE_SCHEMA_VERSION,
-            "command": "upgrade",
-            "mode": "apply",
-            "error": {
-                "code": "UPGRADE_HEALTH_JSON_FAILED",
-                "message": "life-index health --json did not emit parseable JSON.",
-            },
-            "data": {
-                **plan["data"],
-                "applied_actions": applied,
-                "version_check": version_check,
-                "health": health,
-            },
-        }
 
     sync_skill = _run_json_check(
         command_runner,
@@ -885,8 +982,27 @@ def apply_upgrade(
                 **plan["data"],
                 "applied_actions": applied,
                 "version_check": version_check,
-                "health": health,
                 "sync_skill": sync_payload,
+            },
+        }
+
+    health = _run_json_check(command_runner, [sys.executable, "-m", "tools", "health", "--json"])
+    if not health.get("json_parseable"):
+        return {
+            "success": False,
+            "schema_version": UPGRADE_SCHEMA_VERSION,
+            "command": "upgrade",
+            "mode": "apply",
+            "error": {
+                "code": "UPGRADE_HEALTH_JSON_FAILED",
+                "message": "life-index health --json did not emit parseable JSON.",
+            },
+            "data": {
+                **plan["data"],
+                "applied_actions": applied,
+                "version_check": version_check,
+                "sync_skill": sync_payload,
+                "health": health,
             },
         }
 

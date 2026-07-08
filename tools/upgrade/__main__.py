@@ -20,7 +20,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--plan", action="store_true", help="Build a read-only upgrade plan.")
-    mode.add_argument("--apply", action="store_true", help="Run safe upgrade actions.")
+    mode.add_argument(
+        "--apply",
+        action="store_true",
+        help="Run safe package or editable/source upgrade actions.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON output.")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 

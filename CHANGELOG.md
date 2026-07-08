@@ -12,6 +12,9 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
   upgrade atom: PyPI yank-aware planning, dirty/ahead/behind git checkout
   detection, parseable health validation, and `sync-skill --install` delivery
   in one JSON contract.
+- Editable/source upgrades now include `pip install -e <repo>` after safe
+  fast-forward updates or package/manifest drift, and quiet current plans no
+  longer surface `sync-skill --install` as a low-value next step.
 
 ## [1.4.4] - 2026-07-08
 

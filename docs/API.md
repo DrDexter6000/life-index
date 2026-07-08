@@ -3358,11 +3358,15 @@ status, and recommended actions.
 - package installs may upgrade to a recommended non-yanked PyPI version;
 - editable/source checkouts may refresh remote refs and run `git pull --ff-only`
   only when clean, behind, and not ahead;
+- editable/source checkouts run `python -m pip install -e <repo>` after a safe
+  git update, or when package metadata differs from bootstrap manifest
+  `repo_version`;
 - dirty, ahead, or diverged checkouts fail closed and require a human;
 - any plan action with `safe_to_run=false` or `requires_human=true` blocks
   `--apply` before write actions;
-- `health --json` is run and parsed;
-- `sync-skill --install --json` is run through the existing sync-skill command.
+- `life-index --version` is parsed and package/manifest consistency is checked;
+- `sync-skill --install --json` is run through the existing sync-skill command;
+- `health --json` is run and parsed.
 
 The command contains no LLM calls and never writes user journals.
 
@@ -3406,11 +3410,11 @@ The command contains no LLM calls and never writes user journals.
     },
     "actions": [
       {
-        "id": "sync_skill_install",
-        "description": "Refresh the host-agent Life Index skill playbook.",
+        "id": "pip_install_editable",
+        "description": "Reinstall the editable source checkout into the active environment.",
         "side_effect": "write",
-        "command": "life-index sync-skill --install --json",
-        "reason": "Tools without the matching SKILL.md/references are incomplete.",
+        "command": "python -m pip install -e <repo_path>",
+        "reason": "Editable installs need reinstall after source checkout updates.",
         "safe_to_run": true,
         "requires_human": false
       }
@@ -3444,6 +3448,18 @@ current. Dirty, ahead-only, or diverged checkouts return unsafe actions and
 `--apply` fails closed. The command never stashes, resets, rebases, merges, or
 pushes.
 
+For editable/source installs, git freshness is not the whole upgrade. After a
+safe fast-forward path, `--apply` also runs `python -m pip install -e <repo>` so
+entry points, package metadata, dependencies, and package data match the source
+checkout. If `package_version` differs from bootstrap manifest `repo_version`,
+`--plan` recommends the same editable reinstall even when git is otherwise
+current.
+
+When git, PyPI, health, and sync-skill list checks are current, `recommended_next_step.id`
+is `"none"`. `sync-skill --install` is still used by `--apply` as an idempotent
+delivery verification, but it is not surfaced as a required next step when
+`sync-skill --list --json` already reports the canonical Life Index skill slot.
+
 ### PyPI / yank rules
 
 PyPI metadata is advisory and non-fatal. Network failure returns
@@ -3466,6 +3482,8 @@ is unsafe or a subprocess fails. Common codes include:
 | `UPGRADE_GIT_REFRESH_FAILED` | Remote ref refresh failed before a fast-forward attempt |
 | `UPGRADE_GIT_PULL_FAILED` | `git pull --ff-only` failed |
 | `UPGRADE_PIP_INSTALL_FAILED` | Package upgrade subprocess failed |
+| `UPGRADE_EDITABLE_INSTALL_FAILED` | `python -m pip install -e <repo>` failed |
+| `UPGRADE_VERSION_INCONSISTENT` | Editable package metadata still differs from bootstrap manifest after apply |
 | `UPGRADE_SYNC_SKILL_NOT_DELIVERED` | `sync-skill --install` did not report `delivered=true` |
 
 ### schema_version Policy

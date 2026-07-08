@@ -44,10 +44,13 @@ health JSON parse status, sync-skill canonical slot status, `actions[]`, and a
 - package installs may upgrade to the recommended non-yanked PyPI version;
 - editable/source checkouts may refresh remote refs and run `git pull --ff-only`
   only when clean, behind, and not ahead;
+- editable/source checkouts run `python -m pip install -e <repo>` after safe
+  source updates or package/manifest drift;
 - any action with `safe_to_run=false` or `requires_human=true` blocks apply
   before write actions;
-- `health --json` is run and parsed;
-- `sync-skill --install --json` is run through the existing sync-skill command.
+- `life-index --version` is parsed and checked for package/manifest consistency;
+- `sync-skill --install --json` is run through the existing sync-skill command;
+- `health --json` is run and parsed.
 
 Every action reports:
 
@@ -71,6 +74,16 @@ Plan uses read-only remote probing and does not fetch, because fetch mutates
 `.git`. Apply may run a remote refresh first, then reinspect the checkout, and
 only run `git pull --ff-only` when the refreshed state is clean, behind, and not
 ahead.
+
+For editable/source installs, source freshness is followed by environment
+freshness. After a safe fast-forward path, apply runs `python -m pip install -e
+<repo>` before version, skill, and health checks. If package metadata differs
+from bootstrap manifest `repo_version`, the same editable reinstall is the
+recommended next step even when git is current.
+
+When code, package metadata, health, and skill delivery are already current,
+`recommended_next_step.id` is `none`; idempotent sync-skill verification remains
+part of apply but is not presented as a required task.
 
 ## PyPI Rules
 
