@@ -418,6 +418,9 @@ JSON contract:
 
 Advanced primitives appendix:
   life-index entity --review --json        Human-in-the-loop review queue
+  life-index entity --review --action preview --review-action ACTION \
+--id REVIEW_ITEM_ID --source-id SOURCE_ID --target-id TARGET_ID --json
+                                       Preview a specific review action
   life-index entity --check --json         Structural graph check component
   life-index entity --audit --json         Low-level quality audit component
   life-index entity --stats --json         Graph statistics component
@@ -443,6 +446,7 @@ Advanced primitives appendix:
         "--preview", action="store_true", help="Preview only, do not mutate the graph"
     )
     parser.add_argument("--id", dest="entity_id")
+    parser.add_argument("--source-id", dest="source_id")
     parser.add_argument("--target-id", dest="target_id")
     parser.add_argument("--relation", dest="relation")
     parser.add_argument("--add-alias", dest="add_alias")
@@ -460,6 +464,20 @@ Advanced primitives appendix:
             "preview",
         ],
     )
+    parser.add_argument(
+        "--review-action",
+        dest="specific_review_action",
+        choices=[
+            "merge_as_alias",
+            "add_relationship",
+            "confirm_candidate",
+            "reject_candidate",
+            "keep_separate",
+            "undo_keep_separate",
+            "skip",
+        ],
+        help="Action to preview when using --review --action preview.",
+    )
     parser.add_argument("--export", dest="export_format", choices=["csv", "xlsx"])
     parser.add_argument("--import", dest="import_file")
     parser.add_argument("--output", dest="output_file")
@@ -471,7 +489,7 @@ Advanced primitives appendix:
     parser.add_argument("--json", action="store_true", help="Emit JSON output.")
     args = parser.parse_args(argv)
 
-    if args.review_action and not args.review:
+    if (args.review_action or args.specific_review_action) and not args.review:
         if args.review_action == "add_relationship":
             replacement = (
                 "life-index entity maintain --add-relationship --id SOURCE_ID "
@@ -645,6 +663,9 @@ Advanced primitives appendix:
             _print(result)
             return
 
+        if args.specific_review_action and args.review_action != "preview":
+            raise SystemExit("--review-action requires --action preview")
+
         # --review alone: show queue
         if not args.review_action:
             queue = build_review_queue(graph_path=graph_path)
@@ -664,11 +685,14 @@ Advanced primitives appendix:
         if args.review_action == "preview":
             if not args.entity_id:
                 raise SystemExit("--action preview requires --id (item_id)")
-            preview_action = "add_relationship" if args.relation else "merge_as_alias"
+            preview_action = args.specific_review_action or (
+                "add_relationship" if args.relation else "merge_as_alias"
+            )
+            source_id = args.source_id or args.entity_id
             preview = generate_preview(
                 item_id=args.entity_id,
                 action=preview_action,
-                source_id=args.entity_id,
+                source_id=source_id,
                 target_id=args.target_id,
                 relation=args.relation,
                 graph_path=graph_path,
@@ -680,12 +704,14 @@ Advanced primitives appendix:
         # with --id ... --target-id ...
         result = apply_action(
             action=args.review_action,
-            source_id=args.entity_id,
+            source_id=args.source_id or args.entity_id,
             target_id=args.target_id,
             relation=args.relation,
             source="review",
             graph_path=graph_path,
         )
+        if args.source_id and args.entity_id:
+            result.setdefault("item_id", args.entity_id)
         _print(result)
         return
 

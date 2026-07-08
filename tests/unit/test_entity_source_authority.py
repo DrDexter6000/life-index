@@ -90,5 +90,13 @@ def test_audit_and_review_use_neutral_pending_language_not_archive_decisions(
     assert any(issue["type"] == "candidate_entity" for issue in report["issues"])
     candidate = next(item for item in queue if item["category"] == "candidate_entity")
     assert candidate["suggested_action"] == "review"
-    assert candidate["action_choices"] == ["confirm_candidate", "reject_candidate", "skip"]
+    assert [choice["action"] for choice in candidate["action_choices"]] == [
+        "confirm_candidate",
+        "reject_candidate",
+        "skip",
+    ]
+    assert candidate["action_choices"][0]["source_id"] == "person-morgan"
+    assert candidate["action_choices"][0]["evidence"] == [
+        "Journals/2026/07/life-index_2026-07-02_001.md"
+    ]
     assert "human review" in candidate["why"].lower()

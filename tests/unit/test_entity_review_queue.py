@@ -115,9 +115,8 @@ class TestReviewQueueBuilding:
 
         if high_items:
             for item in high_items:
-                assert (
-                    "merge" in item["action_choices"] or "merge_as_alias" in item["action_choices"]
-                )
+                actions = [choice["action"] for choice in item["action_choices"]]
+                assert "merge" in actions or "merge_as_alias" in actions
 
 
 class TestReviewPreview:

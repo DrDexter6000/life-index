@@ -113,6 +113,186 @@ def _remove_aliases(entity: dict[str, Any], aliases: list[str]) -> None:
             alias_metadata.pop(alias, None)
 
 
+def _action_label(action: str) -> str:
+    return {
+        "merge_as_alias": "Same",
+        "keep_separate": "Different",
+        "skip": "Not-sure",
+        "add_relationship": "Add relationship",
+        "confirm_candidate": "Confirm candidate",
+        "reject_candidate": "Reject candidate",
+    }.get(action, action)
+
+
+def _action_description(action: str) -> str:
+    return {
+        "merge_as_alias": ("Preview merging the source entity into the target entity as aliases."),
+        "keep_separate": "Persist a user-confirmed non-duplicate decision.",
+        "skip": "Leave the item unchanged for later review.",
+        "add_relationship": "Preview adding a confirmed relationship edge.",
+        "confirm_candidate": "Preview promoting the candidate to confirmed.",
+        "reject_candidate": "Preview removing the candidate from the graph.",
+    }.get(action, "")
+
+
+def _review_action_choice(
+    action: str,
+    *,
+    source_id: str | None,
+    target_id: str | None,
+    relation: str | None,
+    evidence: list[str],
+) -> dict[str, Any]:
+    return {
+        "action": action,
+        "source_id": source_id,
+        "target_id": target_id,
+        "relation": relation,
+        "evidence": evidence,
+        "preview_required": action != "skip",
+        "label": _action_label(action),
+        "description": _action_description(action),
+    }
+
+
+def _review_action_choices(
+    actions: list[str],
+    *,
+    source_id: str | None,
+    target_id: str | None,
+    relation: str | None,
+    evidence: list[str],
+) -> list[dict[str, Any]]:
+    return [
+        _review_action_choice(
+            action,
+            source_id=source_id,
+            target_id=target_id,
+            relation=relation,
+            evidence=evidence,
+        )
+        for action in actions
+    ]
+
+
+def _preview_metadata(
+    action: str,
+    *,
+    source_id: str | None,
+    target_id: str | None,
+    relation: str | None,
+    evidence: list[str],
+) -> dict[str, Any]:
+    if action == "merge_as_alias":
+        return {
+            "will_write": [
+                {
+                    "type": "merge_as_alias",
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "source": "review",
+                }
+            ],
+            "will_not_write": ["Preview is read-only; no entity graph changes are made."],
+            "reversible": True,
+        }
+    if action == "keep_separate":
+        return {
+            "will_write": [
+                {
+                    "type": "not_duplicate_of",
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "source": "user",
+                }
+            ],
+            "will_not_write": ["No merge will be performed."],
+            "reversible": True,
+        }
+    if action == "undo_keep_separate":
+        return {
+            "will_write": [
+                {
+                    "type": "remove_not_duplicate_of",
+                    "source_id": source_id,
+                    "target_id": target_id,
+                }
+            ],
+            "will_not_write": ["Preview is read-only; no entity graph changes are made."],
+            "reversible": True,
+        }
+    if action == "add_relationship":
+        return {
+            "will_write": [
+                {
+                    "type": "relationship",
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "relation": relation,
+                    "source": "review",
+                    "status": "confirmed",
+                    "evidence": evidence,
+                }
+            ],
+            "will_not_write": ["Preview is read-only; no entity graph changes are made."],
+            "reversible": True,
+        }
+    if action == "confirm_candidate":
+        if target_id and relation:
+            will_write = [
+                {
+                    "type": "confirm_candidate_relationship",
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "relation": relation,
+                    "source": "review",
+                    "status": "confirmed",
+                }
+            ]
+        else:
+            will_write = [
+                {
+                    "type": "confirm_candidate_entity",
+                    "source_id": source_id,
+                    "source": "review",
+                    "status": "confirmed",
+                }
+            ]
+        return {
+            "will_write": will_write,
+            "will_not_write": ["Preview is read-only; no entity graph changes are made."],
+            "reversible": False,
+        }
+    if action == "reject_candidate":
+        if target_id and relation:
+            will_write = [
+                {
+                    "type": "remove_candidate_relationship",
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "relation": relation,
+                }
+            ]
+        else:
+            will_write = [{"type": "remove_candidate_entity", "source_id": source_id}]
+        return {
+            "will_write": will_write,
+            "will_not_write": ["Preview is read-only; no entity graph changes are made."],
+            "reversible": False,
+        }
+    if action == "skip":
+        return {
+            "will_write": [],
+            "will_not_write": ["No graph changes will be made."],
+            "reversible": True,
+        }
+    return {
+        "will_write": [],
+        "will_not_write": ["Unknown action; no changes are described."],
+        "reversible": False,
+    }
+
+
 def build_review_queue(
     graph_path: Path | None = None,
 ) -> list[dict[str, Any]]:
@@ -186,6 +366,9 @@ def build_review_queue(
                 for entity_id in entity_ids
                 if entity_id
             ]
+        source_id = str(entity_ids[0]) if entity_ids else None
+        target_id = str(entity_ids[1]) if len(entity_ids) > 1 else None
+        relation = str(issue.get("relation") or "") or None
 
         queue.append(
             {
@@ -193,7 +376,16 @@ def build_review_queue(
                 "risk_level": risk_level,
                 "category": issue_type,
                 "description": issue.get("evidence") or issue.get("message", ""),
-                "action_choices": action_map.get(issue_type, ["skip"]),
+                "action_choices": _review_action_choices(
+                    action_map.get(issue_type, ["skip"]),
+                    source_id=source_id,
+                    target_id=target_id,
+                    relation=relation,
+                    evidence=evidence,
+                ),
+                "action_names": action_map.get(issue_type, ["skip"]),
+                "source_id": source_id,
+                "target_id": target_id,
                 "entity_ids": entity_ids,
                 "entities": entity_refs,
                 "why": str(why),
@@ -220,6 +412,7 @@ def generate_preview(
     source_id: str | None = None,
     target_id: str | None = None,
     relation: str | None = None,
+    evidence: list[str] | None = None,
     graph_path: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a preview of what an action will do before committing.
@@ -230,6 +423,7 @@ def generate_preview(
         source_id: Source entity id (for merge).
         target_id: Target entity id (for merge).
         relation: Relationship label for add_relationship preview.
+        evidence: Journal rel_paths supporting the action.
         graph_path: Optional override for entity graph path (testing).
 
     Returns:
@@ -239,8 +433,22 @@ def generate_preview(
     preview: dict[str, Any] = {
         "item_id": item_id,
         "action": action,
+        "preview": True,
+        "source_id": source_id,
+        "target_id": target_id,
+        "relation": relation,
+        "evidence": _dedupe_strings(evidence if evidence is not None else []),
         "changes": [],
     }
+    preview.update(
+        _preview_metadata(
+            action,
+            source_id=source_id,
+            target_id=target_id,
+            relation=relation,
+            evidence=preview["evidence"],
+        )
+    )
 
     if action == "merge_as_alias" and source_id and target_id:
         graph = load_entity_graph(graph_path)
@@ -358,7 +566,14 @@ def apply_action(
         Result dict with success status and details.
     """
     if action == "skip":
-        return {"success": True, "action": "skip", "skipped": True}
+        return {
+            "success": True,
+            "action": "skip",
+            "applied": True,
+            "skipped": True,
+            "changes": [],
+            "reversible": True,
+        }
 
     if action in {"keep_separate", "undo_keep_separate"}:
         if not source_id or not target_id:
@@ -392,9 +607,11 @@ def apply_action(
             return {
                 "success": True,
                 "action": "undo_keep_separate",
+                "applied": True,
                 "source_id": source_id,
                 "target_id": target_id,
                 "removed": removed_source or removed_target,
+                "reversible": True,
             }
 
         created_at = _now_iso()
@@ -404,6 +621,7 @@ def apply_action(
         return {
             "success": True,
             "action": "keep_separate",
+            "applied": True,
             "source_id": source_id,
             "target_id": target_id,
             "changes": [
@@ -414,6 +632,7 @@ def apply_action(
                     "source": "user",
                 }
             ],
+            "reversible": True,
         }
 
     if action in {"confirm_candidate", "reject_candidate"}:
@@ -496,9 +715,11 @@ def apply_action(
         return {
             "success": True,
             "action": "add_relationship",
+            "applied": True,
             "source_id": source_id,
             "target_id": target_id,
             "relation": relation,
+            "reversible": True,
         }
 
     if action == "merge_as_alias":
@@ -602,9 +823,11 @@ def apply_action(
         return {
             "success": True,
             "action": "merge_as_alias",
+            "applied": True,
             "source_id": source_id,
             "target_id": target_id,
             "transferred_names": names_to_transfer,
+            "reversible": True,
         }
 
     return {"success": False, "action": action, "error": f"Unknown action: {action}"}
@@ -631,7 +854,9 @@ def _apply_candidate_entity_action(
         return {
             "success": True,
             "action": action,
+            "applied": True,
             "rejected_id": source_entity["id"],
+            "reversible": False,
         }
 
     source_entity["status"] = "confirmed"
@@ -642,7 +867,9 @@ def _apply_candidate_entity_action(
     return {
         "success": True,
         "action": action,
+        "applied": True,
         "confirmed_id": source_entity["id"],
+        "reversible": False,
     }
 
 
@@ -684,9 +911,11 @@ def _apply_candidate_relationship_action(
         return {
             "success": True,
             "action": action,
+            "applied": True,
             "source_id": source_entity["id"],
             "target_id": target_id,
             "relation": relation,
+            "reversible": False,
         }
 
     relationship["status"] = "confirmed"
@@ -697,9 +926,11 @@ def _apply_candidate_relationship_action(
     return {
         "success": True,
         "action": action,
+        "applied": True,
         "source_id": source_entity["id"],
         "target_id": target_id,
         "relation": relation,
+        "reversible": False,
     }
 
 
