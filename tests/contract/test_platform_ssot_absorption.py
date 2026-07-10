@@ -278,11 +278,16 @@ def _role_contract_errors(block: str) -> list[str]:
     }
     errors: list[str] = []
     header = ("Role", "Authority boundary")
-    table_count = _markdown_rows(block).count(header)
+    markdown_rows = _markdown_rows(block)
+    table_count = markdown_rows.count(header)
     if table_count != 1:
         errors.append(f"expected exactly one named role table, found {table_count}")
 
-    role_rows = _named_markdown_table_rows(block, header) or []
+    named_role_rows = _named_markdown_table_rows(block, header)
+    role_rows = named_role_rows or []
+    if named_role_rows is not None and markdown_rows != [header, *role_rows]:
+        errors.append("parallel/unexpected role table rows outside the named role table")
+
     parsed_rows: list[tuple[str, str]] = []
     for row in role_rows:
         if len(row) != 2:
@@ -513,6 +518,13 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
             "parallel role prose",
             valid + "\nHost Agent owns planning while Core owns synthesis.\n",
             "role duties are allowed only in the named role table",
+        ),
+        (
+            "parallel role table",
+            valid + "\n| Component | Responsibility |\n"
+            "|---|---|\n"
+            "| Core | Owns synthesis. |\n",
+            "parallel/unexpected role table",
         ),
     )
     missed_structural_drift: list[str] = []
