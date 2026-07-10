@@ -150,6 +150,13 @@ class TestDefaultOutputContract:
         assert "agent_decisions_summary" in result
         assert isinstance(result["agent_decisions_summary"], str)
 
+    def test_deterministic_stage_timings_are_always_zero(
+        self, default_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        performance = _json(default_proc)["performance"]
+        assert performance["rewrite_time_ms"] == 0
+        assert performance["filter_time_ms"] == 0
+
 
 class TestIncludeEvidenceContract:
     """--include-evidence output contract."""
@@ -190,6 +197,13 @@ class TestSynthesizeNoLlmContract:
     ) -> None:
         assert _json(synthesize_proc)["agent_unavailable"] is True
 
+    def test_no_evidence_or_synthesis_timing(
+        self, synthesize_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        performance = _json(synthesize_proc)["performance"]
+        assert "evidence_build_ms" not in performance
+        assert "synthesis_ms" not in performance
+
 
 class TestCombinedEvidenceSynthesizeNoLlmContract:
     """Combined flags do not produce answer; evidence performance stays stable."""
@@ -203,7 +217,9 @@ class TestCombinedEvidenceSynthesizeNoLlmContract:
     def test_combined_evidence_build_ms(
         self, combined_proc: subprocess.CompletedProcess[str]
     ) -> None:
-        assert "evidence_build_ms" in _json(combined_proc)["performance"]
+        performance = _json(combined_proc)["performance"]
+        assert "evidence_build_ms" in performance
+        assert "synthesis_ms" not in performance
 
 
 class TestExplainContract:
@@ -222,15 +238,27 @@ class TestExplainContract:
 
 
 class TestHelpContract:
-    """--help includes key smart-search flags."""
+    """--help states the exact current deterministic CLI contract."""
+
+    def test_help_describes_keyword_entity_scaffold(
+        self, help_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        normalized = " ".join(help_proc.stdout.split())
+        assert "Smart search with a deterministic keyword/entity scaffold" in normalized
+        assert "dual-pipeline" not in normalized
 
     def test_help_includes_include_evidence(
         self, help_proc: subprocess.CompletedProcess[str]
     ) -> None:
         assert "--include-evidence" in help_proc.stdout
 
-    def test_help_includes_synthesize(self, help_proc: subprocess.CompletedProcess[str]) -> None:
-        assert "--synthesize" in help_proc.stdout
+    def test_help_describes_synthesize_as_current_no_op(
+        self, help_proc: subprocess.CompletedProcess[str]
+    ) -> None:
+        normalized = " ".join(help_proc.stdout.split())
+        synthesize_help = normalized.rsplit("--synthesize", 1)[1]
+        synthesize_help = synthesize_help.split("--format-entity-annotated", 1)[0].strip()
+        assert synthesize_help == "Accepted compatibility no-op; no LLM and no answer"
 
     def test_help_includes_explain(self, help_proc: subprocess.CompletedProcess[str]) -> None:
         assert "--explain" in help_proc.stdout

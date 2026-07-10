@@ -15,7 +15,6 @@ AUTHORITY_PATHS = {
     "api": REPO_ROOT / "docs" / "API.md",
     "ci": REPO_ROOT / "docs" / "CI_HARD_CHECKS.md",
     "skill": REPO_ROOT / "SKILL.md",
-    "shipped_skill": REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md",
     "smart_search_cli": REPO_ROOT / "tools" / "smart_search" / "__main__.py",
 }
 
@@ -215,6 +214,33 @@ EXPECTED_API_CURRENT_ROWS = {
     ),
 }
 
+EXPECTED_API_PERFORMANCE_ROWS = {
+    "`rewrite_time_ms`": (
+        "`rewrite_time_ms`",
+        "float",
+        "始终",
+        "当前确定性产品 CLI 路径固定为 `0`",
+    ),
+    "`filter_time_ms`": (
+        "`filter_time_ms`",
+        "float",
+        "始终",
+        "当前确定性产品 CLI 路径固定为 `0`",
+    ),
+    "`evidence_build_ms`": (
+        "`evidence_build_ms`",
+        "float",
+        "仅传递 `--include-evidence` 时",
+        "Evidence pack 构建耗时；`--synthesize` 单独使用不触发构建",
+    ),
+    "`synthesis_ms`": (
+        "`synthesis_ms`",
+        "float",
+        "当前产品 CLI 不出现",
+        "不可达旧实现的非稳定字段；#163 清理",
+    ),
+}
+
 
 def _assert_named_block_snapshot(
     text: str,
@@ -397,10 +423,7 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
 
 
 def test_role_contract_rejects_appended_contradictions_and_external_duty_verbs() -> None:
-    skill_bytes = AUTHORITY_PATHS["skill"].read_bytes()
-    shipped_bytes = AUTHORITY_PATHS["shipped_skill"].read_bytes()
-    assert skill_bytes == shipped_bytes, "packaged Skill artifact drifted from canonical SKILL.md"
-    skill = skill_bytes.decode("utf-8")
+    skill = AUTHORITY_PATHS["skill"].read_text(encoding="utf-8")
     _assert_named_block_snapshot(
         skill,
         "HOST-AGENT-ROUTING",
@@ -471,6 +494,14 @@ def test_deprecation_text_names_owner_issue_and_runtime_state() -> None:
             EXPECTED_API_SYNTHESIZE_TRANSITION,
             "docs/API.md",
         )
+
+
+def test_api_performance_rows_match_current_deterministic_cli_truth() -> None:
+    api = AUTHORITY_PATHS["api"].read_text(encoding="utf-8")
+    api_rows = _markdown_rows(api)
+    for key, expected_row in EXPECTED_API_PERFORMANCE_ROWS.items():
+        matches = [row for row in api_rows if row and row[0] == key]
+        assert matches == [expected_row], f"docs/API.md performance row drift for {key}"
 
 
 def test_ci_hard_check_inventory_cannot_call_all_skipped_private_assertions_green() -> None:

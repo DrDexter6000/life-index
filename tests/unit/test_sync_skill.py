@@ -15,15 +15,6 @@ HOST_ENV_VARS = (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_HOST_AGENT_ROUTING_BLOCK = "\n".join(
-    (
-        "## Host Agent / Core / Gateway routing boundary",
-        "",
-        "- Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis. They also own orchestration.",  # noqa: E501
-        "- Core calls remain deterministic; Core does not plan, reason, orchestrate, interpret, or synthesize.",  # noqa: E501
-        "- Gateway is an optional future typed 1:1 projection under #164; it is not yet implemented, is not a second semantic API, and owns no intelligence. If introduced, it is only a contract-equivalent transport. Gateway is never required for the core route.",  # noqa: E501
-    )
-)
 
 
 def _write_source(root: Path) -> None:
@@ -82,18 +73,6 @@ def test_shipped_skill_is_byte_identical_to_canonical() -> None:
     assert (
         canonical_path.read_bytes() == shipped_path.read_bytes()
     ), "packaged Skill artifact drifted from canonical SKILL.md"
-
-
-def test_skill_routes_reasoning_to_host_agent_and_keeps_gateway_optional() -> None:
-    canonical = (REPO_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    start_marker = "<!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:START -->"
-    end_marker = "<!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:END -->"
-    assert canonical.count(start_marker) == 1 and canonical.count(end_marker) == 1
-    start = canonical.index(start_marker) + len(start_marker)
-    end = canonical.index(end_marker, start)
-    block = canonical[start:end].replace("\r\n", "\n").replace("\r", "\n")
-    block = block.removeprefix("\n").removesuffix("\n")
-    assert block.splitlines() == EXPECTED_HOST_AGENT_ROUTING_BLOCK.splitlines()
 
 
 def test_sync_skill_copies_skill_and_references_preserving_custom_triggers(tmp_path: Path) -> None:

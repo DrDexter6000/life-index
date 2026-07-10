@@ -2418,11 +2418,11 @@ python -m tools.smart_search --query "..." [options]
 | 子字段 | 类型 | 条件 | 说明 |
 |--------|------|------|------|
 | `total_time_ms` | float | 始终 | 总搜索耗时（毫秒） |
-| `rewrite_time_ms` | float | 当前产品 CLI 不出现 | 不可达旧实现的非稳定字段；#163 清理 |
-| `filter_time_ms` | float | 当前产品 CLI 不出现 | 不可达旧实现的非稳定字段；#163 清理 |
+| `rewrite_time_ms` | float | 始终 | 当前确定性产品 CLI 路径固定为 `0` |
+| `filter_time_ms` | float | 始终 | 当前确定性产品 CLI 路径固定为 `0` |
 | `search_time_ms` | float | 始终 | 底层检索耗时 |
 | `total_available` | int | 始终 | 检索到的总结果数 |
-| `evidence_build_ms` | float | evidence 构建尝试时（`--include-evidence` 或 `--synthesize`） | Evidence pack 构建耗时 |
+| `evidence_build_ms` | float | 仅传递 `--include-evidence` 时 | Evidence pack 构建耗时；`--synthesize` 单独使用不触发构建 |
 | `evidence_error` | string | evidence 构建失败且 `--include-evidence` 时 | 构建失败错误信息 |
 | `synthesis_ms` | float | 当前产品 CLI 不出现 | 不可达旧实现的非稳定字段；#163 清理 |
 
