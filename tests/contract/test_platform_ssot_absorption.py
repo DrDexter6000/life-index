@@ -35,6 +35,45 @@ CURRENT_SYNTHESIZE_RUNTIME_FRAGMENTS = (
     "--synthesize",
     *API_SYNTHESIZE_CURRENT_FRAGMENTS,
 )
+EXPECTED_ARCHITECTURE_TARGET_STATUSES = {
+    "#163": "recall/eval correction and provider-backed synthesis retirement: unimplemented.",
+    "#162": "transactional write, side-effect, and freshness repair: unimplemented.",
+    "#165": "backup, restore, and recovery proof: unimplemented.",
+    "#164": "optional Gateway typed 1:1 projection: unimplemented.",
+}
+EXPECTED_SYNTHESIZE_TRANSITION_LINES = {
+    "Current runtime": (
+        "`--synthesize` requests provider-backed LLM synthesis and applies the trust gate "
+        "when its runtime prerequisites are available."
+    ),
+    "Target under #163": (
+        "`--synthesize` becomes a deprecated no-op; this is not yet implemented."
+    ),
+    "Compatibility": (
+        "retain the accepted flag for at least two major versions after the #163 transition "
+        "is implemented."
+    ),
+}
+ARCHITECTURE_FORBIDDEN_CURRENT_STATE_PATTERNS = (
+    r"\balready\s+(?:a\s+)?deprecated\b",
+    r"\bdeprecated\s+no-op\b",
+    r"\balready\s+been\s+retired\b",
+    r"\bno\s+longer\s+does\s+anything\b",
+)
+FORBIDDEN_DOMAIN_WAIVER_PATTERNS = {
+    "determinism": r"\b(?:may|can)\s+waive\s+(?:the\s+)?determinism\b",
+    "low/zero LLM content": r"\b(?:may|can)\s+waive\s+(?:the\s+)?low/zero llm content\b",
+    "cross-time semantic stability": (
+        r"\b(?:may|can)\s+waive\s+(?:the\s+)?cross-time semantic stability\b"
+    ),
+    "RFC/substantive-gate evidence": (
+        r"\b(?:may|can)\s+waive\s+(?:the\s+)?rfc/substantive-gate evidence\b"
+    ),
+    "other current Charter constraints": (
+        r"\b(?:may|can)\s+waive\s+(?:(?:any|all)\s+)?other current charter "
+        r"(?:admission )?constraints?\b"
+    ),
+}
 API_SYNTHESIZE_TRANSITION_POINTER = "see the named `--synthesize` transition authority block"
 API_SYNTHESIZE_STALE_FRAGMENTS = (
     "deterministic scaffold",
@@ -80,6 +119,12 @@ ROLE_DUTY_TOKENS = frozenset(
         "synthesized",
         "synthesizing",
         "synthesis",
+        "planner",
+        "reasoner",
+        "orchestrator",
+        "interpreter",
+        "synthesizer",
+        "synthesiser",
     }
 )
 
@@ -88,7 +133,7 @@ def _read_authority(name: str) -> str:
     return AUTHORITY_PATHS[name].read_text(encoding="utf-8")
 
 
-def _normalize_role_contract_text(value: str) -> str:
+def _normalize_contract_text(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
@@ -156,6 +201,26 @@ def _named_markdown_table_rows(
     return None
 
 
+def _single_named_table_rows(
+    block: str,
+    header: tuple[str, ...],
+    table_name: str,
+) -> tuple[list[tuple[str, ...]], list[str]]:
+    markdown_rows = _markdown_rows(block)
+    table_count = markdown_rows.count(header)
+    errors: list[str] = []
+    if table_count != 1:
+        errors.append(f"expected exactly one named {table_name} table, found {table_count}")
+
+    named_rows = _named_markdown_table_rows(block, header)
+    rows = named_rows or []
+    if named_rows is not None and markdown_rows != [header, *rows]:
+        errors.append(
+            f"parallel/unexpected {table_name} table rows outside the named {table_name} table"
+        )
+    return rows, errors
+
+
 def _current_runtime_statement(block: str) -> str | None:
     match = re.search(
         r"^Current runtime:\s*.*?(?=\n\s*\n|\Z)",
@@ -165,21 +230,34 @@ def _current_runtime_statement(block: str) -> str | None:
     return match.group(0).strip() if match is not None else None
 
 
-def _current_synthesize_runtime_errors(statement: str) -> list[str]:
-    normalized = statement.lower().replace("trust-gate", "trust gate")
+def _exact_labeled_line_errors(block: str, expected_lines: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    for label, expected in expected_lines.items():
+        matches = re.findall(
+            rf"^{re.escape(label)}:\s*(.*?)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if len(matches) != 1:
+            errors.append(f"expected exactly one {label!r} line, found {len(matches)}")
+        elif _normalize_contract_text(matches[0]) != _normalize_contract_text(expected):
+            errors.append(f"{label!r} line must exactly match {expected!r}; got {matches[0]!r}")
+    return errors
+
+
+def _architecture_current_synthesize_errors(statement: str) -> list[str]:
+    normalized = _normalize_contract_text(statement).replace("trust-gate", "trust gate")
     errors = [
         f"Current runtime is missing {fragment!r}"
         for fragment in CURRENT_SYNTHESIZE_RUNTIME_FRAGMENTS
         if fragment not in normalized
     ]
-    deprecated_current = re.search(
-        r"--synthesize.{0,80}\b(?:is|acts as|behaves as)\s+"
-        r"(?:already\s+)?(?:a\s+)?(?:deprecated(?:\s+no-op)?|no-op)\b",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-    if deprecated_current is not None:
-        errors.append("Current runtime must not claim --synthesize is already deprecated/no-op")
+    if any(
+        re.search(pattern, normalized) for pattern in ARCHITECTURE_FORBIDDEN_CURRENT_STATE_PATTERNS
+    ):
+        errors.append(
+            "Current runtime must not claim --synthesize is already deprecated/no-op/retired"
+        )
     return errors
 
 
@@ -190,7 +268,7 @@ def _current_target_errors(block: str) -> list[str]:
     if current_statement is None:
         errors.append("missing an explicit Current runtime label")
     else:
-        errors.extend(_current_synthesize_runtime_errors(current_statement))
+        errors.extend(_architecture_current_synthesize_errors(current_statement))
     if "ratified target" not in lowered:
         errors.append("missing an explicit Ratified target label")
     if not re.search(
@@ -203,39 +281,29 @@ def _current_target_errors(block: str) -> list[str]:
         re.IGNORECASE | re.DOTALL,
     ):
         errors.append("missing the ratified P0 -> GUI -> P1 -> read-only P2 Gateway sequence")
-    issue_fragments = {
-        "#163": ("recall", "provider", "synthesis"),
-        "#162": ("transactional", "side-effect", "freshness"),
-        "#165": ("backup", "restore", "recovery"),
-        "#164": ("gateway", "typed", "projection"),
-    }
-    for issue, fragments in issue_fragments.items():
-        issue_match = re.search(rf"{re.escape(issue)}[^\n]*", block, flags=re.IGNORECASE)
-        if issue_match is None:
-            errors.append(f"missing implementation status for {issue}")
-            continue
-        issue_line = issue_match.group(0)
-        if not re.search(
-            r"unimplemented|not yet implemented|pending implementation|待实现|尚未实现",
-            issue_line,
-            flags=re.IGNORECASE,
-        ):
-            errors.append(f"{issue} must be identified as unimplemented/pending")
-        missing = [fragment for fragment in fragments if fragment not in issue_line.lower()]
-        if missing:
-            errors.append(f"{issue} status is missing target scope {missing!r}")
+    actual_status_lines = tuple(
+        _normalize_contract_text(line)
+        for line in block.splitlines()
+        if re.match(r"^\s*-\s*#\d+\b", line)
+    )
+    expected_status_lines = tuple(
+        _normalize_contract_text(f"- {issue} — {status}")
+        for issue, status in EXPECTED_ARCHITECTURE_TARGET_STATUSES.items()
+    )
+    if actual_status_lines != expected_status_lines:
+        errors.append(
+            "Architecture target issue status lines must exactly match the four ratified "
+            f"unimplemented targets; got {actual_status_lines!r}"
+        )
     return errors
 
 
 def _domain_contract_errors(block: str) -> list[str]:
-    errors: list[str] = []
-    domain_rows = _named_markdown_table_rows(
+    domain_rows, errors = _single_named_table_rows(
         block,
         ("Candidate closed admission domain", "Status"),
+        "Core admission-domain",
     )
-    if domain_rows is None:
-        errors.append("missing the named Core admission-domain table")
-        domain_rows = []
 
     actual_domains = tuple(row[0] if row else "" for row in domain_rows)
     if actual_domains != PROPOSED_CORE_DOMAINS:
@@ -274,6 +342,10 @@ def _domain_contract_errors(block: str) -> list[str]:
     for description, pattern in requirements.items():
         if re.search(pattern, block, flags=re.IGNORECASE | re.DOTALL) is None:
             errors.append(f"missing rule: {description}")
+    normalized = _normalize_contract_text(block)
+    for criterion, pattern in FORBIDDEN_DOMAIN_WAIVER_PATTERNS.items():
+        if re.search(pattern, normalized):
+            errors.append(f"Human Owner approval must not affirmatively waive {criterion}")
     return errors
 
 
@@ -295,20 +367,11 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
 
 def _role_contract_errors(block: str) -> list[str]:
     expected_boundaries = {
-        _normalize_role_contract_text(role): _normalize_role_contract_text(boundary)
+        _normalize_contract_text(role): _normalize_contract_text(boundary)
         for role, boundary in EXPECTED_ROLE_BOUNDARIES.items()
     }
-    errors: list[str] = []
     header = ("Role", "Authority boundary")
-    markdown_rows = _markdown_rows(block)
-    table_count = markdown_rows.count(header)
-    if table_count != 1:
-        errors.append(f"expected exactly one named role table, found {table_count}")
-
-    named_role_rows = _named_markdown_table_rows(block, header)
-    role_rows = named_role_rows or []
-    if named_role_rows is not None and markdown_rows != [header, *role_rows]:
-        errors.append("parallel/unexpected role table rows outside the named role table")
+    role_rows, errors = _single_named_table_rows(block, header, "role")
 
     parsed_rows: list[tuple[str, str]] = []
     for row in role_rows:
@@ -318,7 +381,7 @@ def _role_contract_errors(block: str) -> list[str]:
         parsed_rows.append((row[0], row[1]))
 
     expected_roles = set(expected_boundaries)
-    normalized_roles = [_normalize_role_contract_text(role) for role, _ in parsed_rows]
+    normalized_roles = [_normalize_contract_text(role) for role, _ in parsed_rows]
     duplicates = sorted({role for role in normalized_roles if normalized_roles.count(role) > 1})
     unexpected = sorted({role for role in normalized_roles if role not in expected_roles})
     missing_roles = sorted(expected_roles - set(normalized_roles))
@@ -331,13 +394,13 @@ def _role_contract_errors(block: str) -> list[str]:
 
     rows_by_role: dict[str, str] = {}
     for role, boundary in parsed_rows:
-        rows_by_role.setdefault(_normalize_role_contract_text(role), boundary)
+        rows_by_role.setdefault(_normalize_contract_text(role), boundary)
     for role, expected_boundary in EXPECTED_ROLE_BOUNDARIES.items():
-        normalized_role = _normalize_role_contract_text(role)
+        normalized_role = _normalize_contract_text(role)
         value = rows_by_role.get(normalized_role)
         if value is None:
             continue
-        if _normalize_role_contract_text(value) != expected_boundaries[normalized_role]:
+        if _normalize_contract_text(value) != expected_boundaries[normalized_role]:
             errors.append(
                 f"{role!r} role boundary must exactly match {expected_boundary!r}; "
                 f"got {value!r}"
@@ -371,34 +434,12 @@ def _valid_role_fixture() -> str:
 
 
 def _deprecation_errors(block: str) -> list[str]:
-    errors: list[str] = []
-    current_statement = _current_runtime_statement(block)
-    target = re.search(r"^Target under #163:\s*(.+)$", block, flags=re.IGNORECASE | re.MULTILINE)
-    compatibility = re.search(r"^Compatibility:\s*(.+)$", block, flags=re.IGNORECASE | re.MULTILINE)
-    if current_statement is None:
-        errors.append("missing Current runtime line")
-    else:
-        errors.extend(_current_synthesize_runtime_errors(current_statement))
-    if target is None:
-        errors.append("missing Target under #163 line")
-    else:
-        target_line = target.group(1).lower()
-        for fragment in ("--synthesize", "deprecated no-op", "not yet implemented"):
-            if fragment not in target_line:
-                errors.append(f"#163 target line is missing {fragment!r}")
-    if compatibility is None or "at least two major versions" not in compatibility.group(1).lower():
-        errors.append("compatibility must retain the flag for at least two major versions")
-    return errors
+    return _exact_labeled_line_errors(block, EXPECTED_SYNTHESIZE_TRANSITION_LINES)
 
 
 def _valid_deprecation_fixture() -> str:
-    return """
-Current runtime: --synthesize requests provider-backed LLM synthesis and applies the trust gate.
-
-Target under #163: --synthesize becomes a deprecated no-op; this is not yet implemented.
-
-Compatibility: retain the flag for at least two major versions.
-"""
+    lines = [f"{label}: {value}" for label, value in EXPECTED_SYNTHESIZE_TRANSITION_LINES.items()]
+    return "\n" + "\n\n".join(lines) + "\n"
 
 
 def _api_synthesize_table_errors(text: str) -> list[str]:
@@ -475,6 +516,41 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
         "already deprecated/no-op" in error for error in deprecated_current_errors
     ), f"Architecture current-runtime drift escaped validation: {deprecated_current_errors!r}"
 
+    current_statement = _current_runtime_statement(block)
+    assert current_statement is not None
+    architecture_state_cases = [
+        (
+            "current runtime retired/no-effect paraphrase",
+            block.replace(
+                current_statement,
+                current_statement
+                + " --synthesize has already been retired and no longer does anything.",
+                1,
+            ),
+        )
+    ]
+    for issue in ("#163", "#162", "#165", "#164"):
+        issue_line = next(line for line in block.splitlines() if issue in line)
+        contradiction = (
+            "Implemented, not unimplemented." if issue == "#163" else "Already implemented."
+        )
+        architecture_state_cases.append(
+            (
+                f"{issue} contradictory implementation status",
+                block.replace(issue_line, f"{issue_line} {contradiction}", 1),
+            )
+        )
+    escaped_architecture_states = [
+        description
+        for description, drifted_block in architecture_state_cases
+        if not _current_target_errors(drifted_block)
+    ]
+    assert (
+        escaped_architecture_states == []
+    ), "Architecture current/target state drift escaped validation: " + ", ".join(
+        escaped_architecture_states
+    )
+
 
 def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_criteria() -> None:
     valid = _valid_domain_fixture()
@@ -505,6 +581,41 @@ def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_
     assert any(
         "Owner replaces only consumer evidence" in error
         for error in _domain_contract_errors(weakened)
+    )
+
+    alternate_table = valid + f"""
+| Alternate admission domain | Status |
+|---|---|
+| Workflow orchestration | {PENDING_OWNER_STATUS} |
+"""
+    domain_drift_cases = [
+        ("second alternate domain table", alternate_table),
+        ("determinism waiver", valid + "\nHuman Owner approval may waive determinism.\n"),
+        (
+            "low/zero LLM waiver",
+            valid + "\nHuman Owner approval may waive low/zero LLM content.\n",
+        ),
+        (
+            "cross-time stability waiver",
+            valid + "\nHuman Owner approval may waive cross-time semantic stability.\n",
+        ),
+        (
+            "RFC/substantive-gate waiver",
+            valid + "\nHuman Owner approval may waive RFC/substantive-gate evidence.\n",
+        ),
+        (
+            "other Charter constraints waiver",
+            valid
+            + "\nHuman Owner approval may waive any other current Charter admission constraint.\n",
+        ),
+    ]
+    escaped_domain_drift = [
+        description
+        for description, drifted_block in domain_drift_cases
+        if not _domain_contract_errors(drifted_block)
+    ]
+    assert escaped_domain_drift == [], "domain-contract drift escaped validation: " + ", ".join(
+        escaped_domain_drift
     )
 
     charter_section = _heading_section(_read_authority("charter"), "### §1.10")
@@ -596,6 +707,12 @@ def test_role_contract_rejects_appended_contradictions_and_external_duty_verbs()
         ("external plans verb", valid + "\nCore plans requests.\n"),
         ("external orchestrates verb", valid + "\nCore orchestrates tools.\n"),
         ("external synthesizes verb", valid + "\nCore synthesizes answers.\n"),
+        ("external planner noun", valid + "\nCore is the planner.\n"),
+        ("external reasoner noun", valid + "\nCore is the reasoner.\n"),
+        ("external orchestrator noun", valid + "\nCore is the orchestrator.\n"),
+        ("external interpreter noun", valid + "\nGUI is the interpreter.\n"),
+        ("external synthesizer noun", valid + "\nGateway is the synthesizer.\n"),
+        ("external synthesiser noun", valid + "\nGateway is the synthesiser.\n"),
     )
     escaped_drift = [
         description
@@ -611,15 +728,34 @@ def test_deprecation_text_names_owner_issue_and_runtime_state() -> None:
     errors: list[str] = []
     valid_deprecation = _valid_deprecation_fixture()
     assert _deprecation_errors(valid_deprecation) == []
-    contradictory_current = valid_deprecation.replace(
-        "applies the trust gate.",
-        "applies the trust gate; --synthesize is already deprecated.",
-        1,
+    contradictory_current = re.sub(
+        r"^Current runtime:[^\n]+$",
+        lambda match: f"{match.group(0)} --synthesize is already deprecated.",
+        valid_deprecation,
+        count=1,
+        flags=re.MULTILINE,
     )
-    if not any(
-        "already deprecated/no-op" in error for error in _deprecation_errors(contradictory_current)
-    ):
+    if not _deprecation_errors(contradictory_current):
         errors.append("Current-runtime already-deprecated claim escaped validation")
+
+    state_drift_specs = (
+        (
+            "Current runtime",
+            "--synthesize has already been retired and no longer does anything.",
+        ),
+        ("Target under #163", "It is already implemented."),
+        ("Target under #163", "It is implemented, not unimplemented."),
+    )
+    for label, contradiction in state_drift_specs:
+        drifted = re.sub(
+            rf"^{re.escape(label)}:[^\n]+$",
+            lambda match: f"{match.group(0)} {contradiction}",
+            valid_deprecation,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if not _deprecation_errors(drifted):
+            errors.append(f"{label} contradiction escaped validation: {contradiction}")
 
     valid_table_errors = _api_synthesize_table_errors(_valid_api_synthesize_table_fixture())
     if valid_table_errors:
