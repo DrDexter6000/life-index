@@ -50,6 +50,17 @@ not describe current runtime completion:
 - #164 — optional Gateway typed 1:1 projection: unimplemented.
 """
 
+EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
+    (
+        "### Smart-search current contract",
+        "",
+        "- Default/no-flag `life-index smart-search` returns a deterministic scaffold.",
+        "- Current explicit `--synthesize` still requests provider-backed LLM synthesis and applies the trust gate when its runtime prerequisites are available.",  # noqa: E501
+        "- Target under #163: `--synthesize` becomes a deprecated no-op; this is not yet implemented.",  # noqa: E501
+        "- Host Agent + Skill remain the target intelligence owner.",
+    )
+)
+
 EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
     (
         "#### Pending §1.9 / §1.10 amendment candidate — not active Charter authority",
@@ -244,6 +255,26 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
         EXPECTED_CURRENT_TARGET_STATUS,
         "docs/ARCHITECTURE.md",
     )
+    _assert_named_block_snapshot(
+        architecture,
+        "SMART-SEARCH-CURRENT-CONTRACT",
+        EXPECTED_SMART_SEARCH_CURRENT_CONTRACT,
+        "docs/ARCHITECTURE.md",
+    )
+
+    smart_search_end = "<!-- PLATFORM-SSOT:SMART-SEARCH-CURRENT-CONTRACT:END -->"
+    absolute_claim = architecture.replace(
+        smart_search_end,
+        "- `smart-search` only emits deterministic output.\n" + smart_search_end,
+        1,
+    )
+    with pytest.raises(AssertionError):
+        _assert_named_block_snapshot(
+            absolute_claim,
+            "SMART-SEARCH-CURRENT-CONTRACT",
+            EXPECTED_SMART_SEARCH_CURRENT_CONTRACT,
+            "docs/ARCHITECTURE.md",
+        )
 
     end_marker = "<!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->"
     drifted = architecture.replace(
