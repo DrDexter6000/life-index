@@ -19,6 +19,7 @@ triggers:
 
 > **Authority Chain**: `bootstrap-manifest.json` 是 freshness / authority anchor。涉及安装、升级、repair、环境判断时，必须先刷新 `bootstrap-manifest.json`，再按其 `required_authority_docs` 刷新对应文档，然后才允许 sync checkout 或 route 判断。
 > **工具参数与错误码**: 详见 [API.md](docs/API.md)
+> **平台边界**: `CHARTER.md §1.10` 独占 C1–C7 闭合 Core 准入域；`docs/ARCHITECTURE.md` 的 `PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION` 命名块独占 31 条 public route 的精确分类。Distribution/Host Operations 即使与 Core 同包分发也属于 non-Core；`weather` 是 #166 跟踪的 Legacy External Adapter。本 Skill 不复制域目录或命令分类表。
 
 <!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:START -->
 ## Host Agent / Core / Gateway routing boundary

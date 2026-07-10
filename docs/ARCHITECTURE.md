@@ -32,15 +32,13 @@
 
 Current runtime: direct CLI/Core contracts are the implemented public route;
 the accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
-contract named below, the current bridge is non-Core and GUI-owned, and the
-later P0/P1/P2 work below has not been implemented. The design memo is not an
-authority or SSOT; it is Owner-ratified decision background being absorbed into
-the existing authority chain. The exact closed §1.10 admission-domain candidate
-remains pending Human Owner substantive approval.
+contract named below, and the current bridge is non-Core and GUI-owned. The
+design memo is not an authority or SSOT. The exact closed C1–C7 domains are now
+active Charter authority, and the former §1.9 direct provider-fallback direction
+is superseded: Host Agent + Skill own provider selection and intelligence.
 
-Ratified target phase sequence: P0 truth/safety repair -> GUI activation and
-strict-adapter proof -> P1 -> read-only P2 Gateway. These target decisions do
-not describe current runtime completion:
+The following implementation work remains future work; D0 ratification does
+not describe any of it as complete:
 
 - #163 — recall/eval correction, explicit deprecation warning, ordinary deterministic smart-search equivalence proof, and unreachable LLM-path deletion: unimplemented.
 - #162 — transactional write, side-effect, and freshness repair: unimplemented.
@@ -62,9 +60,54 @@ not describe current runtime completion:
 The table above is the sole normative role-assignment surface in this block.
 The future Gateway, if implemented, is only a contract-equivalent transport of
 Core operations. It cannot create a parallel semantic contract, and direct Core
-use does not depend on it. The eventual closed admission-domain catalog belongs
-only to `CHARTER.md §1.10` after Human Owner substantive approval.
+use does not depend on it. The active closed admission-domain catalog belongs
+only to `CHARTER.md §1.10`; this document references C1–C7 without duplicating
+their domain descriptions.
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:END -->
+
+<!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:START -->
+### Public command classification
+
+| Command | Classification | Authority refs |
+|---|---|---|
+| abstract | Core | C3 |
+| aggregate | Core | C4 |
+| analyze | Core | C4 |
+| attachment | Core | C3 |
+| backup | Core | C6 |
+| bootstrap | Non-Core — Distribution/Host Operations | Distribution/Host Operations |
+| confirm | Core | C1, C2 |
+| edit | Core | C1, C2 |
+| entity | Core | C5 |
+| entity-graph-eval | Core | C5, C7 |
+| eval | Core | C7 |
+| generate-index | Core | C3 |
+| health | Core | C6 |
+| import | Core | C1, C2 |
+| index | Core | C3 |
+| index-tree | Core | C3 |
+| journal | Core | C3 |
+| maintenance | Core | C2, C6 |
+| migrate | Core | C2 |
+| on-this-day | Core | C3 |
+| recall | Core | C3 |
+| search | Core | C3 |
+| smart-search | Core | C3 |
+| sync-skill | Non-Core — Distribution/Host Operations | Distribution/Host Operations |
+| timeline | Core | C3 |
+| trajectory | Core | C4 |
+| upgrade | Non-Core — Distribution/Host Operations | Distribution/Host Operations |
+| verify | Core | C6 |
+| version | Non-Core — Distribution/Host Operations | Distribution/Host Operations |
+| weather | Legacy External Adapter | #166 |
+| write | Core | C1, C2 |
+
+Distribution/Host Operations are non-Core even when co-packaged with Core;
+packaging and command dispatch do not grant them Core authority.
+
+The optional `weather` Legacy External Adapter is tracked by #166 and cannot decide canonical journal-write success.
+Any new Core domain, non-Core category, or compatibility exception requires new Human Owner substantive approval.
+<!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:END -->
 
 ---
 
@@ -430,14 +473,14 @@ Round 19 Phase 1-D 在搜索子系统中新增以下能力：
 ### 6.2 模块结构
 
 ```
-tools/                         # Core CLI/tool layer
+tools/                         # Public CLI package; exact Core/non-Core classification is above
 ├── write_journal/
 ├── search_journals/
 ├── edit_journal/
 ├── entity/                    # 实体图谱 + 质量审计 + review hub + merge/delete
 ├── generate_abstract/
 ├── build_index/
-├── query_weather/
+├── query_weather/             # Legacy External Adapter (#166)
 ├── backup/
 ├── migrate/                   # Schema 链式迁移
 ├── dev/                       # 开发/验收辅助工具
@@ -497,6 +540,6 @@ abstract: "100字内摘要"
 
 ---
 
-> **校对日期**: 2026-05-07
-> **校对人**: GLM-5.1 / 搜索架构文档收束
-> **对应状态**: 搜索架构从"双管道"收紧为 keyword + Entity Graph；`--semantic*` 为兼容 no-op；official eval gate 保持 keyword/default。当前 CHARTER v1.7.0，search_constants.py **50** 常量。
+> **校对日期**: 2026-07-10
+> **校对人**: Life Index Developer
+> **对应状态**: C1–C7 为 CHARTER v1.10.0 活跃权威；本文件拥有 31-route classification SSOT。搜索架构保持 keyword + Entity Graph；`--semantic*` 为兼容 no-op；official eval gate 保持 keyword/default，search_constants.py **50** 常量。

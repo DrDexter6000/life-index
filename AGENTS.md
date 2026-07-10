@@ -34,10 +34,9 @@ choosing the convenient rule.
 Life Index is an agent-native, local-first personal journal and retrieval
 system.
 
-- The CLI exposes deterministic tools such as write, confirm, search,
-  smart-search, edit, abstract, weather, index, generate-index, backup, verify,
-  timeline, migrate, eval, entity, health, aggregate, analyze, on-this-day, and
-  version.
+- The CLI co-packages deterministic Core tools with non-Core public routes.
+  `docs/ARCHITECTURE.md` owns the exact public-command classification;
+  `docs/API.md` owns command semantics.
 - User data lives outside the repository in the configured Life Index data
   directory.
 - Journal storage is plain text: Markdown plus YAML frontmatter.

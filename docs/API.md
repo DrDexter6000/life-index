@@ -3,6 +3,7 @@
 > **本文档职责**: 工具接口规范 SSOT，所有工具的参数、返回值、错误码定义
 > **目标读者**: Agent、开发者
 > **SSOT 引用**: SKILL.md 与公开 Agent 入口文档应引用本文档，不重复定义参数
+> **平台边界权威**: `CHARTER.md §1.10` 独占 C1–C7 闭合 Core 准入域；`docs/ARCHITECTURE.md` 的 `PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION` 命名块独占 31 条 public route 的精确分类。Distribution/Host Operations 即使与 Core 同包分发也属于 non-Core；`weather` 是 #166 跟踪的 Legacy External Adapter。本 API 不复制域目录或命令分类表。
 
 ---
 
