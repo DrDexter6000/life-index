@@ -281,9 +281,9 @@ approval, the stale §1.9 P0→P1→P2→deterministic-only provider-fallback
 direction is superseded: the Host Agent + Skill own planning, multi-hop
 reasoning, orchestration, interpretation, and synthesis; Core remains
 deterministic; GUI remains presentation-only; and an optional Gateway cannot
-own intelligence or semantics. The current provider-backed `--synthesize`
-runtime remains a compatibility fact until #163 implements its separately
-approved deprecated-no-op target.
+own intelligence or semantics. The accepted `--synthesize` flag currently
+runs through the product CLI with no LLM injection and no `answer`; #163 owns
+the explicit warning, equivalence proof, and unreachable LLM-path cleanup.
 
 | Candidate closed admission domain | Status |
 |---|---|
@@ -310,8 +310,9 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
 - **Rationale**: align stale §1.9 fallback language with APEX and make Core
   admission reviewable against one closed, long-lived set of domains.
 - **Opposition addressed**: (1) removing a standalone provider fallback may
-  inconvenience direct CLI users, so #163 retains `--synthesize` as a deprecated
-  no-op for at least two major versions after the target is implemented; (2) a
+  inconvenience direct CLI users, so #163 retains the already accepted
+  no-op/no-answer `--synthesize` flag for at least two major versions and adds
+  an explicit deprecation warning; (2) a
   closed list may delay a valuable primitive, so each addition remains possible
   through new Human Owner substantive approval without weakening the other
   admission criteria.
@@ -325,8 +326,10 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
 - **Human Owner ack**: PENDING — the exact seven-domain list has not received
   Human Owner substantive approval.
 
-Accordingly this candidate is not land-ready, does not increment the Charter
-version / revision / approval date, and cannot authorize D0 GO or integration.
+Accordingly this candidate is not land-ready and does not increment the Charter
+version / revision / approval date.
+
+D0 remains GO-AFTER-DECISION. Charter landing, D0 GO, and D1 dispatch are forbidden until the exact seven-domain list receives explicit Human Owner substantive approval, Gold Set regression passes, and all §5.2 substantive-gate evidence is complete.
 <!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->
 
 ### §1.11 召回优先检索真实模型（Recall-First Retrieval Truthfulness Model）

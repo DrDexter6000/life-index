@@ -16,6 +16,7 @@ AUTHORITY_PATHS = {
     "ci": REPO_ROOT / "docs" / "CI_HARD_CHECKS.md",
     "skill": REPO_ROOT / "SKILL.md",
     "shipped_skill": REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md",
+    "smart_search_cli": REPO_ROOT / "tools" / "smart_search" / "__main__.py",
 }
 
 PROPOSED_CORE_DOMAINS = (
@@ -28,36 +29,48 @@ PROPOSED_CORE_DOMAINS = (
     "Deterministic contract and eval verification",
 )
 PENDING_OWNER_STATUS = "proposed / pending Human Owner substantive approval"
+EXACT_D0_PHASE_GATE = (
+    "D0 remains GO-AFTER-DECISION. Charter landing, D0 GO, and D1 dispatch are "
+    "forbidden until the exact seven-domain list receives explicit Human Owner "
+    "substantive approval, Gold Set regression passes, and all §5.2 substantive-gate "
+    "evidence is complete."
+)
 
-EXPECTED_CURRENT_TARGET_STATUS = """
+EXPECTED_CURRENT_TARGET_STATUS = (
+    """
 ### Platform program: current runtime vs ratified target
 
 Current runtime: direct CLI/Core contracts are the implemented public route;
-`--synthesize` still has provider-backed LLM synthesis and trust-gate behavior,
-the current bridge is non-Core and GUI-owned, and the later P0/P1/P2 work below
-has not been implemented. The design memo is not an authority or SSOT; it is
-Owner-ratified decision background being absorbed into the existing authority
-chain. The exact closed §1.10 admission-domain candidate remains pending Human
-Owner substantive approval.
+the accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
+contract named below, the current bridge is non-Core and GUI-owned, and the
+later P0/P1/P2 work below has not been implemented. The design memo is not an
+authority or SSOT; it is Owner-ratified decision background being absorbed into
+the existing authority chain. The exact closed §1.10 admission-domain candidate
+remains pending Human Owner substantive approval.
 
 Ratified target phase sequence: P0 truth/safety repair -> GUI activation and
 strict-adapter proof -> P1 -> read-only P2 Gateway. These target decisions do
 not describe current runtime completion:
 
-- #163 — recall/eval correction and provider-backed synthesis retirement: unimplemented.
-- #162 — transactional write, side-effect, and freshness repair: unimplemented.
+"""
+    "- #163 — recall/eval correction, explicit deprecation warning, ordinary "
+    "deterministic smart-search equivalence proof, and unreachable LLM-path deletion: "
+    "unimplemented.\n"
+    """- #162 — transactional write, side-effect, and freshness repair: unimplemented.
 - #165 — backup, restore, and recovery proof: unimplemented.
 - #164 — optional Gateway typed 1:1 projection: unimplemented.
 """
+)
 
 EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
     (
         "### Smart-search current contract",
         "",
         "- Default/no-flag `life-index smart-search` returns a deterministic scaffold.",
-        "- Current explicit `--synthesize` still requests provider-backed LLM synthesis and applies the trust gate when its runtime prerequisites are available.",  # noqa: E501
-        "- Target under #163: `--synthesize` becomes a deprecated no-op; this is not yet implemented.",  # noqa: E501
-        "- Host Agent + Skill remain the target intelligence owner.",
+        "- Current explicit `--synthesize` is accepted, but the product CLI always constructs `SmartSearchOrchestrator(llm_client=None)`: it never instantiates or injects an LLM and emits no `answer`; the flag is behaviorally a deterministic no-op/no-answer path.",  # noqa: E501
+        "- Current runtime does not yet emit the approved explicit deprecation warning.",
+        "- Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.",  # noqa: E501
+        "- Host Agent + Skill remain the intelligence owner; #163 does not change that role boundary.",  # noqa: E501
     )
 )
 
@@ -70,9 +83,9 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "direction is superseded: the Host Agent + Skill own planning, multi-hop",
         "reasoning, orchestration, interpretation, and synthesis; Core remains",
         "deterministic; GUI remains presentation-only; and an optional Gateway cannot",
-        "own intelligence or semantics. The current provider-backed `--synthesize`",
-        "runtime remains a compatibility fact until #163 implements its separately",
-        "approved deprecated-no-op target.",
+        "own intelligence or semantics. The accepted `--synthesize` flag currently",
+        "runs through the product CLI with no LLM injection and no `answer`; #163 owns",
+        "the explicit warning, equivalence proof, and unreachable LLM-path cleanup.",
         "",
         "| Candidate closed admission domain | Status |",
         "|---|---|",
@@ -99,8 +112,9 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "- **Rationale**: align stale §1.9 fallback language with APEX and make Core",
         "  admission reviewable against one closed, long-lived set of domains.",
         "- **Opposition addressed**: (1) removing a standalone provider fallback may",
-        "  inconvenience direct CLI users, so #163 retains `--synthesize` as a deprecated",
-        "  no-op for at least two major versions after the target is implemented; (2) a",
+        "  inconvenience direct CLI users, so #163 retains the already accepted",
+        "  no-op/no-answer `--synthesize` flag for at least two major versions and adds",
+        "  an explicit deprecation warning; (2) a",
         "  closed list may delay a valuable primitive, so each addition remains possible",
         "  through new Human Owner substantive approval without weakening the other",
         "  admission criteria.",
@@ -114,8 +128,10 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "- **Human Owner ack**: PENDING — the exact seven-domain list has not received",
         "  Human Owner substantive approval.",
         "",
-        "Accordingly this candidate is not land-ready, does not increment the Charter",
-        "version / revision / approval date, and cannot authorize D0 GO or integration.",
+        "Accordingly this candidate is not land-ready and does not increment the Charter",
+        "version / revision / approval date.",
+        "",
+        EXACT_D0_PHASE_GATE,
     )
 )
 
@@ -141,11 +157,13 @@ EXPECTED_PLATFORM_ROLE_BOUNDARY = "\n".join(
 
 SYNTHESIZE_TRANSITION_SEMANTICS = "\n".join(
     (
-        "Current runtime: `--synthesize` requests provider-backed LLM synthesis and applies the trust gate when its runtime prerequisites are available.",  # noqa: E501
+        "Current runtime: the product CLI accepts `--synthesize` but always constructs `SmartSearchOrchestrator(llm_client=None)`; it never instantiates or injects an LLM, emits no `answer`, and is behaviorally a deterministic no-op/no-answer path.",  # noqa: E501
         "",
-        "Target under #163: `--synthesize` becomes a deprecated no-op; this is not yet implemented.",  # noqa: E501
+        "Current warning status: the approved explicit deprecation warning is not yet emitted.",  # noqa: E501
         "",
-        "Compatibility: retain the accepted flag for at least two major versions after the #163 transition is implemented.",  # noqa: E501
+        "Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.",  # noqa: E501
+        "",
+        "Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.",  # noqa: E501
     )
 )
 EXPECTED_API_SYNTHESIZE_TRANSITION = "\n".join(
@@ -180,19 +198,19 @@ EXPECTED_HOST_AGENT_ROUTING = "\n".join(
 EXPECTED_API_CURRENT_ROWS = {
     "`answer` / `answer.*`": (
         "`answer` / `answer.*`",
-        "当前 `--synthesize` 的 provider-backed LLM synthesis + trust gate 输出；"
-        "see the named `--synthesize` transition authority block",
-        "优先展示当前 answer output",
+        "当前产品 CLI 不输出；`--synthesize` 不注入 LLM 且不添加 `answer`；"
+        "see the named `--synthesize` transition authority block；#163 将删除不可达实现",
+        "当前无此字段；如未来由新契约引入，再按该契约消费",
         "**stable**",
     ),
     "`--synthesize`": (
         "`--synthesize`",
-        "内部构建 evidence；当前添加 provider-backed LLM synthesis + trust gate answer；"
+        "当前接受但不注入 LLM、不添加 `answer`，行为上是 deterministic no-op/no-answer；"
         "see the named `--synthesize` transition authority block",
     ),
     "`--include-evidence --synthesize`": (
         "`--include-evidence --synthesize`",
-        "添加 evidence_pack + 当前 provider-backed LLM synthesis + trust gate answer；"
+        "添加 evidence_pack；`--synthesize` 当前不注入 LLM、不添加 `answer`；"
         "see the named `--synthesize` transition authority block",
     ),
 }
@@ -246,6 +264,7 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
     charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
     agents = AUTHORITY_PATHS["agents"].read_text(encoding="utf-8")
     architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
+    smart_search_cli = AUTHORITY_PATHS["smart_search_cli"].read_text(encoding="utf-8")
 
     assert "CHARTER.md（本文件，最高权威）" in charter
     assert "1. `CHARTER.md` owns constitutional invariants." in agents
@@ -261,20 +280,24 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
         EXPECTED_SMART_SEARCH_CURRENT_CONTRACT,
         "docs/ARCHITECTURE.md",
     )
+    assert "SmartSearchOrchestrator(llm_client=None)" in smart_search_cli
 
     smart_search_end = "<!-- PLATFORM-SSOT:SMART-SEARCH-CURRENT-CONTRACT:END -->"
-    absolute_claim = architecture.replace(
+    provider_backed_drift = architecture.replace(
         smart_search_end,
-        "- `smart-search` only emits deterministic output.\n" + smart_search_end,
+        "- Current `--synthesize` also requests provider-backed LLM synthesis.\n"
+        + smart_search_end,
         1,
     )
-    with pytest.raises(AssertionError):
+    assert "always constructs `SmartSearchOrchestrator(llm_client=None)`" in provider_backed_drift
+    with pytest.raises(AssertionError) as exc_info:
         _assert_named_block_snapshot(
-            absolute_claim,
+            provider_backed_drift,
             "SMART-SEARCH-CURRENT-CONTRACT",
             EXPECTED_SMART_SEARCH_CURRENT_CONTRACT,
             "docs/ARCHITECTURE.md",
         )
+    assert "provider-backed LLM synthesis" in str(exc_info.value)
 
     end_marker = "<!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->"
     drifted = architecture.replace(
@@ -306,6 +329,7 @@ def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_
         *((domain, PENDING_OWNER_STATUS) for domain in PROPOSED_CORE_DOMAINS),
     ]
     assert _markdown_rows(block) == expected_rows
+    assert block.count(EXACT_D0_PHASE_GATE) == 1
 
     first_row = f"| {PROPOSED_CORE_DOMAINS[0]} | {PENDING_OWNER_STATUS} |"
     last_row = f"| {PROPOSED_CORE_DOMAINS[-1]} | {PENDING_OWNER_STATUS} |"
