@@ -59,6 +59,7 @@ not describe current runtime completion:
 | Current bridge | Non-Core and GUI-owned. |
 | Gateway | Optional future typed 1:1 projection under #164; unimplemented; not a second semantic API; no intelligence. |
 
+The table above is the sole normative role-assignment surface in this block.
 The future Gateway, if implemented, is only a contract-equivalent transport of
 Core operations. It cannot create a parallel semantic contract, and direct Core
 use does not depend on it. The eventual closed admission-domain catalog belongs

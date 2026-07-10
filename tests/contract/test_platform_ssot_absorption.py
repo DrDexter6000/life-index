@@ -47,14 +47,6 @@ HOST_AGENT_INTELLIGENCE_DUTIES = (
     "interpretation",
     "synthesis",
 )
-PLATFORM_ROLE_SUBJECTS = (
-    "Host Agent + Skill",
-    "Host Agent",
-    "Current bridge",
-    "Core",
-    "GUI",
-    "Gateway",
-)
 
 
 def _read_authority(name: str) -> str:
@@ -262,61 +254,10 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
 """
 
 
-def _positive_core_intelligence_duties(statement: str) -> list[str]:
-    positives: list[str] = []
-    role_names = "|".join(re.escape(role) for role in PLATFORM_ROLE_SUBJECTS)
-    role_subject_pattern = re.compile(
-        rf"(?:^|[;:])\s*(?P<role>{role_names})\b",
-        flags=re.IGNORECASE,
-    )
-    role_subjects = list(role_subject_pattern.finditer(statement))
-    verb_pattern = re.compile(
-        r"\b(?:owns?|performs?|handles?|is\s+responsible\s+for)\b",
-        flags=re.IGNORECASE,
-    )
-    preverb_negation = re.compile(
-        r"\bnever\b|\bcannot\b|\bcan['’]t\b|\b(?:do|does|did)\s+not\b",
-        flags=re.IGNORECASE,
-    )
-
-    for subject_index, subject in enumerate(role_subjects):
-        if subject.group("role").lower() != "core":
-            continue
-        segment_end = (
-            role_subjects[subject_index + 1].start("role")
-            if subject_index + 1 < len(role_subjects)
-            else len(statement)
-        )
-        core_segment = statement[subject.end("role") : segment_end]
-        verbs = list(verb_pattern.finditer(core_segment))
-        for index, verb in enumerate(verbs):
-            prefix_start = verbs[index - 1].end() if index else 0
-            prefix = core_segment[prefix_start : verb.start()]
-            if preverb_negation.search(prefix) is not None:
-                continue
-
-            duties_end = verbs[index + 1].start() if index + 1 < len(verbs) else len(core_segment)
-            duties = core_segment[verb.end() : duties_end].lower()
-            if re.match(r"\s*(?:neither\b|no\b)", duties) is not None:
-                continue
-
-            for duty in HOST_AGENT_INTELLIGENCE_DUTIES:
-                if re.search(rf"\b{re.escape(duty)}\b", duties) is None:
-                    continue
-                duty_negated = re.search(
-                    rf"\b(?:no|not|nor|neither)\b" rf"(?:\W+\w+){{0,3}}\W+{re.escape(duty)}\b",
-                    duties,
-                )
-                if duty_negated is None and duty not in positives:
-                    positives.append(duty)
-    return positives
-
-
 def _role_contract_errors(block: str) -> list[str]:
-    rows = {row[0].lower(): " ".join(row[1:]) for row in _markdown_rows(block) if len(row) >= 2}
     requirements = {
-        "core": ("deterministic", "no planning, reasoning, orchestration, or synthesis"),
-        "host agent + skill": (
+        "Core": ("deterministic", "no planning, reasoning, orchestration, or synthesis"),
+        "Host Agent + Skill": (
             "owns",
             "planning",
             "multi-hop reasoning",
@@ -324,9 +265,9 @@ def _role_contract_errors(block: str) -> list[str]:
             "interpretation",
             "synthesis",
         ),
-        "gui": ("presentation", "no intelligence", "strict adapter", "gui-owned"),
-        "current bridge": ("non-core", "gui-owned"),
-        "gateway": (
+        "GUI": ("presentation", "no intelligence", "strict adapter", "gui-owned"),
+        "Current bridge": ("non-core", "gui-owned"),
+        "Gateway": (
             "optional future",
             "typed 1:1 projection",
             "#164",
@@ -336,25 +277,56 @@ def _role_contract_errors(block: str) -> list[str]:
         ),
     }
     errors: list[str] = []
-    for role, fragments in requirements.items():
-        value = rows.get(role, "").lower()
-        missing = [fragment for fragment in fragments if fragment not in value]
-        if missing:
-            errors.append(f"{role!r} role is missing {missing!r}")
+    header = ("Role", "Authority boundary")
+    table_count = _markdown_rows(block).count(header)
+    if table_count != 1:
+        errors.append(f"expected exactly one named role table, found {table_count}")
 
-    prose = " ".join(
+    role_rows = _named_markdown_table_rows(block, header) or []
+    parsed_rows: list[tuple[str, str]] = []
+    for row in role_rows:
+        if len(row) != 2:
+            errors.append(f"malformed role row: {row!r}")
+            continue
+        parsed_rows.append((row[0], row[1]))
+
+    expected_roles = {role.lower(): role for role in requirements}
+    normalized_roles = [role.lower() for role, _ in parsed_rows]
+    duplicates = sorted({role for role in normalized_roles if normalized_roles.count(role) > 1})
+    unexpected = sorted({role for role in normalized_roles if role not in expected_roles})
+    missing_roles = sorted({*expected_roles} - {*normalized_roles})
+    if duplicates:
+        errors.append("duplicate role rows: " + ", ".join(duplicates))
+    if unexpected:
+        errors.append("unexpected role rows: " + ", ".join(unexpected))
+    if missing_roles:
+        errors.append("missing role rows: " + ", ".join(missing_roles))
+
+    rows_by_role: dict[str, str] = {}
+    for role, boundary in parsed_rows:
+        rows_by_role.setdefault(role.lower(), boundary.lower())
+    for role, fragments in requirements.items():
+        value = rows_by_role.get(role.lower())
+        if value is None:
+            continue
+        missing_fragments = [fragment for fragment in fragments if fragment not in value]
+        if missing_fragments:
+            errors.append(f"{role!r} role is missing {missing_fragments!r}")
+
+    prose = "\n".join(
         line.strip()
         for line in block.splitlines()
         if line.strip() and not line.strip().startswith("|")
     )
-    for statement in re.split(r"(?<=[.!?])\s+", prose):
-        positive_duties = _positive_core_intelligence_duties(statement)
-        if positive_duties:
-            errors.append(
-                "role prose assigns Host Agent intelligence duties to Core: "
-                + ", ".join(positive_duties)
-            )
-            break
+    prose_duties = [
+        duty
+        for duty in HOST_AGENT_INTELLIGENCE_DUTIES
+        if re.search(rf"\b{re.escape(duty)}\b", prose, flags=re.IGNORECASE)
+    ]
+    if prose_duties:
+        errors.append(
+            "role duties are allowed only in the named role table: " + ", ".join(prose_duties)
+        )
     return errors
 
 
@@ -522,66 +494,42 @@ def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_
 def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> None:
     valid = _valid_role_fixture()
     assert _role_contract_errors(valid) == []
+    core_row = (
+        "| Core | Deterministic tools; no planning, reasoning, orchestration, " "or synthesis. |"
+    )
+    structural_cases = (
+        (
+            "duplicate Core row",
+            valid.replace(core_row, f"{core_row}\n{core_row}", 1),
+            "duplicate role rows",
+        ),
+        ("duplicate role table", valid + valid, "exactly one named role table"),
+        (
+            "unexpected role row",
+            valid.replace(core_row, f"{core_row}\n| Runtime | Transport only. |", 1),
+            "unexpected role rows",
+        ),
+        (
+            "parallel role prose",
+            valid + "\nHost Agent owns planning while Core owns synthesis.\n",
+            "role duties are allowed only in the named role table",
+        ),
+    )
+    missed_structural_drift: list[str] = []
+    for description, drifted_block, expected_error in structural_cases:
+        drift_errors = _role_contract_errors(drifted_block)
+        if not any(expected_error in error for error in drift_errors):
+            missed_structural_drift.append(
+                f"{description}: expected {expected_error!r}, got {drift_errors!r}"
+            )
+    assert missed_structural_drift == [], "; ".join(missed_structural_drift)
+
     drifted = valid.replace(
         "no planning, reasoning, orchestration, or synthesis",
         "owns planning, reasoning, orchestration, and synthesis",
         1,
     )
     assert _role_contract_errors(drifted) != []
-    contradictory_prose = valid + "\nCore owns planning, reasoning, orchestration, and synthesis.\n"
-    contradictory_errors = _role_contract_errors(contradictory_prose)
-    assert any(
-        "prose assigns Host Agent intelligence duties to Core" in error
-        for error in contradictory_errors
-    ), f"contradictory Core prose escaped validation: {contradictory_errors!r}"
-    matrix_failures: list[str] = []
-    valid_nonassignments = (
-        "Core never owns planning.",
-        "Core never handles reasoning.",
-        "Core does not own orchestration.",
-        "Core owns neither planning nor synthesis.",
-        "Core owns no planning, reasoning, orchestration, interpretation, or synthesis.",
-        "Core is deterministic; Host Agent owns planning and synthesis.",
-    )
-    for statement in valid_nonassignments:
-        negative_errors = _role_contract_errors(valid + f"\n{statement}\n")
-        if negative_errors:
-            matrix_failures.append(
-                f"valid nonassignment rejected: {statement!r}: {negative_errors!r}"
-            )
-
-    positive_assignments = tuple(
-        f"Core owns {duty}." for duty in HOST_AGENT_INTELLIGENCE_DUTIES
-    ) + ("Core owns planning and synthesis.",)
-    for statement in positive_assignments:
-        positive_errors = _role_contract_errors(valid + f"\n{statement}\n")
-        if not any(
-            "prose assigns Host Agent intelligence duties to Core" in error
-            for error in positive_errors
-        ):
-            matrix_failures.append(f"positive assignment accepted: {statement!r}")
-
-    not_only_statement = "Core owns not only deterministic retrieval but also synthesis."
-    not_only_errors = _role_contract_errors(valid + f"\n{not_only_statement}\n")
-    if not any(
-        "prose assigns Host Agent intelligence duties to Core: synthesis" in error
-        for error in not_only_errors
-    ):
-        matrix_failures.append(
-            f"not-only synthesis escaped: {not_only_statement!r}: {not_only_errors!r}"
-        )
-
-    mixed_statement = "Core does not own planning but owns synthesis."
-    mixed_errors = _role_contract_errors(valid + f"\n{mixed_statement}\n")
-    if not any(
-        "prose assigns Host Agent intelligence duties to Core: synthesis" in error
-        for error in mixed_errors
-    ):
-        matrix_failures.append(
-            f"mixed positive synthesis escaped: {mixed_statement!r}: {mixed_errors!r}"
-        )
-
-    assert matrix_failures == [], "; ".join(matrix_failures)
 
     apex = _heading_section(_read_authority("charter"), "## 北极星")
     assert "编排 / 多跳 / 推理 / 叙述合成由**宿主 agent**完成" in apex
