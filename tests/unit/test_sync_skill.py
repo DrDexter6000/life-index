@@ -99,7 +99,8 @@ def test_skill_routes_reasoning_to_host_agent_and_keeps_gateway_optional(
     end = canonical.index(end_marker, start)
     block = canonical[start:end]
     required_fragments = (
-        "Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis",
+        "Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis. "
+        "They also own orchestration.",
         "Core calls remain deterministic",
         "Gateway is an optional future typed 1:1 projection under #164",
         "not yet implemented",
@@ -109,6 +110,12 @@ def test_skill_routes_reasoning_to_host_agent_and_keeps_gateway_optional(
     )
     missing = [fragment for fragment in required_fragments if fragment not in block]
     assert missing == [], f"Skill routing block is missing: {missing}"
+
+    no_orchestration = block.replace("They also own orchestration.", "", 1)
+    drift_missing = [
+        fragment for fragment in required_fragments if fragment not in no_orchestration
+    ]
+    assert drift_missing, "Host Agent orchestration loss escaped the Skill routing contract"
 
 
 def test_sync_skill_copies_skill_and_references_preserving_custom_triggers(tmp_path: Path) -> None:
