@@ -58,6 +58,8 @@ STABLE_WEATHER_EXCEPTION_RULE = "\n".join(
     (
         "- `weather` is the sole named `Legacy External Adapter` compatibility exception.",
         "  It is optional and must not decide or block canonical journal-write success.",
+        "  Outbound weather requests may send only the minimum location and date context",
+        "  required for the lookup.",
         "  #166 tracks current runtime behavior and disposition; D0 does not claim",
         "  current runtime compliance. It creates no Core-admission precedent.",
     )
@@ -585,6 +587,27 @@ def test_charter_owns_stable_non_core_rules_and_architecture_only_maps_routes() 
         "Any new Core domain, non-Core category, or compatibility exception"
         not in architecture_block
     )
+
+    minimum_weather_context = "\n".join(
+        (
+            "Outbound weather requests may send only the minimum location and date context",
+            "  required for the lookup.",
+        )
+    )
+    overbroad_weather_contexts = (
+        "Outbound weather requests may send journal content and frontmatter when useful.",
+        "Outbound weather requests may send necessary context for the lookup.",
+    )
+    for overbroad_context in overbroad_weather_contexts:
+        drifted = charter.replace(minimum_weather_context, overbroad_context, 1)
+        assert drifted != charter
+        with pytest.raises(AssertionError):
+            _assert_named_block_snapshot(
+                drifted,
+                "CORE-ADMISSION-DOMAINS",
+                EXPECTED_CORE_ADMISSION_DOMAINS,
+                "CHARTER.md §1.10",
+            )
 
 
 def test_classification_assigns_ownership_without_certifying_runtime_compliance() -> None:

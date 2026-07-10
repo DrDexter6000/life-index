@@ -313,6 +313,8 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
   correctness dependency; or create Core-admission precedent.
 - `weather` is the sole named `Legacy External Adapter` compatibility exception.
   It is optional and must not decide or block canonical journal-write success.
+  Outbound weather requests may send only the minimum location and date context
+  required for the lookup.
   #166 tracks current runtime behavior and disposition; D0 does not claim
   current runtime compliance. It creates no Core-admission precedent.
 - Any new Core domain, non-Core category, or compatibility exception requires
