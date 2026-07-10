@@ -53,7 +53,7 @@ not describe current runtime completion:
 
 | Role | Authority boundary |
 |---|---|
-| Core | Deterministic tools; no planning, reasoning, orchestration, or synthesis. |
+| Core | Deterministic tools; no planning, reasoning, orchestration, interpretation, or synthesis. |
 | Host Agent + Skill | Owns planning, multi-hop reasoning, orchestration, interpretation, and synthesis. |
 | GUI | Presentation only; no intelligence; strict adapter stays GUI-owned. |
 | Current bridge | Non-Core and GUI-owned. |

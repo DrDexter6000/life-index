@@ -40,17 +40,56 @@ API_SYNTHESIZE_STALE_FRAGMENTS = (
     "deterministic scaffold",
     "deterministic answer scaffold",
 )
-HOST_AGENT_INTELLIGENCE_DUTIES = (
-    "planning",
-    "reasoning",
-    "orchestration",
-    "interpretation",
-    "synthesis",
+EXPECTED_ROLE_BOUNDARIES = {
+    "Core": (
+        "Deterministic tools; no planning, reasoning, orchestration, interpretation, "
+        "or synthesis."
+    ),
+    "Host Agent + Skill": (
+        "Owns planning, multi-hop reasoning, orchestration, interpretation, and synthesis."
+    ),
+    "GUI": "Presentation only; no intelligence; strict adapter stays GUI-owned.",
+    "Current bridge": "Non-Core and GUI-owned.",
+    "Gateway": (
+        "Optional future typed 1:1 projection under #164; unimplemented; not a second "
+        "semantic API; no intelligence."
+    ),
+}
+ROLE_DUTY_TOKENS = frozenset(
+    {
+        "plan",
+        "plans",
+        "planned",
+        "planning",
+        "reason",
+        "reasons",
+        "reasoned",
+        "reasoning",
+        "orchestrate",
+        "orchestrates",
+        "orchestrated",
+        "orchestrating",
+        "orchestration",
+        "interpret",
+        "interprets",
+        "interpreted",
+        "interpreting",
+        "interpretation",
+        "synthesize",
+        "synthesizes",
+        "synthesized",
+        "synthesizing",
+        "synthesis",
+    }
 )
 
 
 def _read_authority(name: str) -> str:
     return AUTHORITY_PATHS[name].read_text(encoding="utf-8")
+
+
+def _normalize_role_contract_text(value: str) -> str:
+    return " ".join(value.casefold().split())
 
 
 def _marked_block(text: str, marker: str, source: str) -> str:
@@ -255,26 +294,9 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
 
 
 def _role_contract_errors(block: str) -> list[str]:
-    requirements = {
-        "Core": ("deterministic", "no planning, reasoning, orchestration, or synthesis"),
-        "Host Agent + Skill": (
-            "owns",
-            "planning",
-            "multi-hop reasoning",
-            "orchestration",
-            "interpretation",
-            "synthesis",
-        ),
-        "GUI": ("presentation", "no intelligence", "strict adapter", "gui-owned"),
-        "Current bridge": ("non-core", "gui-owned"),
-        "Gateway": (
-            "optional future",
-            "typed 1:1 projection",
-            "#164",
-            "unimplemented",
-            "not a second semantic api",
-            "no intelligence",
-        ),
+    expected_boundaries = {
+        _normalize_role_contract_text(role): _normalize_role_contract_text(boundary)
+        for role, boundary in EXPECTED_ROLE_BOUNDARIES.items()
     }
     errors: list[str] = []
     header = ("Role", "Authority boundary")
@@ -295,11 +317,11 @@ def _role_contract_errors(block: str) -> list[str]:
             continue
         parsed_rows.append((row[0], row[1]))
 
-    expected_roles = {role.lower(): role for role in requirements}
-    normalized_roles = [role.lower() for role, _ in parsed_rows]
+    expected_roles = set(expected_boundaries)
+    normalized_roles = [_normalize_role_contract_text(role) for role, _ in parsed_rows]
     duplicates = sorted({role for role in normalized_roles if normalized_roles.count(role) > 1})
     unexpected = sorted({role for role in normalized_roles if role not in expected_roles})
-    missing_roles = sorted({*expected_roles} - {*normalized_roles})
+    missing_roles = sorted(expected_roles - set(normalized_roles))
     if duplicates:
         errors.append("duplicate role rows: " + ", ".join(duplicates))
     if unexpected:
@@ -309,25 +331,25 @@ def _role_contract_errors(block: str) -> list[str]:
 
     rows_by_role: dict[str, str] = {}
     for role, boundary in parsed_rows:
-        rows_by_role.setdefault(role.lower(), boundary.lower())
-    for role, fragments in requirements.items():
-        value = rows_by_role.get(role.lower())
+        rows_by_role.setdefault(_normalize_role_contract_text(role), boundary)
+    for role, expected_boundary in EXPECTED_ROLE_BOUNDARIES.items():
+        normalized_role = _normalize_role_contract_text(role)
+        value = rows_by_role.get(normalized_role)
         if value is None:
             continue
-        missing_fragments = [fragment for fragment in fragments if fragment not in value]
-        if missing_fragments:
-            errors.append(f"{role!r} role is missing {missing_fragments!r}")
+        if _normalize_role_contract_text(value) != expected_boundaries[normalized_role]:
+            errors.append(
+                f"{role!r} role boundary must exactly match {expected_boundary!r}; "
+                f"got {value!r}"
+            )
 
     prose = "\n".join(
         line.strip()
         for line in block.splitlines()
         if line.strip() and not line.strip().startswith("|")
     )
-    prose_duties = [
-        duty
-        for duty in HOST_AGENT_INTELLIGENCE_DUTIES
-        if re.search(rf"\b{re.escape(duty)}\b", prose, flags=re.IGNORECASE)
-    ]
+    prose_tokens = set(re.findall(r"[a-z]+", prose.casefold()))
+    prose_duties = sorted(ROLE_DUTY_TOKENS & prose_tokens)
     if prose_duties:
         errors.append(
             "role duties are allowed only in the named role table: " + ", ".join(prose_duties)
@@ -336,19 +358,13 @@ def _role_contract_errors(block: str) -> list[str]:
 
 
 def _valid_role_fixture() -> str:
+    rows = [f"| {role} | {boundary} |" for role, boundary in EXPECTED_ROLE_BOUNDARIES.items()]
     return "\n".join(
         (
             "",
             "| Role | Authority boundary |",
             "|---|---|",
-            "| Core | Deterministic tools; no planning, reasoning, orchestration, "
-            "or synthesis. |",
-            "| Host Agent + Skill | Owns planning, multi-hop reasoning, orchestration, "
-            "interpretation, and synthesis. |",
-            "| GUI | Presentation only; no intelligence; strict adapter stays " "GUI-owned. |",
-            "| Current bridge | Non-Core and GUI-owned. |",
-            "| Gateway | Optional future typed 1:1 projection under #164; "
-            "unimplemented; not a second semantic API; no intelligence. |",
+            *rows,
             "",
         )
     )
@@ -499,9 +515,7 @@ def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_
 def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> None:
     valid = _valid_role_fixture()
     assert _role_contract_errors(valid) == []
-    core_row = (
-        "| Core | Deterministic tools; no planning, reasoning, orchestration, " "or synthesis. |"
-    )
+    core_row = f"| Core | {EXPECTED_ROLE_BOUNDARIES['Core']} |"
     structural_cases = (
         (
             "duplicate Core row",
@@ -537,8 +551,8 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
     assert missed_structural_drift == [], "; ".join(missed_structural_drift)
 
     drifted = valid.replace(
-        "no planning, reasoning, orchestration, or synthesis",
-        "owns planning, reasoning, orchestration, and synthesis",
+        "no planning, reasoning, orchestration, interpretation, or synthesis",
+        "owns planning, reasoning, orchestration, interpretation, and synthesis",
         1,
     )
     assert _role_contract_errors(drifted) != []
@@ -550,6 +564,47 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
     architecture = _read_authority("architecture")
     block = _marked_block(architecture, "PLATFORM-ROLE-BOUNDARY", "docs/ARCHITECTURE.md")
     assert _role_contract_errors(block) == [], "; ".join(_role_contract_errors(block))
+
+
+def test_role_contract_rejects_appended_contradictions_and_external_duty_verbs() -> None:
+    valid = _valid_role_fixture()
+    drift_cases = (
+        (
+            "Core appended synthesis/interpretation ownership",
+            valid.replace(
+                "or synthesis. |",
+                "or synthesis. Also owns synthesis/interpretation. |",
+                1,
+            ),
+        ),
+        (
+            "GUI appended planning ownership",
+            valid.replace(
+                "strict adapter stays GUI-owned. |",
+                "strict adapter stays GUI-owned. Owns planning. |",
+                1,
+            ),
+        ),
+        (
+            "Gateway appended reasoning duty",
+            valid.replace(
+                "not a second semantic API; no intelligence. |",
+                "not a second semantic API; no intelligence. Handles reasoning. |",
+                1,
+            ),
+        ),
+        ("external plans verb", valid + "\nCore plans requests.\n"),
+        ("external orchestrates verb", valid + "\nCore orchestrates tools.\n"),
+        ("external synthesizes verb", valid + "\nCore synthesizes answers.\n"),
+    )
+    escaped_drift = [
+        description
+        for description, drifted_block in drift_cases
+        if not _role_contract_errors(drifted_block)
+    ]
+    assert escaped_drift == [], "role-contract drift escaped validation: " + ", ".join(
+        escaped_drift
+    )
 
 
 def test_deprecation_text_names_owner_issue_and_runtime_state() -> None:
