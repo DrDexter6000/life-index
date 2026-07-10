@@ -164,6 +164,62 @@ def _is_handled_direct_branch(node: ast.If) -> bool:
     )
 
 
+def _is_sys_argv_sequence(node: ast.AST) -> bool:
+    if isinstance(node, ast.Subscript):
+        node = node.value
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "sys"
+        and node.attr == "argv"
+    )
+
+
+def _is_known_help_argv_predicate(node: ast.AST) -> bool:
+    if (
+        not isinstance(node, ast.Call)
+        or not isinstance(node.func, ast.Name)
+        or node.func.id != "any"
+        or len(node.args) != 1
+        or node.keywords
+        or not isinstance(node.args[0], ast.GeneratorExp)
+    ):
+        return False
+
+    generator = node.args[0]
+    if len(generator.generators) != 1:
+        return False
+    comprehension = generator.generators[0]
+    if (
+        comprehension.is_async
+        or comprehension.ifs
+        or not isinstance(comprehension.target, ast.Name)
+        or not _is_sys_argv_sequence(comprehension.iter)
+    ):
+        return False
+
+    predicate = generator.elt
+    return (
+        isinstance(predicate, ast.Compare)
+        and len(predicate.ops) == len(predicate.comparators) == 1
+        and isinstance(predicate.ops[0], ast.In)
+        and isinstance(predicate.left, ast.Name)
+        and predicate.left.id == comprehension.target.id
+        and _literal_collection_values(predicate.comparators[0]) == HELP_ALIASES
+    )
+
+
+def _is_command_specific_help_guard(node: ast.If) -> bool:
+    if not isinstance(node.test, ast.BoolOp) or not isinstance(node.test.op, ast.And):
+        return False
+    has_route_operand = any(_positive_subcmd_literals(operand) for operand in node.test.values)
+    has_independent_help_operand = any(
+        not _positive_subcmd_literals(operand) and _is_known_help_argv_predicate(operand)
+        for operand in node.test.values
+    )
+    return has_route_operand and has_independent_help_operand
+
+
 def _canonical_direct_route(value: str) -> str | None:
     if value in HELP_ALIASES:
         return None
@@ -176,7 +232,11 @@ def _literal_direct_route_keys(source: str) -> frozenset[str]:
     main_node = _main_function(source)
     routes: set[str] = set()
     for node in ast.walk(main_node):
-        if not isinstance(node, ast.If) or not _is_handled_direct_branch(node):
+        if (
+            not isinstance(node, ast.If)
+            or not _is_handled_direct_branch(node)
+            or _is_command_specific_help_guard(node)
+        ):
             continue
         for value in _positive_subcmd_literals(node.test):
             route = _canonical_direct_route(value)
@@ -404,10 +464,31 @@ def test_validator_rejects_supported_positive_direct_route_shapes(condition: str
 
 def test_validator_rejects_removed_direct_route_from_source() -> None:
     source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
-    mutated = source.replace('subcmd == "health"', 'subcmd != "health"')
+    handler = (
+        "    # Handle health check directly (no submodule import needed)\n"
+        '    if subcmd == "health":\n'
+    )
+    mutated = source.replace(
+        handler,
+        handler.replace('subcmd == "health"', 'subcmd != "health"'),
+        1,
+    )
     assert mutated != source
     with pytest.raises(AssertionError, match="inventory mismatch"):
         _validate_public_command_classification(mutated, _render_future_architecture())
+
+
+def test_validator_accepts_normal_health_handler_without_help_guard() -> None:
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    help_guard = (
+        '    if subcmd == "health" and any('
+        'arg in ("--help", "-h", "help") for arg in sys.argv[2:]):\n'
+        "        print_health_usage()\n"
+        "        return\n\n"
+    )
+    mutated = source.replace(help_guard, "", 1)
+    assert mutated != source
+    _validate_public_command_classification(mutated, _render_future_architecture())
 
 
 def test_validator_rejects_unknown_version_alias_as_new_route() -> None:
