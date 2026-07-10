@@ -21,7 +21,8 @@ TABLE_HEADER = ("Command", "Classification", "Authority refs")
 CORE = "Core"
 HOST_OPERATIONS = "Non-Core — Distribution/Host Operations"
 LEGACY_ADAPTER = "Legacy External Adapter"
-DIRECT_PUBLIC_ROUTES = frozenset({"health", "version"})
+HELP_ALIASES = frozenset({"help", "-h", "--help"})
+VERSION_ALIASES = frozenset({"version", "-V", "--version"})
 CORE_DOMAIN_IDS = frozenset({f"C{number}" for number in range(1, 8)})
 
 CORE_DOMAIN_NAMES = (
@@ -73,15 +74,20 @@ CHARTER_CLASSIFICATION_RULES_POINTER = (
 OWNERSHIP_MAPPING_HEADING = "### Public command constitutional ownership/admission mapping"
 
 
-def _literal_cmd_map_keys(source: str) -> frozenset[str]:
+def _main_function(source: str) -> ast.FunctionDef:
     tree = ast.parse(source)
     main_nodes = [
         node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"
     ]
     assert len(main_nodes) == 1, "tools.__main__ must define exactly one main function"
+    return main_nodes[0]
+
+
+def _literal_cmd_map_keys(source: str) -> frozenset[str]:
+    main_node = _main_function(source)
 
     assignments = []
-    for node in ast.walk(main_nodes[0]):
+    for node in ast.walk(main_node):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
@@ -102,8 +108,108 @@ def _literal_cmd_map_keys(source: str) -> frozenset[str]:
     return frozenset(keys)
 
 
+def _literal_collection_values(node: ast.expr) -> frozenset[str]:
+    if not isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return frozenset()
+    values: list[str] = []
+    for element in node.elts:
+        if not isinstance(element, ast.Constant) or not isinstance(element.value, str):
+            return frozenset()
+        values.append(element.value)
+    return frozenset(values)
+
+
+def _positive_subcmd_literals(node: ast.AST) -> frozenset[str]:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return frozenset()
+
+    if isinstance(node, ast.Compare) and len(node.ops) == len(node.comparators) == 1:
+        operator = node.ops[0]
+        right = node.comparators[0]
+        if isinstance(operator, ast.Eq):
+            if (
+                isinstance(node.left, ast.Name)
+                and node.left.id == "subcmd"
+                and isinstance(right, ast.Constant)
+                and isinstance(right.value, str)
+            ):
+                return frozenset({right.value})
+            if (
+                isinstance(right, ast.Name)
+                and right.id == "subcmd"
+                and isinstance(node.left, ast.Constant)
+                and isinstance(node.left.value, str)
+            ):
+                return frozenset({node.left.value})
+        if isinstance(operator, ast.In) and isinstance(node.left, ast.Name):
+            if node.left.id == "subcmd":
+                return _literal_collection_values(right)
+        return frozenset()
+
+    literals: set[str] = set()
+    for child in ast.iter_child_nodes(node):
+        literals.update(_positive_subcmd_literals(child))
+    return frozenset(literals)
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _is_help_only_branch(node: ast.If) -> bool:
+    call_names = {
+        name
+        for statement in node.body
+        for child in ast.walk(statement)
+        if isinstance(child, ast.Call)
+        if (name := _call_name(child)) is not None
+    }
+    return bool(call_names) and all("usage" in name.casefold() for name in call_names)
+
+
+def _is_handled_direct_branch(node: ast.If) -> bool:
+    return any(
+        not isinstance(statement, ast.Pass)
+        and not (
+            isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Constant)
+            and isinstance(statement.value.value, str)
+        )
+        for statement in node.body
+    )
+
+
+def _canonical_direct_route(value: str) -> str | None:
+    if value in HELP_ALIASES:
+        return None
+    if value in VERSION_ALIASES:
+        return "version"
+    return value
+
+
+def _literal_direct_route_keys(source: str) -> frozenset[str]:
+    main_node = _main_function(source)
+    routes: set[str] = set()
+    for node in ast.walk(main_node):
+        if (
+            not isinstance(node, ast.If)
+            or not _is_handled_direct_branch(node)
+            or _is_help_only_branch(node)
+        ):
+            continue
+        for value in _positive_subcmd_literals(node.test):
+            route = _canonical_direct_route(value)
+            if route is not None:
+                routes.add(route)
+    return frozenset(routes)
+
+
 def _public_routes(source: str) -> frozenset[str]:
-    return _literal_cmd_map_keys(source) | DIRECT_PUBLIC_ROUTES
+    return _literal_cmd_map_keys(source) | _literal_direct_route_keys(source)
 
 
 def _named_block(text: str) -> str:
@@ -235,7 +341,10 @@ def _replace_row(
 
 
 def test_ast_public_route_inventory_is_exactly_31_capabilities() -> None:
-    routes = _public_routes(CLI_ENTRYPOINT.read_text(encoding="utf-8"))
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    routes = _public_routes(source)
+    direct_routes = routes - _literal_cmd_map_keys(source)
+    assert direct_routes == {"health", "version"}
     assert routes == set(EXPECTED_CORE_REFS) | EXPECTED_HOST_OPERATIONS | EXPECTED_LEGACY_ADAPTERS
     assert len(routes) == 31
     assert {"--version", "-V"}.isdisjoint(routes)
@@ -259,6 +368,100 @@ def test_validator_rejects_new_cmd_map_command_without_mapping() -> None:
     assert mutated != source
     with pytest.raises(AssertionError, match="inventory mismatch"):
         _validate_public_command_classification(mutated, _render_future_architecture())
+
+
+def test_validator_rejects_new_direct_dispatch_route_without_mapping() -> None:
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    anchor = "    # Map subcommands to __main__ module paths\n"
+    mutated = source.replace(
+        anchor,
+        '    if subcmd == "future-direct":\n'
+        '        print("future direct route")\n'
+        "        return\n\n" + anchor,
+        1,
+    )
+    assert mutated != source
+    with pytest.raises(AssertionError, match="inventory mismatch"):
+        _validate_public_command_classification(mutated, _render_future_architecture())
+
+
+@pytest.mark.parametrize(
+    "condition",
+    (
+        '"future-left" == subcmd',
+        'subcmd in ("future-tuple",)',
+        'subcmd in ["future-list"]',
+        'subcmd in {"future-set"}',
+        'subcmd == "future-negative-help" and "--help" not in sys.argv[2:]',
+    ),
+)
+def test_validator_rejects_supported_positive_direct_route_shapes(condition: str) -> None:
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    anchor = "    # Map subcommands to __main__ module paths\n"
+    mutated = source.replace(
+        anchor,
+        f"    if {condition}:\n"
+        '        print("future direct route")\n'
+        "        return\n\n" + anchor,
+        1,
+    )
+    assert mutated != source
+    with pytest.raises(AssertionError, match="inventory mismatch"):
+        _validate_public_command_classification(mutated, _render_future_architecture())
+
+
+def test_validator_rejects_removed_direct_route_from_source() -> None:
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    mutated = source.replace('subcmd == "health"', 'subcmd != "health"')
+    assert mutated != source
+    with pytest.raises(AssertionError, match="inventory mismatch"):
+        _validate_public_command_classification(mutated, _render_future_architecture())
+
+
+def test_validator_rejects_unknown_version_alias_as_new_route() -> None:
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    mutated = source.replace(
+        'elif subcmd in ("-V", "version"):',
+        'elif subcmd in ("-V", "version", "future-version-alias"):',
+        1,
+    )
+    assert mutated != source
+    with pytest.raises(AssertionError, match="inventory mismatch"):
+        _validate_public_command_classification(mutated, _render_future_architecture())
+
+
+def test_direct_route_discovery_ignores_negative_help_and_string_only_mentions() -> None:
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    anchor = "    # Map subcommands to __main__ module paths\n"
+    mutated = source.replace(
+        '    """Unified CLI entry point"""',
+        '    """Unified CLI entry point mentioning future-docstring only."""',
+        1,
+    )
+    mutated = mutated.replace(
+        anchor,
+        '    if subcmd != "negative-eq":\n'
+        "        pass\n"
+        '    if subcmd not in ("negative-in",):\n'
+        "        pass\n"
+        '    if not (subcmd == "nested-negative"):\n'
+        "        pass\n"
+        '    if subcmd == "positive-pass-only":\n'
+        "        pass\n\n" + anchor,
+        1,
+    )
+    mutated = mutated.replace(
+        'elif subcmd in ("--help", "-h", "help"):',
+        'elif subcmd in ("--help", "-h", "help", "future-help-alias"):',
+        1,
+    )
+    mutated = mutated.replace(
+        'print("Usage: life-index <command> [options]")',
+        'print("Usage: life-index <command> [options] future-print-only")',
+        1,
+    )
+    assert mutated != source
+    _validate_public_command_classification(mutated, _render_future_architecture())
 
 
 def test_validator_rejects_missing_direct_route_row() -> None:
