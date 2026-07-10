@@ -57,8 +57,9 @@ STABLE_DISTRIBUTION_HOST_OPERATIONS_RULE = "\n".join(
 STABLE_WEATHER_EXCEPTION_RULE = "\n".join(
     (
         "- `weather` is the sole named `Legacy External Adapter` compatibility exception.",
-        "  It is optional, tracked by #166, cannot decide canonical journal-write",
-        "  success, and creates no Core-admission precedent.",
+        "  It is optional and must not decide or block canonical journal-write success.",
+        "  #166 tracks current runtime behavior and disposition; D0 does not claim",
+        "  current runtime compliance. It creates no Core-admission precedent.",
     )
 )
 STABLE_OWNER_GATE_RULE = "\n".join(
@@ -501,6 +502,12 @@ def test_charter_owns_stable_non_core_rules_and_architecture_only_maps_routes() 
         charter.index(charter_start) + len(charter_start) : charter.index(charter_end)
     ]
 
+    for stable_rule in (
+        STABLE_DISTRIBUTION_HOST_OPERATIONS_RULE,
+        STABLE_WEATHER_EXCEPTION_RULE,
+        STABLE_OWNER_GATE_RULE,
+    ):
+        assert stable_rule in charter_block
     assert EXPECTED_STABLE_NON_CORE_CLASSIFICATION_RULES in charter_block
     assert charter_block.count("`Distribution/Host Operations`") == 1
     assert charter_block.count("`Legacy External Adapter`") == 1

@@ -312,8 +312,9 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
   own canonical journal, frontmatter, entity, or search semantics; be a Core
   correctness dependency; or create Core-admission precedent.
 - `weather` is the sole named `Legacy External Adapter` compatibility exception.
-  It is optional, tracked by #166, cannot decide canonical journal-write
-  success, and creates no Core-admission precedent.
+  It is optional and must not decide or block canonical journal-write success.
+  #166 tracks current runtime behavior and disposition; D0 does not claim
+  current runtime compliance. It creates no Core-admission precedent.
 - Any new Core domain, non-Core category, or compatibility exception requires
   new Human Owner substantive approval.
 
