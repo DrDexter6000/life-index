@@ -31,10 +31,21 @@ PROPOSED_CORE_DOMAINS = (
 )
 PENDING_OWNER_STATUS = "proposed / pending Human Owner substantive approval"
 API_SYNTHESIZE_CURRENT_FRAGMENTS = ("provider-backed", "llm synthesis", "trust gate")
+CURRENT_SYNTHESIZE_RUNTIME_FRAGMENTS = (
+    "--synthesize",
+    *API_SYNTHESIZE_CURRENT_FRAGMENTS,
+)
 API_SYNTHESIZE_TRANSITION_POINTER = "see the named `--synthesize` transition authority block"
 API_SYNTHESIZE_STALE_FRAGMENTS = (
     "deterministic scaffold",
     "deterministic answer scaffold",
+)
+HOST_AGENT_INTELLIGENCE_DUTIES = (
+    "planning",
+    "reasoning",
+    "orchestration",
+    "interpretation",
+    "synthesis",
 )
 
 
@@ -106,11 +117,41 @@ def _named_markdown_table_rows(
     return None
 
 
+def _current_runtime_statement(block: str) -> str | None:
+    match = re.search(
+        r"^Current runtime:\s*.*?(?=\n\s*\n|\Z)",
+        block,
+        flags=re.IGNORECASE | re.MULTILINE | re.DOTALL,
+    )
+    return match.group(0).strip() if match is not None else None
+
+
+def _current_synthesize_runtime_errors(statement: str) -> list[str]:
+    normalized = statement.lower().replace("trust-gate", "trust gate")
+    errors = [
+        f"Current runtime is missing {fragment!r}"
+        for fragment in CURRENT_SYNTHESIZE_RUNTIME_FRAGMENTS
+        if fragment not in normalized
+    ]
+    deprecated_current = re.search(
+        r"--synthesize.{0,80}\b(?:is|acts as|behaves as)\s+"
+        r"(?:already\s+)?(?:a\s+)?(?:deprecated(?:\s+no-op)?|no-op)\b",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if deprecated_current is not None:
+        errors.append("Current runtime must not claim --synthesize is already deprecated/no-op")
+    return errors
+
+
 def _current_target_errors(block: str) -> list[str]:
     errors: list[str] = []
     lowered = block.lower()
-    if "current runtime" not in lowered:
+    current_statement = _current_runtime_statement(block)
+    if current_statement is None:
         errors.append("missing an explicit Current runtime label")
+    else:
+        errors.extend(_current_synthesize_runtime_errors(current_statement))
     if "ratified target" not in lowered:
         errors.append("missing an explicit Ratified target label")
     if not re.search(
@@ -258,10 +299,22 @@ def _role_contract_errors(block: str) -> list[str]:
         if assignment is None:
             continue
         duties = assignment.group("duties").lower()
-        if all(term in duties for term in ("planning", "reasoning", "orchestration", "synthesis")):
-            if re.search(r"\b(?:no|not|never|cannot)\b", duties) is None:
-                errors.append("role prose assigns Host Agent intelligence duties to Core")
-                break
+        positive_duties: list[str] = []
+        for duty in HOST_AGENT_INTELLIGENCE_DUTIES:
+            if re.search(rf"\b{re.escape(duty)}\b", duties) is None:
+                continue
+            negated = re.search(
+                rf"\b(?:no|not|never|cannot)\b(?:\W+\w+){{0,3}}\W+{re.escape(duty)}\b",
+                duties,
+            )
+            if negated is None:
+                positive_duties.append(duty)
+        if positive_duties:
+            errors.append(
+                "role prose assigns Host Agent intelligence duties to Core: "
+                + ", ".join(positive_duties)
+            )
+            break
     return errors
 
 
@@ -286,24 +339,13 @@ def _valid_role_fixture() -> str:
 
 def _deprecation_errors(block: str) -> list[str]:
     errors: list[str] = []
-    current = re.search(r"^Current runtime:\s*(.+)$", block, flags=re.IGNORECASE | re.MULTILINE)
+    current_statement = _current_runtime_statement(block)
     target = re.search(r"^Target under #163:\s*(.+)$", block, flags=re.IGNORECASE | re.MULTILINE)
     compatibility = re.search(r"^Compatibility:\s*(.+)$", block, flags=re.IGNORECASE | re.MULTILINE)
-    if current is None:
+    if current_statement is None:
         errors.append("missing Current runtime line")
     else:
-        current_line = current.group(1).lower()
-        for fragment in ("--synthesize", "provider-backed", "llm", "synthesis", "trust gate"):
-            if fragment not in current_line:
-                errors.append(f"Current runtime line is missing {fragment!r}")
-        current_deprecation_claim = re.search(
-            r"--synthesize.{0,80}\b(?:is|acts as|behaves as)\s+"
-            r"(?:already\s+)?(?:a\s+)?(?:deprecated(?:\s+no-op)?|no-op)\b",
-            current_line,
-            flags=re.IGNORECASE,
-        )
-        if current_deprecation_claim is not None:
-            errors.append("Current runtime must not claim --synthesize is already deprecated/no-op")
+        errors.extend(_current_synthesize_runtime_errors(current_statement))
     if target is None:
         errors.append("missing Target under #163 line")
     else:
@@ -319,7 +361,9 @@ def _deprecation_errors(block: str) -> list[str]:
 def _valid_deprecation_fixture() -> str:
     return """
 Current runtime: --synthesize requests provider-backed LLM synthesis and applies the trust gate.
+
 Target under #163: --synthesize becomes a deprecated no-op; this is not yet implemented.
+
 Compatibility: retain the flag for at least two major versions.
 """
 
@@ -388,6 +432,15 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
     assert "1. `CHARTER.md` owns constitutional invariants." in agents
     block = _marked_block(architecture, "CURRENT-TARGET-STATUS", "docs/ARCHITECTURE.md")
     assert _current_target_errors(block) == [], "; ".join(_current_target_errors(block))
+    deprecated_current = block.replace(
+        "`--synthesize` still has provider-backed LLM synthesis and trust-gate behavior,",
+        "`--synthesize` is already a deprecated no-op,",
+        1,
+    )
+    deprecated_current_errors = _current_target_errors(deprecated_current)
+    assert any(
+        "already deprecated/no-op" in error for error in deprecated_current_errors
+    ), f"Architecture current-runtime drift escaped validation: {deprecated_current_errors!r}"
 
 
 def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_criteria() -> None:
@@ -441,6 +494,20 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
         "prose assigns Host Agent intelligence duties to Core" in error
         for error in contradictory_errors
     ), f"contradictory Core prose escaped validation: {contradictory_errors!r}"
+    negative_prose = valid + "\nCore does not own planning or synthesis.\n"
+    assert _role_contract_errors(negative_prose) == []
+    missed_partial_assignments: list[str] = []
+    for duty in ("planning", "synthesis"):
+        partial_errors = _role_contract_errors(valid + f"\nCore owns {duty}.\n")
+        if not any(
+            "prose assigns Host Agent intelligence duties to Core" in error
+            for error in partial_errors
+        ):
+            missed_partial_assignments.append(duty)
+    assert missed_partial_assignments == [], (
+        "partial Core intelligence assignments escaped validation: "
+        f"{missed_partial_assignments!r}"
+    )
 
     apex = _heading_section(_read_authority("charter"), "## 北极星")
     assert "编排 / 多跳 / 推理 / 叙述合成由**宿主 agent**完成" in apex
