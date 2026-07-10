@@ -4,7 +4,7 @@
 >
 > 日期：2026-07-09
 >
-> 范围：`life-index` 主仓、`life-index_gui` GUI 仓及未来高级 Addon
+> 范围：`life-index` 主仓、配套 GUI 产品仓及未来高级 Addon
 >
 > 决策层：Human Owner、CTO / Product Director、Chief Advisor
 >
@@ -120,7 +120,7 @@ flowchart TB
 | Host Runtime Layer | runtime 连接、启动、健康、流式、取消、超时、严格 envelope | 模型选择、意图分类、工具规划、答案合成 | 可由主仓发行；runtime adapter 可独立版本化 |
 | Skills | 领域流程、检索策略、证据使用规则、Addon procedure | 数据真相源、隐式 provider | 主仓通用 Skill + Addon Skill |
 | Host Agent | 意图、规划、推理、多工具调用、语言合成 | 绕过 Core 写 L1 | 用户选择的 runtime |
-| GUI | 写入/搜索/证据/时间线等人类体验，浏览器安全与 presentation | 数据语义、LLM brain、runtime 宽松修复 | `life-index_gui` |
+| GUI | 写入/搜索/证据/时间线等人类体验，浏览器安全与 presentation | 数据语义、LLM brain、runtime 宽松修复 | 配套 GUI 产品仓 |
 | Addon | 领域知识、工作流状态、专用 helper、可选 renderer | 平行 L1、Core 内部实现假设 | 独立包、目录或仓库 |
 
 ## 5. `life-index` 主仓与 CLI Core 的区别
