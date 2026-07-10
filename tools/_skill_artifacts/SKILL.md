@@ -20,6 +20,14 @@ triggers:
 > **Authority Chain**: `bootstrap-manifest.json` 是 freshness / authority anchor。涉及安装、升级、repair、环境判断时，必须先刷新 `bootstrap-manifest.json`，再按其 `required_authority_docs` 刷新对应文档，然后才允许 sync checkout 或 route 判断。
 > **工具参数与错误码**: 详见 [API.md](docs/API.md)
 
+<!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:START -->
+## Host Agent / Core / Gateway routing boundary
+
+- Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis. They also own orchestration.
+- Core calls remain deterministic; Core does not plan, reason, orchestrate, interpret, or synthesize.
+- Gateway is an optional future typed 1:1 projection under #164; it is not yet implemented, is not a second semantic API, and owns no intelligence. If introduced, it is only a contract-equivalent transport. Gateway is never required for the core route.
+<!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:END -->
+
 ---
 
 ## Triggers & When to Use
@@ -382,6 +390,16 @@ agent 按本 Skill 的 playbook 完成，详见
 
 `life-index recall` 仅为旧集成保留的兼容壳；新宿主 agent 流程直接选择上表中的 `search` / `smart-search`。
 
+<!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:START -->
+**`--synthesize` transition**
+
+Current runtime: `--synthesize` requests provider-backed LLM synthesis and applies the trust gate when its runtime prerequisites are available.
+
+Target under #163: `--synthesize` becomes a deprecated no-op; this is not yet implemented.
+
+Compatibility: retain the accepted flag for at least two major versions after the #163 transition is implemented.
+<!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:END -->
+
 **计数 vs 观测序列选择**:
 
 | 需求 | 使用 |
@@ -400,7 +418,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 3. 只有开放回忆、关键词 / 实体加权发现、或 facet 菜单无法提供有效候选时，才调用 `life-index smart-search --query "..." --include-evidence` 或 `life-index search`。
 4. 使用 `smart-search` 时，检查 `query_plan.sub_queries`、`query_plan.strategy` 与检索诊断，消费返回的 `agent_instructions`、`answer_scaffold`、`filtered_results` 与 `evidence_pack`；只引用返回或已读取的来源，不得自行补造证据。
 5. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
-6. 只有需要 CLI 产出确定性答案 scaffold 字段时，才叠加 `--synthesize`。
+6. 只有用户明确要求当前工具侧合成兼容路径，并接受 provider/data-exposure 边界时，才叠加 `--synthesize`；#163 的 deprecated no-op 目标尚未实现。
 
 **查询意图 → 参数映射**:
 

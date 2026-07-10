@@ -1,6 +1,6 @@
 # Life Index Platform 双仓与 Addon 架构设计
 
-> 状态：Revision 3 — Chief Advisor Rounds 1–2 adjudicated; ready for Human Owner ratification
+> 状态：Human Owner-ratified design background; accepted decisions are being absorbed into existing SSOT; not active SSOT; D0 exact §1.10 closed-domain list remains pending Human Owner substantive approval
 >
 > 日期：2026-07-09
 >

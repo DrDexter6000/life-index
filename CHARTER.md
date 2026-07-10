@@ -273,6 +273,62 @@ Life Index CLI 的职责是为 Agent 生态提供**确定性、稳定、可组�
 **与 §1.9 的关系**：
 §1.9 管「模块默认不持 LLM」，§1.10 管「模块默认不修改基础层」；二者构成 agent-native 模块的两条不变量。
 
+<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:START -->
+#### Pending §1.9 / §1.10 amendment candidate — not active Charter authority
+
+This candidate resolves the APEX conflict only if it later passes §5.2. On
+approval, the stale §1.9 P0→P1→P2→deterministic-only provider-fallback
+direction is superseded: the Host Agent + Skill own planning, multi-hop
+reasoning, orchestration, interpretation, and synthesis; Core remains
+deterministic; GUI remains presentation-only; and an optional Gateway cannot
+own intelligence or semantics. The current provider-backed `--synthesize`
+runtime remains a compatibility fact until #163 implements its separately
+approved deprecated-no-op target.
+
+| Candidate closed admission domain | Status |
+|---|---|
+| Canonical journal and attachment mutation | proposed / pending Human Owner substantive approval |
+| Schema, validation, migration, transaction, locking, and audit | proposed / pending Human Owner substantive approval |
+| Deterministic indexing, retrieval, freshness, and evidence navigation | proposed / pending Human Owner substantive approval |
+| Deterministic aggregation and analysis | proposed / pending Human Owner substantive approval |
+| Entity graph | proposed / pending Human Owner substantive approval |
+| Integrity, health, backup, restore, and recovery | proposed / pending Human Owner substantive approval |
+| Deterministic contract and eval verification | proposed / pending Human Owner substantive approval |
+
+These domains are proposed only: they are not active, approved, or ratified
+Charter authority. If approved, CHARTER.md §1.10 becomes the sole list authority;
+lower-level documents must point here and must not duplicate the catalog. The
+enumeration is closed. Every added domain requires new Human Owner substantive
+approval.
+
+Human Owner approval may replace only second-production-consumer evidence. It
+cannot waive determinism, low/zero LLM content, cross-time semantic stability,
+RFC/substantive-gate evidence, or any other current Charter admission constraint.
+
+**Substantive-gate candidate record**:
+
+- **Rationale**: align stale §1.9 fallback language with APEX and make Core
+  admission reviewable against one closed, long-lived set of domains.
+- **Opposition addressed**: (1) removing a standalone provider fallback may
+  inconvenience direct CLI users, so #163 retains `--synthesize` as a deprecated
+  no-op for at least two major versions after the target is implemented; (2) a
+  closed list may delay a valuable primitive, so each addition remains possible
+  through new Human Owner substantive approval without weakening the other
+  admission criteria.
+- **Impact**: this candidate affects §1.9 / §1.10 interpretation and the public
+  architecture, API, CI, and Skill pointers only. It does not implement #163,
+  #162, #165, or #164 and does not change runtime or data contracts.
+- **Rollback**: before approval, withdraw or revise this candidate as one unit;
+  the currently ratified Charter text remains in force.
+- **Gold Set regression**: pending before land; no result is claimed by this
+  docs-only candidate.
+- **Human Owner ack**: PENDING — the exact seven-domain list has not received
+  Human Owner substantive approval.
+
+Accordingly this candidate is not land-ready, does not increment the Charter
+version / revision / approval date, and cannot authorize D0 GO or integration.
+<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->
+
 ### §1.11 召回优先检索真实模型（Recall-First Retrieval Truthfulness Model）
 
 Life Index L2 检索层对用户的承诺是 **"不遗漏您每一个人生碎片"**。这要求 L2 默认行为必须是 **recall-first 而非 precision-first** —— 漏掉用户能用 token 描述的内容是宪法级违约；返回相关度较低但 token-match 的结果不是。

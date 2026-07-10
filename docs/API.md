@@ -2290,7 +2290,9 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 
 - `success`: retrieval execution success. Evidence pack or answer synthesis failure does not affect this.
 - `filtered_results`: primary result list for consumers. Items have `title`, `path`, `date`, `rrf_score`.
-- `smart_search_mode`: default is `deterministic_scaffold`; in-tool provider-backed orchestration is retired.
+- `smart_search_mode`: default is `deterministic_scaffold`; the explicit
+  `--synthesize` path still requests provider-backed synthesis until #163 is
+  implemented.
 - `agent_instructions` / `answer_scaffold`: the v1 agent-ready contract. Calling agents should synthesize from returned evidence and cite only returned results.
 - `query_plan.strategy`: `keyword_only` for default search; deterministic
   strategy names may be added for bounded tool-side routing.
@@ -2339,7 +2341,7 @@ python -m tools.smart_search --query "..." [options]
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情与 `diagnostics` 诊断块 |
 | include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
 | format-entity-annotated | flag | ❌ | false | 与 `--include-evidence` 同用时，增加人类可读的 `formatted_evidence` |
-| synthesize | flag | ❌ | false | 生成确定性答案 scaffold 字段（不调用 LLM） |
+| synthesize | flag | ❌ | false | 当前启用 provider-backed LLM synthesis + trust gate；#163 的 deprecated no-op 目标尚未实现 |
 
 ### 返回值
 
@@ -2455,7 +2457,7 @@ python -m tools.smart_search --query "..." [options]
 
 ### 说明
 
-- `smart-search` 不启用工具内嵌 LLM；宿主 agent / Skills 负责 query 改写、多轮检索策略、判断与总结
+- `smart-search` 默认路径不启用工具内嵌 LLM；宿主 agent / Skills 负责 query 改写、多轮检索策略、判断与总结。当前显式 `--synthesize` 仍是 provider-backed 兼容例外，见下方 transition block
 - Clear aggregate/count/bucketed-frequency intents may short-circuit into deterministic `aggregate` and add top-level `aggregate_result`; existing smart-search fields remain present.
 - `aggregate_result` is computed by `tools.aggregate.core.run_aggregate`; LLM must not compute the count.
 - 默认模式下 `agent_unavailable: true`，表示工具只提供确定性检索 scaffold
@@ -2646,6 +2648,16 @@ Evidence pack 采用**最佳努力（best-effort）**策略：
 - 返回值**不携带** `evidence_pack` 字段
 - `performance` 中记录 `evidence_build_ms` 和 `evidence_error`（错误信息）
 - 调用方不应将 `evidence_pack` 缺失等同于搜索失败
+
+<!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:START -->
+### `--synthesize` transition authority
+
+Current runtime: `--synthesize` requests provider-backed LLM synthesis and applies the trust gate when its runtime prerequisites are available.
+
+Target under #163: `--synthesize` becomes a deprecated no-op; this is not yet implemented.
+
+Compatibility: retain the accepted flag for at least two major versions after the #163 transition is implemented.
+<!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:END -->
 
 ### Answer Synthesis（`--synthesize`）
 
