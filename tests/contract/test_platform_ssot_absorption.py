@@ -45,6 +45,54 @@ SYNTHESIZE_FOLLOW_ON_TRUTH = (
     "#163 owns the future deprecation warning, deterministic equivalence proof, and "
     "unreachable LLM-path cleanup."
 )
+STABLE_DISTRIBUTION_HOST_OPERATIONS_RULE = "\n".join(
+    (
+        "- `Distribution/Host Operations` is the sole bounded non-Core category. It is",
+        "  limited to install, version, and host-playbook lifecycle operations.",
+        "  Co-packaging or shared command dispatch grants no Core authority. It cannot",
+        "  own canonical journal, frontmatter, entity, or search semantics; be a Core",
+        "  correctness dependency; or create Core-admission precedent.",
+    )
+)
+STABLE_WEATHER_EXCEPTION_RULE = "\n".join(
+    (
+        "- `weather` is the sole named `Legacy External Adapter` compatibility exception.",
+        "  It is optional, tracked by #166, cannot decide canonical journal-write",
+        "  success, and creates no Core-admission precedent.",
+    )
+)
+STABLE_OWNER_GATE_RULE = "\n".join(
+    (
+        "- Any new Core domain, non-Core category, or compatibility exception requires",
+        "  new Human Owner substantive approval.",
+    )
+)
+CHARTER_ARCHITECTURE_AUTHORITY_SPLIT = "\n".join(
+    (
+        "`CHARTER.md §1.10` is the sole authority for the stable C1–C7 and non-Core",
+        "classification rules and the sole named compatibility exception.",
+        "`docs/ARCHITECTURE.md` owns only the exhaustive current 31-route mapping under",
+        "those rules; it does not own or duplicate them.",
+    )
+)
+EXPECTED_STABLE_NON_CORE_CLASSIFICATION_RULES = "\n".join(
+    (
+        "**Stable non-Core classification rules**:",
+        "",
+        STABLE_DISTRIBUTION_HOST_OPERATIONS_RULE,
+        STABLE_WEATHER_EXCEPTION_RULE,
+        STABLE_OWNER_GATE_RULE,
+        "",
+        CHARTER_ARCHITECTURE_AUTHORITY_SPLIT,
+    )
+)
+ARCHITECTURE_CLASSIFICATION_POINTER = "\n".join(
+    (
+        "This table is the exhaustive current 31-route mapping under the Charter-owned",
+        "C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.",
+        "It maps current routes only; it does not own or duplicate those stable rules.",
+    )
+)
 
 EXPECTED_CURRENT_TARGET_STATUS = (
     """
@@ -114,6 +162,8 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "Human Owner approval may replace only second-production-consumer evidence. It",
         "cannot waive determinism, low/zero LLM content, cross-time semantic stability,",
         "RFC/substantive-gate evidence, or any other current Charter admission constraint.",
+        "",
+        EXPECTED_STABLE_NON_CORE_CLASSIFICATION_RULES,
         "",
         "**Substantive-gate ratification record**:",
         "",
@@ -438,6 +488,46 @@ def test_ratified_core_admission_domains_are_exact_active_and_owner_gated() -> N
                 EXPECTED_CORE_ADMISSION_DOMAINS,
                 "CHARTER.md §1.10",
             )
+
+
+def test_charter_owns_stable_non_core_rules_and_architecture_only_maps_routes() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
+
+    charter_start = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:START -->"
+    charter_end = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->"
+    assert charter.count(charter_start) == charter.count(charter_end) == 1
+    charter_block = charter[
+        charter.index(charter_start) + len(charter_start) : charter.index(charter_end)
+    ]
+
+    assert EXPECTED_STABLE_NON_CORE_CLASSIFICATION_RULES in charter_block
+    assert charter_block.count("`Distribution/Host Operations`") == 1
+    assert charter_block.count("`Legacy External Adapter`") == 1
+    assert "| Command | Classification | Authority refs |" not in charter_block
+
+    architecture_start = "<!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:START -->"
+    architecture_end = "<!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:END -->"
+    assert architecture.count(architecture_start) == architecture.count(architecture_end) == 1
+    architecture_block = architecture[
+        architecture.index(architecture_start)
+        + len(architecture_start) : architecture.index(architecture_end)
+    ]
+
+    assert ARCHITECTURE_CLASSIFICATION_POINTER in architecture_block
+    for stable_rule in (
+        STABLE_DISTRIBUTION_HOST_OPERATIONS_RULE,
+        STABLE_WEATHER_EXCEPTION_RULE,
+        STABLE_OWNER_GATE_RULE,
+    ):
+        assert stable_rule not in architecture_block
+    assert (
+        "Distribution/Host Operations are non-Core even when co-packaged" not in architecture_block
+    )
+    assert (
+        "Any new Core domain, non-Core category, or compatibility exception"
+        not in architecture_block
+    )
 
 
 def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> None:

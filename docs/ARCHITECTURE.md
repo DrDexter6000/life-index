@@ -102,11 +102,9 @@ their domain descriptions.
 | weather | Legacy External Adapter | #166 |
 | write | Core | C1, C2 |
 
-Distribution/Host Operations are non-Core even when co-packaged with Core;
-packaging and command dispatch do not grant them Core authority.
-
-The optional `weather` Legacy External Adapter is tracked by #166 and cannot decide canonical journal-write success.
-Any new Core domain, non-Core category, or compatibility exception requires new Human Owner substantive approval.
+This table is the exhaustive current 31-route mapping under the Charter-owned
+C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.
+It maps current routes only; it does not own or duplicate those stable rules.
 <!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:END -->
 
 ---

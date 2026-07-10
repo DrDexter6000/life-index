@@ -65,13 +65,10 @@ EXPECTED_CORE_REFS = {
 EXPECTED_HOST_OPERATIONS = frozenset({"bootstrap", "sync-skill", "upgrade", "version"})
 EXPECTED_LEGACY_ADAPTERS = frozenset({"weather"})
 
-OWNER_APPROVAL_RULE = (
-    "Any new Core domain, non-Core category, or compatibility exception requires "
-    "new Human Owner substantive approval."
-)
-WEATHER_EXCEPTION_RULE = (
-    "The optional `weather` Legacy External Adapter is tracked by #166 and cannot "
-    "decide canonical journal-write success."
+CHARTER_CLASSIFICATION_RULES_POINTER = (
+    "This table is the exhaustive current 31-route mapping under the Charter-owned\n"
+    "C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.\n"
+    "It maps current routes only; it does not own or duplicate those stable rules."
 )
 
 
@@ -187,8 +184,7 @@ def _validate_public_command_classification(source: str, architecture: str) -> N
         "docs/ARCHITECTURE.md must reference C1–C7 without duplicating Charter domain "
         f"descriptions: {duplicated_domains}"
     )
-    assert WEATHER_EXCEPTION_RULE in block
-    assert OWNER_APPROVAL_RULE in block
+    assert CHARTER_CLASSIFICATION_RULES_POINTER in block
     assert not re.search(
         r"(?i)non-core[^\n]*(?:bypass|waive|without)[^\n]*human owner",
         block,
@@ -221,8 +217,7 @@ def _render_future_architecture(
             for command, classification, refs in rendered_rows
         ),
         "",
-        WEATHER_EXCEPTION_RULE,
-        OWNER_APPROVAL_RULE,
+        CHARTER_CLASSIFICATION_RULES_POINTER,
         *extra_lines,
         BLOCK_END,
     ]

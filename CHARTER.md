@@ -304,6 +304,24 @@ Human Owner approval may replace only second-production-consumer evidence. It
 cannot waive determinism, low/zero LLM content, cross-time semantic stability,
 RFC/substantive-gate evidence, or any other current Charter admission constraint.
 
+**Stable non-Core classification rules**:
+
+- `Distribution/Host Operations` is the sole bounded non-Core category. It is
+  limited to install, version, and host-playbook lifecycle operations.
+  Co-packaging or shared command dispatch grants no Core authority. It cannot
+  own canonical journal, frontmatter, entity, or search semantics; be a Core
+  correctness dependency; or create Core-admission precedent.
+- `weather` is the sole named `Legacy External Adapter` compatibility exception.
+  It is optional, tracked by #166, cannot decide canonical journal-write
+  success, and creates no Core-admission precedent.
+- Any new Core domain, non-Core category, or compatibility exception requires
+  new Human Owner substantive approval.
+
+`CHARTER.md §1.10` is the sole authority for the stable C1–C7 and non-Core
+classification rules and the sole named compatibility exception.
+`docs/ARCHITECTURE.md` owns only the exhaustive current 31-route mapping under
+those rules; it does not own or duplicate them.
+
 **Substantive-gate ratification record**:
 
 - **Rationale**: align stale §1.9 fallback language with APEX and make Core
