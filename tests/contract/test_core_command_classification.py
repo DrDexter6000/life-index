@@ -152,25 +152,6 @@ def _positive_subcmd_literals(node: ast.AST) -> frozenset[str]:
     return frozenset(literals)
 
 
-def _call_name(node: ast.Call) -> str | None:
-    if isinstance(node.func, ast.Name):
-        return node.func.id
-    if isinstance(node.func, ast.Attribute):
-        return node.func.attr
-    return None
-
-
-def _is_help_only_branch(node: ast.If) -> bool:
-    call_names = {
-        name
-        for statement in node.body
-        for child in ast.walk(statement)
-        if isinstance(child, ast.Call)
-        if (name := _call_name(child)) is not None
-    }
-    return bool(call_names) and all("usage" in name.casefold() for name in call_names)
-
-
 def _is_handled_direct_branch(node: ast.If) -> bool:
     return any(
         not isinstance(statement, ast.Pass)
@@ -195,11 +176,7 @@ def _literal_direct_route_keys(source: str) -> frozenset[str]:
     main_node = _main_function(source)
     routes: set[str] = set()
     for node in ast.walk(main_node):
-        if (
-            not isinstance(node, ast.If)
-            or not _is_handled_direct_branch(node)
-            or _is_help_only_branch(node)
-        ):
+        if not isinstance(node, ast.If) or not _is_handled_direct_branch(node):
             continue
         for value in _positive_subcmd_literals(node.test):
             route = _canonical_direct_route(value)
@@ -385,6 +362,21 @@ def test_validator_rejects_new_direct_dispatch_route_without_mapping() -> None:
         _validate_public_command_classification(mutated, _render_future_architecture())
 
 
+def test_validator_rejects_usage_named_direct_handler_without_mapping() -> None:
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    anchor = "    # Map subcommands to __main__ module paths\n"
+    mutated = source.replace(
+        anchor,
+        '    if subcmd == "usage-report":\n'
+        "        usage_report()\n"
+        "        return\n\n" + anchor,
+        1,
+    )
+    assert mutated != source
+    with pytest.raises(AssertionError, match="inventory mismatch"):
+        _validate_public_command_classification(mutated, _render_future_architecture())
+
+
 @pytest.mark.parametrize(
     "condition",
     (
@@ -430,6 +422,18 @@ def test_validator_rejects_unknown_version_alias_as_new_route() -> None:
         _validate_public_command_classification(mutated, _render_future_architecture())
 
 
+def test_validator_rejects_unknown_help_alias_as_new_route() -> None:
+    source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
+    mutated = source.replace(
+        'elif subcmd in ("--help", "-h", "help"):',
+        'elif subcmd in ("--help", "-h", "help", "future-help-alias"):',
+        1,
+    )
+    assert mutated != source
+    with pytest.raises(AssertionError, match="inventory mismatch"):
+        _validate_public_command_classification(mutated, _render_future_architecture())
+
+
 def test_direct_route_discovery_ignores_negative_help_and_string_only_mentions() -> None:
     source = CLI_ENTRYPOINT.read_text(encoding="utf-8")
     anchor = "    # Map subcommands to __main__ module paths\n"
@@ -448,11 +452,6 @@ def test_direct_route_discovery_ignores_negative_help_and_string_only_mentions()
         "        pass\n"
         '    if subcmd == "positive-pass-only":\n'
         "        pass\n\n" + anchor,
-        1,
-    )
-    mutated = mutated.replace(
-        'elif subcmd in ("--help", "-h", "help"):',
-        'elif subcmd in ("--help", "-h", "help", "future-help-alias"):',
         1,
     )
     mutated = mutated.replace(
