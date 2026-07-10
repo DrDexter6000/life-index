@@ -29,9 +29,9 @@ RATIFIED_CORE_DOMAINS = (
     ("C7", "Deterministic contract and eval verification"),
 )
 EXPECTED_CHARTER_METADATA = {
-    "版本": "v1.10.0",
-    "批准日期": "2026-07-10",
-    "修订次数": "10",
+    "版本": "v1.11.0",
+    "批准日期": "2026-07-11",
+    "修订次数": "11",
 }
 INTELLIGENCE_OWNER_RULE = (
     "Host Agent + Skill own provider selection and all planning, multi-hop reasoning, "
@@ -167,7 +167,7 @@ not describe any of it as complete:
     "unimplemented.\n"
     """- #162 — transactional write, side-effect, and freshness repair: unimplemented.
 - #165 — backup, restore, and recovery proof: unimplemented.
-- #164 — optional Gateway typed 1:1 projection: unimplemented.
+- #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
 """
 )
 
@@ -191,7 +191,7 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "direction is superseded. Host Agent + Skill own provider selection and all",
         "planning, multi-hop reasoning, orchestration, interpretation, and synthesis;",
         "Core remains deterministic; GUI remains presentation-only; and an optional",
-        "Gateway cannot own intelligence or semantics. The accepted `--synthesize`",
+        "Core Capability Gateway cannot own intelligence or semantics. The accepted `--synthesize`",
         "flag currently runs through the product CLI with no LLM injection and no",
         "`answer`; #163 owns the future deprecation warning, deterministic equivalence",
         "proof, and unreachable LLM-path cleanup.",
@@ -254,14 +254,85 @@ EXPECTED_PLATFORM_ROLE_BOUNDARY = "\n".join(
         "| Host Agent + Skill | Owns planning, multi-hop reasoning, orchestration, interpretation, and synthesis. |",  # noqa: E501
         "| GUI | Presentation only; no intelligence; strict adapter stays GUI-owned. |",
         "| Current bridge | Non-Core and GUI-owned. |",
-        "| Gateway | Optional future typed 1:1 projection under #164; unimplemented; not a second semantic API; no intelligence. |",  # noqa: E501
+        "| Core Capability Gateway | Optional future typed 1:1 projection under #164; unimplemented; not a second semantic API; no intelligence. |",  # noqa: E501
         "",
         "The table above is the sole normative role-assignment surface in this block.",
-        "The future Gateway, if implemented, is only a contract-equivalent transport of",
+        "The future Core Capability Gateway, if implemented, is only a contract-equivalent transport of",  # noqa: E501
         "Core operations. It cannot create a parallel semantic contract, and direct Core",
         "use does not depend on it. The active closed admission-domain catalog belongs",
         "only to `CHARTER.md §1.10`; this document references C1–C7 without duplicating",
         "their domain descriptions.",
+    )
+)
+
+EXPECTED_ADVANCED_ADDON_CHARTER_INVARIANT = (
+    "Future advanced Addons are dual-channel consumers: deterministic data, view, and "
+    "atomic operations use the canonical Core Capability Contract, while semantic "
+    "understanding, multi-step retrieval or orchestration, interpretation, and synthesis "
+    "use the shared Host Agent Handoff and Host Agent + Life Index Skill/Domain Skill. "
+    "An Addon is presentation + Domain Skill + an optional deterministic helper; it "
+    "cannot own an LLM/provider/runtime or bypass Core to read or write L1. An optional "
+    "deterministic helper enters Core only under the already-ratified closed C1-C7 "
+    "admission model or new Human Owner substantive approval; otherwise it remains "
+    "Addon-local."
+)
+
+EXPECTED_ADVANCED_ADDON_DUAL_CHANNEL = "\n".join(
+    (
+        "### Future advanced Addon dual-channel boundary",
+        "",
+        "This is normative guidance for future advanced Addons, not an implemented Addon",
+        "contract, SDK, runtime, schema, or UI. An advanced Addon is composed of a",
+        "presentation layer, a Domain Skill, and, only when needed, an optional",
+        "deterministic helper.",
+        "",
+        "```text",
+        "User <-> Addon presentation",
+        "           |-- deterministic data/view/atomic operation",
+        "           |     -> Core Capability Contract",
+        "           |        -> direct local CLI or optional Core Capability Gateway projection",
+        "           |           -> Core -> L1",
+        "           |-- semantic understanding/multi-step retrieval/orchestration/interpretation/synthesis",  # noqa: E501
+        "                 -> shared Host Agent Handoff",
+        "                    -> Host Agent + Life Index Skill + Domain Skill",
+        "                       -> Core Capability Contract for deterministic evidence/operations",
+        "```",
+        "",
+        "#### Access paths",
+        "",
+        "| Need | Required path | Boundary |",
+        "|---|---|---|",
+        "| Deterministic data, view, or atomic operation | Addon presentation/helper -> Core Capability Contract | May call the local CLI directly or use a contract-equivalent Core Capability Gateway projection; no Host Agent round trip is required. |",  # noqa: E501
+        "| Semantic understanding, multi-step retrieval or orchestration, interpretation, or synthesis | Addon presentation -> shared Host Agent Handoff -> Host Agent + Life Index Skill/Domain Skill | The Host Agent owns intelligence and uses the Core Capability Contract for deterministic evidence and operations. |",  # noqa: E501
+        "",
+        "#### State ownership",
+        "",
+        "| State | Owner | Rule |",
+        "|---|---|---|",
+        "| Canonical durable journal, frontmatter, entity, index, and metric state | L1/L2 through Core | Addons and Host Agents never create a second truth source or bypass Core. |",  # noqa: E501
+        "| Reasoning, orchestration, and agent-session state | Host Agent/runtime | It remains outside Core and is not owned by the Addon presentation or helper. |",  # noqa: E501
+        "| Presentation and user-visible draft state | Addon | It is non-canonical, replaceable, and cannot become a Core correctness dependency. |",  # noqa: E501
+        "| Optional deterministic-helper state | Addon unless admitted to Core | It remains local, non-canonical, clearable, and cannot read or write L1 directly. |",  # noqa: E501
+        "",
+        "#### Optional deterministic-helper admission",
+        "",
+        "| Candidate | Decision |",
+        "|---|---|",
+        "| Already covered by the closed C1-C7 Core authority | Consume the canonical Core capability; do not duplicate it in the Addon. |",  # noqa: E501
+        "| Satisfies every already-ratified admission constraint and belongs within C1-C7, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |",  # noqa: E501
+        "| Does not satisfy those conditions | Keep it Addon-local and non-canonical. |",
+        "| Performs semantic understanding, orchestration, interpretation, or synthesis | It is not a deterministic helper; route it through the shared Host Agent Handoff and Host Agent + Skills. |",  # noqa: E501
+        "",
+        "#### Prohibitions and gateway distinction",
+        "",
+        "- An Addon must not own an LLM, provider selection, API-key handling, or an agent runtime.",  # noqa: E501
+        "- An Addon and its helper must not bypass Core to read or write L1, duplicate a canonical Core capability, or duplicate runtime adapters.",  # noqa: E501
+        "- A Core Capability Gateway, if implemented, is only a typed transport projection of the canonical Core Capability Contract. It is not an Agent Runtime Gateway, Host Agent, Life Index brain, reasoning or session owner, or provider boundary.",  # noqa: E501
+        "- The local CLI remains a canonical direct Core consumer surface. A Core Capability Gateway is optional and cannot become mandatory for direct Core use or replace the CLI.",  # noqa: E501
+        "",
+        "Advanced Addon implementation, its SDK and schemas, placeholder UI, and later",
+        "program phases remain deferred. This boundary does not claim that any such runtime",
+        "surface exists.",
     )
 )
 
@@ -419,8 +490,8 @@ def test_charter_header_records_completed_d0_owner_ratification() -> None:
         assert actual == expected
 
     latest_revision = _charter_metadata_value(charter, "最近修订")
-    assert latest_revision.startswith("2026-07-10")
-    assert "C1–C7" in latest_revision
+    assert latest_revision.startswith("2026-07-11")
+    assert "Addon dual-channel boundary" in latest_revision
     assert "owner" in latest_revision.casefold()
 
 
@@ -727,6 +798,24 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
     charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
     assert "编排 / 多跳 / 推理 / 叙述合成由**宿主 agent**完成" in charter
     assert "GUI 的价值在终端做不到的**呈现与交互**，零智能、零编排" in charter
+
+
+def test_advanced_addon_dual_channel_boundary_has_one_constitutional_owner() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
+
+    assert charter.count(EXPECTED_ADVANCED_ADDON_CHARTER_INVARIANT) == 1
+    block = _assert_named_block_snapshot(
+        architecture,
+        "ADVANCED-ADDON-DUAL-CHANNEL",
+        EXPECTED_ADVANCED_ADDON_DUAL_CHANNEL,
+        "docs/ARCHITECTURE.md",
+    )
+
+    assert "closed C1-C7 Core authority" in block
+    assert "| C1 |" not in block
+    for _, domain_name in RATIFIED_CORE_DOMAINS:
+        assert domain_name not in block
 
 
 def test_role_contract_rejects_appended_contradictions_and_external_duty_verbs() -> None:

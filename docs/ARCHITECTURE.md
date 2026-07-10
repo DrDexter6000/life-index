@@ -43,7 +43,7 @@ not describe any of it as complete:
 - #163 — recall/eval correction, explicit deprecation warning, ordinary deterministic smart-search equivalence proof, and unreachable LLM-path deletion: unimplemented.
 - #162 — transactional write, side-effect, and freshness repair: unimplemented.
 - #165 — backup, restore, and recovery proof: unimplemented.
-- #164 — optional Gateway typed 1:1 projection: unimplemented.
+- #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
 <!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->
 
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:START -->
@@ -55,15 +55,72 @@ not describe any of it as complete:
 | Host Agent + Skill | Owns planning, multi-hop reasoning, orchestration, interpretation, and synthesis. |
 | GUI | Presentation only; no intelligence; strict adapter stays GUI-owned. |
 | Current bridge | Non-Core and GUI-owned. |
-| Gateway | Optional future typed 1:1 projection under #164; unimplemented; not a second semantic API; no intelligence. |
+| Core Capability Gateway | Optional future typed 1:1 projection under #164; unimplemented; not a second semantic API; no intelligence. |
 
 The table above is the sole normative role-assignment surface in this block.
-The future Gateway, if implemented, is only a contract-equivalent transport of
+The future Core Capability Gateway, if implemented, is only a contract-equivalent transport of
 Core operations. It cannot create a parallel semantic contract, and direct Core
 use does not depend on it. The active closed admission-domain catalog belongs
 only to `CHARTER.md §1.10`; this document references C1–C7 without duplicating
 their domain descriptions.
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:END -->
+
+<!-- PLATFORM-SSOT:ADVANCED-ADDON-DUAL-CHANNEL:START -->
+### Future advanced Addon dual-channel boundary
+
+This is normative guidance for future advanced Addons, not an implemented Addon
+contract, SDK, runtime, schema, or UI. An advanced Addon is composed of a
+presentation layer, a Domain Skill, and, only when needed, an optional
+deterministic helper.
+
+```text
+User <-> Addon presentation
+           |-- deterministic data/view/atomic operation
+           |     -> Core Capability Contract
+           |        -> direct local CLI or optional Core Capability Gateway projection
+           |           -> Core -> L1
+           |-- semantic understanding/multi-step retrieval/orchestration/interpretation/synthesis
+                 -> shared Host Agent Handoff
+                    -> Host Agent + Life Index Skill + Domain Skill
+                       -> Core Capability Contract for deterministic evidence/operations
+```
+
+#### Access paths
+
+| Need | Required path | Boundary |
+|---|---|---|
+| Deterministic data, view, or atomic operation | Addon presentation/helper -> Core Capability Contract | May call the local CLI directly or use a contract-equivalent Core Capability Gateway projection; no Host Agent round trip is required. |
+| Semantic understanding, multi-step retrieval or orchestration, interpretation, or synthesis | Addon presentation -> shared Host Agent Handoff -> Host Agent + Life Index Skill/Domain Skill | The Host Agent owns intelligence and uses the Core Capability Contract for deterministic evidence and operations. |
+
+#### State ownership
+
+| State | Owner | Rule |
+|---|---|---|
+| Canonical durable journal, frontmatter, entity, index, and metric state | L1/L2 through Core | Addons and Host Agents never create a second truth source or bypass Core. |
+| Reasoning, orchestration, and agent-session state | Host Agent/runtime | It remains outside Core and is not owned by the Addon presentation or helper. |
+| Presentation and user-visible draft state | Addon | It is non-canonical, replaceable, and cannot become a Core correctness dependency. |
+| Optional deterministic-helper state | Addon unless admitted to Core | It remains local, non-canonical, clearable, and cannot read or write L1 directly. |
+
+#### Optional deterministic-helper admission
+
+| Candidate | Decision |
+|---|---|
+| Already covered by the closed C1-C7 Core authority | Consume the canonical Core capability; do not duplicate it in the Addon. |
+| Satisfies every already-ratified admission constraint and belongs within C1-C7, or receives new Human Owner substantive approval for the required authority expansion | Propose Core admission through the existing RFC/substantive-gate process; determinism and all non-waivable constraints still apply. |
+| Does not satisfy those conditions | Keep it Addon-local and non-canonical. |
+| Performs semantic understanding, orchestration, interpretation, or synthesis | It is not a deterministic helper; route it through the shared Host Agent Handoff and Host Agent + Skills. |
+
+#### Prohibitions and gateway distinction
+
+- An Addon must not own an LLM, provider selection, API-key handling, or an agent runtime.
+- An Addon and its helper must not bypass Core to read or write L1, duplicate a canonical Core capability, or duplicate runtime adapters.
+- A Core Capability Gateway, if implemented, is only a typed transport projection of the canonical Core Capability Contract. It is not an Agent Runtime Gateway, Host Agent, Life Index brain, reasoning or session owner, or provider boundary.
+- The local CLI remains a canonical direct Core consumer surface. A Core Capability Gateway is optional and cannot become mandatory for direct Core use or replace the CLI.
+
+Advanced Addon implementation, its SDK and schemas, placeholder UI, and later
+program phases remain deferred. This boundary does not claim that any such runtime
+surface exists.
+<!-- PLATFORM-SSOT:ADVANCED-ADDON-DUAL-CHANNEL:END -->
 
 <!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:START -->
 ### Public command constitutional ownership/admission mapping
@@ -555,6 +612,6 @@ abstract: "100字内摘要"
 
 ---
 
-> **校对日期**: 2026-07-10
+> **校对日期**: 2026-07-11
 > **校对人**: Life Index Developer
-> **对应状态**: C1–C7 为 CHARTER v1.10.0 活跃权威；本文件拥有 31-route classification SSOT。搜索架构保持 keyword + Entity Graph；`--semantic*` 为兼容 no-op；official eval gate 保持 keyword/default，search_constants.py **50** 常量。
+> **对应状态**: C1–C7 为 CHARTER v1.11.0 活跃权威；本文件拥有 31-route classification SSOT。搜索架构保持 keyword + Entity Graph；`--semantic*` 为兼容 no-op；official eval gate 保持 keyword/default，search_constants.py **50** 常量。
