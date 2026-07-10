@@ -254,6 +254,46 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
 """
 
 
+def _positive_core_intelligence_duties(statement: str) -> list[str]:
+    if re.search(r"\bcore\b", statement, flags=re.IGNORECASE) is None:
+        return []
+
+    positives: list[str] = []
+    clauses = re.split(r"\s+\bbut\b\s+|;", statement, flags=re.IGNORECASE)
+    verb_pattern = re.compile(
+        r"\b(?:owns?|performs?|handles?|is\s+responsible\s+for)\b",
+        flags=re.IGNORECASE,
+    )
+    preverb_negation = re.compile(
+        r"\bnever\b|\bcannot\b|\bcan['’]t\b|\b(?:do|does|did)\s+not\b",
+        flags=re.IGNORECASE,
+    )
+
+    for clause in clauses:
+        verbs = list(verb_pattern.finditer(clause))
+        for index, verb in enumerate(verbs):
+            prefix_start = verbs[index - 1].end() if index else 0
+            prefix = clause[prefix_start : verb.start()]
+            if preverb_negation.search(prefix) is not None:
+                continue
+
+            duties_end = verbs[index + 1].start() if index + 1 < len(verbs) else len(clause)
+            duties = clause[verb.end() : duties_end].lower()
+            if re.match(r"\s*(?:neither\b|no\b)", duties) is not None:
+                continue
+
+            for duty in HOST_AGENT_INTELLIGENCE_DUTIES:
+                if re.search(rf"\b{re.escape(duty)}\b", duties) is None:
+                    continue
+                duty_negated = re.search(
+                    rf"\b(?:no|not|nor|neither)\b" rf"(?:\W+\w+){{0,3}}\W+{re.escape(duty)}\b",
+                    duties,
+                )
+                if duty_negated is None and duty not in positives:
+                    positives.append(duty)
+    return positives
+
+
 def _role_contract_errors(block: str) -> list[str]:
     rows = {row[0].lower(): " ".join(row[1:]) for row in _markdown_rows(block) if len(row) >= 2}
     requirements = {
@@ -290,25 +330,7 @@ def _role_contract_errors(block: str) -> list[str]:
         if line.strip() and not line.strip().startswith("|")
     )
     for statement in re.split(r"(?<=[.!?])\s+", prose):
-        assignment = re.search(
-            r"\bcore\b.{0,60}\b(?:owns|performs|handles|is responsible for)\b"
-            r"(?P<duties>[^.!?]{0,240})",
-            statement,
-            flags=re.IGNORECASE,
-        )
-        if assignment is None:
-            continue
-        duties = assignment.group("duties").lower()
-        positive_duties: list[str] = []
-        for duty in HOST_AGENT_INTELLIGENCE_DUTIES:
-            if re.search(rf"\b{re.escape(duty)}\b", duties) is None:
-                continue
-            negated = re.search(
-                rf"\b(?:no|not|never|cannot)\b(?:\W+\w+){{0,3}}\W+{re.escape(duty)}\b",
-                duties,
-            )
-            if negated is None:
-                positive_duties.append(duty)
+        positive_duties = _positive_core_intelligence_duties(statement)
         if positive_duties:
             errors.append(
                 "role prose assigns Host Agent intelligence duties to Core: "
@@ -494,20 +516,41 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
         "prose assigns Host Agent intelligence duties to Core" in error
         for error in contradictory_errors
     ), f"contradictory Core prose escaped validation: {contradictory_errors!r}"
-    negative_prose = valid + "\nCore does not own planning or synthesis.\n"
-    assert _role_contract_errors(negative_prose) == []
-    missed_partial_assignments: list[str] = []
-    for duty in ("planning", "synthesis"):
-        partial_errors = _role_contract_errors(valid + f"\nCore owns {duty}.\n")
+    matrix_failures: list[str] = []
+    valid_negatives = (
+        "Core never owns planning.",
+        "Core never handles reasoning.",
+        "Core does not own orchestration.",
+        "Core owns neither planning nor synthesis.",
+        "Core owns no planning, reasoning, orchestration, interpretation, or synthesis.",
+    )
+    for statement in valid_negatives:
+        negative_errors = _role_contract_errors(valid + f"\n{statement}\n")
+        if negative_errors:
+            matrix_failures.append(f"valid negative rejected: {statement!r}: {negative_errors!r}")
+
+    positive_assignments = tuple(
+        f"Core owns {duty}." for duty in HOST_AGENT_INTELLIGENCE_DUTIES
+    ) + ("Core owns planning and synthesis.",)
+    for statement in positive_assignments:
+        positive_errors = _role_contract_errors(valid + f"\n{statement}\n")
         if not any(
             "prose assigns Host Agent intelligence duties to Core" in error
-            for error in partial_errors
+            for error in positive_errors
         ):
-            missed_partial_assignments.append(duty)
-    assert missed_partial_assignments == [], (
-        "partial Core intelligence assignments escaped validation: "
-        f"{missed_partial_assignments!r}"
-    )
+            matrix_failures.append(f"positive assignment accepted: {statement!r}")
+
+    mixed_statement = "Core does not own planning but owns synthesis."
+    mixed_errors = _role_contract_errors(valid + f"\n{mixed_statement}\n")
+    if not any(
+        "prose assigns Host Agent intelligence duties to Core: synthesis" in error
+        for error in mixed_errors
+    ):
+        matrix_failures.append(
+            f"mixed positive synthesis escaped: {mixed_statement!r}: {mixed_errors!r}"
+        )
+
+    assert matrix_failures == [], "; ".join(matrix_failures)
 
     apex = _heading_section(_read_authority("charter"), "## 北极星")
     assert "编排 / 多跳 / 推理 / 叙述合成由**宿主 agent**完成" in apex
