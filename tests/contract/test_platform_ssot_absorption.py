@@ -30,6 +30,12 @@ PROPOSED_CORE_DOMAINS = (
     "Deterministic contract and eval verification",
 )
 PENDING_OWNER_STATUS = "proposed / pending Human Owner substantive approval"
+API_SYNTHESIZE_CURRENT_FRAGMENTS = ("provider-backed", "llm synthesis", "trust gate")
+API_SYNTHESIZE_TRANSITION_POINTER = "see the named `--synthesize` transition authority block"
+API_SYNTHESIZE_STALE_FRAGMENTS = (
+    "deterministic scaffold",
+    "deterministic answer scaffold",
+)
 
 
 def _read_authority(name: str) -> str:
@@ -72,6 +78,32 @@ def _markdown_rows(block: str) -> list[tuple[str, ...]]:
             continue
         rows.append(cells)
     return rows
+
+
+def _named_markdown_table_rows(
+    block: str,
+    header: tuple[str, ...],
+) -> list[tuple[str, ...]] | None:
+    lines = block.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not (stripped.startswith("|") and stripped.endswith("|")):
+            continue
+        cells = tuple(cell.strip() for cell in stripped[1:-1].split("|"))
+        if cells != header:
+            continue
+
+        data_rows: list[tuple[str, ...]] = []
+        for row_line in lines[index + 1 :]:
+            row_text = row_line.strip()
+            if not (row_text.startswith("|") and row_text.endswith("|")):
+                break
+            row = tuple(cell.strip() for cell in row_text[1:-1].split("|"))
+            if row and all(re.fullmatch(r":?-{3,}:?", cell) for cell in row):
+                continue
+            data_rows.append(row)
+        return data_rows
+    return None
 
 
 def _current_target_errors(block: str) -> list[str]:
@@ -117,27 +149,24 @@ def _current_target_errors(block: str) -> list[str]:
 
 def _domain_contract_errors(block: str) -> list[str]:
     errors: list[str] = []
-    rows = _markdown_rows(block)
-    domain_rows = [
-        row
-        for row in rows
-        if len(row) >= 2
-        and row[1].strip().lower()
-        in {
-            PENDING_OWNER_STATUS.lower(),
-            "active",
-            "approved",
-            "ratified",
-        }
-    ]
-    actual_domains = tuple(row[0] for row in domain_rows)
+    domain_rows = _named_markdown_table_rows(
+        block,
+        ("Candidate closed admission domain", "Status"),
+    )
+    if domain_rows is None:
+        errors.append("missing the named Core admission-domain table")
+        domain_rows = []
+
+    actual_domains = tuple(row[0] if row else "" for row in domain_rows)
     if actual_domains != PROPOSED_CORE_DOMAINS:
         errors.append(
             "the proposed Core admission domains must be the exact closed seven-item list; "
             f"expected {PROPOSED_CORE_DOMAINS!r}, got {actual_domains!r}"
         )
     for row in domain_rows:
-        if row[1].strip().lower() != PENDING_OWNER_STATUS.lower():
+        if len(row) != 2:
+            errors.append(f"malformed Core admission-domain row: {row!r}")
+        elif row[1].strip().lower() != PENDING_OWNER_STATUS.lower():
             errors.append(f"{row[0]!r} is not marked {PENDING_OWNER_STATUS!r}")
 
     requirements = {
@@ -213,6 +242,26 @@ def _role_contract_errors(block: str) -> list[str]:
         missing = [fragment for fragment in fragments if fragment not in value]
         if missing:
             errors.append(f"{role!r} role is missing {missing!r}")
+
+    prose = " ".join(
+        line.strip()
+        for line in block.splitlines()
+        if line.strip() and not line.strip().startswith("|")
+    )
+    for statement in re.split(r"(?<=[.!?])\s+", prose):
+        assignment = re.search(
+            r"\bcore\b.{0,60}\b(?:owns|performs|handles|is responsible for)\b"
+            r"(?P<duties>[^.!?]{0,240})",
+            statement,
+            flags=re.IGNORECASE,
+        )
+        if assignment is None:
+            continue
+        duties = assignment.group("duties").lower()
+        if all(term in duties for term in ("planning", "reasoning", "orchestration", "synthesis")):
+            if re.search(r"\b(?:no|not|never|cannot)\b", duties) is None:
+                errors.append("role prose assigns Host Agent intelligence duties to Core")
+                break
     return errors
 
 
@@ -247,8 +296,14 @@ def _deprecation_errors(block: str) -> list[str]:
         for fragment in ("--synthesize", "provider-backed", "llm", "synthesis", "trust gate"):
             if fragment not in current_line:
                 errors.append(f"Current runtime line is missing {fragment!r}")
-        if "no-op" in current_line:
-            errors.append("Current runtime must not claim --synthesize is already a no-op")
+        current_deprecation_claim = re.search(
+            r"--synthesize.{0,80}\b(?:is|acts as|behaves as)\s+"
+            r"(?:already\s+)?(?:a\s+)?(?:deprecated(?:\s+no-op)?|no-op)\b",
+            current_line,
+            flags=re.IGNORECASE,
+        )
+        if current_deprecation_claim is not None:
+            errors.append("Current runtime must not claim --synthesize is already deprecated/no-op")
     if target is None:
         errors.append("missing Target under #163 line")
     else:
@@ -261,6 +316,14 @@ def _deprecation_errors(block: str) -> list[str]:
     return errors
 
 
+def _valid_deprecation_fixture() -> str:
+    return """
+Current runtime: --synthesize requests provider-backed LLM synthesis and applies the trust gate.
+Target under #163: --synthesize becomes a deprecated no-op; this is not yet implemented.
+Compatibility: retain the flag for at least two major versions.
+"""
+
+
 def _api_synthesize_table_errors(text: str) -> list[str]:
     errors: list[str] = []
     row_patterns = {
@@ -271,14 +334,9 @@ def _api_synthesize_table_errors(text: str) -> list[str]:
         ),
     }
     required_fragments = (
-        "provider-backed",
-        "llm synthesis",
-        "trust gate",
-        "#163",
-        "deprecated no-op",
-        "not yet implemented",
+        *API_SYNTHESIZE_CURRENT_FRAGMENTS,
+        API_SYNTHESIZE_TRANSITION_POINTER,
     )
-    forbidden_fragments = ("deterministic scaffold", "deterministic answer scaffold")
     for description, pattern in row_patterns.items():
         matches = re.findall(pattern, text, flags=re.MULTILINE)
         if len(matches) != 1:
@@ -287,11 +345,23 @@ def _api_synthesize_table_errors(text: str) -> list[str]:
         lowered = matches[0].lower()
         missing = [fragment for fragment in required_fragments if fragment not in lowered]
         if missing:
-            errors.append(f"{description} is missing current/target truth {missing!r}")
-        stale = [fragment for fragment in forbidden_fragments if fragment in lowered]
+            errors.append(f"{description} is missing current behavior/pointer {missing!r}")
+        stale = [fragment for fragment in API_SYNTHESIZE_STALE_FRAGMENTS if fragment in lowered]
         if stale:
             errors.append(f"{description} retains stale synthesize semantics {stale!r}")
     return errors
+
+
+def _valid_api_synthesize_table_fixture() -> str:
+    pointer = API_SYNTHESIZE_TRANSITION_POINTER
+    return (
+        "| `answer` / `answer.*` | Current `--synthesize` provider-backed LLM synthesis "
+        f"+ trust gate output; {pointer}. | Display current answer output. | **stable** |\n"
+        "| `--synthesize` | Build evidence internally; add current provider-backed LLM "
+        f"synthesis + trust gate answer; {pointer}. |\n"
+        "| `--include-evidence --synthesize` | Add evidence pack + current provider-backed "
+        f"LLM synthesis + trust gate answer; {pointer}. |\n"
+    )
 
 
 def _ci_inventory_errors(block: str) -> list[str]:
@@ -332,6 +402,15 @@ def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_
     extra_row = f"\n| Workflow orchestration | {PENDING_OWNER_STATUS} |"
     extra = valid.replace(proposal_start, f"{extra_row}{proposal_start}", 1)
     assert any("exact closed seven-item list" in error for error in _domain_contract_errors(extra))
+    unrecognized_status_extra = valid.replace(
+        proposal_start,
+        f"\n| Workflow orchestration | draft-only |{proposal_start}",
+        1,
+    )
+    unrecognized_status_errors = _domain_contract_errors(unrecognized_status_extra)
+    assert any(
+        "exact closed seven-item list" in error for error in unrecognized_status_errors
+    ), f"unrecognized-status domain row escaped validation: {unrecognized_status_errors!r}"
     weakened = valid.replace(
         "may replace only second-production-consumer evidence",
         "may replace every admission criterion",
@@ -356,6 +435,12 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
         1,
     )
     assert _role_contract_errors(drifted) != []
+    contradictory_prose = valid + "\nCore owns planning, reasoning, orchestration, and synthesis.\n"
+    contradictory_errors = _role_contract_errors(contradictory_prose)
+    assert any(
+        "prose assigns Host Agent intelligence duties to Core" in error
+        for error in contradictory_errors
+    ), f"contradictory Core prose escaped validation: {contradictory_errors!r}"
 
     apex = _heading_section(_read_authority("charter"), "## 北极星")
     assert "编排 / 多跳 / 推理 / 叙述合成由**宿主 agent**完成" in apex
@@ -368,6 +453,25 @@ def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> N
 
 def test_deprecation_text_names_owner_issue_and_runtime_state() -> None:
     errors: list[str] = []
+    valid_deprecation = _valid_deprecation_fixture()
+    assert _deprecation_errors(valid_deprecation) == []
+    contradictory_current = valid_deprecation.replace(
+        "applies the trust gate.",
+        "applies the trust gate; --synthesize is already deprecated.",
+        1,
+    )
+    if not any(
+        "already deprecated/no-op" in error for error in _deprecation_errors(contradictory_current)
+    ):
+        errors.append("Current-runtime already-deprecated claim escaped validation")
+
+    valid_table_errors = _api_synthesize_table_errors(_valid_api_synthesize_table_fixture())
+    if valid_table_errors:
+        errors.append(
+            "current synthesize rows with a named transition pointer were rejected: "
+            f"{valid_table_errors!r}"
+        )
+
     for authority_name, source in (("api", "docs/API.md"), ("skill", "SKILL.md")):
         text = _read_authority(authority_name)
         try:

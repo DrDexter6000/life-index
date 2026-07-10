@@ -67,11 +67,28 @@ def _isolated_subprocess_env(home: Path) -> dict[str, str]:
     return env
 
 
-def test_skill_routes_reasoning_to_host_agent_and_keeps_gateway_optional() -> None:
-    canonical = (REPO_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    shipped = (REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md").read_text(encoding="utf-8")
+def test_skill_routes_reasoning_to_host_agent_and_keeps_gateway_optional(
+    tmp_path: Path,
+) -> None:
+    canonical_path = REPO_ROOT / "SKILL.md"
+    shipped_path = REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md"
+    canonical_bytes = canonical_path.read_bytes()
+    shipped_bytes = shipped_path.read_bytes()
 
-    assert canonical == shipped, "packaged Skill artifact drifted from canonical SKILL.md"
+    assert (
+        canonical_bytes == shipped_bytes
+    ), "packaged Skill artifact drifted from canonical SKILL.md"
+    canonical = canonical_bytes.decode("utf-8")
+
+    newline_fixture = tmp_path / "newline-drift"
+    newline_fixture.mkdir()
+    canonical_fixture = newline_fixture / "canonical.md"
+    shipped_fixture = newline_fixture / "shipped.md"
+    canonical_fixture.write_bytes(b"line one\nline two\n")
+    shipped_fixture.write_bytes(b"line one\r\nline two\r\n")
+    assert (
+        canonical_fixture.read_bytes() != shipped_fixture.read_bytes()
+    ), "Skill artifact identity check normalized newline-only byte drift"
 
     start_marker = "<!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:START -->"
     end_marker = "<!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:END -->"
