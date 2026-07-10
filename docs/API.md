@@ -2442,7 +2442,7 @@ python -m tools.smart_search --query "..." [options]
 | `smart_search_mode` | 路径判断 | 可展示 | **stable** |
 | `summary` | 默认空；宿主 agent 可忽略 | 展示 | **stable** |
 | `citations` | 默认空；宿主 agent 应引用 evidence | 可点击链接 | **stable** |
-| `answer` / `answer.*` | `--synthesize` 时优先展示 deterministic scaffold | 优先展示 | **stable** |
+| `answer` / `answer.*` | 当前 `--synthesize` 的 provider-backed LLM synthesis + trust gate 输出；#163 deprecated no-op is not yet implemented | 优先展示当前 answer output | **stable** |
 | `evidence_pack` | 按需 | 按需 | **stable** |
 | `formatted_evidence` | 可展示 | 可展示 | **stable additive** — 仅 `--include-evidence --format-entity-annotated` 时出现 |
 | `aggregate_result` | aggregate/count/bucketed-frequency queries | count/bucket/claim display | **stable additive** - deterministic `aggregate` result; LLM never computes counts |
@@ -2752,8 +2752,8 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 |----------|------|
 | （无标志） | 确定性结果；不进行工具内 LLM rewrite/filter/summary |
 | `--include-evidence` | 添加 evidence_pack |
-| `--synthesize` | 内部构建 evidence；添加 deterministic answer scaffold |
-| `--include-evidence --synthesize` | 添加 evidence_pack + deterministic answer scaffold |
+| `--synthesize` | 内部构建 evidence；当前添加 provider-backed LLM synthesis + trust gate answer；#163 deprecated no-op is not yet implemented |
+| `--include-evidence --synthesize` | 添加 evidence_pack + 当前 provider-backed LLM synthesis + trust gate answer；#163 deprecated no-op is not yet implemented |
 
 ### Aggregate Delegation（自动聚合路由）
 

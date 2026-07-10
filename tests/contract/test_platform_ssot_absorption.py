@@ -261,6 +261,39 @@ def _deprecation_errors(block: str) -> list[str]:
     return errors
 
 
+def _api_synthesize_table_errors(text: str) -> list[str]:
+    errors: list[str] = []
+    row_patterns = {
+        "answer consumer guidance": r"^\| `answer` / `answer\.\*` \|[^\n]+$",
+        "synthesize flag combination": r"^\| `--synthesize` \|[^\n]+$",
+        "evidence plus synthesize combination": (
+            r"^\| `--include-evidence --synthesize` \|[^\n]+$"
+        ),
+    }
+    required_fragments = (
+        "provider-backed",
+        "llm synthesis",
+        "trust gate",
+        "#163",
+        "deprecated no-op",
+        "not yet implemented",
+    )
+    forbidden_fragments = ("deterministic scaffold", "deterministic answer scaffold")
+    for description, pattern in row_patterns.items():
+        matches = re.findall(pattern, text, flags=re.MULTILINE)
+        if len(matches) != 1:
+            errors.append(f"{description} must have exactly one API table row")
+            continue
+        lowered = matches[0].lower()
+        missing = [fragment for fragment in required_fragments if fragment not in lowered]
+        if missing:
+            errors.append(f"{description} is missing current/target truth {missing!r}")
+        stale = [fragment for fragment in forbidden_fragments if fragment in lowered]
+        if stale:
+            errors.append(f"{description} retains stale synthesize semantics {stale!r}")
+    return errors
+
+
 def _ci_inventory_errors(block: str) -> list[str]:
     lowered = block.lower()
     requirements = {
@@ -343,6 +376,10 @@ def test_deprecation_text_names_owner_issue_and_runtime_state() -> None:
             errors.append(str(exc))
             continue
         errors.extend(f"{source}: {error}" for error in _deprecation_errors(block))
+
+    errors.extend(
+        f"docs/API.md: {error}" for error in _api_synthesize_table_errors(_read_authority("api"))
+    )
 
     assert errors == [], "; ".join(errors)
 
