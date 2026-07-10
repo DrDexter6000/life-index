@@ -3044,6 +3044,23 @@ harness 会运行完整检查。
 - `--live --judge llm` 还会启用 LLM recall-gap 诊断；`--live` 本身不触发 LLM。
 - `--semantic` / `--semantic-report` 仅为兼容 no-op，不等同于 LLM judge，也不加载 embedding 模型。
 
+<!-- PLATFORM-SSOT:EVAL-LLM-TRANSITION:START -->
+### `eval --judge llm` current transition warning
+
+> **Constitutional warning**: `life-index eval --judge llm` is currently
+> reachable and performs provider selection and provider-backed calls.
+
+This current option violates `CHARTER.md §1.9`. It is not approved, sanctioned,
+grandfathered, Non-Core, or a compatibility exception. Classification of `eval`
+as Core C7 assigns constitutional ownership; it does not certify this option as
+compliant.
+
+#163 owns removal or disabling of the product-CLI-reachable provider
+selection/calls while preserving deterministic C7 eval. Host Agent + Skill own
+any language-assisted judgment. D0 records this deviation and changes no runtime
+behavior.
+<!-- PLATFORM-SSOT:EVAL-LLM-TRANSITION:END -->
+
 ### 返回值
 
 ```json

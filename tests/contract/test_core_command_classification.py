@@ -70,6 +70,7 @@ CHARTER_CLASSIFICATION_RULES_POINTER = (
     "C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.\n"
     "It maps current routes only; it does not own or duplicate those stable rules."
 )
+OWNERSHIP_MAPPING_HEADING = "### Public command constitutional ownership/admission mapping"
 
 
 def _literal_cmd_map_keys(source: str) -> frozenset[str]:
@@ -138,6 +139,7 @@ def _validate_public_command_classification(source: str, architecture: str) -> N
     routes = _public_routes(source)
     block = _named_block(architecture)
     rows = _table_rows(block)
+    assert OWNERSHIP_MAPPING_HEADING in block
 
     commands = [row[0] for row in rows]
     duplicates = sorted({command for command in commands if commands.count(command) > 1})
@@ -208,7 +210,7 @@ def _render_future_architecture(
     rendered_rows = rows if rows is not None else _expected_rows()
     lines = [
         BLOCK_START,
-        "### Public command classification",
+        OWNERSHIP_MAPPING_HEADING,
         "",
         "| Command | Classification | Authority refs |",
         "|---|---|---|",

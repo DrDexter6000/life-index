@@ -68,6 +68,18 @@ STABLE_OWNER_GATE_RULE = "\n".join(
         "  new Human Owner substantive approval.",
     )
 )
+CLASSIFICATION_OWNERSHIP_NOT_CERTIFICATION_RULE = "\n".join(
+    (
+        "**Classification assigns ownership, not certification**:",
+        "",
+        "- A classification assigns constitutional ownership/admission; it does not",
+        "  certify that every current route or option complies with this Charter.",
+        "- A shipped or reachable route or option that violates this Charter remains",
+        "  an implementation defect. Reachability grants no approval, sanction,",
+        "  grandfathering, Non-Core status, compatibility exception, or Core-admission",
+        "  precedent.",
+    )
+)
 CHARTER_ARCHITECTURE_AUTHORITY_SPLIT = "\n".join(
     (
         "`CHARTER.md §1.10` is the sole authority for the stable C1–C7 and non-Core",
@@ -84,6 +96,8 @@ EXPECTED_STABLE_NON_CORE_CLASSIFICATION_RULES = "\n".join(
         STABLE_WEATHER_EXCEPTION_RULE,
         STABLE_OWNER_GATE_RULE,
         "",
+        CLASSIFICATION_OWNERSHIP_NOT_CERTIFICATION_RULE,
+        "",
         CHARTER_ARCHITECTURE_AUTHORITY_SPLIT,
     )
 )
@@ -92,6 +106,42 @@ ARCHITECTURE_CLASSIFICATION_POINTER = "\n".join(
         "This table is the exhaustive current 31-route mapping under the Charter-owned",
         "C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.",
         "It maps current routes only; it does not own or duplicate those stable rules.",
+    )
+)
+EXPECTED_ARCHITECTURE_EVAL_LLM_DEVIATION = "\n".join(
+    (
+        "### Current eval LLM deviation",
+        "",
+        "`eval` remains Core under C7. The public command classification is a",
+        "constitutional ownership/admission map, not a certification that every current",
+        "route or option complies.",
+        "",
+        "Current runtime: the product CLI route `life-index eval --judge llm` is reachable",
+        "and performs provider selection and provider-backed calls. This violates",
+        "`CHARTER.md §1.9`; it is not approved, sanctioned, grandfathered, Non-Core, or",
+        "a compatibility exception.",
+        "",
+        "#163 owns removal or disabling of this reachable in-tool LLM path while",
+        "preserving deterministic C7 eval. D0 records the deviation and changes no runtime",
+        "behavior.",
+    )
+)
+EXPECTED_API_EVAL_LLM_TRANSITION = "\n".join(
+    (
+        "### `eval --judge llm` current transition warning",
+        "",
+        "> **Constitutional warning**: `life-index eval --judge llm` is currently",
+        "> reachable and performs provider selection and provider-backed calls.",
+        "",
+        "This current option violates `CHARTER.md §1.9`. It is not approved, sanctioned,",
+        "grandfathered, Non-Core, or a compatibility exception. Classification of `eval`",
+        "as Core C7 assigns constitutional ownership; it does not certify this option as",
+        "compliant.",
+        "",
+        "#163 owns removal or disabling of the product-CLI-reachable provider",
+        "selection/calls while preserving deterministic C7 eval. Host Agent + Skill own",
+        "any language-assisted judgment. D0 records this deviation and changes no runtime",
+        "behavior.",
     )
 )
 
@@ -535,6 +585,86 @@ def test_charter_owns_stable_non_core_rules_and_architecture_only_maps_routes() 
         "Any new Core domain, non-Core category, or compatibility exception"
         not in architecture_block
     )
+
+
+def test_classification_assigns_ownership_without_certifying_runtime_compliance() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
+
+    charter_start = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:START -->"
+    charter_end = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->"
+    charter_block = charter[
+        charter.index(charter_start) + len(charter_start) : charter.index(charter_end)
+    ]
+    assert CLASSIFICATION_OWNERSHIP_NOT_CERTIFICATION_RULE in charter_block
+    assert "| Command | Classification | Authority refs |" not in charter_block
+
+    classification_start = "<!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:START -->"
+    classification_end = "<!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:END -->"
+    classification_block = architecture[
+        architecture.index(classification_start)
+        + len(classification_start) : architecture.index(classification_end)
+    ]
+    assert "### Public command constitutional ownership/admission mapping" in classification_block
+    assert classification_block.count("| eval | Core | C7 |") == 1
+
+    drifted = charter.replace(
+        "Reachability grants no approval, sanction,\n"
+        "  grandfathering, Non-Core status, compatibility exception, or Core-admission\n"
+        "  precedent.",
+        "Reachability makes violating options grandfathered and approved.",
+        1,
+    )
+    with pytest.raises(AssertionError):
+        _assert_named_block_snapshot(
+            drifted,
+            "CORE-ADMISSION-DOMAINS",
+            EXPECTED_CORE_ADMISSION_DOMAINS,
+            "CHARTER.md §1.10",
+        )
+
+
+def test_eval_llm_deviation_is_tracked_without_reclassification_or_exception() -> None:
+    architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
+    api = AUTHORITY_PATHS["api"].read_text(encoding="utf-8")
+
+    _assert_named_block_snapshot(
+        architecture,
+        "EVAL-LLM-DEVIATION",
+        EXPECTED_ARCHITECTURE_EVAL_LLM_DEVIATION,
+        "docs/ARCHITECTURE.md",
+    )
+    _assert_named_block_snapshot(
+        api,
+        "EVAL-LLM-TRANSITION",
+        EXPECTED_API_EVAL_LLM_TRANSITION,
+        "docs/API.md",
+    )
+    assert architecture.count("| eval | Core | C7 |") == 1
+
+    noncompliant_status = "\n".join(
+        (
+            "`CHARTER.md §1.9`; it is not approved, sanctioned, grandfathered, Non-Core, or",
+            "a compatibility exception.",
+        )
+    )
+    positive_statuses = (
+        "`CHARTER.md §1.9`; it is approved.",
+        "`CHARTER.md §1.9`; it is sanctioned.",
+        "`CHARTER.md §1.9`; it is grandfathered.",
+        "`CHARTER.md §1.9`; it is Non-Core.",
+        "`CHARTER.md §1.9`; it is a compatibility exception.",
+    )
+    for positive_status in positive_statuses:
+        drifted = architecture.replace(noncompliant_status, positive_status, 1)
+        assert drifted != architecture
+        with pytest.raises(AssertionError):
+            _assert_named_block_snapshot(
+                drifted,
+                "EVAL-LLM-DEVIATION",
+                EXPECTED_ARCHITECTURE_EVAL_LLM_DEVIATION,
+                "docs/ARCHITECTURE.md",
+            )
 
 
 def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> None:

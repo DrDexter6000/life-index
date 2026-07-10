@@ -318,6 +318,15 @@ RFC/substantive-gate evidence, or any other current Charter admission constraint
 - Any new Core domain, non-Core category, or compatibility exception requires
   new Human Owner substantive approval.
 
+**Classification assigns ownership, not certification**:
+
+- A classification assigns constitutional ownership/admission; it does not
+  certify that every current route or option complies with this Charter.
+- A shipped or reachable route or option that violates this Charter remains
+  an implementation defect. Reachability grants no approval, sanction,
+  grandfathering, Non-Core status, compatibility exception, or Core-admission
+  precedent.
+
 `CHARTER.md §1.10` is the sole authority for the stable C1–C7 and non-Core
 classification rules and the sole named compatibility exception.
 `docs/ARCHITECTURE.md` owns only the exhaustive current 31-route mapping under

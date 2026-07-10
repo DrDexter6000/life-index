@@ -66,7 +66,7 @@ their domain descriptions.
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:END -->
 
 <!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:START -->
-### Public command classification
+### Public command constitutional ownership/admission mapping
 
 | Command | Classification | Authority refs |
 |---|---|---|
@@ -106,6 +106,23 @@ This table is the exhaustive current 31-route mapping under the Charter-owned
 C1–C7 and stable non-Core classification rules in `CHARTER.md §1.10`.
 It maps current routes only; it does not own or duplicate those stable rules.
 <!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:END -->
+
+<!-- PLATFORM-SSOT:EVAL-LLM-DEVIATION:START -->
+### Current eval LLM deviation
+
+`eval` remains Core under C7. The public command classification is a
+constitutional ownership/admission map, not a certification that every current
+route or option complies.
+
+Current runtime: the product CLI route `life-index eval --judge llm` is reachable
+and performs provider selection and provider-backed calls. This violates
+`CHARTER.md §1.9`; it is not approved, sanctioned, grandfathered, Non-Core, or
+a compatibility exception.
+
+#163 owns removal or disabling of this reachable in-tool LLM path while
+preserving deterministic C7 eval. D0 records the deviation and changes no runtime
+behavior.
+<!-- PLATFORM-SSOT:EVAL-LLM-DEVIATION:END -->
 
 ---
 
