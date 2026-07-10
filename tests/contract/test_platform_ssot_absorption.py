@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import re
 from pathlib import Path
 
 import pytest
@@ -18,21 +19,31 @@ AUTHORITY_PATHS = {
     "smart_search_cli": REPO_ROOT / "tools" / "smart_search" / "__main__.py",
 }
 
-PROPOSED_CORE_DOMAINS = (
-    "Canonical journal and attachment mutation",
-    "Schema, validation, migration, transaction, locking, and audit",
-    "Deterministic indexing, retrieval, freshness, and evidence navigation",
-    "Deterministic aggregation and analysis",
-    "Entity graph",
-    "Integrity, health, backup, restore, and recovery",
-    "Deterministic contract and eval verification",
+RATIFIED_CORE_DOMAINS = (
+    ("C1", "Canonical journal and attachment mutation"),
+    ("C2", "Schema, validation, migration, transaction, locking, and audit"),
+    ("C3", "Deterministic indexing, retrieval, freshness, and evidence navigation"),
+    ("C4", "Deterministic aggregation and analysis"),
+    ("C5", "Entity graph"),
+    ("C6", "Integrity, health, backup, restore, and recovery"),
+    ("C7", "Deterministic contract and eval verification"),
 )
-PENDING_OWNER_STATUS = "proposed / pending Human Owner substantive approval"
-EXACT_D0_PHASE_GATE = (
-    "D0 remains GO-AFTER-DECISION. Charter landing, D0 GO, and D1 dispatch are "
-    "forbidden until the exact seven-domain list receives explicit Human Owner "
-    "substantive approval, Gold Set regression passes, and all §5.2 substantive-gate "
-    "evidence is complete."
+EXPECTED_CHARTER_METADATA = {
+    "版本": "v1.10.0",
+    "批准日期": "2026-07-10",
+    "修订次数": "10",
+}
+INTELLIGENCE_OWNER_RULE = (
+    "Host Agent + Skill own provider selection and all planning, multi-hop reasoning, "
+    "orchestration, interpretation, and synthesis."
+)
+CURRENT_SYNTHESIZE_TRUTH = (
+    "The accepted `--synthesize` flag currently runs with no LLM injection and emits "
+    "no `answer`."
+)
+SYNTHESIZE_FOLLOW_ON_TRUTH = (
+    "#163 owns the future deprecation warning, deterministic equivalence proof, and "
+    "unreachable LLM-path cleanup."
 )
 
 EXPECTED_CURRENT_TARGET_STATUS = (
@@ -41,15 +52,13 @@ EXPECTED_CURRENT_TARGET_STATUS = (
 
 Current runtime: direct CLI/Core contracts are the implemented public route;
 the accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
-contract named below, the current bridge is non-Core and GUI-owned, and the
-later P0/P1/P2 work below has not been implemented. The design memo is not an
-authority or SSOT; it is Owner-ratified decision background being absorbed into
-the existing authority chain. The exact closed §1.10 admission-domain candidate
-remains pending Human Owner substantive approval.
+contract named below, and the current bridge is non-Core and GUI-owned. The
+design memo is not an authority or SSOT. The exact closed C1–C7 domains are now
+active Charter authority, and the former §1.9 direct provider-fallback direction
+is superseded: Host Agent + Skill own provider selection and intelligence.
 
-Ratified target phase sequence: P0 truth/safety repair -> GUI activation and
-strict-adapter proof -> P1 -> read-only P2 Gateway. These target decisions do
-not describe current runtime completion:
+The following implementation work remains future work; D0 ratification does
+not describe any of it as complete:
 
 """
     "- #163 — recall/eval correction, explicit deprecation warning, ordinary "
@@ -75,38 +84,38 @@ EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
 
 EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
     (
-        "#### Pending §1.9 / §1.10 amendment candidate — not active Charter authority",
+        "#### Active §1.10 closed Core admission domains",
         "",
-        "This candidate resolves the APEX conflict only if it later passes §5.2. On",
-        "approval, the stale §1.9 P0→P1→P2→deterministic-only provider-fallback",
-        "direction is superseded: the Host Agent + Skill own planning, multi-hop",
-        "reasoning, orchestration, interpretation, and synthesis; Core remains",
-        "deterministic; GUI remains presentation-only; and an optional Gateway cannot",
-        "own intelligence or semantics. The accepted `--synthesize` flag currently",
-        "runs through the product CLI with no LLM injection and no `answer`; #163 owns",
-        "the explicit warning, equivalence proof, and unreachable LLM-path cleanup.",
+        "The former §1.9 P0→P1→P2→deterministic-only direct provider-fallback",
+        "direction is superseded. Host Agent + Skill own provider selection and all",
+        "planning, multi-hop reasoning, orchestration, interpretation, and synthesis;",
+        "Core remains deterministic; GUI remains presentation-only; and an optional",
+        "Gateway cannot own intelligence or semantics. The accepted `--synthesize`",
+        "flag currently runs through the product CLI with no LLM injection and no",
+        "`answer`; #163 owns the future deprecation warning, deterministic equivalence",
+        "proof, and unreachable LLM-path cleanup.",
         "",
-        "| Candidate closed admission domain | Status |",
+        "| ID | Active closed Core admission domain |",
         "|---|---|",
-        "| Canonical journal and attachment mutation | proposed / pending Human Owner substantive approval |",  # noqa: E501
-        "| Schema, validation, migration, transaction, locking, and audit | proposed / pending Human Owner substantive approval |",  # noqa: E501
-        "| Deterministic indexing, retrieval, freshness, and evidence navigation | proposed / pending Human Owner substantive approval |",  # noqa: E501
-        "| Deterministic aggregation and analysis | proposed / pending Human Owner substantive approval |",  # noqa: E501
-        "| Entity graph | proposed / pending Human Owner substantive approval |",
-        "| Integrity, health, backup, restore, and recovery | proposed / pending Human Owner substantive approval |",  # noqa: E501
-        "| Deterministic contract and eval verification | proposed / pending Human Owner substantive approval |",  # noqa: E501
+        "| C1 | Canonical journal and attachment mutation |",
+        "| C2 | Schema, validation, migration, transaction, locking, and audit |",
+        "| C3 | Deterministic indexing, retrieval, freshness, and evidence navigation |",
+        "| C4 | Deterministic aggregation and analysis |",
+        "| C5 | Entity graph |",
+        "| C6 | Integrity, health, backup, restore, and recovery |",
+        "| C7 | Deterministic contract and eval verification |",
         "",
-        "These domains are proposed only: they are not active, approved, or ratified",
-        "Charter authority. If approved, CHARTER.md §1.10 becomes the sole list authority;",
-        "lower-level documents must point here and must not duplicate the catalog. The",
-        "enumeration is closed. Every added domain requires new Human Owner substantive",
-        "approval.",
+        "The C1–C7 identifiers are additive labels; they do not rename or weaken the",
+        "exact approved domain names. These seven domains are active Charter authority.",
+        "CHARTER.md §1.10 is the sole list authority; lower-level documents must reference",
+        "C1–C7 and must not duplicate domain descriptions. The enumeration is closed.",
+        "Every added Core domain requires new Human Owner substantive approval.",
         "",
         "Human Owner approval may replace only second-production-consumer evidence. It",
         "cannot waive determinism, low/zero LLM content, cross-time semantic stability,",
         "RFC/substantive-gate evidence, or any other current Charter admission constraint.",
         "",
-        "**Substantive-gate candidate record**:",
+        "**Substantive-gate ratification record**:",
         "",
         "- **Rationale**: align stale §1.9 fallback language with APEX and make Core",
         "  admission reviewable against one closed, long-lived set of domains.",
@@ -117,20 +126,18 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "  closed list may delay a valuable primitive, so each addition remains possible",
         "  through new Human Owner substantive approval without weakening the other",
         "  admission criteria.",
-        "- **Impact**: this candidate affects §1.9 / §1.10 interpretation and the public",
+        "- **Impact**: this ratification affects §1.9 / §1.10 interpretation and the public",
         "  architecture, API, CI, and Skill pointers only. It does not implement #163,",
         "  #162, #165, or #164 and does not change runtime or data contracts.",
-        "- **Rollback**: before approval, withdraw or revise this candidate as one unit;",
-        "  the currently ratified Charter text remains in force.",
-        "- **Gold Set regression**: pending before land; no result is claimed by this",
-        "  docs-only candidate.",
-        "- **Human Owner ack**: PENDING — the exact seven-domain list has not received",
-        "  Human Owner substantive approval.",
+        "- **Rollback**: any reversal or weakening requires a new §5.2 substantive",
+        "  amendment; no lower-level document can waive this ratification.",
+        "- **Gold Set regression**: PASS — observational evidence against the 2026-05-04",
+        "  baseline; D0 is docs-only and did not cause the result.",
+        "- **Human Owner ack**: COMPLETE — on 2026-07-10 the Human Owner substantively",
+        "  approved exactly C1–C7 and no additional domain.",
         "",
-        "Accordingly this candidate is not land-ready and does not increment the Charter",
-        "version / revision / approval date.",
-        "",
-        EXACT_D0_PHASE_GATE,
+        "This ratification lands D0 Charter authority only. It does not implement #163,",
+        "#162, #165, or #164 and does not change current runtime or data contracts.",
     )
 )
 
@@ -149,8 +156,9 @@ EXPECTED_PLATFORM_ROLE_BOUNDARY = "\n".join(
         "The table above is the sole normative role-assignment surface in this block.",
         "The future Gateway, if implemented, is only a contract-equivalent transport of",
         "Core operations. It cannot create a parallel semantic contract, and direct Core",
-        "use does not depend on it. The eventual closed admission-domain catalog belongs",
-        "only to `CHARTER.md §1.10` after Human Owner substantive approval.",
+        "use does not depend on it. The active closed admission-domain catalog belongs",
+        "only to `CHARTER.md §1.10`; this document references C1–C7 without duplicating",
+        "their domain descriptions.",
     )
 )
 
@@ -286,6 +294,48 @@ def _markdown_rows(text: str) -> list[tuple[str, ...]]:
     return rows
 
 
+def _charter_metadata_value(charter: str, label: str) -> str:
+    matches = re.findall(rf"^> \*\*{re.escape(label)}\*\*：(.+)$", charter, re.MULTILINE)
+    assert len(matches) == 1, f"CHARTER metadata field {label!r} must occur exactly once"
+    return matches[0].strip()
+
+
+def _charter_section(charter: str, start_heading: str, end_heading: str) -> str:
+    assert charter.count(start_heading) == charter.count(end_heading) == 1
+    start = charter.index(start_heading) + len(start_heading)
+    end = charter.index(end_heading, start)
+    return charter[start:end]
+
+
+def test_charter_header_records_completed_d0_owner_ratification() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    for label, expected in EXPECTED_CHARTER_METADATA.items():
+        actual = _charter_metadata_value(charter, label)
+        if label == "批准日期":
+            actual = actual.split("（", 1)[0].strip()
+        assert actual == expected
+
+    latest_revision = _charter_metadata_value(charter, "最近修订")
+    assert latest_revision.startswith("2026-07-10")
+    assert "C1–C7" in latest_revision
+    assert "owner" in latest_revision.casefold()
+
+
+def test_section_1_9_supersedes_direct_provider_fallback_without_overclaiming_runtime() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    section = _charter_section(
+        charter,
+        "### §1.9 Agent-Native 模块原则（Agent-Native Module Principle）",
+        "### §1.10 模块-基础层契约边界（Module-Foundation Contract Boundary）",
+    )
+
+    assert "P0→P1→P2→deterministic-only" not in section
+    assert "provider opt-in fallback" not in section
+    assert INTELLIGENCE_OWNER_RULE in section
+    assert CURRENT_SYNTHESIZE_TRUTH in section
+    assert SYNTHESIZE_FOLLOW_ON_TRUTH in section
+
+
 def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() -> None:
     charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
     agents = AUTHORITY_PATHS["agents"].read_text(encoding="utf-8")
@@ -342,7 +392,7 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
     assert "already implemented" in str(exc_info.value)
 
 
-def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_criteria() -> None:
+def test_ratified_core_admission_domains_are_exact_active_and_owner_gated() -> None:
     charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
     block = _assert_named_block_snapshot(
         charter,
@@ -351,22 +401,29 @@ def test_closed_core_admission_domains_are_exact_owner_gated_and_preserve_other_
         "CHARTER.md §1.10",
     )
     expected_rows = [
-        ("Candidate closed admission domain", "Status"),
-        *((domain, PENDING_OWNER_STATUS) for domain in PROPOSED_CORE_DOMAINS),
+        ("ID", "Active closed Core admission domain"),
+        *RATIFIED_CORE_DOMAINS,
     ]
     assert _markdown_rows(block) == expected_rows
-    assert block.count(EXACT_D0_PHASE_GATE) == 1
+    assert "PENDING" not in block
+    assert "not active" not in block
+    assert "not land-ready" not in block
+    assert "GO-AFTER-DECISION" not in block
 
-    first_row = f"| {PROPOSED_CORE_DOMAINS[0]} | {PENDING_OWNER_STATUS} |"
-    last_row = f"| {PROPOSED_CORE_DOMAINS[-1]} | {PENDING_OWNER_STATUS} |"
+    first_id, first_domain = RATIFIED_CORE_DOMAINS[0]
+    last_id, last_domain = RATIFIED_CORE_DOMAINS[-1]
+    first_row = f"| {first_id} | {first_domain} |"
+    last_row = f"| {last_id} | {last_domain} |"
     end_marker = "<!-- PLATFORM-SSOT:CORE-ADMISSION-DOMAINS:END -->"
     drifted_documents = (
         charter.replace(first_row + "\n", "", 1),
         charter.replace(
             last_row,
-            last_row + f"\n| Workflow orchestration | {PENDING_OWNER_STATUS} |",
+            last_row + "\n| C8 | Workflow orchestration |",
             1,
         ),
+        charter.replace(first_row, f"| {first_id} | Journal mutation |", 1),
+        charter.replace(first_row, f"| C8 | {first_domain} |", 1),
         charter.replace(
             end_marker,
             "Human Owner approval is authorized to waive determinism.\n" + end_marker,
