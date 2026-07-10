@@ -14,6 +14,8 @@ HOST_ENV_VARS = (
     "CLAUDE_HOME",
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _write_source(root: Path) -> None:
     (root / "references").mkdir(parents=True)
@@ -63,6 +65,33 @@ def _isolated_subprocess_env(home: Path) -> dict[str, str]:
     env["HOME"] = str(home)
     env["USERPROFILE"] = str(home)
     return env
+
+
+def test_skill_routes_reasoning_to_host_agent_and_keeps_gateway_optional() -> None:
+    canonical = (REPO_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    shipped = (REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md").read_text(encoding="utf-8")
+
+    assert canonical == shipped, "packaged Skill artifact drifted from canonical SKILL.md"
+
+    start_marker = "<!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:START -->"
+    end_marker = "<!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:END -->"
+    assert (
+        canonical.count(start_marker) == 1 and canonical.count(end_marker) == 1
+    ), "canonical SKILL.md needs one named Host Agent/Core/Gateway routing block"
+    start = canonical.index(start_marker) + len(start_marker)
+    end = canonical.index(end_marker, start)
+    block = canonical[start:end]
+    required_fragments = (
+        "Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis",
+        "Core calls remain deterministic",
+        "Gateway is an optional future typed 1:1 projection under #164",
+        "not yet implemented",
+        "not a second semantic API",
+        "contract-equivalent transport",
+        "Gateway is never required for the core route",
+    )
+    missing = [fragment for fragment in required_fragments if fragment not in block]
+    assert missing == [], f"Skill routing block is missing: {missing}"
 
 
 def test_sync_skill_copies_skill_and_references_preserving_custom_triggers(tmp_path: Path) -> None:
