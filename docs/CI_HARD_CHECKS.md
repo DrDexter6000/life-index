@@ -63,7 +63,7 @@ remains the #166 Legacy External Adapter exception.
 |---|---|---|---|---|
 | 1 | blocker gate | public Core assertion sentinel, then `pytest -m blocker --timeout=120` | tests.yml | `python .github/scripts/run_public_core_assertions.py` then `pytest -m blocker -q --timeout=120` |
 | 2 | contract gate | `pytest -m contract --timeout=120` | tests.yml | `pytest -m contract -q --timeout=120` |
-| 3 | deterministic eval contracts | provider-retirement, fail-fast, metrics, serialization, and report compatibility tests listed in `tests.yml` | tests.yml | `scripts/run_eval_gate.sh` |
+| 3 | deterministic eval contracts | `scripts/run_eval_gate.sh` owns the provider-retirement, fail-fast, metrics, serialization, and report compatibility inventory plus the public Core sentinel | tests.yml | `scripts/run_eval_gate.sh` |
 | 4 | doc-sync | `python .github/scripts/check_doc_sync.py` | quality.yml | same |
 | 5 | public-diff-names | `python .github/scripts/check_public_diff_names.py` | quality.yml | same |
 | 6 | public-surface-allowlist | `python .github/scripts/check_public_surface_allowlist.py` | quality.yml | same |
@@ -94,7 +94,9 @@ block pull request readiness, but failures must be triaged.
   and `tools/eval`.
 - The blocker marker set spans the files collected by `pytest -m blocker`.
 - Deterministic eval contract checks are Tier 1 because they protect provider
-  retirement, fail-fast, serialization, and sentinel wiring. Private corpus,
+  retirement, fail-fast, serialization, and sentinel wiring. The workflow and
+  pre-push gate delegate to `scripts/run_eval_gate.sh` so its no-argument path
+  is the sole test-target inventory. Private corpus,
   broad/noise, ranking, and quality evaluation run through
   `scripts/run_eval_advisory.sh` and are not PR blockers.
 - Full suite, quarantine, coverage, package smoke, and benchmarks are visible

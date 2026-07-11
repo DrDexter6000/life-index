@@ -171,5 +171,4 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run deterministic eval contracts
-        run: |
-          pytest tests/unit/test_eval_provider_retirement.py tests/unit/test_eval_metrics.py tests/integration/test_eval_gate_ci.py tests/integration/test_eval_private_inventory.py tests/eval/test_semantic_report.py tests/eval/test_eval_compare.py tests/eval/test_eval_run.py tests/eval/test_eval_qrels.py tests/eval/test_eval_export.py tests/eval/test_eval_serialization.py -v --timeout=120
+        run: bash scripts/run_eval_gate.sh

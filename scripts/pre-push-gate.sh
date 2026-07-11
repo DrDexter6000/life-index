@@ -160,18 +160,8 @@ run_check "pytest -m blocker"    timeout "$BLOCKER_TIMEOUT_SECONDS" python -m py
 mkdir -p "$PYTEST_BASETEMP/contract"
 run_check "pytest -m contract"   timeout "$CONTRACT_TIMEOUT_SECONDS" python -m pytest -o addopts="" -ra -q --strict-markers --strict-config -m contract --timeout="$PYTEST_TIMEOUT_SECONDS" --basetemp="$PYTEST_BASETEMP/contract"
 mkdir -p "$PYTEST_BASETEMP/eval"
-run_check "search-eval-gate"     timeout "$EVAL_TIMEOUT_SECONDS" python -m pytest \
-    -o addopts="" -ra -q --strict-markers --strict-config \
-    tests/unit/test_eval_provider_retirement.py \
-    tests/unit/test_eval_metrics.py \
-    tests/integration/test_eval_gate_ci.py \
-    tests/eval/test_semantic_report.py \
-    tests/eval/test_eval_compare.py \
-    tests/eval/test_eval_run.py \
-    tests/eval/test_eval_qrels.py \
-    tests/eval/test_eval_export.py \
-    tests/eval/test_eval_serialization.py \
-    --timeout="$PYTEST_TIMEOUT_SECONDS" --basetemp="$PYTEST_BASETEMP/eval"
+export EVAL_PYTEST_BASETEMP="$PYTEST_BASETEMP/eval"
+run_check "search-eval-gate"     timeout "$EVAL_TIMEOUT_SECONDS" bash scripts/run_eval_gate.sh
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))

@@ -12,11 +12,13 @@
 #   1 — a deterministic check failed
 #
 # Usage:
-#   bash scripts/run_eval_gate.sh [--snapshot=phase2]
+#   bash scripts/run_eval_gate.sh
+#   bash scripts/run_eval_gate.sh --snapshot=phase2
 #
 # Options:
-#   --snapshot=PHASE   Freeze eval metrics as baseline snapshot
-#                      (e.g. --snapshot=phase2 writes .strategy/cli/Round_10_baselines/phase2.json)
+#   --snapshot=PHASE   Maintenance-only snapshot operation; this does not run
+#                      the deterministic gate. Prefer freeze_baseline.py for
+#                      new automation.
 
 set -euo pipefail
 
@@ -24,6 +26,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
+
+PYTEST_TIMEOUT_SECONDS="${PYTEST_TIMEOUT_SECONDS:-120}"
+EVAL_TEST_TARGETS=(
+  tests/unit/test_eval_provider_retirement.py
+  tests/unit/test_eval_metrics.py
+  tests/integration/test_eval_gate_ci.py
+  tests/integration/test_eval_private_inventory.py
+  tests/eval/test_semantic_report.py
+  tests/eval/test_eval_compare.py
+  tests/eval/test_eval_run.py
+  tests/eval/test_eval_qrels.py
+  tests/eval/test_eval_export.py
+  tests/eval/test_eval_serialization.py
+)
 
 # Parse --snapshot=PHASE argument
 SNAPSHOT_PHASE=""
@@ -41,23 +57,20 @@ if [ -n "$SNAPSHOT_PHASE" ]; then
   echo ""
   echo "✅ Baseline snapshot frozen: .strategy/cli/Round_10_baselines/${SNAPSHOT_PHASE}.json"
 else
-  # ── Section 1: Eval infrastructure tests ──
-  echo "=== Section 1: Eval infrastructure ==="
-  python -m pytest tests/unit/test_eval_metrics.py tests/eval/test_eval_run.py -v --timeout=120
-  echo ""
-  echo "✅ Eval infrastructure passed"
-
-  # ── Section 2: Public synthetic Core assertion ──
+  echo "=== Section 1: Authoritative deterministic inventory ==="
   echo "=== Section 2: Public synthetic Core assertion ==="
   python .github/scripts/run_public_core_assertions.py
   echo ""
   echo "✅ Public synthetic Core assertion passed"
 
-  # ── Section 3: Provider retirement and eval compatibility ──
-  echo "=== Section 3: Provider retirement and eval compatibility ==="
-  python -m pytest tests/unit/test_eval_provider_retirement.py tests/eval/test_semantic_report.py -q --timeout=300
+  echo "=== Section 3: Deterministic eval contracts ==="
+  PYTEST_ARGS=(-v "--timeout=$PYTEST_TIMEOUT_SECONDS")
+  if [ -n "${EVAL_PYTEST_BASETEMP:-}" ]; then
+    PYTEST_ARGS+=("--basetemp=$EVAL_PYTEST_BASETEMP")
+  fi
+  python -m pytest "${EVAL_TEST_TARGETS[@]}" "${PYTEST_ARGS[@]}"
   echo ""
-  echo "✅ Provider retirement and eval compatibility passed"
+  echo "✅ Deterministic eval contracts passed"
 
   echo ""
   echo "========================================="

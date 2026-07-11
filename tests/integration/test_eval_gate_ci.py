@@ -161,7 +161,6 @@ def test_external_gate_surface_delegates_without_duplicate_inventory(
 
     assert re.search(r"(?:bash\s+)?scripts/run_eval_gate\.sh(?:\s|$)", source)
     assert _normalized_test_targets(source) == frozenset()
-    assert "run_public_core_assertions.py" not in source
 
 
 def test_pre_push_records_delegated_runner_failure() -> None:
@@ -172,5 +171,6 @@ def test_pre_push_records_delegated_runner_failure() -> None:
         r"bash\s+scripts/run_eval_gate\.sh",
         source,
     )
+    assert "run_public_core_assertions.py" not in source
     assert 'if [ "${#FAILED_CHECKS[@]}" -eq 0 ]; then' in source
     assert "exit 1" in source
