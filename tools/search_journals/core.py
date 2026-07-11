@@ -1237,33 +1237,16 @@ def hierarchical_search(
         return level_2_result
 
     # ── Level 3: 全文检索（keyword/entity only） ──
-    # Round 18 Phase 3: Noise gate
-    # Round 19 Phase 1 B2: For OOD/noise queries, bypass both pipelines entirely
-    # to prevent keyword-pipeline leakage (e.g. GQ77 "区块链技术投资" matching
-    # on "投资" alone).
-    _noise_blocked = False
-    _noise_reason = None
+    # Query classification is advisory only.  Recall-first retrieval must still
+    # execute for every query so a label cannot hide a real token match.
     if query:
         from .noise_gate import is_noise_query
 
-        _noise_blocked, _noise_reason = is_noise_query(query)
-    # Phase 1 B2: Full pipeline bypass for OOD/negation-intent/typo_near_noise
-    # queries. Conservative: too_short and other original rules still run
-    # keyword retrieval to avoid regressions on legitimate short queries
-    # (GQ10 '吃饭', GQ85 'AI', GQ126 '投资', etc.).
-    if _noise_blocked and _noise_reason in (
-        "ood_topic",
-        "negation_intent",
-        "typo_near_noise",
-    ):
-        result["performance"]["total_time_ms"] = round((time.time() - start_time) * 1000, 2)
-        _emit_search_metrics(result)
-        logger.info(
-            f"[SearchPerf] Total: {result['performance']['total_time_ms']}ms "
-            f"(L1:0.0 L2:0.0 L3:0.0) "
-            f"| Results: 0 (noise_gate full bypass)"
-        )
-        return result
+        is_advisory, advisory_reason = is_noise_query(query)
+        if is_advisory:
+            result["warnings"].append(
+                f"query_classification: {advisory_reason}; retrieval_not_bypassed"
+            )
 
     (
         l1_results,
