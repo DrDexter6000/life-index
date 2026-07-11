@@ -904,6 +904,7 @@ class TestModuleImportFallback:
         module_name = "tools.search_journals.core"
         package = importlib.import_module("tools.search_journals")
         original_module = sys.modules.get(module_name)
+        had_parent_attr = hasattr(package, "core")
         original_package_attr = getattr(package, "core", None)
         sys.modules.pop(module_name, None)
 
@@ -924,8 +925,7 @@ class TestModuleImportFallback:
             sys.modules.pop(module_name, None)
             if original_module is not None:
                 sys.modules[module_name] = original_module
-                setattr(package, "core", original_module)
-            elif original_package_attr is not None:
+            if had_parent_attr:
                 setattr(package, "core", original_package_attr)
             elif hasattr(package, "core"):
                 delattr(package, "core")

@@ -797,7 +797,8 @@ def test_public_eval_authorities_do_not_publish_private_corpus_fingerprints(
 ) -> None:
     text = path.read_text(encoding="utf-8")
     private_fingerprints = (
-        "Round 17",
+        "Round 17 冻结基线",
+        "实测基线（Round 17",
         "85 queries",
         "0.3836",
         "0.3565",
@@ -806,9 +807,14 @@ def test_public_eval_authorities_do_not_publish_private_corpus_fingerprints(
         "golden_rejection_queries.yaml",
         "15 个 broad recall",
         "precision < 0.8",
+        "68 篇日志",
+        "108-query",
+        "tests/eval/baselines/",
     )
 
-    assert [item for item in private_fingerprints if item in text] == []
+    matches = [item for item in private_fingerprints if item in text]
+    matches.extend(re.findall(r"\bGQ\d+\b", text))
+    assert matches == []
 
 
 def test_architecture_describes_broad_private_eval_as_advisory_only() -> None:

@@ -9,8 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from .compat import LANGUAGE_JUDGE_ERROR
-from .run_eval import compare_against_baseline, run_evaluation
-from ..lib.observability import build_provenance_envelope
 
 
 def _emit_json(payload: dict[str, Any]) -> None:
@@ -76,6 +74,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.judge == "llm":
         _emit_json({"success": False, "error": LANGUAGE_JUDGE_ERROR})
         return 2
+
+    from .run_eval import compare_against_baseline, run_evaluation
+    from ..lib.observability import build_provenance_envelope
 
     use_semantic = False
 

@@ -168,11 +168,6 @@ def test_eval_cli_llm_judge_fails_fast_without_loading_provider(
             raise AssertionError("provider module must not be imported")
         return real_import(name, globals, locals, fromlist, level)
 
-    monkeypatch.setattr(
-        eval_main,
-        "run_evaluation",
-        lambda **_kwargs: pytest.fail("LLM judge must fail before eval execution"),
-    )
     monkeypatch.setattr(builtins, "__import__", guarded_import)
 
     exit_code = eval_main.main(["--judge", "llm", "--json"])

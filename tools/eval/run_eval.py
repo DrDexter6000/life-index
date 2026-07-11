@@ -16,8 +16,6 @@ from typing import Any, Iterator
 
 import yaml
 
-from tools.eval.private_data import get_baselines_dir, resolve_eval_file
-
 GOLDEN_QUERIES_PATH = Path(__file__).with_name("golden_queries.yaml")
 TOP_K = 5
 MODULES_TO_RELOAD = (
@@ -742,6 +740,8 @@ def _resolve_golden_queries_path(
     *,
     data_dir: Path | None = None,
 ) -> Path:
+    from tools.eval.private_data import resolve_eval_file
+
     return resolve_eval_file(file_path, "golden_queries.yaml", data_dir=data_dir)
 
 
@@ -876,7 +876,12 @@ def _find_latest_baseline(
       3. If tests_dir is explicitly provided, fall back to that directory
          with the same deterministic sort.
     """
-    canonical_dir = tools_dir or get_baselines_dir()
+    if tools_dir is None:
+        from tools.eval.private_data import get_baselines_dir
+
+        canonical_dir = get_baselines_dir()
+    else:
+        canonical_dir = tools_dir
     fallback_dir = tests_dir
 
     def _sort_key(p: Path) -> tuple:
@@ -1466,6 +1471,9 @@ def run_evaluation(
       and pass/fail gate remain from the keyword (use_semantic=False) run.
       Cannot be combined with save_baseline.
     """
+    if judge != "keyword":
+        raise ValueError("only deterministic keyword evaluation is supported")
+
     semantic_noop_requested = use_semantic or semantic_report
     use_semantic = False
 
@@ -1500,9 +1508,6 @@ def run_evaluation(
             skipped_queries.append(q)
         else:
             queries.append(q)
-
-    if judge != "keyword":
-        raise ValueError("only deterministic keyword evaluation is supported")
 
     context = _live_data_dir() if live else _temporary_data_dir(data_dir)
 
