@@ -437,7 +437,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 |:---|:---|
 | "关于工作的日志" | `--topic work` |
 | "去年的记录" | `--date-from 2025-01-01 --date-to 2025-12-31` |
-| "跟晴岚有关的" | `--people 晴岚` |
+| "跟示例人物有关的" | `--people 示例人物` |
 | "关于重构的" | `--query "重构"` |
 | "开心的回忆" | `--mood 开心` |
 | "LifeIndex项目" | `--project LifeIndex` |

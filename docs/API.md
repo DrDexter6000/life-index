@@ -310,11 +310,11 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
   "schema_version": "v1.1.1",
   "entity_hints": [
     {
-      "matched_term": "老婆",
-      "entity_id": "wife-001",
-      "primary_name": "王某某",
+      "matched_term": "示例别名",
+      "entity_id": "EXAMPLE-PERSON-001",
+      "primary_name": "示例人物",
       "entity_type": "actor",
-      "expansion_terms": ["王某某", "晴岚妈", "老婆"],
+      "expansion_terms": ["示例人物", "示例别名"],
       "reason": "alias_match"
     }
   ]
@@ -334,19 +334,19 @@ Phase A 为 JSON 输出生成命令引入三层可观测性契约，全部 addit
 
 ```yaml
 aliases:
-  - 晴岚妈
-  - 老婆
+  - 示例别名
+  - 示例称呼
 ```
 
 **新写法（带元数据对象列表）** —— 显式声明来源与置信度：
 
 ```yaml
 aliases:
-  - name: 晴岚妈
+  - name: 示例别名
     source: journal
     confidence: 0.95
     created_at: "2026-05-23T10:00:00+00:00"
-  - name: 老婆
+  - name: 示例称呼
     source: manual
     confidence: 1.0
 ```
@@ -657,11 +657,11 @@ python -m tools.write_journal --data '<json>'
   "new_entities_detected": [],
   "entity_candidates": [
     {
-      "text": "晴岚妈",
+      "text": "示例别名",
       "source": "content",
       "kind": "person",
-      "matched_entity_id": "wife-001",
-      "matched_primary_name": "王某某",
+      "matched_entity_id": "EXAMPLE-PERSON-001",
+      "matched_primary_name": "示例人物",
       "suggested_action": "confirm_match",
       "risk_level": "low"
     }
@@ -2082,11 +2082,11 @@ python -m tools.search_journals [options]
   ],
   "entity_hints": [
     {
-      "matched_term": "老婆",
-      "entity_id": "wife-001",
-      "primary_name": "王某某",
+      "matched_term": "示例别名",
+      "entity_id": "EXAMPLE-PERSON-001",
+      "primary_name": "示例人物",
       "entity_type": "actor",
-      "expansion_terms": ["王某某", "晴岚妈", "老婆"],
+      "expansion_terms": ["示例人物", "示例别名"],
       "reason": "alias_match"
     }
   ],
@@ -2814,48 +2814,24 @@ aggregate/analyze checks:
 - `smart_aggregate_queries` exercises smart-search deterministic aggregate
   routing before normal retrieval.
 
-`smart_aggregate_queries` is a route-family coverage matrix, not a product
-scenario registry. Each case must prove that a natural-language query maps to a
-generic deterministic primitive such as `journal_count`, `entry_time_after`,
-`term_presence`, or `field_equals`. Representative samples are allowed, but the
-expected contract must assert the generic route and predicate. For example,
-"late sleep" may only appear as a sample for `entry_time_after=22:00`; it must
-not create or require a dedicated `late_sleep` predicate in the CLI core.
+The smart-aggregate companion set is a route-family coverage matrix, not a
+product scenario registry. Each operator-supplied case must prove that a query
+maps to an already documented generic deterministic primitive such as
+`journal_count`, `entry_time_after`, `term_presence`, or `field_equals`. Public
+authority does not pin private query text, IDs, thresholds, expected counts, or
+corpus observations.
 
 These cases do not participate in search MRR/Recall/Precision calculations;
 they are reported under `aggregate_eval` and `smart_aggregate_eval` so
 aggregate regressions and smart-search route regressions are visible without
 polluting retrieval metrics.
 
-`aggregate_eval` result shape:
-
-```json
-{
-  "total_queries": 3,
-  "passed_queries": 3,
-  "failed_queries": 0,
-  "metrics": {"pass_rate": 1.0},
-  "by_category": {
-    "aggregate_analyze": {
-      "query_count": 3,
-      "passed_queries": 3,
-      "failed_queries": 0,
-      "pass_rate": 1.0
-    }
-  },
-  "per_query": [
-    {
-      "id": "AGQ01",
-      "eval_mode": "aggregate",
-      "command": "aggregate",
-      "count": 3,
-      "exactness": "exact",
-      "pass": true
-    }
-  ],
-  "failures": []
-}
-```
+`aggregate_eval` exposes numeric `total_queries`, `passed_queries`, and
+`failed_queries`; a `metrics` object; category summaries; `per_query` records;
+and `failures`. Per-query records carry an operator-supplied ID plus
+`eval_mode`, `command`, `count`, `exactness`, and `pass`. Public documentation
+defines field semantics but deliberately supplies no private case ID, expected
+count, pass rate, title, query, or threshold.
 
 `smart_aggregate_eval` uses the same high-level shape, with per-query entries
 adding `eval_mode: "smart_aggregate"`, `route_present`, and predicate-detail
@@ -2863,39 +2839,10 @@ fields such as `predicate_term` or `predicate_threshold` when applicable. It
 validates that a natural-language smart-search query produced a top-level
 `aggregate_result` with the expected deterministic aggregate contract:
 
-```json
-{
-  "total_queries": 1,
-  "passed_queries": 1,
-  "failed_queries": 0,
-  "metrics": {"pass_rate": 1.0},
-  "by_category": {
-    "smart_aggregate_route": {
-      "query_count": 1,
-      "passed_queries": 1,
-      "failed_queries": 0,
-      "pass_rate": 1.0
-    }
-  },
-  "per_query": [
-    {
-      "id": "SAGQ01",
-      "eval_mode": "smart_aggregate",
-      "route_present": true,
-      "predicate_type": "field_equals",
-      "predicate_field": "topic",
-      "predicate_value": "work",
-      "predicate_term": null,
-      "predicate_threshold": null,
-      "unit": "entry",
-      "count": 4,
-      "exactness": "exact",
-      "pass": true
-    }
-  ],
-  "failures": []
-}
-```
+The same aggregate fields are present for smart-aggregate diagnostics.
+Per-query records add `eval_mode`, `route_present`, predicate-detail fields,
+`unit`, and exactness/pass facts. Private IDs, predicate values, thresholds,
+expected counts, and measured pass rates remain outside public artifacts.
 
 #### Diagnostic-Only Mode
 
@@ -3486,7 +3433,7 @@ python -m tools bootstrap --json
   "detected_state": {
     "has_user_data": true,
     "journal_count": 12,
-    "data_dir": "C:/Users/example/Documents/Life-Index",
+    "data_dir": "<data-dir>",
     "installed_version": "1.3.0",
     "manifest_version": "1.3.0",
     "install_in_sync": true,
@@ -3507,7 +3454,7 @@ python -m tools bootstrap --json
     "checkout_assessment": null
   },
   "route": "upgrade",
-  "route_reason": "Found 12 journal(s) in C:/Users/example/Documents/Life-Index",
+  "route_reason": "Existing journal data detected in <data-dir>",
   "execution_policy": {
     "needs_human": "relay_items_and_stop",
     "safe_next_steps": "run_in_order_without_additions",
