@@ -11,7 +11,8 @@ validates that:
 
 The fixture-based eval uses keyword-mode judging (no LLM). It validates
 structural correctness of the search pipeline, not absolute ranking quality.
-For live ranking quality, use `life-index eval --live --judge llm`.
+For advisory ranking quality, use the Host Agent with the Life Index Skill over
+current deterministic `life-index eval --judge keyword` evidence.
 """
 
 import importlib

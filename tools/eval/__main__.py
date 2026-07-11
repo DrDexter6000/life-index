@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
-from .compat import LANGUAGE_JUDGE_ERROR
+from .compat import LANGUAGE_JUDGE_ERROR, final_judge
 
 
 def _emit_json(payload: dict[str, Any]) -> None:
@@ -20,6 +21,11 @@ def _emit_json(payload: dict[str, Any]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_args = sys.argv[1:] if argv is None else argv
+    if final_judge(raw_args, command_offset=0) == "llm":
+        _emit_json({"success": False, "error": LANGUAGE_JUDGE_ERROR})
+        return 2
+
     parser = argparse.ArgumentParser(description="Life Index - Search evaluation")
     parser.add_argument("--data-dir", type=Path, help="Use a specific data directory")
     parser.add_argument("--save-baseline", type=Path, help="Save current evaluation result to JSON")
@@ -69,11 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="Path to a private eval overlay YAML file",
     )
-    args = parser.parse_args(argv)
-
-    if args.judge == "llm":
-        _emit_json({"success": False, "error": LANGUAGE_JUDGE_ERROR})
-        return 2
+    args = parser.parse_args(raw_args)
 
     from .run_eval import compare_against_baseline, run_evaluation
     from ..lib.observability import build_provenance_envelope

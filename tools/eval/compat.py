@@ -10,9 +10,17 @@ LANGUAGE_JUDGE_ERROR: Final = {
 }
 
 
-def language_judge_requested(argv: list[str], *, command_offset: int) -> bool:
+def final_judge(argv: list[str], *, command_offset: int) -> str:
+    """Return argparse-compatible last-occurrence judge semantics."""
+    judge = "keyword"
     args = argv[command_offset:]
-    return "--judge=llm" in args or any(
-        arg == "--judge" and index + 1 < len(args) and args[index + 1] == "llm"
-        for index, arg in enumerate(args)
-    )
+    for index, arg in enumerate(args):
+        if arg.startswith("--judge="):
+            judge = arg.split("=", 1)[1]
+        elif arg == "--judge" and index + 1 < len(args):
+            judge = args[index + 1]
+    return judge
+
+
+def language_judge_requested(argv: list[str], *, command_offset: int) -> bool:
+    return final_judge(argv, command_offset=command_offset) == "llm"
