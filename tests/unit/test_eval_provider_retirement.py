@@ -92,6 +92,56 @@ def test_language_judge_rejects_before_every_eval_runtime_import(
     assert "forbidden import" not in result.stderr
 
 
+ENTRYPOINTS = (
+    (
+        "sys.argv = ['life-index', *ARGS]; "
+        "runpy.run_module('tools.eval.__main__', run_name='__main__')",
+        0,
+        "python -m tools.eval",
+    ),
+    (
+        "sys.argv = ['life-index', 'eval', *ARGS]; "
+        "runpy.run_module('tools', run_name='__main__')",
+        1,
+        "python -m tools eval",
+    ),
+    (
+        "sys.argv = ['life-index', 'eval', *ARGS]; " "from tools.__main__ import main; main()",
+        1,
+        "console entrypoint",
+    ),
+)
+
+
+@pytest.mark.parametrize(("entry_source", "_offset", "entry_name"), ENTRYPOINTS)
+@pytest.mark.parametrize(
+    ("args", "rejects"),
+    (
+        (["--judge", "llm", "--judge", "keyword"], False),
+        (["--judge", "keyword", "--judge", "llm"], True),
+        (["--judge=llm", "--judge", "keyword"], False),
+        (["--judge", "keyword", "--judge=llm"], True),
+    ),
+)
+def test_repeated_judge_final_occurrence_wins_before_heavy_imports(
+    entry_source: str,
+    _offset: int,
+    entry_name: str,
+    args: list[str],
+    rejects: bool,
+) -> None:
+    source = "ARGS = " + repr(args) + "\n" + entry_source
+    result = _guarded_python(source)
+
+    if rejects:
+        assert result.returncode == 2, entry_name + result.stdout + result.stderr
+        assert json.loads(result.stdout) == EXPECTED_LANGUAGE_JUDGE_ERROR
+        assert "forbidden import" not in result.stderr
+    else:
+        assert result.returncode != 2
+        assert "forbidden import" in result.stderr
+
+
 def test_run_evaluation_language_judge_rejects_before_runtime_module_imports() -> None:
     result = _guarded_python(
         "from tools.eval.run_eval import run_evaluation\n"
@@ -204,3 +254,11 @@ def test_unified_cli_llm_judge_fails_before_config_import(
     assert config_import_attempts == []
     payload = json.loads(capsys.readouterr().out)
     assert payload["error"]["code"] == "EVAL_LLM_JUDGE_HOST_AGENT_REQUIRED"
+
+
+def test_eval_gate_guidance_uses_current_host_agent_advisory_route() -> None:
+    source = (REPO_ROOT / "tests" / "unit" / "test_eval_gate.py").read_text(encoding="utf-8")
+
+    assert "--live --judge llm" not in source
+    assert "Host Agent" in source
+    assert "life-index eval --judge keyword" in source
