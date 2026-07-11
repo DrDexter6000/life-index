@@ -2655,7 +2655,7 @@ Current runtime: the product CLI accepts `--synthesize` for at least two major v
 
 Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`
 
-A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check scans this ownership surface fail-closed. Eval/A5 under #163 remains pending, so #163 is not complete.
+A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. Eval/A5 under #163 remains pending, so #163 is not complete.
 
 Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:END -->

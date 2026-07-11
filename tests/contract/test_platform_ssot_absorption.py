@@ -38,12 +38,13 @@ INTELLIGENCE_OWNER_RULE = (
     "orchestration, interpretation, and synthesis."
 )
 CURRENT_SYNTHESIZE_TRUTH = (
-    "The accepted `--synthesize` flag currently runs with no LLM injection and emits "
-    "no `answer`."
+    "The accepted `--synthesize` flag is retained for at least two major versions. "
+    "It has no provider/client/LLM injection path, emits no `answer`, and preserves "
+    "the ordinary deterministic domain output."
 )
 SYNTHESIZE_FOLLOW_ON_TRUTH = (
-    "#163 owns the future deprecation warning, deterministic equivalence proof, and "
-    "unreachable LLM-path cleanup."
+    "#163 remains open for eval/A5 removal and the remaining D1-A work. This "
+    "implemented A3/A4 truth does not claim A5, #163, or the D1 phase complete."
 )
 STABLE_DISTRIBUTION_HOST_OPERATIONS_RULE = "\n".join(
     (
@@ -164,7 +165,8 @@ implement it:
 """
     "- #163 — smart-search A3/A4 is implemented: the compatibility warning and "
     "deterministic equivalence proof are active, dormant/injectable search LLM ownership "
-    "is deleted, and the public hard check scans that ownership surface. Eval/A5 remains "
+    "is deleted, and the public hard check enforces the documented static structural "
+    "policy over the production search roots. Eval/A5 remains "
     "pending, so #163 is not complete.\n"
     """- #162 — transactional write, side-effect, and freshness repair: unimplemented.
 - #165 — backup, restore, and recovery proof: unimplemented.
@@ -179,7 +181,7 @@ EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
         "- Default/no-flag `life-index smart-search` returns a deterministic scaffold.",
         "- Current explicit `--synthesize` is accepted for at least two major versions. The product CLI constructs `SmartSearchOrchestrator()` with no injection surface, emits no `answer`, and preserves the ordinary deterministic domain payload.",  # noqa: E501
         "- The CLI emits exactly one stderr warning: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`",  # noqa: E501
-        "- Search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation; the Tier 1 no-LLM hard check scans this ownership surface fail-closed.",  # noqa: E501
+        "- Search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation; the Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots.",  # noqa: E501
         "- Eval/A5 under #163 remains pending; this A3/A4 state does not claim eval correction or close #163.",  # noqa: E501
         "- Host Agent + Skill remain the intelligence owner; #163 does not change that role boundary.",  # noqa: E501
     )
@@ -194,9 +196,11 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "planning, multi-hop reasoning, orchestration, interpretation, and synthesis;",
         "Core remains deterministic; GUI remains presentation-only; and an optional",
         "Core Capability Gateway cannot own intelligence or semantics. The accepted `--synthesize`",
-        "flag currently runs through the product CLI with no LLM injection and no",
-        "`answer`; #163 owns the future deprecation warning, deterministic equivalence",
-        "proof, and unreachable LLM-path cleanup.",
+        "flag is retained for at least two major versions, has no provider/client/LLM",
+        "injection path, emits no `answer`, preserves ordinary deterministic domain output,",
+        "and emits exactly one stderr warning: `DEPRECATED: --synthesize is a compatibility",
+        "no-op; synthesis belongs to the Host Agent + Life Index Skill.` Eval/A5 and the",
+        "remaining #163 work are pending; A3/A4 does not claim A5, #163, or D1 complete.",
         "",
         "| ID | Active closed Core admission domain |",
         "|---|---|",
@@ -344,7 +348,7 @@ SYNTHESIZE_TRANSITION_SEMANTICS = "\n".join(
         "",
         "Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`",  # noqa: E501
         "",
-        "A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check scans this ownership surface fail-closed. Eval/A5 under #163 remains pending, so #163 is not complete.",  # noqa: E501
+        "A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. Eval/A5 under #163 remains pending, so #163 is not complete.",  # noqa: E501
         "",
         "Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.",  # noqa: E501
     )
@@ -364,9 +368,12 @@ All-skipped assertion sets are not green. Private-only assertions are advisory
 and cannot be the sole evidence for a Tier 1 public blocker.
 
 The public #163 search ownership invariant is implemented: the Tier 1 no-LLM
-check scans imports plus AST/symbol-level ownership across search/smart-search
-and fails closed on dormant or injectable provider/rewrite/filter/prompt/trust/
-synthesis surfaces. Eval/A5 coverage remains pending and is not claimed here.
+check scans every Python AST in search/smart-search for known provider imports
+and aliases, normalized LLM/provider/model-client declarations and storage,
+provider-like construction/calls, legacy prompt/trust/synthesis ownership, and
+constant-string dynamic imports. Syntax/parse failure is non-green. This is a
+static structural boundary, not a universal proof against computed strings or
+arbitrary runtime metaprogramming. Eval/A5 coverage remains pending.
 """
 
 EXPECTED_HOST_AGENT_ROUTING = "\n".join(

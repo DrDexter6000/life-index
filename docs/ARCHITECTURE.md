@@ -40,7 +40,7 @@ is superseded: Host Agent + Skill own provider selection and intelligence.
 The following program work remains incomplete; D0 ratification did not itself
 implement it:
 
-- #163 — smart-search A3/A4 is implemented: the compatibility warning and deterministic equivalence proof are active, dormant/injectable search LLM ownership is deleted, and the public hard check scans that ownership surface. Eval/A5 remains pending, so #163 is not complete.
+- #163 — smart-search A3/A4 is implemented: the compatibility warning and deterministic equivalence proof are active, dormant/injectable search LLM ownership is deleted, and the public hard check enforces the documented static structural policy over the production search roots. Eval/A5 remains pending, so #163 is not complete.
 - #162 — transactional write, side-effect, and freshness repair: unimplemented.
 - #165 — backup, restore, and recovery proof: unimplemented.
 - #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
@@ -302,7 +302,7 @@ CHARTER §1.10 将「模块-基础层契约边界」提升为不变量。本节�
 - Default/no-flag `life-index smart-search` returns a deterministic scaffold.
 - Current explicit `--synthesize` is accepted for at least two major versions. The product CLI constructs `SmartSearchOrchestrator()` with no injection surface, emits no `answer`, and preserves the ordinary deterministic domain payload.
 - The CLI emits exactly one stderr warning: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`
-- Search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation; the Tier 1 no-LLM hard check scans this ownership surface fail-closed.
+- Search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation; the Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots.
 - Eval/A5 under #163 remains pending; this A3/A4 state does not claim eval correction or close #163.
 - Host Agent + Skill remain the intelligence owner; #163 does not change that role boundary.
 <!-- PLATFORM-SSOT:SMART-SEARCH-CURRENT-CONTRACT:END -->
