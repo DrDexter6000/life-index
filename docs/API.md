@@ -2856,9 +2856,11 @@ route companion checks run in **diagnostic-only** mode. In this mode:
 - Mismatches are reported as `diagnostic_observations` with `id`, `query`,
   `reason`, `expected`, and `actual` fields.
 
-When `data_dir` is explicitly provided (fixture/CI eval), aggregate and smart
-aggregate route checks remain a **hard gate** with `failed_queries` incremented
-on mismatch.
+When `data_dir` is explicitly provided for a synthetic or private evaluation,
+aggregate and smart aggregate route checks retain deterministic mismatch
+accounting, including `failed_queries`, but the evaluation remains advisory and
+does not decide CI or merge success. Blocking authority belongs only to the
+separately executed public synthetic deterministic contracts and Core sentinel.
 
 This is an eval-system extension, not a second Gold Set. Real-log diagnostic
 queries should be promoted into `aggregate_queries` or `smart_aggregate_queries`

@@ -401,7 +401,7 @@ Life Index fits into a 2×2 matrix — the vertical axis is the **two things** i
 | Layered life retrieval | ✅ | Keyword exact match + Entity Graph expansion; Agent optionally handles pre-search orchestration and post-search expression |
 | Index Tree host navigation | ✅ | `ensure → discover → navigate` three-step navigation; browse your life directory by time / topic / tag facet |
 | Smart-search orchestrator | ✅ | Emits an agent-ready deterministic scaffold; query rewrite and refinement done by the host agent, no LLM in the tool |
-| Search quality evaluation (eval) | ✅ | Cycle 2 multi-signal fixture; full integrity audit PASS on 2026-05-25; recall-first quality gate |
+| Search quality evaluation (eval) | ✅ | Public synthetic Core contracts and the sentinel block deterministic regressions; local/private, noise, and quality metrics are advisory evidence only |
 | Entity Graph + quality audit + maintenance | ✅ | Alias resolution, relationship inference, duplicate/orphan detection + Agent-interview repair |
 | One-page install / upgrade (bootstrap) | ✅ | `bootstrap --json` emits a deterministic execution_policy + freshness check; reliably delivers SKILL into the host skill library |
 | Data doctor | ✅ | `maintenance audit` is the single source for data-integrity detection; `verify` is the read-only check |

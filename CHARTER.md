@@ -589,7 +589,8 @@ Presentation（呈现层）：按调用方需求截断、格式化
 
 - ❌ 让 `docs/ARCHITECTURE.md` 与代码脱节超过一个 Round
 - ❌ 新增不在 `search_constants.py` 管辖的搜索阈值
-- ❌ 在没有 Gold Set 回归通过的情况下合入搜索相关 PR
+- ❌ 在公开合成 Core 确定性契约或哨兵未执行、未通过的情况下合入相关 PR
+- ❌ 将 Gold Set、本地 / 私有、noise 或 quality 指标评估提升为合并闸门或数值门槛
 - ❌ 在宪章级决策上使用 ADR（应使用 RFC + CHARTER 修订）
 - ❌ 在单个 Round 内同时做"功能新增"和"治理重构"
 - ❌ 绕过本宪章第五章「修订流程」直接修改本宪章
@@ -600,20 +601,21 @@ Presentation（呈现层）：按调用方需求截断、格式化
 - ❌ 测试不使用临时目录或 `LIFE_INDEX_DATA_DIR` override
 - ❌ 删除失败的测试而不是修复根因
 
-### §4.5 搜索性能 SLO（Service Level Objectives）
+### §4.5 搜索验证与性能观测
 
-搜索是 Life Index 的核心能力。以下性能指标为**硬性契约**，任何 PR 导致指标下降 ≥3% 必须在 PR 描述中说明原因并附 RFC。
+搜索是 Life Index 的核心能力。合并阻断权只属于公开、合成、可复现的确定性功能与契约测试；性能观测以及 Gold Set、本地 / 私有、noise、quality 指标评估均为 advisory evidence，不设数值合并门槛。
 
 | 指标 | 目标 | 公开依据 | 备注 |
 |------|------|------|------|
-| `search` 命令 p95 延迟 | ≤ 500ms | ~20ms (FTS+L2, 无语义) | 索引新鲜状态下，不含首次构建 |
-| `smart-search` 命令 p95 延迟 | ≤ 8s | 待测（deterministic/scaffold 路径） | 降级模式 ≤ 500ms |
+| `search` 命令 p95 延迟 | advisory 观测目标 ≤ 500ms | ~20ms (FTS+L2, 无语义) | 索引新鲜状态下，不含首次构建；非合并闸门 |
+| `smart-search` 命令 p95 延迟 | advisory 观测目标 ≤ 8s | 待测（deterministic/scaffold 路径） | 降级模式观测目标 ≤ 500ms；非合并闸门 |
 | 公开合成 Core recall 不变量 | 必须执行且通过 | 仓库内合成 fixture | 每次检索变更后的阻断契约 |
 | 本地 / 私有 eval | 仅咨询、非闸门 | 不进入公开制品 | 可观测诊断，不得覆盖 Core truth |
 
 **PR 合规规则**：
-- 指标下降 ≥3% → PR 描述中必须附 RFC 说明
-- 指标下降 ≥10% → PR 不得合并，必须修复或发起宪章修订
+- 公开合成确定性功能 / 契约测试或 Core 哨兵失败、未收集、全跳过 → 不得合并
+- 性能、Gold Set、本地 / 私有、noise、quality 指标变化 → 仅记录为 advisory evidence，不以数值阈值决定是否合并
+- 不得以 advisory 评估为由削弱、跳过或替代确定性功能与契约测试
 
 > **公开 / 私有边界**：公开权威只记录可复现的合成 Core assertion
 > 与通用契约。任何本地或私有语料的查询、标题、路径、计数、指标与阈值均留在
@@ -639,7 +641,7 @@ Presentation（呈现层）：按调用方需求截断、格式化
    - 说明目标条款
    - 说明触发场景与证据
    - 说明潜在影响与回滚方案
-2. **Gold Set 回归**：运行完整的 Gold Set 测试，确认修订不导致退化
+2. **验证证据**：运行受修订影响的公开合成确定性功能 / 契约测试与 Core 哨兵，且必须通过。Gold Set、本地 / 私有、noise 与 quality 指标评估如运行，仅作 advisory evidence，不设数值 land 门槛
 3. **Substantive gate（4 项齐备方可 land）**：
    - **rationale**：为什么要改、解决什么问题（在 RFC §1 写明）
    - **反对意见 addressed**：CTO 列出至少 2 条反对意见、提案如何回应（在 RFC §4 或同等位置写明）
