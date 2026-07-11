@@ -269,6 +269,43 @@ def test_multi_query_incomplete_evidence_never_claims_full_recall(
     assert any("incomplete" in note.lower() for note in diagnostics["notes"])
 
 
+def test_multi_query_all_child_failures_report_incomplete_evidence() -> None:
+    def search(query: str = "", **kwargs: Any) -> dict[str, Any]:
+        return {
+            "success": False,
+            "error": {
+                "code": "search_failed",
+                "message": f"synthetic failure for {query}",
+            },
+            "merged_results": [],
+            "total_available": 0,
+            "has_more": False,
+            "performance": {"total_time_ms": 1.0},
+        }
+
+    rewritten: Any = {
+        "rewritten_query": "combined",
+        "sub_queries": ["first", "second"],
+        "time_range": None,
+    }
+    with (
+        patch.object(SmartSearchOrchestrator, "rewrite_query", return_value=rewritten),
+        patch("tools.search_journals.orchestrator._get_search_fn", return_value=search),
+    ):
+        result = SmartSearchOrchestrator().search("combined", include_evidence=True)
+
+    evidence = result["evidence_pack"]
+    assert evidence["items"] == []
+    assert evidence["total_available"] == 0
+    assert evidence["has_more"] is True
+    diagnostics = evidence["diagnostics"]
+    assert diagnostics["retrieval_outcome"] == "weak_results"
+    assert diagnostics["outcome_reason"] == "low_confidence_with_potential_under_recall"
+    assert diagnostics["outcome_reason"] != "no_matches_found"
+    assert any("incomplete" in note.lower() for note in diagnostics["notes"])
+    assert any("observed" in note.lower() for note in diagnostics["notes"])
+
+
 def test_execute_search_applies_deterministic_time_range() -> None:
     captured: list[dict[str, str]] = []
 

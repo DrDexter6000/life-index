@@ -1122,12 +1122,34 @@ class TestComputeDiagnostics:
     def test_zero_results(self) -> None:
         from tools.evidence.builder import compute_diagnostics
 
-        result = _search_result_with_items(count=0, total_available=0, no_confident_match=True)
+        result = _search_result_with_items(
+            count=0,
+            total_available=0,
+            no_confident_match=True,
+            has_more=False,
+        )
         diag = compute_diagnostics(result)
         assert diag.retrieval_outcome == "zero_results"
         assert diag.outcome_reason == "no_matches_found"
         assert len(diag.notes) > 0
         assert len(diag.suggestions) > 0
+
+    def test_zero_observed_results_with_has_more_is_incomplete(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=0,
+            total_available=0,
+            no_confident_match=True,
+            has_more=True,
+        )
+        diag = compute_diagnostics(result)
+
+        assert diag.retrieval_outcome == "weak_results"
+        assert diag.outcome_reason == "low_confidence_with_potential_under_recall"
+        assert diag.outcome_reason != "no_matches_found"
+        assert any("incomplete" in note.lower() for note in diag.notes)
+        assert any("observed" in note.lower() for note in diag.notes)
 
     def test_zero_results_truncated(self) -> None:
         from tools.evidence.builder import compute_diagnostics

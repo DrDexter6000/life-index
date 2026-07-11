@@ -300,6 +300,20 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
     # S1-B: pipeline composition from existing merged_results fields
     pipeline_composition = _compute_pipeline_composition(items)
 
+    # No observed candidates is not a complete zero-match result when retrieval
+    # reports that more work or candidates remain unobserved.
+    if len(items) == 0 and has_more:
+        return EvidenceDiagnostics(
+            retrieval_outcome="weak_results",
+            outcome_reason="low_confidence_with_potential_under_recall",
+            notes=[
+                "No candidates were observed because retrieval execution was incomplete.",
+                "has_more is true; zero matches cannot be claimed from complete pipelines.",
+            ],
+            suggestions=["Retry the incomplete retrieval before concluding there are no matches."],
+            pipeline_composition=pipeline_composition,
+        )
+
     # zero_results: no items and no available
     if len(items) == 0 and total_available == 0:
         return EvidenceDiagnostics(
