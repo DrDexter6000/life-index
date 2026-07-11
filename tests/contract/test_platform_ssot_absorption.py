@@ -810,11 +810,38 @@ def test_public_eval_authorities_do_not_publish_private_corpus_fingerprints(
         "68 篇日志",
         "108-query",
         "tests/eval/baselines/",
+        "65 篇日志",
+        "晴岚",
+        "王某某",
+        "wife-001",
+        "C:/Users/example/Documents/Life-Index",
     )
 
     matches = [item for item in private_fingerprints if item in text]
-    matches.extend(re.findall(r"\bGQ\d+\b", text))
+    matches.extend(re.findall(r"\b(?:GQ|AGQ|SAGQ)\d+\b", text))
     assert matches == []
+
+
+def test_public_aggregate_eval_contract_has_no_private_case_values() -> None:
+    api = AUTHORITY_PATHS["api"].read_text(encoding="utf-8")
+    aggregate_eval_section = api.split(
+        "### Aggregate Evaluation Coverage (Internal Developer Tooling)", 1
+    )[1].split("#### Diagnostic-Only Mode", 1)[0]
+
+    concrete_measurements = re.findall(
+        r'"(?:total_queries|passed_queries|failed_queries|query_count|count|pass_rate)"'
+        r"\s*:\s*-?\d+(?:\.\d+)?",
+        aggregate_eval_section,
+    )
+    private_case_ids = re.findall(
+        r"\b(?:GQ|AGQ|SAGQ)\d+\b",
+        aggregate_eval_section,
+    )
+
+    assert concrete_measurements == []
+    assert private_case_ids == []
+    assert '"late sleep"' not in aggregate_eval_section
+    assert "entry_time_after=22:00" not in aggregate_eval_section
 
 
 def test_architecture_describes_broad_private_eval_as_advisory_only() -> None:
