@@ -1003,6 +1003,46 @@ def test_public_eval_facts_describe_current_deterministic_and_advisory_truth() -
     assert "Run a second eval pass" not in runner
 
 
+def test_public_authority_never_promotes_quality_evaluation_to_a_merge_gate() -> None:
+    documents = {
+        "CHARTER.md": AUTHORITY_PATHS["charter"].read_text(encoding="utf-8"),
+        "README.md": (REPO_ROOT / "README.md").read_text(encoding="utf-8"),
+        "README.en.md": (REPO_ROOT / "README.en.md").read_text(encoding="utf-8"),
+        "docs/API.md": AUTHORITY_PATHS["api"].read_text(encoding="utf-8"),
+    }
+    stale_claims = {
+        "CHARTER.md": (
+            "在没有 Gold Set 回归通过的情况下合入搜索相关 PR",
+            "任何 PR 导致指标下降 ≥3%",
+            "指标下降 ≥3% →",
+            "指标下降 ≥10% →",
+            "运行完整的 Gold Set 测试，确认修订不导致退化",
+        ),
+        "README.md": (
+            "Cycle 2 多信号 fixture",
+            "2026-05-25 完整 integrity audit PASS",
+            "recall-first 质量门控",
+        ),
+        "README.en.md": (
+            "Cycle 2 multi-signal fixture",
+            "full integrity audit PASS on 2026-05-25",
+            "recall-first quality gate",
+        ),
+        "docs/API.md": (
+            "explicitly provided (fixture/CI eval)",
+            "remain a **hard gate**",
+        ),
+    }
+
+    violations = [
+        f"{name}: {claim}"
+        for name, claims in stale_claims.items()
+        for claim in claims
+        if claim in documents[name]
+    ]
+    assert not violations, "stale public evaluation authority:\n" + "\n".join(violations)
+
+
 def test_ci_hard_check_inventory_cannot_call_all_skipped_private_assertions_green() -> None:
     ci = AUTHORITY_PATHS["ci"].read_text(encoding="utf-8")
     _assert_named_block_snapshot(
