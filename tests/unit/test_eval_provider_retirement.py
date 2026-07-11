@@ -253,7 +253,7 @@ def test_unified_cli_llm_judge_fails_before_config_import(
 
 
 def test_eval_gate_guidance_uses_current_host_agent_advisory_route() -> None:
-    source = (REPO_ROOT / "tests" / "unit" / "test_eval_gate.py").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "scripts" / "run_eval_advisory.sh").read_text(encoding="utf-8")
 
     assert "--live --judge llm" not in source
     assert "Host Agent" in source

@@ -179,7 +179,7 @@ Life Index CLI Core does two things: **write a life (`write`) and search a life 
 
 > The industry habit is to publish a polished **end-to-end + LLM-synthesized** score, making it look like the retrieval system's own ability. Life Index does the opposite — **CLI Core proves its own floor; LLM enhancement is explicit opt-in**: search results come from deterministic code (auditable, reproducible, zero-token, fully offline); switching between Claude / GPT / DeepSeek / a local Llama changes nothing on the CLI Core side. **The LLM is frosting, not foundation; the foundation already stands.**
 > · **Constraint**: [CHARTER](./CHARTER.md) §1.5 + §1.9 + §1.10 + §1.11 (§1.11 is in the §5.3 non-weakenable list)
-> · **Current measurement**: 20+ CLI commands · 4,200+ pytest-collected tests · 108-query keyword-only Recall@5 = **0.9231** (2026-06-28 golden set; semantic/vector RAG added no four-decimal gain) · full integrity audit PASS on 2026-05-25
+> · **Current verification surface**: 20+ CLI commands · 4,200+ pytest-collected tests · public synthetic token-match blocker · private quality eval is advisory evidence only
 > · **Falsification**: (a) a default L2 retrieval path adds precision-threshold truncation that drops token-match candidates; (b) any default-path module implicitly bundles an LLM / initializes a provider client / reads an API key; (c) the default path introduces an embedding model or vector-index build — any one is a breach.
 
 **P3 · Plain Markdown Forever**
@@ -465,15 +465,8 @@ Life Index is agent-native: it gives the host Agent auditable, reproducible, zer
 **② Retrieval — default keyword-only honest floor; vectors stay out of the default path.**
 The retrieval layer's promise to you is "don't miss any fragment of your life" ([CHARTER §1.11](./CHARTER.md)), which requires the default to be **recall-first**: faithfully return every token-match candidate, without relevance-threshold truncation at the source. Vector retrieval is inherently noisy and structurally tensions with recall-first.
 
-**③ Measurement — on our own golden set, vector recall is zero gain.**
-On 2026-06-28, comparing semantics on vs off across a 108-query golden set:
-
-| 108-query golden set (2026-06-28) | MRR@5 | Recall@5 | Precision@5 | nDCG@5 |
-| --- | --- | --- | --- | --- |
-| Keyword + Entity Graph | 0.6259 | 0.9231 | 0.5351 | 0.6602 |
-| Keyword + `--semantic` | 0.6259 | 0.9231 | 0.5351 | 0.6602 |
-
-**Identical to four decimals; not one of the 5 failing queries was recovered by semantics** — it added no extra hits, only low-relevance noise.
+**③ Verification — the public blocker protects recall-first without publishing private-corpus fingerprints.**
+The repository's synthetic token-match assertion blocks deletion of real matches. Local/private quality eval remains advisory evidence for observing ranking, noise, and nDCG; it cannot override Core truth, and public guidance does not publish private query counts, exact metrics, or failure facts.
 
 **④ Engineering — the default install is lighter, faster, more offline.**
 Enabling semantic retrieval needs a ~**1.3 GB** ML stack (torch + CUDA) and drags first-time install to ~**16 minutes**. We split it into an opt-in extra; the default install is instant and fully offline.

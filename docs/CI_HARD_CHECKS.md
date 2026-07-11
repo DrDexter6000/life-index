@@ -51,7 +51,7 @@ remains the #166 Legacy External Adapter exception.
 
 | Workflow file | Trigger | Tier | Notes |
 |---|---|---|---|
-| `.github/workflows/tests.yml` | push to main/develop and ready pull requests to main | Tier 1 + Tier 2 | blocker, contract, and search-eval are Tier 1; quarantine and coverage run after merge as Tier 2 |
+| `.github/workflows/tests.yml` | push to main/develop and ready pull requests to main | Tier 1 + Tier 2 | blocker, contract, and deterministic eval contracts are Tier 1; quarantine and coverage run after merge as Tier 2 |
 | `.github/workflows/quality.yml` | push to main/develop and pull requests to main | Tier 1 | doc sync, public diff name scan, public surface allowlist scan, L2 no-LLM scan, lint, format, security, and type checks |
 | `.github/workflows/nightly.yml` | push to main, scheduled run, and manual dispatch | Tier 2 | full suite and package/onboarding smoke |
 | `.github/workflows/benchmark.yml` | push to main and manual dispatch | Tier 2 | performance measurement |
@@ -63,7 +63,7 @@ remains the #166 Legacy External Adapter exception.
 |---|---|---|---|---|
 | 1 | blocker gate | public Core assertion sentinel, then `pytest -m blocker --timeout=120` | tests.yml | `python .github/scripts/run_public_core_assertions.py` then `pytest -m blocker -q --timeout=120` |
 | 2 | contract gate | `pytest -m contract --timeout=120` | tests.yml | `pytest -m contract -q --timeout=120` |
-| 3 | search-eval-gate | search evaluation test set listed in `tests.yml` | tests.yml | `scripts/tier1-gate.sh` |
+| 3 | deterministic eval contracts | provider-retirement, fail-fast, metrics, serialization, and report compatibility tests listed in `tests.yml` | tests.yml | `scripts/run_eval_gate.sh` |
 | 4 | doc-sync | `python .github/scripts/check_doc_sync.py` | quality.yml | same |
 | 5 | public-diff-names | `python .github/scripts/check_public_diff_names.py` | quality.yml | same |
 | 6 | public-surface-allowlist | `python .github/scripts/check_public_surface_allowlist.py` | quality.yml | same |
@@ -93,7 +93,10 @@ block pull request readiness, but failures must be triaged.
   structural AST policy above to `tools/search_journals`, `tools/smart_search`,
   and `tools/eval`.
 - The blocker marker set spans the files collected by `pytest -m blocker`.
-- The search evaluation gate is Tier 1 because it protects search quality.
+- Deterministic eval contract checks are Tier 1 because they protect provider
+  retirement, fail-fast, serialization, and sentinel wiring. Private corpus,
+  broad/noise, ranking, and quality evaluation run through
+  `scripts/run_eval_advisory.sh` and are not PR blockers.
 - Full suite, quarantine, coverage, package smoke, and benchmarks are visible
   Tier 2 checks, not PR-blocking checks.
 - Benchmark tests run on shared GitHub runners. Hard assertions use

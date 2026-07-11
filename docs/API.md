@@ -2930,8 +2930,8 @@ print(batch.by_verdict)  # {"supported": 1, "invalid_citation": 1}
 
 ## eval
 
-> **Internal developer evaluation tooling.** `eval` runs search quality gates
-> against a local/private query set when one is configured. Public source
+> **Internal developer evaluation tooling.** `eval` reports advisory search
+> quality observations against a local/private query set when one is configured. Public source
 > releases ship the harness but not the eval data. It is not a user search
 > endpoint and must not be used to write or mutate journal data.
 >

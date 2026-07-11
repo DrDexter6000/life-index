@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# run_eval_gate.sh — Search eval quality gate for CI/local use
+# run_eval_gate.sh — Deterministic eval contract gate for CI/local use
 #
-# Runs the search evaluation against isolated fixture data and checks
-# results against quality gate criteria:
+# Runs deterministic evaluation contract checks:
 #   - Eval infrastructure completes without error
-#   - All required golden query categories are covered
+#   - Provider retirement and fail-fast compatibility stay enforced
 #   - A public synthetic token-match Core assertion executes
-#   - Baseline comparison infrastructure works
+#   - Eval result/report compatibility remains stable
 #
 # Exit codes:
-#   0 — all quality gates passed
-#   1 — quality gate failed
+#   0 — all deterministic checks passed
+#   1 — a deterministic check failed
 #
 # Usage:
 #   bash scripts/run_eval_gate.sh [--snapshot=phase2]
@@ -44,7 +43,7 @@ if [ -n "$SNAPSHOT_PHASE" ]; then
 else
   # ── Section 1: Eval infrastructure tests ──
   echo "=== Section 1: Eval infrastructure ==="
-  python -m pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py -v --timeout=120
+  python -m pytest tests/unit/test_eval_metrics.py tests/eval/test_eval_run.py -v --timeout=120
   echo ""
   echo "✅ Eval infrastructure passed"
 
@@ -54,11 +53,11 @@ else
   echo ""
   echo "✅ Public synthetic Core assertion passed"
 
-  # ── Section 3: Full unit regression ──
-  echo "=== Section 3: Full unit regression ==="
-  python -m pytest tests/unit/ -q --timeout=300
+  # ── Section 3: Provider retirement and eval compatibility ──
+  echo "=== Section 3: Provider retirement and eval compatibility ==="
+  python -m pytest tests/unit/test_eval_provider_retirement.py tests/eval/test_semantic_report.py -q --timeout=300
   echo ""
-  echo "✅ Full unit regression passed"
+  echo "✅ Provider retirement and eval compatibility passed"
 
   echo ""
   echo "========================================="

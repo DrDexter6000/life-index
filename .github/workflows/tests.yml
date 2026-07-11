@@ -152,7 +152,7 @@ jobs:
   search-eval-gate:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
-    name: Search Eval Quality Gate
+    name: Deterministic Eval Contract Gate
     env:
       LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
@@ -170,6 +170,6 @@ jobs:
           pip install pytest pytest-timeout
           pip install -e ".[dev]"
 
-      - name: Run search eval quality gate
+      - name: Run deterministic eval contracts
         run: |
-          pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py tests/eval/test_broad_eval_soft_gate.py tests/eval/test_semantic_report.py tests/eval/test_eval_compare.py tests/eval/test_eval_run.py tests/eval/test_eval_qrels.py tests/eval/test_eval_export.py tests/eval/test_eval_serialization.py -v --timeout=120
+          pytest tests/unit/test_eval_provider_retirement.py tests/unit/test_eval_metrics.py tests/integration/test_eval_gate_ci.py tests/integration/test_eval_private_inventory.py tests/eval/test_semantic_report.py tests/eval/test_eval_compare.py tests/eval/test_eval_run.py tests/eval/test_eval_qrels.py tests/eval/test_eval_export.py tests/eval/test_eval_serialization.py -v --timeout=120

@@ -162,10 +162,9 @@ run_check "pytest -m contract"   timeout "$CONTRACT_TIMEOUT_SECONDS" python -m p
 mkdir -p "$PYTEST_BASETEMP/eval"
 run_check "search-eval-gate"     timeout "$EVAL_TIMEOUT_SECONDS" python -m pytest \
     -o addopts="" -ra -q --strict-markers --strict-config \
-    tests/unit/test_eval_gate.py \
-    tests/unit/test_eval_runner.py \
-    tests/unit/test_eval_llm.py \
-    tests/eval/test_broad_eval_soft_gate.py \
+    tests/unit/test_eval_provider_retirement.py \
+    tests/unit/test_eval_metrics.py \
+    tests/integration/test_eval_gate_ci.py \
     tests/eval/test_semantic_report.py \
     tests/eval/test_eval_compare.py \
     tests/eval/test_eval_run.py \

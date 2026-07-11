@@ -75,7 +75,7 @@ def test_readme_does_not_reference_real_first_entry_smoke_file() -> None:
     assert "LIFE_INDEX_DATA_DIR" in onboarding
 
 
-def test_readme_metrics_use_current_108_query_baseline() -> None:
+def test_readme_uses_public_synthetic_and_advisory_eval_truth() -> None:
     readme = _read("README.md")
     readme_en = _read("README.en.md")
 
@@ -83,8 +83,10 @@ def test_readme_metrics_use_current_108_query_baseline() -> None:
         assert "2,400+ unit tests" not in text
         assert "keyword-only Recall@5 = **0.7857**" not in text
         assert "4,200+ pytest-collected tests" in text
-        assert "108-query" in text
-        assert "Recall@5 = **0.9231**" in text
+        assert "108-query" not in text
+        assert "Recall@5 = **0.9231**" not in text
+        assert "synthetic token-match blocker" in text
+        assert "advisory evidence" in text
 
 
 def test_readme_current_version_points_to_release_ssot() -> None:

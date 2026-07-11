@@ -1466,10 +1466,8 @@ def run_evaluation(
       - Default: enabled for local eval when neither CI nor save_baseline.
       - Pass use_overlay=False to explicitly disable.
 
-    semantic_report: Run a second eval pass with use_semantic=True and append
-      a ``semantic_report`` dict to the result.  The top-level metrics, failures,
-      and pass/fail gate remain from the keyword (use_semantic=False) run.
-      Cannot be combined with save_baseline.
+    semantic_report: Append a disabled compatibility report without another
+      evaluation pass. Cannot be combined with save_baseline.
     """
     if judge != "keyword":
         raise ValueError("only deterministic keyword evaluation is supported")

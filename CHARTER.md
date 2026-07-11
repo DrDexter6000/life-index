@@ -607,7 +607,7 @@ Presentation（呈现层）：按调用方需求截断、格式化
 | 指标 | 目标 | 公开依据 | 备注 |
 |------|------|------|------|
 | `search` 命令 p95 延迟 | ≤ 500ms | ~20ms (FTS+L2, 无语义) | 索引新鲜状态下，不含首次构建 |
-| `smart-search` 命令 p95 延迟 | ≤ 8s | 待测（依赖 LLM API） | 降级模式 ≤ 500ms |
+| `smart-search` 命令 p95 延迟 | ≤ 8s | 待测（deterministic/scaffold 路径） | 降级模式 ≤ 500ms |
 | 公开合成 Core recall 不变量 | 必须执行且通过 | 仓库内合成 fixture | 每次检索变更后的阻断契约 |
 | 本地 / 私有 eval | 仅咨询、非闸门 | 不进入公开制品 | 可观测诊断，不得覆盖 Core truth |
 
