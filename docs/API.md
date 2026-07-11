@@ -2655,7 +2655,7 @@ Current runtime: the product CLI accepts `--synthesize` for at least two major v
 
 Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`
 
-A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. Eval/A5 under #163 remains pending, so #163 is not complete.
+A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. A5 extends the deterministic-only boundary and structural scan to product eval; #163 remains open pending review, so D1-A is not complete.
 
 Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:END -->
@@ -3009,7 +3009,7 @@ python -m tools eval [options]
 | semantic | flag | false | Deprecated compatibility no-op；eval 仍运行 keyword gate |
 | no-semantic | flag | false | Deprecated compatibility no-op；eval 仍运行 keyword gate |
 | semantic-report | flag | false | Deprecated compatibility no-op；返回禁用/无运行诊断，不执行第二次向量 pass |
-| judge | enum | keyword | `keyword` 或 `llm`；默认 `keyword` |
+| judge | enum | keyword | `keyword` 运行确定性评估；`llm` 作为兼容输入保留，但立即返回非成功结果 |
 | live | flag | false | 使用真实 `~/Documents/Life-Index` 数据运行诊断 |
 | no-overlay | flag | false | 禁用本地私有 eval overlay |
 | overlay-path | path | - | 指定私有 eval overlay YAML |
@@ -3033,27 +3033,32 @@ harness 会运行完整检查。
 
 ### LLM 边界
 
-- 默认 `judge=keyword`，不初始化 provider client，不读取 LLM key，不调用外部 LLM。
-- `--judge llm` 是显式开发者 opt-in：该模式会通过 `tools/eval/llm_client.py`
-  读取 `OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY` 并调用 provider-backed judge。
-- `--live --judge llm` 还会启用 LLM recall-gap 诊断；`--live` 本身不触发 LLM。
+- `judge=keyword` 是唯一执行路径；它不初始化 provider client、不读取 LLM key、不调用外部 LLM。
+- `--judge llm` 为本版本保留的兼容输入。它在评估、配置读取或 provider 模块加载前立即返回退出码 `2` 和稳定错误 `EVAL_LLM_JUDGE_HOST_AGENT_REQUIRED`；不会静默退回 keyword，也不会声称已执行。
+- 语言辅助评估属于 Host Agent + Life Index Skill，不属于产品 CLI。
 - `--semantic` / `--semantic-report` 仅为兼容 no-op，不等同于 LLM judge，也不加载 embedding 模型。
 
 <!-- PLATFORM-SSOT:EVAL-LLM-TRANSITION:START -->
-### `eval --judge llm` current transition warning
+### `eval --judge llm` compatibility boundary
 
-> **Constitutional warning**: `life-index eval --judge llm` is currently
-> reachable and performs provider selection and provider-backed calls.
+`life-index eval --judge llm` remains recognizable for compatibility, but it
+fails before evaluation or any provider/configuration import. The stable
+non-success payload is:
 
-This current option violates `CHARTER.md §1.9`. It is not approved, sanctioned,
-grandfathered, Non-Core, or a compatibility exception. Classification of `eval`
-as Core C7 assigns constitutional ownership; it does not certify this option as
-compliant.
+```json
+{
+  "success": false,
+  "error": {
+    "code": "EVAL_LLM_JUDGE_HOST_AGENT_REQUIRED",
+    "message": "Language-assisted evaluation belongs to the Host Agent + Life Index Skill."
+  }
+}
+```
 
-#163 owns removal or disabling of the product-CLI-reachable provider
-selection/calls while preserving deterministic C7 eval. Host Agent + Skill own
-any language-assisted judgment. D0 records this deviation and changes no runtime
-behavior.
+There is no fallback to keyword and no provider/model recommendation. The A5
+candidate removes product eval provider selection, prompts, clients, and calls
+while preserving deterministic C7 metrics. #163 remains open pending review;
+this runtime fact does not close the Issue or complete D1-A.
 <!-- PLATFORM-SSOT:EVAL-LLM-TRANSITION:END -->
 
 ### 返回值

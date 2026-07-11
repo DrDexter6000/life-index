@@ -132,8 +132,8 @@ def test_broad_eval_precision_08_pass(mock_precision, mock_global_matched, tmp_p
     assert not any(f["id"] == "TEST02" for f in result["failures"])
 
 
-def test_broad_eval_precision_06_fail(mock_precision, mock_global_matched, tmp_path):
-    """precision=0.6, min_results_ok=true -> soft_pass false, fail, enters failures."""
+def test_broad_eval_precision_06_is_advisory(mock_precision, mock_global_matched, tmp_path):
+    """precision=0.6 remains visible but cannot override the core result."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     _write_minimal_fixture(data_dir)
@@ -164,13 +164,12 @@ def test_broad_eval_precision_06_fail(mock_precision, mock_global_matched, tmp_p
     assert pq["predicate_precision"] == 0.6
     assert pq["strict_pass"] is False
     assert pq["soft_pass"] is False
-    assert pq["pass"] is False
-    fail = next(f for f in result["failures"] if f["id"] == "TEST03")
-    assert "soft gate fail" in fail["reason"]
+    assert pq["pass"] is True
+    assert not any(f["id"] == "TEST03" for f in result["failures"])
 
 
-def test_broad_eval_min_results_fail(mock_precision, mock_global_matched, tmp_path):
-    """returned_count < required_count -> min_results_ok false, fail."""
+def test_broad_eval_min_results_is_advisory(mock_precision, mock_global_matched, tmp_path):
+    """A broad count shortfall remains advisory to the core result."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     _write_minimal_fixture(data_dir)
@@ -201,13 +200,12 @@ def test_broad_eval_min_results_fail(mock_precision, mock_global_matched, tmp_pa
     assert pq["predicate_precision"] == 1.0
     assert pq["min_results_ok"] is False
     assert pq["soft_pass"] is False
-    assert pq["pass"] is False
-    fail = next(f for f in result["failures"] if f["id"] == "TEST04")
-    assert "min_results fail" in fail["reason"]
+    assert pq["pass"] is True
+    assert not any(f["id"] == "TEST04" for f in result["failures"])
 
 
-def test_broad_eval_error_fail(monkeypatch, tmp_path):
-    """broad_eval predicate build error -> fail, enters failures, retains eval_mode."""
+def test_broad_eval_error_is_advisory(monkeypatch, tmp_path):
+    """A broad metric error is visible but cannot override core truth."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     _write_minimal_fixture(data_dir)
@@ -243,9 +241,8 @@ def test_broad_eval_error_fail(monkeypatch, tmp_path):
     assert "broad_eval_error" in pq
     assert pq["strict_pass"] is False
     assert pq["soft_pass"] is False
-    assert pq["pass"] is False
-    fail = next(f for f in result["failures"] if f["id"] == "TEST05")
-    assert "broad_eval error" in fail["reason"]
+    assert pq["pass"] is True
+    assert not any(f["id"] == "TEST05" for f in result["failures"])
 
 
 def test_exact_mrr_unchanged(monkeypatch, mock_precision, mock_global_matched, tmp_path):
@@ -287,9 +284,6 @@ def test_exact_mrr_unchanged(monkeypatch, mock_precision, mock_global_matched, t
     per_query, failures = run_eval._evaluate_queries(
         queries,
         use_semantic=False,
-        judge="keyword",
-        live=False,
-        llm_client=None,
         all_docs=[],
     )
     pq = per_query[0]
@@ -298,3 +292,52 @@ def test_exact_mrr_unchanged(monkeypatch, mock_precision, mock_global_matched, t
     assert "soft_pass" not in pq
     assert pq["pass"] is True
     assert not any(f["id"] == "TEST06" for f in failures)
+
+
+def test_broad_quality_metrics_are_advisory_to_core_result(
+    monkeypatch, mock_precision, mock_global_matched
+):
+    """A weak broad metric cannot replace a passing deterministic core assertion."""
+    mock_precision(0.0, 0, 1)
+    mock_global_matched(1)
+    monkeypatch.setattr(
+        "tools.search_journals.core.hierarchical_search",
+        lambda query, level, semantic: {
+            "merged_results": [
+                {
+                    "title": "Synthetic exact core match",
+                    "date": "2026-01-01",
+                    "abstract": "synthetic",
+                    "snippet": "corematchtoken",
+                }
+            ]
+        },
+    )
+    run_eval = importlib.import_module("tools.eval.run_eval")
+    queries = [
+        {
+            "id": "SYNTHETIC-ADVISORY",
+            "query": "corematchtoken",
+            "category": "synthetic",
+            "expected": {
+                "min_results": 1,
+                "must_contain_title": ["Synthetic exact core match"],
+            },
+            "broad_eval": {
+                "mode": "predicate_precision",
+                "predicate": {"type": "topic", "topic_hints": ["synthetic"]},
+                "min_precision": 1.0,
+                "min_results_policy": "min(5, global_matched_count)",
+            },
+        }
+    ]
+
+    per_query, failures = run_eval._evaluate_queries(
+        queries,
+        use_semantic=False,
+        all_docs=[],
+    )
+
+    assert per_query[0]["soft_pass"] is False
+    assert per_query[0]["pass"] is True
+    assert failures == []

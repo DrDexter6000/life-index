@@ -113,38 +113,46 @@ ARCHITECTURE_CLASSIFICATION_POINTER = "\n".join(
 )
 EXPECTED_ARCHITECTURE_EVAL_LLM_DEVIATION = "\n".join(
     (
-        "### Current eval LLM deviation",
+        "### Eval language-judge compatibility boundary",
         "",
         "`eval` remains Core under C7. The public command classification is a",
         "constitutional ownership/admission map, not a certification that every current",
         "route or option complies.",
         "",
-        "Current runtime: the product CLI route `life-index eval --judge llm` is reachable",
-        "and performs provider selection and provider-backed calls. This violates",
-        "`CHARTER.md §1.9`; it is not approved, sanctioned, grandfathered, Non-Core, or",
-        "a compatibility exception.",
+        "Current runtime: the product CLI recognizes `life-index eval --judge llm` but",
+        "returns a stable non-success result before evaluation, configuration reading,",
+        "or provider-module import. It does not silently fall back to keyword and does",
+        "not claim a language-assisted evaluation ran.",
         "",
-        "#163 owns removal or disabling of this reachable in-tool LLM path while",
-        "preserving deterministic C7 eval. D0 records the deviation and changes no runtime",
-        "behavior.",
+        "Production `tools/eval` contains only deterministic C7 measurement and",
+        "serialization behavior; language-assisted evaluation belongs to Host Agent +",
+        "Life Index Skill. The A5 candidate does not close #163 or complete D1-A before",
+        "review and adjudication.",
     )
 )
 EXPECTED_API_EVAL_LLM_TRANSITION = "\n".join(
     (
-        "### `eval --judge llm` current transition warning",
+        "### `eval --judge llm` compatibility boundary",
         "",
-        "> **Constitutional warning**: `life-index eval --judge llm` is currently",
-        "> reachable and performs provider selection and provider-backed calls.",
+        "`life-index eval --judge llm` remains recognizable for compatibility, but it",
+        "fails before evaluation or any provider/configuration import. The stable",
+        "non-success payload is:",
         "",
-        "This current option violates `CHARTER.md §1.9`. It is not approved, sanctioned,",
-        "grandfathered, Non-Core, or a compatibility exception. Classification of `eval`",
-        "as Core C7 assigns constitutional ownership; it does not certify this option as",
-        "compliant.",
+        "```json",
+        "{",
+        '  "success": false,',
+        '  "error": {',
+        '    "code": "EVAL_LLM_JUDGE_HOST_AGENT_REQUIRED",',
+        '    "message": "Language-assisted evaluation belongs to the Host Agent + '
+        'Life Index Skill."',
+        "  }",
+        "}",
+        "```",
         "",
-        "#163 owns removal or disabling of the product-CLI-reachable provider",
-        "selection/calls while preserving deterministic C7 eval. Host Agent + Skill own",
-        "any language-assisted judgment. D0 records this deviation and changes no runtime",
-        "behavior.",
+        "There is no fallback to keyword and no provider/model recommendation. The A5",
+        "candidate removes product eval provider selection, prompts, clients, and calls",
+        "while preserving deterministic C7 metrics. #163 remains open pending review;",
+        "this runtime fact does not close the Issue or complete D1-A.",
     )
 )
 
@@ -163,11 +171,11 @@ The following program work remains incomplete; D0 ratification did not itself
 implement it:
 
 """
-    "- #163 — smart-search A3/A4 is implemented: the compatibility warning and "
-    "deterministic equivalence proof are active, dormant/injectable search LLM ownership "
-    "is deleted, and the public hard check enforces the documented static structural "
-    "policy over the production search roots. Eval/A5 remains "
-    "pending, so #163 is not complete.\n"
+    "- #163 — smart-search A3/A4 is implemented, and the A5 candidate makes eval "
+    "deterministic-only: `--judge llm` fails before provider/configuration import, "
+    "production eval provider/prompt/client ownership is removed, and the public hard "
+    "check scans search, smart-search, and eval roots. #163 remains open pending review, "
+    "so D1-A is not complete.\n"
     """- #162 — transactional write, side-effect, and freshness repair: unimplemented.
 - #165 — backup, restore, and recovery proof: unimplemented.
 - #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
@@ -182,7 +190,7 @@ EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
         "- Current explicit `--synthesize` is accepted for at least two major versions. The product CLI constructs `SmartSearchOrchestrator()` with no injection surface, emits no `answer`, and preserves the ordinary deterministic domain payload.",  # noqa: E501
         "- The CLI emits exactly one stderr warning: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`",  # noqa: E501
         "- Search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation; the Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots.",  # noqa: E501
-        "- Eval/A5 under #163 remains pending; this A3/A4 state does not claim eval correction or close #163.",  # noqa: E501
+        "- A5 extends the deterministic-only boundary and structural scan to product eval; #163 remains open pending review, so D1-A is not complete.",  # noqa: E501
         "- Host Agent + Skill remain the intelligence owner; #163 does not change that role boundary.",  # noqa: E501
     )
 )
@@ -348,7 +356,7 @@ SYNTHESIZE_TRANSITION_SEMANTICS = "\n".join(
         "",
         "Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`",  # noqa: E501
         "",
-        "A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. Eval/A5 under #163 remains pending, so #163 is not complete.",  # noqa: E501
+        "A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. A5 extends the deterministic-only boundary and structural scan to product eval; #163 remains open pending review, so D1-A is not complete.",  # noqa: E501
         "",
         "Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.",  # noqa: E501
     )
@@ -367,8 +375,8 @@ A public hard blocker is green only when at least one core assertion executed.
 All-skipped assertion sets are not green. Private-only assertions are advisory
 and cannot be the sole evidence for a Tier 1 public blocker.
 
-The public #163 search ownership invariant is implemented: the Tier 1 no-LLM
-check scans every Python AST in search/smart-search for known provider imports
+The public #163 ownership invariant is implemented: the Tier 1 no-LLM check
+scans every Python AST in search/smart-search/eval for known provider imports
 and aliases, normalized LLM/provider/model-client declarations and storage,
 simple provider bindings, provider-specific SDK call suffixes regardless of
 owner name, and generic provider verbs only with structural provider provenance.
@@ -376,7 +384,14 @@ It also rejects legacy prompt/trust/synthesis ownership and constant-string
 dynamic imports supplied as the first positional argument or `name=` keyword.
 Syntax/parse failure is non-green. This is a
 static structural boundary, not a universal proof against computed strings or
-arbitrary runtime metaprogramming. Eval/A5 coverage remains pending.
+arbitrary runtime metaprogramming.
+
+The blocker job first runs `.github/scripts/run_public_core_assertions.py`. Its
+JSON sentinel is the assertion-count authority: green requires at least one
+executed public synthetic token-match assertion. Zero collected, missing,
+deselected, all-skipped, or setup-skipped assertions are non-green. Private
+eval and broad/noise/quality metrics remain advisory and cannot satisfy this
+count or defend result deletion.
 """
 
 EXPECTED_HOST_AGENT_ROUTING = "\n".join(
@@ -726,7 +741,7 @@ def test_classification_assigns_ownership_without_certifying_runtime_compliance(
         )
 
 
-def test_eval_llm_deviation_is_tracked_without_reclassification_or_exception() -> None:
+def test_eval_language_judge_fails_before_provider_ownership() -> None:
     architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
     api = AUTHORITY_PATHS["api"].read_text(encoding="utf-8")
 
@@ -744,21 +759,18 @@ def test_eval_llm_deviation_is_tracked_without_reclassification_or_exception() -
     )
     assert architecture.count("| eval | Core | C7 |") == 1
 
-    noncompliant_status = "\n".join(
+    forbidden_drifts = (
         (
-            "`CHARTER.md §1.9`; it is not approved, sanctioned, grandfathered, Non-Core, or",
-            "a compatibility exception.",
-        )
+            "returns a stable non-success result before evaluation, configuration reading,",
+            "loads provider configuration before returning a non-success result,",
+        ),
+        (
+            "language-assisted evaluation belongs to Host Agent +",
+            "language-assisted evaluation belongs to Core +",
+        ),
     )
-    positive_statuses = (
-        "`CHARTER.md §1.9`; it is approved.",
-        "`CHARTER.md §1.9`; it is sanctioned.",
-        "`CHARTER.md §1.9`; it is grandfathered.",
-        "`CHARTER.md §1.9`; it is Non-Core.",
-        "`CHARTER.md §1.9`; it is a compatibility exception.",
-    )
-    for positive_status in positive_statuses:
-        drifted = architecture.replace(noncompliant_status, positive_status, 1)
+    for current, forbidden in forbidden_drifts:
+        drifted = architecture.replace(current, forbidden, 1)
         assert drifted != architecture
         with pytest.raises(AssertionError):
             _assert_named_block_snapshot(

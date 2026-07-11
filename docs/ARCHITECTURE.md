@@ -40,7 +40,7 @@ is superseded: Host Agent + Skill own provider selection and intelligence.
 The following program work remains incomplete; D0 ratification did not itself
 implement it:
 
-- #163 — smart-search A3/A4 is implemented: the compatibility warning and deterministic equivalence proof are active, dormant/injectable search LLM ownership is deleted, and the public hard check enforces the documented static structural policy over the production search roots. Eval/A5 remains pending, so #163 is not complete.
+- #163 — smart-search A3/A4 is implemented, and the A5 candidate makes eval deterministic-only: `--judge llm` fails before provider/configuration import, production eval provider/prompt/client ownership is removed, and the public hard check scans search, smart-search, and eval roots. #163 remains open pending review, so D1-A is not complete.
 - #162 — transactional write, side-effect, and freshness repair: unimplemented.
 - #165 — backup, restore, and recovery proof: unimplemented.
 - #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
@@ -165,20 +165,21 @@ It maps current routes only; it does not own or duplicate those stable rules.
 <!-- PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION:END -->
 
 <!-- PLATFORM-SSOT:EVAL-LLM-DEVIATION:START -->
-### Current eval LLM deviation
+### Eval language-judge compatibility boundary
 
 `eval` remains Core under C7. The public command classification is a
 constitutional ownership/admission map, not a certification that every current
 route or option complies.
 
-Current runtime: the product CLI route `life-index eval --judge llm` is reachable
-and performs provider selection and provider-backed calls. This violates
-`CHARTER.md §1.9`; it is not approved, sanctioned, grandfathered, Non-Core, or
-a compatibility exception.
+Current runtime: the product CLI recognizes `life-index eval --judge llm` but
+returns a stable non-success result before evaluation, configuration reading,
+or provider-module import. It does not silently fall back to keyword and does
+not claim a language-assisted evaluation ran.
 
-#163 owns removal or disabling of this reachable in-tool LLM path while
-preserving deterministic C7 eval. D0 records the deviation and changes no runtime
-behavior.
+Production `tools/eval` contains only deterministic C7 measurement and
+serialization behavior; language-assisted evaluation belongs to Host Agent +
+Life Index Skill. The A5 candidate does not close #163 or complete D1-A before
+review and adjudication.
 <!-- PLATFORM-SSOT:EVAL-LLM-DEVIATION:END -->
 
 ---
@@ -303,7 +304,7 @@ CHARTER §1.10 将「模块-基础层契约边界」提升为不变量。本节�
 - Current explicit `--synthesize` is accepted for at least two major versions. The product CLI constructs `SmartSearchOrchestrator()` with no injection surface, emits no `answer`, and preserves the ordinary deterministic domain payload.
 - The CLI emits exactly one stderr warning: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`
 - Search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation; the Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots.
-- Eval/A5 under #163 remains pending; this A3/A4 state does not claim eval correction or close #163.
+- A5 extends the deterministic-only boundary and structural scan to product eval; #163 remains open pending review, so D1-A is not complete.
 - Host Agent + Skill remain the intelligence owner; #163 does not change that role boundary.
 <!-- PLATFORM-SSOT:SMART-SEARCH-CURRENT-CONTRACT:END -->
 
@@ -498,7 +499,7 @@ CHARTER APEX 定义了"确定性 vs 智能"的边界：CLI Core 层执行确定�
 
 smart-search 架构：
 - **CLI 入口**：`life-index smart-search`（注册于 `tools/__main__.py`，实现于 `tools/smart_search/__main__.py`）
-- **默认工具流程**：无 provider/client 注入面，不读取 LLM key，返回确定性检索 scaffold、`agent_instructions`、`answer_scaffold` 与 `query_plan`；自然语言查询复用 SearchPlan 已抽取关键词作为 bounded 子查询。关键词选择、二次检索、过滤与总结由宿主 agent 完成。显式 `--synthesize` 仅发出一次 stderr 弃用警告，不改变 JSON/domain 输出；当前 A3/A4 与待完成的 eval/A5 状态见上方 `SMART-SEARCH-CURRENT-CONTRACT` 命名块
+- **默认工具流程**：无 provider/client 注入面，不读取 LLM key，返回确定性检索 scaffold、`agent_instructions`、`answer_scaffold` 与 `query_plan`；自然语言查询复用 SearchPlan 已抽取关键词作为 bounded 子查询。关键词选择、二次检索、过滤与总结由宿主 agent 完成。显式 `--synthesize` 仅发出一次 stderr 弃用警告，不改变 JSON/domain 输出；当前 A3/A4 与 A5 candidate 状态见上方 `SMART-SEARCH-CURRENT-CONTRACT` 命名块
 - **宿主流程**：宿主 agent 可基于 scaffold 继续调用 search / smart-search / index navigation / read tools，完成 query 拆解、结果判断与总结
 - **Data Minimization**：工具输出 bounded evidence；是否继续读取由宿主 agent 决定并受调用边界约束
 

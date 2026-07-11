@@ -5,8 +5,7 @@
 # results against quality gate criteria:
 #   - Eval infrastructure completes without error
 #   - All required golden query categories are covered
-#   - Noise queries return zero results
-#   - Positive queries return at least one result
+#   - A public synthetic token-match Core assertion executes
 #   - Baseline comparison infrastructure works
 #
 # Exit codes:
@@ -45,15 +44,15 @@ if [ -n "$SNAPSHOT_PHASE" ]; then
 else
   # ── Section 1: Eval infrastructure tests ──
   echo "=== Section 1: Eval infrastructure ==="
-  python -m pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py tests/unit/test_eval_llm.py -v --timeout=120
+  python -m pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py -v --timeout=120
   echo ""
   echo "✅ Eval infrastructure passed"
 
-  # ── Section 2: Rejection gate (D15, ≥90% pass-rate) ──
-  echo "=== Section 2: Rejection quality gate (≥90% pass-rate) ==="
-  python -m pytest tests/integration/test_golden_rejection.py -v --timeout=120
+  # ── Section 2: Public synthetic Core assertion ──
+  echo "=== Section 2: Public synthetic Core assertion ==="
+  python .github/scripts/run_public_core_assertions.py
   echo ""
-  echo "✅ Rejection quality gate passed"
+  echo "✅ Public synthetic Core assertion passed"
 
   # ── Section 3: Full unit regression ──
   echo "=== Section 3: Full unit regression ==="
@@ -63,6 +62,6 @@ else
 
   echo ""
   echo "========================================="
-  echo "✅ All search eval quality gates passed"
+  echo "✅ Deterministic eval checks passed"
   echo "========================================="
 fi

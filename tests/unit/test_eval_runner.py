@@ -2,20 +2,13 @@
 
 import importlib
 import json
-import math
 import os
-from importlib import import_module
 from pathlib import Path
 
 import pytest
 import yaml
 
 from tools.eval.private_data import get_golden_queries_path
-
-
-def _load_eval_llm_module():
-    return import_module("tools.eval.llm_client")
-
 
 GOLDEN_QUERIES_PATH = get_golden_queries_path()
 pytestmark = pytest.mark.skipif(
@@ -601,150 +594,6 @@ def test_eval_baseline_save_and_compare(isolated_data_dir: Path, tmp_path: Path)
     assert isinstance(comparison["diff_lines"], list)
 
 
-def test_eval_with_llm_judge_mock(monkeypatch) -> None:
-    from tools.eval.run_eval import run_evaluation
-    from tools.search_journals import core as search_core
-
-    queries = [
-        {
-            "id": "Q1",
-            "query": "daughter",
-            "category": "family",
-            "expected": {"min_results": 1},
-        },
-        {
-            "id": "Q2",
-            "query": "noise",
-            "category": "family",
-            "expected": {"min_results": 0},
-        },
-    ]
-    results_map = {
-        "daughter": {
-            "merged_results": [
-                {
-                    "title": "回忆海边花园",
-                    "date": "2026-03-16",
-                    "abstract": "思念",
-                    "snippet": "晴岚",
-                },
-                {
-                    "title": "普通日志",
-                    "date": "2026-03-17",
-                    "abstract": "一般",
-                    "snippet": "无关",
-                },
-                {
-                    "title": "回忆小风筝",
-                    "date": "2026-03-04",
-                    "abstract": "回忆",
-                    "snippet": "小队长",
-                },
-            ]
-        },
-        "noise": {
-            "merged_results": [
-                {
-                    "title": "普通日志",
-                    "date": "2026-03-17",
-                    "abstract": "一般",
-                    "snippet": "无关",
-                },
-                {
-                    "title": "另一个结果",
-                    "date": "2026-03-18",
-                    "abstract": "一般",
-                    "snippet": "无关",
-                },
-            ]
-        },
-    }
-
-    monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: queries)
-    monkeypatch.setattr(
-        search_core,
-        "hierarchical_search",
-        lambda query, level, semantic: results_map[query],
-    )
-
-    result = run_evaluation(
-        judge="llm",
-        llm_client=_load_eval_llm_module().MockLLMClient(
-            responses=[
-                '{"score": 3, "reason": "直接相关"}',
-                '{"score": 1, "reason": "弱相关"}',
-                '{"score": 2, "reason": "部分相关"}',
-                '{"score": 0, "reason": "无关"}',
-                '{"score": 1, "reason": "无关"}',
-            ]
-        ),
-    )
-
-    assert result["judge_mode"] == "llm"
-    assert result["metrics"]["mrr_at_5"] == 0.5
-    assert result["metrics"]["precision_at_5"] == 0.2
-    assert result["metrics"]["recall_at_5"] == 1.0
-    assert result["metrics"]["ndcg_at_5"] == 0.8017
-
-
-def test_ndcg_computation() -> None:
-    from tools.eval.run_eval import _compute_ndcg_at_5
-
-    score_list = [3, 0, 2]
-    dcg = 3.0 + (2.0 / math.log2(4))
-    idcg = 3.0 + (2.0 / math.log2(3))
-
-    assert _compute_ndcg_at_5(score_list) == round(dcg / idcg, 4)
-
-
-def test_llm_scores_propagated_to_per_query(monkeypatch) -> None:
-    from tools.eval.run_eval import run_evaluation
-    from tools.search_journals import core as search_core
-
-    queries = [
-        {
-            "id": "Q1",
-            "query": "daughter",
-            "category": "family",
-            "expected": {"min_results": 1},
-        }
-    ]
-    monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: queries)
-    monkeypatch.setattr(
-        search_core,
-        "hierarchical_search",
-        lambda query, level, semantic: {
-            "merged_results": [
-                {
-                    "title": "回忆海边花园",
-                    "date": "2026-03-16",
-                    "abstract": "思念",
-                    "snippet": "晴岚",
-                },
-                {
-                    "title": "普通日志",
-                    "date": "2026-03-17",
-                    "abstract": "一般",
-                    "snippet": "无关",
-                },
-            ]
-        },
-    )
-
-    result = run_evaluation(
-        judge="llm",
-        llm_client=_load_eval_llm_module().MockLLMClient(
-            responses=[
-                '{"score": 3, "reason": "直接相关"}',
-                '{"score": 0, "reason": "无关"}',
-            ]
-        ),
-    )
-
-    assert result["per_query"][0]["llm_scores"] == [3, 0]
-    assert result["per_query"][0]["first_relevant_rank"] == 1
-
-
 def test_keyword_judge_mode_unchanged(isolated_data_dir: Path) -> None:
     _write_eval_fixture_data(isolated_data_dir)
 
@@ -755,66 +604,6 @@ def test_keyword_judge_mode_unchanged(isolated_data_dir: Path) -> None:
     assert result["judge_mode"] == "keyword"
     # ndcg_at_5 is now always included in metrics regardless of judge mode
     assert "llm_scores" not in result["per_query"][0]
-
-
-def test_recall_gap_detection_with_mock(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(tmp_path))
-    from tools.eval.run_eval import run_evaluation
-
-    queries = [
-        {
-            "id": "Q1",
-            "query": "晴岚",
-            "category": "family",
-            "expected": {"min_results": 1},
-        }
-    ]
-    monkeypatch.setattr("tools.eval.run_eval.load_golden_queries", lambda _: queries)
-    monkeypatch.setattr(
-        "tools.eval.run_eval._evaluate_queries",
-        lambda *args, **kwargs: (
-            [
-                {
-                    "id": "Q1",
-                    "query": "晴岚",
-                    "category": "family",
-                    "results_found": 1,
-                    "expected_min_results": 1,
-                    "top_titles": ["晴岚不认真吃饭"],
-                    "precision_at_5": 0.2,
-                    "reciprocal_rank": 1.0,
-                    "first_relevant_rank": 1,
-                    "llm_scores": [3],
-                    "ndcg_at_5": 1.0,
-                }
-            ],
-            [],
-        ),
-    )
-    monkeypatch.setattr(
-        "tools.eval.run_eval._collect_all_journal_titles",
-        lambda: ["回忆海边花园", "海边过生日", "晴岚不认真吃饭"],
-    )
-
-    result = run_evaluation(
-        judge="llm",
-        live=True,
-        llm_client=_load_eval_llm_module().MockLLMClient(
-            responses=[
-                '{"expected_hits": ["回忆海边花园", "海边过生日", "晴岚不认真吃饭"], "reason": "都和晴岚相关"}',
-            ]
-        ),
-    )
-
-    assert result["recall_gaps"] == [
-        {
-            "query_id": "Q1",
-            "query": "晴岚",
-            "expected_but_missed": ["回忆海边花园", "海边过生日"],
-            "returned": ["晴岚不认真吃饭"],
-            "recall_ratio": 0.33,
-        }
-    ]
 
 
 def test_default_eval_aggregate_is_diagnostic_only(monkeypatch, tmp_path: Path) -> None:
@@ -963,49 +752,7 @@ def test_live_mode_aggregate_eval_is_diagnostic_only(monkeypatch) -> None:
     assert captured["timeline_diagnostic_only"] is True
 
 
-def test_recall_ratio_computation() -> None:
-    from tools.eval.run_eval import _compute_recall_ratio
-
-    assert (
-        _compute_recall_ratio(
-            ["回忆海边花园", "海边过生日", "晴岚不认真吃饭"],
-            ["晴岚不认真吃饭"],
-        )
-        == 0.33
-    )
-
-
-def test_eval_cli_passes_live_and_judge_flags(monkeypatch, capsys) -> None:
-    from tools.eval import __main__ as eval_main
-
-    captured: dict[str, object] = {}
-
-    def _fake_run_evaluation(**kwargs):
-        captured.update(kwargs)
-        return {
-            "summary_lines": ["ok"],
-            "metrics": {"mrr_at_5": 1.0, "recall_at_5": 1.0, "precision_at_5": 1.0},
-            "total_queries": 1,
-            "failures": [],
-            "judge_mode": kwargs["judge"],
-            "live_mode": kwargs["live"],
-            "recall_gaps": [],
-            "aggregate_eval": {"total_queries": 1, "failed_queries": 0},
-        }
-
-    monkeypatch.setattr(eval_main, "run_evaluation", _fake_run_evaluation)
-
-    eval_main.main(["--live", "--judge", "llm", "--json"])
-    payload = json.loads(capsys.readouterr().out)
-
-    assert captured["live"] is True
-    assert captured["judge"] == "llm"
-    assert payload["success"] is True
-    assert payload["data"]["judge_mode"] == "llm"
-    assert payload["data"]["aggregate_eval"]["total_queries"] == 1
-
-
-def test_compare_with_llm_metrics(tmp_path: Path, monkeypatch) -> None:
+def test_compare_with_legacy_recall_gap_artifacts(tmp_path: Path, monkeypatch) -> None:
     from tools.eval.run_eval import compare_against_baseline
 
     baseline_path = tmp_path / "baseline.json"

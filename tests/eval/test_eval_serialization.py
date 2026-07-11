@@ -226,50 +226,7 @@ class TestBroadEvalRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# Fixture 4: LLM-scores per_query entry
-# ---------------------------------------------------------------------------
-
-
-class TestLlmScoresRoundTrip:
-    """Round-trip a per_query entry with llm_scores."""
-
-    def _make_data(self) -> dict:
-        base = _minimal_eval_dict()
-        base["per_query"] = [
-            {
-                "id": "GQ-LLM-01",
-                "query": "test llm scores",
-                "category": "complex_query",
-                "results_found": 3,
-                "top_titles": ["X", "Y", "Z"],
-                "first_relevant_rank": 1,
-                "first_relevant_rank_at_10": 1,
-                "reciprocal_rank": 1.0,
-                "precision_at_5": 0.6,
-                "ndcg_at_5": 0.85,
-                "expected_min_results": 1,
-                "pass": True,
-                "eval_mode": "llm",
-                "overlay_applied": False,
-                "llm_scores": [5, 4, 3],
-            }
-        ]
-        return base
-
-    def test_semantic_equality(self) -> None:
-        original = self._make_data()
-        roundtripped = EvalRun.from_dict(original).to_dict()
-        assert_semantic_equal(original, roundtripped)
-
-    def test_llm_scores_field(self) -> None:
-        run = EvalRun.from_dict(self._make_data())
-        pq = run.results.per_query[0]
-        assert pq.llm_scores == [5, 4, 3]
-        assert pq.eval_mode == "llm"
-
-
-# ---------------------------------------------------------------------------
-# Fixture 5: Unknown future field preservation
+# Fixture 4: Unknown future field preservation
 # ---------------------------------------------------------------------------
 
 

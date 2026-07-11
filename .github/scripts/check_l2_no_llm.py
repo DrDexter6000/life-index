@@ -13,7 +13,6 @@ from typing import Iterable
 DEFAULT_EXCLUDED_TOOL_DIRS = {
     "_optional",
     "dev",
-    "eval",
 }
 
 DISALLOWED_MODULES = {
@@ -39,7 +38,8 @@ DISALLOWED_FROM_NAMES = {
     ("tools.lib.config", "get_llm_config"): "tools.lib.config.get_llm_config",
 }
 
-SEARCH_OWNERSHIP_ROOTS = {
+PRODUCT_OWNERSHIP_ROOTS = {
+    ("tools", "eval"),
     ("tools", "search_journals"),
     ("tools", "smart_search"),
 }
@@ -350,11 +350,11 @@ class _NoLlmVisitor(ast.NodeVisitor):
 
 def _scan_file(path: Path, root: Path) -> list[Violation]:
     rel = path.relative_to(root).as_posix()
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     rel_parts = path.relative_to(root).parts
     visitor = _NoLlmVisitor(
         rel,
-        search_scope=tuple(rel_parts[:2]) in SEARCH_OWNERSHIP_ROOTS,
+        search_scope=tuple(rel_parts[:2]) in PRODUCT_OWNERSHIP_ROOTS,
     )
     visitor.visit(tree)
     return sorted(

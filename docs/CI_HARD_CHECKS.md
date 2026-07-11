@@ -21,8 +21,8 @@ A public hard blocker is green only when at least one core assertion executed.
 All-skipped assertion sets are not green. Private-only assertions are advisory
 and cannot be the sole evidence for a Tier 1 public blocker.
 
-The public #163 search ownership invariant is implemented: the Tier 1 no-LLM
-check scans every Python AST in search/smart-search for known provider imports
+The public #163 ownership invariant is implemented: the Tier 1 no-LLM check
+scans every Python AST in search/smart-search/eval for known provider imports
 and aliases, normalized LLM/provider/model-client declarations and storage,
 simple provider bindings, provider-specific SDK call suffixes regardless of
 owner name, and generic provider verbs only with structural provider provenance.
@@ -30,7 +30,14 @@ It also rejects legacy prompt/trust/synthesis ownership and constant-string
 dynamic imports supplied as the first positional argument or `name=` keyword.
 Syntax/parse failure is non-green. This is a
 static structural boundary, not a universal proof against computed strings or
-arbitrary runtime metaprogramming. Eval/A5 coverage remains pending.
+arbitrary runtime metaprogramming.
+
+The blocker job first runs `.github/scripts/run_public_core_assertions.py`. Its
+JSON sentinel is the assertion-count authority: green requires at least one
+executed public synthetic token-match assertion. Zero collected, missing,
+deselected, all-skipped, or setup-skipped assertions are non-green. Private
+eval and broad/noise/quality metrics remain advisory and cannot satisfy this
+count or defend result deletion.
 <!-- PLATFORM-SSOT:PUBLIC-BLOCKER-EXECUTION:END -->
 
 Platform-boundary checks follow the active C1–C7 authority in
@@ -54,7 +61,7 @@ remains the #166 Legacy External Adapter exception.
 
 | # | Check | CI command or scope | Source workflow | Local command |
 |---|---|---|---|---|
-| 1 | blocker gate | `pytest -m blocker --timeout=120` | tests.yml | `pytest -m blocker -q --timeout=120` |
+| 1 | blocker gate | public Core assertion sentinel, then `pytest -m blocker --timeout=120` | tests.yml | `python .github/scripts/run_public_core_assertions.py` then `pytest -m blocker -q --timeout=120` |
 | 2 | contract gate | `pytest -m contract --timeout=120` | tests.yml | `pytest -m contract -q --timeout=120` |
 | 3 | search-eval-gate | search evaluation test set listed in `tests.yml` | tests.yml | `scripts/tier1-gate.sh` |
 | 4 | doc-sync | `python .github/scripts/check_doc_sync.py` | quality.yml | same |
@@ -83,7 +90,8 @@ block pull request readiness, but failures must be triaged.
 
 - Format, lint, security, and type checks intentionally target `tools/`.
 - The l2-no-llm check scans imports across deterministic tools and applies the
-  structural AST policy above to `tools/search_journals` and `tools/smart_search`.
+  structural AST policy above to `tools/search_journals`, `tools/smart_search`,
+  and `tools/eval`.
 - The blocker marker set spans the files collected by `pytest -m blocker`.
 - The search evaluation gate is Tier 1 because it protects search quality.
 - Full suite, quarantine, coverage, package smoke, and benchmarks are visible

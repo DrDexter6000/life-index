@@ -398,10 +398,18 @@ Current runtime: the product CLI accepts `--synthesize` for at least two major v
 
 Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`
 
-A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. Eval/A5 under #163 remains pending, so #163 is not complete.
+A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. A5 extends the deterministic-only boundary and structural scan to product eval; #163 remains open pending review, so D1-A is not complete.
 
 Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:END -->
+
+<!-- PLATFORM-SSOT:EVAL-LANGUAGE-JUDGE:START -->
+**`eval --judge llm` compatibility boundary**
+
+`life-index eval` is deterministic C7 verification. `--judge llm` remains recognizable in this version but immediately returns non-success code `EVAL_LLM_JUDGE_HOST_AGENT_REQUIRED` before evaluation or provider/configuration import. It never silently falls back to keyword and never claims language-assisted evaluation ran.
+
+Language-assisted evaluation belongs to Host Agent + Life Index Skill. The A5 candidate removes product eval provider/prompt/client ownership; #163 remains open pending review, and D1-A is not complete.
+<!-- PLATFORM-SSOT:EVAL-LANGUAGE-JUDGE:END -->
 
 **计数 vs 观测序列选择**:
 

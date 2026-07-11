@@ -902,7 +902,9 @@ class TestModuleImportFallback:
     def test_logger_import_fallback(self):
         """Module should fall back to stdlib logging when lib.logger import fails"""
         module_name = "tools.search_journals.core"
+        package = importlib.import_module("tools.search_journals")
         original_module = sys.modules.get(module_name)
+        original_package_attr = getattr(package, "core", None)
         sys.modules.pop(module_name, None)
 
         real_import = __import__
@@ -922,6 +924,19 @@ class TestModuleImportFallback:
             sys.modules.pop(module_name, None)
             if original_module is not None:
                 sys.modules[module_name] = original_module
+                setattr(package, "core", original_module)
+            elif original_package_attr is not None:
+                setattr(package, "core", original_package_attr)
+            elif hasattr(package, "core"):
+                delattr(package, "core")
+
+    def test_logger_fallback_restores_package_module_identity(self):
+        """Later monkeypatches must resolve the same Core module that imports use."""
+        package = importlib.import_module("tools.search_journals")
+        module = importlib.import_module("tools.search_journals.core")
+
+        assert package.core is module
+        assert sys.modules["tools.search_journals.core"] is module
 
 
 class TestSearchParams:

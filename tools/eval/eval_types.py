@@ -99,7 +99,6 @@ _OPT_FIELDS = (
     "strict_pass",
     "soft_pass",
     "broad_eval_error",
-    "llm_scores",
     "public_query",
     "overlay_applied",
 )
@@ -131,7 +130,6 @@ class RunResult:
     strict_pass: bool | None = None
     soft_pass: bool | None = None
     broad_eval_error: str | None = None
-    llm_scores: list[int] | None = None
     public_query: str | None = None
     top_doc_ids: list[str] | None = None
     extra: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -163,7 +161,6 @@ class RunResult:
             "strict_pass",
             "soft_pass",
             "broad_eval_error",
-            "llm_scores",
             "public_query",
             "top_doc_ids",
         }
@@ -197,7 +194,6 @@ class RunResult:
             strict_pass=data.get("strict_pass"),
             soft_pass=data.get("soft_pass"),
             broad_eval_error=data.get("broad_eval_error"),
-            llm_scores=data.get("llm_scores"),
             public_query=data.get("public_query"),
             top_doc_ids=data.get("top_doc_ids"),
             extra={k: v for k, v in data.items() if k not in cls._KNOWN_KEYS},
