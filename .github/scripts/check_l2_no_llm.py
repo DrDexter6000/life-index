@@ -176,6 +176,19 @@ def _assignment_targets(node: ast.AST) -> list[ast.AST]:
     return [node]
 
 
+def _constant_dynamic_module_name(node: ast.Call) -> str | None:
+    """Read a constant module name from positional or ``name=`` syntax."""
+    candidate: ast.AST | None = node.args[0] if node.args else None
+    if candidate is None:
+        candidate = next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "name"),
+            None,
+        )
+    if isinstance(candidate, ast.Constant) and isinstance(candidate.value, str):
+        return candidate.value
+    return None
+
+
 class _NoLlmVisitor(ast.NodeVisitor):
     """Single-pass import and provider-ownership policy visitor."""
 
@@ -326,9 +339,9 @@ class _NoLlmVisitor(ast.NodeVisitor):
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id in self.importlib_aliases
         )
-        if is_dynamic_import and node.args and isinstance(node.args[0], ast.Constant):
-            dynamic_module = node.args[0].value
-            if isinstance(dynamic_module, str):
+        if is_dynamic_import:
+            dynamic_module = _constant_dynamic_module_name(node)
+            if dynamic_module is not None:
                 disallowed = _module_is_disallowed(dynamic_module)
                 if disallowed is not None:
                     self._add(node, f"dynamic import {dynamic_module}")

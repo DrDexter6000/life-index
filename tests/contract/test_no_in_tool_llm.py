@@ -110,6 +110,24 @@ def test_public_no_llm_hard_check_executes_full_search_ownership_scan(tmp_path: 
             "dynamic import openai",
         ),
         (
+            "import importlib\n" "provider_module = importlib.import_module(name='openai')\n",
+            "dynamic import openai",
+        ),
+        (
+            "import importlib as loader\n"
+            "provider_module = loader.import_module(name='anthropic')\n",
+            "dynamic import anthropic",
+        ),
+        (
+            "from importlib import import_module as load\n"
+            "provider_module = load(name='anthropic')\n",
+            "dynamic import anthropic",
+        ),
+        (
+            "provider_module = __import__(name='litellm')\n",
+            "dynamic import litellm",
+        ),
+        (
             "from openai import OpenAI as SearchBackend\n" "backend = SearchBackend()\n",
             "openai",
         ),
@@ -348,6 +366,29 @@ def test_public_no_llm_hard_check_allows_deterministic_query_planning_terms(
         "    model = {'strategy': 'keyword_only', 'query': query}\n"
         "    query_plan = {'rewritten_query': query, 'model': model}\n"
         "    return query_plan\n",
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [sys.executable, str(CHECK_SCRIPT), "--root", str(root)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stdout
+
+
+def test_public_no_llm_hard_check_allows_constant_safe_dynamic_import_keyword(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    search_file = root / "tools" / "smart_search" / "safe_dynamic_import.py"
+    search_file.parent.mkdir(parents=True)
+    search_file.write_text(
+        "import importlib\n"
+        "module = importlib.import_module(name='tools.search_journals.core')\n",
         encoding="utf-8",
     )
 

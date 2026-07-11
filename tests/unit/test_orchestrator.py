@@ -224,6 +224,51 @@ def test_multi_query_evidence_and_performance_share_observed_unique_lower_bound(
     assert len(result["evidence_pack"]["items"]) == 15
 
 
+@pytest.mark.parametrize("incomplete_kind", ["child_has_more", "child_failure"])
+def test_multi_query_incomplete_evidence_never_claims_full_recall(
+    incomplete_kind: str,
+) -> None:
+    success = _search_result(1)
+    success["merged_results"][0]["confidence"] = "low"
+    success["no_confident_match"] = False
+
+    def search(query: str = "", **kwargs: Any) -> dict[str, Any]:
+        if query == "first":
+            return success
+        if incomplete_kind == "child_has_more":
+            partial = dict(success)
+            partial["total_available"] = 10
+            partial["has_more"] = True
+            return partial
+        return {
+            "success": False,
+            "error": {"code": "search_failed", "message": "synthetic failure"},
+            "merged_results": [],
+            "total_available": 0,
+            "has_more": False,
+            "performance": {"total_time_ms": 1.0},
+        }
+
+    rewritten: Any = {
+        "rewritten_query": "combined",
+        "sub_queries": ["first", "second"],
+        "time_range": None,
+    }
+    with (
+        patch.object(SmartSearchOrchestrator, "rewrite_query", return_value=rewritten),
+        patch("tools.search_journals.orchestrator._get_search_fn", return_value=search),
+    ):
+        result = SmartSearchOrchestrator().search("combined", include_evidence=True)
+
+    evidence = result["evidence_pack"]
+    assert evidence["total_available"] == len(evidence["items"]) == 1
+    assert evidence["has_more"] is True
+    diagnostics = evidence["diagnostics"]
+    assert diagnostics["outcome_reason"] == "low_confidence_with_potential_under_recall"
+    assert all("full recall" not in note.lower() for note in diagnostics["notes"])
+    assert any("incomplete" in note.lower() for note in diagnostics["notes"])
+
+
 def test_execute_search_applies_deterministic_time_range() -> None:
     captured: list[dict[str, str]] = []
 

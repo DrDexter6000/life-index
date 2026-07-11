@@ -2338,7 +2338,7 @@ python -m tools.smart_search --query "..." [options]
 | 名称 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | query | string | ✅ | - | 自然语言搜索查询 |
-| explain | flag | ❌ | false | 在输出中包含 Agent 决策详情与 `diagnostics` 诊断块 |
+| explain | flag | ❌ | false | 保留稳定兼容字段并输出确定性 `diagnostics` / provenance；不表示工具内 Agent 或 LLM 决策 |
 | include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
 | format-entity-annotated | flag | ❌ | false | 与 `--include-evidence` 同用时，增加人类可读的 `formatted_evidence` |
 | synthesize | flag | ❌ | false | 至少保留两个主版本；不注入 LLM、不添加 `answer`、不改变 domain payload，并在 stderr 发出一次稳定弃用警告；见命名 transition block |
@@ -2547,8 +2547,8 @@ python -m tools.smart_search --query "..." [options]
 | 值 | 对应 outcome | 说明 |
 |----|-------------|------|
 | `confident_results_present` | `ok` | 存在 medium/high 置信度结果 |
-| `all_items_low_confidence_full_recall` | `weak_results` | 全部 low，total 等于 items 数（已全量召回） |
-| `low_confidence_with_potential_under_recall` | `weak_results` | 全部 low，total > items 数（可能还有更多未召回） |
+| `all_items_low_confidence_full_recall` | `weak_results` | 全部 low，total 不超过 items 数且 `has_more=false`（已全量召回） |
+| `low_confidence_with_potential_under_recall` | `weak_results` | 全部 low，且 total > items 数或 `has_more=true`（结果集不完整或可能还有更多未召回） |
 | `all_items_low_confidence` | `no_confident_match` | `no_confident_match` flag 且全部 low |
 | `search_core_flagged_no_confident` | `no_confident_match` | `no_confident_match` flag 但存在 medium/high |
 | `no_matches_found` | `zero_results` | 无关键词 / Entity Graph 匹配结果 |
