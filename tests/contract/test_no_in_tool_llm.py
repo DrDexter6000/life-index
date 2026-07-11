@@ -138,6 +138,73 @@ def test_public_no_llm_hard_check_rejects_structural_search_ownership_bypasses(
     assert expected_marker in proc.stdout
 
 
+@pytest.mark.parametrize("owner", ["client", "sdk", "backend"])
+@pytest.mark.parametrize(
+    "provider_chain",
+    [
+        "responses.create",
+        "chat.completions.create",
+        "messages.create",
+    ],
+)
+def test_public_no_llm_hard_check_rejects_provider_shaped_create_chains(
+    tmp_path: Path,
+    owner: str,
+    provider_chain: str,
+) -> None:
+    root = tmp_path / "repo"
+    search_file = root / "tools" / "smart_search" / "provider_chain.py"
+    search_file.parent.mkdir(parents=True)
+    search_file.write_text(
+        f"async def search({owner}):\n"
+        f"    return await {owner}.{provider_chain}(model='example', input='x')\n",
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [sys.executable, str(CHECK_SCRIPT), "--root", str(root)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 1
+    assert "tools/smart_search/provider_chain.py" in proc.stdout
+    assert f"{owner}.{provider_chain}" in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "builder.create()",
+        "client.create()",
+        "client.records.create()",
+        "sdk.widgets.create()",
+        "backend.records.create()",
+        "storage_client.objects.create()",
+    ],
+)
+def test_public_no_llm_hard_check_allows_deterministic_create_chains(
+    tmp_path: Path,
+    call: str,
+) -> None:
+    root = tmp_path / "repo"
+    search_file = root / "tools" / "smart_search" / "deterministic_builder.py"
+    search_file.parent.mkdir(parents=True)
+    search_file.write_text(f"result = {call}\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, str(CHECK_SCRIPT), "--root", str(root)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stdout
+
+
 def test_public_no_llm_hard_check_allows_deterministic_query_planning_terms(
     tmp_path: Path,
 ) -> None:

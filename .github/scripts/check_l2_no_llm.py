@@ -68,6 +68,18 @@ PROVIDER_CALL_METHODS = {
     "invoke",
 }
 
+PROVIDER_CREATE_CHAINS = {
+    ("chat", "completions", "create"),
+    ("messages", "create"),
+    ("responses", "create"),
+}
+
+PROVIDER_CHAIN_OWNER_NAMES = {
+    "backend",
+    "client",
+    "sdk",
+}
+
 PROVIDER_IDENTIFIER_TOKENS = {
     "anthropic",
     "cohere",
@@ -152,6 +164,17 @@ def _expression_name(node: ast.AST) -> str:
     return ""
 
 
+def _is_provider_create_call(call_name: str) -> bool:
+    """Recognize common provider SDK create chains without banning create()."""
+    parts = tuple(part for part in call_name.split(".") if part)
+    for chain in PROVIDER_CREATE_CHAINS:
+        if len(parts) <= len(chain) or parts[-len(chain) :] != chain:
+            continue
+        owner = parts[-len(chain) - 1]
+        return owner in PROVIDER_CHAIN_OWNER_NAMES or _is_provider_ownership_identifier(owner)
+    return False
+
+
 def _assignment_targets(node: ast.AST) -> list[ast.AST]:
     if isinstance(node, (ast.Tuple, ast.List)):
         targets: list[ast.AST] = []
@@ -226,7 +249,9 @@ def _scan_search_ownership(tree: ast.AST, rel: str) -> list[Violation]:
         elif isinstance(node, ast.Call):
             call_name = _expression_name(node.func)
             call_leaf = call_name.rsplit(".", 1)[-1]
-            if call_leaf in PROVIDER_CALL_METHODS:
+            if _is_provider_create_call(call_name):
+                add(node, call_name)
+            elif call_leaf in PROVIDER_CALL_METHODS:
                 add(node, call_name)
             elif _is_provider_ownership_identifier(call_leaf):
                 add(node, call_name)
