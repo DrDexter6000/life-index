@@ -96,24 +96,21 @@ ENTRYPOINTS = (
     (
         "sys.argv = ['life-index', *ARGS]; "
         "runpy.run_module('tools.eval.__main__', run_name='__main__')",
-        0,
         "python -m tools.eval",
     ),
     (
         "sys.argv = ['life-index', 'eval', *ARGS]; "
         "runpy.run_module('tools', run_name='__main__')",
-        1,
         "python -m tools eval",
     ),
     (
         "sys.argv = ['life-index', 'eval', *ARGS]; " "from tools.__main__ import main; main()",
-        1,
         "console entrypoint",
     ),
 )
 
 
-@pytest.mark.parametrize(("entry_source", "_offset", "entry_name"), ENTRYPOINTS)
+@pytest.mark.parametrize(("entry_source", "entry_name"), ENTRYPOINTS)
 @pytest.mark.parametrize(
     ("args", "rejects"),
     (
@@ -125,7 +122,6 @@ ENTRYPOINTS = (
 )
 def test_repeated_judge_final_occurrence_wins_before_heavy_imports(
     entry_source: str,
-    _offset: int,
     entry_name: str,
     args: list[str],
     rejects: bool,
