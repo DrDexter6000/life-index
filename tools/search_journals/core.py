@@ -899,6 +899,20 @@ def _finalize_level3_results(
     )
 
 
+def _classify_query_advisory(query: str) -> str | None:
+    """Return a fail-open classification warning without exposing query text."""
+    try:
+        from .noise_gate import is_noise_query
+
+        is_advisory, advisory_reason = is_noise_query(query)
+    except Exception as exc:
+        return f"query_classification_error: {type(exc).__name__}; " "retrieval_not_bypassed"
+
+    if is_advisory:
+        return f"query_classification: {advisory_reason}; retrieval_not_bypassed"
+    return None
+
+
 def _semantic_noop_requested(
     semantic: bool,
     semantic_policy: Literal["hybrid", "fallback"],
@@ -1240,13 +1254,9 @@ def hierarchical_search(
     # Query classification is advisory only.  Recall-first retrieval must still
     # execute for every query so a label cannot hide a real token match.
     if query:
-        from .noise_gate import is_noise_query
-
-        is_advisory, advisory_reason = is_noise_query(query)
-        if is_advisory:
-            result["warnings"].append(
-                f"query_classification: {advisory_reason}; retrieval_not_bypassed"
-            )
+        classification_warning = _classify_query_advisory(query)
+        if classification_warning:
+            result["warnings"].append(classification_warning)
 
     (
         l1_results,

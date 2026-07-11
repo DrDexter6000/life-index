@@ -8,8 +8,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _SANDBOX_MARKER = ".synthetic-d1-a-sandbox"
+_DIAGNOSTIC_CONTEXT_LIMIT = 400
 
 
 def _make_synthetic_data_dir(tmp_path: Path) -> Path:
@@ -50,6 +53,12 @@ def _write_journal(data_dir: Path, *, sequence: int, title: str, content: str) -
     return rel_path
 
 
+def _bounded_diagnostic_context(value: str) -> str:
+    if len(value) <= _DIAGNOSTIC_CONTEXT_LIMIT:
+        return value
+    return f"{value[:_DIAGNOSTIC_CONTEXT_LIMIT]}...<truncated>"
+
+
 def _run_search(data_dir: Path, query: str, *extra_args: str) -> dict:
     _assert_synthetic_data_dir(data_dir)
     env = {
@@ -74,26 +83,113 @@ def _run_search(data_dir: Path, query: str, *extra_args: str) -> dict:
         timeout=30,
         check=False,
     )
-    assert proc.returncode == 0, f"search failed: {proc.stderr}"
-    return json.loads(proc.stdout)
+    assert proc.returncode == 0, (
+        "search failed: "
+        f"stderr={_bounded_diagnostic_context(proc.stderr)!r}; "
+        f"stdout={_bounded_diagnostic_context(proc.stdout)!r}"
+    )
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(
+            "search returned invalid JSON: "
+            f"{exc}; stdout={_bounded_diagnostic_context(proc.stdout)!r}; "
+            f"stderr={_bounded_diagnostic_context(proc.stderr)!r}"
+        ) from exc
 
 
+@pytest.mark.parametrize(
+    ("query", "reason"),
+    [
+        pytest.param("菜谱推荐", "ood_topic", id="ood-topic"),
+        pytest.param("不存在的合成记录", "negation_intent", id="negation-intent"),
+        pytest.param("life indxxx", "typo_near_noise", id="typo-near-noise"),
+    ],
+)
 def test_default_search_keeps_all_synthetic_token_matches_despite_noise_label(
     tmp_path: Path,
+    query: str,
+    reason: str,
 ) -> None:
     data_dir = _make_synthetic_data_dir(tmp_path)
     expected_path = _write_journal(
         data_dir,
         sequence=1,
-        title="Synthetic 菜谱推荐 note",
-        content="A neutral fixture containing the exact token 菜谱推荐 for retrieval.",
+        title=f"Synthetic {query} note",
+        content=f"A neutral fixture containing the exact phrase {query} for retrieval.",
     )
 
-    result = _run_search(data_dir, "菜谱推荐")
+    result = _run_search(data_dir, query)
 
     assert result["total_matches"] == 1
     returned_path = Path(result["merged_results"][0]["path"]).as_posix()
     assert returned_path.endswith(expected_path)
+    assert f"query_classification: {reason}; retrieval_not_bypassed" in result["warnings"]
+
+
+def test_classifier_failure_is_advisory_and_does_not_suppress_token_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = _make_synthetic_data_dir(tmp_path)
+    expected_path = _write_journal(
+        data_dir,
+        sequence=1,
+        title="Synthetic classifierfailtoken note",
+        content="A neutral fixture containing classifierfailtoken.",
+    )
+    _assert_synthetic_data_dir(data_dir)
+    monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
+
+    def raise_classifier_error(_query: str | None) -> tuple[bool, str | None]:
+        raise RuntimeError("synthetic classifier failure")
+
+    monkeypatch.setattr(
+        "tools.search_journals.noise_gate.is_noise_query",
+        raise_classifier_error,
+    )
+
+    from tools.search_journals.core import hierarchical_search
+
+    result = hierarchical_search(
+        query="classifierfailtoken",
+        level=3,
+        use_index=False,
+        semantic=False,
+    )
+
+    assert result["total_matches"] == 1
+    returned_path = Path(result["merged_results"][0]["path"]).as_posix()
+    assert returned_path.endswith(expected_path)
+    assert "query_classification_error: RuntimeError; retrieval_not_bypassed" in result["warnings"]
+
+
+def test_invalid_json_diagnostic_bounds_stdout_and_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = _make_synthetic_data_dir(tmp_path)
+    stdout_tail = "STDOUT_TAIL_SHOULD_NOT_APPEAR"
+    stderr_tail = "STDERR_TAIL_SHOULD_NOT_APPEAR"
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout="not-json" + ("x" * 500) + stdout_tail,
+            stderr=("e" * 500) + stderr_tail,
+        ),
+    )
+
+    with pytest.raises(AssertionError) as exc_info:
+        _run_search(data_dir, "synthetic")
+
+    diagnostic = str(exc_info.value)
+    assert "search returned invalid JSON" in diagnostic
+    assert diagnostic.count("...<truncated>") == 2
+    assert stdout_tail not in diagnostic
+    assert stderr_tail not in diagnostic
 
 
 def test_default_limit_only_changes_presentation_and_limit_zero_exposes_all_matches(
@@ -116,3 +212,6 @@ def test_default_limit_only_changes_presentation_and_limit_zero_exposes_all_matc
     assert limited["total_matches"] == unlimited["total_matches"] == 23
     assert limited["has_more"] is True
     assert unlimited["has_more"] is False
+    limited_paths = [item["path"] for item in limited["merged_results"]]
+    unlimited_paths = [item["path"] for item in unlimited["merged_results"]]
+    assert limited_paths == unlimited_paths[:20]
