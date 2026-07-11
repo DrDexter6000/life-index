@@ -123,62 +123,54 @@ class TestGateScriptStructure:
         assert "run_public_core_assertions.py" not in source
 
 
-# ── Workflow eval-family coverage ──
-
-
 WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "tests.yml"
+EXPECTED_DETERMINISTIC_TARGETS = frozenset(
+    {
+        "tests/unit/test_eval_provider_retirement.py",
+        "tests/unit/test_eval_metrics.py",
+        "tests/integration/test_eval_gate_ci.py",
+        "tests/integration/test_eval_private_inventory.py",
+        "tests/eval/test_semantic_report.py",
+        "tests/eval/test_eval_compare.py",
+        "tests/eval/test_eval_run.py",
+        "tests/eval/test_eval_qrels.py",
+        "tests/eval/test_eval_export.py",
+        "tests/eval/test_eval_serialization.py",
+    }
+)
 
 
-class TestWorkflowEvalCoverage:
+def _normalized_test_targets(source: str) -> frozenset[str]:
+    return frozenset(re.findall(r"tests/[A-Za-z0-9_./-]+\.py", source))
 
-    @staticmethod
-    def _extract_gate_pytest_command() -> str:
-        """Parse the pytest command from search-eval-gate job in tests.yml."""
-        import yaml as _yaml
 
-        workflow = _yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
-        gate_job = workflow["jobs"]["search-eval-gate"]
-        for step in gate_job["steps"]:
-            if "Run deterministic eval contracts" in step.get("name", ""):
-                return step["run"]
-        pytest.fail("Could not find deterministic eval contract step")
+def test_eval_runner_owns_exact_deterministic_inventory_and_public_sentinel() -> None:
+    source = GATE_SCRIPT_PATH.read_text(encoding="utf-8")
 
-    def test_gate_includes_eval_family_tests(self) -> None:
-        """search-eval-gate must include tests/eval/ files, not only 3 unit files."""
-        command_text = self._extract_gate_pytest_command()
+    assert _normalized_test_targets(source) == EXPECTED_DETERMINISTIC_TARGETS
+    assert source.count("python .github/scripts/run_public_core_assertions.py") == 1
+    assert "set -euo pipefail" in source
+    assert "|| true" not in source
 
-        # Find the pytest line (may be multiline run: block)
-        pytest_line = None
-        for line in command_text.strip().split("\n"):
-            if "pytest" in line:
-                pytest_line = line.strip()
-                break
-        assert pytest_line is not None, f"No pytest invocation in gate command: {command_text}"
 
-        parts = pytest_line.split()
-        eval_family_files = [p for p in parts if p.startswith("tests/eval/")]
+@pytest.mark.parametrize("surface", [WORKFLOW_PATH, PRE_PUSH_GATE_PATH])
+def test_external_gate_surface_delegates_without_duplicate_inventory(
+    surface: Path,
+) -> None:
+    source = surface.read_text(encoding="utf-8")
 
-        assert len(eval_family_files) >= 3, (
-            f"search-eval-gate includes only {eval_family_files} tests/eval/ files "
-            f"(expected >= 3: broad eval soft-gate, semantic-report, "
-            f"eval comparison/run/qrels/export/serialization). "
-            f"Command: {pytest_line}"
-        )
+    assert re.search(r"(?:bash\s+)?scripts/run_eval_gate\.sh(?:\s|$)", source)
+    assert _normalized_test_targets(source) == frozenset()
+    assert "run_public_core_assertions.py" not in source
 
-    def test_gate_includes_provider_retirement(self) -> None:
-        command_text = self._extract_gate_pytest_command()
-        assert "test_eval_provider_retirement.py" in command_text
 
-    def test_gate_includes_semantic_report(self) -> None:
-        """search-eval-gate must include test_semantic_report.py."""
-        command_text = self._extract_gate_pytest_command()
-        assert (
-            "test_semantic_report" in command_text
-        ), "search-eval-gate missing test_semantic_report.py"
+def test_pre_push_records_delegated_runner_failure() -> None:
+    source = PRE_PUSH_GATE_PATH.read_text(encoding="utf-8")
 
-    def test_gate_includes_eval_serialization(self) -> None:
-        """search-eval-gate must include test_eval_serialization.py."""
-        command_text = self._extract_gate_pytest_command()
-        assert (
-            "test_eval_serialization" in command_text
-        ), "search-eval-gate missing test_eval_serialization.py"
+    assert re.search(
+        r'run_check\s+"search-eval-gate"\s+timeout\s+"\$EVAL_TIMEOUT_SECONDS"\s+'
+        r"bash\s+scripts/run_eval_gate\.sh",
+        source,
+    )
+    assert 'if [ "${#FAILED_CHECKS[@]}" -eq 0 ]; then' in source
+    assert "exit 1" in source
