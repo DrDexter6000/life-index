@@ -154,7 +154,7 @@ mkdir -p "$LIFE_INDEX_DATA_DIR"
 echo "Using LIFE_INDEX_DATA_DIR: $LIFE_INDEX_DATA_DIR"
 
 # === tests.yml hard checks (with L1 outer timeout) ===
-# Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 1800s; eval 600s
+# Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 2400s; eval 900s
 mkdir -p "$PYTEST_BASETEMP/blocker"
 run_check "pytest -m blocker"    timeout "$BLOCKER_TIMEOUT_SECONDS" python -m pytest -o addopts="" -ra -q --strict-markers --strict-config -m blocker --timeout="$PYTEST_TIMEOUT_SECONDS" --basetemp="$PYTEST_BASETEMP/blocker"
 mkdir -p "$PYTEST_BASETEMP/contract"
