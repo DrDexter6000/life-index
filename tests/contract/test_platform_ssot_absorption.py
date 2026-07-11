@@ -992,6 +992,17 @@ def test_api_performance_rows_match_current_deterministic_cli_truth() -> None:
         assert matches == [expected_row], f"docs/API.md performance row drift for {key}"
 
 
+def test_public_eval_facts_describe_current_deterministic_and_advisory_truth() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    runner = (REPO_ROOT / "tools" / "eval" / "run_eval.py").read_text(encoding="utf-8")
+
+    assert "待测（依赖 LLM API）" not in charter
+    assert "108-query" not in readme
+    assert "semantic/vector RAG 无四位小数增益" not in readme
+    assert "Run a second eval pass" not in runner
+
+
 def test_ci_hard_check_inventory_cannot_call_all_skipped_private_assertions_green() -> None:
     ci = AUTHORITY_PATHS["ci"].read_text(encoding="utf-8")
     _assert_named_block_snapshot(

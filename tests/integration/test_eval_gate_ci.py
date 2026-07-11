@@ -10,12 +10,15 @@ mechanism is correctly wired. If the gate ever regresses, this test catches it.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 GATE_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "run_eval_gate.sh"
+PRE_PUSH_GATE_PATH = PROJECT_ROOT / "scripts" / "pre-push-gate.sh"
+ADVISORY_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "run_eval_advisory.sh"
 
 
 # ── Gate script structure ──
@@ -84,6 +87,43 @@ class TestGateScriptStructure:
         assert (
             "set -e" in source or "set -euo pipefail" in source
         ), "Gate script must use 'set -e' or 'set -euo pipefail' for fail-fast"
+
+    def test_blocking_gate_inventory_references_only_existing_test_paths(self) -> None:
+        sources = (
+            GATE_SCRIPT_PATH.read_text(encoding="utf-8"),
+            PRE_PUSH_GATE_PATH.read_text(encoding="utf-8"),
+        )
+        paths = {
+            match
+            for source in sources
+            for match in re.findall(r"tests/[A-Za-z0-9_./-]+\.py", source)
+        }
+
+        missing = sorted(path for path in paths if not (PROJECT_ROOT / path).is_file())
+        assert missing == []
+
+    def test_blocking_gate_inventory_excludes_private_quality_eval(self) -> None:
+        blocking_sources = (
+            GATE_SCRIPT_PATH.read_text(encoding="utf-8"),
+            PRE_PUSH_GATE_PATH.read_text(encoding="utf-8"),
+            WORKFLOW_PATH.read_text(encoding="utf-8"),
+        )
+        advisory_paths = (
+            "tests/unit/test_eval_gate.py",
+            "tests/eval/test_broad_eval_soft_gate.py",
+        )
+
+        leaked = [
+            path for path in advisory_paths if any(path in source for source in blocking_sources)
+        ]
+        assert leaked == []
+
+    def test_private_quality_eval_has_an_explicit_advisory_command(self) -> None:
+        assert ADVISORY_SCRIPT_PATH.is_file()
+        source = ADVISORY_SCRIPT_PATH.read_text(encoding="utf-8")
+        assert "tests/unit/test_eval_advisory.py" in source
+        assert "tests/eval/test_broad_eval_soft_gate.py" in source
+        assert "run_public_core_assertions.py" not in source
 
 
 # ── Workflow eval-family coverage ──
