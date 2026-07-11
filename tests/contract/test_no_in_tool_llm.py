@@ -175,6 +175,43 @@ def test_public_no_llm_hard_check_rejects_provider_shaped_create_chains(
 
 
 @pytest.mark.parametrize(
+    ("owner", "provider_chain"),
+    [
+        ("api_client", "responses.create"),
+        ("inference_backend", "messages.create"),
+        ("_client", "responses.create"),
+        ("apiClient", "chat.completions.create"),
+        ("inferenceBackend", "messages.create"),
+    ],
+)
+def test_public_no_llm_hard_check_rejects_compound_provider_chain_owners(
+    tmp_path: Path,
+    owner: str,
+    provider_chain: str,
+) -> None:
+    root = tmp_path / "repo"
+    search_file = root / "tools" / "search_journals" / "compound_owner.py"
+    search_file.parent.mkdir(parents=True)
+    search_file.write_text(
+        f"def search({owner}):\n"
+        f"    return {owner}.{provider_chain}(model='example', input='x')\n",
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [sys.executable, str(CHECK_SCRIPT), "--root", str(root)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 1
+    assert "tools/search_journals/compound_owner.py" in proc.stdout
+    assert f"{owner}.{provider_chain}" in proc.stdout
+
+
+@pytest.mark.parametrize(
     "call",
     [
         "builder.create()",
@@ -183,6 +220,8 @@ def test_public_no_llm_hard_check_rejects_provider_shaped_create_chains(
         "sdk.widgets.create()",
         "backend.records.create()",
         "storage_client.objects.create()",
+        "data_client.records.create()",
+        "response_factory.create()",
     ],
 )
 def test_public_no_llm_hard_check_allows_deterministic_create_chains(

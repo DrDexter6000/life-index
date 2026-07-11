@@ -74,7 +74,7 @@ PROVIDER_CREATE_CHAINS = {
     ("responses", "create"),
 }
 
-PROVIDER_CHAIN_OWNER_NAMES = {
+PROVIDER_CHAIN_OWNER_TOKENS = {
     "backend",
     "client",
     "sdk",
@@ -171,7 +171,10 @@ def _is_provider_create_call(call_name: str) -> bool:
         if len(parts) <= len(chain) or parts[-len(chain) :] != chain:
             continue
         owner = parts[-len(chain) - 1]
-        return owner in PROVIDER_CHAIN_OWNER_NAMES or _is_provider_ownership_identifier(owner)
+        owner_tokens = set(_identifier_tokens(owner))
+        return bool(owner_tokens & PROVIDER_CHAIN_OWNER_TOKENS) or (
+            _is_provider_ownership_identifier(owner)
+        )
     return False
 
 
