@@ -3,9 +3,153 @@ from __future__ import annotations
 import builtins
 import json
 import runpy
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FORBIDDEN_EVAL_RUNTIME_IMPORTS = (
+    "tools.eval.run_eval",
+    "tools.eval.private_data",
+    "tools.eval.overlay",
+    "tools.lib.config",
+    "tools.lib.observability",
+    "tools.eval.llm_client",
+    "openai",
+    "anthropic",
+)
+EXPECTED_LANGUAGE_JUDGE_ERROR = {
+    "success": False,
+    "error": {
+        "code": "EVAL_LLM_JUDGE_HOST_AGENT_REQUIRED",
+        "message": ("Language-assisted evaluation belongs to the Host Agent + Life Index Skill."),
+    },
+}
+
+
+def _guarded_python(
+    source: str,
+    *,
+    forbidden_imports: tuple[str, ...] = FORBIDDEN_EVAL_RUNTIME_IMPORTS,
+) -> subprocess.CompletedProcess[str]:
+    forbidden = repr(forbidden_imports)
+    probe = f"""
+import importlib.abc
+import runpy
+import sys
+
+FORBIDDEN = {forbidden}
+
+class BlockForbidden(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if any(fullname == name or fullname.startswith(name + '.') for name in FORBIDDEN):
+            raise AssertionError('forbidden import: ' + fullname)
+        return None
+
+sys.meta_path.insert(0, BlockForbidden())
+{source}
+"""
+    return subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+
+@pytest.mark.parametrize(
+    ("entry_source", "entry_name"),
+    (
+        (
+            "sys.argv = ['life-index', '--judge', 'llm', '--json']; "
+            "runpy.run_module('tools.eval.__main__', run_name='__main__')",
+            "python -m tools.eval",
+        ),
+        (
+            "sys.argv = ['life-index', 'eval', '--judge', 'llm', '--json']; "
+            "runpy.run_module('tools', run_name='__main__')",
+            "python -m tools eval",
+        ),
+        (
+            "sys.argv = ['life-index', 'eval', '--judge', 'llm', '--json']; "
+            "from tools.__main__ import main; main()",
+            "console entrypoint",
+        ),
+    ),
+)
+def test_language_judge_rejects_before_every_eval_runtime_import(
+    entry_source: str,
+    entry_name: str,
+) -> None:
+    result = _guarded_python(entry_source)
+
+    assert result.returncode == 2, entry_name + "\n" + result.stdout + result.stderr
+    assert json.loads(result.stdout) == EXPECTED_LANGUAGE_JUDGE_ERROR
+    assert "forbidden import" not in result.stderr
+
+
+def test_run_evaluation_language_judge_rejects_before_runtime_module_imports() -> None:
+    result = _guarded_python(
+        "from tools.eval.run_eval import run_evaluation\n"
+        "try:\n"
+        "    run_evaluation(judge='llm')\n"
+        "except ValueError as exc:\n"
+        "    print(str(exc))\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit(9)",
+        forbidden_imports=tuple(
+            name for name in FORBIDDEN_EVAL_RUNTIME_IMPORTS if name != "tools.eval.run_eval"
+        ),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "only deterministic keyword evaluation is supported"
+    assert "forbidden import" not in result.stderr
+
+
+def test_run_evaluation_language_judge_rejects_before_loaders_or_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools.eval import run_eval
+
+    def explode(*_args, **_kwargs):
+        raise AssertionError("eval loader or side effect must not run")
+
+    for name in (
+        "_get_eval_anchor_date",
+        "_inject_eval_anchor",
+        "eval_query_set_available",
+        "_load_queries_with_overlay",
+        "load_aggregate_queries",
+        "load_smart_aggregate_queries",
+        "load_timeline_queries",
+        "_temporary_data_dir",
+        "_live_data_dir",
+    ):
+        monkeypatch.setattr(run_eval, name, explode)
+
+    real_import = builtins.__import__
+
+    def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name in {
+            "tools.eval.overlay",
+            "tools.eval.private_data",
+            "tools.lib.config",
+        }:
+            raise AssertionError("runtime import must follow judge validation")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    with pytest.raises(
+        ValueError,
+        match="only deterministic keyword evaluation is supported",
+    ):
+        run_eval.run_evaluation(judge="llm")
 
 
 def test_eval_cli_llm_judge_fails_fast_without_loading_provider(
@@ -36,15 +180,7 @@ def test_eval_cli_llm_judge_fails_fast_without_loading_provider(
     payload = json.loads(captured.out)
 
     assert exit_code != 0
-    assert payload == {
-        "success": False,
-        "error": {
-            "code": "EVAL_LLM_JUDGE_HOST_AGENT_REQUIRED",
-            "message": (
-                "Language-assisted evaluation belongs to the Host Agent + " "Life Index Skill."
-            ),
-        },
-    }
+    assert payload == EXPECTED_LANGUAGE_JUDGE_ERROR
     assert captured.err == ""
     assert provider_import_attempts == []
 

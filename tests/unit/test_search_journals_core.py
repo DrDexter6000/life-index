@@ -939,6 +939,59 @@ class TestModuleImportFallback:
         assert sys.modules["tools.search_journals.core"] is module
 
 
+@pytest.mark.parametrize(
+    ("parent_state", "module_state"),
+    (
+        ("absent", "present"),
+        ("none", "present"),
+        ("divergent", "present"),
+        ("normal", "present"),
+        ("none", "absent"),
+        ("divergent", "absent"),
+    ),
+)
+def test_logger_fallback_restores_parent_and_sys_modules_independently(
+    monkeypatch: pytest.MonkeyPatch,
+    parent_state: str,
+    module_state: str,
+) -> None:
+    module_name = "tools.search_journals.core"
+    package = importlib.import_module("tools.search_journals")
+    module = importlib.import_module(module_name)
+    divergent = object()
+
+    if module_state == "present":
+        monkeypatch.setitem(sys.modules, module_name, module)
+    else:
+        monkeypatch.delitem(sys.modules, module_name, raising=False)
+
+    if parent_state == "absent":
+        monkeypatch.delattr(package, "core", raising=False)
+        expected_parent = None
+        expected_parent_present = False
+    elif parent_state == "none":
+        monkeypatch.setattr(package, "core", None)
+        expected_parent = None
+        expected_parent_present = True
+    elif parent_state == "divergent":
+        monkeypatch.setattr(package, "core", divergent)
+        expected_parent = divergent
+        expected_parent_present = True
+    else:
+        monkeypatch.setattr(package, "core", module)
+        expected_parent = module
+        expected_parent_present = True
+
+    TestModuleImportFallback().test_logger_import_fallback()
+
+    assert hasattr(package, "core") is expected_parent_present
+    if expected_parent_present:
+        assert package.core is expected_parent
+    assert (module_name in sys.modules) is (module_state == "present")
+    if module_state == "present":
+        assert sys.modules[module_name] is module
+
+
 class TestSearchParams:
     """Tests for search parameters"""
 

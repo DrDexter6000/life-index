@@ -781,6 +781,45 @@ def test_eval_language_judge_fails_before_provider_ownership() -> None:
             )
 
 
+@pytest.mark.parametrize(
+    "path",
+    (
+        REPO_ROOT / "CHARTER.md",
+        REPO_ROOT / "docs" / "API.md",
+        REPO_ROOT / "docs" / "ARCHITECTURE.md",
+        REPO_ROOT / "docs" / "CI_HARD_CHECKS.md",
+        REPO_ROOT / "SKILL.md",
+        REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md",
+    ),
+)
+def test_public_eval_authorities_do_not_publish_private_corpus_fingerprints(
+    path: Path,
+) -> None:
+    text = path.read_text(encoding="utf-8")
+    private_fingerprints = (
+        "Round 17",
+        "85 queries",
+        "0.3836",
+        "0.3565",
+        "0.2716",
+        "golden_queries.yaml",
+        "golden_rejection_queries.yaml",
+        "15 个 broad recall",
+        "precision < 0.8",
+    )
+
+    assert [item for item in private_fingerprints if item in text] == []
+
+
+def test_architecture_describes_broad_private_eval_as_advisory_only() -> None:
+    architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
+    assert (
+        "Broad/private quality metrics remain observable and advisory; weak or errored "
+        "broad metrics do not enter blocking failures or override exact Core results."
+        in architecture
+    )
+
+
 def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> None:
     architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
     _assert_named_block_snapshot(
