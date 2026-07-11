@@ -61,7 +61,7 @@ triggers:
 .venv/bin/life-index search --query "关键词" --topic work --level 3
 .venv/bin/life-index search --query "学习"  # 关键词 + Entity Graph；--semantic* 是兼容 no-op
 .venv/bin/life-index smart-search --query "我和女儿之间有哪些珍贵的回忆？"  # 确定性检索 scaffold（默认不调用 LLM）
-.venv/bin/life-index smart-search --query "..." --explain  # 展示 Agent 决策详情
+.venv/bin/life-index smart-search --query "..." --explain  # 展示确定性执行详情
 .venv/bin/life-index smart-search --query "..." --include-evidence  # 含 evidence pack + 检索诊断
 .venv/bin/life-index on-this-day --date 2026-05-19 --years-back 3       # 历史同日回顾
 .venv/bin/life-index edit --journal "Journals/2026/03/life-index_2026-03-14_001.md" --set-location "Beijing"

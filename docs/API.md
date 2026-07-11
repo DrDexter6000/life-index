@@ -2273,8 +2273,8 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 | `filtered_results` | array | yes | Primary bounded result list from deterministic retrieval |
 | `summary` | string | yes | Empty in deterministic scaffold mode; host agents synthesize from returned evidence |
 | `citations` | array | yes | Empty in deterministic scaffold mode; host agents cite returned evidence |
-| `agent_decisions_summary` | string | conditional | Summary string when `--explain` not passed |
-| `agent_decisions` | array | conditional | Detailed decision list when `--explain` passed |
+| `agent_decisions_summary` | string | conditional | Compatibility summary when `--explain` is absent; currently reports zero in-tool decisions |
+| `agent_decisions` | array | conditional | Compatibility array retained by `--explain`; currently empty because orchestration decisions belong to the Host Agent |
 | `agent_unavailable` | bool | yes | `true` for deterministic scaffold output; host agent synthesis happens outside the tool |
 | `diagnostics` | object | no | 仅 `--explain` 时出现；确定性诊断块，详见 [v1.1.1 Observability Contract](#v111-observability-contract) |
 | `performance` | object | yes | Timing breakdown (`total_time_ms`, conditional sub-fields) |
@@ -2402,7 +2402,7 @@ python -m tools.smart_search --query "..." [options]
 | `filtered_results` | list[dict] | 主要结果列表，由确定性检索返回 |
 | `summary` | string | 默认确定性模式为空；宿主 agent 负责总结 |
 | `citations` | list[string] | 默认确定性模式为空；宿主 agent 负责引用返回证据 |
-| `agent_decisions_summary` | string | CLI 默认输出的 Agent 决策数量摘要；传递 `--explain` 时替换为 `agent_decisions` |
+| `agent_decisions_summary` | string | CLI 默认输出的兼容性摘要；当前为零个工具内决策，传递 `--explain` 时替换为 `agent_decisions` |
 | `agent_unavailable` | bool | `true` 表示工具只返回 scaffold，宿主 agent 负责合成 |
 | `smart_search_mode` | string | `deterministic_scaffold` / `deterministic_aggregate` |
 | `agent_instructions` | object | 给调用 Agent 的消费规则：只基于返回证据回答，不得外部补证 |
@@ -2412,7 +2412,7 @@ python -m tools.smart_search --query "..." [options]
 
 #### `--explain` 输出变化
 
-当传递 `--explain` 时，`agent_decisions_summary`（string）被替换为 `agent_decisions`（list[dict]），包含每个 LLM 决策阶段的详细记录。未传递 `--explain` 时，输出包含 `agent_decisions_summary`（如 `"3 decisions made"`），不含 `agent_decisions`。
+当传递 `--explain` 时，`agent_decisions_summary`（string）被替换为兼容性字段 `agent_decisions`（list[dict]）。当前工具内不拥有 LLM 决策阶段，因此该数组为空；确定性执行来源记录位于 evidence/planner 元数据。未传递 `--explain` 时，输出包含当前为 `"0 decisions made"` 的 `agent_decisions_summary`，不含 `agent_decisions`。
 
 #### `performance` 子字段
 
@@ -2422,7 +2422,7 @@ python -m tools.smart_search --query "..." [options]
 | `rewrite_time_ms` | float | 始终 | 当前确定性产品 CLI 路径固定为 `0` |
 | `filter_time_ms` | float | 始终 | 当前确定性产品 CLI 路径固定为 `0` |
 | `search_time_ms` | float | 始终 | 底层检索耗时 |
-| `total_available` | int | 始终 | 检索到的总结果数 |
+| `total_available` | int | 始终 | 单查询为 Core 报告的可用总数；多子查询为合并前已观察到的唯一候选数下界，不对可能已截断的子结果集合宣称未知的精确并集总数 |
 | `evidence_build_ms` | float | 仅传递 `--include-evidence` 时 | Evidence pack 构建耗时；`--synthesize` 单独使用不触发构建 |
 | `evidence_error` | string | evidence 构建失败且 `--include-evidence` 时 | 构建失败错误信息 |
 
@@ -2499,8 +2499,8 @@ python -m tools.smart_search --query "..." [options]
 | `evidence_pack.query_context` | object | 查询上下文，含 `query`、`expanded_query`、`search_plan`、`entity_hints` |
 | `evidence_pack.items` | array | 检索证据项列表，每项含 `document`（文档引用）、`scores`（评分明细）、`snippet`（片段）、`entity_matches`（实体匹配溯源，仅匹配时出现） |
 | `evidence_pack.semantic_candidates` | array | Deprecated legacy 字段；当前恒为空列表 |
-| `evidence_pack.total_available` | int | 总可用结果数 |
-| `evidence_pack.has_more` | bool | 是否还有更多结果 |
+| `evidence_pack.total_available` | int | 与 `performance.total_available` 一致；多子查询时为已观察到的唯一候选数下界 |
+| `evidence_pack.has_more` | bool | 已观察唯一候选超过交付上限，或任一子查询报告更多结果/失败而使集合不完整时为 `true` |
 | `evidence_pack.no_confident_match` | bool | **检索层级信号**：底层搜索管道是否未找到高置信度匹配。这是检索质量指标，不是答案质量信号。调用方不应将其等同于 `answer.confidence` 的判断依据 |
 | `evidence_pack.diagnostics` | object | **确定性检索诊断**。不依赖 LLM，从已有搜索结果字段推导。详见下方 Diagnostics 子节 |
 | `evidence_pack.schema_version` | string | 证据包 schema 版本。当前为 `"1.0.0"`。旧 payload 反序列化时默认 `"1.0.0"` |

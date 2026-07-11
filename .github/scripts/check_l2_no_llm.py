@@ -74,12 +74,6 @@ PROVIDER_CREATE_CHAINS = {
     ("responses", "create"),
 }
 
-PROVIDER_CHAIN_OWNER_TOKENS = {
-    "backend",
-    "client",
-    "sdk",
-}
-
 PROVIDER_IDENTIFIER_TOKENS = {
     "anthropic",
     "cohere",
@@ -164,18 +158,13 @@ def _expression_name(node: ast.AST) -> str:
     return ""
 
 
-def _is_provider_create_call(call_name: str) -> bool:
-    """Recognize common provider SDK create chains without banning create()."""
+def _is_provider_specific_call(call_name: str) -> bool:
+    """Recognize provider-specific SDK suffixes regardless of owner name."""
     parts = tuple(part for part in call_name.split(".") if part)
-    for chain in PROVIDER_CREATE_CHAINS:
-        if len(parts) <= len(chain) or parts[-len(chain) :] != chain:
-            continue
-        owner = parts[-len(chain) - 1]
-        owner_tokens = set(_identifier_tokens(owner))
-        return bool(owner_tokens & PROVIDER_CHAIN_OWNER_TOKENS) or (
-            _is_provider_ownership_identifier(owner)
-        )
-    return False
+    return any(
+        len(parts) > len(chain) and parts[-len(chain) :] == chain
+        for chain in PROVIDER_CREATE_CHAINS
+    )
 
 
 def _assignment_targets(node: ast.AST) -> list[ast.AST]:
@@ -187,119 +176,178 @@ def _assignment_targets(node: ast.AST) -> list[ast.AST]:
     return [node]
 
 
-def _scan_search_ownership(tree: ast.AST, rel: str) -> list[Violation]:
-    """Scan provider ownership structures in production search packages.
+class _NoLlmVisitor(ast.NodeVisitor):
+    """Single-pass import and provider-ownership policy visitor."""
 
-    This is deliberately structural rather than a universal semantic proof. It
-    catches common import, declaration, storage, construction, dynamic import,
-    and provider-call forms while allowing deterministic query planning names.
-    """
-    owned: set[tuple[int, str]] = set()
-    importlib_aliases = {"importlib"}
-    import_module_aliases = {"__import__"}
+    def __init__(self, rel: str, *, search_scope: bool) -> None:
+        self.rel = rel
+        self.search_scope = search_scope
+        self.violations: set[Violation] = set()
+        self.provider_bindings: set[str] = set()
+        self.importlib_aliases = {"importlib"}
+        self.import_module_aliases = {"__import__"}
 
-    def add(node: ast.AST, marker: str) -> None:
-        owned.add((getattr(node, "lineno", 0), marker))
+    def _add(self, node: ast.AST, marker: str) -> None:
+        self.violations.add(Violation(self.rel, getattr(node, "lineno", 0), marker))
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "importlib":
-                    importlib_aliases.add(alias.asname or alias.name)
-                disallowed = _module_is_disallowed(alias.name)
-                if disallowed is not None:
-                    add(node, disallowed)
-                if alias.asname and _is_provider_ownership_identifier(alias.asname):
-                    add(node, alias.asname)
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            if module == "importlib":
-                for alias in node.names:
-                    if alias.name == "import_module":
-                        import_module_aliases.add(alias.asname or alias.name)
-            disallowed = _module_is_disallowed(module)
+    def _has_provider_provenance(self, node: ast.AST | None) -> bool:
+        if node is None:
+            return False
+        if isinstance(node, ast.Call):
+            return self._has_provider_provenance(node.func)
+        name = _expression_name(node)
+        if not name:
+            return False
+        leaf = name.rsplit(".", 1)[-1]
+        return name in self.provider_bindings or _is_provider_ownership_identifier(leaf)
+
+    def _record_targets(self, target: ast.AST, value: ast.AST | None) -> None:
+        value_is_provider = self._has_provider_provenance(value)
+        for leaf in _assignment_targets(target):
+            target_name = _expression_name(leaf)
+            if not target_name:
+                continue
+            target_is_provider = _is_provider_ownership_identifier(target_name.rsplit(".", 1)[-1])
+            if target_is_provider or value_is_provider:
+                self.provider_bindings.add(target_name)
+                self._add(leaf, target_name)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            local_name = alias.asname or alias.name.split(".", 1)[0]
+            if alias.name == "importlib":
+                self.importlib_aliases.add(local_name)
+            disallowed = _module_is_disallowed(alias.name)
             if disallowed is not None:
-                add(node, disallowed)
-            for alias in node.names:
-                if _is_provider_ownership_identifier(alias.name):
-                    add(node, f"{module}.{alias.name}".strip("."))
-                if alias.asname and _is_provider_ownership_identifier(alias.asname):
-                    add(node, alias.asname)
-        elif isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.name in LEGACY_LLM_OWNERSHIP_NAMES or _is_provider_ownership_identifier(
-                node.name
+                self._add(node, disallowed)
+                if self.search_scope:
+                    self.provider_bindings.add(local_name)
+            if (
+                self.search_scope
+                and alias.asname
+                and _is_provider_ownership_identifier(alias.asname)
             ):
-                add(node, node.name)
-        elif isinstance(node, ast.arg) and _is_provider_ownership_identifier(node.arg):
-            add(node, node.arg)
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                for leaf in _assignment_targets(target):
-                    target_name = _expression_name(leaf)
-                    if _is_provider_ownership_identifier(target_name.rsplit(".", 1)[-1]):
-                        add(leaf, target_name)
-        elif isinstance(node, ast.AnnAssign):
-            for leaf in _assignment_targets(node.target):
-                target_name = _expression_name(leaf)
-                if _is_provider_ownership_identifier(target_name.rsplit(".", 1)[-1]):
-                    add(leaf, target_name)
-        elif isinstance(node, ast.NamedExpr):
-            target_name = _expression_name(node.target)
-            if _is_provider_ownership_identifier(target_name.rsplit(".", 1)[-1]):
-                add(node.target, target_name)
-        elif isinstance(node, ast.Attribute) and _is_provider_ownership_identifier(node.attr):
-            add(node, _expression_name(node))
-        elif isinstance(node, ast.Call):
-            call_name = _expression_name(node.func)
-            call_leaf = call_name.rsplit(".", 1)[-1]
-            if _is_provider_create_call(call_name):
-                add(node, call_name)
-            elif call_leaf in PROVIDER_CALL_METHODS:
-                add(node, call_name)
-            elif _is_provider_ownership_identifier(call_leaf):
-                add(node, call_name)
+                self.provider_bindings.add(alias.asname)
+                self._add(node, alias.asname)
 
-            is_dynamic_import = (
-                isinstance(node.func, ast.Name) and node.func.id in import_module_aliases
-            ) or (
-                isinstance(node.func, ast.Attribute)
-                and node.func.attr == "import_module"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id in importlib_aliases
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        module = node.module or ""
+        disallowed = _module_is_disallowed(module)
+        if disallowed is not None:
+            self._add(node, disallowed)
+        for alias in node.names:
+            local_name = alias.asname or alias.name
+            explicit = DISALLOWED_FROM_NAMES.get((module, alias.name))
+            if explicit is not None:
+                self._add(node, explicit)
+            if module == "importlib" and alias.name == "import_module":
+                self.import_module_aliases.add(local_name)
+            if not self.search_scope:
+                continue
+            provider_named = _is_provider_ownership_identifier(alias.name) or (
+                alias.asname is not None and _is_provider_ownership_identifier(alias.asname)
             )
-            if is_dynamic_import and node.args and isinstance(node.args[0], ast.Constant):
-                dynamic_module = node.args[0].value
-                if isinstance(dynamic_module, str):
-                    disallowed = _module_is_disallowed(dynamic_module)
-                    if disallowed is not None:
-                        add(node, f"dynamic import {dynamic_module}")
+            if disallowed is not None or provider_named:
+                self.provider_bindings.add(local_name)
+            if provider_named:
+                self._add(node, f"{module}.{alias.name}".strip("."))
 
-    return [Violation(rel, line, marker) for line, marker in sorted(owned)]
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        if self.search_scope and (
+            node.name in LEGACY_LLM_OWNERSHIP_NAMES or _is_provider_ownership_identifier(node.name)
+        ):
+            self._add(node, node.name)
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        if self.search_scope and (
+            node.name in LEGACY_LLM_OWNERSHIP_NAMES or _is_provider_ownership_identifier(node.name)
+        ):
+            self._add(node, node.name)
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        if self.search_scope and (
+            node.name in LEGACY_LLM_OWNERSHIP_NAMES or _is_provider_ownership_identifier(node.name)
+        ):
+            self._add(node, node.name)
+        self.generic_visit(node)
+
+    def visit_arg(self, node: ast.arg) -> None:
+        if self.search_scope and _is_provider_ownership_identifier(node.arg):
+            self.provider_bindings.add(node.arg)
+            self._add(node, node.arg)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if self.search_scope:
+            for target in node.targets:
+                self._record_targets(target, node.value)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if self.search_scope:
+            self._record_targets(node.target, node.value)
+        self.generic_visit(node)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        if self.search_scope:
+            self._record_targets(node.target, node.value)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if self.search_scope and _is_provider_ownership_identifier(node.attr):
+            self._add(node, _expression_name(node))
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if not self.search_scope:
+            self.generic_visit(node)
+            return
+
+        call_name = _expression_name(node.func)
+        call_leaf = call_name.rsplit(".", 1)[-1]
+        owner_name = call_name.rsplit(".", 1)[0] if "." in call_name else ""
+        owner_leaf = owner_name.rsplit(".", 1)[-1]
+        owner_is_provider = owner_name in self.provider_bindings or (
+            bool(owner_leaf) and _is_provider_ownership_identifier(owner_leaf)
+        )
+        if _is_provider_specific_call(call_name):
+            self._add(node, call_name)
+        elif call_leaf in PROVIDER_CALL_METHODS and owner_is_provider:
+            self._add(node, call_name)
+        elif _is_provider_ownership_identifier(call_leaf) or (call_name in self.provider_bindings):
+            self._add(node, call_name)
+
+        is_dynamic_import = (
+            isinstance(node.func, ast.Name) and node.func.id in self.import_module_aliases
+        ) or (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "import_module"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in self.importlib_aliases
+        )
+        if is_dynamic_import and node.args and isinstance(node.args[0], ast.Constant):
+            dynamic_module = node.args[0].value
+            if isinstance(dynamic_module, str):
+                disallowed = _module_is_disallowed(dynamic_module)
+                if disallowed is not None:
+                    self._add(node, f"dynamic import {dynamic_module}")
+        self.generic_visit(node)
 
 
 def _scan_file(path: Path, root: Path) -> list[Violation]:
     rel = path.relative_to(root).as_posix()
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    violations: list[Violation] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                disallowed = _module_is_disallowed(alias.name)
-                if disallowed is not None:
-                    violations.append(Violation(rel, node.lineno, disallowed))
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            disallowed = _module_is_disallowed(module)
-            if disallowed is not None:
-                violations.append(Violation(rel, node.lineno, disallowed))
-            for alias in node.names:
-                explicit = DISALLOWED_FROM_NAMES.get((module, alias.name))
-                if explicit is not None:
-                    violations.append(Violation(rel, node.lineno, explicit))
     rel_parts = path.relative_to(root).parts
-    if tuple(rel_parts[:2]) in SEARCH_OWNERSHIP_ROOTS:
-        violations.extend(_scan_search_ownership(tree, rel))
-    return sorted(set(violations), key=lambda item: (item.path, item.line, item.import_name))
+    visitor = _NoLlmVisitor(
+        rel,
+        search_scope=tuple(rel_parts[:2]) in SEARCH_OWNERSHIP_ROOTS,
+    )
+    visitor.visit(tree)
+    return sorted(
+        visitor.violations,
+        key=lambda item: (item.path, item.line, item.import_name),
+    )
 
 
 def scan_tree(root: Path | str) -> list[Violation]:

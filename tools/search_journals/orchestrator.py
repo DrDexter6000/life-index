@@ -12,13 +12,16 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypedDict
 
 from ..lib.search_constants import ORCHESTRATOR_MAX_CANDIDATES
+from ..lib.planner_types import (
+    QueryPlan,
+    StageRecord,
+    build_planner_record_from_stages,
+    merge_planner_into_search_plan,
+)
 
-_MAX_ENTITY_HINTS = 5
-_MAX_EXPANSION_TERMS_PER_HINT = 3
-_MAX_EXPANSION_TERM_LENGTH = 20
 _MAX_SMART_SEARCH_SUB_QUERIES = 3
 _MAX_SMART_SEARCH_SUB_QUERY_LENGTH = 120
 
@@ -34,23 +37,6 @@ def _get_search_fn() -> Any:
 
         _search_fn = hierarchical_search
     return _search_fn
-
-
-def _is_absolute_path(path: str) -> bool:
-    """Check if a path looks absolute (Windows or POSIX)."""
-    import os
-
-    return os.path.isabs(path) or (len(path) >= 2 and path[1] == ":")
-
-
-@dataclass
-class AgentDecision:
-    """Record of a deterministic orchestration stage for transparency."""
-
-    stage: str
-    input_summary: str
-    output_summary: str
-    latency_ms: float
 
 
 @dataclass
@@ -79,6 +65,34 @@ class SmartSearchResult:
             "agent_unavailable": self.agent_unavailable,
             "performance": self.performance,
         }
+
+
+class _RewrittenPlan(TypedDict, total=False):
+    core_terms: str
+    expanded_terms: list[str]
+    time_range: Any
+    intent_type: str
+    rewritten_query: str
+    sub_queries: list[str]
+    semantic_fallback_query: str | None
+    search_plan: dict[str, Any]
+
+
+class _SearchExecution(TypedDict):
+    raw_results: dict[str, Any]
+    candidates: list[dict[str, Any]]
+    total_available: int
+    sub_queries: list[str]
+    strategy: str
+    semantic_fallback_used: bool
+    semantic_fallback_query: str | None
+
+
+@dataclass(frozen=True)
+class _EvidenceBuild:
+    data: dict[str, Any] | None = None
+    elapsed_ms: float = 0.0
+    error: str | None = None
 
 
 def _build_agent_instructions(mode: str) -> dict[str, Any]:
@@ -139,7 +153,7 @@ class SmartSearchOrchestrator:
                 break
         return normalized
 
-    def _deterministic_rewrite_query(self, query: str) -> dict[str, Any]:
+    def _deterministic_rewrite_query(self, query: str) -> _RewrittenPlan:
         """Build the smart-search scaffold from the shared deterministic plan."""
         from .query_preprocessor import build_search_plan
 
@@ -167,37 +181,11 @@ class SmartSearchOrchestrator:
             "search_plan": plan_dict,
         }
 
-    def _resolve_entity_hints(self, query: str) -> list[dict[str, Any]]:
-        """Resolve bounded entity hints using the deterministic entity graph."""
-        try:
-            from .core import resolve_query_entities
-
-            hints = resolve_query_entities(query)
-            bounded = []
-            for hint in hints[:_MAX_ENTITY_HINTS]:
-                terms = [
-                    term[:_MAX_EXPANSION_TERM_LENGTH]
-                    for term in hint["expansion_terms"][:_MAX_EXPANSION_TERMS_PER_HINT]
-                ]
-                bounded.append(
-                    {
-                        "entity_id": hint["entity_id"],
-                        "primary_name": hint.get("primary_name", ""),
-                        "entity_type": hint["entity_type"],
-                        "matched_term": hint["matched_term"],
-                        "expansion_terms": terms,
-                    }
-                )
-            return bounded
-        except Exception as exc:
-            logger.debug("[Orchestrator] Entity hint resolution skipped: %s", exc)
-            return []
-
-    def rewrite_query(self, query: str) -> dict[str, Any]:
+    def rewrite_query(self, query: str) -> _RewrittenPlan:
         """Build a deterministic structured query plan."""
         return self._deterministic_rewrite_query(query)
 
-    def _normalize_sub_queries(self, rewritten: dict[str, Any]) -> list[str]:
+    def _normalize_sub_queries(self, rewritten: _RewrittenPlan) -> list[str]:
         """Clamp deterministic query decomposition to a bounded list."""
         base_query = str(
             rewritten.get("rewritten_query") or rewritten.get("core_terms") or ""
@@ -219,7 +207,7 @@ class SmartSearchOrchestrator:
         return None
 
     @classmethod
-    def _resolve_time_range(cls, rewritten: dict[str, Any]) -> dict[str, str]:
+    def _resolve_time_range(cls, rewritten: _RewrittenPlan) -> dict[str, str]:
         """Map deterministic time-range metadata to search date filters."""
         raw = rewritten.get("time_range")
         if raw is None:
@@ -266,7 +254,7 @@ class SmartSearchOrchestrator:
 
     @staticmethod
     def _select_search_strategy(
-        rewritten: dict[str, Any],
+        rewritten: _RewrittenPlan,
         sub_queries: list[str],
         search_kwargs: dict[str, str],
     ) -> str:
@@ -277,7 +265,7 @@ class SmartSearchOrchestrator:
             return "keyword_temporal"
         return "keyword_only"
 
-    def execute_search(self, rewritten: dict[str, Any]) -> dict[str, Any]:
+    def execute_search(self, rewritten: _RewrittenPlan) -> _SearchExecution:
         """Execute bounded search using deterministic primitives."""
         search_fn = _get_search_fn()
         sub_queries = self._normalize_sub_queries(rewritten)
@@ -299,16 +287,26 @@ class SmartSearchOrchestrator:
 
         raw_query_results: list[dict[str, Any]] = []
         fused_by_key: dict[str, dict[str, Any]] = {}
-        total_available = 0
+        child_incomplete = False
         total_time_ms = 0.0
         warnings: list[str] = []
         for sub_query in sub_queries:
             result = search_fn(query=sub_query, **search_kwargs)
             raw_query_results.append({"query": sub_query, "result": result})
-            total_available += int(result.get("total_available", 0) or 0)
             total_time_ms += float(result.get("performance", {}).get("total_time_ms", 0) or 0)
             warnings.extend(str(warning) for warning in result.get("warnings", []) if warning)
-            for item in result.get("merged_results", []):
+            child_items = result.get("merged_results", [])
+            child_reported_total = int(result.get("total_available", len(child_items)) or 0)
+            child_failed = result.get("success") is False
+            child_incomplete = child_incomplete or bool(result.get("has_more"))
+            child_incomplete = child_incomplete or child_reported_total > len(child_items)
+            child_incomplete = child_incomplete or child_failed
+            if child_failed:
+                warnings.append(
+                    f"Sub-query {sub_query!r} returned a failure envelope; "
+                    "total_available is an observed lower bound."
+                )
+            for item in child_items:
                 key = _result_identity(item)
                 if not key:
                     continue
@@ -336,11 +334,14 @@ class SmartSearchOrchestrator:
                             existing[field_name] = candidate[field_name]
                     existing["rrf_score"] = candidate_score
 
-        merged = sorted(
+        observed_unique = len(fused_by_key)
+        ranked = sorted(
             fused_by_key.values(),
             key=lambda item: float(item.get("rrf_score", 0) or 0),
             reverse=True,
-        )[:ORCHESTRATOR_MAX_CANDIDATES]
+        )
+        merged = ranked[:ORCHESTRATOR_MAX_CANDIDATES]
+        has_more = observed_unique > ORCHESTRATOR_MAX_CANDIDATES or child_incomplete
         raw_results = {
             "success": True,
             "query_params": {
@@ -350,8 +351,8 @@ class SmartSearchOrchestrator:
             "merged_results": merged,
             "semantic_results": [],
             "total_found": len(merged),
-            "total_available": total_available,
-            "has_more": False,
+            "total_available": observed_unique,
+            "has_more": has_more,
             "no_confident_match": len(merged) == 0,
             "performance": {"total_time_ms": round(total_time_ms, 2)},
             "warnings": warnings,
@@ -365,140 +366,119 @@ class SmartSearchOrchestrator:
         return {
             "raw_results": raw_results,
             "candidates": merged,
-            "total_available": total_available,
+            "total_available": observed_unique,
             "sub_queries": sub_queries,
             "strategy": strategy,
             "semantic_fallback_used": False,
             "semantic_fallback_query": None,
         }
 
-    def search(
-        self, query: str, *, include_evidence: bool = False, synthesize: bool = False
-    ) -> dict[str, Any]:
-        """Execute deterministic smart-search; ``synthesize`` is a compatibility no-op."""
+    @staticmethod
+    def _try_aggregate(query: str) -> dict[str, Any] | None:
+        """Return a deterministic aggregate result or fall back to search."""
         from .aggregate_router import try_route_aggregate
-        from tools.lib.planner_types import (
-            QueryPlan,
-            StageRecord,
-            build_planner_record_from_stages,
-            merge_planner_into_search_plan,
-        )
 
-        start_time = time.time()
-        planner_stages: list[StageRecord] = []
         aggregate_route = try_route_aggregate(query)
-        aggregate_result: dict[str, Any] | None = None
-        if aggregate_route is not None:
-            try:
-                from tools.aggregate.core import run_aggregate
+        if aggregate_route is None:
+            return None
+        try:
+            from tools.aggregate.core import run_aggregate
 
-                aggregate_result = run_aggregate(
-                    range_str=aggregate_route.range_str,
-                    unit=aggregate_route.unit,
-                    predicate=aggregate_route.predicate,
-                    query=aggregate_route.query,
-                )
-            except Exception as exc:
-                logger.warning("[Orchestrator] Aggregate delegation failed: %s", exc)
-
-        if aggregate_result is not None:
-            result = SmartSearchResult(
-                query=query,
-                rewritten_query=query,
-                performance={
-                    "total_time_ms": round((time.time() - start_time) * 1000, 2),
-                    "rewrite_time_ms": 0,
-                    "filter_time_ms": 0,
-                    "search_time_ms": 0,
-                    "total_available": 0,
-                },
-            ).to_dict()
-            result["smart_search_mode"] = "deterministic_aggregate"
-            result["agent_instructions"] = _build_agent_instructions(result["smart_search_mode"])
-            result["answer_scaffold"] = _build_answer_scaffold(query, [])
-            result["query_plan"] = QueryPlan(
-                raw_query=query,
-                expanded_query=query,
-                sub_queries=[query],
-                strategy="deterministic_aggregate",
-                fallback_decision=False,
-            ).to_dict()
-            result["aggregate_result"] = aggregate_result
-            return result
-
-        rewritten = self.rewrite_query(query)
-        planner_stages.append(
-            StageRecord(
-                name="rewrite",
-                status="success",
-                latency_ms=0.0,
-                parameters={"deterministic": True},
+            return run_aggregate(
+                range_str=aggregate_route.range_str,
+                unit=aggregate_route.unit,
+                predicate=aggregate_route.predicate,
+                query=aggregate_route.query,
             )
-        )
+        except Exception as exc:
+            logger.warning("[Orchestrator] Aggregate delegation failed: %s", exc)
+            return None
 
-        search_started = time.time()
-        search_result = self.execute_search(rewritten)
-        search_elapsed = (time.time() - search_started) * 1000
+    @staticmethod
+    def _build_aggregate_envelope(
+        query: str,
+        aggregate_result: dict[str, Any],
+        start_time: float,
+    ) -> dict[str, Any]:
+        """Build the stable smart-search envelope for aggregate delegation."""
+        result = SmartSearchResult(
+            query=query,
+            rewritten_query=query,
+            performance={
+                "total_time_ms": round((time.time() - start_time) * 1000, 2),
+                "rewrite_time_ms": 0,
+                "filter_time_ms": 0,
+                "search_time_ms": 0,
+                "total_available": 0,
+            },
+        ).to_dict()
+        result["smart_search_mode"] = "deterministic_aggregate"
+        result["agent_instructions"] = _build_agent_instructions(result["smart_search_mode"])
+        result["answer_scaffold"] = _build_answer_scaffold(query, [])
+        result["query_plan"] = QueryPlan(
+            raw_query=query,
+            expanded_query=query,
+            sub_queries=[query],
+            strategy="deterministic_aggregate",
+            fallback_decision=False,
+        ).to_dict()
+        result["aggregate_result"] = aggregate_result
+        return result
+
+    @staticmethod
+    def _build_evidence(
+        query: str,
+        rewritten: _RewrittenPlan,
+        search_result: _SearchExecution,
+    ) -> _EvidenceBuild:
+        """Build evidence best-effort without affecting search success."""
+        from tools.evidence.adapter import extract_evidence_from_orchestrator
+
+        evidence_started = time.time()
+        try:
+            evidence_pack = extract_evidence_from_orchestrator(
+                search_result["raw_results"],
+                smart_result={
+                    "rewritten_query": rewritten.get("rewritten_query"),
+                    "original_query": query,
+                },
+            )
+            evidence_data = evidence_pack.to_dict()
+            rewritten_query = evidence_data.pop("rewritten_query", None)
+            if rewritten_query:
+                evidence_data.setdefault("query_context", {})["rewritten_query"] = rewritten_query
+            return _EvidenceBuild(
+                data=evidence_data,
+                elapsed_ms=(time.time() - evidence_started) * 1000,
+            )
+        except Exception as exc:
+            logger.warning("[Orchestrator] Evidence build failed: %s", exc)
+            return _EvidenceBuild(
+                elapsed_ms=(time.time() - evidence_started) * 1000,
+                error=str(exc),
+            )
+
+    @staticmethod
+    def _build_search_envelope(
+        query: str,
+        rewritten: _RewrittenPlan,
+        search_result: _SearchExecution,
+        planner_stages: list[StageRecord],
+        evidence: _EvidenceBuild,
+        *,
+        include_evidence: bool,
+        start_time: float,
+    ) -> dict[str, Any]:
+        """Assemble planner provenance, performance, evidence, and stable fields."""
         candidates = search_result["candidates"]
-        planner_stages.append(
-            StageRecord(
-                name="search",
-                status="success",
-                latency_ms=round(search_elapsed, 2),
-                parameters={
-                    "total_available": search_result["total_available"],
-                    "candidates_returned": len(candidates),
-                },
-            )
-        )
-
-        evidence_dict: dict[str, Any] | None = None
-        evidence_ms = 0.0
-        evidence_error: str | None = None
-        if include_evidence:
-            from tools.evidence.adapter import extract_evidence_from_orchestrator
-
-            evidence_started = time.time()
-            try:
-                evidence_pack = extract_evidence_from_orchestrator(
-                    search_result["raw_results"],
-                    smart_result={
-                        "rewritten_query": rewritten.get("rewritten_query"),
-                        "original_query": query,
-                    },
-                )
-                evidence_ms = (time.time() - evidence_started) * 1000
-                evidence_dict = evidence_pack.to_dict()
-                rewritten_query = evidence_dict.pop("rewritten_query", None)
-                if rewritten_query:
-                    evidence_dict.setdefault("query_context", {})[
-                        "rewritten_query"
-                    ] = rewritten_query
-            except Exception as exc:
-                evidence_ms = (time.time() - evidence_started) * 1000
-                evidence_error = str(exc)
-                logger.warning("[Orchestrator] Evidence build failed: %s", exc)
-            planner_stages.append(
-                StageRecord(
-                    name="evidence",
-                    status="success" if evidence_dict is not None else "failed",
-                    latency_ms=round(evidence_ms, 2),
-                )
-            )
-
-        planner_stages.append(
-            StageRecord(
-                name="filter",
-                status="success" if candidates else "skipped",
-                latency_ms=0.0,
-                parameters={"input_candidates": len(candidates)},
-            )
-        )
         planner_record = build_planner_record_from_stages(planner_stages)
-        if evidence_dict is not None:
-            existing_plan = evidence_dict.get("query_context", {}).get("search_plan")
-            evidence_dict.setdefault("query_context", {})["search_plan"] = (
-                merge_planner_into_search_plan(existing_plan, planner_record)
+        evidence_data = evidence.data
+        if evidence_data is not None:
+            query_context = evidence_data.setdefault("query_context", {})
+            existing_plan = query_context.get("search_plan")
+            query_context["search_plan"] = merge_planner_into_search_plan(
+                existing_plan,
+                planner_record,
             )
 
         result = SmartSearchResult(
@@ -528,10 +508,73 @@ class SmartSearchOrchestrator:
             strategy=search_result.get("strategy", "keyword_only"),
             fallback_decision=False,
         ).to_dict()
-        if evidence_dict is not None:
-            result["performance"]["evidence_build_ms"] = round(evidence_ms, 2)
-            result["evidence_pack"] = evidence_dict
+        if evidence_data is not None:
+            result["performance"]["evidence_build_ms"] = round(evidence.elapsed_ms, 2)
+            result["evidence_pack"] = evidence_data
         elif include_evidence:
-            result["performance"]["evidence_build_ms"] = round(evidence_ms, 2)
-            result["performance"]["evidence_error"] = evidence_error
+            result["performance"]["evidence_build_ms"] = round(evidence.elapsed_ms, 2)
+            result["performance"]["evidence_error"] = evidence.error
         return result
+
+    def search(
+        self, query: str, *, include_evidence: bool = False, synthesize: bool = False
+    ) -> dict[str, Any]:
+        """Execute deterministic smart-search; ``synthesize`` is a compatibility no-op."""
+        start_time = time.time()
+        aggregate_result = self._try_aggregate(query)
+        if aggregate_result is not None:
+            return self._build_aggregate_envelope(query, aggregate_result, start_time)
+
+        rewritten = self.rewrite_query(query)
+        planner_stages = [
+            StageRecord(
+                name="rewrite",
+                status="success",
+                latency_ms=0.0,
+                parameters={"deterministic": True},
+            )
+        ]
+        search_started = time.time()
+        search_result = self.execute_search(rewritten)
+        candidates = search_result["candidates"]
+        planner_stages.append(
+            StageRecord(
+                name="search",
+                status="success",
+                latency_ms=round((time.time() - search_started) * 1000, 2),
+                parameters={
+                    "total_available": search_result["total_available"],
+                    "candidates_returned": len(candidates),
+                },
+            )
+        )
+        evidence = (
+            self._build_evidence(query, rewritten, search_result)
+            if include_evidence
+            else _EvidenceBuild()
+        )
+        if include_evidence:
+            planner_stages.append(
+                StageRecord(
+                    name="evidence",
+                    status="success" if evidence.data is not None else "failed",
+                    latency_ms=round(evidence.elapsed_ms, 2),
+                )
+            )
+        planner_stages.append(
+            StageRecord(
+                name="filter",
+                status="success" if candidates else "skipped",
+                latency_ms=0.0,
+                parameters={"input_candidates": len(candidates)},
+            )
+        )
+        return self._build_search_envelope(
+            query,
+            rewritten,
+            search_result,
+            planner_stages,
+            evidence,
+            include_evidence=include_evidence,
+            start_time=start_time,
+        )

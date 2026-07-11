@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
 
-def _search_result(count: int = 2) -> dict:
+def _search_result(count: int = 2) -> dict[str, Any]:
     items = [
         {
             "path": f"Journals/2026/03/life-index_2026-03-0{index}_001.md",
@@ -43,7 +46,7 @@ def _search_result(count: int = 2) -> dict:
     }
 
 
-def _domain_payload(result: dict) -> dict:
+def _domain_payload(result: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in result.items() if key != "performance"}
 
 
@@ -94,14 +97,14 @@ def test_search_bounds_candidates_without_changing_order() -> None:
 def test_execute_search_fuses_bounded_deterministic_subqueries() -> None:
     calls: list[str] = []
 
-    def search(query: str = "", **kwargs) -> dict:
+    def search(query: str = "", **kwargs: Any) -> dict[str, Any]:
         calls.append(query)
         result = _search_result(1)
         result["merged_results"][0]["path"] = f"Journals/{query}.md"
         result["merged_results"][0]["rel_path"] = f"Journals/{query}.md"
         return result
 
-    rewritten = {
+    rewritten: Any = {
         "rewritten_query": "family",
         "sub_queries": ["daughter", "birthday", "school", "ignored"],
         "time_range": None,
@@ -114,14 +117,121 @@ def test_execute_search_fuses_bounded_deterministic_subqueries() -> None:
     assert len(result["candidates"]) == 3
 
 
+def test_multi_query_total_available_is_observed_unique_before_cap() -> None:
+    all_items = _search_result(17)["merged_results"]
+
+    def search(query: str = "", **kwargs: Any) -> dict[str, Any]:
+        result = _search_result(0)
+        result["merged_results"] = all_items[:10] if query == "first" else all_items[5:17]
+        result["total_available"] = len(result["merged_results"])
+        return result
+
+    rewritten: Any = {
+        "rewritten_query": "combined",
+        "sub_queries": ["first", "second"],
+        "time_range": None,
+    }
+    with patch("tools.search_journals.orchestrator._get_search_fn", return_value=search):
+        result = SmartSearchOrchestrator().execute_search(rewritten)
+
+    assert [item["rel_path"] for item in result["candidates"]] == [
+        item["rel_path"] for item in all_items[:15]
+    ]
+    assert result["total_available"] == 17
+    assert result["raw_results"]["total_available"] == 17
+    assert result["raw_results"]["total_found"] == 15
+    assert result["raw_results"]["has_more"] is True
+
+
+def test_multi_query_child_has_more_marks_observed_total_as_lower_bound() -> None:
+    item = _search_result(1)["merged_results"][0]
+
+    def search(query: str = "", **kwargs: Any) -> dict[str, Any]:
+        result = _search_result(1)
+        result["merged_results"] = [item]
+        result["total_available"] = 50 if query == "partial" else 1
+        result["has_more"] = query == "partial"
+        return result
+
+    rewritten: Any = {
+        "rewritten_query": "combined",
+        "sub_queries": ["partial", "overlap"],
+        "time_range": None,
+    }
+    with patch("tools.search_journals.orchestrator._get_search_fn", return_value=search):
+        result = SmartSearchOrchestrator().execute_search(rewritten)
+
+    assert result["total_available"] == 1
+    assert result["raw_results"]["total_available"] == 1
+    assert result["raw_results"]["has_more"] is True
+
+
+def test_multi_query_child_failure_preserves_partial_results_and_incompleteness() -> None:
+    success = _search_result(1)
+    failure = {
+        "success": False,
+        "error": {"code": "search_failed", "message": "synthetic failure"},
+        "merged_results": [],
+        "total_available": 0,
+        "has_more": False,
+        "performance": {"total_time_ms": 1.0},
+    }
+
+    def search(query: str = "", **kwargs: Any) -> dict[str, Any]:
+        return failure if query == "broken" else success
+
+    rewritten: Any = {
+        "rewritten_query": "combined",
+        "sub_queries": ["working", "broken"],
+        "time_range": None,
+    }
+    with patch("tools.search_journals.orchestrator._get_search_fn", return_value=search):
+        result = SmartSearchOrchestrator().execute_search(rewritten)
+
+    assert [item["rel_path"] for item in result["candidates"]] == [
+        item["rel_path"] for item in success["merged_results"]
+    ]
+    assert result["total_available"] == 1
+    assert result["raw_results"]["has_more"] is True
+    assert result["raw_results"]["multi_query_results"][1]["result"] == failure
+    assert any("broken" in warning for warning in result["raw_results"]["warnings"])
+
+
+def test_multi_query_evidence_and_performance_share_observed_unique_lower_bound() -> None:
+    all_items = _search_result(17)["merged_results"]
+
+    def search(query: str = "", **kwargs: Any) -> dict[str, Any]:
+        result = _search_result(0)
+        result["merged_results"] = all_items[:10] if query == "first" else all_items[5:17]
+        result["total_available"] = len(result["merged_results"])
+        return result
+
+    rewritten: Any = {
+        "rewritten_query": "combined",
+        "sub_queries": ["first", "second"],
+        "time_range": None,
+    }
+    with (
+        patch.object(SmartSearchOrchestrator, "rewrite_query", return_value=rewritten),
+        patch("tools.search_journals.orchestrator._get_search_fn", return_value=search),
+    ):
+        result = SmartSearchOrchestrator().search("combined", include_evidence=True)
+
+    assert len(result["filtered_results"]) == 15
+    assert result["performance"]["total_available"] == 17
+    assert result["evidence_pack"]["total_available"] == 17
+    assert result["evidence_pack"]["has_more"] is True
+    assert len(result["evidence_pack"]["items"]) == 15
+
+
 def test_execute_search_applies_deterministic_time_range() -> None:
     captured: list[dict[str, str]] = []
 
-    def search(query: str = "", **kwargs) -> dict:
+    def search(query: str = "", **kwargs: Any) -> dict[str, Any]:
         captured.append(kwargs)
         return _search_result(0)
 
-    rewritten = {
+    rewritten: Any = {
         "rewritten_query": "family",
         "sub_queries": ["family"],
         "time_range": "2026-03",
@@ -131,35 +241,6 @@ def test_execute_search_applies_deterministic_time_range() -> None:
 
     assert captured == [{"date_from": "2026-03-01", "date_to": "2026-03-31"}]
     assert result["strategy"] == "keyword_temporal"
-
-
-def test_entity_hints_are_bounded_and_provider_free() -> None:
-    hints = [
-        {
-            "entity_id": f"person-{index}",
-            "primary_name": f"Person {index}",
-            "entity_type": "person",
-            "matched_term": f"p{index}",
-            "expansion_terms": ["a", "b", "c", "ignored"],
-        }
-        for index in range(7)
-    ]
-    with patch(
-        "tools.search_journals.core.resolve_query_entities",
-        return_value=hints,
-    ):
-        result = SmartSearchOrchestrator()._resolve_entity_hints("family")
-
-    assert len(result) == 5
-    assert result[0]["expansion_terms"] == ["a", "b", "c"]
-
-
-def test_entity_hint_failure_degrades_to_empty() -> None:
-    with patch(
-        "tools.search_journals.core.resolve_query_entities",
-        side_effect=RuntimeError("broken graph"),
-    ):
-        assert SmartSearchOrchestrator()._resolve_entity_hints("family") == []
 
 
 def test_default_search_has_no_evidence_pack_or_internal_raw_results() -> None:
@@ -228,7 +309,9 @@ def test_synthesize_compatibility_argument_is_exact_domain_noop() -> None:
     assert "synthesis_ms" not in compatibility["performance"]
 
 
-def test_aggregate_delegation_preserves_public_scaffold(monkeypatch) -> None:
+def test_aggregate_delegation_preserves_public_scaffold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
     aggregate = {
         "success": True,
@@ -247,7 +330,9 @@ def test_aggregate_delegation_preserves_public_scaffold(monkeypatch) -> None:
     assert "answer" not in result
 
 
-def test_aggregate_failure_falls_back_to_deterministic_search(monkeypatch) -> None:
+def test_aggregate_failure_falls_back_to_deterministic_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
     with (
         patch("tools.aggregate.core.run_aggregate", side_effect=RuntimeError("boom")),

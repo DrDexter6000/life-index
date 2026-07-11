@@ -244,6 +244,99 @@ def test_public_no_llm_hard_check_allows_deterministic_create_chains(
     assert proc.returncode == 0, proc.stdout
 
 
+@pytest.mark.parametrize(
+    "call",
+    [
+        "index_generator.generate()",
+        "workflow.invoke()",
+        "chat_store.chat()",
+        "completion_cache.complete()",
+    ],
+)
+def test_public_no_llm_hard_check_allows_unproven_generic_verbs(
+    tmp_path: Path,
+    call: str,
+) -> None:
+    root = tmp_path / "repo"
+    search_file = root / "tools" / "search_journals" / "deterministic_verbs.py"
+    search_file.parent.mkdir(parents=True)
+    search_file.write_text(f"result = {call}\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, str(CHECK_SCRIPT), "--root", str(root)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stdout
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "engine.responses.create(model='example', input='x')",
+        "runtime.chat.completions.create(model='example', messages=[])",
+        "transport.messages.create(model='example', messages=[])",
+    ],
+)
+def test_public_no_llm_hard_check_rejects_provider_suffixes_with_neutral_owners(
+    tmp_path: Path,
+    call: str,
+) -> None:
+    root = tmp_path / "repo"
+    search_file = root / "tools" / "smart_search" / "neutral_provider_chain.py"
+    search_file.parent.mkdir(parents=True)
+    search_file.write_text(f"result = {call}\n", encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, str(CHECK_SCRIPT), "--root", str(root)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 1
+    assert "tools/smart_search/neutral_provider_chain.py" in proc.stdout
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_marker"),
+    [
+        (
+            "from openai import OpenAI\n" "engine = OpenAI()\n" "result = engine.invoke('x')\n",
+            "engine.invoke",
+        ),
+        (
+            "def run(provider):\n" "    engine = provider\n" "    return engine.generate('x')\n",
+            "engine.generate",
+        ),
+    ],
+)
+def test_public_no_llm_hard_check_tracks_simple_provider_bindings(
+    tmp_path: Path,
+    source: str,
+    expected_marker: str,
+) -> None:
+    root = tmp_path / "repo"
+    search_file = root / "tools" / "smart_search" / "provider_binding.py"
+    search_file.parent.mkdir(parents=True)
+    search_file.write_text(source, encoding="utf-8")
+
+    proc = subprocess.run(
+        [sys.executable, str(CHECK_SCRIPT), "--root", str(root)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 1
+    assert expected_marker in proc.stdout
+
+
 def test_public_no_llm_hard_check_allows_deterministic_query_planning_terms(
     tmp_path: Path,
 ) -> None:

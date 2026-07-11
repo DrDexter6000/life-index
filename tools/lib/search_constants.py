@@ -267,8 +267,8 @@ KEYWORD_TOKEN_HIT_RATIO: float = 0.4
 # Orchestrator Constants (Round 17 Phase 5)
 # =============================================================================
 
-# Maximum candidates sent to LLM for post-filtering and summarization.
-# 15 × ~200 chars ≈ 3000 tokens — keeps LLM context manageable.
+# Maximum deterministic candidates returned in the host-agent evidence scaffold.
+# The bound limits payload size while preserving the observed-availability metadata.
 ORCHESTRATOR_MAX_CANDIDATES: int = 15
 
 

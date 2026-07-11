@@ -370,8 +370,10 @@ and cannot be the sole evidence for a Tier 1 public blocker.
 The public #163 search ownership invariant is implemented: the Tier 1 no-LLM
 check scans every Python AST in search/smart-search for known provider imports
 and aliases, normalized LLM/provider/model-client declarations and storage,
-provider-like construction/calls, legacy prompt/trust/synthesis ownership, and
-constant-string dynamic imports. Syntax/parse failure is non-green. This is a
+simple provider bindings, provider-specific SDK call suffixes regardless of
+owner name, and generic provider verbs only with structural provider provenance.
+It also rejects legacy prompt/trust/synthesis ownership and constant-string
+dynamic imports. Syntax/parse failure is non-green. This is a
 static structural boundary, not a universal proof against computed strings or
 arbitrary runtime metaprogramming. Eval/A5 coverage remains pending.
 """
@@ -474,7 +476,7 @@ def _markdown_rows(text: str) -> list[tuple[str, ...]]:
 def _charter_metadata_value(charter: str, label: str) -> str:
     matches = re.findall(rf"^> \*\*{re.escape(label)}\*\*：(.+)$", charter, re.MULTILINE)
     assert len(matches) == 1, f"CHARTER metadata field {label!r} must occur exactly once"
-    return matches[0].strip()
+    return str(matches[0]).strip()
 
 
 def _charter_section(charter: str, start_heading: str, end_heading: str) -> str:
