@@ -436,9 +436,7 @@ def _evaluate_smart_aggregate_queries(
         route_missing_reason: str | None = None
         try:
             with _temporary_time_anchor(query_case.get("anchor_date")):
-                smart_result = SmartSearchOrchestrator(llm_client=None).search(
-                    str(query_case.get("query", ""))
-                )
+                smart_result = SmartSearchOrchestrator().search(str(query_case.get("query", "")))
             aggregate_result = smart_result.get("aggregate_result")
             if not isinstance(aggregate_result, dict):
                 route_missing_reason = "aggregate_result missing"

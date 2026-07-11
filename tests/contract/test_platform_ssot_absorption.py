@@ -158,13 +158,14 @@ design memo is not an authority or SSOT. The exact closed C1–C7 domains are no
 active Charter authority, and the former §1.9 direct provider-fallback direction
 is superseded: Host Agent + Skill own provider selection and intelligence.
 
-The following implementation work remains future work; D0 ratification does
-not describe any of it as complete:
+The following program work remains incomplete; D0 ratification did not itself
+implement it:
 
 """
-    "- #163 — recall/eval correction, explicit deprecation warning, ordinary "
-    "deterministic smart-search equivalence proof, and unreachable LLM-path deletion: "
-    "unimplemented.\n"
+    "- #163 — smart-search A3/A4 is implemented: the compatibility warning and "
+    "deterministic equivalence proof are active, dormant/injectable search LLM ownership "
+    "is deleted, and the public hard check scans that ownership surface. Eval/A5 remains "
+    "pending, so #163 is not complete.\n"
     """- #162 — transactional write, side-effect, and freshness repair: unimplemented.
 - #165 — backup, restore, and recovery proof: unimplemented.
 - #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
@@ -176,9 +177,10 @@ EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
         "### Smart-search current contract",
         "",
         "- Default/no-flag `life-index smart-search` returns a deterministic scaffold.",
-        "- Current explicit `--synthesize` is accepted, but the product CLI always constructs `SmartSearchOrchestrator(llm_client=None)`: it never instantiates or injects an LLM and emits no `answer`; the flag is behaviorally a deterministic no-op/no-answer path.",  # noqa: E501
-        "- Current runtime does not yet emit the approved explicit deprecation warning.",
-        "- Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.",  # noqa: E501
+        "- Current explicit `--synthesize` is accepted for at least two major versions. The product CLI constructs `SmartSearchOrchestrator()` with no injection surface, emits no `answer`, and preserves the ordinary deterministic domain payload.",  # noqa: E501
+        "- The CLI emits exactly one stderr warning: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`",  # noqa: E501
+        "- Search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation; the Tier 1 no-LLM hard check scans this ownership surface fail-closed.",  # noqa: E501
+        "- Eval/A5 under #163 remains pending; this A3/A4 state does not claim eval correction or close #163.",  # noqa: E501
         "- Host Agent + Skill remain the intelligence owner; #163 does not change that role boundary.",  # noqa: E501
     )
 )
@@ -338,11 +340,11 @@ EXPECTED_ADVANCED_ADDON_DUAL_CHANNEL = "\n".join(
 
 SYNTHESIZE_TRANSITION_SEMANTICS = "\n".join(
     (
-        "Current runtime: the product CLI accepts `--synthesize` but always constructs `SmartSearchOrchestrator(llm_client=None)`; it never instantiates or injects an LLM, emits no `answer`, and is behaviorally a deterministic no-op/no-answer path.",  # noqa: E501
+        "Current runtime: the product CLI accepts `--synthesize` for at least two major versions and constructs `SmartSearchOrchestrator()` with no injection surface. It emits no `answer` and preserves the ordinary deterministic domain payload.",  # noqa: E501
         "",
-        "Current warning status: the approved explicit deprecation warning is not yet emitted.",  # noqa: E501
+        "Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`",  # noqa: E501
         "",
-        "Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.",  # noqa: E501
+        "A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check scans this ownership surface fail-closed. Eval/A5 under #163 remains pending, so #163 is not complete.",  # noqa: E501
         "",
         "Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.",  # noqa: E501
     )
@@ -361,9 +363,10 @@ A public hard blocker is green only when at least one core assertion executed.
 All-skipped assertion sets are not green. Private-only assertions are advisory
 and cannot be the sole evidence for a Tier 1 public blocker.
 
-The public synthetic invariant work tracked by #163 is pending implementation;
-this inventory rule does not claim that future assertion or its CI result
-already exists.
+The public #163 search ownership invariant is implemented: the Tier 1 no-LLM
+check scans imports plus AST/symbol-level ownership across search/smart-search
+and fails closed on dormant or injectable provider/rewrite/filter/prompt/trust/
+synthesis surfaces. Eval/A5 coverage remains pending and is not claimed here.
 """
 
 EXPECTED_HOST_AGENT_ROUTING = "\n".join(
@@ -379,20 +382,19 @@ EXPECTED_HOST_AGENT_ROUTING = "\n".join(
 EXPECTED_API_CURRENT_ROWS = {
     "`answer` / `answer.*`": (
         "`answer` / `answer.*`",
-        "当前产品 CLI 不输出；`--synthesize` 不注入 LLM 且不添加 `answer`；"
-        "see the named `--synthesize` transition authority block；#163 将删除不可达实现",
-        "当前无此字段；如未来由新契约引入，再按该契约消费",
+        "当前产品 CLI 不输出；`--synthesize` 不注入 LLM、不添加 `answer`，并保持普通 "
+        "deterministic domain payload；see the named `--synthesize` transition authority block",
+        "当前无此字段；语言合成由 Host Agent + Skill 完成",
         "**stable**",
     ),
     "`--synthesize`": (
         "`--synthesize`",
-        "当前接受但不注入 LLM、不添加 `answer`，行为上是 deterministic no-op/no-answer；"
-        "see the named `--synthesize` transition authority block",
+        "当前接受至少两个主版本；stderr 发出一次稳定弃用警告；不注入 LLM、不添加 `answer`，"
+        "domain payload 与普通调用等价",
     ),
     "`--include-evidence --synthesize`": (
         "`--include-evidence --synthesize`",
-        "添加 evidence_pack；`--synthesize` 当前不注入 LLM、不添加 `answer`；"
-        "see the named `--synthesize` transition authority block",
+        "添加 evidence_pack；stderr 发出一次稳定弃用警告；`--synthesize` 不改变 JSON/domain 输出",
     ),
 }
 
@@ -414,12 +416,6 @@ EXPECTED_API_PERFORMANCE_ROWS = {
         "float",
         "仅传递 `--include-evidence` 时",
         "Evidence pack 构建耗时；`--synthesize` 单独使用不触发构建",
-    ),
-    "`synthesis_ms`": (
-        "`synthesis_ms`",
-        "float",
-        "当前产品 CLI 不出现",
-        "不可达旧实现的非稳定字段；#163 清理",
     ),
 }
 
@@ -530,7 +526,7 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
         EXPECTED_SMART_SEARCH_CURRENT_CONTRACT,
         "docs/ARCHITECTURE.md",
     )
-    assert "SmartSearchOrchestrator(llm_client=None)" in smart_search_cli
+    assert "SmartSearchOrchestrator()" in smart_search_cli
 
     smart_search_end = "<!-- PLATFORM-SSOT:SMART-SEARCH-CURRENT-CONTRACT:END -->"
     provider_backed_drift = architecture.replace(
@@ -539,7 +535,9 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
         + smart_search_end,
         1,
     )
-    assert "always constructs `SmartSearchOrchestrator(llm_client=None)`" in provider_backed_drift
+    assert (
+        "constructs `SmartSearchOrchestrator()` with no injection surface" in provider_backed_drift
+    )
     with pytest.raises(AssertionError) as exc_info:
         _assert_named_block_snapshot(
             provider_backed_drift,

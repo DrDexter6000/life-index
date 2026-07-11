@@ -394,11 +394,11 @@ agent 按本 Skill 的 playbook 完成，详见
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:START -->
 **`--synthesize` transition**
 
-Current runtime: the product CLI accepts `--synthesize` but always constructs `SmartSearchOrchestrator(llm_client=None)`; it never instantiates or injects an LLM, emits no `answer`, and is behaviorally a deterministic no-op/no-answer path.
+Current runtime: the product CLI accepts `--synthesize` for at least two major versions and constructs `SmartSearchOrchestrator()` with no injection surface. It emits no `answer` and preserves the ordinary deterministic domain payload.
 
-Current warning status: the approved explicit deprecation warning is not yet emitted.
+Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`
 
-Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.
+A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check scans this ownership surface fail-closed. Eval/A5 under #163 remains pending, so #163 is not complete.
 
 Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:END -->
@@ -421,7 +421,7 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 3. 只有开放回忆、关键词 / 实体加权发现、或 facet 菜单无法提供有效候选时，才调用 `life-index smart-search --query "..." --include-evidence` 或 `life-index search`。
 4. 使用 `smart-search` 时，检查 `query_plan.sub_queries`、`query_plan.strategy` 与检索诊断，消费返回的 `agent_instructions`、`answer_scaffold`、`filtered_results` 与 `evidence_pack`；只引用返回或已读取的来源，不得自行补造证据。
 5. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
-6. 不要为获得工具侧合成而叠加 `--synthesize`：当前产品 CLI 接受该兼容旗标但不注入 LLM、不添加 `answer`，且尚未发出弃用警告；完整过渡契约见上方命名块。
+6. 不要为获得工具侧合成而叠加 `--synthesize`：该兼容旗标至少保留两个主版本，但只向 stderr 发出一次稳定弃用警告；它不注入 LLM、不添加 `answer`，也不改变普通 deterministic domain payload。完整过渡契约见上方命名块。
 
 **查询意图 → 参数映射**:
 

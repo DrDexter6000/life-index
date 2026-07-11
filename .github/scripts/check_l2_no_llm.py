@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when deterministic tool modules import in-tool LLM plumbing."""
+"""Fail when deterministic tools import or own in-tool LLM plumbing."""
 
 from __future__ import annotations
 
@@ -25,6 +25,31 @@ DISALLOWED_MODULES = {
 
 DISALLOWED_FROM_NAMES = {
     ("tools.lib.config", "get_llm_config"): "tools.lib.config.get_llm_config",
+}
+
+SEARCH_OWNERSHIP_ROOTS = {
+    ("tools", "search_journals"),
+    ("tools", "smart_search"),
+}
+
+FORBIDDEN_SEARCH_OWNERSHIP_SYMBOLS = {
+    "LLMClient",
+    "llm_client",
+    "_llm",
+    "_call_llm",
+    "post_filter_and_summarize",
+    "synthesize_answer",
+    "_build_synthesis_prompt",
+    "_evidence_to_synthesis_context",
+    "_parse_synthesis_response",
+    "_apply_trust_gate",
+    "_compute_transparency",
+    "_build_rewrite_prompt",
+    "_parse_rewrite_response",
+    "_build_filter_prompt",
+    "_parse_filter_response",
+    "_citation_matches_query",
+    "_normalized_tokens",
 }
 
 
@@ -81,6 +106,22 @@ def _scan_file(path: Path, root: Path) -> list[Violation]:
                 explicit = DISALLOWED_FROM_NAMES.get((module, alias.name))
                 if explicit is not None:
                     violations.append(Violation(rel, node.lineno, explicit))
+    rel_parts = path.relative_to(root).parts
+    if tuple(rel_parts[:2]) in SEARCH_OWNERSHIP_ROOTS:
+        owned: set[tuple[int, str]] = set()
+        for node in ast.walk(tree):
+            symbol: str | None = None
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                symbol = node.name
+            elif isinstance(node, ast.arg):
+                symbol = node.arg
+            elif isinstance(node, ast.Name):
+                symbol = node.id
+            elif isinstance(node, ast.Attribute):
+                symbol = node.attr
+            if symbol in FORBIDDEN_SEARCH_OWNERSHIP_SYMBOLS:
+                owned.add((getattr(node, "lineno", 0), symbol))
+        violations.extend(Violation(rel, line, symbol) for line, symbol in sorted(owned))
     return violations
 
 
@@ -94,7 +135,7 @@ def scan_tree(root: Path | str) -> list[Violation]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Check deterministic tool modules for disallowed LLM imports."
+        description="Check deterministic tools for disallowed LLM imports and ownership."
     )
     parser.add_argument(
         "--root",

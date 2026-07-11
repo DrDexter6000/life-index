@@ -2282,7 +2282,7 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 | `agent_instructions` | object | yes | Provider-free guidance for the calling agent |
 | `answer_scaffold` | object | yes | Suggested response shape and citation policy for the calling agent |
 | `query_plan` | object | yes | Query decomposition and strategy metadata |
-| `answer` | object | no | 当前产品 CLI 不输出；#163 将删除不可达的旧实现 |
+| `answer` | object | no | 当前产品 CLI 不输出；语言合成属于 Host Agent + Life Index Skill |
 | `evidence_pack` | object | no | Additive: retrieval evidence (requires `--include-evidence`) |
 | `aggregate_result` | object | no | Additive: deterministic aggregate output when aggregate intent detected |
 | `events` | array | no | Piggyback event notifications |
@@ -2303,7 +2303,7 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
   disabled/no-op compatibility fields.
 - `agent_unavailable`: current product CLI returns `true`; the Host Agent owns synthesis.
 - `performance`: non-stable; sub-fields may expand. Consumers should tolerate unknown keys.
-- `answer.*`: not emitted by the current product CLI; consumers must not depend on the dormant implementation that #163 will delete.
+- `answer.*`: not emitted by the product CLI; consumers synthesize from returned evidence in the Host Agent.
 - `aggregate_result`: computed by `tools.aggregate.core.run_aggregate`; LLM never computes counts.
 
 #### Error Behavior / Error Codes
@@ -2341,7 +2341,7 @@ python -m tools.smart_search --query "..." [options]
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情与 `diagnostics` 诊断块 |
 | include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
 | format-entity-annotated | flag | ❌ | false | 与 `--include-evidence` 同用时，增加人类可读的 `formatted_evidence` |
-| synthesize | flag | ❌ | false | 当前接受但不注入 LLM、不添加 `answer`，行为上是 deterministic no-op/no-answer；见命名 transition block |
+| synthesize | flag | ❌ | false | 至少保留两个主版本；不注入 LLM、不添加 `answer`、不改变 domain payload，并在 stderr 发出一次稳定弃用警告；见命名 transition block |
 
 ### 返回值
 
@@ -2425,7 +2425,6 @@ python -m tools.smart_search --query "..." [options]
 | `total_available` | int | 始终 | 检索到的总结果数 |
 | `evidence_build_ms` | float | 仅传递 `--include-evidence` 时 | Evidence pack 构建耗时；`--synthesize` 单独使用不触发构建 |
 | `evidence_error` | string | evidence 构建失败且 `--include-evidence` 时 | 构建失败错误信息 |
-| `synthesis_ms` | float | 当前产品 CLI 不出现 | 不可达旧实现的非稳定字段；#163 清理 |
 
 > **稳定性说明**: `performance` 子字段集合可能在未来扩展。调用方应容忍未知键。
 
@@ -2442,7 +2441,7 @@ python -m tools.smart_search --query "..." [options]
 | `smart_search_mode` | 路径判断 | 可展示 | **stable** |
 | `summary` | 默认空；宿主 agent 可忽略 | 展示 | **stable** |
 | `citations` | 默认空；宿主 agent 应引用 evidence | 可点击链接 | **stable** |
-| `answer` / `answer.*` | 当前产品 CLI 不输出；`--synthesize` 不注入 LLM 且不添加 `answer`；see the named `--synthesize` transition authority block；#163 将删除不可达实现 | 当前无此字段；如未来由新契约引入，再按该契约消费 | **stable** |
+| `answer` / `answer.*` | 当前产品 CLI 不输出；`--synthesize` 不注入 LLM、不添加 `answer`，并保持普通 deterministic domain payload；see the named `--synthesize` transition authority block | 当前无此字段；语言合成由 Host Agent + Skill 完成 | **stable** |
 | `evidence_pack` | 按需 | 按需 | **stable** |
 | `formatted_evidence` | 可展示 | 可展示 | **stable additive** — 仅 `--include-evidence --format-entity-annotated` 时出现 |
 | `aggregate_result` | aggregate/count/bucketed-frequency queries | count/bucket/claim display | **stable additive** - deterministic `aggregate` result; LLM never computes counts |
@@ -2652,11 +2651,11 @@ Evidence pack 采用**最佳努力（best-effort）**策略：
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:START -->
 ### `--synthesize` transition authority
 
-Current runtime: the product CLI accepts `--synthesize` but always constructs `SmartSearchOrchestrator(llm_client=None)`; it never instantiates or injects an LLM, emits no `answer`, and is behaviorally a deterministic no-op/no-answer path.
+Current runtime: the product CLI accepts `--synthesize` for at least two major versions and constructs `SmartSearchOrchestrator()` with no injection surface. It emits no `answer` and preserves the ordinary deterministic domain payload.
 
-Current warning status: the approved explicit deprecation warning is not yet emitted.
+Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`
 
-Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.
+A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check scans this ownership surface fail-closed. Eval/A5 under #163 remains pending, so #163 is not complete.
 
 Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:END -->
@@ -2664,14 +2663,10 @@ Intelligence owner: Host Agent + Skill remain responsible for planning, multi-ho
 ### `--synthesize` current compatibility behavior
 
 The named transition block above is the sole authority for current versus target
-status. The current product CLI has no provider/client injection path and does
-not emit `answer`, including when `--synthesize` is present. The accepted flag
-also does not yet emit the approved explicit deprecation warning.
-
-Dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and
-synthesis internals are not reachable from the product CLI and are not a current
-public behavior contract. Their deletion, the warning, and ordinary-path
-equivalence proof belong to #163.
+status. The product CLI has no provider/client injection path and does not emit
+`answer`, including when `--synthesize` is present. The flag emits the stable
+warning above and then uses the same deterministic execution path. Only timing
+metadata may vary between separate invocations; the domain payload is equivalent.
 
 #### 组合标志语义
 
@@ -2679,8 +2674,8 @@ equivalence proof belong to #163.
 |----------|------|
 | （无标志） | 确定性结果；不进行工具内 LLM rewrite/filter/summary |
 | `--include-evidence` | 添加 evidence_pack |
-| `--synthesize` | 当前接受但不注入 LLM、不添加 `answer`，行为上是 deterministic no-op/no-answer；see the named `--synthesize` transition authority block |
-| `--include-evidence --synthesize` | 添加 evidence_pack；`--synthesize` 当前不注入 LLM、不添加 `answer`；see the named `--synthesize` transition authority block |
+| `--synthesize` | 当前接受至少两个主版本；stderr 发出一次稳定弃用警告；不注入 LLM、不添加 `answer`，domain payload 与普通调用等价 |
+| `--include-evidence --synthesize` | 添加 evidence_pack；stderr 发出一次稳定弃用警告；`--synthesize` 不改变 JSON/domain 输出 |
 
 ### Aggregate Delegation（自动聚合路由）
 
@@ -2982,7 +2977,7 @@ print(batch.by_verdict)  # {"supported": 1, "invalid_citation": 1}
 | 绝对路径 | 引用包含完整文件系统路径 | `absolute_path` |
 | 幻觉路径 | 引用路径不在 `known_paths` 中 | `unknown_path` |
 | 类型错误 | 引用不是 string | `not_a_string` |
-| 越界索引 | 数字引用超出 `filtered_results` 范围 | 被 `_parse_synthesis_response` 丢弃 |
+| 越界索引 | 数字引用不属于本 answer-eval 的 string path contract | `not_a_string` |
 
 ---
 

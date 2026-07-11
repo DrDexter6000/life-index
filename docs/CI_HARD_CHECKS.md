@@ -21,9 +21,10 @@ A public hard blocker is green only when at least one core assertion executed.
 All-skipped assertion sets are not green. Private-only assertions are advisory
 and cannot be the sole evidence for a Tier 1 public blocker.
 
-The public synthetic invariant work tracked by #163 is pending implementation;
-this inventory rule does not claim that future assertion or its CI result
-already exists.
+The public #163 search ownership invariant is implemented: the Tier 1 no-LLM
+check scans imports plus AST/symbol-level ownership across search/smart-search
+and fails closed on dormant or injectable provider/rewrite/filter/prompt/trust/
+synthesis surfaces. Eval/A5 coverage remains pending and is not claimed here.
 <!-- PLATFORM-SSOT:PUBLIC-BLOCKER-EXECUTION:END -->
 
 Platform-boundary checks follow the active C1–C7 authority in
@@ -75,6 +76,8 @@ block pull request readiness, but failures must be triaged.
 ## Scope Notes
 
 - Format, lint, security, and type checks intentionally target `tools/`.
+- The l2-no-llm check scans imports across deterministic tools and performs the
+  full AST ownership scan across `tools/search_journals` and `tools/smart_search`.
 - The blocker marker set spans the files collected by `pytest -m blocker`.
 - The search evaluation gate is Tier 1 because it protects search quality.
 - Full suite, quarantine, coverage, package smoke, and benchmarks are visible

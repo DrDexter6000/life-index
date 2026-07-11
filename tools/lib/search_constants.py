@@ -269,7 +269,7 @@ KEYWORD_TOKEN_HIT_RATIO: float = 0.4
 
 # Maximum candidates sent to LLM for post-filtering and summarization.
 # 15 × ~200 chars ≈ 3000 tokens — keeps LLM context manageable.
-ORCHESTRATOR_MAX_LLM_CANDIDATES: int = 15
+ORCHESTRATOR_MAX_CANDIDATES: int = 15
 
 
 # =============================================================================
@@ -366,7 +366,7 @@ __all__ = [
     # Keyword Pipeline
     "KEYWORD_TOKEN_HIT_RATIO",
     # Orchestrator
-    "ORCHESTRATOR_MAX_LLM_CANDIDATES",
+    "ORCHESTRATOR_MAX_CANDIDATES",
     # Fuzzy Typo Correction
     "FUZZY_TYPO_CANONICALS",
     "FUZZY_TYPO_RATIO_THRESHOLD",

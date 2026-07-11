@@ -17,6 +17,10 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+SYNTHESIZE_DEPRECATION_WARNING = (
+    "DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the "
+    "Host Agent + Life Index Skill."
+)
 
 
 def _run_smart_search(
@@ -203,6 +207,22 @@ class TestSynthesizeNoLlmContract:
         performance = _json(synthesize_proc)["performance"]
         assert "evidence_build_ms" not in performance
         assert "synthesis_ms" not in performance
+
+    def test_synthesize_flag_emits_deprecation_warning_and_preserves_domain_output_equivalence(
+        self,
+        default_proc: subprocess.CompletedProcess[str],
+        synthesize_proc: subprocess.CompletedProcess[str],
+    ) -> None:
+        ordinary = _json(default_proc)
+        synthesized = _json(synthesize_proc)
+        ordinary_domain = {key: value for key, value in ordinary.items() if key != "performance"}
+        synthesized_domain = {
+            key: value for key, value in synthesized.items() if key != "performance"
+        }
+
+        assert ordinary_domain == synthesized_domain
+        assert "answer" not in synthesized
+        assert synthesize_proc.stderr.splitlines().count(SYNTHESIZE_DEPRECATION_WARNING) == 1
 
 
 class TestCombinedEvidenceSynthesizeNoLlmContract:
