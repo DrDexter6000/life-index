@@ -87,3 +87,31 @@ def test_cli_exits_nonzero_for_violation_and_zero_for_clean(tmp_path: Path) -> N
     assert "tools/write_journal/prepare.py" in dirty.stdout
     assert "tools._optional.llm_extract" in dirty.stdout
     assert clean.returncode == 0
+
+
+def test_scan_flags_provider_ownership_in_product_eval_tree(tmp_path: Path) -> None:
+    checker = _load_checker()
+    eval_file = tmp_path / "tools" / "eval" / "run_eval.py"
+    eval_file.parent.mkdir(parents=True)
+    eval_file.write_text(
+        "from openai import OpenAI\n"
+        "provider_client = OpenAI()\n"
+        "provider_client.responses.create(model='synthetic')\n",
+        encoding="utf-8",
+    )
+
+    violations = checker.scan_tree(tmp_path)
+
+    assert violations
+    assert {violation.path for violation in violations} == {"tools/eval/run_eval.py"}
+
+
+def test_scan_parses_utf8_bom_in_product_eval_tree(tmp_path: Path) -> None:
+    checker = _load_checker()
+    eval_file = tmp_path / "tools" / "eval" / "answer_eval.py"
+    eval_file.parent.mkdir(parents=True)
+    eval_file.write_text(
+        "\ufeffdef evaluate_answer():\n    return {'supported': True}\n", encoding="utf-8"
+    )
+
+    assert checker.scan_tree(tmp_path) == []

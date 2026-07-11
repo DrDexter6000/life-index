@@ -127,6 +127,23 @@ def test_default_search_keeps_all_synthetic_token_matches_despite_noise_label(
     assert f"query_classification: {reason}; retrieval_not_bypassed" in result["warnings"]
 
 
+def test_public_blocker_executes_synthetic_core_assertion(tmp_path: Path) -> None:
+    """Stable public-core target counted by the Tier 1 assertion sentinel."""
+    data_dir = _make_synthetic_data_dir(tmp_path)
+    expected_path = _write_journal(
+        data_dir,
+        sequence=1,
+        title="Synthetic publiccoretoken note",
+        content="A neutral fixture containing publiccoretoken.",
+    )
+
+    result = _run_search(data_dir, "publiccoretoken", "--limit", "0")
+
+    assert result["total_matches"] == 1
+    assert len(result["merged_results"]) == 1
+    assert Path(result["merged_results"][0]["path"]).as_posix().endswith(expected_path)
+
+
 def test_classifier_failure_is_advisory_and_does_not_suppress_token_match(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
