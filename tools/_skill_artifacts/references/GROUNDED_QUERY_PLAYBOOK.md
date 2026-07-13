@@ -1,7 +1,8 @@
 # Grounded Query Playbook
 
-Use this playbook for magazine-style analysis questions that need grounded
-journal evidence.
+Use this playbook for time-scoped evidence, facet/count/enumeration answers,
+cross-facet questions, magazine-style analysis, or an explicit `GROUNDED` /
+`PARTIAL` / `UNGROUNDED` status request.
 
 1. Treat planning, multi-hop reasoning, interpretation, and synthesis as host
    agent work. Life Index tools provide deterministic search, navigation, read,
@@ -63,16 +64,21 @@ journal evidence.
    Do not use `life-index recall` in new playbooks; it is a deprecated
    compatibility wrapper over `search`.
    Do not use ad hoc `grep` or broad full-directory reads.
-5. Return the magazine answer shape:
+5. Ordinary count, facet, enumeration, cross-facet, and time-scoped answers use
+   bounded evidence and honest uncertainty without requiring `answer.insights[]` or a
+   `GROUNDED` / `PARTIAL` / `UNGROUNDED` status.
+6. Only for magazine-style analysis or an explicit grounded-status request,
+   return the magazine answer shape:
    `answer.insights[]` where each item has `quote`, `interpretation`, and
    `evidence_refs`, plus `answer.summary` as connective prose. Every factual
    date, count, location, event, or conclusion must be covered by cited
    insights. If the answer includes an aggregate count, include a dedicated
    insight whose `interpretation` repeats the exact count and whose
    `evidence_refs` cover the counted journal entries.
-6. Never mark an answer `GROUNDED` with zero citations, missing journal IDs, or
-   facts that only come from hidden session memory. If evidence is insufficient
-   or validation fails, return `PARTIAL` or `UNGROUNDED` with a concrete gap.
+7. When returning an explicit grounding status, never mark an answer `GROUNDED`
+   with zero citations, missing journal IDs, or facts that only come from hidden
+   session memory. If evidence is insufficient or validation fails, return
+   `PARTIAL` or `UNGROUNDED` with a concrete gap.
 
 ## Search And Smart-Search Consumption
 

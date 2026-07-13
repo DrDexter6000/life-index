@@ -98,25 +98,36 @@ triggers:
 - 这是会话面提示，不替代 `bootstrap --json` 的安装/repair authority；旧版本无法自带新检测码时，以 `bootstrap-manifest.json` + `CHANGELOG.md` 为人工校验锚点；GUI 栈升级/运维见 GUI 仓 `docs/AGENT_UPDATE_PLAYBOOK.md`
 
 <!-- GROUNDED_QUERY_SKILL_START -->
-## Grounded Query Skill Playbook
+## Grounded Query Routing (SSOT)
 
-Use the compact routing rules here for ordinary search. Load the Full grounded query playbook from `references/GROUNDED_QUERY_PLAYBOOK.md` only when the user asks for magazine-style analysis, time-scoped evidence, facet/count/enumeration answers, cross-facet questions, or explicit `GROUNDED` / `PARTIAL` / `UNGROUNDED` status.
+Choose the route once here; later workflows add only task-specific execution rules.
 
-Minimal deterministic path:
+| Query shape | Route |
+|:---|:---|
+| Strict keyword / FTS-only | `life-index search --query "..." --no-semantic`（兼容 no-op） |
+| Ordinary keyword, entity-weighted, or filtered retrieval | `life-index search --query "..."` |
+| Open recall or scaffold/evidence discovery | `life-index smart-search --query "..." --include-evidence` |
+| Time-scoped, facet, count, enumeration, or cross-facet | Load the Full grounded query playbook from `references/GROUNDED_QUERY_PLAYBOOK.md`; use `index-tree ensure`, then `ensure` -> `discover` -> `navigate` before bounded journal reads |
+| Magazine-style analysis or explicit `GROUNDED` / `PARTIAL` / `UNGROUNDED` status | Load the same Full grounded query playbook; its magazine answer shape/status rules apply only when this row is selected |
+| Legacy callers passing `--semantic*` | Accept as deprecated no-op; results remain keyword + Entity Graph |
 
-1. For count, enumerate, facet, cross-facet, and bounded time-range questions,
-   use `index-tree ensure`, then the agent-facing `ensure` -> `discover` -> `navigate`
-   path before journal reads.
-2. Use `journal batch-get` for two or more returned paths; use `journal get`
-   only for one path.
-3. Use `aggregate` for counts/buckets and `trajectory` for typed observation
-   series.
-4. Use `search` or `smart-search --include-evidence` only for open recall or
-   keyword/entity-weighted discovery, then read bounded returned paths.
-5. Do not use `index-tree nodes`, `index-tree lens`, or `index-tree shadow`
-   for normal host-agent retrieval/navigation. They are debug-only legacy
-   diagnostics retained for compatibility.
-6. Do not use `recall`, broad grep, or full-directory reads for new playbooks.
+**计数 vs 观测序列选择**:
+
+| 需求 | 使用 |
+|:---|:---|
+| 明确计数、分桶、频率、下限/上限、可核 claim envelope | `life-index aggregate --range ... --unit ... --predicate ... --json` |
+| 同一字段随时间变化的 typed observation series | `life-index trajectory --field ... --range YYYY-MM..YYYY-MM` |
+| 需要解释趋势含义、异常点、原因或叙述总结 | 先用 `trajectory` 或 `aggregate` 取确定性数据，再由宿主 agent 解释并引用来源 |
+
+`aggregate` owns counts, buckets, and claim envelopes. `trajectory` owns typed
+observation series. Do not use `trajectory` as a hidden counter, and do not use
+`aggregate` to extract field-value time series.
+
+Always use `journal batch-get` for two or more paths and `journal get` for one.
+Do not use `index-tree nodes`, `index-tree lens`, or `index-tree shadow`
+for normal host-agent retrieval/navigation. They are debug-only legacy
+diagnostics retained for compatibility.
+Do not use `recall`, broad grep, or full-directory reads for new playbooks.
 
 <!-- GROUNDED_QUERY_SKILL_END -->
 
@@ -362,22 +373,9 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 ### 工作流2: 检索日志
 
-**先按问题形态选择路径**。开放回忆或关键词/实体发现使用下表；time-scoped、
-facet、count、enumerate、cross-facet、magazine-style evidence，或显式要求
-`GROUNDED` / `PARTIAL` / `UNGROUNDED` 状态时，必须加载
-[Full grounded query playbook](references/GROUNDED_QUERY_PLAYBOOK.md)，按其中的
-bounded navigation、journal read、证据分层、诊断与失败规则执行。
-
-| 需求 | 使用 |
-|:---|:---|
-| 严格关键词 / FTS-only，要求可复现精确匹配 | `life-index search --query "关键词" --no-semantic`（兼容 no-op） |
-| 普通关键词、实体加权、结构化过滤检索 | `life-index search --query "关键词"` |
-| 开放回忆、关键词 / 实体加权发现，或需要 scaffold / evidence pack | `life-index smart-search --query "..." --include-evidence` |
-| 旧 GUI / Agent 仍传语义旗标 | `life-index search --query "..." --semantic --semantic-policy fallback`（接受但废弃的 no-op） |
-
-`life-index recall` 仅为旧集成保留的兼容壳；新宿主 agent 直接选择
-`search` / `smart-search`。工具只执行确定性 retrieval；宿主 agent 负责 query
-rewrite、多跳、证据判定、解释与合成，不得把原始结果列表直接当作最终答案。
+按上方 Grounded Query Routing (SSOT) 选择工具。`search` / `smart-search` 只执行
+确定性 retrieval；宿主 agent 负责 query rewrite、多跳、证据判定、解释与合成，
+不得把原始结果列表直接当作最终答案。
 
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:START -->
 **`--synthesize` transition**
@@ -399,33 +397,18 @@ Intelligence owner: Host Agent + Skill remain responsible for planning, multi-ho
 Language-assisted evaluation belongs to Host Agent + Life Index Skill. The A5 candidate removes product eval provider/prompt/client ownership; #163 remains open pending review, and D1-A is not complete.
 <!-- PLATFORM-SSOT:EVAL-LANGUAGE-JUDGE:END -->
 
-**计数 vs 观测序列选择**:
-
-| 需求 | 使用 |
-|:---|:---|
-| 明确计数、分桶、频率、下限/上限、可核 claim envelope | `life-index aggregate --range ... --unit ... --predicate ... --json` |
-| 同一字段随时间变化的 typed observation series | `life-index trajectory --field ... --range YYYY-MM..YYYY-MM` |
-| 需要解释趋势含义、异常点、原因或叙述总结 | 先用 `trajectory` 或 `aggregate` 取确定性数据，再由宿主 agent 解释并引用来源 |
-
-`aggregate` owns counts, buckets, and claim envelopes. `trajectory` owns typed
-observation series. Do not use `trajectory` as a hidden counter, and do not use
-`aggregate` to extract field-value time series.
-
-**Agent consumption rule（按问题形态选工具）**:
-1. 先判定问题形态，不把 `smart-search` 当作所有查询的强制首调。
-2. 结构化问题（计数、枚举、facet、跨 facet、趋势）优先按上方 Grounded Query Skill Playbook 走确定性路径：`index-tree ensure` -> `discover` -> `navigate`，或直接用 `aggregate` / `trajectory` 取得可核数据。
-3. 只有开放回忆、关键词 / 实体加权发现、或 facet 菜单无法提供有效候选时，才调用 `life-index smart-search --query "..." --include-evidence` 或 `life-index search`。
-4. 使用 `smart-search` 时，检查 `query_plan.sub_queries`、`query_plan.strategy` 与检索诊断，消费返回的 `agent_instructions`、`answer_scaffold`、`filtered_results` 与 `evidence_pack`；只引用返回或已读取的来源，不得自行补造证据。
-5. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
-6. 不要为获得工具侧合成而叠加 `--synthesize`：该兼容旗标至少保留两个主版本，但只向 stderr 发出一次稳定弃用警告；它不注入 LLM、不添加 `answer`，也不改变普通 deterministic domain payload。完整过渡契约见上方命名块。
+**执行约束**：使用 `smart-search` 时检查 `query_plan.sub_queries`、
+`query_plan.strategy` 与检索诊断，消费 `agent_instructions`、`answer_scaffold`、
+`filtered_results` 和 `evidence_pack`；只引用已返回或读取的来源。深度分析由宿主
+agent 迭代调用 deterministic tools。不要叠加 `--synthesize` 请求工具侧合成；
+其稳定 no-op/no-answer 契约见上方命名块。
 
 ### 工作流2.5: 聚合型自然语言查询
 
-遇到“多少次 / 多不多 / 去年主要做什么 / compare / trend / summarize”时，不得把
-`search_journals.total_found` 直接当最终答案（除非用户只问搜索命中数）。加载
-[Full grounded query playbook](references/GROUNDED_QUERY_PLAYBOOK.md)，按其中的
-硬/软/不确定证据分层、`MATCH` / `NO_MATCH` / `UNCERTAIN` 判定和聚合输出规则执行；
-启发式结论必须降级表达并说明依据与局限，不能伪装成 CLI 硬事实。
+按上方 routing SSOT 进入 `references/GROUNDED_QUERY_PLAYBOOK.md` 的
+Aggregation And Heuristic Evidence。不得把 `search_journals.total_found` 直接当最终
+答案（除非用户只问搜索命中数）；按 `MATCH` / `NO_MATCH` / `UNCERTAIN` 区分证据，
+并诚实说明启发式依据与局限。
 
 ### 工作流3: 编辑日志
 
