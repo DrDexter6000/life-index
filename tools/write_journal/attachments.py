@@ -31,7 +31,30 @@ class AttachmentStaging:
     stage_root: Path | None
     staged_dir: Path | None
     final_dir: Path
-    published_paths: list[Path] = field(default_factory=list)
+    published_paths: list[tuple[Path, tuple[int, int]]] = field(default_factory=list)
+
+
+class AttachmentCleanupError(OSError):
+    """A transaction-owned staging tree could not be removed."""
+
+    def __init__(self, message: str, leftover_paths: list[str]):
+        super().__init__(message)
+        self.leftover_paths = leftover_paths
+
+
+def _file_identity(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino
+
+
+def _remove_staging_root(stage_root: Path | None) -> list[str]:
+    if stage_root is None or not stage_root.exists():
+        return []
+    try:
+        shutil.rmtree(stage_root)
+    except OSError as exc:
+        return [f"{stage_root}: {exc}"]
+    return []
 
 
 def _get_attachment_metadata(file_path: str) -> dict[str, Any]:
@@ -455,14 +478,20 @@ def stage_attachments(
             _collision_dir=final_dir,
             _download_dir=stage_root / "downloads",
         )
-    except Exception:
-        shutil.rmtree(stage_root, ignore_errors=True)
+    except Exception as exc:
+        cleanup_errors = _remove_staging_root(stage_root)
+        if cleanup_errors:
+            leftover_paths = [str(stage_root)]
+            raise AttachmentCleanupError(
+                f"{exc}; staging cleanup failed: {'; '.join(cleanup_errors)}",
+                leftover_paths,
+            ) from exc
         raise
     return AttachmentStaging(processed, stage_root, staged_dir, final_dir)
 
 
 def publish_staged_attachments(staging: AttachmentStaging) -> None:
-    """Move every successfully staged attachment into its final directory."""
+    """Atomically publish staged attachments without replacing existing paths."""
     if staging.staged_dir is None:
         return
     staging.final_dir.mkdir(parents=True, exist_ok=True)
@@ -471,23 +500,27 @@ def publish_staged_attachments(staging: AttachmentStaging) -> None:
             continue
         staged_path = staging.staged_dir / str(entry["filename"])
         final_path = staging.final_dir / str(entry["filename"])
-        staged_path.replace(final_path)
-        staging.published_paths.append(final_path)
+        staged_identity = _file_identity(staged_path)
+        os.link(staged_path, final_path)
+        if _file_identity(final_path) != staged_identity:
+            raise OSError(f"attachment publication identity changed: {final_path}")
+        staging.published_paths.append((final_path, staged_identity))
+        staged_path.unlink()
 
 
-def discard_attachment_staging(staging: AttachmentStaging | None) -> None:
-    """Remove transient staging bytes without touching published attachments."""
-    if staging is not None and staging.stage_root is not None:
-        shutil.rmtree(staging.stage_root, ignore_errors=True)
+def discard_attachment_staging(staging: AttachmentStaging | None) -> list[str]:
+    """Remove transaction-owned staging bytes and report concrete leftovers."""
+    return _remove_staging_root(staging.stage_root if staging is not None else None)
 
 
 def compensate_published_attachments(staging: AttachmentStaging) -> list[str]:
     """Remove only final attachment files published by this transaction."""
     errors: list[str] = []
-    for published_path in reversed(staging.published_paths):
+    for published_path, published_identity in reversed(staging.published_paths):
         try:
-            published_path.unlink(missing_ok=True)
+            if published_path.exists() and _file_identity(published_path) == published_identity:
+                published_path.unlink()
         except OSError as exc:
             errors.append(f"{published_path}: {exc}")
-    discard_attachment_staging(staging)
+    errors.extend(discard_attachment_staging(staging))
     return errors

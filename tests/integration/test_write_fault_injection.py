@@ -48,19 +48,34 @@ def _files_under(path: Path) -> list[str]:
     return sorted(str(item.relative_to(path)) for item in path.rglob("*") if item.is_file())
 
 
-def test_attachment_publish_refuses_target_that_exists_before_publish(tmp_path: Path, monkeypatch):
+def test_attachment_existing_before_staging_gets_collision_safe_name(tmp_path: Path, monkeypatch):
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    source = tmp_path / "same.txt"
+    source.write_bytes(b"transaction bytes")
+    target = data_dir / "attachments" / "2026" / "03" / "same.txt"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"pre-existing bytes")
+    staging = attachment_ops.stage_attachments([str(source)], "2026-03-14")
+
+    attachment_ops.publish_staged_attachments(staging)
+
+    assert target.read_bytes() == b"pre-existing bytes"
+    assert (target.parent / "same_001.txt").read_bytes() == b"transaction bytes"
+
+
+def test_attachment_publish_refuses_target_that_appears_after_staging(tmp_path: Path, monkeypatch):
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     source = tmp_path / "same.txt"
     source.write_bytes(b"transaction bytes")
     staging = attachment_ops.stage_attachments([str(source)], "2026-03-14")
     target = data_dir / "attachments" / "2026" / "03" / "same.txt"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(b"pre-existing bytes")
+    target.write_bytes(b"appeared after staging")
 
     with pytest.raises(FileExistsError):
         attachment_ops.publish_staged_attachments(staging)
 
-    assert target.read_bytes() == b"pre-existing bytes"
+    assert target.read_bytes() == b"appeared after staging"
     assert staging.published_paths == []
 
 
@@ -102,6 +117,7 @@ def test_attachment_target_appearing_after_staging_is_never_overwritten_or_remov
 def test_url_attachment_full_transaction_publishes_and_compensates(tmp_path: Path, monkeypatch):
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     downloaded_to: list[Path] = []
+    published_before_commit_failure: list[bytes] = []
     real_replace = Path.replace
 
     async def fake_download(url: str, target_dir: Path, date_str: str, timeout: float = 30.0):
@@ -113,6 +129,8 @@ def test_url_attachment_full_transaction_publishes_and_compensates(tmp_path: Pat
 
     def fail_journal_rename(self: Path, target: Path):
         if self.suffix == ".tmp":
+            published = data_dir / "attachments" / "2026" / "03" / "remote.txt"
+            published_before_commit_failure.append(published.read_bytes())
             raise OSError("synthetic URL journal rename failure")
         return real_replace(self, target)
 
@@ -124,10 +142,35 @@ def test_url_attachment_full_transaction_publishes_and_compensates(tmp_path: Pat
     result = write_core.write_journal(payload)
 
     assert downloaded_to
+    assert published_before_commit_failure == [b"remote bytes"]
     assert result["success"] is False
     assert _files_under(data_dir / "attachments") == []
     record = next(item for item in result["side_effects"] if item["name"] == "attachments")
     assert record["status"] == "compensated"
+
+
+def test_compensation_skips_final_path_replaced_by_external_data(tmp_path: Path, monkeypatch):
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    source = tmp_path / "same.txt"
+    source.write_bytes(b"transaction bytes")
+    external = tmp_path / "external.txt"
+    external.write_bytes(b"external replacement")
+    real_replace = Path.replace
+
+    def replace_attachment_then_fail_journal(self: Path, target: Path):
+        if self.suffix == ".tmp":
+            final = data_dir / "attachments" / "2026" / "03" / "same.txt"
+            external.replace(final)
+            raise OSError("synthetic journal failure after external replacement")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", replace_attachment_then_fail_journal)
+
+    result = write_core.write_journal(_payload(source))
+    final = data_dir / "attachments" / "2026" / "03" / "same.txt"
+
+    assert result["success"] is False
+    assert final.read_bytes() == b"external replacement"
 
 
 def test_mixed_valid_and_missing_attachments_commit_only_valid_frontmatter(
@@ -246,18 +289,18 @@ def test_partial_attachment_publish_is_compensated(tmp_path: Path, monkeypatch):
     second = tmp_path / "second.txt"
     first.write_text("first", encoding="utf-8")
     second.write_text("second", encoding="utf-8")
-    real_replace = Path.replace
+    real_link = attachment_ops.os.link
     publish_count = 0
 
-    def fail_second_attachment_publish(self: Path, target: Path):
+    def fail_second_attachment_publish(source: Path, target: Path):
         nonlocal publish_count
-        if ".write-stage-" in str(self) and self.parent.name == "files":
+        if ".write-stage-" in str(source) and source.parent.name == "files":
             publish_count += 1
             if publish_count == 2:
                 raise OSError("synthetic attachment publish failure")
-        return real_replace(self, target)
+        return real_link(source, target)
 
-    monkeypatch.setattr(Path, "replace", fail_second_attachment_publish)
+    monkeypatch.setattr(attachment_ops.os, "link", fail_second_attachment_publish)
 
     result = write_core.write_journal(_payload(first, second))
 
@@ -592,6 +635,44 @@ def test_generic_postcommit_confirmation_exception_returns_degraded_envelope(
     assert record["blocking"] is False
     assert "envelope assembly failure" in record["error"]
     assert "write" not in record["recovery_strategy"].lower()
+
+
+def test_generic_final_projection_exception_returns_committed_degraded_envelope(
+    tmp_path: Path, monkeypatch
+):
+    _configure_sandbox(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        write_core,
+        "derive_write_statuses",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            Exception("synthetic final projection failure")
+        ),
+    )
+
+    result = write_core.write_journal(_payload())
+
+    assert result["success"] is True
+    assert result["journal_path"] and Path(result["journal_path"]).exists()
+    assert result["write_outcome"] == "success_degraded"
+    assert result["error"] is None
+    record = next(item for item in result["side_effects"] if item["name"] == "postcommit_envelope")
+    assert record["status"] == "failed"
+    assert record["blocking"] is False
+    assert "final projection failure" in record["error"]
+    assert "write" not in record["recovery_strategy"].lower()
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
+def test_postcommit_interrupts_are_not_swallowed(tmp_path: Path, monkeypatch, interrupt):
+    _configure_sandbox(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        write_core,
+        "_build_post_write_confirmation",
+        lambda *_args: (_ for _ in ()).throw(interrupt()),
+    )
+
+    with pytest.raises(interrupt):
+        write_core.write_journal(_payload())
 
 
 @pytest.mark.parametrize("mode", ["exception", "unsuccessful"])

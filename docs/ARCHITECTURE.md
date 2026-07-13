@@ -500,6 +500,9 @@ the execution truth for the compatibility summaries `write_outcome`,
 `index_status`, and `side_effects_status`.
 
 1. Attachment bytes are copied into a transient same-filesystem staging tree.
+   Final publication is atomic and create-only; a transaction never replaces a
+   target it did not create, and compensation verifies creation identity before
+   deleting a published path. Failed staging cleanup reports its concrete path.
 2. The journal is written to a temporary file; staged attachments are then
    published, followed by the journal's atomic rename (`journal_commit`).
 3. Any failure before that rename removes the temp journal and compensates only
@@ -512,6 +515,8 @@ the execution truth for the compatibility summaries `write_outcome`,
    machine-readable recovery strategy.
 5. `mark_pending: queued` means the existing atomic pending queue is durable;
    search preflight remains the sole consumer and freshness authority.
+6. Optional CLI `auto_index` runs only after `journal_commit=complete`, appends a
+   nonblocking post-commit record, and re-projects compatibility summaries.
 
 This is a bounded file transaction, not a WAL, background worker, database, or
 new queue protocol.

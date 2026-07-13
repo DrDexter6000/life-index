@@ -61,7 +61,7 @@ class TestWriteAutoIndex:
         monkeypatch.setattr("tools.write_journal.__main__.ensure_dirs", lambda: None)
         monkeypatch.setattr(
             "tools.write_journal.__main__.write_journal",
-            lambda data, dry_run=False: {"success": True, "journal_path": "x.md"},
+            lambda data, dry_run=False: self._committed_result(),
         )
         monkeypatch.setattr("tools.build_index.build_all", build_mock)
 
@@ -79,7 +79,7 @@ class TestWriteAutoIndex:
         monkeypatch.setattr("tools.write_journal.__main__.ensure_dirs", lambda: None)
         monkeypatch.setattr(
             "tools.write_journal.__main__.write_journal",
-            lambda data, dry_run=False: {"success": True, "journal_path": "x.md"},
+            lambda data, dry_run=False: self._committed_result(),
         )
         monkeypatch.setattr(
             "tools.build_index.build_all",
@@ -102,7 +102,7 @@ class TestWriteAutoIndex:
         monkeypatch.setattr("tools.write_journal.__main__.ensure_dirs", lambda: None)
         monkeypatch.setattr(
             "tools.write_journal.__main__.write_journal",
-            lambda data, dry_run=False: {"success": True, "journal_path": "x.md"},
+            lambda data, dry_run=False: self._committed_result(),
         )
 
         def raising_build_all(*, incremental: bool = True, fts_only: bool = False) -> dict:
@@ -126,7 +126,7 @@ class TestWriteAutoIndex:
         monkeypatch.setattr("tools.write_journal.__main__.ensure_dirs", lambda: None)
         monkeypatch.setattr(
             "tools.write_journal.__main__.write_journal",
-            lambda data, dry_run=False: {"success": True, "journal_path": "x.md"},
+            lambda data, dry_run=False: self._committed_result(),
         )
         monkeypatch.setattr("tools.build_index.build_all", build_mock)
 

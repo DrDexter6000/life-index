@@ -20,7 +20,8 @@ scenarios:
     description: >
       用户提供 content + location + weather，不需要自动填充。
       core.py 写入后始终设置 needs_confirmation=true（Agent 需确认地点/天气），
-      因此 write_outcome=success_pending_confirmation。
+      pending freshness 仍是 committed degradation，因此
+      write_outcome=success_degraded，同时保留 needs_confirmation=true。
     input:
       date: "2026-04-04"
       title: "标准写入测试"
@@ -34,12 +35,12 @@ scenarios:
       vector_return: true
     assertions:
       success: true
-      write_outcome: "success_pending_confirmation"
+      write_outcome: "success_degraded"
       needs_confirmation: true
       location_auto_filled: false
       weather_auto_filled: false
-      index_status: "complete"
-      side_effects_status: "complete"
+      index_status: "degraded"
+      side_effects_status: "degraded"
       error_is_null: true
 
   - id: "WB-02"
@@ -58,7 +59,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_pending_confirmation"
+      write_outcome: "success_degraded"
       needs_confirmation: true
       location_auto_filled: true
       weather_auto_filled: true
@@ -84,7 +85,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_pending_confirmation"
+      write_outcome: "success_degraded"
       needs_confirmation: true
       location_auto_filled: false
       weather_auto_filled: true
@@ -93,11 +94,11 @@ scenarios:
   # ── Degraded Path ──
 
   - id: "WB-04"
-    name: "索引更新失败 - 事务回滚"
+    name: "索引更新失败 - 已提交后降级"
     description: >
-      日志写入后索引更新抛 RuntimeError。core.py 回滚事务（删除临时文件），
-      整体写入失败，error 为纯字符串（非结构化 dict）。
-      注意：core.py 的实际行为是索引失败=整体回滚，而非降级成功。
+      journal 已 durable commit 后 legacy index 更新抛 RuntimeError。
+      journal 保持已保存，执行记录报告 nonblocking failed，调用方只修复索引，
+      不能重复 write。
     input:
       date: "2026-04-04"
       title: "索引失败测试"
@@ -110,11 +111,12 @@ scenarios:
       index_raises: "RuntimeError('test failure')"
       vector_return: false
     assertions:
-      success: false
-      needs_confirmation: false
-      index_status: "not_started"
-      side_effects_status: "not_started"
-      error_is_string: true
+      success: true
+      write_outcome: "success_degraded"
+      needs_confirmation: true
+      index_status: "degraded"
+      side_effects_status: "degraded"
+      error_is_null: true
 
   - id: "WB-05"
     name: "天气查询失败 - 降级继续"
@@ -132,6 +134,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
+      write_outcome: "success_degraded"
       needs_confirmation: true
       location_auto_filled: true
       error_is_null: true
@@ -142,7 +145,8 @@ scenarios:
     name: "content 为空 - 仍然写入成功"
     description: >
       content 字段为空字符串。core.py 不验证 content 是否非空，
-      因此写入成功。Agent 应看到 success_pending_confirmation。
+      因此写入成功。pending freshness 使摘要为 success_degraded，
+      同时仍要求 confirmation。
       注意：这是实际行为的如实记录，空内容校验不在 Round 5 范围内。
     input:
       date: "2026-04-04"
@@ -155,7 +159,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_pending_confirmation"
+      write_outcome: "success_degraded"
       needs_confirmation: true
       location_auto_filled: true
       error_is_null: true
@@ -164,7 +168,8 @@ scenarios:
     name: "date 缺失 - 默认今天"
     description: >
       缺少 date 时，write 路径默认使用本地今天日期并继续写入。
-      Agent 应看到正常 success_pending_confirmation，而不是要求用户补日期。
+      Agent 应看到 committed success_degraded + needs_confirmation，
+      而不是要求用户补日期。
     input:
       title: "无日期测试"
       content: "没有提供日期"
@@ -175,7 +180,7 @@ scenarios:
       vector_return: false
     assertions:
       success: true
-      write_outcome: "success_pending_confirmation"
+      write_outcome: "success_degraded"
       needs_confirmation: true
       location_auto_filled: true
       weather_auto_filled: true

@@ -350,6 +350,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - 必须区分：未保存 / 已保存但待确认 / 已保存但存在降级 side effects
 - 检查 `side_effects`：`journal_commit.status == "complete"` 时 journal 已持久化；即使后续步骤失败，也绝不能再次调用 write 创建同一篇日志
 - 对 `success_degraded`，逐项读取失败记录的 `recovery_strategy` 并只修复对应派生物；`mark_pending: queued` 表示 freshness queue 已可靠落盘，后续 search preflight 会消费它
+- `attachments_processed` 可含失败诊断，但 journal frontmatter 只引用已成功发布的附件；`auto_index`（如启用）也必须作为 post-commit side-effect record 消费
 - `journal_commit` 未完成且 pre-commit 记录为 `failed/compensated` 时，确认无 durable `journal_path`，解决错误后才可重试写入
 
 **安装后可选个性化与写入状态指针**：

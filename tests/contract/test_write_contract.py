@@ -136,6 +136,7 @@ def _normalize_write_snapshot(result: dict) -> dict:
         "updated_indices",
         "index_status",
         "side_effects_status",
+        "side_effects",
         "attachments_processed",
         "attachments_detected_count",
         "attachments_processed_count",
@@ -165,6 +166,10 @@ def _normalize_write_snapshot(result: dict) -> dict:
     if isinstance(confirmation, dict):
         confirmation["journal_path"] = "JOURNAL_PATH"
     normalized["related_candidates"] = []
+    normalized["side_effects"] = [
+        {key: record[key] for key in ("name", "phase", "status", "blocking")}
+        for record in normalized["side_effects"]
+    ]
     if isinstance(confirmation, dict):
         confirmation["related_candidates"] = []
     normalized["metrics"] = {}

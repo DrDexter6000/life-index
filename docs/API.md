@@ -724,6 +724,11 @@ python -m tools.write_journal --data '<json>'
 | `attachments_processed_count` | int | 成功归档的附件数量 | 向用户反馈成功归档数量 |
 | `attachments_failed_count` | int | 检测到但处理失败的附件数量 | >0 时提示用户检查失败附件 |
 
+`attachments_processed` 保留成功项与失败诊断；journal frontmatter 的 `attachments`
+只保存已发布且具有有效 `rel_path` 的成功项，绝不引用缺失字节。附件发布采用原子
+create-only 语义；事务不会覆盖同名目标。补偿只删除仍可证明由本事务创建的文件，
+staging 清理失败则以具体残留路径报告 `failed`。
+
 **降级状态处理示例**：
 
 ```json
@@ -736,6 +741,8 @@ python -m tools.write_journal --data '<json>'
 `side_effects[*].status` 只允许 `complete / queued / skipped / failed / compensated`。
 `queued` 只表示 pending queue 已原子落盘；搜索 preflight 尚需消费它，因此 freshness 仍为 degraded。
 `compensated` 表示 pre-commit 操作曾发生但已完成补偿，journal 未提交，可在解决原始错误后重试。
+`write --auto-index` 在 journal 已提交时追加 `auto_index/post_commit` 记录，并从完整
+记录序列重新投影兼容摘要；未提交 journal 时不会运行 auto-index。
 Dry-run 记录 `write_preview=complete`，但不伪造 `journal_commit`；其 `index_status` 仍为 `not_started`。
 
 建议调用方表述：

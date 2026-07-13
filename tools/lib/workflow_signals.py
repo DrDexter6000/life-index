@@ -50,6 +50,7 @@ INDEX_SIDE_EFFECT_NAMES = frozenset(
         "metadata_relations",
         "mark_pending",
         "index_b",
+        "auto_index",
     }
 )
 
@@ -169,14 +170,14 @@ def derive_write_outcome(
 
     Priority order:
     1. Failed → FAILED
-    2. Needs confirmation → SUCCESS_PENDING_CONFIRMATION (even if also degraded)
-    3. Any degraded status → SUCCESS_DEGRADED
+    2. Any degraded status → SUCCESS_DEGRADED
+    3. Needs confirmation → SUCCESS_PENDING_CONFIRMATION
     4. All good → SUCCESS
     """
     if not success:
         return WriteOutcome.FAILED
-    if needs_confirmation:
-        return WriteOutcome.SUCCESS_PENDING_CONFIRMATION
     if index_status == IndexStatus.DEGRADED or side_effects_status == SideEffectsStatus.DEGRADED:
         return WriteOutcome.SUCCESS_DEGRADED
+    if needs_confirmation:
+        return WriteOutcome.SUCCESS_PENDING_CONFIRMATION
     return WriteOutcome.SUCCESS
