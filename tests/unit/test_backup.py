@@ -7,8 +7,7 @@ import hashlib
 import json
 import pytest
 from pathlib import Path
-from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tools.backup import (
     calculate_file_hash,
@@ -150,9 +149,9 @@ class TestCreateBackup:
     @patch("tools.backup.get_attachments_dir")
     def test_unit_source_roots_ignore_ambient_session_entity_graph(
         self,
-        mock_attach: Any,
-        mock_topic: Any,
-        mock_journals: Any,
+        mock_attach: MagicMock,
+        mock_topic: MagicMock,
+        mock_journals: MagicMock,
         tmp_path: Path,
     ) -> None:
         from tools.lib.paths import get_user_data_dir
