@@ -138,6 +138,12 @@ class TestSaveBackupManifest:
 class TestCreateBackup:
     """Tests for create_backup function"""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_user_data_root(self, monkeypatch, tmp_path):
+        owned_root = tmp_path / "unit-user-data"
+        owned_root.mkdir()
+        monkeypatch.setattr("tools.backup.get_user_data_dir", lambda: owned_root)
+
     @patch("tools.backup.get_journals_dir")
     @patch("tools.backup.get_by_topic_dir")
     @patch("tools.backup.get_attachments_dir")
