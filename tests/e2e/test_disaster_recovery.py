@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime as RealDatetime
 from pathlib import Path
 from typing import Any
@@ -168,6 +170,23 @@ def _make_directory_link(link: Path, target: Path) -> None:
                 f"symlink={symlink_error}; junction={completed.stderr or completed.stdout}"
             )
         pytest.skip(f"directory symlink probe unavailable: {symlink_error}")
+
+
+def _supports_case_distinct_names(directory: Path) -> bool:
+    lower = directory / "life-index-case-probe"
+    upper = directory / "LIFE-INDEX-CASE-PROBE"
+    try:
+        lower.write_text("lower", encoding="utf-8")
+        if upper.exists():
+            return False
+        upper.write_text("upper", encoding="utf-8")
+        return (
+            lower.read_text(encoding="utf-8") == "lower"
+            and upper.read_text(encoding="utf-8") == "upper"
+        )
+    finally:
+        upper.unlink(missing_ok=True)
+        lower.unlink(missing_ok=True)
 
 
 def test_backup_manifest_covers_all_required_source_artifacts(
@@ -570,3 +589,113 @@ def test_full_backups_with_same_timestamp_create_distinct_recovery_points(
         first["backup_path"],
         second["backup_path"],
     ]
+
+
+def test_case_distinct_artifacts_roundtrip_on_case_sensitive_filesystem(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = _activate_sandbox(monkeypatch, tmp_path, "source-case-sensitive")
+    if not _supports_case_distinct_names(source):
+        pytest.skip("real case-sensitive filesystem semantics are unavailable")
+    _write_synthetic_dataset(source)
+    upper = source / "attachments" / "Case.bin"
+    lower = source / "attachments" / "case.bin"
+    upper.write_bytes(b"upper")
+    lower.write_bytes(b"lower")
+    backup_root = tmp_path / "backups-case-sensitive"
+    backup_root.mkdir()
+
+    backup_result = create_backup(str(backup_root), full=True)
+
+    assert backup_result["success"] is True
+    _, manifest = _load_recovery_manifest(backup_result)
+    paths = {artifact["path"] for artifact in manifest["artifacts"]}
+    assert {"attachments/Case.bin", "attachments/case.bin"} <= paths
+    destination = tmp_path / "restore-case-sensitive"
+    destination.mkdir()
+    restore_result = restore_backup(str(backup_result["backup_path"]), dest_path=str(destination))
+    assert restore_result["success"] is True
+    assert (destination / "attachments" / "Case.bin").read_bytes() == b"upper"
+    assert (destination / "attachments" / "case.bin").read_bytes() == b"lower"
+
+
+def test_case_colliding_artifacts_rejected_for_insensitive_destination_before_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = _activate_sandbox(monkeypatch, tmp_path, "source-case-collision")
+    _write_synthetic_dataset(source)
+    backup_root = tmp_path / "backups-case-collision"
+    backup_root.mkdir()
+    backup_result = create_backup(str(backup_root), full=True)
+    assert backup_result["success"] is True
+    manifest_path, manifest = _load_recovery_manifest(backup_result)
+    attachment = next(
+        artifact
+        for artifact in manifest["artifacts"]
+        if artifact["path"] == "attachments/2026/01/recovery-evidence.bin"
+    )
+    collision = dict(attachment)
+    collision["path"] = "attachments/2026/01/RECOVERY-EVIDENCE.BIN"
+    manifest["artifacts"].append(collision)
+    _save_recovery_manifest(manifest_path, manifest)
+    destination = tmp_path / "restore-case-collision"
+    destination.mkdir()
+
+    from tools import backup as backup_module
+
+    monkeypatch.setattr(
+        backup_module,
+        "_destination_filesystem_case_sensitive",
+        lambda _path: False,
+        raising=False,
+    )
+    result = restore_backup(str(backup_result["backup_path"]), dest_path=str(destination))
+
+    assert result["success"] is False
+    assert result["files_restored"] == 0
+    assert list(destination.iterdir()) == []
+
+
+def test_concurrent_backup_catalog_publication_preserves_both_recovery_points(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = _activate_sandbox(monkeypatch, tmp_path, "source-catalog-concurrency")
+    _write_synthetic_dataset(source)
+    backup_root = tmp_path / "backups-catalog-concurrency"
+    backup_root.mkdir()
+
+    from tools import backup as backup_module
+
+    class FixedDatetime:
+        @classmethod
+        def now(cls) -> RealDatetime:
+            return RealDatetime(2026, 7, 13, 21, 0, 0)
+
+    real_load = backup_module.load_backup_manifest
+    initial_reads = threading.Barrier(2)
+    call_guard = threading.Lock()
+    call_count = 0
+
+    def synchronized_load(backup_dir: Path) -> dict[str, Any]:
+        nonlocal call_count
+        with call_guard:
+            call_count += 1
+            current_call = call_count
+        snapshot = real_load(backup_dir)
+        if current_call <= 2:
+            initial_reads.wait(timeout=10)
+        return snapshot
+
+    monkeypatch.setattr(backup_module, "datetime", FixedDatetime)
+    monkeypatch.setattr(backup_module, "load_backup_manifest", synchronized_load)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(lambda _index: create_backup(str(backup_root), full=True), range(2))
+        )
+
+    assert all(result["success"] is True for result in results)
+    assert len({result["backup_path"] for result in results}) == 2
+    catalog = real_load(backup_root)
+    assert {record["path"] for record in catalog["backups"]} == {
+        result["backup_path"] for result in results
+    }
