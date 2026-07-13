@@ -37,14 +37,23 @@ design memo is not an authority or SSOT. The exact closed C1–C7 domains are no
 active Charter authority, and the former §1.9 direct provider-fallback direction
 is superseded: Host Agent + Skill own provider selection and intelligence.
 
-The following program work remains incomplete; D0 ratification did not itself
-implement it:
+The integrated D1 implementation work below has passed its named implementation
+reviews, but the D1 phase remains IN_PROGRESS pending the final phase gate and
+CTO acceptance. Public CI and Windows acceptance final gates have not reached a
+final passing state:
 
-- #163 — smart-search A3/A4 is implemented, and the A5 candidate makes eval deterministic-only: `--judge llm` fails before provider/configuration import, production eval provider/prompt/client ownership is removed, and the public hard check scans search, smart-search, and eval roots. #163 remains open pending review, so D1-A is not complete.
-- #162 — the D1-B candidate implements transactional write side-effect records and honest freshness; the issue remains open pending independent review, so D1 is not complete.
-- #165 — the D1-C candidate implements a full-backup recovery manifest, empty-only
-  restore, and synthetic rebuild/search/verify proof; the issue remains open pending
-  independent review, so D1 is not complete.
+- #163 — D1-A runtime and contract are implemented and independently accepted;
+  the issue is closed. This does not complete D1.
+- #162 — D1-B transactional write side-effect records and honest freshness are
+  implemented, and Spec/Quality review passed. The issue remains open pending
+  the final D1 phase gate and CTO acceptance.
+- #165 — D1-C recovery is implemented, and Spec/Quality review passed. The issue
+  remains open pending the final D1 phase gate and CTO acceptance. A real
+  case-sensitive filesystem roundtrip is not proven on Windows and remains
+  assigned to D4 WSL Ubuntu B validation.
+- #169 — Skill progressive disclosure is implemented, and Spec/Quality review
+  passed. The issue remains open pending the final D1 phase gate and CTO
+  acceptance.
 - #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
 <!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->
 
