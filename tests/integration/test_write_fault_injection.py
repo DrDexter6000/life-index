@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from tools.lib.frontmatter import parse_frontmatter
 from tools.write_journal import attachments as attachment_ops
 from tools.write_journal import core as write_core
-from tools.lib.frontmatter import parse_frontmatter
 
 
 def _configure_sandbox(monkeypatch, tmp_path: Path) -> Path:
@@ -343,6 +343,83 @@ def test_journal_atomic_rename_failure_compensates_published_attachment(
         ]
         == "compensated"
     )
+
+
+def test_attachment_identity_read_failure_after_link_is_compensated(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """A linked final is transaction-owned before its identity is re-read."""
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    source_file = tmp_path / "evidence.txt"
+    source_file.write_text("synthetic attachment", encoding="utf-8")
+    final_dir = data_dir / "attachments" / "2026" / "03"
+    real_file_identity = attachment_ops._file_identity
+    identity_read_failed = False
+
+    def fail_first_final_identity_read(path: Path):
+        nonlocal identity_read_failed
+        if path.parent == final_dir and not identity_read_failed:
+            identity_read_failed = True
+            raise OSError("synthetic final identity read failure")
+        return real_file_identity(path)
+
+    monkeypatch.setattr(attachment_ops, "_file_identity", fail_first_final_identity_read)
+
+    result = write_core.write_journal(_payload(source_file))
+
+    attachment_record = next(
+        record for record in result["side_effects"] if record["name"] == "attachments"
+    )
+    assert identity_read_failed is True
+    assert result["success"] is False
+    assert _files_under(data_dir / "Journals") == []
+    assert _files_under(data_dir / "attachments") == []
+    assert attachment_record["status"] == "compensated"
+    assert "final identity read failure" in attachment_record["error"]
+
+
+def test_temp_journal_cleanup_failure_does_not_skip_attachment_compensation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """A temp unlink error is reported after bounded attachment compensation."""
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    source_file = tmp_path / "evidence.txt"
+    source_file.write_text("synthetic attachment", encoding="utf-8")
+    real_replace = Path.replace
+    real_unlink = Path.unlink
+
+    def fail_journal_rename(self: Path, target: Path):
+        if self.suffix == ".tmp":
+            raise OSError("synthetic journal atomic-rename failure")
+        return real_replace(self, target)
+
+    def fail_temp_journal_cleanup(self: Path, *args, **kwargs):
+        if self.suffix == ".tmp":
+            raise OSError("synthetic temp journal cleanup failure")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", fail_journal_rename)
+    monkeypatch.setattr(Path, "unlink", fail_temp_journal_cleanup)
+
+    result = write_core.write_journal(_payload(source_file))
+
+    temp_leftovers = list((data_dir / "Journals").rglob("*.tmp"))
+    attachment_record = next(
+        record for record in result["side_effects"] if record["name"] == "attachments"
+    )
+    journal_record = next(
+        record for record in result["side_effects"] if record["name"] == "journal_commit"
+    )
+    assert result["success"] is False
+    assert _files_under(data_dir / "attachments") == []
+    assert attachment_record["status"] == "compensated"
+    assert len(temp_leftovers) == 1
+    assert "journal atomic-rename failure" in journal_record["error"]
+    assert "temp journal cleanup failure" in journal_record["error"]
+    assert str(temp_leftovers[0]) in journal_record["error"]
+    assert str(temp_leftovers[0]) in journal_record["recovery_strategy"]
 
 
 def test_derived_artifact_failures_cannot_create_half_updated_success(
@@ -694,6 +771,54 @@ def test_final_success_log_exception_returns_committed_degraded_envelope(
     assert record["status"] == "failed"
     assert record["blocking"] is False
     assert "final success log failure" in record["error"]
+    assert "write" not in record["recovery_strategy"].lower()
+
+
+def test_recovery_logger_exception_cannot_escape_committed_degraded_envelope(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """Recovery diagnostics are best-effort after the journal is durable."""
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    real_record_side_effect = write_core._record_side_effect
+    original_failure_raised = False
+
+    def fail_first_monthly_record(*args, **kwargs):
+        nonlocal original_failure_raised
+        if kwargs.get("name") == "monthly_abstract" and not original_failure_raised:
+            original_failure_raised = True
+            raise OSError("synthetic original postcommit failure")
+        return real_record_side_effect(*args, **kwargs)
+
+    monkeypatch.setattr(write_core, "_record_side_effect", fail_first_monthly_record)
+    monkeypatch.setattr(
+        write_core.logger,
+        "error",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            Exception("synthetic recovery logger failure")
+        ),
+    )
+
+    escaped = None
+    result = None
+    try:
+        result = write_core.write_journal(_payload())
+    except Exception as exc:
+        escaped = exc
+
+    journals = list((data_dir / "Journals").rglob("life-index_*.md"))
+    assert original_failure_raised is True
+    assert len(journals) == 1 and journals[0].exists()
+    assert escaped is None, f"committed write escaped during recovery logging: {escaped}"
+    assert result is not None
+    assert result["success"] is True
+    assert result["write_outcome"] == "success_degraded"
+    assert result["journal_path"] == str(journals[0])
+    assert result["error"] is None
+    record = next(item for item in result["side_effects"] if item["name"] == "postcommit_envelope")
+    assert record["status"] == "failed"
+    assert record["blocking"] is False
+    assert "original postcommit failure" in record["error"]
     assert "write" not in record["recovery_strategy"].lower()
 
 
