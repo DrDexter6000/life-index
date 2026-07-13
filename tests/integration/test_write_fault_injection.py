@@ -662,6 +662,41 @@ def test_generic_final_projection_exception_returns_committed_degraded_envelope(
     assert "write" not in record["recovery_strategy"].lower()
 
 
+def test_final_success_log_exception_returns_committed_degraded_envelope(
+    tmp_path: Path, monkeypatch
+):
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    real_info = write_core.logger.info
+
+    def fail_final_success_log(message, *args, **kwargs):
+        if str(message).startswith("写入完成"):
+            raise Exception("synthetic final success log failure")
+        return real_info(message, *args, **kwargs)
+
+    monkeypatch.setattr(write_core.logger, "info", fail_final_success_log)
+
+    escaped = None
+    result = None
+    try:
+        result = write_core.write_journal(_payload())
+    except Exception as exc:
+        escaped = exc
+
+    journals = list((data_dir / "Journals").rglob("life-index_*.md"))
+    assert len(journals) == 1 and journals[0].exists()
+    assert escaped is None, f"committed write escaped without an envelope: {escaped}"
+    assert result is not None
+    assert result["journal_path"] == str(journals[0])
+    assert result["success"] is True
+    assert result["write_outcome"] == "success_degraded"
+    assert result["error"] is None
+    record = next(item for item in result["side_effects"] if item["name"] == "postcommit_envelope")
+    assert record["status"] == "failed"
+    assert record["blocking"] is False
+    assert "final success log failure" in record["error"]
+    assert "write" not in record["recovery_strategy"].lower()
+
+
 @pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
 def test_postcommit_interrupts_are_not_swallowed(tmp_path: Path, monkeypatch, interrupt):
     _configure_sandbox(monkeypatch, tmp_path)
