@@ -8,6 +8,7 @@ import argparse
 import json
 import logging
 import sys
+from contextlib import suppress
 
 from .core import apply_confirmation_updates
 from .core import write_journal
@@ -48,6 +49,8 @@ def _record_auto_index(result: dict, index_result: dict) -> None:
             )
         )
     except Exception as exc:
+        with suppress(Exception):
+            logger.warning("write --auto-index projection failed: %s", exc)
         result["side_effects"].append(
             {
                 "name": "postcommit_envelope",
