@@ -141,6 +141,31 @@ class TestCreateBackup:
     @patch("tools.backup.get_journals_dir")
     @patch("tools.backup.get_by_topic_dir")
     @patch("tools.backup.get_attachments_dir")
+    def test_unit_source_roots_ignore_ambient_session_entity_graph(
+        self, mock_attach, mock_topic, mock_journals, tmp_path
+    ):
+        from tools.lib.paths import get_user_data_dir
+
+        mock_journals.exists.return_value = False
+        mock_topic.exists.return_value = False
+        mock_attach.exists.return_value = False
+        ambient_graph = get_user_data_dir() / "entity_graph.yaml"
+        previous_bytes = ambient_graph.read_bytes() if ambient_graph.exists() else None
+        ambient_graph.write_text("entities: []\n", encoding="utf-8")
+        try:
+            result = create_backup(str(tmp_path / "backup"), dry_run=True)
+        finally:
+            if previous_bytes is None:
+                ambient_graph.unlink(missing_ok=True)
+            else:
+                ambient_graph.write_bytes(previous_bytes)
+
+        assert result["success"] is True
+        assert result["files_backed_up"] == 0
+
+    @patch("tools.backup.get_journals_dir")
+    @patch("tools.backup.get_by_topic_dir")
+    @patch("tools.backup.get_attachments_dir")
     def test_create_backup_dry_run(self, mock_attach, mock_topic, mock_journals, tmp_path):
         """Test backup in dry-run mode"""
         # Setup mock directories
