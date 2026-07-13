@@ -578,6 +578,14 @@ def _log_committed_recovery(
         pass
 
 
+def _journal_was_committed(result: Dict[str, Any]) -> bool:
+    """Return whether the execution facts prove the primary journal is durable."""
+    return any(
+        record.get("name") == "journal_commit" and record.get("status") == "complete"
+        for record in result["side_effects"]
+    )
+
+
 def _resolve_location_and_weather(
     data: Dict[str, Any],
     result: Dict[str, Any],
@@ -860,19 +868,16 @@ def _journal_rel_path(journal_path: Path) -> str:
     )["rel_path"]
 
 
-def _commit_journal_to_disk(
+def _commit_primary_journal_and_attachments(
     *,
-    data: Dict[str, Any],
     result: Dict[str, Any],
     journal_path: Path,
     month_dir: Path,
-    year: int,
-    month: int,
     full_content: str,
     timer: Timer,
     attachment_staging: AttachmentStaging | None,
 ) -> None:
-    """Write journal file and update indices in a transactional manner."""
+    """Publish the journal and attachments within the compensating boundary."""
     temp_path = journal_path.with_suffix(".tmp")
     try:
         month_dir.mkdir(parents=True, exist_ok=True)
@@ -938,163 +943,6 @@ def _commit_journal_to_disk(
             )
         result["journal_path"] = str(journal_path)
         logger.info(f"日志文件写入成功：{journal_path}")
-
-        # Derived artifacts only observe journals after the durable commit.
-        with timer.measure("abstract_update"):
-            abstract_result = None
-            abstract_error = None
-            abstract_success = False
-            try:
-                abstract_result = update_monthly_abstract(year, month, False)
-                if isinstance(abstract_result, dict) and abstract_result.get("success") is False:
-                    abstract_error = str(
-                        abstract_result.get("error") or "monthly abstract refresh failed"
-                    )
-                else:
-                    abstract_success = True
-            except Exception as exc:
-                abstract_error = str(exc)
-        _record_side_effect(
-            result,
-            name="monthly_abstract",
-            phase="post_commit",
-            status=(
-                SideEffectExecutionStatus.COMPLETE
-                if abstract_success
-                else SideEffectExecutionStatus.FAILED
-            ),
-            blocking=False,
-            error=abstract_error,
-            recovery_strategy=(
-                f"life-index abstract --month {year:04d}-{month:02d}" if abstract_error else None
-            ),
-        )
-
-        try:
-            updated_indices = _update_indices(
-                topic=data.get("topic"),
-                project=data.get("project"),
-                tags=data.get("tags", []),
-                journal_path=journal_path,
-                data=data,
-                timer=timer,
-            )
-        except Exception as exc:
-            updated_indices = list(getattr(exc, "updated_indices", []))
-            _record_side_effect(
-                result,
-                name="legacy_indices",
-                phase="post_commit",
-                status=SideEffectExecutionStatus.FAILED,
-                blocking=False,
-                error=str(exc),
-                recovery_strategy="life-index generate-index",
-            )
-        else:
-            _record_side_effect(
-                result,
-                name="legacy_indices",
-                phase="post_commit",
-                status=SideEffectExecutionStatus.COMPLETE,
-                blocking=False,
-            )
-
-        try:
-            source_rel_path = _journal_rel_path(journal_path)
-        except Exception as exc:
-            source_rel_path = None
-            _record_side_effect(
-                result,
-                name="metadata_relations",
-                phase="post_commit",
-                status=SideEffectExecutionStatus.FAILED,
-                blocking=False,
-                error=str(exc),
-                recovery_strategy="life-index index --rebuild",
-            )
-        # Metadata relations and pending freshness are independent post-commit facts.
-        if source_rel_path is not None:
-            try:
-                _update_metadata_relations(source_rel_path, data)
-            except Exception as exc:
-                _record_side_effect(
-                    result,
-                    name="metadata_relations",
-                    phase="post_commit",
-                    status=SideEffectExecutionStatus.FAILED,
-                    blocking=False,
-                    error=str(exc),
-                    recovery_strategy="life-index index --rebuild",
-                )
-            else:
-                _record_side_effect(
-                    result,
-                    name="metadata_relations",
-                    phase="post_commit",
-                    status=SideEffectExecutionStatus.COMPLETE,
-                    blocking=False,
-                )
-
-        try:
-            if source_rel_path is None:
-                raise RuntimeError("canonical journal rel_path is unavailable")
-            mark_pending(source_rel_path)
-        except Exception as exc:
-            _record_side_effect(
-                result,
-                name="mark_pending",
-                phase="post_commit",
-                status=SideEffectExecutionStatus.FAILED,
-                blocking=False,
-                error=str(exc),
-                recovery_strategy="life-index index --rebuild",
-            )
-        else:
-            logger.info(f"已标记待索引更新: {source_rel_path}")
-            _record_side_effect(
-                result,
-                name="mark_pending",
-                phase="post_commit",
-                status=SideEffectExecutionStatus.QUEUED,
-                blocking=False,
-            )
-
-        # Refresh deterministic Index B navigation after the final file exists.
-        try:
-            with timer.measure("index_b_update"):
-                index_b_result = refresh_index_b(False)
-            index_b_success = bool(index_b_result.get("success"))
-            index_b_error = (
-                str(index_b_result.get("error") or "Index B refresh failed")
-                if not index_b_success
-                else None
-            )
-        except Exception as exc:
-            index_b_result = {"success": False, "error": str(exc)}
-            index_b_success = False
-            index_b_error = str(exc)
-        _record_side_effect(
-            result,
-            name="index_b",
-            phase="post_commit",
-            status=(
-                SideEffectExecutionStatus.COMPLETE
-                if index_b_success
-                else SideEffectExecutionStatus.FAILED
-            ),
-            blocking=False,
-            error=index_b_error,
-            recovery_strategy=(
-                "life-index index-tree ensure --json" if not index_b_success else None
-            ),
-        )
-
-        result["monthly_abstract_updated"] = abstract_result
-        result["index_b_updated"] = index_b_result
-        if abstract_error:
-            result["monthly_abstract_error"] = abstract_error
-        result["updated_indices"] = updated_indices
-
     except (OSError, IOError, RuntimeError) as exc:
         temp_cleanup_errors: list[str] = []
         try:
@@ -1102,10 +950,7 @@ def _commit_journal_to_disk(
                 temp_path.unlink()
         except OSError as cleanup_exc:
             temp_cleanup_errors.append(f"{temp_path}: {cleanup_exc}")
-        journal_committed = any(
-            record["name"] == "journal_commit" and record["status"] == "complete"
-            for record in result["side_effects"]
-        )
+        journal_committed = _journal_was_committed(result)
         if temp_cleanup_errors:
             journal_failure = next(
                 (
@@ -1177,6 +1022,200 @@ def _commit_journal_to_disk(
         raise
 
 
+def _update_postcommit_derived_projections(
+    *,
+    data: Dict[str, Any],
+    result: Dict[str, Any],
+    journal_path: Path,
+    year: int,
+    month: int,
+    timer: Timer,
+) -> None:
+    """Refresh derived views only after the durable journal commit."""
+    with timer.measure("abstract_update"):
+        abstract_result = None
+        abstract_error = None
+        abstract_success = False
+        try:
+            abstract_result = update_monthly_abstract(year, month, False)
+            if isinstance(abstract_result, dict) and abstract_result.get("success") is False:
+                abstract_error = str(
+                    abstract_result.get("error") or "monthly abstract refresh failed"
+                )
+            else:
+                abstract_success = True
+        except Exception as exc:
+            abstract_error = str(exc)
+    _record_side_effect(
+        result,
+        name="monthly_abstract",
+        phase="post_commit",
+        status=(
+            SideEffectExecutionStatus.COMPLETE
+            if abstract_success
+            else SideEffectExecutionStatus.FAILED
+        ),
+        blocking=False,
+        error=abstract_error,
+        recovery_strategy=(
+            f"life-index abstract --month {year:04d}-{month:02d}" if abstract_error else None
+        ),
+    )
+
+    try:
+        updated_indices = _update_indices(
+            topic=data.get("topic"),
+            project=data.get("project"),
+            tags=data.get("tags", []),
+            journal_path=journal_path,
+            data=data,
+            timer=timer,
+        )
+    except Exception as exc:
+        updated_indices = list(getattr(exc, "updated_indices", []))
+        _record_side_effect(
+            result,
+            name="legacy_indices",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=str(exc),
+            recovery_strategy="life-index generate-index",
+        )
+    else:
+        _record_side_effect(
+            result,
+            name="legacy_indices",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.COMPLETE,
+            blocking=False,
+        )
+
+    try:
+        source_rel_path = _journal_rel_path(journal_path)
+    except Exception as exc:
+        source_rel_path = None
+        _record_side_effect(
+            result,
+            name="metadata_relations",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=str(exc),
+            recovery_strategy="life-index index --rebuild",
+        )
+    # Metadata relations and pending freshness are independent post-commit facts.
+    if source_rel_path is not None:
+        try:
+            _update_metadata_relations(source_rel_path, data)
+        except Exception as exc:
+            _record_side_effect(
+                result,
+                name="metadata_relations",
+                phase="post_commit",
+                status=SideEffectExecutionStatus.FAILED,
+                blocking=False,
+                error=str(exc),
+                recovery_strategy="life-index index --rebuild",
+            )
+        else:
+            _record_side_effect(
+                result,
+                name="metadata_relations",
+                phase="post_commit",
+                status=SideEffectExecutionStatus.COMPLETE,
+                blocking=False,
+            )
+
+    try:
+        if source_rel_path is None:
+            raise RuntimeError("canonical journal rel_path is unavailable")
+        mark_pending(source_rel_path)
+    except Exception as exc:
+        _record_side_effect(
+            result,
+            name="mark_pending",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=str(exc),
+            recovery_strategy="life-index index --rebuild",
+        )
+    else:
+        logger.info(f"已标记待索引更新: {source_rel_path}")
+        _record_side_effect(
+            result,
+            name="mark_pending",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.QUEUED,
+            blocking=False,
+        )
+
+    try:
+        with timer.measure("index_b_update"):
+            index_b_result = refresh_index_b(False)
+        index_b_success = bool(index_b_result.get("success"))
+        index_b_error = (
+            str(index_b_result.get("error") or "Index B refresh failed")
+            if not index_b_success
+            else None
+        )
+    except Exception as exc:
+        index_b_result = {"success": False, "error": str(exc)}
+        index_b_success = False
+        index_b_error = str(exc)
+    _record_side_effect(
+        result,
+        name="index_b",
+        phase="post_commit",
+        status=(
+            SideEffectExecutionStatus.COMPLETE
+            if index_b_success
+            else SideEffectExecutionStatus.FAILED
+        ),
+        blocking=False,
+        error=index_b_error,
+        recovery_strategy=("life-index index-tree ensure --json" if not index_b_success else None),
+    )
+
+    result["monthly_abstract_updated"] = abstract_result
+    result["index_b_updated"] = index_b_result
+    if abstract_error:
+        result["monthly_abstract_error"] = abstract_error
+    result["updated_indices"] = updated_indices
+
+
+def _commit_journal_to_disk(
+    *,
+    data: Dict[str, Any],
+    result: Dict[str, Any],
+    journal_path: Path,
+    month_dir: Path,
+    year: int,
+    month: int,
+    full_content: str,
+    timer: Timer,
+    attachment_staging: AttachmentStaging | None,
+) -> None:
+    """Commit primary bytes, then refresh post-commit derived projections."""
+    _commit_primary_journal_and_attachments(
+        result=result,
+        journal_path=journal_path,
+        month_dir=month_dir,
+        full_content=full_content,
+        timer=timer,
+        attachment_staging=attachment_staging,
+    )
+    _update_postcommit_derived_projections(
+        data=data,
+        result=result,
+        journal_path=journal_path,
+        year=year,
+        month=month,
+        timer=timer,
+    )
+
+
 def _build_post_write_confirmation(
     result: Dict[str, Any],
     journal_path: Path,
@@ -1240,6 +1279,41 @@ def _set_committed_confirmation_fallback(
     }
     result["confirmation_message"] = (
         f"日志已保存至：{journal_path}\n\n" "请确认地点和天气；确认详情生成失败。"
+    )
+
+
+def _degrade_committed_envelope(
+    result: Dict[str, Any],
+    exc: Exception,
+    *,
+    confirmation_context: tuple[Path, str, str] | None = None,
+    log_recovery: bool = False,
+) -> None:
+    """Record one committed-envelope failure without changing durable truth."""
+    if confirmation_context is not None:
+        journal_path, location, weather = confirmation_context
+        _set_committed_confirmation_fallback(result, journal_path, location, weather)
+    result["error"] = None
+    if log_recovery:
+        _log_committed_recovery(
+            "error", "post-commit envelope assembly failed: %s", exc, exc_info=True
+        )
+    _record_side_effect(
+        result,
+        name="postcommit_envelope",
+        phase="post_commit",
+        status=SideEffectExecutionStatus.FAILED,
+        blocking=False,
+        error=str(exc),
+        recovery_strategy="inspect this committed journal by journal_path",
+    )
+    result.update(
+        {
+            "success": True,
+            "write_outcome": WriteOutcome.SUCCESS_DEGRADED,
+            "index_status": IndexStatus.DEGRADED,
+            "side_effects_status": SideEffectsStatus.DEGRADED,
+        }
     )
 
 
@@ -1602,70 +1676,34 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         )
 
     except (ValueError, IOError, RuntimeError, OSError) as e:
-        journal_committed = any(
-            record.get("name") == "journal_commit" and record.get("status") == "complete"
-            for record in result["side_effects"]
-        )
-        if journal_committed:
-            _set_committed_confirmation_fallback(result, journal_path, location, weather)
-            result["error"] = None
-            _log_committed_recovery(
-                "error", "post-commit envelope assembly failed: %s", e, exc_info=True
-            )
-            _record_side_effect(
+        if _journal_was_committed(result):
+            _degrade_committed_envelope(
                 result,
-                name="postcommit_envelope",
-                phase="post_commit",
-                status=SideEffectExecutionStatus.FAILED,
-                blocking=False,
-                error=str(e),
-                recovery_strategy="inspect this committed journal by journal_path",
+                e,
+                confirmation_context=(journal_path, location, weather),
+                log_recovery=True,
             )
         else:
             logger.error(f"写入日志失败：{e}", exc_info=True)
             result["error"] = str(e)
 
     except Exception as exc:
-        journal_committed = any(
-            record.get("name") == "journal_commit" and record.get("status") == "complete"
-            for record in result["side_effects"]
-        )
-        if not journal_committed:
+        if not _journal_was_committed(result):
             raise
-        _set_committed_confirmation_fallback(result, journal_path, location, weather)
-        result["error"] = None
-        _log_committed_recovery(
-            "error", "post-commit envelope assembly failed: %s", exc, exc_info=True
-        )
-        _record_side_effect(
+        _degrade_committed_envelope(
             result,
-            name="postcommit_envelope",
-            phase="post_commit",
-            status=SideEffectExecutionStatus.FAILED,
-            blocking=False,
-            error=str(exc),
-            recovery_strategy="inspect this committed journal by journal_path",
+            exc,
+            confirmation_context=(journal_path, location, weather),
+            log_recovery=True,
         )
 
     try:
         timer.stop()
         result["metrics"] = timer.to_dict()
     except Exception as exc:
-        journal_committed = any(
-            record.get("name") == "journal_commit" and record.get("status") == "complete"
-            for record in result["side_effects"]
-        )
-        if not journal_committed:
+        if not _journal_was_committed(result):
             raise
-        _record_side_effect(
-            result,
-            name="postcommit_envelope",
-            phase="post_commit",
-            status=SideEffectExecutionStatus.FAILED,
-            blocking=False,
-            error=str(exc),
-            recovery_strategy="inspect this committed journal by journal_path",
-        )
+        _degrade_committed_envelope(result, exc)
 
     try:
         result.update(
@@ -1675,51 +1713,14 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             )
         )
     except Exception as exc:
-        journal_committed = any(
-            record.get("name") == "journal_commit" and record.get("status") == "complete"
-            for record in result["side_effects"]
-        )
-        if not journal_committed:
+        if not _journal_was_committed(result):
             raise
-        _record_side_effect(
-            result,
-            name="postcommit_envelope",
-            phase="post_commit",
-            status=SideEffectExecutionStatus.FAILED,
-            blocking=False,
-            error=str(exc),
-            recovery_strategy="inspect this committed journal by journal_path",
-        )
-        result.update(
-            {
-                "success": True,
-                "write_outcome": WriteOutcome.SUCCESS_DEGRADED,
-                "index_status": IndexStatus.DEGRADED,
-                "side_effects_status": SideEffectsStatus.DEGRADED,
-            }
-        )
+        _degrade_committed_envelope(result, exc)
 
     if result["success"]:
         try:
             logger.info(f"写入完成，总耗时：{result['metrics'].get('total_ms', 0):.2f}ms")
         except Exception as exc:
-            _record_side_effect(
-                result,
-                name="postcommit_envelope",
-                phase="post_commit",
-                status=SideEffectExecutionStatus.FAILED,
-                blocking=False,
-                error=str(exc),
-                recovery_strategy="inspect this committed journal by journal_path",
-            )
-            result.update(
-                {
-                    "success": True,
-                    "write_outcome": WriteOutcome.SUCCESS_DEGRADED,
-                    "index_status": IndexStatus.DEGRADED,
-                    "side_effects_status": SideEffectsStatus.DEGRADED,
-                    "error": None,
-                }
-            )
+            _degrade_committed_envelope(result, exc)
 
     return result
