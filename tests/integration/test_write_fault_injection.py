@@ -3,6 +3,7 @@
 import builtins
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -347,8 +348,8 @@ def test_journal_atomic_rename_failure_compensates_published_attachment(
 
 def test_attachment_identity_read_failure_after_link_is_compensated(
     tmp_path: Path,
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A linked final is transaction-owned before its identity is re-read."""
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     source_file = tmp_path / "evidence.txt"
@@ -357,7 +358,7 @@ def test_attachment_identity_read_failure_after_link_is_compensated(
     real_file_identity = attachment_ops._file_identity
     identity_read_failed = False
 
-    def fail_first_final_identity_read(path: Path):
+    def fail_first_final_identity_read(path: Path) -> tuple[int, int]:
         nonlocal identity_read_failed
         if path.parent == final_dir and not identity_read_failed:
             identity_read_failed = True
@@ -381,8 +382,8 @@ def test_attachment_identity_read_failure_after_link_is_compensated(
 
 def test_temp_journal_cleanup_failure_does_not_skip_attachment_compensation(
     tmp_path: Path,
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A temp unlink error is reported after bounded attachment compensation."""
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     source_file = tmp_path / "evidence.txt"
@@ -390,12 +391,12 @@ def test_temp_journal_cleanup_failure_does_not_skip_attachment_compensation(
     real_replace = Path.replace
     real_unlink = Path.unlink
 
-    def fail_journal_rename(self: Path, target: Path):
+    def fail_journal_rename(self: Path, target: Path) -> Path:
         if self.suffix == ".tmp":
             raise OSError("synthetic journal atomic-rename failure")
         return real_replace(self, target)
 
-    def fail_temp_journal_cleanup(self: Path, *args, **kwargs):
+    def fail_temp_journal_cleanup(self: Path, *args: Any, **kwargs: Any) -> None:
         if self.suffix == ".tmp":
             raise OSError("synthetic temp journal cleanup failure")
         return real_unlink(self, *args, **kwargs)
@@ -776,14 +777,14 @@ def test_final_success_log_exception_returns_committed_degraded_envelope(
 
 def test_recovery_logger_exception_cannot_escape_committed_degraded_envelope(
     tmp_path: Path,
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Recovery diagnostics are best-effort after the journal is durable."""
     data_dir = _configure_sandbox(monkeypatch, tmp_path)
     real_record_side_effect = write_core._record_side_effect
     original_failure_raised = False
 
-    def fail_first_monthly_record(*args, **kwargs):
+    def fail_first_monthly_record(*args: Any, **kwargs: Any) -> None:
         nonlocal original_failure_raised
         if kwargs.get("name") == "monthly_abstract" and not original_failure_raised:
             original_failure_raised = True
