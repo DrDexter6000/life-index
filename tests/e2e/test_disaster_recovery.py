@@ -420,6 +420,29 @@ def test_restore_rejects_reparse_destination_root_and_preserves_target(
     assert list(outside_destination.iterdir()) == []
 
 
+def test_restore_rejects_nonexistent_destination_below_reparse_ancestor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = _activate_sandbox(monkeypatch, tmp_path, "source-destination-ancestor-link")
+    _write_synthetic_dataset(source)
+    backup_root = tmp_path / "backups-destination-ancestor-link"
+    backup_root.mkdir()
+    backup_result = create_backup(str(backup_root), full=True)
+    assert backup_result["success"] is True
+
+    outside_parent = tmp_path / "outside-parent"
+    outside_parent.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    _make_directory_link(linked_parent, outside_parent)
+    requested_destination = linked_parent / "new-destination"
+
+    result = restore_backup(str(backup_result["backup_path"]), dest_path=str(requested_destination))
+
+    assert result["success"] is False
+    assert result["files_restored"] == 0
+    assert list(outside_parent.iterdir()) == []
+
+
 def test_full_backup_refuses_caller_exclusion_of_canonical_source(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
