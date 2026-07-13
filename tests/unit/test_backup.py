@@ -7,6 +7,7 @@ import hashlib
 import json
 import pytest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from tools.backup import (
@@ -139,7 +140,7 @@ class TestCreateBackup:
     """Tests for create_backup function"""
 
     @pytest.fixture(autouse=True)
-    def _isolate_user_data_root(self, monkeypatch, tmp_path):
+    def _isolate_user_data_root(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         owned_root = tmp_path / "unit-user-data"
         owned_root.mkdir()
         monkeypatch.setattr("tools.backup.get_user_data_dir", lambda: owned_root)
@@ -148,8 +149,12 @@ class TestCreateBackup:
     @patch("tools.backup.get_by_topic_dir")
     @patch("tools.backup.get_attachments_dir")
     def test_unit_source_roots_ignore_ambient_session_entity_graph(
-        self, mock_attach, mock_topic, mock_journals, tmp_path
-    ):
+        self,
+        mock_attach: Any,
+        mock_topic: Any,
+        mock_journals: Any,
+        tmp_path: Path,
+    ) -> None:
         from tools.lib.paths import get_user_data_dir
 
         mock_journals.exists.return_value = False
