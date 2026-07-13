@@ -197,12 +197,22 @@ def test_backup_empty_restore_rebuild_search_verify_roundtrip(
     fts_result = build_all(incremental=False)
     legacy_result = rebuild_index_tree()
     assert fts_result["success"] is True
-    assert legacy_result["success"] is True
+    assert legacy_result["errors"] == []
+    assert legacy_result["monthly_indexes_rebuilt"] == 2
+    assert legacy_result["yearly_indexes_rebuilt"] == 2
+    assert legacy_result["root_index_rebuilt"] is True
 
-    for token in ("recoveryquartzalpha", "recoveryquartzbeta"):
-        search_result = hierarchical_search(query=token, level=3, limit=0)
+    expected_search_paths = {
+        "recoveryquartzalpha": "Journals/2025/12/life-index_2025-12-31_001.md",
+        "recoveryquartzbeta": "Journals/2026/01/life-index_2026-01-02_001.md",
+    }
+    for token, expected_path in expected_search_paths.items():
+        search_result = hierarchical_search(query=token, level=3)
         assert search_result["success"] is True
-        assert any(token in item.get("content", "") for item in search_result["merged_results"])
+        assert any(
+            item.get("rel_path", item.get("path")) == expected_path
+            for item in search_result["merged_results"]
+        )
 
     verify_result = run_verify()
     assert verify_result["success"] is True
