@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -132,7 +133,7 @@ def _write_synthetic_dataset(root: Path) -> dict[str, str]:
     return _source_hashes(root)
 
 
-def _load_recovery_manifest(result: dict[str, object]) -> tuple[Path, dict[str, object]]:
+def _load_recovery_manifest(result: dict[str, object]) -> tuple[Path, dict[str, Any]]:
     manifest_path = Path(str(result["recovery_manifest_path"]))
     assert manifest_path.name == RECOVERY_MANIFEST_NAME
     return manifest_path, json.loads(manifest_path.read_text(encoding="utf-8"))

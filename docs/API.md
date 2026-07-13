@@ -4672,14 +4672,30 @@ python -m tools.backup [options]
   "files_backed_up": 42,
   "files_skipped": 10,
   "errors": [],
-  "manifest_path": "D:/backup/.life-index-backup-manifest.json"
+  "manifest_path": "D:/backup/.life-index-backup-manifest.json",
+  "recovery_manifest_path": "D:/backup/life-index-backup-20260325_120000/.life-index-recovery-manifest.json"
 }
 ```
 
 ### 说明
 
 - `backup` 属于数据安全与 operator 工具，不改变 journal/frontmatter 契约
-- 恢复前应先由调用方确认目标目录与覆盖风险
+- `--full` 成功时，timestamped backup 内的
+  `.life-index-recovery-manifest.json` 是自包含恢复证据。它使用
+  `schema_version: "life-index.backup-manifest.v1"`、`hash_algorithm: "sha256"`
+  和按相对路径排序的 `artifacts[]`。每项包含 `path`、`classification`、
+  `included`、`sha256`、`size`。
+- journals、attachments 与 `entity_graph.yaml` 分类为 `canonical_source`。
+  已发现的 `.index/` 文件分类为 `rebuildable_derived` 且 `included: false`；
+  restore 后用 `life-index index --rebuild` 重建，不把旧机器缓存恢复为真相源。
+- 任一 source copy 失败时，结果 `success: false` 且 `errors[]` 指明 artifact；
+  该 backup 不发布 complete recovery manifest，也不追加成功 catalog record。
+- manifest-backed restore 在任何复制前校验 schema、`complete: true`、安全相对
+  路径、文件存在性与 SHA-256。目标必须不存在或完全为空；非空目标会在零变更
+  前失败，restore 不提供 overlay/overwrite 语义。
+- CLI restore 的目标是当前 `LIFE_INDEX_DATA_DIR`。自动化恢复必须设置
+  `LIFE_INDEX_VALIDATION_MODE=1` 和显式 sandbox `LIFE_INDEX_DATA_DIR`，并先证明
+  目标为空。
 
 ---
 

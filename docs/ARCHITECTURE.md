@@ -42,7 +42,9 @@ implement it:
 
 - #163 — smart-search A3/A4 is implemented, and the A5 candidate makes eval deterministic-only: `--judge llm` fails before provider/configuration import, production eval provider/prompt/client ownership is removed, and the public hard check scans search, smart-search, and eval roots. #163 remains open pending review, so D1-A is not complete.
 - #162 — the D1-B candidate implements transactional write side-effect records and honest freshness; the issue remains open pending independent review, so D1 is not complete.
-- #165 — backup, restore, and recovery proof: unimplemented.
+- #165 — the D1-C candidate implements a full-backup recovery manifest, empty-only
+  restore, and synthetic rebuild/search/verify proof; the issue remains open pending
+  independent review, so D1 is not complete.
 - #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
 <!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->
 
@@ -520,6 +522,23 @@ the execution truth for the compatibility summaries `write_outcome`,
 
 This is a bounded file transaction, not a WAL, background worker, database, or
 new queue protocol.
+
+#### Disaster-recovery boundary
+
+A full `backup` creates a self-contained timestamped directory and an atomic
+`.life-index-recovery-manifest.json`. Its sorted SHA-256 artifact inventory marks
+journals, attachments, and `entity_graph.yaml` as `canonical_source`; discovered
+`.index/` files are `rebuildable_derived` with `included: false`. Generated journal
+indexes and `by-topic/` compatibility views may be copied for compatibility, but
+remain classified as rebuildable rather than source truth.
+
+Manifest-backed restore validates every included artifact before writing and
+accepts only an absent or completely empty destination. A nonempty destination is
+rejected before mutation, so restore never has overlay semantics. After restore,
+`.index/` and navigation views are rebuilt from canonical plain files; rebuild
+failure remains a visible derived failure and does not authorize source mutation.
+The older destination-level backup catalog remains list/incremental metadata, not
+the recovery authority for a full backup.
 
 ### 5.8 搜索编排器（v1.2.0 smart-search v1 contract）
 
