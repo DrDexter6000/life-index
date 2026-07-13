@@ -29,6 +29,7 @@ REQUIRED_SUCCESS_FIELDS = {
     "updated_indices",
     "index_status",
     "side_effects_status",
+    "side_effects",
     "attachments_processed",
     "location_used",
     "location_auto_filled",
@@ -50,6 +51,7 @@ VALID_WRITE_OUTCOME = {
     "success_degraded",
     "failed",
 }
+VALID_SIDE_EFFECT_STATUS = {"complete", "queued", "skipped", "failed", "compensated"}
 
 
 @pytest.fixture(autouse=True)
@@ -89,17 +91,15 @@ def writable_env(tmp_path):
 
 def _run_write(data: dict, writable_env: dict, dry_run: bool = False) -> dict:
     """Helper: run write_journal with all necessary mocks."""
-    with patch("tools.write_journal.core.get_journals_dir", return_value=writable_env["journals_dir"]):
+    with patch(
+        "tools.write_journal.core.get_journals_dir", return_value=writable_env["journals_dir"]
+    ):
         with patch(
             "tools.write_journal.core.get_journals_lock_path",
             return_value=writable_env["lock_path"],
         ):
-            with patch(
-                "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-            ):
-                with patch(
-                    "tools.write_journal.core.get_next_sequence", return_value=1
-                ):
+            with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                     with patch(
                         "tools.write_journal.core.query_weather_for_location",
                         return_value="Sunny 25°C",
@@ -124,9 +124,7 @@ def _run_write(data: dict, writable_env: dict, dry_run: bool = False) -> dict:
 
 
 def _load_golden(name: str) -> dict:
-    return json.loads(
-        (Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8")
-    )
+    return json.loads((Path(__file__).parent / "goldens" / name).read_text(encoding="utf-8"))
 
 
 def _normalize_write_snapshot(result: dict) -> dict:
@@ -154,9 +152,7 @@ def _normalize_write_snapshot(result: dict) -> dict:
         "error",
         "metrics",
     }
-    normalized = {
-        key: value for key, value in normalized.items() if key in allowed_fields
-    }
+    normalized = {key: value for key, value in normalized.items() if key in allowed_fields}
     normalized["journal_path"] = "JOURNAL_PATH"
     normalized["confirmation_message"] = (
         f"日志已保存至：JOURNAL_PATH\n\n"
@@ -219,6 +215,7 @@ class TestWriteJournalResponseShape:
         assert isinstance(result["updated_indices"], list)
         assert isinstance(result["index_status"], str)
         assert isinstance(result["side_effects_status"], str)
+        assert isinstance(result["side_effects"], list)
         assert isinstance(result["attachments_processed"], list)
         assert isinstance(result["location_used"], str)
         assert isinstance(result["location_auto_filled"], bool)
@@ -230,6 +227,48 @@ class TestWriteJournalResponseShape:
         assert isinstance(result["related_candidates"], list)
         assert isinstance(result["new_entities_detected"], list)
         assert isinstance(result["metrics"], dict)
+
+        for record in result["side_effects"]:
+            assert {"name", "phase", "status", "blocking"} <= record.keys()
+            assert record["status"] in VALID_SIDE_EFFECT_STATUS
+            assert isinstance(record["blocking"], bool)
+
+    def test_schema_exposes_side_effect_record_contract(self):
+        """Tool discovery publishes the additive execution record shape."""
+        schema = json.loads(
+            (Path(__file__).parents[2] / "tools" / "write_journal" / "schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        record_schema = schema["returns"]["properties"]["side_effects"]["items"]
+
+        assert record_schema["required"] == ["name", "phase", "status", "blocking"]
+        assert set(record_schema["properties"]["status"]["enum"]) == (VALID_SIDE_EFFECT_STATUS)
+
+    def test_success_record_sequence_covers_transaction_pipeline(self, writable_env):
+        """A normal write exposes every durable boundary in execution order."""
+        result = _run_write(
+            {
+                "date": "2026-03-14",
+                "title": "Execution Record",
+                "content": "Synthetic contract content.",
+                "topic": ["work"],
+            },
+            writable_env,
+        )
+
+        assert [item["name"] for item in result["side_effects"]] == [
+            "attachments",
+            "journal_stage",
+            "journal_commit",
+            "monthly_abstract",
+            "legacy_indices",
+            "metadata_relations",
+            "mark_pending",
+            "index_b",
+            "entity_candidates",
+            "confirmation_snapshot",
+        ]
 
 
 class TestWriteJournalStatusEnums:
@@ -289,8 +328,8 @@ class TestWriteJournalStatusEnums:
         result = _run_write(data, writable_env)
         assert result["write_outcome"] in VALID_WRITE_OUTCOME
 
-    def test_successful_write_outcome_is_pending_confirmation(self, writable_env):
-        """Successful write with needs_confirmation=True → success_pending_confirmation."""
+    def test_pending_index_queue_takes_degraded_precedence(self, writable_env):
+        """A durable pending queue is honest degraded freshness, not complete."""
         data = {
             "date": "2026-03-14",
             "title": "Pending Test",
@@ -302,7 +341,9 @@ class TestWriteJournalStatusEnums:
         }
         result = _run_write(data, writable_env)
         if result["success"]:
-            assert result["write_outcome"] == "success_pending_confirmation"
+            assert result["needs_confirmation"] is True
+            assert result["write_outcome"] == "success_degraded"
+            assert result["index_status"] == "degraded"
 
     def test_failed_write_outcome_is_failed(self, writable_env):
         """Failed write → write_outcome is 'failed'."""
@@ -436,7 +477,7 @@ class TestConfirmWorkflowContract:
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -494,15 +535,13 @@ class TestConfirmWorkflowContract:
             ],
         }
 
-    def test_apply_confirmation_updates_returns_candidate_approval_summary(
-        self, tmp_path
-    ):
+    def test_apply_confirmation_updates_returns_candidate_approval_summary(self, tmp_path):
         from tools.write_journal.core import apply_confirmation_updates
 
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -596,7 +635,7 @@ class TestWriteJournalGoldenSnapshots:
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -650,9 +689,7 @@ class TestWriteJournalGoldenSnapshots:
                 candidate_context=candidate_context,
             )
 
-        assert _normalize_confirm_snapshot(result) == _load_golden(
-            "confirm_result.json"
-        )
+        assert _normalize_confirm_snapshot(result) == _load_golden("confirm_result.json")
 
 
 class TestWriteJournalAttachmentResultContract:
@@ -742,3 +779,9 @@ class TestWriteJournalDryRun:
         assert result["success"] is True
         assert "content_preview" in result
         assert isinstance(result["content_preview"], str)
+        assert result["write_outcome"] == "success"
+        assert result["index_status"] == "not_started"
+        assert [item["name"] for item in result["side_effects"]] == [
+            "attachments",
+            "write_preview",
+        ]

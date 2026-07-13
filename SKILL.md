@@ -348,6 +348,9 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 - tool failure 时，不得假装 journal 已保存
 - write succeeded 但用户拒绝自动补全值时，应进入 correction flow，不得把已成功写入重新表述为“写入失败”
 - 必须区分：未保存 / 已保存但待确认 / 已保存但存在降级 side effects
+- 检查 `side_effects`：`journal_commit.status == "complete"` 时 journal 已持久化；即使后续步骤失败，也绝不能再次调用 write 创建同一篇日志
+- 对 `success_degraded`，逐项读取失败记录的 `recovery_strategy` 并只修复对应派生物；`mark_pending: queued` 表示 freshness queue 已可靠落盘，后续 search preflight 会消费它
+- `journal_commit` 未完成且 pre-commit 记录为 `failed/compensated` 时，确认无 durable `journal_path`，解决错误后才可重试写入
 
 **安装后可选个性化与写入状态指针**：
 - 安装完成后的专用触发词 / 默认地址偏好配置 → 仅在用户明确要求时处理；安装本身只按 `bootstrap --json` 输出执行

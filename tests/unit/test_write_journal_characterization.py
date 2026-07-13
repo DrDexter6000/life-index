@@ -221,8 +221,8 @@ class TestWriteJournalSuccessDictShape:
         assert "2026" in result["journal_path"]
         assert "03" in result["journal_path"]
 
-    def test_success_result_index_status_is_complete(self, writable_env):
-        """On successful write, index_status is 'complete'."""
+    def test_success_result_index_status_tracks_pending_queue(self, writable_env):
+        """A durable pending marker keeps index freshness degraded."""
         data = {
             "date": "2026-03-14",
             "title": "Index Test",
@@ -231,10 +231,16 @@ class TestWriteJournalSuccessDictShape:
         result = _run_write(data, writable_env)
 
         assert result["success"] is True
-        assert result["index_status"] == "complete"
+        assert result["index_status"] == "degraded"
+        assert (
+            next(item for item in result["side_effects"] if item["name"] == "mark_pending")[
+                "status"
+            ]
+            == "queued"
+        )
 
-    def test_success_write_outcome_is_pending_confirmation(self, writable_env):
-        """Successful write always yields 'success_pending_confirmation'."""
+    def test_success_write_outcome_reports_pending_freshness(self, writable_env):
+        """Pending freshness takes precedence while confirmation remains required."""
         data = {
             "date": "2026-03-14",
             "title": "Outcome Test",
@@ -243,7 +249,8 @@ class TestWriteJournalSuccessDictShape:
         result = _run_write(data, writable_env)
 
         assert result["success"] is True
-        assert result["write_outcome"] == "success_pending_confirmation"
+        assert result["write_outcome"] == "success_degraded"
+        assert result["needs_confirmation"] is True
 
     def test_success_needs_confirmation_is_true(self, writable_env):
         """Every successful write requires confirmation."""
@@ -336,8 +343,8 @@ class TestWriteJournalSuccessDictShape:
         assert result["success"] is True
         assert isinstance(result["updated_indices"], list)
 
-    def test_success_side_effects_status_is_complete(self, writable_env):
-        """With no abstract errors, side_effects_status is 'complete'."""
+    def test_success_side_effects_status_tracks_pending_queue(self, writable_env):
+        """Queued freshness is an incomplete side effect, not complete."""
         data = {
             "date": "2026-03-14",
             "title": "Side Effects Test",
@@ -346,7 +353,7 @@ class TestWriteJournalSuccessDictShape:
         result = _run_write(data, writable_env)
 
         assert result["success"] is True
-        assert result["side_effects_status"] == "complete"
+        assert result["side_effects_status"] == "degraded"
 
 
 # ===================================================================

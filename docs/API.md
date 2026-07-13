@@ -629,9 +629,23 @@ python -m tools.write_journal --data '<json>'
 ```json
 {
   "success": true,
-  "write_outcome": "success_pending_confirmation",
+  "write_outcome": "success_degraded",
   "journal_path": "C:/Users/.../Documents/Life-Index/Journals/2026/03/life-index_2026-03-10_001.md",
   "updated_indices": ["C:/Users/.../Documents/Life-Index/by-topic/主题_work.md"],
+  "index_status": "degraded",
+  "side_effects_status": "degraded",
+  "side_effects": [
+    {"name": "attachments", "phase": "pre_commit", "status": "complete", "blocking": true},
+    {"name": "journal_stage", "phase": "pre_commit", "status": "complete", "blocking": true},
+    {"name": "journal_commit", "phase": "commit", "status": "complete", "blocking": true},
+    {"name": "monthly_abstract", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "legacy_indices", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "metadata_relations", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "mark_pending", "phase": "post_commit", "status": "queued", "blocking": false},
+    {"name": "index_b", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "entity_candidates", "phase": "post_commit", "status": "complete", "blocking": false},
+    {"name": "confirmation_snapshot", "phase": "post_commit", "status": "complete", "blocking": false}
+  ],
   "attachments_processed": [...],
   "attachments_detected_count": 1,
   "attachments_processed_count": 1,
@@ -704,6 +718,7 @@ python -m tools.write_journal --data '<json>'
 | `needs_confirmation` | true/false | 是否需要用户确认地点/天气 | true → 展示确认信息，等待用户回复 |
 | `index_status` | complete/degraded/not_started | 索引更新状态 | degraded → 告知用户“已保存，但搜索可能暂时找不到” |
 | `side_effects_status` | complete/degraded/not_started | 附件/摘要等副作用状态 | degraded → 告知用户“已保存，但部分信息未更新” |
+| `side_effects` | array | 唯一执行记录序列；每项含 `name/phase/status/blocking`，失败项另含 `error/recovery_strategy` | 以 `journal_commit` 判断核心日志是否已 durable；只修复失败步骤，不重复写 journal |
 | `weather_auto_filled` | true/false | 天气是否自动填充 | true → 在确认信息中标注“自动获取” |
 | `attachments_detected_count` | int | 从正文自动检测到的本地附件路径数量 | 向用户反馈检测结果 |
 | `attachments_processed_count` | int | 成功归档的附件数量 | 向用户反馈成功归档数量 |
@@ -717,6 +732,11 @@ python -m tools.write_journal --data '<json>'
   "index_status": "degraded"
 }
 ```
+
+`side_effects[*].status` 只允许 `complete / queued / skipped / failed / compensated`。
+`queued` 只表示 pending queue 已原子落盘；搜索 preflight 尚需消费它，因此 freshness 仍为 degraded。
+`compensated` 表示 pre-commit 操作曾发生但已完成补偿，journal 未提交，可在解决原始错误后重试。
+Dry-run 记录 `write_preview=complete`，但不伪造 `journal_commit`；其 `index_status` 仍为 `not_started`。
 
 建议调用方表述：
 
@@ -809,9 +829,9 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 
 ### 写入成功 / 降级 / 修复语义
 
-- `journal_path` 可被成功返回时，应优先理解为**核心 journal 已 durably saved**
+- `side_effects` 中 `journal_commit.status == "complete"` 是核心 journal 已 durable saved 的唯一执行事实；`journal_path` 保持为兼容字段
 - `needs_confirmation: true` 表示“写入成功但仍需确认/修正”，**不等于写入失败**
-- 索引、附件、补充信息等 side effects 若处于降级状态，应报告为“已保存，但仍有后续修复或可见性问题”，不应抹掉核心写入成功这一事实
+- journal commit 后的索引、摘要、metadata、pending、Index B 或候选池失败，应报告为“已保存，但仍有后续修复或可见性问题”；执行对应 `recovery_strategy`，不得重复调用 write 创建同一篇日志
 - Agent 必须保留这三种区别：
   1. 写入失败
   2. 写入成功，但仍需 confirmation / correction
@@ -819,7 +839,7 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 
 ### write_outcome 值定义
 
-`write_outcome` 是 Round 5 新增的顶层字段。Agent 只需读这一个字段即可判断下一步动作，无需组合检查 `success` + `needs_confirmation` + `index_status` + `side_effects_status`。
+`write_outcome` 是兼容顶层摘要；它与 `index_status`、`side_effects_status` 都由同一 `side_effects` 执行记录序列投影。Agent 可用摘要做分支，但恢复时必须读取失败记录。
 
 | 值 | 含义 | Agent 应做什么 |
 |---|---|---|
@@ -828,10 +848,10 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 | `success_degraded` | 日志已保存，但索引/附件等后续操作部分失败 | 告知用户已保存但存在降级，建议后续修复 |
 | `failed` | 写入失败 | 查看 `error` 字段的 `recovery_strategy` 决定下一步 |
 
-推导规则（`derive_write_outcome()`）：
-1. `success == false` → `failed`
-2. `needs_confirmation == true` → `success_pending_confirmation`（即使同时降级，确认优先）
-3. `index_status == "degraded"` 或 `side_effects_status == "degraded"` → `success_degraded`
+推导规则（`derive_write_statuses()`）：
+1. `journal_commit` 未 `complete` → `success: false`、`failed`、两个状态均 `not_started`
+2. durable commit 后任一相关记录为 `failed / queued / compensated` → `success_degraded`（降级真相优先于 confirmation 摘要）
+3. 无降级且 `needs_confirmation == true` → `success_pending_confirmation`
 4. 以上均否 → `success`
 
 ### Tool hard-required vs workflow-required

@@ -1,10 +1,10 @@
 {
   "success": true,
-  "write_outcome": "success_pending_confirmation",
+  "write_outcome": "success_degraded",
   "journal_path": "JOURNAL_PATH",
   "updated_indices": [],
-  "index_status": "complete",
-  "side_effects_status": "complete",
+  "index_status": "degraded",
+  "side_effects_status": "degraded",
   "attachments_processed": [],
   "attachments_detected_count": 0,
   "attachments_processed_count": 0,

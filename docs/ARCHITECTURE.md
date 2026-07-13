@@ -41,7 +41,7 @@ The following program work remains incomplete; D0 ratification did not itself
 implement it:
 
 - #163 — smart-search A3/A4 is implemented, and the A5 candidate makes eval deterministic-only: `--judge llm` fails before provider/configuration import, production eval provider/prompt/client ownership is removed, and the public hard check scans search, smart-search, and eval roots. #163 remains open pending review, so D1-A is not complete.
-- #162 — transactional write, side-effect, and freshness repair: unimplemented.
+- #162 — the D1-B candidate implements transactional write side-effect records and honest freshness; the issue remains open pending independent review, so D1 is not complete.
 - #165 — backup, restore, and recovery proof: unimplemented.
 - #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
 <!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->
@@ -492,6 +492,29 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
 - **TOKENIZER_VERSION 机制**：`search_constants.py` 中的 `TOKENIZER_VERSION` 整数与 FTS 索引一起存储。当 jieba 分词器配置变更时，bump 版本号触发自动全量重建，确保索引 token 与查询时一致（ADR-011）
 - **Index Manifest**：`tools/lib/index_manifest.py` 管理 FTS 索引构建状态（counts + checksums + legacy vector fields fixed at disabled/empty），支持增量更新的原子性和恢复
 - **Pending Queue**：`tools/lib/pending_writes.py` 实现写入穿透缓存，写入/编辑后标记 pending，搜索前消费，确保搜索结果包含最新数据（ADR-017）
+
+#### Transactional write boundary
+
+`tools/write_journal/core.py` uses one ordered `side_effects` record sequence as
+the execution truth for the compatibility summaries `write_outcome`,
+`index_status`, and `side_effects_status`.
+
+1. Attachment bytes are copied into a transient same-filesystem staging tree.
+2. The journal is written to a temporary file; staged attachments are then
+   published, followed by the journal's atomic rename (`journal_commit`).
+3. Any failure before that rename removes the temp journal and compensates only
+   attachments published by this transaction. No derived view runs before the
+   durable journal commit.
+4. Monthly abstract, legacy navigation indexes, metadata relations, pending
+   freshness, Index B, entity candidate capture, and confirmation snapshots
+   run after commit. Their
+   failure preserves the journal and produces `success_degraded` with a
+   machine-readable recovery strategy.
+5. `mark_pending: queued` means the existing atomic pending queue is durable;
+   search preflight remains the sole consumer and freshness authority.
+
+This is a bounded file transaction, not a WAL, background worker, database, or
+new queue protocol.
 
 ### 5.8 搜索编排器（v1.2.0 smart-search v1 contract）
 

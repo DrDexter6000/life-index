@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from tools.lib.errors import ErrorCode
+from tools.write_journal.attachments import AttachmentStaging
 from tools.write_journal.core import write_journal
 from tools.write_journal.core import apply_confirmation_updates
 
@@ -68,17 +69,15 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
+        with patch(
+            "tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]
+        ):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.query_weather_for_location",
                             return_value="Sunny 25°C",
@@ -111,12 +110,10 @@ class TestWriteJournalBasic:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
-                                                        result = write_journal(
-                                                            data, dry_run=False
-                                                        )
+                                                        result = write_journal(data, dry_run=False)
 
         assert result["success"] is True
         assert result["journal_path"] is not None
@@ -131,17 +128,15 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
+        with patch(
+            "tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]
+        ):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.query_weather_for_location",
                             return_value="Sunny 25°C",
@@ -175,7 +170,9 @@ class TestWriteJournalBasic:
         }
 
         monkeypatch.setattr("tools.write_journal.core.current_local_date_iso", lambda: "2026-06-29")
-        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
+        with patch(
+            "tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]
+        ):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -214,17 +211,15 @@ class TestWriteJournalBasic:
             "tags": ["search", "ranking"],
         }
 
-        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
+        with patch(
+            "tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]
+        ):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.query_weather_for_location",
                             return_value="Sunny 25°C",
@@ -256,30 +251,24 @@ class TestWriteJournalBasic:
                                             result = write_journal(data, dry_run=True)
 
         assert result["success"] is True
-        assert (
-            result["related_candidates"][0]["rel_path"] == "Journals/2026/03/other.md"
-        )
+        assert result["related_candidates"][0]["rel_path"] == "Journals/2026/03/other.md"
 
-    def test_write_confirmation_message_includes_related_candidates(
-        self, mock_deps, tmp_path
-    ):
+    def test_write_confirmation_message_includes_related_candidates(self, mock_deps, tmp_path):
         data = {
             "date": "2026-03-14",
             "title": "Test Journal",
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
+        with patch(
+            "tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]
+        ):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.query_weather_for_location",
                             return_value="Sunny 25°C",
@@ -309,14 +298,14 @@ class TestWriteJournalBasic:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         with patch(
-                                                            "tools.write_journal.core.suggest_related_entries",
+                                                            "tools.write_journal.core.suggest_related_entries",  # noqa: E501
                                                             return_value=[
                                                                 {
-                                                                    "rel_path": "Journals/2026/03/other.md",
+                                                                    "rel_path": "Journals/2026/03/other.md",  # noqa: E501
                                                                     "title": "Other",
                                                                     "date": "2026-03-13",
                                                                     "abstract": "Related",
@@ -338,17 +327,15 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
+        with patch(
+            "tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]
+        ):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.query_weather_for_location",
                             return_value="Sunny 25°C",
@@ -398,17 +385,15 @@ class TestWriteJournalBasic:
             "content": "This is test content.",
         }
 
-        with patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]):
+        with patch(
+            "tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]
+        ):
             with patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.query_weather_for_location",
                             return_value="Sunny 25°C",
@@ -441,23 +426,19 @@ class TestWriteJournalBasic:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
-                                                        result = write_journal(
-                                                            data, dry_run=True
-                                                        )
+                                                        result = write_journal(data, dry_run=True)
 
         assert result["success"] is True
         assert result["new_entities_detected"] == []
 
-    def test_apply_confirmation_updates_can_write_back_location_and_candidates(
-        self, tmp_path
-    ):
+    def test_apply_confirmation_updates_can_write_back_location_and_candidates(self, tmp_path):
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -465,9 +446,7 @@ class TestWriteJournalBasic:
 
         with (
             patch("tools.edit_journal.edit_journal") as mock_edit,
-            patch(
-                "tools.write_journal.core.init_metadata_cache", return_value=fake_conn
-            ),
+            patch("tools.write_journal.core.init_metadata_cache", return_value=fake_conn),
             patch(
                 "tools.write_journal.core.build_journal_path_fields",
                 return_value={
@@ -504,16 +483,11 @@ class TestWriteJournalBasic:
 
         assert result["success"] is True
         mock_edit.assert_called_once()
-        assert (
-            mock_edit.call_args.kwargs["frontmatter_updates"]["location"] == "New City"
-        )
-        assert (
-            mock_edit.call_args.kwargs["frontmatter_updates"]["weather"]
-            == "New Weather"
-        )
-        assert mock_edit.call_args.kwargs["frontmatter_updates"][
-            "add_related_entries"
-        ] == ["Journals/2026/03/target.md"]
+        assert mock_edit.call_args.kwargs["frontmatter_updates"]["location"] == "New City"
+        assert mock_edit.call_args.kwargs["frontmatter_updates"]["weather"] == "New Weather"
+        assert mock_edit.call_args.kwargs["frontmatter_updates"]["add_related_entries"] == [
+            "Journals/2026/03/target.md"
+        ]
         assert mock_backlinks.call_count == 2
         assert result["confirm_status"] == "complete"
         assert result["applied_fields"] == ["location", "weather", "related_entries"]
@@ -547,7 +521,7 @@ class TestWriteJournalBasic:
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -574,7 +548,7 @@ class TestWriteJournalBasic:
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -598,13 +572,11 @@ class TestWriteJournalBasic:
         assert result["applied_fields"] == ["location"]
         assert result["ignored_fields"] == ["weather"]
 
-    def test_apply_confirmation_updates_can_approve_candidates_by_id_with_context(
-        self, tmp_path
-    ):
+    def test_apply_confirmation_updates_can_approve_candidates_by_id_with_context(self, tmp_path):
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -624,9 +596,7 @@ class TestWriteJournalBasic:
 
         with (
             patch("tools.edit_journal.edit_journal") as mock_edit,
-            patch(
-                "tools.write_journal.core.init_metadata_cache", return_value=fake_conn
-            ),
+            patch("tools.write_journal.core.init_metadata_cache", return_value=fake_conn),
             patch(
                 "tools.write_journal.core.build_journal_path_fields",
                 return_value={
@@ -658,9 +628,9 @@ class TestWriteJournalBasic:
             )
 
         assert result["success"] is True
-        assert mock_edit.call_args.kwargs["frontmatter_updates"][
-            "add_related_entries"
-        ] == ["Journals/2026/03/second.md"]
+        assert mock_edit.call_args.kwargs["frontmatter_updates"]["add_related_entries"] == [
+            "Journals/2026/03/second.md"
+        ]
         assert result["approved_related_entries"] == ["Journals/2026/03/second.md"]
         assert result["approved_candidate_ids"] == [2]
         assert result["approval_summary"] == {
@@ -680,7 +650,7 @@ class TestWriteJournalBasic:
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -710,10 +680,7 @@ class TestWriteJournalBasic:
             )
 
         assert result["success"] is True
-        assert (
-            "add_related_entries"
-            not in mock_edit.call_args.kwargs["frontmatter_updates"]
-        )
+        assert "add_related_entries" not in mock_edit.call_args.kwargs["frontmatter_updates"]
         assert result["rejected_related_entries"] == [
             "Journals/2026/03/first.md",
             "Journals/2026/03/second.md",
@@ -735,13 +702,11 @@ class TestWriteJournalBasic:
             ],
         }
 
-    def test_apply_confirmation_updates_rejects_unknown_candidate_reference(
-        self, tmp_path
-    ):
+    def test_apply_confirmation_updates_rejects_unknown_candidate_reference(self, tmp_path):
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(
-            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',
+            '---\ntitle: "Source"\ndate: 2026-03-14\nlocation: "Old City"\nweather: "Old Weather"\nrelated_entries: []\n---\n\n\nBody\n',  # noqa: E501
             encoding="utf-8",
         )
 
@@ -779,7 +744,9 @@ class TestWriteJournalBasic:
         import tools.lib.metadata_cache as mc
 
         with (
-            patch("tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]),
+            patch(
+                "tools.write_journal.core.get_journals_dir", return_value=mock_deps["journals_dir"]
+            ),
             patch(
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=mock_deps["lock_path"],
@@ -824,8 +791,10 @@ class TestWriteJournalBasic:
 
         assert result["success"] is True
         assert len(backlinks) == 1
-        assert backlinks[0].replace("\\", "/").endswith(
-            "Journals/2026/03/life-index_2026-03-14_001.md"
+        assert (
+            backlinks[0]
+            .replace("\\", "/")
+            .endswith("Journals/2026/03/life-index_2026-03-14_001.md")
         )
 
 
@@ -891,12 +860,8 @@ class TestWriteJournalLocation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Chongqing, China",
@@ -904,7 +869,7 @@ class TestWriteJournalLocation:
                             with patch(
                                 "tools.write_journal.core.normalize_location",
                                 return_value="Chongqing, China",
-                            ) as mock_norm:
+                            ):
                                 with patch(
                                     "tools.write_journal.core.query_weather_for_location",
                                     return_value="",
@@ -926,11 +891,11 @@ class TestWriteJournalLocation:
                                                     return_value=[],
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_project_index",
+                                                        "tools.write_journal.core.update_project_index",  # noqa: E501
                                                         return_value=None,
                                                     ):
                                                         with patch(
-                                                            "tools.write_journal.core.update_tag_indices",
+                                                            "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                             return_value=[],
                                                         ):
                                                             # Create lock file parent
@@ -960,12 +925,8 @@ class TestWriteJournalLocation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -995,11 +956,11 @@ class TestWriteJournalLocation:
                                                     return_value=[],
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_project_index",
+                                                        "tools.write_journal.core.update_project_index",  # noqa: E501
                                                         return_value=None,
                                                     ):
                                                         with patch(
-                                                            "tools.write_journal.core.update_tag_indices",
+                                                            "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                             return_value=[],
                                                         ):
                                                             (tmp_path / ".cache").mkdir(
@@ -1028,12 +989,8 @@ class TestWriteJournalLocation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Beijing, China",
@@ -1063,7 +1020,7 @@ class TestWriteJournalLocation:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1071,9 +1028,7 @@ class TestWriteJournalLocation:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1091,12 +1046,8 @@ class TestWriteJournalLocation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -1126,11 +1077,11 @@ class TestWriteJournalLocation:
                                                     return_value=[],
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_project_index",
+                                                        "tools.write_journal.core.update_project_index",  # noqa: E501
                                                         return_value=None,
                                                     ):
                                                         with patch(
-                                                            "tools.write_journal.core.update_tag_indices",
+                                                            "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                             return_value=[],
                                                         ):
                                                             (tmp_path / ".cache").mkdir(
@@ -1164,12 +1115,8 @@ class TestWriteJournalWeather:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1177,7 +1124,7 @@ class TestWriteJournalWeather:
                             with patch(
                                 "tools.write_journal.core.query_weather_for_location",
                                 return_value="Sunny 28°C/22°C",
-                            ) as mock_weather:
+                            ):
                                 with patch(
                                     "tools.write_journal.core.extract_file_paths_from_content",
                                     return_value=[],
@@ -1199,7 +1146,7 @@ class TestWriteJournalWeather:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1207,9 +1154,7 @@ class TestWriteJournalWeather:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1229,12 +1174,8 @@ class TestWriteJournalWeather:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1263,7 +1204,7 @@ class TestWriteJournalWeather:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1271,9 +1212,7 @@ class TestWriteJournalWeather:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1294,12 +1233,8 @@ class TestWriteJournalWeather:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -1328,11 +1263,11 @@ class TestWriteJournalWeather:
                                                     return_value=[],
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_project_index",
+                                                        "tools.write_journal.core.update_project_index",  # noqa: E501
                                                         return_value=None,
                                                     ):
                                                         with patch(
-                                                            "tools.write_journal.core.update_tag_indices",
+                                                            "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                             return_value=[],
                                                         ):
                                                             (tmp_path / ".cache").mkdir(
@@ -1362,12 +1297,8 @@ class TestWriteJournalWeather:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1397,7 +1328,7 @@ class TestWriteJournalWeather:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1405,9 +1336,7 @@ class TestWriteJournalWeather:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1463,9 +1392,7 @@ class TestWriteJournalAttachments:
         data = {
             "date": "2026-03-14",
             "content": "Test content",
-            "attachments": [
-                {"source_path": "/path/to/file.pdf", "description": "Test file"}
-            ],
+            "attachments": [{"source_path": "/path/to/file.pdf", "description": "Test file"}],
         }
 
         mock_attachments = [
@@ -1481,12 +1408,8 @@ class TestWriteJournalAttachments:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1500,9 +1423,14 @@ class TestWriteJournalAttachments:
                                     return_value=[],
                                 ):
                                     with patch(
-                                        "tools.write_journal.core.process_attachments",
-                                        return_value=mock_attachments,
-                                    ) as mock_proc:
+                                        "tools.write_journal.core.stage_attachments",
+                                        return_value=AttachmentStaging(
+                                            mock_attachments,
+                                            None,
+                                            None,
+                                            tmp_path / "attachments" / "2026" / "03",
+                                        ),
+                                    ):
                                         with patch(
                                             "tools.write_journal.core.update_monthly_abstract",
                                             return_value={},
@@ -1516,7 +1444,7 @@ class TestWriteJournalAttachments:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1524,9 +1452,7 @@ class TestWriteJournalAttachments:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1553,12 +1479,8 @@ class TestWriteJournalAttachments:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1572,8 +1494,13 @@ class TestWriteJournalAttachments:
                                     return_value=auto_detected,
                                 ):
                                     with patch(
-                                        "tools.write_journal.core.process_attachments",
-                                        return_value=mock_attachments,
+                                        "tools.write_journal.core.stage_attachments",
+                                        return_value=AttachmentStaging(
+                                            mock_attachments,
+                                            None,
+                                            None,
+                                            tmp_path / "attachments" / "2026" / "03",
+                                        ),
                                     ):
                                         with patch(
                                             "tools.write_journal.core.update_monthly_abstract",
@@ -1588,7 +1515,7 @@ class TestWriteJournalAttachments:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1596,9 +1523,7 @@ class TestWriteJournalAttachments:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1623,12 +1548,8 @@ class TestWriteJournalIndexUpdates:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1652,13 +1573,13 @@ class TestWriteJournalIndexUpdates:
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
                                                 return_value=mock_topic_indices,
-                                            ) as mock_topic:
+                                            ):
                                                 with patch(
                                                     "tools.write_journal.core.update_project_index",
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1666,9 +1587,7 @@ class TestWriteJournalIndexUpdates:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1689,12 +1608,8 @@ class TestWriteJournalIndexUpdates:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1722,9 +1637,9 @@ class TestWriteJournalIndexUpdates:
                                                 with patch(
                                                     "tools.write_journal.core.update_project_index",
                                                     return_value=mock_project_index,
-                                                ) as mock_proj:
+                                                ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1732,9 +1647,7 @@ class TestWriteJournalIndexUpdates:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1758,12 +1671,8 @@ class TestWriteJournalIndexUpdates:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1793,17 +1702,15 @@ class TestWriteJournalIndexUpdates:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=mock_tag_indices,
-                                                    ) as mock_tags:
+                                                    ):
                                                         # Create lock file parent
                                                         (tmp_path / ".cache").mkdir(
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1825,12 +1732,8 @@ class TestWriteJournalMetrics:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1860,7 +1763,7 @@ class TestWriteJournalMetrics:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1868,9 +1771,7 @@ class TestWriteJournalMetrics:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1894,12 +1795,8 @@ class TestWriteJournalConfirmation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Beijing, China",
@@ -1929,7 +1826,7 @@ class TestWriteJournalConfirmation:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -1937,9 +1834,7 @@ class TestWriteJournalConfirmation:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -1960,12 +1855,8 @@ class TestWriteJournalConfirmation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -1995,7 +1886,7 @@ class TestWriteJournalConfirmation:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         # Create lock file parent
@@ -2003,9 +1894,7 @@ class TestWriteJournalConfirmation:
                                                             parents=True, exist_ok=True
                                                         )
                                                         (
-                                                            tmp_path
-                                                            / ".cache"
-                                                            / "journals.lock"
+                                                            tmp_path / ".cache" / "journals.lock"
                                                         ).touch()
                                                         result = write_journal(data)
 
@@ -2024,12 +1913,8 @@ class TestWriteJournalConfirmation:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -2059,11 +1944,11 @@ class TestWriteJournalConfirmation:
                                                     return_value=[],
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_project_index",
+                                                        "tools.write_journal.core.update_project_index",  # noqa: E501
                                                         return_value=None,
                                                     ):
                                                         with patch(
-                                                            "tools.write_journal.core.update_tag_indices",
+                                                            "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                             return_value=[],
                                                         ):
                                                             (tmp_path / ".cache").mkdir(
@@ -2100,12 +1985,8 @@ class TestWriteJournalWorkflowChains:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -2135,11 +2016,11 @@ class TestWriteJournalWorkflowChains:
                                                     return_value=[],
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_project_index",
+                                                        "tools.write_journal.core.update_project_index",  # noqa: E501
                                                         return_value=None,
                                                     ):
                                                         with patch(
-                                                            "tools.write_journal.core.update_tag_indices",
+                                                            "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                             return_value=[],
                                                         ):
                                                             (tmp_path / ".cache").mkdir(
@@ -2151,9 +2032,7 @@ class TestWriteJournalWorkflowChains:
                                                                 / ".cache"
                                                                 / "journals.lock"
                                                             ).touch()
-                                                            write_result = (
-                                                                write_journal(data)
-                                                            )
+                                                            write_result = write_journal(data)
 
         assert write_result["success"] is True
         assert write_result["needs_confirmation"] is True
@@ -2186,12 +2065,8 @@ class TestWriteJournalWorkflowChains:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=tmp_path / ".cache" / "journals.lock",
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.get_default_location",
                             return_value="Lagos, Nigeria",
@@ -2221,11 +2096,11 @@ class TestWriteJournalWorkflowChains:
                                                     return_value=[],
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_project_index",
+                                                        "tools.write_journal.core.update_project_index",  # noqa: E501
                                                         return_value=None,
                                                     ):
                                                         with patch(
-                                                            "tools.write_journal.core.update_tag_indices",
+                                                            "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                             return_value=[],
                                                         ):
                                                             (tmp_path / ".cache").mkdir(
@@ -2237,9 +2112,7 @@ class TestWriteJournalWorkflowChains:
                                                                 / ".cache"
                                                                 / "journals.lock"
                                                             ).touch()
-                                                            write_result = (
-                                                                write_journal(data)
-                                                            )
+                                                            write_result = write_journal(data)
 
         assert write_result["success"] is True
         assert write_result["needs_confirmation"] is True
@@ -2262,11 +2135,11 @@ class TestWriteJournalWorkflowChains:
         assert 'weather: "Manual fallback: Cloudy 18°C"' in content
 
 
-class TestWriteJournalTransactionRollback:
-    """Tests for transaction rollback and cleanup scenarios"""
+class TestWriteJournalTransactionBoundaries:
+    """Tests for pre-commit rollback and post-commit degradation."""
 
-    def test_index_update_failure_cleans_temp_file(self, tmp_path):
-        """Test that temp file is cleaned up when index update fails"""
+    def test_index_update_failure_preserves_committed_journal(self, tmp_path):
+        """A legacy index failure degrades but does not erase the journal."""
         data = {
             "date": "2026-03-14",
             "content": "Test content",
@@ -2287,12 +2160,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2315,15 +2184,18 @@ class TestWriteJournalTransactionRollback:
                                         ):
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
-                                                side_effect=OSError(
-                                                    "Index write failed"
-                                                ),
+                                                side_effect=OSError("Index write failed"),
                                             ):
                                                 result = write_journal(data)
 
-        assert result["success"] is False
-        assert "索引更新失败" in result["error"]
-        # Temp file should not exist after cleanup
+        assert result["success"] is True
+        assert result["write_outcome"] == "success_degraded"
+        assert result["error"] is None
+        assert Path(result["journal_path"]).exists()
+        legacy_record = next(
+            item for item in result["side_effects"] if item["name"] == "legacy_indices"
+        )
+        assert legacy_record["status"] == "failed"
         temp_file = month_dir / "life-index_2026-03-14_001.md.tmp"
         assert not temp_file.exists()
 
@@ -2349,12 +2221,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2377,17 +2245,17 @@ class TestWriteJournalTransactionRollback:
                                         ):
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
-                                                side_effect=RuntimeError(
-                                                    "Runtime failure"
-                                                ),
+                                                side_effect=RuntimeError("Runtime failure"),
                                             ):
                                                 result = write_journal(data)
 
-        assert result["success"] is False
-        assert "索引更新失败" in result["error"]
+        assert result["success"] is True
+        assert result["write_outcome"] == "success_degraded"
+        assert result["error"] is None
+        assert Path(result["journal_path"]).exists()
 
-    def test_tag_index_update_failure_cleanup(self, tmp_path):
-        """Test cleanup when tag index update fails"""
+    def test_tag_index_update_failure_is_degraded(self, tmp_path):
+        """A tag index failure is a recoverable post-commit side effect."""
         data = {
             "date": "2026-03-14",
             "content": "Test content",
@@ -2408,12 +2276,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2443,15 +2307,15 @@ class TestWriteJournalTransactionRollback:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
-                                                        side_effect=IOError(
-                                                            "Tag index failed"
-                                                        ),
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
+                                                        side_effect=IOError("Tag index failed"),
                                                     ):
                                                         result = write_journal(data)
 
-        assert result["success"] is False
-        assert "索引更新失败" in result["error"]
+        assert result["success"] is True
+        assert result["write_outcome"] == "success_degraded"
+        assert result["error"] is None
+        assert Path(result["journal_path"]).exists()
 
     def test_file_write_error_cleans_temp_file(self, tmp_path):
         """Test that OSError during file write cleans up temp file"""
@@ -2474,12 +2338,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2499,24 +2359,20 @@ class TestWriteJournalTransactionRollback:
                                         # Mock open to raise OSError for temp files
                                         import io
 
-                                        def mock_open_error(
-                                            file, mode="r", *args, **kwargs
-                                        ):
+                                        def mock_open_error(file, mode="r", *args, **kwargs):
                                             if ".tmp" in str(file):
                                                 raise OSError("Disk full")
                                             # Return a mock file object for other calls
                                             return io.StringIO("test content")
 
-                                        with patch(
-                                            "builtins.open", side_effect=mock_open_error
-                                        ):
+                                        with patch("builtins.open", side_effect=mock_open_error):
                                             result = write_journal(data)
 
         assert result["success"] is False
         assert "Disk full" in result["error"]
 
-    def test_temp_file_already_deleted_during_cleanup(self, tmp_path):
-        """Test cleanup when temp file is already deleted"""
+    def test_postcommit_failure_has_no_temp_file(self, tmp_path):
+        """A committed journal has no temp file after index degradation."""
         data = {
             "date": "2026-03-14",
             "content": "Test content",
@@ -2540,12 +2396,8 @@ class TestWriteJournalTransactionRollback:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2570,13 +2422,15 @@ class TestWriteJournalTransactionRollback:
                                                 "tools.write_journal.core.update_topic_index",
                                                 side_effect=RuntimeError("Index error"),
                                             ):
-                                                # Ensure temp file doesn't exist for cleanup
+                                                # Ensure temp file doesn't exist for cleanup  # noqa: E501
                                                 # (simulating already deleted)
                                                 result = write_journal(data)
 
-        assert result["success"] is False
-        # Cleanup should not fail even if temp file doesn't exist
-        assert "索引更新失败" in result["error"]
+        assert result["success"] is True
+        assert result["write_outcome"] == "success_degraded"
+        assert result["error"] is None
+        assert Path(result["journal_path"]).exists()
+        assert not temp_file_path.exists()
 
 
 class TestWriteJournalAbstractUpdate:
@@ -2603,12 +2457,8 @@ class TestWriteJournalAbstractUpdate:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2627,9 +2477,7 @@ class TestWriteJournalAbstractUpdate:
                                     ):
                                         with patch(
                                             "tools.write_journal.core.update_monthly_abstract",
-                                            side_effect=OSError(
-                                                "Abstract update failed"
-                                            ),
+                                            side_effect=OSError("Abstract update failed"),
                                         ):
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
@@ -2640,7 +2488,7 @@ class TestWriteJournalAbstractUpdate:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         result = write_journal(data)
@@ -2671,12 +2519,8 @@ class TestWriteJournalAbstractUpdate:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2695,9 +2539,7 @@ class TestWriteJournalAbstractUpdate:
                                     ):
                                         with patch(
                                             "tools.write_journal.core.update_monthly_abstract",
-                                            side_effect=RuntimeError(
-                                                "Subprocess failed"
-                                            ),
+                                            side_effect=RuntimeError("Subprocess failed"),
                                         ):
                                             with patch(
                                                 "tools.write_journal.core.update_topic_index",
@@ -2708,7 +2550,7 @@ class TestWriteJournalAbstractUpdate:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         result = write_journal(data)
@@ -2750,9 +2592,7 @@ class TestWriteJournalSequenceRetry:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
                     with patch(
                         "tools.write_journal.core.get_next_sequence",
                         side_effect=mock_get_next_sequence,
@@ -2786,7 +2626,7 @@ class TestWriteJournalSequenceRetry:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         result = write_journal(data)
@@ -2821,9 +2661,7 @@ class TestWriteJournalSequenceRetry:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
                     with patch(
                         "tools.write_journal.core.get_next_sequence",
                         return_value=1,  # Always return 1
@@ -2857,7 +2695,7 @@ class TestWriteJournalSequenceRetry:
                                                     return_value=None,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         result = write_journal(data)
@@ -2894,12 +2732,8 @@ class TestWriteJournalProjectIndexUpdate:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2929,7 +2763,7 @@ class TestWriteJournalProjectIndexUpdate:
                                                     return_value=project_index,
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         result = write_journal(data)
@@ -2960,12 +2794,8 @@ class TestWriteJournalProjectIndexUpdate:
                 "tools.write_journal.core.get_journals_lock_path",
                 return_value=lock_path,
             ):
-                with patch(
-                    "tools.write_journal.core.get_year_month", return_value=(2026, 3)
-                ):
-                    with patch(
-                        "tools.write_journal.core.get_next_sequence", return_value=1
-                    ):
+                with patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)):
+                    with patch("tools.write_journal.core.get_next_sequence", return_value=1):
                         with patch(
                             "tools.write_journal.core.normalize_location",
                             return_value="Chongqing, China",
@@ -2995,7 +2825,7 @@ class TestWriteJournalProjectIndexUpdate:
                                                     return_value=None,  # Returns None
                                                 ):
                                                     with patch(
-                                                        "tools.write_journal.core.update_tag_indices",
+                                                        "tools.write_journal.core.update_tag_indices",  # noqa: E501
                                                         return_value=[],
                                                     ):
                                                         result = write_journal(data)
@@ -3019,9 +2849,7 @@ class TestWriteJournalLockTimeoutDetails:
 
         lock_path = tmp_path / "test.lock"
         mock_lock = MagicMock()
-        mock_lock.__enter__ = MagicMock(
-            side_effect=LockTimeoutError(str(lock_path), 30.0)
-        )
+        mock_lock.__enter__ = MagicMock(side_effect=LockTimeoutError(str(lock_path), 30.0))
         mock_lock.__exit__ = MagicMock(return_value=None)
 
         with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):
@@ -3057,9 +2885,7 @@ class TestWriteJournalLockTimeoutDetails:
 
         lock_path = tmp_path / "test.lock"
         mock_lock = MagicMock()
-        mock_lock.__enter__ = MagicMock(
-            side_effect=LockTimeoutError(str(lock_path), 30.0)
-        )
+        mock_lock.__enter__ = MagicMock(side_effect=LockTimeoutError(str(lock_path), 30.0))
         mock_lock.__exit__ = MagicMock(return_value=None)
 
         with patch("tools.write_journal.core.get_journals_dir", return_value=tmp_path / "Journals"):

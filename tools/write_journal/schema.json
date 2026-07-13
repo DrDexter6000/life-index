@@ -25,6 +25,24 @@
     "type": "object",
     "properties": {
       "journal_path": {"type": ["string", "null"]},
+      "side_effects": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "phase": {"type": "string"},
+            "status": {
+              "type": "string",
+              "enum": ["complete", "queued", "skipped", "failed", "compensated"]
+            },
+            "blocking": {"type": "boolean"},
+            "error": {"type": "string"},
+            "recovery_strategy": {"type": "string"}
+          },
+          "required": ["name", "phase", "status", "blocking"]
+        }
+      },
       "confirmation": {
         "type": "object",
         "properties": {
