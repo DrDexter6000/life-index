@@ -138,7 +138,17 @@ def _assert_contained_without_reparse(root: Path, candidate: Path) -> None:
         raise ValueError(f"artifact resolves outside recovery root: {candidate}") from exc
 
 
+def _assert_existing_path_components_without_reparse(path: Path) -> None:
+    absolute_path = path.absolute()
+    current = Path(absolute_path.anchor)
+    for part in absolute_path.parts[1:]:
+        current = current / part
+        if (current.exists() or current.is_symlink()) and _is_reparse_point(current):
+            raise ValueError(f"reparse point is not allowed in restore path: {current}")
+
+
 def _assert_destination_contained_without_reparse(root: Path, candidate: Path) -> None:
+    _assert_existing_path_components_without_reparse(root)
     try:
         relative = candidate.relative_to(root)
     except ValueError as exc:
@@ -644,6 +654,14 @@ def restore_backup(
         if not backup.is_dir() or _is_reparse_point(backup):
             cast(List[str], result["errors"]).append(
                 f"Restore backup root must be a real directory, not a reparse point: {backup}"
+            )
+            return result
+
+        try:
+            _assert_existing_path_components_without_reparse(dest)
+        except ValueError as e:
+            cast(List[str], result["errors"]).append(
+                f"Restore destination path validation failed: {e}"
             )
             return result
 
