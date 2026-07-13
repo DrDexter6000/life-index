@@ -113,6 +113,21 @@ def test_skill_uses_progressive_disclosure_for_grounded_query_playbook() -> None
     assert "ensure` -> `discover` -> `navigate" in playbook
 
 
+def test_grounded_query_playbook_keeps_magazine_output_conditional() -> None:
+    playbook = " ".join(_read("references/GROUNDED_QUERY_PLAYBOOK.md").split())
+
+    assert (
+        "time-scoped evidence, facet/count/enumeration answers, cross-facet questions, "
+        "magazine-style analysis" in playbook
+    )
+    assert "Only for magazine-style analysis or an explicit grounded-status request" in playbook
+    assert (
+        "Ordinary count, facet, enumeration, cross-facet, and time-scoped answers use "
+        "bounded evidence and honest uncertainty without requiring `answer.insights[]` or a "
+        "`GROUNDED` / `PARTIAL` / `UNGROUNDED` status." in playbook
+    )
+
+
 def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:
     skill = _read("SKILL.md")
 
