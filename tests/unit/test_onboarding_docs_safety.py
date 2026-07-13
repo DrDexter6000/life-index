@@ -104,10 +104,13 @@ def test_readme_current_version_points_to_release_ssot() -> None:
 def test_skill_uses_progressive_disclosure_for_grounded_query_playbook() -> None:
     skill = _read("SKILL.md")
     playbook = _read("references/GROUNDED_QUERY_PLAYBOOK.md")
+    playbook_link = "[Full grounded query playbook](references/GROUNDED_QUERY_PLAYBOOK.md)"
 
     assert len(skill.splitlines()) <= 590
     assert "references/GROUNDED_QUERY_PLAYBOOK.md" in skill
     assert "Full grounded query playbook" in skill
+    assert skill.count(playbook_link) == 2
+    assert "`references/GROUNDED_QUERY_PLAYBOOK.md`" not in skill
     assert "life-index journal batch-get" in playbook
     assert "answer.insights[]" in playbook
     assert "ensure` -> `discover` -> `navigate" in playbook
