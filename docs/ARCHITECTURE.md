@@ -532,9 +532,19 @@ journals, attachments, and `entity_graph.yaml` as `canonical_source`; discovered
 indexes and `by-topic/` compatibility views may be copied for compatibility, but
 remain classified as rebuildable rather than source truth.
 
+The recovery manifest is a closed trust boundary: top-level and artifact fields,
+normalized unique paths, path-to-classification/inclusion mapping, sizes, hashes,
+and source/destination containment are validated. Symlink and Windows reparse-point
+paths are rejected. A full backup also fails closed if caller exclusions remove a
+canonical source. Timestamp collisions allocate create-only suffixed directories;
+the destination catalog retains every resulting recovery point.
+
 Manifest-backed restore validates every included artifact before writing and
 accepts only an absent or completely empty destination. A nonempty destination is
-rejected before mutation, so restore never has overlay semantics. After restore,
+rejected before mutation, so restore never has overlay semantics. A mid-copy failure
+compensates only files and directories created by that attempt, returning the target
+to a retryable empty state. The result distinguishes `manifest_verified` from
+`legacy_unverified`; legacy restores carry an explicit unverified warning. After restore,
 `.index/` and navigation views are rebuilt from canonical plain files; rebuild
 failure remains a visible derived failure and does not authorize source mutation.
 The older destination-level backup catalog remains list/incremental metadata, not

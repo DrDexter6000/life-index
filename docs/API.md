@@ -77,6 +77,19 @@ python -m tools health
 }
 ```
 
+恢复结果还明确报告证据等级：
+
+```json
+{
+  "success": true,
+  "files_restored": 42,
+  "errors": [],
+  "restore_mode": "manifest_verified",
+  "recovery_manifest_verified": true,
+  "warnings": []
+}
+```
+
 当前源码的**成功返回**没有统一 `data` wrapper；通常采用工具自定义的顶层字段：
 
 ```json
@@ -4688,11 +4701,23 @@ python -m tools.backup [options]
 - journals、attachments 与 `entity_graph.yaml` 分类为 `canonical_source`。
   已发现的 `.index/` 文件分类为 `rebuildable_derived` 且 `included: false`；
   restore 后用 `life-index index --rebuild` 重建，不把旧机器缓存恢复为真相源。
+- full backup 不允许 caller exclusion 移除任何 canonical source；这种
+  请求会 fail closed，不发布 recovery manifest。同一秒内的多次备份
+  使用独立的 create-only 后缀目录，catalog 保留每个 recovery point。
 - 任一 source copy 失败时，结果 `success: false` 且 `errors[]` 指明 artifact；
   该 backup 不发布 complete recovery manifest，也不追加成功 catalog record。
-- manifest-backed restore 在任何复制前校验 schema、`complete: true`、安全相对
-  路径、文件存在性与 SHA-256。目标必须不存在或完全为空；非空目标会在零变更
-  前失败，restore 不提供 overlay/overwrite 语义。
+- manifest-backed restore 在任何复制前校验封闭的 manifest/artifact
+  schema、`complete: true`、唯一且规范化的相对路径、固定的 path-to-
+  classification/included 映射、size 与 SHA-256。备份源和恢复目标路径
+  中的 symlink/reparse point 会 fail closed。
+- 目标必须不存在或完全为空；非空目标会在零变更前失败，restore 不
+  提供 overlay/overwrite 语义。若复制中途失败，restore 精确撤销本次
+  已创建的文件/目录，将目标恢复为可重试的空状态。
+- 通过 recovery manifest 校验的恢复返回 `restore_mode:
+  "manifest_verified"` 和 `recovery_manifest_verified: true`。无 recovery
+  manifest 的旧备份保持兼容，但返回 `restore_mode: "legacy_unverified"`、
+  `recovery_manifest_verified: false` 及明确的 `warnings[]`；不得将其表述为
+  manifest-verified recovery。
 - CLI restore 的目标是当前 `LIFE_INDEX_DATA_DIR`。自动化恢复必须设置
   `LIFE_INDEX_VALIDATION_MODE=1` 和显式 sandbox `LIFE_INDEX_DATA_DIR`，并先证明
   目标为空。

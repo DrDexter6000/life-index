@@ -585,17 +585,22 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 1. **创建可恢复备份**：使用 `life-index backup --dest DEST --full`；仅当
    `success=true` 且 `recovery_manifest_path` 指向 timestamped backup 内的
    `.life-index-recovery-manifest.json` 时，才把本次 full backup 视为 complete。
+   不得用 exclude pattern 移除 journals、attachments 或 `entity_graph.yaml`。
 2. **守住真相边界**：manifest 中 journals、attachments、`entity_graph.yaml` 是
    `canonical_source`；`.index/` 是 `rebuildable_derived` 且不恢复为权威数据。
 3. **空目标恢复**：先证明目标 sandbox 不存在或完全为空，再设置该目录为
    `LIFE_INDEX_DATA_DIR` 执行 `life-index backup --restore BACKUP_PATH`。非空目标必须
-   停止处理，不能要求 overlay 或手工绕过保护。
+   停止处理，不能要求 overlay 或手工绕过保护。读取 `restore_mode`、
+   `recovery_manifest_verified` 和 `warnings[]`；只有 `manifest_verified` +
+   `recovery_manifest_verified=true` 才是 manifest-verified recovery。
 4. **重建与验证**：恢复成功后运行 `life-index index --rebuild` 与
    `life-index generate-index --rebuild`，用已知关键词执行 `life-index search`，最后
    `life-index verify --json`。重建失败只修复派生索引；不得改写或重复恢复 canonical
    source 来掩盖失败。
 5. **失败判断**：copy/hash/manifest 校验失败时，该备份或恢复不 complete；向用户
-   报告 `errors[]` 中的具体 artifact，保留现状并停止，不宣称灾备成功。
+   报告 `errors[]` 中的具体 artifact，保留现状并停止，不宣称灾备成功。中途
+   copy 失败后只有在目标已补偿回空状态时才能重试。`legacy_unverified`
+   的 warning 必须原样呈现，不得升格为 verified。
 
 ### 响应中的 events 和 _trace
 
