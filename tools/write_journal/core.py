@@ -1646,6 +1646,26 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         )
 
     if result["success"]:
-        logger.info(f"写入完成，总耗时：{result['metrics'].get('total_ms', 0):.2f}ms")
+        try:
+            logger.info(f"写入完成，总耗时：{result['metrics'].get('total_ms', 0):.2f}ms")
+        except Exception as exc:
+            _record_side_effect(
+                result,
+                name="postcommit_envelope",
+                phase="post_commit",
+                status=SideEffectExecutionStatus.FAILED,
+                blocking=False,
+                error=str(exc),
+                recovery_strategy="inspect this committed journal by journal_path",
+            )
+            result.update(
+                {
+                    "success": True,
+                    "write_outcome": WriteOutcome.SUCCESS_DEGRADED,
+                    "index_status": IndexStatus.DEGRADED,
+                    "side_effects_status": SideEffectsStatus.DEGRADED,
+                    "error": None,
+                }
+            )
 
     return result
