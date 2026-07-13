@@ -535,7 +535,10 @@ remain classified as rebuildable rather than source truth.
 The recovery manifest is a closed trust boundary: top-level and artifact fields,
 normalized unique paths, path-to-classification/inclusion mapping, sizes, hashes,
 and source/destination containment are validated. Symlink and Windows reparse-point
-paths are rejected. A full backup also fails closed if caller exclusions remove a
+paths are rejected. Normalized exact paths are the artifact identity; case-distinct
+paths remain valid on case-sensitive filesystems but are rejected before publication
+or restore when the target filesystem cannot represent both. A full backup also fails
+closed if caller exclusions remove a
 canonical source. Timestamp collisions allocate create-only suffixed directories;
 the destination catalog retains every resulting recovery point.
 
@@ -548,7 +551,11 @@ to a retryable empty state. The result distinguishes `manifest_verified` from
 `.index/` and navigation views are rebuilt from canonical plain files; rebuild
 failure remains a visible derived failure and does not authorize source mutation.
 The older destination-level backup catalog remains list/incremental metadata, not
-the recovery authority for a full backup.
+the recovery authority for a full backup. Its final publication is a short serialized
+transaction after copying: acquire the catalog file lock, reload current history,
+merge this backup's file entries and record, then atomically replace through a temporary
+file. Interrupted publication leaves prior catalog bytes intact and makes the current
+backup result non-successful.
 
 ### 5.8 搜索编排器（v1.2.0 smart-search v1 contract）
 

@@ -699,3 +699,41 @@ def test_concurrent_backup_catalog_publication_preserves_both_recovery_points(
     assert {record["path"] for record in catalog["backups"]} == {
         result["backup_path"] for result in results
     }
+
+
+def test_catalog_publish_failure_preserves_history_and_releases_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = _activate_sandbox(monkeypatch, tmp_path, "source-catalog-interruption")
+    _write_synthetic_dataset(source)
+    backup_root = tmp_path / "backups-catalog-interruption"
+    backup_root.mkdir()
+    first = create_backup(str(backup_root), full=True)
+    assert first["success"] is True
+    catalog_path = backup_root / ".life-index-backup-manifest.json"
+    prior_bytes = catalog_path.read_bytes()
+
+    from tools import backup as backup_module
+    from tools.lib.file_lock import FileLock
+
+    real_replace = backup_module.Path.replace
+
+    def interrupt_catalog_replace(source_path: Path, target_path: Path) -> Path:
+        if Path(target_path) == catalog_path:
+            raise OSError("injected catalog publication interruption")
+        return real_replace(source_path, target_path)
+
+    monkeypatch.setattr(backup_module.Path, "replace", interrupt_catalog_replace)
+    interrupted = create_backup(str(backup_root), full=True)
+
+    assert interrupted["success"] is False
+    assert any("manifest" in error.lower() or "清单" in error for error in interrupted["errors"])
+    assert catalog_path.read_bytes() == prior_bytes
+    records = json.loads(prior_bytes)["backups"]
+    assert [record["path"] for record in records] == [first["backup_path"]]
+    assert list(backup_root.glob(".life-index-backup-manifest.json*.tmp")) == []
+    with FileLock(
+        backup_root / backup_module.BACKUP_CATALOG_LOCK_NAME,
+        timeout=1.0,
+    ):
+        pass

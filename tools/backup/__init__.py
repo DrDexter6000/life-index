@@ -17,12 +17,15 @@ import hashlib
 import json
 import re
 import shutil
+import tempfile
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, cast
 
 from ..lib.paths import get_journals_dir, get_by_topic_dir, get_attachments_dir, get_user_data_dir
 from ..lib.logger import get_logger
+from ..lib.file_lock import FileLock, LockTimeoutError
 
 logger = get_logger(__name__)
 
@@ -37,6 +40,17 @@ LEGACY_RESTORE_WARNING = (
 )
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+BACKUP_CATALOG_NAME = ".life-index-backup-manifest.json"
+BACKUP_CATALOG_LOCK_NAME = ".life-index-backup-manifest.lock"
+BACKUP_CATALOG_LOCK_TIMEOUT = 30.0
+
+
+@dataclass(frozen=True)
+class ArtifactPathPolicy:
+    path: str
+    classification: str
+    included: bool
+    canonical_required: bool
 
 
 def calculate_file_hash(file_path: Path) -> str:
@@ -54,7 +68,7 @@ def calculate_file_hash(file_path: Path) -> str:
 
 def load_backup_manifest(backup_dir: Path) -> Dict[str, Any]:
     """加载备份清单文件"""
-    manifest_path = backup_dir / ".life-index-backup-manifest.json"
+    manifest_path = backup_dir / BACKUP_CATALOG_NAME
     if manifest_path.exists():
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
@@ -67,13 +81,51 @@ def load_backup_manifest(backup_dir: Path) -> Dict[str, Any]:
 
 def save_backup_manifest(backup_dir: Path, manifest: Dict[str, Any]) -> bool:
     """保存备份清单文件"""
-    manifest_path = backup_dir / ".life-index-backup-manifest.json"
+    manifest_path = backup_dir / BACKUP_CATALOG_NAME
+    temp_path = manifest_path.with_name(manifest_path.name + ".tmp")
     try:
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(manifest, f, ensure_ascii=False, indent=2)
+        temp_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temp_path.replace(manifest_path)
         return True
-    except IOError as e:
+    except (IOError, OSError, TypeError) as e:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError as cleanup_error:
+            logger.error(f"无法清理备份清单临时文件 {temp_path}: {cleanup_error}")
         logger.error(f"无法保存备份清单: {e}")
+        return False
+
+
+def _publish_backup_catalog(
+    backup_dir: Path,
+    *,
+    backup_record: Dict[str, Any],
+    file_entries: Dict[str, Dict[str, Any]],
+) -> bool:
+    lock_path = backup_dir / BACKUP_CATALOG_LOCK_NAME
+    try:
+        with FileLock(lock_path, timeout=BACKUP_CATALOG_LOCK_TIMEOUT):
+            latest = load_backup_manifest(backup_dir)
+            latest_files = latest.get("files")
+            if not isinstance(latest_files, dict):
+                latest_files = {}
+            merged_files = dict(latest_files)
+            merged_files.update(file_entries)
+
+            latest_backups = latest.get("backups")
+            if not isinstance(latest_backups, list):
+                latest_backups = []
+            merged_backups = list(latest_backups)
+            merged_backups.append(backup_record)
+            return save_backup_manifest(
+                backup_dir,
+                {**latest, "backups": merged_backups, "files": merged_files},
+            )
+    except (IOError, OSError, LockTimeoutError) as e:
+        logger.error(f"无法发布备份清单: {e}")
         return False
 
 
@@ -182,44 +234,108 @@ def _normalize_manifest_path(raw_path: Any) -> str:
     return normalized
 
 
-def _expected_artifact_mapping(path: str) -> tuple[str, bool]:
+def _artifact_path_policy(raw_path: Any) -> ArtifactPathPolicy:
+    path = _normalize_manifest_path(raw_path)
     parts = PurePosixPath(path).parts
     first = parts[0]
     if path == "entity_graph.yaml":
-        return CANONICAL_SOURCE, True
+        return ArtifactPathPolicy(path, CANONICAL_SOURCE, True, True)
     if first == "attachments" and len(parts) > 1:
-        return CANONICAL_SOURCE, True
+        return ArtifactPathPolicy(path, CANONICAL_SOURCE, True, True)
     if first == "Journals" and len(parts) > 1:
         if _is_generated_journal_artifact(Path(parts[-1])):
-            return REBUILDABLE_DERIVED, True
-        return CANONICAL_SOURCE, True
+            return ArtifactPathPolicy(path, REBUILDABLE_DERIVED, True, False)
+        return ArtifactPathPolicy(path, CANONICAL_SOURCE, True, True)
     if first == "by-topic" and len(parts) > 1:
-        return REBUILDABLE_DERIVED, True
+        return ArtifactPathPolicy(path, REBUILDABLE_DERIVED, True, False)
     if first == ".index" and len(parts) > 1:
-        return REBUILDABLE_DERIVED, False
+        return ArtifactPathPolicy(path, REBUILDABLE_DERIVED, False, False)
     raise ValueError(f"artifact path is outside the closed recovery schema: {path}")
 
 
-def _validate_recovery_artifact(artifact: Any) -> tuple[str, bool]:
+def _destination_filesystem_case_sensitive(destination: Path) -> bool:
+    probe_parent = destination
+    while not probe_parent.exists():
+        parent = probe_parent.parent
+        if parent == probe_parent:
+            raise OSError(f"no existing directory is available for case probe: {destination}")
+        probe_parent = parent
+    if not probe_parent.is_dir():
+        raise OSError(f"case probe parent is not a directory: {probe_parent}")
+
+    probe_dir = Path(tempfile.mkdtemp(prefix=".life-index-case-probe-", dir=probe_parent))
+    lower = probe_dir / "case-sensitive-probe"
+    upper = probe_dir / "CASE-SENSITIVE-PROBE"
+    try:
+        lower.write_text("probe", encoding="utf-8")
+        try:
+            with upper.open("x", encoding="utf-8") as stream:
+                stream.write("probe")
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        upper.unlink(missing_ok=True)
+        lower.unlink(missing_ok=True)
+        probe_dir.rmdir()
+
+
+def _validate_manifest_path_identities(
+    paths: List[str],
+    *,
+    destination_case_sensitive: Optional[bool] = None,
+    destination: Optional[Path] = None,
+) -> None:
+    exact_paths: set[str] = set()
+    folded_paths: Dict[str, str] = {}
+    case_collision: Optional[tuple[str, str]] = None
+    for raw_path in paths:
+        path = _normalize_manifest_path(raw_path)
+        if path in exact_paths:
+            raise ValueError(f"duplicate recovery artifact path: {path}")
+        exact_paths.add(path)
+        folded = path.casefold()
+        prior = folded_paths.get(folded)
+        if prior is not None and prior != path and case_collision is None:
+            case_collision = (prior, path)
+        folded_paths[folded] = path
+
+    if case_collision is None:
+        return
+    if destination_case_sensitive is None:
+        if destination is None:
+            raise ValueError("destination is required to validate case-colliding paths")
+        destination_case_sensitive = _destination_filesystem_case_sensitive(destination)
+    if not destination_case_sensitive:
+        first, second = case_collision
+        raise ValueError(
+            "case-colliding recovery artifact paths are unsafe for destination: "
+            f"{first}, {second}"
+        )
+
+
+def _validate_recovery_artifact(artifact: Any) -> ArtifactPathPolicy:
     if not isinstance(artifact, dict) or set(artifact) != RECOVERY_ARTIFACT_FIELDS:
         raise ValueError("artifact must contain exactly path/classification/included/sha256/size")
-    path = _normalize_manifest_path(artifact["path"])
-    expected_classification, expected_included = _expected_artifact_mapping(path)
-    if artifact["classification"] != expected_classification:
+    policy = _artifact_path_policy(artifact["path"])
+    if artifact["classification"] != policy.classification:
         raise ValueError(
-            f"artifact classification mismatch for {path}: expected {expected_classification}"
+            f"artifact classification mismatch for {policy.path}: "
+            f"expected {policy.classification}"
         )
-    if not isinstance(artifact["included"], bool) or artifact["included"] != expected_included:
-        raise ValueError(f"artifact inclusion mismatch for {path}: expected {expected_included}")
+    if not isinstance(artifact["included"], bool) or artifact["included"] != policy.included:
+        raise ValueError(
+            f"artifact inclusion mismatch for {policy.path}: expected {policy.included}"
+        )
     if not isinstance(artifact["sha256"], str) or not _SHA256_PATTERN.fullmatch(artifact["sha256"]):
-        raise ValueError(f"artifact sha256 is invalid: {path}")
+        raise ValueError(f"artifact sha256 is invalid: {policy.path}")
     if (
         not isinstance(artifact["size"], int)
         or isinstance(artifact["size"], bool)
         or artifact["size"] < 0
     ):
-        raise ValueError(f"artifact size is invalid: {path}")
-    return path, expected_included
+        raise ValueError(f"artifact size is invalid: {policy.path}")
+    return policy
 
 
 def _canonical_source_inventory(data_root: Path) -> Dict[str, Path]:
@@ -227,17 +343,19 @@ def _canonical_source_inventory(data_root: Path) -> Dict[str, Path]:
     journals = data_root / "Journals"
     if journals.exists():
         for file_path in sorted(journals.rglob("*")):
-            if file_path.is_file() and not _is_generated_journal_artifact(file_path):
+            if file_path.is_file():
                 relative = file_path.relative_to(data_root).as_posix()
-                inventory[relative] = file_path
+                if _artifact_path_policy(relative).canonical_required:
+                    inventory[relative] = file_path
     attachments = data_root / "attachments"
     if attachments.exists():
         for file_path in sorted(attachments.rglob("*")):
             if file_path.is_file():
                 relative = file_path.relative_to(data_root).as_posix()
-                inventory[relative] = file_path
+                if _artifact_path_policy(relative).canonical_required:
+                    inventory[relative] = file_path
     entity_graph = data_root / "entity_graph.yaml"
-    if entity_graph.is_file():
+    if entity_graph.is_file() and _artifact_path_policy("entity_graph.yaml").canonical_required:
         inventory["entity_graph.yaml"] = entity_graph
     return dict(sorted(inventory.items()))
 
@@ -246,13 +364,12 @@ def _artifact_record(
     *,
     path: str,
     file_path: Path,
-    classification: str,
-    included: bool,
 ) -> Dict[str, Any]:
+    policy = _artifact_path_policy(path.replace("\\", "/"))
     return {
-        "path": path.replace("\\", "/"),
-        "classification": classification,
-        "included": included,
+        "path": policy.path,
+        "classification": policy.classification,
+        "included": policy.included,
         "sha256": _calculate_sha256(file_path),
         "size": file_path.stat().st_size,
     }
@@ -300,38 +417,41 @@ def _validate_recovery_manifest(
     if not isinstance(artifacts, list):
         raise ValueError("recovery manifest artifacts must be a list")
 
-    seen_paths: set[str] = set()
+    validated_artifacts: List[tuple[Dict[str, Any], ArtifactPathPolicy]] = []
+    for artifact in artifacts:
+        policy = _validate_recovery_artifact(artifact)
+        validated_artifacts.append((artifact, policy))
+    _validate_manifest_path_identities(
+        [policy.path for _, policy in validated_artifacts],
+        destination=dest,
+    )
+
     restore_files: List[tuple[Path, Path]] = []
     backup_resolved = backup.resolve(strict=True)
     dest_resolved = dest.resolve(strict=False)
-    for artifact in artifacts:
-        path, included = _validate_recovery_artifact(artifact)
-        identity = path.casefold()
-        if identity in seen_paths:
-            raise ValueError(f"duplicate recovery artifact path: {path}")
-        seen_paths.add(identity)
-        if not included:
+    for artifact, policy in validated_artifacts:
+        if not policy.included:
             continue
 
-        relative_path = Path(*PurePosixPath(path).parts)
+        relative_path = Path(*PurePosixPath(policy.path).parts)
         source_file = backup / relative_path
         if not source_file.is_file():
-            raise ValueError(f"recovery artifact missing: {path}")
+            raise ValueError(f"recovery artifact missing: {policy.path}")
         _assert_contained_without_reparse(backup, source_file)
         try:
             source_file.resolve(strict=True).relative_to(backup_resolved)
         except ValueError as exc:
-            raise ValueError(f"recovery artifact resolves outside backup: {path}") from exc
+            raise ValueError(f"recovery artifact resolves outside backup: {policy.path}") from exc
         if source_file.stat().st_size != artifact["size"]:
-            raise ValueError(f"recovery artifact size mismatch: {path}")
+            raise ValueError(f"recovery artifact size mismatch: {policy.path}")
         if _calculate_sha256(source_file) != artifact["sha256"]:
-            raise ValueError(f"recovery artifact hash mismatch: {path}")
+            raise ValueError(f"recovery artifact hash mismatch: {policy.path}")
 
         destination_file = dest / relative_path
         try:
             destination_file.resolve(strict=False).relative_to(dest_resolved)
         except ValueError as exc:
-            raise ValueError(f"recovery destination escapes requested root: {path}") from exc
+            raise ValueError(f"recovery destination escapes requested root: {policy.path}") from exc
         restore_files.append((source_file, destination_file))
     return restore_files
 
@@ -385,6 +505,7 @@ def create_backup(
         # 加载之前的备份清单（用于增量备份）
         manifest: Dict[str, Any] = load_backup_manifest(dest)
         manifest.setdefault("files", {})
+        pending_file_entries: Dict[str, Dict[str, Any]] = {}
         recovery_artifacts: List[Dict[str, Any]] = []
 
         # 默认排除模式
@@ -424,8 +545,6 @@ def create_backup(
         def backup_directory(
             src_dir: Path,
             dest_subdir: str,
-            *,
-            default_classification: str,
         ) -> None:
             """备份单个目录"""
             if not src_dir.exists():
@@ -461,23 +580,18 @@ def create_backup(
                         result["files_backed_up"] += 1
 
                         # 更新清单
-                        manifest["files"][file_key] = {
+                        file_entry = {
                             "hash": file_hash,
                             "mtime": file_path.stat().st_mtime,
                             "size": file_path.stat().st_size,
                         }
+                        manifest["files"][file_key] = file_entry
+                        pending_file_entries[file_key] = file_entry
                         if not dry_run:
-                            classification = default_classification
-                            if dest_subdir == "Journals" and _is_generated_journal_artifact(
-                                rel_path
-                            ):
-                                classification = "rebuildable_derived"
                             recovery_artifacts.append(
                                 _artifact_record(
                                     path=file_key,
                                     file_path=dest_file,
-                                    classification=classification,
-                                    included=True,
                                 )
                             )
 
@@ -488,25 +602,13 @@ def create_backup(
 
         # 备份各个目录
         logger.info("备份日志文件...")
-        backup_directory(
-            get_journals_dir(),
-            "Journals",
-            default_classification=CANONICAL_SOURCE,
-        )
+        backup_directory(get_journals_dir(), "Journals")
 
         logger.info("备份索引文件...")
-        backup_directory(
-            get_by_topic_dir(),
-            "by-topic",
-            default_classification=REBUILDABLE_DERIVED,
-        )
+        backup_directory(get_by_topic_dir(), "by-topic")
 
         logger.info("备份附件文件...")
-        backup_directory(
-            get_attachments_dir(),
-            "attachments",
-            default_classification=CANONICAL_SOURCE,
-        )
+        backup_directory(get_attachments_dir(), "attachments")
 
         entity_graph = get_user_data_dir() / "entity_graph.yaml"
         if entity_graph.is_file() and not should_exclude(entity_graph):
@@ -519,16 +621,16 @@ def create_backup(
                         _artifact_record(
                             path="entity_graph.yaml",
                             file_path=destination,
-                            classification=CANONICAL_SOURCE,
-                            included=True,
                         )
                     )
                 result["files_backed_up"] += 1
-                manifest["files"]["entity_graph.yaml"] = {
+                file_entry = {
                     "hash": calculate_file_hash(entity_graph),
                     "mtime": entity_graph.stat().st_mtime,
                     "size": entity_graph.stat().st_size,
                 }
+                manifest["files"]["entity_graph.yaml"] = file_entry
+                pending_file_entries["entity_graph.yaml"] = file_entry
             except (IOError, OSError, ValueError) as e:
                 error_msg = f"备份失败 {entity_graph}: {e}"
                 logger.error(error_msg)
@@ -544,8 +646,6 @@ def create_backup(
                             _artifact_record(
                                 path=f".index/{file_path.relative_to(index_dir).as_posix()}",
                                 file_path=file_path,
-                                classification=REBUILDABLE_DERIVED,
-                                included=False,
                             )
                         )
                     except (IOError, OSError, ValueError) as e:
@@ -557,10 +657,14 @@ def create_backup(
         if not dry_run and not result["errors"]:
             if full:
                 try:
+                    _validate_manifest_path_identities(
+                        [cast(str, artifact["path"]) for artifact in recovery_artifacts],
+                        destination=backup_subdir,
+                    )
                     manifest_canonical_paths = {
                         cast(str, artifact["path"])
                         for artifact in recovery_artifacts
-                        if artifact["classification"] == CANONICAL_SOURCE
+                        if _artifact_path_policy(artifact["path"]).canonical_required
                     }
                     expected_canonical_paths = set(canonical_inventory)
                     if manifest_canonical_paths != expected_canonical_paths:
@@ -587,12 +691,12 @@ def create_backup(
                 "files_backed_up": result["files_backed_up"],
                 "files_skipped": result["files_skipped"],
             }
-            if "backups" not in manifest:
-                manifest["backups"] = []
-            backups = cast(List[Dict[str, Any]], manifest["backups"])
-            backups.append(backup_record)
-            if save_backup_manifest(dest, manifest):
-                result["manifest_path"] = str(dest / ".life-index-backup-manifest.json")
+            if _publish_backup_catalog(
+                dest,
+                backup_record=backup_record,
+                file_entries=pending_file_entries,
+            ):
+                result["manifest_path"] = str(dest / BACKUP_CATALOG_NAME)
             else:
                 result["errors"].append(
                     f"无法保存备份清单: {dest / '.life-index-backup-manifest.json'}"

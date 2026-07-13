@@ -601,6 +601,8 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
    报告 `errors[]` 中的具体 artifact，保留现状并停止，不宣称灾备成功。中途
    copy 失败后只有在目标已补偿回空状态时才能重试。`legacy_unverified`
    的 warning 必须原样呈现，不得升格为 verified。
+   若 `errors[]` 报告 case-colliding artifact，说明目标文件系统无法安全表示
+   该备份的精确路径；停止并更换兼容的空目标，不得重命名或覆盖源文件。
 
 ### 响应中的 events 和 _trace
 

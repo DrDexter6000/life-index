@@ -4704,6 +4704,9 @@ python -m tools.backup [options]
 - full backup 不允许 caller exclusion 移除任何 canonical source；这种
   请求会 fail closed，不发布 recovery manifest。同一秒内的多次备份
   使用独立的 create-only 后缀目录，catalog 保留每个 recovery point。
+- recovery artifact 路径以规范化后的精确字符串为身份。大小写不同
+  的合法源文件可在 case-sensitive 备份/恢复文件系统上保留；若目标
+  文件系统无法区分，则在发布或恢复数据前 fail closed。
 - 任一 source copy 失败时，结果 `success: false` 且 `errors[]` 指明 artifact；
   该 backup 不发布 complete recovery manifest，也不追加成功 catalog record。
 - manifest-backed restore 在任何复制前校验封闭的 manifest/artifact
@@ -4718,6 +4721,9 @@ python -m tools.backup [options]
   manifest 的旧备份保持兼容，但返回 `restore_mode: "legacy_unverified"`、
   `recovery_manifest_verified: false` 及明确的 `warnings[]`；不得将其表述为
   manifest-verified recovery。
+- destination-level catalog 只在文件复制完成后持有专用文件锁，重新
+  读取最新 history/files 并合并本次记录，然后通过临时文件原子替换。
+  发布中断保留旧 catalog 字节不变，当前 backup 返回 `success: false`。
 - CLI restore 的目标是当前 `LIFE_INDEX_DATA_DIR`。自动化恢复必须设置
   `LIFE_INDEX_VALIDATION_MODE=1` 和显式 sandbox `LIFE_INDEX_DATA_DIR`，并先证明
   目标为空。
