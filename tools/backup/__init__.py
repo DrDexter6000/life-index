@@ -283,17 +283,27 @@ def _destination_filesystem_case_sensitive(destination: Path) -> bool:
 def _validate_manifest_path_identities(
     paths: List[str],
     *,
+    included_paths: Optional[List[str]] = None,
     destination_case_sensitive: Optional[bool] = None,
     destination: Optional[Path] = None,
 ) -> None:
     exact_paths: set[str] = set()
-    folded_paths: Dict[str, str] = {}
-    case_collision: Optional[tuple[str, str]] = None
+    normalized_paths: List[str] = []
     for raw_path in paths:
         path = _normalize_manifest_path(raw_path)
         if path in exact_paths:
             raise ValueError(f"duplicate recovery artifact path: {path}")
         exact_paths.add(path)
+        normalized_paths.append(path)
+
+    case_paths = (
+        normalized_paths
+        if included_paths is None
+        else [_normalize_manifest_path(path) for path in included_paths]
+    )
+    folded_paths: Dict[str, str] = {}
+    case_collision: Optional[tuple[str, str]] = None
+    for path in case_paths:
         folded = path.casefold()
         prior = folded_paths.get(folded)
         if prior is not None and prior != path and case_collision is None:
@@ -423,6 +433,7 @@ def _validate_recovery_manifest(
         validated_artifacts.append((artifact, policy))
     _validate_manifest_path_identities(
         [policy.path for _, policy in validated_artifacts],
+        included_paths=[policy.path for _, policy in validated_artifacts if policy.included],
         destination=dest,
     )
 
@@ -659,6 +670,11 @@ def create_backup(
                 try:
                     _validate_manifest_path_identities(
                         [cast(str, artifact["path"]) for artifact in recovery_artifacts],
+                        included_paths=[
+                            cast(str, artifact["path"])
+                            for artifact in recovery_artifacts
+                            if _artifact_path_policy(artifact["path"]).included
+                        ],
                         destination=backup_subdir,
                     )
                     manifest_canonical_paths = {
@@ -678,7 +694,7 @@ def create_backup(
                         backup_subdir, recovery_artifacts
                     )
                     result["recovery_manifest_path"] = str(recovery_manifest_path)
-                except (IOError, OSError, RuntimeError) as e:
+                except (IOError, OSError, RuntimeError, ValueError) as e:
                     error_msg = f"无法保存恢复清单 {backup_subdir / RECOVERY_MANIFEST_NAME}: {e}"
                     logger.error(error_msg)
                     result["errors"].append(error_msg)
