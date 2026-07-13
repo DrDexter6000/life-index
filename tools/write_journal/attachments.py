@@ -502,9 +502,9 @@ def publish_staged_attachments(staging: AttachmentStaging) -> None:
         final_path = staging.final_dir / str(entry["filename"])
         staged_identity = _file_identity(staged_path)
         os.link(staged_path, final_path)
+        staging.published_paths.append((final_path, staged_identity))
         if _file_identity(final_path) != staged_identity:
             raise OSError(f"attachment publication identity changed: {final_path}")
-        staging.published_paths.append((final_path, staged_identity))
         staged_path.unlink()
 
 
@@ -518,8 +518,12 @@ def compensate_published_attachments(staging: AttachmentStaging) -> list[str]:
     errors: list[str] = []
     for published_path, published_identity in reversed(staging.published_paths):
         try:
-            if published_path.exists() and _file_identity(published_path) == published_identity:
-                published_path.unlink()
+            if not published_path.exists():
+                continue
+            if _file_identity(published_path) != published_identity:
+                errors.append(f"{published_path}: publication identity changed; not removed")
+                continue
+            published_path.unlink()
         except OSError as exc:
             errors.append(f"{published_path}: {exc}")
     errors.extend(discard_attachment_staging(staging))

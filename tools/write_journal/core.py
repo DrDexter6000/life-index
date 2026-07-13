@@ -562,6 +562,22 @@ def _update_side_effect_record(
         record["recovery_strategy"] = recovery_strategy
 
 
+def _log_committed_recovery(
+    level: str,
+    message: str,
+    *args: Any,
+    exc_info: bool = False,
+) -> None:
+    """Emit a best-effort diagnostic without changing committed write truth."""
+    try:
+        if level == "warning":
+            logger.warning(message, *args, exc_info=exc_info)
+        else:
+            logger.error(message, *args, exc_info=exc_info)
+    except Exception:
+        pass
+
+
 def _resolve_location_and_weather(
     data: Dict[str, Any],
     result: Dict[str, Any],
@@ -1080,24 +1096,50 @@ def _commit_journal_to_disk(
         result["updated_indices"] = updated_indices
 
     except (OSError, IOError, RuntimeError) as exc:
-        if temp_path.exists():
-            temp_path.unlink()
+        temp_cleanup_errors: list[str] = []
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except OSError as cleanup_exc:
+            temp_cleanup_errors.append(f"{temp_path}: {cleanup_exc}")
         journal_committed = any(
             record["name"] == "journal_commit" and record["status"] == "complete"
             for record in result["side_effects"]
         )
+        if temp_cleanup_errors:
+            journal_failure = next(
+                (
+                    record
+                    for record in reversed(result["side_effects"])
+                    if record["name"] in {"journal_commit", "journal_stage"}
+                    and record["status"] == "failed"
+                ),
+                None,
+            )
+            if journal_failure is not None:
+                temp_details = "; ".join(temp_cleanup_errors)
+                journal_failure["error"] = f"{exc}; temp journal cleanup failed: {temp_details}"
+                journal_failure["recovery_strategy"] = (
+                    "remove the uncommitted temp journal path: "
+                    f"{temp_details}; then retry the write"
+                )
         if (
             not journal_committed
             and attachment_staging
             and attachment_staging.stage_root is not None
         ):
             compensation_errors = compensate_published_attachments(attachment_staging)
+            failure_details = [str(exc)]
+            failure_details.extend(
+                f"temp journal cleanup failed: {item}" for item in temp_cleanup_errors
+            )
             if compensation_errors:
+                failure_details.append(f"compensation failed: {'; '.join(compensation_errors)}")
                 _update_side_effect_record(
                     result,
                     name="attachments",
                     status=SideEffectExecutionStatus.FAILED,
-                    error=f"{exc}; compensation failed: {'; '.join(compensation_errors)}",
+                    error="; ".join(failure_details),
                     recovery_strategy=(
                         "inspect and remove only the transaction-owned orphan attachment "
                         "path(s): "
@@ -1109,21 +1151,29 @@ def _commit_journal_to_disk(
                     result,
                     name="attachments",
                     status=SideEffectExecutionStatus.FAILED,
-                    error=str(exc),
+                    error="; ".join(failure_details),
                     recovery_strategy=("retry the write; the existing attachment was not modified"),
                 )
             else:
+                recovery_strategy = "retry the write; no journal was committed"
+                if temp_cleanup_errors:
+                    recovery_strategy = (
+                        "remove the uncommitted temp journal path: "
+                        f"{'; '.join(temp_cleanup_errors)}; then retry the write"
+                    )
                 _update_side_effect_record(
                     result,
                     name="attachments",
                     status=SideEffectExecutionStatus.COMPENSATED,
-                    error=str(exc),
-                    recovery_strategy="retry the write; no journal was committed",
+                    error="; ".join(failure_details),
+                    recovery_strategy=recovery_strategy,
                 )
         else:
             cleanup_errors = discard_attachment_staging(attachment_staging)
             if cleanup_errors:
-                logger.warning("attachment staging cleanup failed: %s", cleanup_errors)
+                _log_committed_recovery(
+                    "warning", "attachment staging cleanup failed: %s", cleanup_errors
+                )
         raise
 
 
@@ -1532,7 +1582,7 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         except Exception as exc:
             confirmation_snapshot_error = str(exc)
             _set_committed_confirmation_fallback(result, journal_path, location, weather)
-            logger.warning("post-commit confirmation assembly failed: %s", exc)
+            _log_committed_recovery("warning", "post-commit confirmation assembly failed: %s", exc)
         _record_side_effect(
             result,
             name="confirmation_snapshot",
@@ -1559,7 +1609,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         if journal_committed:
             _set_committed_confirmation_fallback(result, journal_path, location, weather)
             result["error"] = None
-            logger.error("post-commit envelope assembly failed: %s", e, exc_info=True)
+            _log_committed_recovery(
+                "error", "post-commit envelope assembly failed: %s", e, exc_info=True
+            )
             _record_side_effect(
                 result,
                 name="postcommit_envelope",
@@ -1582,7 +1634,9 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
             raise
         _set_committed_confirmation_fallback(result, journal_path, location, weather)
         result["error"] = None
-        logger.error("post-commit envelope assembly failed: %s", exc, exc_info=True)
+        _log_committed_recovery(
+            "error", "post-commit envelope assembly failed: %s", exc, exc_info=True
+        )
         _record_side_effect(
             result,
             name="postcommit_envelope",
