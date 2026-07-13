@@ -656,6 +656,85 @@ def test_case_colliding_artifacts_rejected_for_insensitive_destination_before_mu
     assert list(destination.iterdir()) == []
 
 
+def test_case_distinct_excluded_index_records_do_not_block_insensitive_restore(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = _activate_sandbox(monkeypatch, tmp_path, "source-excluded-case-collision")
+    source_hashes = _write_synthetic_dataset(source)
+    backup_root = tmp_path / "backups-excluded-case-collision"
+    backup_root.mkdir()
+    backup_result = create_backup(str(backup_root), full=True)
+    assert backup_result["success"] is True
+    manifest_path, manifest = _load_recovery_manifest(backup_result)
+    excluded_index = next(
+        artifact
+        for artifact in manifest["artifacts"]
+        if artifact["path"] == ".index/derived-sentinel.bin"
+    )
+    case_distinct_excluded = dict(excluded_index)
+    case_distinct_excluded["path"] = ".index/DERIVED-SENTINEL.BIN"
+    manifest["artifacts"].append(case_distinct_excluded)
+    _save_recovery_manifest(manifest_path, manifest)
+    destination = tmp_path / "restore-excluded-case-collision"
+    destination.mkdir()
+
+    from tools import backup as backup_module
+
+    monkeypatch.setattr(
+        backup_module,
+        "_destination_filesystem_case_sensitive",
+        lambda _path: False,
+    )
+    result = restore_backup(str(backup_result["backup_path"]), dest_path=str(destination))
+
+    assert result["success"] is True
+    assert result["recovery_manifest_verified"] is True
+    assert _source_hashes(destination) == source_hashes
+    assert not (destination / ".index").exists()
+
+
+def test_creation_case_collision_returns_failure_envelope_without_publication(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = _activate_sandbox(monkeypatch, tmp_path, "source-create-case-collision")
+    _write_synthetic_dataset(source)
+    backup_root = tmp_path / "backups-create-case-collision"
+    backup_root.mkdir()
+
+    from tools import backup as backup_module
+
+    real_artifact_record = backup_module._artifact_record
+    first_journal_path: str | None = None
+
+    def inject_case_collision(*, path: str, file_path: Path) -> dict[str, Any]:
+        nonlocal first_journal_path
+        record = real_artifact_record(path=path, file_path=file_path)
+        if record["path"].startswith("Journals/2025/"):
+            first_journal_path = record["path"]
+        elif record["path"].startswith("Journals/2026/"):
+            assert first_journal_path is not None
+            parent, filename = first_journal_path.rsplit("/", 1)
+            record["path"] = f"{parent}/{filename.upper()}"
+        return record
+
+    monkeypatch.setattr(backup_module, "_artifact_record", inject_case_collision)
+    monkeypatch.setattr(
+        backup_module,
+        "_destination_filesystem_case_sensitive",
+        lambda _path: False,
+    )
+
+    result = create_backup(str(backup_root), full=True)
+
+    assert result["success"] is False
+    assert result["recovery_manifest_path"] == ""
+    assert any("case-colliding" in error for error in result["errors"])
+    assert not (Path(result["backup_path"]) / RECOVERY_MANIFEST_NAME).exists()
+    catalog_path = backup_root / ".life-index-backup-manifest.json"
+    if catalog_path.exists():
+        assert json.loads(catalog_path.read_text(encoding="utf-8"))["backups"] == []
+
+
 def test_concurrent_backup_catalog_publication_preserves_both_recovery_points(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
