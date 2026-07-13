@@ -1,12 +1,14 @@
 """Fault-injection tests for transactional journal writes."""
 
 import builtins
+import shutil
 from pathlib import Path
 
 import pytest
 
 from tools.write_journal import attachments as attachment_ops
 from tools.write_journal import core as write_core
+from tools.lib.frontmatter import parse_frontmatter
 
 
 def _configure_sandbox(monkeypatch, tmp_path: Path) -> Path:
@@ -44,6 +46,169 @@ def _files_under(path: Path) -> list[str]:
     if not path.exists():
         return []
     return sorted(str(item.relative_to(path)) for item in path.rglob("*") if item.is_file())
+
+
+def test_attachment_publish_refuses_target_that_exists_before_publish(tmp_path: Path, monkeypatch):
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    source = tmp_path / "same.txt"
+    source.write_bytes(b"transaction bytes")
+    staging = attachment_ops.stage_attachments([str(source)], "2026-03-14")
+    target = data_dir / "attachments" / "2026" / "03" / "same.txt"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"pre-existing bytes")
+
+    with pytest.raises(FileExistsError):
+        attachment_ops.publish_staged_attachments(staging)
+
+    assert target.read_bytes() == b"pre-existing bytes"
+    assert staging.published_paths == []
+
+
+def test_attachment_target_appearing_after_staging_is_never_overwritten_or_removed(
+    tmp_path: Path, monkeypatch
+):
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    source = tmp_path / "same.txt"
+    source.write_bytes(b"transaction bytes")
+    real_replace = Path.replace
+
+    def inject_collision_then_fail_journal(self: Path, target: Path):
+        if self.suffix == ".tmp":
+            raise OSError("synthetic journal rename failure")
+        return real_replace(self, target)
+
+    real_stage = attachment_ops.stage_attachments
+
+    def stage_then_create_collision(*args, **kwargs):
+        staging = real_stage(*args, **kwargs)
+        target = staging.final_dir / "same.txt"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"appeared after staging")
+        return staging
+
+    monkeypatch.setattr(write_core, "stage_attachments", stage_then_create_collision)
+    monkeypatch.setattr(Path, "replace", inject_collision_then_fail_journal)
+
+    result = write_core.write_journal(_payload(source))
+    target = data_dir / "attachments" / "2026" / "03" / "same.txt"
+
+    assert result["success"] is False
+    assert target.exists()
+    assert target.read_bytes() == b"appeared after staging"
+    record = next(item for item in result["side_effects"] if item["name"] == "attachments")
+    assert record["status"] == "failed"
+
+
+def test_url_attachment_full_transaction_publishes_and_compensates(tmp_path: Path, monkeypatch):
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    downloaded_to: list[Path] = []
+    real_replace = Path.replace
+
+    async def fake_download(url: str, target_dir: Path, date_str: str, timeout: float = 30.0):
+        target_dir.mkdir(parents=True, exist_ok=True)
+        path = target_dir / "remote.txt"
+        path.write_bytes(b"remote bytes")
+        downloaded_to.append(path)
+        return {"success": True, "path": str(path), "content_type": "text/plain", "size": 12}
+
+    def fail_journal_rename(self: Path, target: Path):
+        if self.suffix == ".tmp":
+            raise OSError("synthetic URL journal rename failure")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(attachment_ops, "download_attachment_from_url", fake_download)
+    monkeypatch.setattr(Path, "replace", fail_journal_rename)
+    payload = _payload()
+    payload["attachments"] = [{"source_url": "https://example.test/remote.txt"}]
+
+    result = write_core.write_journal(payload)
+
+    assert downloaded_to
+    assert result["success"] is False
+    assert _files_under(data_dir / "attachments") == []
+    record = next(item for item in result["side_effects"] if item["name"] == "attachments")
+    assert record["status"] == "compensated"
+
+
+def test_mixed_valid_and_missing_attachments_commit_only_valid_frontmatter(
+    tmp_path: Path, monkeypatch
+):
+    _configure_sandbox(monkeypatch, tmp_path)
+    valid = tmp_path / "valid.txt"
+    valid.write_bytes(b"valid bytes")
+    missing = tmp_path / "missing.txt"
+
+    result = write_core.write_journal(_payload(valid, missing))
+    metadata, _body = parse_frontmatter(Path(result["journal_path"]).read_text(encoding="utf-8"))
+
+    assert result["success"] is True
+    assert result["attachments_processed_count"] == 1
+    assert result["attachments_failed_count"] == 1
+    assert [item["filename"] for item in metadata["attachments"]] == ["valid.txt"]
+    assert all(item.get("rel_path") for item in metadata["attachments"])
+
+
+def test_format_failure_with_staging_cleanup_failure_reports_leftover_path(
+    tmp_path: Path, monkeypatch
+):
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    source = tmp_path / "evidence.txt"
+    source.write_bytes(b"staged bytes")
+    real_rmtree = shutil.rmtree
+
+    def fail_when_errors_are_not_ignored(path, *args, **kwargs):
+        if ".write-stage-" in str(path):
+            if kwargs.get("ignore_errors"):
+                return None
+            raise OSError("synthetic staging-tree deletion failure")
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(attachment_ops.shutil, "rmtree", fail_when_errors_are_not_ignored)
+    monkeypatch.setattr(
+        write_core,
+        "format_content",
+        lambda *_args: (_ for _ in ()).throw(ValueError("synthetic format failure")),
+    )
+
+    result = write_core.write_journal(_payload(source))
+    leftovers = list((data_dir / "attachments").glob(".write-stage-*"))
+    record = next(item for item in result["side_effects"] if item["name"] == "attachments")
+
+    assert result["success"] is False
+    assert leftovers
+    assert record["status"] == "failed"
+    assert str(leftovers[0]) in record["error"]
+    assert str(leftovers[0]) in record["recovery_strategy"]
+
+
+def test_stage_failure_with_cleanup_failure_reports_leftover_path(tmp_path: Path, monkeypatch):
+    data_dir = _configure_sandbox(monkeypatch, tmp_path)
+    source = tmp_path / "evidence.txt"
+    source.write_bytes(b"staged bytes")
+    real_rmtree = shutil.rmtree
+
+    def fail_when_errors_are_not_ignored(path, *args, **kwargs):
+        if ".write-stage-" in str(path):
+            if kwargs.get("ignore_errors"):
+                return None
+            raise OSError("synthetic staging-tree deletion failure")
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(attachment_ops.shutil, "rmtree", fail_when_errors_are_not_ignored)
+    monkeypatch.setattr(
+        attachment_ops,
+        "process_attachments",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("synthetic stage failure")),
+    )
+
+    result = write_core.write_journal(_payload(source))
+    leftovers = list((data_dir / "attachments").glob(".write-stage-*"))
+    record = next(item for item in result["side_effects"] if item["name"] == "attachments")
+
+    assert leftovers
+    assert record["status"] == "failed"
+    assert str(leftovers[0]) in record["error"]
+    assert str(leftovers[0]) in record["recovery_strategy"]
 
 
 def test_precommit_failure_leaves_no_orphan_attachment(tmp_path: Path, monkeypatch):
@@ -403,3 +568,77 @@ def test_monthly_abstract_unsuccessful_result_is_degraded(
     record = next(item for item in result["side_effects"] if item["name"] == "monthly_abstract")
     assert record["status"] == "failed"
     assert "monthly builder failure" in record["error"]
+
+
+def test_generic_postcommit_confirmation_exception_returns_degraded_envelope(
+    tmp_path: Path, monkeypatch
+):
+    _configure_sandbox(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        write_core,
+        "_build_post_write_confirmation",
+        lambda *_args: (_ for _ in ()).throw(Exception("synthetic envelope assembly failure")),
+    )
+
+    result = write_core.write_journal(_payload())
+
+    assert result["success"] is True
+    assert result["journal_path"] and Path(result["journal_path"]).exists()
+    assert result["write_outcome"] == "success_degraded"
+    record = next(
+        item for item in result["side_effects"] if item["name"] == "confirmation_snapshot"
+    )
+    assert record["status"] == "failed"
+    assert record["blocking"] is False
+    assert "envelope assembly failure" in record["error"]
+    assert "write" not in record["recovery_strategy"].lower()
+
+
+@pytest.mark.parametrize("mode", ["exception", "unsuccessful"])
+def test_index_b_exception_and_unsuccessful_result_are_failed_records(
+    tmp_path: Path, monkeypatch, mode: str
+):
+    _configure_sandbox(monkeypatch, tmp_path)
+    if mode == "exception":
+        monkeypatch.setattr(
+            write_core,
+            "refresh_index_b",
+            lambda *_args: (_ for _ in ()).throw(Exception("synthetic Index B exception")),
+        )
+    else:
+        monkeypatch.setattr(
+            write_core,
+            "refresh_index_b",
+            lambda *_args: {"success": False, "error": "synthetic Index B unsuccessful"},
+        )
+
+    result = write_core.write_journal(_payload())
+    record = next(item for item in result["side_effects"] if item["name"] == "index_b")
+
+    assert result["success"] is True
+    assert result["write_outcome"] == "success_degraded"
+    assert record["status"] == "failed"
+    assert "synthetic Index B" in record["error"]
+
+
+def test_legacy_index_partial_update_preserves_completed_artifact_paths(
+    tmp_path: Path, monkeypatch
+):
+    _configure_sandbox(monkeypatch, tmp_path)
+    completed = tmp_path / "Life-Index" / "by-topic" / "work.md"
+    monkeypatch.setattr(write_core, "update_topic_index", lambda *_args: [completed])
+    monkeypatch.setattr(
+        write_core,
+        "update_tag_indices",
+        lambda *_args: (_ for _ in ()).throw(OSError("synthetic late tag index failure")),
+    )
+    payload = _payload()
+    payload["tags"] = ["late-failure"]
+
+    result = write_core.write_journal(payload)
+    record = next(item for item in result["side_effects"] if item["name"] == "legacy_indices")
+
+    assert result["success"] is True
+    assert result["write_outcome"] == "success_degraded"
+    assert str(completed) in result["updated_indices"]
+    assert record["status"] == "failed"

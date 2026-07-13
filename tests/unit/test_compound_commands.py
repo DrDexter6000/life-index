@@ -37,9 +37,26 @@ def _build_search_result(path: str) -> dict:
 
 
 class TestWriteAutoIndex:
-    def test_write_auto_index_triggers_build(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    @staticmethod
+    def _committed_result() -> dict:
+        return {
+            "success": True,
+            "journal_path": "x.md",
+            "needs_confirmation": True,
+            "write_outcome": "success_pending_confirmation",
+            "index_status": "complete",
+            "side_effects_status": "complete",
+            "side_effects": [
+                {
+                    "name": "journal_commit",
+                    "phase": "commit",
+                    "status": "complete",
+                    "blocking": True,
+                }
+            ],
+        }
+
+    def test_write_auto_index_triggers_build(self, monkeypatch: pytest.MonkeyPatch) -> None:
         build_mock = MagicMock(return_value={"success": True})
         monkeypatch.setattr("tools.write_journal.__main__.ensure_dirs", lambda: None)
         monkeypatch.setattr(
@@ -88,9 +105,7 @@ class TestWriteAutoIndex:
             lambda data, dry_run=False: {"success": True, "journal_path": "x.md"},
         )
 
-        def raising_build_all(
-            *, incremental: bool = True, fts_only: bool = False
-        ) -> dict:
+        def raising_build_all(*, incremental: bool = True, fts_only: bool = False) -> dict:
             raise RuntimeError("boom")
 
         monkeypatch.setattr("tools.build_index.build_all", raising_build_all)
@@ -121,6 +136,87 @@ class TestWriteAutoIndex:
 
         assert exit_code == 0
         build_mock.assert_not_called()
+
+    @pytest.mark.parametrize("mode", ["success", "unsuccessful", "exception"])
+    def test_auto_index_participates_in_side_effect_projection(
+        self, monkeypatch: pytest.MonkeyPatch, mode: str
+    ) -> None:
+        emitted: list[dict] = []
+        monkeypatch.setattr("tools.write_journal.__main__.ensure_dirs", lambda: None)
+        monkeypatch.setattr(
+            "tools.write_journal.__main__.write_journal",
+            lambda data, dry_run=False: self._committed_result(),
+        )
+        if mode == "success":
+
+            def build(**_kwargs):
+                return {"success": True, "added": 1}
+
+        elif mode == "unsuccessful":
+
+            def build(**_kwargs):
+                return {"success": False, "error": "synthetic false"}
+
+        else:
+
+            def build(**_kwargs):
+                raise RuntimeError("synthetic exception")
+
+        monkeypatch.setattr("tools.build_index.build_all", build)
+        monkeypatch.setattr("tools.write_journal.__main__._emit_json", emitted.append)
+
+        assert _cmd_write(_write_args('{"content":"body"}', auto_index=True)) == 0
+        payload = emitted[0]
+        record = next(item for item in payload["side_effects"] if item["name"] == "auto_index")
+        assert record == {
+            "name": "auto_index",
+            "phase": "post_commit",
+            "status": "complete" if mode == "success" else "failed",
+            "blocking": False,
+            **(
+                {}
+                if mode == "success"
+                else {
+                    "error": "synthetic false" if mode == "unsuccessful" else "synthetic exception",
+                    "recovery_strategy": "life-index index --rebuild",
+                }
+            ),
+        }
+        assert payload["write_outcome"] == (
+            "success_pending_confirmation" if mode == "success" else "success_degraded"
+        )
+
+    def test_auto_index_does_not_run_when_journal_did_not_commit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        emitted: list[dict] = []
+        build_mock = MagicMock(return_value={"success": True})
+        monkeypatch.setattr("tools.write_journal.__main__.ensure_dirs", lambda: None)
+        monkeypatch.setattr(
+            "tools.write_journal.__main__.write_journal",
+            lambda data, dry_run=False: {
+                "success": False,
+                "journal_path": None,
+                "needs_confirmation": False,
+                "write_outcome": "failed",
+                "index_status": "not_started",
+                "side_effects_status": "not_started",
+                "side_effects": [
+                    {
+                        "name": "journal_commit",
+                        "phase": "commit",
+                        "status": "failed",
+                        "blocking": True,
+                    }
+                ],
+            },
+        )
+        monkeypatch.setattr("tools.build_index.build_all", build_mock)
+        monkeypatch.setattr("tools.write_journal.__main__._emit_json", emitted.append)
+
+        assert _cmd_write(_write_args('{"content":"body"}', auto_index=True)) == 1
+        build_mock.assert_not_called()
+        assert all(item["name"] != "auto_index" for item in emitted[0]["side_effects"])
 
 
 class TestSearchReadTop:

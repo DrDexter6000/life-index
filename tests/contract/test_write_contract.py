@@ -631,6 +631,12 @@ class TestWriteJournalGoldenSnapshots:
 
         assert _normalize_write_snapshot(result) == _load_golden("write_result.json")
 
+        golden_records = _load_golden("write_result.json")["side_effects"]
+        assert golden_records == [
+            {key: record[key] for key in ("name", "phase", "status", "blocking")}
+            for record in result["side_effects"]
+        ]
+
     def test_confirm_result_matches_golden_snapshot(self, tmp_path):
         journal_path = tmp_path / "Journals" / "2026" / "03" / "source.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)

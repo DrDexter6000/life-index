@@ -67,6 +67,18 @@ def test_preview_projection_does_not_hide_failed_attachment_record():
     }
 
 
+def test_legacy_derivation_cannot_hide_degradation_behind_confirmation():
+    assert (
+        workflow_signals.derive_write_outcome(
+            success=True,
+            needs_confirmation=True,
+            index_status="degraded",
+            side_effects_status="degraded",
+        )
+        == "success_degraded"
+    )
+
+
 def test_write_envelope_is_projected_from_its_side_effect_records(
     tmp_path: Path,
     monkeypatch,
