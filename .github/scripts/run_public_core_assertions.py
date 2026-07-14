@@ -72,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
 
     root = args.root.resolve()
     sentinel = args.sentinel or root / ".pytest_tmp" / "public-core-assertions.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
     counter = AssertionCounter()
     pytest_exit = int(
         pytest.main(

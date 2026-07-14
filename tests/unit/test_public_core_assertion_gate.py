@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -44,6 +45,41 @@ def test_public_core_gate_records_real_assertion_execution(tmp_path: Path) -> No
     assert payload["core_assertions_collected"] == 1
     assert payload["core_assertions_executed"] == 1
     assert payload["core_assertions_passed"] == 1
+    assert payload["status"] == "PASS"
+
+
+def test_public_core_gate_creates_fresh_sentinel_parent(tmp_path: Path, monkeypatch) -> None:
+    spec = importlib.util.spec_from_file_location("public_core_gate", GATE_SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    sentinel = tmp_path / "fresh-checkout" / "sentinel.json"
+
+    def fake_pytest_main(args, *, plugins):
+        basetemp = Path(args[args.index("--basetemp") + 1])
+        assert basetemp.parent.is_dir()
+        counter = plugins[0]
+        counter.collected = 1
+        counter.executed = 1
+        counter.passed = 1
+        return 0
+
+    monkeypatch.setattr(module.pytest, "main", fake_pytest_main)
+    result = module.main(
+        [
+            "--root",
+            str(tmp_path),
+            "--target",
+            "synthetic-target",
+            "--sentinel",
+            str(sentinel),
+        ]
+    )
+
+    assert result == 0
+    payload = json.loads(sentinel.read_text(encoding="utf-8"))
+    assert payload["core_assertions_executed"] == 1
     assert payload["status"] == "PASS"
 
 
