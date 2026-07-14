@@ -152,7 +152,7 @@ jobs:
   search-eval-gate:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
-    name: Deterministic Eval Contract Gate
+    name: Search Eval Quality Gate  # Stable required-context name; runs deterministic eval contracts.
     env:
       LIFE_INDEX_INDEX_FTS_ONLY: "1"
 
