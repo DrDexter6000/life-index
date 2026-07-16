@@ -57,6 +57,32 @@ def _run_import(data_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _run_index(data_dir: Path) -> subprocess.CompletedProcess[str]:
+    """Invoke the public index authority for an isolated data directory."""
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    return subprocess.run(
+        [sys.executable, "-m", "tools", "index", "--json"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+
+def _run_search(data_dir: Path, query: str) -> subprocess.CompletedProcess[str]:
+    """Invoke the public search authority for an isolated data directory."""
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    return subprocess.run(
+        [sys.executable, "-m", "tools", "search", "--query", query, "--limit", "0"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+
 def _payload(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     """Parse JSON stdout into a dict.
 
@@ -116,14 +142,16 @@ def _seed_journal(
 
 def _plan_then_run(
     data_dir: Path,
-    source_fixture: str,
+    source_fixture: str | Path,
     tmp_path: Path,
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
     """Helper: plan → write plan.json → run with confirm.
 
     Returns (plan_data, run_payload, import_id).
     """
-    fixture = _fixture_path(source_fixture)
+    fixture = (
+        _fixture_path(source_fixture) if isinstance(source_fixture, str) else str(source_fixture)
+    )
     plan_result = _run_import(
         data_dir,
         "plan",
@@ -683,6 +711,84 @@ def test_import_rollback_removes_checksum_matching_files(
         assert not (
             data_dir / file_entry["rel_path"]
         ).exists(), f"File should have been rolled back: {file_entry['rel_path']}"
+
+
+def test_import_rollback_removes_journal_from_next_normal_search(
+    tmp_path: Path,
+) -> None:
+    """A rolled-back journal must not survive in the next public search."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    unique_token = "rollbacksearchuniquetoken"
+    source = _load_fixture("minimal_plan_source.json")
+    source["records"][0]["journal"]["content"] = f"Imported {unique_token}."
+    source_path = tmp_path / "rollback-search-source.json"
+    source_path.write_text(json.dumps(source), encoding="utf-8")
+
+    _plan_data, _run_payload, import_id = _plan_then_run(data_dir, source_path, tmp_path)
+
+    index_result = _run_index(data_dir)
+    assert (
+        index_result.returncode == 0
+    ), f"index stdout: {index_result.stdout}\nstderr: {index_result.stderr}"
+    assert _payload(index_result)["success"] is True
+
+    before_rollback = _run_search(data_dir, unique_token)
+    assert (
+        before_rollback.returncode == 0
+    ), f"search stdout: {before_rollback.stdout}\nstderr: {before_rollback.stderr}"
+    assert _payload(before_rollback)["total_matches"] >= 1
+
+    rollback_result = _run_import(
+        data_dir,
+        "rollback",
+        "--import-id",
+        import_id,
+        "--json",
+    )
+    assert (
+        rollback_result.returncode == 0
+    ), f"rollback stdout: {rollback_result.stdout}\nstderr: {rollback_result.stderr}"
+    assert _payload(rollback_result)["data"]["state"] == "rolled_back"
+
+    after_rollback = _run_search(data_dir, unique_token)
+    assert (
+        after_rollback.returncode == 0
+    ), f"search stdout: {after_rollback.stdout}\nstderr: {after_rollback.stderr}"
+    after_payload = _payload(after_rollback)
+    assert after_payload["total_matches"] == 0
+    assert after_payload["merged_results"] == []
+
+
+def test_import_rollback_keeps_files_when_freshness_queue_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Rollback must not delete a journal it cannot queue for index removal."""
+    import tools.ingest.runner as runner
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    _plan_data, run_payload, import_id = _plan_then_run(
+        data_dir, "minimal_plan_source.json", tmp_path
+    )
+    journal_entry = next(
+        entry for entry in run_payload["data"]["created_files"] if entry["kind"] == "journal"
+    )
+    journal_path = data_dir / journal_entry["rel_path"]
+    assert journal_path.exists()
+
+    def _raise_pending_failure(_journal_path: str) -> None:
+        raise OSError("synthetic pending persistence failure")
+
+    monkeypatch.setattr(runner, "mark_pending", _raise_pending_failure, raising=False)
+
+    result = runner.execute_rollback(import_id=import_id, data_dir=data_dir)
+
+    assert result["success"] is False
+    assert result["error"]["code"] == "IMPORT_INTERNAL_ERROR"
+    assert journal_path.exists()
 
 
 # ===================================================================
