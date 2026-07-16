@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 from dataclasses import fields
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -12,12 +13,25 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECTION_ROOT = REPO_ROOT / "tools" / "mcp_projection"
+MCP_SDK_VERSION = "1.27.2"
+
+
+@pytest.fixture
+def optional_mcp_sdk() -> None:
+    """Skip only the runtime projection checks without the pinned optional SDK."""
+    try:
+        installed_version = version("mcp")
+    except PackageNotFoundError:
+        pytest.skip(f"requires optional mcp=={MCP_SDK_VERSION}")
+    if installed_version != MCP_SDK_VERSION:
+        pytest.skip(f"requires optional mcp=={MCP_SDK_VERSION}; found mcp=={installed_version}")
 
 
 def _tool_map(server: Any) -> dict[str, Any]:
     return {tool.name: tool for tool in asyncio.run(server.list_tools())}
 
 
+@pytest.mark.usefixtures("optional_mcp_sdk")
 def test_projection_exposes_only_registry_tools_with_registry_owned_metadata() -> None:
     from tools.host_agent_channel.registry import CAPABILITY_REGISTRY, projection_annotations
     from tools.mcp_projection.server import create_mcp_server
@@ -42,6 +56,7 @@ def test_projection_exposes_only_registry_tools_with_registry_owned_metadata() -
     assert "may refresh only rebuildable `.index` derived state" in search.description
 
 
+@pytest.mark.usefixtures("optional_mcp_sdk")
 def test_projection_has_no_resources_or_prompts() -> None:
     from tools.mcp_projection.server import create_mcp_server
 
@@ -51,6 +66,7 @@ def test_projection_has_no_resources_or_prompts() -> None:
     assert asyncio.run(server.list_prompts()) == []
 
 
+@pytest.mark.usefixtures("optional_mcp_sdk")
 def test_mcp_tool_calls_map_to_the_transport_neutral_dispatcher(monkeypatch) -> None:
     import tools.mcp_projection.server as projection
 
@@ -69,6 +85,7 @@ def test_mcp_tool_calls_map_to_the_transport_neutral_dispatcher(monkeypatch) -> 
     assert result
 
 
+@pytest.mark.usefixtures("optional_mcp_sdk")
 def test_projection_rejects_a_forbidden_tool_before_dispatch(monkeypatch) -> None:
     import tools.mcp_projection.server as projection
 

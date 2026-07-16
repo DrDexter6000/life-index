@@ -183,7 +183,9 @@ final passing state:
 - #169 — Skill progressive disclosure is implemented, and Spec/Quality review
   passed. The issue remains open pending the final D1 phase gate and CTO
   acceptance.
-- #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
+- #164 — optional Core Capability Gateway typed 1:1 projection: implemented
+  candidate; remains open pending D4 closeout review and the final phase gate
+  and CTO acceptance.
 """
 
 EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
@@ -272,10 +274,10 @@ EXPECTED_PLATFORM_ROLE_BOUNDARY = "\n".join(
         "| Host Agent + Skill | Owns planning, multi-hop reasoning, orchestration, interpretation, and synthesis. |",  # noqa: E501
         "| GUI | Presentation only; no intelligence; strict adapter stays GUI-owned. |",
         "| Current bridge | Non-Core and GUI-owned. |",
-        "| Core Capability Gateway | Optional future typed 1:1 projection under #164; unimplemented; not a second semantic API; no intelligence. |",  # noqa: E501
+        "| Core Capability Gateway | Optional implemented generic typed 1:1 projection under #164; not a second semantic API; no intelligence. |",  # noqa: E501
         "",
         "The table above is the sole normative role-assignment surface in this block.",
-        "The future Core Capability Gateway, if implemented, is only a contract-equivalent transport of",  # noqa: E501
+        "The optional Core Capability Gateway is only a contract-equivalent transport of",
         "Core operations. It cannot create a parallel semantic contract, and direct Core",
         "use does not depend on it. The active closed admission-domain catalog belongs",
         "only to `CHARTER.md §1.10`; this document references C1–C7 without duplicating",
@@ -345,7 +347,7 @@ EXPECTED_ADVANCED_ADDON_DUAL_CHANNEL = "\n".join(
         "",
         "- An Addon must not own an LLM, provider selection, API-key handling, or an agent runtime.",  # noqa: E501
         "- An Addon and its helper must not bypass Core to read or write L1, duplicate a canonical Core capability, or duplicate runtime adapters.",  # noqa: E501
-        "- A Core Capability Gateway, if implemented, is only a typed transport projection of the canonical Core Capability Contract. It is not an Agent Runtime Gateway, Host Agent, Life Index brain, reasoning or session owner, or provider boundary.",  # noqa: E501
+        "- A Core Capability Gateway is only a typed transport projection of the canonical Core Capability Contract. It is not an Agent Runtime Gateway, Host Agent, Life Index brain, reasoning or session owner, or provider boundary.",  # noqa: E501
         "- The local CLI remains a canonical direct Core consumer surface. A Core Capability Gateway is optional and cannot become mandatory for direct Core use or replace the CLI.",  # noqa: E501
         "",
         "Advanced Addon implementation, its SDK and schemas, placeholder UI, and later",
@@ -404,7 +406,8 @@ EXPECTED_HOST_AGENT_ROUTING = "\n".join(
         "",
         "- Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis. They also own orchestration.",  # noqa: E501
         "- Core calls remain deterministic; Core does not plan, reason, orchestrate, interpret, or synthesize.",  # noqa: E501
-        "- Gateway is an optional future typed 1:1 projection under #164; it is not yet implemented, is not a second semantic API, and owns no intelligence. If introduced, it is only a contract-equivalent transport. Gateway is never required for the core route.",  # noqa: E501
+        "- Gateway is an optional implemented generic typed 1:1 projection under #164. Its closed `CAPABILITY_REGISTRY` exposes only read `health`, `journal.get`, and `search`; `search` may refresh only rebuildable `.index` state. It is not a second semantic API and owns no intelligence.",  # noqa: E501
+        "- Codex is the first consumer, not a source of Codex-specific semantics. The optional MCP projection is removable, uses the existing data-directory boundary, and never replaces the direct CLI core route.",  # noqa: E501
     )
 )
 
