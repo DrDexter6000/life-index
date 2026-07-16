@@ -159,33 +159,29 @@ EXPECTED_API_EVAL_LLM_TRANSITION = "\n".join(
 EXPECTED_CURRENT_TARGET_STATUS = """
 ### Platform program: current runtime vs ratified target
 
-Current runtime: direct CLI/Core contracts are the implemented public route;
-the accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
+Current runtime: direct CLI/Core contracts are the implemented canonical public
+route. The accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
 contract named below, and the current bridge is non-Core and GUI-owned. The
-design memo is not an authority or SSOT. The exact closed C1–C7 domains are now
+design memo is not an authority or SSOT. The exact closed C1–C7 domains are
 active Charter authority, and the former §1.9 direct provider-fallback direction
 is superseded: Host Agent + Skill own provider selection and intelligence.
 
-The integrated D1 implementation work below has passed its named implementation
-reviews, but the D1 phase remains IN_PROGRESS pending the final phase gate and
-CTO acceptance. Public CI and Windows acceptance final gates have not reached a
-final passing state:
+The D4 runtime is accepted: it includes direct CLI/Core plus an optional,
+exact-pinned and lazily loaded, generic MCP projection with exactly `health`,
+`journal.get`, and `search`. That projection is generated from the closed
+registry, remains removable and non-authoritative, and does not replace the
+direct CLI/Core route.
 
-- #163 — D1-A runtime and contract are implemented and independently accepted;
-  the issue is closed. This does not complete D1.
-- #162 — D1-B transactional write side-effect records and honest freshness are
-  implemented, and Spec/Quality review passed. The issue remains open pending
-  the final D1 phase gate and CTO acceptance.
-- #165 — D1-C recovery is implemented, and Spec/Quality review passed. The issue
-  remains open pending the final D1 phase gate and CTO acceptance. A real
-  case-sensitive filesystem roundtrip is not proven on Windows and remains
-  assigned to D4 WSL Ubuntu B validation.
-- #169 — Skill progressive disclosure is implemented, and Spec/Quality review
-  passed. The issue remains open pending the final D1 phase gate and CTO
-  acceptance.
-- #164 — optional Core Capability Gateway typed 1:1 projection: implemented
-  candidate; remains open pending D4 closeout review and the final phase gate
-  and CTO acceptance.
+The original D5 hand-written newline-JSON-RPC transport is Human-Owner
+**DEFERRED / NOT NECESSARY NOW**. It remains unnecessary unless a named non-MCP
+consumer or a verified incompatibility establishes a need.
+
+`Development Status :: 5 - Production/Stable` describes the released CLI
+product line and stable public CLI contracts. It does not assign constitutional
+Core/non-Core ownership, certify every route or option, imply GUI 1.0 maturity,
+promise future features, or authorize a D6-A candidate for merge, release, or
+publication. D6-A is release-readiness only; no D6-A merge, release, or
+publication has occurred.
 """
 
 EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
@@ -552,10 +548,12 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
         EXPECTED_CURRENT_TARGET_STATUS,
         "docs/ARCHITECTURE.md",
     )
-    assert "the issue is closed. This does not complete D1." in current_target_block
-    assert "D1 phase remains IN_PROGRESS" in current_target_block
+    assert "The D4 runtime is accepted" in current_target_block
+    assert "**DEFERRED / NOT NECESSARY NOW**" in current_target_block
+    assert "no D6-A merge, release, or\npublication has occurred." in current_target_block
     for stale_status in (
         "#163 remains open",
+        "D1 phase remains IN_PROGRESS",
         "#162 — transactional write, side-effect, and freshness repair: unimplemented",
         "#165 — backup, restore, and recovery proof: unimplemented",
         "pending independent review",

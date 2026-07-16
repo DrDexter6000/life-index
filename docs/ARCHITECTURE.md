@@ -25,38 +25,34 @@
 | 数据隔离（用户数据 vs 代码） | CHARTER §1.1 |
 | 运行时/平台可移植性（换 runtime/OS 只改配置不改代码） | CHARTER §1.12 |
 
-**本文档聚焦可演化的实现细节** — 索引树结构、分层搜索参数、ADR-003/004 等可演化决策、目录快照、基础设施增量记录。这些随实现版本迭代，不属于宪章不变量。
+**本文档聚焦可演化的实现细节** — 索引树结构、分层搜索参数、ADR-003/004/005 等可演化决策、目录快照、基础设施增量记录。这些随实现版本迭代，不属于宪章不变量。
 
 <!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:START -->
 ### Platform program: current runtime vs ratified target
 
-Current runtime: direct CLI/Core contracts are the implemented public route;
-the accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
+Current runtime: direct CLI/Core contracts are the implemented canonical public
+route. The accepted `--synthesize` flag follows the deterministic no-LLM/no-answer
 contract named below, and the current bridge is non-Core and GUI-owned. The
-design memo is not an authority or SSOT. The exact closed C1–C7 domains are now
+design memo is not an authority or SSOT. The exact closed C1–C7 domains are
 active Charter authority, and the former §1.9 direct provider-fallback direction
 is superseded: Host Agent + Skill own provider selection and intelligence.
 
-The integrated D1 implementation work below has passed its named implementation
-reviews, but the D1 phase remains IN_PROGRESS pending the final phase gate and
-CTO acceptance. Public CI and Windows acceptance final gates have not reached a
-final passing state:
+The D4 runtime is accepted: it includes direct CLI/Core plus an optional,
+exact-pinned and lazily loaded, generic MCP projection with exactly `health`,
+`journal.get`, and `search`. That projection is generated from the closed
+registry, remains removable and non-authoritative, and does not replace the
+direct CLI/Core route.
 
-- #163 — D1-A runtime and contract are implemented and independently accepted;
-  the issue is closed. This does not complete D1.
-- #162 — D1-B transactional write side-effect records and honest freshness are
-  implemented, and Spec/Quality review passed. The issue remains open pending
-  the final D1 phase gate and CTO acceptance.
-- #165 — D1-C recovery is implemented, and Spec/Quality review passed. The issue
-  remains open pending the final D1 phase gate and CTO acceptance. A real
-  case-sensitive filesystem roundtrip is not proven on Windows and remains
-  assigned to D4 WSL Ubuntu B validation.
-- #169 — Skill progressive disclosure is implemented, and Spec/Quality review
-  passed. The issue remains open pending the final D1 phase gate and CTO
-  acceptance.
-- #164 — optional Core Capability Gateway typed 1:1 projection: implemented
-  candidate; remains open pending D4 closeout review and the final phase gate
-  and CTO acceptance.
+The original D5 hand-written newline-JSON-RPC transport is Human-Owner
+**DEFERRED / NOT NECESSARY NOW**. It remains unnecessary unless a named non-MCP
+consumer or a verified incompatibility establishes a need.
+
+`Development Status :: 5 - Production/Stable` describes the released CLI
+product line and stable public CLI contracts. It does not assign constitutional
+Core/non-Core ownership, certify every route or option, imply GUI 1.0 maturity,
+promise future features, or authorize a D6-A candidate for merge, release, or
+publication. D6-A is release-readiness only; no D6-A merge, release, or
+publication has occurred.
 <!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->
 
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:START -->
@@ -422,6 +418,32 @@ ADR-004 禁止的是“把 MCP 当作新的产品接口或并行数据路径来�
 5. **CLI remains the authority**: MCP may describe or invoke CLI tools, but must not become the contract owner for schemas, behavior, or persistence.
 
 Therefore the existing `tools/mcp_discovery` discovery stub remains constitutional: it is static, read-only, and does not touch user data. It is separate from the implemented optional `tools.mcp_projection` stdio transport. That generic projection derives its exact `health`, `journal.get`, and `search` surface from `CAPABILITY_REGISTRY`, calls the canonical Core application functions, and has no independent schema or semantic authority. `search` is read authority with only the rebuildable `.index` derived-state allowance. No D5 hand-written newline JSON-RPC server is present; the optional official SDK owns stdio lifecycle. Any MCP implementation that diverges from CLI behavior, owns schemas independently, directly reads/writes the journal data directory, or adds in-tool reasoning/orchestration falls under CHARTER §4.1 “parallel interface” risk.
+
+### ADR-005: AGPL-3.0-only distribution
+
+> **Scope**: non-constitutional distribution rationale. This ADR does not amend
+> the Charter, assign Core/non-Core ownership, or modify license terms.
+
+**Decision**: Life Index is distributed as `AGPL-3.0-only`. The current
+[`LICENSE`](../LICENSE) is legally controlling.
+
+**Rationale**:
+
+1. The local-first architecture keeps user data under user ownership rather
+   than making an external service the data authority.
+2. AGPL-3.0-only aligns modified network services and distributed versions with
+   reciprocal source-availability obligations under the license's actual terms.
+3. The same public license designation across the CLI, GUI, and curated GUI
+   public export keeps the two-repository product surface aligned.
+
+This is factual engineering and product rationale, not legal advice. It does
+not alter, interpret beyond, or replace the license text.
+
+**Authority boundary**: [`CONTRIBUTING.md`](../CONTRIBUTING.md) records that a
+contributor grants the project owner a separate right to relicense that
+contribution. That provenance reserves any separate-license or relicensing
+decision to the Owner and applicable copyright holders; it gives agents and
+contributors no relicensing authority.
 
 ---
 
