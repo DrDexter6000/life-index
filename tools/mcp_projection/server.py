@@ -59,6 +59,7 @@ def _registry_tool_callable(
         return dispatch(
             capability.method_id,
             {name: value for name, value in params.items() if value is not None},
+            emit_validation_trace=False,
         )
 
     invoke.__name__ = capability.method_id.replace(".", "_")

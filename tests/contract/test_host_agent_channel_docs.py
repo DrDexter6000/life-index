@@ -28,7 +28,10 @@ def test_public_docs_describe_the_closed_generic_projection() -> None:
     assert "only allowed effect is a refresh of rebuildable `.index` derived state" in api
     assert "Every method declares `destructiveHint=false` and `openWorldHint=false`" in api
     assert "validation-only tool-call trace" in api
-    assert "resolves into or overlaps the\ndata directory" in api
+    assert "not an MCP capability effect" in api
+    assert "MCP projection explicitly disables trace emission" in api
+    assert "configured trace target that resolves into or" in api
+    assert "overlaps the data directory is rejected before it can create source state" in api
     assert "Codex is the first consumer" in skill
     assert "not yet implemented" not in skill
     assert "tools.mcp_projection" in architecture

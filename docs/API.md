@@ -138,9 +138,12 @@ The optional MCP projection derives its tool annotations from the same
 registry. `health` and `journal.get` declare `readOnlyHint=true`. `search` remains a logical `read`, but its MCP `readOnlyHint=false` honestly
 reflects that its only allowed effect is a refresh of rebuildable `.index` derived state. Every method declares `destructiveHint=false` and `openWorldHint=false`;
 `idempotentHint` remains registry-specific.
-Its existing validation-only tool-call trace remains available as external
-control evidence; a configured trace target that resolves into or overlaps the
-data directory is rejected before it can create source state.
+The validation-only tool-call trace remains available as external control
+evidence for direct dispatcher validation; it is not an MCP capability effect.
+The generic MCP projection explicitly disables trace emission even when
+`LIFE_INDEX_VALIDATION_MODE=1` and `LIFE_INDEX_TOOL_CALL_LOG` are set. For
+direct dispatcher validation, a configured trace target that resolves into or
+overlaps the data directory is rejected before it can create source state.
 
 `tools.mcp_projection` is a generic, removable stdio transport projection of
 this registry.  It is optional: install its exact extra with

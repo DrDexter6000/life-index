@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 from dataclasses import fields
+from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,39 @@ def optional_mcp_sdk() -> None:
 
 def _tool_map(server: Any) -> dict[str, Any]:
     return {tool.name: tool for tool in asyncio.run(server.list_tools())}
+
+
+def _seed_journal(data_dir: Path) -> str:
+    journal_path = data_dir / "Journals" / "2026" / "05" / "life-index_2026-05-28_001.md"
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+    journal_path.write_text(
+        "---\n"
+        'title: "bounded projection entry"\n'
+        "date: 2026-05-28\n"
+        'topic: ["work"]\n'
+        "---\n"
+        "needle is present in this journal.\n",
+        encoding="utf-8",
+    )
+    return journal_path.relative_to(data_dir).as_posix()
+
+
+def _snapshot(root: Path) -> dict[str, str]:
+    snapshot: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        snapshot[f"{relative}/" if path.is_dir() else relative] = (
+            "directory" if path.is_dir() else sha256(path.read_bytes()).hexdigest()
+        )
+    return snapshot
+
+
+def _non_index_snapshot(snapshot: dict[str, str]) -> dict[str, str]:
+    return {
+        path: value
+        for path, value in snapshot.items()
+        if path != ".index/" and not path.startswith(".index/")
+    }
 
 
 @pytest.mark.usefixtures("optional_mcp_sdk")
@@ -79,6 +113,64 @@ def test_projection_exposes_only_registry_tools_with_registry_owned_metadata() -
 
 
 @pytest.mark.usefixtures("optional_mcp_sdk")
+def test_mcp_read_tools_never_create_or_append_validation_trace(
+    isolated_data_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools.mcp_projection.server import create_mcp_server
+
+    journal_path = _seed_journal(isolated_data_dir)
+    before = _snapshot(isolated_data_dir)
+    trace_path = tmp_path / "external-trace" / "tool-calls.jsonl"
+    monkeypatch.setenv("LIFE_INDEX_VALIDATION_MODE", "1")
+    monkeypatch.setenv("LIFE_INDEX_TOOL_CALL_LOG", str(trace_path))
+    server = create_mcp_server()
+
+    assert asyncio.run(server.call_tool("health", {}))
+    assert _snapshot(isolated_data_dir) == before
+    assert not trace_path.exists(), "MCP health must not create an external dispatcher trace."
+
+    trace_path.parent.mkdir()
+    trace_before = b"pre-existing direct validation evidence\n"
+    trace_path.write_bytes(trace_before)
+
+    assert asyncio.run(server.call_tool("journal.get", {"path": journal_path}))
+    assert _snapshot(isolated_data_dir) == before
+    assert trace_path.read_bytes() == trace_before
+
+
+@pytest.mark.usefixtures("optional_mcp_sdk")
+def test_mcp_search_can_refresh_only_index_and_never_validation_trace(
+    isolated_data_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools.mcp_projection.server import create_mcp_server
+
+    _seed_journal(isolated_data_dir)
+    trace_path = tmp_path / "external-trace" / "tool-calls.jsonl"
+    trace_path.parent.mkdir()
+    trace_before = b"pre-existing direct validation evidence\n"
+    trace_path.write_bytes(trace_before)
+    monkeypatch.setenv("LIFE_INDEX_VALIDATION_MODE", "1")
+    monkeypatch.setenv("LIFE_INDEX_TOOL_CALL_LOG", str(trace_path))
+    before = _snapshot(isolated_data_dir)
+
+    server = create_mcp_server()
+    assert asyncio.run(server.call_tool("search", {"query": "needle"}))
+
+    after = _snapshot(isolated_data_dir)
+    assert _non_index_snapshot(after) == _non_index_snapshot(before)
+    changed_paths = {
+        path for path in set(before) | set(after) if before.get(path) != after.get(path)
+    }
+    assert changed_paths
+    assert all(path == ".index/" or path.startswith(".index/") for path in changed_paths)
+    assert trace_path.read_bytes() == trace_before
+
+
+@pytest.mark.usefixtures("optional_mcp_sdk")
 def test_projection_has_no_resources_or_prompts() -> None:
     from tools.mcp_projection.server import create_mcp_server
 
@@ -92,10 +184,15 @@ def test_projection_has_no_resources_or_prompts() -> None:
 def test_mcp_tool_calls_map_to_the_transport_neutral_dispatcher(monkeypatch) -> None:
     import tools.mcp_projection.server as projection
 
-    calls: list[tuple[str, dict[str, Any]]] = []
+    calls: list[tuple[str, dict[str, Any], bool]] = []
 
-    def fake_dispatch(method_id: str, params: dict[str, Any]) -> dict[str, Any]:
-        calls.append((method_id, params))
+    def fake_dispatch(
+        method_id: str,
+        params: dict[str, Any],
+        *,
+        emit_validation_trace: bool = True,
+    ) -> dict[str, Any]:
+        calls.append((method_id, params, emit_validation_trace))
         return {"success": True, "method": method_id, "params": params}
 
     monkeypatch.setattr(projection, "dispatch", fake_dispatch)
@@ -103,7 +200,7 @@ def test_mcp_tool_calls_map_to_the_transport_neutral_dispatcher(monkeypatch) -> 
 
     result = asyncio.run(server.call_tool("journal.get", {"id": "Journals/2026/05/x.md"}))
 
-    assert calls == [("journal.get", {"id": "Journals/2026/05/x.md"})]
+    assert calls == [("journal.get", {"id": "Journals/2026/05/x.md"}, False)]
     assert result
 
 

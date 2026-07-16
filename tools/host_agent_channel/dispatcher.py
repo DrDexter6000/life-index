@@ -24,13 +24,19 @@ class InvalidParameters(ValueError):
     """Raised before Core execution for malformed typed channel parameters."""
 
 
-def dispatch(method_id: str, params: CapabilityParams | dict[str, Any]) -> dict[str, Any]:
+def dispatch(
+    method_id: str,
+    params: CapabilityParams | dict[str, Any],
+    *,
+    emit_validation_trace: bool = True,
+) -> dict[str, Any]:
     """Dispatch one exact registered method; adapters supply only structured inputs."""
     capability = CAPABILITY_REGISTRY.get(method_id)
     if capability is None:
         raise MethodNotAllowed(f"Method not allowed: {method_id}")
     result = _dispatch_registered(capability, _coerce_params(capability, params))
-    _emit_validation_trace(capability, result)
+    if emit_validation_trace:
+        _emit_validation_trace(capability, result)
     return result
 
 
