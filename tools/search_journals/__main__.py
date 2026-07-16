@@ -170,39 +170,39 @@ def run_search(
     )
     result["schema_version"] = provenance_envelope["schema_version"]
     result["provenance"] = provenance_envelope["provenance"]
-    # This is validation-only, explicitly configured control evidence.  It
-    # remains separate from metrics and the Life Index data boundary, so the
-    # source-safe channel may retain an activation trace without source writes.
-    emit_tool_call_log(
-        "search",
-        params={
-            "query": query,
-            "topic": topic,
-            "project": project,
-            "tags": normalized_tags,
-            "mood": normalized_mood,
-            "people": normalized_people,
-            "date_from": date_from,
-            "date_to": date_to,
-            "location": location,
-            "weather": weather,
-            "year": year,
-            "month": month,
-            "level": level,
-            "semantic": semantic,
-            "limit": limit,
-            "offset": offset,
-        },
-        result={
-            "total_matches": result.get("total_matches"),
-            "total_found": result.get("total_found"),
-            "total_available": result.get("total_available"),
-            "has_more": result.get("has_more"),
-        },
-        elapsed_ms=(time.perf_counter() - started) * 1000.0,
-        success=bool(result.get("success")),
-        forbidden_root=get_user_data_dir() if source_safe else None,
-    )
+    # The source-safe typed channel is traced once at its registry/dispatcher
+    # boundary, where parameters and result content are deliberately omitted.
+    # Direct CLI execution keeps its existing opt-in diagnostic record.
+    if not source_safe:
+        emit_tool_call_log(
+            "search",
+            params={
+                "query": query,
+                "topic": topic,
+                "project": project,
+                "tags": normalized_tags,
+                "mood": normalized_mood,
+                "people": normalized_people,
+                "date_from": date_from,
+                "date_to": date_to,
+                "location": location,
+                "weather": weather,
+                "year": year,
+                "month": month,
+                "level": level,
+                "semantic": semantic,
+                "limit": limit,
+                "offset": offset,
+            },
+            result={
+                "total_matches": result.get("total_matches"),
+                "total_found": result.get("total_found"),
+                "total_available": result.get("total_available"),
+                "has_more": result.get("has_more"),
+            },
+            elapsed_ms=(time.perf_counter() - started) * 1000.0,
+            success=bool(result.get("success")),
+        )
     if include_events:
         _attach_events(result)
     return result

@@ -101,11 +101,11 @@ def test_search_keeps_validation_trace_outside_the_data_boundary(
     assert len(records) == 1
     assert records[0]["tool"] == "search"
     assert records[0]["success"] is True
+    assert records[0]["params"] == {}
     assert set(records[0]["result"]) == {
-        "total_available",
-        "total_found",
-        "total_matches",
-        "has_more",
+        "operation_class",
+        "derived_state_effect",
+        "derived_state_rebuildable",
     }
     serialized = json.dumps(records[0], ensure_ascii=False)
     assert "content" not in serialized
