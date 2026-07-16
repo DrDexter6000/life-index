@@ -132,13 +132,87 @@ def test_search_eval_gate_remains_tier1_blocking_smoke() -> None:
     assert "github.event.pull_request.draft == false" in str(job.get("if", ""))
 
 
-def test_tier2_pr_heavy_jobs_are_post_merge_only() -> None:
+def test_quarantine_remains_tier2_post_merge_only() -> None:
     workflow = _workflow("tests.yml")
 
-    for job_name in ("quarantine", "coverage"):
-        job_if = str(workflow["jobs"][job_name].get("if", ""))
-        assert "github.event_name == 'push'" in job_if
-        assert "pull_request" not in job_if
+    job_if = str(workflow["jobs"]["quarantine"].get("if", ""))
+    assert "github.event_name == 'push'" in job_if
+    assert "github.ref == 'refs/heads/main'" in job_if
+    assert "pull_request" not in job_if
+
+
+def test_coverage_gate_is_tier1_for_ready_prs_and_main_pushes() -> None:
+    workflow = _workflow("tests.yml")
+    job_if = str(workflow["jobs"]["coverage"].get("if", ""))
+
+    assert "github.event_name == 'push'" in job_if
+    assert "github.ref == 'refs/heads/main'" in job_if
+    assert "github.event_name == 'pull_request'" in job_if
+    assert "github.event.pull_request.draft == false" in job_if
+
+
+def test_coverage_gate_ci_delegates_to_the_canonical_runner() -> None:
+    workflow = _workflow("tests.yml")
+    coverage_steps = workflow["jobs"]["coverage"]["steps"]
+    coverage_runs = [str(step.get("run", "")) for step in coverage_steps if "run" in step]
+    install_step = next(
+        step for step in coverage_steps if step.get("name") == "Install dependencies"
+    )
+    coverage_step = next(
+        step for step in coverage_steps if step.get("name") == "Enforce coverage gate"
+    )
+
+    assert "pytest-cov" in str(install_step["run"])
+    assert "${{ runner.temp }}" in str(
+        coverage_step.get("env", {}).get("COVERAGE_GATE_BASETEMP", "")
+    )
+    assert coverage_runs.count("bash scripts/run_coverage_gate.sh") == 1
+    assert not any("--cov=tools" in run for run in coverage_runs)
+
+
+def test_pre_push_gate_preflights_and_runs_the_canonical_coverage_runner() -> None:
+    source = (REPO_ROOT / "scripts" / "pre-push-gate.sh").read_text(encoding="utf-8")
+
+    assert "pytest_cov" in source
+    assert "COVERAGE_TIMEOUT_SECONDS" in source
+    assert "bash scripts/run_coverage_gate.sh" in source
+    assert "--cov=tools" not in source
+
+
+def test_canonical_coverage_runner_forces_an_isolated_synthetic_data_root() -> None:
+    runner = REPO_ROOT / "scripts" / "run_coverage_gate.sh"
+
+    assert runner.is_file()
+    source = runner.read_text(encoding="utf-8")
+    assert "COVERAGE_GATE_BASETEMP" in source
+    assert "RUNNER_TEMP" in source
+    assert "must be an isolated child" in source
+    assert "pytest_cov" in source
+    assert "python -m pytest" in source
+    assert '"blocker or contract"' in source
+    assert "--cov=tools" in source
+    assert "--cov-report=term-missing" in source
+    assert '--basetemp="$PYTEST_BASETEMP"' in source
+    assert 'export LIFE_INDEX_DATA_DIR="$PYTEST_BASETEMP/data"' in source
+    assert "--cov-fail-under" not in source
+
+
+def test_ci_inventory_promotes_coverage_and_keeps_quarantine_tier2() -> None:
+    inventory = (REPO_ROOT / "docs" / "CI_HARD_CHECKS.md").read_text(encoding="utf-8")
+
+    assert (
+        "| 4 | coverage gate | `bash scripts/run_coverage_gate.sh` | tests.yml | "
+        "`bash scripts/run_coverage_gate.sh` |"
+    ) in inventory
+    assert (
+        "coverage runs on ready/non-draft pull requests targeting main and on push to main"
+        in inventory.lower()
+    )
+    assert "| C | coverage |" not in inventory
+    assert (
+        "| Q | quarantine | `pytest -m quarantine --timeout=300` | tests.yml | push to main |"
+        in inventory
+    )
 
 
 def test_nightly_tier2_runs_on_schedule_manual_and_post_merge() -> None:

@@ -23,9 +23,10 @@ cd "$REPO_ROOT"
 BLOCKER_TIMEOUT_SECONDS=900
 CONTRACT_TIMEOUT_SECONDS=2400
 EVAL_TIMEOUT_SECONDS=900
+COVERAGE_TIMEOUT_SECONDS=2400
 PYTEST_TIMEOUT_SECONDS=120
 NON_TEST_MARGIN_SECONDS=900
-RECOMMENDED_WATCHDOG_SECONDS=$((BLOCKER_TIMEOUT_SECONDS + CONTRACT_TIMEOUT_SECONDS + EVAL_TIMEOUT_SECONDS + NON_TEST_MARGIN_SECONDS))
+RECOMMENDED_WATCHDOG_SECONDS=$((BLOCKER_TIMEOUT_SECONDS + CONTRACT_TIMEOUT_SECONDS + EVAL_TIMEOUT_SECONDS + COVERAGE_TIMEOUT_SECONDS + NON_TEST_MARGIN_SECONDS))
 
 TIMESTAMP=$(date +%s)
 LOG_DIR=".agent-reports/pre-push-gate"
@@ -85,7 +86,7 @@ import sys
 
 missing = [
     name
-    for name in ("black", "flake8", "bandit", "mypy", "pytest")
+    for name in ("black", "flake8", "bandit", "mypy", "pytest", "pytest_cov")
     if importlib.util.find_spec(name) is None
 ]
 if missing:
@@ -154,7 +155,7 @@ mkdir -p "$LIFE_INDEX_DATA_DIR"
 echo "Using LIFE_INDEX_DATA_DIR: $LIFE_INDEX_DATA_DIR"
 
 # === tests.yml hard checks (with L1 outer timeout) ===
-# Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 2400s; eval 900s
+# Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 2400s; eval 900s; coverage 2400s
 mkdir -p "$PYTEST_BASETEMP/blocker"
 run_check "pytest -m blocker"    timeout "$BLOCKER_TIMEOUT_SECONDS" python -m pytest -o addopts="" -ra -q --strict-markers --strict-config -m blocker --timeout="$PYTEST_TIMEOUT_SECONDS" --basetemp="$PYTEST_BASETEMP/blocker"
 mkdir -p "$PYTEST_BASETEMP/contract"
@@ -162,6 +163,9 @@ run_check "pytest -m contract"   timeout "$CONTRACT_TIMEOUT_SECONDS" python -m p
 mkdir -p "$PYTEST_BASETEMP/eval"
 export EVAL_PYTEST_BASETEMP="$PYTEST_BASETEMP/eval"
 run_check "search-eval-gate"     timeout "$EVAL_TIMEOUT_SECONDS" bash scripts/run_eval_gate.sh
+export COVERAGE_GATE_BASETEMP="$PYTEST_BASETEMP/coverage"
+run_check "coverage gate"        timeout "$COVERAGE_TIMEOUT_SECONDS" bash scripts/run_coverage_gate.sh
+unset COVERAGE_GATE_BASETEMP
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
