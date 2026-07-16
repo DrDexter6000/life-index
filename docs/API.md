@@ -123,11 +123,11 @@ authority for the initial Host-Agent tool channel.  Transports generate from
 that registry; they must not add methods, schemas, write authority, filesystem
 access, shell access, LLM/provider behavior, planning, or orchestration.
 
-| Method ID | Operation class | Bounded effect |
-|---|---|---|
-| `health` | `read` | None |
-| `journal.get` | `read` | None; exactly one of `path` or `id` is required |
-| `search` | `read` | May refresh only `.index`, a rebuildable derived tree |
+| Method ID | Operation class | MCP `readOnlyHint` | Bounded physical effect |
+|---|---|---|---|
+| `health` | `read` | `true` | None |
+| `journal.get` | `read` | `true` | None; exactly one of `path` or `id` is required |
+| `search` | `read` | `false` | May refresh only `.index`, a rebuildable derived tree |
 
 The dispatcher validates structured parameters before Core and invokes the same
 canonical application functions used by the direct CLI.  It preserves the
@@ -135,9 +135,9 @@ existing domain envelopes and direct CLI remains a supported canonical path.
 `search` does not mutate journals, frontmatter, attachments, entity graph,
 metadata cache, or search metrics through this channel.
 The optional MCP projection derives its tool annotations from the same
-registry: every method declares `readOnlyHint=true`, `destructiveHint=false`,
-and `openWorldHint=false`; `idempotentHint` remains registry-specific because
-`search` may perform its bounded derived-state refresh.
+registry. `health` and `journal.get` declare `readOnlyHint=true`. `search` remains a logical `read`, but its MCP `readOnlyHint=false` honestly
+reflects that its only allowed effect is a refresh of rebuildable `.index` derived state. Every method declares `destructiveHint=false` and `openWorldHint=false`;
+`idempotentHint` remains registry-specific.
 Its existing validation-only tool-call trace remains available as external
 control evidence; a configured trace target that resolves into or overlaps the
 data directory is rejected before it can create source state.

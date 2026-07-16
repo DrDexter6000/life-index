@@ -129,9 +129,12 @@ class CapabilityDefinition:
 
 
 def projection_annotations(capability: CapabilityDefinition) -> dict[str, bool]:
-    """Derive transport hints from the registry, never from an adapter list."""
+    """Derive transport hints from registry-owned logical and physical effect facts."""
     return {
-        "readOnlyHint": capability.operation_class is OperationClass.READ,
+        "readOnlyHint": (
+            capability.operation_class is OperationClass.READ
+            and capability.derived_state_effect is DerivedStateEffect.NONE
+        ),
         "destructiveHint": capability.destructive,
         "idempotentHint": capability.idempotent,
         "openWorldHint": capability.open_world,

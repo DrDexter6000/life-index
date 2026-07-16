@@ -39,12 +39,34 @@ def test_projection_exposes_only_registry_tools_with_registry_owned_metadata() -
     server = create_mcp_server()
     tools = _tool_map(server)
 
-    assert set(tools) == set(CAPABILITY_REGISTRY)
+    expected_annotations = {
+        "health": {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": CAPABILITY_REGISTRY["health"].idempotent,
+            "openWorldHint": False,
+        },
+        "journal.get": {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": CAPABILITY_REGISTRY["journal.get"].idempotent,
+            "openWorldHint": False,
+        },
+        "search": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": CAPABILITY_REGISTRY["search"].idempotent,
+            "openWorldHint": False,
+        },
+    }
+
+    assert set(tools) == {"health", "journal.get", "search"}
     for method_id, capability in CAPABILITY_REGISTRY.items():
         tool = tools[method_id]
         assert tool.description == capability.description
         assert tool.annotations is not None
-        assert tool.annotations.model_dump(exclude_none=True) == projection_annotations(capability)
+        assert tool.annotations.model_dump(exclude_none=True) == expected_annotations[method_id]
+        assert projection_annotations(capability) == expected_annotations[method_id]
         properties = tool.inputSchema.get("properties", {})
         expected_fields = {field.name: field for field in fields(capability.params_type)}
         assert set(properties) == set(expected_fields)

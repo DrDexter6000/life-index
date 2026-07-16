@@ -23,6 +23,10 @@ def test_public_docs_describe_the_closed_generic_projection() -> None:
     assert "readOnlyHint" in api
     assert "destructiveHint" in api
     assert "openWorldHint" in api
+    assert "`health` and `journal.get` declare `readOnlyHint=true`" in api
+    assert "`search` remains a logical `read`, but its MCP `readOnlyHint=false`" in api
+    assert "only allowed effect is a refresh of rebuildable `.index` derived state" in api
+    assert "Every method declares `destructiveHint=false` and `openWorldHint=false`" in api
     assert "validation-only tool-call trace" in api
     assert "resolves into or overlaps the\ndata directory" in api
     assert "Codex is the first consumer" in skill

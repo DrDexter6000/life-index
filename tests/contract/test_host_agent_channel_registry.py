@@ -31,13 +31,29 @@ def test_registry_is_the_single_exact_read_authority() -> None:
     assert CAPABILITY_REGISTRY["search"].derived_state_effect is DerivedStateEffect.INDEX_REFRESH
     assert CAPABILITY_REGISTRY["search"].derived_state_paths == (".index",)
     assert CAPABILITY_REGISTRY["search"].derived_state_rebuildable is True
-    for capability in CAPABILITY_REGISTRY.values():
-        assert projection_annotations(capability) == {
+    assert {
+        method_id: projection_annotations(capability)
+        for method_id, capability in CAPABILITY_REGISTRY.items()
+    } == {
+        "health": {
             "readOnlyHint": True,
             "destructiveHint": False,
-            "idempotentHint": capability.idempotent,
+            "idempotentHint": CAPABILITY_REGISTRY["health"].idempotent,
             "openWorldHint": False,
-        }
+        },
+        "journal.get": {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": CAPABILITY_REGISTRY["journal.get"].idempotent,
+            "openWorldHint": False,
+        },
+        "search": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": CAPABILITY_REGISTRY["search"].idempotent,
+            "openWorldHint": False,
+        },
+    }
 
 
 def test_registry_is_runtime_immutable_and_describes_the_search_effect() -> None:
