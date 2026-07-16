@@ -21,8 +21,8 @@ from tools.lib.errors import (
     create_error_response,
     is_recoverable,
     get_error_description,
-    ERROR_DESCRIPTIONS,
 )
+from tools.lib.workflow_signals import RecoveryStrategy
 
 # ── All error codes documented in API.md ──
 
@@ -72,6 +72,7 @@ API_MD_ERROR_CODES = {
 VALID_RECOVERY_STRATEGIES = {
     "ask_user",
     "skip_optional",
+    "continue",
     "continue_empty",
     "fail",
     "retry",
@@ -123,6 +124,10 @@ class TestErrorCodeCompleteness:
 class TestRecoveryStrategies:
     """Recovery strategy mapping matches API.md documentation."""
 
+    def test_valid_strategies_match_runtime_enum(self):
+        """The public valid set and RecoveryStrategy enum stay aligned."""
+        assert {strategy.value for strategy in RecoveryStrategy} == VALID_RECOVERY_STRATEGIES
+
     def test_all_strategies_are_valid_values(self):
         """Every strategy value in RECOVERY_STRATEGIES is a valid strategy."""
         for code, strategy in LifeIndexError.RECOVERY_STRATEGIES.items():
@@ -144,11 +149,15 @@ class TestRecoveryStrategies:
             (ErrorCode.INVALID_INPUT, "ask_user"),
             (ErrorCode.CONTENT_EMPTY, "ask_user"),
             (ErrorCode.DATE_INVALID, "ask_user"),
+            (ErrorCode.ATTACHMENT_COPY_FAILED, "continue"),
             (ErrorCode.JOURNAL_NOT_FOUND, "ask_user"),
             (ErrorCode.NO_CHANGES_SPECIFIED, "ask_user"),
             (ErrorCode.LOCATION_WEATHER_REQUIRED, "ask_user"),
+            (ErrorCode.INDEX_NOT_FOUND, "continue"),
             (ErrorCode.NO_RESULTS, "continue_empty"),
             (ErrorCode.QUERY_EMPTY, "ask_user"),
+            (ErrorCode.VECTOR_STORE_ERROR, "continue"),
+            (ErrorCode.FTS_INDEX_ERROR, "continue"),
         ],
     )
     def test_specific_code_strategy_matches_api_md(self, code: str, expected_strategy: str):
@@ -169,7 +178,7 @@ class TestLifeIndexErrorToJson:
     """LifeIndexError.to_json() output matches the documented JSON shape."""
 
     def test_basic_shape(self):
-        """to_json() returns {success: False, error: {code, message, details, recovery_strategy}}."""
+        """to_json() returns the documented structured error shape."""
         err = LifeIndexError(
             ErrorCode.WEATHER_API_FAILED,
             "Weather API request failed",
@@ -272,7 +281,11 @@ class TestIsRecoverable:
             (ErrorCode.WEATHER_API_FAILED, True),  # skip_optional
             (ErrorCode.WEATHER_TIMEOUT, True),  # skip_optional
             (ErrorCode.WEATHER_PARSE_ERROR, True),  # skip_optional
+            (ErrorCode.ATTACHMENT_COPY_FAILED, True),  # continue
+            (ErrorCode.INDEX_NOT_FOUND, True),  # continue
             (ErrorCode.NO_RESULTS, True),  # continue_empty
+            (ErrorCode.VECTOR_STORE_ERROR, True),  # continue
+            (ErrorCode.FTS_INDEX_ERROR, True),  # continue
             (
                 ErrorCode.PERMISSION_DENIED,
                 False,
@@ -284,5 +297,5 @@ class TestIsRecoverable:
         ],
     )
     def test_recoverability_classification(self, code: str, expected: bool):
-        """is_recoverable() matches the semantic definition: only skip_optional and continue_empty."""
+        """is_recoverable() matches skip_optional, continue, and continue_empty semantics."""
         assert is_recoverable(code) == expected

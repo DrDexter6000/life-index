@@ -72,7 +72,7 @@ python -m tools health
     "code": "E0000",
     "message": "错误信息",
     "details": { ... },
-    "recovery_strategy": "ask_user|skip_optional|continue_empty|fail|retry"
+    "recovery_strategy": "ask_user|skip_optional|continue|continue_empty|fail|retry"
   }
 }
 ```
@@ -477,6 +477,7 @@ relationships:
 |------|------|-----------|
 | `ask_user` | 需要用户干预 | 向用户展示错误并询问 |
 | `skip_optional` | 可跳过的可选功能 | 跳过该功能，继续执行 |
+| `continue` | 主结果/工作流可在降级状态继续 | 保留主结果并执行该错误的具体修复；若 `journal_commit` 已完成，只修复失败副作用，绝不重试 journal write |
 | `continue_empty` | 无结果但可继续 | 返回空结果，不报错 |
 | `fail` | 不可恢复 | 停止操作，报告错误 |
 | `retry` | 可重试 | 自动重试一次，若仍失败则 `ask_user` |
@@ -894,7 +895,7 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 
 - `side_effects` 中 `journal_commit.status == "complete"` 是核心 journal 已 durable saved 的唯一执行事实；`journal_path` 保持为兼容字段
 - `needs_confirmation: true` 表示“写入成功但仍需确认/修正”，**不等于写入失败**
-- journal commit 后的索引、摘要、metadata、pending、Index B 或候选池失败，应报告为“已保存，但仍有后续修复或可见性问题”；执行对应 `recovery_strategy`，不得重复调用 write 创建同一篇日志
+- journal commit 后的索引、摘要、metadata、pending、Index B 或候选池失败，应报告为“已保存，但仍有后续修复或可见性问题”；执行对应 `recovery_strategy`，只修复失败步骤，绝不得重试 journal write 或重复调用 write 创建同一篇日志
 - Agent 必须保留这三种区别：
   1. 写入失败
   2. 写入成功，但仍需 confirmation / correction

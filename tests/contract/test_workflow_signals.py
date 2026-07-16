@@ -36,6 +36,7 @@ class TestEnumValues:
         assert set(RecoveryStrategy) == {
             "ask_user",
             "skip_optional",
+            "continue",
             "continue_empty",
             "fail",
             "retry",
@@ -64,6 +65,8 @@ class TestStrEnumBackwardCompat:
     def test_recovery_strategy_is_string(self):
         assert RecoveryStrategy.RETRY == "retry"
         assert isinstance(RecoveryStrategy.RETRY, str)
+        assert RecoveryStrategy.CONTINUE == "continue"
+        assert isinstance(RecoveryStrategy.CONTINUE, str)
 
 
 class TestDeriveWriteOutcome:

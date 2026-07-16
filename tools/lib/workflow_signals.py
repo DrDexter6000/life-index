@@ -153,6 +153,7 @@ class RecoveryStrategy(StrEnum):
 
     ASK_USER = "ask_user"
     SKIP_OPTIONAL = "skip_optional"
+    CONTINUE = "continue"
     CONTINUE_EMPTY = "continue_empty"
     FAIL = "fail"
     RETRY = "retry"
