@@ -29,7 +29,27 @@ def dispatch(method_id: str, params: CapabilityParams | dict[str, Any]) -> dict[
     capability = CAPABILITY_REGISTRY.get(method_id)
     if capability is None:
         raise MethodNotAllowed(f"Method not allowed: {method_id}")
-    return _dispatch_registered(capability, _coerce_params(capability, params))
+    result = _dispatch_registered(capability, _coerce_params(capability, params))
+    _emit_validation_trace(capability, result)
+    return result
+
+
+def _emit_validation_trace(capability: CapabilityDefinition, result: dict[str, Any]) -> None:
+    """Record only registry-owned method/effect facts for an explicit validation sink."""
+    from tools.lib.paths import resolve_user_data_dir
+    from tools.lib.tool_call_log import emit_tool_call_log
+
+    emit_tool_call_log(
+        capability.method_id,
+        params={},
+        result={
+            "operation_class": capability.operation_class.value,
+            "derived_state_effect": capability.derived_state_effect.value,
+            "derived_state_rebuildable": capability.derived_state_rebuildable,
+        },
+        success=bool(result.get("success", True)),
+        forbidden_root=resolve_user_data_dir(),
+    )
 
 
 def _coerce_params(

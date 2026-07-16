@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -83,6 +84,46 @@ def test_journal_get_dispatch_matches_direct_canonical_application(
     assert via_dispatcher["success"] is expected_success
     if expected_code is not None:
         assert via_dispatcher["error"]["code"] == expected_code
+
+
+def test_dispatch_validation_trace_contains_only_registry_effect_facts(
+    isolated_data_dir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools.host_agent_channel.dispatcher import dispatch
+
+    rel_path = _seed_journal(
+        isolated_data_dir,
+        date="2026-05-28",
+        seq="001",
+        body="Private journal content must never enter the projection trace.",
+    )
+    trace_path = tmp_path / "trace" / "projection-trace.jsonl"
+    trace_path.parent.mkdir()
+    monkeypatch.setenv("LIFE_INDEX_VALIDATION_MODE", "1")
+    monkeypatch.setenv("LIFE_INDEX_TOOL_CALL_LOG", str(trace_path))
+
+    result = dispatch("journal.get", {"path": rel_path})
+
+    assert result["success"] is True
+    records = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+    assert records == [
+        {
+            "params": {},
+            "result": {
+                "derived_state_effect": "none",
+                "derived_state_rebuildable": False,
+                "operation_class": "read",
+            },
+            "success": True,
+            "tool": "journal.get",
+            "ts": records[0]["ts"],
+        }
+    ]
+    serialized = json.dumps(records, ensure_ascii=False)
+    assert rel_path not in serialized
+    assert "Private journal content" not in serialized
 
 
 @pytest.mark.parametrize("selector", [{}, {"path": "one", "id": "two"}])
