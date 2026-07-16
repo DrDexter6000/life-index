@@ -13,6 +13,8 @@ Verifies:
 """
 
 import re
+from pathlib import Path
+
 import pytest
 
 from tools.lib.errors import (
@@ -69,16 +71,33 @@ API_MD_ERROR_CODES = {
     "E0603": ("FTS index error", "continue"),
 }
 
-VALID_RECOVERY_STRATEGIES = {
-    "ask_user",
-    "skip_optional",
-    "continue",
-    "continue_empty",
-    "fail",
-    "retry",
-}
-
 ERROR_CODE_PATTERN = re.compile(r"^E\d{4}$")
+API_MD_PATH = Path(__file__).resolve().parents[2] / "docs" / "API.md"
+COMMON_RECOVERY_STRATEGY_SECTION = re.compile(
+    r"^## 恢复策略[ \t]*\r?\n(?P<section>.*?)(?=^## |\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+COMMON_RECOVERY_STRATEGY_ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|", re.MULTILINE)
+
+
+def _documented_common_recovery_strategies(api_md: str) -> tuple[str, ...]:
+    """Extract only strategy names from the common API recovery table."""
+    section_match = COMMON_RECOVERY_STRATEGY_SECTION.search(api_md)
+    assert section_match is not None, "docs/API.md is missing the common recovery strategy section"
+
+    strategies = tuple(COMMON_RECOVERY_STRATEGY_ROW.findall(section_match.group("section")))
+    assert strategies, "docs/API.md common recovery strategy table has no strategy rows"
+    return strategies
+
+
+def _assert_api_recovery_strategy_contract(api_md: str) -> None:
+    """Require the public common recovery table to match the runtime enum exactly."""
+    documented = _documented_common_recovery_strategies(api_md)
+    runtime = tuple(strategy.value for strategy in RecoveryStrategy)
+    assert documented == runtime, (
+        "docs/API.md common recovery strategy table must exactly match "
+        f"RecoveryStrategy; documented={documented}, runtime={runtime}"
+    )
 
 
 class TestErrorCodeCompleteness:
@@ -124,17 +143,38 @@ class TestErrorCodeCompleteness:
 class TestRecoveryStrategies:
     """Recovery strategy mapping matches API.md documentation."""
 
-    def test_valid_strategies_match_runtime_enum(self):
-        """The public valid set and RecoveryStrategy enum stay aligned."""
-        assert {strategy.value for strategy in RecoveryStrategy} == VALID_RECOVERY_STRATEGIES
-
     def test_all_strategies_are_valid_values(self):
         """Every strategy value in RECOVERY_STRATEGIES is a valid strategy."""
+        valid_strategies = {strategy.value for strategy in RecoveryStrategy}
         for code, strategy in LifeIndexError.RECOVERY_STRATEGIES.items():
-            assert strategy in VALID_RECOVERY_STRATEGIES, (
-                f"Code {code} has invalid strategy '{strategy}', "
-                f"valid: {VALID_RECOVERY_STRATEGIES}"
+            assert str(strategy) in valid_strategies, (
+                f"Code {code} has invalid strategy '{strategy}', " f"valid: {valid_strategies}"
             )
+
+    def test_api_common_recovery_strategy_table_matches_runtime_enum(self):
+        """The public common recovery table exposes exactly the runtime enum values."""
+        _assert_api_recovery_strategy_contract(API_MD_PATH.read_text(encoding="utf-8"))
+
+    def test_stale_common_recovery_table_is_rejected_despite_unrelated_backticks(self):
+        """Only the common recovery table, not later inline code, defines enum values."""
+        stale_api = """
+## 恢复策略
+
+| 策略 | 说明 | Agent 行为 |
+|------|------|-----------|
+| `ask_user` | 需要用户干预 | 向用户展示错误并询问 |
+| `skip_optional` | 可跳过的可选功能 | 跳过该功能，继续执行 |
+| `continue_empty` | 无结果但可继续 | 返回空结果，不报错 |
+| `fail` | 不可恢复 | 停止操作，报告错误 |
+| `retry` | 可重试 | 自动重试一次 |
+
+## 其它内容
+
+这段与恢复策略表无关的说明提到了 `continue`。
+"""
+
+        with pytest.raises(AssertionError, match="common recovery strategy table"):
+            _assert_api_recovery_strategy_contract(stale_api)
 
     @pytest.mark.parametrize(
         "code,expected_strategy",
