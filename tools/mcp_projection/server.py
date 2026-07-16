@@ -7,23 +7,28 @@ from dataclasses import MISSING, fields
 from typing import Annotated, Any, Callable, cast, get_type_hints
 
 from tools.host_agent_channel.dispatcher import dispatch
-from tools.host_agent_channel.registry import CAPABILITY_REGISTRY, CapabilityDefinition
+from tools.host_agent_channel.registry import (
+    CAPABILITY_REGISTRY,
+    CapabilityDefinition,
+    projection_annotations,
+)
 
 
 class OptionalMcpDependencyError(RuntimeError):
     """Raised only when the optional projection entrypoint lacks its SDK."""
 
 
-def _load_fast_mcp() -> Any:
+def _load_mcp_components() -> tuple[Any, Any]:
     """Import the optional SDK only when a projection is actually created."""
     try:
         from mcp.server.fastmcp import FastMCP
+        from mcp.types import ToolAnnotations
     except ModuleNotFoundError as exc:
         raise OptionalMcpDependencyError(
             "The optional MCP projection requires mcp==1.27.2; "
             "install Life Index with the mcp extra."
         ) from exc
-    return FastMCP
+    return FastMCP, ToolAnnotations
 
 
 def _registry_tool_callable(
@@ -67,7 +72,7 @@ def _registry_tool_callable(
 
 def create_mcp_server() -> Any:
     """Create a stdio-capable MCP server with exactly the registered tools."""
-    FastMCP = _load_fast_mcp()
+    FastMCP, ToolAnnotations = _load_mcp_components()
     from pydantic import Field
 
     server = FastMCP("Life Index Core Projection")
@@ -76,6 +81,7 @@ def create_mcp_server() -> Any:
             _registry_tool_callable(capability, Field),
             name=capability.method_id,
             description=capability.description,
+            annotations=ToolAnnotations(**projection_annotations(capability)),
             structured_output=False,
         )
     return server

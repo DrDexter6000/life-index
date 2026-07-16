@@ -18,22 +18,28 @@ def _tool_map(server: Any) -> dict[str, Any]:
     return {tool.name: tool for tool in asyncio.run(server.list_tools())}
 
 
-def test_projection_exposes_only_registry_tools_with_registry_schemas() -> None:
-    from tools.host_agent_channel.registry import CAPABILITY_REGISTRY
+def test_projection_exposes_only_registry_tools_with_registry_owned_metadata() -> None:
+    from tools.host_agent_channel.registry import CAPABILITY_REGISTRY, projection_annotations
     from tools.mcp_projection.server import create_mcp_server
 
     server = create_mcp_server()
     tools = _tool_map(server)
 
-    assert set(tools) == set(CAPABILITY_REGISTRY) == {"health", "journal.get", "search"}
+    assert set(tools) == set(CAPABILITY_REGISTRY)
     for method_id, capability in CAPABILITY_REGISTRY.items():
         tool = tools[method_id]
         assert tool.description == capability.description
+        assert tool.annotations is not None
+        assert tool.annotations.model_dump(exclude_none=True) == projection_annotations(capability)
         properties = tool.inputSchema.get("properties", {})
         expected_fields = {field.name: field for field in fields(capability.params_type)}
         assert set(properties) == set(expected_fields)
         for name, definition in expected_fields.items():
             assert properties[name]["description"] == definition.metadata["description"]
+
+    search = CAPABILITY_REGISTRY["search"]
+    assert tools["search"].description == search.description
+    assert "may refresh only rebuildable `.index` derived state" in search.description
 
 
 def test_projection_has_no_resources_or_prompts() -> None:

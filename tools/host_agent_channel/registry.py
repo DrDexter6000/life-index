@@ -6,8 +6,10 @@ but cannot add methods, schemas, or side-effect authority of their own.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Literal, TypeAlias
 
 
@@ -121,30 +123,57 @@ class CapabilityDefinition:
     derived_state_effect: DerivedStateEffect
     derived_state_paths: tuple[str, ...] = ()
     derived_state_rebuildable: bool = False
+    destructive: bool = False
+    idempotent: bool = True
+    open_world: bool = False
 
 
-CAPABILITY_REGISTRY: dict[str, CapabilityDefinition] = {
-    "health": CapabilityDefinition(
-        method_id="health",
-        description="Return the canonical Life Index health envelope.",
-        params_type=HealthParams,
-        operation_class=OperationClass.READ,
-        derived_state_effect=DerivedStateEffect.NONE,
-    ),
-    "journal.get": CapabilityDefinition(
-        method_id="journal.get",
-        description="Read one canonical journal entry by id or relative path.",
-        params_type=JournalGetParams,
-        operation_class=OperationClass.READ,
-        derived_state_effect=DerivedStateEffect.NONE,
-    ),
-    "search": CapabilityDefinition(
-        method_id="search",
-        description="Run canonical deterministic journal retrieval.",
-        params_type=SearchParams,
-        operation_class=OperationClass.READ,
-        derived_state_effect=DerivedStateEffect.INDEX_REFRESH,
-        derived_state_paths=(".index",),
-        derived_state_rebuildable=True,
-    ),
-}
+def projection_annotations(capability: CapabilityDefinition) -> dict[str, bool]:
+    """Derive transport hints from the registry, never from an adapter list."""
+    return {
+        "readOnlyHint": capability.operation_class is OperationClass.READ,
+        "destructiveHint": capability.destructive,
+        "idempotentHint": capability.idempotent,
+        "openWorldHint": capability.open_world,
+    }
+
+
+CAPABILITY_REGISTRY: Mapping[str, CapabilityDefinition] = MappingProxyType(
+    {
+        "health": CapabilityDefinition(
+            method_id="health",
+            description=(
+                "Return the canonical Life Index health envelope. Logical read; it performs "
+                "no derived-state write."
+            ),
+            params_type=HealthParams,
+            operation_class=OperationClass.READ,
+            derived_state_effect=DerivedStateEffect.NONE,
+        ),
+        "journal.get": CapabilityDefinition(
+            method_id="journal.get",
+            description=(
+                "Read one canonical journal entry by id or relative path. Logical read; it "
+                "performs no derived-state write."
+            ),
+            params_type=JournalGetParams,
+            operation_class=OperationClass.READ,
+            derived_state_effect=DerivedStateEffect.NONE,
+        ),
+        "search": CapabilityDefinition(
+            method_id="search",
+            description=(
+                "Run canonical deterministic journal retrieval. Logical read; it may refresh only "
+                "rebuildable `.index` derived state and cannot mutate journals, frontmatter, "
+                "attachments, "
+                "entity graph, metadata cache, or search metrics."
+            ),
+            params_type=SearchParams,
+            operation_class=OperationClass.READ,
+            derived_state_effect=DerivedStateEffect.INDEX_REFRESH,
+            derived_state_paths=(".index",),
+            derived_state_rebuildable=True,
+            idempotent=False,
+        ),
+    }
+)

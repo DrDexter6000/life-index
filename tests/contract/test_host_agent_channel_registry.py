@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
 
@@ -14,9 +16,10 @@ def test_registry_is_the_single_exact_read_authority() -> None:
         JournalGetParams,
         OperationClass,
         SearchParams,
+        projection_annotations,
     )
 
-    assert set(CAPABILITY_REGISTRY) == {"health", "journal.get", "search"}
+    assert tuple(CAPABILITY_REGISTRY) == ("health", "journal.get", "search")
     assert CAPABILITY_REGISTRY["health"].params_type is HealthParams
     assert CAPABILITY_REGISTRY["journal.get"].params_type is JournalGetParams
     assert CAPABILITY_REGISTRY["search"].params_type is SearchParams
@@ -28,6 +31,41 @@ def test_registry_is_the_single_exact_read_authority() -> None:
     assert CAPABILITY_REGISTRY["search"].derived_state_effect is DerivedStateEffect.INDEX_REFRESH
     assert CAPABILITY_REGISTRY["search"].derived_state_paths == (".index",)
     assert CAPABILITY_REGISTRY["search"].derived_state_rebuildable is True
+    for capability in CAPABILITY_REGISTRY.values():
+        assert projection_annotations(capability) == {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": capability.idempotent,
+            "openWorldHint": False,
+        }
+
+
+def test_registry_is_runtime_immutable_and_describes_the_search_effect() -> None:
+    """The closed registry rejects mutation and owns the projection facts."""
+    from tools.host_agent_channel.registry import CAPABILITY_REGISTRY
+
+    mutable_registry = cast(Any, CAPABILITY_REGISTRY)
+    try:
+        with pytest.raises(TypeError):
+            mutable_registry["write"] = CAPABILITY_REGISTRY["health"]
+    finally:
+        if isinstance(mutable_registry, dict):
+            mutable_registry.pop("write", None)
+
+    search = CAPABILITY_REGISTRY["search"]
+    assert "Logical read" in search.description
+    assert "may refresh only rebuildable `.index` derived state" in search.description
+    for protected_target in (
+        "journals",
+        "frontmatter",
+        "attachments",
+        "entity graph",
+        "metadata cache",
+        "search metrics",
+    ):
+        assert protected_target in search.description
+    for method_id in ("health", "journal.get"):
+        assert "no derived-state write" in CAPABILITY_REGISTRY[method_id].description
 
 
 def test_forbidden_method_is_rejected_before_any_core_handler_runs(monkeypatch) -> None:

@@ -66,6 +66,10 @@ canonical application functions used by the direct CLI.  It preserves the
 existing domain envelopes and direct CLI remains a supported canonical path.
 `search` does not mutate journals, frontmatter, attachments, entity graph,
 metadata cache, or search metrics through this channel.
+The optional MCP projection derives its tool annotations from the same
+registry: every method declares `readOnlyHint=true`, `destructiveHint=false`,
+and `openWorldHint=false`; `idempotentHint` remains registry-specific because
+`search` may perform its bounded derived-state refresh.
 Its existing validation-only tool-call trace remains available as external
 control evidence; a configured trace target that resolves into or overlaps the
 data directory is rejected before it can create source state.

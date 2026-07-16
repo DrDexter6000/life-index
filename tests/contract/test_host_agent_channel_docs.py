@@ -20,6 +20,9 @@ def test_public_docs_describe_the_closed_generic_projection() -> None:
     assert "python -m tools.mcp_projection" in api
     assert "generic, removable" in api
     assert "only `.index`" in api
+    assert "readOnlyHint" in api
+    assert "destructiveHint" in api
+    assert "openWorldHint" in api
     assert "validation-only tool-call trace" in api
     assert "resolves into or overlaps the\ndata directory" in api
     assert "Codex is the first consumer" in skill
