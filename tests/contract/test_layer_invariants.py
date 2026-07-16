@@ -8,11 +8,18 @@ developer-only LLM entry points.
 from __future__ import annotations
 
 import ast
+import os
 from pathlib import Path
+import shutil
+import stat
+import subprocess
+from uuid import uuid4
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+COVERAGE_GATE_RUNNER = REPO_ROOT / "scripts" / "run_coverage_gate.sh"
 
 L2_PRODUCTION_ROOTS = (
     REPO_ROOT / "tools" / "aggregate",
@@ -115,6 +122,108 @@ def _workflow_on(workflow: dict) -> dict:
     return workflow.get("on") or workflow.get(True)
 
 
+def _coverage_gate_bash() -> str:
+    """Locate a real Bash without hard-coding an operator-specific Windows path."""
+    if os.name != "nt":
+        bash = shutil.which("bash")
+        if bash:
+            return bash
+        pytest.skip("bash is required for the coverage-gate subprocess seam")
+
+    git = shutil.which("git")
+    if git:
+        for root in Path(git).resolve().parents:
+            candidate = root / "bin" / "bash.exe"
+            if candidate.is_file():
+                return str(candidate)
+
+    bash = shutil.which("bash")
+    if bash and Path(bash).resolve().parent.name.lower() != "system32":
+        return bash
+    pytest.skip("Git Bash is required for the Windows coverage-gate subprocess seam")
+
+
+def _write_coverage_gate_python_stub(tmp_path: Path) -> Path:
+    stub_dir = tmp_path / "coverage-gate-stub-bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "python"
+    stub.write_text(
+        """#!/usr/bin/env bash
+set -eu
+
+if [ "${1:-}" = "-" ]; then
+    cat >/dev/null
+    exit 0
+fi
+
+if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pytest" ]; then
+    printf '%s\\n' '__COVERAGE_GATE_STUB_ARGS__'
+    printf '%s\\n' "$@"
+    printf '%s\\n' '__COVERAGE_GATE_STUB_ENV__'
+    printf 'LIFE_INDEX_DATA_DIR=%s\\n' "${LIFE_INDEX_DATA_DIR:-}"
+    printf 'COVERAGE_FILE=%s\\n' "${COVERAGE_FILE:-}"
+    exit 0
+fi
+
+printf 'unexpected stub python invocation: %s\\n' "$*" >&2
+exit 64
+""",
+        encoding="utf-8",
+    )
+    stub.chmod(stub.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return stub_dir
+
+
+def _coverage_gate_env(stub_dir: Path, basetemp: str) -> dict[str, str]:
+    env = os.environ.copy()
+    env["PATH"] = str(stub_dir) + os.pathsep + env.get("PATH", "")
+    # If a platform cannot resolve the stub, fail before test collection rather
+    # than accidentally executing the real coverage inventory.
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    env["COVERAGE_GATE_BASETEMP"] = basetemp
+    return env
+
+
+def _run_coverage_gate(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [_coverage_gate_bash(), "scripts/run_coverage_gate.sh"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def _run_pre_push_env_check(env: dict[str, str]) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [_coverage_gate_bash(), "scripts/pre-push-gate.sh", "--check-env"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _reported_coverage_basetemp(output: str) -> str:
+    prefix = "Using pytest basetemp: "
+    for line in output.splitlines():
+        if line.startswith(prefix):
+            return line.removeprefix(prefix)
+    raise AssertionError(f"coverage runner did not report a pytest basetemp:\n{output}")
+
+
+def _stubbed_pytest_capture(output: str) -> tuple[list[str], dict[str, str]]:
+    lines = output.splitlines()
+    args_marker = lines.index("__COVERAGE_GATE_STUB_ARGS__")
+    env_marker = lines.index("__COVERAGE_GATE_STUB_ENV__")
+    args = lines[args_marker + 1 : env_marker]
+    environment = dict(line.split("=", 1) for line in lines[env_marker + 1 :] if "=" in line)
+    return args, environment
+
+
 def test_pr_test_gates_skip_draft_wip_pushes() -> None:
     workflow = _workflow("tests.yml")
     draft_guard = "github.event.pull_request.draft == false"
@@ -179,14 +288,48 @@ def test_pre_push_gate_preflights_and_runs_the_canonical_coverage_runner() -> No
     assert "--cov=tools" not in source
 
 
-def test_canonical_coverage_runner_forces_an_isolated_synthetic_data_root() -> None:
-    runner = REPO_ROOT / "scripts" / "run_coverage_gate.sh"
+def test_pre_push_gate_allocates_a_unique_run_without_shared_temp_cleanup() -> None:
+    source = (REPO_ROOT / "scripts" / "pre-push-gate.sh").read_text(encoding="utf-8")
 
-    assert runner.is_file()
-    source = runner.read_text(encoding="utf-8")
+    assert 'mktemp -d "$PYTEST_TEMP_ROOT/prepush.XXXXXX"' in source
+    assert "rm -rf .pytest_tmp/*" not in source
+    assert 'PYTEST_BASETEMP=".pytest_tmp/prepush_${TIMESTAMP}"' not in source
+
+
+def test_pre_push_env_preflight_allocates_distinct_owned_run_directories() -> None:
+    env = os.environ.copy()
+    if os.name != "nt":
+        env["ALLOW_NON_GIT_BASH"] = "1"
+
+    processes = [_run_pre_push_env_check(env) for _ in range(2)]
+    outputs = [process.communicate(timeout=30) for process in processes]
+    combined_outputs = [stdout + stderr for stdout, stderr in outputs]
+    run_directories: list[Path] = []
+    prefix = "Run directory: "
+
+    try:
+        for process, output in zip(processes, combined_outputs, strict=True):
+            assert process.returncode == 0, output
+            run_directory = next(
+                line.removeprefix(prefix) for line in output.splitlines() if line.startswith(prefix)
+            )
+            path = REPO_ROOT / run_directory
+            assert path.parent == REPO_ROOT / ".pytest_tmp"
+            assert path.is_dir()
+            run_directories.append(path)
+
+        assert len({path.name for path in run_directories}) == 2
+    finally:
+        for path in run_directories:
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def test_canonical_coverage_runner_forces_an_isolated_synthetic_data_root() -> None:
+    assert COVERAGE_GATE_RUNNER.is_file()
+    source = COVERAGE_GATE_RUNNER.read_text(encoding="utf-8")
     assert "COVERAGE_GATE_BASETEMP" in source
     assert "RUNNER_TEMP" in source
-    assert "must be an isolated child" in source
+    assert "parent resolves outside its allowed isolated root" in source
     assert "pytest_cov" in source
     assert "python -m pytest" in source
     assert '"blocker or contract"' in source
@@ -194,7 +337,90 @@ def test_canonical_coverage_runner_forces_an_isolated_synthetic_data_root() -> N
     assert "--cov-report=term-missing" in source
     assert '--basetemp="$PYTEST_BASETEMP"' in source
     assert 'export LIFE_INDEX_DATA_DIR="$PYTEST_BASETEMP/data"' in source
+    assert 'export COVERAGE_FILE="$PYTEST_BASETEMP/.coverage"' in source
+    assert "pwd -P" in source
+    assert '*".."*' not in source
     assert "--cov-fail-under" not in source
+
+
+def test_coverage_runner_forces_data_and_coverage_file_with_a_stubbed_python(
+    tmp_path: Path,
+) -> None:
+    run_root = REPO_ROOT / ".pytest_tmp" / f"coverage-runner-{uuid4().hex}"
+    run_root.mkdir(parents=True)
+    inherited_data = tmp_path / "inherited-life-index-data"
+    inherited_coverage = tmp_path / "inherited-coverage-file"
+    relative_basetemp = (Path(".pytest_tmp") / run_root.name / "coverage").as_posix()
+
+    env = _coverage_gate_env(_write_coverage_gate_python_stub(tmp_path), relative_basetemp)
+    env["LIFE_INDEX_DATA_DIR"] = str(inherited_data)
+    env["COVERAGE_FILE"] = str(inherited_coverage)
+
+    try:
+        result = _run_coverage_gate(env)
+        assert result.returncode == 0, result.stdout + result.stderr
+        basetemp = _reported_coverage_basetemp(result.stdout)
+        pytest_args, captured_env = _stubbed_pytest_capture(result.stdout)
+
+        assert "-m" in pytest_args
+        assert "blocker or contract" in pytest_args
+        assert "--cov=tools" in pytest_args
+        assert "--cov-report=term-missing" in pytest_args
+        assert f"--basetemp={basetemp}" in pytest_args
+        assert captured_env["LIFE_INDEX_DATA_DIR"] == f"{basetemp}/data"
+        assert captured_env["COVERAGE_FILE"] == f"{basetemp}/.coverage"
+        assert captured_env["LIFE_INDEX_DATA_DIR"] != str(inherited_data)
+        assert captured_env["COVERAGE_FILE"] != str(inherited_coverage)
+        assert "Ignoring inherited LIFE_INDEX_DATA_DIR" in result.stdout
+        assert "Ignoring inherited COVERAGE_FILE" in result.stdout
+    finally:
+        shutil.rmtree(run_root, ignore_errors=True)
+
+
+def test_coverage_runner_accepts_a_physically_contained_dotdot_parent(tmp_path: Path) -> None:
+    run_root = REPO_ROOT / ".pytest_tmp" / f"coverage-dotdot-{uuid4().hex}"
+    (run_root / "normalizing-parent").mkdir(parents=True)
+    relative_basetemp = (
+        Path(".pytest_tmp") / run_root.name / "normalizing-parent" / ".." / "coverage"
+    ).as_posix()
+
+    try:
+        result = _run_coverage_gate(
+            _coverage_gate_env(_write_coverage_gate_python_stub(tmp_path), relative_basetemp)
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _reported_coverage_basetemp(result.stdout).endswith(f"/{run_root.name}/coverage")
+    finally:
+        shutil.rmtree(run_root, ignore_errors=True)
+
+
+def test_coverage_runner_rejects_symlinked_parent_before_creating_external_child(
+    tmp_path: Path,
+) -> None:
+    run_root = REPO_ROOT / ".pytest_tmp" / f"coverage-symlink-{uuid4().hex}"
+    outside_parent = tmp_path / "outside-parent"
+    outside_parent.mkdir()
+    run_root.mkdir(parents=True)
+    linked_parent = run_root / "linked-parent"
+    try:
+        linked_parent.symlink_to(outside_parent, target_is_directory=True)
+    except OSError:
+        shutil.rmtree(run_root, ignore_errors=True)
+        pytest.skip("symlink creation is unavailable on this platform")
+
+    relative_basetemp = (
+        Path(".pytest_tmp") / run_root.name / "linked-parent" / "coverage"
+    ).as_posix()
+    try:
+        result = _run_coverage_gate(
+            _coverage_gate_env(_write_coverage_gate_python_stub(tmp_path), relative_basetemp)
+        )
+        assert result.returncode != 0
+        assert "COVERAGE GATE FAIL" in result.stdout + result.stderr
+        assert not (outside_parent / "coverage").exists()
+    finally:
+        linked_parent.unlink(missing_ok=True)
+        shutil.rmtree(run_root, ignore_errors=True)
 
 
 def test_ci_inventory_promotes_coverage_and_keeps_quarantine_tier2() -> None:

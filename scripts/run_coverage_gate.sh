@@ -36,8 +36,8 @@ if [ "$#" -ne 0 ]; then
     exit 2
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 cd "$REPO_ROOT"
 
 command -v python >/dev/null 2>&1 || gate_fail "missing required command: python"
@@ -63,23 +63,15 @@ if [ "${COVERAGE_GATE_BASETEMP+x}" = "x" ] && [ -z "$COVERAGE_GATE_BASETEMP" ]; 
     gate_fail "COVERAGE_GATE_BASETEMP cannot be empty"
 fi
 
-TIMESTAMP="$(date +%s)"
-DEFAULT_BASETEMP="$REPO_ROOT/.pytest_tmp/coverage_${TIMESTAMP}_$$"
-REQUESTED_BASETEMP="${COVERAGE_GATE_BASETEMP:-$DEFAULT_BASETEMP}"
-
-if [[ "$REQUESTED_BASETEMP" = /* ]]; then
-    PYTEST_BASETEMP="$REQUESTED_BASETEMP"
-else
-    PYTEST_BASETEMP="$REPO_ROOT/$REQUESTED_BASETEMP"
-fi
-
-if [[ "$PYTEST_BASETEMP" == *".."* ]]; then
-    gate_fail "COVERAGE_GATE_BASETEMP cannot contain '..'"
-fi
-
 REPO_TEMP_ROOT="$REPO_ROOT/.pytest_tmp"
+if [ -L "$REPO_TEMP_ROOT" ]; then
+    gate_fail "repository test temp root must not be a symlink"
+fi
 mkdir -p "$REPO_TEMP_ROOT" || gate_fail "cannot create repository test temp root"
 REPO_TEMP_ROOT="$(cd "$REPO_TEMP_ROOT" && pwd -P)"
+if [[ "$REPO_TEMP_ROOT" != "$REPO_ROOT/.pytest_tmp" ]]; then
+    gate_fail "repository test temp root resolves outside the repository"
+fi
 SAFE_TEMP_ROOTS=("$REPO_TEMP_ROOT")
 
 if [ -n "${RUNNER_TEMP:-}" ]; then
@@ -87,17 +79,75 @@ if [ -n "${RUNNER_TEMP:-}" ]; then
     SAFE_TEMP_ROOTS+=("$(cd "$RUNNER_TEMP" && pwd -P)")
 fi
 
-is_isolated_child() {
+is_within_safe_root() {
     local candidate="$1"
     local root
     for root in "${SAFE_TEMP_ROOTS[@]}"; do
-        [[ "$candidate" == "$root"/* ]] && return 0
+        [[ "$candidate" == "$root" || "$candidate" == "$root"/* ]] && return 0
     done
     return 1
 }
 
-if ! is_isolated_child "$PYTEST_BASETEMP"; then
-    gate_fail "COVERAGE_GATE_BASETEMP must be an isolated child of .pytest_tmp or RUNNER_TEMP"
+has_symlink_component() {
+    local path="$1"
+    local current="/"
+    local part
+    local -a parts
+    local IFS="/"
+    read -r -a parts <<< "$path"
+
+    for part in "${parts[@]}"; do
+        case "$part" in
+            ""|".")
+                continue
+                ;;
+            "..")
+                current="$(dirname "$current")"
+                continue
+                ;;
+            *)
+                if [ "$current" = "/" ]; then
+                    current="/$part"
+                else
+                    current="$current/$part"
+                fi
+                [ -L "$current" ] && return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
+TIMESTAMP="$(date +%s)"
+DEFAULT_BASETEMP="$REPO_TEMP_ROOT/coverage_${TIMESTAMP}_$$"
+REQUESTED_BASETEMP="${COVERAGE_GATE_BASETEMP:-$DEFAULT_BASETEMP}"
+
+if [[ "$REQUESTED_BASETEMP" = /* ]]; then
+    REQUESTED_FINAL="$REQUESTED_BASETEMP"
+else
+    REQUESTED_FINAL="$REPO_ROOT/$REQUESTED_BASETEMP"
+fi
+
+REQUESTED_PARENT="$(dirname "$REQUESTED_FINAL")"
+REQUESTED_CHILD="$(basename "$REQUESTED_FINAL")"
+case "$REQUESTED_CHILD" in
+    ""|"."|"..")
+        gate_fail "COVERAGE_GATE_BASETEMP must name an isolated child directory"
+        ;;
+esac
+
+[ -d "$REQUESTED_PARENT" ] || gate_fail "COVERAGE_GATE_BASETEMP parent must already exist"
+if has_symlink_component "$REQUESTED_PARENT"; then
+    gate_fail "COVERAGE_GATE_BASETEMP parent contains a symlink"
+fi
+REQUESTED_PARENT="$(cd "$REQUESTED_PARENT" && pwd -P)"
+if ! is_within_safe_root "$REQUESTED_PARENT"; then
+    gate_fail "COVERAGE_GATE_BASETEMP parent resolves outside its allowed isolated root"
+fi
+
+PYTEST_BASETEMP="$REQUESTED_PARENT/$REQUESTED_CHILD"
+if [ -L "$PYTEST_BASETEMP" ]; then
+    gate_fail "COVERAGE_GATE_BASETEMP final child must not be a symlink"
 fi
 
 if [ -e "$PYTEST_BASETEMP" ] && [ ! -d "$PYTEST_BASETEMP" ]; then
@@ -106,11 +156,11 @@ fi
 mkdir -p "$PYTEST_BASETEMP" || gate_fail "cannot create COVERAGE_GATE_BASETEMP"
 PYTEST_BASETEMP="$(cd "$PYTEST_BASETEMP" && pwd -P)"
 
-if ! is_isolated_child "$PYTEST_BASETEMP"; then
+if ! is_within_safe_root "$PYTEST_BASETEMP"; then
     gate_fail "COVERAGE_GATE_BASETEMP resolves outside its allowed isolated root"
 fi
 
-if [ -n "${LIFE_INDEX_DATA_DIR:-}" ] && [ "$LIFE_INDEX_DATA_DIR" != "$PYTEST_BASETEMP/data" ]; then
+if [ "${LIFE_INDEX_DATA_DIR+x}" = "x" ]; then
     echo "Ignoring inherited LIFE_INDEX_DATA_DIR; using synthetic coverage data root."
 fi
 export LIFE_INDEX_DATA_DIR="$PYTEST_BASETEMP/data"
@@ -120,11 +170,20 @@ if [ -e "$LIFE_INDEX_DATA_DIR" ] && { [ ! -d "$LIFE_INDEX_DATA_DIR" ] || [ -L "$
 fi
 mkdir -p "$LIFE_INDEX_DATA_DIR" || gate_fail "cannot create synthetic LIFE_INDEX_DATA_DIR"
 
+if [ "${COVERAGE_FILE+x}" = "x" ]; then
+    echo "Ignoring inherited COVERAGE_FILE; using isolated coverage data file."
+fi
+export COVERAGE_FILE="$PYTEST_BASETEMP/.coverage"
+if [ -L "$COVERAGE_FILE" ] || { [ -e "$COVERAGE_FILE" ] && [ -d "$COVERAGE_FILE" ]; }; then
+    gate_fail "isolated COVERAGE_FILE must not be a symlink or directory"
+fi
+
 export LIFE_INDEX_INDEX_FTS_ONLY="${LIFE_INDEX_INDEX_FTS_ONLY:-1}"
 
 echo "Coverage threshold: pyproject.toml [tool.coverage.report].fail_under"
 echo "Using pytest basetemp: $PYTEST_BASETEMP"
 echo "Using synthetic LIFE_INDEX_DATA_DIR: $LIFE_INDEX_DATA_DIR"
+echo "Using isolated COVERAGE_FILE: $COVERAGE_FILE"
 
 python -m pytest -m "blocker or contract" -v --timeout=300 \
     --cov=tools --cov-report=term-missing --basetemp="$PYTEST_BASETEMP"

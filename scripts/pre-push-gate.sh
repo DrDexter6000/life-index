@@ -28,10 +28,19 @@ PYTEST_TIMEOUT_SECONDS=120
 NON_TEST_MARGIN_SECONDS=900
 RECOMMENDED_WATCHDOG_SECONDS=$((BLOCKER_TIMEOUT_SECONDS + CONTRACT_TIMEOUT_SECONDS + EVAL_TIMEOUT_SECONDS + COVERAGE_TIMEOUT_SECONDS + NON_TEST_MARGIN_SECONDS))
 
-TIMESTAMP=$(date +%s)
+PYTEST_TEMP_ROOT=".pytest_tmp"
+mkdir -p "$PYTEST_TEMP_ROOT" || {
+    echo "GATE FAIL: cannot create pre-push test temp root" >&2
+    exit 1
+}
+PYTEST_BASETEMP="$(mktemp -d "$PYTEST_TEMP_ROOT/prepush.XXXXXX")" || {
+    echo "GATE FAIL: cannot allocate an isolated pre-push test run directory" >&2
+    exit 1
+}
+RUN_ID="$(basename "$PYTEST_BASETEMP")"
 LOG_DIR=".agent-reports/pre-push-gate"
 mkdir -p "$LOG_DIR"
-LOG="$LOG_DIR/run_${TIMESTAMP}.log"
+LOG="$LOG_DIR/${RUN_ID}.log"
 echo "Log: $LOG"
 exec > >(tee "$LOG") 2>&1
 
@@ -40,6 +49,7 @@ echo "================================================"
 echo "Life Index pre-push gate"
 echo "Start: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "Repo:  $REPO_ROOT"
+echo "Run directory: $PYTEST_BASETEMP"
 echo "SSOT:  docs/CI_HARD_CHECKS.md"
 echo "Expected shell: Git Bash (MSYSTEM set, non-WSL)"
 echo "Recommended outer watchdog: ${RECOMMENDED_WATCHDOG_SECONDS}s"
@@ -140,12 +150,8 @@ run_check "git diff --check"     git diff --check
 # === compile sanity ===
 run_check "compileall tools tests" python -m compileall -q tools tests
 
-# === L2 pre-Gate state hygiene (must run before pytest) ===
-# Clean .pytest_tmp to avoid pollution from previous interrupted runs
-rm -rf .pytest_tmp/* .pytest_tmp/.* 2>/dev/null || true
-# Use isolated basetemp for this run to avoid contention with concurrent runs
-PYTEST_BASETEMP=".pytest_tmp/prepush_${TIMESTAMP}"
-mkdir -p "$PYTEST_BASETEMP"
+# === Per-run isolated state (must run before pytest) ===
+# This run owns only its mktemp directory; never remove a concurrent run's state.
 echo "Using pytest basetemp: $PYTEST_BASETEMP"
 
 # Keep every CLI/test subprocess off the real user data directory. Some tests
