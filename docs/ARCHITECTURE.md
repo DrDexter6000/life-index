@@ -54,7 +54,9 @@ final passing state:
 - #169 — Skill progressive disclosure is implemented, and Spec/Quality review
   passed. The issue remains open pending the final D1 phase gate and CTO
   acceptance.
-- #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
+- #164 — optional Core Capability Gateway typed 1:1 projection: implemented
+  candidate; remains open pending D4 closeout review and the final phase gate
+  and CTO acceptance.
 <!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->
 
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:START -->
@@ -66,10 +68,10 @@ final passing state:
 | Host Agent + Skill | Owns planning, multi-hop reasoning, orchestration, interpretation, and synthesis. |
 | GUI | Presentation only; no intelligence; strict adapter stays GUI-owned. |
 | Current bridge | Non-Core and GUI-owned. |
-| Core Capability Gateway | Optional future typed 1:1 projection under #164; unimplemented; not a second semantic API; no intelligence. |
+| Core Capability Gateway | Optional implemented generic typed 1:1 projection under #164; not a second semantic API; no intelligence. |
 
 The table above is the sole normative role-assignment surface in this block.
-The future Core Capability Gateway, if implemented, is only a contract-equivalent transport of
+The optional Core Capability Gateway is only a contract-equivalent transport of
 Core operations. It cannot create a parallel semantic contract, and direct Core
 use does not depend on it. The active closed admission-domain catalog belongs
 only to `CHARTER.md §1.10`; this document references C1–C7 without duplicating
@@ -125,7 +127,7 @@ User <-> Addon presentation
 
 - An Addon must not own an LLM, provider selection, API-key handling, or an agent runtime.
 - An Addon and its helper must not bypass Core to read or write L1, duplicate a canonical Core capability, or duplicate runtime adapters.
-- A Core Capability Gateway, if implemented, is only a typed transport projection of the canonical Core Capability Contract. It is not an Agent Runtime Gateway, Host Agent, Life Index brain, reasoning or session owner, or provider boundary.
+- A Core Capability Gateway is only a typed transport projection of the canonical Core Capability Contract. It is not an Agent Runtime Gateway, Host Agent, Life Index brain, reasoning or session owner, or provider boundary.
 - The local CLI remains a canonical direct Core consumer surface. A Core Capability Gateway is optional and cannot become mandatory for direct Core use or replace the CLI.
 
 Advanced Addon implementation, its SDK and schemas, placeholder UI, and later
@@ -419,7 +421,7 @@ ADR-004 禁止的是“把 MCP 当作新的产品接口或并行数据路径来�
 4. It adds **zero new write path**: writes must pass through the same CLI command, lock, validation, audit, and data-boundary logic as direct CLI use.
 5. **CLI remains the authority**: MCP may describe or invoke CLI tools, but must not become the contract owner for schemas, behavior, or persistence.
 
-Therefore the existing `tools/mcp_discovery` discovery stub is constitutional: it is static, read-only, and does not touch user data. A future stdio JSON-RPC shim can be constitutional only if it remains a CLI passthrough that returns the CLI JSON output unchanged. Any MCP implementation that diverges from CLI behavior, owns schemas independently, directly reads/writes the journal data directory, or adds in-tool reasoning/orchestration falls under CHARTER §4.1 “parallel interface” risk.
+Therefore the existing `tools/mcp_discovery` discovery stub remains constitutional: it is static, read-only, and does not touch user data. It is separate from the implemented optional `tools.mcp_projection` stdio transport. That generic projection derives its exact `health`, `journal.get`, and `search` surface from `CAPABILITY_REGISTRY`, calls the canonical Core application functions, and has no independent schema or semantic authority. `search` is read authority with only the rebuildable `.index` derived-state allowance. No D5 hand-written newline JSON-RPC server is present; the optional official SDK owns stdio lifecycle. Any MCP implementation that diverges from CLI behavior, owns schemas independently, directly reads/writes the journal data directory, or adds in-tool reasoning/orchestration falls under CHARTER §4.1 “parallel interface” risk.
 
 ---
 
@@ -491,7 +493,7 @@ Round 8 在分层搜索架构之上，建立了完整的搜索质量保障闭环
 
 ### 5.6 不做什么（本轮实现层约束）
 
-- 不做 WAL/checkpoint、Vector 增量更新、Agent Memory、Multi-Agent、Plugin、MCP
+- 不做 WAL/checkpoint、Vector 增量更新、Agent Memory、Multi-Agent、Plugin、除 ADR-004 所述可移除的通用薄投影外的 MCP 扩张
 
 > 更宽泛的"我们不做什么"系统边界已由 CHARTER §1.7 与第四章反模式黑名单承担。
 > ADR-026 中的 checkpoint/resume 指 long-running L3 模块的 addressable intermediate artifacts，不等于在 L2 检索/索引基座中引入 WAL/checkpoint。

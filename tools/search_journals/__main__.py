@@ -19,6 +19,7 @@ import json
 import sys
 import time
 from importlib import import_module
+from typing import Literal
 
 from .core import hierarchical_search
 from ..lib.config import ensure_dirs
@@ -66,17 +67,21 @@ def _apply_presentation_layer(result: dict, *, limit: int | None, offset: int = 
         result["display_summary"] = "No results found"
 
 
+def _attach_events(payload: dict) -> None:
+    """Attach the existing piggyback-event envelope to a domain result."""
+    from ..lib.events import detect_events
+    from ..lib.event_detectors import register_all_detectors
+
+    register_all_detectors()
+    context = {"journals_dir": get_journals_dir(), "data_dir": get_user_data_dir()}
+    events = detect_events(context=context)
+    payload["events"] = [e.to_dict() for e in events]
+
+
 def _emit_json(payload: dict, *, include_events: bool = True) -> None:
     """Print JSON safely across Windows console encodings."""
     if include_events:
-        # Attach piggyback events before emitting
-        from ..lib.events import detect_events
-        from ..lib.event_detectors import register_all_detectors
-
-        register_all_detectors()
-        context = {"journals_dir": get_journals_dir(), "data_dir": get_user_data_dir()}
-        events = detect_events(context=context)
-        payload["events"] = [e.to_dict() for e in events]
+        _attach_events(payload)
 
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
@@ -86,9 +91,125 @@ def _emit_json(payload: dict, *, include_events: bool = True) -> None:
         print(fallback_text)
 
 
+def run_search(
+    *,
+    query: str | None = None,
+    topic: str | None = None,
+    year: int | None = None,
+    month: int | None = None,
+    project: str | None = None,
+    tags: tuple[str, ...] | list[str] | None = None,
+    mood: tuple[str, ...] | list[str] | None = None,
+    people: tuple[str, ...] | list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    location: str | None = None,
+    weather: str | None = None,
+    level: int = 3,
+    use_index: bool = True,
+    semantic: bool = False,
+    semantic_weight: float = 1.0,
+    fts_weight: float = 1.0,
+    explain: bool = False,
+    semantic_policy: Literal["fallback", "hybrid"] = "fallback",
+    enable_source_tier: bool = False,
+    limit: int = 20,
+    offset: int = 0,
+    include_events: bool = True,
+    source_safe: bool = False,
+) -> dict:
+    """Run the canonical search application function without CLI parsing.
+
+    Direct CLI and transport-neutral callers share this function so the search
+    domain envelope, retrieval, presentation, trace, provenance, and tool-call
+    logging stay owned by the existing Core implementation.  The closed Host
+    Agent channel uses ``source_safe`` to preserve its explicit ``.index``-only
+    derived-state authority without changing direct CLI defaults.
+    """
+    started = time.perf_counter()
+    if not source_safe:
+        ensure_dirs()
+    normalized_tags = list(tags) if tags else None
+    normalized_mood = list(mood) if mood else None
+    normalized_people = list(people) if people else None
+
+    with Trace("search") as trace:
+        with trace.step("hierarchical_search"):
+            result = hierarchical_search(
+                query=query,
+                topic=topic,
+                project=project,
+                tags=normalized_tags,
+                mood=normalized_mood,
+                people=normalized_people,
+                date_from=date_from,
+                date_to=date_to,
+                location=location,
+                weather=weather,
+                year=year,
+                month=month,
+                level=level,
+                use_index=use_index,
+                semantic=semantic,
+                semantic_weight=semantic_weight,
+                fts_weight=fts_weight,
+                explain=explain,
+                semantic_policy=semantic_policy,
+                enable_source_tier=enable_source_tier,
+                emit_metrics=not source_safe,
+                use_metadata_cache=not source_safe,
+                derived_index_only=source_safe,
+            )
+
+    _apply_presentation_layer(result, limit=limit, offset=offset)
+    result["_trace"] = trace.to_dict()
+    provenance_envelope = build_provenance_envelope(
+        source_data=result,
+        generator="search",
+        params={"query": query, "topic": topic, "level": level},
+    )
+    result["schema_version"] = provenance_envelope["schema_version"]
+    result["provenance"] = provenance_envelope["provenance"]
+    # This is validation-only, explicitly configured control evidence.  It
+    # remains separate from metrics and the Life Index data boundary, so the
+    # source-safe channel may retain an activation trace without source writes.
+    emit_tool_call_log(
+        "search",
+        params={
+            "query": query,
+            "topic": topic,
+            "project": project,
+            "tags": normalized_tags,
+            "mood": normalized_mood,
+            "people": normalized_people,
+            "date_from": date_from,
+            "date_to": date_to,
+            "location": location,
+            "weather": weather,
+            "year": year,
+            "month": month,
+            "level": level,
+            "semantic": semantic,
+            "limit": limit,
+            "offset": offset,
+        },
+        result={
+            "total_matches": result.get("total_matches"),
+            "total_found": result.get("total_found"),
+            "total_available": result.get("total_available"),
+            "has_more": result.get("has_more"),
+        },
+        elapsed_ms=(time.perf_counter() - started) * 1000.0,
+        success=bool(result.get("success")),
+        forbidden_root=get_user_data_dir() if source_safe else None,
+    )
+    if include_events:
+        _attach_events(result)
+    return result
+
+
 def main() -> None:
     """CLI entry point"""
-    started = time.perf_counter()
     parser = argparse.ArgumentParser(
         description="Life Index - Search Journals Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -197,9 +318,9 @@ Examples:
     )
 
     args = parser.parse_args()
-    ensure_dirs()
 
     if args.diagnose:
+        ensure_dirs()
         diagnose_search = import_module("tools.lib.search_diagnose").diagnose_search
         _emit_json(diagnose_search(days=args.diagnose_days), include_events=False)
         sys.exit(0)
@@ -221,36 +342,30 @@ Examples:
         else None
     )
 
-    # 执行搜索
-    with Trace("search") as trace:
-        with trace.step("hierarchical_search"):
-            result = hierarchical_search(
-                query=args.query,
-                topic=args.topic,
-                project=args.project,
-                tags=tags,
-                mood=mood,
-                people=people,
-                date_from=args.date_from,
-                date_to=args.date_to,
-                location=args.location,
-                weather=args.weather,
-                year=args.year,
-                month=args.month,
-                level=args.level,
-                use_index=not args.no_index,
-                semantic=args.semantic and not args.no_semantic,
-                semantic_weight=args.semantic_weight,
-                fts_weight=args.fts_weight,
-                explain=args.explain,  # Task 2.1
-                semantic_policy=args.semantic_policy,
-                enable_source_tier=args.enable_source_tier,
-            )
-
-    # Phase 2 (Task 3): Presentation-layer slicing with offset + limit
-    # Per CHARTER §1.11 rule #2: truncation lives in the display layer only;
-    # the retrieval core returns the complete ranked candidate set.
-    _apply_presentation_layer(result, limit=args.limit, offset=args.offset or 0)
+    result = run_search(
+        query=args.query,
+        topic=args.topic,
+        project=args.project,
+        tags=tags,
+        mood=mood,
+        people=people,
+        date_from=args.date_from,
+        date_to=args.date_to,
+        location=args.location,
+        weather=args.weather,
+        year=args.year,
+        month=args.month,
+        level=args.level,
+        use_index=not args.no_index,
+        semantic=args.semantic and not args.no_semantic,
+        semantic_weight=args.semantic_weight,
+        fts_weight=args.fts_weight,
+        explain=args.explain,
+        semantic_policy=args.semantic_policy,
+        enable_source_tier=args.enable_source_tier,
+        limit=args.limit,
+        offset=args.offset or 0,
+    )
 
     # Task 1.2.3: Read full content for top N results
     if args.read_top > 0 and result.get("success") and result.get("merged_results"):
@@ -290,45 +405,7 @@ Examples:
                     item["full_content"] = None
                     item["read_error"] = str(e)
 
-    # 输出结果
-    result["_trace"] = trace.to_dict()
-    provenance_envelope = build_provenance_envelope(
-        source_data=result,
-        generator="search",
-        params={"query": args.query, "topic": args.topic, "level": args.level},
-    )
-    result["schema_version"] = provenance_envelope["schema_version"]
-    result["provenance"] = provenance_envelope["provenance"]
-    emit_tool_call_log(
-        "search",
-        params={
-            "query": args.query,
-            "topic": args.topic,
-            "project": args.project,
-            "tags": tags,
-            "mood": mood,
-            "people": people,
-            "date_from": args.date_from,
-            "date_to": args.date_to,
-            "location": args.location,
-            "weather": args.weather,
-            "year": args.year,
-            "month": args.month,
-            "level": args.level,
-            "semantic": args.semantic and not args.no_semantic,
-            "limit": args.limit,
-            "offset": args.offset,
-        },
-        result={
-            "total_matches": result.get("total_matches"),
-            "total_found": result.get("total_found"),
-            "total_available": result.get("total_available"),
-            "has_more": result.get("has_more"),
-        },
-        elapsed_ms=(time.perf_counter() - started) * 1000.0,
-        success=bool(result.get("success")),
-    )
-    _emit_json(result)
+    _emit_json(result, include_events=False)
 
     sys.exit(0 if result.get("success") else 1)
 

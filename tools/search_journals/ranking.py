@@ -6,9 +6,12 @@ Life Index - Search Journals Tool - Ranking
 
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
+from ..lib.frontmatter import parse_journal_file
 from ..lib.metadata_cache import get_backlinked_by, init_metadata_cache
+from ..lib.path_contract import build_journal_path_fields
+from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.search_constants import (
     SCORE_L1_BASE,
     SCORE_L2_BASE,
@@ -304,7 +307,10 @@ def _compute_dynamic_fts_threshold(
 
 
 def _attach_relation_context(
-    data: Dict[str, Any], *, metadata_conn: Any | None = None
+    data: Dict[str, Any],
+    *,
+    metadata_conn: Any | None = None,
+    source_backlinks: dict[str, list[str]] | None = None,
 ) -> Dict[str, Any]:
     """Attach related_entries and backlinked_by to final search result payload."""
     enriched = data.copy()
@@ -313,20 +319,51 @@ def _attach_relation_context(
         metadata = {}
         enriched["metadata"] = metadata
 
+    rel_path = enriched.get("rel_path")
     related_entries = metadata.get("related_entries", enriched.get("related_entries", []))
     if not isinstance(related_entries, list):
         related_entries = []
 
-    rel_path = enriched.get("rel_path")
     backlinked_by: list[str] = []
     if isinstance(rel_path, str) and rel_path and metadata_conn is not None:
         backlinked_by = get_backlinked_by(metadata_conn, rel_path)
+    elif isinstance(rel_path, str) and rel_path and source_backlinks is not None:
+        backlinked_by = source_backlinks.get(rel_path, [])
 
     enriched["related_entries"] = related_entries
     enriched["backlinked_by"] = backlinked_by
     metadata.setdefault("related_entries", related_entries)
     metadata["backlinked_by"] = backlinked_by
     return enriched
+
+
+def _build_source_backlinks() -> dict[str, list[str]]:
+    """Derive reverse journal relations directly from frontmatter."""
+    journals_dir = get_journals_dir()
+    if not journals_dir.exists():
+        return {}
+
+    backlinks: dict[str, set[str]] = {}
+    for journal_path in sorted(journals_dir.glob("*/*/life-index_*.md")):
+        try:
+            metadata = parse_journal_file(journal_path)
+            related_entries = metadata.get("related_entries", [])
+            if not isinstance(related_entries, list):
+                continue
+            source_rel_path = build_journal_path_fields(
+                journal_path,
+                journals_dir=journals_dir,
+                user_data_dir=get_user_data_dir(),
+            )["rel_path"]
+        except (OSError, ValueError):
+            continue
+
+        for target_path in related_entries:
+            if not isinstance(target_path, str) or not target_path:
+                continue
+            backlinks.setdefault(target_path, set()).add(source_rel_path)
+
+    return {target_path: sorted(sources) for target_path, sources in backlinks.items()}
 
 
 def _classify_confidence(**kwargs: Any) -> str:
@@ -346,6 +383,7 @@ def merge_and_rank_results(
     topic_hints: Optional[List[str]] = None,
     date_range: Optional[Dict[str, str]] = None,
     enable_source_tier: bool = False,
+    relation_context: Literal["cache", "source"] = "cache",
 ) -> List[Dict]:
     """
     合并三层搜索结果并按相关性排序
@@ -487,10 +525,19 @@ def merge_and_rank_results(
 
     # 提取数据并添加排名信息
     merged = []
-    metadata_conn = init_metadata_cache()
+    if relation_context == "cache":
+        metadata_conn = init_metadata_cache()
+        source_backlinks: dict[str, list[str]] | None = None
+    else:
+        metadata_conn = None
+        source_backlinks = _build_source_backlinks() if sorted_results else {}
     try:
         for rank, item in enumerate(sorted_results, 1):
-            data = _attach_relation_context(item["data"], metadata_conn=metadata_conn)
+            data = _attach_relation_context(
+                item["data"],
+                metadata_conn=metadata_conn,
+                source_backlinks=source_backlinks,
+            )
             data["search_rank"] = rank
             # T4.2: Unified score fields (keyword path)
             data["rrf_score"] = 0.0  # Keyword path has no RRF fusion.
@@ -523,6 +570,7 @@ def merge_and_rank_results(
                 }
             merged.append(data)
     finally:
-        metadata_conn.close()
+        if metadata_conn is not None:
+            metadata_conn.close()
 
     return merged

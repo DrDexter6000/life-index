@@ -344,6 +344,7 @@ def run_keyword_pipeline(
     fts_min_relevance: int = FTS_MIN_RELEVANCE,
     candidate_paths: set[str] | None = None,
     entity_expanded: bool = False,
+    use_metadata_cache: bool = True,
 ) -> KeywordPipelineResult:
     """
     关键词搜索管道: L1 索引 → L2 元数据 → L3 FTS5 内容
@@ -429,17 +430,22 @@ def run_keyword_pipeline(
 
     # L2: 元数据过滤
     l2_start = time.time()
+    l2_kwargs: dict[str, Any] = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "location": location,
+        "weather": weather,
+        "topic": topic,
+        "project": project,
+        "tags": tags,
+        "mood": mood,
+        "people": people,
+        "query": normalized_query if has_effective_query else None,
+    }
+    if not use_metadata_cache:
+        l2_kwargs["use_cache"] = False
     l2_response = search_l2_metadata(
-        date_from=date_from,
-        date_to=date_to,
-        location=location,
-        weather=weather,
-        topic=topic,
-        project=project,
-        tags=tags,
-        mood=mood,
-        people=people,
-        query=normalized_query if has_effective_query else None,
+        **l2_kwargs,
     )
     l2_results = l2_response["results"]
     l2_results = _filter_candidate_items(l2_results)

@@ -13,6 +13,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 # 导入配置 (relative imports from tools/lib)
 from ..lib.paths import get_user_data_dir, get_journals_dir
+from ..lib.frontmatter import parse_journal_file
+from ..lib.chinese_tokenizer import count_cjk_words
 from ..lib.metadata_cache import (
     get_or_update_metadata,
     get_all_cached_metadata,
@@ -230,8 +232,13 @@ def _search_filesystem(
     mood: Optional[List[str]] = None,
     people: Optional[List[str]] = None,
     query: Optional[str] = None,
+    populate_cache: bool = True,
 ) -> List[Dict[str, Any]]:
-    """使用文件系统扫描搜索（Fallback路径）"""
+    """使用文件系统扫描搜索（Fallback路径）。
+
+    ``populate_cache`` preserves the legacy cache-warming fallback by default.
+    Read-only callers can turn it off to parse journal frontmatter directly.
+    """
     results: List[Dict[str, Any]] = []
 
     _journals_dir = get_journals_dir()
@@ -249,8 +256,11 @@ def _search_filesystem(
 
             for journal_file in month_dir.glob("*.md"):
                 try:
-                    # 获取元数据（使用缓存）
-                    entry = get_or_update_metadata(journal_file)
+                    entry = (
+                        get_or_update_metadata(journal_file)
+                        if populate_cache
+                        else _read_metadata_without_cache(journal_file)
+                    )
                     if not entry:
                         continue
 
@@ -292,6 +302,65 @@ def _search_filesystem(
                     continue
 
     return results
+
+
+def _read_metadata_without_cache(journal_file: Path) -> Optional[Dict[str, Any]]:
+    """Parse a journal into the L2 entry shape without creating cache state."""
+    metadata = parse_journal_file(journal_file)
+    if not metadata or "_error" in metadata:
+        return None
+
+    path_fields = build_journal_path_fields(
+        journal_file,
+        journals_dir=get_journals_dir(),
+        user_data_dir=get_user_data_dir(),
+    )
+    word_count = count_cjk_words(str(metadata.get("_body", "")))
+    date = str(metadata.get("date") or "")[:10]
+    title = str(metadata.get("title") or "")
+    location = str(metadata.get("location") or "")
+    weather = str(metadata.get("weather") or "")
+    topic = metadata.get("topic", [])
+    project = metadata.get("project", "")
+    tags = metadata.get("tags", [])
+    mood = metadata.get("mood", [])
+    people = metadata.get("people", [])
+    abstract = metadata.get("abstract", "")
+    links = metadata.get("links", [])
+    related_entries = metadata.get("related_entries", [])
+    cache_shape_metadata = {
+        "date": date,
+        "title": title,
+        "location": location,
+        "weather": weather,
+        "topic": topic,
+        "project": project,
+        "tags": tags,
+        "mood": mood,
+        "people": people,
+        "abstract": abstract,
+        "links": links,
+        "related_entries": related_entries,
+        "word_count": word_count,
+    }
+    return {
+        "file_path": path_fields["path"],
+        **path_fields,
+        "date": date,
+        "title": title,
+        "location": location,
+        "weather": weather,
+        "topic": topic,
+        "project": project,
+        "tags": tags,
+        "mood": mood,
+        "people": people,
+        "abstract": abstract,
+        "links": links,
+        "related_entries": related_entries,
+        "word_count": word_count,
+        "metadata": cache_shape_metadata,
+    }
 
 
 def search_l2_metadata(
@@ -343,6 +412,7 @@ def search_l2_metadata(
             mood=mood,
             people=people,
             query=query,
+            populate_cache=False,
         )
     else:
         # 尝试使用缓存搜索

@@ -738,9 +738,8 @@ def _classify_health_issues(checks: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def health_check() -> None:
-    """
-    检查 Life Index 安装健康状态。
+def build_health_payload() -> Dict[str, Any]:
+    """Build the canonical health domain envelope without printing it.
 
     检查项:
     1. Python 版本 (>=3.11)
@@ -837,7 +836,12 @@ def health_check() -> None:
     events = detect_events(context=context)
     result["events"] = [e.to_dict() for e in events]
 
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return result
+
+
+def health_check() -> None:
+    """Print the canonical health domain envelope for the direct CLI."""
+    print(json.dumps(build_health_payload(), ensure_ascii=False, indent=2))
 
 
 def _run_data_audit() -> None:

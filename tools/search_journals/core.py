@@ -673,6 +673,7 @@ def _search_level_2(
     location: Optional[str],
     weather: Optional[str],
     start_time: float,
+    use_metadata_cache: bool = True,
 ) -> Dict[str, Any]:
     """Level 2: 索引 + 元数据搜索"""
     l1_start = time.time()
@@ -695,17 +696,22 @@ def _search_level_2(
     result["performance"]["l1_time_ms"] = round((time.time() - l1_start) * 1000, 2)
 
     l2_start = time.time()
+    l2_kwargs: dict[str, Any] = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "location": location,
+        "weather": weather,
+        "topic": topic,
+        "project": project,
+        "tags": tags,
+        "mood": mood,
+        "people": people,
+        "query": query,
+    }
+    if not use_metadata_cache:
+        l2_kwargs["use_cache"] = False
     l2_response = search_l2_metadata(
-        date_from=date_from,
-        date_to=date_to,
-        location=location,
-        weather=weather,
-        topic=topic,
-        project=project,
-        tags=tags,
-        mood=mood,
-        people=people,
-        query=query,
+        **l2_kwargs,
     )
     result["l2_results"] = l2_response["results"]
     if l2_response.get("truncated"):
@@ -791,6 +797,7 @@ def _augment_with_structured_metadata(
     date_from: str | None,
     date_to: str | None,
     result: dict[str, Any],
+    use_metadata_cache: bool = True,
 ) -> list[str]:
     """Supplement L2 with structured metadata candidates from date_range + topic_hints.
 
@@ -804,12 +811,15 @@ def _augment_with_structured_metadata(
     # pure date navigation ("2026年03月的日志") returns candidates.
     if plan.topic_hints:
         for hint in plan.topic_hints:
-            _structured = search_l2_metadata(
-                date_from=date_from,
-                date_to=date_to,
-                topic=hint,
-                query=None,
-            )
+            structured_kwargs: dict[str, Any] = {
+                "date_from": date_from,
+                "date_to": date_to,
+                "topic": hint,
+                "query": None,
+            }
+            if not use_metadata_cache:
+                structured_kwargs["use_cache"] = False
+            _structured = search_l2_metadata(**structured_kwargs)
             for r in _structured["results"]:
                 r["source"] = "structured_metadata"
                 if r["path"] not in {x["path"] for x in l2_results}:
@@ -819,11 +829,14 @@ def _augment_with_structured_metadata(
                         candidate_paths.add(r["path"])
     elif not plan.keywords:
         # Pure date navigation: no keywords, no topic — just date_range
-        _structured = search_l2_metadata(
-            date_from=date_from,
-            date_to=date_to,
-            query=None,
-        )
+        structured_kwargs = {
+            "date_from": date_from,
+            "date_to": date_to,
+            "query": None,
+        }
+        if not use_metadata_cache:
+            structured_kwargs["use_cache"] = False
+        _structured = search_l2_metadata(**structured_kwargs)
         for r in _structured["results"]:
             r["source"] = "structured_metadata"
             if r["path"] not in {x["path"] for x in l2_results}:
@@ -844,6 +857,7 @@ def _finalize_level3_results(
     start_time: float,
     explain: bool,
     is_fallback: bool = False,
+    emit_metrics: bool = True,
 ) -> None:
     """Promote, explain, and log merged results. Mutates result in place.
 
@@ -885,7 +899,8 @@ def _finalize_level3_results(
     if explain:
         result["diagnostics"] = _build_search_diagnostics(result)
 
-    _emit_search_metrics(result)
+    if emit_metrics:
+        _emit_search_metrics(result)
 
     total_time = result["performance"]["total_time_ms"]
     l1_time = result["performance"].get("l1_time_ms", 0)
@@ -986,6 +1001,9 @@ def hierarchical_search(
     explain: bool = False,  # Task 2.1: explain mode
     semantic_policy: Literal["hybrid", "fallback"] = "fallback",
     enable_source_tier: bool = False,  # gbrain Phase B: opt-in source-tier boost
+    emit_metrics: bool = True,
+    use_metadata_cache: bool = True,
+    derived_index_only: bool = False,
 ) -> Dict[str, Any]:
     """
     分层搜索（keyword/entity only；--semantic* 已废弃为空操作）
@@ -1132,7 +1150,10 @@ def hierarchical_search(
             from ..build_index import build_all as _build_all
 
             logger.info("Pending writes detected, triggering incremental index update")
-            build_result = _build_all(incremental=True, fts_only=True)
+            build_kwargs: dict[str, Any] = {"incremental": True, "fts_only": True}
+            if derived_index_only:
+                build_kwargs["derived_index_only"] = True
+            build_result = _build_all(**build_kwargs)
             build_success = (
                 build_result.get("success", True) if isinstance(build_result, dict) else True
             )
@@ -1163,14 +1184,16 @@ def hierarchical_search(
         if not _freshness.overall_fresh:
             for issue in _freshness.issues:
                 result["warnings"].append(f"index_stale: {issue}")
-            # Trigger incremental build to fix staleness
             try:
                 from ..build_index import build_all as _build_all
 
                 logger.info(
-                    "Index stale, triggering incremental update: %s", ", ".join(_freshness.issues)
+                    "Index stale, triggering incremental update: %s",
+                    ", ".join(_freshness.issues),
                 )
                 build_kwargs = {"incremental": True, "fts_only": True}
+                if derived_index_only:
+                    build_kwargs["derived_index_only"] = True
                 _build_all(**build_kwargs)
                 result.setdefault("index_status", {})["auto_updated"] = True
             except Exception as exc:
@@ -1226,7 +1249,8 @@ def hierarchical_search(
         )
         if explain:
             level_1_result["diagnostics"] = _build_search_diagnostics(level_1_result)
-        _emit_search_metrics(level_1_result)
+        if emit_metrics:
+            _emit_search_metrics(level_1_result)
         return level_1_result
 
     # ── Level 2: 索引 + 元数据（向后兼容，提前返回） ──
@@ -1244,10 +1268,12 @@ def hierarchical_search(
             location=location,
             weather=weather,
             start_time=start_time,
+            use_metadata_cache=use_metadata_cache,
         )
         if explain:
             level_2_result["diagnostics"] = _build_search_diagnostics(level_2_result)
-        _emit_search_metrics(level_2_result)
+        if emit_metrics:
+            _emit_search_metrics(level_2_result)
         return level_2_result
 
     # ── Level 3: 全文检索（keyword/entity only） ──
@@ -1280,11 +1306,18 @@ def hierarchical_search(
         fts_min_relevance=fts_min_relevance,
         candidate_paths=candidate_paths,
         entity_expanded=_entity_expanded,
+        use_metadata_cache=use_metadata_cache,
     )
 
     # R1-Prep: Structured metadata retrieval (shared helper)
     _augment_with_structured_metadata(
-        l2_results, candidate_paths, _plan, date_from, date_to, result
+        l2_results,
+        candidate_paths,
+        _plan,
+        date_from,
+        date_to,
+        result,
+        use_metadata_cache=use_metadata_cache,
     )
 
     l1_results = _filter_results_by_candidates(l1_results, candidate_paths)
@@ -1311,8 +1344,9 @@ def hierarchical_search(
         topic_hints=_topic_hints,
         date_range=_date_range,
         enable_source_tier=enable_source_tier,
+        relation_context="cache" if use_metadata_cache else "source",
     )
 
-    _finalize_level3_results(result, query, start_time, explain)
+    _finalize_level3_results(result, query, start_time, explain, emit_metrics=emit_metrics)
 
     return result
