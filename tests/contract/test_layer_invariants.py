@@ -143,7 +143,7 @@ def _coverage_gate_bash() -> str:
     pytest.skip("Git Bash is required for the Windows coverage-gate subprocess seam")
 
 
-def _write_coverage_gate_python_stub(tmp_path: Path) -> Path:
+def _write_test_python_stub(tmp_path: Path) -> Path:
     stub_dir = tmp_path / "coverage-gate-stub-bin"
     stub_dir.mkdir()
     stub = stub_dir / "python"
@@ -153,6 +153,7 @@ set -eu
 
 if [ "${1:-}" = "-" ]; then
     cat >/dev/null
+    printf '%s\n' '__GATE_PYTHON_DEPENDENCY_PROBE__'
     exit 0
 fi
 
@@ -296,10 +297,17 @@ def test_pre_push_gate_allocates_a_unique_run_without_shared_temp_cleanup() -> N
     assert 'PYTEST_BASETEMP=".pytest_tmp/prepush_${TIMESTAMP}"' not in source
 
 
-def test_pre_push_env_preflight_allocates_distinct_owned_run_directories() -> None:
+def test_pre_push_env_preflight_allocates_distinct_owned_run_directories(
+    tmp_path: Path,
+) -> None:
     env = os.environ.copy()
     if os.name != "nt":
         env["ALLOW_NON_GIT_BASH"] = "1"
+    # This test covers only concurrent temp ownership. Its subprocess-local
+    # Python stub makes the unrelated optional developer-tool inventory
+    # deterministic without changing the production preflight.
+    stub_dir = _write_test_python_stub(tmp_path)
+    env["PATH"] = str(stub_dir) + os.pathsep + env.get("PATH", "")
 
     processes = [_run_pre_push_env_check(env) for _ in range(2)]
     outputs = [process.communicate(timeout=30) for process in processes]
@@ -310,6 +318,7 @@ def test_pre_push_env_preflight_allocates_distinct_owned_run_directories() -> No
     try:
         for process, output in zip(processes, combined_outputs, strict=True):
             assert process.returncode == 0, output
+            assert "__GATE_PYTHON_DEPENDENCY_PROBE__" in output
             run_directory = next(
                 line.removeprefix(prefix) for line in output.splitlines() if line.startswith(prefix)
             )
@@ -352,7 +361,7 @@ def test_coverage_runner_forces_data_and_coverage_file_with_a_stubbed_python(
     inherited_coverage = tmp_path / "inherited-coverage-file"
     relative_basetemp = (Path(".pytest_tmp") / run_root.name / "coverage").as_posix()
 
-    env = _coverage_gate_env(_write_coverage_gate_python_stub(tmp_path), relative_basetemp)
+    env = _coverage_gate_env(_write_test_python_stub(tmp_path), relative_basetemp)
     env["LIFE_INDEX_DATA_DIR"] = str(inherited_data)
     env["COVERAGE_FILE"] = str(inherited_coverage)
 
@@ -386,7 +395,7 @@ def test_coverage_runner_accepts_a_physically_contained_dotdot_parent(tmp_path: 
 
     try:
         result = _run_coverage_gate(
-            _coverage_gate_env(_write_coverage_gate_python_stub(tmp_path), relative_basetemp)
+            _coverage_gate_env(_write_test_python_stub(tmp_path), relative_basetemp)
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert _reported_coverage_basetemp(result.stdout).endswith(f"/{run_root.name}/coverage")
@@ -413,7 +422,7 @@ def test_coverage_runner_rejects_symlinked_parent_before_creating_external_child
     ).as_posix()
     try:
         result = _run_coverage_gate(
-            _coverage_gate_env(_write_coverage_gate_python_stub(tmp_path), relative_basetemp)
+            _coverage_gate_env(_write_test_python_stub(tmp_path), relative_basetemp)
         )
         assert result.returncode != 0
         assert "COVERAGE GATE FAIL" in result.stdout + result.stderr
