@@ -47,12 +47,9 @@ The original D5 hand-written newline-JSON-RPC transport is Human-Owner
 **DEFERRED / NOT NECESSARY NOW**. It remains unnecessary unless a named non-MCP
 consumer or a verified incompatibility establishes a need.
 
-`Development Status :: 5 - Production/Stable` describes the released CLI
-product line and stable public CLI contracts. It does not assign constitutional
-Core/non-Core ownership, certify every route or option, imply GUI 1.0 maturity,
-promise future features, or authorize a D6-A candidate for merge, release, or
-publication. D6-A is release-readiness only; no D6-A merge, release, or
-publication has occurred.
+D6-A is release-readiness only; no D6-A merge, release, or publication has
+occurred. See [`docs/VERSIONING.md`](./VERSIONING.md) for CLI maturity and release
+semantics.
 <!-- PLATFORM-SSOT:CURRENT-TARGET-STATUS:END -->
 
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:START -->

@@ -176,12 +176,9 @@ The original D5 hand-written newline-JSON-RPC transport is Human-Owner
 **DEFERRED / NOT NECESSARY NOW**. It remains unnecessary unless a named non-MCP
 consumer or a verified incompatibility establishes a need.
 
-`Development Status :: 5 - Production/Stable` describes the released CLI
-product line and stable public CLI contracts. It does not assign constitutional
-Core/non-Core ownership, certify every route or option, imply GUI 1.0 maturity,
-promise future features, or authorize a D6-A candidate for merge, release, or
-publication. D6-A is release-readiness only; no D6-A merge, release, or
-publication has occurred.
+D6-A is release-readiness only; no D6-A merge, release, or publication has
+occurred. See [`docs/VERSIONING.md`](./VERSIONING.md) for CLI maturity and release
+semantics.
 """
 
 EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
@@ -550,7 +547,7 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
     )
     assert "The D4 runtime is accepted" in current_target_block
     assert "**DEFERRED / NOT NECESSARY NOW**" in current_target_block
-    assert "no D6-A merge, release, or\npublication has occurred." in current_target_block
+    assert "no D6-A merge, release, or publication has\noccurred." in current_target_block
     for stale_status in (
         "#163 remains open",
         "D1 phase remains IN_PROGRESS",
