@@ -79,13 +79,18 @@ def test_release_preflight_rejects_any_of_the_three_version_surfaces_drifting(
         preflight.validate_version_surfaces(root)
 
 
-def test_current_release_candidate_is_1_5_1_and_1_5_0_remains_history_only() -> None:
+def test_published_1_5_1_is_recorded_and_cannot_be_reused() -> None:
     preflight = _load_preflight_module()
 
     assert preflight.validate_version_surfaces(REPO_ROOT) == "1.5.1"
     known_used = preflight.known_used_versions(REPO_ROOT)
     assert "1.5.0" in known_used
-    assert "1.5.1" not in known_used
+    assert "1.5.1" in known_used
+    with pytest.raises(preflight.ReleasePreflightError, match="known-used"):
+        preflight.validate_release_candidate(
+            REPO_ROOT,
+            fetch_pypi_payload=lambda: {"releases": {}},
+        )
 
 
 def test_manual_release_workflow_proves_exact_wheel_before_upload() -> None:
