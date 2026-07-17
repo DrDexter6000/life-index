@@ -85,6 +85,7 @@ class TestDetectDataState:
             "manifest_version",
             "install_in_sync",
             "install_type",
+            "install_inventory",
             "freshness",
             "latest_release",
             "update_available",
@@ -99,6 +100,23 @@ class TestDetectDataState:
             "migration_needed",
             "migration_check_error",
         }
+
+    def test_detect_data_state_reports_the_canonical_install_inventory(self, tmp_path, monkeypatch):
+        inventory = {
+            "project": "life-index",
+            "state": "conflict",
+            "canonical_count": 2,
+            "distributions": [],
+        }
+        monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.2.3")
+        monkeypatch.setattr(_mod, "_get_manifest_version", lambda: "1.2.3")
+        monkeypatch.setattr(_mod, "_detect_install_type", lambda: "editable")
+        monkeypatch.setattr(_mod, "_detect_release_freshness", lambda *args, **kwargs: _freshness())
+        monkeypatch.setattr(_mod, "inventory_life_index_distributions", lambda: inventory)
+
+        state = detect_data_state(data_dir=str(tmp_path / "Life-Index"))
+
+        assert state["install_inventory"] == inventory
 
     def test_install_in_sync_true_when_versions_match(self, tmp_path, monkeypatch):
         monkeypatch.setattr(_mod, "_get_installed_version", lambda: "1.2.3")
@@ -453,6 +471,26 @@ def _checkout(verdict: str, safe: bool) -> dict:
 
 
 class TestDecideRoute:
+    def test_distribution_conflict_requires_human_and_stops_ordinary_refresh(self):
+        state = _state(
+            has_user_data=True,
+            journal_count=2,
+            install_in_sync=False,
+            update_available="1.2.4",
+        )
+        state["install_inventory"] = {
+            "project": "life-index",
+            "state": "conflict",
+            "canonical_count": 2,
+            "distributions": [],
+        }
+
+        result = decide_route(state)
+
+        assert result["needs_human"][0]["code"] == "INSTALL_DISTRIBUTION_CONFLICT"
+        assert "install_integrity.py" in result["needs_human"][0]["suggested_action"]
+        assert result["safe_next_steps"] == []
+
     def test_upgrade_steps_deploy_agent_artifacts_and_indexes(self):
         result = decide_route(
             _state(

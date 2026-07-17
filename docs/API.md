@@ -3332,6 +3332,11 @@ outside this command.
 read-only remote probe, `health --json` parseability, sync-skill discovery
 status, and recommended actions.
 
+The additive data.installed.install_inventory reports canonical Life Index
+distribution truth. It deduplicates the same resolved installation-metadata
+directory (`.dist-info` or legacy `.egg-info`) when it is exposed more than
+once on sys.path; only distinct canonical distributions are a conflict.
+
 `--apply` executes only actions that the plan marks safe:
 
 - package installs may upgrade to a recommended non-yanked PyPI version;
@@ -3349,6 +3354,52 @@ status, and recommended actions.
 
 The command contains no LLM calls and never writes user journals.
 
+### Mixed distribution recovery
+
+If data.installed.install_inventory.state is "conflict", --plan emits only
+recover_install_distribution_conflict; it does not continue with PyPI, git,
+health, or skill-refresh planning. --apply returns
+UPGRADE_INSTALL_DISTRIBUTION_CONFLICT before git, pip, sync-skill, health, or
+any other ordinary upgrade action.
+
+Use the recovery action only after identifying a trusted checkout. Its formal
+contract is:
+
+~~~bash
+ACTIVE_VENV_PYTHON -I TRUSTED_CHECKOUT/tools/upgrade/install_integrity.py recover --source-root TRUSTED_CHECKOUT --json
+~~~
+
+The launcher is stdlib-only and uses the active interpreter's python -m pip
+for every package operation. `ACTIVE_VENV_PYTHON` must be owned by a supported
+standard virtual environment (`sys.prefix != sys.base_prefix`); the launcher
+refuses an unproven interpreter before inventory or pip work. It validates
+checkout authority and builds a validated local wheel before uninstalling any
+Life Index distribution. It never deletes site-packages/tools or dist-info
+paths directly. A neutral no-site probe from a fresh temporary cwd verifies metadata,
+manifest, CLI version payload, and loaded module origin after convergence.
+
+Before any wheel build or uninstall, recovery constructs a canonical RECORD
+file-ownership map for every metadata distribution visible to the active
+interpreter. If a Life Index-owned canonical path is also owned by an unrelated
+distribution, it fails closed with `INSTALL_RECOVERY_OWNERSHIP_CONFLICT`, exact
+`ownership_conflicts` records, `recovery_strategy: "ask_user"`, and zero package
+operations. It never deletes or guesses the owner of an overlap.
+
+Neutral verification runs in `isolated_no_site_explicit_target` mode via the
+exact interpreter's `-I -S` child. It derives purelib/platlib with stdlib
+`sysconfig` from that interpreter's venv root, uses only those paths for
+metadata, and never executes `.pth` files. Editable verification requires the
+metadata `direct_url` target to resolve exactly to the trusted source root and
+imports that source explicitly. Before that import, it derives a de-duplicated
+resolver suffix family from `importlib.machinery.SOURCE_SUFFIXES`,
+`BYTECODE_SUFFIXES`, and `EXTENSION_SUFFIXES`, and checks only
+`tools{suffix}`, `tools/__init__{suffix}`, and `tools/__main__{suffix}` in the
+explicit purelib/platlib paths. This includes examples such as `tools.pyc` as
+well as `tools/__init__.py` and `tools.py`; detection never loads or executes
+the artifact. Noneditable verification still requires the canonical RECORD to
+own the physical `tools/__main__.py`. Any editable resolver artifact is
+reported as `INSTALL_RECOVERY_ORPHAN_SHADOW`, never deleted.
+
 ### JSON contract
 
 ```json
@@ -3362,7 +3413,13 @@ The command contains no LLM calls and never writes user journals.
       "package_version": "1.4.4",
       "bootstrap_manifest_repo_version": "1.4.4",
       "install_type": "package|editable|unknown",
-      "repo_path": null
+      "repo_path": null,
+      "install_inventory": {
+        "project": "life-index",
+        "state": "absent|single|conflict",
+        "canonical_count": 1,
+        "distributions": []
+      }
     },
     "pypi": {
       "status": "ok|partial",
@@ -3464,6 +3521,30 @@ is unsafe or a subprocess fails. Common codes include:
 | `UPGRADE_EDITABLE_INSTALL_FAILED` | `python -m pip install -e <repo>` failed |
 | `UPGRADE_VERSION_INCONSISTENT` | Editable package metadata still differs from bootstrap manifest after apply |
 | `UPGRADE_SYNC_SKILL_NOT_DELIVERED` | `sync-skill --install` did not report `delivered=true` |
+| `UPGRADE_INSTALL_DISTRIBUTION_CONFLICT` | Multiple canonical Life Index distributions require isolated recovery before ordinary upgrade work |
+
+The standalone recovery launcher always emits top-level
+`schema_version = "m37.install_integrity.v0"`; this is separate from, and does
+not change, the `upgrade` m36 envelope. Every recovery failure has
+`error = {code, message, details, recovery_strategy}`. Its strategy is a value
+from the repository-wide enum:
+
+```json
+"recovery_strategy": "ask_user|retry"
+```
+
+The isolated recovery launcher reports these stable non-success codes:
+
+| Code | Meaning | `recovery_strategy` |
+|---|---|---|
+| `INSTALL_RECOVERY_AUTHORITY_INVALID` | Trusted checkout, standard-venv interpreter, or version authority could not be proven | `ask_user` |
+| `INSTALL_RECOVERY_BUILD_PREFLIGHT_FAILED` | Local wheel build or wheel-content validation failed before any uninstall | `retry` |
+| `INSTALL_RECOVERY_UNINSTALL_FAILED` | Exact-interpreter pip uninstall failed during convergence | `ask_user` |
+| `INSTALL_RECOVERY_UNINSTALL_STALLED` | An uninstall did not strictly reduce canonical Life Index distributions | `ask_user` |
+| `INSTALL_RECOVERY_TARGET_INSTALL_FAILED` | Editable target install failed; the validated local-wheel rollback result is reported | `ask_user` |
+| `INSTALL_RECOVERY_OWNERSHIP_CONFLICT` | A Life Index RECORD path is also owned by an unrelated distribution; package operations did not start | `ask_user` |
+| `INSTALL_RECOVERY_ORPHAN_SHADOW` | An untracked editable `tools` resolver artifact remains; it is reported, not deleted | `ask_user` |
+| `INSTALL_RECOVERY_PROBE_FAILED` | Neutral installed-entry verification could not prove the target | `ask_user` |
 
 ### schema_version Policy
 
@@ -3487,6 +3568,10 @@ python -m tools bootstrap --json
 `bootstrap` 是只读安装 / 数据状态检测命令，用于 Agent onboarding 前置判断。它不 clone、不 install、不 migrate、不 repair、不写入用户数据、不修改 `.venv`，也不删除任何 checkout。
 
 `bootstrap` 会以有界、非致命、只读方式查询最新发布版本。网络不可用、超时或设置 `LIFE_INDEX_NO_NET=1` 时，`freshness` 返回 `"unknown"` 并继续使用本地检测。`install_in_sync` 仍只表示本机安装包版本是否与当前 checkout manifest 版本一致。
+
+`detected_state.install_inventory` 是安装分布真相：它列出按 canonical 安装
+metadata 路径去重后的 Life Index distributions。state: "conflict" 表示
+存在多个不同 distribution，而不是同一 metadata 路径的重复可见性。
 
 `journal_count` 使用共享 canonical journal-file 计数口径，只统计文件名匹配 `life-index_YYYY-MM-DD_NNN.md` 的日志文件；standard `health` 与 `migrate --dry-run` 使用同一口径。
 
@@ -3524,6 +3609,12 @@ python -m tools bootstrap --json
     "manifest_version": "1.3.0",
     "install_in_sync": true,
     "install_type": "editable",
+    "install_inventory": {
+      "project": "life-index",
+      "state": "absent|single|conflict",
+      "canonical_count": 1,
+      "distributions": []
+    },
     "freshness": "current",
     "latest_release": "1.3.0",
     "update_available": null,
@@ -3566,6 +3657,13 @@ begins with the refresh command matching `install_type`:
 - `editable`: `git pull --ff-only && pip install -e .`
 - `package`: `pip install -U life-index`
 
+If `install_inventory.state` is `"conflict"`, bootstrap instead returns the
+stable `INSTALL_DISTRIBUTION_CONFLICT` item in `needs_human` and no ordinary
+`safe_next_steps`. Stop there; do not run a refresh command, delete a
+`site-packages/tools` directory, or guess which distribution should win. After
+the owner identifies a trusted checkout, use the isolated recovery launcher
+documented above and then rerun `bootstrap`.
+
 For editable/git checkouts, bootstrap also fetches the configured upstream and
 reports `git_freshness`, `git_upstream`, `git_behind_count`, and
 `git_ahead_count`. A checkout that is behind upstream is treated as stale even
@@ -3591,6 +3689,7 @@ read-only.
 | `AMBIGUOUS_CHECKOUT` | checkout 结构完整但缺少 host/user 正向采纳授权 |
 | `DEV_DIR_FOUND` | checkout 有 development-directory 强信号 |
 | `INVALID_CHECKOUT` | checkout 缺少必要文件 |
+| `INSTALL_DISTRIBUTION_CONFLICT` | 多个 canonical Life Index distributions；必须先运行可信 checkout 的 isolated recovery，然后重新 bootstrap |
 | `INSTALL_REFRESH_UNKNOWN` | 需要刷新安装但 bootstrap 无法识别安装类型；Agent 应停止并转达 |
 | `MIGRATION_CHECK_FAILED` | in-process migration scan 失败；不得当作无需迁移 |
 

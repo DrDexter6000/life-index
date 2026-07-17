@@ -11,6 +11,8 @@ from .core import (
     build_upgrade_plan,
     detect_install_context,
 )
+from .install_integrity import inventory_life_index_distributions
+from .install_integrity import recover_install
 
 __all__ = [
     "CommandResult",
@@ -20,4 +22,6 @@ __all__ = [
     "apply_upgrade",
     "build_upgrade_plan",
     "detect_install_context",
+    "inventory_life_index_distributions",
+    "recover_install",
 ]

@@ -16,6 +16,7 @@ from urllib.request import urlopen
 
 from tools.lib.bootstrap_manifest import REPO_BOOTSTRAP_MANIFEST_PATH
 from tools.lib.bootstrap_manifest import get_manifest_version
+from tools.upgrade.install_integrity import inventory_life_index_distributions
 
 UPGRADE_SCHEMA_VERSION = "m36.upgrade.v0"
 PYPI_JSON_URL = "https://pypi.org/pypi/life-index/json"
@@ -444,6 +445,26 @@ def _editable_install_command(repo_path: Path) -> str:
     return f"python -m pip install -e {_quote_command_arg(repo_path)}"
 
 
+def _recovery_command(repo_path: Path | None) -> str:
+    if repo_path is None:
+        source_root = "TRUSTED_CHECKOUT"
+        launcher = "TRUSTED_CHECKOUT/tools/upgrade/install_integrity.py"
+    else:
+        source_root = str(repo_path)
+        launcher = str(repo_path / "tools" / "upgrade" / "install_integrity.py")
+    return " ".join(
+        [
+            _quote_command_arg(sys.executable),
+            "-I",
+            _quote_command_arg(launcher),
+            "recover",
+            "--source-root",
+            _quote_command_arg(source_root),
+            "--json",
+        ]
+    )
+
+
 def _sync_skill_list_current(sync_skill_status: dict[str, Any]) -> bool:
     if not sync_skill_status.get("json_parseable"):
         return False
@@ -496,6 +517,49 @@ def build_upgrade_plan(
     release_provider = release_provider or PyPIReleaseProvider()
     git_runner = git_runner or SubprocessGitRunner()
     command_runner = command_runner or SubprocessCommandRunner()
+    install_inventory = inventory_life_index_distributions()
+    if install_inventory.get("state") == "conflict":
+        recovery_action = _action(
+            action_id="recover_install_distribution_conflict",
+            description=(
+                "Converge duplicate Life Index distributions with the isolated recovery "
+                "launcher."
+            ),
+            side_effect="write",
+            command=_recovery_command(context.repo_path),
+            reason="Multiple canonical life-index metadata directories are installed.",
+            safe_to_run=False,
+            requires_human=True,
+        )
+        return {
+            "success": True,
+            "schema_version": UPGRADE_SCHEMA_VERSION,
+            "command": "upgrade",
+            "mode": "plan",
+            "data": {
+                "installed": {
+                    "package_version": context.package_version,
+                    "bootstrap_manifest_repo_version": context.manifest_version,
+                    "install_type": context.install_type,
+                    "repo_path": str(context.repo_path) if context.repo_path else None,
+                    "install_inventory": install_inventory,
+                },
+                "pypi": {
+                    "status": "not_checked",
+                    "error": None,
+                    "latest_non_yanked": None,
+                    "recommended_version": None,
+                    "current_version_yanked": False,
+                    "current_yanked_reason": None,
+                },
+                "git": None,
+                "health": None,
+                "sync_skill": None,
+                "actions": [recovery_action],
+                "recommended_next_step": recovery_action,
+                "partial": False,
+            },
+        }
     current = context.package_version or context.manifest_version
 
     pypi_error: str | None = None
@@ -707,6 +771,7 @@ def build_upgrade_plan(
                 "bootstrap_manifest_repo_version": context.manifest_version,
                 "install_type": context.install_type,
                 "repo_path": str(context.repo_path) if context.repo_path else None,
+                "install_inventory": install_inventory,
             },
             "pypi": {
                 "status": "partial" if pypi_error else "ok",
@@ -763,6 +828,26 @@ def apply_upgrade(
     context = context or detect_install_context()
     git_runner = git_runner or SubprocessGitRunner()
     command_runner = command_runner or SubprocessCommandRunner()
+    install_inventory = inventory_life_index_distributions()
+    if install_inventory.get("state") == "conflict":
+        return {
+            "success": False,
+            "schema_version": UPGRADE_SCHEMA_VERSION,
+            "command": "upgrade",
+            "mode": "apply",
+            "error": {
+                "code": "UPGRADE_INSTALL_DISTRIBUTION_CONFLICT",
+                "message": (
+                    "Refusing ordinary upgrade apply while multiple canonical Life Index "
+                    "distributions are installed."
+                ),
+            },
+            "data": {
+                "install_inventory": install_inventory,
+                "recovery_command": _recovery_command(context.repo_path),
+                "applied_actions": [],
+            },
+        }
     plan = build_upgrade_plan(
         context=context,
         release_provider=release_provider,

@@ -8,12 +8,42 @@ import subprocess
 import sys
 from pathlib import Path
 
+_BOOTSTRAP_HARNESS = """
+import json
+import runpy
+import sys
 
-def _run_bootstrap(tmp_path: Path, extra_args: list[str] | None = None) -> dict:
+import tools.bootstrap as bootstrap
+
+install_inventory = json.loads(sys.argv[1])
+bootstrap.inventory_life_index_distributions = lambda: install_inventory
+sys.argv = ["life-index", "bootstrap", *sys.argv[2:]]
+runpy.run_module("tools.__main__", run_name="__main__")
+"""
+
+
+def _run_bootstrap(
+    tmp_path: Path,
+    extra_args: list[str] | None = None,
+    install_inventory: dict[str, object] | None = None,
+) -> dict:
     env = os.environ.copy()
     env["LIFE_INDEX_DATA_DIR"] = str(tmp_path / "Life-Index")
     env["LIFE_INDEX_NO_NET"] = "1"
-    cmd = [sys.executable, "-m", "tools", "bootstrap", "--json"] + (extra_args or [])
+    inventory = install_inventory or {
+        "project": "life-index",
+        "state": "single",
+        "canonical_count": 1,
+        "distributions": [],
+    }
+    cmd = [
+        sys.executable,
+        "-c",
+        _BOOTSTRAP_HARNESS,
+        json.dumps(inventory),
+        "--json",
+        *(extra_args or []),
+    ]
     result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
     assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     return json.loads(result.stdout)
@@ -69,6 +99,7 @@ class TestBootstrapJsonContract:
             "manifest_version",
             "install_in_sync",
             "install_type",
+            "install_inventory",
             "freshness",
             "latest_release",
             "update_available",
@@ -98,6 +129,22 @@ class TestBootstrapJsonContract:
         assert payload["route"] == "upgrade"
         assert payload["detected_state"]["journal_count"] == 1
         assert payload["safe_next_steps"][-1] == "life-index health"
+
+    def test_distribution_conflict_stops_cli_bootstrap_before_ordinary_steps(self, tmp_path):
+        inventory = {
+            "project": "life-index",
+            "state": "conflict",
+            "canonical_count": 2,
+            "distributions": [],
+        }
+
+        payload = _run_bootstrap(tmp_path, install_inventory=inventory)
+
+        assert payload["detected_state"]["install_inventory"] == inventory
+        assert [item["code"] for item in payload["needs_human"]] == [
+            "INSTALL_DISTRIBUTION_CONFLICT"
+        ]
+        assert payload["safe_next_steps"] == []
 
     def test_execution_policy_makes_bootstrap_self_sufficient(self, tmp_path):
         payload = _run_bootstrap(tmp_path)

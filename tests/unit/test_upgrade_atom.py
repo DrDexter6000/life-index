@@ -5,6 +5,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _single_install_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep upgrade-planning unit tests independent of the runner's packages."""
+    from tools.upgrade import core
+
+    monkeypatch.setattr(
+        core,
+        "inventory_life_index_distributions",
+        lambda: {
+            "project": "life-index",
+            "state": "single",
+            "canonical_count": 1,
+            "distributions": [],
+        },
+    )
+
 
 @dataclass
 class FakeReleaseProvider:
@@ -127,6 +146,111 @@ def _last_command_index(commands: list[list[str]], needle: str) -> int:
         if needle in " ".join(commands[index]):
             return index
     raise AssertionError(f"Command not found: {needle}")
+
+
+def test_apply_refuses_distribution_conflict_before_git_pip_sync_or_health(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Mixed distribution truth routes apply to the isolated recovery launcher first."""
+    from tools.upgrade import core
+    from tools.upgrade.core import InstallContext, apply_upgrade
+
+    inventory = {
+        "project": "life-index",
+        "state": "conflict",
+        "canonical_count": 2,
+        "distributions": [],
+    }
+    monkeypatch.setattr(core, "inventory_life_index_distributions", lambda: inventory)
+    repo = tmp_path / "trusted checkout"
+    repo.mkdir()
+
+    class ForbiddenReleaseProvider:
+        def fetch(self):
+            raise AssertionError("release lookup must not run for a distribution conflict")
+
+    class ForbiddenGitRunner:
+        def inspect(self, repo_path: Path):
+            raise AssertionError("git inspection must not run for a distribution conflict")
+
+        def probe_remote(self, repo_path: Path):
+            raise AssertionError("git probing must not run for a distribution conflict")
+
+    class ForbiddenCommandRunner:
+        def run(self, command: list[str], *, cwd: Path | None = None):
+            raise AssertionError("health, sync, and pip must not run for a distribution conflict")
+
+    result = apply_upgrade(
+        context=InstallContext(
+            package_version="1.5.1",
+            manifest_version="1.5.1",
+            install_type="editable",
+            repo_path=repo,
+        ),
+        release_provider=ForbiddenReleaseProvider(),
+        git_runner=ForbiddenGitRunner(),
+        command_runner=ForbiddenCommandRunner(),
+    )
+
+    assert result["success"] is False
+    assert result["error"]["code"] == "UPGRADE_INSTALL_DISTRIBUTION_CONFLICT"
+    assert result["data"]["install_inventory"] == inventory
+    recovery_command = result["data"]["recovery_command"]
+    assert " -I " in recovery_command
+    assert "tools/upgrade/install_integrity.py" in recovery_command.replace("\\", "/")
+    assert "recover --source-root" in recovery_command
+
+
+def test_plan_emits_only_the_distribution_conflict_recovery_action(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A conflict plan does not continue into ordinary refresh planning."""
+    from tools.upgrade import core
+    from tools.upgrade.core import InstallContext, build_upgrade_plan
+
+    inventory = {
+        "project": "life-index",
+        "state": "conflict",
+        "canonical_count": 2,
+        "distributions": [],
+    }
+    monkeypatch.setattr(core, "inventory_life_index_distributions", lambda: inventory)
+    repo = tmp_path / "trusted checkout"
+    repo.mkdir()
+
+    class ForbiddenReleaseProvider:
+        def fetch(self):
+            raise AssertionError("release lookup must not run for a distribution conflict")
+
+    class ForbiddenGitRunner:
+        def inspect(self, repo_path: Path):
+            raise AssertionError("git inspection must not run for a distribution conflict")
+
+        def probe_remote(self, repo_path: Path):
+            raise AssertionError("git probing must not run for a distribution conflict")
+
+    class ForbiddenCommandRunner:
+        def run(self, command: list[str], *, cwd: Path | None = None):
+            raise AssertionError("health and sync checks must not run for a distribution conflict")
+
+    plan = build_upgrade_plan(
+        context=InstallContext(
+            package_version="1.5.1",
+            manifest_version="1.5.1",
+            install_type="editable",
+            repo_path=repo,
+        ),
+        release_provider=ForbiddenReleaseProvider(),
+        git_runner=ForbiddenGitRunner(),
+        command_runner=ForbiddenCommandRunner(),
+    )
+
+    assert plan["success"] is True
+    assert plan["data"]["installed"]["install_inventory"] == inventory
+    assert [action["id"] for action in plan["data"]["actions"]] == [
+        "recover_install_distribution_conflict"
+    ]
+    assert plan["data"]["recommended_next_step"]["id"] == "recover_install_distribution_conflict"
 
 
 def test_plan_reports_versions_recommended_release_actions_and_json_purity() -> None:
@@ -815,3 +939,13 @@ def test_editable_version_check_reports_reinstall_hint_when_still_inconsistent(
     assert result["data"]["repo_version"] == "1.4.4"
     assert result["data"]["suggested_command"].startswith("python -m pip install -e ")
     assert str(repo) in result["data"]["suggested_command"]
+
+
+def test_upgrade_package_exports_install_integrity_contract() -> None:
+    from tools.upgrade import inventory_life_index_distributions
+    from tools.upgrade import recover_install
+
+    inventory = inventory_life_index_distributions()
+
+    assert callable(recover_install)
+    assert inventory["project"] == "life-index"

@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 from tools.lib.journal_files import count_journal_files
 from tools.lib.bootstrap_manifest import get_manifest_version
 from tools.migrate import scan_journals
+from tools.upgrade.install_integrity import inventory_life_index_distributions
 
 BOOTSTRAP_SCHEMA_VERSION = "m34.bootstrap.v0"
 PYPI_JSON_URL = "https://pypi.org/pypi/life-index/json"
@@ -349,6 +350,7 @@ def detect_data_state(data_dir: str | None = None) -> dict[str, Any]:
     installed = _get_installed_version()
     manifest = _get_manifest_version()
     install_type = _detect_install_type()
+    install_inventory = inventory_life_index_distributions()
     git_checkout = _detect_git_checkout_path(install_type)
     release_freshness = _detect_release_freshness(
         installed,
@@ -368,6 +370,7 @@ def detect_data_state(data_dir: str | None = None) -> dict[str, Any]:
         "manifest_version": manifest,
         "install_in_sync": install_in_sync,
         "install_type": install_type,
+        "install_inventory": install_inventory,
         **release_freshness,
         "migration_needed": migration_needed,
         "migration_check_error": migration_error,
@@ -457,6 +460,39 @@ def decide_route(
     needs_human: list[dict[str, str]] = []
     safe_next_steps: list[str] = []
 
+    has_user_data = bool(data_state.get("has_user_data"))
+    journal_count = int(data_state.get("journal_count", 0) or 0)
+    data_dir = str(data_state.get("data_dir", ""))
+    install_inventory = data_state.get("install_inventory")
+    if isinstance(install_inventory, dict) and install_inventory.get("state") == "conflict":
+        route = "upgrade" if has_user_data else "fresh_install"
+        route_reason = (
+            f"Found {journal_count} journal(s) in {data_dir}"
+            if has_user_data
+            else "No existing journal data found"
+        )
+        needs_human.append(
+            {
+                "code": "INSTALL_DISTRIBUTION_CONFLICT",
+                "message": (
+                    "Multiple canonical Life Index distributions are installed; ordinary "
+                    "refresh steps are unsafe."
+                ),
+                "suggested_action": (
+                    "Use only a trusted checkout with the isolated recovery launcher: "
+                    f"{sys.executable} -I TRUSTED_CHECKOUT/tools/upgrade/install_integrity.py "
+                    "recover --source-root TRUSTED_CHECKOUT --json"
+                ),
+            }
+        )
+        return {
+            "route": route,
+            "route_reason": route_reason,
+            "execution_policy": dict(EXECUTION_POLICY),
+            "needs_human": needs_human,
+            "safe_next_steps": safe_next_steps,
+        }
+
     if checkout_assessment and not checkout_assessment.get("safe_to_adopt", False):
         verdict = checkout_assessment.get("verdict")
         if verdict == "ambiguous":
@@ -492,10 +528,6 @@ def decide_route(
                     ),
                 }
             )
-
-    has_user_data = bool(data_state.get("has_user_data"))
-    journal_count = int(data_state.get("journal_count", 0) or 0)
-    data_dir = str(data_state.get("data_dir", ""))
 
     if has_user_data:
         route = "upgrade"
