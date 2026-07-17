@@ -10,28 +10,23 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ### What users get
 
-- More truthful, deterministic Core behavior: writes record commit and
-  follow-up effects honestly, compensate pre-commit failures, and preserve
-  durable journals through post-commit degradation; backup/restore recovery
-  rejects unsafe states.
-- Completed CLI-side GUI/Core interoperability, including correct first-use
-  and import/rollback behavior, while preserving the CLI as the sole data path.
-- An optional, least-privilege MCP Host Agent projection exposes exactly
-  `health`, `journal.get`, and `search`; its effect metadata correctly records
-  that search may update only rebuildable index state.
-- Stronger release confidence: coverage is part of the Tier 1 gate, and release
-  preflight verifies canonical version metadata and target availability before
-  any manual publish.
-- Clearer production and licensing expectations: the AGPL-3.0-only rationale
-  and the CLI's `Production/Stable` classifier are clarified without implying
-  GUI 1.0, future capabilities, or a completed release.
+- Safer writes and recovery: a write either rolls back safely before commit or
+  preserves the journal and reports follow-up failures honestly after commit.
+  Recovery refuses unsafe or incomplete restores, and rolled-back imports do
+  not remain searchable.
+- The separate GUI's first-use write, search, and detail flows continue through
+  the CLI data authority, rather than creating a second data path.
+- Optional host-agent integration stays narrow: approved host agents can use
+  exactly `health`, `journal.get`, and `search`. Search may refresh only
+  rebuildable indexes; it cannot edit journals, attachments, or entities.
+- Clearer licensing and maturity: clarifies why Life Index is AGPL-3.0-only.
+  The CLI remains Production/Stable; GUI maturity is separate and pre-1.0.
 
 ### Included in this release
 
-- Deterministic write, recovery, and import/restore correctness hardening.
-- GUI/Core contract alignment and the optional registry-backed MCP projection.
-- Coverage, manual-release preflight, and public license/maturity documentation
-  hardening.
+- Safe write, restore, and rolled-back-import cleanup.
+- GUI/Core first-use interoperability and the optional three-tool MCP bridge.
+- AGPL and CLI/GUI maturity clarification.
 
 ## [1.4.5] - 2026-07-08
 
