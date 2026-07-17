@@ -73,3 +73,65 @@ journal evidence.
 6. Never mark an answer `GROUNDED` with zero citations, missing journal IDs, or
    facts that only come from hidden session memory. If evidence is insufficient
    or validation fails, return `PARTIAL` or `UNGROUNDED` with a concrete gap.
+
+## Search And Smart-Search Consumption
+
+For ordinary discovery, map the user's intent to deterministic parameters:
+
+| User intent | Recommended parameters |
+|---|---|
+| Work journals | `--topic work` |
+| Last year's entries | `--date-from 2025-01-01 --date-to 2025-12-31` |
+| Entries about a person | `--people NAME` |
+| Entries containing a term | `--query "TERM"` |
+| Entries with a mood | `--mood MOOD` |
+| Entries for a project | `--project PROJECT` |
+| Strict keyword match | `--query "TERM" --no-semantic` |
+
+`search` and `smart-search` execute retrieval; they do not decide the user's
+conclusion. `smart-search --include-evidence` returns a deterministic scaffold
+and reuses its extracted keywords as bounded subqueries.
+Inspect `query_plan.sub_queries`, `query_plan.strategy`, `agent_instructions`,
+`answer_scaffold`, `filtered_results`, and `evidence_pack`, then perform query
+rewrite, multi-hop calls, interpretation, and synthesis in the host agent.
+Never invent evidence or treat `entity_expansion` as a filter or adjudicator;
+use it only to explain alias or relationship attribution.
+
+Consume `evidence_pack.diagnostics.retrieval_outcome` as follows:
+
+| Outcome | Host-agent action |
+|---|---|
+| `ok` | Consume the bounded results normally. |
+| `weak_results` | State low confidence and use `suggestions` to refine the query. |
+| `no_confident_match` | State that no confident match was found; suggest another term or filter. |
+| `zero_results` | Report an empty result and use `suggestions` to broaden the query. |
+
+These diagnostics are deterministic and advisory. If the request is too vague
+to form a meaningful query or filter, clarify first. Never disguise tool failure
+as an empty result, and never claim a raw result list is the final user answer.
+If the user next asks to edit, summarize, or compare, switch workflows
+explicitly instead of mixing the operations implicitly.
+
+## Aggregation And Heuristic Evidence
+
+Use this procedure for count, compare, trend, or summary questions that cannot
+be answered directly by a structured `aggregate` or `trajectory` result:
+
+1. Extract the time window and structured filters first.
+2. Prefer hard evidence: explicit frontmatter, direct journal statements, and
+   deterministic index, timeline, or metadata values.
+3. If more candidates are needed, use the bounded navigation/search procedure
+   above and expand the query only around the same user question.
+4. Classify every candidate as `MATCH`, `NO_MATCH`, or `UNCERTAIN`.
+5. Return the count, comparison, trend, or summary while separating confirmed
+   conclusions from heuristic inference.
+
+Do not use `search_journals.total_found` as the answer unless the user asks only
+how many search hits were returned. Hard evidence is a structured field or
+explicit statement. Soft evidence is an indirect proxy such as a late writing
+time or wording like “熬夜/很困/准备睡”. Uncertain evidence cannot support a
+claim by itself. Soft evidence may support only downgraded language such as
+“high probability”, “possible”, or “cannot confirm”; never encode the heuristic
+as a CLI rule or invent a one-off product workflow for it. The CLI supplies
+evidence; the host agent owns classification, aggregation, explanation, and an
+honest account of limitations.

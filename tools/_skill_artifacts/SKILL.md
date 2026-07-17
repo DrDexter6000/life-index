@@ -182,6 +182,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 - **永不删除文件**：编辑只修改内容
 - **数据隔离**：数据在 `~/Documents/Life-Index/`，与代码分离
+- **测试隔离**：永不向真实用户数据目录写 smoke/test 日志；测试必须设置临时 `LIFE_INDEX_DATA_DIR` sandbox
 - **天气处理**：详见 [WEATHER_FLOW.md](references/WEATHER_FLOW.md)
 
 ```markdown
@@ -357,30 +358,11 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 ### 工作流2: 检索日志
 
-**检索架构**:
-
-> 检索管道与编排器架构的完整细节见 [ARCHITECTURE.md §5](docs/ARCHITECTURE.md)。
-> 以下为简化概览：
-
-```
-             用户查询
-          ┌────┴────┐
-   ┌──────▼──────┐
-   │ 关键词/实体管道 │
-   │ FTS5 + metadata│
-   │ Entity Graph   │
-   └──────┬──────┘
-       确定性排序
-             │
-         最终结果
-```
-
-对于复杂自然语言查询，`smart-search` 返回确定性检索 scaffold；它会复用 SearchPlan
-已抽取的关键词作为 bounded 子查询。判断、过滤、query rewrite、多跳调用与总结仍由宿主
-agent 按本 Skill 的 playbook 完成，详见
-[ARCHITECTURE.md §5.8](docs/ARCHITECTURE.md)。
-
-**检索路径选择（不要使用 `recall` 作为新入口）**:
+**先按问题形态选择路径**。开放回忆或关键词/实体发现使用下表；time-scoped、
+facet、count、enumerate、cross-facet、magazine-style evidence，或显式要求
+`GROUNDED` / `PARTIAL` / `UNGROUNDED` 状态时，必须加载
+[Full grounded query playbook](references/GROUNDED_QUERY_PLAYBOOK.md)，按其中的
+bounded navigation、journal read、证据分层、诊断与失败规则执行。
 
 | 需求 | 使用 |
 |:---|:---|
@@ -389,7 +371,9 @@ agent 按本 Skill 的 playbook 完成，详见
 | 开放回忆、关键词 / 实体加权发现，或需要 scaffold / evidence pack | `life-index smart-search --query "..." --include-evidence` |
 | 旧 GUI / Agent 仍传语义旗标 | `life-index search --query "..." --semantic --semantic-policy fallback`（接受但废弃的 no-op） |
 
-`life-index recall` 仅为旧集成保留的兼容壳；新宿主 agent 流程直接选择上表中的 `search` / `smart-search`。
+`life-index recall` 仅为旧集成保留的兼容壳；新宿主 agent 直接选择
+`search` / `smart-search`。工具只执行确定性 retrieval；宿主 agent 负责 query
+rewrite、多跳、证据判定、解释与合成，不得把原始结果列表直接当作最终答案。
 
 <!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:START -->
 **`--synthesize` transition**
@@ -423,89 +407,13 @@ observation series. Do not use `trajectory` as a hidden counter, and do not use
 5. 如需深度分析，由宿主 agent 迭代调用 deterministic tools，不在工具内启用 LLM。
 6. 不要为获得工具侧合成而叠加 `--synthesize`：当前产品 CLI 接受该兼容旗标但不注入 LLM、不添加 `answer`，且尚未发出弃用警告；完整过渡契约见上方命名块。
 
-**查询意图 → 参数映射**:
-
-| 用户意图 | 推荐参数 |
-|:---|:---|
-| "关于工作的日志" | `--topic work` |
-| "去年的记录" | `--date-from 2025-01-01 --date-to 2025-12-31` |
-| "跟晴岚有关的" | `--people 晴岚` |
-| "关于重构的" | `--query "重构"` |
-| "开心的回忆" | `--mood 开心` |
-| "LifeIndex项目" | `--project LifeIndex` |
-| 精确关键词匹配 | `--query "关键词" --no-semantic` |
-
-**步骤**:
-1. **解析查询意图**：从用户表述中识别过滤条件
-2. **执行搜索**：`search_journals`（关键词 + Entity Graph；`--semantic*` 仅兼容 no-op）
-3. **呈现结果**：展示日志列表（按确定性分数排序）
-
-**职责边界（强制）**：
-- `search_journals` 负责 retrieval execution，不负责替用户下结论
-- Agent 必须区分“搜索结果为空”与“搜索执行失败”
-- Agent 负责解释结果、回答用户真正的问题，并在需要时建议 refinement / follow-up；可读取 `entity_expansion` 解释别名/关系扩展来源，但不得把它当作过滤或裁决依据
-
-**Evidence Pack 检索诊断消费（`--include-evidence`）**：
-
-当使用 `smart-search --include-evidence` 时，返回值包含 `evidence_pack.diagnostics`，提供确定性检索质量信号。Agent 应据此调整行为：
-
-| `retrieval_outcome` | Agent 行为 |
-|---------------------|-----------|
-| `ok` | 正常消费结果 |
-| `weak_results` | 向用户说明置信度低，参考 `suggestions` 建议调整查询 |
-| `no_confident_match` | 告知未找到高置信匹配，建议换词或加过滤 |
-| `zero_results` | 如实报告无结果，参考 `suggestions` 建议放宽条件 |
-
-> `diagnostics` 是纯确定性推导，不依赖 LLM。详见 [API.md §Evidence Pack Diagnostics](docs/API.md)。
-- 不得把工具返回的原始结果列表直接等同于最终用户答案
-
-**澄清与失败规则（强制）**：
-- 当用户请求过于模糊、无法形成有意义的 query / filter 时，应先澄清，再调用 `search_journals`
-- 如果工具执行失败，不得把 failure 伪装成“没搜到”
-- 如果工具成功但无结果，应如实说明为空结果，并可建议用户缩小/放宽条件
-- 如果用户在搜索后其实想继续执行 edit / summarize / compare，Agent 必须显式切换到下一工作流，而不是默认混做
-
 ### 工作流2.5: 聚合型自然语言查询
 
-**适用场景**：
-- “过去30天我有多少次晚于10点睡觉”
-- “上个月我写了多少篇关于工作的日志”
-- “最近两周我情绪低落的次数多吗”
-- “去年这个时候我主要在做什么”
-
-**核心原则**：
-- 聚合型问题不是单次 retrieval 的直接结果，而是 **检索 → 阅读证据 → 条件判定 → 聚合回答**
-- 不得把 `search_journals.total_found` 直接当作最终答案，除非用户问的就是“搜到了几条”
-- 优先使用确定性证据；启发式证据只能辅助判断，不能伪装成硬事实
-
-**步骤**：
-1. **识别问题类型**：判断用户要的是 count / compare / trend / summarize
-2. **提取时间窗与过滤条件**：优先形成 `date-from/date-to/topic/project/people/...`
-3. **优先找硬证据**：
-   - frontmatter 明确字段
-   - 正文明确陈述
-   - index / timeline / metadata 可直接回答的信息
-4. **必要时做候选检索**：调用 `search_journals`，必要时围绕同一用户问题做多轮 query expansion
-5. **逐条判定证据**：
-   - `MATCH`：明确满足
-   - `NO_MATCH`：明确不满足
-   - `UNCERTAIN`：存在相关线索，但证据不足
-6. **聚合输出**：count / compare / trend / summary，并明确区分确定结论与启发式推断
-
-**证据分层（强制）**：
-- **硬证据**：结构化字段或正文明确陈述
-- **软证据**：只能间接支持结论的 proxy signal（如日志写作时间很晚、正文出现“熬夜/很困/准备睡”）
-- **不确定证据**：不足以单独支撑结论，只能作为补充说明
-
-**启发式规则（强制）**：
-- Agent 可以使用软证据做推断，但必须降级表达为“高概率 / 可能 / 无法确认”
-- 不得把启发式结论写成 CLI 硬规则
-- 不得为某个具体问题发明专门 workflow 分支；应复用本工作流的证据分层与聚合步骤
-
-**职责边界（强制）**：
-- CLI 负责提供原始证据与检索结果
-- Agent 负责条件判定、聚合、解释不确定性
-- 如果结论高度依赖启发式，必须在最终回答中说明依据与局限
+遇到“多少次 / 多不多 / 去年主要做什么 / compare / trend / summarize”时，不得把
+`search_journals.total_found` 直接当最终答案（除非用户只问搜索命中数）。加载
+[Full grounded query playbook](references/GROUNDED_QUERY_PLAYBOOK.md)，按其中的
+硬/软/不确定证据分层、`MATCH` / `NO_MATCH` / `UNCERTAIN` 判定和聚合输出规则执行；
+启发式结论必须降级表达并说明依据与局限，不能伪装成 CLI 硬事实。
 
 ### 工作流3: 编辑日志
 
