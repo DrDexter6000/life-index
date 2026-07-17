@@ -6,6 +6,33 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-17
+
+### What users get
+
+- More truthful, deterministic Core behavior: writes record commit and
+  follow-up effects honestly, compensate pre-commit failures, and preserve
+  durable journals through post-commit degradation; backup/restore recovery
+  rejects unsafe states.
+- Completed CLI-side GUI/Core interoperability, including correct first-use
+  and import/rollback behavior, while preserving the CLI as the sole data path.
+- An optional, least-privilege MCP Host Agent projection exposes exactly
+  `health`, `journal.get`, and `search`; its effect metadata correctly records
+  that search may update only rebuildable index state.
+- Stronger release confidence: coverage is part of the Tier 1 gate, and release
+  preflight verifies canonical version metadata and target availability before
+  any manual publish.
+- Clearer production and licensing expectations: the AGPL-3.0-only rationale
+  and the CLI's `Production/Stable` classifier are clarified without implying
+  GUI 1.0, future capabilities, or a completed release.
+
+### Included in this release
+
+- Deterministic write, recovery, and import/restore correctness hardening.
+- GUI/Core contract alignment and the optional registry-backed MCP projection.
+- Coverage, manual-release preflight, and public license/maturity documentation
+  hardening.
+
 ## [1.4.5] - 2026-07-08
 
 ### Fixed
