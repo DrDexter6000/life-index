@@ -21,9 +21,23 @@ A public hard blocker is green only when at least one core assertion executed.
 All-skipped assertion sets are not green. Private-only assertions are advisory
 and cannot be the sole evidence for a Tier 1 public blocker.
 
-The public synthetic invariant work tracked by #163 is pending implementation;
-this inventory rule does not claim that future assertion or its CI result
-already exists.
+The public #163 ownership invariant is implemented: the Tier 1 no-LLM check
+scans every Python AST in search/smart-search/eval for known provider imports
+and aliases, normalized LLM/provider/model-client declarations and storage,
+simple provider bindings, provider-specific SDK call suffixes regardless of
+owner name, and generic provider verbs only with structural provider provenance.
+It also rejects legacy prompt/trust/synthesis ownership and constant-string
+dynamic imports supplied as the first positional argument or `name=` keyword.
+Syntax/parse failure is non-green. This is a
+static structural boundary, not a universal proof against computed strings or
+arbitrary runtime metaprogramming.
+
+The blocker job first runs `.github/scripts/run_public_core_assertions.py`. Its
+JSON sentinel is the assertion-count authority: green requires at least one
+executed public synthetic token-match assertion. Zero collected, missing,
+deselected, all-skipped, or setup-skipped assertions are non-green. Private
+eval and broad/noise/quality metrics remain advisory and cannot satisfy this
+count or defend result deletion.
 <!-- PLATFORM-SSOT:PUBLIC-BLOCKER-EXECUTION:END -->
 
 Platform-boundary checks follow the active C1–C7 authority in
@@ -37,7 +51,7 @@ remains the #166 Legacy External Adapter exception.
 
 | Workflow file | Trigger | Tier | Notes |
 |---|---|---|---|
-| `.github/workflows/tests.yml` | push to main/develop and ready pull requests to main | Tier 1 + Tier 2 | blocker, contract, and search-eval are Tier 1; quarantine and coverage run after merge as Tier 2 |
+| `.github/workflows/tests.yml` | push to main/develop and ready pull requests to main | Tier 1 + Tier 2 | blocker, contract, and deterministic eval contracts are Tier 1; quarantine and coverage run after merge as Tier 2 |
 | `.github/workflows/quality.yml` | push to main/develop and pull requests to main | Tier 1 | doc sync, public diff name scan, public surface allowlist scan, L2 no-LLM scan, lint, format, security, and type checks |
 | `.github/workflows/nightly.yml` | push to main, scheduled run, and manual dispatch | Tier 2 | full suite and package/onboarding smoke |
 | `.github/workflows/benchmark.yml` | push to main and manual dispatch | Tier 2 | performance measurement |
@@ -47,9 +61,9 @@ remains the #166 Legacy External Adapter exception.
 
 | # | Check | CI command or scope | Source workflow | Local command |
 |---|---|---|---|---|
-| 1 | blocker gate | `pytest -m blocker --timeout=120` | tests.yml | `pytest -m blocker -q --timeout=120` |
+| 1 | blocker gate | public Core assertion sentinel, then `pytest -m blocker --timeout=120` | tests.yml | `python .github/scripts/run_public_core_assertions.py` then `pytest -m blocker -q --timeout=120` |
 | 2 | contract gate | `pytest -m contract --timeout=120` | tests.yml | `pytest -m contract -q --timeout=120` |
-| 3 | search-eval-gate | search evaluation test set listed in `tests.yml` | tests.yml | `scripts/tier1-gate.sh` |
+| 3 | deterministic eval contracts | `scripts/run_eval_gate.sh` owns the provider-retirement, fail-fast, metrics, serialization, and report compatibility inventory plus the public Core sentinel | tests.yml | `scripts/run_eval_gate.sh` |
 | 4 | doc-sync | `python .github/scripts/check_doc_sync.py` | quality.yml | same |
 | 5 | public-diff-names | `python .github/scripts/check_public_diff_names.py` | quality.yml | same |
 | 6 | public-surface-allowlist | `python .github/scripts/check_public_surface_allowlist.py` | quality.yml | same |
@@ -75,8 +89,16 @@ block pull request readiness, but failures must be triaged.
 ## Scope Notes
 
 - Format, lint, security, and type checks intentionally target `tools/`.
+- The l2-no-llm check scans imports across deterministic tools and applies the
+  structural AST policy above to `tools/search_journals`, `tools/smart_search`,
+  and `tools/eval`.
 - The blocker marker set spans the files collected by `pytest -m blocker`.
-- The search evaluation gate is Tier 1 because it protects search quality.
+- Deterministic eval contract checks are Tier 1 because they protect provider
+  retirement, fail-fast, serialization, and sentinel wiring. The workflow and
+  pre-push gate delegate to `scripts/run_eval_gate.sh` so its no-argument path
+  is the sole test-target inventory. Private corpus,
+  broad/noise, ranking, and quality evaluation run through
+  `scripts/run_eval_advisory.sh` and are not PR blockers.
 - Full suite, quarantine, coverage, package smoke, and benchmarks are visible
   Tier 2 checks, not PR-blocking checks.
 - Benchmark tests run on shared GitHub runners. Hard assertions use

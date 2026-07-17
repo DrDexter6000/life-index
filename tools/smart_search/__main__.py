@@ -18,6 +18,10 @@ from typing import Any
 from tools.lib.tool_call_log import emit_tool_call_log
 
 SCHEMA_VERSION = "m16.smart_search.v0"
+SYNTHESIZE_DEPRECATION_WARNING = (
+    "DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the "
+    "Host Agent + Life Index Skill."
+)
 
 
 def _emit_json(payload: dict[str, Any]) -> None:
@@ -70,9 +74,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if args.synthesize:
+        print(SYNTHESIZE_DEPRECATION_WARNING, file=sys.stderr)
+
     from tools.search_journals.orchestrator import SmartSearchOrchestrator
 
-    orch = SmartSearchOrchestrator(llm_client=None)
+    orch = SmartSearchOrchestrator()
     result = orch.search(
         args.query,
         include_evidence=args.include_evidence,

@@ -75,7 +75,7 @@ def test_readme_does_not_reference_real_first_entry_smoke_file() -> None:
     assert "LIFE_INDEX_DATA_DIR" in onboarding
 
 
-def test_readme_metrics_use_current_108_query_baseline() -> None:
+def test_readme_uses_public_synthetic_and_advisory_eval_truth() -> None:
     readme = _read("README.md")
     readme_en = _read("README.en.md")
 
@@ -83,8 +83,10 @@ def test_readme_metrics_use_current_108_query_baseline() -> None:
         assert "2,400+ unit tests" not in text
         assert "keyword-only Recall@5 = **0.7857**" not in text
         assert "4,200+ pytest-collected tests" in text
-        assert "108-query" in text
-        assert "Recall@5 = **0.9231**" in text
+        assert "108-query" not in text
+        assert "Recall@5 = **0.9231**" not in text
+        assert "synthetic token-match blocker" in text
+        assert "advisory evidence" in text
 
 
 def test_readme_current_version_points_to_release_ssot() -> None:
@@ -102,13 +104,31 @@ def test_readme_current_version_points_to_release_ssot() -> None:
 def test_skill_uses_progressive_disclosure_for_grounded_query_playbook() -> None:
     skill = _read("SKILL.md")
     playbook = _read("references/GROUNDED_QUERY_PLAYBOOK.md")
+    playbook_link = "[Full grounded query playbook](references/GROUNDED_QUERY_PLAYBOOK.md)"
 
     assert len(skill.splitlines()) <= 590
     assert "references/GROUNDED_QUERY_PLAYBOOK.md" in skill
     assert "Full grounded query playbook" in skill
+    assert skill.count(playbook_link) == 2
+    assert "`references/GROUNDED_QUERY_PLAYBOOK.md`" not in skill
     assert "life-index journal batch-get" in playbook
     assert "answer.insights[]" in playbook
     assert "ensure` -> `discover` -> `navigate" in playbook
+
+
+def test_grounded_query_playbook_keeps_magazine_output_conditional() -> None:
+    playbook = " ".join(_read("references/GROUNDED_QUERY_PLAYBOOK.md").split())
+
+    assert (
+        "time-scoped evidence, facet/count/enumeration answers, cross-facet questions, "
+        "magazine-style analysis" in playbook
+    )
+    assert "Only for magazine-style analysis or an explicit grounded-status request" in playbook
+    assert (
+        "Ordinary count, facet, enumeration, cross-facet, and time-scoped answers use "
+        "bounded evidence and honest uncertainty without requiring `answer.insights[]` or a "
+        "`GROUNDED` / `PARTIAL` / `UNGROUNDED` status." in playbook
+    )
 
 
 def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:

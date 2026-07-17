@@ -69,6 +69,7 @@ mkdir -p "$LIFE_INDEX_DATA_DIR"
 echo "Using pytest basetemp: $PYTEST_BASETEMP"
 echo "Using LIFE_INDEX_DATA_DIR: $LIFE_INDEX_DATA_DIR"
 
+run_check "public synthetic core assertion" python .github/scripts/run_public_core_assertions.py
 run_check "pytest -m blocker" timeout 900 python -m pytest -m blocker -o addopts="" -ra -q --strict-markers --strict-config --timeout=120 --basetemp="$PYTEST_BASETEMP/blocker"
 
 END_TIME=$(date +%s)

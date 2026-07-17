@@ -38,12 +38,13 @@ INTELLIGENCE_OWNER_RULE = (
     "orchestration, interpretation, and synthesis."
 )
 CURRENT_SYNTHESIZE_TRUTH = (
-    "The accepted `--synthesize` flag currently runs with no LLM injection and emits "
-    "no `answer`."
+    "The accepted `--synthesize` flag is retained for at least two major versions. "
+    "It has no provider/client/LLM injection path, emits no `answer`, and preserves "
+    "the ordinary deterministic domain output."
 )
 SYNTHESIZE_FOLLOW_ON_TRUTH = (
-    "#163 owns the future deprecation warning, deterministic equivalence proof, and "
-    "unreachable LLM-path cleanup."
+    "#163 remains open for eval/A5 removal and the remaining D1-A work. This "
+    "implemented A3/A4 truth does not claim A5, #163, or the D1 phase complete."
 )
 STABLE_DISTRIBUTION_HOST_OPERATIONS_RULE = "\n".join(
     (
@@ -112,43 +113,50 @@ ARCHITECTURE_CLASSIFICATION_POINTER = "\n".join(
 )
 EXPECTED_ARCHITECTURE_EVAL_LLM_DEVIATION = "\n".join(
     (
-        "### Current eval LLM deviation",
+        "### Eval language-judge compatibility boundary",
         "",
         "`eval` remains Core under C7. The public command classification is a",
         "constitutional ownership/admission map, not a certification that every current",
         "route or option complies.",
         "",
-        "Current runtime: the product CLI route `life-index eval --judge llm` is reachable",
-        "and performs provider selection and provider-backed calls. This violates",
-        "`CHARTER.md §1.9`; it is not approved, sanctioned, grandfathered, Non-Core, or",
-        "a compatibility exception.",
+        "Current runtime: the product CLI recognizes `life-index eval --judge llm` but",
+        "returns a stable non-success result before evaluation, configuration reading,",
+        "or provider-module import. It does not silently fall back to keyword and does",
+        "not claim a language-assisted evaluation ran.",
         "",
-        "#163 owns removal or disabling of this reachable in-tool LLM path while",
-        "preserving deterministic C7 eval. D0 records the deviation and changes no runtime",
-        "behavior.",
+        "Production `tools/eval` contains only deterministic C7 measurement and",
+        "serialization behavior; language-assisted evaluation belongs to Host Agent +",
+        "Life Index Skill. The A5 candidate does not close #163 or complete D1-A before",
+        "review and adjudication.",
     )
 )
 EXPECTED_API_EVAL_LLM_TRANSITION = "\n".join(
     (
-        "### `eval --judge llm` current transition warning",
+        "### `eval --judge llm` compatibility boundary",
         "",
-        "> **Constitutional warning**: `life-index eval --judge llm` is currently",
-        "> reachable and performs provider selection and provider-backed calls.",
+        "`life-index eval --judge llm` remains recognizable for compatibility, but it",
+        "fails before evaluation or any provider/configuration import. The stable",
+        "non-success payload is:",
         "",
-        "This current option violates `CHARTER.md §1.9`. It is not approved, sanctioned,",
-        "grandfathered, Non-Core, or a compatibility exception. Classification of `eval`",
-        "as Core C7 assigns constitutional ownership; it does not certify this option as",
-        "compliant.",
+        "```json",
+        "{",
+        '  "success": false,',
+        '  "error": {',
+        '    "code": "EVAL_LLM_JUDGE_HOST_AGENT_REQUIRED",',
+        '    "message": "Language-assisted evaluation belongs to the Host Agent + '
+        'Life Index Skill."',
+        "  }",
+        "}",
+        "```",
         "",
-        "#163 owns removal or disabling of the product-CLI-reachable provider",
-        "selection/calls while preserving deterministic C7 eval. Host Agent + Skill own",
-        "any language-assisted judgment. D0 records this deviation and changes no runtime",
-        "behavior.",
+        "There is no fallback to keyword and no provider/model recommendation. The A5",
+        "candidate removes product eval provider selection, prompts, clients, and calls",
+        "while preserving deterministic C7 metrics. #163 remains open pending review;",
+        "this runtime fact does not close the Issue or complete D1-A.",
     )
 )
 
-EXPECTED_CURRENT_TARGET_STATUS = (
-    """
+EXPECTED_CURRENT_TARGET_STATUS = """
 ### Platform program: current runtime vs ratified target
 
 Current runtime: direct CLI/Core contracts are the implemented public route;
@@ -158,27 +166,35 @@ design memo is not an authority or SSOT. The exact closed C1–C7 domains are no
 active Charter authority, and the former §1.9 direct provider-fallback direction
 is superseded: Host Agent + Skill own provider selection and intelligence.
 
-The following implementation work remains future work; D0 ratification does
-not describe any of it as complete:
+The integrated D1 implementation work below has passed its named implementation
+reviews, but the D1 phase remains IN_PROGRESS pending the final phase gate and
+CTO acceptance. Public CI and Windows acceptance final gates have not reached a
+final passing state:
 
-"""
-    "- #163 — recall/eval correction, explicit deprecation warning, ordinary "
-    "deterministic smart-search equivalence proof, and unreachable LLM-path deletion: "
-    "unimplemented.\n"
-    """- #162 — transactional write, side-effect, and freshness repair: unimplemented.
-- #165 — backup, restore, and recovery proof: unimplemented.
+- #163 — D1-A runtime and contract are implemented and independently accepted;
+  the issue is closed. This does not complete D1.
+- #162 — D1-B transactional write side-effect records and honest freshness are
+  implemented, and Spec/Quality review passed. The issue remains open pending
+  the final D1 phase gate and CTO acceptance.
+- #165 — D1-C recovery is implemented, and Spec/Quality review passed. The issue
+  remains open pending the final D1 phase gate and CTO acceptance. A real
+  case-sensitive filesystem roundtrip is not proven on Windows and remains
+  assigned to D4 WSL Ubuntu B validation.
+- #169 — Skill progressive disclosure is implemented, and Spec/Quality review
+  passed. The issue remains open pending the final D1 phase gate and CTO
+  acceptance.
 - #164 — optional Core Capability Gateway typed 1:1 projection: unimplemented.
 """
-)
 
 EXPECTED_SMART_SEARCH_CURRENT_CONTRACT = "\n".join(
     (
         "### Smart-search current contract",
         "",
         "- Default/no-flag `life-index smart-search` returns a deterministic scaffold.",
-        "- Current explicit `--synthesize` is accepted, but the product CLI always constructs `SmartSearchOrchestrator(llm_client=None)`: it never instantiates or injects an LLM and emits no `answer`; the flag is behaviorally a deterministic no-op/no-answer path.",  # noqa: E501
-        "- Current runtime does not yet emit the approved explicit deprecation warning.",
-        "- Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.",  # noqa: E501
+        "- Current explicit `--synthesize` is accepted for at least two major versions. The product CLI constructs `SmartSearchOrchestrator()` with no injection surface, emits no `answer`, and preserves the ordinary deterministic domain payload.",  # noqa: E501
+        "- The CLI emits exactly one stderr warning: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`",  # noqa: E501
+        "- Search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation; the Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots.",  # noqa: E501
+        "- A5 extends the deterministic-only boundary and structural scan to product eval; #163 remains open pending review, so D1-A is not complete.",  # noqa: E501
         "- Host Agent + Skill remain the intelligence owner; #163 does not change that role boundary.",  # noqa: E501
     )
 )
@@ -192,9 +208,11 @@ EXPECTED_CORE_ADMISSION_DOMAINS = "\n".join(
         "planning, multi-hop reasoning, orchestration, interpretation, and synthesis;",
         "Core remains deterministic; GUI remains presentation-only; and an optional",
         "Core Capability Gateway cannot own intelligence or semantics. The accepted `--synthesize`",
-        "flag currently runs through the product CLI with no LLM injection and no",
-        "`answer`; #163 owns the future deprecation warning, deterministic equivalence",
-        "proof, and unreachable LLM-path cleanup.",
+        "flag is retained for at least two major versions, has no provider/client/LLM",
+        "injection path, emits no `answer`, preserves ordinary deterministic domain output,",
+        "and emits exactly one stderr warning: `DEPRECATED: --synthesize is a compatibility",
+        "no-op; synthesis belongs to the Host Agent + Life Index Skill.` Eval/A5 and the",
+        "remaining #163 work are pending; A3/A4 does not claim A5, #163, or D1 complete.",
         "",
         "| ID | Active closed Core admission domain |",
         "|---|---|",
@@ -338,11 +356,11 @@ EXPECTED_ADVANCED_ADDON_DUAL_CHANNEL = "\n".join(
 
 SYNTHESIZE_TRANSITION_SEMANTICS = "\n".join(
     (
-        "Current runtime: the product CLI accepts `--synthesize` but always constructs `SmartSearchOrchestrator(llm_client=None)`; it never instantiates or injects an LLM, emits no `answer`, and is behaviorally a deterministic no-op/no-answer path.",  # noqa: E501
+        "Current runtime: the product CLI accepts `--synthesize` for at least two major versions and constructs `SmartSearchOrchestrator()` with no injection surface. It emits no `answer` and preserves the ordinary deterministic domain payload.",  # noqa: E501
         "",
-        "Current warning status: the approved explicit deprecation warning is not yet emitted.",  # noqa: E501
+        "Current warning: exactly one stderr line is emitted: `DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the Host Agent + Life Index Skill.`",  # noqa: E501
         "",
-        "Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.",  # noqa: E501
+        "A3/A4 implementation: search/smart-search production packages contain no dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, or synthesis implementation. The Tier 1 no-LLM hard check enforces the documented static structural policy over these production roots. A5 extends the deterministic-only boundary and structural scan to product eval; #163 remains open pending review, so D1-A is not complete.",  # noqa: E501
         "",
         "Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.",  # noqa: E501
     )
@@ -361,9 +379,23 @@ A public hard blocker is green only when at least one core assertion executed.
 All-skipped assertion sets are not green. Private-only assertions are advisory
 and cannot be the sole evidence for a Tier 1 public blocker.
 
-The public synthetic invariant work tracked by #163 is pending implementation;
-this inventory rule does not claim that future assertion or its CI result
-already exists.
+The public #163 ownership invariant is implemented: the Tier 1 no-LLM check
+scans every Python AST in search/smart-search/eval for known provider imports
+and aliases, normalized LLM/provider/model-client declarations and storage,
+simple provider bindings, provider-specific SDK call suffixes regardless of
+owner name, and generic provider verbs only with structural provider provenance.
+It also rejects legacy prompt/trust/synthesis ownership and constant-string
+dynamic imports supplied as the first positional argument or `name=` keyword.
+Syntax/parse failure is non-green. This is a
+static structural boundary, not a universal proof against computed strings or
+arbitrary runtime metaprogramming.
+
+The blocker job first runs `.github/scripts/run_public_core_assertions.py`. Its
+JSON sentinel is the assertion-count authority: green requires at least one
+executed public synthetic token-match assertion. Zero collected, missing,
+deselected, all-skipped, or setup-skipped assertions are non-green. Private
+eval and broad/noise/quality metrics remain advisory and cannot satisfy this
+count or defend result deletion.
 """
 
 EXPECTED_HOST_AGENT_ROUTING = "\n".join(
@@ -379,20 +411,19 @@ EXPECTED_HOST_AGENT_ROUTING = "\n".join(
 EXPECTED_API_CURRENT_ROWS = {
     "`answer` / `answer.*`": (
         "`answer` / `answer.*`",
-        "当前产品 CLI 不输出；`--synthesize` 不注入 LLM 且不添加 `answer`；"
-        "see the named `--synthesize` transition authority block；#163 将删除不可达实现",
-        "当前无此字段；如未来由新契约引入，再按该契约消费",
+        "当前产品 CLI 不输出；`--synthesize` 不注入 LLM、不添加 `answer`，并保持普通 "
+        "deterministic domain payload；see the named `--synthesize` transition authority block",
+        "当前无此字段；语言合成由 Host Agent + Skill 完成",
         "**stable**",
     ),
     "`--synthesize`": (
         "`--synthesize`",
-        "当前接受但不注入 LLM、不添加 `answer`，行为上是 deterministic no-op/no-answer；"
-        "see the named `--synthesize` transition authority block",
+        "当前接受至少两个主版本；stderr 发出一次稳定弃用警告；不注入 LLM、不添加 `answer`，"
+        "domain payload 与普通调用等价",
     ),
     "`--include-evidence --synthesize`": (
         "`--include-evidence --synthesize`",
-        "添加 evidence_pack；`--synthesize` 当前不注入 LLM、不添加 `answer`；"
-        "see the named `--synthesize` transition authority block",
+        "添加 evidence_pack；stderr 发出一次稳定弃用警告；`--synthesize` 不改变 JSON/domain 输出",
     ),
 }
 
@@ -414,12 +445,6 @@ EXPECTED_API_PERFORMANCE_ROWS = {
         "float",
         "仅传递 `--include-evidence` 时",
         "Evidence pack 构建耗时；`--synthesize` 单独使用不触发构建",
-    ),
-    "`synthesis_ms`": (
-        "`synthesis_ms`",
-        "float",
-        "当前产品 CLI 不出现",
-        "不可达旧实现的非稳定字段；#163 清理",
     ),
 }
 
@@ -471,7 +496,7 @@ def _markdown_rows(text: str) -> list[tuple[str, ...]]:
 def _charter_metadata_value(charter: str, label: str) -> str:
     matches = re.findall(rf"^> \*\*{re.escape(label)}\*\*：(.+)$", charter, re.MULTILINE)
     assert len(matches) == 1, f"CHARTER metadata field {label!r} must occur exactly once"
-    return matches[0].strip()
+    return str(matches[0]).strip()
 
 
 def _charter_section(charter: str, start_heading: str, end_heading: str) -> str:
@@ -518,19 +543,28 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
 
     assert "CHARTER.md（本文件，最高权威）" in charter
     assert "1. `CHARTER.md` owns constitutional invariants." in agents
-    _assert_named_block_snapshot(
+    current_target_block = _assert_named_block_snapshot(
         architecture,
         "CURRENT-TARGET-STATUS",
         EXPECTED_CURRENT_TARGET_STATUS,
         "docs/ARCHITECTURE.md",
     )
+    assert "the issue is closed. This does not complete D1." in current_target_block
+    assert "D1 phase remains IN_PROGRESS" in current_target_block
+    for stale_status in (
+        "#163 remains open",
+        "#162 — transactional write, side-effect, and freshness repair: unimplemented",
+        "#165 — backup, restore, and recovery proof: unimplemented",
+        "pending independent review",
+    ):
+        assert stale_status not in current_target_block
     _assert_named_block_snapshot(
         architecture,
         "SMART-SEARCH-CURRENT-CONTRACT",
         EXPECTED_SMART_SEARCH_CURRENT_CONTRACT,
         "docs/ARCHITECTURE.md",
     )
-    assert "SmartSearchOrchestrator(llm_client=None)" in smart_search_cli
+    assert "SmartSearchOrchestrator()" in smart_search_cli
 
     smart_search_end = "<!-- PLATFORM-SSOT:SMART-SEARCH-CURRENT-CONTRACT:END -->"
     provider_backed_drift = architecture.replace(
@@ -539,7 +573,9 @@ def test_authority_surfaces_distinguish_current_behavior_from_ratified_target() 
         + smart_search_end,
         1,
     )
-    assert "always constructs `SmartSearchOrchestrator(llm_client=None)`" in provider_backed_drift
+    assert (
+        "constructs `SmartSearchOrchestrator()` with no injection surface" in provider_backed_drift
+    )
     with pytest.raises(AssertionError) as exc_info:
         _assert_named_block_snapshot(
             provider_backed_drift,
@@ -718,7 +754,7 @@ def test_classification_assigns_ownership_without_certifying_runtime_compliance(
         )
 
 
-def test_eval_llm_deviation_is_tracked_without_reclassification_or_exception() -> None:
+def test_eval_language_judge_fails_before_provider_ownership() -> None:
     architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
     api = AUTHORITY_PATHS["api"].read_text(encoding="utf-8")
 
@@ -736,21 +772,18 @@ def test_eval_llm_deviation_is_tracked_without_reclassification_or_exception() -
     )
     assert architecture.count("| eval | Core | C7 |") == 1
 
-    noncompliant_status = "\n".join(
+    forbidden_drifts = (
         (
-            "`CHARTER.md §1.9`; it is not approved, sanctioned, grandfathered, Non-Core, or",
-            "a compatibility exception.",
-        )
+            "returns a stable non-success result before evaluation, configuration reading,",
+            "loads provider configuration before returning a non-success result,",
+        ),
+        (
+            "language-assisted evaluation belongs to Host Agent +",
+            "language-assisted evaluation belongs to Core +",
+        ),
     )
-    positive_statuses = (
-        "`CHARTER.md §1.9`; it is approved.",
-        "`CHARTER.md §1.9`; it is sanctioned.",
-        "`CHARTER.md §1.9`; it is grandfathered.",
-        "`CHARTER.md §1.9`; it is Non-Core.",
-        "`CHARTER.md §1.9`; it is a compatibility exception.",
-    )
-    for positive_status in positive_statuses:
-        drifted = architecture.replace(noncompliant_status, positive_status, 1)
+    for current, forbidden in forbidden_drifts:
+        drifted = architecture.replace(current, forbidden, 1)
         assert drifted != architecture
         with pytest.raises(AssertionError):
             _assert_named_block_snapshot(
@@ -759,6 +792,78 @@ def test_eval_llm_deviation_is_tracked_without_reclassification_or_exception() -
                 EXPECTED_ARCHITECTURE_EVAL_LLM_DEVIATION,
                 "docs/ARCHITECTURE.md",
             )
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        REPO_ROOT / "CHARTER.md",
+        REPO_ROOT / "docs" / "API.md",
+        REPO_ROOT / "docs" / "ARCHITECTURE.md",
+        REPO_ROOT / "docs" / "CI_HARD_CHECKS.md",
+        REPO_ROOT / "SKILL.md",
+        REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md",
+    ),
+)
+def test_public_eval_authorities_do_not_publish_private_corpus_fingerprints(
+    path: Path,
+) -> None:
+    text = path.read_text(encoding="utf-8")
+    private_fingerprints = (
+        "Round 17 冻结基线",
+        "实测基线（Round 17",
+        "85 queries",
+        "0.3836",
+        "0.3565",
+        "0.2716",
+        "golden_queries.yaml",
+        "golden_rejection_queries.yaml",
+        "15 个 broad recall",
+        "precision < 0.8",
+        "68 篇日志",
+        "108-query",
+        "tests/eval/baselines/",
+        "65 篇日志",
+        "晴岚",
+        "王某某",
+        "wife-001",
+        "C:/Users/example/Documents/Life-Index",
+    )
+
+    matches = [item for item in private_fingerprints if item in text]
+    matches.extend(re.findall(r"\b(?:GQ|AGQ|SAGQ)\d+\b", text))
+    assert matches == []
+
+
+def test_public_aggregate_eval_contract_has_no_private_case_values() -> None:
+    api = AUTHORITY_PATHS["api"].read_text(encoding="utf-8")
+    aggregate_eval_section = api.split(
+        "### Aggregate Evaluation Coverage (Internal Developer Tooling)", 1
+    )[1].split("#### Diagnostic-Only Mode", 1)[0]
+
+    concrete_measurements = re.findall(
+        r'"(?:total_queries|passed_queries|failed_queries|query_count|count|pass_rate)"'
+        r"\s*:\s*-?\d+(?:\.\d+)?",
+        aggregate_eval_section,
+    )
+    private_case_ids = re.findall(
+        r"\b(?:GQ|AGQ|SAGQ)\d+\b",
+        aggregate_eval_section,
+    )
+
+    assert concrete_measurements == []
+    assert private_case_ids == []
+    assert '"late sleep"' not in aggregate_eval_section
+    assert "entry_time_after=22:00" not in aggregate_eval_section
+
+
+def test_architecture_describes_broad_private_eval_as_advisory_only() -> None:
+    architecture = AUTHORITY_PATHS["architecture"].read_text(encoding="utf-8")
+    assert (
+        "Broad/private quality metrics remain observable and advisory; weak or errored "
+        "broad metrics do not enter blocking failures or override exact Core results."
+        in architecture
+    )
 
 
 def test_no_authority_surface_assigns_intelligence_to_core_gui_or_gateway() -> None:
@@ -898,6 +1003,57 @@ def test_api_performance_rows_match_current_deterministic_cli_truth() -> None:
     for key, expected_row in EXPECTED_API_PERFORMANCE_ROWS.items():
         matches = [row for row in api_rows if row and row[0] == key]
         assert matches == [expected_row], f"docs/API.md performance row drift for {key}"
+
+
+def test_public_eval_facts_describe_current_deterministic_and_advisory_truth() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    runner = (REPO_ROOT / "tools" / "eval" / "run_eval.py").read_text(encoding="utf-8")
+
+    assert "待测（依赖 LLM API）" not in charter
+    assert "108-query" not in readme
+    assert "semantic/vector RAG 无四位小数增益" not in readme
+    assert "Run a second eval pass" not in runner
+
+
+def test_public_authority_never_promotes_quality_evaluation_to_a_merge_gate() -> None:
+    documents = {
+        "CHARTER.md": AUTHORITY_PATHS["charter"].read_text(encoding="utf-8"),
+        "README.md": (REPO_ROOT / "README.md").read_text(encoding="utf-8"),
+        "README.en.md": (REPO_ROOT / "README.en.md").read_text(encoding="utf-8"),
+        "docs/API.md": AUTHORITY_PATHS["api"].read_text(encoding="utf-8"),
+    }
+    stale_claims = {
+        "CHARTER.md": (
+            "在没有 Gold Set 回归通过的情况下合入搜索相关 PR",
+            "任何 PR 导致指标下降 ≥3%",
+            "指标下降 ≥3% →",
+            "指标下降 ≥10% →",
+            "运行完整的 Gold Set 测试，确认修订不导致退化",
+        ),
+        "README.md": (
+            "Cycle 2 多信号 fixture",
+            "2026-05-25 完整 integrity audit PASS",
+            "recall-first 质量门控",
+        ),
+        "README.en.md": (
+            "Cycle 2 multi-signal fixture",
+            "full integrity audit PASS on 2026-05-25",
+            "recall-first quality gate",
+        ),
+        "docs/API.md": (
+            "explicitly provided (fixture/CI eval)",
+            "remain a **hard gate**",
+        ),
+    }
+
+    violations = [
+        f"{name}: {claim}"
+        for name, claims in stale_claims.items()
+        for claim in claims
+        if claim in documents[name]
+    ]
+    assert not violations, "stale public evaluation authority:\n" + "\n".join(violations)
 
 
 def test_ci_hard_check_inventory_cannot_call_all_skipped_private_assertions_green() -> None:

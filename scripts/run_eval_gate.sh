@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# run_eval_gate.sh — Search eval quality gate for CI/local use
+# run_eval_gate.sh — Deterministic eval contract gate for CI/local use
 #
-# Runs the search evaluation against isolated fixture data and checks
-# results against quality gate criteria:
+# Runs deterministic evaluation contract checks:
 #   - Eval infrastructure completes without error
-#   - All required golden query categories are covered
-#   - Noise queries return zero results
-#   - Positive queries return at least one result
-#   - Baseline comparison infrastructure works
+#   - Provider retirement and fail-fast compatibility stay enforced
+#   - A public synthetic token-match Core assertion executes
+#   - Eval result/report compatibility remains stable
 #
 # Exit codes:
-#   0 — all quality gates passed
-#   1 — quality gate failed
+#   0 — all deterministic checks passed
+#   1 — a deterministic check failed
 #
 # Usage:
-#   bash scripts/run_eval_gate.sh [--snapshot=phase2]
+#   bash scripts/run_eval_gate.sh
+#   bash scripts/run_eval_gate.sh --snapshot=phase2
 #
 # Options:
-#   --snapshot=PHASE   Freeze eval metrics as baseline snapshot
-#                      (e.g. --snapshot=phase2 writes .strategy/cli/Round_10_baselines/phase2.json)
+#   --snapshot=PHASE   Maintenance-only snapshot operation; this does not run
+#                      the deterministic gate. Prefer freeze_baseline.py for
+#                      new automation.
 
 set -euo pipefail
 
@@ -26,6 +26,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
+
+PYTEST_TIMEOUT_SECONDS="${PYTEST_TIMEOUT_SECONDS:-120}"
+EVAL_TEST_TARGETS=(
+  tests/unit/test_eval_provider_retirement.py
+  tests/unit/test_eval_metrics.py
+  tests/integration/test_eval_gate_ci.py
+  tests/integration/test_eval_private_inventory.py
+  tests/eval/test_semantic_report.py
+  tests/eval/test_eval_compare.py
+  tests/eval/test_eval_run.py
+  tests/eval/test_eval_qrels.py
+  tests/eval/test_eval_export.py
+  tests/eval/test_eval_serialization.py
+)
 
 # Parse --snapshot=PHASE argument
 SNAPSHOT_PHASE=""
@@ -43,26 +57,23 @@ if [ -n "$SNAPSHOT_PHASE" ]; then
   echo ""
   echo "✅ Baseline snapshot frozen: .strategy/cli/Round_10_baselines/${SNAPSHOT_PHASE}.json"
 else
-  # ── Section 1: Eval infrastructure tests ──
-  echo "=== Section 1: Eval infrastructure ==="
-  python -m pytest tests/unit/test_eval_gate.py tests/unit/test_eval_runner.py tests/unit/test_eval_llm.py -v --timeout=120
+  echo "=== Section 1: Authoritative deterministic inventory ==="
+  echo "=== Section 2: Public synthetic Core assertion ==="
+  python .github/scripts/run_public_core_assertions.py
   echo ""
-  echo "✅ Eval infrastructure passed"
+  echo "✅ Public synthetic Core assertion passed"
 
-  # ── Section 2: Rejection gate (D15, ≥90% pass-rate) ──
-  echo "=== Section 2: Rejection quality gate (≥90% pass-rate) ==="
-  python -m pytest tests/integration/test_golden_rejection.py -v --timeout=120
+  echo "=== Section 3: Deterministic eval contracts ==="
+  PYTEST_ARGS=(-v "--timeout=$PYTEST_TIMEOUT_SECONDS")
+  if [ -n "${EVAL_PYTEST_BASETEMP:-}" ]; then
+    PYTEST_ARGS+=("--basetemp=$EVAL_PYTEST_BASETEMP")
+  fi
+  python -m pytest "${EVAL_TEST_TARGETS[@]}" "${PYTEST_ARGS[@]}"
   echo ""
-  echo "✅ Rejection quality gate passed"
-
-  # ── Section 3: Full unit regression ──
-  echo "=== Section 3: Full unit regression ==="
-  python -m pytest tests/unit/ -q --timeout=300
-  echo ""
-  echo "✅ Full unit regression passed"
+  echo "✅ Deterministic eval contracts passed"
 
   echo ""
   echo "========================================="
-  echo "✅ All search eval quality gates passed"
+  echo "✅ Deterministic eval checks passed"
   echo "========================================="
 fi

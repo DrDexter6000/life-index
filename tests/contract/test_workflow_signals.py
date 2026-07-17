@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from tools.lib.workflow_signals import (
     WriteOutcome,
     IndexStatus,
@@ -93,8 +91,8 @@ class TestDeriveWriteOutcome:
             == WriteOutcome.SUCCESS_PENDING_CONFIRMATION
         )
 
-    def test_confirmation_takes_priority_over_degraded(self):
-        """When both confirmation needed AND degraded, confirmation wins."""
+    def test_degraded_takes_priority_over_confirmation(self):
+        """Committed degradation remains visible when confirmation is also needed."""
         assert (
             derive_write_outcome(
                 success=True,
@@ -102,7 +100,7 @@ class TestDeriveWriteOutcome:
                 index_status="degraded",
                 side_effects_status="complete",
             )
-            == WriteOutcome.SUCCESS_PENDING_CONFIRMATION
+            == WriteOutcome.SUCCESS_DEGRADED
         )
 
     def test_success_degraded_index(self):

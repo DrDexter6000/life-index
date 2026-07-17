@@ -1,28 +1,21 @@
-"""Noise gate — hard-rule query classifier for semantic pipeline bypass.
+"""Compatibility query classifier that emits advisory retrieval metadata.
 
-Round 18 Phase 3 discovery: semantic embedding returns low-confidence matches
-for noise queries (e.g. "!!!", "xyz123456789"), destroying noise_rejection.
-This gate is a deterministic, rule-based pre-filter that skips the semantic
-pipeline when a query is clearly noise.
+The public ``is_noise_query`` name and reason values remain for compatibility.
+Classification is deterministic and advisory only: callers may expose the
+reason as metadata, but classification never authorizes retrieval bypass or
+result deletion.
 
 Round 19 Phase 1 extension: add negation-intent and OOD-topic detection
-for queries that trigger semantic over-generalization (GQ74-78, GQ128, GQ130).
+for compatibility with existing diagnostic categories.
 
 Design principle: simple, fast, auditable. No ML. No index lookup.
-Feature flag: set LIFE_INDEX_NOISE_GATE=0 to disable.
+Legacy compatibility flag: set LIFE_INDEX_NOISE_GATE=0 to disable classification.
 
-Coverage on Round 19 corrected baseline noise_rejection + edge_case leaks:
-- GQ12 "!!!"              -> pure symbols      (Rule 1) -> caught ✅
-- GQ129 "xyz123456789"    -> no-dictionary     (Rule 5) -> caught ✅
-- GQ128 "不存在的日志标题"  -> negation intent   (Rule 6) -> caught ✅
-- GQ130 "完全不相关的随机内容" -> negation intent (Rule 6) -> caught ✅
-- GQ74 "日本旅行攻略"      -> OOD topic         (Rule 7) -> caught ✅
-- GQ75 "菜谱推荐"          -> OOD topic         (Rule 7) -> caught ✅
-- GQ76 "健身减肥计划"      -> OOD topic         (Rule 7) -> caught ✅
-- GQ77 "区块链技术投资"    -> OOD topic         (Rule 7) -> caught ✅
-- GQ78 "养猫的经历"        -> OOD topic         (Rule 7) -> caught ✅
-- GQ09 "人生碎片"          -> not caught (intentional: possible title match)
-- GQ11 "investment strategy" -> not caught (intentional: keyword leakage)
+Compatibility examples:
+- "!!!" and "xyz123456789" -> syntactic advisory reasons
+- "不存在的日志标题" -> ``negation_intent``
+- "菜谱推荐" -> ``ood_topic``
+- "life indxxx" -> ``typo_near_noise``
 """
 
 from __future__ import annotations
@@ -54,8 +47,8 @@ _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 # ── Round 19 Phase 1: Intent-based noise detection ─────────────────────
 
 # Negation-intent signals: user explicitly states irrelevance or non-existence.
-# These are unambiguous — when a user says "不存在的XX" or "完全不相关",
-# they are testing the system's ability to reject, not retrieving content.
+# These phrases retain their existing advisory reason for compatibility; they
+# do not determine whether matching content may be retrieved.
 _NEGATION_INTENT_SIGNALS: list[str] = [
     "不存在",
     "不相关",
@@ -88,9 +81,9 @@ _OOD_TOPIC_SIGNALS: list[str] = [
 
 
 def is_noise_query(query: str | None) -> tuple[bool, str | None]:
-    """Return (is_noise, reason) for a query string.
+    """Return the compatibility ``(is_advisory, reason)`` classification.
 
-    If the gate is disabled via LIFE_INDEX_NOISE_GATE=0, always returns
+    If classification is disabled via LIFE_INDEX_NOISE_GATE=0, always returns
     (False, None).
     """
     if os.environ.get("LIFE_INDEX_NOISE_GATE", "1") == "0":
@@ -146,8 +139,8 @@ def is_noise_query(query: str | None) -> tuple[bool, str | None]:
             return True, "ood_topic"
 
     # Rule 8: typo_near_noise — mid-similarity to canonical terms but below
-    # fuzzy correction threshold. Prevents OR-token leakage on near-typo
-    # queries (e.g. "life indxxx", "lyf index").
+    # fuzzy correction threshold. Retains a diagnostic category for near-typo
+    # queries (e.g. "life indxxx", "lyf index") without filtering results.
     # Only for ASCII queries with len-diff <= max against known canonicals.
     if stripped.isascii():
         q = stripped.lower()

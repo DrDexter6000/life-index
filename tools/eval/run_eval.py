@@ -16,8 +16,6 @@ from typing import Any, Iterator
 
 import yaml
 
-from tools.eval.private_data import get_baselines_dir, resolve_eval_file
-
 GOLDEN_QUERIES_PATH = Path(__file__).with_name("golden_queries.yaml")
 TOP_K = 5
 MODULES_TO_RELOAD = (
@@ -436,9 +434,7 @@ def _evaluate_smart_aggregate_queries(
         route_missing_reason: str | None = None
         try:
             with _temporary_time_anchor(query_case.get("anchor_date")):
-                smart_result = SmartSearchOrchestrator(llm_client=None).search(
-                    str(query_case.get("query", ""))
-                )
+                smart_result = SmartSearchOrchestrator().search(str(query_case.get("query", "")))
             aggregate_result = smart_result.get("aggregate_result")
             if not isinstance(aggregate_result, dict):
                 route_missing_reason = "aggregate_result missing"
@@ -739,19 +735,13 @@ def _evaluate_timeline_queries(
     return result
 
 
-def _get_llm_client_module() -> Any:
-    return importlib.import_module("tools.eval.llm_client")
-
-
-def _get_prompts_module() -> Any:
-    return importlib.import_module("tools.eval.prompts")
-
-
 def _resolve_golden_queries_path(
     file_path: Path | None = None,
     *,
     data_dir: Path | None = None,
 ) -> Path:
+    from tools.eval.private_data import resolve_eval_file
+
     return resolve_eval_file(file_path, "golden_queries.yaml", data_dir=data_dir)
 
 
@@ -886,7 +876,12 @@ def _find_latest_baseline(
       3. If tests_dir is explicitly provided, fall back to that directory
          with the same deterministic sort.
     """
-    canonical_dir = tools_dir or get_baselines_dir()
+    if tools_dir is None:
+        from tools.eval.private_data import get_baselines_dir
+
+        canonical_dir = get_baselines_dir()
+    else:
+        canonical_dir = tools_dir
     fallback_dir = tests_dir
 
     def _sort_key(p: Path) -> tuple:
@@ -1013,12 +1008,6 @@ def _min_results(query_case: dict[str, Any]) -> int:
     return int(_query_expected(query_case).get("min_results", 0))
 
 
-def _effective_expected_min_results(query_case: dict[str, Any], *, judge: str, live: bool) -> int:
-    if judge == "llm" and live:
-        return 1
-    return _min_results(query_case)
-
-
 def _result_is_relevant(result: dict[str, Any], query_case: dict[str, Any]) -> bool:
     title = str(result.get("title", ""))
     must_contain_titles = _must_contain_titles(query_case)
@@ -1048,15 +1037,8 @@ def _query_precision_at_5(top_results: list[dict[str, Any]], query_case: dict[st
     return relevant_count / min(len(top_results), TOP_K)
 
 
-def _llm_query_precision_at_5(llm_scores: list[int]) -> float:
-    if not llm_scores:
-        return 0.0
-    relevant_count = sum(1 for score in llm_scores if score >= 2)
-    return relevant_count / TOP_K
-
-
-def _compute_ndcg_at_5(llm_scores: list[int]) -> float:
-    if not llm_scores:
+def _compute_ndcg_at_5(relevance_scores: list[int]) -> float:
+    if not relevance_scores:
         return 0.0
 
     def _dcg(scores: list[int]) -> float:
@@ -1070,50 +1052,9 @@ def _compute_ndcg_at_5(llm_scores: list[int]) -> float:
                 total += float(score) / math.log2(rank + 1)
         return total
 
-    dcg = _dcg(llm_scores)
-    idcg = _dcg(sorted(llm_scores, reverse=True))
+    dcg = _dcg(relevance_scores)
+    idcg = _dcg(sorted(relevance_scores, reverse=True))
     return _round_metric(_safe_float_divide(dcg, idcg))
-
-
-def _llm_first_relevant_rank(llm_scores: list[int]) -> int | None:
-    for index, score in enumerate(llm_scores, start=1):
-        if score >= 2:
-            return index
-    return None
-
-
-def _build_precision_prompt(query: str, result: dict[str, Any]) -> str:
-    abstract = str(result.get("abstract", ""))
-    snippet = str(result.get("snippet", result.get("content", abstract)))[:200]
-    result_str: str = _get_prompts_module().PRECISION_JUDGE_PROMPT.format(
-        query=query,
-        title=str(result.get("title", "")),
-        date=str(result.get("date", "")),
-        abstract=abstract,
-        snippet=snippet,
-    )
-    return result_str
-
-
-def _llm_score_result(
-    *,
-    query: str,
-    result: dict[str, Any],
-    llm_client: Any | None,
-) -> int:
-    prompt = _build_precision_prompt(query, result)
-    llm_module = _get_llm_client_module()
-    raw_response = (
-        llm_client.query(prompt, model="gpt-4o-mini", temperature=0.0)
-        if llm_client is not None
-        else llm_module.query_llm(prompt, model="gpt-4o-mini", temperature=0.0)
-    )
-    payload = llm_module.parse_json_response(raw_response)
-    try:
-        score = int(payload.get("score", 0))
-    except (TypeError, ValueError):
-        return 0
-    return max(0, min(score, 3))
 
 
 def _query_passes(
@@ -1166,106 +1107,6 @@ def _collect_metrics(per_query: list[dict[str, Any]]) -> dict[str, float]:
             _round_metric(_safe_float_divide(ndcg_total, ndcg_count)) if ndcg_count > 0 else 0.0
         ),
     }
-
-
-def _collect_llm_metrics(per_query: list[dict[str, Any]]) -> dict[str, float]:
-    mrr_total = sum(float(item["reciprocal_rank"]) for item in per_query)
-    recall_candidates = [item for item in per_query if int(item["expected_min_results"]) > 0]
-    recall_hits_5 = [item for item in recall_candidates if item["first_relevant_rank"] is not None]
-    recall_hits_10 = [
-        item for item in recall_candidates if item.get("first_relevant_rank_at_10") is not None
-    ]
-    precision_total = sum(float(item["precision_at_5"]) for item in per_query)
-    ndcg_total = sum(float(item.get("ndcg_at_5", 0.0)) for item in per_query)
-
-    return {
-        "mrr_at_5": _round_metric(_safe_float_divide(mrr_total, len(per_query))),
-        "recall_at_5": _round_metric(
-            _safe_float_divide(len(recall_hits_5), len(recall_candidates))
-        ),
-        "recall_at_10": _round_metric(
-            _safe_float_divide(len(recall_hits_10), len(recall_candidates))
-        ),
-        "precision_at_5": _round_metric(_safe_float_divide(precision_total, len(per_query))),
-        "ndcg_at_5": _round_metric(_safe_float_divide(ndcg_total, len(per_query))),
-    }
-
-
-def _compute_recall_ratio(expected_hits: list[str], returned_titles: list[str]) -> float:
-    if not expected_hits:
-        return 0.0
-    matched = sum(1 for title in returned_titles if title in set(expected_hits))
-    return round(matched / len(expected_hits), 2)
-
-
-def _collect_all_journal_titles() -> list[str]:
-    from tools.lib.frontmatter import parse_journal_file
-    from tools.lib.paths import resolve_journals_dir
-
-    journals_dir = resolve_journals_dir()
-    if not journals_dir.exists():
-        return []
-
-    titles: list[str] = []
-    for file_path in sorted(journals_dir.glob("**/life-index_*.md")):
-        metadata = parse_journal_file(file_path)
-        title = str(metadata.get("title") or metadata.get("_title") or "").strip()
-        if title:
-            titles.append(title)
-    return titles
-
-
-def _detect_recall_gaps(
-    *,
-    queries: list[dict[str, Any]],
-    per_query: list[dict[str, Any]],
-    llm_client: Any | None,
-) -> list[dict[str, Any]]:
-    llm_module = _get_llm_client_module()
-    prompt_template = _get_prompts_module().RECALL_GAP_PROMPT
-    all_titles = _collect_all_journal_titles()
-    if not all_titles:
-        return []
-
-    per_query_by_id = {str(item["id"]): item for item in per_query if "id" in item}
-    recall_gaps: list[dict[str, Any]] = []
-
-    for query_case in queries:
-        prompt = prompt_template.format(
-            query=str(query_case["query"]),
-            all_titles="\n".join(f"- {title}" for title in all_titles),
-        )
-        raw_response = (
-            llm_client.query(prompt, model="gpt-4o-mini", temperature=0.0)
-            if llm_client is not None
-            else llm_module.query_llm(prompt, model="gpt-4o-mini", temperature=0.0)
-        )
-        payload = llm_module.parse_json_response(raw_response)
-        raw_hits = payload.get("expected_hits", [])
-        if not isinstance(raw_hits, list):
-            continue
-        expected_hits = [str(title) for title in raw_hits if str(title).strip()]
-        if not expected_hits:
-            continue
-
-        query_result = per_query_by_id.get(str(query_case["id"]), {})
-        returned_titles = [str(title) for title in query_result.get("top_titles", [])]
-        returned_set = set(returned_titles)
-        expected_but_missed = [title for title in expected_hits if title not in returned_set]
-        if not expected_but_missed:
-            continue
-
-        recall_gaps.append(
-            {
-                "query_id": str(query_case["id"]),
-                "query": str(query_case["query"]),
-                "expected_but_missed": expected_but_missed,
-                "returned": returned_titles,
-                "recall_ratio": _compute_recall_ratio(expected_hits, returned_titles),
-            }
-        )
-
-    return recall_gaps
 
 
 def _build_summary_lines(result: dict[str, Any]) -> list[str]:
@@ -1440,9 +1281,6 @@ def _evaluate_queries(
     queries: list[dict[str, Any]],
     *,
     use_semantic: bool,
-    judge: str,
-    live: bool,
-    llm_client: Any | None,
     all_docs: list[dict[str, Any]] | None = None,
     applied_query_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -1461,55 +1299,20 @@ def _evaluate_queries(
         top_results = merged_results[:TOP_K]
         top_results_10 = merged_results[:10]
         results_found = len(merged_results)
-        llm_scores: list[int] = []
-
-        if judge == "llm":
-            llm_scores = [
-                _llm_score_result(
-                    query=str(query_case["query"]),
-                    result=result,
-                    llm_client=llm_client,
-                )
-                for result in top_results
-            ]
-            first_relevant_rank = _llm_first_relevant_rank(llm_scores)
-            first_relevant_rank_at_10 = first_relevant_rank  # LLM scores only computed on top 5
-            precision_at_5 = _llm_query_precision_at_5(llm_scores)
-            ndcg_at_5 = _compute_ndcg_at_5(llm_scores)
-        else:
-            first_relevant_rank = _first_relevant_rank(top_results, query_case)
-            first_relevant_rank_at_10 = _first_relevant_rank(top_results_10, query_case)
-            precision_at_5 = _query_precision_at_5(top_results, query_case)
-            keyword_relevance_scores = [
-                1 if _result_is_relevant(r, query_case) else 0 for r in top_results
-            ]
-            ndcg_at_5 = _compute_ndcg_at_5(keyword_relevance_scores)
+        first_relevant_rank = _first_relevant_rank(top_results, query_case)
+        first_relevant_rank_at_10 = _first_relevant_rank(top_results_10, query_case)
+        precision_at_5 = _query_precision_at_5(top_results, query_case)
+        relevance_scores = [1 if _result_is_relevant(r, query_case) else 0 for r in top_results]
+        ndcg_at_5 = _compute_ndcg_at_5(relevance_scores)
 
         reciprocal_rank = 0.0 if first_relevant_rank is None else 1.0 / first_relevant_rank
 
-        effective_expected_min_results = _effective_expected_min_results(
-            query_case, judge=judge, live=live
+        expected_min_results = _min_results(query_case)
+        passed, failure_reason = _query_passes(
+            top_results=top_results,
+            query_case=query_case,
+            results_found=results_found,
         )
-
-        if judge == "llm":
-            if effective_expected_min_results == 0:
-                passed = first_relevant_rank is None
-                failure_reason = (
-                    None
-                    if passed
-                    else "Expected no relevant results under LLM judge, but found relevant hit"
-                )
-            else:
-                passed = first_relevant_rank is not None
-                failure_reason = (
-                    None if passed else "Expected at least one relevant result under LLM judge"
-                )
-        else:
-            passed, failure_reason = _query_passes(
-                top_results=top_results,
-                query_case=query_case,
-                results_found=results_found,
-            )
 
         entry = {
             "id": query_case["id"],
@@ -1523,16 +1326,13 @@ def _evaluate_queries(
             "reciprocal_rank": _round_metric(reciprocal_rank),
             "precision_at_5": _round_metric(precision_at_5),
             "ndcg_at_5": _round_metric(ndcg_at_5) if ndcg_at_5 is not None else None,
-            "expected_min_results": effective_expected_min_results,
+            "expected_min_results": expected_min_results,
             "pass": passed,
             "overlay_applied": str(query_case["id"]) in (applied_query_ids or set()),
         }
         if "_public_query" in query_case:
             entry["public_query"] = query_case["_public_query"]
-        if judge == "llm":
-            entry["llm_scores"] = llm_scores
-
-        # --- Phase 1/2: broad_eval fields + soft gate ---
+        # Broad quality metrics are advisory and cannot override core truth.
         broad_eval = query_case.get("broad_eval")
         if broad_eval and all_docs is not None:
             try:
@@ -1553,30 +1353,11 @@ def _evaluate_queries(
                 entry["min_results_ok"] = min_results_ok
                 entry["strict_pass"] = strict_pass
                 entry["soft_pass"] = soft_pass
-                # Phase 2 soft gate: soft_pass governs pass/fail for broad_eval queries
-                if soft_pass:
-                    entry["pass"] = True
-                    failure_reason = None
-                else:
-                    entry["pass"] = False
-                    if not min_results_ok:
-                        failure_reason = (
-                            f"broad_eval min_results fail: returned {returned_count} "
-                            f"< required {required_count}"
-                        )
-                    else:
-                        failure_reason = (
-                            f"broad_eval soft gate fail: precision {precision:.2f} "
-                            f"< 0.80 (matched {matched_count}/{returned_count})"
-                        )
             except Exception as exc:
-                # Report-only must not silently lose observability on errors
                 entry["eval_mode"] = "predicate_precision"
                 entry["broad_eval_error"] = str(exc)
                 entry["strict_pass"] = False
                 entry["soft_pass"] = False
-                entry["pass"] = False
-                failure_reason = f"broad_eval error: {exc}"
         else:
             entry["eval_mode"] = "exact_mrr"
         # --- End broad_eval ---
@@ -1673,7 +1454,6 @@ def run_evaluation(
     queries_path: Path | None = None,
     judge: str = "keyword",
     live: bool = False,
-    llm_client: Any | None = None,
     phase: int = 2,
     overlay_path: Path | None = None,
     use_overlay: bool | None = None,
@@ -1686,11 +1466,12 @@ def run_evaluation(
       - Default: enabled for local eval when neither CI nor save_baseline.
       - Pass use_overlay=False to explicitly disable.
 
-    semantic_report: Run a second eval pass with use_semantic=True and append
-      a ``semantic_report`` dict to the result.  The top-level metrics, failures,
-      and pass/fail gate remain from the keyword (use_semantic=False) run.
-      Cannot be combined with save_baseline.
+    semantic_report: Append a disabled compatibility report without another
+      evaluation pass. Cannot be combined with save_baseline.
     """
+    if judge != "keyword":
+        raise ValueError("only deterministic keyword evaluation is supported")
+
     semantic_noop_requested = use_semantic or semantic_report
     use_semantic = False
 
@@ -1726,9 +1507,6 @@ def run_evaluation(
         else:
             queries.append(q)
 
-    if judge not in {"keyword", "llm"}:
-        raise ValueError("judge must be 'keyword' or 'llm'")
-
     context = _live_data_dir() if live else _temporary_data_dir(data_dir)
 
     with context:
@@ -1736,9 +1514,6 @@ def run_evaluation(
         per_query, failures = _evaluate_queries(
             queries,
             use_semantic=use_semantic,
-            judge=judge,
-            live=live,
-            llm_client=llm_client,
             all_docs=all_docs,
             applied_query_ids=applied_query_ids,
         )
@@ -1780,9 +1555,7 @@ def run_evaluation(
         "eval_data_available": eval_data_available,
         "total_queries": len(per_query),
         "skipped_queries": len(skipped_queries),
-        "metrics": (
-            _collect_llm_metrics(per_query) if judge == "llm" else _collect_metrics(per_query)
-        ),
+        "metrics": _collect_metrics(per_query),
         "broad_eval_metrics": _collect_broad_eval_metrics(per_query),
         "by_category": {},
         "per_query": per_query,
@@ -1802,7 +1575,7 @@ def run_evaluation(
 
     for category, items in by_category.items():
         result["by_category"][category] = {
-            **(_collect_llm_metrics(items) if judge == "llm" else _collect_metrics(items)),
+            **_collect_metrics(items),
             "query_count": len(items),
         }
 
@@ -1815,13 +1588,6 @@ def run_evaluation(
         result["summary_lines"].append("Overlay warnings:")
         for w in overlay_warnings:
             result["summary_lines"].append(f"  ⚠ {w}")
-
-    if live and judge == "llm":
-        result["recall_gaps"] = _detect_recall_gaps(
-            queries=queries,
-            per_query=per_query,
-            llm_client=llm_client,
-        )
 
     if semantic_report:
         result["semantic_report"] = {

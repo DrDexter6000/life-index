@@ -20,9 +20,10 @@ from ..lib.errors import ErrorCode, create_error_response
 from ..lib.workflow_signals import (
     WriteOutcome,
     IndexStatus,
+    SideEffectExecutionStatus,
     SideEffectsStatus,
     ConfirmStatus,
-    derive_write_outcome,
+    derive_write_statuses,
 )
 from ..lib.entity_graph import load_entity_graph, resolve_entity
 from ..lib.entity_schema import EntityGraphValidationError
@@ -46,7 +47,15 @@ from .utils import (
     get_year_month,
 )
 from ..lib.frontmatter import format_journal_content as format_content
-from .attachments import extract_file_paths_from_content, process_attachments
+from .attachments import (
+    AttachmentStaging,
+    compensate_published_attachments,
+    discard_attachment_staging,
+    extract_file_paths_from_content,
+    process_attachments,
+    publish_staged_attachments,
+    stage_attachments,
+)
 from .weather import query_weather_for_location, normalize_location
 from .index_updater import (
     update_topic_index,
@@ -481,6 +490,7 @@ def _init_write_result() -> Dict[str, Any]:
         "updated_indices": [],
         "index_status": IndexStatus.NOT_STARTED,
         "side_effects_status": SideEffectsStatus.NOT_STARTED,
+        "side_effects": [],
         "attachments_processed": [],
         "attachments_detected_count": 0,
         "attachments_processed_count": 0,
@@ -499,6 +509,81 @@ def _init_write_result() -> Dict[str, Any]:
         "error": None,
         "metrics": {},
     }
+
+
+def _record_side_effect(
+    result: Dict[str, Any],
+    *,
+    name: str,
+    phase: str,
+    status: SideEffectExecutionStatus,
+    blocking: bool,
+    error: str | None = None,
+    recovery_strategy: str | None = None,
+) -> None:
+    """Append one machine-readable execution fact to the write result."""
+    record: Dict[str, Any] = {
+        "name": name,
+        "phase": phase,
+        "status": status,
+        "blocking": blocking,
+    }
+    if error is not None:
+        record["error"] = error
+    if recovery_strategy is not None:
+        record["recovery_strategy"] = recovery_strategy
+    result["side_effects"].append(record)
+
+
+def _update_side_effect_record(
+    result: Dict[str, Any],
+    *,
+    name: str,
+    status: SideEffectExecutionStatus,
+    error: str | None = None,
+    recovery_strategy: str | None = None,
+    phase: str | None = None,
+    blocking: bool | None = None,
+) -> None:
+    """Update the final state of an already-recorded side effect."""
+    record = next(item for item in reversed(result["side_effects"]) if item["name"] == name)
+    record["status"] = status
+    if phase is not None:
+        record["phase"] = phase
+    if blocking is not None:
+        record["blocking"] = blocking
+    if error is None:
+        record.pop("error", None)
+    else:
+        record["error"] = error
+    if recovery_strategy is None:
+        record.pop("recovery_strategy", None)
+    else:
+        record["recovery_strategy"] = recovery_strategy
+
+
+def _log_committed_recovery(
+    level: str,
+    message: str,
+    *args: Any,
+    exc_info: bool = False,
+) -> None:
+    """Emit a best-effort diagnostic without changing committed write truth."""
+    try:
+        if level == "warning":
+            logger.warning(message, *args, exc_info=exc_info)
+        else:
+            logger.error(message, *args, exc_info=exc_info)
+    except Exception:
+        pass
+
+
+def _journal_was_committed(result: Dict[str, Any]) -> bool:
+    """Return whether the execution facts prove the primary journal is durable."""
+    return any(
+        record.get("name") == "journal_commit" and record.get("status") == "complete"
+        for record in result["side_effects"]
+    )
 
 
 def _resolve_location_and_weather(
@@ -645,7 +730,7 @@ def _process_attachments(
     date_str: str,
     dry_run: bool,
     timer: Timer,
-) -> None:
+) -> AttachmentStaging | None:
     """Detect and process attachments from content and explicit data."""
     content = data.get("content", "")
     auto_detected_paths = extract_file_paths_from_content(content)
@@ -653,21 +738,77 @@ def _process_attachments(
     logger.debug(f"从内容中检测到 {len(auto_detected_paths)} 个附件路径")
 
     attachments = data.get("attachments", [])
-    with timer.measure("attachments"):
-        processed_attachments = process_attachments(
-            attachments, date_str, dry_run, auto_detected_paths
+    try:
+        with timer.measure("attachments"):
+            if dry_run:
+                processed_attachments = process_attachments(
+                    attachments, date_str, True, auto_detected_paths
+                )
+                staging = None
+            else:
+                staging = stage_attachments(attachments, date_str, auto_detected_paths)
+                processed_attachments = staging.processed
+    except (OSError, IOError, RuntimeError) as exc:
+        leftover_paths = list(getattr(exc, "leftover_paths", []))
+        _record_side_effect(
+            result,
+            name="attachments",
+            phase="pre_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=True,
+            error=str(exc),
+            recovery_strategy=(
+                f"remove the transaction staging path(s) {', '.join(leftover_paths)}, "
+                "then fix the attachment source and retry the write"
+                if leftover_paths
+                else "fix the attachment source and retry the write"
+            ),
         )
+        raise
     result["attachments_processed"] = processed_attachments
-    result["attachments_processed_count"] = len(
-        [att for att in processed_attachments if not str(att.get("filename", "")).startswith("[")]
-    )
+    stored_attachments = [
+        att for att in processed_attachments if not att.get("error") and att.get("rel_path")
+    ]
+    result["attachments_processed_count"] = len(stored_attachments)
     result["attachments_failed_count"] = (
         len(processed_attachments) - result["attachments_processed_count"]
     )
     if processed_attachments:
         logger.info(f"处理了 {len(processed_attachments)} 个附件")
 
-    data["attachments"] = processed_attachments
+    data["attachments"] = stored_attachments
+    if not processed_attachments:
+        attachment_status = SideEffectExecutionStatus.SKIPPED
+    elif result["attachments_failed_count"]:
+        attachment_status = SideEffectExecutionStatus.FAILED
+    else:
+        attachment_status = SideEffectExecutionStatus.COMPLETE
+    _record_side_effect(
+        result,
+        name="attachments",
+        phase="pre_commit",
+        status=attachment_status,
+        blocking=not bool(result["attachments_failed_count"]),
+        error=(
+            f"{result['attachments_failed_count']} attachment(s) failed"
+            if result["attachments_failed_count"]
+            else None
+        ),
+        recovery_strategy=(
+            "fix attachment inputs and write a new journal only if no journal_path was returned"
+            if result["attachments_failed_count"]
+            else None
+        ),
+    )
+    return staging
+
+
+class PartialIndexUpdateError(RuntimeError):
+    """A later legacy index failed after earlier artifacts were updated."""
+
+    def __init__(self, message: str, updated_indices: list[str]):
+        super().__init__(message)
+        self.updated_indices = updated_indices
 
 
 def _update_indices(
@@ -678,7 +819,6 @@ def _update_indices(
     journal_path: Path,
     data: Dict[str, Any],
     timer: Timer,
-    temp_path: Path,
 ) -> list[str]:
     """Update topic, project, and tag indices. Raises on failure."""
     updated_indices: list[str] = []
@@ -699,28 +839,17 @@ def _update_indices(
 
         except (OSError, IOError, RuntimeError) as e:
             logger.error(f"索引更新失败：{e}")
-            if temp_path.exists():
-                temp_path.unlink()
-            raise RuntimeError(f"索引更新失败，事务已回滚：{e}")
+            raise PartialIndexUpdateError(f"索引更新失败：{e}", list(updated_indices)) from e
     return updated_indices
 
 
 def _update_metadata_relations(
-    journal_path: Path,
+    source_rel_path: str,
     data: Dict[str, Any],
-) -> str:
-    """Update metadata cache relations and mark journal as pending.
-
-    Returns the source rel_path.
-    """
+) -> None:
+    """Update metadata cache relations for a committed journal."""
     metadata_conn = init_metadata_cache()
     try:
-        path_fields = build_journal_path_fields(
-            journal_path,
-            journals_dir=get_journals_dir(),
-            user_data_dir=resolve_user_data_dir(),
-        )
-        source_rel_path = path_fields["rel_path"]
         replace_entry_relations(
             metadata_conn,
             source_rel_path,
@@ -729,13 +858,331 @@ def _update_metadata_relations(
     finally:
         metadata_conn.close()
 
-    try:
-        mark_pending(source_rel_path)
-        logger.info(f"已标记待索引更新: {source_rel_path}")
-    except Exception as e:
-        logger.warning(f"标记 pending 失败（不影响日志写入）：{e}")
 
-    return source_rel_path
+def _journal_rel_path(journal_path: Path) -> str:
+    """Return the canonical relative path used by metadata and pending views."""
+    return build_journal_path_fields(
+        journal_path,
+        journals_dir=get_journals_dir(),
+        user_data_dir=resolve_user_data_dir(),
+    )["rel_path"]
+
+
+def _commit_primary_journal_and_attachments(
+    *,
+    result: Dict[str, Any],
+    journal_path: Path,
+    month_dir: Path,
+    full_content: str,
+    timer: Timer,
+    attachment_staging: AttachmentStaging | None,
+) -> None:
+    """Publish the journal and attachments within the compensating boundary."""
+    temp_path = journal_path.with_suffix(".tmp")
+    try:
+        month_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"写入日志文件：{journal_path}")
+        try:
+            with timer.measure("file_write"):
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    f.write(full_content)
+        except (OSError, IOError, RuntimeError) as exc:
+            _record_side_effect(
+                result,
+                name="journal_stage",
+                phase="pre_commit",
+                status=SideEffectExecutionStatus.FAILED,
+                blocking=True,
+                error=str(exc),
+                recovery_strategy="resolve the filesystem error, then retry the write",
+            )
+            raise
+        _record_side_effect(
+            result,
+            name="journal_stage",
+            phase="pre_commit",
+            status=SideEffectExecutionStatus.COMPLETE,
+            blocking=True,
+        )
+
+        if attachment_staging:
+            publish_staged_attachments(attachment_staging)
+
+        # 原子性重命名
+        try:
+            temp_path.replace(journal_path)
+        except (OSError, IOError, RuntimeError) as exc:
+            _record_side_effect(
+                result,
+                name="journal_commit",
+                phase="commit",
+                status=SideEffectExecutionStatus.FAILED,
+                blocking=True,
+                error=str(exc),
+                recovery_strategy="retry the write after resolving the filesystem error",
+            )
+            raise
+        _record_side_effect(
+            result,
+            name="journal_commit",
+            phase="commit",
+            status=SideEffectExecutionStatus.COMPLETE,
+            blocking=True,
+        )
+        staging_cleanup_errors = discard_attachment_staging(attachment_staging)
+        if staging_cleanup_errors:
+            leftover_paths = "; ".join(staging_cleanup_errors)
+            _update_side_effect_record(
+                result,
+                name="attachments",
+                status=SideEffectExecutionStatus.FAILED,
+                phase="post_commit",
+                blocking=False,
+                error=f"attachment staging cleanup failed: {leftover_paths}",
+                recovery_strategy=f"remove the transaction staging path: {leftover_paths}",
+            )
+        result["journal_path"] = str(journal_path)
+        logger.info(f"日志文件写入成功：{journal_path}")
+    except (OSError, IOError, RuntimeError) as exc:
+        temp_cleanup_errors: list[str] = []
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except OSError as cleanup_exc:
+            temp_cleanup_errors.append(f"{temp_path}: {cleanup_exc}")
+        journal_committed = _journal_was_committed(result)
+        if temp_cleanup_errors:
+            journal_failure = next(
+                (
+                    record
+                    for record in reversed(result["side_effects"])
+                    if record["name"] in {"journal_commit", "journal_stage"}
+                    and record["status"] == "failed"
+                ),
+                None,
+            )
+            if journal_failure is not None:
+                temp_details = "; ".join(temp_cleanup_errors)
+                journal_failure["error"] = f"{exc}; temp journal cleanup failed: {temp_details}"
+                journal_failure["recovery_strategy"] = (
+                    "remove the uncommitted temp journal path: "
+                    f"{temp_details}; then retry the write"
+                )
+        if (
+            not journal_committed
+            and attachment_staging
+            and attachment_staging.stage_root is not None
+        ):
+            compensation_errors = compensate_published_attachments(attachment_staging)
+            failure_details = [str(exc)]
+            failure_details.extend(
+                f"temp journal cleanup failed: {item}" for item in temp_cleanup_errors
+            )
+            if compensation_errors:
+                failure_details.append(f"compensation failed: {'; '.join(compensation_errors)}")
+                _update_side_effect_record(
+                    result,
+                    name="attachments",
+                    status=SideEffectExecutionStatus.FAILED,
+                    error="; ".join(failure_details),
+                    recovery_strategy=(
+                        "inspect and remove only the transaction-owned orphan attachment "
+                        "path(s): "
+                        f"{'; '.join(compensation_errors)}; then retry the write"
+                    ),
+                )
+            elif isinstance(exc, FileExistsError):
+                _update_side_effect_record(
+                    result,
+                    name="attachments",
+                    status=SideEffectExecutionStatus.FAILED,
+                    error="; ".join(failure_details),
+                    recovery_strategy=("retry the write; the existing attachment was not modified"),
+                )
+            else:
+                recovery_strategy = "retry the write; no journal was committed"
+                if temp_cleanup_errors:
+                    recovery_strategy = (
+                        "remove the uncommitted temp journal path: "
+                        f"{'; '.join(temp_cleanup_errors)}; then retry the write"
+                    )
+                _update_side_effect_record(
+                    result,
+                    name="attachments",
+                    status=SideEffectExecutionStatus.COMPENSATED,
+                    error="; ".join(failure_details),
+                    recovery_strategy=recovery_strategy,
+                )
+        else:
+            cleanup_errors = discard_attachment_staging(attachment_staging)
+            if cleanup_errors:
+                _log_committed_recovery(
+                    "warning", "attachment staging cleanup failed: %s", cleanup_errors
+                )
+        raise
+
+
+def _update_postcommit_derived_projections(
+    *,
+    data: Dict[str, Any],
+    result: Dict[str, Any],
+    journal_path: Path,
+    year: int,
+    month: int,
+    timer: Timer,
+) -> None:
+    """Refresh derived views only after the durable journal commit."""
+    with timer.measure("abstract_update"):
+        abstract_result = None
+        abstract_error = None
+        abstract_success = False
+        try:
+            abstract_result = update_monthly_abstract(year, month, False)
+            if isinstance(abstract_result, dict) and abstract_result.get("success") is False:
+                abstract_error = str(
+                    abstract_result.get("error") or "monthly abstract refresh failed"
+                )
+            else:
+                abstract_success = True
+        except Exception as exc:
+            abstract_error = str(exc)
+    _record_side_effect(
+        result,
+        name="monthly_abstract",
+        phase="post_commit",
+        status=(
+            SideEffectExecutionStatus.COMPLETE
+            if abstract_success
+            else SideEffectExecutionStatus.FAILED
+        ),
+        blocking=False,
+        error=abstract_error,
+        recovery_strategy=(
+            f"life-index abstract --month {year:04d}-{month:02d}" if abstract_error else None
+        ),
+    )
+
+    try:
+        updated_indices = _update_indices(
+            topic=data.get("topic"),
+            project=data.get("project"),
+            tags=data.get("tags", []),
+            journal_path=journal_path,
+            data=data,
+            timer=timer,
+        )
+    except Exception as exc:
+        updated_indices = list(getattr(exc, "updated_indices", []))
+        _record_side_effect(
+            result,
+            name="legacy_indices",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=str(exc),
+            recovery_strategy="life-index generate-index",
+        )
+    else:
+        _record_side_effect(
+            result,
+            name="legacy_indices",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.COMPLETE,
+            blocking=False,
+        )
+
+    try:
+        source_rel_path = _journal_rel_path(journal_path)
+    except Exception as exc:
+        source_rel_path = None
+        _record_side_effect(
+            result,
+            name="metadata_relations",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=str(exc),
+            recovery_strategy="life-index index --rebuild",
+        )
+    # Metadata relations and pending freshness are independent post-commit facts.
+    if source_rel_path is not None:
+        try:
+            _update_metadata_relations(source_rel_path, data)
+        except Exception as exc:
+            _record_side_effect(
+                result,
+                name="metadata_relations",
+                phase="post_commit",
+                status=SideEffectExecutionStatus.FAILED,
+                blocking=False,
+                error=str(exc),
+                recovery_strategy="life-index index --rebuild",
+            )
+        else:
+            _record_side_effect(
+                result,
+                name="metadata_relations",
+                phase="post_commit",
+                status=SideEffectExecutionStatus.COMPLETE,
+                blocking=False,
+            )
+
+    try:
+        if source_rel_path is None:
+            raise RuntimeError("canonical journal rel_path is unavailable")
+        mark_pending(source_rel_path)
+    except Exception as exc:
+        _record_side_effect(
+            result,
+            name="mark_pending",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.FAILED,
+            blocking=False,
+            error=str(exc),
+            recovery_strategy="life-index index --rebuild",
+        )
+    else:
+        logger.info(f"已标记待索引更新: {source_rel_path}")
+        _record_side_effect(
+            result,
+            name="mark_pending",
+            phase="post_commit",
+            status=SideEffectExecutionStatus.QUEUED,
+            blocking=False,
+        )
+
+    try:
+        with timer.measure("index_b_update"):
+            index_b_result = refresh_index_b(False)
+        index_b_success = bool(index_b_result.get("success"))
+        index_b_error = (
+            str(index_b_result.get("error") or "Index B refresh failed")
+            if not index_b_success
+            else None
+        )
+    except Exception as exc:
+        index_b_result = {"success": False, "error": str(exc)}
+        index_b_success = False
+        index_b_error = str(exc)
+    _record_side_effect(
+        result,
+        name="index_b",
+        phase="post_commit",
+        status=(
+            SideEffectExecutionStatus.COMPLETE
+            if index_b_success
+            else SideEffectExecutionStatus.FAILED
+        ),
+        blocking=False,
+        error=index_b_error,
+        recovery_strategy=("life-index index-tree ensure --json" if not index_b_success else None),
+    )
+
+    result["monthly_abstract_updated"] = abstract_result
+    result["index_b_updated"] = index_b_result
+    if abstract_error:
+        result["monthly_abstract_error"] = abstract_error
+    result["updated_indices"] = updated_indices
 
 
 def _commit_journal_to_disk(
@@ -748,66 +1195,25 @@ def _commit_journal_to_disk(
     month: int,
     full_content: str,
     timer: Timer,
+    attachment_staging: AttachmentStaging | None,
 ) -> None:
-    """Write journal file and update indices in a transactional manner."""
-    month_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = journal_path.with_suffix(".tmp")
-    try:
-        logger.info(f"写入日志文件：{journal_path}")
-        with timer.measure("file_write"):
-            with open(temp_path, "w", encoding="utf-8") as f:
-                f.write(full_content)
-
-        # 更新月度摘要
-        with timer.measure("abstract_update"):
-            abstract_result = None
-            abstract_error = None
-            abstract_success = False
-            try:
-                abstract_result = update_monthly_abstract(year, month, False)
-                abstract_success = True
-            except (OSError, IOError, RuntimeError) as e:
-                abstract_error = str(e)
-
-        # 更新索引
-        updated_indices = _update_indices(
-            topic=data.get("topic"),
-            project=data.get("project"),
-            tags=data.get("tags", []),
-            journal_path=journal_path,
-            data=data,
-            timer=timer,
-            temp_path=temp_path,
-        )
-
-        # 原子性重命名
-        temp_path.replace(journal_path)
-        logger.info(f"日志文件写入成功：{journal_path}")
-
-        # 更新 metadata cache + pending
-        _update_metadata_relations(journal_path, data)
-
-        # Refresh deterministic Index B navigation after the final file exists.
-        with timer.measure("index_b_update"):
-            index_b_result = refresh_index_b(False)
-
-        result["journal_path"] = str(journal_path)
-        result["monthly_abstract_updated"] = abstract_result
-        result["index_b_updated"] = index_b_result
-        if abstract_error:
-            result["monthly_abstract_error"] = abstract_error
-        result["updated_indices"] = updated_indices
-        result["index_status"] = IndexStatus.COMPLETE
-
-        if abstract_success and index_b_result.get("success"):
-            result["side_effects_status"] = SideEffectsStatus.COMPLETE
-        else:
-            result["side_effects_status"] = SideEffectsStatus.DEGRADED
-
-    except (OSError, IOError, RuntimeError):
-        if temp_path.exists():
-            temp_path.unlink()
-        raise
+    """Commit primary bytes, then refresh post-commit derived projections."""
+    _commit_primary_journal_and_attachments(
+        result=result,
+        journal_path=journal_path,
+        month_dir=month_dir,
+        full_content=full_content,
+        timer=timer,
+        attachment_staging=attachment_staging,
+    )
+    _update_postcommit_derived_projections(
+        data=data,
+        result=result,
+        journal_path=journal_path,
+        year=year,
+        month=month,
+        timer=timer,
+    )
 
 
 def _build_post_write_confirmation(
@@ -815,7 +1221,7 @@ def _build_post_write_confirmation(
     journal_path: Path,
     location: str,
     weather: str,
-) -> None:
+) -> str | None:
     """Build the final confirmation message and payload after successful write."""
     result["needs_confirmation"] = True
     relation_lines = ""
@@ -836,9 +1242,11 @@ def _build_post_write_confirmation(
         weather=weather,
         related_candidates=result["related_candidates"],
     )
+    snapshot_error = None
     try:
         _write_confirmation_candidate_snapshot(journal_path, result["related_candidates"])
-    except (OSError, RuntimeError) as e:
+    except Exception as e:
+        snapshot_error = str(e)
         logger.warning(f"保存确认候选快照失败（不影响日志写入）：{e}")
 
     result["confirmation_message"] = (
@@ -849,6 +1257,63 @@ def _build_post_write_confirmation(
         f"如果不对，请告诉我正确地点。"
         f"我会基于新地点更新地点和天气。"
         f"{relation_lines}"
+    )
+    return snapshot_error
+
+
+def _set_committed_confirmation_fallback(
+    result: Dict[str, Any],
+    journal_path: Path,
+    location: str,
+    weather: str,
+) -> None:
+    """Keep a committed write actionable when confirmation assembly degrades."""
+    result["journal_path"] = str(journal_path)
+    result["needs_confirmation"] = True
+    result["confirmation"] = {
+        "location": location,
+        "weather": weather,
+        "related_candidates": result.get("related_candidates", []),
+        "journal_path": str(journal_path),
+        "supports_related_entry_approval": True,
+    }
+    result["confirmation_message"] = (
+        f"日志已保存至：{journal_path}\n\n" "请确认地点和天气；确认详情生成失败。"
+    )
+
+
+def _degrade_committed_envelope(
+    result: Dict[str, Any],
+    exc: Exception,
+    *,
+    confirmation_context: tuple[Path, str, str] | None = None,
+    log_recovery: bool = False,
+) -> None:
+    """Record one committed-envelope failure without changing durable truth."""
+    if confirmation_context is not None:
+        journal_path, location, weather = confirmation_context
+        _set_committed_confirmation_fallback(result, journal_path, location, weather)
+    result["error"] = None
+    if log_recovery:
+        _log_committed_recovery(
+            "error", "post-commit envelope assembly failed: %s", exc, exc_info=True
+        )
+    _record_side_effect(
+        result,
+        name="postcommit_envelope",
+        phase="post_commit",
+        status=SideEffectExecutionStatus.FAILED,
+        blocking=False,
+        error=str(exc),
+        recovery_strategy="inspect this committed journal by journal_path",
+    )
+    result.update(
+        {
+            "success": True,
+            "write_outcome": WriteOutcome.SUCCESS_DEGRADED,
+            "index_status": IndexStatus.DEGRADED,
+            "side_effects_status": SideEffectsStatus.DEGRADED,
+        }
     )
 
 
@@ -1041,6 +1506,20 @@ def _handle_dry_run(
     timer: Timer,
 ) -> Dict[str, Any]:
     """Handle dry_run early return: set path, preview, and metrics."""
+    _record_side_effect(
+        result,
+        name="write_preview",
+        phase="preview",
+        status=SideEffectExecutionStatus.COMPLETE,
+        blocking=False,
+    )
+    result.update(
+        derive_write_statuses(
+            result["side_effects"],
+            needs_confirmation=result["needs_confirmation"],
+            preview=True,
+        )
+    )
     result["journal_path"] = str(journal_path)
     result["confirmation"] = _build_confirmation_payload(
         journal_path=str(journal_path),
@@ -1049,7 +1528,6 @@ def _handle_dry_run(
         related_candidates=result["related_candidates"],
     )
     result["content_preview"] = full_content[:500]
-    result["success"] = True
     timer.stop()
     result["metrics"] = timer.to_dict()
     return result
@@ -1084,8 +1562,36 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
         try:
             with lock:
                 journal_path, month_dir, year, month = _generate_journal_path(date_str, timer)
-                _process_attachments(data, result, date_str, dry_run, timer)
-                full_content = format_content(data)
+                attachment_staging = _process_attachments(data, result, date_str, dry_run, timer)
+                try:
+                    full_content = format_content(data)
+                except (ValueError, OSError, IOError, RuntimeError) as exc:
+                    if attachment_staging is not None and attachment_staging.stage_root is not None:
+                        cleanup_errors = discard_attachment_staging(attachment_staging)
+                        if cleanup_errors:
+                            leftover_paths = "; ".join(cleanup_errors)
+                            _update_side_effect_record(
+                                result,
+                                name="attachments",
+                                status=SideEffectExecutionStatus.FAILED,
+                                error=f"{exc}; staging cleanup failed: {leftover_paths}",
+                                recovery_strategy=(
+                                    f"remove the transaction staging path: {leftover_paths}; "
+                                    "then fix the journal payload and retry the write"
+                                ),
+                            )
+                        else:
+                            _update_side_effect_record(
+                                result,
+                                name="attachments",
+                                status=SideEffectExecutionStatus.COMPENSATED,
+                                error=str(exc),
+                                recovery_strategy=(
+                                    "fix the journal payload, then retry the write; "
+                                    "no journal was committed"
+                                ),
+                            )
+                    raise
 
                 if dry_run:
                     return _handle_dry_run(
@@ -1101,12 +1607,35 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                     month=month,
                     full_content=full_content,
                     timer=timer,
+                    attachment_staging=attachment_staging,
                 )
-                result["entity_candidate_pool"] = capture_write_time_candidates(
-                    metadata=data,
-                    candidates=result.get("entity_candidates", []),
-                    journal_path=journal_path,
-                )
+                try:
+                    result["entity_candidate_pool"] = capture_write_time_candidates(
+                        metadata=data,
+                        candidates=result.get("entity_candidates", []),
+                        journal_path=journal_path,
+                    )
+                except Exception as exc:
+                    _record_side_effect(
+                        result,
+                        name="entity_candidates",
+                        phase="post_commit",
+                        status=SideEffectExecutionStatus.FAILED,
+                        blocking=False,
+                        error=str(exc),
+                        recovery_strategy=(
+                            "inspect the committed journal, then propose any missing "
+                            "entity candidates with life-index entity --propose"
+                        ),
+                    )
+                else:
+                    _record_side_effect(
+                        result,
+                        name="entity_candidates",
+                        phase="post_commit",
+                        status=SideEffectExecutionStatus.COMPLETE,
+                        blocking=False,
+                    )
 
         except LockTimeoutError as e:
             logger.error(f"文件锁超时：{e}")
@@ -1120,26 +1649,78 @@ def write_journal(data: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]
                 "等待几秒后重试，或检查是否有其他进程正在写入",
             )
 
-        result["success"] = True
-        _build_post_write_confirmation(result, journal_path, location, weather)
+        try:
+            confirmation_snapshot_error = _build_post_write_confirmation(
+                result, journal_path, location, weather
+            )
+        except Exception as exc:
+            confirmation_snapshot_error = str(exc)
+            _set_committed_confirmation_fallback(result, journal_path, location, weather)
+            _log_committed_recovery("warning", "post-commit confirmation assembly failed: %s", exc)
+        _record_side_effect(
+            result,
+            name="confirmation_snapshot",
+            phase="post_commit",
+            status=(
+                SideEffectExecutionStatus.FAILED
+                if confirmation_snapshot_error
+                else SideEffectExecutionStatus.COMPLETE
+            ),
+            blocking=False,
+            error=confirmation_snapshot_error,
+            recovery_strategy=(
+                "confirm this committed journal by journal_path"
+                if confirmation_snapshot_error
+                else None
+            ),
+        )
 
     except (ValueError, IOError, RuntimeError, OSError) as e:
-        logger.error(f"写入日志失败：{e}", exc_info=True)
-        result["error"] = str(e)
-        result["index_status"] = IndexStatus.NOT_STARTED
-        result["side_effects_status"] = SideEffectsStatus.NOT_STARTED
+        if _journal_was_committed(result):
+            _degrade_committed_envelope(
+                result,
+                e,
+                confirmation_context=(journal_path, location, weather),
+                log_recovery=True,
+            )
+        else:
+            logger.error(f"写入日志失败：{e}", exc_info=True)
+            result["error"] = str(e)
 
-    timer.stop()
-    result["metrics"] = timer.to_dict()
+    except Exception as exc:
+        if not _journal_was_committed(result):
+            raise
+        _degrade_committed_envelope(
+            result,
+            exc,
+            confirmation_context=(journal_path, location, weather),
+            log_recovery=True,
+        )
 
-    result["write_outcome"] = derive_write_outcome(
-        success=result["success"],
-        needs_confirmation=result["needs_confirmation"],
-        index_status=result["index_status"],
-        side_effects_status=result["side_effects_status"],
-    )
+    try:
+        timer.stop()
+        result["metrics"] = timer.to_dict()
+    except Exception as exc:
+        if not _journal_was_committed(result):
+            raise
+        _degrade_committed_envelope(result, exc)
+
+    try:
+        result.update(
+            derive_write_statuses(
+                result["side_effects"],
+                needs_confirmation=result["needs_confirmation"],
+            )
+        )
+    except Exception as exc:
+        if not _journal_was_committed(result):
+            raise
+        _degrade_committed_envelope(result, exc)
 
     if result["success"]:
-        logger.info(f"写入完成，总耗时：{result['metrics'].get('total_ms', 0):.2f}ms")
+        try:
+            logger.info(f"写入完成，总耗时：{result['metrics'].get('total_ms', 0):.2f}ms")
+        except Exception as exc:
+            _degrade_committed_envelope(result, exc)
 
     return result

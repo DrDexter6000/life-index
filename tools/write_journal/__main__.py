@@ -8,6 +8,7 @@ import argparse
 import json
 import logging
 import sys
+from contextlib import suppress
 
 from .core import apply_confirmation_updates
 from .core import write_journal
@@ -16,8 +17,58 @@ from ..lib.config import ensure_dirs
 from ..lib.errors import ErrorCode, create_error_response
 from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.trace import Trace
+from ..lib.workflow_signals import derive_write_statuses
 
 logger = logging.getLogger(__name__)
+
+
+def _journal_was_committed(result: dict) -> bool:
+    return any(
+        record.get("name") == "journal_commit" and record.get("status") == "complete"
+        for record in result.get("side_effects", [])
+    )
+
+
+def _record_auto_index(result: dict, index_result: dict) -> None:
+    success = bool(index_result.get("success"))
+    record = {
+        "name": "auto_index",
+        "phase": "post_commit",
+        "status": "complete" if success else "failed",
+        "blocking": False,
+    }
+    if not success:
+        record["error"] = str(index_result.get("error") or "Index update failed")
+        record["recovery_strategy"] = "life-index index --rebuild"
+    result.setdefault("side_effects", []).append(record)
+    try:
+        result.update(
+            derive_write_statuses(
+                result["side_effects"],
+                needs_confirmation=bool(result.get("needs_confirmation")),
+            )
+        )
+    except Exception as exc:
+        with suppress(Exception):
+            logger.warning("write --auto-index projection failed: %s", exc)
+        result["side_effects"].append(
+            {
+                "name": "postcommit_envelope",
+                "phase": "post_commit",
+                "status": "failed",
+                "blocking": False,
+                "error": str(exc),
+                "recovery_strategy": "inspect this committed journal by journal_path",
+            }
+        )
+        result.update(
+            {
+                "success": True,
+                "write_outcome": "success_degraded",
+                "index_status": "degraded",
+                "side_effects_status": "degraded",
+            }
+        )
 
 
 def _emit_json(payload: dict) -> None:
@@ -78,7 +129,7 @@ def _cmd_write(args: argparse.Namespace) -> int:
             result = write_journal(data, dry_run=args.dry_run)
 
         # Task 1.2.2: Auto-index after successful write
-        if result["success"] and args.auto_index and not args.dry_run:
+        if _journal_was_committed(result) and args.auto_index and not args.dry_run:
             from ..build_index import build_all
 
             with trace.step("auto_index") as idx_step:
@@ -96,6 +147,7 @@ def _cmd_write(args: argparse.Namespace) -> int:
                     idx_step.set_status("error", str(exc))
                     result["index_result"] = {"success": False, "error": str(exc)}
                     result["index_warning"] = str(exc)
+                _record_auto_index(result, result["index_result"])
 
     result["_trace"] = trace.to_dict()
     _emit_json(result)

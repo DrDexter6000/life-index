@@ -283,7 +283,7 @@ class TestOrchestratorPlannerIntegration:
             "performance": {"total_time_ms": 10.0},
             "query_params": {"query": "test"},
         }
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         assert result["success"]
@@ -318,7 +318,7 @@ class TestOrchestratorPlannerIntegration:
             "performance": {"total_time_ms": 10.0},
             "query_params": {"query": "test"},
         }
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
 
         assert result["success"]
@@ -351,7 +351,7 @@ class TestOrchestratorPlannerIntegration:
             "performance": {"total_time_ms": 10.0},
             "query_params": {"query": "test"},
         }
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         # Same order as input

@@ -1,6 +1,5 @@
 """Tests for write_journal pending queue integration (Round 12 Phase 1 Task 1.2)."""
 
-import json
 import pytest
 from pathlib import Path
 
@@ -11,6 +10,7 @@ from tools.lib.pending_writes import get_pending, clear_pending, has_pending
 def _isolate_index(tmp_path: Path, monkeypatch):
     """Isolate pending_writes to tmp_path."""
     import tools.lib.pending_writes as pw_mod
+
     idx = tmp_path / ".index"
     idx.mkdir()
     monkeypatch.setattr(pw_mod, "get_index_dir", lambda: idx)
@@ -30,21 +30,27 @@ def _override_data_dir(data_dir: Path, monkeypatch):
     monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
     import tools.lib.config as cfg
     import tools.lib.paths as paths
+
     monkeypatch.setattr(cfg, "get_user_data_dir", lambda _d=data_dir: _d, raising=False)
     monkeypatch.setattr(cfg, "get_journals_dir", lambda _j=data_dir / "Journals": _j, raising=False)
     monkeypatch.setattr(paths, "get_user_data_dir", lambda _d=data_dir: _d, raising=False)
-    monkeypatch.setattr(paths, "get_journals_dir", lambda _j=data_dir / "Journals": _j, raising=False)
+    monkeypatch.setattr(
+        paths, "get_journals_dir", lambda _j=data_dir / "Journals": _j, raising=False
+    )
 
 
 def _write_journal(data_dir: Path) -> dict:
     """Call write_journal core with minimal data."""
     from tools.write_journal.core import write_journal
-    return write_journal({
-        "title": "Test R12 Write",
-        "content": "Content for round 12 pending test.",
-        "date": "2026-03-15T10:00:00",
-        "topic": ["life"],
-    })
+
+    return write_journal(
+        {
+            "title": "Test R12 Write",
+            "content": "Content for round 12 pending test.",
+            "date": "2026-03-15T10:00:00",
+            "topic": ["life"],
+        }
+    )
 
 
 class TestWritePendingIntegration:
@@ -52,21 +58,70 @@ class TestWritePendingIntegration:
         """After writing, pending_writes.json should contain the new journal path."""
         clear_pending()
         result = _write_journal(data_dir)
-        assert result.get("success") or result.get("write_outcome") in ("success", "success_degraded")
+        assert result.get("success") or result.get("write_outcome") in (
+            "success",
+            "success_degraded",
+        )
         assert has_pending()
         pending = get_pending()
         assert len(pending) >= 1
         assert any("life-index_2026-03-15" in p for p in pending)
+        pending_record = next(
+            item for item in result["side_effects"] if item["name"] == "mark_pending"
+        )
+        assert pending_record["status"] == "queued"
+        assert result["index_status"] == "degraded"
+
+    def test_mark_pending_failure_cannot_report_complete_freshness(
+        self,
+        data_dir: Path,
+        monkeypatch,
+    ):
+        """A queue write failure cannot claim queued or complete freshness."""
+        import tools.write_journal.core as write_core
+
+        clear_pending()
+        monkeypatch.setattr(
+            write_core,
+            "mark_pending",
+            lambda *_args: (_ for _ in ()).throw(OSError("synthetic pending persistence failure")),
+        )
+        monkeypatch.setattr(
+            write_core,
+            "refresh_index_b",
+            lambda *_args: {"success": True},
+        )
+        monkeypatch.setattr(
+            write_core,
+            "capture_write_time_candidates",
+            lambda **_kwargs: {},
+        )
+
+        result = _write_journal(data_dir)
+
+        assert result["success"] is True
+        assert result["write_outcome"] == "success_degraded"
+        assert result["index_status"] == "degraded"
+        assert get_pending() == []
+        pending_records = [
+            item for item in result["side_effects"] if item["name"] == "mark_pending"
+        ]
+        assert [item["status"] for item in pending_records] == ["failed"]
+        assert "pending persistence failure" in pending_records[0]["error"]
+        assert pending_records[0]["recovery_strategy"] == "life-index index --rebuild"
 
     def test_three_writes_three_pending(self, data_dir: Path):
         """Three sequential writes should produce 3 pending entries."""
         clear_pending()
         for i in range(3):
             from tools.write_journal.core import write_journal
-            write_journal({
-                "title": f"Test {i}",
-                "content": f"Content {i}",
-                "date": f"2026-03-{15+i}T10:00:00",
-                "topic": ["life"],
-            })
+
+            write_journal(
+                {
+                    "title": f"Test {i}",
+                    "content": f"Content {i}",
+                    "date": f"2026-03-{15+i}T10:00:00",
+                    "topic": ["life"],
+                }
+            )
         assert len(get_pending()) == 3

@@ -292,12 +292,27 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
     items = search_result.get("merged_results", [])
     total_available = int(search_result.get("total_available", len(items)))
     no_confident_match = bool(search_result.get("no_confident_match", False))
+    has_more = bool(search_result.get("has_more", False))
 
     # Determine per-item confidence distribution
     confidences = [str(r.get("confidence", "low")) for r in items]
 
     # S1-B: pipeline composition from existing merged_results fields
     pipeline_composition = _compute_pipeline_composition(items)
+
+    # No observed candidates is not a complete zero-match result when retrieval
+    # reports that more work or candidates remain unobserved.
+    if len(items) == 0 and has_more:
+        return EvidenceDiagnostics(
+            retrieval_outcome="weak_results",
+            outcome_reason="low_confidence_with_potential_under_recall",
+            notes=[
+                "No candidates were observed because retrieval execution was incomplete.",
+                "has_more is true; zero matches cannot be claimed from complete pipelines.",
+            ],
+            suggestions=["Retry the incomplete retrieval before concluding there are no matches."],
+            pipeline_composition=pipeline_composition,
+        )
 
     # zero_results: no items and no available
     if len(items) == 0 and total_available == 0:
@@ -385,7 +400,7 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
     # weak_results: items exist but no high-confidence, and total fits in one page
     has_high = "high" in confidences
     has_medium = "medium" in confidences
-    if not has_high and not has_medium and total_available <= len(items):
+    if not has_high and not has_medium and total_available <= len(items) and not has_more:
         return EvidenceDiagnostics(
             retrieval_outcome="weak_results",
             outcome_reason="all_items_low_confidence_full_recall",
@@ -414,6 +429,11 @@ def compute_diagnostics(search_result: dict[str, Any]) -> EvidenceDiagnostics:
     notes: list[str] = [f"Results present ({len(items)}) with low confidence."]
     if total_available > len(items):
         notes.append(f"total_available ({total_available}) exceeds returned items ({len(items)}).")
+    if has_more:
+        notes.append(
+            "has_more is true; retrieval is incomplete and total_available is an "
+            "observed lower bound."
+        )
     return EvidenceDiagnostics(
         retrieval_outcome="weak_results",
         outcome_reason="low_confidence_with_potential_under_recall",

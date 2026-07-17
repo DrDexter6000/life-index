@@ -1122,12 +1122,34 @@ class TestComputeDiagnostics:
     def test_zero_results(self) -> None:
         from tools.evidence.builder import compute_diagnostics
 
-        result = _search_result_with_items(count=0, total_available=0, no_confident_match=True)
+        result = _search_result_with_items(
+            count=0,
+            total_available=0,
+            no_confident_match=True,
+            has_more=False,
+        )
         diag = compute_diagnostics(result)
         assert diag.retrieval_outcome == "zero_results"
         assert diag.outcome_reason == "no_matches_found"
         assert len(diag.notes) > 0
         assert len(diag.suggestions) > 0
+
+    def test_zero_observed_results_with_has_more_is_incomplete(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=0,
+            total_available=0,
+            no_confident_match=True,
+            has_more=True,
+        )
+        diag = compute_diagnostics(result)
+
+        assert diag.retrieval_outcome == "weak_results"
+        assert diag.outcome_reason == "low_confidence_with_potential_under_recall"
+        assert diag.outcome_reason != "no_matches_found"
+        assert any("incomplete" in note.lower() for note in diag.notes)
+        assert any("observed" in note.lower() for note in diag.notes)
 
     def test_zero_results_truncated(self) -> None:
         from tools.evidence.builder import compute_diagnostics
@@ -1214,6 +1236,23 @@ class TestComputeDiagnostics:
         diag = compute_diagnostics(result)
         assert diag.retrieval_outcome == "weak_results"
         assert "under_recall" in diag.outcome_reason or "total_available" in str(diag.notes)
+
+    def test_has_more_prevents_full_recall_claim_when_total_equals_items(self) -> None:
+        from tools.evidence.builder import compute_diagnostics
+
+        result = _search_result_with_items(
+            count=2,
+            total_available=2,
+            no_confident_match=False,
+            confidences=["low", "low"],
+            has_more=True,
+        )
+        diag = compute_diagnostics(result)
+
+        assert diag.retrieval_outcome == "weak_results"
+        assert diag.outcome_reason == "low_confidence_with_potential_under_recall"
+        assert all("full recall" not in note.lower() for note in diag.notes)
+        assert any("incomplete" in note.lower() for note in diag.notes)
 
     def test_diagnostics_in_build_evidence_pack(self) -> None:
         """build_evidence_pack() populates diagnostics."""
@@ -2370,7 +2409,9 @@ class TestValidateEvidencePackNonMutation:
         assert pack.items[0].extra["custom_item_field"] == "item_val"
         assert pack.items[0].scores.extra["custom_score_field"] == 42
         assert pack.items[0].document.extra["custom_doc_field"] == "doc_val"
-        assert pack.diagnostics.extra["custom_diag_field"] == "diag_val"
+        diagnostics = pack.diagnostics
+        assert diagnostics is not None
+        assert diagnostics.extra["custom_diag_field"] == "diag_val"
 
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
@@ -2380,4 +2421,4 @@ class TestValidateEvidencePackNonMutation:
         assert pack.items[0].extra["custom_item_field"] == "item_val"
         assert pack.items[0].scores.extra["custom_score_field"] == 42
         assert pack.items[0].document.extra["custom_doc_field"] == "doc_val"
-        assert pack.diagnostics.extra["custom_diag_field"] == "diag_val"
+        assert diagnostics.extra["custom_diag_field"] == "diag_val"

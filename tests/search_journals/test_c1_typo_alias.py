@@ -108,17 +108,17 @@ class TestFuzzyTypoCorrection:
         # Single char deletion (ratio ≈ 94.7 > 85)
         assert _fuzzy_correct_typo("lif index") == "life index"
 
-    def test_fuzzy_rejects_life_indxxx_below_threshold(self) -> None:
+    def test_fuzzy_leaves_life_indxxx_uncorrected_below_threshold(self) -> None:
         # Standard Levenshtein normalized_similarity = 0.818 < 0.85
         # → should return None (leave to Rule 8).
         assert _fuzzy_correct_typo("life indxxx") is None
 
-    def test_fuzzy_rejects_extended_query_by_len_guard(self) -> None:
-        # len-diff=4 > 2, length guard blocks (ratio ≈ 83.3 irrelevant)
+    def test_fuzzy_leaves_extended_query_uncorrected_by_len_guard(self) -> None:
+        # len-diff=4 > 2, so fuzzy correction does not apply.
         assert _fuzzy_correct_typo("Life Index 2.0") is None
 
-    def test_fuzzy_skips_cjk_input(self) -> None:
-        # non-ASCII skips fuzzy
+    def test_fuzzy_ignores_cjk_input(self) -> None:
+        # Fuzzy correction applies only to ASCII input.
         assert _fuzzy_correct_typo("生活索引") is None
 
     def test_fuzzy_exact_match_passthrough(self) -> None:
@@ -130,42 +130,42 @@ class TestFuzzyTypoCorrection:
         assert plan.normalized_query == "life index"
 
 
-class TestNoiseGateRule8:
-    """Rule 8: typo_near_noise blocks mid-similarity queries."""
+class TestNoiseClassifierRule8:
+    """Rule 8 classifies mid-similarity queries as advisory metadata."""
 
-    def test_rule8_blocks_life_indxxx(self) -> None:
+    def test_rule8_classifies_life_indxxx(self) -> None:
         # Standard Levenshtein normalized_similarity = 0.818 in [0.65, 0.85)
-        # → should be blocked by Rule 8.
-        blocked, reason = is_noise_query("life indxxx")
-        assert blocked
+        # → should retain the Rule 8 compatibility reason.
+        is_advisory, reason = is_noise_query("life indxxx")
+        assert is_advisory
         assert reason == "typo_near_noise"
 
-    def test_rule8_blocks_lyf_index(self) -> None:
+    def test_rule8_classifies_lyf_index(self) -> None:
         # ratio ≈ 84.2 in [65, 85)
-        blocked, reason = is_noise_query("lyf index")
-        assert blocked
+        is_advisory, reason = is_noise_query("lyf index")
+        assert is_advisory
         assert reason == "typo_near_noise"
 
-    def test_rule8_passes_lifx_ndex(self) -> None:
+    def test_rule8_classifies_lifx_ndex(self) -> None:
         # ratio ≈ 84.2 in [65, 85)
-        blocked, reason = is_noise_query("lifx ndex")
-        assert blocked
+        is_advisory, reason = is_noise_query("lifx ndex")
+        assert is_advisory
         assert reason == "typo_near_noise"
 
-    def test_rule8_does_not_block_extended_query(self) -> None:
-        # len-diff=4 > 2, length guard blocks
-        blocked, reason = is_noise_query("Life Index 2.0")
-        assert not blocked
+    def test_rule8_does_not_classify_extended_query(self) -> None:
+        # len-diff=4 > 2, so Rule 8 does not classify it.
+        is_advisory, reason = is_noise_query("Life Index 2.0")
+        assert not is_advisory
         assert reason is None
 
-    def test_rule8_does_not_block_chinese_project_name(self) -> None:
-        # non-ASCII, ASCII guard skips
-        blocked, reason = is_noise_query("Life Index 项目")
-        assert not blocked
+    def test_rule8_does_not_classify_chinese_project_name(self) -> None:
+        # The ASCII-only classifier does not apply.
+        is_advisory, reason = is_noise_query("Life Index 项目")
+        assert not is_advisory
         assert reason is None
 
-    def test_rule8_does_not_block_canonical_itself(self) -> None:
+    def test_rule8_does_not_classify_canonical_itself(self) -> None:
         # ratio = 100.0, outside [65, 85)
-        blocked, reason = is_noise_query("life index")
-        assert not blocked
+        is_advisory, reason = is_noise_query("life index")
+        assert not is_advisory
         assert reason is None

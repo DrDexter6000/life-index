@@ -48,6 +48,16 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Tuple
 
+from tools.eval.compat import LANGUAGE_JUDGE_ERROR, language_judge_requested
+
+if (
+    len(sys.argv) > 1
+    and sys.argv[1] == "eval"
+    and language_judge_requested(sys.argv, command_offset=2)
+):
+    print(json.dumps({"success": False, "error": LANGUAGE_JUDGE_ERROR}, ensure_ascii=False))
+    raise SystemExit(2)
+
 from importlib.metadata import PackageNotFoundError, version as package_version
 
 

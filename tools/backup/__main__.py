@@ -41,9 +41,9 @@ Examples:
     parser.add_argument("--restore", help="从指定备份恢复")
 
     args = parser.parse_args()
-    ensure_dirs()
 
     if args.list:
+        ensure_dirs()
         if not args.dest:
             print(
                 json.dumps(
@@ -64,6 +64,7 @@ Examples:
         sys.exit(0 if result["success"] else 1)
 
     elif args.dest:
+        ensure_dirs()
         result = create_backup(
             dest_path=args.dest,
             full=args.full,

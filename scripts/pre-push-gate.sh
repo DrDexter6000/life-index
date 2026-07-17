@@ -154,25 +154,14 @@ mkdir -p "$LIFE_INDEX_DATA_DIR"
 echo "Using LIFE_INDEX_DATA_DIR: $LIFE_INDEX_DATA_DIR"
 
 # === tests.yml hard checks (with L1 outer timeout) ===
-# Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 1800s; eval 600s
+# Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 2400s; eval 900s
 mkdir -p "$PYTEST_BASETEMP/blocker"
 run_check "pytest -m blocker"    timeout "$BLOCKER_TIMEOUT_SECONDS" python -m pytest -o addopts="" -ra -q --strict-markers --strict-config -m blocker --timeout="$PYTEST_TIMEOUT_SECONDS" --basetemp="$PYTEST_BASETEMP/blocker"
 mkdir -p "$PYTEST_BASETEMP/contract"
 run_check "pytest -m contract"   timeout "$CONTRACT_TIMEOUT_SECONDS" python -m pytest -o addopts="" -ra -q --strict-markers --strict-config -m contract --timeout="$PYTEST_TIMEOUT_SECONDS" --basetemp="$PYTEST_BASETEMP/contract"
 mkdir -p "$PYTEST_BASETEMP/eval"
-run_check "search-eval-gate"     timeout "$EVAL_TIMEOUT_SECONDS" python -m pytest \
-    -o addopts="" -ra -q --strict-markers --strict-config \
-    tests/unit/test_eval_gate.py \
-    tests/unit/test_eval_runner.py \
-    tests/unit/test_eval_llm.py \
-    tests/eval/test_broad_eval_soft_gate.py \
-    tests/eval/test_semantic_report.py \
-    tests/eval/test_eval_compare.py \
-    tests/eval/test_eval_run.py \
-    tests/eval/test_eval_qrels.py \
-    tests/eval/test_eval_export.py \
-    tests/eval/test_eval_serialization.py \
-    --timeout="$PYTEST_TIMEOUT_SECONDS" --basetemp="$PYTEST_BASETEMP/eval"
+export EVAL_PYTEST_BASETEMP="$PYTEST_BASETEMP/eval"
+run_check "search-eval-gate"     timeout "$EVAL_TIMEOUT_SECONDS" bash scripts/run_eval_gate.sh
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))

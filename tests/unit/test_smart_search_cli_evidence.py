@@ -148,7 +148,7 @@ def test_cli_default_does_not_initialize_llm():
                 except SystemExit as e:
                     assert e.code == 0
 
-    MockCls.assert_called_once_with(llm_client=None)
+    MockCls.assert_called_once_with()
 
 
 def test_cli_use_llm_is_not_accepted():
@@ -208,7 +208,7 @@ def test_cli_help_includes_evidence_flag():
 
 
 def _mock_orch_search_with_synthesis(query, include_evidence=False, synthesize=False):
-    """Mock orchestrator.search() returning answer when synthesize=True."""
+    """Mock deterministic orchestrator.search() with compatibility flag support."""
     result = {
         "success": True,
         "query": query,
@@ -217,19 +217,9 @@ def _mock_orch_search_with_synthesis(query, include_evidence=False, synthesize=F
         "summary": "",
         "citations": [],
         "agent_decisions": [],
-        "agent_unavailable": False,
+        "agent_unavailable": True,
         "performance": {"total_time_ms": 10.0},
     }
-    if synthesize:
-        result["answer"] = {
-            "answer_text": "Mock answer based on evidence.",
-            "citations": ["mock.md"],
-            "confidence": "medium",
-            "confidence_reason": "Answer supported by retrieved results without evidence pack.",
-            "limitations": [],
-            "evidence_summary": "",
-        }
-        result["performance"]["synthesis_ms"] = 50.0
     if include_evidence:
         result["evidence_pack"] = {
             "query_context": {"query": query},
@@ -307,38 +297,6 @@ def test_cli_help_includes_synthesize_flag():
     assert "--synthesize" in help_text
     assert "--use-llm" not in help_text
     assert "--no-llm" not in help_text
-
-
-# ---------------------------------------------------------------------------
-# R2D3: Answer transparency CLI tests
-# ---------------------------------------------------------------------------
-
-
-def test_cli_synthesize_output_includes_transparency_fields():
-    """--synthesize output includes confidence_reason, limitations, evidence_summary."""
-    captured = []
-    with patch("sys.argv", ["smart-search", "--query", "test", "--synthesize"]):
-        with patch(
-            "tools.search_journals.orchestrator.SmartSearchOrchestrator",
-            return_value=_make_mock_orch_with_synthesis(),
-        ):
-            with patch(
-                "builtins.print",
-                side_effect=lambda *a, **kw: captured.append(a[0]) if a else None,
-            ):
-                from tools.smart_search.__main__ import main
-
-                try:
-                    main()
-                except SystemExit:
-                    pass
-    result = json.loads(captured[0])
-    assert "answer" in result
-    answer = result["answer"]
-    assert "confidence_reason" in answer
-    assert "limitations" in answer
-    assert "evidence_summary" in answer
-    assert isinstance(answer["limitations"], list)
 
 
 # ---------------------------------------------------------------------------

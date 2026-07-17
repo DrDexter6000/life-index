@@ -82,7 +82,7 @@ def test_smart_search_does_not_request_semantic_fallback(monkeypatch: pytest.Mon
         }
 
     monkeypatch.setattr("tools.search_journals.orchestrator._get_search_fn", lambda: fake_search)
-    orch = SmartSearchOrchestrator(llm_client=None)
+    orch = SmartSearchOrchestrator()
 
     result = orch.execute_search(
         {

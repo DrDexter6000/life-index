@@ -7,9 +7,7 @@ import hashlib
 import json
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-import tempfile
-import shutil
+from unittest.mock import MagicMock, patch
 
 from tools.backup import (
     calculate_file_hash,
@@ -128,8 +126,6 @@ class TestSaveBackupManifest:
     def test_save_manifest_io_error(self, tmp_path):
         """Test saving manifest when IOError occurs (lines 66-67)"""
         manifest_data = {"backups": [], "files": {}}
-        manifest_path = tmp_path / ".life-index-backup-manifest.json"
-
         # Create a read-only directory to trigger IOError
         with patch("builtins.open", side_effect=IOError("Permission denied")):
             # Should not raise, just log error
@@ -142,12 +138,45 @@ class TestSaveBackupManifest:
 class TestCreateBackup:
     """Tests for create_backup function"""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_user_data_root(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        owned_root = tmp_path / "unit-user-data"
+        owned_root.mkdir()
+        monkeypatch.setattr("tools.backup.get_user_data_dir", lambda: owned_root)
+
     @patch("tools.backup.get_journals_dir")
     @patch("tools.backup.get_by_topic_dir")
     @patch("tools.backup.get_attachments_dir")
-    def test_create_backup_dry_run(
-        self, mock_attach, mock_topic, mock_journals, tmp_path
-    ):
+    def test_unit_source_roots_ignore_ambient_session_entity_graph(
+        self,
+        mock_attach: MagicMock,
+        mock_topic: MagicMock,
+        mock_journals: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        from tools.lib.paths import get_user_data_dir
+
+        mock_journals.exists.return_value = False
+        mock_topic.exists.return_value = False
+        mock_attach.exists.return_value = False
+        ambient_graph = get_user_data_dir() / "entity_graph.yaml"
+        previous_bytes = ambient_graph.read_bytes() if ambient_graph.exists() else None
+        ambient_graph.write_text("entities: []\n", encoding="utf-8")
+        try:
+            result = create_backup(str(tmp_path / "backup"), dry_run=True)
+        finally:
+            if previous_bytes is None:
+                ambient_graph.unlink(missing_ok=True)
+            else:
+                ambient_graph.write_bytes(previous_bytes)
+
+        assert result["success"] is True
+        assert result["files_backed_up"] == 0
+
+    @patch("tools.backup.get_journals_dir")
+    @patch("tools.backup.get_by_topic_dir")
+    @patch("tools.backup.get_attachments_dir")
+    def test_create_backup_dry_run(self, mock_attach, mock_topic, mock_journals, tmp_path):
         """Test backup in dry-run mode"""
         # Setup mock directories
         mock_journals.exists.return_value = False
@@ -163,9 +192,7 @@ class TestCreateBackup:
     @patch("tools.backup.get_journals_dir")
     @patch("tools.backup.get_by_topic_dir")
     @patch("tools.backup.get_attachments_dir")
-    def test_create_backup_full_mode(
-        self, mock_attach, mock_topic, mock_journals, tmp_path
-    ):
+    def test_create_backup_full_mode(self, mock_attach, mock_topic, mock_journals, tmp_path):
         """Test full backup mode"""
         # Setup mock directories as non-existent
         mock_journals.exists.return_value = False
@@ -257,9 +284,7 @@ class TestCreateBackup:
             patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
             patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
-            result = create_backup(
-                str(backup_dest), dry_run=False, exclude_patterns=[".tmp"]
-            )
+            result = create_backup(str(backup_dest), dry_run=False, exclude_patterns=[".tmp"])
 
         # Only regular file should be backed up, .tmp excluded
         assert result["files_backed_up"] == 1
@@ -380,7 +405,7 @@ class TestCreateBackup:
             patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
             patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
-            result = create_backup(str(backup_dest), dry_run=False)
+            create_backup(str(backup_dest), dry_run=False)
 
         # Verify manifest was saved with backup record
         manifest_path = backup_dest / ".life-index-backup-manifest.json"
@@ -417,7 +442,7 @@ class TestCreateBackup:
             patch("tools.backup.get_by_topic_dir", return_value=by_topic_src),
             patch("tools.backup.get_attachments_dir", return_value=attachments_src),
         ):
-            result = create_backup(str(backup_dest), dry_run=False)
+            create_backup(str(backup_dest), dry_run=False)
 
         # Verify manifest was updated with backups key
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -466,8 +491,6 @@ class TestCreateBackup:
         backup_dest = tmp_path / "backup_dest"
 
         # Make Path.mkdir raise an error
-        original_mkdir = Path.mkdir
-
         def raise_oserror(self, *args, **kwargs):
             raise OSError("System error")
 
@@ -488,9 +511,7 @@ class TestCreateBackup:
 
         # Mock Path.exists to raise error
         with patch("pathlib.Path.exists", side_effect=OSError("System error")):
-            result = restore_backup(
-                str(backup_dir), dest_path=str(dest_dir), dry_run=False
-            )
+            result = restore_backup(str(backup_dir), dest_path=str(dest_dir), dry_run=False)
 
         assert result["success"] is False
         assert len(result["errors"]) > 0
@@ -545,9 +566,7 @@ class TestRestoreBackup:
         topic_dir.mkdir(parents=True)
         attachments_dir.mkdir(parents=True)
 
-        (journals_dir / "life-index_2026-03-20_001.md").write_text(
-            "journal", encoding="utf-8"
-        )
+        (journals_dir / "life-index_2026-03-20_001.md").write_text("journal", encoding="utf-8")
         (topic_dir / "主题_work.md").write_text("index", encoding="utf-8")
         (attachments_dir / "img.png").write_text("attachment", encoding="utf-8")
 
@@ -557,9 +576,7 @@ class TestRestoreBackup:
 
         assert result["success"] is True
         assert result["files_restored"] == 3
-        assert (
-            dest_dir / "Journals" / "2026" / "03" / "life-index_2026-03-20_001.md"
-        ).exists()
+        assert (dest_dir / "Journals" / "2026" / "03" / "life-index_2026-03-20_001.md").exists()
         assert (dest_dir / "by-topic" / "主题_work.md").exists()
         assert (dest_dir / "attachments" / "2026" / "03" / "img.png").exists()
 
@@ -568,9 +585,7 @@ class TestRestoreBackup:
         backup_dir = tmp_path / "backup"
         journals_dir = backup_dir / "Journals" / "2026" / "03"
         journals_dir.mkdir(parents=True)
-        (journals_dir / "life-index_2026-03-20_001.md").write_text(
-            "journal", encoding="utf-8"
-        )
+        (journals_dir / "life-index_2026-03-20_001.md").write_text("journal", encoding="utf-8")
 
         dest_dir = tmp_path / "restored"
         result = restore_backup(str(backup_dir), dest_path=str(dest_dir), dry_run=True)
@@ -590,13 +605,83 @@ class TestRestoreBackup:
         dest_dir = tmp_path / "restored"
 
         with patch("tools.backup.shutil.copy2", side_effect=IOError("copy failed")):
-            result = restore_backup(
-                str(backup_dir), dest_path=str(dest_dir), dry_run=False
-            )
+            result = restore_backup(str(backup_dir), dest_path=str(dest_dir), dry_run=False)
 
         assert result["success"] is False
         assert result["files_restored"] == 0
         assert any("copy failed" in err for err in result["errors"])
+
+
+def test_save_backup_manifest_interrupted_replace_preserves_prior_bytes(monkeypatch, tmp_path):
+    from tools import backup as backup_module
+
+    manifest_path = tmp_path / ".life-index-backup-manifest.json"
+    prior_bytes = b'{"backups":[{"path":"prior"}],"files":{"prior":{"hash":"abc"}}}\n'
+    manifest_path.write_bytes(prior_bytes)
+
+    def fail_catalog_replace(source: Path, target: Path) -> Path:
+        if Path(target) == manifest_path:
+            raise OSError("injected catalog replace interruption")
+        return source
+
+    monkeypatch.setattr(backup_module.Path, "replace", fail_catalog_replace)
+    result = save_backup_manifest(
+        tmp_path,
+        {"backups": [{"path": "new"}], "files": {"new": {"hash": "def"}}},
+    )
+
+    assert result is False
+    assert manifest_path.read_bytes() == prior_bytes
+    assert list(tmp_path.glob(".life-index-backup-manifest.json*.tmp")) == []
+
+
+def test_manifest_path_identity_policy_is_filesystem_aware():
+    from tools import backup as backup_module
+
+    validate_identities = backup_module._validate_manifest_path_identities
+    case_variants = ["attachments/Case.bin", "attachments/case.bin"]
+
+    validate_identities(case_variants, destination_case_sensitive=True)
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_identities(
+            ["attachments/exact.bin", "attachments/exact.bin"],
+            destination_case_sensitive=True,
+        )
+    with pytest.raises(ValueError, match="case"):
+        validate_identities(case_variants, destination_case_sensitive=False)
+
+
+def test_inventory_creation_and_validation_share_artifact_path_policy(monkeypatch, tmp_path):
+    from tools import backup as backup_module
+
+    real_policy = backup_module._artifact_path_policy
+    calls = []
+
+    def tracking_policy(path):
+        calls.append(path)
+        return real_policy(path)
+
+    monkeypatch.setattr(backup_module, "_artifact_path_policy", tracking_policy)
+    journal = tmp_path / "Journals" / "2026" / "07" / "case.md"
+    journal.parent.mkdir(parents=True)
+    journal.write_text("journal", encoding="utf-8")
+    inventory = backup_module._canonical_source_inventory(tmp_path)
+    assert "Journals/2026/07/case.md" in inventory
+
+    artifact_file = tmp_path / "artifact.bin"
+    artifact_file.write_bytes(b"artifact")
+    record = backup_module._artifact_record(
+        path="attachments/artifact.bin",
+        file_path=artifact_file,
+    )
+    backup_module._validate_recovery_artifact(record)
+
+    assert calls.count("Journals/2026/07/case.md") == 1
+    assert calls.count("attachments/artifact.bin") == 2
+    policy = real_policy("entity_graph.yaml")
+    assert policy.classification == "canonical_source"
+    assert policy.included is True
+    assert policy.canonical_required is True
 
 
 if __name__ == "__main__":

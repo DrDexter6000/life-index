@@ -9,6 +9,8 @@ import re
 import shutil
 import asyncio
 import mimetypes
+import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -19,6 +21,40 @@ from ..lib.url_download import download_url
 from .utils import get_year_month, convert_path_for_platform
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class AttachmentStaging:
+    """Transient attachment bytes prepared for one journal transaction."""
+
+    processed: List[Dict[str, Any]]
+    stage_root: Path | None
+    staged_dir: Path | None
+    final_dir: Path
+    published_paths: list[tuple[Path, tuple[int, int]]] = field(default_factory=list)
+
+
+class AttachmentCleanupError(OSError):
+    """A transaction-owned staging tree could not be removed."""
+
+    def __init__(self, message: str, leftover_paths: list[str]):
+        super().__init__(message)
+        self.leftover_paths = leftover_paths
+
+
+def _file_identity(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino
+
+
+def _remove_staging_root(stage_root: Path | None) -> list[str]:
+    if stage_root is None or not stage_root.exists():
+        return []
+    try:
+        shutil.rmtree(stage_root)
+    except OSError as exc:
+        return [f"{stage_root}: {exc}"]
+    return []
 
 
 def _get_attachment_metadata(file_path: str) -> dict[str, Any]:
@@ -245,6 +281,10 @@ def process_attachments(
     date_str: str,
     dry_run: bool = False,
     auto_detected_paths: Optional[List[str]] = None,
+    *,
+    _destination_dir: Path | None = None,
+    _collision_dir: Path | None = None,
+    _download_dir: Path | None = None,
 ) -> List[Dict[str, Any]]:
     """
     处理附件复制
@@ -260,7 +300,10 @@ def process_attachments(
     """
     processed = []
     year, month = get_year_month(date_str)
-    att_dir = get_attachments_dir() / str(year) / f"{month:02d}"
+    final_att_dir = get_attachments_dir() / str(year) / f"{month:02d}"
+    att_dir = _destination_dir or final_att_dir
+    collision_dir = _collision_dir or att_dir
+    download_dir = _download_dir or att_dir
 
     # 合并显式附件和自动检测的附件
     all_attachments = []
@@ -296,7 +339,7 @@ def process_attachments(
 
         if source_url:
             download_result = asyncio.run(
-                download_attachment_from_url(source_url, att_dir, date_str)
+                download_attachment_from_url(source_url, download_dir, date_str)
             )
             if not download_result.get("success"):
                 processed.append(
@@ -369,7 +412,7 @@ def process_attachments(
             # 检查是否已存在同名文件
             target_name = source_name
             counter = 1
-            while (att_dir / target_name).exists():
+            while (collision_dir / target_name).exists() or (att_dir / target_name).exists():
                 target_name = f"{base_name}_{counter:03d}{ext}"
                 counter += 1
 
@@ -408,3 +451,80 @@ def process_attachments(
         processed.append(processed_entry)
 
     return processed
+
+
+def stage_attachments(
+    attachments: Sequence[Dict[str, str] | str],
+    date_str: str,
+    auto_detected_paths: Optional[List[str]] = None,
+) -> AttachmentStaging:
+    """Copy attachment bytes into a transient same-filesystem staging directory."""
+    year, month = get_year_month(date_str)
+    attachments_root = get_attachments_dir()
+    final_dir = attachments_root / str(year) / f"{month:02d}"
+    if not attachments and not auto_detected_paths:
+        return AttachmentStaging([], None, None, final_dir)
+
+    attachments_root.mkdir(parents=True, exist_ok=True)
+    stage_root = Path(tempfile.mkdtemp(prefix=".write-stage-", dir=str(attachments_root)))
+    staged_dir = stage_root / "files"
+    try:
+        processed = process_attachments(
+            attachments,
+            date_str,
+            False,
+            auto_detected_paths,
+            _destination_dir=staged_dir,
+            _collision_dir=final_dir,
+            _download_dir=stage_root / "downloads",
+        )
+    except Exception as exc:
+        cleanup_errors = _remove_staging_root(stage_root)
+        if cleanup_errors:
+            leftover_paths = [str(stage_root)]
+            raise AttachmentCleanupError(
+                f"{exc}; staging cleanup failed: {'; '.join(cleanup_errors)}",
+                leftover_paths,
+            ) from exc
+        raise
+    return AttachmentStaging(processed, stage_root, staged_dir, final_dir)
+
+
+def publish_staged_attachments(staging: AttachmentStaging) -> None:
+    """Atomically publish staged attachments without replacing existing paths."""
+    if staging.staged_dir is None:
+        return
+    staging.final_dir.mkdir(parents=True, exist_ok=True)
+    for entry in staging.processed:
+        if entry.get("error"):
+            continue
+        staged_path = staging.staged_dir / str(entry["filename"])
+        final_path = staging.final_dir / str(entry["filename"])
+        staged_identity = _file_identity(staged_path)
+        os.link(staged_path, final_path)
+        staging.published_paths.append((final_path, staged_identity))
+        if _file_identity(final_path) != staged_identity:
+            raise OSError(f"attachment publication identity changed: {final_path}")
+        staged_path.unlink()
+
+
+def discard_attachment_staging(staging: AttachmentStaging | None) -> list[str]:
+    """Remove transaction-owned staging bytes and report concrete leftovers."""
+    return _remove_staging_root(staging.stage_root if staging is not None else None)
+
+
+def compensate_published_attachments(staging: AttachmentStaging) -> list[str]:
+    """Remove only final attachment files published by this transaction."""
+    errors: list[str] = []
+    for published_path, published_identity in reversed(staging.published_paths):
+        try:
+            if not published_path.exists():
+                continue
+            if _file_identity(published_path) != published_identity:
+                errors.append(f"{published_path}: publication identity changed; not removed")
+                continue
+            published_path.unlink()
+        except OSError as exc:
+            errors.append(f"{published_path}: {exc}")
+    errors.extend(discard_attachment_staging(staging))
+    return errors

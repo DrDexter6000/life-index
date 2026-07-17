@@ -11,22 +11,25 @@ import pytest
 TESTS_DIR = Path(__file__).parent.resolve()
 
 # Contract tests that are deterministic (mock-only, no external deps) -> promoted to blocker
-BLOCKER_CONTRACT_FILES = frozenset({
-    "contract/test_error_contract.py",
-    "contract/test_contract_consistency.py",
-    "contract/test_r12_crash_recovery.py",
-    "contract/test_r12_index_reliability.py",
-    "contract/test_r12_pending_lifecycle.py",
-    "contract/test_r12_search_precision.py",
-    "contract/test_workflow_signals.py",
-})
+BLOCKER_CONTRACT_FILES = frozenset(
+    {
+        "contract/test_error_contract.py",
+        "contract/test_contract_consistency.py",
+        "contract/test_r12_crash_recovery.py",
+        "contract/test_r12_index_reliability.py",
+        "contract/test_r12_pending_lifecycle.py",
+        "contract/test_r12_search_precision.py",
+        "contract/test_workflow_signals.py",
+    }
+)
 
 # Eval tests are slow and non-deterministic (depend on model weights / index state)
-NIGHTLY_UNIT_FILES = frozenset({
-    "unit/test_eval_gate.py",
-    "unit/test_eval_runner.py",
-    "unit/test_eval_llm.py",
-})
+NIGHTLY_UNIT_FILES = frozenset(
+    {
+        "unit/test_eval_advisory.py",
+        "unit/test_eval_runner.py",
+    }
+)
 
 
 def pytest_collection_modifyitems(config, items):

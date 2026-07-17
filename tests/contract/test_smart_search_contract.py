@@ -5,55 +5,17 @@ Verifies that SmartSearchOrchestrator output conforms to the contract
 documented in docs/API.md:
 1. Default output contains public stable fields
 2. --include-evidence adds evidence_pack
-3. --synthesize adds answer
-4. Combined flags produce both additive sections
+3. --synthesize remains a deterministic no-op/no-answer compatibility path
+4. Combined flags add evidence without adding an answer path
 5. --explain swaps agent_decisions_summary for agent_decisions
-6. answer fields follow trust-gate semantics
-7. Performance sub-fields are conditionally present
-8. evidence_pack.diagnostics present and well-formed when --include-evidence
+6. Performance sub-fields are conditionally present
+7. evidence_pack.diagnostics present and well-formed when --include-evidence
 """
 
 import json
 from unittest.mock import MagicMock, patch
 
 from tools.search_journals.orchestrator import SmartSearchOrchestrator
-
-
-def _make_mock_llm():
-    """Create mock LLM client that returns valid JSON responses."""
-
-    class MockLLM:
-        def chat(self, messages, *, max_tokens=2000):
-            text = messages[0]["content"]
-            if "search query analyzer" in text:
-                return json.dumps(
-                    {
-                        "core_terms": "test",
-                        "expanded_terms": [],
-                        "time_range": None,
-                        "intent_type": "simple",
-                        "rewritten_query": "test",
-                    }
-                )
-            elif "search result curator" in text:
-                return json.dumps(
-                    {
-                        "filtered_indices": [1],
-                        "summary": "Test summary.",
-                        "citations": ["Test Title"],
-                    }
-                )
-            elif "personal journal assistant" in text:
-                return json.dumps(
-                    {
-                        "answer_text": "Test answer.",
-                        "citations": [1],
-                        "confidence": "medium",
-                    }
-                )
-            return "{}"
-
-    return MockLLM()
 
 
 def _mock_hierarchical_search(query="", **kwargs):
@@ -138,87 +100,6 @@ def _mock_short_keyword_zero(calls):
     return _search
 
 
-class MultiQueryLLM:
-    def chat(self, messages, *, max_tokens=2000):
-        text = messages[0]["content"]
-        if "search query analyzer" in text:
-            return json.dumps(
-                {
-                    "core_terms": "family memories",
-                    "expanded_terms": ["女儿", "亲子", "回忆"],
-                    "time_range": None,
-                    "intent_type": "thematic",
-                    "rewritten_query": "family memories",
-                    "sub_queries": ["女儿 回忆", "亲子 时光", "珍贵 回忆"],
-                }
-            )
-        if "search result curator" in text:
-            return json.dumps(
-                {
-                    "filtered_indices": [1, 2, 3],
-                    "summary": "Three relevant memories.",
-                    "citations": [
-                        "Entry for 女儿 回忆",
-                        "Entry for 亲子 时光",
-                        "Entry for 珍贵 回忆",
-                    ],
-                }
-            )
-        return "{}"
-
-
-class ExpandedTermsLLM:
-    def chat(self, messages, *, max_tokens=2000):
-        text = messages[0]["content"]
-        if "search query analyzer" in text:
-            return json.dumps(
-                {
-                    "core_terms": "女儿 回忆",
-                    "expanded_terms": ["亲子", "生日"],
-                    "time_range": None,
-                    "intent_type": "thematic",
-                    "rewritten_query": "女儿 回忆",
-                }
-            )
-        if "search result curator" in text:
-            return json.dumps(
-                {
-                    "filtered_indices": [1, 2, 3],
-                    "summary": "Expanded term results.",
-                    "citations": [
-                        "Entry for 女儿 回忆",
-                        "Entry for 女儿 回忆 亲子",
-                        "Entry for 女儿 回忆 生日",
-                    ],
-                }
-            )
-        return "{}"
-
-
-class TemporalRangeLLM:
-    def chat(self, messages, *, max_tokens=2000):
-        text = messages[0]["content"]
-        if "search query analyzer" in text:
-            return json.dumps(
-                {
-                    "core_terms": "女儿 回忆",
-                    "expanded_terms": [],
-                    "time_range": "2026-03",
-                    "intent_type": "temporal",
-                    "rewritten_query": "女儿 回忆",
-                }
-            )
-        if "search result curator" in text:
-            return json.dumps(
-                {
-                    "filtered_indices": [1],
-                    "summary": "Temporal result.",
-                    "citations": ["Entry for 女儿 回忆"],
-                }
-            )
-        return "{}"
-
-
 # Default output shape
 
 
@@ -230,7 +111,7 @@ class TestDefaultOutputShape:
         return_value=_mock_hierarchical_search,
     )
     def test_default_has_required_fields(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
 
         # Public stable fields
@@ -248,7 +129,7 @@ class TestDefaultOutputShape:
         return_value=_mock_hierarchical_search,
     )
     def test_default_no_evidence_pack(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         assert "evidence_pack" not in result
 
@@ -257,7 +138,7 @@ class TestDefaultOutputShape:
         return_value=_mock_hierarchical_search,
     )
     def test_default_no_answer(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         assert "answer" not in result
 
@@ -266,7 +147,7 @@ class TestDefaultOutputShape:
         return_value=_mock_semantic_noop_search,
     )
     def test_semantic_noop_status_is_propagated(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         assert result["semantic_fallback_used"] is False
 
@@ -276,7 +157,7 @@ class TestDefaultOutputShape:
             "tools.search_journals.orchestrator._get_search_fn",
             return_value=_mock_recording_search(calls),
         ):
-            orch = SmartSearchOrchestrator(llm_client=None)
+            orch = SmartSearchOrchestrator()
             result = orch.search("投资")
 
         assert calls
@@ -291,7 +172,7 @@ class TestDefaultOutputShape:
             "tools.search_journals.orchestrator._get_search_fn",
             return_value=_mock_recording_search(calls),
         ):
-            orch = SmartSearchOrchestrator(llm_client=None)
+            orch = SmartSearchOrchestrator()
             result = orch.search("晚睡熬夜作息")
 
         assert [call["query"] for call in calls] == ["晚睡", "熬夜", "作息"]
@@ -304,7 +185,7 @@ class TestDefaultOutputShape:
             "tools.search_journals.orchestrator._get_search_fn",
             return_value=_mock_recording_search(calls),
         ):
-            orch = SmartSearchOrchestrator(llm_client=None)
+            orch = SmartSearchOrchestrator()
             result = orch.search("晚睡熬夜作息", include_evidence=True)
 
         assert "evidence_pack" in result
@@ -317,7 +198,7 @@ class TestDefaultOutputShape:
             "tools.search_journals.orchestrator._get_search_fn",
             return_value=_mock_short_keyword_zero(calls),
         ):
-            orch = SmartSearchOrchestrator(llm_client=None)
+            orch = SmartSearchOrchestrator()
             result = orch.search("最近睡得怎么样")
 
         assert [call["query"] for call in calls] == ["睡得"]
@@ -333,7 +214,7 @@ class TestDefaultOutputShape:
     )
     def test_default_has_agent_decisions_list(self, _mock):
         """Default orchestrator output includes agent_decisions list."""
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         assert "agent_decisions" in result
         assert isinstance(result["agent_decisions"], list)
@@ -344,7 +225,7 @@ class TestDefaultOutputShape:
     )
     def test_default_no_agent_decisions_summary(self, _mock):
         """Orchestrator does NOT produce agent_decisions_summary; CLI layer does."""
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         assert "agent_decisions_summary" not in result
 
@@ -353,7 +234,7 @@ class TestDefaultOutputShape:
         return_value=_mock_hierarchical_search,
     )
     def test_degradation_mode_agent_unavailable(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         assert result["agent_unavailable"] is True
 
@@ -362,7 +243,7 @@ class TestDefaultOutputShape:
         return_value=_mock_hierarchical_search,
     )
     def test_default_output_includes_agent_ready_scaffold(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("我和女儿之间有哪些珍贵回忆")
 
         assert result["agent_unavailable"] is True
@@ -376,68 +257,11 @@ class TestDefaultOutputShape:
 
     @patch(
         "tools.search_journals.orchestrator._get_search_fn",
-        return_value=_mock_multi_query_search,
-    )
-    def test_use_llm_rewrite_sub_queries_trigger_bounded_multi_query_search(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=MultiQueryLLM())
-        result = orch.search("我和女儿之间有哪些珍贵回忆")
-
-        assert len(result["filtered_results"]) == 3
-        assert result["query_plan"]["sub_queries"] == ["女儿 回忆", "亲子 时光", "珍贵 回忆"]
-        assert result["query_plan"]["strategy"] == "keyword_multi_pass"
-        assert result["filtered_results"][0]["source_queries"] == ["女儿 回忆"]
-
-    def test_use_llm_expanded_terms_fill_bounded_sub_queries(self):
-        captured_queries = []
-
-        def search(query="", **kwargs):
-            captured_queries.append(query)
-            return _mock_multi_query_search(query=query, **kwargs)
-
-        with patch("tools.search_journals.orchestrator._get_search_fn", return_value=search):
-            orch = SmartSearchOrchestrator(llm_client=ExpandedTermsLLM())
-            result = orch.search("我和女儿之间有哪些珍贵回忆")
-
-        assert captured_queries == ["女儿 回忆", "女儿 回忆 亲子", "女儿 回忆 生日"]
-        assert result["query_plan"]["sub_queries"] == captured_queries
-        assert result["query_plan"]["strategy"] == "keyword_multi_pass"
-
-    def test_use_llm_temporal_intent_passes_time_range_to_search(self):
-        captured_kwargs = []
-
-        def search(query="", **kwargs):
-            captured_kwargs.append(kwargs)
-            return _mock_multi_query_search(query=query, **kwargs)
-
-        with patch("tools.search_journals.orchestrator._get_search_fn", return_value=search):
-            orch = SmartSearchOrchestrator(llm_client=TemporalRangeLLM())
-            result = orch.search("2026年3月我和女儿有哪些回忆")
-
-        assert captured_kwargs == [
-            {
-                "date_from": "2026-03-01",
-                "date_to": "2026-03-31",
-            }
-        ]
-        assert result["query_plan"]["strategy"] == "keyword_temporal"
-        assert result["query_plan"]["sub_queries"] == ["女儿 回忆"]
-
-    @patch(
-        "tools.search_journals.orchestrator._get_search_fn",
-        return_value=_mock_hierarchical_search,
-    )
-    def test_llm_mode_agent_available(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
-        result = orch.search("test query")
-        assert result["agent_unavailable"] is False
-
-    @patch(
-        "tools.search_journals.orchestrator._get_search_fn",
         return_value=_mock_hierarchical_search,
     )
     def test_no_stale_fields(self, _mock):
         """Fields documented as not existing must not appear."""
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         assert "results" not in result
         assert "total_found" not in result
@@ -446,7 +270,7 @@ class TestDefaultOutputShape:
     def test_aggregate_intent_adds_aggregate_result(self, monkeypatch):
         """Clear aggregate intents add aggregate_result without fabricating answer."""
         monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-13")
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("过去60天我有多少天晚睡")
         assert "aggregate_result" in result
         assert result["aggregate_result"]["command"] == "aggregate"
@@ -461,7 +285,7 @@ class TestDefaultOutputShape:
     def test_past_days_journal_entries_route_to_aggregate_entry_count(self, monkeypatch):
         """Past-N-day journal entry count questions route to aggregate journal_count."""
         monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-15")
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("过去90天有多少篇日志")
         assert "aggregate_result" in result
         aggregate = result["aggregate_result"]
@@ -476,7 +300,7 @@ class TestDefaultOutputShape:
     def test_past_days_journal_days_route_to_aggregate_day_count(self, monkeypatch):
         """Past-N-day journal day count questions route to aggregate journal_count."""
         monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-15")
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("过去90天有多少天写日志")
         assert "aggregate_result" in result
         aggregate = result["aggregate_result"]
@@ -490,7 +314,7 @@ class TestDefaultOutputShape:
     def test_past_days_journal_entries_english_route_to_aggregate(self, monkeypatch):
         """English past-N-day journal entry count questions route deterministically."""
         monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-15")
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("past 30 days how many journal entries")
         assert "aggregate_result" in result
         aggregate = result["aggregate_result"]
@@ -504,7 +328,7 @@ class TestDefaultOutputShape:
     def test_explicit_field_equals_route_to_aggregate(self, monkeypatch):
         """Explicit frontmatter field filters route to aggregate field_equals."""
         monkeypatch.setenv("LIFE_INDEX_TIME_ANCHOR", "2026-05-15")
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("过去60天有多少篇 topic=work 的日志")
         assert "aggregate_result" in result
         aggregate = result["aggregate_result"]
@@ -529,7 +353,7 @@ class TestPerformanceFields:
         return_value=_mock_hierarchical_search,
     )
     def test_always_present_fields(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         perf = result["performance"]
         assert "total_time_ms" in perf
@@ -540,11 +364,11 @@ class TestPerformanceFields:
         "tools.search_journals.orchestrator._get_search_fn",
         return_value=_mock_hierarchical_search,
     )
-    def test_synthesize_adds_synthesis_ms(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+    def test_synthesize_noop_adds_no_synthesis_ms(self, _mock):
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", synthesize=True)
         perf = result["performance"]
-        assert "synthesis_ms" in perf
+        assert "synthesis_ms" not in perf
 
 
 # --include-evidence output shape
@@ -588,7 +412,7 @@ class TestIncludeEvidenceShape:
         )
         mock_ev.return_value = pack
 
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         assert "evidence_pack" in result
@@ -605,7 +429,7 @@ class TestIncludeEvidenceShape:
         side_effect=Exception("build failed"),
     )
     def test_evidence_failure_still_succeeds(self, mock_ev, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         assert result["success"] is True
@@ -618,49 +442,23 @@ class TestIncludeEvidenceShape:
 
 
 class TestSynthesizeShape:
-    """Verify --synthesize adds answer with trust-gate fields."""
-
-    @patch(
-        "tools.search_journals.orchestrator._get_search_fn",
-        return_value=_mock_hierarchical_search,
-    )
-    def test_answer_present(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
-        result = orch.search("test query", synthesize=True)
-
-        assert "answer" in result
-        answer = result["answer"]
-        assert "answer_text" in answer
-        assert "citations" in answer
-        assert "confidence" in answer
-        assert "confidence_reason" in answer
-        assert "limitations" in answer
-        assert "evidence_summary" in answer
+    """Verify --synthesize remains a deterministic no-answer path."""
 
     @patch(
         "tools.search_journals.orchestrator._get_search_fn",
         return_value=_mock_hierarchical_search,
     )
     def test_answer_no_llm(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=None)
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", synthesize=True)
         assert "answer" not in result
-
-    @patch(
-        "tools.search_journals.orchestrator._get_search_fn",
-        return_value=_mock_hierarchical_search,
-    )
-    def test_confidence_values(self, _mock):
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
-        result = orch.search("test query", synthesize=True)
-        assert result["answer"]["confidence"] in ("high", "medium", "low")
 
 
 # Combined flags
 
 
 class TestCombinedFlags:
-    """Verify --include-evidence --synthesize produces both sections."""
+    """Verify --include-evidence --synthesize keeps deterministic evidence."""
 
     @patch(
         "tools.search_journals.orchestrator._get_search_fn",
@@ -697,12 +495,12 @@ class TestCombinedFlags:
         )
         mock_ev.return_value = pack
 
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True, synthesize=True)
 
         assert "evidence_pack" in result
-        assert "answer" in result
-        assert "synthesis_ms" in result["performance"]
+        assert "answer" not in result
+        assert "synthesis_ms" not in result["performance"]
         assert "evidence_build_ms" in result["performance"]
 
 
@@ -840,7 +638,7 @@ class TestEvidencePackDiagnostics:
         )
         mock_ev.return_value = pack
 
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         assert "evidence_pack" in result
@@ -894,7 +692,7 @@ class TestEvidencePackDiagnostics:
         )
         mock_ev.return_value = pack
 
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         diag = result["evidence_pack"]["diagnostics"]
@@ -917,7 +715,7 @@ class TestEvidencePackDiagnostics:
     )
     def test_no_diagnostics_without_evidence(self, _mock):
         """Without --include-evidence, no evidence_pack and no diagnostics."""
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query")
         assert "evidence_pack" not in result
 
@@ -968,7 +766,7 @@ class TestEvidencePackDiagnostics:
         )
         mock_ev.return_value = pack
 
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         assert "evidence_pack" in result
@@ -1050,7 +848,7 @@ class TestEntityMatchEnrichmentContract:
         )
         mock_ev.return_value = pack
 
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         assert "evidence_pack" in result
@@ -1110,7 +908,7 @@ class TestEntityMatchEnrichmentContract:
         )
         mock_ev.return_value = pack
 
-        orch = SmartSearchOrchestrator(llm_client=_make_mock_llm())
+        orch = SmartSearchOrchestrator()
         result = orch.search("test query", include_evidence=True)
 
         items = result["evidence_pack"]["items"]

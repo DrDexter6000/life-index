@@ -12,11 +12,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+SYNTHESIZE_DEPRECATION_WARNING = (
+    "DEPRECATED: --synthesize is a compatibility no-op; synthesis belongs to the "
+    "Host Agent + Life Index Skill."
+)
 
 
 def _run_smart_search(
@@ -52,9 +58,11 @@ def _run_smart_search(
         raise
 
 
-def _json(proc: subprocess.CompletedProcess[str]) -> dict:
+def _json(proc: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     """Parse JSON stdout from a smart-search subprocess result."""
-    return json.loads(proc.stdout)
+    payload = json.loads(proc.stdout)
+    assert isinstance(payload, dict)
+    return payload
 
 
 @pytest.fixture(scope="session")
@@ -204,6 +212,22 @@ class TestSynthesizeNoLlmContract:
         assert "evidence_build_ms" not in performance
         assert "synthesis_ms" not in performance
 
+    def test_synthesize_flag_emits_deprecation_warning_and_preserves_domain_output_equivalence(
+        self,
+        default_proc: subprocess.CompletedProcess[str],
+        synthesize_proc: subprocess.CompletedProcess[str],
+    ) -> None:
+        ordinary = _json(default_proc)
+        synthesized = _json(synthesize_proc)
+        ordinary_domain = {key: value for key, value in ordinary.items() if key != "performance"}
+        synthesized_domain = {
+            key: value for key, value in synthesized.items() if key != "performance"
+        }
+
+        assert ordinary_domain == synthesized_domain
+        assert "answer" not in synthesized
+        assert synthesize_proc.stderr.splitlines().count(SYNTHESIZE_DEPRECATION_WARNING) == 1
+
 
 class TestCombinedEvidenceSynthesizeNoLlmContract:
     """Combined flags do not produce answer; evidence performance stays stable."""
@@ -220,6 +244,28 @@ class TestCombinedEvidenceSynthesizeNoLlmContract:
         performance = _json(combined_proc)["performance"]
         assert "evidence_build_ms" in performance
         assert "synthesis_ms" not in performance
+
+    def test_combined_synthesize_warns_once_and_preserves_evidence_domain_output(
+        self,
+        default_proc: subprocess.CompletedProcess[str],
+        evidence_proc: subprocess.CompletedProcess[str],
+        combined_proc: subprocess.CompletedProcess[str],
+    ) -> None:
+        assert default_proc.returncode == 0, default_proc.stderr
+
+        def domain_payload(proc: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+            payload = json.loads(json.dumps(_json(proc)))
+            assert isinstance(payload, dict)
+            payload.pop("performance", None)
+            query_context = payload.get("evidence_pack", {}).get("query_context", {})
+            query_context.pop("performance", None)
+            stages = query_context.get("search_plan", {}).get("orchestrator_stages", [])
+            for stage in stages:
+                stage.pop("latency_ms", None)
+            return payload
+
+        assert domain_payload(evidence_proc) == domain_payload(combined_proc)
+        assert combined_proc.stderr.splitlines().count(SYNTHESIZE_DEPRECATION_WARNING) == 1
 
 
 class TestExplainContract:
@@ -268,7 +314,7 @@ class TestSeededEntityMatchContract:
     """Seeded CLI subprocess contract: entity_matches appear in evidence items."""
 
     @pytest.fixture(scope="class")
-    def seeded_sandbox(self) -> Path:
+    def seeded_sandbox(self) -> Iterator[Path]:
         data_dir = Path(tempfile.mkdtemp(prefix="life-index-seeded-")) / "Life-Index"
         journals = data_dir / "Journals" / "2026" / "03"
         journals.mkdir(parents=True, exist_ok=True)
@@ -488,7 +534,7 @@ class TestFormatEntityAnnotatedContract:
     """
 
     @pytest.fixture(scope="class")
-    def fmt_sandbox(self) -> Path:
+    def fmt_sandbox(self) -> Iterator[Path]:
         data_dir = Path(tempfile.mkdtemp(prefix="life-index-fmt-")) / "Life-Index"
         journals = data_dir / "Journals" / "2026" / "03"
         journals.mkdir(parents=True, exist_ok=True)
@@ -609,7 +655,7 @@ class TestCaseInsensitiveSeededEntityMatchContract:
     """Case-insensitive entity match: lowercase query matches seeded uppercase data."""
 
     @pytest.fixture(scope="class")
-    def ci_sandbox(self) -> Path:
+    def ci_sandbox(self) -> Iterator[Path]:
         data_dir = Path(tempfile.mkdtemp(prefix="life-index-ci-")) / "Life-Index"
         journals = data_dir / "Journals" / "2026" / "03"
         journals.mkdir(parents=True, exist_ok=True)
