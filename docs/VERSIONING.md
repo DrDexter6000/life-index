@@ -14,6 +14,15 @@ Life Index uses conservative product versioning. Version numbers describe the ma
 
 Starting from `v1.0.0`, earlier exploratory tags are treated as pre-contract history and no longer define formal version semantics.
 
+### Maturity-classifier boundary
+
+`Development Status :: 5 - Production/Stable` in `pyproject.toml` describes the
+released CLI product line and its stable public contracts. It does not assign
+constitutional Core/non-Core ownership, certify every current route or option,
+imply GUI 1.0 maturity, promise future features, or authorize a candidate for
+merge, release, or publication. The GUI owns its separate `0.4.x` / pre-1.0
+maturity statement in its own versioning contract.
+
 ## 2. Version Format
 
 Life Index CLI uses:

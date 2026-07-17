@@ -150,13 +150,18 @@ class LifeIndexError(Exception):
         ErrorCode.INVALID_INPUT: RecoveryStrategy.ASK_USER,
         ErrorCode.CONTENT_EMPTY: RecoveryStrategy.ASK_USER,
         ErrorCode.DATE_INVALID: RecoveryStrategy.ASK_USER,
+        ErrorCode.ATTACHMENT_COPY_FAILED: RecoveryStrategy.CONTINUE,
         # Edit errors: Ask user
         ErrorCode.JOURNAL_NOT_FOUND: RecoveryStrategy.ASK_USER,
         ErrorCode.NO_CHANGES_SPECIFIED: RecoveryStrategy.ASK_USER,
         ErrorCode.LOCATION_WEATHER_REQUIRED: RecoveryStrategy.ASK_USER,
-        # Search errors: Return empty
+        # Search errors: Continue degraded or return empty
+        ErrorCode.INDEX_NOT_FOUND: RecoveryStrategy.CONTINUE,
         ErrorCode.NO_RESULTS: RecoveryStrategy.CONTINUE_EMPTY,
         ErrorCode.QUERY_EMPTY: RecoveryStrategy.ASK_USER,
+        # Index errors: Continue degraded
+        ErrorCode.VECTOR_STORE_ERROR: RecoveryStrategy.CONTINUE,
+        ErrorCode.FTS_INDEX_ERROR: RecoveryStrategy.CONTINUE,
         # Lock errors: Retry or ask user
         ErrorCode.LOCK_TIMEOUT: RecoveryStrategy.RETRY,
         ErrorCode.LOCK_ACQUISITION_FAILED: RecoveryStrategy.RETRY,
@@ -301,6 +306,7 @@ def is_recoverable(code: str) -> bool:
     Recoverable errors:
     - Weather API failures (can skip weather)
     - No results (can return empty)
+    - Degraded attachment or index failures (can continue with targeted remediation)
 
     Non-recoverable errors:
     - Permission denied
@@ -308,4 +314,8 @@ def is_recoverable(code: str) -> bool:
     - Write failures
     """
     strategy = LifeIndexError.RECOVERY_STRATEGIES.get(code, RecoveryStrategy.ASK_USER)
-    return strategy in (RecoveryStrategy.SKIP_OPTIONAL, RecoveryStrategy.CONTINUE_EMPTY)
+    return strategy in (
+        RecoveryStrategy.SKIP_OPTIONAL,
+        RecoveryStrategy.CONTINUE,
+        RecoveryStrategy.CONTINUE_EMPTY,
+    )

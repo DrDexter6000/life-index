@@ -52,7 +52,7 @@ Shared infrastructure library for all Life Index atomic tools.
 
 **SSOT Pattern**: `frontmatter.py` is the single source of truth for YAML frontmatter. Any format change must happen here first, then propagate to tools.
 
-**Error Recovery**: All errors include a `recovery_strategy` field (`skip_optional`, `ask_user`, `continue_empty`, `fail`, `retry`). Agent uses this to decide next action.
+**Error Recovery**: All errors include a `recovery_strategy` field (`skip_optional`, `ask_user`, `continue`, `continue_empty`, `fail`, `retry`). `continue` preserves a degraded primary result while the caller follows the error-specific remediation; it is distinct from `continue_empty`, which returns an empty result. After a durable journal commit, `continue` must never instruct retrying the journal write.
 
 **File Locking**: All write operations (journal, edit, index) use `FileLock` to prevent concurrent conflicts. Lock timeout defaults to 30s for journals, 60s for index operations.
 

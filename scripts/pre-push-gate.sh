@@ -23,14 +23,24 @@ cd "$REPO_ROOT"
 BLOCKER_TIMEOUT_SECONDS=900
 CONTRACT_TIMEOUT_SECONDS=2400
 EVAL_TIMEOUT_SECONDS=900
+COVERAGE_TIMEOUT_SECONDS=2400
 PYTEST_TIMEOUT_SECONDS=120
 NON_TEST_MARGIN_SECONDS=900
-RECOMMENDED_WATCHDOG_SECONDS=$((BLOCKER_TIMEOUT_SECONDS + CONTRACT_TIMEOUT_SECONDS + EVAL_TIMEOUT_SECONDS + NON_TEST_MARGIN_SECONDS))
+RECOMMENDED_WATCHDOG_SECONDS=$((BLOCKER_TIMEOUT_SECONDS + CONTRACT_TIMEOUT_SECONDS + EVAL_TIMEOUT_SECONDS + COVERAGE_TIMEOUT_SECONDS + NON_TEST_MARGIN_SECONDS))
 
-TIMESTAMP=$(date +%s)
+PYTEST_TEMP_ROOT=".pytest_tmp"
+mkdir -p "$PYTEST_TEMP_ROOT" || {
+    echo "GATE FAIL: cannot create pre-push test temp root" >&2
+    exit 1
+}
+PYTEST_BASETEMP="$(mktemp -d "$PYTEST_TEMP_ROOT/prepush.XXXXXX")" || {
+    echo "GATE FAIL: cannot allocate an isolated pre-push test run directory" >&2
+    exit 1
+}
+RUN_ID="$(basename "$PYTEST_BASETEMP")"
 LOG_DIR=".agent-reports/pre-push-gate"
 mkdir -p "$LOG_DIR"
-LOG="$LOG_DIR/run_${TIMESTAMP}.log"
+LOG="$LOG_DIR/${RUN_ID}.log"
 echo "Log: $LOG"
 exec > >(tee "$LOG") 2>&1
 
@@ -39,6 +49,7 @@ echo "================================================"
 echo "Life Index pre-push gate"
 echo "Start: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "Repo:  $REPO_ROOT"
+echo "Run directory: $PYTEST_BASETEMP"
 echo "SSOT:  docs/CI_HARD_CHECKS.md"
 echo "Expected shell: Git Bash (MSYSTEM set, non-WSL)"
 echo "Recommended outer watchdog: ${RECOMMENDED_WATCHDOG_SECONDS}s"
@@ -85,7 +96,7 @@ import sys
 
 missing = [
     name
-    for name in ("black", "flake8", "bandit", "mypy", "pytest")
+    for name in ("black", "flake8", "bandit", "mypy", "pytest", "pytest_cov")
     if importlib.util.find_spec(name) is None
 ]
 if missing:
@@ -139,12 +150,8 @@ run_check "git diff --check"     git diff --check
 # === compile sanity ===
 run_check "compileall tools tests" python -m compileall -q tools tests
 
-# === L2 pre-Gate state hygiene (must run before pytest) ===
-# Clean .pytest_tmp to avoid pollution from previous interrupted runs
-rm -rf .pytest_tmp/* .pytest_tmp/.* 2>/dev/null || true
-# Use isolated basetemp for this run to avoid contention with concurrent runs
-PYTEST_BASETEMP=".pytest_tmp/prepush_${TIMESTAMP}"
-mkdir -p "$PYTEST_BASETEMP"
+# === Per-run isolated state (must run before pytest) ===
+# This run owns only its mktemp directory; never remove a concurrent run's state.
 echo "Using pytest basetemp: $PYTEST_BASETEMP"
 
 # Keep every CLI/test subprocess off the real user data directory. Some tests
@@ -154,7 +161,7 @@ mkdir -p "$LIFE_INDEX_DATA_DIR"
 echo "Using LIFE_INDEX_DATA_DIR: $LIFE_INDEX_DATA_DIR"
 
 # === tests.yml hard checks (with L1 outer timeout) ===
-# Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 2400s; eval 900s
+# Timeouts: blocker 900s (typical ~90s, 10× safety margin); contract 2400s; eval 900s; coverage 2400s
 mkdir -p "$PYTEST_BASETEMP/blocker"
 run_check "pytest -m blocker"    timeout "$BLOCKER_TIMEOUT_SECONDS" python -m pytest -o addopts="" -ra -q --strict-markers --strict-config -m blocker --timeout="$PYTEST_TIMEOUT_SECONDS" --basetemp="$PYTEST_BASETEMP/blocker"
 mkdir -p "$PYTEST_BASETEMP/contract"
@@ -162,6 +169,9 @@ run_check "pytest -m contract"   timeout "$CONTRACT_TIMEOUT_SECONDS" python -m p
 mkdir -p "$PYTEST_BASETEMP/eval"
 export EVAL_PYTEST_BASETEMP="$PYTEST_BASETEMP/eval"
 run_check "search-eval-gate"     timeout "$EVAL_TIMEOUT_SECONDS" bash scripts/run_eval_gate.sh
+export COVERAGE_GATE_BASETEMP="$PYTEST_BASETEMP/coverage"
+run_check "coverage gate"        timeout "$COVERAGE_TIMEOUT_SECONDS" bash scripts/run_coverage_gate.sh
+unset COVERAGE_GATE_BASETEMP
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))

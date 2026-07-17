@@ -51,7 +51,7 @@ remains the #166 Legacy External Adapter exception.
 
 | Workflow file | Trigger | Tier | Notes |
 |---|---|---|---|
-| `.github/workflows/tests.yml` | push to main/develop and ready pull requests to main | Tier 1 + Tier 2 | blocker, contract, and deterministic eval contracts are Tier 1; quarantine and coverage run after merge as Tier 2 |
+| `.github/workflows/tests.yml` | push to main/develop and ready pull requests to main | Tier 1 + Tier 2 | blocker, contract, deterministic eval contracts, and coverage are Tier 1. Coverage runs on ready/non-draft pull requests targeting main and on push to main; it does not run merely on push to develop. Quarantine runs after merge as Tier 2. |
 | `.github/workflows/quality.yml` | push to main/develop and pull requests to main | Tier 1 | doc sync, public diff name scan, public surface allowlist scan, L2 no-LLM scan, lint, format, security, and type checks |
 | `.github/workflows/nightly.yml` | push to main, scheduled run, and manual dispatch | Tier 2 | full suite and package/onboarding smoke |
 | `.github/workflows/benchmark.yml` | push to main and manual dispatch | Tier 2 | performance measurement |
@@ -64,14 +64,15 @@ remains the #166 Legacy External Adapter exception.
 | 1 | blocker gate | public Core assertion sentinel, then `pytest -m blocker --timeout=120` | tests.yml | `python .github/scripts/run_public_core_assertions.py` then `pytest -m blocker -q --timeout=120` |
 | 2 | contract gate | `pytest -m contract --timeout=120` | tests.yml | `pytest -m contract -q --timeout=120` |
 | 3 | deterministic eval contracts | `scripts/run_eval_gate.sh` owns the provider-retirement, fail-fast, metrics, serialization, and report compatibility inventory plus the public Core sentinel | tests.yml | `scripts/run_eval_gate.sh` |
-| 4 | doc-sync | `python .github/scripts/check_doc_sync.py` | quality.yml | same |
-| 5 | public-diff-names | `python .github/scripts/check_public_diff_names.py` | quality.yml | same |
-| 6 | public-surface-allowlist | `python .github/scripts/check_public_surface_allowlist.py` | quality.yml | same |
-| 7 | l2-no-llm | `python .github/scripts/check_l2_no_llm.py` | quality.yml | same |
-| 8 | lint flake8 | `flake8 tools/ --count --max-complexity=40 --max-line-length=100 --show-source --statistics` | quality.yml | same |
-| 9 | format black | `black --check --diff tools/` | quality.yml | `python -m black --check tools/` |
-| 10 | security bandit | `bandit -r tools/ -ll -c pyproject.toml` | quality.yml | same |
-| 11 | typecheck mypy | `mypy tools/ --ignore-missing-imports` | quality.yml | same |
+| 4 | coverage gate | `bash scripts/run_coverage_gate.sh` | tests.yml | `bash scripts/run_coverage_gate.sh` |
+| 5 | doc-sync | `python .github/scripts/check_doc_sync.py` | quality.yml | same |
+| 6 | public-diff-names | `python .github/scripts/check_public_diff_names.py` | quality.yml | same |
+| 7 | public-surface-allowlist | `python .github/scripts/check_public_surface_allowlist.py` | quality.yml | same |
+| 8 | l2-no-llm | `python .github/scripts/check_l2_no_llm.py` | quality.yml | same |
+| 9 | lint flake8 | `flake8 tools/ --count --max-complexity=40 --max-line-length=100 --show-source --statistics` | quality.yml | same |
+| 10 | format black | `black --check --diff tools/` | quality.yml | `python -m black --check tools/` |
+| 11 | security bandit | `bandit -r tools/ -ll -c pyproject.toml` | quality.yml | same |
+| 12 | typecheck mypy | `mypy tools/ --ignore-missing-imports` | quality.yml | same |
 
 ## Tier 2 Visible Checks
 
@@ -81,7 +82,6 @@ block pull request readiness, but failures must be triaged.
 | # | Check | Command or scope | Source workflow | Trigger |
 |---|---|---|---|---|
 | Q | quarantine | `pytest -m quarantine --timeout=300` | tests.yml | push to main |
-| C | coverage | `pytest -m "blocker or contract" --cov` | tests.yml | push to main |
 | N | full suite | `pytest tests --timeout=600` | nightly.yml | push to main, schedule, manual |
 | P | package/onboarding smoke | build package, install in clean environment, run version/bootstrap/health smoke | nightly.yml | push to main, schedule, manual |
 | B | benchmarks | `pytest tests/benchmark --timeout=300` | benchmark.yml / nightly | push to main, manual |
@@ -99,7 +99,7 @@ block pull request readiness, but failures must be triaged.
   is the sole test-target inventory. Private corpus,
   broad/noise, ranking, and quality evaluation run through
   `scripts/run_eval_advisory.sh` and are not PR blockers.
-- Full suite, quarantine, coverage, package smoke, and benchmarks are visible
+- Full suite, quarantine, package smoke, and benchmarks are visible
   Tier 2 checks, not PR-blocking checks.
 - Benchmark tests run on shared GitHub runners. Hard assertions use
   shared-runner-safe fail-safes; exact local performance targets should be read

@@ -10,6 +10,8 @@ jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-latest
+    outputs:
+      release_version: ${{ steps.release-version.outputs.version }}
     steps:
     - uses: actions/checkout@v4
 
@@ -18,30 +20,78 @@ jobs:
       with:
         python-version: "3.x"
 
+    - name: Validate immutable release version
+      id: release-version
+      run: |
+        VERSION="$(python scripts/release_preflight.py validate-version)"
+        echo "Validated immutable release version: $VERSION"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+
     - name: Install build
       run: python -m pip install build
 
-    - name: Sync bootstrap-manifest.json version
-      run: |
-        # Extract version from pyproject.toml
-        VERSION=$(grep '^version =' pyproject.toml | sed 's/version = "//' | sed 's/"//')
-        echo "Version from pyproject.toml: $VERSION"
-        
-        # Update bootstrap-manifest.json
-        python -c "
-        import json
-        with open('bootstrap-manifest.json', 'r') as f:
-            data = json.load(f)
-        data['repo_version'] = '$VERSION'
-        with open('bootstrap-manifest.json', 'w') as f:
-            json.dump(data, f, indent=2)
-        "
-        
-        # Verify
-        echo "Updated bootstrap-manifest.json repo_version to: $VERSION"
-
-    - name: Build
+    - name: Build distribution
       run: python -m build
+
+    - name: Install exact wheel with MCP extra
+      run: |
+        WHEEL="$(find dist -maxdepth 1 -type f -name '*.whl' -print -quit)"
+        test -n "$WHEEL"
+        python -m venv .release-wheel-venv
+        VENV_PYTHON=".release-wheel-venv/bin/python"
+        if [ ! -x "$VENV_PYTHON" ]; then
+          VENV_PYTHON=".release-wheel-venv/Scripts/python.exe"
+        fi
+        VENV_PYTHON="$(pwd)/$VENV_PYTHON"
+        "$VENV_PYTHON" -m pip install --upgrade pip
+        # The exact local artifact is installed as life-index[mcp], not from the checkout.
+        "$VENV_PYTHON" -m pip install "${WHEEL}[mcp]"
+        SMOKE_ROOT="$(mktemp -d)"
+        mkdir -p "$SMOKE_ROOT"/data "$SMOKE_ROOT"/config "$SMOKE_ROOT"/cache "$SMOKE_ROOT"/tmp "$SMOKE_ROOT"/home "$SMOKE_ROOT"/host-home
+        (
+          cd "$SMOKE_ROOT"
+          env \
+            HOME="$SMOKE_ROOT/home" \
+            CODEX_HOME="$SMOKE_ROOT/host-home" \
+            LIFE_INDEX_DATA_DIR="$SMOKE_ROOT/data" \
+            XDG_CONFIG_HOME="$SMOKE_ROOT/config" \
+            XDG_CACHE_HOME="$SMOKE_ROOT/cache" \
+            TMPDIR="$SMOKE_ROOT/tmp" \
+            TMP="$SMOKE_ROOT/tmp" \
+            TEMP="$SMOKE_ROOT/tmp" \
+            "$VENV_PYTHON" -c 'import importlib.metadata as metadata, json, os, subprocess, sys; expected = os.environ["RELEASE_VERSION"]; assert metadata.version("life-index") == expected, "installed package version mismatch"; assert metadata.version("mcp") == "1.27.2", "installed mcp version mismatch"; payload = json.loads(subprocess.check_output([sys.executable, "-m", "tools", "version"], text=True)); assert payload["package_version"] == expected and payload["bootstrap_manifest"]["repo_version"] == expected, "installed CLI/repo version mismatch"'
+        )
+        echo "VENV_PYTHON=$VENV_PYTHON" >> "$GITHUB_ENV"
+        echo "SMOKE_ROOT=$SMOKE_ROOT" >> "$GITHUB_ENV"
+
+    - name: Run isolated sync-skill and health smoke
+      run: |
+        (
+          cd "$SMOKE_ROOT"
+          env \
+            HOME="$SMOKE_ROOT/home" \
+            CODEX_HOME="$SMOKE_ROOT/host-home" \
+            LIFE_INDEX_DATA_DIR="$SMOKE_ROOT/data" \
+            XDG_CONFIG_HOME="$SMOKE_ROOT/config" \
+            XDG_CACHE_HOME="$SMOKE_ROOT/cache" \
+            TMPDIR="$SMOKE_ROOT/tmp" \
+            TMP="$SMOKE_ROOT/tmp" \
+            TEMP="$SMOKE_ROOT/tmp" \
+            "$VENV_PYTHON" -m tools.sync_skill --install --host-home "$SMOKE_ROOT/host-home" --json > "$SMOKE_ROOT/sync-skill.json"
+          env \
+            HOME="$SMOKE_ROOT/home" \
+            CODEX_HOME="$SMOKE_ROOT/host-home" \
+            LIFE_INDEX_DATA_DIR="$SMOKE_ROOT/data" \
+            XDG_CONFIG_HOME="$SMOKE_ROOT/config" \
+            XDG_CACHE_HOME="$SMOKE_ROOT/cache" \
+            TMPDIR="$SMOKE_ROOT/tmp" \
+            TMP="$SMOKE_ROOT/tmp" \
+            TEMP="$SMOKE_ROOT/tmp" \
+            "$VENV_PYTHON" -m tools health > "$SMOKE_ROOT/health.json"
+          "$VENV_PYTHON" -c 'import json, pathlib; root = pathlib.Path("."); sync = json.loads((root / "sync-skill.json").read_text()); health = json.loads((root / "health.json").read_text()); assert sync["success"] and sync["data"]["delivered"], "isolated sync-skill failed"; assert health["success"], "isolated health failed"'
+        )
+        rm -rf "$SMOKE_ROOT"
 
     - name: Store artifacts
       uses: actions/upload-artifact@v4
@@ -59,10 +109,24 @@ jobs:
     permissions:
       id-token: write
     steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+
     - uses: actions/download-artifact@v4
       with:
         name: python-package-distributions
         path: dist/
+
+    - name: Validate target availability immediately before publish
+      env:
+        RELEASE_VERSION: ${{ needs.build.outputs.release_version }}
+      run: |
+        VERSION="$(python scripts/release_preflight.py check-pypi)"
+        test "$VERSION" = "$RELEASE_VERSION"
 
     - uses: pypa/gh-action-pypi-publish@release/v1
 

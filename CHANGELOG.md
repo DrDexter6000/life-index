@@ -6,6 +6,28 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-17
+
+### What users get
+
+- Safer writes and recovery: a write either rolls back safely before commit or
+  preserves the journal and reports follow-up failures honestly after commit.
+  Recovery refuses unsafe or incomplete restores, and rolled-back imports do
+  not remain searchable.
+- The separate GUI's first-use write, search, and detail flows continue through
+  the CLI data authority, rather than creating a second data path.
+- Optional host-agent integration stays narrow: approved host agents can use
+  exactly `health`, `journal.get`, and `search`. Search may refresh only
+  rebuildable indexes; it cannot edit journals, attachments, or entities.
+- Clearer licensing and maturity: clarifies why Life Index is AGPL-3.0-only.
+  The CLI remains Production/Stable; GUI maturity is separate and pre-1.0.
+
+### Included in this release
+
+- Safe write, restore, and rolled-back-import cleanup.
+- GUI/Core first-use interoperability and the optional three-tool MCP bridge.
+- AGPL and CLI/GUI maturity clarification.
+
 ## [1.4.5] - 2026-07-08
 
 ### Fixed
