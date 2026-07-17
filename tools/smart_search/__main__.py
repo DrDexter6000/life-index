@@ -32,7 +32,7 @@ def _emit_json(payload: dict[str, Any]) -> None:
 def main() -> None:
     started = time.perf_counter()
     parser = argparse.ArgumentParser(
-        description="Smart search with deterministic dual-pipeline behavior",
+        description="Smart search with a deterministic keyword/entity scaffold",
     )
     parser.add_argument(
         "--query",
@@ -57,7 +57,7 @@ def main() -> None:
         "--synthesize",
         action="store_true",
         default=False,
-        help="Generate deterministic citation scaffold from search evidence",
+        help="Accepted compatibility no-op; no LLM and no answer",
     )
     parser.add_argument(
         "--format-entity-annotated",

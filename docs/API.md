@@ -3,6 +3,7 @@
 > **本文档职责**: 工具接口规范 SSOT，所有工具的参数、返回值、错误码定义
 > **目标读者**: Agent、开发者
 > **SSOT 引用**: SKILL.md 与公开 Agent 入口文档应引用本文档，不重复定义参数
+> **平台边界权威**: `CHARTER.md §1.10` 独占 C1–C7 闭合 Core 准入域；`docs/ARCHITECTURE.md` 的 `PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION` 命名块独占 31 条 public route 的精确分类。Distribution/Host Operations 即使与 Core 同包分发也属于 non-Core；`weather` 是 #166 跟踪的 Legacy External Adapter。本 API 不复制域目录或命令分类表。
 
 ---
 
@@ -2281,16 +2282,17 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
 | `agent_instructions` | object | yes | Provider-free guidance for the calling agent |
 | `answer_scaffold` | object | yes | Suggested response shape and citation policy for the calling agent |
 | `query_plan` | object | yes | Query decomposition and strategy metadata |
-| `answer` | object | no | Additive: synthesized answer with trust-gate fields |
+| `answer` | object | no | 当前产品 CLI 不输出；#163 将删除不可达的旧实现 |
 | `evidence_pack` | object | no | Additive: retrieval evidence (requires `--include-evidence`) |
 | `aggregate_result` | object | no | Additive: deterministic aggregate output when aggregate intent detected |
 | `events` | array | no | Piggyback event notifications |
 
 #### Field Semantics
 
-- `success`: retrieval execution success. Evidence pack or answer synthesis failure does not affect this.
+- `success`: retrieval execution success. Evidence pack construction failure does not affect this.
 - `filtered_results`: primary result list for consumers. Items have `title`, `path`, `date`, `rrf_score`.
-- `smart_search_mode`: default is `deterministic_scaffold`; in-tool provider-backed orchestration is retired.
+- `smart_search_mode`: default is `deterministic_scaffold`; current explicit
+  `--synthesize` is an accepted deterministic no-op/no-answer compatibility path.
 - `agent_instructions` / `answer_scaffold`: the v1 agent-ready contract. Calling agents should synthesize from returned evidence and cite only returned results.
 - `query_plan.strategy`: `keyword_only` for default search; deterministic
   strategy names may be added for bounded tool-side routing.
@@ -2299,9 +2301,9 @@ L3 Invocation-Time Hints，提供与本次调用相关的局部提示。**不变
   only the whole sentence to keyword search. Each sub-query calls keyword +
   Entity Graph search. Legacy semantic fallback fields remain present as
   disabled/no-op compatibility fields.
-- `agent_unavailable`: diagnostic signal; UI should infer degraded state from `answer`/`summary` presence.
+- `agent_unavailable`: current product CLI returns `true`; the Host Agent owns synthesis.
 - `performance`: non-stable; sub-fields may expand. Consumers should tolerate unknown keys.
-- `answer.confidence`: trust-gate calibrated (not LLM self-assessment). Values: `high` / `medium` / `low`.
+- `answer.*`: not emitted by the current product CLI; consumers must not depend on the dormant implementation that #163 will delete.
 - `aggregate_result`: computed by `tools.aggregate.core.run_aggregate`; LLM never computes counts.
 
 #### Error Behavior / Error Codes
@@ -2339,7 +2341,7 @@ python -m tools.smart_search --query "..." [options]
 | explain | flag | ❌ | false | 在输出中包含 Agent 决策详情与 `diagnostics` 诊断块 |
 | include-evidence | flag | ❌ | false | 在输出中包含 evidence pack |
 | format-entity-annotated | flag | ❌ | false | 与 `--include-evidence` 同用时，增加人类可读的 `formatted_evidence` |
-| synthesize | flag | ❌ | false | 生成确定性答案 scaffold 字段（不调用 LLM） |
+| synthesize | flag | ❌ | false | 当前接受但不注入 LLM、不添加 `answer`，行为上是 deterministic no-op/no-answer；见命名 transition block |
 
 ### 返回值
 
@@ -2417,13 +2419,13 @@ python -m tools.smart_search --query "..." [options]
 | 子字段 | 类型 | 条件 | 说明 |
 |--------|------|------|------|
 | `total_time_ms` | float | 始终 | 总搜索耗时（毫秒） |
-| `rewrite_time_ms` | float | LLM 改写发生时 | 查询改写阶段耗时 |
-| `filter_time_ms` | float | LLM 后筛发生时 | 后置筛选阶段耗时 |
+| `rewrite_time_ms` | float | 始终 | 当前确定性产品 CLI 路径固定为 `0` |
+| `filter_time_ms` | float | 始终 | 当前确定性产品 CLI 路径固定为 `0` |
 | `search_time_ms` | float | 始终 | 底层检索耗时 |
 | `total_available` | int | 始终 | 检索到的总结果数 |
-| `evidence_build_ms` | float | evidence 构建尝试时（`--include-evidence` 或 `--synthesize`） | Evidence pack 构建耗时 |
+| `evidence_build_ms` | float | 仅传递 `--include-evidence` 时 | Evidence pack 构建耗时；`--synthesize` 单独使用不触发构建 |
 | `evidence_error` | string | evidence 构建失败且 `--include-evidence` 时 | 构建失败错误信息 |
-| `synthesis_ms` | float | 答案合成尝试时（`--synthesize`） | 答案合成耗时 |
+| `synthesis_ms` | float | 当前产品 CLI 不出现 | 不可达旧实现的非稳定字段；#163 清理 |
 
 > **稳定性说明**: `performance` 子字段集合可能在未来扩展。调用方应容忍未知键。
 
@@ -2440,7 +2442,7 @@ python -m tools.smart_search --query "..." [options]
 | `smart_search_mode` | 路径判断 | 可展示 | **stable** |
 | `summary` | 默认空；宿主 agent 可忽略 | 展示 | **stable** |
 | `citations` | 默认空；宿主 agent 应引用 evidence | 可点击链接 | **stable** |
-| `answer` / `answer.*` | `--synthesize` 时优先展示 deterministic scaffold | 优先展示 | **stable** |
+| `answer` / `answer.*` | 当前产品 CLI 不输出；`--synthesize` 不注入 LLM 且不添加 `answer`；see the named `--synthesize` transition authority block；#163 将删除不可达实现 | 当前无此字段；如未来由新契约引入，再按该契约消费 | **stable** |
 | `evidence_pack` | 按需 | 按需 | **stable** |
 | `formatted_evidence` | 可展示 | 可展示 | **stable additive** — 仅 `--include-evidence --format-entity-annotated` 时出现 |
 | `aggregate_result` | aggregate/count/bucketed-frequency queries | count/bucket/claim display | **stable additive** - deterministic `aggregate` result; LLM never computes counts |
@@ -2455,7 +2457,7 @@ python -m tools.smart_search --query "..." [options]
 
 ### 说明
 
-- `smart-search` 不启用工具内嵌 LLM；宿主 agent / Skills 负责 query 改写、多轮检索策略、判断与总结
+- `smart-search` 产品 CLI 不启用工具内嵌 LLM；宿主 agent / Skills 负责 query 改写、多轮检索策略、判断与总结。当前显式 `--synthesize` 是 accepted deterministic no-op/no-answer 兼容路径，见下方 transition block
 - Clear aggregate/count/bucketed-frequency intents may short-circuit into deterministic `aggregate` and add top-level `aggregate_result`; existing smart-search fields remain present.
 - `aggregate_result` is computed by `tools.aggregate.core.run_aggregate`; LLM must not compute the count.
 - 默认模式下 `agent_unavailable: true`，表示工具只提供确定性检索 scaffold
@@ -2578,7 +2580,7 @@ python -m tools.smart_search --query "..." [options]
 
 | `retrieval_outcome` | Agent 行为 | GUI 行为 |
 |---------------------|-----------|----------|
-| `ok` | 正常消费 `filtered_results` 和 `answer` | 正常展示结果 |
+| `ok` | 消费 `filtered_results` / evidence，由宿主 agent 合成 | 正常展示结果 |
 | `weak_results` | 向用户说明结果置信度较低，建议调整查询；可参考 `suggestions` | 显示弱结果提示，提供 `suggestions` 给用户 |
 | `no_confident_match` | 明确告知用户未找到高置信匹配；参考 `suggestions` 建议换词或加过滤 | 显示"未找到精确匹配"提示 |
 | `zero_results` | 如实报告无结果；参考 `suggestions` 建议放宽条件 | 显示空结果页面和 `suggestions` |
@@ -2647,92 +2649,29 @@ Evidence pack 采用**最佳努力（best-effort）**策略：
 - `performance` 中记录 `evidence_build_ms` 和 `evidence_error`（错误信息）
 - 调用方不应将 `evidence_pack` 缺失等同于搜索失败
 
-### Answer Synthesis（`--synthesize`）
+<!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:START -->
+### `--synthesize` transition authority
 
-默认行为（不传递 `--synthesize`）下，返回值**不包含** `answer` 字段。
+Current runtime: the product CLI accepts `--synthesize` but always constructs `SmartSearchOrchestrator(llm_client=None)`; it never instantiates or injects an LLM, emits no `answer`, and is behaviorally a deterministic no-op/no-answer path.
 
-当传递 `--synthesize` 时，若 LLM 可用且搜索结果非空且 LLM 成功生成答案，返回值增加 `answer` 字段，结构如下：
+Current warning status: the approved explicit deprecation warning is not yet emitted.
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `answer.answer_text` | string | 回答用户查询的自然语言文本（2-4 句） |
-| `answer.citations` | string[] | 引用的文档相对路径列表（不含绝对路径），经 trust gate 验证 |
-| `answer.confidence` | string | 置信度：`high` / `medium` / `low`，经 trust gate 校准（非 LLM 自评） |
-| `answer.confidence_reason` | string | 置信度判定原因，由 orchestrator 根据 validated citations 和 evidence context **计算生成**（非 LLM 设定） |
-| `answer.limitations` | string[] | 答案局限性列表，由 orchestrator 根据 citation 验证结果**计算生成**（非 LLM 设定） |
-| `answer.evidence_summary` | string | 已验证引用的 evidence 摘要（title; source; confidence），无有效引用时为空字符串 |
+Target under #163: retain the accepted flag for at least two major versions, document and emit the deprecation warning, prove equivalence to ordinary deterministic smart-search, and delete dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and synthesis code unreachable from the product CLI.
 
-> **信任边界**: `confidence_reason`、`limitations`、`evidence_summary` 由 orchestrator 在 trust gate 之后根据 validated citations 和 evidence context **计算生成**，LLM 不可直接设定。
+Intelligence owner: Host Agent + Skill remain responsible for planning, multi-hop reasoning, orchestration, interpretation, and synthesis.
+<!-- PLATFORM-SSOT:SYNTHESIZE-TRANSITION:END -->
 
-**含 `answer` 的返回示例：**
+### `--synthesize` current compatibility behavior
 
-```json
-{
-  "success": true,
-  "query": "我和女儿之间有哪些珍贵的回忆？",
-  "rewritten_query": "女儿 珍贵回忆 亲子时光",
-  "filtered_results": [...],
-  "summary": "...",
-  "citations": [],
-  "agent_unavailable": false,
-  "answer": {
-    "answer_text": "日记中记录了多次与女儿相处的珍贵时刻...",
-    "citations": ["Journals/2026/03/life-index_2026-03-06_001.md"],
-    "confidence": "medium",
-    "confidence_reason": "Answer supported by moderate-confidence evidence.",
-    "limitations": [],
-    "evidence_summary": "女儿生日; source: fts; confidence: medium"
-  },
-  "performance": {
-    "total_time_ms": 250.0,
-    "rewrite_time_ms": 30.0,
-    "filter_time_ms": 50.0,
-    "search_time_ms": 45.0,
-    "total_available": 3,
-    "evidence_build_ms": 20.0,
-    "synthesis_ms": 105.0
-  }
-}
-```
+The named transition block above is the sole authority for current versus target
+status. The current product CLI has no provider/client injection path and does
+not emit `answer`, including when `--synthesize` is present. The accepted flag
+also does not yet emit the approved explicit deprecation warning.
 
-#### 内部 Evidence 消费
-
-当 `--synthesize` 启用时，orchestrator 会**内部构建 EvidencePack**（即使未传 `--include-evidence`），并将其中的 provenance/source/score 以及有界 `entity_matches` 摘要等安全字段注入 synthesis prompt，以提升答案质量。若 evidence 构建失败，synthesis 回退为仅使用 `filtered_results`，不导致搜索失败。
-
-#### Trust Gate（引用验证 + 置信度校准）
-
-LLM 返回的 citations 和 confidence 不会直接透传，而是经过 trust gate 校验：
-
-**引用验证（Citation Validation）：**
-
-- 数字引用（如 `[1]`）映射到当前 `filtered_results` 对应序号的相对路径
-- 字符串引用仅当匹配 `filtered_results` 或 evidence context 中的已知相对路径时保留
-- 绝对路径始终丢弃
-- 不在已知路径集中的字符串引用（幻觉路径）被丢弃
-- 若所有引用均无效但 `answer_text` 有效，保留答案但 `citations` 为空、`confidence` 被强制降为 `low`
-
-**置信度校准（Confidence Calibration）：**
-
-- 最终 confidence 不高于 evidence 支撑强度
-- 校准规则（按优先级）：
-  - 无有效引用 → 最高 `low`
-  - 引用的 evidence 包含 `high` confidence → 最高 `high`
-  - 引用的 evidence 包含 `medium`（无 high）→ 最高 `medium`
-  - 其他情况 → 最高 `low`
-- LLM 可以降低 confidence（比 evidence 更保守），但不能提升至 evidence 上限以上
-- 无 evidence context 时，有效 `filtered_results` 引用视为弱支撑，最高 `medium`；无有效引用仍为 `low`
-- 若 evidence context 存在但为空或未覆盖被引用路径，视为 evidence 已检查但未提供支撑，最高 `low`
-
-#### 合成失败行为
-
-Answer synthesis 采用**最佳努力（best-effort）**策略：
-
-- 若未传 `--synthesize`，`answer` 字段不存在，搜索结果正常返回
-- 若搜索结果为空，`answer` 字段不存在
-- 若 LLM 返回格式错误或合成过程异常，`answer` 字段不存在，搜索本身不受影响
-- 若内部 evidence 构建失败但 synthesis 仍尝试执行：`answer` 仍可能生成（基于 `filtered_results`），不视为搜索失败
-- `--synthesize` 不要求 `--include-evidence`；两者独立控制
-- `--synthesize` 内部构建 evidence 不等于输出包含 `evidence_pack`；后者仍需 `--include-evidence`
+Dormant/injectable LLM rewrite, filter, provider, prompt, trust-gate, and
+synthesis internals are not reachable from the product CLI and are not a current
+public behavior contract. Their deletion, the warning, and ordinary-path
+equivalence proof belong to #163.
 
 #### 组合标志语义
 
@@ -2740,8 +2679,8 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 |----------|------|
 | （无标志） | 确定性结果；不进行工具内 LLM rewrite/filter/summary |
 | `--include-evidence` | 添加 evidence_pack |
-| `--synthesize` | 内部构建 evidence；添加 deterministic answer scaffold |
-| `--include-evidence --synthesize` | 添加 evidence_pack + deterministic answer scaffold |
+| `--synthesize` | 当前接受但不注入 LLM、不添加 `answer`，行为上是 deterministic no-op/no-answer；see the named `--synthesize` transition authority block |
+| `--include-evidence --synthesize` | 添加 evidence_pack；`--synthesize` 当前不注入 LLM、不添加 `answer`；see the named `--synthesize` transition authority block |
 
 ### Aggregate Delegation（自动聚合路由）
 
@@ -2772,7 +2711,7 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 - 使用 `LIFE_INDEX_TIME_ANCHOR=YYYY-MM-DD` 环境变量（若存在）确定时间锚点；否则使用 `date.today()`
 - 路由成功时，`aggregate` 为唯一计算器（`tools.aggregate.core.run_aggregate`），不经过 LLM rewrite/filter/synthesis 管线
 - 正常检索字段（`filtered_results`、`summary` 等）保留但为空值
-- `agent_unavailable` 继续表示 LLM 客户端是否不可用；它不是 aggregate 路由是否跳过 LLM 的标志
+- `agent_unavailable` 在当前产品 CLI 中为 `true`；它不是 aggregate 路由是否执行的标志
 
 **`field_equals` 自动路由限制**：
 
@@ -2865,7 +2804,7 @@ Answer synthesis 采用**最佳努力（best-effort）**策略：
 - 非聚合查询不包含 `aggregate_result` 字段
 - `aggregate_result` 为附加字段（additive），不影响现有字段语义
 - `aggregate_result.claim_envelope` 和 `aggregate_result.evidence_pack` 位于 `aggregate_result` 内，不新增 smart-search 顶层字段
-- `agent_unavailable` 沿用既有含义：无可用 LLM 时为 `true`；aggregate 路由本身不调用 LLM
+- `agent_unavailable` 在当前产品 CLI 中为 `true`；aggregate 路由本身不调用 LLM
 
 ### Aggregate Evaluation Coverage (Internal Developer Tooling)
 
@@ -3104,6 +3043,23 @@ harness 会运行完整检查。
   读取 `OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY` 并调用 provider-backed judge。
 - `--live --judge llm` 还会启用 LLM recall-gap 诊断；`--live` 本身不触发 LLM。
 - `--semantic` / `--semantic-report` 仅为兼容 no-op，不等同于 LLM judge，也不加载 embedding 模型。
+
+<!-- PLATFORM-SSOT:EVAL-LLM-TRANSITION:START -->
+### `eval --judge llm` current transition warning
+
+> **Constitutional warning**: `life-index eval --judge llm` is currently
+> reachable and performs provider selection and provider-backed calls.
+
+This current option violates `CHARTER.md §1.9`. It is not approved, sanctioned,
+grandfathered, Non-Core, or a compatibility exception. Classification of `eval`
+as Core C7 assigns constitutional ownership; it does not certify this option as
+compliant.
+
+#163 owns removal or disabling of the product-CLI-reachable provider
+selection/calls while preserving deterministic C7 eval. Host Agent + Skill own
+any language-assisted judgment. D0 records this deviation and changes no runtime
+behavior.
+<!-- PLATFORM-SSOT:EVAL-LLM-TRANSITION:END -->
 
 ### 返回值
 

@@ -14,6 +14,25 @@ blocking gate changes, update the workflow, local gate script, and this file in
 the same commit. A gate that exists in CI but not in the documented local
 inventory is drift.
 
+<!-- PLATFORM-SSOT:PUBLIC-BLOCKER-EXECUTION:START -->
+## Public blocker execution contract
+
+A public hard blocker is green only when at least one core assertion executed.
+All-skipped assertion sets are not green. Private-only assertions are advisory
+and cannot be the sole evidence for a Tier 1 public blocker.
+
+The public synthetic invariant work tracked by #163 is pending implementation;
+this inventory rule does not claim that future assertion or its CI result
+already exists.
+<!-- PLATFORM-SSOT:PUBLIC-BLOCKER-EXECUTION:END -->
+
+Platform-boundary checks follow the active C1–C7 authority in
+`CHARTER.md §1.10` and the exact 31-route mapping in the
+`PLATFORM-SSOT:PUBLIC-COMMAND-CLASSIFICATION` block of
+`docs/ARCHITECTURE.md`; this CI inventory does not duplicate either SSOT.
+Distribution/Host Operations remain non-Core when co-packaged, and `weather`
+remains the #166 Legacy External Adapter exception.
+
 ## Workflows
 
 | Workflow file | Trigger | Tier | Notes |

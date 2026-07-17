@@ -14,6 +14,8 @@ HOST_ENV_VARS = (
     "CLAUDE_HOME",
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _write_source(root: Path) -> None:
     (root / "references").mkdir(parents=True)
@@ -63,6 +65,14 @@ def _isolated_subprocess_env(home: Path) -> dict[str, str]:
     env["HOME"] = str(home)
     env["USERPROFILE"] = str(home)
     return env
+
+
+def test_shipped_skill_is_byte_identical_to_canonical() -> None:
+    canonical_path = REPO_ROOT / "SKILL.md"
+    shipped_path = REPO_ROOT / "tools" / "_skill_artifacts" / "SKILL.md"
+    assert (
+        canonical_path.read_bytes() == shipped_path.read_bytes()
+    ), "packaged Skill artifact drifted from canonical SKILL.md"
 
 
 def test_sync_skill_copies_skill_and_references_preserving_custom_triggers(tmp_path: Path) -> None:

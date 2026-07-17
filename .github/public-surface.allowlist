@@ -51,6 +51,7 @@ docs/CI_HARD_CHECKS.md
 docs/ENTITY_GRAPH.md
 docs/ENTITY_GRAPH_UX_SURFACE_SPEC.md
 docs/VERSIONING.md
+docs/superpowers/specs/2026-07-09-life-index-platform-dual-repo-design.md
 
 # Public execution reports for scoped work packages
 reports/WP-CLI-SEM-RM-drop-in-tool-semantic.md
