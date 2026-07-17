@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import importlib.machinery
+import importlib.metadata
 import json
 import os
 import py_compile
+import runpy
 import subprocess
 import sys
 import tomllib
 import zipfile
-from importlib.metadata import distribution as metadata_distribution
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from typing import Any
 
@@ -142,34 +144,215 @@ def _write_overlapping_unrelated_wheel(wheel: Path) -> None:
             archive.writestr(info, members[name])
 
 
-def _write_backend_support_wheel(wheel: Path, *, distribution_name: str) -> None:
-    """Package an already installed build backend into a local deterministic wheel."""
-    installed = metadata_distribution(distribution_name)
-    metadata_path = Path(getattr(installed, "_path"))
-    members: dict[str, bytes] = {}
-    for file in installed.files or []:
-        relative = Path(str(file))
-        if relative.name == "RECORD" or ".." in relative.parts:
-            continue
-        source = Path(installed.locate_file(file))
-        if source.is_file():
-            members[relative.as_posix()] = source.read_bytes()
+_LOCAL_BUILD_SUPPORT_VERSION = "99.0.0"
 
-    record_name = f"{metadata_path.name}/RECORD"
-    members[record_name] = "".join(f"{name},,\n" for name in sorted(members)).encode("utf-8")
-    with zipfile.ZipFile(wheel, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name in sorted(members):
-            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+
+_LOCAL_BUILD_META_SOURCE = r"""
+from __future__ import annotations
+
+from pathlib import Path
+import tomllib
+import zipfile
+
+
+def _source_root() -> Path:
+    root = Path.cwd().resolve()
+    if not (root / "pyproject.toml").is_file():
+        raise RuntimeError("test build backend requires pip to invoke it from the source root")
+    return root
+
+
+def _project() -> tuple[Path, str, str]:
+    root = _source_root()
+    payload = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    project = payload["project"]
+    return root, str(project["name"]), str(project["version"])
+
+
+def _distribution_stem(name: str) -> str:
+    return name.replace("-", "_")
+
+
+def _dist_info(name: str, version: str) -> str:
+    return f"{_distribution_stem(name)}-{version}.dist-info"
+
+
+def _metadata(name: str, version: str) -> bytes:
+    return (
+        "Metadata-Version: 2.1\n"
+        f"Name: {name}\n"
+        f"Version: {version}\n"
+        "\n"
+    ).encode("utf-8")
+
+
+def _wheel_metadata() -> bytes:
+    return (
+        "Wheel-Version: 1.0\n"
+        "Generator: life-index-test-hermetic-backend\n"
+        "Root-Is-Purelib: true\n"
+        "Tag: py3-none-any\n"
+    ).encode("utf-8")
+
+
+def _write_archive(destination: Path, members: dict[str, bytes]) -> None:
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for member_name in sorted(members):
+            info = zipfile.ZipInfo(member_name, date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = 0o100644 << 16
-            archive.writestr(info, members[name])
+            archive.writestr(info, members[member_name])
+
+
+def _wheel_members(*, editable: bool) -> tuple[str, dict[str, bytes]]:
+    root, name, version = _project()
+    dist_info = _dist_info(name, version)
+    members: dict[str, bytes] = {}
+    if editable:
+        members[f"__editable__.{_distribution_stem(name)}-{version}.pth"] = (
+            str(root) + "\n"
+        ).encode("utf-8")
+    else:
+        for root_file in ("bootstrap-manifest.json",):
+            source = root / root_file
+            members[root_file] = source.read_bytes()
+        tools_root = root / "tools"
+        for source in sorted(tools_root.rglob("*")):
+            if (
+                source.is_file()
+                and "__pycache__" not in source.parts
+                and source.suffix not in {".pyc", ".pyo"}
+            ):
+                members[source.relative_to(root).as_posix()] = source.read_bytes()
+    members[f"{dist_info}/METADATA"] = _metadata(name, version)
+    members[f"{dist_info}/WHEEL"] = _wheel_metadata()
+    members[f"{dist_info}/RECORD"] = "".join(
+        f"{member_name},,\n" for member_name in sorted(members)
+    ).encode("utf-8")
+    return f"{_distribution_stem(name)}-{version}-py3-none-any.whl", members
+
+
+def _write_metadata(metadata_directory: str) -> str:
+    _root, name, version = _project()
+    dist_info = Path(metadata_directory) / _dist_info(name, version)
+    dist_info.mkdir(parents=True, exist_ok=True)
+    (dist_info / "METADATA").write_bytes(_metadata(name, version))
+    (dist_info / "WHEEL").write_bytes(_wheel_metadata())
+    (dist_info / "RECORD").write_text("RECORD,,\n", encoding="utf-8")
+    return dist_info.name
+
+
+def get_requires_for_build_wheel(config_settings=None):
+    del config_settings
+    return []
+
+
+def get_requires_for_build_editable(config_settings=None):
+    del config_settings
+    return []
+
+
+def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None):
+    del config_settings
+    return _write_metadata(metadata_directory)
+
+
+def prepare_metadata_for_build_editable(metadata_directory, config_settings=None):
+    del config_settings
+    return _write_metadata(metadata_directory)
+
+
+def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
+    del config_settings, metadata_directory
+    filename, members = _wheel_members(editable=False)
+    destination = Path(wheel_directory) / filename
+    _write_archive(destination, members)
+    return filename
+
+
+def build_editable(wheel_directory, config_settings=None, metadata_directory=None):
+    del config_settings, metadata_directory
+    filename, members = _wheel_members(editable=True)
+    destination = Path(wheel_directory) / filename
+    _write_archive(destination, members)
+    return filename
+""".lstrip()
+
+
+_LOCAL_YAML_STUB_SOURCE = '''\
+"""Import-only PyYAML marker for installation-integrity command probes.
+
+The covered commands inspect only ``yaml.__version__``.  Deliberately omit
+parsing and dumping APIs so a new command path cannot silently test against a
+partial YAML implementation instead of the real project dependency.
+"""
+
+from __future__ import annotations
+
+class YAMLError(Exception):
+    pass
+
+
+__version__ = "99.0.0"
+'''
+
+
+def _write_local_support_wheel(
+    wheel: Path,
+    *,
+    distribution_name: str,
+    package_members: dict[str, str],
+) -> None:
+    """Write one deterministic support wheel without reading outer metadata."""
+    normalized_name = distribution_name.lower().replace("-", "_")
+    dist_info = f"{normalized_name}-{_LOCAL_BUILD_SUPPORT_VERSION}.dist-info"
+    members = {
+        member_name: source.encode("utf-8") for member_name, source in package_members.items()
+    }
+    members[f"{dist_info}/METADATA"] = (
+        "Metadata-Version: 2.1\n"
+        f"Name: {distribution_name}\n"
+        f"Version: {_LOCAL_BUILD_SUPPORT_VERSION}\n"
+    ).encode("utf-8")
+    members[f"{dist_info}/WHEEL"] = (
+        "Wheel-Version: 1.0\n"
+        "Generator: life-index-test\n"
+        "Root-Is-Purelib: true\n"
+        "Tag: py3-none-any\n"
+    ).encode("utf-8")
+    members[f"{dist_info}/RECORD"] = "".join(
+        f"{member_name},,\n" for member_name in sorted(members)
+    ).encode("utf-8")
+    with zipfile.ZipFile(wheel, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for member_name in sorted(members):
+            info = zipfile.ZipInfo(member_name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.external_attr = 0o100644 << 16
+            archive.writestr(info, members[member_name])
 
 
 def _install_local_build_backend(python: Path, tmp_path: Path) -> None:
-    for distribution_name in ("setuptools", "wheel", "PyYAML"):
-        installed = metadata_distribution(distribution_name)
+    """Install hermetic build/runtime support for offline install regression tests."""
+    support_wheels = (
+        (
+            "setuptools",
+            {
+                "setuptools/__init__.py": (f"__version__ = {_LOCAL_BUILD_SUPPORT_VERSION!r}\n"),
+                "setuptools/build_meta.py": _LOCAL_BUILD_META_SOURCE,
+            },
+        ),
+        (
+            "wheel",
+            {"wheel/__init__.py": f"__version__ = {_LOCAL_BUILD_SUPPORT_VERSION!r}\n"},
+        ),
+        ("PyYAML", {"yaml/__init__.py": _LOCAL_YAML_STUB_SOURCE}),
+    )
+    for distribution_name, package_members in support_wheels:
         filename_name = distribution_name.lower().replace("-", "_")
-        wheel = tmp_path / f"{filename_name}-{installed.version}-py3-none-any.whl"
-        _write_backend_support_wheel(wheel, distribution_name=distribution_name)
+        wheel = tmp_path / f"{filename_name}-{_LOCAL_BUILD_SUPPORT_VERSION}-py3-none-any.whl"
+        _write_local_support_wheel(
+            wheel,
+            distribution_name=distribution_name,
+            package_members=package_members,
+        )
         _run(
             [
                 str(python),
@@ -181,6 +364,43 @@ def _install_local_build_backend(python: Path, tmp_path: Path) -> None:
                 str(wheel),
             ]
         )
+
+
+def test_local_backend_fixture_does_not_depend_on_outer_distribution_metadata(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    """The hermetic fixture must not copy build support from the test runner."""
+
+    def missing_outer_metadata(distribution_name: str) -> None:
+        raise PackageNotFoundError(distribution_name)
+
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distribution",
+        missing_outer_metadata,
+    )
+    harness = runpy.run_path(str(Path(__file__)))
+    assert "metadata_distribution" not in harness
+    venv = tmp_path / "metadata-free backend venv"
+    harness["_run"]([sys.executable, "-m", "venv", str(venv)])
+    python = harness["_venv_python"](venv)
+
+    harness["_install_local_build_backend"](python, tmp_path)
+    harness["_run"](
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--no-index",
+            "--no-build-isolation",
+            "--no-deps",
+            "-e",
+            str(harness["REPO_ROOT"]),
+        ]
+    )
+    result = harness["_run"]([str(python), "-I", "-m", "tools", "--version"])
+    assert json.loads(result.stdout)["package_version"] == harness["_repo_version"]()
 
 
 def _mixed_install_fixture(tmp_path: Path) -> tuple[Path, Path]:
