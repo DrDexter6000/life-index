@@ -116,6 +116,49 @@ python -m tools health
 | Web | E07xx | Web GUI / URL 下载 / LLM 提供方 / 地理定位相关错误 |
 | 迁移 | E08xx | **Reserved / 未实现** — Schema 迁移错误码已预留，但当前 runtime 不发射结构化 E08xx 码 |
 
+### Closed Host-Agent tool channel and optional MCP projection
+
+`tools.host_agent_channel.registry.CAPABILITY_REGISTRY` is the single closed
+authority for the initial Host-Agent tool channel.  Transports generate from
+that registry; they must not add methods, schemas, write authority, filesystem
+access, shell access, LLM/provider behavior, planning, or orchestration.
+
+| Method ID | Operation class | MCP `readOnlyHint` | Bounded physical effect |
+|---|---|---|---|
+| `health` | `read` | `true` | None |
+| `journal.get` | `read` | `true` | None; exactly one of `path` or `id` is required |
+| `search` | `read` | `false` | May refresh only `.index`, a rebuildable derived tree |
+
+The dispatcher validates structured parameters before Core and invokes the same
+canonical application functions used by the direct CLI.  It preserves the
+existing domain envelopes and direct CLI remains a supported canonical path.
+`search` does not mutate journals, frontmatter, attachments, entity graph,
+metadata cache, or search metrics through this channel.
+The optional MCP projection derives its tool annotations from the same
+registry. `health` and `journal.get` declare `readOnlyHint=true`. `search` remains a logical `read`, but its MCP `readOnlyHint=false` honestly
+reflects that its only allowed effect is a refresh of rebuildable `.index` derived state. Every method declares `destructiveHint=false` and `openWorldHint=false`;
+`idempotentHint` remains registry-specific.
+The validation-only tool-call trace remains available as external control
+evidence for direct dispatcher validation; it is not an MCP capability effect.
+The generic MCP projection explicitly disables trace emission even when
+`LIFE_INDEX_VALIDATION_MODE=1` and `LIFE_INDEX_TOOL_CALL_LOG` are set. For
+direct dispatcher validation, a configured trace target that resolves into or
+overlaps the data directory is rejected before it can create source state.
+
+`tools.mcp_projection` is a generic, removable stdio transport projection of
+this registry.  It is optional: install its exact extra with
+`python -m pip install "life-index[mcp]"` (`mcp==1.27.2`), then run:
+
+```bash
+python -m tools.mcp_projection
+```
+
+It introduces no new environment variable and continues to use the existing
+`LIFE_INDEX_DATA_DIR` data-boundary behavior.  `tools/mcp_discovery` remains a
+separate static discovery stub; it is not the projection registry.  There is
+no D5 hand-written newline JSON-RPC server: stdio lifecycle is owned by the
+optional official SDK.
+
 ## v1.1.1 Observability Contract
 
 > **适用版本**: v1.1.1+

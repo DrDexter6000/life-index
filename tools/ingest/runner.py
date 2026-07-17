@@ -30,6 +30,7 @@ from tools.ingest.schemas import (
     RUN_SCHEMA_VERSION,
     STATUS_SCHEMA_VERSION,
 )
+from tools.lib.pending_writes import mark_pending
 
 # ---------------------------------------------------------------------------
 # execute_run
@@ -759,13 +760,30 @@ def execute_rollback(
             retryable=False,
         )
 
-    # --- 7. Third pass: delete all matching files ---
+    # --- 7. Queue journal removals before deletion ---
+    # A successful rollback must let the next normal search remove any stale
+    # FTS rows. Queue only after all path/checksum validation has passed, and
+    # before deletion so a queue persistence failure cannot leave an untracked
+    # source deletion behind.
+    try:
+        for file_entry in manifest.get("created_files", []):
+            if file_entry.get("created_by_import", False) and file_entry.get("kind") == "journal":
+                mark_pending(file_entry["rel_path"])
+    except OSError as exc:
+        return _err(
+            "IMPORT_INTERNAL_ERROR",
+            "Rollback could not queue journal removals for index update.",
+            {"import_id": import_id, "error": str(exc)},
+            retryable=True,
+        )
+
+    # --- 8. Third pass: delete all matching files ---
     deleted_count = 0
     for entry in to_delete:
         entry["path"].unlink()
         deleted_count += 1
 
-    # --- 8. Preserve manifest as audit evidence, update ledger ---
+    # --- 9. Preserve manifest as audit evidence, update ledger ---
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     manifest["state"] = "rolled_back"
     _write_manifest(manifest_abs, manifest)

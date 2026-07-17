@@ -49,7 +49,10 @@ SEMANTIC_INDEX_DEPRECATED_NOOP_WARNING = (
 
 
 def build_all(
-    incremental: bool = True, fts_only: bool = False, vec_only: bool = False
+    incremental: bool = True,
+    fts_only: bool = False,
+    vec_only: bool = False,
+    derived_index_only: bool = False,
 ) -> Dict[str, Any]:
     """
     构建所有索引
@@ -58,6 +61,7 @@ def build_all(
         incremental: True=增量更新，False=全量重建
         fts_only: 兼容参数；索引构建始终只更新 FTS
         vec_only: 废弃兼容参数；接受但不构建向量索引
+        derived_index_only: Restrict all created state to the rebuildable .index tree.
 
     Returns:
         构建结果
@@ -81,11 +85,16 @@ def build_all(
 
     # ===== 文件锁保护 =====
     # 使用文件锁保护索引构建，防止并发冲突
-    lock = FileLock(get_index_lock_path(), timeout=FILE_LOCK_TIMEOUT_REBUILD)
+    lock_path = (
+        get_user_data_dir() / ".index" / "index.lock"
+        if derived_index_only
+        else get_index_lock_path()
+    )
+    lock = FileLock(lock_path, timeout=FILE_LOCK_TIMEOUT_REBUILD)
 
     try:
         with lock:
-            if not incremental:
+            if not incremental and not derived_index_only:
                 invalidate_cache()
                 update_cache_for_all_journals()
                 relation_conn = init_metadata_cache()
@@ -149,15 +158,16 @@ def build_all(
             ErrorCode.LOCK_TIMEOUT,
             f"无法获取索引锁，请稍后重试: {e}",
             {
-                "lock_path": str(get_index_lock_path()),
+                "lock_path": str(lock_path),
                 "timeout": FILE_LOCK_TIMEOUT_REBUILD,
             },
             "等待几秒后重试，或检查是否有其他进程正在构建索引",
         )
 
     result["duration_seconds"] = round(time.time() - start_time, 2)
-    cache_stats = get_cache_stats()
-    result["rebuild_hint"] = cache_stats.get("rebuild_hint", "")
+    if not derived_index_only:
+        cache_stats = get_cache_stats()
+        result["rebuild_hint"] = cache_stats.get("rebuild_hint", "")
     logger.info(f"Completed in {result['duration_seconds']}s")
 
     return result

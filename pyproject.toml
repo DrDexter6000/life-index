@@ -38,6 +38,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcp = [
+    "mcp==1.27.2",
+]
+
 # Development dependencies - 开发依赖
 dev = [
     # Type checking - 类型检查
@@ -61,6 +65,7 @@ dev = [
 # All optional dependencies - 所有可选依赖
 all = [
     "life-index[dev]",
+    "life-index[mcp]",
 ]
 
 [project.urls]

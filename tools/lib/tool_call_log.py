@@ -43,6 +43,35 @@ def _enabled_log_path() -> Path | None:
     return Path(configured)
 
 
+def _paths_overlap(first: Path, second: Path) -> bool:
+    """Return whether two resolved paths share a containment boundary."""
+    try:
+        first.relative_to(second)
+        return True
+    except ValueError:
+        try:
+            second.relative_to(first)
+            return True
+        except ValueError:
+            return False
+
+
+def _is_safe_log_target(log_path: Path, forbidden_root: Path | str | None) -> bool:
+    """Reject a target that resolves into or overlaps a protected data root."""
+    if forbidden_root is None:
+        return True
+    try:
+        resolved_root = Path(forbidden_root).resolve(strict=True)
+        resolved_parent = log_path.parent.resolve(strict=False)
+        resolved_target = log_path.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return not (
+        _paths_overlap(resolved_parent, resolved_root)
+        or _paths_overlap(resolved_target, resolved_root)
+    )
+
+
 def _is_sensitive_key(key: str) -> bool:
     lowered = key.lower()
     return any(part in lowered for part in _SENSITIVE_KEY_PARTS)
@@ -89,16 +118,21 @@ def emit_tool_call_log(
     elapsed_ms: float | None = None,
     success: bool = True,
     error_code: str | None = None,
+    forbidden_root: Path | str | None = None,
 ) -> None:
     """Append one sanitized tool-call record when validation logging is enabled.
 
     This diagnostic sink is intentionally outside answer, grounding, and SSE
     paths. It is gated by validation mode plus an explicit log path and is
-    fire-and-forget so ordinary CLI behavior remains unchanged.
+    fire-and-forget so ordinary CLI behavior remains unchanged.  Callers with
+    a protected data boundary can provide ``forbidden_root``; a log target
+    that resolves into or overlaps it is silently rejected.
     """
 
     log_path = _enabled_log_path()
     if log_path is None:
+        return
+    if not _is_safe_log_target(log_path, forbidden_root):
         return
 
     try:

@@ -26,7 +26,8 @@ triggers:
 
 - Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis. They also own orchestration.
 - Core calls remain deterministic; Core does not plan, reason, orchestrate, interpret, or synthesize.
-- Gateway is an optional future typed 1:1 projection under #164; it is not yet implemented, is not a second semantic API, and owns no intelligence. If introduced, it is only a contract-equivalent transport. Gateway is never required for the core route.
+- Gateway is an optional implemented generic typed 1:1 projection under #164. Its closed `CAPABILITY_REGISTRY` exposes only read `health`, `journal.get`, and `search`; `search` may refresh only rebuildable `.index` state. It is not a second semantic API and owns no intelligence.
+- Codex is the first consumer, not a source of Codex-specific semantics. The optional MCP projection is removable, uses the existing data-directory boundary, and never replaces the direct CLI core route.
 <!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:END -->
 
 ---

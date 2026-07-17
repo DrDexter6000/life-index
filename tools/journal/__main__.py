@@ -171,6 +171,29 @@ def _read_journal(path: Path) -> dict[str, Any]:
     }
 
 
+def run_journal_get(*, path: str | None = None, id: str | None = None) -> dict[str, Any]:
+    """Run the canonical single-journal operation without CLI formatting.
+
+    This is the shared application seam for the direct CLI and transport
+    projections.  It preserves the established journal domain envelope for
+    path safety and missing-file failures.
+    """
+    if (path is None) == (id is None):
+        return _json_error(
+            "JOURNAL_ARGUMENT_INVALID",
+            "journal get requires exactly one of path or id.",
+        )
+
+    raw_ref = path if path is not None else id
+    assert raw_ref is not None
+    try:
+        return _json_success(_read_journal(_resolve_journal_ref(raw_ref)))
+    except JournalContractError as exc:
+        return _json_error(exc.code, exc.message)
+    except OSError as exc:
+        return _json_error("JOURNAL_READ_FAILED", str(exc))
+
+
 def _first_heading(body: str) -> str | None:
     for line in body.splitlines():
         stripped = line.strip()
@@ -231,9 +254,7 @@ def _journal_summary(path: Path) -> dict[str, Any]:
 
 
 def _handle_get(args: argparse.Namespace) -> dict[str, Any]:
-    raw_ref = args.path or args.id
-    path = _resolve_journal_ref(raw_ref)
-    return _json_success(_read_journal(path))
+    return run_journal_get(path=args.path, id=args.id)
 
 
 def _batch_refs(args: argparse.Namespace) -> list[str]:
@@ -355,6 +376,8 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(1)
         _log_journal_call(args, payload, (time.perf_counter() - started) * 1000.0)
         _print_json(payload)
+        if not payload.get("success"):
+            sys.exit(1)
     except JournalContractError as exc:
         payload = _json_error(exc.code, exc.message)
         _log_journal_call(args, payload, (time.perf_counter() - started) * 1000.0)

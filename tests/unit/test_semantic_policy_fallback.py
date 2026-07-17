@@ -293,7 +293,17 @@ class TestStructuredMetadataStillMerges:
         mock_plan = _MockPlan(date_range=_MockDateRange(), topic_hints=["work"])
         structured_md_path = "journals/2026/01-structured.md"
 
-        def _augment_side_effect(l2_results, candidate_paths, plan, df, dt, result):
+        def _augment_side_effect(
+            l2_results,
+            candidate_paths,
+            plan,
+            df,
+            dt,
+            result,
+            *,
+            use_metadata_cache: bool = True,
+        ):
+            assert use_metadata_cache is True
             l2_results.append(
                 {"path": structured_md_path, "score": 0.8, "source": "structured_metadata"}
             )
