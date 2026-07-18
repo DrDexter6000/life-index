@@ -26,8 +26,8 @@ BOOTSTRAP_SCHEMA_VERSION = "m34.bootstrap.v0"
 PYPI_JSON_URL = "https://pypi.org/pypi/life-index/json"
 PYPI_TIMEOUT_SECONDS = 2.0
 GIT_TIMEOUT_SECONDS = 15.0
-EDITABLE_REFRESH_STEP = "git pull --ff-only && pip install -e ."
-PACKAGE_REFRESH_STEP = "pip install -U life-index"
+EDITABLE_REFRESH_STEP = "life-index upgrade --plan --json"
+PACKAGE_REFRESH_STEP = "life-index upgrade --plan --json"
 MIGRATE_DRY_RUN_STEP = "life-index migrate --dry-run"
 MIGRATE_APPLY_STEP = "life-index migrate --apply"
 SEARCH_INDEX_REBUILD_STEP = "life-index index --rebuild"
@@ -187,17 +187,6 @@ def _detect_git_freshness(checkout: Path | None) -> dict[str, Any]:
         }
 
     try:
-        fetch = _run_git(checkout, ["fetch", "--quiet"])
-        if fetch.returncode != 0:
-            detail = (fetch.stderr or fetch.stdout or "git fetch failed").strip()
-            return {
-                "git_freshness": "unknown",
-                "git_upstream": None,
-                "git_behind_count": None,
-                "git_ahead_count": None,
-                "git_error": detail,
-            }
-
         upstream_result = _run_git(
             checkout,
             ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
@@ -212,6 +201,74 @@ def _detect_git_freshness(checkout: Path | None) -> dict[str, Any]:
                 "git_behind_count": None,
                 "git_ahead_count": None,
                 "git_error": "No upstream branch or origin/main ref found",
+            }
+
+        if "/" not in upstream:
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": (
+                    "Upstream is not a remote-tracking branch; run "
+                    "life-index upgrade --plan --json."
+                ),
+            }
+
+        remote, branch = upstream.split("/", 1)
+        local_upstream_result = _run_git(checkout, ["rev-parse", upstream])
+        if local_upstream_result.returncode != 0:
+            detail = (
+                local_upstream_result.stderr
+                or local_upstream_result.stdout
+                or "local upstream ref was not found"
+            ).strip()
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": f"{detail}; run life-index upgrade --plan --json.",
+            }
+
+        remote_result = _run_git(checkout, ["ls-remote", "--heads", remote, branch])
+        if remote_result.returncode != 0:
+            detail = (remote_result.stderr or remote_result.stdout or "remote probe failed").strip()
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": f"{detail}; run life-index upgrade --plan --json.",
+            }
+
+        remote_head = next(
+            (
+                line.split()[0]
+                for line in remote_result.stdout.splitlines()
+                if len(line.split()) >= 2
+            ),
+            None,
+        )
+        local_upstream_head = local_upstream_result.stdout.strip()
+        if not remote_head:
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": ("Remote branch was not found; run life-index upgrade --plan --json."),
+            }
+        if remote_head != local_upstream_head:
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": (
+                    "Remote tip differs from the local tracking ref; exact ancestry is "
+                    "unknown without updating refs. Run life-index upgrade --plan --json."
+                ),
             }
 
         count_result = _run_git(
@@ -293,7 +350,7 @@ def _detect_release_freshness(
         freshness = "current"
 
     suggested_refresh_step: str | None = None
-    if update_reasons:
+    if update_reasons or git_status.get("git_error"):
         if git_behind > 0 or install_type == "editable":
             suggested_refresh_step = EDITABLE_REFRESH_STEP
         elif install_type == "package":
@@ -487,8 +544,9 @@ def decide_route(
                     "code": "INVALID_CHECKOUT",
                     "message": "Checkout is missing required Life Index files.",
                     "suggested_action": (
-                        "Delete and reclone only if the path is agent-managed; otherwise "
-                        "ask the user before cleanup."
+                        "Leave this path untouched and create a fresh dedicated install at "
+                        "a new empty target. Any later cleanup requires ownership proof "
+                        "under AGENT_ONBOARDING.md."
                     ),
                 }
             )
@@ -511,7 +569,7 @@ def decide_route(
     def refresh_step() -> str | None:
         suggested = data_state.get("suggested_refresh_step")
         if isinstance(suggested, str) and suggested:
-            return suggested
+            return EDITABLE_REFRESH_STEP
         install_type = data_state.get("install_type")
         if install_type == "editable":
             return EDITABLE_REFRESH_STEP
@@ -532,8 +590,8 @@ def decide_route(
                     "code": "INSTALL_REFRESH_UNKNOWN",
                     "message": "A package refresh may be needed, but install type is unknown.",
                     "suggested_action": (
-                        "Inspect how life-index is installed, then run the matching refresh "
-                        "command before continuing."
+                        "Run life-index upgrade --plan --json and follow its canonical "
+                        "onboarding pointer before continuing."
                     ),
                 }
             )

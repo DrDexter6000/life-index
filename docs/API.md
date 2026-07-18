@@ -3322,84 +3322,82 @@ python -m tools upgrade --apply --json
 
 ### Purpose
 
-`upgrade` is a deterministic host-agent operations primitive for refreshing an
-installed Life Index CLI. It does not replace the developer release workflow:
-PR review, CI, merge, tag, GitHub Release, PyPI publish, and release smoke stay
-outside this command.
+`upgrade` is a deterministic, read-only host-agent operations primitive. It
+diagnoses whether the installed Life Index program is current or requires clean
+replacement. It does not install, uninstall, fetch, pull, repair, deliver a
+skill, modify an environment, touch user journals, or replace the developer
+release workflow.
 
-`--plan` is read-only. It reports installed package version, bootstrap manifest
-`repo_version`, PyPI release/yank status, optional git checkout freshness plus a
-read-only remote probe, `health --json` parseability, sync-skill discovery
-status, and recommended actions.
+`--plan` reports installed package and bootstrap manifest versions, PyPI
+release/yank status, optional checkout freshness plus a read-only remote probe,
+health JSON parseability, sync-skill discovery status, `actions[]`, and
+`recommended_next_step`.
 
-`--apply` executes only actions that the plan marks safe:
+`--apply` builds the same read-only plan. It never runs executable in-place
+`git pull`, `git fetch`, `pip install --upgrade`, `pip install -e`, or
+`sync-skill --install` operations.
 
-- package installs may upgrade to a recommended non-yanked PyPI version;
-- editable/source checkouts may refresh remote refs and run `git pull --ff-only`
-  only when clean, behind, and not ahead;
-- editable/source checkouts run `python -m pip install -e <repo>` after a safe
-  git update, or when package metadata differs from bootstrap manifest
-  `repo_version`;
-- dirty, ahead, or diverged checkouts fail closed and require a human;
-- any plan action with `safe_to_run=false` or `requires_human=true` blocks
-  `--apply` before write actions;
-- `life-index --version` is parsed and package/manifest consistency is checked;
-- `sync-skill --install --json` is run through the existing sync-skill command;
-- `health --json` is run and parsed.
+### Replacement behavior
 
-The command contains no LLM calls and never writes user journals.
+A known update or program inconsistency produces one human-required action:
+
+```json
+{
+  "id": "reinstall_managed_environment",
+  "description": "Leave the existing environment and checkout untouched; create a fresh dedicated install.",
+  "side_effect": "write",
+  "command": null,
+  "reason": "Follow AGENT_ONBOARDING.md.",
+  "safe_to_run": false,
+  "requires_human": true
+}
+```
+
+The host agent must follow `AGENT_ONBOARDING.md`, create a fresh dedicated
+install, and leave shared/global Python environments plus existing developer-
+or user-owned checkouts untouched. User data remains separate and must never be
+deleted, moved, or overwritten.
+
+Healthy/current apply returns a truthful successful no-op. Dirty, ahead,
+diverged, unreachable, unknown, or otherwise human-risk states retain
+fail-closed diagnostics and never authorize mutation.
 
 ### JSON contract
 
 ```json
 {
-  "success": true,
+  "success": false,
   "schema_version": "m36.upgrade.v0",
   "command": "upgrade",
-  "mode": "plan",
+  "mode": "apply",
+  "error": {
+    "code": "UPGRADE_REINSTALL_REQUIRED",
+    "message": "The program environment must be replaced through the canonical onboarding path."
+  },
   "data": {
     "installed": {
-      "package_version": "1.4.4",
-      "bootstrap_manifest_repo_version": "1.4.4",
+      "package_version": "1.5.1",
+      "bootstrap_manifest_repo_version": "1.5.1",
       "install_type": "package|editable|unknown",
       "repo_path": null
     },
     "pypi": {
       "status": "ok|partial",
       "error": null,
-      "latest_non_yanked": "1.4.4",
-      "recommended_version": null,
+      "latest_non_yanked": "1.5.2",
+      "recommended_version": "1.5.2",
       "current_version_yanked": false,
       "current_yanked_reason": null
     },
     "git": null,
-    "health": {
-      "command": "life-index health --json",
-      "returncode": 0,
-      "json_parseable": true,
-      "parse_error": null,
-      "data": {}
-    },
-    "sync_skill": {
-      "command": "life-index sync-skill --list --json",
-      "returncode": 0,
-      "json_parseable": true,
-      "parse_error": null,
-      "data": {}
-    },
-    "actions": [
-      {
-        "id": "pip_install_editable",
-        "description": "Reinstall the editable source checkout into the active environment.",
-        "side_effect": "write",
-        "command": "python -m pip install -e <repo_path>",
-        "reason": "Editable installs need reinstall after source checkout updates.",
-        "safe_to_run": true,
-        "requires_human": false
-      }
-    ],
+    "health": {},
+    "sync_skill": {},
+    "onboarding": "AGENT_ONBOARDING.md",
+    "actions": [],
     "recommended_next_step": {},
-    "partial": false
+    "partial": false,
+    "reinstall_required": true,
+    "applied_actions": []
   }
 }
 ```
@@ -3411,66 +3409,39 @@ Every `actions[]` item contains:
 | `id` | string | Stable action id |
 | `description` | string | Human-readable action summary |
 | `side_effect` | string | `"read"` or `"write"` |
-| `command` | string \| null | Command host agents may show or run |
+| `command` | string \| null | Displayable read command, or `null` when human replacement is required |
 | `reason` | string | Why the action exists |
-| `safe_to_run` | bool | Whether apply may execute it automatically |
-| `requires_human` | bool | Whether host agent must stop and ask the user |
+| `safe_to_run` | bool | Whether an automatic operation is allowed |
+| `requires_human` | bool | Whether the host agent must stop and involve the user |
 
-### Git freshness rules
+### Exit and error behavior
 
-Version equality is not sufficient. If `package_version` and
-`bootstrap_manifest_repo_version` match but an editable/source checkout is
-behind upstream or the read-only remote probe sees commits not visible in local
-tracking refs, `--plan` still recommends a safe refresh/fast-forward path.
-Remote probe failure marks the report partial and does not claim git freshness is
-current. Dirty, ahead-only, or diverged checkouts return unsafe actions and
-`--apply` fails closed. The command never stashes, resets, rebases, merges, or
-pushes.
+- Plan normally exits 0 with `success: true`, including partial advisory
+  metadata.
+- Reinstall-required apply exits 1 with
+  `error.code = "UPGRADE_REINSTALL_REQUIRED"`,
+  `data.reinstall_required = true`, and `data.applied_actions = []`.
+- Healthy/current apply exits 0 with `success: true`,
+  `data.reinstall_required = false`, and `data.applied_actions = []`.
+- Existing human-risk states remain fail-closed. Common codes include
+  `UPGRADE_DIRTY_WORKTREE`, `UPGRADE_GIT_REQUIRES_HUMAN`, and
+  `UPGRADE_REQUIRES_HUMAN`.
 
-For editable/source installs, git freshness is not the whole upgrade. After a
-safe fast-forward path, `--apply` also runs `python -m pip install -e <repo>` so
-entry points, package metadata, dependencies, and package data match the source
-checkout. If `package_version` differs from bootstrap manifest `repo_version`,
-`--plan` recommends the same editable reinstall even when git is otherwise
-current.
+### Freshness rules
 
-When git, PyPI, health, and sync-skill list checks are current, `recommended_next_step.id`
-is `"none"`. `sync-skill --install` is still used by `--apply` as an idempotent
-delivery verification, but it is not surfaced as a required next step when
-`sync-skill --list --json` already reports the canonical Life Index skill slot.
+Version equality is not sufficient for editable/source diagnostics. A checkout
+behind its tracking ref, or a read-only remote probe that sees newer commits,
+requires clean replacement. Dirty, ahead, and diverged states require human
+review. Remote probe failure marks the report partial and freshness unknown.
 
-### PyPI / yank rules
-
-PyPI metadata is advisory and non-fatal. Network failure returns
-`data.pypi.status = "partial"` and does not block local git, health, or
-sync-skill checks. Yanked releases are never recommended as targets. If the
-current installed version is yanked, `current_version_yanked` is true and
-`recommended_version` points to the latest non-yanked release when one exists.
-
-### Error behavior
-
-`--plan` normally returns `success: true` even when metadata is partial.
-`--apply` returns `success: false` with structured error codes when a write path
-is unsafe or a subprocess fails. Common codes include:
-
-| Code | Meaning |
-|---|---|
-| `UPGRADE_DIRTY_WORKTREE` | Source checkout has uncommitted changes |
-| `UPGRADE_GIT_REQUIRES_HUMAN` | Checkout is ahead, diverged, or not proven fast-forward safe |
-| `UPGRADE_REQUIRES_HUMAN` | Plan contains an unsafe or human-required action |
-| `UPGRADE_GIT_REFRESH_FAILED` | Remote ref refresh failed before a fast-forward attempt |
-| `UPGRADE_GIT_PULL_FAILED` | `git pull --ff-only` failed |
-| `UPGRADE_PIP_INSTALL_FAILED` | Package upgrade subprocess failed |
-| `UPGRADE_EDITABLE_INSTALL_FAILED` | `python -m pip install -e <repo>` failed |
-| `UPGRADE_VERSION_INCONSISTENT` | Editable package metadata still differs from bootstrap manifest after apply |
-| `UPGRADE_SYNC_SKILL_NOT_DELIVERED` | `sync-skill --install` did not report `delivered=true` |
+PyPI metadata is advisory and non-fatal. Yanked releases are never recommended
+as targets. Network failure does not authorize a write.
 
 ### schema_version Policy
 
-`upgrade` emits top-level `schema_version = "m36.upgrade.v0"`. Fields are
-additive within this version. Backward-incompatible shape or semantic changes
-require a new schema version.
-
+`upgrade` retains top-level `schema_version = "m36.upgrade.v0"`. The
+`reinstall_managed_environment.command` value is `null` and validates under
+the current v0 output contract. Top-level envelope fields remain unchanged.
 ---
 
 ## bootstrap
@@ -3560,18 +3531,20 @@ python -m tools bootstrap --json
 }
 ```
 
-If `update_available` is set, or `install_in_sync` is `false`, `safe_next_steps`
-begins with the refresh command matching `install_type`:
+If `update_available` is set or `install_in_sync` is `false`, both
+`suggested_refresh_step` and the first inserted `safe_next_steps` item are the
+read-only canonical pointer `life-index upgrade --plan --json`, regardless of
+whether `install_type` is `editable` or `package`. The returned upgrade plan
+then points replacement cases to `AGENT_ONBOARDING.md`; bootstrap never exposes
+an executable git, pip, or skill-install refresh command.
 
-- `editable`: `git pull --ff-only && pip install -e .`
-- `package`: `pip install -U life-index`
-
-For editable/git checkouts, bootstrap also fetches the configured upstream and
-reports `git_freshness`, `git_upstream`, `git_behind_count`, and
-`git_ahead_count`. A checkout that is behind upstream is treated as stale even
-when the package version is unchanged: `update_available` is `"git-behind"`,
-`update_reasons` includes `"git_behind"`, and `suggested_refresh_step` is
-`git pull --ff-only && pip install -e .`.
+For editable/git checkouts, bootstrap uses local read commands plus
+`git ls-remote` and never fetches or updates refs. It reports `git_freshness`,
+`git_upstream`, `git_behind_count`, and `git_ahead_count`. Exact ahead/behind
+counts are reported only when the remote tip matches the local tracking ref.
+If they differ, freshness is `"unknown"`, counts are `null`, and `git_error`
+routes the caller to `life-index upgrade --plan --json` rather than claiming a
+stale tracking ref is current.
 
 If release freshness cannot be checked, `freshness` is `"unknown"` and
 `freshness_error` explains why. This is diagnostic only; bootstrap remains
@@ -3590,7 +3563,7 @@ read-only.
 |---|---|
 | `AMBIGUOUS_CHECKOUT` | checkout 结构完整但缺少 host/user 正向采纳授权 |
 | `DEV_DIR_FOUND` | checkout 有 development-directory 强信号 |
-| `INVALID_CHECKOUT` | checkout 缺少必要文件 |
+| `INVALID_CHECKOUT` | checkout 缺少必要文件；保持原路径不动，在新空目标创建 dedicated install，后续 cleanup 须按 onboarding 证明 ownership |
 | `INSTALL_REFRESH_UNKNOWN` | 需要刷新安装但 bootstrap 无法识别安装类型；Agent 应停止并转达 |
 | `MIGRATION_CHECK_FAILED` | in-process migration scan 失败；不得当作无需迁移 |
 
@@ -4574,12 +4547,13 @@ python -m tools.build_index [options]
   rather than source-data mutation; the note states the boundary.
 - `data.upgrade_freshness`: non-blocking session signal. It reports local
   installed/manifest mismatch and checkout-vs-upstream metadata, including
-  `suggested_refresh_step` when a local update signal is visible. It does not
-  replace `bootstrap --json`. Editable checkouts also report dirty worktree
+  `suggested_refresh_step: "life-index upgrade --plan --json"` when a local
+  update signal is visible, with `side_effect: "read"`. It does not replace
+  `bootstrap --json`. Editable checkouts also report dirty worktree
   hints under `git.dirty` / `git.dirty_count`; a dirty-only checkout adds
-  `warning` plus `suggested_command: "git checkout -- ."` with
-  `side_effect: "write"` without adding a health issue or blocking other
-  operations.
+  `warning` plus the read-only `suggested_command: "git --no-optional-locks status --short"` with
+  `side_effect: "read"`. Its note tells the caller to leave changes untouched
+  and ask the owner; it does not add a health issue or block other operations.
 - `data.entity_maintenance`: `traffic_light` is `green` when pending review is
   clear and the graph was touched within 30 days; `yellow` when candidates are
   pending or the audit is stale; `red` when structural errors or duplicate

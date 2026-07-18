@@ -39,11 +39,157 @@ def test_onboarding_data_safety_rule_stays_visible() -> None:
     assert "fresh install" in onboarding
 
 
+def test_clean_replacement_validation_uses_exact_new_venv_entries() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    assert "### 3A. Program replacement validation" in onboarding
+    assert "### 3B. Host integration and skill delivery" in onboarding
+    validation = onboarding.split("### 3A. Program replacement validation", 1)[1].split(
+        "### 3B. Host integration and skill delivery", 1
+    )[0]
+
+    assert '"$NEW_ROOT/.venv/bin/python" -m pip install -e "$NEW_ROOT"' in validation
+    assert '"$NEW_ROOT/.venv/bin/life-index" bootstrap --json' in validation
+    assert (
+        '& (Join-Path $NewRoot ".venv\\Scripts\\python.exe") -m pip install -e $NewRoot'
+        in validation
+    )
+    assert '& (Join-Path $NewRoot ".venv\\Scripts\\life-index.exe") bootstrap --json' in validation
+    assert "python -m tools bootstrap --json" not in validation
+
+
+def test_clean_replacement_validation_isolates_cwd_pythonpath_and_data() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    assert "### 3A. Program replacement validation" in onboarding
+    assert "### 3B. Host integration and skill delivery" in onboarding
+    validation = onboarding.split("### 3A. Program replacement validation", 1)[1].split(
+        "### 3B. Host integration and skill delivery", 1
+    )[0]
+
+    assert 'NEUTRAL_CWD="$(mktemp -d)"' in validation
+    assert 'cd "$NEUTRAL_CWD"' in validation
+    assert 'env -u PYTHONPATH LIFE_INDEX_DATA_DIR="$SANDBOX_DATA"' in validation
+    assert "$NeutralCwd = Join-Path" in validation
+    assert "Set-Location $NeutralCwd" in validation
+    assert "Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue" in validation
+    assert "$env:LIFE_INDEX_DATA_DIR = $SandboxData" in validation
+
+
+def test_clean_replacement_uses_stable_operator_selected_program_root() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    validation = onboarding.split("### 3A. Program replacement validation", 1)[1].split(
+        "### 3B. Host integration and skill delivery", 1
+    )[0]
+
+    assert 'NEW_ROOT="<new-target>/life-index"' in validation
+    assert 'NEW_ROOT="$(mktemp -d)/life-index"' not in validation
+    assert '$NewRoot = Join-Path "<new-target>" "life-index"' in validation
+    assert "$NewRoot = Join-Path ([IO.Path]::GetTempPath())" not in validation
+    assert validation.count('="$(mktemp -d)"') == 2
+    assert validation.count("[IO.Path]::GetTempPath()") == 2
+    assert validation.count("[guid]::NewGuid()") == 2
+
+
+def test_windows_replacement_uses_operator_selected_supported_python_launcher() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    validation = onboarding.split("### 3A. Program replacement validation", 1)[1].split(
+        "### 3B. Host integration and skill delivery", 1
+    )[0]
+
+    assert '$PythonExe = "<path-to-supported-python.exe>"' in validation
+    assert (
+        "& $PythonExe -c 'import sys; assert sys.version_info >= (3, 11), "
+        'f"Python >=3.11 required, got {sys.version}"\''
+    ) in validation
+    assert '& $PythonExe -m venv (Join-Path $NewRoot ".venv")' in validation
+    assert "py -3.11" not in validation
+
+
+def test_host_integration_is_standalone_and_uses_isolated_posix_launcher() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    host_integration = onboarding.split("### 3B. Host integration and skill delivery", 1)[1].split(
+        "### 3C. Owner-authorized data maintenance", 1
+    )[0]
+    posix = host_integration.split("Windows PowerShell:", 1)[0]
+
+    assert 'NEW_ROOT="<new-target>/life-index"' in posix
+    assert 'HOST_HOME="<host-home>"' in posix
+    commands = (
+        'env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --list --json',
+        'env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --install '
+        '--host-home "$HOST_HOME" --dry-run --json',
+        'env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --install '
+        '--host-home "$HOST_HOME" --json',
+        'env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --uninstall '
+        '--host-home "$HOST_HOME" --json',
+    )
+    for command in commands:
+        assert command in posix
+    assert posix.count('env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill') == 4
+
+
+def test_host_integration_is_standalone_and_uses_isolated_windows_launcher() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    host_integration = onboarding.split("### 3B. Host integration and skill delivery", 1)[1].split(
+        "### 3C. Owner-authorized data maintenance", 1
+    )[0]
+    windows = host_integration.split("Windows PowerShell:", 1)[1]
+
+    assert '$NewRoot = Join-Path "<new-target>" "life-index"' in windows
+    assert '$HostHome = "<host-home>"' in windows
+    assert '$LifeIndex = Join-Path $NewRoot ".venv\\Scripts\\life-index.exe"' in windows
+    assert "Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue" in windows
+    commands = (
+        "& $LifeIndex sync-skill --list --json",
+        "& $LifeIndex sync-skill --install --host-home $HostHome --dry-run --json",
+        "& $LifeIndex sync-skill --install --host-home $HostHome --json",
+        "& $LifeIndex sync-skill --uninstall --host-home $HostHome --json",
+    )
+    for command in commands:
+        assert command in windows
+    assert windows.count("& $LifeIndex sync-skill") == 4
+
+
+def test_onboarding_separates_program_host_and_data_lifecycles() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+
+    assert "### 3A. Program replacement validation" in onboarding
+    assert "### 3B. Host integration and skill delivery" in onboarding
+    assert "### 3C. Owner-authorized data maintenance" in onboarding
+    assert (
+        "Host integration is a separate cutover action and is not evidence that program "
+        "replacement is valid."
+    ) in " ".join(onboarding.split())
+    assert (
+        "A bootstrap plan obtained against a real data root is a separate "
+        "data-maintenance plan. Never execute it merely to accept program replacement."
+    ) in " ".join(onboarding.split())
+    maintenance = onboarding.split("### 3C. Owner-authorized data maintenance", 1)[1].split(
+        "## 4. Execute The Bootstrap Plan", 1
+    )[0]
+    assert "migrate" in maintenance
+    assert "index --rebuild" in maintenance
+
+
+def test_onboarding_and_bootstrap_forbid_destructive_recovery_guidance() -> None:
+    public_guidance = "\n".join(
+        _read(path) for path in ("AGENT_ONBOARDING.md", "SKILL.md", "docs/API.md")
+    )
+    api = _read("docs/API.md")
+    bootstrap_source = _read("tools/bootstrap/__init__.py")
+
+    assert "git checkout -- ." not in public_guidance
+    assert "Delete and reclone" not in public_guidance
+    assert 'suggested_command: "git --no-optional-locks status --short"' in api
+    assert 'suggested_command: "git status --short"' not in api
+    assert '["fetch"' not in bootstrap_source
+    assert "git fetch --quiet" not in public_guidance
+
+
 def test_onboarding_documents_reversible_skill_install_safety() -> None:
     onboarding = _read("AGENT_ONBOARDING.md")
 
-    assert "life-index sync-skill --list --json" in onboarding
-    assert "life-index sync-skill --uninstall --host-home <host-home> --json" in onboarding
+    assert "sync-skill --list --json" in onboarding
+    assert "sync-skill --uninstall" in onboarding
     assert "only removes agent skill artifacts" in onboarding
     assert "never deletes journals" in onboarding
 
@@ -136,18 +282,16 @@ def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:
 
     assert "life-index health --json" in skill
     assert "upgrade_freshness" in skill
-    assert "git_freshness" in skill
+    assert "只运行该只读 `life-index upgrade --plan --json` 指针" in skill
 
 
 def test_skill_teaches_upgrade_atom_before_apply() -> None:
     skill = _read("SKILL.md")
 
     assert "life-index upgrade --plan --json" in skill
-    assert "life-index upgrade --apply --json" in skill
-    assert "safe_to_run=true" in skill
-    assert "requires_human=false" in skill
-    assert "不替代开发者发布流程" in skill
-    assert "不操作 GUI 仓" in skill
+    assert "UPGRADE_REINSTALL_REQUIRED" in skill
+    assert "AGENT_ONBOARDING.md" in skill
+    assert "现有环境、checkout 与用户数据不动" in skill
 
 
 def test_skill_teaches_host_agent_ops_discipline() -> None:
@@ -155,11 +299,8 @@ def test_skill_teaches_host_agent_ops_discipline() -> None:
     playbook = _read("references/ENTITY_MAINTENANCE_PLAYBOOK.md")
 
     assert "运维纪律" in skill
-    assert "不是开发者" in skill
-    assert "不要向产品仓库克隆 commit/push" in skill
-    assert "git status --porcelain" in skill
-    assert "git checkout -- ." in skill
-    assert "<data>/frictions/" in skill
+    assert "dedicated install" in skill
+    assert "只读诊断" in skill
     assert "运维纪律" in playbook
 
 

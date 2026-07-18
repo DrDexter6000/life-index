@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -171,11 +172,9 @@ class TestHealthCheck:
         assert freshness["freshness"] == "update_available"
         assert freshness["git"]["freshness"] == "behind"
         assert freshness["git"]["behind_count"] == 2
-        assert freshness["suggested_refresh_step"] == (
-            "git pull --ff-only && python -m pip install -e ."
-        )
-        assert freshness["suggested_refresh_step_side_effect"] == "write"
-        assert "Python environment" in freshness["suggested_refresh_step_side_effect_note"]
+        assert freshness["suggested_refresh_step"] == "life-index upgrade --plan --json"
+        assert freshness["suggested_refresh_step_side_effect"] == "read"
+        assert "read-only" in freshness["suggested_refresh_step_side_effect_note"].lower()
         assert freshness["changelog"] == "CHANGELOG.md"
 
         check = next(
@@ -183,6 +182,9 @@ class TestHealthCheck:
         )
         assert check["status"] == "warning"
         assert "git-behind" in check["issue"]
+        assert "git pull" not in check["issue"]
+        assert "pip install" not in check["issue"]
+        assert "sync-skill --install" not in check["issue"]
 
     def test_local_git_freshness_reports_dirty_worktree(self, tmp_path):
         """Dirty editable checkouts should be visible to host agents before upgrade."""
@@ -204,6 +206,93 @@ class TestHealthCheck:
 
         assert clean["git_worktree_dirty"] is False
         assert clean["git_worktree_dirty_count"] == 0
+
+    def test_local_git_status_disables_optional_locks(self, tmp_path, monkeypatch):
+        from tools import __main__ as main_cli
+
+        commands: list[list[str]] = []
+
+        def fake_run_git(path: Path, args: list[str]):
+            commands.append(args)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        monkeypatch.setattr(main_cli, "_run_git_local", fake_run_git)
+
+        main_cli._detect_local_git_worktree(tmp_path)
+
+        assert commands == [["--no-optional-locks", "status", "--porcelain"]]
+
+    def test_local_git_freshness_remote_difference_is_unknown_without_ref_writes(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        from tools import __main__ as main_cli
+
+        repo = tmp_path / "checkout"
+        (repo / ".git").mkdir(parents=True)
+        commands: list[list[str]] = []
+
+        def fake_run_git(path: Path, args: list[str]):
+            commands.append(args)
+            if args == ["--no-optional-locks", "status", "--porcelain"]:
+                return subprocess.CompletedProcess([], 0, "", "")
+            if args == ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
+                return subprocess.CompletedProcess([], 0, "origin/main\n", "")
+            if args == ["rev-parse", "origin/main"]:
+                return subprocess.CompletedProcess([], 0, "local-tracking-head\n", "")
+            if args == ["ls-remote", "--heads", "origin", "main"]:
+                return subprocess.CompletedProcess([], 0, "remote-head\trefs/heads/main\n", "")
+            if args == ["rev-list", "--left-right", "--count", "HEAD...origin/main"]:
+                return subprocess.CompletedProcess([], 0, "0 0\n", "")
+            raise AssertionError(f"Unexpected git command: {args}")
+
+        monkeypatch.setattr(main_cli, "_run_git_local", fake_run_git)
+
+        freshness = main_cli._detect_local_git_freshness(repo)
+
+        assert all(command[0] not in {"fetch", "pull", "reset"} for command in commands)
+        assert freshness["git_freshness"] == "unknown"
+        assert freshness["git_behind_count"] is None
+        assert "life-index upgrade --plan --json" in freshness["git_error"]
+
+    def test_health_freshness_does_not_claim_current_when_remote_truth_is_unknown(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        from tools import __main__ as main_cli
+
+        checkout = tmp_path / "checkout"
+        (checkout / ".git").mkdir(parents=True)
+        monkeypatch.setattr(
+            main_cli, "BOOTSTRAP_MANIFEST_PATH", checkout / "bootstrap-manifest.json"
+        )
+        monkeypatch.setattr(main_cli, "read_bootstrap_manifest", lambda: {"repo_version": "1.5.1"})
+        monkeypatch.setattr(main_cli, "_raw_installed_package_version", lambda: "1.5.1")
+        monkeypatch.setattr(
+            main_cli,
+            "_detect_local_git_freshness",
+            lambda path: {
+                "git_freshness": "unknown",
+                "git_upstream": "origin/main",
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": (
+                    "Remote tip differs from local tracking state; run "
+                    "life-index upgrade --plan --json."
+                ),
+                "git_worktree_dirty": False,
+                "git_worktree_dirty_count": 0,
+                "git_worktree_dirty_error": None,
+            },
+        )
+
+        state = main_cli._detect_upgrade_freshness_state()
+
+        assert state["freshness"] == "unknown"
+        assert state["update_available"] is None
+        assert state["suggested_refresh_step"] == "life-index upgrade --plan --json"
 
     def test_upgrade_freshness_dirty_worktree_is_warning_hint_not_issue(
         self,
@@ -246,9 +335,10 @@ class TestHealthCheck:
             "Repository clone has uncommitted changes; dirty clones can cause "
             "Life Index upgrades to fail."
         )
-        assert check["suggested_command"] == "git checkout -- ."
-        assert check["side_effect"] == "write"
-        assert "repository clone" in check["side_effect_note"]
+        assert check["suggested_command"] == "git --no-optional-locks status --short"
+        assert check["side_effect"] == "read"
+        assert "ask the owner" in check["side_effect_note"].lower()
+        assert "discard" not in check["side_effect_note"].lower()
         assert check["git"]["dirty"] is True
         assert check["git"]["dirty_count"] == 2
         assert "issue" not in check

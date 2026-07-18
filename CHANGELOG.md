@@ -6,6 +6,15 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Changed
+
+- `life-index upgrade --plan/--apply --json` is now read-only: update or
+  program inconsistency reports `UPGRADE_REINSTALL_REQUIRED` and points to a
+  fresh dedicated install, while healthy/current apply is a truthful no-op.
+- Upgrade guidance preserves user data and leaves shared/global environments
+  and developer/user-owned checkouts untouched instead of attempting in-place
+  git, pip, or skill repair.
+
 ## [1.5.1] - 2026-07-17
 
 ### What users get

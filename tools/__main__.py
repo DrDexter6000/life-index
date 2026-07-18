@@ -89,13 +89,15 @@ DIRTY_WORKTREE_WARNING = (
     "Repository clone has uncommitted changes; dirty clones can cause "
     "Life Index upgrades to fail."
 )
-DIRTY_WORKTREE_SUGGESTED_COMMAND = "git checkout -- ."
+DIRTY_WORKTREE_SUGGESTED_COMMAND = "git --no-optional-locks status --short"
 DERIVED_INDEX_NOTE = "Writes derived index artifacts only; source journals are not modified."
 DERIVED_ENTITY_PROFILES_NOTE = (
     "Writes derived Entities/ profile docs only; entity_graph.yaml is not modified."
 )
-REPO_RECOVERY_NOTE = "Writes to the repository clone by discarding uncommitted checkout changes."
-UPGRADE_REFRESH_NOTE = "Writes to the local checkout or Python environment to refresh Life Index."
+REPO_RECOVERY_NOTE = (
+    "Read-only inspection of uncommitted checkout changes; leave them untouched and ask the owner."
+)
+UPGRADE_REFRESH_NOTE = "Read-only upgrade planning; follow the returned onboarding pointer."
 READ_ONLY_ENTITY_REVIEW_NOTE = (
     "Read-only review queue/audit command unless an explicit action is supplied."
 )
@@ -188,7 +190,7 @@ def _run_git_local(checkout: Path, args: list[str]) -> subprocess.CompletedProce
 
 def _detect_local_git_worktree(checkout: Path) -> Dict[str, Any]:
     try:
-        result = _run_git_local(checkout, ["status", "--porcelain"])
+        result = _run_git_local(checkout, ["--no-optional-locks", "status", "--porcelain"])
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "git status failed").strip()
             return {
@@ -241,6 +243,79 @@ def _detect_local_git_freshness(checkout: Path | None) -> Dict[str, Any]:
                 "git_behind_count": None,
                 "git_ahead_count": None,
                 "git_error": "No upstream branch or origin/main ref found",
+                **worktree_status,
+            }
+
+        if "/" not in upstream:
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": (
+                    "Upstream is not a remote-tracking branch; run "
+                    "life-index upgrade --plan --json."
+                ),
+                **worktree_status,
+            }
+
+        remote, branch = upstream.split("/", 1)
+        local_upstream_result = _run_git_local(checkout, ["rev-parse", upstream])
+        if local_upstream_result.returncode != 0:
+            detail = (
+                local_upstream_result.stderr
+                or local_upstream_result.stdout
+                or "local upstream ref was not found"
+            ).strip()
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": f"{detail}; run life-index upgrade --plan --json.",
+                **worktree_status,
+            }
+
+        remote_result = _run_git_local(checkout, ["ls-remote", "--heads", remote, branch])
+        if remote_result.returncode != 0:
+            detail = (remote_result.stderr or remote_result.stdout or "remote probe failed").strip()
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": f"{detail}; run life-index upgrade --plan --json.",
+                **worktree_status,
+            }
+
+        remote_head = next(
+            (
+                line.split()[0]
+                for line in remote_result.stdout.splitlines()
+                if len(line.split()) >= 2
+            ),
+            None,
+        )
+        local_upstream_head = local_upstream_result.stdout.strip()
+        if not remote_head:
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": ("Remote branch was not found; run life-index upgrade --plan --json."),
+                **worktree_status,
+            }
+        if remote_head != local_upstream_head:
+            return {
+                "git_freshness": "unknown",
+                "git_upstream": upstream,
+                "git_behind_count": None,
+                "git_ahead_count": None,
+                "git_error": (
+                    "Remote tip differs from the local tracking ref; exact ancestry is "
+                    "unknown without updating refs. Run life-index upgrade --plan --json."
+                ),
                 **worktree_status,
             }
 
@@ -299,18 +374,18 @@ def _detect_upgrade_freshness_state() -> Dict[str, Any]:
     if int(git_status.get("git_behind_count") or 0) > 0:
         update_reasons.append("git_behind")
 
+    freshness_error = git_status.get("git_error")
     suggested_refresh_step: str | None = None
-    if update_reasons:
-        if "git_behind" in update_reasons or install_type == "editable":
-            suggested_refresh_step = "git pull --ff-only && python -m pip install -e ."
-        else:
-            suggested_refresh_step = "python -m pip install -U life-index"
+    if update_reasons or freshness_error:
+        suggested_refresh_step = "life-index upgrade --plan --json"
 
     return {
         "installed_version": installed_version,
         "manifest_version": manifest_version,
         "install_type": install_type,
-        "freshness": "update_available" if update_reasons else "current",
+        "freshness": (
+            "update_available" if update_reasons else "unknown" if freshness_error else "current"
+        ),
         "update_available": (
             ("git-behind" if "git_behind" in update_reasons else "install-mismatch")
             if update_reasons
@@ -318,7 +393,7 @@ def _detect_upgrade_freshness_state() -> Dict[str, Any]:
         ),
         "update_reasons": update_reasons,
         "suggested_refresh_step": suggested_refresh_step,
-        "freshness_error": git_status.get("git_error"),
+        "freshness_error": freshness_error,
         **git_status,
     }
 
@@ -355,7 +430,15 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
 
     update_reasons = list(state.get("update_reasons") or [])
     dirty_worktree = state.get("git_worktree_dirty") is True
-    status = "warning" if update_reasons or dirty_worktree else "ok"
+    status = (
+        "warning"
+        if update_reasons or dirty_worktree
+        else "info" if state.get("freshness_error") else "ok"
+    )
+    suggested_refresh_step = state.get("suggested_refresh_step")
+    if suggested_refresh_step:
+        suggested_refresh_step = "life-index upgrade --plan --json"
+
     check = {
         "name": "upgrade_freshness",
         "status": status,
@@ -365,7 +448,7 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
         "install_type": state.get("install_type", "unknown"),
         "update_available": state.get("update_available"),
         "update_reasons": update_reasons,
-        "suggested_refresh_step": state.get("suggested_refresh_step"),
+        "suggested_refresh_step": suggested_refresh_step,
         "freshness_error": state.get("freshness_error"),
         "changelog": CHANGELOG_POINTER,
         "git": {
@@ -382,22 +465,22 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
     }
 
     if check["suggested_refresh_step"]:
-        check["suggested_refresh_step_side_effect"] = "write"
+        check["suggested_refresh_step_side_effect"] = "read"
         check["suggested_refresh_step_side_effect_note"] = UPGRADE_REFRESH_NOTE
 
     if dirty_worktree:
         check["warning"] = DIRTY_WORKTREE_WARNING
-        check["side_effect"] = "write"
+        check["side_effect"] = "read"
         check["side_effect_note"] = REPO_RECOVERY_NOTE
 
     if not update_reasons:
         return check, ""
 
     reason = str(state.get("update_available") or ",".join(update_reasons))
-    step = state.get("suggested_refresh_step") or "life-index bootstrap --json"
+    step = check["suggested_refresh_step"] or "life-index bootstrap --json"
     issue = (
         f"Life Index upgrade freshness reports {reason}; run: {step}; "
-        f"then run life-index sync-skill --install. See {CHANGELOG_POINTER}."
+        f"then follow the returned onboarding pointer. See {CHANGELOG_POINTER}."
     )
     check["issue"] = issue
     return check, issue
