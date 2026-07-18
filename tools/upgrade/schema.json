@@ -1,6 +1,6 @@
 {
   "name": "upgrade",
-  "description": "Plan or apply deterministic Life Index CLI upgrade steps for host agents.",
+  "description": "Diagnose Life Index program freshness and report whether clean replacement is required.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -10,7 +10,7 @@
       },
       "apply": {
         "type": "boolean",
-        "description": "Apply safe upgrade actions only."
+        "description": "Return a read-only no-op or a reinstall-required error without mutating the environment."
       },
       "json": {
         "type": "boolean",

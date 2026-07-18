@@ -18,6 +18,7 @@ from tools.lib.bootstrap_manifest import REPO_BOOTSTRAP_MANIFEST_PATH
 from tools.lib.bootstrap_manifest import get_manifest_version
 
 UPGRADE_SCHEMA_VERSION = "m36.upgrade.v0"
+CANONICAL_ONBOARDING_PATH = "AGENT_ONBOARDING.md"
 PYPI_JSON_URL = "https://pypi.org/pypi/life-index/json"
 PYPI_TIMEOUT_SECONDS = 4.0
 
@@ -65,10 +66,6 @@ class GitRunner(Protocol):
     def inspect(self, repo_path: Path) -> GitState: ...
 
     def probe_remote(self, repo_path: Path) -> dict[str, Any]: ...
-
-    def refresh_remote(self, repo_path: Path) -> CommandResult: ...
-
-    def pull_ff_only(self, repo_path: Path) -> CommandResult: ...
 
 
 class CommandRunner(Protocol):
@@ -243,12 +240,6 @@ class SubprocessGitRunner:
             "remote_head": remote_head,
             "error": None,
         }
-
-    def refresh_remote(self, repo_path: Path) -> CommandResult:
-        return self._git(repo_path, "fetch", "--prune")
-
-    def pull_ff_only(self, repo_path: Path) -> CommandResult:
-        return self._git(repo_path, "pull", "--ff-only")
 
 
 def _version_tuple(version: str | None) -> tuple[int, ...] | None:
@@ -431,19 +422,6 @@ def _display_command(command: list[str]) -> list[str]:
     return command
 
 
-def _quote_command_arg(value: str | Path) -> str:
-    text = str(value)
-    if not text:
-        return '""'
-    if any(char.isspace() for char in text):
-        return '"' + text.replace('"', '\\"') + '"'
-    return text
-
-
-def _editable_install_command(repo_path: Path) -> str:
-    return f"python -m pip install -e {_quote_command_arg(repo_path)}"
-
-
 def _sync_skill_list_current(sync_skill_status: dict[str, Any]) -> bool:
     if not sync_skill_status.get("json_parseable"):
         return False
@@ -466,23 +444,19 @@ def _sync_skill_list_current(sync_skill_status: dict[str, Any]) -> bool:
     return len(canonical) == 1 and len(discovered) == 1
 
 
-def _editable_reinstall_safe(
-    *,
-    git_state: GitState | None,
-    remote_probe: dict[str, Any] | None,
-    needs_git_update: bool,
-) -> bool:
-    if git_state is None:
-        return False
-    if git_state.dirty is not False:
-        return False
-    if int(git_state.ahead_count or 0) > 0:
-        return False
-    if remote_probe and remote_probe.get("status") in {"unreachable", "unknown"}:
-        return False
-    if needs_git_update and int(git_state.behind_count or 0) > 0:
-        return bool(git_state.can_fast_forward)
-    return True
+def _reinstall_action(reasons: list[str]) -> dict[str, Any]:
+    return _action(
+        action_id="reinstall_managed_environment",
+        description=(
+            "Leave the existing environment and checkout untouched; create a fresh "
+            "dedicated install."
+        ),
+        side_effect="write",
+        command=None,
+        reason=" ".join(reasons) + f" Follow {CANONICAL_ONBOARDING_PATH}.",
+        safe_to_run=False,
+        requires_human=True,
+    )
 
 
 def build_upgrade_plan(
@@ -528,16 +502,19 @@ def build_upgrade_plan(
         command_runner,
         [sys.executable, "-m", "tools", "sync-skill", "--list", "--json"],
     )
-    git_update_action_needed = False
+    reinstall_reasons: list[str] = []
 
     if git_state and git_state.dirty:
         actions.append(
             _action(
                 action_id="resolve_dirty_worktree",
-                description="Resolve uncommitted checkout changes before upgrading.",
+                description=(
+                    "Leave the existing environment and checkout untouched; inspect "
+                    "the uncommitted changes with the owner."
+                ),
                 side_effect="read",
                 command="git status --short",
-                reason="Dirty checkouts can make upgrades unsafe.",
+                reason="A dirty checkout is human-owned state and must not be mutated.",
                 safe_to_run=False,
                 requires_human=True,
             )
@@ -546,7 +523,10 @@ def build_upgrade_plan(
         actions.append(
             _action(
                 action_id="git_requires_human",
-                description="Local checkout has commits not present upstream.",
+                description=(
+                    "Leave the existing environment and checkout untouched; inspect "
+                    "the local commits with the owner."
+                ),
                 side_effect="read",
                 command="git status --short --branch",
                 reason="Ahead or diverged checkouts require human review.",
@@ -555,39 +535,18 @@ def build_upgrade_plan(
             )
         )
     elif git_state and (git_state.behind_count or 0) > 0:
-        git_update_action_needed = True
-        actions.append(
-            _action(
-                action_id="git_pull_ff_only",
-                description="Fast-forward the clean source checkout.",
-                side_effect="write",
-                command="git pull --ff-only",
-                reason="The checkout is behind its upstream ref.",
-                safe_to_run=git_state.can_fast_forward,
-                requires_human=not git_state.can_fast_forward,
-            )
-        )
+        reinstall_reasons.append("The source checkout is behind its upstream ref.")
     elif git_state and remote_probe and remote_probe.get("status") == "behind_remote":
-        git_update_action_needed = True
-        actions.append(
-            _action(
-                action_id="git_refresh_then_pull_ff_only",
-                description="Refresh remote refs, then fast-forward the clean source checkout.",
-                side_effect="write",
-                command="git fetch --prune && git pull --ff-only",
-                reason="The remote branch has commits not visible in local tracking refs.",
-                safe_to_run=git_state.dirty is False and int(git_state.ahead_count or 0) == 0,
-                requires_human=not (
-                    git_state.dirty is False and int(git_state.ahead_count or 0) == 0
-                ),
-            )
+        reinstall_reasons.append(
+            "The remote branch has commits not visible in local tracking refs."
         )
     elif git_state and remote_probe and remote_probe.get("status") in {"unreachable", "unknown"}:
         actions.append(
             _action(
                 action_id="inspect_git_remote",
                 description=(
-                    "Inspect git remote freshness before applying source checkout upgrades."
+                    "Leave the existing environment and checkout untouched; inspect "
+                    "remote freshness before creating a fresh dedicated install."
                 ),
                 side_effect="read",
                 command="git status --short --branch",
@@ -597,64 +556,27 @@ def build_upgrade_plan(
             )
         )
 
-    editable_version_drift = bool(
-        context.install_type == "editable"
-        and context.package_version
+    version_inconsistent = bool(
+        context.package_version
         and context.manifest_version
         and context.package_version != context.manifest_version
     )
-    if (
-        context.install_type == "editable"
-        and context.repo_path
-        and (git_update_action_needed or editable_version_drift)
-    ):
-        safe_to_run = _editable_reinstall_safe(
-            git_state=git_state,
-            remote_probe=remote_probe,
-            needs_git_update=git_update_action_needed,
-        )
-        reason = (
-            "Editable package metadata differs from the bootstrap manifest."
-            if editable_version_drift
-            else "Editable installs need reinstall after source checkout updates."
-        )
-        actions.append(
-            _action(
-                action_id="pip_install_editable",
-                description="Reinstall the editable source checkout into the active environment.",
-                side_effect="write",
-                command=_editable_install_command(context.repo_path),
-                reason=reason,
-                safe_to_run=safe_to_run,
-                requires_human=not safe_to_run,
-            )
-        )
+    if version_inconsistent:
+        reinstall_reasons.append("Installed package metadata differs from the bootstrap manifest.")
 
     if recommended_version:
-        if context.install_type == "package":
-            actions.append(
-                _action(
-                    action_id="pip_install_upgrade",
-                    description="Upgrade the installed PyPI package.",
-                    side_effect="write",
-                    command=f"python -m pip install --upgrade life-index=={recommended_version}",
-                    reason="A newer non-yanked PyPI release is recommended.",
-                    safe_to_run=True,
-                    requires_human=False,
-                )
-            )
-        elif context.install_type == "unknown":
-            actions.append(
-                _action(
-                    action_id="inspect_install_method",
-                    description="Inspect the Life Index installation method before upgrading.",
-                    side_effect="read",
-                    command="life-index --version",
-                    reason="A newer release exists, but install type is unknown.",
-                    safe_to_run=False,
-                    requires_human=True,
-                )
-            )
+        reinstall_reasons.append(
+            "A newer non-yanked PyPI release requires program-environment replacement."
+        )
+
+    if not health_status.get("json_parseable") or health_status.get("returncode") != 0:
+        reinstall_reasons.append("The installed health command is not healthy and parseable.")
+
+    if not _sync_skill_list_current(sync_skill_status):
+        reinstall_reasons.append("The installed agent playbook is not current and canonical.")
+
+    if reinstall_reasons:
+        actions.append(_reinstall_action(reinstall_reasons))
 
     actions.append(
         _action(
@@ -662,24 +584,11 @@ def build_upgrade_plan(
             description="Verify health JSON is parseable.",
             side_effect="read",
             command="life-index health --json",
-            reason="Upgrade completion requires a parseable health surface.",
+            reason="Upgrade diagnostics require a parseable health surface.",
             safe_to_run=True,
             requires_human=False,
         )
     )
-    if not _sync_skill_list_current(sync_skill_status):
-        actions.append(
-            _action(
-                action_id="sync_skill_install",
-                description="Refresh the host-agent Life Index skill playbook.",
-                side_effect="write",
-                command="life-index sync-skill --install --json",
-                reason="Tools without the matching SKILL.md/references are incomplete.",
-                safe_to_run=True,
-                requires_human=False,
-            )
-        )
-
     recommended_next_step = next((action for action in actions if not action["safe_to_run"]), None)
     if recommended_next_step is None:
         recommended_next_step = next(
@@ -721,6 +630,7 @@ def build_upgrade_plan(
             "git": git_payload,
             "health": health_status,
             "sync_skill": sync_skill_status,
+            "onboarding": CANONICAL_ONBOARDING_PATH,
             "actions": actions,
             "recommended_next_step": recommended_next_step,
             "partial": bool(
@@ -770,96 +680,38 @@ def apply_upgrade(
         command_runner=command_runner,
     )
     git_data = plan["data"].get("git")
-    applied: list[dict[str, Any]] = []
+    no_write_data = {"reinstall_required": False, "applied_actions": []}
 
-    if git_data:
-        if git_data.get("dirty") is True:
-            return _error_result(
-                "UPGRADE_DIRTY_WORKTREE",
-                "Refusing to upgrade a dirty source checkout.",
-                plan,
-            )
-        if int(git_data.get("ahead_count") or 0) > 0:
-            return _error_result(
-                "UPGRADE_GIT_REQUIRES_HUMAN",
-                "Refusing to upgrade an ahead or diverged source checkout.",
-                plan,
-            )
-        if int(git_data.get("behind_count") or 0) > 0:
-            if not git_data.get("can_fast_forward"):
-                return _error_result(
-                    "UPGRADE_GIT_REQUIRES_HUMAN",
-                    "Source checkout is behind but cannot be proven fast-forward safe.",
-                    plan,
-                )
-            assert context.repo_path is not None
-            pull = git_runner.pull_ff_only(context.repo_path)
-            if pull.returncode != 0:
-                return _error_result(
-                    "UPGRADE_GIT_PULL_FAILED",
-                    pull.stderr or pull.stdout or "git pull --ff-only failed",
-                    plan,
-                )
-            applied.append({"id": "git_pull_ff_only", "returncode": pull.returncode})
-        remote_probe = git_data.get("remote_probe") if isinstance(git_data, dict) else None
-        if (
-            isinstance(remote_probe, dict)
-            and remote_probe.get("status") == "behind_remote"
-            and int(git_data.get("behind_count") or 0) == 0
-        ):
-            assert context.repo_path is not None
-            refresh = git_runner.refresh_remote(context.repo_path)
-            if refresh.returncode != 0:
-                return _error_result(
-                    "UPGRADE_GIT_REFRESH_FAILED",
-                    refresh.stderr or refresh.stdout or "git fetch --prune failed",
-                    plan,
-                    {"applied_actions": applied},
-                )
-            applied.append({"id": "git_remote_refresh", "returncode": refresh.returncode})
+    if isinstance(git_data, dict) and git_data.get("dirty") is True:
+        return _error_result(
+            "UPGRADE_DIRTY_WORKTREE",
+            "Refusing to upgrade a dirty source checkout.",
+            plan,
+            no_write_data,
+        )
+    if isinstance(git_data, dict) and int(git_data.get("ahead_count") or 0) > 0:
+        return _error_result(
+            "UPGRADE_GIT_REQUIRES_HUMAN",
+            "Refusing to upgrade an ahead or diverged source checkout.",
+            plan,
+            no_write_data,
+        )
 
-            refreshed_state = git_runner.inspect(context.repo_path)
-            refreshed_git = _git_payload(
-                refreshed_state,
-                {"status": "refreshed", "has_updates": None, "error": None},
-            )
-            if refreshed_git and refreshed_git.get("dirty") is True:
-                return _error_result(
-                    "UPGRADE_DIRTY_WORKTREE",
-                    "Refusing to upgrade a dirty source checkout after remote refresh.",
-                    plan,
-                    {"applied_actions": applied, "refreshed_git": refreshed_git},
-                )
-            if refreshed_git and int(refreshed_git.get("ahead_count") or 0) > 0:
-                return _error_result(
-                    "UPGRADE_GIT_REQUIRES_HUMAN",
-                    (
-                        "Refusing to upgrade an ahead or diverged source checkout "
-                        "after remote refresh."
-                    ),
-                    plan,
-                    {"applied_actions": applied, "refreshed_git": refreshed_git},
-                )
-            if refreshed_git and int(refreshed_git.get("behind_count") or 0) > 0:
-                if not refreshed_git.get("can_fast_forward"):
-                    return _error_result(
-                        "UPGRADE_GIT_REQUIRES_HUMAN",
-                        (
-                            "Source checkout is behind after refresh but cannot be proven "
-                            "fast-forward safe."
-                        ),
-                        plan,
-                        {"applied_actions": applied, "refreshed_git": refreshed_git},
-                    )
-                pull = git_runner.pull_ff_only(context.repo_path)
-                if pull.returncode != 0:
-                    return _error_result(
-                        "UPGRADE_GIT_PULL_FAILED",
-                        pull.stderr or pull.stdout or "git pull --ff-only failed",
-                        plan,
-                        {"applied_actions": applied, "refreshed_git": refreshed_git},
-                    )
-                applied.append({"id": "git_pull_ff_only", "returncode": pull.returncode})
+    reinstall_required = any(
+        action.get("id") == "reinstall_managed_environment"
+        for action in plan["data"].get("actions", [])
+    )
+    if reinstall_required:
+        return _error_result(
+            "UPGRADE_REINSTALL_REQUIRED",
+            "The program environment must be replaced through the canonical onboarding path.",
+            plan,
+            {
+                "reinstall_required": True,
+                "applied_actions": [],
+                "onboarding": CANONICAL_ONBOARDING_PATH,
+            },
+        )
 
     blocking_actions = [
         action
@@ -869,142 +721,13 @@ def apply_upgrade(
     if blocking_actions:
         return _error_result(
             "UPGRADE_REQUIRES_HUMAN",
-            "Refusing to apply upgrade while the plan contains actions requiring human review.",
+            "Refusing to apply while the read-only plan requires human review.",
             plan,
-            {"blocking_actions": blocking_actions, "applied_actions": applied},
+            {
+                **no_write_data,
+                "blocking_actions": blocking_actions,
+            },
         )
-
-    plan_action_ids = {action.get("id") for action in plan["data"].get("actions", [])}
-    recommended = plan["data"]["pypi"].get("recommended_version")
-    if recommended and context.install_type == "package":
-        pip = command_runner.run(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                f"life-index=={recommended}",
-            ]
-        )
-        if pip.returncode != 0:
-            return _error_result(
-                "UPGRADE_PIP_INSTALL_FAILED",
-                pip.stderr or pip.stdout or "pip install failed",
-                plan,
-            )
-        applied.append({"id": "pip_install_upgrade", "returncode": pip.returncode})
-
-    if "pip_install_editable" in plan_action_ids:
-        assert context.repo_path is not None
-        pip_editable = command_runner.run(
-            [sys.executable, "-m", "pip", "install", "-e", str(context.repo_path)]
-        )
-        if pip_editable.returncode != 0:
-            return _error_result(
-                "UPGRADE_EDITABLE_INSTALL_FAILED",
-                pip_editable.stderr or pip_editable.stdout or "pip install -e failed",
-                plan,
-                {"applied_actions": applied},
-            )
-        applied.append({"id": "pip_install_editable", "returncode": pip_editable.returncode})
-
-    version_check = _run_json_check(command_runner, [sys.executable, "-m", "tools", "--version"])
-    if not version_check.get("json_parseable"):
-        return {
-            "success": False,
-            "schema_version": UPGRADE_SCHEMA_VERSION,
-            "command": "upgrade",
-            "mode": "apply",
-            "error": {
-                "code": "UPGRADE_VERSION_CHECK_FAILED",
-                "message": "life-index --version did not emit parseable JSON.",
-            },
-            "data": {**plan["data"], "applied_actions": applied, "version_check": version_check},
-        }
-    version_data = version_check.get("data")
-    if isinstance(version_data, dict):
-        package = version_data.get("package_version")
-        manifest_payload = version_data.get("bootstrap_manifest")
-        repo_version = (
-            manifest_payload.get("repo_version") if isinstance(manifest_payload, dict) else None
-        )
-        if package and repo_version and package != repo_version:
-            suggested_command = None
-            if context.install_type == "editable" and context.repo_path:
-                suggested_command = _editable_install_command(context.repo_path)
-            error_code = (
-                "UPGRADE_VERSION_INCONSISTENT"
-                if context.install_type == "editable"
-                else "UPGRADE_VERSION_CHECK_FAILED"
-            )
-            return {
-                "success": False,
-                "schema_version": UPGRADE_SCHEMA_VERSION,
-                "command": "upgrade",
-                "mode": "apply",
-                "error": {
-                    "code": error_code,
-                    "message": "package_version and bootstrap manifest repo_version differ.",
-                },
-                "data": {
-                    **plan["data"],
-                    "applied_actions": applied,
-                    "version_check": version_check,
-                    "package_version": package,
-                    "repo_version": repo_version,
-                    "suggested_command": suggested_command,
-                },
-            }
-
-    sync_skill = _run_json_check(
-        command_runner,
-        [sys.executable, "-m", "tools", "sync-skill", "--install", "--json"],
-    )
-    sync_payload = sync_skill.get("data") if isinstance(sync_skill.get("data"), dict) else None
-    sync_delivered = False
-    if isinstance(sync_payload, dict):
-        data = sync_payload.get("data")
-        if isinstance(data, dict):
-            sync_delivered = data.get("delivered") is True
-
-    if not sync_delivered:
-        return {
-            "success": False,
-            "schema_version": UPGRADE_SCHEMA_VERSION,
-            "command": "upgrade",
-            "mode": "apply",
-            "error": {
-                "code": "UPGRADE_SYNC_SKILL_NOT_DELIVERED",
-                "message": "sync-skill --install did not report delivered=true.",
-            },
-            "data": {
-                **plan["data"],
-                "applied_actions": applied,
-                "version_check": version_check,
-                "sync_skill": sync_payload,
-            },
-        }
-
-    health = _run_json_check(command_runner, [sys.executable, "-m", "tools", "health", "--json"])
-    if not health.get("json_parseable"):
-        return {
-            "success": False,
-            "schema_version": UPGRADE_SCHEMA_VERSION,
-            "command": "upgrade",
-            "mode": "apply",
-            "error": {
-                "code": "UPGRADE_HEALTH_JSON_FAILED",
-                "message": "life-index health --json did not emit parseable JSON.",
-            },
-            "data": {
-                **plan["data"],
-                "applied_actions": applied,
-                "version_check": version_check,
-                "sync_skill": sync_payload,
-                "health": health,
-            },
-        }
 
     return {
         "success": True,
@@ -1013,9 +736,6 @@ def apply_upgrade(
         "mode": "apply",
         "data": {
             **plan["data"],
-            "applied_actions": applied,
-            "version_check": version_check,
-            "health": health,
-            "sync_skill": sync_payload,
+            **no_write_data,
         },
     }

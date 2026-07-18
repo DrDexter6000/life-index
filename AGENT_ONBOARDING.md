@@ -1,7 +1,7 @@
 # Agent Onboarding Guide: Life Index
 
-> Purpose: install or upgrade Life Index by running `life-index bootstrap --json`
-> and executing only the structured plan it returns.
+> Purpose: install or clean-replace Life Index by running
+> `life-index bootstrap --json` and executing only the structured plan it returns.
 >
 > Authority: `CHARTER.md` owns invariants. `bootstrap-manifest.json` owns the
 > current required authority documents.
@@ -40,6 +40,9 @@ stays physically separate from the code checkout. The phrases "fresh install",
 "repair", "reinstall", or "upgrade" only authorize code/package work unless the
 user explicitly asks for a data operation.
 
+Dedicated venvs, host-managed checkouts, package metadata, and dependencies are disposable program state. When replacement is required, create a fresh dedicated install.
+Leave shared/global Python environments and existing developer- or user-owned checkouts untouched. Never uninstall from, repair, or delete them automatically.
+
 ## 3. Get A Runnable Bootstrap Command
 
 Use an existing Life Index command if one works:
@@ -54,20 +57,17 @@ If you are already inside a Life Index checkout, use:
 python -m tools bootstrap --json
 ```
 
-If neither command exists yet, install clean code in a normal product checkout
-without touching user data:
+If neither command exists, or `upgrade` reports
+`reinstall_managed_environment`, create clean code in a new dedicated target
+without touching the existing environment, checkout, or user data:
 
 ```bash
-git clone https://github.com/DrDexter6000/life-index.git <target>/life-index
-cd <target>/life-index
+git clone https://github.com/DrDexter6000/life-index.git <new-target>/life-index
+cd <new-target>/life-index
 python -m venv .venv
 .venv/bin/pip install -e .      # Windows: .venv\Scripts\pip install -e .
 python -m tools bootstrap --json
 ```
-
-For an existing confirmed checkout, refresh code before trusting a same-version
-install. A matching package version does not prove the checkout is current. For
-editable git installs, use `git pull --ff-only && pip install -e .`.
 
 When evaluating an existing checkout, pass it to bootstrap instead of deciding
 from prose:
@@ -90,10 +90,11 @@ Read the JSON in this order:
 2. `execution_policy`: obey it literally. It means:
    - run `safe_next_steps` in order without additions;
    - on uncertainty or command failure, stop and report exact output;
-   - recovery is code/package refresh only, then rerun bootstrap;
+   - replacement creates a fresh dedicated program install, then reruns bootstrap;
    - data is never deleted or overwritten.
-3. `safe_next_steps`: run each command exactly as listed, using the active
-   Life Index environment. Do not skip, reorder, or append commands.
+3. `safe_next_steps`: run each command exactly as listed in the fresh dedicated
+   Life Index environment. Do not redirect write steps into an existing
+   shared/global environment or developer/user checkout.
 4. `detected_state`: use it for reporting facts such as `data_dir`,
    `install_type`, `freshness`, and `update_available`.
 

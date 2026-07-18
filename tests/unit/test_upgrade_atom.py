@@ -115,20 +115,6 @@ class FakeCommandRunner:
         return CommandResult(returncode=0, stdout="{}\n", stderr="")
 
 
-def _command_index(commands: list[list[str]], needle: str) -> int:
-    for index, command in enumerate(commands):
-        if needle in " ".join(command):
-            return index
-    raise AssertionError(f"Command not found: {needle}")
-
-
-def _last_command_index(commands: list[list[str]], needle: str) -> int:
-    for index in range(len(commands) - 1, -1, -1):
-        if needle in " ".join(commands[index]):
-            return index
-    raise AssertionError(f"Command not found: {needle}")
-
-
 def test_plan_reports_versions_recommended_release_actions_and_json_purity() -> None:
     from tools.upgrade.core import InstallContext, ReleaseInfo, build_upgrade_plan
 
@@ -154,11 +140,89 @@ def test_plan_reports_versions_recommended_release_actions_and_json_purity() -> 
     assert plan["data"]["installed"]["package_version"] == "1.4.3"
     assert plan["data"]["installed"]["bootstrap_manifest_repo_version"] == "1.4.3"
     assert plan["data"]["pypi"]["recommended_version"] == "1.4.4"
-    assert any(action["id"] == "pip_install_upgrade" for action in plan["data"]["actions"])
-    assert plan["data"]["recommended_next_step"]["command"] == (
-        "python -m pip install --upgrade life-index==1.4.4"
-    )
+    replacement = plan["data"]["recommended_next_step"]
+    assert replacement["id"] == "reinstall_managed_environment"
+    assert replacement["command"] is None
+    assert replacement["safe_to_run"] is False
+    assert replacement["requires_human"] is True
     json.loads(json.dumps(plan))
+
+
+def test_package_apply_requires_reinstall_without_program_writes() -> None:
+    from tools.upgrade.core import InstallContext, ReleaseInfo, apply_upgrade
+
+    runner = FakeCommandRunner()
+    result = apply_upgrade(
+        context=InstallContext(
+            package_version="1.4.3",
+            manifest_version="1.4.3",
+            install_type="package",
+            repo_path=None,
+        ),
+        release_provider=FakeReleaseProvider(
+            [ReleaseInfo(version="1.4.3"), ReleaseInfo(version="1.4.4")]
+        ),
+        command_runner=runner,
+    )
+
+    assert result["success"] is False
+    assert result["error"]["code"] == "UPGRADE_REINSTALL_REQUIRED"
+    assert result["data"]["reinstall_required"] is True
+    assert result["data"]["applied_actions"] == []
+    assert result["data"]["onboarding"] == "AGENT_ONBOARDING.md"
+    assert result["data"]["recommended_next_step"]["id"] == ("reinstall_managed_environment")
+    assert result["data"]["recommended_next_step"]["command"] is None
+    assert not any("pip install" in " ".join(command) for command in runner.commands)
+    assert not any("sync-skill --install" in " ".join(command) for command in runner.commands)
+
+
+def test_editable_apply_requires_fresh_dedicated_install_without_program_writes(
+    tmp_path: Path,
+) -> None:
+    from tools.upgrade.core import GitState, InstallContext, ReleaseInfo, apply_upgrade
+
+    repo = tmp_path / "shared-checkout"
+    repo.mkdir()
+    git = FakeGitRunner(
+        GitState(
+            repo_path=repo,
+            branch="main",
+            dirty=False,
+            dirty_count=0,
+            upstream="origin/main",
+            ahead_count=0,
+            behind_count=2,
+            can_fast_forward=True,
+        )
+    )
+    runner = FakeCommandRunner()
+
+    result = apply_upgrade(
+        context=InstallContext(
+            package_version="1.4.4",
+            manifest_version="1.4.4",
+            install_type="editable",
+            repo_path=repo,
+        ),
+        release_provider=FakeReleaseProvider([ReleaseInfo(version="1.4.4")]),
+        git_runner=git,
+        command_runner=runner,
+    )
+
+    assert result["success"] is False
+    assert result["error"]["code"] == "UPGRADE_REINSTALL_REQUIRED"
+    assert result["data"]["reinstall_required"] is True
+    assert result["data"]["applied_actions"] == []
+    action = result["data"]["recommended_next_step"]
+    assert action["id"] == "reinstall_managed_environment"
+    assert action["command"] is None
+    guidance = f'{action["description"]} {action["reason"]}'.lower()
+    assert "leave the existing environment and checkout untouched" in guidance
+    assert "fresh dedicated install" in guidance
+    assert git.pulled is False
+    assert git.refreshed is False
+    assert not any("pip install" in " ".join(command) for command in runner.commands)
+    assert not any("sync-skill --install" in " ".join(command) for command in runner.commands)
 
 
 def test_dirty_git_repo_plan_warns_and_apply_fails_closed_without_pull(tmp_path: Path) -> None:
@@ -193,12 +257,16 @@ def test_dirty_git_repo_plan_warns_and_apply_fails_closed_without_pull(tmp_path:
 
     assert result["success"] is False
     assert result["error"]["code"] == "UPGRADE_DIRTY_WORKTREE"
+    assert result["data"]["reinstall_required"] is False
+    assert result["data"]["applied_actions"] == []
     assert result["data"]["git"]["dirty"] is True
     assert result["data"]["recommended_next_step"]["requires_human"] is True
     assert git.pulled is False
 
 
-def test_clean_behind_git_repo_apply_runs_fast_forward_only(tmp_path: Path) -> None:
+def test_clean_behind_git_repo_apply_requires_reinstall_without_fast_forward(
+    tmp_path: Path,
+) -> None:
     from tools.upgrade.core import GitState, InstallContext, ReleaseInfo, apply_upgrade
 
     repo = tmp_path / "repo"
@@ -228,9 +296,11 @@ def test_clean_behind_git_repo_apply_runs_fast_forward_only(tmp_path: Path) -> N
         command_runner=FakeCommandRunner(),
     )
 
-    assert result["success"] is True
-    assert git.pulled is True
-    assert any(step["id"] == "git_pull_ff_only" for step in result["data"]["applied_actions"])
+    assert result["success"] is False
+    assert result["error"]["code"] == "UPGRADE_REINSTALL_REQUIRED"
+    assert result["data"]["reinstall_required"] is True
+    assert result["data"]["applied_actions"] == []
+    assert git.pulled is False
 
 
 def test_ahead_or_diverged_git_repo_apply_requires_human(tmp_path: Path) -> None:
@@ -265,6 +335,8 @@ def test_ahead_or_diverged_git_repo_apply_requires_human(tmp_path: Path) -> None
 
     assert result["success"] is False
     assert result["error"]["code"] == "UPGRADE_GIT_REQUIRES_HUMAN"
+    assert result["data"]["reinstall_required"] is False
+    assert result["data"]["applied_actions"] == []
     assert result["data"]["recommended_next_step"]["requires_human"] is True
     assert git.pulled is False
 
@@ -291,10 +363,13 @@ def test_yanked_current_release_recommends_latest_non_yanked_target() -> None:
 
     assert plan["data"]["pypi"]["current_version_yanked"] is True
     assert plan["data"]["pypi"]["recommended_version"] == "1.4.6"
-    assert "1.4.5" not in plan["data"]["recommended_next_step"]["command"]
+    assert plan["data"]["recommended_next_step"]["id"] == "reinstall_managed_environment"
+    assert plan["data"]["recommended_next_step"]["command"] is None
 
 
-def test_same_version_but_source_checkout_behind_recommends_git_pull(tmp_path: Path) -> None:
+def test_same_version_but_source_checkout_behind_recommends_fresh_install(
+    tmp_path: Path,
+) -> None:
     from tools.upgrade.core import GitState, InstallContext, ReleaseInfo, build_upgrade_plan
 
     repo = tmp_path / "repo"
@@ -324,10 +399,11 @@ def test_same_version_but_source_checkout_behind_recommends_git_pull(tmp_path: P
 
     assert plan["data"]["installed"]["package_version"] == "1.4.4"
     assert plan["data"]["git"]["behind_count"] == 3
-    assert plan["data"]["recommended_next_step"]["id"] == "git_pull_ff_only"
+    assert plan["data"]["recommended_next_step"]["id"] == ("reinstall_managed_environment")
+    assert plan["data"]["recommended_next_step"]["command"] is None
 
 
-def test_apply_runs_sync_skill_and_reports_delivered() -> None:
+def test_current_apply_does_not_run_sync_skill_install() -> None:
     from tools.upgrade.core import InstallContext, ReleaseInfo, apply_upgrade
 
     runner = FakeCommandRunner()
@@ -343,8 +419,8 @@ def test_apply_runs_sync_skill_and_reports_delivered() -> None:
     )
 
     assert result["success"] is True
-    assert any("sync-skill --install --json" in " ".join(cmd) for cmd in runner.commands)
-    assert result["data"]["sync_skill"]["data"]["delivered"] is True
+    assert result["data"]["reinstall_required"] is False
+    assert not any("sync-skill --install" in " ".join(cmd) for cmd in runner.commands)
 
 
 def test_pypi_network_failure_is_partial_and_does_not_block_local_checks() -> None:
@@ -397,15 +473,10 @@ def test_detect_install_context_prefers_active_checkout_root_over_noneditable_di
     assert context.repo_path == repo
 
 
-def test_apply_fails_closed_when_version_output_is_not_parseable() -> None:
-    from tools.upgrade.core import CommandResult, InstallContext, ReleaseInfo, apply_upgrade
+def test_apply_does_not_run_legacy_version_check() -> None:
+    from tools.upgrade.core import InstallContext, ReleaseInfo, apply_upgrade
 
-    class BadVersionRunner(FakeCommandRunner):
-        def run(self, command: list[str], *, cwd: Path | None = None) -> Any:
-            if "--version" in " ".join(command):
-                return CommandResult(returncode=0, stdout="not json", stderr="")
-            return super().run(command, cwd=cwd)
-
+    runner = FakeCommandRunner()
     result = apply_upgrade(
         context=InstallContext(
             package_version="1.4.4",
@@ -414,14 +485,15 @@ def test_apply_fails_closed_when_version_output_is_not_parseable() -> None:
             repo_path=None,
         ),
         release_provider=FakeReleaseProvider([ReleaseInfo(version="1.4.4")]),
-        command_runner=BadVersionRunner(),
+        command_runner=runner,
     )
 
-    assert result["success"] is False
-    assert result["error"]["code"] == "UPGRADE_VERSION_CHECK_FAILED"
+    assert result["success"] is True
+    assert result["data"]["applied_actions"] == []
+    assert not any("--version" in " ".join(command) for command in runner.commands)
 
 
-def test_unknown_install_with_newer_release_requires_human_before_write_actions() -> None:
+def test_unknown_install_with_newer_release_requires_fresh_dedicated_install() -> None:
     from tools.upgrade.core import InstallContext, ReleaseInfo, apply_upgrade, build_upgrade_plan
 
     runner = FakeCommandRunner()
@@ -438,11 +510,11 @@ def test_unknown_install_with_newer_release_requires_human_before_write_actions(
         release_provider=releases,
         command_runner=runner,
     )
-    assert any(
-        action["id"] == "inspect_install_method"
-        and action["safe_to_run"] is False
-        and action["requires_human"] is True
-        for action in plan["data"]["actions"]
+    replacement = plan["data"]["recommended_next_step"]
+    assert replacement["id"] == "reinstall_managed_environment"
+    assert replacement["command"] is None
+    assert "leave the existing environment and checkout untouched" in (
+        replacement["description"].lower()
     )
 
     runner.commands.clear()
@@ -453,9 +525,9 @@ def test_unknown_install_with_newer_release_requires_human_before_write_actions(
     )
 
     assert result["success"] is False
-    assert result["error"]["code"] == "UPGRADE_REQUIRES_HUMAN"
-    blocking_ids = {action["id"] for action in result["data"]["blocking_actions"]}
-    assert "inspect_install_method" in blocking_ids
+    assert result["error"]["code"] == "UPGRADE_REINSTALL_REQUIRED"
+    assert result["data"]["reinstall_required"] is True
+    assert result["data"]["applied_actions"] == []
     assert not any("pip install" in " ".join(command) for command in runner.commands)
     assert not any(
         "sync-skill --install --json" in " ".join(command) for command in runner.commands
@@ -493,10 +565,11 @@ def test_remote_probe_pending_prevents_current_git_freshness(tmp_path: Path) -> 
 
     assert plan["data"]["git"]["freshness"] != "current"
     assert plan["data"]["git"]["remote_probe"]["status"] == "behind_remote"
-    assert plan["data"]["recommended_next_step"]["id"] == "git_refresh_then_pull_ff_only"
+    assert plan["data"]["recommended_next_step"]["id"] == ("reinstall_managed_environment")
+    assert plan["data"]["recommended_next_step"]["command"] is None
 
 
-def test_apply_refreshes_remote_then_fast_forwards_when_probe_has_updates(
+def test_apply_does_not_refresh_or_fast_forward_when_remote_probe_has_updates(
     tmp_path: Path,
 ) -> None:
     from tools.upgrade.core import GitState, InstallContext, ReleaseInfo, apply_upgrade
@@ -539,43 +612,51 @@ def test_apply_refreshes_remote_then_fast_forwards_when_probe_has_updates(
         command_runner=FakeCommandRunner(),
     )
 
-    assert result["success"] is True
-    assert git.refreshed is True
-    assert git.pulled is True
-    applied_ids = [action["id"] for action in result["data"]["applied_actions"]]
-    assert applied_ids[:2] == ["git_remote_refresh", "git_pull_ff_only"]
+    assert result["success"] is False
+    assert result["error"]["code"] == "UPGRADE_REINSTALL_REQUIRED"
+    assert result["data"]["applied_actions"] == []
+    assert git.refreshed is False
+    assert git.pulled is False
 
 
 def test_remote_probe_unreachable_is_partial_and_not_current(tmp_path: Path) -> None:
-    from tools.upgrade.core import GitState, InstallContext, ReleaseInfo, build_upgrade_plan
+    from tools.upgrade.core import (
+        GitState,
+        InstallContext,
+        ReleaseInfo,
+        apply_upgrade,
+        build_upgrade_plan,
+    )
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    plan = build_upgrade_plan(
-        context=InstallContext(
-            package_version="1.4.4",
-            manifest_version="1.4.4",
-            install_type="editable",
+    git = FakeGitRunner(
+        GitState(
             repo_path=repo,
+            branch="main",
+            dirty=False,
+            dirty_count=0,
+            upstream="origin/main",
+            ahead_count=0,
+            behind_count=0,
+            can_fast_forward=False,
         ),
+        remote_probe={
+            "status": "unreachable",
+            "has_updates": None,
+            "error": "network down",
+        },
+    )
+    context = InstallContext(
+        package_version="1.4.4",
+        manifest_version="1.4.4",
+        install_type="editable",
+        repo_path=repo,
+    )
+    plan = build_upgrade_plan(
+        context=context,
         release_provider=FakeReleaseProvider([ReleaseInfo(version="1.4.4")]),
-        git_runner=FakeGitRunner(
-            GitState(
-                repo_path=repo,
-                branch="main",
-                dirty=False,
-                dirty_count=0,
-                upstream="origin/main",
-                ahead_count=0,
-                behind_count=0,
-                can_fast_forward=False,
-            ),
-            remote_probe={
-                "status": "unreachable",
-                "has_updates": None,
-                "error": "network down",
-            },
-        ),
+        git_runner=git,
         command_runner=FakeCommandRunner(),
     )
 
@@ -583,8 +664,21 @@ def test_remote_probe_unreachable_is_partial_and_not_current(tmp_path: Path) -> 
     assert plan["data"]["git"]["freshness"] == "unknown"
     assert plan["data"]["git"]["remote_probe"]["error"] == "network down"
 
+    result = apply_upgrade(
+        context=context,
+        release_provider=FakeReleaseProvider([ReleaseInfo(version="1.4.4")]),
+        git_runner=git,
+        command_runner=FakeCommandRunner(),
+    )
+    assert result["success"] is False
+    assert result["error"]["code"] == "UPGRADE_REQUIRES_HUMAN"
+    assert result["data"]["reinstall_required"] is False
+    assert result["data"]["applied_actions"] == []
 
-def test_editable_behind_plan_and_apply_reinstall_after_fast_forward(tmp_path: Path) -> None:
+
+def test_editable_behind_plan_and_apply_require_fresh_install_without_writes(
+    tmp_path: Path,
+) -> None:
     from tools.upgrade.core import (
         GitState,
         InstallContext,
@@ -621,15 +715,15 @@ def test_editable_behind_plan_and_apply_reinstall_after_fast_forward(tmp_path: P
         command_runner=FakeCommandRunner(),
     )
 
-    action_ids = [action["id"] for action in plan["data"]["actions"]]
-    assert action_ids.index("git_pull_ff_only") < action_ids.index("pip_install_editable")
-    editable_action = next(
-        action for action in plan["data"]["actions"] if action["id"] == "pip_install_editable"
-    )
-    assert editable_action["command"].startswith("python -m pip install -e ")
-    assert str(repo) in editable_action["command"]
-    assert editable_action["safe_to_run"] is True
-    assert editable_action["requires_human"] is False
+    replacement_actions = [
+        action
+        for action in plan["data"]["actions"]
+        if action["id"] == "reinstall_managed_environment"
+    ]
+    assert len(replacement_actions) == 1
+    assert replacement_actions[0]["command"] is None
+    assert replacement_actions[0]["safe_to_run"] is False
+    assert replacement_actions[0]["requires_human"] is True
 
     runner = FakeCommandRunner()
     result = apply_upgrade(
@@ -639,19 +733,11 @@ def test_editable_behind_plan_and_apply_reinstall_after_fast_forward(tmp_path: P
         command_runner=runner,
     )
 
-    assert result["success"] is True
-    assert git.pulled is True
-    assert _command_index(runner.commands, f"pip install -e {repo}") < _command_index(
-        runner.commands, "--version"
-    )
-    assert _command_index(runner.commands, "--version") < _command_index(
-        runner.commands, "sync-skill --install --json"
-    )
-    assert _command_index(runner.commands, "sync-skill --install --json") < _last_command_index(
-        runner.commands, "health --json"
-    )
-    applied_ids = [action["id"] for action in result["data"]["applied_actions"]]
-    assert "pip_install_editable" in applied_ids
+    assert result["success"] is False
+    assert result["error"]["code"] == "UPGRADE_REINSTALL_REQUIRED"
+    assert result["data"]["applied_actions"] == []
+    assert git.pulled is False
+    assert not any("pip install" in " ".join(command) for command in runner.commands)
 
 
 def test_editable_version_drift_recommends_reinstall_even_when_git_current(
@@ -693,8 +779,8 @@ def test_editable_version_drift_recommends_reinstall_even_when_git_current(
         command_runner=FakeCommandRunner(),
     )
 
-    assert plan["data"]["recommended_next_step"]["id"] == "pip_install_editable"
-    assert any(action["id"] == "pip_install_editable" for action in plan["data"]["actions"])
+    assert plan["data"]["recommended_next_step"]["id"] == ("reinstall_managed_environment")
+    assert plan["data"]["recommended_next_step"]["command"] is None
 
     runner = FakeCommandRunner()
     result = apply_upgrade(
@@ -704,8 +790,10 @@ def test_editable_version_drift_recommends_reinstall_even_when_git_current(
         command_runner=runner,
     )
 
-    assert result["success"] is True
-    assert any(f"pip install -e {repo}" in " ".join(command) for command in runner.commands)
+    assert result["success"] is False
+    assert result["error"]["code"] == "UPGRADE_REINSTALL_REQUIRED"
+    assert result["data"]["applied_actions"] == []
+    assert not any("pip install" in " ".join(command) for command in runner.commands)
 
 
 def test_current_state_with_current_skill_has_no_recommended_next_step(tmp_path: Path) -> None:
@@ -740,7 +828,31 @@ def test_current_state_with_current_skill_has_no_recommended_next_step(tmp_path:
     assert not any(action["id"] == "sync_skill_install" for action in plan["data"]["actions"])
 
 
-def test_missing_skill_still_recommends_sync_skill_install(tmp_path: Path) -> None:
+def test_healthy_current_apply_is_truthful_noop_without_program_writes() -> None:
+    from tools.upgrade.core import InstallContext, ReleaseInfo, apply_upgrade
+
+    runner = FakeCommandRunner()
+    result = apply_upgrade(
+        context=InstallContext(
+            package_version="1.4.4",
+            manifest_version="1.4.4",
+            install_type="package",
+            repo_path=None,
+        ),
+        release_provider=FakeReleaseProvider([ReleaseInfo(version="1.4.4")]),
+        command_runner=runner,
+    )
+
+    assert result["success"] is True
+    assert result["mode"] == "apply"
+    assert result["data"]["reinstall_required"] is False
+    assert result["data"]["applied_actions"] == []
+    assert result["data"]["recommended_next_step"]["id"] == "none"
+    assert not any("pip install" in " ".join(command) for command in runner.commands)
+    assert not any("sync-skill --install" in " ".join(command) for command in runner.commands)
+
+
+def test_missing_skill_requires_reinstall_without_sync_skill_install(tmp_path: Path) -> None:
     from tools.upgrade.core import GitState, InstallContext, ReleaseInfo, build_upgrade_plan
 
     repo = tmp_path / "repo"
@@ -771,11 +883,12 @@ def test_missing_skill_still_recommends_sync_skill_install(tmp_path: Path) -> No
         command_runner=runner,
     )
 
-    assert plan["data"]["recommended_next_step"]["id"] == "sync_skill_install"
-    assert any(action["id"] == "sync_skill_install" for action in plan["data"]["actions"])
+    assert plan["data"]["recommended_next_step"]["id"] == ("reinstall_managed_environment")
+    assert plan["data"]["recommended_next_step"]["command"] is None
+    assert not any(action["id"] == "sync_skill_install" for action in plan["data"]["actions"])
 
 
-def test_editable_version_check_reports_reinstall_hint_when_still_inconsistent(
+def test_editable_version_inconsistency_requires_reinstall_without_command(
     tmp_path: Path,
 ) -> None:
     from tools.upgrade.core import GitState, InstallContext, ReleaseInfo, apply_upgrade
@@ -783,9 +896,6 @@ def test_editable_version_check_reports_reinstall_hint_when_still_inconsistent(
     repo = tmp_path / "repo"
     repo.mkdir()
     runner = FakeCommandRunner()
-    runner.version_package = "1.4.3"
-    runner.version_manifest = "1.4.4"
-
     result = apply_upgrade(
         context=InstallContext(
             package_version="1.4.3",
@@ -810,8 +920,8 @@ def test_editable_version_check_reports_reinstall_hint_when_still_inconsistent(
     )
 
     assert result["success"] is False
-    assert result["error"]["code"] == "UPGRADE_VERSION_INCONSISTENT"
-    assert result["data"]["package_version"] == "1.4.3"
-    assert result["data"]["repo_version"] == "1.4.4"
-    assert result["data"]["suggested_command"].startswith("python -m pip install -e ")
-    assert str(repo) in result["data"]["suggested_command"]
+    assert result["error"]["code"] == "UPGRADE_REINSTALL_REQUIRED"
+    assert result["data"]["reinstall_required"] is True
+    assert result["data"]["applied_actions"] == []
+    assert result["data"]["recommended_next_step"]["command"] is None
+    assert not any("pip install" in " ".join(command) for command in runner.commands)

@@ -92,9 +92,7 @@ triggers:
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树
 - 写入成功后的状态字段解释（`needs_confirmation` / `index_status` / `side_effects_status` / 附件处理计数）→ 读 `docs/API.md` 中 `write_journal` 返回语义
 **会话 freshness / 运维纪律（升级摩擦 UF-1 + Ops）**：
-- 升级 Life Index CLI 时，优先运行 `life-index upgrade --plan --json`，读取 `actions[]` 和 `recommended_next_step`。package install 走 PyPI 非 yanked 版本升级；editable/source install 走安全 git fast-forward 后 `python -m pip install -e <repo>`，再校验版本、同步 SKILL、跑 health。只有当计划中的动作 `safe_to_run=true` 且 `requires_human=false` 时，才可运行 `life-index upgrade --apply --json`；dirty checkout、ahead/diverged commits、remote probe 不可达、未知安装方式、yanked 目标版本等情况必须停下来转述给用户。`upgrade` 不替代开发者发布流程，也不操作 GUI 仓。
-- 每次新会话首次使用 Life Index 前，运行 `life-index health --json` 并读取 `data.upgrade_freshness`；若 `freshness == "update_available"` 或 `git_freshness == "behind"`，先执行 `suggested_refresh_step`，再运行 `life-index sync-skill --install`；执行 health 建议命令前先看同一对象的 `side_effect` / `side_effect_note`，`write` 需用户确认或确认只是派生物刷新
-- 你是 Life Index 的使用者/运维者，不是开发者：不要向产品仓库克隆 commit/push；仓库克隆保持零改动，升级前 `git status --porcelain` 必须为空，脏了先 `git checkout -- .` 恢复；friction/笔记写到 `<data>/frictions/`，永不写进仓库克隆
+- 升级先运行 `life-index upgrade --plan --json`；`--apply` 只会只读诊断并返回 no-op 或 `UPGRADE_REINSTALL_REQUIRED`，后者须按 `AGENT_ONBOARDING.md` 新建 dedicated install，保持现有环境、checkout 与用户数据不动。
 - `sync-skill --install` 的目标槽位始终是 `<host-home>/skills/life-index/`；若传入 `<host-home>/skills` parent，会自动归一化到 canonical slot，并可清理已知 1.4.2 parent-slot 坏状态；它也会自动收敛本管理树的 `skills/life-index/life-index` 嵌套重复；若返回 `HOST_SKILL_DIR_AMBIGUOUS`，说明存在多个无关或不安全候选，需让用户指定 `--host-skill-dir`
 - 这是会话面提示，不替代 `bootstrap --json` 的安装/repair authority；旧版本无法自带新检测码时，以 `bootstrap-manifest.json` + `CHANGELOG.md` 为人工校验锚点；GUI 栈升级/运维见 GUI 仓 `docs/AGENT_UPDATE_PLAYBOOK.md`
 
@@ -454,7 +452,7 @@ Aggregation And Heuristic Evidence。不得把 `search_journals.total_found` 直
 ### 工作流7: 实体图谱访谈
 
 **原则**：三权分立。CLI 只做确定性 JSON 原语；agent 可读证据、分桶、提出带理由建议；用户是确认态图谱的权威来源。建议自由，写入必须有人判（逐条确认或批量授权均可）。
-**实体维护速查**：任何“检查/维护/整理实体图谱”任务，第一步先运行 `life-index health --json`。若 `data.upgrade_freshness.suggested_refresh_step` 存在，先按该步骤刷新代码与 playbook，再继续；然后看 `data.entity_maintenance.traffic_light`、`pending_count` 和 `next_step.command`。绿灯且无待决即可结束；黄/红灯再运行 `life-index entity audit --json`，按返回的 `next_step` 进入 `entity --review` 或 `entity maintain ... --preview`。详细步骤见 `references/ENTITY_MAINTENANCE_PLAYBOOK.md`；契约见 `docs/API.md` 与 `docs/ENTITY_GRAPH.md`。
+**实体维护速查**：任何“检查/维护/整理实体图谱”任务，第一步先运行 `life-index health --json`。若 `data.upgrade_freshness.suggested_refresh_step` 存在，回到上方 upgrade 规则并按 `AGENT_ONBOARDING.md` 处理，不直接执行该旧建议；然后看 `data.entity_maintenance.traffic_light`、`pending_count` 和 `next_step.command`。绿灯且无待决即可结束；黄/红灯再运行 `life-index entity audit --json`，按返回的 `next_step` 进入 `entity --review` 或 `entity maintain ... --preview`。详细步骤见 `references/ENTITY_MAINTENANCE_PLAYBOOK.md`；契约见 `docs/API.md` 与 `docs/ENTITY_GRAPH.md`。
 **实体档案回报**：回答“关于某人/项目/实体”时，先定位实体 ID，优先读取 `<data>/Entities/<entity_id>.md`；若档案不存在，运行 `life-index abstract --entities --id ENTITY_ID --json`（或全量 `life-index abstract --entities --json`）生成；顺 `mentions` 指针下钻，不足再 `search`，用 `entity_expansion` 归因块解释命中来源；档案不回写 `entity_graph.yaml`。
 **触发**：用户说“整理人物/谁是谁/检查实体”；写日志时出现新候选；`life-index entity audit --json` 或 `health` 的实体维护灯为 yellow/red；月度整理。
 **查 → 筛 → 荐 → 问 → 写**：先 `life-index entity audit --json` 看 `traffic_light`、`pending_count`、`structural_issue_count` 和 `next_step.command`；需要访谈时再 `life-index entity --review`，按 `evidence` 指针读原文，把候选按人物分桶为很确定 same / 很确定 different / 拿不准 / 低价值可缓；再给带理由建议，而不是复述队列；每轮 ≤5 组，问用户 Same / Different / Not-sure，也接受批量授权（如“你确定的那批照办”）。

@@ -14,8 +14,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="life-index upgrade",
         description=(
-            "Plan or apply a deterministic Life Index CLI upgrade for host agents. "
-            "This is not a release publishing workflow."
+            "Diagnose whether a Life Index program environment is current or requires "
+            "clean replacement. This command never mutates the installed environment."
         ),
     )
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument(
         "--apply",
         action="store_true",
-        help="Run safe package or editable/source upgrade actions.",
+        help="Return a truthful no-op or a reinstall-required error; perform no writes.",
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON output.")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)

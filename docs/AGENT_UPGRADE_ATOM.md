@@ -2,28 +2,15 @@
 
 ## Purpose
 
-`life-index upgrade` is a deterministic operations primitive for host agents and
-users upgrading an installed Life Index CLI. It is not a developer release
-workflow and does not replace PR review, CI, merge, tag, GitHub Release, PyPI
-publish, or post-release smoke.
+`life-index upgrade` is a deterministic, read-only operations primitive for
+diagnosing an installed Life Index CLI. It reports whether the program is
+current or must be replaced. It is not an installer, package manager, recovery
+state machine, or developer release workflow.
 
-The command exists because host agents need one stable place to answer:
-
-- which CLI version and bootstrap manifest are installed;
-- whether PyPI recommends a newer non-yanked release;
-- whether a source checkout is dirty, ahead, behind, diverged, or stale relative
-  to a read-only remote probe;
-- whether `health --json` is parseable;
-- whether `sync-skill` can deliver the current playbook to the canonical host
-  skill slot.
-
-## Non-Goals
-
-- No GUI repository operations.
-- No LLM calls, reasoning, or synthesis.
-- No release publishing, tagging, PR merging, or PyPI upload.
-- No writes to journals or user source data.
-- No automatic stash, reset, rebase, merge, or push.
+User data is the durable asset. Dedicated venvs, host-managed checkouts, package
+metadata, and dependencies are disposable program state. Shared/global Python
+environments and developer- or user-owned checkouts are never mutated or
+deleted by this command.
 
 ## Contract
 
@@ -34,73 +21,61 @@ life-index upgrade --plan --json
 life-index upgrade --apply --json
 ```
 
-`--plan` is read-only. It returns current installed package version, bootstrap
-manifest `repo_version`, PyPI release status, optional git checkout status,
-health JSON parse status, sync-skill canonical slot status, `actions[]`, and a
-`recommended_next_step`.
+Both modes perform only diagnostics: installed/package version, bootstrap
+manifest version, non-yanked PyPI freshness, optional checkout status and
+read-only remote probe, health JSON parseability, and sync-skill discovery.
 
-`--apply` executes only actions marked safe by the plan:
+`--plan` returns `actions[]` and `recommended_next_step`. It never emits an
+executable in-place `git pull`, `git fetch`, `pip install --upgrade`,
+`pip install -e`, or `sync-skill --install` action.
 
-- package installs may upgrade to the recommended non-yanked PyPI version;
-- editable/source checkouts may refresh remote refs and run `git pull --ff-only`
-  only when clean, behind, and not ahead;
-- editable/source checkouts run `python -m pip install -e <repo>` after safe
-  source updates or package/manifest drift;
-- any action with `safe_to_run=false` or `requires_human=true` blocks apply
-  before write actions;
-- `life-index --version` is parsed and checked for package/manifest consistency;
-- `sync-skill --install --json` is run through the existing sync-skill command;
-- `health --json` is run and parsed.
+When an update or program inconsistency requires replacement, the plan emits one
+human-required action:
 
-Every action reports:
+```json
+{
+  "id": "reinstall_managed_environment",
+  "side_effect": "write",
+  "command": null,
+  "safe_to_run": false,
+  "requires_human": true
+}
+```
 
-- `id`
-- `description`
-- `side_effect`: `read` or `write`
-- `command`
-- `reason`
-- `safe_to_run`
-- `requires_human`
+Its guidance points to `AGENT_ONBOARDING.md`: leave the existing environment
+and checkout untouched and create a fresh dedicated install. It never suggests
+deleting user data or repairing a shared/developer environment in place.
 
-## Freshness Rules
+`--apply` does not apply git, pip, skill-delivery, or environment writes. It
+builds the same read-only plan and returns one of these outcomes:
 
-Version is not enough. If package version and manifest version are equal but the
-source checkout is behind its upstream ref, or the remote probe sees commits not
-visible in local tracking refs, `--plan` still recommends a git refresh. Dirty,
-ahead, or diverged checkouts are fail-closed and require a human. Apply never
-stashes, resets, rebases, merges, or pushes.
+- update or inconsistency: `success: false`,
+  `error.code: "UPGRADE_REINSTALL_REQUIRED"`,
+  `data.reinstall_required: true`, and `data.applied_actions: []`;
+- healthy/current with no action: `success: true`,
+  `data.reinstall_required: false`, and `data.applied_actions: []`;
+- dirty, ahead, diverged, unreachable, unknown, or otherwise human-risk state:
+  the existing fail-closed error semantics, with no writes.
 
-Plan uses read-only remote probing and does not fetch, because fetch mutates
-`.git`. Apply may run a remote refresh first, then reinspect the checkout, and
-only run `git pull --ff-only` when the refreshed state is clean, behind, and not
-ahead.
+## Freshness And Safety
 
-For editable/source installs, source freshness is followed by environment
-freshness. After a safe fast-forward path, apply runs `python -m pip install -e
-<repo>` before version, skill, and health checks. If package metadata differs
-from bootstrap manifest `repo_version`, the same editable reinstall is the
-recommended next step even when git is current.
+Version equality is not enough for editable/source diagnostics. A behind local
+tracking ref or a read-only remote probe that sees newer commits requires a
+fresh dedicated install. Dirty, ahead, and diverged checkouts remain explicit
+human-review states. Remote probe failure marks freshness unknown and the report
+partial; it never authorizes mutation or deletion.
 
-When code, package metadata, health, and skill delivery are already current,
-`recommended_next_step.id` is `none`; idempotent sync-skill verification remains
-part of apply but is not presented as a required task.
+PyPI metadata remains advisory. Network failure produces a partial report.
+Yanked releases are never recommended as targets. A known newer non-yanked
+release or package/manifest inconsistency requires clean program replacement.
 
-## PyPI Rules
+Health and `sync-skill --list --json` remain read-only diagnostics. Missing or
+inconsistent program/skill state points to clean replacement; `upgrade` never
+runs `sync-skill --install`.
 
-PyPI metadata is obtained through a provider abstraction. Production uses the
-PyPI JSON API; tests use fake providers. Network failure produces a partial
-report and does not block local git, health, or skill checks. Yanked releases
-are never recommended as targets. A yanked current version is a warning and
-points to the latest non-yanked release when one exists.
+## JSON Purity And Version
 
-## Skill Delivery Rule
-
-`upgrade --apply` does not duplicate skill installation logic. It calls
-`life-index sync-skill --install --json` and reports the returned status,
-including the canonical `<host-home>/skills/life-index` target and any recovery
-diagnostics.
-
-## JSON Purity
-
-All `--json` stdout must be directly parseable with `json.loads`. Logs, third
-party progress, and diagnostics belong on stderr or inside the JSON payload.
+All `--json` stdout is directly parseable with `json.loads`. Reinstall-required
+apply exits 1; healthy no-op exits 0. The top-level envelope remains
+`schema_version = "m36.upgrade.v0"`; `command: null` is inside action objects
+and validates under the existing v0 output contract.

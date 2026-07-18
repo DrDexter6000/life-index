@@ -136,18 +136,16 @@ def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:
 
     assert "life-index health --json" in skill
     assert "upgrade_freshness" in skill
-    assert "git_freshness" in skill
+    assert "不直接执行该旧建议" in skill
 
 
 def test_skill_teaches_upgrade_atom_before_apply() -> None:
     skill = _read("SKILL.md")
 
     assert "life-index upgrade --plan --json" in skill
-    assert "life-index upgrade --apply --json" in skill
-    assert "safe_to_run=true" in skill
-    assert "requires_human=false" in skill
-    assert "不替代开发者发布流程" in skill
-    assert "不操作 GUI 仓" in skill
+    assert "UPGRADE_REINSTALL_REQUIRED" in skill
+    assert "AGENT_ONBOARDING.md" in skill
+    assert "现有环境、checkout 与用户数据不动" in skill
 
 
 def test_skill_teaches_host_agent_ops_discipline() -> None:
@@ -155,11 +153,8 @@ def test_skill_teaches_host_agent_ops_discipline() -> None:
     playbook = _read("references/ENTITY_MAINTENANCE_PLAYBOOK.md")
 
     assert "运维纪律" in skill
-    assert "不是开发者" in skill
-    assert "不要向产品仓库克隆 commit/push" in skill
-    assert "git status --porcelain" in skill
-    assert "git checkout -- ." in skill
-    assert "<data>/frictions/" in skill
+    assert "dedicated install" in skill
+    assert "只读诊断" in skill
     assert "运维纪律" in playbook
 
 
