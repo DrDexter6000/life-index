@@ -82,6 +82,116 @@ class TestExtractTimeExpression:
         assert extract_time_expression("Claude Opus") is None
 
 
+class TestAbsoluteDateTokenBoundaries:
+    REF_DATE = date(2026, 4, 18)
+
+    def test_hermes_marker_with_invalid_month_fragment_stays_intact(self):
+        marker = "HERMES-DOGFOOD-20260718-174602"
+
+        assert extract_time_expression(marker) is None
+        plan = build_search_plan(marker, reference_date=self.REF_DATE)
+
+        assert plan.date_range is None
+        assert plan.keywords == [marker]
+
+    def test_hermes_marker_with_valid_month_fragment_has_no_false_date_range(self):
+        marker = "HERMES-DOGFOOD-20260718-010203"
+
+        assert extract_time_expression(marker) is None
+        plan = build_search_plan(marker, reference_date=self.REF_DATE)
+
+        assert plan.date_range is None
+        assert plan.keywords == [marker]
+
+    def test_embedded_ascii_identifier_dates_stay_intact(self):
+        identifiers = ("ticket2026-03abc", "CASE-2026-03-ALPHA")
+
+        for identifier in identifiers:
+            assert extract_time_expression(identifier) is None
+            plan = build_search_plan(identifier, reference_date=self.REF_DATE)
+            assert plan.date_range is None
+            assert plan.keywords == [identifier]
+
+    def test_valid_absolute_dates_still_produce_exact_ranges(self):
+        expected_ranges = {
+            "2026-03": ("2026-03-01", "2026-03-31"),
+            "2026-03-15": ("2026-03-15", "2026-03-15"),
+        }
+
+        for query, (since, until) in expected_ranges.items():
+            plan = build_search_plan(query, reference_date=self.REF_DATE)
+            assert plan.date_range is not None
+            assert plan.date_range.since == since
+            assert plan.date_range.until == until
+
+    def test_invalid_absolute_dates_are_nonfatal_keyword_text(self):
+        for query in ("2026-13", "2026-00", "2026-02-31", "2026年13月"):
+            assert extract_time_expression(query) is None
+            assert parse_time_range(query, reference_date=self.REF_DATE) is None
+            plan = build_search_plan(query, reference_date=self.REF_DATE)
+            assert plan.date_range is None
+            assert query in plan.keywords
+
+    def test_invalid_chinese_month_with_ascii_suffix_is_not_reinterpreted(self):
+        assert extract_time_expression("2026年13月abc") is None
+
+    def test_invalid_chinese_month_with_ascii_suffix_stays_complete_keyword(self):
+        query = "2026年13月abc"
+        plan = build_search_plan(query, reference_date=self.REF_DATE)
+
+        assert plan.date_range is None
+        assert plan.keywords == [query]
+
+    def test_invalid_chinese_date_with_ascii_suffix_is_not_reinterpreted(self):
+        assert extract_time_expression("2026年02月31日abc") is None
+
+    def test_invalid_chinese_date_with_ascii_suffix_stays_complete_keyword(self):
+        query = "2026年02月31日abc"
+        plan = build_search_plan(query, reference_date=self.REF_DATE)
+
+        assert plan.date_range is None
+        assert plan.keywords == [query]
+
+    def test_valid_chinese_date_with_ascii_suffix_stays_identifier(self):
+        query = "2026年02月28日abc"
+
+        assert extract_time_expression(query) is None
+        plan = build_search_plan(query, reference_date=self.REF_DATE)
+        assert plan.date_range is None
+        assert plan.keywords == [query]
+
+    def test_yearless_leap_day_uses_reference_date_before_keyword_removal(self):
+        query = "2月29日 纪念日"
+        leap_plan = build_search_plan(query, reference_date=date(2024, 3, 1))
+        assert leap_plan.date_range is not None
+        assert leap_plan.date_range.since == "2024-02-29"
+        assert leap_plan.keywords == ["纪念日"]
+
+        nonleap_plan = build_search_plan(query, reference_date=date(2025, 3, 1))
+        assert nonleap_plan.date_range is None
+        assert "2月29日" in nonleap_plan.keywords
+        assert "纪念日" in nonleap_plan.keywords
+
+    def test_existing_chinese_date_queries_keep_date_and_keyword_behavior(self):
+        past = build_search_plan("过去30天的工作日志", reference_date=self.REF_DATE)
+        assert past.date_range is not None
+        assert past.date_range.since == "2026-03-19"
+        assert past.date_range.until == "2026-04-18"
+        assert past.keywords == ["工作"]
+
+        absolute = build_search_plan("2026年03月的日志", reference_date=self.REF_DATE)
+        assert absolute.date_range is not None
+        assert absolute.date_range.since == "2026-03-01"
+        assert absolute.date_range.until == "2026-03-31"
+        assert absolute.keywords == []
+
+        chinese_month = build_search_plan("三月份的工作日志", reference_date=self.REF_DATE)
+        assert chinese_month.date_range is not None
+        assert chinese_month.date_range.since == "2026-03-01"
+        assert chinese_month.date_range.until == "2026-03-31"
+        assert chinese_month.keywords == ["工作"]
+
+
 # ── parse_time_range ──────────────────────────────────────────────────
 
 
