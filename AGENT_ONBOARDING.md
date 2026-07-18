@@ -68,6 +68,7 @@ python -m venv .venv
 .venv/bin/pip install -e .      # Windows: .venv\Scripts\pip install -e .
 python -m tools bootstrap --json
 ```
+After the fresh install passes version/health checks and its launcher is active, the initiating operator owns cleanup: remove the old root as one directory only after proving it is dedicated managed program state and the user data root is outside it; never retain versioned rollback directories, and leave shared/global, developer-owned, user-owned, or ambiguous roots untouched and report them to the owner.
 
 When evaluating an existing checkout, pass it to bootstrap instead of deciding
 from prose:
