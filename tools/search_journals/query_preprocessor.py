@@ -45,10 +45,10 @@ _CN_NUMERALS: dict[str, int] = {
 
 _TIME_PATTERNS: list[re.Pattern[str]] = [
     # Absolute dates (more specific first)
-    re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})[日号]?"),
-    re.compile(r"(\d{4})-(\d{2})-(\d{2})"),
-    re.compile(r"(\d{4})年(\d{1,2})月"),
-    re.compile(r"(\d{4})-(\d{2})"),
+    re.compile(r"(?<![A-Za-z0-9_-])(\d{4})年(\d{1,2})月(\d{1,2})[日号]?(?![A-Za-z0-9_-])"),
+    re.compile(r"(?<![A-Za-z0-9_-])(\d{4})-(\d{2})-(\d{2})(?![A-Za-z0-9_-])"),
+    re.compile(r"(?<![A-Za-z0-9_-])(\d{4})年(\d{1,2})月(?![A-Za-z0-9_-])"),
+    re.compile(r"(?<![A-Za-z0-9_-])(\d{4})-(\d{2})(?![A-Za-z0-9_-])"),
     # 今年X月 (e.g. "今年一月")
     re.compile(r"今年([一二两三四五六七八九]|十[一二]?)月"),
     # 去年X月 (e.g. "去年一月")
@@ -98,6 +98,9 @@ _TIME_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"(\d+)天前"),
     re.compile(r"(\d+)周前"),
 ]
+
+_ABSOLUTE_TIME_PATTERN_COUNT = 4
+_ASCII_HYPHENATED_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+$")
 
 # ── Intent signal words ────────────────────────────────────────────────
 
@@ -199,6 +202,18 @@ def normalize_query(query: str) -> str:
     return result
 
 
+def _is_valid_absolute_time_match(index: int, match: re.Match[str]) -> bool:
+    """Return whether an absolute-time regex match is calendar-valid."""
+    year = int(match.group(1))
+    month = int(match.group(2))
+    day = int(match.group(3)) if index < 2 else 1
+    try:
+        date(year, month, day)
+    except ValueError:
+        return False
+    return True
+
+
 def extract_time_expression(query: str) -> str | None:
     """Extract the first matching time expression from a query string.
 
@@ -207,10 +222,24 @@ def extract_time_expression(query: str) -> str | None:
     """
     if not query:
         return None
-    for pattern in _TIME_PATTERNS:
-        m = pattern.search(query)
-        if m:
-            return m.group(0)
+
+    invalid_absolute_spans: list[tuple[int, int]] = []
+    for index, pattern in enumerate(_TIME_PATTERNS[:_ABSOLUTE_TIME_PATTERN_COUNT]):
+        for match in pattern.finditer(query):
+            if not _is_valid_absolute_time_match(index, match):
+                invalid_absolute_spans.append(match.span())
+                continue
+            return match.group(0)
+
+    for pattern in _TIME_PATTERNS[_ABSOLUTE_TIME_PATTERN_COUNT:]:
+        for match in pattern.finditer(query):
+            start, end = match.span()
+            if any(
+                start < invalid_end and invalid_start < end
+                for invalid_start, invalid_end in invalid_absolute_spans
+            ):
+                continue
+            return match.group(0)
     # Fallback: Chinese time expression mapping (一个月, 半年, 两周, etc.)
     from .chinese_time_units import normalize_chinese_time
 
@@ -240,7 +269,10 @@ def parse_time_range(  # noqa: C901
     m = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})[日号]?", expr)
     if m:
         year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        since = date(year, month, day)
+        try:
+            since = date(year, month, day)
+        except ValueError:
+            return None
         return DateRange(
             since=since.isoformat(), until=since.isoformat(), source="absolute_date_parse"
         )
@@ -249,7 +281,10 @@ def parse_time_range(  # noqa: C901
     m = re.match(r"(\d{4})-(\d{2})-(\d{2})$", expr)
     if m:
         year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        since = date(year, month, day)
+        try:
+            since = date(year, month, day)
+        except ValueError:
+            return None
         return DateRange(
             since=since.isoformat(), until=since.isoformat(), source="absolute_date_parse"
         )
@@ -258,7 +293,10 @@ def parse_time_range(  # noqa: C901
     m = re.match(r"(\d{4})年(\d{1,2})月$", expr)
     if m:
         year, month = int(m.group(1)), int(m.group(2))
-        since = date(year, month, 1)
+        try:
+            since = date(year, month, 1)
+        except ValueError:
+            return None
         if month == 12:
             until = date(year, 12, 31)
         else:
@@ -271,7 +309,10 @@ def parse_time_range(  # noqa: C901
     m = re.match(r"(\d{4})-(\d{2})$", expr)
     if m:
         year, month = int(m.group(1)), int(m.group(2))
-        since = date(year, month, 1)
+        try:
+            since = date(year, month, 1)
+        except ValueError:
+            return None
         if month == 12:
             until = date(year, 12, 31)
         else:
@@ -830,6 +871,15 @@ def extract_keywords(query: str, *, time_expr: str | None = None) -> list[str]:
     if zh_stopwords:
         filtered = [t for t in filtered if t not in zh_stopwords]
 
+    if not time_expr:
+        invalid_absolute_tokens = [
+            match.group(0)
+            for index, pattern in enumerate(_TIME_PATTERNS[:_ABSOLUTE_TIME_PATTERN_COUNT])
+            for match in pattern.finditer(query)
+            if not _is_valid_absolute_time_match(index, match)
+        ]
+        filtered.extend(token for token in invalid_absolute_tokens if token not in filtered)
+
     return filtered if filtered else [query.strip()]
 
 
@@ -839,6 +889,9 @@ def _tokenize(text: str) -> list[str]:
     parts = text.split()
     if len(parts) > 1:
         return [p for p in parts if p.strip()]
+
+    if len(parts) == 1 and _ASCII_HYPHENATED_IDENTIFIER_RE.fullmatch(text):
+        return parts
 
     # Single CJK string: try jieba if available, else character-level extraction
     try:
@@ -926,7 +979,7 @@ def build_search_plan(query: str, *, reference_date: date | None = None) -> Sear
     time_expr = extract_time_expression(normalized)
     date_range = parse_time_range(time_expr, reference_date=reference_date) if time_expr else None
     intent = classify_intent(normalized)
-    keywords = extract_keywords(normalized, time_expr=time_expr)
+    keywords = extract_keywords(normalized, time_expr=time_expr if date_range else None)
     # C1-b: bilingual alias expansion (keywords + normalized for L2 matching)
     _alias_tokens = [
         _ALIAS_MAP[t.lower()]
