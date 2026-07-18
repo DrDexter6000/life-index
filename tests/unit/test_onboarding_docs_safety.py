@@ -136,7 +136,7 @@ def test_skill_session_surface_mentions_upgrade_freshness_signal() -> None:
 
     assert "life-index health --json" in skill
     assert "upgrade_freshness" in skill
-    assert "不直接执行该旧建议" in skill
+    assert "只运行该只读 `life-index upgrade --plan --json` 指针" in skill
 
 
 def test_skill_teaches_upgrade_atom_before_apply() -> None:

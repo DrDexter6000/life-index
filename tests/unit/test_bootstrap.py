@@ -9,7 +9,6 @@ from pathlib import Path
 import tools.bootstrap as _mod
 from tools.bootstrap import (
     BOOTSTRAP_SCHEMA_VERSION,
-    EDITABLE_REFRESH_STEP,
     assess_checkout,
     build_bootstrap_result,
     decide_route,
@@ -170,6 +169,7 @@ class TestDetectDataState:
         assert state["freshness"] == "update_available"
         assert state["latest_release"] == "1.3.2"
         assert state["update_available"] == "1.3.2"
+        assert state["suggested_refresh_step"] == "life-index upgrade --plan --json"
         assert state["freshness_error"] is None
 
     def test_pypi_lookup_failure_reports_unknown_without_crashing(self, tmp_path, monkeypatch):
@@ -247,7 +247,7 @@ class TestDetectDataState:
         assert freshness["update_reasons"] == ["git_behind"]
         assert freshness["git_freshness"] == "behind"
         assert freshness["git_behind_count"] == 1
-        assert freshness["suggested_refresh_step"] == EDITABLE_REFRESH_STEP
+        assert freshness["suggested_refresh_step"] == "life-index upgrade --plan --json"
 
     def test_package_install_without_git_keeps_version_only_freshness(self, monkeypatch):
         monkeypatch.setattr(_mod, "_query_latest_release", lambda: "1.3.4")
@@ -465,7 +465,7 @@ class TestDecideRoute:
 
         assert result["route"] == "upgrade"
         assert result["safe_next_steps"] == [
-            "git pull --ff-only && pip install -e .",
+            "life-index upgrade --plan --json",
             "life-index migrate --dry-run",
             "life-index index --rebuild",
             "life-index index-tree materialize --json",
@@ -488,7 +488,7 @@ class TestDecideRoute:
             )
         )
 
-        assert result["safe_next_steps"][0] == "git pull --ff-only && pip install -e ."
+        assert result["safe_next_steps"][0] == "life-index upgrade --plan --json"
         assert result["safe_next_steps"][-1] == "life-index health"
 
     def test_update_available_for_package_install_adds_package_refresh_first(self):
@@ -504,7 +504,7 @@ class TestDecideRoute:
             )
         )
 
-        assert result["safe_next_steps"][0] == "pip install -U life-index"
+        assert result["safe_next_steps"][0] == "life-index upgrade --plan --json"
         assert "pip install -e ." not in result["safe_next_steps"]
         assert result["safe_next_steps"][-1] == "life-index health"
 
@@ -518,11 +518,11 @@ class TestDecideRoute:
                 freshness="update_available",
                 update_available="git-behind",
                 update_reasons=["git_behind"],
-                suggested_refresh_step=EDITABLE_REFRESH_STEP,
+                suggested_refresh_step="git pull --ff-only && pip install -e .",
             )
         )
 
-        assert result["safe_next_steps"][0] == "git pull --ff-only && pip install -e ."
+        assert result["safe_next_steps"][0] == "life-index upgrade --plan --json"
 
     def test_local_version_mismatch_uses_package_refresh_for_package_install(self):
         result = decide_route(
@@ -534,7 +534,7 @@ class TestDecideRoute:
             )
         )
 
-        assert result["safe_next_steps"][0] == "pip install -U life-index"
+        assert result["safe_next_steps"][0] == "life-index upgrade --plan --json"
         assert "pip install -e ." not in result["safe_next_steps"]
 
     def test_local_version_mismatch_uses_editable_refresh_for_editable_install(self):
@@ -547,8 +547,8 @@ class TestDecideRoute:
             )
         )
 
-        assert result["safe_next_steps"][0] == "git pull --ff-only && pip install -e ."
-        assert result["safe_next_steps"].count("git pull --ff-only && pip install -e .") == 1
+        assert result["safe_next_steps"][0] == "life-index upgrade --plan --json"
+        assert result["safe_next_steps"].count("life-index upgrade --plan --json") == 1
 
     def test_no_user_data_routes_fresh_install_suggests_health(self):
         result = decide_route(_state(has_user_data=False))
@@ -576,7 +576,7 @@ class TestDecideRoute:
             )
         )
 
-        assert "pip install -e ." in result["safe_next_steps"][0]
+        assert result["safe_next_steps"][0] == "life-index upgrade --plan --json"
         assert result["safe_next_steps"][1] == "life-index migrate --dry-run"
         assert result["safe_next_steps"][2] == "life-index migrate --apply"
         assert "life-index index --rebuild" in result["safe_next_steps"]

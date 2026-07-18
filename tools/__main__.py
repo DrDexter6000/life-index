@@ -95,7 +95,7 @@ DERIVED_ENTITY_PROFILES_NOTE = (
     "Writes derived Entities/ profile docs only; entity_graph.yaml is not modified."
 )
 REPO_RECOVERY_NOTE = "Writes to the repository clone by discarding uncommitted checkout changes."
-UPGRADE_REFRESH_NOTE = "Writes to the local checkout or Python environment to refresh Life Index."
+UPGRADE_REFRESH_NOTE = "Read-only upgrade planning; follow the returned onboarding pointer."
 READ_ONLY_ENTITY_REVIEW_NOTE = (
     "Read-only review queue/audit command unless an explicit action is supplied."
 )
@@ -301,10 +301,7 @@ def _detect_upgrade_freshness_state() -> Dict[str, Any]:
 
     suggested_refresh_step: str | None = None
     if update_reasons:
-        if "git_behind" in update_reasons or install_type == "editable":
-            suggested_refresh_step = "git pull --ff-only && python -m pip install -e ."
-        else:
-            suggested_refresh_step = "python -m pip install -U life-index"
+        suggested_refresh_step = "life-index upgrade --plan --json"
 
     return {
         "installed_version": installed_version,
@@ -356,6 +353,10 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
     update_reasons = list(state.get("update_reasons") or [])
     dirty_worktree = state.get("git_worktree_dirty") is True
     status = "warning" if update_reasons or dirty_worktree else "ok"
+    suggested_refresh_step = state.get("suggested_refresh_step")
+    if suggested_refresh_step:
+        suggested_refresh_step = "life-index upgrade --plan --json"
+
     check = {
         "name": "upgrade_freshness",
         "status": status,
@@ -365,7 +366,7 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
         "install_type": state.get("install_type", "unknown"),
         "update_available": state.get("update_available"),
         "update_reasons": update_reasons,
-        "suggested_refresh_step": state.get("suggested_refresh_step"),
+        "suggested_refresh_step": suggested_refresh_step,
         "freshness_error": state.get("freshness_error"),
         "changelog": CHANGELOG_POINTER,
         "git": {
@@ -382,7 +383,7 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
     }
 
     if check["suggested_refresh_step"]:
-        check["suggested_refresh_step_side_effect"] = "write"
+        check["suggested_refresh_step_side_effect"] = "read"
         check["suggested_refresh_step_side_effect_note"] = UPGRADE_REFRESH_NOTE
 
     if dirty_worktree:
@@ -394,10 +395,10 @@ def _check_upgrade_freshness() -> Tuple[Dict[str, Any], str]:
         return check, ""
 
     reason = str(state.get("update_available") or ",".join(update_reasons))
-    step = state.get("suggested_refresh_step") or "life-index bootstrap --json"
+    step = check["suggested_refresh_step"] or "life-index bootstrap --json"
     issue = (
         f"Life Index upgrade freshness reports {reason}; run: {step}; "
-        f"then run life-index sync-skill --install. See {CHANGELOG_POINTER}."
+        f"then follow the returned onboarding pointer. See {CHANGELOG_POINTER}."
     )
     check["issue"] = issue
     return check, issue

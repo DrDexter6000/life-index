@@ -171,11 +171,9 @@ class TestHealthCheck:
         assert freshness["freshness"] == "update_available"
         assert freshness["git"]["freshness"] == "behind"
         assert freshness["git"]["behind_count"] == 2
-        assert freshness["suggested_refresh_step"] == (
-            "git pull --ff-only && python -m pip install -e ."
-        )
-        assert freshness["suggested_refresh_step_side_effect"] == "write"
-        assert "Python environment" in freshness["suggested_refresh_step_side_effect_note"]
+        assert freshness["suggested_refresh_step"] == "life-index upgrade --plan --json"
+        assert freshness["suggested_refresh_step_side_effect"] == "read"
+        assert "read-only" in freshness["suggested_refresh_step_side_effect_note"].lower()
         assert freshness["changelog"] == "CHANGELOG.md"
 
         check = next(
@@ -183,6 +181,9 @@ class TestHealthCheck:
         )
         assert check["status"] == "warning"
         assert "git-behind" in check["issue"]
+        assert "git pull" not in check["issue"]
+        assert "pip install" not in check["issue"]
+        assert "sync-skill --install" not in check["issue"]
 
     def test_local_git_freshness_reports_dirty_worktree(self, tmp_path):
         """Dirty editable checkouts should be visible to host agents before upgrade."""

@@ -26,8 +26,8 @@ BOOTSTRAP_SCHEMA_VERSION = "m34.bootstrap.v0"
 PYPI_JSON_URL = "https://pypi.org/pypi/life-index/json"
 PYPI_TIMEOUT_SECONDS = 2.0
 GIT_TIMEOUT_SECONDS = 15.0
-EDITABLE_REFRESH_STEP = "git pull --ff-only && pip install -e ."
-PACKAGE_REFRESH_STEP = "pip install -U life-index"
+EDITABLE_REFRESH_STEP = "life-index upgrade --plan --json"
+PACKAGE_REFRESH_STEP = "life-index upgrade --plan --json"
 MIGRATE_DRY_RUN_STEP = "life-index migrate --dry-run"
 MIGRATE_APPLY_STEP = "life-index migrate --apply"
 SEARCH_INDEX_REBUILD_STEP = "life-index index --rebuild"
@@ -511,7 +511,7 @@ def decide_route(
     def refresh_step() -> str | None:
         suggested = data_state.get("suggested_refresh_step")
         if isinstance(suggested, str) and suggested:
-            return suggested
+            return EDITABLE_REFRESH_STEP
         install_type = data_state.get("install_type")
         if install_type == "editable":
             return EDITABLE_REFRESH_STEP
@@ -532,8 +532,8 @@ def decide_route(
                     "code": "INSTALL_REFRESH_UNKNOWN",
                     "message": "A package refresh may be needed, but install type is unknown.",
                     "suggested_action": (
-                        "Inspect how life-index is installed, then run the matching refresh "
-                        "command before continuing."
+                        "Run life-index upgrade --plan --json and follow its canonical "
+                        "onboarding pointer before continuing."
                     ),
                 }
             )

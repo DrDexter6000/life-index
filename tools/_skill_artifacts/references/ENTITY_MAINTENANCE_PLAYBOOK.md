@@ -7,8 +7,9 @@ user interview. Confirmed graph writes still require user judgment.
 ## Start Every Maintenance Task
 
 1. Run `life-index health --json`.
-2. If `data.upgrade_freshness.suggested_refresh_step` is present, execute it
-   before reading graph signals or changing data.
+2. If `data.upgrade_freshness.suggested_refresh_step` is present, run its
+   read-only `life-index upgrade --plan --json` pointer and follow the returned
+   onboarding guidance before reading graph signals or changing data.
 3. Read `data.entity_maintenance.traffic_light`, `pending_count`, and
    `next_step.command`.
 

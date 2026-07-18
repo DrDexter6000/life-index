@@ -3531,25 +3531,19 @@ python -m tools bootstrap --json
 }
 ```
 
-Older bootstrap payloads may expose a refresh command matching `install_type`:
-
-- `editable`: `git pull --ff-only && pip install -e .`
-- `package`: `pip install -U life-index`
-
-These commands are not authority for updating an existing program environment.
-For current lifecycle handling, run `upgrade --plan --json`; when it reports
-`reinstall_managed_environment`, leave the existing environment and checkout
-untouched and create a fresh dedicated install through `AGENT_ONBOARDING.md`.
-Never run these refresh commands against shared/global Python or an existing
-developer- or user-owned checkout.
+If `update_available` is set or `install_in_sync` is `false`, both
+`suggested_refresh_step` and the first inserted `safe_next_steps` item are the
+read-only canonical pointer `life-index upgrade --plan --json`, regardless of
+whether `install_type` is `editable` or `package`. The returned upgrade plan
+then points replacement cases to `AGENT_ONBOARDING.md`; bootstrap never exposes
+an executable git, pip, or skill-install refresh command.
 
 For editable/git checkouts, bootstrap also fetches the configured upstream and
 reports `git_freshness`, `git_upstream`, `git_behind_count`, and
 `git_ahead_count`. A checkout that is behind upstream is treated as stale even
 when the package version is unchanged: `update_available` is `"git-behind"`,
-`update_reasons` includes `"git_behind"`, and older payloads may include a
-surgical `suggested_refresh_step`; current agents must use clean replacement as
-described above.
+`update_reasons` includes `"git_behind"`, and `suggested_refresh_step` remains
+the same read-only upgrade-plan pointer described above.
 
 If release freshness cannot be checked, `freshness` is `"unknown"` and
 `freshness_error` explains why. This is diagnostic only; bootstrap remains
@@ -4552,8 +4546,9 @@ python -m tools.build_index [options]
   rather than source-data mutation; the note states the boundary.
 - `data.upgrade_freshness`: non-blocking session signal. It reports local
   installed/manifest mismatch and checkout-vs-upstream metadata, including
-  `suggested_refresh_step` when a local update signal is visible. It does not
-  replace `bootstrap --json`. Editable checkouts also report dirty worktree
+  `suggested_refresh_step: "life-index upgrade --plan --json"` when a local
+  update signal is visible, with `side_effect: "read"`. It does not replace
+  `bootstrap --json`. Editable checkouts also report dirty worktree
   hints under `git.dirty` / `git.dirty_count`; a dirty-only checkout adds
   `warning` plus `suggested_command: "git checkout -- ."` with
   `side_effect: "write"` without adding a health issue or blocking other
