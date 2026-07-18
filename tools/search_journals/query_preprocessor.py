@@ -45,7 +45,7 @@ _CN_NUMERALS: dict[str, int] = {
 
 _TIME_PATTERNS: list[re.Pattern[str]] = [
     # Absolute dates (more specific first)
-    re.compile(r"(?<![A-Za-z0-9_-])(\d{4})年(\d{1,2})月(\d{1,2})[日号]?(?![A-Za-z0-9_-])"),
+    re.compile(r"(?<![A-Za-z0-9_-])(\d{4})年(\d{1,2})月(\d{1,2})(?>[日号]?)(?![A-Za-z0-9_-])"),
     re.compile(r"(?<![A-Za-z0-9_-])(\d{4})-(\d{2})-(\d{2})(?![A-Za-z0-9_-])"),
     re.compile(r"(?<![A-Za-z0-9_-])(\d{4})年(\d{1,2})月(?![A-Za-z0-9_-])"),
     re.compile(r"(?<![A-Za-z0-9_-])(\d{4})-(\d{2})(?![A-Za-z0-9_-])"),
@@ -100,6 +100,12 @@ _TIME_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 _ABSOLUTE_TIME_PATTERN_COUNT = 4
+_ABSOLUTE_TIME_CANDIDATE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})[日号]?"),
+    re.compile(r"(\d{4})-(\d{2})-(\d{2})"),
+    re.compile(r"(\d{4})年(\d{1,2})月"),
+    re.compile(r"(\d{4})-(\d{2})"),
+]
 _ASCII_HYPHENATED_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+$")
 
 # ── Intent signal words ────────────────────────────────────────────────
@@ -214,6 +220,35 @@ def _is_valid_absolute_time_match(index: int, match: re.Match[str]) -> bool:
     return True
 
 
+def _absolute_time_candidate_matches(query: str) -> list[tuple[int, re.Match[str]]]:
+    """Find complete absolute candidates without applying token boundaries."""
+    candidates: list[tuple[int, re.Match[str]]] = []
+    for index, pattern in enumerate(_ABSOLUTE_TIME_CANDIDATE_PATTERNS):
+        for match in pattern.finditer(query):
+            start, end = match.span()
+            if any(start < existing.end() and existing.start() < end for _, existing in candidates):
+                continue
+            candidates.append((index, match))
+    return candidates
+
+
+def _invalid_absolute_time_matches(query: str) -> list[re.Match[str]]:
+    """Find invalid absolute candidates without applying token boundaries."""
+    return [
+        match
+        for index, match in _absolute_time_candidate_matches(query)
+        if not _is_valid_absolute_time_match(index, match)
+    ]
+
+
+def _has_ascii_identifier_neighbor(query: str, match: re.Match[str]) -> bool:
+    """Return whether a date candidate is embedded in an ASCII identifier."""
+    start, end = match.span()
+    before = query[start - 1] if start else ""
+    after = query[end] if end < len(query) else ""
+    return bool(re.match(r"[A-Za-z0-9_-]", before) or re.match(r"[A-Za-z0-9_-]", after))
+
+
 def extract_time_expression(query: str) -> str | None:
     """Extract the first matching time expression from a query string.
 
@@ -223,11 +258,15 @@ def extract_time_expression(query: str) -> str | None:
     if not query:
         return None
 
-    invalid_absolute_spans: list[tuple[int, int]] = []
+    blocked_absolute_spans = [
+        match.span()
+        for index, match in _absolute_time_candidate_matches(query)
+        if not _is_valid_absolute_time_match(index, match)
+        or _has_ascii_identifier_neighbor(query, match)
+    ]
     for index, pattern in enumerate(_TIME_PATTERNS[:_ABSOLUTE_TIME_PATTERN_COUNT]):
         for match in pattern.finditer(query):
             if not _is_valid_absolute_time_match(index, match):
-                invalid_absolute_spans.append(match.span())
                 continue
             return match.group(0)
 
@@ -235,8 +274,8 @@ def extract_time_expression(query: str) -> str | None:
         for match in pattern.finditer(query):
             start, end = match.span()
             if any(
-                start < invalid_end and invalid_start < end
-                for invalid_start, invalid_end in invalid_absolute_spans
+                start < blocked_end and blocked_start < end
+                for blocked_start, blocked_end in blocked_absolute_spans
             ):
                 continue
             return match.group(0)
@@ -873,12 +912,13 @@ def extract_keywords(query: str, *, time_expr: str | None = None) -> list[str]:
 
     if not time_expr:
         invalid_absolute_tokens = [
-            match.group(0)
-            for index, pattern in enumerate(_TIME_PATTERNS[:_ABSOLUTE_TIME_PATTERN_COUNT])
-            for match in pattern.finditer(query)
-            if not _is_valid_absolute_time_match(index, match)
+            match.group(0) for match in _invalid_absolute_time_matches(query)
         ]
-        filtered.extend(token for token in invalid_absolute_tokens if token not in filtered)
+        filtered.extend(
+            token
+            for token in invalid_absolute_tokens
+            if not any(token in existing for existing in filtered)
+        )
 
     return filtered if filtered else [query.strip()]
 
@@ -890,8 +930,13 @@ def _tokenize(text: str) -> list[str]:
     if len(parts) > 1:
         return [p for p in parts if p.strip()]
 
-    if len(parts) == 1 and _ASCII_HYPHENATED_IDENTIFIER_RE.fullmatch(text):
-        return parts
+    if len(parts) == 1:
+        embedded_absolute_candidate = any(
+            _has_ascii_identifier_neighbor(text, match)
+            for _, match in _absolute_time_candidate_matches(text)
+        )
+        if _ASCII_HYPHENATED_IDENTIFIER_RE.fullmatch(text) or embedded_absolute_candidate:
+            return parts
 
     # Single CJK string: try jieba if available, else character-level extraction
     try:

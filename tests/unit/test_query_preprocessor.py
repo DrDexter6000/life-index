@@ -132,6 +132,34 @@ class TestAbsoluteDateTokenBoundaries:
             assert plan.date_range is None
             assert query in plan.keywords
 
+    def test_invalid_chinese_month_with_ascii_suffix_is_not_reinterpreted(self):
+        assert extract_time_expression("2026年13月abc") is None
+
+    def test_invalid_chinese_month_with_ascii_suffix_stays_complete_keyword(self):
+        query = "2026年13月abc"
+        plan = build_search_plan(query, reference_date=self.REF_DATE)
+
+        assert plan.date_range is None
+        assert plan.keywords == [query]
+
+    def test_invalid_chinese_date_with_ascii_suffix_is_not_reinterpreted(self):
+        assert extract_time_expression("2026年02月31日abc") is None
+
+    def test_invalid_chinese_date_with_ascii_suffix_stays_complete_keyword(self):
+        query = "2026年02月31日abc"
+        plan = build_search_plan(query, reference_date=self.REF_DATE)
+
+        assert plan.date_range is None
+        assert plan.keywords == [query]
+
+    def test_valid_chinese_date_with_ascii_suffix_stays_identifier(self):
+        query = "2026年02月28日abc"
+
+        assert extract_time_expression(query) is None
+        plan = build_search_plan(query, reference_date=self.REF_DATE)
+        assert plan.date_range is None
+        assert plan.keywords == [query]
+
     def test_yearless_leap_day_uses_reference_date_before_keyword_removal(self):
         query = "2月29日 纪念日"
         leap_plan = build_search_plan(query, reference_date=date(2024, 3, 1))
