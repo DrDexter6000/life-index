@@ -242,12 +242,37 @@ class TestDetectDataState:
             git_checkout=checkout,
         )
 
-        assert freshness["freshness"] == "update_available"
-        assert freshness["update_available"] == "git-behind"
-        assert freshness["update_reasons"] == ["git_behind"]
-        assert freshness["git_freshness"] == "behind"
-        assert freshness["git_behind_count"] == 1
+        assert freshness["freshness"] == "unknown"
+        assert freshness["update_available"] is None
+        assert freshness["update_reasons"] == []
+        assert freshness["git_freshness"] == "unknown"
+        assert freshness["git_behind_count"] is None
+        assert "life-index upgrade --plan --json" in freshness["git_error"]
         assert freshness["suggested_refresh_step"] == "life-index upgrade --plan --json"
+
+    def test_git_freshness_never_fetches_or_updates_refs(self, tmp_path, monkeypatch):
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        commands: list[list[str]] = []
+
+        def fake_run_git(path: Path, args: list[str]):
+            commands.append(args)
+            if args[:4] == ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
+                return subprocess.CompletedProcess([], 0, "origin/main\n", "")
+            if args == ["rev-parse", "origin/main"]:
+                return subprocess.CompletedProcess([], 0, "local-tracking-head\n", "")
+            if args == ["ls-remote", "--heads", "origin", "main"]:
+                return subprocess.CompletedProcess([], 0, "remote-head\trefs/heads/main\n", "")
+            raise AssertionError(f"Unexpected git command: {args}")
+
+        monkeypatch.setattr(_mod, "_run_git", fake_run_git)
+
+        freshness = _mod._detect_git_freshness(checkout)
+
+        assert all(command[0] not in {"fetch", "pull", "reset"} for command in commands)
+        assert freshness["git_freshness"] == "unknown"
+        assert freshness["git_behind_count"] is None
+        assert "life-index upgrade --plan --json" in freshness["git_error"]
 
     def test_package_install_without_git_keeps_version_only_freshness(self, monkeypatch):
         monkeypatch.setattr(_mod, "_query_latest_release", lambda: "1.3.4")
@@ -619,7 +644,10 @@ class TestDecideRoute:
             checkout_assessment=_checkout("invalid", False),
         )
 
-        assert any(item["code"] == "INVALID_CHECKOUT" for item in result["needs_human"])
+        invalid = next(item for item in result["needs_human"] if item["code"] == "INVALID_CHECKOUT")
+        assert "Delete and reclone" not in invalid["suggested_action"]
+        assert "Leave this path untouched" in invalid["suggested_action"]
+        assert "fresh dedicated install" in invalid["suggested_action"]
 
     def test_adoptable_checkout_does_not_need_human(self):
         result = decide_route(

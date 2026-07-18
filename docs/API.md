@@ -3538,12 +3538,13 @@ whether `install_type` is `editable` or `package`. The returned upgrade plan
 then points replacement cases to `AGENT_ONBOARDING.md`; bootstrap never exposes
 an executable git, pip, or skill-install refresh command.
 
-For editable/git checkouts, bootstrap also fetches the configured upstream and
-reports `git_freshness`, `git_upstream`, `git_behind_count`, and
-`git_ahead_count`. A checkout that is behind upstream is treated as stale even
-when the package version is unchanged: `update_available` is `"git-behind"`,
-`update_reasons` includes `"git_behind"`, and `suggested_refresh_step` remains
-the same read-only upgrade-plan pointer described above.
+For editable/git checkouts, bootstrap uses local read commands plus
+`git ls-remote` and never fetches or updates refs. It reports `git_freshness`,
+`git_upstream`, `git_behind_count`, and `git_ahead_count`. Exact ahead/behind
+counts are reported only when the remote tip matches the local tracking ref.
+If they differ, freshness is `"unknown"`, counts are `null`, and `git_error`
+routes the caller to `life-index upgrade --plan --json` rather than claiming a
+stale tracking ref is current.
 
 If release freshness cannot be checked, `freshness` is `"unknown"` and
 `freshness_error` explains why. This is diagnostic only; bootstrap remains
@@ -3562,7 +3563,7 @@ read-only.
 |---|---|
 | `AMBIGUOUS_CHECKOUT` | checkout 结构完整但缺少 host/user 正向采纳授权 |
 | `DEV_DIR_FOUND` | checkout 有 development-directory 强信号 |
-| `INVALID_CHECKOUT` | checkout 缺少必要文件 |
+| `INVALID_CHECKOUT` | checkout 缺少必要文件；保持原路径不动，在新空目标创建 dedicated install，后续 cleanup 须按 onboarding 证明 ownership |
 | `INSTALL_REFRESH_UNKNOWN` | 需要刷新安装但 bootstrap 无法识别安装类型；Agent 应停止并转达 |
 | `MIGRATION_CHECK_FAILED` | in-process migration scan 失败；不得当作无需迁移 |
 
@@ -4550,9 +4551,9 @@ python -m tools.build_index [options]
   update signal is visible, with `side_effect: "read"`. It does not replace
   `bootstrap --json`. Editable checkouts also report dirty worktree
   hints under `git.dirty` / `git.dirty_count`; a dirty-only checkout adds
-  `warning` plus `suggested_command: "git checkout -- ."` with
-  `side_effect: "write"` without adding a health issue or blocking other
-  operations.
+  `warning` plus the read-only `suggested_command: "git status --short"` with
+  `side_effect: "read"`. Its note tells the caller to leave changes untouched
+  and ask the owner; it does not add a health issue or block other operations.
 - `data.entity_maintenance`: `traffic_light` is `green` when pending review is
   clear and the graph was touched within 30 days; `yellow` when candidates are
   pending or the audit is stale; `red` when structural errors or duplicate

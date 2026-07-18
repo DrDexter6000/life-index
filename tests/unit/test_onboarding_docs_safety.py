@@ -39,6 +39,18 @@ def test_onboarding_data_safety_rule_stays_visible() -> None:
     assert "fresh install" in onboarding
 
 
+def test_onboarding_and_bootstrap_forbid_destructive_recovery_guidance() -> None:
+    public_guidance = "\n".join(
+        _read(path) for path in ("AGENT_ONBOARDING.md", "SKILL.md", "docs/API.md")
+    )
+    bootstrap_source = _read("tools/bootstrap/__init__.py")
+
+    assert "git checkout -- ." not in public_guidance
+    assert "Delete and reclone" not in public_guidance
+    assert '["fetch"' not in bootstrap_source
+    assert "git fetch --quiet" not in public_guidance
+
+
 def test_onboarding_documents_reversible_skill_install_safety() -> None:
     onboarding = _read("AGENT_ONBOARDING.md")
 
