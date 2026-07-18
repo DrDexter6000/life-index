@@ -4551,7 +4551,7 @@ python -m tools.build_index [options]
   update signal is visible, with `side_effect: "read"`. It does not replace
   `bootstrap --json`. Editable checkouts also report dirty worktree
   hints under `git.dirty` / `git.dirty_count`; a dirty-only checkout adds
-  `warning` plus the read-only `suggested_command: "git status --short"` with
+  `warning` plus the read-only `suggested_command: "git --no-optional-locks status --short"` with
   `side_effect: "read"`. Its note tells the caller to leave changes untouched
   and ask the owner; it does not add a health issue or block other operations.
 - `data.entity_maintenance`: `traffic_light` is `green` when pending review is

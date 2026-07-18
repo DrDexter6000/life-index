@@ -124,10 +124,13 @@ def test_onboarding_and_bootstrap_forbid_destructive_recovery_guidance() -> None
     public_guidance = "\n".join(
         _read(path) for path in ("AGENT_ONBOARDING.md", "SKILL.md", "docs/API.md")
     )
+    api = _read("docs/API.md")
     bootstrap_source = _read("tools/bootstrap/__init__.py")
 
     assert "git checkout -- ." not in public_guidance
     assert "Delete and reclone" not in public_guidance
+    assert 'suggested_command: "git --no-optional-locks status --short"' in api
+    assert 'suggested_command: "git status --short"' not in api
     assert '["fetch"' not in bootstrap_source
     assert "git fetch --quiet" not in public_guidance
 
