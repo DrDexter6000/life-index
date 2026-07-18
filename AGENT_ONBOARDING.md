@@ -46,7 +46,7 @@ If neither works, or `upgrade` reports `reinstall_managed_environment`, use 3A.
 Create a new dedicated checkout and validate only through its exact venv from a neutral cwd, with `PYTHONPATH` cleared and explicit synthetic data. POSIX:
 
 ```bash
-NEW_ROOT="$(mktemp -d)/life-index"
+NEW_ROOT="<new-target>/life-index"
 NEUTRAL_CWD="$(mktemp -d)"
 SANDBOX_DATA="$(mktemp -d)"
 git clone https://github.com/DrDexter6000/life-index.git "$NEW_ROOT"
@@ -61,7 +61,7 @@ env -u PYTHONPATH LIFE_INDEX_DATA_DIR="$SANDBOX_DATA" "$NEW_ROOT/.venv/bin/life-
 Windows PowerShell:
 
 ```powershell
-$NewRoot = Join-Path ([IO.Path]::GetTempPath()) ("life-index-" + [guid]::NewGuid())
+$NewRoot = Join-Path "<new-target>" "life-index"
 $NeutralCwd = Join-Path ([IO.Path]::GetTempPath()) ("life-index-neutral-" + [guid]::NewGuid())
 $SandboxData = Join-Path ([IO.Path]::GetTempPath()) ("life-index-data-" + [guid]::NewGuid())
 git clone https://github.com/DrDexter6000/life-index.git $NewRoot

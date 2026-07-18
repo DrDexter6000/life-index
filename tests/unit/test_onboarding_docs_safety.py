@@ -74,6 +74,21 @@ def test_clean_replacement_validation_isolates_cwd_pythonpath_and_data() -> None
     assert "$env:LIFE_INDEX_DATA_DIR = $SandboxData" in validation
 
 
+def test_clean_replacement_uses_stable_operator_selected_program_root() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    validation = onboarding.split("### 3A. Program replacement validation", 1)[1].split(
+        "### 3B. Host integration and skill delivery", 1
+    )[0]
+
+    assert 'NEW_ROOT="<new-target>/life-index"' in validation
+    assert 'NEW_ROOT="$(mktemp -d)/life-index"' not in validation
+    assert '$NewRoot = Join-Path "<new-target>" "life-index"' in validation
+    assert "$NewRoot = Join-Path ([IO.Path]::GetTempPath())" not in validation
+    assert validation.count('="$(mktemp -d)"') == 2
+    assert validation.count("[IO.Path]::GetTempPath()") == 2
+    assert validation.count("[guid]::NewGuid()") == 2
+
+
 def test_onboarding_separates_program_host_and_data_lifecycles() -> None:
     onboarding = _read("AGENT_ONBOARDING.md")
 
