@@ -39,6 +39,72 @@ def test_onboarding_data_safety_rule_stays_visible() -> None:
     assert "fresh install" in onboarding
 
 
+def test_clean_replacement_validation_uses_exact_new_venv_entries() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    assert "### 3A. Program replacement validation" in onboarding
+    assert "### 3B. Host integration and skill delivery" in onboarding
+    validation = onboarding.split("### 3A. Program replacement validation", 1)[1].split(
+        "### 3B. Host integration and skill delivery", 1
+    )[0]
+
+    assert '"$NEW_ROOT/.venv/bin/python" -m pip install -e "$NEW_ROOT"' in validation
+    assert '"$NEW_ROOT/.venv/bin/life-index" bootstrap --json' in validation
+    assert (
+        '& (Join-Path $NewRoot ".venv\\Scripts\\python.exe") -m pip install -e $NewRoot'
+        in validation
+    )
+    assert '& (Join-Path $NewRoot ".venv\\Scripts\\life-index.exe") bootstrap --json' in validation
+    assert "python -m tools bootstrap --json" not in validation
+
+
+def test_clean_replacement_validation_isolates_cwd_pythonpath_and_data() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    assert "### 3A. Program replacement validation" in onboarding
+    assert "### 3B. Host integration and skill delivery" in onboarding
+    validation = onboarding.split("### 3A. Program replacement validation", 1)[1].split(
+        "### 3B. Host integration and skill delivery", 1
+    )[0]
+
+    assert 'NEUTRAL_CWD="$(mktemp -d)"' in validation
+    assert 'cd "$NEUTRAL_CWD"' in validation
+    assert 'env -u PYTHONPATH LIFE_INDEX_DATA_DIR="$SANDBOX_DATA"' in validation
+    assert "$NeutralCwd = Join-Path" in validation
+    assert "Set-Location $NeutralCwd" in validation
+    assert "Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue" in validation
+    assert "$env:LIFE_INDEX_DATA_DIR = $SandboxData" in validation
+
+
+def test_onboarding_separates_program_host_and_data_lifecycles() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+
+    assert "### 3A. Program replacement validation" in onboarding
+    assert "### 3B. Host integration and skill delivery" in onboarding
+    assert "### 3C. Owner-authorized data maintenance" in onboarding
+    assert (
+        "Host integration is a separate cutover action and is not evidence that program "
+        "replacement is valid."
+    ) in " ".join(onboarding.split())
+    host_integration = onboarding.split("### 3B. Host integration and skill delivery", 1)[1].split(
+        "### 3C. Owner-authorized data maintenance", 1
+    )[0]
+    assert (
+        '"$NEW_ROOT/.venv/bin/life-index" sync-skill --install ' "--host-home <host-home> --json"
+    ) in host_integration
+    assert (
+        '& (Join-Path $NewRoot ".venv\\Scripts\\life-index.exe") sync-skill '
+        "--install --host-home <host-home> --json"
+    ) in host_integration
+    assert (
+        "A bootstrap plan obtained against a real data root is a separate "
+        "data-maintenance plan. Never execute it merely to accept program replacement."
+    ) in " ".join(onboarding.split())
+    maintenance = onboarding.split("### 3C. Owner-authorized data maintenance", 1)[1].split(
+        "## 4. Execute The Bootstrap Plan", 1
+    )[0]
+    assert "migrate" in maintenance
+    assert "index --rebuild" in maintenance
+
+
 def test_onboarding_and_bootstrap_forbid_destructive_recovery_guidance() -> None:
     public_guidance = "\n".join(
         _read(path) for path in ("AGENT_ONBOARDING.md", "SKILL.md", "docs/API.md")

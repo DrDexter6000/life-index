@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,29 @@ class FakeCommandRunner:
                 stderr="",
             )
         return CommandResult(returncode=0, stdout="{}\n", stderr="")
+
+
+def test_subprocess_git_runner_status_disables_optional_locks(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    from tools.upgrade import core
+
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        if command == ["git", "rev-parse", "--abbrev-ref", "HEAD"]:
+            return subprocess.CompletedProcess(command, 0, "main\n", "")
+        if command == ["git", "--no-optional-locks", "status", "--porcelain"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 1, "", "no upstream")
+
+    monkeypatch.setattr(core.subprocess, "run", fake_run)
+
+    core.SubprocessGitRunner().inspect(tmp_path)
+
+    assert ["git", "--no-optional-locks", "status", "--porcelain"] in commands
+    assert ["git", "status", "--porcelain"] not in commands
 
 
 def test_plan_reports_versions_recommended_release_actions_and_json_purity() -> None:
@@ -261,6 +285,9 @@ def test_dirty_git_repo_plan_warns_and_apply_fails_closed_without_pull(tmp_path:
     assert result["data"]["applied_actions"] == []
     assert result["data"]["git"]["dirty"] is True
     assert result["data"]["recommended_next_step"]["requires_human"] is True
+    assert result["data"]["recommended_next_step"]["command"] == (
+        "git --no-optional-locks status --short"
+    )
     assert git.pulled is False
 
 
@@ -338,6 +365,9 @@ def test_ahead_or_diverged_git_repo_apply_requires_human(tmp_path: Path) -> None
     assert result["data"]["reinstall_required"] is False
     assert result["data"]["applied_actions"] == []
     assert result["data"]["recommended_next_step"]["requires_human"] is True
+    assert result["data"]["recommended_next_step"]["command"] == (
+        "git --no-optional-locks status --short --branch"
+    )
     assert git.pulled is False
 
 
@@ -663,6 +693,9 @@ def test_remote_probe_unreachable_is_partial_and_not_current(tmp_path: Path) -> 
     assert plan["data"]["partial"] is True
     assert plan["data"]["git"]["freshness"] == "unknown"
     assert plan["data"]["git"]["remote_probe"]["error"] == "network down"
+    assert plan["data"]["recommended_next_step"]["command"] == (
+        "git --no-optional-locks status --short --branch"
+    )
 
     result = apply_upgrade(
         context=context,

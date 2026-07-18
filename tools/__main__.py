@@ -89,7 +89,7 @@ DIRTY_WORKTREE_WARNING = (
     "Repository clone has uncommitted changes; dirty clones can cause "
     "Life Index upgrades to fail."
 )
-DIRTY_WORKTREE_SUGGESTED_COMMAND = "git status --short"
+DIRTY_WORKTREE_SUGGESTED_COMMAND = "git --no-optional-locks status --short"
 DERIVED_INDEX_NOTE = "Writes derived index artifacts only; source journals are not modified."
 DERIVED_ENTITY_PROFILES_NOTE = (
     "Writes derived Entities/ profile docs only; entity_graph.yaml is not modified."
@@ -190,7 +190,7 @@ def _run_git_local(checkout: Path, args: list[str]) -> subprocess.CompletedProce
 
 def _detect_local_git_worktree(checkout: Path) -> Dict[str, Any]:
     try:
-        result = _run_git_local(checkout, ["status", "--porcelain"])
+        result = _run_git_local(checkout, ["--no-optional-locks", "status", "--porcelain"])
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "git status failed").strip()
             return {

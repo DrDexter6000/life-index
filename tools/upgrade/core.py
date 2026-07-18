@@ -123,7 +123,7 @@ class SubprocessGitRunner:
         branch_result = self._git(repo_path, "rev-parse", "--abbrev-ref", "HEAD")
         branch = branch_result.stdout.strip() if branch_result.returncode == 0 else None
 
-        status_result = self._git(repo_path, "status", "--porcelain")
+        status_result = self._git(repo_path, "--no-optional-locks", "status", "--porcelain")
         dirty_error = None if status_result.returncode == 0 else status_result.stderr.strip()
         dirty_lines = [line for line in status_result.stdout.splitlines() if line.strip()]
         dirty = bool(dirty_lines) if status_result.returncode == 0 else None
@@ -513,7 +513,7 @@ def build_upgrade_plan(
                     "the uncommitted changes with the owner."
                 ),
                 side_effect="read",
-                command="git status --short",
+                command="git --no-optional-locks status --short",
                 reason="A dirty checkout is human-owned state and must not be mutated.",
                 safe_to_run=False,
                 requires_human=True,
@@ -528,7 +528,7 @@ def build_upgrade_plan(
                     "the local commits with the owner."
                 ),
                 side_effect="read",
-                command="git status --short --branch",
+                command="git --no-optional-locks status --short --branch",
                 reason="Ahead or diverged checkouts require human review.",
                 safe_to_run=False,
                 requires_human=True,
@@ -549,7 +549,7 @@ def build_upgrade_plan(
                     "remote freshness before creating a fresh dedicated install."
                 ),
                 side_effect="read",
-                command="git status --short --branch",
+                command="git --no-optional-locks status --short --branch",
                 reason=remote_probe.get("error") or "Remote freshness could not be verified.",
                 safe_to_run=False,
                 requires_human=True,

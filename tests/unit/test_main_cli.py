@@ -207,6 +207,21 @@ class TestHealthCheck:
         assert clean["git_worktree_dirty"] is False
         assert clean["git_worktree_dirty_count"] == 0
 
+    def test_local_git_status_disables_optional_locks(self, tmp_path, monkeypatch):
+        from tools import __main__ as main_cli
+
+        commands: list[list[str]] = []
+
+        def fake_run_git(path: Path, args: list[str]):
+            commands.append(args)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        monkeypatch.setattr(main_cli, "_run_git_local", fake_run_git)
+
+        main_cli._detect_local_git_worktree(tmp_path)
+
+        assert commands == [["--no-optional-locks", "status", "--porcelain"]]
+
     def test_local_git_freshness_remote_difference_is_unknown_without_ref_writes(
         self,
         tmp_path,
@@ -220,7 +235,7 @@ class TestHealthCheck:
 
         def fake_run_git(path: Path, args: list[str]):
             commands.append(args)
-            if args == ["status", "--porcelain"]:
+            if args == ["--no-optional-locks", "status", "--porcelain"]:
                 return subprocess.CompletedProcess([], 0, "", "")
             if args == ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]:
                 return subprocess.CompletedProcess([], 0, "origin/main\n", "")
@@ -320,7 +335,7 @@ class TestHealthCheck:
             "Repository clone has uncommitted changes; dirty clones can cause "
             "Life Index upgrades to fail."
         )
-        assert check["suggested_command"] == "git status --short"
+        assert check["suggested_command"] == "git --no-optional-locks status --short"
         assert check["side_effect"] == "read"
         assert "ask the owner" in check["side_effect_note"].lower()
         assert "discard" not in check["side_effect_note"].lower()
