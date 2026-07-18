@@ -44,7 +44,6 @@ If neither works, or `upgrade` reports `reinstall_managed_environment`, use 3A.
 ### 3A. Program replacement validation
 
 Create a new dedicated checkout and validate only through its exact venv from a neutral cwd, with `PYTHONPATH` cleared and explicit synthetic data. POSIX:
-
 ```bash
 NEW_ROOT="<new-target>/life-index"
 NEUTRAL_CWD="$(mktemp -d)"
@@ -57,15 +56,15 @@ env -u PYTHONPATH LIFE_INDEX_DATA_DIR="$SANDBOX_DATA" "$NEW_ROOT/.venv/bin/life-
 env -u PYTHONPATH LIFE_INDEX_DATA_DIR="$SANDBOX_DATA" "$NEW_ROOT/.venv/bin/life-index" bootstrap --json
 env -u PYTHONPATH LIFE_INDEX_DATA_DIR="$SANDBOX_DATA" "$NEW_ROOT/.venv/bin/life-index" health --json
 ```
-
 Windows PowerShell:
-
 ```powershell
 $NewRoot = Join-Path "<new-target>" "life-index"
+$PythonExe = "<path-to-supported-python.exe>"
 $NeutralCwd = Join-Path ([IO.Path]::GetTempPath()) ("life-index-neutral-" + [guid]::NewGuid())
 $SandboxData = Join-Path ([IO.Path]::GetTempPath()) ("life-index-data-" + [guid]::NewGuid())
 git clone https://github.com/DrDexter6000/life-index.git $NewRoot
-py -3.11 -m venv (Join-Path $NewRoot ".venv")
+& $PythonExe -c 'import sys; assert sys.version_info >= (3, 11), f"Python >=3.11 required, got {sys.version}"'
+& $PythonExe -m venv (Join-Path $NewRoot ".venv")
 & (Join-Path $NewRoot ".venv\Scripts\python.exe") -m pip install -e $NewRoot
 New-Item -ItemType Directory -Path $NeutralCwd, $SandboxData | Out-Null
 Set-Location $NeutralCwd
@@ -75,27 +74,32 @@ $env:LIFE_INDEX_DATA_DIR = $SandboxData
 & (Join-Path $NewRoot ".venv\Scripts\life-index.exe") bootstrap --json
 & (Join-Path $NewRoot ".venv\Scripts\life-index.exe") health --json
 ```
-
 These version/bootstrap/health results validate program replacement. Do not substitute bare Python, the checkout cwd, or real user data. After they pass, the initiating operator may remove an old root only after proving it is one dedicated managed program directory with user data outside it; ambiguous, shared/global, developer-owned, and user-owned roots stay untouched.
 
 ### 3B. Host integration and skill delivery
 
 Host integration is a separate cutover action and is not evidence that program replacement is valid. For a known host home, use the validated launcher to preview then apply on POSIX:
-
 ```bash
-"$NEW_ROOT/.venv/bin/life-index" sync-skill --install --host-home <host-home> --dry-run --json
-"$NEW_ROOT/.venv/bin/life-index" sync-skill --install --host-home <host-home> --json
+NEW_ROOT="<new-target>/life-index"
+HOST_HOME="<host-home>"
+env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --list --json
+env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --install --host-home "$HOST_HOME" --dry-run --json
+env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --install --host-home "$HOST_HOME" --json
+env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --uninstall --host-home "$HOST_HOME" --json
 ```
-
 Windows PowerShell:
-
 ```powershell
-& (Join-Path $NewRoot ".venv\Scripts\life-index.exe") sync-skill --install --host-home <host-home> --dry-run --json
-& (Join-Path $NewRoot ".venv\Scripts\life-index.exe") sync-skill --install --host-home <host-home> --json
+$NewRoot = Join-Path "<new-target>" "life-index"
+$HostHome = "<host-home>"
+$LifeIndex = Join-Path $NewRoot ".venv\Scripts\life-index.exe"
+Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+& $LifeIndex sync-skill --list --json
+& $LifeIndex sync-skill --install --host-home $HostHome --dry-run --json
+& $LifeIndex sync-skill --install --host-home $HostHome --json
+& $LifeIndex sync-skill --uninstall --host-home $HostHome --json
 ```
-
 Surface `delivered=false`. Bare `sync-skill` does not create host directories.
-Inspect with `life-index sync-skill --list --json`; reverse with `life-index sync-skill --uninstall --host-home <host-home> --json`. Uninstall only removes agent skill artifacts and never deletes journals, data, checkouts, packages, or host-home parents.
+Use the exact commands above to inspect or reverse host delivery. Uninstall only removes agent skill artifacts and never deletes journals, data, checkouts, packages, or host-home parents.
 
 ### 3C. Owner-authorized data maintenance
 

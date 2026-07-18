@@ -89,6 +89,66 @@ def test_clean_replacement_uses_stable_operator_selected_program_root() -> None:
     assert validation.count("[guid]::NewGuid()") == 2
 
 
+def test_windows_replacement_uses_operator_selected_supported_python_launcher() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    validation = onboarding.split("### 3A. Program replacement validation", 1)[1].split(
+        "### 3B. Host integration and skill delivery", 1
+    )[0]
+
+    assert '$PythonExe = "<path-to-supported-python.exe>"' in validation
+    assert (
+        "& $PythonExe -c 'import sys; assert sys.version_info >= (3, 11), "
+        'f"Python >=3.11 required, got {sys.version}"\''
+    ) in validation
+    assert '& $PythonExe -m venv (Join-Path $NewRoot ".venv")' in validation
+    assert "py -3.11" not in validation
+
+
+def test_host_integration_is_standalone_and_uses_isolated_posix_launcher() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    host_integration = onboarding.split("### 3B. Host integration and skill delivery", 1)[1].split(
+        "### 3C. Owner-authorized data maintenance", 1
+    )[0]
+    posix = host_integration.split("Windows PowerShell:", 1)[0]
+
+    assert 'NEW_ROOT="<new-target>/life-index"' in posix
+    assert 'HOST_HOME="<host-home>"' in posix
+    commands = (
+        'env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --list --json',
+        'env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --install '
+        '--host-home "$HOST_HOME" --dry-run --json',
+        'env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --install '
+        '--host-home "$HOST_HOME" --json',
+        'env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill --uninstall '
+        '--host-home "$HOST_HOME" --json',
+    )
+    for command in commands:
+        assert command in posix
+    assert posix.count('env -u PYTHONPATH "$NEW_ROOT/.venv/bin/life-index" sync-skill') == 4
+
+
+def test_host_integration_is_standalone_and_uses_isolated_windows_launcher() -> None:
+    onboarding = _read("AGENT_ONBOARDING.md")
+    host_integration = onboarding.split("### 3B. Host integration and skill delivery", 1)[1].split(
+        "### 3C. Owner-authorized data maintenance", 1
+    )[0]
+    windows = host_integration.split("Windows PowerShell:", 1)[1]
+
+    assert '$NewRoot = Join-Path "<new-target>" "life-index"' in windows
+    assert '$HostHome = "<host-home>"' in windows
+    assert '$LifeIndex = Join-Path $NewRoot ".venv\\Scripts\\life-index.exe"' in windows
+    assert "Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue" in windows
+    commands = (
+        "& $LifeIndex sync-skill --list --json",
+        "& $LifeIndex sync-skill --install --host-home $HostHome --dry-run --json",
+        "& $LifeIndex sync-skill --install --host-home $HostHome --json",
+        "& $LifeIndex sync-skill --uninstall --host-home $HostHome --json",
+    )
+    for command in commands:
+        assert command in windows
+    assert windows.count("& $LifeIndex sync-skill") == 4
+
+
 def test_onboarding_separates_program_host_and_data_lifecycles() -> None:
     onboarding = _read("AGENT_ONBOARDING.md")
 
@@ -99,16 +159,6 @@ def test_onboarding_separates_program_host_and_data_lifecycles() -> None:
         "Host integration is a separate cutover action and is not evidence that program "
         "replacement is valid."
     ) in " ".join(onboarding.split())
-    host_integration = onboarding.split("### 3B. Host integration and skill delivery", 1)[1].split(
-        "### 3C. Owner-authorized data maintenance", 1
-    )[0]
-    assert (
-        '"$NEW_ROOT/.venv/bin/life-index" sync-skill --install ' "--host-home <host-home> --json"
-    ) in host_integration
-    assert (
-        '& (Join-Path $NewRoot ".venv\\Scripts\\life-index.exe") sync-skill '
-        "--install --host-home <host-home> --json"
-    ) in host_integration
     assert (
         "A bootstrap plan obtained against a real data root is a separate "
         "data-maintenance plan. Never execute it merely to accept program replacement."
@@ -138,8 +188,8 @@ def test_onboarding_and_bootstrap_forbid_destructive_recovery_guidance() -> None
 def test_onboarding_documents_reversible_skill_install_safety() -> None:
     onboarding = _read("AGENT_ONBOARDING.md")
 
-    assert "life-index sync-skill --list --json" in onboarding
-    assert "life-index sync-skill --uninstall --host-home <host-home> --json" in onboarding
+    assert "sync-skill --list --json" in onboarding
+    assert "sync-skill --uninstall" in onboarding
     assert "only removes agent skill artifacts" in onboarding
     assert "never deletes journals" in onboarding
 
