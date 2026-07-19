@@ -6,6 +6,8 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-07-19
+
 ### Changed
 
 - `life-index upgrade --plan/--apply --json` is now read-only: update or
@@ -14,6 +16,16 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 - Upgrade guidance preserves user data and leaves shared/global environments
   and developer/user-owned checkouts untouched instead of attempting in-place
   git, pip, or skill repair.
+
+### Fixed
+
+- Search keeps embedded or suffixed date-like identifiers as keywords instead
+  of misreading them as date filters, while standalone calendar dates continue
+  to produce deterministic date ranges.
+- `life-index confirm` now reaches the confirmation handler and rejects invalid
+  or out-of-tree journal paths with a non-zero, zero-write failure.
+- `life-index verify` excludes `.revisions/` history from the canonical journal
+  inventory while preserving real missing and orphaned index detection.
 
 ## [1.5.1] - 2026-07-17
 
