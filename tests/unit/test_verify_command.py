@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.build_index import build_all
+from tools.edit_journal import edit_journal
 from tools.verify.core import run_verify
 
 
@@ -202,3 +204,108 @@ class TestVerifyCommand:
             "issues_count",
             "suggestion",
         }
+
+    def test_edit_revision_is_not_treated_as_canonical_fts_input(
+        self, verify_paths: dict[str, Path]
+    ) -> None:
+        journal = _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter='title: "A"\ndate: 2026-04-03\ntopic: ["work"]\nabstract: "Alpha"',
+            body="Body before edit",
+        )
+        first_build = build_all(incremental=False)
+        assert first_build["success"] is True
+
+        edit_result = edit_journal(
+            journal_path=journal,
+            frontmatter_updates={"weather": "Clear"},
+        )
+        assert edit_result["success"] is True
+        revision_path = Path(edit_result["revision_path"])
+        assert revision_path.is_file()
+
+        rebuild = build_all(incremental=False)
+        assert rebuild["success"] is True
+        with sqlite3.connect(verify_paths["base_dir"] / ".index" / "journals_fts.db") as conn:
+            fts_paths = {row[0] for row in conn.execute("SELECT path FROM journals")}
+        revision_rel_path = _rel_path(verify_paths["base_dir"], revision_path)
+        assert revision_rel_path not in fts_paths
+
+        result = run_verify()
+        fts_check = _check(result, "fts_consistency")
+
+        assert result["total_journals"] == 1
+        assert fts_check["status"] == "ok"
+        assert fts_check["issues"] == []
+
+    def test_revision_exclusion_preserves_real_missing_and_orphan_detection(
+        self, verify_paths: dict[str, Path]
+    ) -> None:
+        indexed_journal = _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter='title: "Indexed"\ndate: 2026-04-03',
+            body="Indexed body",
+        )
+        missing_journal = _write_journal(
+            verify_paths["journals_dir"],
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-04_001.md",
+            frontmatter='title: "Missing"\ndate: 2026-04-04',
+            body="Missing body",
+        )
+        revision_dir = indexed_journal.parent / ".revisions"
+        revision_dir.mkdir()
+        revision = revision_dir / "life-index_2026-04-03_001_20260719_120000_000000.md"
+        revision.write_bytes(indexed_journal.read_bytes())
+        orphan_path = "Journals/2026/04/life-index_2026-04-05_001.md"
+        _create_fts_db(
+            verify_paths["base_dir"],
+            [_rel_path(verify_paths["base_dir"], indexed_journal), orphan_path],
+        )
+
+        result = run_verify()
+        fts_check = _check(result, "fts_consistency")
+
+        assert result["total_journals"] == 2
+        assert fts_check["status"] == "warning"
+        assert fts_check["issues"] == [
+            f"missing: {_rel_path(verify_paths['base_dir'], missing_journal)}",
+            f"orphan: {orphan_path}",
+        ]
+
+    def test_data_root_ancestor_named_revisions_does_not_hide_canonical_journals(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        base_dir = tmp_path / ".revisions" / "synthetic-data"
+        journals_dir = base_dir / "Journals"
+        by_topic_dir = base_dir / "by-topic"
+        attachments_dir = base_dir / "attachments"
+        monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(base_dir))
+        monkeypatch.setattr("tools.verify.core.get_journals_dir", lambda: journals_dir)
+        monkeypatch.setattr("tools.verify.core.get_by_topic_dir", lambda: by_topic_dir)
+        monkeypatch.setattr("tools.verify.core.get_attachments_dir", lambda: attachments_dir)
+        monkeypatch.setattr("tools.verify.core.get_user_data_dir", lambda: base_dir)
+        journal = _write_journal(
+            journals_dir,
+            year="2026",
+            month="04",
+            filename="life-index_2026-04-03_001.md",
+            frontmatter='title: "A"\ndate: 2026-04-03',
+            body="Canonical body",
+        )
+        indexed = [_rel_path(base_dir, journal)]
+        _create_fts_db(base_dir, indexed)
+
+        result = run_verify()
+        fts_check = _check(result, "fts_consistency")
+
+        assert result["total_journals"] == 1
+        assert fts_check["status"] == "ok"
+        assert fts_check["issues"] == []

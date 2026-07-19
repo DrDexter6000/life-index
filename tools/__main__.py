@@ -1039,7 +1039,10 @@ def main() -> None:
     if subcmd in cmd_map:
         # Rewrite argv so the submodule's argparse works correctly
         # Keep the original argv[0] for proper error messages
-        sys.argv = [f"life-index {subcmd}"] + sys.argv[2:]
+        forwarded_args = sys.argv[2:]
+        if subcmd == "confirm":
+            forwarded_args = ["confirm", *forwarded_args]
+        sys.argv = [f"life-index {subcmd}", *forwarded_args]
 
         # Import and run the submodule's main()
         module = __import__(cmd_map[subcmd], fromlist=["main"])
