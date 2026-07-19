@@ -32,12 +32,15 @@ TOPIC_LINK_PATTERN = re.compile(r"\((?P<path>Journals/[^)]+\.md)\)")
 
 
 def _collect_journal_files() -> List[Path]:
-    if not get_journals_dir().exists():
+    journals_dir = get_journals_dir()
+    if not journals_dir.exists():
         return []
     return [
         f
-        for f in get_journals_dir().rglob("life-index_*.md")
-        if not f.name.startswith("monthly_") and not f.name.startswith("yearly_")
+        for f in journals_dir.rglob("life-index_*.md")
+        if ".revisions" not in f.relative_to(journals_dir).parts
+        and not f.name.startswith("monthly_")
+        and not f.name.startswith("yearly_")
     ]
 
 

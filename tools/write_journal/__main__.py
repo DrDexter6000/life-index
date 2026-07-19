@@ -9,12 +9,14 @@ import json
 import logging
 import sys
 from contextlib import suppress
+from pathlib import Path
 
 from .core import apply_confirmation_updates
 from .core import write_journal
 from .prepare import prepare_journal_metadata
 from ..lib.config import ensure_dirs
 from ..lib.errors import ErrorCode, create_error_response
+from ..lib.journal_files import JOURNAL_FILENAME_RE
 from ..lib.paths import get_journals_dir, get_user_data_dir
 from ..lib.trace import Trace
 from ..lib.workflow_signals import derive_write_statuses
@@ -218,10 +220,21 @@ def _cmd_enrich(args: argparse.Namespace) -> int:
 
 def _cmd_confirm(args: argparse.Namespace) -> int:
     """Execute confirm command - apply post-write confirmation updates."""
-    ensure_dirs()
+    try:
+        journal_path = _resolve_confirm_journal_path(args.journal)
+    except (OSError, ValueError) as exc:
+        result = create_error_response(
+            ErrorCode.PATH_INVALID,
+            f"Invalid confirm journal path: {exc}",
+            {"journal_path": args.journal},
+            ("Use a canonical journal path under Journals/YYYY/MM/" "life-index_YYYY-MM-DD_NNN.md"),
+        )
+        result["confirm_status"] = "failed"
+        _emit_json(result)
+        return 1
 
     result = apply_confirmation_updates(
-        journal_path=args.journal,
+        journal_path=journal_path,
         location=args.location,
         weather=args.weather,
         approved_related_entries=args.approve_related,
@@ -231,6 +244,42 @@ def _cmd_confirm(args: argparse.Namespace) -> int:
     )
     _emit_json(result)
     return 0 if result.get("success") else 1
+
+
+def _resolve_confirm_journal_path(raw_path: str) -> Path:
+    """Resolve a CLI confirm target inside the configured canonical Journals tree."""
+    input_path = Path(raw_path)
+    if not input_path.is_absolute() and input_path.parts[:1] == ("Journals",):
+        candidate = get_user_data_dir() / input_path
+    else:
+        candidate = input_path
+
+    resolved_candidate = candidate.resolve(strict=False)
+    journals_root = get_journals_dir().resolve(strict=False)
+    try:
+        relative = resolved_candidate.relative_to(journals_root)
+    except ValueError as exc:
+        raise ValueError("target is outside the configured Journals directory") from exc
+
+    if len(relative.parts) != 3:
+        raise ValueError("target does not match the canonical YYYY/MM/file structure")
+
+    year, month, filename = relative.parts
+    if (
+        len(year) != 4
+        or not year.isdigit()
+        or len(month) != 2
+        or not month.isdigit()
+        or not 1 <= int(month) <= 12
+        or JOURNAL_FILENAME_RE.fullmatch(filename) is None
+        or filename[len("life-index_") : len("life-index_") + 7] != f"{year}-{month}"
+    ):
+        raise ValueError("target is not a canonical journal path")
+
+    if resolved_candidate.exists() and not resolved_candidate.is_file():
+        raise ValueError("target is not a journal file")
+
+    return resolved_candidate
 
 
 def main() -> None:

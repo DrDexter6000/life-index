@@ -59,6 +59,7 @@ triggers:
 ```bash
 # 统一 CLI（推荐）
 .venv/bin/life-index write --data '{"title":"...","content":"...","date":"2026-03-14","topic":["work"],"abstract":"...","mood":[],"people":[],"project":"","tags":[],"links":[]}'
+.venv/bin/life-index confirm --journal "Journals/2026/03/life-index_2026-03-14_001.md" --location "Beijing, China" --weather "Sunny 25°C"
 .venv/bin/life-index search --query "关键词" --topic work --level 3
 .venv/bin/life-index search --query "学习"  # 关键词 + Entity Graph；--semantic* 是兼容 no-op
 .venv/bin/life-index smart-search --query "我和女儿之间有哪些珍贵的回忆？"  # 确定性检索 scaffold（默认不调用 LLM）
@@ -91,6 +92,7 @@ triggers:
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树
 - 写入成功后的状态字段解释（`needs_confirmation` / `index_status` / `side_effects_status` / 附件处理计数）→ 读 `docs/API.md` 中 `write_journal` 返回语义
+- If an installed Skill cannot access repository docs, run the exact `life-index <command> --help` for that installed command and do not guess options.
 **会话 freshness / 运维纪律（升级摩擦 UF-1 + Ops）**：
 - 升级先运行 `life-index upgrade --plan --json`；`--apply` 只会只读诊断并返回 no-op 或 `UPGRADE_REINSTALL_REQUIRED`，后者须按 `AGENT_ONBOARDING.md` 新建 dedicated install，保持现有环境、checkout 与用户数据不动。
 - `sync-skill --install` 的目标槽位始终是 `<host-home>/skills/life-index/`；若传入 `<host-home>/skills` parent，会自动归一化到 canonical slot，并可清理已知 1.4.2 parent-slot 坏状态；它也会自动收敛本管理树的 `skills/life-index/life-index` 嵌套重复；若返回 `HOST_SKILL_DIR_AMBIGUOUS`，说明存在多个无关或不安全候选，需让用户指定 `--host-skill-dir`
@@ -234,9 +236,9 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 
 ✅ 正确：用户纠正地点
 → Agent 查询新地点天气（query_weather --location "XXX"）
-→ Agent 调用 write_journal confirm --journal "<journal_path>" --location "XXX" --weather "新天气"
+→ Agent 调用 life-index confirm --journal "<journal_path>" --location "XXX" --weather "新天气"
   或调用 edit_journal --journal "<journal_path>" --set-location "XXX" --set-weather "新天气"
-→ 日志原地更新，不产生新文件
+→ 指定日志原地更新，不创建第二篇 canonical journal；正常修订快照与派生索引副作用仍会发生
 ```
 
 ---
@@ -410,6 +412,8 @@ Aggregation And Heuristic Evidence。不得把 `search_journals.total_found` 直
 并诚实说明启发式依据与局限。
 
 ### 工作流3: 编辑日志
+
+`life-index edit --append-content` receives a literal string and does not expand `@file` arguments.
 
 1. **定位日志**：根据日期或标题找到目标文件
 2. **确认修改**：展示当前内容，明确修改范围

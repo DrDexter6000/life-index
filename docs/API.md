@@ -592,6 +592,7 @@ relationships:
 ### 端点
 
 ```bash
+life-index write --data '<json>'
 python -m tools.write_journal --data '<json>'
 ```
 
@@ -809,6 +810,7 @@ Dry-run 记录 `write_preview=complete`，但不伪造 `journal_commit`；其 `i
 ### confirm 子命令
 
 ```bash
+life-index confirm --journal "Journals/2026/03/life-index_2026-03-10_001.md" --location "Beijing, China" --weather "Sunny 25°C" --approve-related "Journals/2026/03/other.md"
 python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_2026-03-10_001.md" --location "Beijing, China" --weather "Sunny 25°C" --approve-related "Journals/2026/03/other.md"
 ```
 
@@ -819,6 +821,7 @@ python -m tools.write_journal confirm --journal "Journals/2026/03/life-index_202
 - 数字候选 ID 会优先按写入时保存的确认快照解析；旧日志没有快照时，必须传回原始 `candidate_context`，不要用重新 suggest 后的候选列表替代
 - 可通过重复 `--reject-related` 参数显式标记拒绝的候选关联日志
 - 内部统一委托到 `edit_journal`，不另起一套写入逻辑
+- 确认会原地更新指定 canonical journal，不会创建第二篇 canonical journal；既有 `edit_journal` 修订快照与派生索引副作用仍按其契约执行
 
 ### confirm 返回值
 
@@ -4138,6 +4141,7 @@ predicate inputs are returned as JSON error payloads with `success=false`,
 ### 端点
 
 ```bash
+life-index edit --journal "<path>" [options]
 python -m tools.edit_journal --journal "<path>" [options]
 ```
 
@@ -4161,6 +4165,8 @@ python -m tools.edit_journal --journal "<path>" [options]
 | append-content | string | ❌ | - | 追加内容到正文 |
 | replace-content | string | ❌ | - | 替换整个正文 |
 | dry-run | flag | ❌ | false | 模拟运行 |
+
+`life-index edit --append-content` receives a literal string and does not expand `@file` arguments.
 
 ### 编辑规则
 
@@ -4815,6 +4821,8 @@ python -m tools verify [--json]
 | `fts_consistency` | FTS 索引条目与实际日志文件的一致性（缺失 / 孤儿） |
 | `attachment_refs` | 正文中引用的附件文件是否存在 |
 | `topic_consistency` | `by-topic/` 索引中链接的日志路径是否有效 |
+
+`fts_consistency` 的 canonical journal 集合不包含 co-located `.revisions/` 编辑快照；FTS rebuild 同样不索引这些快照。真实 canonical journal 缺失和真实孤儿 FTS 行仍会报告。
 
 ### 行为约束
 
