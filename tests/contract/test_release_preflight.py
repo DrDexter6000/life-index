@@ -22,7 +22,7 @@ def _load_preflight_module():
     return module
 
 
-def _write_release_fixture(tmp_path: Path, *, version: str = "1.5.1") -> Path:
+def _write_release_fixture(tmp_path: Path, *, version: str = "1.5.2") -> Path:
     root = tmp_path / "release-fixture"
     (root / "tools").mkdir(parents=True)
     (root / "docs").mkdir()
@@ -40,19 +40,19 @@ def _write_release_fixture(tmp_path: Path, *, version: str = "1.5.1") -> Path:
     return root
 
 
-def test_release_preflight_selects_1_5_1_when_history_allows_and_mocked_pypi_omits_it(
+def test_release_preflight_selects_1_5_2_when_history_allows_and_mocked_pypi_omits_it(
     tmp_path: Path,
 ) -> None:
     preflight = _load_preflight_module()
     root = _write_release_fixture(tmp_path)
 
-    assert preflight.validate_version_surfaces(root) == "1.5.1"
+    assert preflight.validate_version_surfaces(root) == "1.5.2"
     assert (
         preflight.validate_release_candidate(
             root,
             fetch_pypi_payload=lambda: {"releases": {}},
         )
-        == "1.5.1"
+        == "1.5.2"
     )
 
 
@@ -79,18 +79,21 @@ def test_release_preflight_rejects_any_of_the_three_version_surfaces_drifting(
         preflight.validate_version_surfaces(root)
 
 
-def test_published_1_5_1_is_recorded_and_cannot_be_reused() -> None:
+def test_release_candidate_1_5_2_is_aligned_and_absent_from_known_used_history() -> None:
     preflight = _load_preflight_module()
 
-    assert preflight.validate_version_surfaces(REPO_ROOT) == "1.5.1"
+    assert preflight.validate_version_surfaces(REPO_ROOT) == "1.5.2"
     known_used = preflight.known_used_versions(REPO_ROOT)
     assert "1.5.0" in known_used
     assert "1.5.1" in known_used
-    with pytest.raises(preflight.ReleasePreflightError, match="known-used"):
+    assert "1.5.2" not in known_used
+    assert (
         preflight.validate_release_candidate(
             REPO_ROOT,
             fetch_pypi_payload=lambda: {"releases": {}},
         )
+        == "1.5.2"
+    )
 
 
 def test_manual_release_workflow_proves_exact_wheel_before_upload() -> None:
