@@ -603,8 +603,8 @@ python -m tools.write_journal --data '<json>'
 | title | string | ❌ | 自动生成/调用方补齐 | 日志标题（≤20字） |
 | content | string | ⚠️ workflow 通常要求 | - | 日志正文（原样保留） |
 | date | string | ❌ | today | 日期（ISO 8601: YYYY-MM-DD）；省略时使用本地今天日期并记录 `field_sources.date="auto"` |
-| location | string | ❌ | 默认地点兜底 | 地点；若正文中已明确写出地点，优先采用正文信息；仅在正文和入参都未提供时才使用默认地点 |
-| weather | string | ❌ | 自动查询/手动兜底 | 天气描述；若正文中已明确写出天气，优先采用正文信息 |
+| location | string | ❌ | 默认地点兜底 | 结构化地点；trim 后非空即为权威值，仅空白或缺失时使用配置默认地点 |
+| weather | string | ❌ | 自动查询/手动兜底 | 结构化天气；trim 后非空即为权威值，仅空白或缺失时按已解析地点自动查询 |
 | mood | array | ❌ | [] | 心情标签 |
 | people | array | ❌ | [] | 相关人物 |
 | topic | array | ❌ | 调用方补齐 | 主题分类（7类之一）；LLM 提炼需显式 opt-in |
@@ -757,11 +757,17 @@ python -m tools.write_journal --data '<json>'
 - `content` 在产品 / workflow 语义上通常应提供，但并非这里定义的同级硬校验项
 - `title` / `topic` / `abstract` 更准确地说是 **Agent / Web workflow 负责补齐**，不是 `write_journal()` 当前源码的硬必填
 
+### Structured Input Authority
+
+- Host Agent 必须把自然语言意图翻译成结构化 CLI 参数；GUI 的设备采集值与用户编辑值也必须通过同一组结构化参数传给 Core
+- trim 后非空的结构化 `location` / `weather` 是权威值；只有空字符串、纯空白或缺失字段才分别允许配置地点默认值或基于已解析地点的天气查询
+- Core 不解析正文中的 `地点` / `位置` / `location` / `天气` / `weather` marker 行来覆盖或补充字段；这些行始终作为普通正文逐字保留
+
 ### 写入与确认语义
 
 - `needs_confirmation` 应视为当前写入协议中的正常后续步骤，而不是可忽略的偶发分支
 - 任何 `success: true` 的写入结果都必须进入地点确认环节；Agent / Web 不得自行判断“这次可以不问”
-- 正文中明确写出的地点/天气优先级最高，Agent 不得再用默认地点或自动查询结果覆盖
+- Host Agent / GUI 已提交的非空结构化地点和天气优先级最高；默认地点与自动天气查询只处理对应的缺失字段
 - `location_auto_filled` 用于解释地点来源，不再作为是否执行确认环节的决策条件
 - 如果用户要求修正地点/天气，后续应进入 correction flow，而不是把原写入描述为失败
 - `confirmation` 是 machine-readable 的确认载荷；`confirmation_message` 是面向人类的展示文本

@@ -29,10 +29,26 @@ RATIFIED_CORE_DOMAINS = (
     ("C7", "Deterministic contract and eval verification"),
 )
 EXPECTED_CHARTER_METADATA = {
-    "版本": "v1.11.0",
-    "批准日期": "2026-07-11",
-    "修订次数": "11",
+    "版本": "v1.12.0",
+    "批准日期": "2026-07-21",
+    "修订次数": "12",
 }
+STRUCTURED_INPUT_AUTHORITY_RULE = "\n".join(
+    (
+        "#### Structured Input Authority（结构化输入权威）",
+        "",
+        "Host Agent translates natural-language intent into structured CLI arguments; GUI",
+        "device collection and user edits produce the same structured arguments. After",
+        "trimming, non-empty structured `location` and `weather` values are authoritative.",
+        "Blank or whitespace-only values are missing: only missing `location` may use the",
+        "configured default, and only missing `weather` may trigger automatic lookup using",
+        "the resolved location.",
+        "",
+        "Core never semantically parses journal body marker lines such as `地点` / `位置` /",
+        "`location` / `天气` / `weather` to override or supply structured fields. Those lines",
+        "remain verbatim ordinary journal body text.",
+    )
+)
 INTELLIGENCE_OWNER_RULE = (
     "Host Agent + Skill own provider selection and all planning, multi-hop reasoning, "
     "orchestration, interpretation, and synthesis."
@@ -398,7 +414,9 @@ EXPECTED_HOST_AGENT_ROUTING = "\n".join(
         "## Host Agent / Core / Gateway routing boundary",
         "",
         "- Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis. They also own orchestration.",  # noqa: E501
+        "- For journal writes, the Host Agent translates natural-language intent into structured CLI arguments before calling Core.",  # noqa: E501
         "- Core calls remain deterministic; Core does not plan, reason, orchestrate, interpret, or synthesize.",  # noqa: E501
+        "- Non-empty trimmed structured `location` and `weather` are authoritative. Core uses defaults only for corresponding blank/missing fields and never parses body marker lines (`地点` / `位置` / `location` / `天气` / `weather`) as metadata; those lines remain verbatim ordinary content.",  # noqa: E501
         "- Gateway is an optional implemented generic typed 1:1 projection under #164. Its closed `CAPABILITY_REGISTRY` exposes only read `health`, `journal.get`, and `search`; `search` may refresh only rebuildable `.index` state. It is not a second semantic API and owns no intelligence.",  # noqa: E501
         "- Codex is the first consumer, not a source of Codex-specific semantics. The optional MCP projection is removable, uses the existing data-directory boundary, and never replaces the direct CLI core route.",  # noqa: E501
     )
@@ -502,7 +520,7 @@ def _charter_section(charter: str, start_heading: str, end_heading: str) -> str:
     return charter[start:end]
 
 
-def test_charter_header_records_completed_d0_owner_ratification() -> None:
+def test_charter_header_records_latest_owner_ratification() -> None:
     charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
     for label, expected in EXPECTED_CHARTER_METADATA.items():
         actual = _charter_metadata_value(charter, label)
@@ -511,9 +529,29 @@ def test_charter_header_records_completed_d0_owner_ratification() -> None:
         assert actual == expected
 
     latest_revision = _charter_metadata_value(charter, "最近修订")
-    assert latest_revision.startswith("2026-07-11")
-    assert "Addon dual-channel boundary" in latest_revision
+    assert latest_revision.startswith("2026-07-21")
+    assert "Structured Input Authority" in latest_revision
     assert "owner" in latest_revision.casefold()
+
+
+def test_charter_records_structured_input_authority_and_substantive_gate() -> None:
+    charter = AUTHORITY_PATHS["charter"].read_text(encoding="utf-8")
+    section = _charter_section(
+        charter,
+        "### §2.3 L2 · CLI Core Layer（确定性原子操作）",
+        "### §2.4 L1 · Data Layer（纯文本 + 机器索引）",
+    )
+
+    assert section.count(STRUCTURED_INPUT_AUTHORITY_RULE) == 1
+    for gate_record in (
+        "**Rationale**:",
+        "**Opposition addressed**:",
+        "**Impact**:",
+        "**Rollback**:",
+        "**Human Owner ack**: COMPLETE — 2026-07-21",
+    ):
+        assert gate_record in section
+    assert "*修订 12：2026-07-21" in charter
 
 
 def test_section_1_9_supersedes_direct_provider_fallback_without_overclaiming_runtime() -> None:
@@ -931,8 +969,8 @@ def test_role_contract_rejects_appended_contradictions_and_external_duty_verbs()
     )
 
     merged_bullets = skill.replace(
-        "They also own orchestration.\n- Core calls remain deterministic",
-        "They also own orchestration. - Core calls remain deterministic",
+        "They also own orchestration.\n- For journal writes",
+        "They also own orchestration. - For journal writes",
         1,
     )
     with pytest.raises(AssertionError):

@@ -41,7 +41,6 @@ from ..lib.timing import Timer
 from ..lib.logger import get_logger
 from .utils import (
     current_local_date_iso,
-    extract_explicit_metadata_from_content as _extract_explicit_metadata_from_content,
     generate_filename,
     get_next_sequence,
     get_year_month,
@@ -591,30 +590,21 @@ def _resolve_location_and_weather(
     result: Dict[str, Any],
     timer: Timer,
 ) -> tuple[str, str]:
-    """Resolve location and weather from explicit metadata, user data, or auto-fill.
+    """Resolve authoritative structured fields, then deterministic fallbacks.
 
     Mutates result dict with location_used/location_auto_filled/weather_used/
     weather_auto_filled.  Returns (location, weather).
     """
-    content = data.get("content", "")
-    explicit_metadata = extract_explicit_metadata_from_content(content)
-    # NOTE: data["content"] is NOT overwritten — user content is preserved 100%.
-
-    # 第一层：用户提及为准
-    # 第二层：自动填充
-    location = explicit_metadata.get("location") or data.get("location", "").strip()
+    location = str(data.get("location") or "").strip()
     if not location:
-        location = get_default_location()
+        location = str(get_default_location() or "").strip()
         result["location_auto_filled"] = True
-        result["location_used"] = location
-        location_for_weather = normalize_location(location)
-    else:
-        location_for_weather = normalize_location(location)
-        result["location_used"] = location
+    result["location_used"] = location
     data["location"] = location
 
-    weather = explicit_metadata.get("weather") or data.get("weather", "").strip()
-    if not weather:
+    weather = str(data.get("weather") or "").strip()
+    if not weather and location:
+        location_for_weather = normalize_location(location)
         logger.debug(f"查询天气：location={location_for_weather}")
         with timer.measure("weather_query"):
             queried_weather = query_weather_for_location(location_for_weather, data.get("date", ""))
@@ -627,7 +617,7 @@ def _resolve_location_and_weather(
             weather = ""
             result["weather_used"] = ""
             logger.warning("天气查询失败，使用空值")
-    else:
+    elif weather:
         result["weather_used"] = weather
         logger.debug(f"使用用户提供的天气：{weather}")
 
@@ -1345,16 +1335,6 @@ def _detect_new_entities(data: Dict[str, Any]) -> list[str]:
         if resolve_entity(candidate, graph) is None and candidate not in new_entities:
             new_entities.append(candidate)
     return new_entities
-
-
-def extract_explicit_metadata_from_content(content: str) -> Dict[str, str]:
-    """从正文中提取明确声明的元数据（地点/天气），不修改正文。
-
-    仅做只读扫描：匹配行首的 "地点:"/"天气:" 等模式并提取值。
-    调用方应将提取结果用于填充 data["location"]/data["weather"]，
-    但 **不得** 用任何"清理后"的内容覆盖 data["content"]。
-    """
-    return _extract_explicit_metadata_from_content(content)
 
 
 def _build_confirmation_payload(

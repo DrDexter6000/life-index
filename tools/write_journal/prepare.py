@@ -31,7 +31,7 @@ from tools.lib.text_normalize import normalize_text_list
 from tools.lib.topics import VALID_TOPICS
 
 logger = logging.getLogger(__name__)
-from tools.write_journal.utils import current_local_date_iso, extract_explicit_metadata_from_content
+from tools.write_journal.utils import current_local_date_iso
 from tools.write_journal.weather import normalize_location
 
 from .weather import query_weather_for_location
@@ -248,18 +248,13 @@ def prepare_journal_metadata(
     prepared["attachments"] = list(form_data.get("attachments", []))
     prepared["attachment_urls"] = list(form_data.get("attachment_urls", []))
 
-    # Location/weather auto-fill. Explicit metadata in the body wins over
-    # caller-supplied fallback fields, matching the write path.
-    explicit_metadata = extract_explicit_metadata_from_content(content)
-    location = str(explicit_metadata.get("location") or prepared.get("location", "")).strip()
-    weather = str(explicit_metadata.get("weather") or prepared.get("weather", "")).strip()
-    if explicit_metadata.get("location"):
-        field_sources["location"] = "user"
-    if explicit_metadata.get("weather"):
-        field_sources["weather"] = "user"
+    # Structured fields are authoritative. Body marker-like lines remain
+    # ordinary journal content and are never interpreted by Core.
+    location = str(prepared.get("location") or "").strip()
+    weather = str(prepared.get("weather") or "").strip()
 
     if not location:
-        location = get_default_location()
+        location = str(get_default_location() or "").strip()
         field_sources["location"] = "auto"
 
     prepared["location"] = _compact_location(location)

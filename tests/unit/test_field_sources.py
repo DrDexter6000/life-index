@@ -1,6 +1,9 @@
 """Test field_sources tracking in prepare.py."""
 
 from unittest.mock import patch
+
+import pytest
+
 from tools.write_journal.prepare import prepare_journal_metadata
 
 
@@ -105,27 +108,114 @@ def test_user_project_is_preserved_without_inference():
     assert result["field_sources"]["project"] == "user"
 
 
-def test_enrich_uses_explicit_body_location_weather_before_defaults():
-    """Body-declared location/weather win during metadata preview."""
+@pytest.mark.parametrize(
+    (
+        "structured_fields",
+        "expected_location",
+        "expected_weather",
+        "default_expected",
+        "query_expected",
+        "location_source",
+        "weather_source",
+    ),
+    (
+        (
+            {"location": "  Lagos, Nigeria  ", "weather": "  Structured sun  "},
+            "Lagos, Nigeria",
+            "Structured sun",
+            False,
+            False,
+            "user",
+            "user",
+        ),
+        (
+            {"location": "  Lagos, Nigeria  "},
+            "Lagos, Nigeria",
+            "Auto weather",
+            False,
+            True,
+            "user",
+            "auto",
+        ),
+        (
+            {"weather": "  Structured rain  "},
+            "Default City, Country",
+            "Structured rain",
+            True,
+            False,
+            "auto",
+            "user",
+        ),
+        (
+            {},
+            "Default City, Country",
+            "Auto weather",
+            True,
+            True,
+            "auto",
+            "auto",
+        ),
+        (
+            {"location": "   ", "weather": "\t"},
+            "Default City, Country",
+            "Auto weather",
+            True,
+            True,
+            "auto",
+            "auto",
+        ),
+    ),
+    ids=(
+        "structured-location-and-weather",
+        "structured-location-missing-weather",
+        "missing-location-structured-weather",
+        "both-absent",
+        "both-whitespace",
+    ),
+)
+def test_enrich_treats_structured_location_weather_as_authoritative(
+    structured_fields,
+    expected_location,
+    expected_weather,
+    default_expected,
+    query_expected,
+    location_source,
+    weather_source,
+):
+    """Prepare uses structured fields only; body marker lines stay ordinary text."""
+    body = "地点：Body City\n天气：Body Weather\n今天复盘 facet 进料闭环。"
     raw = {
-        "content": "地点：Lagos, Nigeria\n天气：Rain 24C\n今天复盘 facet 进料闭环。",
+        "content": body,
+        "date": "2026-03-14",
         "topic": "work",
-        "location": "Chongqing, China",
-        "weather": "Sunny 30C",
+        **structured_fields,
     }
 
     with (
-        patch("tools.write_journal.prepare.get_default_location") as mock_default,
-        patch("tools.write_journal.prepare.query_weather_for_location") as mock_weather,
+        patch(
+            "tools.write_journal.prepare.get_default_location",
+            return_value="Default City, Country",
+        ) as mock_default,
+        patch(
+            "tools.write_journal.prepare.query_weather_for_location",
+            return_value="Auto weather",
+        ) as mock_weather,
     ):
         result = prepare_journal_metadata(raw)
 
-    mock_default.assert_not_called()
-    mock_weather.assert_not_called()
-    assert result["location"] == "Lagos, Nigeria"
-    assert result["weather"] == "Rain 24C"
-    assert result["field_sources"]["location"] == "user"
-    assert result["field_sources"]["weather"] == "user"
+    assert result["content"] == body
+    assert result["location"] == expected_location
+    assert result["weather"] == expected_weather
+    assert result["field_sources"]["location"] == location_source
+    assert result["field_sources"]["weather"] == weather_source
+    if default_expected:
+        mock_default.assert_called_once_with()
+    else:
+        mock_default.assert_not_called()
+    if query_expected:
+        mock_weather.assert_called_once_with(expected_location, "2026-03-14")
+    else:
+        mock_weather.assert_not_called()
 
 
 def test_legacy_use_llm_parameter_is_ignored():
