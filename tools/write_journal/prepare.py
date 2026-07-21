@@ -90,23 +90,6 @@ def _fallback_abstract(content: str) -> str:
     return content[:100].strip()
 
 
-def _compact_location(value: str) -> str:
-    """Compact location string to "City, Country" format.
-
-    Args:
-        value: Raw location string (may have multiple comma parts)
-
-    Returns:
-        Compact location (first and last comma parts)
-    """
-    parts = [part.strip() for part in str(value or "").split(",") if part.strip()]
-    if not parts:
-        return ""
-    if len(parts) == 1:
-        return parts[0]
-    return f"{parts[0]}, {parts[-1]}"
-
-
 def _extract_weather_text(weather_result: dict[str, Any] | None) -> str:
     """Extract simple weather text from query result.
 
@@ -192,12 +175,13 @@ def prepare_journal_metadata(
         >>> result["title"]
         '今天看到晴岚以前的照片...'
     """
-    content = str(form_data.get("content", "")).strip()
+    raw_content = str(form_data.get("content", ""))
+    content = raw_content.strip()
     if not content:
         raise ValueError("content 为必填字段")
 
     prepared = dict(form_data)
-    prepared["content"] = content
+    prepared["content"] = raw_content
 
     # Track field sources
     field_sources: dict[str, str] = {}
@@ -257,7 +241,7 @@ def prepare_journal_metadata(
         location = str(get_default_location() or "").strip()
         field_sources["location"] = "auto"
 
-    prepared["location"] = _compact_location(location)
+    prepared["location"] = location
 
     # Weather auto-fill
     if not weather and location:

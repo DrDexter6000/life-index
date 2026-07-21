@@ -497,6 +497,24 @@ remain verbatim ordinary journal body text.
 
 **Substantive-gate ratification record**:
 
+- **Current rule**: before this amendment, prepared writes could treat recognized
+  body marker lines as metadata, compact a multi-component structured location,
+  and strip boundary whitespace from durable journal content.
+- **Target rule**: trimmed non-empty structured arguments are authoritative and
+  preserved; journal body text remains verbatim and semantically inert; configured
+  location defaults and weather lookup run only when their structured field is
+  missing.
+- **Triggering real scenario and evidence**: a GUI or Host Agent write can contain
+  literal marker-like prose while separately supplying location and weather. Focused
+  synthetic RED cases reproduced body values displacing structured/default/query
+  results; the rework RED also observed `Lagos, Ikeja, Nigeria` stored as
+  `Lagos, Nigeria` and boundary whitespace removed from content.
+- **Executed deterministic verification**: two focused prepare tests were added and
+  first failed on the location compaction and content stripping above; after the
+  minimal implementation, the unchanged tests passed (`2 passed`). The focused GUI
+  public-authority assertion likewise failed on the stale blank-field statement and
+  passed after the consumer contract was corrected (`1 passed`); the strengthened
+  Charter ratification-record contract then passed (`1 passed`).
 - **Rationale**: a journal body is durable user prose, while structured fields are
   the deterministic write contract. Parsing marker-like prose in Core created two
   competing authorities and could silently replace Host Agent or GUI choices.

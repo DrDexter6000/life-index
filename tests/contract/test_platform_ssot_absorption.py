@@ -544,6 +544,10 @@ def test_charter_records_structured_input_authority_and_substantive_gate() -> No
 
     assert section.count(STRUCTURED_INPUT_AUTHORITY_RULE) == 1
     for gate_record in (
+        "**Current rule**:",
+        "**Target rule**:",
+        "**Triggering real scenario and evidence**:",
+        "**Executed deterministic verification**:",
         "**Rationale**:",
         "**Opposition addressed**:",
         "**Impact**:",

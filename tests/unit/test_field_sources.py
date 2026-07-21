@@ -218,6 +218,53 @@ def test_enrich_treats_structured_location_weather_as_authoritative(
         mock_weather.assert_not_called()
 
 
+def test_prepare_preserves_multi_component_structured_location_for_output():
+    """Lookup normalization must not rewrite the authoritative stored value."""
+    body = "地点：Body City\n天气：Body Weather\nNarrative."
+    raw = {
+        "content": body,
+        "date": "2026-03-14",
+        "topic": "work",
+        "location": "  Lagos, Ikeja, Nigeria  ",
+    }
+
+    with (
+        patch(
+            "tools.write_journal.prepare.normalize_location",
+            return_value="Lookup City, Country",
+        ) as mock_normalize,
+        patch(
+            "tools.write_journal.prepare.query_weather_for_location",
+            return_value="Auto weather",
+        ) as mock_weather,
+    ):
+        result = prepare_journal_metadata(raw)
+
+    assert result["content"] == body
+    assert result["location"] == "Lagos, Ikeja, Nigeria"
+    assert result["weather"] == "Auto weather"
+    mock_normalize.assert_called_once_with("Lagos, Ikeja, Nigeria")
+    mock_weather.assert_called_once_with("Lookup City, Country", "2026-03-14")
+
+
+def test_prepare_preserves_body_boundary_whitespace_verbatim():
+    """Content validation and fallbacks must not mutate durable journal prose."""
+    body = " \n地点：Body City\n天气：Body Weather\nNarrative.\n \t"
+    raw = {
+        "content": body,
+        "date": "2026-03-14",
+        "topic": "work",
+        "location": "Lagos, Nigeria",
+        "weather": "Structured sun",
+    }
+
+    result = prepare_journal_metadata(raw)
+
+    assert result["content"] == body
+    assert result["title"] == "地点：Body City"
+    assert result["abstract"] == "地点：Body City 天气：Body Weather Narrative."
+
+
 def test_legacy_use_llm_parameter_is_ignored():
     """Legacy internal parameter must not re-enable in-tool AI extraction."""
     result = prepare_journal_metadata(
