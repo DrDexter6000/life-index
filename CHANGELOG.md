@@ -6,6 +6,8 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-07-21
+
 ### Changed
 
 - Journal writes now treat non-empty structured location and weather arguments
