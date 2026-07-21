@@ -1,12 +1,12 @@
 # Life Index Charter | 生命索引宪章
 
-> **版本**：v1.11.0
-> **批准日期**：2026-07-11
+> **版本**：v1.12.0
+> **批准日期**：2026-07-21
 > **批准人**：Life Index Developer
 > **下次评审**：2026-07-23（每季度一次）
-> **修订次数**：11
-> **最近修订**：2026-07-11 — Owner substantively approved the future advanced Addon dual-channel boundary（D0 amendment）
-> **此前修订**：2026-06-19 — 新增 APEX 第 6 点「评估即咨询，非闸门（Evaluation is Advisory, not a Gate）」，收紧 APEX §1/§5（RFC-2026-06-19-evaluation-advisory-not-gate；owner 亲签）；2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）；2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
+> **修订次数**：12
+> **最近修订**：2026-07-21 — Owner substantively approved the Structured Input Authority invariant
+> **此前修订**：2026-07-11 — Owner substantively approved the future advanced Addon dual-channel boundary（D0 amendment）；2026-06-19 — 新增 APEX 第 6 点「评估即咨询，非闸门（Evaluation is Advisory, not a Gate）」，收紧 APEX §1/§5（RFC-2026-06-19-evaluation-advisory-not-gate；owner 亲签）；2026-06-18 — 新增「北极星（Agent-Native 最高不变量 · APEX）」最高实质原则，收编旧 §1.9 中"Life Index 自建 L3 智能模块"措辞（RFC-2026-06-18-agent-native-north-star-apex；owner 亲签）；2026-06-14 — 新增 §1.12 运行时/平台可移植性（Runtime & Platform Portability）+ §4.1 镜像反模式（RFC-2026-06-14-runtime-platform-portability）；2026-05-23 — 新增 §1.11 Recall-First Retrieval Truthfulness Model + §3.2 amendment note（RFC-2026-05-23-l2-recall-first-truthfulness-model；§1.11 加入 §5.3 不可弱化清单；起源于 v1.2.0 cycle2 absorption 暴露的 semantic noise / truncation 两个 loophole）；2026-05-20 — §5 修订流程改为 substantive gate（废除 24h cooldown 与三方评审覆盖机制；过程记录已归档到本地私有治理层）
 
 ---
 
@@ -482,6 +482,57 @@ Life Index 是 agent 生态的基元层；它与 agent runtime、宿主平台的
 
 **调用对象**：L1（文件系统、机器索引）
 
+#### Structured Input Authority（结构化输入权威）
+
+Host Agent translates natural-language intent into structured CLI arguments; GUI
+device collection and user edits produce the same structured arguments. After
+trimming, non-empty structured `location` and `weather` values are authoritative.
+Blank or whitespace-only values are missing: only missing `location` may use the
+configured default, and only missing `weather` may trigger automatic lookup using
+the resolved location.
+
+Core never semantically parses journal body marker lines such as `地点` / `位置` /
+`location` / `天气` / `weather` to override or supply structured fields. Those lines
+remain verbatim ordinary journal body text.
+
+**Substantive-gate ratification record**:
+
+- **Current rule**: before this amendment, prepared writes could treat recognized
+  body marker lines as metadata, compact a multi-component structured location,
+  and strip boundary whitespace from durable journal content.
+- **Target rule**: trimmed non-empty structured arguments are authoritative and
+  preserved; journal body text remains verbatim and semantically inert; configured
+  location defaults and weather lookup run only when their structured field is
+  missing.
+- **Triggering real scenario and evidence**: a GUI or Host Agent write can contain
+  literal marker-like prose while separately supplying location and weather. Focused
+  synthetic RED cases reproduced body values displacing structured/default/query
+  results; the rework RED also observed `Lagos, Ikeja, Nigeria` stored as
+  `Lagos, Nigeria` and boundary whitespace removed from content.
+- **Executed deterministic verification**: two focused prepare tests were added and
+  first failed on the location compaction and content stripping above; after the
+  minimal implementation, the unchanged tests passed (`2 passed`). The focused GUI
+  public-authority assertion likewise failed on the stale blank-field statement and
+  passed after the consumer contract was corrected (`1 passed`); the strengthened
+  Charter ratification-record contract then passed (`1 passed`).
+- **Rationale**: a journal body is durable user prose, while structured fields are
+  the deterministic write contract. Parsing marker-like prose in Core created two
+  competing authorities and could silently replace Host Agent or GUI choices.
+- **Opposition addressed**: (1) inline marker parsing can look convenient for direct
+  callers, but intent translation belongs to the Host Agent or GUI and must arrive as
+  explicit structured arguments; (2) callers may have relied on marker precedence,
+  but preserving those lines verbatim while requiring structured fields gives a
+  deterministic migration path without rewriting user prose; (3) automatic defaults
+  remain useful, so they are retained only for blank or missing structured fields.
+- **Impact**: this amendment governs §1.3 / §1.5 and §2.1 / §2.3 interpretation,
+  direct and prepared journal writes, the public API and Skill, the architecture
+  projection, and the GUI consumer contract. It adds no field, provenance enum,
+  envelope, schema family, runtime, credential path, or new acceptance system.
+- **Rollback**: reversal or weakening requires a new §5.2 substantive amendment;
+  lower-level code or documentation must never silently restore body-marker parsing.
+- **Human Owner ack**: COMPLETE — 2026-07-21; the Human Owner explicitly approved
+  this substantive amendment and its structured-input authority boundary.
+
 ### §2.4 L1 · Data Layer（纯文本 + 机器索引）
 
 **职责**
@@ -737,4 +788,5 @@ CHARTER.md（本文件，最高权威）
 *修订 9：2026-06-19 — 新增 APEX 第 6 点「评估即咨询，非闸门（Evaluation is Advisory, not a Gate）」（RFC-2026-06-19-evaluation-advisory-not-gate；owner 亲签）*
 *修订 10：2026-07-10 — Owner 批准 C1–C7 闭合 Core 准入域，取代 §1.9 Core provider fallback，并完成 §5.2 D0 ratification record*
 *修订 11：2026-07-11 — Owner 批准未来 advanced Addon 双通道边界；本修订仅落宪法级架构指导，不授权 Addon 实现*
+*修订 12：2026-07-21 — Owner 批准 Structured Input Authority；结构化地点/天气为权威，正文 marker 行保持普通原文*
 *下一次强制性评审：2026-07-23*

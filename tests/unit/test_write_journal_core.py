@@ -1034,8 +1034,8 @@ class TestWriteJournalLocation:
 
         assert result["location_used"] == "Beijing, China"
 
-    def test_content_location_overrides_default_location(self, tmp_path):
-        """Explicit location in content should win over default fallback"""
+    def test_content_location_marker_does_not_override_default_location(self, tmp_path):
+        """Marker-like body text is inert and the missing structured field defaults."""
         data = {
             "date": "2026-03-14",
             "content": "地点：Beijing, China\n今天过得不错。",
@@ -1095,9 +1095,9 @@ class TestWriteJournalLocation:
                                                             ).touch()
                                                             result = write_journal(data)
 
-        mock_default.assert_not_called()
-        assert result["location_used"] == "Beijing, China"
-        assert result["location_auto_filled"] is False
+        mock_default.assert_called_once_with()
+        assert result["location_used"] == "Lagos, Nigeria"
+        assert result["location_auto_filled"] is True
 
 
 class TestWriteJournalWeather:
@@ -1221,8 +1221,8 @@ class TestWriteJournalWeather:
         assert result["weather_used"] == "Rainy"
         assert result["weather_auto_filled"] is False
 
-    def test_content_weather_preserved_without_query(self, tmp_path):
-        """Explicit weather in content should skip auto query"""
+    def test_content_weather_marker_does_not_prevent_query(self, tmp_path):
+        """Marker-like body text is inert and missing structured weather is queried."""
         data = {
             "date": "2026-03-14",
             "content": "天气：Rainy\n今天一直在下雨。",
@@ -1244,7 +1244,8 @@ class TestWriteJournalWeather:
                                 return_value="Lagos, Nigeria",
                             ):
                                 with patch(
-                                    "tools.write_journal.core.query_weather_for_location"
+                                    "tools.write_journal.core.query_weather_for_location",
+                                    return_value="Auto Weather",
                                 ) as mock_weather:
                                     with patch(
                                         "tools.write_journal.core.extract_file_paths_from_content",
@@ -1281,9 +1282,9 @@ class TestWriteJournalWeather:
                                                             ).touch()
                                                             result = write_journal(data)
 
-        mock_weather.assert_not_called()
-        assert result["weather_used"] == "Rainy"
-        assert result["weather_auto_filled"] is False
+        mock_weather.assert_called_once_with("Lagos, Nigeria", "2026-03-14")
+        assert result["weather_used"] == "Auto Weather"
+        assert result["weather_auto_filled"] is True
 
     def test_weather_query_failure_graceful(self, tmp_path):
         """Test that weather query failure is handled gracefully"""

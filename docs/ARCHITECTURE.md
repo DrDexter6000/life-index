@@ -71,6 +71,12 @@ only to `CHARTER.md §1.10`; this document references C1–C7 without duplicatin
 their domain descriptions.
 <!-- PLATFORM-SSOT:PLATFORM-ROLE-BOUNDARY:END -->
 
+Structured write-input projection: `CHARTER.md §2.3` is the sole authority.
+Host Agents translate natural language and GUI collection/edit surfaces emit the
+same structured arguments; Core deterministically honors non-empty trimmed
+`location` / `weather`, applies defaults only to missing fields, and leaves
+marker-like journal body lines uninterpreted and verbatim.
+
 <!-- PLATFORM-SSOT:ADVANCED-ADDON-DUAL-CHANNEL:START -->
 ### Future advanced Addon dual-channel boundary
 

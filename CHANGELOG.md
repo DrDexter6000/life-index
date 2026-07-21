@@ -6,6 +6,12 @@ Versioning follows [`docs/VERSIONING.md`](docs/VERSIONING.md). Earlier explorato
 
 ## [Unreleased]
 
+### Changed
+
+- Journal writes now treat non-empty structured location and weather arguments
+  as authoritative. Blank fields alone invoke defaults or weather lookup, while
+  marker-like location/weather lines remain verbatim ordinary body text.
+
 ## [1.5.2] - 2026-07-19
 
 ### Changed

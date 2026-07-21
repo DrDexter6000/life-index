@@ -5,7 +5,6 @@ Unit tests for write_journal.py core functions
 
 import pytest
 from pathlib import Path
-from datetime import datetime
 from unittest.mock import patch
 
 from tools.write_journal.utils import (
@@ -15,7 +14,6 @@ from tools.write_journal.utils import (
     get_year_month,
 )
 from tools.write_journal.weather import normalize_location
-from tools.write_journal.core import extract_explicit_metadata_from_content
 from tools.write_journal.index_updater import update_tag_indices
 from tools.lib.frontmatter import (
     format_frontmatter,
@@ -193,18 +191,14 @@ class TestIndexUpdaterPathSanitization:
         self, tmp_path: Path, monkeypatch
     ) -> None:
         data_dir = tmp_path / "Life-Index"
-        journal_path = (
-            data_dir / "Journals" / "2026" / "03" / "life-index_2026-03-25_001.md"
-        )
+        journal_path = data_dir / "Journals" / "2026" / "03" / "life-index_2026-03-25_001.md"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text("body", encoding="utf-8")
         (data_dir / "by-topic").mkdir(parents=True, exist_ok=True)
 
         monkeypatch.setenv("LIFE_INDEX_DATA_DIR", str(data_dir))
 
-        updated = update_tag_indices(
-            ["UI/UX设计"], journal_path, {"date": "2026-03-25"}
-        )
+        updated = update_tag_indices(["UI/UX设计"], journal_path, {"date": "2026-03-25"})
 
         assert len(updated) == 1
         assert updated[0].exists()
@@ -253,18 +247,13 @@ class TestIndexUpdaterPathSanitization:
             "related_entries": "Journals/2026/03/a.md, Journals/2026/03/b.md",
         }
         result = format_frontmatter(data)
-        assert (
-            'related_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]'
-            in result
-        )
+        assert 'related_entries: ["Journals/2026/03/a.md", "Journals/2026/03/b.md"]' in result
 
     def test_attachments_dict_with_rel_path(self):
         """Test attachments with dict containing rel_path"""
         data = {
             "date": "2026-03-10",
-            "attachments": [
-                {"rel_path": "attachments/file.txt", "filename": "file.txt"}
-            ],
+            "attachments": [{"rel_path": "attachments/file.txt", "filename": "file.txt"}],
         }
         result = format_frontmatter(data)
         assert '"attachments/file.txt"' in result
@@ -457,7 +446,6 @@ class TestWriteJournalAttachmentContract:
         source_file = isolated_data_dir / "source" / "evidence.png"
         source_file.parent.mkdir(parents=True, exist_ok=True)
         source_file.write_text("image-bytes", encoding="utf-8")
-        journals_dir = isolated_data_dir / "Journals"
         cache_dir = isolated_data_dir / ".cache"
         lock_path = cache_dir / "journals.lock"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -819,9 +807,7 @@ class TestFormatContent:
             "attachments": [{"filename": "file.txt", "description": "Test"}],
         }
         result = format_content(data)
-        assert (
-            'attachments: [{"filename": "file.txt", "description": "Test"}]' in result
-        )
+        assert 'attachments: [{"filename": "file.txt", "description": "Test"}]' in result
         assert "## Attachments" not in result
 
     def test_content_multiline(self):
@@ -854,32 +840,6 @@ class TestFormatContent:
         data = {"title": "Test", "content": "Content", "attachments": []}
         result = format_content(data)
         assert "## Attachments" not in result
-
-
-class TestExtractExplicitMetadataFromContent:
-    def test_extracts_metadata_without_modifying_content(self):
-        content = "地点：Lagos\n天气：晴天\n今天很开心"
-
-        extracted = extract_explicit_metadata_from_content(content)
-
-        assert extracted == {"location": "Lagos", "weather": "晴天"}
-        # Content must NOT be modified — original is always preserved
-        # (The function now only returns metadata, not a cleaned version)
-
-    def test_returns_empty_metadata_when_no_match(self):
-        content = "今天很开心\n继续努力"
-
-        extracted = extract_explicit_metadata_from_content(content)
-
-        assert extracted == {}
-
-    def test_extracts_each_field_only_once(self):
-        content = "地点：A\n地点：B\n天气：晴天\n今天很开心"
-
-        extracted = extract_explicit_metadata_from_content(content)
-
-        # Only the first match per field is extracted
-        assert extracted == {"location": "A", "weather": "晴天"}
 
 
 if __name__ == "__main__":

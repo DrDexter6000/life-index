@@ -22,8 +22,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tools.write_journal.core import apply_confirmation_updates, write_journal
+from tools.write_journal.core import (
+    _resolve_location_and_weather,
+    apply_confirmation_updates,
+    write_journal,
+)
 from tools.lib.errors import ErrorCode
+from tools.lib.timing import Timer
 from tools.lib.workflow_signals import (
     WriteOutcome,
     IndexStatus,
@@ -364,6 +369,126 @@ class TestWriteJournalSuccessDictShape:
 class TestWriteJournalLocationWeather:
     """Pin location and weather resolution behavior."""
 
+    @pytest.mark.parametrize(
+        (
+            "structured_fields",
+            "expected_location",
+            "expected_weather",
+            "default_expected",
+            "query_expected",
+        ),
+        (
+            (
+                {"location": "  Lagos, Nigeria  ", "weather": "  Structured sun  "},
+                "Lagos, Nigeria",
+                "Structured sun",
+                False,
+                False,
+            ),
+            (
+                {"location": "  Lagos, Nigeria  "},
+                "Lagos, Nigeria",
+                "Auto weather",
+                False,
+                True,
+            ),
+            (
+                {"weather": "  Structured rain  "},
+                "Default City, Country",
+                "Structured rain",
+                True,
+                False,
+            ),
+            ({}, "Default City, Country", "Auto weather", True, True),
+            (
+                {"location": "   ", "weather": "\t"},
+                "Default City, Country",
+                "Auto weather",
+                True,
+                True,
+            ),
+        ),
+        ids=(
+            "structured-location-and-weather",
+            "structured-location-missing-weather",
+            "missing-location-structured-weather",
+            "both-absent",
+            "both-whitespace",
+        ),
+    )
+    def test_structured_fields_are_authoritative_and_body_markers_are_inert(
+        self,
+        structured_fields,
+        expected_location,
+        expected_weather,
+        default_expected,
+        query_expected,
+    ):
+        body = "地点：Body City\n天气：Body Weather\nNarrative stays verbatim."
+        data = {"content": body, "date": "2026-03-14", **structured_fields}
+        result = {
+            "location_used": "",
+            "location_auto_filled": False,
+            "weather_used": "",
+            "weather_auto_filled": False,
+        }
+
+        with (
+            patch(
+                "tools.write_journal.core.get_default_location",
+                return_value="Default City, Country",
+            ) as mock_default,
+            patch(
+                "tools.write_journal.core.normalize_location",
+                side_effect=lambda value: f"normalized:{value}",
+            ),
+            patch(
+                "tools.write_journal.core.query_weather_for_location",
+                return_value="Auto weather",
+            ) as mock_weather,
+        ):
+            location, weather = _resolve_location_and_weather(data, result, Timer().start())
+
+        assert data["content"] == body
+        assert location == expected_location
+        assert weather == expected_weather
+        assert data["location"] == expected_location
+        assert data["weather"] == expected_weather
+        assert result["location_auto_filled"] is default_expected
+        assert result["weather_auto_filled"] is query_expected
+        if default_expected:
+            mock_default.assert_called_once_with()
+        else:
+            mock_default.assert_not_called()
+        if query_expected:
+            mock_weather.assert_called_once_with(
+                f"normalized:{expected_location}",
+                "2026-03-14",
+            )
+        else:
+            mock_weather.assert_not_called()
+
+    def test_conflicting_marker_lines_persist_verbatim_with_structured_frontmatter(
+        self, writable_env
+    ):
+        body = "地点：Body City\n天气：Body Weather\nNarrative stays verbatim."
+        data = {
+            "date": "2026-03-14",
+            "title": "Structured Authority",
+            "content": body,
+            "location": "Lagos, Nigeria",
+            "weather": "Structured sun",
+        }
+
+        result = _run_write(data, writable_env)
+
+        persisted = Path(result["journal_path"]).read_text(encoding="utf-8")
+        assert result["success"] is True
+        assert result["prepared_metadata"]["content"] == body
+        assert 'location: "Lagos, Nigeria"' in persisted
+        assert 'weather: "Structured sun"' in persisted
+        assert body in persisted
+
     def test_explicit_location_is_used(self, writable_env):
         """User-provided location is used without auto-fill."""
         data = {
@@ -404,23 +529,6 @@ class TestWriteJournalLocationWeather:
         assert result["success"] is True
         assert result["weather_auto_filled"] is True
         assert result["weather_used"] == "Sunny 25\u00b0C"
-
-    def test_content_extracted_location_overrides_data(self, writable_env):
-        """Location extracted from content (e.g., '地点: Lagos') is used."""
-        data = {
-            "date": "2026-03-14",
-            "title": "Content Location",
-            "content": "Content here.",
-        }
-        with patch(
-            "tools.write_journal.core.extract_explicit_metadata_from_content",
-            return_value={"location": "Lagos, Nigeria"},
-        ):
-            result = _run_write(data, writable_env)
-
-        assert result["success"] is True
-        assert result["location_used"] == "Lagos, Nigeria"
-        assert result["location_auto_filled"] is False
 
     def test_empty_weather_when_api_returns_empty(self, writable_env):
         """When weather API returns empty, weather_used is empty string."""
@@ -1159,16 +1267,14 @@ class TestErrorCodeValues:
 
 
 # ===================================================================
-# 13. Content metadata extraction — pin extract_explicit_metadata
+# 13. Body marker inertness
 # ===================================================================
 
 
-class TestContentMetadataExtraction:
-    """Pin the extract_explicit_metadata_from_content behavior:
-    content-level location/weather override data-level values."""
+class TestBodyMarkerInertness:
+    """Pin that marker-like body lines never become structured metadata."""
 
-    def test_content_location_wins_over_default(self, writable_env):
-        """Location in content (地点:) prevents auto-fill."""
+    def test_content_location_marker_does_not_prevent_default(self, writable_env):
         data = {
             "date": "2026-03-14",
             "content": "地点：Beijing, China\n今天过得不错。",
@@ -1184,8 +1290,14 @@ class TestContentMetadataExtraction:
             ),
             patch("tools.write_journal.core.get_year_month", return_value=(2026, 3)),
             patch("tools.write_journal.core.get_next_sequence", return_value=1),
-            patch("tools.write_journal.core.get_default_location") as mock_default,
-            patch("tools.write_journal.core.normalize_location", return_value="Beijing, China"),
+            patch(
+                "tools.write_journal.core.get_default_location",
+                return_value="Default City, Country",
+            ) as mock_default,
+            patch(
+                "tools.write_journal.core.normalize_location",
+                return_value="Default City, Country",
+            ),
             patch("tools.write_journal.core.query_weather_for_location", return_value=""),
             patch("tools.write_journal.core.update_topic_index", return_value=[]),
             patch("tools.write_journal.core.update_project_index", return_value=None),
@@ -1193,12 +1305,11 @@ class TestContentMetadataExtraction:
             patch("tools.write_journal.core.update_monthly_abstract", return_value="abstract.md"),
         ):
             result = write_journal(data)
-        mock_default.assert_not_called()
-        assert result["location_used"] == "Beijing, China"
-        assert result["location_auto_filled"] is False
+        mock_default.assert_called_once_with()
+        assert result["location_used"] == "Default City, Country"
+        assert result["location_auto_filled"] is True
 
-    def test_content_weather_wins_over_query(self, writable_env):
-        """Weather in content (天气:) prevents weather API call."""
+    def test_content_weather_marker_does_not_prevent_query(self, writable_env):
         data = {
             "date": "2026-03-14",
             "content": "天气：Rainy\n今天一直在下雨。",
@@ -1216,16 +1327,19 @@ class TestContentMetadataExtraction:
             patch("tools.write_journal.core.get_next_sequence", return_value=1),
             patch("tools.write_journal.core.get_default_location", return_value="Default"),
             patch("tools.write_journal.core.normalize_location", return_value="Default"),
-            patch("tools.write_journal.core.query_weather_for_location") as mock_wx,
+            patch(
+                "tools.write_journal.core.query_weather_for_location",
+                return_value="Auto weather",
+            ) as mock_wx,
             patch("tools.write_journal.core.update_topic_index", return_value=[]),
             patch("tools.write_journal.core.update_project_index", return_value=None),
             patch("tools.write_journal.core.update_tag_indices", return_value=[]),
             patch("tools.write_journal.core.update_monthly_abstract", return_value="abstract.md"),
         ):
             result = write_journal(data)
-        mock_wx.assert_not_called()
-        assert result["weather_used"] == "Rainy"
-        assert result["weather_auto_filled"] is False
+        mock_wx.assert_called_once_with("Default", "2026-03-14")
+        assert result["weather_used"] == "Auto weather"
+        assert result["weather_auto_filled"] is True
 
     def test_weather_query_failure_yields_empty_string(self, writable_env):
         """When weather API returns empty, weather_used is '' and auto_filled is False."""

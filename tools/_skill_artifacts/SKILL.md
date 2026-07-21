@@ -25,7 +25,9 @@ triggers:
 ## Host Agent / Core / Gateway routing boundary
 
 - Host Agent + Skill own planning, multi-hop reasoning, interpretation, and synthesis. They also own orchestration.
+- For journal writes, the Host Agent translates natural-language intent into structured CLI arguments before calling Core.
 - Core calls remain deterministic; Core does not plan, reason, orchestrate, interpret, or synthesize.
+- Non-empty trimmed structured `location` and `weather` are authoritative. Core uses defaults only for corresponding blank/missing fields and never parses body marker lines (`地点` / `位置` / `location` / `天气` / `weather`) as metadata; those lines remain verbatim ordinary content.
 - Gateway is an optional implemented generic typed 1:1 projection under #164. Its closed `CAPABILITY_REGISTRY` exposes only read `health`, `journal.get`, and `search`; `search` may refresh only rebuildable `.index` state. It is not a second semantic API and owns no intelligence.
 - Codex is the first consumer, not a source of Codex-specific semantics. The optional MCP projection is removable, uses the existing data-directory boundary, and never replaces the direct CLI core route.
 <!-- PLATFORM-SSOT:HOST-AGENT-ROUTING:END -->
@@ -176,6 +178,7 @@ life-index/                         # 技能根目录
 - 不转换列表格式
 - 不添加序号标记
 - **⚠️ 不修改文件名（不在中英文间添加空格）**
+- `地点` / `位置` / `location` / `天气` / `weather` 等 marker 行也是普通正文；必须原样传递，同时由 Agent 另行填写结构化地点/天气参数
 
 ```markdown
 # ❌ 错误
@@ -256,8 +259,8 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | topic | array | ✅ | 主题分类（见下方 Topic 表） |
 | mood | array | ✅ | 心情标签，Agent语义提取1~3个（如["开心","专注"]） |
 | tags | array | ✅ | 标签，Agent语义提取关键词（可多个） |
-| location | string | ❌ | 地点；用户未指定时默认 "Chongqing, China"，写入后必须走地点/天气确认 |
-| weather | string | ❌ | 天气，根据确认的地点自动查询 |
+| location | string | ❌ | Agent 结构化传入的地点为权威值；空白/缺失时才使用默认地点，写入后必须走地点/天气确认 |
+| weather | string | ❌ | Agent 结构化传入的天气为权威值；空白/缺失时才根据已解析地点自动查询 |
 | people | array | ❌ | 相关人物，Agent语义提取，没有则留空 |
 | project | string | ❌ | 关联项目，Agent语义提取，没有则留空 |
 | links | array | ❌ | 相关链接 |
@@ -317,7 +320,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 1. **必填字段**：title, content, date, abstract, topic, mood, tags — 必须有值
 2. **语义提取**：从用户内容中主动提取 mood（1~3个）、tags（关键词）、people、project
 3. **工具边界**：`write_journal enrich` 默认只做规则补全、规范化和地点/天气处理；不会替 Agent 从正文语义推断 mood/tags/people/project
-4. **地点规则**：正文里明确写出的地点优先；只有正文和入参都未提供地点时，工具才使用默认地点；但无论地点来源为何，只要写入成功，Agent 都必须展示确认信息并等待用户确认或修正
+4. **地点/天气规则**：Agent 将自然语言翻译为结构化 `location` / `weather`；trim 后非空的参数为权威值，空白/缺失才触发对应默认值。正文 marker 行不作为元数据解析，但原文必须保留；无论地点来源为何，写入成功后都必须展示确认信息并等待用户确认或修正
 5. **空值处理**：people, project, links 未提取到时传空值（如 `"people": []`）
 6. **摘要生成**：从 content 提取关键信息，生成 ≤100 字的 abstract
 7. **必须确认**：工具返回后检查 `needs_confirmation`；对所有成功写入结果，这都应视为必须执行的 follow-up
@@ -346,7 +349,7 @@ Agent 改成："C:\Users\test\Opus 审计报告.txt"  ← 添加了空格
 | 1 | **解析意图** | 提取 title, content, date, topic | 遗漏 topic |
 | 2 | **提取元数据** | 识别 mood(1-3个)、tags、people、project | mood 为空数组 |
 | 3 | **生成摘要** | abstract ≤100字 | 摘要过长 |
-| 4 | **调用工具** | `write_journal` 包含所有字段；正文里明确地点/天气时优先采用正文信息；location 缺失时才允许工具使用默认地点 | 让默认值覆盖正文里已写明的信息 |
+| 4 | **调用工具** | `write_journal` 包含所有字段；从自然语言提取的地点/天气必须作为结构化参数传入，空白/缺失时才允许 Core 使用对应默认值；正文 marker 行保持普通原文 | 依赖 Core 从正文猜字段，或让默认值覆盖非空结构化参数 |
 | 5 | **检查确认** | `needs_confirmation` 为 true？（成功写入后必须 follow-up） | ⚠️ **最常见错误：直接跳过** |
 | 6 | **展示确认** | 展示 `confirmation_message` | 不展示直接结束 |
 | 7 | **等待回复** | 询问用户"是否正确？" | 不询问 |
