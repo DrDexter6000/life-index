@@ -1700,6 +1700,27 @@ def _validate_committed_manifest(
     return True, ""
 
 
+def _reload_durable_child(
+    ledger: dict[str, Any], data_dir: Path, child_id: str
+) -> None:
+    """Merge the durable child transition written by ``execute_rollback``.
+
+    ``execute_rollback`` reads and persists its own ledger snapshot, so the
+    caller's in-memory *ledger* is left stale for that child once compensation
+    runs. Reload the child's durable ``state`` / ``updated_at`` into *ledger*
+    so a subsequent ``_write_ledger`` by the caller preserves the durable
+    transition (``rolled_back`` / ``rollback_failed``) instead of overwriting
+    it with the stale pre-compensation state. The persisted write stays the
+    single authority; nothing here is re-derived.
+    """
+    durable = _get_job(_read_ledger(data_dir), child_id)
+    child = ledger.get("jobs", {}).get(child_id)
+    if isinstance(durable, dict) and isinstance(child, dict):
+        child["state"] = durable.get("state", child.get("state"))
+        if "updated_at" in durable:
+            child["updated_at"] = durable["updated_at"]
+
+
 def _reconcile_parent(
     ledger: dict[str, Any], parent_id: str, data_dir: Path
 ) -> bool:
@@ -1807,6 +1828,16 @@ def _reconcile_parent(
         restore_confirmed()
         return apply(active_child_id=None, recovery_required=False)
 
+    # 2b. Child compensation already failed durably (``execute_rollback`` could
+    #     not safely remove an artifact) -> stay fail-closed and convergent.
+    #     Once the durable child transition is carried forward (see the reload
+    #     below), the child ledger and its rollback manifest both read
+    #     ``rollback_failed``; this terminal branch keeps recovery_required set
+    #     and the active child retained without re-attempting or silently
+    #     clearing, so repeated status is a no-op.
+    if child_state == "rollback_failed":
+        return apply(active_child_id=child_id, recovery_required=True)
+
     # 3. Our write-failure states, or a crashed running child that left created
     #    evidence -> checksum-guarded compensation of only this child's files.
     #    Restore confirmed only on complete compensation; a prior compensation
@@ -1822,6 +1853,16 @@ def _reconcile_parent(
             if manifest_state == "rollback_failed":
                 return apply(active_child_id=child_id, recovery_required=True)
             comp = execute_rollback(import_id=child_id, data_dir=data_dir)
+            # ``execute_rollback`` persisted the durable child transition
+            # (rolled_back / rollback_failed) on its OWN fresh ledger read, so
+            # our in-memory *ledger* snapshot is now stale for this child.
+            # Reload that durable child state before the caller persists the
+            # parent projection -- otherwise the caller's ``_write_ledger``
+            # would clobber the durable transition and re-diverge the child
+            # job (e.g. stuck at partially_committed) from its separately-
+            # written rollback manifest (rolled_back). The durable write stays
+            # the single authority; we only carry its truth forward.
+            _reload_durable_child(ledger, data_dir, child_id)
             if comp["success"]:
                 restore_confirmed()
                 return apply(active_child_id=None, recovery_required=False)

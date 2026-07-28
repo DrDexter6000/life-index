@@ -158,7 +158,16 @@ def _manifest(data_dir: Path, child_id: str) -> dict[str, Any]:
 
 
 def _no_staging_leftovers(data_dir: Path) -> None:
-    assert list(data_dir.rglob("*staging*")) == [], "staging leftovers present"
+    # The implementation publishes via ``_unique_staging``, which writes a
+    # HIDDEN temp ``.{target}.staging-<rand>.tmp`` beside each target and
+    # unlinks it on every path. Assert against that real hidden ``.staging-*.tmp``
+    # naming (a loose ``*staging*`` glob is only a coincidental substring match
+    # and could miss a leftover if the marker changed), plus a broad sweep so
+    # nothing slips through on any base.
+    real = sorted(data_dir.rglob(".*.staging-*.tmp"))
+    broad = sorted(p for p in data_dir.rglob("*staging*"))
+    leftover = sorted({*real, *broad})
+    assert leftover == [], f"staging leftovers present: {[str(p) for p in leftover]}"
 
 
 # ===================================================================
@@ -434,7 +443,91 @@ def test_run_batch_mid_write_failure_fully_compensates(
         assert parent["proposal_states"][pid] == "confirmed"
     assert parent["active_child_id"] is None
     assert parent["recovery_required"] is False
+    # ONE durable recovery truth: the child job and its rollback manifest agree
+    # on rolled_back (no diverged partially_committed child behind a rolled_back
+    # manifest). The unfixed base leaves the child job diverged.
+    child_id = next(
+        jid for jid, j in _ledger(data_dir)["jobs"].items()
+        if j.get("parent_review_job_id") == parent_id
+    )
+    assert _ledger(data_dir)["jobs"][child_id]["state"] == "rolled_back"
+    assert _manifest(data_dir, child_id)["state"] == "rolled_back"
     _no_staging_leftovers(data_dir)
+
+
+def test_run_batch_mid_write_failure_child_and_manifest_converge_to_rolled_back(
+    tmp_path: Path,
+) -> None:
+    """A fully compensated mid-write failure leaves ONE durable recovery truth.
+
+    Forces a real mid-batch write failure WITHOUT monkeypatching the copy
+    primitive (so it is behavioral on any base): proposal 0 publishes fully,
+    then proposal 1's attachment collides create-only, so the batch fails with
+    created evidence and reconciliation compensates it via ``execute_rollback``.
+
+    After compensation the parent is cleanly retryable (confirmed, no active
+    child, no recovery) AND the child job + rollback manifest agree on exactly
+    one terminal state (``rolled_back``): no half-product and no diverged child
+    job lingering behind a rolled_back manifest. Repeated status is a stable
+    no-op. This is the focused contract for the stale-ledger overwrite.
+    """
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pids = [p["proposal_id"] for p in plan["proposals"]]
+    prop0 = plan["proposals"][0]
+    prop1 = plan["proposals"][1]
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, "p.json")),
+        data_dir=data_dir, source_root=str(src),
+    )
+
+    # Pre-create proposal 1's attachment target so its create-only publish
+    # collides AFTER proposal 0 has already published -> partially_committed
+    # with proposal 0's files as durable created evidence.
+    collision = data_dir / prop1["attachments"][0]["target_rel_path"]
+    collision.parent.mkdir(parents=True, exist_ok=True)
+    collision.write_bytes(b"PRE-EXISTING COLLISION")
+
+    res = review.run_batch(parent_id, data_dir, source_root=str(src))
+    assert not res["success"]
+    assert res["error"]["code"] == "IMPORT_WRITE_FAILURE"
+    assert res["error"]["retryable"] is True  # fully compensated -> retryable
+
+    # Parent is cleanly retryable.
+    parent = _ledger(data_dir)["jobs"][parent_id]
+    for pid in pids:
+        assert parent["proposal_states"][pid] == "confirmed"
+    assert parent["active_child_id"] is None
+    assert parent["recovery_required"] is False
+
+    # ONE durable recovery truth: the child job and its rollback manifest agree
+    # on rolled_back. The unfixed base leaves the child job diverged
+    # (partially_committed) behind a rolled_back manifest.
+    child_id = next(
+        jid for jid, j in _ledger(data_dir)["jobs"].items()
+        if j.get("parent_review_job_id") == parent_id
+    )
+    assert _ledger(data_dir)["jobs"][child_id]["state"] == "rolled_back"
+    assert _manifest(data_dir, child_id)["state"] == "rolled_back"
+
+    # No half-product survives: proposal 0's published attachment + journal were
+    # compensated away, and the create-only collision file was never overwritten.
+    assert not (data_dir / prop0["attachments"][0]["target_rel_path"]).exists()
+    assert not (data_dir / prop0["journal"]["target_rel_path"]).exists()
+    assert collision.read_bytes() == b"PRE-EXISTING COLLISION"
+    _no_staging_leftovers(data_dir)
+
+    # Repeated status/reconciliation is a stable no-op (convergence).
+    snap1 = json.dumps(_ledger(data_dir)["jobs"], sort_keys=True)
+    _status(data_dir, parent_id)
+    snap2 = json.dumps(_ledger(data_dir)["jobs"], sort_keys=True)
+    assert snap1 == snap2
+    assert _ledger(data_dir)["jobs"][child_id]["state"] == "rolled_back"
 
 
 def test_run_batch_compensation_failure_requires_recovery(
@@ -571,6 +664,11 @@ def test_crash_window_running_with_evidence_compensates(tmp_path: Path) -> None:
     assert status["proposal_states"][pid] == "confirmed"
     assert status["active_child_id"] is None
     assert status["recovery_required"] is False
+    # ONE durable recovery truth via the status/reconcile path too: the child
+    # job and its rollback manifest agree on rolled_back (the unfixed base
+    # clobbers the child job back to the stale running/partial state).
+    assert _ledger(data_dir)["jobs"][child_id]["state"] == "rolled_back"
+    assert _manifest(data_dir, child_id)["state"] == "rolled_back"
 
 
 def test_crash_window_manifest_committed_before_ledger_projects_imported(tmp_path: Path) -> None:

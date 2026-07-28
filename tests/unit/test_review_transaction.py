@@ -56,6 +56,25 @@ def _write_child_manifest(data_dir: Path, child_id: str, manifest: dict[str, Any
     p.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _read_child_manifest(data_dir: Path, child_id: str) -> dict[str, Any]:
+    return json.loads(_child_manifest_path(data_dir, child_id).read_text("utf-8"))
+
+
+def _assert_no_staging(parent_dir: Path) -> None:
+    """No staging leftover under *parent_dir*, checked against the REAL naming.
+
+    ``_unique_staging`` writes a hidden ``.{target}.staging-<rand>.tmp`` beside
+    each target and unlinks it on every path. Assert against that real hidden
+    ``.staging-*.tmp`` naming (a loose ``*staging*`` glob is only a coincidental
+    substring match and could miss a leftover if the marker changed), plus a
+    broad sweep so nothing slips through.
+    """
+    leftover = sorted(
+        {*parent_dir.glob(".*.staging-*.tmp"), *parent_dir.glob("*staging*")}
+    )
+    assert leftover == [], f"staging leftovers: {[str(p) for p in leftover]}"
+
+
 def _sha(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
@@ -237,7 +256,7 @@ def test_stream_copy_target_exists_no_overwrite_no_staging(tmp_path: Path) -> No
     # never overwrote the existing target
     assert target.read_bytes() == pre_existing
     # no staging leftovers
-    assert list(target.parent.glob("*staging*")) == []
+    _assert_no_staging(target.parent)
 
 
 def test_stream_copy_sha_mismatch_no_target_no_staging(tmp_path: Path) -> None:
@@ -250,7 +269,7 @@ def test_stream_copy_sha_mismatch_no_target_no_staging(tmp_path: Path) -> None:
     assert ok is False
     assert info == "sha_mismatch"
     assert not target.exists()
-    assert list(target.parent.glob("*staging*")) == []
+    _assert_no_staging(target.parent)
 
 
 def test_stream_copy_missing_source(tmp_path: Path) -> None:
@@ -278,7 +297,7 @@ def test_publish_text_target_exists_no_overwrite_no_staging(tmp_path: Path) -> N
     assert ok is False
     assert info == "target_exists"
     assert target.read_text(encoding="utf-8") == pre_existing
-    assert list(target.parent.glob("*staging*")) == []
+    _assert_no_staging(target.parent)
 
 
 def test_unique_staging_beside_target(tmp_path: Path) -> None:
@@ -581,3 +600,86 @@ def test_reconcile_parent_converges_idempotent(tmp_path: Path) -> None:
     assert first is True
     assert second is False  # converged: second pass changed nothing
     assert snap1 == snap2
+
+
+# ===================================================================
+# Compensation must preserve execute_rollback's durable child transition
+# ===================================================================
+
+
+def test_reconcile_parent_compensation_preserves_durable_child_state(
+    tmp_path: Path,
+) -> None:
+    """Compensation must not clobber ``execute_rollback``'s durable child write.
+
+    A ``partially_committed`` child with created evidence triggers checksum-
+    guarded compensation (``execute_rollback``), which writes the child to
+    ``rolled_back`` on its OWN fresh ledger read. The caller's read->reconcile->
+    write pattern (mirrored by ``_reconcile_and_persist``) must carry that
+    durable state forward, so the child job and its rollback manifest agree on
+    exactly one terminal state instead of the child job lingering as
+    ``partially_committed`` behind a ``rolled_back`` manifest.
+
+    Synthetic temp data only. This is the focused RED witness for the stale-
+    ledger overwrite: against the unfixed base the child job state assertion
+    fails (it stays ``partially_committed``) while the manifest is already
+    ``rolled_back``.
+    """
+    data_dir = tmp_path / "Life-Index"
+    parent_id, child_id, pids = "parent1", "child1", ["p1"]
+    # Durable created evidence: a real published attachment the manifest records.
+    att_rel = "attachments/2024/06/import_deadbeefdead.jpg"
+    payload = b"published-then-failed attachment"
+    entry = _make_created_file(data_dir, att_rel, payload)
+    manifest = {
+        "schema_version": ROLLBACK_MANIFEST_SCHEMA_VERSION,
+        "import_id": child_id,
+        "parent_review_job_id": parent_id,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "state": "partially_committed",
+        "created_files": [entry],
+        "preexisting_files": [],
+        "errors": ["simulated mid-write failure"],
+    }
+    _write_child_manifest(data_dir, child_id, manifest)
+    ledger = _basic_review_ledger(parent_id, child_id, pids, proposal_state="batching")
+    ledger["jobs"][child_id] = _child_job(
+        parent_id, child_id, "partially_committed", pids
+    )
+    _write_ledger(data_dir, ledger)
+
+    # Mirror run_batch / reconcile_review_authority's exact persistence pattern:
+    # read -> reconcile (which runs execute_rollback on its own fresh ledger
+    # read) -> persist the in-memory snapshot. Inlined so the witness is purely
+    # behavioral and independent of _reconcile_parent's return shape across
+    # bases.
+    ledger = _read_ledger(data_dir)
+    review._reconcile_parent(ledger, parent_id, data_dir)
+    _write_ledger(data_dir, ledger)
+
+    after = _read_ledger(data_dir)
+    parent = after["jobs"][parent_id]
+    # Parent is cleanly retryable: no half-product, no active child, no recovery.
+    assert parent["proposal_states"]["p1"] == "confirmed"
+    assert parent["active_child_id"] is None
+    assert parent["recovery_required"] is False
+
+    # ONE durable recovery truth: the child job and its rollback manifest agree
+    # on ``rolled_back`` (the unfixed base leaves the child job diverged as
+    # ``partially_committed`` behind a rolled_back manifest).
+    assert after["jobs"][child_id]["state"] == "rolled_back"
+    assert _read_child_manifest(data_dir, child_id)["state"] == "rolled_back"
+
+    # The created evidence was compensated away; nothing of the batch survives.
+    assert not (data_dir / att_rel).exists()
+
+    # Repeated reconciliation is a stable no-op (convergence): the active child
+    # is cleared, so a second pass persists an unchanged ledger and the child
+    # stays rolled_back.
+    snap1 = json.dumps(_read_ledger(data_dir)["jobs"], sort_keys=True)
+    ledger2 = _read_ledger(data_dir)
+    review._reconcile_parent(ledger2, parent_id, data_dir)
+    _write_ledger(data_dir, ledger2)
+    snap2 = json.dumps(_read_ledger(data_dir)["jobs"], sort_keys=True)
+    assert snap1 == snap2
+    assert _read_ledger(data_dir)["jobs"][child_id]["state"] == "rolled_back"

@@ -745,8 +745,12 @@ def test_import_run_batch_source_unchanged_toctou(tmp_path: Path) -> None:
     # TOCTOU-safe copy: source bytes and mtime untouched
     assert source_file.read_bytes() == before_bytes
     assert source_file.stat().st_mtime_ns == before_mtime
-    # no staging leftovers inside the data dir
-    staging = list((data_dir).rglob("*.staging-*"))
+    # no staging leftovers inside the data dir: check the REAL hidden
+    # ``.{target}.staging-<rand>.tmp`` naming the implementation writes, plus a
+    # broad sweep (a bare ``*.staging-*`` glob could miss the real temp).
+    staging = sorted(
+        {*data_dir.rglob(".*.staging-*.tmp"), *data_dir.rglob("*staging*")}
+    )
     assert staging == []
 
 
