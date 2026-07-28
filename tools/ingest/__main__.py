@@ -840,14 +840,69 @@ def _emit(command: str, result: dict[str, Any]) -> None:
 
 
 def _cmd_confirm(args: argparse.Namespace) -> None:
-    """``import confirm``: persist a review plan + record parent review job."""
-    result = review_module.confirm_review(
+    """``import confirm``: persist a review plan (``--plan``) or a single-proposal
+    edit (``--edit``); the two are mutually exclusive."""
+    data_dir = get_user_data_dir()
+    if args.edit is not None:
+        # --edit requires --import-id + --expected-queue-revision.
+        if args.import_id is None or args.expected_queue_revision is None:
+            _print_json(
+                error_envelope(
+                    "import.confirm",
+                    review_module.IMPORT_REVIEW_EDIT_INVALID,
+                    "--edit requires --import-id and --expected-queue-revision.",
+                    {"import_id": args.import_id},
+                    retryable=False,
+                )
+            )
+            sys.exit(1)
+        result = review_module.edit_review(
+            edit_path=args.edit,
+            parent_id=args.import_id,
+            expected_queue_revision=args.expected_queue_revision,
+            data_dir=data_dir,
+        )
+    else:
+        result = review_module.confirm_review(
+            plan_path=args.plan,
+            data_dir=data_dir,
+            source_root=args.source_root,
+            parent_id_override=args.import_id,
+        )
+    _emit("import.confirm", result)
+
+
+def _cmd_stage(args: argparse.Namespace) -> None:
+    """``import stage``: stage a fresh pending review queue."""
+    result = review_module.stage_review(
         plan_path=args.plan,
         data_dir=get_user_data_dir(),
         source_root=args.source_root,
         parent_id_override=args.import_id,
     )
-    _emit("import.confirm", result)
+    _emit("import.stage", result)
+
+
+def _cmd_review(args: argparse.Namespace) -> None:
+    """``import review``: bounded, paginated read of a review queue."""
+    result = review_module.review_queue(
+        parent_id=args.import_id,
+        data_dir=get_user_data_dir(),
+        offset=args.offset,
+        limit=args.limit,
+        states=args.state,
+    )
+    _emit("import.review", result)
+
+
+def _cmd_reviews(args: argparse.Namespace) -> None:
+    """``import reviews``: discover persisted parent review jobs."""
+    result = review_module.list_reviews(
+        data_dir=get_user_data_dir(),
+        after=args.after,
+        limit=args.limit,
+    )
+    _emit("import.reviews", result)
 
 
 def _cmd_validate(args: argparse.Namespace) -> None:
@@ -875,6 +930,7 @@ def _cmd_preview(args: argparse.Namespace) -> None:
         source_root=args.source_root,
         output=args.output,
         metadata_output=args.metadata_output,
+        proposal_id=args.proposal_id,
     )
     if not result["success"]:
         _emit("import.preview", result)
@@ -951,14 +1007,58 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     rb_p.add_argument("--import-id", required=True, help="Import job id.")
     rb_p.add_argument("--json", action="store_true")
 
-    # --- confirm (additive) ---
+    # --- confirm (additive): --plan (legacy/stage) XOR --edit (single-proposal) ---
     confirm_p = sub.add_parser("confirm", help="Persist a photo review plan (review queue).")
-    confirm_p.add_argument("--plan", required=True, help="Path to review plan JSON.")
+    confirm_mx = confirm_p.add_mutually_exclusive_group(required=True)
+    confirm_mx.add_argument("--plan", default=None, help="Path to review plan JSON.")
+    confirm_mx.add_argument(
+        "--edit", default=None, help="Path to an import_review_edit.v1 JSON (single-proposal edit)."
+    )
     confirm_p.add_argument("--source-root", required=False, default=None, help="Source root directory.")
     confirm_p.add_argument(
         "--import-id", required=False, default=None, help="Override parent review job id."
     )
+    confirm_p.add_argument(
+        "--expected-queue-revision",
+        type=int,
+        default=None,
+        help="Client concurrency token (required with --edit).",
+    )
     confirm_p.add_argument("--json", action="store_true")
+
+    # --- stage (additive): fresh pending review queue ---
+    stage_p = sub.add_parser("stage", help="Stage a fresh pending photo review queue.")
+    stage_p.add_argument("--plan", required=True, help="Path to review plan JSON.")
+    stage_p.add_argument("--source-root", required=True, help="Source root directory.")
+    stage_p.add_argument(
+        "--import-id", required=False, default=None, help="Override parent review job id."
+    )
+    stage_p.add_argument("--json", action="store_true")
+
+    # --- review (additive): bounded read of a review queue ---
+    review_p = sub.add_parser("review", help="Bounded read of a review queue.")
+    review_p.add_argument("--import-id", required=True, help="Parent review job id.")
+    review_p.add_argument("--offset", type=int, default=0, help="Zero-based page offset.")
+    review_p.add_argument(
+        "--limit", type=int, default=20, help="Page size (clamped to 1..100)."
+    )
+    review_p.add_argument(
+        "--state",
+        action="append",
+        default=None,
+        help="Filter by proposal state (repeatable).",
+    )
+    review_p.add_argument("--json", action="store_true")
+
+    # --- reviews (additive): discover persisted review jobs ---
+    reviews_p = sub.add_parser("reviews", help="Discover persisted parent review jobs.")
+    reviews_p.add_argument(
+        "--after", default=None, help="Exclusive cursor import_id."
+    )
+    reviews_p.add_argument(
+        "--limit", type=int, default=20, help="Page size (clamped to 1..100)."
+    )
+    reviews_p.add_argument("--json", action="store_true")
 
     # --- validate (additive) ---
     validate_p = sub.add_parser("validate", help="Validate a source root and return its identity.")
@@ -975,6 +1075,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     preview_p = sub.add_parser("preview", help="Read-only preview of an attachment (review queue).")
     preview_p.add_argument("--import-id", required=True, help="Parent review job id.")
     preview_p.add_argument("--attachment", required=True, help="Attachment id to preview.")
+    preview_p.add_argument(
+        "--proposal-id",
+        required=False,
+        default=None,
+        help="Pin the attachment to a proposal (enables deselected-attachment preview).",
+    )
     preview_p.add_argument("--source-root", required=False, default=None, help="Source root directory.")
     preview_p.add_argument(
         "--output", required=False, default=None, help="- for stdout raw bytes, or an output path."
@@ -1014,6 +1120,12 @@ def main() -> None:
         _cmd_rollback(args)
     elif args.subcommand == "confirm":
         _cmd_confirm(args)
+    elif args.subcommand == "stage":
+        _cmd_stage(args)
+    elif args.subcommand == "review":
+        _cmd_review(args)
+    elif args.subcommand == "reviews":
+        _cmd_reviews(args)
     elif args.subcommand == "validate":
         _cmd_validate(args)
     elif args.subcommand == "rebind":

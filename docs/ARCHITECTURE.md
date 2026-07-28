@@ -652,7 +652,23 @@ additive 一个可恢复照片审阅队列。其权威架构有三条不变量�
   effective date + content 在 `confirm` 时重新派生，绝不信任 incoming GUI 编辑。EXIF 日期
   权威绝不来自文件 mtime；offset 只取与所选 capture tag 配对的 offset tag（不借用兄弟
   tag），且必须有显式符号、合法分钟、落在 ±14:00 真实世界范围内，否则按相机本地 naive
-  使用、绝不换算。
+  使用、绝不换算。单 proposal edit（`confirm --edit`）与 preview 都从持久化 immutable
+  `source_facts` 解析 attachment（非客户端提供），故被取消选择的附件仍可重新选择 /
+  预览；全部 `source_facts` 始终保留。
+
+- **两个 revision、各自一个权威（M7-B package-3）**：parent review job 维护
+  `plan_revision`（review-plan 内容）与 parent-ledger 拥有的 `queue_revision`（客户端并发
+  令牌，初始 1）。每次「parent 可见投影的原子变更」令 `queue_revision` 恰好递增一次
+  （stage / edit / legacy reconfirm finalize / run 转移到 batching 或 stale / 改变
+  proposal states·active child·recovery 的 child commit-rollback-failure reconciliation /
+  identity 变化的 rebind / 可见复合投影变化的 plan-authority reconciliation），而
+  state-only 的 run / rollback / reconciliation **永不**改动 `plan_revision`。pending
+  intent 携带 finalize 后的精确 `queue_revision`，crash replay 幂等、绝不二次递增；
+  `updated_at` 等非权威字段单独变化不递增令牌；收敛后重复读为 no-write。`import stage`
+  对重复 `source_root_identity`（actionable job 或 active child）拒绝创建第二个 job/plan
+  （`IMPORT_REVIEW_ALREADY_STAGED`，零写入）；全 `skipped`/`imported`/`stale` 且无 active
+  child 的 job 视为已完成、不阻塞新 stage。`import review` / `import reviews` 为有界分页 /
+  发现的稳定只读投影，绝不暴露 source 文件系统定位或 proposal 正文。
 
 ---
 

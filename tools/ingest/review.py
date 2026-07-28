@@ -51,6 +51,7 @@ from tools.ingest.schemas import (
 )
 from tools.lib.file_lock import FileLock
 from tools.lib.frontmatter import SCHEMA_VERSION, format_journal_content
+from tools.lib.topics import VALID_TOPICS
 
 # ---------------------------------------------------------------------------
 # Review/batch error codes (additive)
@@ -64,6 +65,35 @@ IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH = "IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH"
 IMPORT_REVIEW_PLAN_MISSING = "IMPORT_REVIEW_PLAN_MISSING"
 IMPORT_PREVIEW_UNAVAILABLE = "IMPORT_PREVIEW_UNAVAILABLE"
 IMPORT_RECOVERY_REQUIRED = "IMPORT_RECOVERY_REQUIRED"
+
+# Package-3 additive review-queue error / reason codes.
+IMPORT_REVIEW_ALREADY_STAGED = "IMPORT_REVIEW_ALREADY_STAGED"
+IMPORT_REVIEW_EDIT_INVALID = "IMPORT_REVIEW_EDIT_INVALID"
+IMPORT_REVIEW_PROPOSAL_FROZEN = "IMPORT_REVIEW_PROPOSAL_FROZEN"
+IMPORT_REVIEW_REVISION_CONFLICT = "IMPORT_REVIEW_REVISION_CONFLICT"
+IMPORT_REVIEW_RECOVERY_REQUIRED = "IMPORT_REVIEW_RECOVERY_REQUIRED"
+# Soft reason codes returned on a *successful* edit when the requested decision
+# could not fully take effect (state was coerced / left pending). The edit is
+# still persisted and the revisions bumped exactly once.
+IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED = "IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED"
+IMPORT_REVIEW_DATE_REQUIRED = "IMPORT_REVIEW_DATE_REQUIRED"
+
+# Edit-payload sub-object schema (package-3 single-proposal confirm/edit).
+IMPORT_REVIEW_EDIT_SCHEMA_VERSION = "import_review_edit.v1"
+
+# Strict whitelist of editable journal fields an edit payload may carry.
+_EDITABLE_JOURNAL_FIELDS = ("title", "date", "topic", "tags", "content")
+# Strict whitelist of top-level keys an ``import_review_edit.v1`` payload may
+# carry. Anything else (notably source/provenance/target/fingerprint fields)
+# is rejected with ``IMPORT_REVIEW_EDIT_INVALID`` and zero writes.
+_EDIT_PAYLOAD_FIELDS = (
+    "schema_version",
+    "proposal_id",
+    "decision",
+    "journal",
+    "selected_attachment_ids",
+)
+_EDIT_DECISIONS = ("pending", "confirmed", "skipped")
 
 # Authority status surfaced when the persisted review plan and the ledger
 # disagree with no durable intent to explain it. Reconciliation never silently
@@ -273,7 +303,47 @@ _PROJECTION_FIELDS = (
     "idempotency_key",
     "plan_fingerprint",
     "plan_revision",
+    # Parent-ledger-owned client concurrency token (package-3). The sole token a
+    # client uses for optimistic single-proposal edits; bumps exactly once per
+    # atomic parent-visible change (see ``_bump_queue``). Distinct from
+    # ``plan_revision`` (review-plan content), which state-only run/rollback
+    # transitions never change. ``created_at`` / ``updated_at`` are not part of
+    # the authoritative projection: they are not snapshotted/restored by the
+    # intent protocol and never drive a queue bump on their own.
+    "queue_revision",
 )
+
+# Visible parent-projection fields whose change warrants exactly one
+# ``queue_revision`` bump. ``plan_fingerprint``/``plan_revision`` are plan-
+# authority and are bumped explicitly by the finalize path; ``source_root_identity``
+# drives the rebind bump; child-state fields drive the reconcile/run/rollback bumps.
+_QUEUE_VISIBLE_FIELDS = (
+    "proposal_states",
+    "active_child_id",
+    "recovery_required",
+    "source_root_identity",
+)
+
+
+def _bump_queue(job: dict[str, Any]) -> None:
+    """Advance the parent queue_revision token by exactly one.
+
+    Centralized so bumps never get scattered as ad hoc ``+1`` writes. The caller
+    is responsible for only calling this on a genuine parent-visible change.
+    """
+    job["queue_revision"] = int(job.get("queue_revision", 1) or 1) + 1
+
+
+def _queue_revision_of(job: dict[str, Any] | None) -> int:
+    return int((job or {}).get("queue_revision", 1) or 1)
+
+
+def _visible_projection_changed(
+    before: dict[str, Any] | None, after: dict[str, Any]
+) -> bool:
+    """True iff any queue-visible projection field differs between two jobs."""
+    before = before or {}
+    return any(before.get(f) != after.get(f) for f in _QUEUE_VISIBLE_FIELDS)
 
 
 # ---------------------------------------------------------------------------
@@ -363,16 +433,21 @@ def rebind_source_root(
             },
             retryable=False,
         )
-    # Identity matches (or parent had none yet): record the locator identity.
-    job["source_root_identity"] = new_identity
-    job["updated_at"] = _now_iso()
-    _write_ledger(data_dir, ledger)
+    # Identity matches (or parent had none yet). The queue token bumps only when
+    # an identity/recovery-visible field actually changes — rebinding the very
+    # same root is a stable no-write/no-bump read, never an artificial bump.
+    if new_identity != stored_identity:
+        job["source_root_identity"] = new_identity
+        job["updated_at"] = _now_iso()
+        _bump_queue(job)
+        _write_ledger(data_dir, ledger)
     return _ok(
         {
             "schema_version": REVIEW_SCHEMA_VERSION,
             "import_id": parent_id,
             "source_root": validation["data"]["source_root"],
             "source_root_identity": new_identity,
+            "queue_revision": _queue_revision_of(job),
             "rebound": True,
         }
     )
@@ -591,6 +666,287 @@ def _resolve_and_derive_proposal(
     return STATE_PENDING
 
 
+def _stage_proposal(proposal: dict[str, Any]) -> str:
+    """Stage-time resolution: keep every selected proposal ``pending``.
+
+    Unlike ``_resolve_and_derive_proposal`` (the legacy confirm path), staging
+    never promotes a proposal to ``confirmed`` and never derives canonical
+    targets — resolved AND unresolved candidates both land in the pending review
+    area exactly as the plan recorded them. An empty selection is ``skipped``
+    (no empty journal). Date authority and target derivation are deferred to a
+    later single-proposal ``edit`` / legacy ``confirm``.
+    """
+    attachments = proposal.get("attachments", []) or []
+    if not attachments:
+        proposal["state"] = STATE_SKIPPED
+        return STATE_SKIPPED
+    proposal["state"] = STATE_PENDING
+    return STATE_PENDING
+
+
+def _blocks_restage(job: dict[str, Any] | None) -> bool:
+    """True iff a review job blocks (re-)staging the same source root.
+
+    A job blocks when it has an unsettled active child, or when any of its
+    proposals is still actionable (pending/confirmed/batching). A job whose
+    proposals are all skipped/imported/stale with no active child is finished
+    and does NOT block a fresh stage of the same root.
+    """
+    if not isinstance(job, dict) or job.get("kind") != "review":
+        return False
+    if job.get("active_child_id"):
+        return True
+    states = (job.get("proposal_states") or {}).values()
+    return any(s in (STATE_PENDING, STATE_CONFIRMED, STATE_BATCHING) for s in states)
+
+
+def _find_blocking_stage_job(
+    ledger: dict[str, Any], source_root_identity: str, exclude_id: str
+) -> str | None:
+    """Return the import_id of a review job already claiming *source_root_identity*
+    that blocks a fresh stage, or None.
+
+    Scans every persisted review job. The job being staged itself (``exclude_id``)
+    is included only via its own blocking state (a re-stage of an active queue is
+    blocked by its own pending/batching proposals or active child).
+    """
+    if not source_root_identity:
+        return None
+    jobs = ledger.get("jobs", {})
+    if not isinstance(jobs, dict):
+        return None
+    for import_id, job in jobs.items():
+        if not isinstance(job, dict) or job.get("kind") != "review":
+            continue
+        if job.get("source_root_identity") != source_root_identity:
+            continue
+        if import_id == exclude_id and not _blocks_restage(job):
+            # The exact job we are re-staging is finished -> does not block.
+            continue
+        if _blocks_restage(job):
+            return import_id
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Single-proposal edit (``import confirm --edit``): strict validation + rebuild
+# ---------------------------------------------------------------------------
+
+
+def _attachment_id_for_fact(fact: dict[str, Any]) -> str:
+    """Deterministic attachment_id for an immutable source fact (content prefix)."""
+    return "att_" + str(fact.get("content_sha256", "")).removeprefix("sha256:")[:12]
+
+
+def _validate_edit_payload(
+    payload: Any,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Validate an ``import_review_edit.v1`` payload strictly.
+
+    Returns ``(payload, None)`` on success or ``(None, IMPORT_REVIEW_EDIT_INVALID)``
+    for any structural violation: wrong schema version, an unknown top-level key
+    (source/provenance/target/fingerprint fields are forbidden), a bad
+    proposal_id/decision, a journal with an unknown field or wrong type/value
+    (topic must be a valid taxonomy member), or a malformed selection list.
+    """
+    if not isinstance(payload, dict):
+        return None, IMPORT_REVIEW_EDIT_INVALID
+    if payload.get("schema_version") != IMPORT_REVIEW_EDIT_SCHEMA_VERSION:
+        return None, IMPORT_REVIEW_EDIT_INVALID
+    for key in payload:
+        if key not in _EDIT_PAYLOAD_FIELDS:
+            return None, IMPORT_REVIEW_EDIT_INVALID
+    proposal_id = payload.get("proposal_id")
+    if not isinstance(proposal_id, str) or not proposal_id:
+        return None, IMPORT_REVIEW_EDIT_INVALID
+    if payload.get("decision") not in _EDIT_DECISIONS:
+        return None, IMPORT_REVIEW_EDIT_INVALID
+
+    journal = payload.get("journal")
+    if journal is not None:
+        if not isinstance(journal, dict):
+            return None, IMPORT_REVIEW_EDIT_INVALID
+        for key in journal:
+            if key not in _EDITABLE_JOURNAL_FIELDS:
+                return None, IMPORT_REVIEW_EDIT_INVALID
+        if "title" in journal and not isinstance(journal["title"], str):
+            return None, IMPORT_REVIEW_EDIT_INVALID
+        if "date" in journal and not isinstance(journal["date"], str):
+            return None, IMPORT_REVIEW_EDIT_INVALID
+        if "topic" in journal and not isinstance(journal["topic"], str):
+            return None, IMPORT_REVIEW_EDIT_INVALID
+        if "content" in journal and not isinstance(journal["content"], str):
+            return None, IMPORT_REVIEW_EDIT_INVALID
+        if "topic" in journal and journal["topic"] not in VALID_TOPICS:
+            return None, IMPORT_REVIEW_EDIT_INVALID
+        if "tags" in journal and (
+            not isinstance(journal["tags"], list)
+            or not all(isinstance(t, str) for t in journal["tags"])
+        ):
+            return None, IMPORT_REVIEW_EDIT_INVALID
+
+    selected = payload.get("selected_attachment_ids")
+    if selected is not None and (
+        not isinstance(selected, list)
+        or not all(isinstance(s, str) for s in selected)
+    ):
+        return None, IMPORT_REVIEW_EDIT_INVALID
+
+    return payload, None
+
+
+def _rebuild_attachments_from_source_facts(
+    proposal: dict[str, Any], selected_ids: list[str] | None
+) -> list[dict[str, Any]] | None:
+    """Rebuild a proposal's selected attachments from its immutable source_facts.
+
+    Returns the rebuilt attachment list, or None when a selected id is unknown to
+    this proposal's source_facts (caller raises ``IMPORT_REVIEW_EDIT_INVALID``).
+    Every source_fact is preserved (deselected photos stay reselectable); only
+    the selection is rebuilt. Targets are left empty and derived on resolve.
+    """
+    facts = proposal.get("source_facts") or []
+    fact_by_id: dict[str, dict[str, Any]] = {}
+    for fact in facts:
+        if isinstance(fact, dict):
+            fact_by_id[_attachment_id_for_fact(fact)] = fact
+
+    if selected_ids is None:
+        # preserve the current selection
+        ids = [a.get("attachment_id") for a in (proposal.get("attachments") or [])]
+    else:
+        ids = list(selected_ids)
+
+    rebuilt: list[dict[str, Any]] = []
+    for aid in ids:
+        fact = fact_by_id.get(aid)
+        if fact is None:
+            return None
+        rebuilt.append(
+            {
+                "attachment_id": aid,
+                "source_ref": fact.get("source_ref", ""),
+                "source_sha256": fact.get("content_sha256", ""),
+                "source_rel_path": fact.get("source_rel_path", ""),
+                "target_rel_path": "",
+                "media_type": fact.get("media_type", ""),
+                "size_bytes": fact.get("size_bytes", 0),
+                "copy_mode": "copy",
+            }
+        )
+    return rebuilt
+
+
+def _available_attachments(proposal: dict[str, Any]) -> list[dict[str, Any]]:
+    """Project every source_fact as a selectable attachment with a ``selected`` flag.
+
+    Exposes only stable, non-locator fields (attachment_id / source_ref /
+    media_type / size / selected) — never a source filesystem path. Deselected
+    attachments remain visible so a client can reselect them by id alone.
+    """
+    facts = proposal.get("source_facts") or []
+    selected_ids = {
+        a.get("attachment_id") for a in (proposal.get("attachments") or [])
+    }
+    out: list[dict[str, Any]] = []
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        aid = _attachment_id_for_fact(fact)
+        out.append(
+            {
+                "attachment_id": aid,
+                "source_ref": fact.get("source_ref", ""),
+                "media_type": fact.get("media_type", ""),
+                "size": fact.get("size_bytes", 0),
+                "selected": aid in selected_ids,
+            }
+        )
+    return out
+
+
+def _apply_edit_decision(
+    proposal: dict[str, Any],
+    data_dir: Path,
+    used_seqs: dict[str, int],
+    decision: str,
+    has_user_date: bool,
+) -> tuple[str, str | None]:
+    """Apply an edit's decision to a rebuilt proposal; return (state, reason_code).
+
+    ``reason_code`` is None for a fully-applied decision, or a soft reason code
+    (``IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED`` / ``IMPORT_REVIEW_DATE_REQUIRED``)
+    when the requested decision was coerced (empty selection -> skipped) or could
+    not fully take effect (confirmed without a resolvable date -> stays pending).
+    The edit is still persisted and the revisions bumped exactly once either way.
+    """
+    attachments = proposal.get("attachments", []) or []
+    journal = proposal.setdefault("journal", {})
+
+    # Empty selection is always skipped; only flag it when the user asked for
+    # something stronger (confirmed/pending) and the empty selection coerced it.
+    if not attachments:
+        proposal["state"] = STATE_SKIPPED
+        journal["date"] = ""
+        journal["target_rel_path"] = ""
+        for att in attachments:
+            att["target_rel_path"] = ""
+        reason = (
+            None if decision == STATE_SKIPPED else IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED
+        )
+        return STATE_SKIPPED, reason
+
+    if decision == STATE_SKIPPED:
+        proposal["state"] = STATE_SKIPPED
+        return STATE_SKIPPED, None
+
+    if decision == STATE_PENDING:
+        # Save the edits without promoting or deriving targets.
+        proposal["state"] = STATE_PENDING
+        return STATE_PENDING, None
+
+    # decision == confirmed: a date is required to promote.
+    has_conflict = _has_capture_conflict(proposal)
+    effective_date: str | None = None
+    dr_status = DATE_STATUS_EXIF
+    if has_user_date and is_valid_calendar_date(journal.get("date", "")):
+        effective_date = journal.get("date", "")
+        dr_status = DATE_STATUS_USER
+    elif not has_conflict and is_valid_calendar_date(journal.get("date", "")):
+        effective_date = journal.get("date", "")
+
+    if effective_date is not None:
+        journal["date"] = effective_date
+        seq = next_seq_for_date(effective_date, data_dir, used_seqs)
+        journal["target_rel_path"] = journal_target_rel_path(effective_date, seq)
+        for att in attachments:
+            att["target_rel_path"] = attachment_target_rel_path(
+                effective_date, att.get("source_sha256", "")
+            )
+        proposal["date_resolution"] = {"status": dr_status, "date": effective_date}
+        proposal["state"] = STATE_CONFIRMED
+        return STATE_CONFIRMED, None
+
+    # Confirmed but no resolvable date (capture-time conflict + no user date):
+    # keep the journal edits, clear date/target, stay pending.
+    journal["date"] = ""
+    journal["target_rel_path"] = ""
+    for att in attachments:
+        att["target_rel_path"] = ""
+    proposal["date_resolution"] = {"status": DATE_STATUS_UNRESOLVED, "date": ""}
+    proposal["state"] = STATE_PENDING
+    return STATE_PENDING, IMPORT_REVIEW_DATE_REQUIRED
+
+
+def _proposal_journal_projection(proposal: dict[str, Any]) -> dict[str, Any]:
+    """Project only the editable journal fields of a proposal (no locators)."""
+    journal = proposal.get("journal", {}) or {}
+    return {
+        field: journal.get(field, [] if field == "tags" else "")
+        for field in _EDITABLE_JOURNAL_FIELDS
+    }
+
+
 def _recompute_plan_fingerprints(plan: dict[str, Any]) -> dict[str, Any]:
     """Recompute proposal + plan fingerprints in-place from current content.
 
@@ -683,6 +1039,8 @@ def _rebuild_review_job_from_plan(
         "idempotency_key": plan.get("idempotency_key", ""),
         "plan_fingerprint": plan.get("plan_fingerprint", ""),
         "plan_revision": plan.get("plan_revision", 1) or 1,
+        "queue_revision": 1,
+        "created_at": plan.get("created_at") or _now_iso(),
         "updated_at": _now_iso(),
     }
 
@@ -714,6 +1072,12 @@ def _apply_intent_finalize(
     job["plan_revision"] = intent.get(
         "expected_plan_revision", job.get("plan_revision", 1) or 1
     )
+    # The intent carries the exact target queue_revision computed once at plan
+    # time, so replaying a finalize (crash recovery) sets the same value and
+    # never double-bumps the concurrency token.
+    if projection.get("queue_revision") is not None:
+        job["queue_revision"] = projection["queue_revision"]
+    job.setdefault("created_at", _now_iso())
     job.pop("pending_review_update", None)
     job.pop("authority_status", None)
     job["updated_at"] = _now_iso()
@@ -876,6 +1240,8 @@ def _persist_review_intent(
             "idempotency_key": projection.get("idempotency_key", ""),
             "plan_fingerprint": "",
             "plan_revision": 0,
+            "queue_revision": 0,
+            "created_at": _now_iso(),
         }
         jobs[parent_id] = job
     job["pending_review_update"] = intent
@@ -904,8 +1270,11 @@ def confirm_review(  # noqa: C901
     data_dir: Path,
     source_root: str | None = None,
     parent_id_override: str | None = None,
+    *,
+    stage: bool = False,
 ) -> dict[str, Any]:
-    """``import confirm``: persist a review plan and record a parent review job.
+    """``import confirm`` (and ``import stage``): persist a review plan and record
+    a parent review job.
 
     Under the per-parent lock this reconciles the plan/ledger authority, refuses
     to mutate while an active child batch is unsettled, then merges the incoming
@@ -913,6 +1282,17 @@ def confirm_review(  # noqa: C901
     (never downgraded, their contents authoritative and unchanged), while
     pending/confirmed/skipped proposals accept safe edits and (re-)derive their
     date resolution and canonical targets.
+
+    With ``stage=True`` this implements ``import stage``: a fresh pending review
+    queue. Every selected proposal is kept ``pending`` (resolved AND unresolved
+    candidates alike; date authority + target derivation are deferred to a later
+    edit/confirm) and an empty selection is ``skipped``. Staging requires a
+    ``--source-root`` (its identity is the duplicate-root guard) and refuses to
+    create a second job/plan for a source root that already has an actionable
+    review job or an active child (``IMPORT_REVIEW_ALREADY_STAGED``). A root whose
+    prior jobs are all finished (skipped/imported/stale, no active child) may be
+    staged fresh. Both paths initialise ``queue_revision``/``plan_revision`` to 1
+    on first creation and bump exactly once per atomic change thereafter.
     """
     plan_file = Path(plan_path)
     if not plan_file.exists():
@@ -967,8 +1347,16 @@ def confirm_review(  # noqa: C901
                 retryable=False,
             )
 
-    # --- Source-root identity (optional but recorded when supplied) ---
+    # --- Source-root identity (optional for legacy confirm, required for stage) ---
     source_root_identity = ""
+    if stage and not source_root:
+        return _err(
+            IMPORT_SOURCE_ROOT_UNREADABLE,
+            "import stage requires a --source-root (its identity is the "
+            "duplicate-source-root guard).",
+            {"plan_path": plan_path},
+            retryable=True,
+        )
     if source_root:
         validation = validate_source_root(source_root)
         if not validation["success"]:
@@ -981,6 +1369,28 @@ def confirm_review(  # noqa: C901
         ledger = _read_ledger(data_dir)
         _reconcile_review_authority_locked(ledger, parent_id, data_dir)
         existing_job = _get_job(ledger, parent_id)
+
+        # ``import stage``: refuse to create a second job/plan for a source root
+        # that already has an actionable review job (pending/confirmed/batching
+        # proposals) or an active child. A root whose prior jobs are all finished
+        # (skipped/imported/stale, no active child) may be staged fresh. Zero
+        # writes occur on the blocked path.
+        if stage and source_root_identity:
+            blocking = _find_blocking_stage_job(
+                ledger, source_root_identity, parent_id
+            )
+            if blocking is not None:
+                _write_ledger(data_dir, ledger)  # persist any reconciliation above
+                return _err(
+                    IMPORT_REVIEW_ALREADY_STAGED,
+                    "Source root is already staged as a pending/active review job.",
+                    {
+                        "import_id": parent_id,
+                        "existing_import_id": blocking,
+                        "source_root_identity": source_root_identity,
+                    },
+                    retryable=False,
+                )
 
         # Refuse to mutate the queue while a child batch is unsettled.
         if existing_job and existing_job.get("active_child_id"):
@@ -1020,6 +1430,11 @@ def confirm_review(  # noqa: C901
                 frozen = dict(existing_by_id[pid])
                 frozen["state"] = existing_states[pid]
                 merged.append(frozen)
+            elif stage:
+                # Staging keeps every selected proposal pending (no date
+                # resolution / target derivation); empty selection -> skipped.
+                _stage_proposal(proposal)
+                merged.append(proposal)
             else:
                 _resolve_and_derive_proposal(proposal, data_dir, used_seqs)
                 merged.append(proposal)
@@ -1045,6 +1460,8 @@ def confirm_review(  # noqa: C901
         if not source_root_identity:
             source_root_identity = (existing_job or {}).get("source_root_identity", "")
         plan["source_root_identity"] = source_root_identity
+        if not plan.get("created_at"):
+            plan["created_at"] = (existing_job or {}).get("created_at") or _now_iso()
         plan["confirmed_at"] = _now_iso()
 
         counts = _queue_counts(proposal_states)
@@ -1060,6 +1477,16 @@ def confirm_review(  # noqa: C901
         idempotency_key = plan.get("idempotency_key", "")
         new_revision = (int((existing_job or {}).get("plan_revision", 0)) or 0) + 1
         plan["plan_revision"] = new_revision
+        # The confirm/stage/edit finalize bumps BOTH authorities exactly once:
+        # plan_revision (review-plan content) and queue_revision (concurrency
+        # token). The token target is captured in the intent so a crash-replayed
+        # finalize converges on the same value instead of double-bumping. A first
+        # creation (no prior review job) initialises the token to 1 — matching
+        # ``stage`` — rather than bumping the default-of-1 to 2.
+        is_first_creation = existing_job is None
+        new_queue_revision = (
+            1 if is_first_creation else _queue_revision_of(existing_job) + 1
+        )
 
         intent = {
             "expected_plan_fingerprint": plan_fingerprint,
@@ -1070,6 +1497,7 @@ def confirm_review(  # noqa: C901
                 "source_root_identity": source_root_identity,
                 "next_batch_sequence": next_batch_sequence,
                 "idempotency_key": idempotency_key,
+                "queue_revision": new_queue_revision,
             },
             "prior": _projection_snapshot(existing_job),
             "created_at": _now_iso(),
@@ -1088,6 +1516,8 @@ def confirm_review(  # noqa: C901
             "review_plan_rel_path": _review_plan_rel_path(parent_id),
             "proposal_states": proposal_states,
             "queue_counts": counts,
+            "plan_revision": new_revision,
+            "queue_revision": new_queue_revision,
             "proposals": [
                 {
                     "proposal_id": p.get("proposal_id", ""),
@@ -1096,6 +1526,390 @@ def confirm_review(  # noqa: C901
                 }
                 for p in merged
             ],
+        }
+    )
+
+
+def stage_review(
+    plan_path: str,
+    data_dir: Path,
+    source_root: str,
+    parent_id_override: str | None = None,
+) -> dict[str, Any]:
+    """``import stage``: stage a fresh pending review queue for a plan.
+
+    Thin entry over :func:`confirm_review` with ``stage=True``: every selected
+    proposal stays ``pending`` (empty selection -> ``skipped``), no attachment
+    bytes are copied, and a duplicate source root with an actionable job or
+    active child is rejected with ``IMPORT_REVIEW_ALREADY_STAGED``. Both
+    ``queue_revision`` and ``plan_revision`` initialise to 1.
+    """
+    return confirm_review(
+        plan_path=plan_path,
+        data_dir=data_dir,
+        source_root=source_root,
+        parent_id_override=parent_id_override,
+        stage=True,
+    )
+
+
+def edit_review(  # noqa: C901
+    edit_path: str,
+    parent_id: str,
+    expected_queue_revision: int,
+    data_dir: Path,
+) -> dict[str, Any]:
+    """``import confirm --edit``: atomic single-proposal confirm/edit.
+
+    Strictly validates an ``import_review_edit.v1`` payload (rejecting any
+    source/provenance/target/fingerprint field with ``IMPORT_REVIEW_EDIT_INVALID``
+    and zero writes), checks the client concurrency token
+    (``IMPORT_REVIEW_REVISION_CONFLICT``, retryable, zero writes), refuses a
+    frozen proposal (``IMPORT_REVIEW_PROPOSAL_FROZEN``), then rebuilds the
+    proposal's selection from the persisted immutable source_facts, applies the
+    journal edit + decision, and persists the merged review plan + ledger
+    projection through the same crash-safe intent protocol as ``confirm``. Both
+    ``plan_revision`` and ``queue_revision`` bump exactly once.
+    """
+    # --- Parse + strict structural validation (zero writes) ---
+    edit_file = Path(edit_path)
+    if not edit_file.exists():
+        return _err(
+            IMPORT_REVIEW_EDIT_INVALID,
+            f"Edit file not found: {edit_path}",
+            {"edit_path": edit_path},
+            retryable=False,
+        )
+    try:
+        payload = json.loads(edit_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return _err(
+            IMPORT_REVIEW_EDIT_INVALID,
+            f"Cannot parse edit file: {exc}",
+            {"edit_path": edit_path},
+            retryable=False,
+        )
+    payload, invalid = _validate_edit_payload(payload)
+    if invalid is not None:
+        return _err(
+            invalid,
+            "Edit payload failed schema/field validation.",
+            {"import_id": parent_id},
+            retryable=False,
+        )
+    assert payload is not None  # narrowing: validated above
+    proposal_id = payload["proposal_id"]
+    decision = payload["decision"]
+    journal_edit = payload.get("journal") or {}
+    selected_ids = payload.get("selected_attachment_ids")
+
+    # --- Per-parent lock; token check before any reconcile write ---
+    lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
+    with lock:
+        raw_ledger = _read_ledger(data_dir)
+        raw_job = _get_job(raw_ledger, parent_id)
+
+        # Concurrency token: the client must present the exact current
+        # queue_revision. A mismatch is retryable and performs zero writes (the
+        # ledger + plan hashes are unchanged). Checked against the raw ledger
+        # value before reconciliation so the conflict path never writes.
+        if not _is_review_job(raw_job):
+            return _err(
+                "IMPORT_JOB_NOT_FOUND",
+                f"No parent review job found for import-id: {parent_id}",
+                {"import_id": parent_id},
+                retryable=False,
+            )
+        current_q = _queue_revision_of(raw_job)
+        if int(expected_queue_revision) != current_q:
+            return _err(
+                IMPORT_REVIEW_REVISION_CONFLICT,
+                "Edit token is stale; refetch the queue and retry.",
+                {
+                    "import_id": parent_id,
+                    "expected_queue_revision": int(expected_queue_revision),
+                    "current_queue_revision": current_q,
+                },
+                retryable=True,
+            )
+
+        # Token is current: converge the authority (may write on recovery) and
+        # re-read the authoritative state.
+        _reconcile_review_authority_locked(raw_ledger, parent_id, data_dir)
+        _reconcile_parent(raw_ledger, parent_id, data_dir)
+        _write_ledger(data_dir, raw_ledger)
+        ledger = _read_ledger(data_dir)
+        job = _get_job(ledger, parent_id)
+
+        plan = read_review_plan(data_dir, parent_id)
+        if not isinstance(plan, dict):
+            return _err(
+                IMPORT_REVIEW_PLAN_MISSING,
+                f"No persisted review plan for parent: {parent_id}",
+                {"import_id": parent_id},
+                retryable=False,
+            )
+
+        # Locate the target proposal in plan order.
+        target_index: int | None = None
+        for index, prop in enumerate(plan.get("proposals", [])):
+            if isinstance(prop, dict) and prop.get("proposal_id") == proposal_id:
+                target_index = index
+                break
+        if target_index is None:
+            return _err(
+                IMPORT_REVIEW_EDIT_INVALID,
+                f"Proposal {proposal_id} is not in the review plan.",
+                {"import_id": parent_id, "proposal_id": proposal_id},
+                retryable=False,
+            )
+        proposal = plan["proposals"][target_index]
+
+        # Frozen proposals (batching/imported) are never edited.
+        existing_states = job.get("proposal_states", {}) or {}
+        if existing_states.get(proposal_id) in FROZEN_STATES:
+            return _err(
+                IMPORT_REVIEW_PROPOSAL_FROZEN,
+                "Proposal is frozen (batching/imported) and cannot be edited.",
+                {
+                    "import_id": parent_id,
+                    "proposal_id": proposal_id,
+                    "state": existing_states.get(proposal_id),
+                },
+                retryable=False,
+            )
+
+        # Rebuild the selection from immutable source_facts; unknown ids reject.
+        rebuilt = _rebuild_attachments_from_source_facts(proposal, selected_ids)
+        if rebuilt is None:
+            return _err(
+                IMPORT_REVIEW_EDIT_INVALID,
+                "Edit selection references an unknown attachment id.",
+                {"import_id": parent_id, "proposal_id": proposal_id},
+                retryable=False,
+            )
+        proposal["attachments"] = rebuilt
+
+        # Merge the journal edit onto the existing journal (editable fields only).
+        journal = proposal.setdefault("journal", {})
+        for field, value in journal_edit.items():
+            journal[field] = value
+        has_user_date = "date" in journal_edit
+
+        # Apply the decision -> state + optional soft reason code.
+        used_seqs: dict[str, int] = {}
+        new_state, reason_code = _apply_edit_decision(
+            proposal, data_dir, used_seqs, decision, has_user_date
+        )
+        proposal["state"] = new_state
+
+        # Recompute proposal/plan fingerprints from the edited content (immutable
+        # source-record fingerprints are preserved unchanged).
+        plan = _recompute_plan_fingerprints(plan)
+
+        # Build the merged proposal_states (preserve every other proposal's
+        # authoritative ledger state; only the edited one moves).
+        proposal_states: dict[str, str] = {}
+        for p in plan.get("proposals", []):
+            pid = p.get("proposal_id", "")
+            if pid == proposal_id:
+                proposal_states[pid] = new_state
+            elif pid in existing_states:
+                proposal_states[pid] = existing_states[pid]
+            else:
+                proposal_states[pid] = p.get("state", STATE_PENDING)
+
+        plan["schema_version"] = REVIEW_PLAN_SCHEMA_VERSION
+        plan["parent_id"] = parent_id
+        plan["source_root_identity"] = job.get("source_root_identity", "")
+        if not plan.get("created_at"):
+            plan["created_at"] = job.get("created_at") or _now_iso()
+        plan["confirmed_at"] = _now_iso()
+
+        # Both authorities bump exactly once; the token target rides the intent so
+        # a crash-replayed finalize converges instead of double-bumping.
+        new_revision = (int(job.get("plan_revision", 1) or 1)) + 1
+        new_queue_revision = _queue_revision_of(job) + 1
+        plan["plan_revision"] = new_revision
+
+        plan_fingerprint = plan.get("plan_fingerprint", "")
+        intent = {
+            "expected_plan_fingerprint": plan_fingerprint,
+            "expected_plan_revision": new_revision,
+            "projection": {
+                "proposal_states": proposal_states,
+                "plan_fingerprint": plan_fingerprint,
+                "source_root_identity": job.get("source_root_identity", ""),
+                "next_batch_sequence": job.get("next_batch_sequence", 1),
+                "idempotency_key": plan.get("idempotency_key", ""),
+                "queue_revision": new_queue_revision,
+            },
+            "prior": _projection_snapshot(job),
+            "created_at": _now_iso(),
+        }
+        _persist_review_intent(data_dir, ledger, parent_id, intent)
+        _write_review_plan_atomic(data_dir, parent_id, plan)
+        _finalize_review_update(data_dir, ledger, parent_id, intent)
+
+    final_proposal = plan["proposals"][target_index]
+    return _ok(
+        {
+            "schema_version": REVIEW_SCHEMA_VERSION,
+            "import_id": parent_id,
+            "queue_revision": new_queue_revision,
+            "plan_revision": new_revision,
+            "reason_code": reason_code,
+            "proposal": {
+                "proposal_id": proposal_id,
+                "state": final_proposal.get("state", STATE_PENDING),
+                "journal": _proposal_journal_projection(final_proposal),
+                "available_attachments": _available_attachments(final_proposal),
+            },
+        }
+    )
+
+
+def review_queue(
+    parent_id: str,
+    data_dir: Path,
+    *,
+    offset: int = 0,
+    limit: int = 20,
+    states: list[str] | None = None,
+) -> dict[str, Any]:
+    """``import review``: bounded, paginated read of a review queue.
+
+    Locks + reconciles the parent (so a crashed ledger/child converges), then
+    projects the proposals in persisted plan order with the ledger-authoritative
+    state overlaid (never the plan's per-proposal ``state`` field). A
+    recovery-required or plan/ledger-mismatch state fails closed with
+    ``IMPORT_REVIEW_RECOVERY_REQUIRED``. Each proposal exposes only stable,
+    non-locator fields plus ``available_attachments`` (selected flags); no source
+    filesystem path is ever exposed. After convergence a repeated read is a
+    stable no-write.
+    """
+    reconcile_review_authority(data_dir, parent_id)
+    ledger = _read_ledger(data_dir)
+    job = _get_job(ledger, parent_id)
+    if not _is_review_job(job):
+        return _err(
+            "IMPORT_JOB_NOT_FOUND",
+            f"No parent review job found for import-id: {parent_id}",
+            {"import_id": parent_id},
+            retryable=False,
+        )
+    if job.get("recovery_required") or (
+        job.get("authority_status") == AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
+    ):
+        return _err(
+            IMPORT_REVIEW_RECOVERY_REQUIRED,
+            "Review queue requires recovery before it can be read.",
+            {
+                "import_id": parent_id,
+                "recovery_required": True,
+                "authority_status": job.get("authority_status"),
+            },
+            retryable=False,
+        )
+
+    plan = read_review_plan(data_dir, parent_id)
+    if not isinstance(plan, dict):
+        return _err(
+            IMPORT_REVIEW_PLAN_MISSING,
+            f"No persisted review plan for parent: {parent_id}",
+            {"import_id": parent_id},
+            retryable=False,
+        )
+
+    prop_states = job.get("proposal_states", {}) or {}
+    state_filter = set(states) if states else None
+    all_proposals = [p for p in (plan.get("proposals", []) or []) if isinstance(p, dict)]
+    total_all = len(all_proposals)
+
+    projected: list[dict[str, Any]] = []
+    for prop in all_proposals:
+        pid = prop.get("proposal_id", "")
+        state = prop_states.get(pid, prop.get("state", STATE_PENDING))
+        if state_filter is not None and state not in state_filter:
+            continue
+        projected.append(
+            {
+                "proposal_id": pid,
+                "state": state,
+                "journal": _proposal_journal_projection(prop),
+                "available_attachments": _available_attachments(prop),
+            }
+        )
+
+    total_filtered = len(projected)
+    clamped_limit = max(1, min(int(limit), 100))
+    off = max(0, int(offset))
+    page = projected[off : off + clamped_limit]
+    has_more = (off + clamped_limit) < total_filtered
+
+    return _ok(
+        {
+            "schema_version": REVIEW_SCHEMA_VERSION,
+            "import_id": parent_id,
+            "queue_revision": _queue_revision_of(job),
+            "total_all": total_all,
+            "total_filtered": total_filtered,
+            "offset": off,
+            "limit": clamped_limit,
+            "has_more": has_more,
+            "next_offset": (off + clamped_limit) if has_more else None,
+            "proposals": page,
+        }
+    )
+
+
+def list_reviews(
+    data_dir: Path,
+    *,
+    after: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """``import reviews``: discover persisted parent review jobs.
+
+    A stable read that performs no reconciliation beyond reading the ledger.
+    Lists only parent review jobs (child batch jobs are excluded), sorted by
+    ``import_id`` with an exclusive ``--after`` cursor and a bounded limit
+    (1..100, default 20). Each entry carries the revisions, queue counts and
+    lifecycle timestamps — never a source locator or proposal contents.
+    """
+    ledger = _read_ledger(data_dir)
+    jobs = ledger.get("jobs", {}) or {}
+    review_ids = sorted(iid for iid, j in jobs.items() if _is_review_job(j))
+    if after is not None:
+        review_ids = [iid for iid in review_ids if iid > after]
+
+    clamped_limit = max(1, min(int(limit), 100))
+    page_ids = review_ids[:clamped_limit]
+    has_more = len(review_ids) > clamped_limit
+
+    out: list[dict[str, Any]] = []
+    for iid in page_ids:
+        j = jobs[iid]
+        prop_states = j.get("proposal_states", {}) or {}
+        out.append(
+            {
+                "import_id": iid,
+                "state": j.get("state", "confirmed"),
+                "queue_counts": _queue_counts(prop_states),
+                "active_child_id": j.get("active_child_id"),
+                "recovery_required": bool(j.get("recovery_required", False)),
+                "plan_revision": j.get("plan_revision", 1) or 1,
+                "queue_revision": _queue_revision_of(j),
+                "created_at": j.get("created_at"),
+                "updated_at": j.get("updated_at"),
+            }
+        )
+
+    return _ok(
+        {
+            "schema_version": REVIEW_SCHEMA_VERSION,
+            "jobs": out,
+            "has_more": has_more,
         }
     )
 
@@ -1148,6 +1962,7 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
             "authority_status": job.get("authority_status"),
             "plan_fingerprint": job.get("plan_fingerprint", ""),
             "plan_revision": job.get("plan_revision", 1) or 1,
+            "queue_revision": _queue_revision_of(job),
             "review_plan_rel_path": job.get("review_plan_rel_path", ""),
         }
     )
@@ -1172,6 +1987,7 @@ def _project_parent_after_child_rollback(
     parent = _get_job(ledger, parent_id)
     if not isinstance(parent, dict) or parent.get("kind") != "review":
         return
+    before = {f: parent.get(f) for f in _QUEUE_VISIBLE_FIELDS}
     proposal_states = dict(parent.get("proposal_states", {}) or {})
     for pid in child_proposal_ids:
         if proposal_states.get(pid) in (STATE_BATCHING, STATE_IMPORTED):
@@ -1179,6 +1995,12 @@ def _project_parent_after_child_rollback(
     parent["proposal_states"] = proposal_states
     parent["active_child_id"] = None
     parent["recovery_required"] = False
+    after = {f: parent.get(f) for f in _QUEUE_VISIBLE_FIELDS}
+    # Restoring a rolled-back child's membership to confirmed is one atomic
+    # parent-visible change -> one token bump, but only when something actually
+    # moved (a no-op restore keeps the token stable).
+    if before != after:
+        _bump_queue(parent)
     parent["updated_at"] = _now_iso()
     _write_ledger(data_dir, ledger)
 
@@ -1279,14 +2101,31 @@ def _resolve_source_root(
     return resolved, None
 
 
-def _find_attachment_in_plan(
-    plan: dict[str, Any], attachment_id: str
+def _resolve_attachment_for_preview(
+    plan: dict[str, Any], proposal_id: str | None, attachment_id: str
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
-    """Find ``(attachment, proposal)`` by attachment_id in a review plan."""
-    for proposal in plan.get("proposals", []):
-        for att in proposal.get("attachments", []) or []:
-            if att.get("attachment_id") == attachment_id:
-                return att, proposal
+    """Resolve ``(source_fact, proposal)`` for an attachment pinned to a proposal.
+
+    Lookup is driven by the persisted immutable ``source_facts`` (never the
+    client), so a deselected attachment — one no longer in the proposal's
+    selected ``attachments`` list — is still resolvable and previewable. When
+    ``proposal_id`` is given the attachment must belong to THAT proposal; an
+    attachment owned by a different proposal is a mismatch (returns None). With
+    no ``proposal_id`` the attachment is searched across every proposal (legacy
+    behaviour).
+    """
+    proposals = plan.get("proposals", []) or []
+    for proposal in proposals:
+        if not isinstance(proposal, dict):
+            continue
+        if proposal_id is not None and proposal.get("proposal_id") != proposal_id:
+            continue
+        for fact in proposal.get("source_facts") or []:
+            if isinstance(fact, dict) and _attachment_id_for_fact(fact) == attachment_id:
+                return fact, proposal
+        # Pinned to this proposal but the attachment id is not owned here.
+        if proposal_id is not None:
+            return None
     return None
 
 
@@ -1297,11 +2136,16 @@ def preview_attachment(  # noqa: C901
     source_root: str | None = None,
     output: str | None = None,
     metadata_output: str | None = None,
+    proposal_id: str | None = None,
 ) -> dict[str, Any]:
     """``import preview``: read-only attachment byte/metadata streaming.
 
-    Reads only files referenced by the persisted review plan, after re-validating
-    the expected SHA-256 and size. Never modifies the source hash or mtime.
+    Pinned to ``import_id`` + ``proposal_id`` + ``attachment_id`` and resolved
+    from the persisted plan's immutable source_facts, so even a deselected
+    attachment is previewable. Reads only the referenced source file after
+    re-validating the expected SHA-256 and size. Never modifies the source hash
+    or mtime. ``--source-root`` is a transient locator, checked against the
+    recorded ``source_root_identity``.
     """
     plan = read_review_plan(data_dir, parent_id)
     if plan is None:
@@ -1312,15 +2156,27 @@ def preview_attachment(  # noqa: C901
             retryable=False,
         )
 
-    found = _find_attachment_in_plan(plan, attachment_id)
+    found = _resolve_attachment_for_preview(plan, proposal_id, attachment_id)
     if found is None:
         return _err(
             IMPORT_PREVIEW_UNAVAILABLE,
-            f"Attachment {attachment_id} is not referenced by the review plan.",
-            {"import_id": parent_id, "attachment_id": attachment_id},
+            f"Attachment {attachment_id} is not referenced by the review plan"
+            f" for proposal {proposal_id!r}.",
+            {
+                "import_id": parent_id,
+                "attachment_id": attachment_id,
+                "proposal_id": proposal_id,
+            },
             retryable=False,
         )
-    attachment, proposal = found
+    fact, proposal = found
+    # Resolve the read-only fields from the immutable source fact.
+    attachment = {
+        "source_sha256": fact.get("content_sha256", ""),
+        "source_rel_path": fact.get("source_rel_path", ""),
+        "media_type": fact.get("media_type", ""),
+        "size_bytes": fact.get("size_bytes", 0),
+    }
 
     root, err = _resolve_source_root(parent_id, source_root, data_dir)
     if err is not None:
@@ -1800,6 +2656,11 @@ def _reconcile_parent(
             job["recovery_required"] = recovery_required
             changed = True
         if changed:
+            # A child commit/rollback/failure that moves a queue-visible field
+            # (proposal states / active child / recovery) is exactly one atomic
+            # parent-visible change -> one token bump. ``updated_at`` alone never
+            # bumps (it is not in the authoritative projection).
+            _bump_queue(job)
             job["updated_at"] = _now_iso()
         return changed
 
@@ -2142,6 +3003,9 @@ def run_batch(  # noqa: C901
                 proposal_states[pid] = STATE_STALE
             job = _get_job(ledger, parent_id)
             job["proposal_states"] = proposal_states
+            # The stale transition is its own atomic parent write -> exactly one
+            # token bump (state-only: plan_revision is never touched by run).
+            _bump_queue(job)
             _write_ledger(data_dir, ledger)
         if not runnable:
             return _err(
@@ -2176,6 +3040,9 @@ def run_batch(  # noqa: C901
         job["selected_proposal_ids"] = proposal_ids
         job["proposal_states"] = proposal_states
         job["recovery_required"] = False
+        # The confirmed->batching transition + active-child reservation is one
+        # atomic parent-visible write -> exactly one token bump (state-only).
+        _bump_queue(job)
         _write_ledger(data_dir, ledger)
 
         # 8. Create + execute the child batch job.

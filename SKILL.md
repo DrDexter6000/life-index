@@ -101,16 +101,24 @@ GUI/host agent 只消费 plan、请求 confirm、流式 preview、触发 batch r
 ```bash
 .venv/bin/life-index import plan --source media.photo_timeline --input <photo-dir> --json   # 递归只读扫描→按日聚合 editable proposals（dry-run，不写）
 .venv/bin/life-index import validate --source-root <photo-dir> --json                      # canonical readable dir + root identity fingerprint
+.venv/bin/life-index import stage --plan <review-plan.json> --source-root <photo-dir> --json   # 初始 pending 队列（不复制字节；重复 source root→IMPORT_REVIEW_ALREADY_STAGED）
 .venv/bin/life-index import confirm --plan <review-plan.json> --source-root <photo-dir> --json  # 原子持久化 review-plan.json + parent review job（confirmed 队列权威）
-.venv/bin/life-index import status --import-id <parent_id> --json                          # proposal states + derived queue counts + recovery
-.venv/bin/life-index import preview --import-id <parent_id> --attachment <att_id> --source-root <photo-dir> --output - --json  # 只读流式 bytes/metadata，不改源
+.venv/bin/life-index import confirm --edit <review-edit.json> --import-id <parent_id> --expected-queue-revision <q> --json  # 单 proposal 原子 edit（import_review_edit.v1；从 source_facts 重建选择）
+.venv/bin/life-index import review --import-id <parent_id> [--offset 0] [--limit 20] [--state …] --json   # 有界分页只读投影（ledger 权威 state；不暴露 source 定位）
+.venv/bin/life-index import reviews [--after <import_id>] [--limit 20] --json               # 发现 parent review job（排除 child batch；排他游标）
+.venv/bin/life-index import status --import-id <parent_id> --json                          # proposal states + derived queue counts + plan_revision + queue_revision + recovery
+.venv/bin/life-index import preview --import-id <parent_id> --attachment <att_id> [--proposal-id <pid>] --source-root <photo-dir> --output - --json  # 只读流式 bytes/metadata（钉到 proposal；可预览已取消选择的附件），不改源
 .venv/bin/life-index import run --import-id <parent_id> --source-root <photo-dir> --json    # single active child batch；confirmed→batching→imported；TOCTOU 安全复制
 .venv/bin/life-index import rollback --import-id <child_batch_id> --json                    # 回滚 child batch；parent reconciliation 恢复 confirmed（parent 本身不可回滚→IMPORT_ROLLBACK_PARENT_NOT_ALLOWED）
 ```
 
 注意：`import run --plan … --confirm …`（fixture / 直连）行为不变；`--import-id` 才进入
-parent review job 的 batch 路径。crash/重启后用 `import-id` 恢复队列，但 confirm/run/preview
-必须用当前 `--source-root` 重新验证同一 root identity。
+parent review job 的 batch 路径。crash/重启后用 `import reviews` 发现 id、`import-id` 恢复
+队列，但 confirm/run/preview 必须用当前 `--source-root` 重新验证同一 root identity。
+`queue_revision` 是 parent-ledger 拥有的客户端并发令牌（初始 1，每次 parent 可见原子变更递增
+一次），与 review-plan 内容权威 `plan_revision` 分离；单 proposal edit 用
+`--expected-queue-revision` 做乐观并发（过期→retryable `IMPORT_REVIEW_REVISION_CONFLICT`，
+零写入）。
 **审阅队列日期权威 / 状态纪律（M7 package 1）**：
 - 日期只来自可信 EXIF（offset 用本地 calendar date、naive 按相机本地，不猜时区）或用户显式
   `date_resolution`（`user_confirmed` 可解析不可变 EXIF 冲突）；**绝不**用文件 mtime，**无 1970-01-01

@@ -2063,11 +2063,12 @@ attachment target 与 journal target 在 `confirm` 时由 effective date + conte
 #### Proposal lifecycle
 
 `media.photo_timeline` proposal 增加 additive 状态字段 `state`，取值：
-`pending`（plan 阶段、或日期未解析）、`confirmed`（`import confirm` 持久化后）、
-`skipped`（该 proposal 所有 attachment 被取消选择，不创建空 journal）、`stale`
-（批次准备时 source 内容/大小已变或源文件被删除，从本批排除）、`batching`
-（已进入某个 active child batch）、`imported`（child batch committed）。
-`imported` / `batching` 是 frozen 状态：re-confirm 时其内容权威且不变、绝不降级；
+`pending`（`import stage` 初始入队、plan 阶段、或日期未解析）、`confirmed`（日期可解析后
+经 `import confirm` / 单 proposal `--edit` 持久化）、`skipped`（该 proposal 所有
+attachment 被取消选择，不创建空 journal）、`stale`（批次准备时 source 内容/大小已变或源
+文件被删除，从本批排除）、`batching`（已进入某个 active child batch）、`imported`
+（child batch committed）。
+`imported` / `batching` 是 frozen 状态：re-confirm / edit 时其内容权威且不变、绝不降级；
 `pending` / `confirmed` / `skipped` 接受安全编辑（含 attachment selection）。
 成功 rollback 一个 child batch 后，其 parent proposal 恢复为 `confirmed`。
 
@@ -2113,7 +2114,10 @@ Planning 阶段不复制任何正式附件字节。
 #### `import confirm`
 
 ```bash
+# 持久化/再确认完整 review plan（legacy / stage 之外的整盘再确认）
 life-index import confirm --plan <review-plan.json> [--source-root <dir>] [--import-id <parent_id>] --json
+# 单 proposal 原子 confirm/edit（package-3）：--plan 与 --edit 互斥
+life-index import confirm --edit <review-edit.json> --import-id <parent_id> --expected-queue-revision <int> --json
 ```
 
 把完整 review plan 原子持久化到固定路径
@@ -2123,6 +2127,11 @@ atomic replace；并发安全由 per-parent single-writer lock 保证（复用 r
 `FileLock`）。`confirm` 必须重新计算 / 校验 immutable fingerprints 与 selected
 attachment ids；tamper（指纹/selected id 不匹配）返回 `IMPORT_PLAN_INVALID` 并
 拒绝持久化。
+
+`--edit` 走单 proposal 原子 confirm/edit 路径（见下「单 proposal edit」）：严格校验
+`import_review_edit.v1` payload、用 `--expected-queue-revision` 做乐观并发令牌、
+从持久化 immutable `source_facts` 重建选择、应用 journal 编辑与 decision。`--plan`
+与 `--edit` 互斥（同时给出为 usage error，非零退出）。
 
 `confirm` 在 per-parent lock 内先做 plan/ledger authority reconciliation（见下），
 若有未结算 active child 则拒绝（`IMPORT_BATCH_ALREADY_ACTIVE`），随后合并 incoming
@@ -2152,7 +2161,7 @@ before plan）abandon intent，恢复 prior 投影（首次 confirm 的空 shell
 
 返回 `data.schema_version = "import_review.v1"`，含 `parent_id`、
 `source_root_identity`、各 proposal `state`、derived queue counts（`confirmed` /
-`skipped` / `pending` / `stale` 计数）。
+`skipped` / `pending` / `stale` 计数）、`plan_revision`、`queue_revision`。
 
 固定路径：
 
@@ -2160,6 +2169,92 @@ before plan）abandon intent，恢复 prior 投影（首次 confirm 的空 shell
 .life-index/import-jobs/<parent_id>/review-plan.json
 .life-index/import-jobs/<parent_id>/review.lock   (per-parent single-writer lock)
 ```
+
+##### 两个 revision、各自一个权威（package-3）
+
+parent review job 维护**两个**整数 revision，含义不同、绝不混用：
+
+- `plan_revision` —— review-plan **内容**权威。整盘 `confirm` / `stage` / 单 proposal
+  `--edit` 的 finalize 各递增一次；**state-only** 的 run（batching/stale 转移）、
+  rollback、reconciliation **永不**改动 `plan_revision`。
+- `queue_revision` —— parent-ledger 拥有的**客户端并发令牌**（初始 1）。每次「parent
+  可见投影的原子变更」递增恰好一次：stage；edit 或 legacy reconfirm finalize；
+  run 转移到 batching/stale；改变 proposal states/active child/recovery 的 child
+  commit/rollback/failure reconciliation；rebind（仅当 identity/recovery 可见字段变
+  化时）；plan-authority reconciliation（仅当可见复合投影变化时）。pending intent 携
+  带 finalize 后的精确 `queue_revision`，故 crash replay 幂等、绝不二次递增。
+  `updated_at` 等非权威字段单独变化**不**递增令牌。收敛后重复读为 no-write。
+
+#### `import stage`
+
+```bash
+life-index import stage --plan <review-plan.json> --source-root <dir> [--import-id <parent_id>] --json
+```
+
+把一批照片 stage 为**初始 pending** review 队列：复用 `confirm` 的
+validation / lock / review-plan / ledger / intent 协议，**不复制任何附件字节**。每个
+selected proposal 保持 `pending`（可信日与缺日均留在待处理区，日期权威与 target 派
+生推迟到后续 edit/confirm），空选择 ⇒ `skipped`。`queue_revision` 与 `plan_revision`
+均初始化为 1。
+
+**重复 source root 保护**：若同一 `source_root_identity` 已存在 actionable review job
+（任一 proposal 为 `pending` / `confirmed` / `batching`，或有 active child），返回
+non-retryable `IMPORT_REVIEW_ALREADY_STAGED`（带 `existing_import_id`），**不创建第二
+个 job/plan、零写入**。proposals 全为 `skipped` / `imported` / `stale` 且无 active
+child 的 job 视为已完成、**不**阻塞同一 root 的新 stage。
+
+#### 单 proposal edit（`import confirm --edit`）
+
+```bash
+life-index import confirm --edit <review-edit.json> --import-id <parent_id> --expected-queue-revision <int> --json
+```
+
+`import_review_edit.v1` payload 严格白名单：顶层仅允许
+`schema_version` / `proposal_id` / `decision` / `journal` / `selected_attachment_ids`；
+任何 source/provenance/target/fingerprint 字段 ⇒ `IMPORT_REVIEW_EDIT_INVALID`（零写
+入）。`journal` 仅允许 `title` / `date` / `topic` / `tags` / `content`（类型校验、
+`topic` 必须属于既定 taxonomy）；`selected_attachment_ids` 必须是该 proposal 已持久化
+`source_facts` 中的已知 attachment id。
+
+处理顺序：schema/字段校验（零写入）→ 令牌校验（`expected_queue_revision` 必须等于当前
+`queue_revision`，否则 retryable `IMPORT_REVIEW_REVISION_CONFLICT`，带
+`current_queue_revision`，零写入）→ 冻结检查（`batching`/`imported` ⇒
+`IMPORT_REVIEW_PROPOSAL_FROZEN`）→ 从 immutable `source_facts` 重建选择（保留全部
+`source_facts`，被取消选择的附件日后可仅凭 attachment id 重新选择）→ 应用 journal
+编辑与 decision。
+
+decision 语义：`confirmed` 需要可解析日期（用户提供或无 capture 冲突的 EXIF 日），否则
+保持 `pending` 并返回 soft reason code `IMPORT_REVIEW_DATE_REQUIRED`（编辑仍持久化、
+revisions 各递增一次）；空选择 ⇒ `skipped` + `IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED`；
+`pending` 保存编辑但不晋升。两次链式 edit 只需用上一次响应的 `queue_revision` 作令牌
+（无需重新拉取 review）。`plan_revision` 与 `queue_revision` 各递增一次。
+
+#### `import review`（bounded read）
+
+```bash
+life-index import review --import-id <parent_id> [--offset 0] [--limit 20] [--state <STATE> ...] --json
+```
+
+per-parent lock 内 reconcile + capture 后，按持久化 plan 顺序、以 **ledger 权威 state**
+叠加（绝不取 plan 内 per-proposal `state` 字段）分页投影。`--limit` clamp 到 1..100
+（默认 20），`--offset` 越界返回空页；`--state` 可重复过滤。每个 proposal 仅暴露稳定、
+非定位字段 + `available_attachments`（`attachment_id` / `source_ref` / `media_type` /
+`size` / `selected`）——**绝不**暴露 source 文件系统定位（无 `source_rel_path`、无绝
+对路径）。recovery / mismatch ⇒ `IMPORT_REVIEW_RECOVERY_REQUIRED`。返回
+`total_all` / `total_filtered` / `offset` / `limit` / `has_more` / `next_offset` /
+`queue_revision`。收敛后重复读为稳定 no-write（ledger 不变）。
+
+#### `import reviews`（discovery）
+
+```bash
+life-index import reviews [--after <import_id>] [--limit 20] --json
+```
+
+稳定读：除读取 ledger 外**不做** reconciliation。仅列出 parent review job（排除 child
+batch job），按 `import_id` 排序、`--after` 为排他游标、`--limit` clamp 到 1..100。每个
+条目携带 `plan_revision` / `queue_revision` / `queue_counts` / `state` /
+`active_child_id` / `recovery_required` / `created_at` / `updated_at`——**不含**定位符或
+proposal 内容；交错的 `updated_at` 变化不影响排序与 id 集合。
 
 #### `import validate` / `import rebind`
 
@@ -2179,15 +2274,19 @@ identity，不把绝对路径放进公开 plan/review-plan。restart 后可用 `
 #### `import preview`（read-only）
 
 ```bash
-life-index import preview --import-id <parent_id> --attachment <attachment_id> [--source-root <dir>] [--output -|<path>] [--metadata-output <path>] --json
+life-index import preview --import-id <parent_id> --attachment <attachment_id> [--proposal-id <proposal_id>] [--source-root <dir>] [--output -|<path>] [--metadata-output <path>] --json
 ```
 
 只读：输入 parent / proposal / attachment + rebound source root，只读取已持久化
 `review-plan.json` 引用的文件，复用既有 confinement / reparse checks；先校验
 expected SHA-256 与 size，再输出可供 backend 流式传输的 bytes / metadata；绝不
-修改源 hash / mtime。`unsupported` / `stale` / `missing` / invalid root /
-unreferenced attachment 返回结构化 unavailable / error（`IMPORT_PREVIEW_UNAVAILABLE`
-等）。`--output -` 时 stdout 为 raw bytes，metadata 经 `--metadata-output` 落盘。
+修改源 hash / mtime。预览钉在 `import_id` + `proposal_id` + `attachment_id`，并从持久化
+immutable `source_facts` 解析（非客户端提供），故**被取消选择的附件仍可预览**；给出
+`--proposal-id` 时附件必须属于该 proposal，否则返回 `IMPORT_PREVIEW_UNAVAILABLE`。
+`--source-root` 为瞬态定位符，按 `source_root_identity` 校验。`unsupported` / `stale` /
+`missing` / invalid root / unreferenced / proposal 不匹配的 attachment 返回结构化
+unavailable / error。`--output -` 时 stdout 为 raw bytes，metadata 经
+`--metadata-output` 落盘。
 
 #### Batch `import run`（single active child）
 
@@ -2250,7 +2349,7 @@ provenance、frontmatter `attachments` 为 SSOT），只发布 selected attachme
 
 对 parent review job，`status` 额外返回各 proposal `state`、derived queue counts、
 `active_child_id`、`recovery_required`、`authority_status`（`null`，或 fail-closed 时
-`"plan_ledger_mismatch"`）、`plan_fingerprint`、`plan_revision`、
+`"plan_ledger_mismatch"`）、`plan_fingerprint`、`plan_revision`、`queue_revision`、
 `source_root_identity`。既有 job（fixture / child batch）的 status 字段不变。
 
 #### `import rollback`（additive）
@@ -2275,13 +2374,22 @@ rollback 路径不变。
 | `IMPORT_SOURCE_ROOT_UNREADABLE` | source root 不可读或非目录 |
 | `IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH` | 当前 locator 的 root identity 与 parent 记录不符 |
 | `IMPORT_REVIEW_PLAN_MISSING` | 缺少持久化 review-plan.json |
-| `IMPORT_PREVIEW_UNAVAILABLE` | preview 目标 unavailable（unsupported / stale / missing / unreferenced） |
+| `IMPORT_PREVIEW_UNAVAILABLE` | preview 目标 unavailable（unsupported / stale / missing / unreferenced / proposal 不匹配） |
 | `IMPORT_RECOVERY_REQUIRED` | parent 处于需要人工/补偿恢复的 `batching` 状态，或 plan/ledger 权威不一致（`authority_status = "plan_ledger_mismatch"`）拒绝 fail-closed |
+| `IMPORT_REVIEW_ALREADY_STAGED` | 同一 source root 已有 actionable review job 或 active child，拒绝创建第二个 job/plan（带 `existing_import_id`，non-retryable，零写入） |
+| `IMPORT_REVIEW_EDIT_INVALID` | `import_review_edit.v1` payload 校验失败（未知字段/类型/topic/decision/未知 attachment id；零写入） |
+| `IMPORT_REVIEW_PROPOSAL_FROZEN` | edit 目标 proposal 处于 `batching`/`imported` 冻结态，不可编辑 |
+| `IMPORT_REVIEW_REVISION_CONFLICT` | edit 令牌过期（`expected_queue_revision` ≠ 当前值），retryable，带 `current_queue_revision`，零写入 |
+| `IMPORT_REVIEW_RECOVERY_REQUIRED` | `import review` 读到 recovery / plan-ledger mismatch 状态，fail-closed |
+| `IMPORT_REVIEW_EMPTY_SELECTION_SKIPPED` | soft reason code：edit 空选择被强转为 `skipped`（成功响应，revisions 已递增） |
+| `IMPORT_REVIEW_DATE_REQUIRED` | soft reason code：`confirmed` 但无可解析日期，保持 `pending`（成功响应，revisions 已递增） |
 
 #### Review/batch additive schema versions
 
 新增子对象 schema（additive，不改动既有 `import_*` 字符串）：
-`import_review.v1`（confirm）、`import_review_plan.v1`（持久化 review-plan.json）、
+`import_review.v1`（confirm / stage / edit / review / reviews 响应）、
+`import_review_plan.v1`（持久化 review-plan.json）、
+`import_review_edit.v1`（单 proposal edit payload）、
 `import_preview.v1`（preview metadata）。消费者必须忽略未知字段。
 
 ---
