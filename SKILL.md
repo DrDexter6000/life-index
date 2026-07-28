@@ -138,8 +138,11 @@ parent review job 的 batch 路径。crash/重启后用 `import reviews` 发现 
   legacy/malformed id 走稳定 fallback；每个 batch 仅含安全字段（`import_id`（`#` 原样保留）、`state`、
   `proposal_ids`、`proposal_count`、`created_at`、`updated_at`、`rollback_available`），**绝不**暴露 manifest
   路径 / source / journal 路径 / manifest 内容。`rollback_available` 仅当 child 当前 `committed` 且其 manifest
-  `state == "committed"` 才为 true（`rolled_back` / `rollback_failed` / manifest 缺失或非 committed / 其他状态
-  均为 false）；status 不重新实现 rollback、不 hash 用户文件，且在既有 reconcile 之后**只读派生**——不改写 ledger、
+  同时满足：是 dict、`schema_version` 为 canonical rollback-manifest 版本、`state == "committed"`、
+  `import_id` 精确等于该 child id、`parent_review_job_id` 精确等于该 parent id（显式传入、绝不由 child id 字符串推断）、
+  `created_files` 为 list，才为 true；任一不满足即 fail closed 为 false（`rolled_back` / `rollback_failed` /
+  manifest 缺失或非 committed / schema 错或缺失 / import_id 或 parent_review_job_id 错链 / `created_files` 非 list /
+  其他状态均为 false）；status 不重新实现 rollback、不 hash 用户文件、只读取既有 manifest 的结构 + 链接字段，且在既有 reconcile 之后**只读派生**——不改写 ledger、
   不递增 `queue_revision`、不重写文件。
 - crash / 权威纪律：confirm 按 durable intent→plan→finalize 更新，confirm/status/run/rollback 都先幂等
   reconcile 收敛 crash 窗口。若 `status` 报 `recovery_required: true` +

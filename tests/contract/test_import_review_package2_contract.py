@@ -1269,3 +1269,105 @@ def test_parent_status_batches_legacy_child_missing_created_at(tmp_path: Path) -
     _save_ledger(data_dir, ledger)
     status2 = _status(data_dir, parent_id)
     assert status2["batches"][0]["created_at"] is None
+
+
+# ===================================================================
+# Fail-closed rollback_available: a malformed / wrongly-linked committed
+# rollback manifest must NOT be advertised as a safe rollback.
+#
+# ``batches[].rollback_available`` is the GUI's sole signal that a child
+# batch can be safely rolled back. A committed child ledger plus a manifest
+# whose ``state == "committed"`` is necessary but NOT sufficient: status
+# must additionally fail closed when the manifest is malformed or wrongly
+# linked (wrong/missing schema_version, wrong import_id, wrong
+# parent_review_job_id, created_files not a list) so the GUI never falsely
+# advertises rollback over a corrupted / mis-linked manifest. Status never
+# re-hashes user artifacts for this — it is a lightweight structural + link
+# check only. The child stays discoverable either way; only the rollback
+# advertisement fails closed.
+# ===================================================================
+
+
+def _save_manifest(data_dir: Path, child_id: str, manifest: dict[str, Any]) -> None:
+    (data_dir / ".life-index" / "import-jobs" / child_id / "rollback-manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def _committed_batch(tmp_path: Path) -> tuple[Path, str, str]:
+    """Build a real committed, settled child batch from one synthetic photo.
+
+    Returns ``(data_dir, parent_id, child_id)``. The child ledger is
+    ``committed``, there is no active child, and its rollback manifest is a
+    valid committed manifest (so the baseline ``rollback_available`` is True).
+    """
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+    assert child_id == f"{parent_id}#batch-1"
+    return data_dir, parent_id, child_id
+
+
+def _only_batch(status: dict[str, Any]) -> dict[str, Any]:
+    batches = status["batches"]
+    assert len(batches) == 1, f"expected exactly one batch, got {len(batches)}"
+    return batches[0]
+
+
+def test_parent_status_correct_committed_manifest_is_rollback_available(
+    tmp_path: Path,
+) -> None:
+    """Baseline: a correctly linked committed manifest stays rollback_available."""
+    data_dir, parent_id, child_id = _committed_batch(tmp_path)
+
+    # untouched valid committed manifest -> still advertised as available
+    b = _only_batch(_status(data_dir, parent_id))
+    assert b["import_id"] == child_id
+    assert b["state"] == "committed"
+    assert b["rollback_available"] is True
+
+
+@pytest.mark.parametrize(
+    "mutate, label",
+    [
+        (lambda m: m.update(schema_version="import_rollback_manifest.v0"), "wrong_schema_version"),
+        (lambda m: m.pop("schema_version", None), "missing_schema_version"),
+        (lambda m: m.update(import_id="<wrong-import-id>"), "wrong_import_id"),
+        (lambda m: m.update(parent_review_job_id="<wrong-parent-id>"), "wrong_parent_review_job_id"),
+        (lambda m: m.update(created_files={"not": "a list"}), "created_files_not_a_list"),
+    ],
+)
+def test_parent_status_malformed_manifest_fails_closed_rollback_available(
+    tmp_path: Path, mutate: Any, label: str
+) -> None:
+    """A committed child with a malformed / wrongly-linked manifest stays
+    discoverable but reports ``rollback_available=False`` (status fails closed).
+
+    Starts from a real committed child and mutates ONLY the on-disk rollback
+    manifest JSON to each invalid shape; the child ledger stays ``committed`` so
+    the batch remains discoverable. ``parent_id`` is never inferred from the
+    child id string — it is the real review job id.
+    """
+    data_dir, parent_id, child_id = _committed_batch(tmp_path)
+
+    # baseline: the correct manifest is advertised as available
+    assert _only_batch(_status(data_dir, parent_id))["rollback_available"] is True
+
+    # mutate ONLY the on-disk rollback manifest to the invalid shape (the child
+    # ledger is left committed so the batch stays discoverable).
+    manifest = _manifest(data_dir, child_id)
+    assert manifest["state"] == "committed"
+    mutate(manifest)
+    _save_manifest(data_dir, child_id, manifest)
+
+    # fresh CLI process (separate subprocess == restart): the child is still
+    # discoverable, but rollback is NOT advertised over the malformed manifest.
+    b = _only_batch(_status(data_dir, parent_id))
+    assert b["import_id"] == child_id
+    assert b["state"] == "committed"  # ledger state unchanged -> discoverable
+    assert b["rollback_available"] is False, f"expected fail-closed for {label}"

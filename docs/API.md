@@ -2370,9 +2370,13 @@ legacy/malformed id 走稳定 fallback（不依赖 dict 插入序）。每个 ba
 `proposal_ids`（opaque ids）、`proposal_count`、`created_at`（legacy child 缺失时 fallback 到
 `updated_at` 或 `null`）、`updated_at`、`rollback_available`；**绝不**暴露
 `rollback_manifest_rel_path`、data-dir / source / journal 路径或 manifest 内容。`rollback_available`
-为 true 仅当 child 当前 `committed` 且其 rollback manifest 存在且 `state == "committed"`；
-`rolled_back` / `rollback_failed` / manifest 缺失或非 committed / 其他状态均为 false（status 不重新
-实现 rollback、不 hash 用户文件）。该投影在既有 authority reconciliation 之后**只读派生**：不改写
+为 true 仅当 child 当前 `committed` 且其 rollback manifest **同时**满足：是 dict、`schema_version`
+为 canonical rollback-manifest 版本、`state == "committed"`、`import_id` 精确等于该 child id、
+`parent_review_job_id` 精确等于该 parent id（显式传入、绝不从 child id 字符串推断）、`created_files`
+为 list；任一不满足即 fail closed 为 false——`rolled_back` / `rollback_failed` / manifest 缺失或非
+committed / schema 错或缺失 / import_id 或 parent_review_job_id 错链 / `created_files` 非 list / 其他
+状态均为 false（status 不重新实现 rollback、不 hash 用户文件、只读取既有 manifest 的结构 + 链接字段）。
+该投影在既有 authority reconciliation 之后**只读派生**：不改写
 ledger、不递增 `queue_revision`、不重写文件；收敛后重复读为稳定 no-write。既有 job（fixture /
 child batch）的 status 字段不变。
 

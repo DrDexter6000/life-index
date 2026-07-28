@@ -2131,26 +2131,48 @@ def _batch_sort_key(child_id: str) -> tuple[tuple[int, int], str]:
 
 
 def _child_rollback_available(
-    data_dir: Path, child_id: str, child_state: Any
+    data_dir: Path, parent_id: str, child_id: str, child_state: Any
 ) -> bool:
-    """True only for a currently committed child backed by a committed manifest.
+    """True only for a committed child backed by a well-formed, correctly-linked
+    committed rollback manifest.
 
     Read-only against the existing ledger/manifest authority — never reimplements
-    rollback and never hashes user artifacts on status. A child is rollback-
-    available iff its ledger state is ``committed`` AND its rollback manifest
-    exists with ``state == "committed"``. False for ``rolled_back`` /
-    ``rollback_failed`` / a missing or non-committed manifest / any other state.
+    rollback and never hashes / reads user journals or attachment files (it only
+    inspects the existing manifest's structural + link fields). A child is
+    rollback-available iff ALL of the following hold; any miss fails closed
+    (False) so status never advertises safe rollback over a missing, malformed,
+    or wrongly-linked manifest:
+
+    - its ledger state is ``committed``;
+    - a rollback manifest dict exists with the canonical rollback-manifest
+      ``schema_version``;
+    - the manifest ``state`` is ``committed``;
+    - the manifest ``import_id`` is exactly *child_id*;
+    - the manifest ``parent_review_job_id`` is exactly *parent_id*;
+    - the manifest ``created_files`` is a list.
+
+    ``parent_id`` is threaded in explicitly and matched verbatim — it is never
+    inferred from the child id string. ``rolled_back`` / ``rollback_failed`` /
+    a missing, non-committed, or malformed manifest / any other ledger state all
+    yield False.
     """
     if child_state != "committed":
         return False
     from tools.ingest.runner import _read_rollback_manifest
 
     manifest = _read_rollback_manifest(data_dir, child_id)
-    return isinstance(manifest, dict) and manifest.get("state") == "committed"
+    return (
+        isinstance(manifest, dict)
+        and manifest.get("schema_version") == ROLLBACK_MANIFEST_SCHEMA_VERSION
+        and manifest.get("state") == "committed"
+        and manifest.get("import_id") == child_id
+        and manifest.get("parent_review_job_id") == parent_id
+        and isinstance(manifest.get("created_files"), list)
+    )
 
 
 def _child_batch_projection(
-    data_dir: Path, child_id: str, child: dict[str, Any]
+    data_dir: Path, parent_id: str, child_id: str, child: dict[str, Any]
 ) -> dict[str, Any]:
     """Locator-free projection of a single child batch for parent status.
 
@@ -2175,7 +2197,7 @@ def _child_batch_projection(
         "created_at": created,
         "updated_at": child.get("updated_at"),
         "rollback_available": _child_rollback_available(
-            data_dir, child_id, child.get("state")
+            data_dir, parent_id, child_id, child.get("state")
         ),
     }
 
@@ -2203,7 +2225,7 @@ def _derive_child_batches(
         and cjob.get("parent_review_job_id") == parent_id
     ]
     child_ids.sort(key=_batch_sort_key)
-    return [_child_batch_projection(data_dir, cid, jobs[cid]) for cid in child_ids]
+    return [_child_batch_projection(data_dir, parent_id, cid, jobs[cid]) for cid in child_ids]
 
 
 def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
