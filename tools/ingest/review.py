@@ -2110,6 +2110,102 @@ def _queue_counts(proposal_states: dict[str, str]) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
+# Trailing ``#batch-<seq>`` of a durable child batch id. The ``#`` is preserved
+# verbatim in every projection (a GUI later sends the id in a JSON rollback
+# body, never a URL path).
+_BATCH_SEQ_RE = re.compile(r"#batch-(\d+)$")
+
+
+def _batch_sort_key(child_id: str) -> tuple[tuple[int, int], str]:
+    """Stable sort key: oldest/lowest numeric ``#batch-<seq>`` first.
+
+    Well-formed ids sort by their integer sequence ascending; legacy/malformed
+    ids that lack a parseable trailing sequence sort after every well-formed one
+    (stable fallback) and tiebreak on the raw id, so ordering is always
+    deterministic and never depends on dict insertion order.
+    """
+    m = _BATCH_SEQ_RE.search(child_id)
+    if m:
+        return ((0, int(m.group(1))), child_id)
+    return ((1, 0), child_id)
+
+
+def _child_rollback_available(
+    data_dir: Path, child_id: str, child_state: Any
+) -> bool:
+    """True only for a currently committed child backed by a committed manifest.
+
+    Read-only against the existing ledger/manifest authority — never reimplements
+    rollback and never hashes user artifacts on status. A child is rollback-
+    available iff its ledger state is ``committed`` AND its rollback manifest
+    exists with ``state == "committed"``. False for ``rolled_back`` /
+    ``rollback_failed`` / a missing or non-committed manifest / any other state.
+    """
+    if child_state != "committed":
+        return False
+    from tools.ingest.runner import _read_rollback_manifest
+
+    manifest = _read_rollback_manifest(data_dir, child_id)
+    return isinstance(manifest, dict) and manifest.get("state") == "committed"
+
+
+def _child_batch_projection(
+    data_dir: Path, child_id: str, child: dict[str, Any]
+) -> dict[str, Any]:
+    """Locator-free projection of a single child batch for parent status.
+
+    Exposes only the safe fields the GUI needs to find a batch and roll it back:
+    the verbatim child id (``#`` preserved), ledger state, the opaque
+    ``proposal_ids`` membership, ``created_at``/``updated_at``, and
+    ``rollback_available``. Never surfaces ``rollback_manifest_rel_path``,
+    data-dir / source / journal paths, or manifest contents.
+    """
+    proposal_ids = list(child.get("proposal_ids") or [])
+    created = child.get("created_at")
+    if not (isinstance(created, str) and created):
+        # Legacy child entries predate the created_at field; fall back to
+        # updated_at so the projection stays readable, else null.
+        updated = child.get("updated_at")
+        created = updated if (isinstance(updated, str) and updated) else None
+    return {
+        "import_id": child_id,
+        "state": child.get("state"),
+        "proposal_ids": proposal_ids,
+        "proposal_count": len(proposal_ids),
+        "created_at": created,
+        "updated_at": child.get("updated_at"),
+        "rollback_available": _child_rollback_available(
+            data_dir, child_id, child.get("state")
+        ),
+    }
+
+
+def _derive_child_batches(
+    ledger: dict[str, Any], parent_id: str, data_dir: Path
+) -> list[dict[str, Any]]:
+    """Derive the durable child batch list for a parent from the ledger.
+
+    Ledger-derived on every read — never cached as a second truth: every job
+    whose ``kind == "batch"`` and ``parent_review_job_id == parent_id``. Ordered
+    oldest/lowest numeric ``#batch-<seq>`` first with a stable fallback for
+    legacy/malformed ids. Strictly read-only: it never mutates the ledger, bumps
+    ``queue_revision``, or rewrites files (the parent is already reconciled by
+    the existing authority flow before this runs).
+    """
+    jobs = ledger.get("jobs", {})
+    if not isinstance(jobs, dict):
+        return []
+    child_ids = [
+        cid
+        for cid, cjob in jobs.items()
+        if isinstance(cjob, dict)
+        and cjob.get("kind") == "batch"
+        and cjob.get("parent_review_job_id") == parent_id
+    ]
+    child_ids.sort(key=_batch_sort_key)
+    return [_child_batch_projection(data_dir, cid, jobs[cid]) for cid in child_ids]
+
+
 def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
     """``import status`` for a parent review job (additive), else delegate."""
     # Reconcile the plan/ledger authority first so a crashed ledger can be
@@ -2140,6 +2236,12 @@ def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
             "plan_revision": job.get("plan_revision", 1) or 1,
             "queue_revision": _queue_revision_of(job),
             "review_plan_rel_path": job.get("review_plan_rel_path", ""),
+            # Durable child batch history, ledger-derived on every read
+            # (restart-safe, locator-free). This is the only GUI source for
+            # finding a batch to roll back; the GUI never caches child ids as a
+            # second truth. Derived read-only after the authority reconciliation
+            # above — it never mutates the ledger or bumps queue_revision.
+            "batches": _derive_child_batches(ledger, import_id, data_dir),
         }
     )
 
@@ -2950,6 +3052,10 @@ def _execute_child_batch(  # noqa: C901
         # Exact batch membership so later rollback/reconciliation projects from
         # what THIS child touched, never the parent's last selection.
         "proposal_ids": proposal_ids,
+        # Creation timestamp so parent status can surface durable batch history
+        # ordered oldest-first (legacy child entries predate this field and fall
+        # back to updated_at in the projection).
+        "created_at": now,
         "updated_at": now,
     }
     _write_ledger(data_dir, ledger)

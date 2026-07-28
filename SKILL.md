@@ -106,7 +106,7 @@ GUI/host agent 只消费 plan、请求 confirm、流式 preview、触发 batch r
 .venv/bin/life-index import confirm --edit <review-edit.json> --import-id <parent_id> --expected-queue-revision <q> --json  # 单 proposal 原子 edit（import_review_edit.v1；从 source_facts 重建选择）
 .venv/bin/life-index import review --import-id <parent_id> [--offset 0] [--limit 20] [--state …] --json   # 有界分页只读投影（ledger 权威 state；不暴露 source 定位；响应 warnings[] 如实披露持久化 scan-level 警告）
 .venv/bin/life-index import reviews [--after <import_id>] [--limit 20] --json               # 发现 parent review job（排除 child batch；排他游标）
-.venv/bin/life-index import status --import-id <parent_id> --json                          # proposal states + derived queue counts + plan_revision + queue_revision + recovery
+.venv/bin/life-index import status --import-id <parent_id> --json                          # proposal states + derived queue counts + plan_revision + queue_revision + recovery + durable batches[]（ledger-derived、restart-safe、locator-free；rollback 发现的唯一 GUI 来源）
 .venv/bin/life-index import preview --import-id <parent_id> --attachment <att_id> [--proposal-id <pid>] --source-root <photo-dir> --output - --json  # 只读流式 bytes/metadata（钉到 proposal；可预览已取消选择的附件），不改源
 .venv/bin/life-index import run --import-id <parent_id> --source-root <photo-dir> --json    # single active child batch；confirmed→batching→imported；TOCTOU 安全复制
 .venv/bin/life-index import rollback --import-id <child_batch_id> --json                    # 回滚 child batch；parent reconciliation 恢复 confirmed（parent 本身不可回滚→IMPORT_ROLLBACK_PARENT_NOT_ALLOWED）
@@ -132,6 +132,15 @@ parent review job 的 batch 路径。crash/重启后用 `import reviews` 发现 
 - child batch id 单调 `<parent_id>#batch-<seq>`（parent 存 durable `next_batch_sequence`），每个 child
   记录精确 `proposal_ids`；rollback 从 child 自身成员投影（在 parent 的 per-parent lock 内、reconcile 后），
   parent 不可整体回滚。
+- parent status 的 `batches[]` 是 **ledger-derived、restart-safe、locator-free** 的 durable child batch
+  历史：每次读从 ledger 中 `kind == "batch"` 且 `parent_review_job_id == <parent>` 派生（GUI 绝不缓存
+  child id 作为第二真相；这是发现可回滚 batch 的**唯一来源**）。稳定排序 oldest/lowest numeric 在前，
+  legacy/malformed id 走稳定 fallback；每个 batch 仅含安全字段（`import_id`（`#` 原样保留）、`state`、
+  `proposal_ids`、`proposal_count`、`created_at`、`updated_at`、`rollback_available`），**绝不**暴露 manifest
+  路径 / source / journal 路径 / manifest 内容。`rollback_available` 仅当 child 当前 `committed` 且其 manifest
+  `state == "committed"` 才为 true（`rolled_back` / `rollback_failed` / manifest 缺失或非 committed / 其他状态
+  均为 false）；status 不重新实现 rollback、不 hash 用户文件，且在既有 reconcile 之后**只读派生**——不改写 ledger、
+  不递增 `queue_revision`、不重写文件。
 - crash / 权威纪律：confirm 按 durable intent→plan→finalize 更新，confirm/status/run/rollback 都先幂等
   reconcile 收敛 crash 窗口。若 `status` 报 `recovery_required: true` +
   `authority_status: "plan_ledger_mismatch"`（plan 与 ledger 不一致、无 intent 解释），**向用户报告、不要盲目

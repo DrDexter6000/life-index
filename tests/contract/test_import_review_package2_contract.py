@@ -1046,3 +1046,226 @@ def test_larger_synthetic_file_streams_and_publishes(tmp_path: Path) -> None:
     assert published.stat().st_size == big.stat().st_size
     assert published.read_bytes() == big.read_bytes()
     _no_staging_leftovers(data_dir)
+
+
+# ===================================================================
+# Durable child-batch discovery on parent status (additive ``batches``)
+#
+# After a successful batch import and a GUI/backend restart (simulated by a
+# fresh CLI subprocess), a parent review job's ``import status`` must expose
+# its durable child batch ids derived from the existing import ledger — never
+# cached by the GUI as a second truth. This is an additive parent-status
+# projection: ledger-derived, restart-safe, locator-free, the only GUI source
+# for rollback discovery.
+# ===================================================================
+
+# The only safe, locator-free keys a parent status may carry per child batch.
+# ``rollback_manifest_rel_path`` / data-dir / source / journal paths / manifest
+# contents must never be projected.
+_ALLOWED_BATCH_KEYS = frozenset(
+    {
+        "import_id",
+        "state",
+        "proposal_ids",
+        "proposal_count",
+        "created_at",
+        "updated_at",
+        "rollback_available",
+    }
+)
+
+
+def test_parent_status_exposes_durable_committed_batch_after_restart(
+    tmp_path: Path,
+) -> None:
+    """A committed child batch is discoverable on parent status from a fresh CLI
+    process; ``batches[0].import_id`` is the durable ``#batch-1`` child and
+    ``rollback_available`` is true."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # commit a child batch (durable id carries the verbatim ``#``)
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child_id = run["import_id"]
+    assert child_id == f"{parent_id}#batch-1"
+
+    # fresh CLI process (separate subprocess == restart): parent status exposes
+    # the durable batch list derived from the ledger.
+    status = _status(data_dir, parent_id)
+    assert "batches" in status
+    batches = status["batches"]
+    assert len(batches) == 1
+    b = batches[0]
+    assert b["import_id"] == child_id  # verbatim ``#`` preserved
+    assert b["state"] == "committed"
+    assert b["rollback_available"] is True
+    assert set(b.keys()) == _ALLOWED_BATCH_KEYS
+
+
+def test_parent_status_batch_rolled_back_not_rollback_available(
+    tmp_path: Path,
+) -> None:
+    """After rolling a child back, a fresh parent status still lists it with
+    state ``rolled_back`` and ``rollback_available`` false."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child_id = run["import_id"]
+    assert _status(data_dir, parent_id)["batches"][0]["rollback_available"] is True
+
+    # roll the child back, then a fresh parent status still lists it.
+    _ok(_run_import(data_dir, "rollback", "--import-id", child_id, "--json"))
+    status = _status(data_dir, parent_id)
+    batches = status["batches"]
+    assert len(batches) == 1
+    assert batches[0]["import_id"] == child_id
+    assert batches[0]["state"] == "rolled_back"
+    assert batches[0]["rollback_available"] is False
+
+
+def test_parent_status_batches_sort_numeric_and_preserve_membership(
+    tmp_path: Path,
+) -> None:
+    """Two batches from one parent sort oldest/lowest numeric first and each
+    preserves its exact proposal_ids membership."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pids = [p["proposal_id"] for p in plan["proposals"]]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # batch 1 imports both proposals
+    child1 = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+    assert child1 == f"{parent_id}#batch-1"
+    # rollback batch 1 -> both restored to confirmed (re-runnable)
+    _ok(_run_import(data_dir, "rollback", "--import-id", child1, "--json"))
+    # batch 2 re-imports both proposals (monotonic id)
+    child2 = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+    assert child2 == f"{parent_id}#batch-2"
+
+    status = _status(data_dir, parent_id)
+    batches = status["batches"]
+    # deterministic ordering: oldest/lowest numeric sequence first
+    assert [b["import_id"] for b in batches] == [child1, child2]
+    # each batch preserves its exact proposal membership
+    assert sorted(batches[0]["proposal_ids"]) == sorted(pids)
+    assert sorted(batches[1]["proposal_ids"]) == sorted(pids)
+    assert batches[0]["proposal_count"] == len(pids)
+    assert batches[1]["proposal_count"] == len(pids)
+    # batch1 rolled back -> not available; batch2 committed -> available
+    assert batches[0]["state"] == "rolled_back"
+    assert batches[0]["rollback_available"] is False
+    assert batches[1]["state"] == "committed"
+    assert batches[1]["rollback_available"] is True
+
+
+def test_parent_status_batches_repeated_read_is_no_write(tmp_path: Path) -> None:
+    """Repeated parent status reads after convergence are stable no-write: same
+    batches projection, same queue_revision, byte-identical ledger."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    _ok(_run_batch(data_dir, parent_id, src))
+
+    # first read ensures convergence is persisted; snapshot afterwards
+    s1 = _status(data_dir, parent_id)
+    q1 = s1["queue_revision"]
+    batches1 = json.dumps(s1["batches"], sort_keys=True)
+    ledger_after_first = _ledger(data_dir)
+
+    # repeated read: deriving batches must not mutate / bump / rewrite
+    s2 = _status(data_dir, parent_id)
+    assert s2["queue_revision"] == q1
+    assert json.dumps(s2["batches"], sort_keys=True) == batches1
+    assert _ledger(data_dir) == ledger_after_first
+
+
+def test_parent_status_batches_projection_is_locator_free(tmp_path: Path) -> None:
+    """The batches projection carries only safe keys and never leaks a rollback
+    manifest path, data-dir / source / journal path, or manifest contents."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    _ok(_run_batch(data_dir, parent_id, src))
+
+    batches = _status(data_dir, parent_id)["batches"]
+    blob = json.dumps(batches)
+    forbidden = (
+        "rollback_manifest_rel_path",
+        "rollback-manifest",
+        "created_files",
+        "preexisting_files",
+        "sha256_after",
+        "source_rel_path",
+        "target_rel_path",
+        "Journals/",
+        "attachments/",
+        "import-jobs",
+        str(data_dir),
+        str(src),
+    )
+    for token in forbidden:
+        assert token not in blob, f"forbidden locator/manifest token leaked: {token!r}"
+    for b in batches:
+        assert set(b.keys()) == _ALLOWED_BATCH_KEYS
+
+
+def test_parent_status_batches_legacy_child_missing_created_at(tmp_path: Path) -> None:
+    """A legacy child batch entry missing ``created_at`` remains readable; the
+    projection falls back to ``updated_at`` (or null) without breaking status."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # a newly created child batch carries created_at
+    child_id = _ok(_run_batch(data_dir, parent_id, src))["data"]["import_id"]
+    assert "created_at" in _ledger(data_dir)["jobs"][child_id]
+
+    # simulate a legacy entry predating the field by stripping created_at
+    ledger = _ledger(data_dir)
+    updated_at = ledger["jobs"][child_id]["updated_at"]
+    ledger["jobs"][child_id].pop("created_at", None)
+    _save_ledger(data_dir, ledger)
+
+    status = _status(data_dir, parent_id)
+    b = status["batches"][0]
+    assert b["import_id"] == child_id
+    # legacy child: created_at falls back to updated_at (a string), not null
+    assert b["created_at"] == updated_at
+    assert isinstance(b["created_at"], str)
+    # the committed manifest is still authoritative -> still rollback_available
+    assert b["rollback_available"] is True
+
+    # a legacy child with NEITHER created_at nor updated_at falls back to null
+    ledger = _ledger(data_dir)
+    ledger["jobs"][child_id].pop("updated_at", None)
+    _save_ledger(data_dir, ledger)
+    status2 = _status(data_dir, parent_id)
+    assert status2["batches"][0]["created_at"] is None

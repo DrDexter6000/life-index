@@ -2361,7 +2361,20 @@ provenance、frontmatter `attachments` 为 SSOT），只发布 selected attachme
 对 parent review job，`status` 额外返回各 proposal `state`、derived queue counts、
 `active_child_id`、`recovery_required`、`authority_status`（`null`，或 fail-closed 时
 `"plan_ledger_mismatch"`）、`plan_fingerprint`、`plan_revision`、`queue_revision`、
-`source_root_identity`。既有 job（fixture / child batch）的 status 字段不变。
+`source_root_identity`，以及 `batches`：**ledger-derived、restart-safe、locator-free** 的
+durable child batch 历史。`batches` 在每次读时从 ledger 中 `kind == "batch"` 且
+`parent_review_job_id == <parent>` 的 job 派生——GUI 绝不缓存 child id 作为第二真相，这是 GUI
+发现可回滚 batch 的**唯一来源**。稳定排序：oldest/lowest numeric `<parent>#batch-<seq>` 在前，
+legacy/malformed id 走稳定 fallback（不依赖 dict 插入序）。每个 batch 投影仅含安全字段：
+`import_id`（child id，`#` 原样保留——GUI 之后放在 JSON rollback body 而非 URL path）、`state`、
+`proposal_ids`（opaque ids）、`proposal_count`、`created_at`（legacy child 缺失时 fallback 到
+`updated_at` 或 `null`）、`updated_at`、`rollback_available`；**绝不**暴露
+`rollback_manifest_rel_path`、data-dir / source / journal 路径或 manifest 内容。`rollback_available`
+为 true 仅当 child 当前 `committed` 且其 rollback manifest 存在且 `state == "committed"`；
+`rolled_back` / `rollback_failed` / manifest 缺失或非 committed / 其他状态均为 false（status 不重新
+实现 rollback、不 hash 用户文件）。该投影在既有 authority reconciliation 之后**只读派生**：不改写
+ledger、不递增 `queue_revision`、不重写文件；收敛后重复读为稳定 no-write。既有 job（fixture /
+child batch）的 status 字段不变。
 
 #### `import rollback`（additive）
 
