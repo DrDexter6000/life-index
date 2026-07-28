@@ -1547,3 +1547,115 @@ def test_duplicate_stage_stable_is_no_write(tmp_path: Path) -> None:
     assert ledger_path.stat().st_mtime_ns == ledger_mtime_before
     assert hashlib.sha256(plan_path.read_bytes()).hexdigest() == plan_hash_before
     assert plan_path.stat().st_mtime_ns == plan_mtime_before
+
+
+# ===================================================================
+# H) restart-safe top-level plan-warning projection (HEIC unsupported)
+#    Scan-level warnings (e.g. PHOTO_UNSUPPORTED_FORMAT for .heic/.heif)
+#    are persisted on the review plan. After a GUI/CLI restart, ``import
+#    review`` must still disclose them with safe structured fields rather
+#    than silently omitting the affected photos. Exercised across separate
+#    plan/stage/review CLI invocations so recovery does not depend on
+#    process memory.
+# ===================================================================
+
+
+def _make_heic(path: Path, *, body: bytes = b"\x00\x00\x00\x24ftypheic") -> Path:
+    """Write a synthetic (non-decodable) HEIC file.
+
+    The photo adapter detects HEIC/HEIF by extension only and emits a
+    ``PHOTO_UNSUPPORTED_FORMAT`` scan-level warning (preview unavailable)
+    without decoding any bytes.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    return path
+
+
+def test_review_discloses_persisted_plan_warnings_heic_unsupported(
+    tmp_path: Path,
+) -> None:
+    """After restart, ``import review`` must still disclose persisted scan-level
+    plan warnings (HEIC/HEIF unsupported-format / preview unavailable) instead
+    of silently omitting those photos, exposing only safe structured fields."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    heic_stem = "secret_trip"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))  # actionable JPEG proposal
+    _make_heic(src / f"{heic_stem}.heic")           # unsupported -> scan warning
+
+    # --- separate process: plan carries the scan-level warning at top level ---
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    plan_warnings = plan.get("warnings", []) or []
+    assert any(
+        w.get("code") == "PHOTO_UNSUPPORTED_FORMAT" for w in plan_warnings
+    ), "plan must carry the HEIC scan-level unsupported-format warning"
+
+    # --- separate process: stage persists the review plan (warnings survive) ---
+    _stage(data_dir, plan, src, tmp_path)
+    persisted = _review_plan(data_dir, parent_id)
+    assert any(
+        w.get("code") == "PHOTO_UNSUPPORTED_FORMAT"
+        for w in (persisted.get("warnings") or [])
+    ), "staging must persist the top-level plan warning"
+
+    # --- separate process (restart): review projects the persisted warnings ---
+    res = _ok(_review(data_dir, parent_id))["data"]
+    # response-level persisted plan warnings are disclosed after restart
+    assert "warnings" in res, "review response must carry persisted plan warnings"
+    by_code = {w.get("code"): w for w in res["warnings"]}
+    assert "PHOTO_UNSUPPORTED_FORMAT" in by_code, (
+        "review must disclose the persisted HEIC unsupported-format warning"
+    )
+    w = by_code["PHOTO_UNSUPPORTED_FORMAT"]
+    # safe structured fields sufficient for the GUI to display the limitation
+    assert w["severity"] == "warning"
+    assert w["runnable"] is False
+    assert w["format"] == ".heic"
+    assert w["preview_available"] is False
+
+    # privacy: never project a locator-bearing message, filename, or source path
+    assert "message" not in w
+    blob = json.dumps(res)
+    assert f"{heic_stem}.heic" not in blob, "HEIC filename must not leak"
+    assert heic_stem not in blob, "HEIC filename stem must not leak"
+    assert ".heic" in blob  # the safe format token is intentionally present
+    assert "source_rel_path" not in blob
+    assert str(src) not in blob
+
+
+def test_review_plan_warning_projection_stable_no_write(tmp_path: Path) -> None:
+    """Repeated ``import review`` reads project the same persisted plan warnings
+    and remain a stable no-write (same queue_revision, unchanged ledger); the
+    top-level and proposal-level advisory projections stay locator-free."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    _make_heic(src / "trip.heic")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _stage(data_dir, plan, src, tmp_path)
+
+    r1 = _ok(_review(data_dir, parent_id))["data"]
+    ledger_before = json.dumps(_ledger(data_dir), sort_keys=True)
+    r2 = _ok(_review(data_dir, parent_id))["data"]
+    ledger_after = json.dumps(_ledger(data_dir), sort_keys=True)
+
+    # stable, no-write re-read: same token, same projection, ledger untouched
+    assert r1["queue_revision"] == r2["queue_revision"]
+    assert r1["warnings"] == r2["warnings"]
+    assert ledger_before == ledger_after
+
+    # locator-free advisory projections (top-level + proposal-level)
+    for warn in r1["warnings"]:
+        assert "message" not in warn
+    for prop in r1["proposals"]:
+        for adv in prop.get("warnings", []) + prop.get("conflicts", []):
+            assert "message" not in adv
+    blob = json.dumps(r1)
+    assert "trip.heic" not in blob
+    assert "source_rel_path" not in blob
+    assert str(src) not in blob

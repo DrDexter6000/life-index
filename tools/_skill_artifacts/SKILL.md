@@ -104,7 +104,7 @@ GUI/host agent 只消费 plan、请求 confirm、流式 preview、触发 batch r
 .venv/bin/life-index import stage --plan <review-plan.json> --source-root <photo-dir> --json   # 初始 pending 队列（不复制字节；重复 source root→IMPORT_REVIEW_ALREADY_STAGED）
 .venv/bin/life-index import confirm --plan <review-plan.json> --source-root <photo-dir> --json  # 原子持久化 review-plan.json + parent review job（confirmed 队列权威）
 .venv/bin/life-index import confirm --edit <review-edit.json> --import-id <parent_id> --expected-queue-revision <q> --json  # 单 proposal 原子 edit（import_review_edit.v1；从 source_facts 重建选择）
-.venv/bin/life-index import review --import-id <parent_id> [--offset 0] [--limit 20] [--state …] --json   # 有界分页只读投影（ledger 权威 state；不暴露 source 定位）
+.venv/bin/life-index import review --import-id <parent_id> [--offset 0] [--limit 20] [--state …] --json   # 有界分页只读投影（ledger 权威 state；不暴露 source 定位；响应 warnings[] 如实披露持久化 scan-level 警告）
 .venv/bin/life-index import reviews [--after <import_id>] [--limit 20] --json               # 发现 parent review job（排除 child batch；排他游标）
 .venv/bin/life-index import status --import-id <parent_id> --json                          # proposal states + derived queue counts + plan_revision + queue_revision + recovery
 .venv/bin/life-index import preview --import-id <parent_id> --attachment <att_id> [--proposal-id <pid>] --source-root <photo-dir> --output - --json  # 只读流式 bytes/metadata（钉到 proposal；可预览已取消选择的附件），不改源
@@ -140,6 +140,12 @@ parent review job 的 batch 路径。crash/重启后用 `import reviews` 发现 
 - rescan 去重集合 = committed manifest 的 attachment SHA + authoritative state 为
   `confirmed`/`batching`/`imported` 的 review proposal 的 attachment SHA（被 rollback 恢复为
   `confirmed` 的仍排除）；同名不同字节视为不同记录。
+- restart-safe 顶层 plan-warning 投影：`import review` 响应的 `warnings[]` 投影持久化
+  review-plan 顶层 scan-level warning（如 `.heic`/`.heif` 的 `PHOTO_UNSUPPORTED_FORMAT`，
+  标记 unsupported + preview unavailable）。GUI/CLI 重启后从持久化 plan 重新读回并如实披露，
+  **绝不静默遗漏**受影响照片。只走显式安全 allowlist（`code`/`severity`/`runnable`/`format`/
+  `preview_available`），**绝不**投影 adapter `message`（内嵌 source 路径定位符）或盲目透传任意
+  扩展字段；文件名 / source 路径 / 含定位符的 message 均不进入响应。重复读稳定且 no-write。
 **安装 / 首次验证 / 故障恢复指针**：
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树

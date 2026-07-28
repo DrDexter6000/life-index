@@ -1916,6 +1916,7 @@ JSON，不写 journal、attachment、ledger、manifest 或 index。
 | `PHOTO_CAMERA_MISSING` | warning | yes | make/model metadata 缺失 |
 | `PHOTO_ORIENTATION_MISSING` | warning | yes | orientation tag 缺失 |
 | `PHOTO_UNSUPPORTED_FILE_SKIPPED` | warning | yes | 当前 tranche 不支持的文件被跳过 |
+| `PHOTO_UNSUPPORTED_FORMAT` | warning | no | `.heic` / `.heif` 等明确不支持的格式（preview unavailable），不静默跳过；额外携带安全字段 `format`（如 `.heic`）与 `preview_available=false`，供 GUI 如实展示该限制 |
 | `PHOTO_EXIF_UNREADABLE` | warning | yes | EXIF 无法读取，adapter 会降级并同时输出缺失 capture time conflict |
 | `PHOTO_CAPTURE_TIME_MISSING` | conflict | no | 没有可信 capture date；阻塞 run |
 | `PHOTO_CAPTURE_TIME_AMBIGUOUS` | conflict | no | 多个日期来源冲突；阻塞 run |
@@ -2243,6 +2244,16 @@ per-parent lock 内 reconcile + capture 后，按持久化 plan 顺序、以 **l
 对路径）。recovery / mismatch ⇒ `IMPORT_REVIEW_RECOVERY_REQUIRED`。返回
 `total_all` / `total_filtered` / `offset` / `limit` / `has_more` / `next_offset` /
 `queue_revision`。收敛后重复读为稳定 no-write（ledger 不变）。
+
+**Restart-safe 顶层 plan-warning 投影**：响应还携带 `warnings[]`——持久化 review-plan
+顶层 scan-level warning（如 `.heic` / `.heif` 的 `PHOTO_UNSUPPORTED_FORMAT`，标记 photo
+unsupported 且 preview unavailable）的投影。这些 warning 在 `import plan` 阶段由 adapter
+产生、随 review-plan 落盘；GUI/CLI 重启后 `import review` 每次都从持久化 plan 重新读
+回并如实披露，**绝不静默遗漏**受影响的照片。投影只走显式安全 allowlist：`code` /
+`severity` / `runnable` / `format` / `preview_available`——**绝不**投影 adapter `message`
+（其文本可能内嵌 source 相对路径定位符），也**绝不**盲目透传任意 adapter 扩展字段；
+文件名 / 相对或绝对 source 路径 / 含定位符的 message 文本均不进入响应。重复读投影稳定
+且为 no-write（同 `queue_revision`、ledger 不变）。
 
 #### `import reviews`（discovery）
 

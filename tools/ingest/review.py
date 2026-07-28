@@ -980,6 +980,37 @@ def _public_advisory(entry: Any) -> dict[str, Any]:
     return out
 
 
+# Persisted top-level (scan-level) plan warnings are projected through this
+# explicit allowlist only. Adapter ``message`` text embeds a source relative
+# path (a locator), so it is never surfaced; arbitrary adapter extras are never
+# blindly copied. The GUI maps ``code``/``format`` to localized copy.
+def _public_plan_warning(entry: Any) -> dict[str, Any]:
+    """Project a persisted top-level plan warning as safe structured fields only.
+
+    Scan-level warnings (e.g. ``PHOTO_UNSUPPORTED_FORMAT`` for HEIC/HEIF, which
+    marks the photo unsupported and its preview unavailable) are persisted on the
+    review plan. After a GUI/CLI restart ``import review`` reads them back from
+    the persisted plan and must still disclose them honestly rather than silently
+    omitting the affected photos — but only through an explicit safe allowlist:
+    adapter ``message`` text can embed a source relative path (a locator), and
+    arbitrary adapter extras are not blindly trusted.
+    """
+    if not isinstance(entry, dict):
+        return {"code": "", "severity": ""}
+    out: dict[str, Any] = {
+        "code": entry.get("code", ""),
+        "severity": entry.get("severity", ""),
+    }
+    if "runnable" in entry:
+        out["runnable"] = bool(entry["runnable"])
+    fmt = entry.get("format")
+    if isinstance(fmt, str):
+        out["format"] = fmt
+    if "preview_available" in entry:
+        out["preview_available"] = bool(entry["preview_available"])
+    return out
+
+
 def _proposal_review_projection(
     proposal: dict[str, Any], authoritative_state: str
 ) -> dict[str, Any]:
@@ -1911,6 +1942,15 @@ def review_queue(
     ``IMPORT_REVIEW_RECOVERY_REQUIRED``. Each proposal and the response carry the
     full shared projection + authority fields; no source filesystem path is ever
     exposed.
+
+    The persisted plan's top-level (scan-level) ``warnings`` — e.g. an HEIC/HEIF
+    ``PHOTO_UNSUPPORTED_FORMAT`` warning marking the photo unsupported and its
+    preview unavailable — are also projected at the response level via an
+    explicit safe allowlist (``code``/``severity``/``runnable``/``format``/
+    ``preview_available``). They are read back from the persisted plan on every
+    invocation, so the limitation is still honestly disclosed after a GUI/CLI
+    restart instead of silently omitted; the locator-bearing adapter ``message``
+    text is never projected.
     """
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
@@ -1981,6 +2021,12 @@ def review_queue(
                 "plan_revision": int(job.get("plan_revision", 1) or 1),
                 "source_root_identity": job.get("source_root_identity", ""),
                 "queue_counts": _queue_counts(prop_states),
+                # Restart-safe disclosure of persisted scan-level plan warnings
+                # (e.g. HEIC/HEIF PHOTO_UNSUPPORTED_FORMAT). Safe allowlist only;
+                # the locator-bearing adapter ``message`` is never projected.
+                "warnings": [
+                    _public_plan_warning(w) for w in (plan.get("warnings") or [])
+                ],
                 "total_all": total_all,
                 "total_filtered": total_filtered,
                 "offset": off,
