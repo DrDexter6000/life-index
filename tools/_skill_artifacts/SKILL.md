@@ -90,6 +90,27 @@ triggers:
 .venv/bin/python -m tools.query_weather --location "Lagos,Nigeria"
 .venv/bin/python -m tools.build_index
 ```
+
+**历史照片冷启动（import review queue，additive）**：照片导入走可恢复审阅队列，
+GUI/host agent 只消费 plan、请求 confirm、流式 preview、触发 batch run、查 status、
+按需 rollback child batch；不直接写 `Journals/` 或 `attachments/`。source facts
+（content SHA-256、size、source 相对路径、capture time authority、GPS、provenance）
+不可变；用户只编辑 journal `title`/`date`/`topic`/`tags`/`content` 与 proposal/attachment
+选择。典型流程（详见 `docs/API.md` 的 Review queue & batch import 节）：
+
+```bash
+.venv/bin/life-index import plan --source media.photo_timeline --input <photo-dir> --json   # 递归只读扫描→按日聚合 editable proposals（dry-run，不写）
+.venv/bin/life-index import validate --source-root <photo-dir> --json                      # canonical readable dir + root identity fingerprint
+.venv/bin/life-index import confirm --plan <review-plan.json> --source-root <photo-dir> --json  # 原子持久化 review-plan.json + parent review job（confirmed 队列权威）
+.venv/bin/life-index import status --import-id <parent_id> --json                          # proposal states + derived queue counts + recovery
+.venv/bin/life-index import preview --import-id <parent_id> --attachment <att_id> --source-root <photo-dir> --output - --json  # 只读流式 bytes/metadata，不改源
+.venv/bin/life-index import run --import-id <parent_id> --source-root <photo-dir> --json    # single active child batch；confirmed→batching→imported；TOCTOU 安全复制
+.venv/bin/life-index import rollback --import-id <child_batch_id> --json                    # 回滚 child batch；parent reconciliation 恢复 confirmed（parent 本身不可回滚→IMPORT_ROLLBACK_PARENT_NOT_ALLOWED）
+```
+
+注意：`import run --plan … --confirm …`（fixture / 直连）行为不变；`--import-id` 才进入
+parent review job 的 batch 路径。crash/重启后用 `import-id` 恢复队列，但 confirm/run/preview
+必须用当前 `--source-root` 重新验证同一 root identity。
 **安装 / 首次验证 / 故障恢复指针**：
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树

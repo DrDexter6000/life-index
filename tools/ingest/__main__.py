@@ -22,7 +22,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from tools.ingest.runner import execute_run, execute_rollback, query_status
+from tools.ingest.runner import (
+    _read_ledger,
+    _read_rollback_manifest,
+    execute_run,
+)
 from tools.ingest.schemas import (
     DEFAULT_NORMALIZED_IMPORT_OPTIONS_HASH,
     DEFAULT_NORMALIZED_WRITE_POLICY_HASH,
@@ -36,8 +40,11 @@ from tools.ingest.fingerprint import (
     compute_plan_fingerprint,
     compute_proposal_fingerprint,
     compute_source_fingerprint,
+    group_source_fingerprint,
+    sha256_hash,
 )
 from tools.ingest.adapters.photo_timeline import scan_photo_directory
+from tools.ingest import review as review_module
 from tools.lib.paths import get_user_data_dir
 
 # ---------------------------------------------------------------------------
@@ -84,6 +91,253 @@ def _next_seq_for_date(
 def _journal_target_rel_path(date: str, seq: int) -> str:
     year, month, _day = date.split("-")
     return f"Journals/{year}/{month}/life-index_{date}_{seq:03d}.md"
+
+
+# ---------------------------------------------------------------------------
+# Photo proposal aggregation (additive, M7 historical photo cold-start)
+# ---------------------------------------------------------------------------
+
+# Conflict codes that mark a photo's capture time as unresolved. Such records
+# cannot be grouped into a per-day proposal and remain individual ``pending``
+# proposals whose conflict blocks the run until the user resolves the date.
+_PHOTO_CAPTURE_CONFLICT_CODES = frozenset(
+    {"PHOTO_CAPTURE_TIME_MISSING", "PHOTO_CAPTURE_TIME_AMBIGUOUS"}
+)
+
+
+def _collect_known_attachment_shas(data_dir: Path) -> set[str]:
+    """Return attachment content SHAs already imported by committed jobs.
+
+    Read-only scan of the import ledger authority: for every job in a
+    ``committed`` state, read its rollback manifest and collect the
+    ``sha256_after`` of attachment entries. Photo attachments are byte-copied,
+    so the stored hash equals the original source content SHA — these are the
+    SHAs the adapter must dedup against at plan time so already-imported photos
+    are never re-proposed.
+    """
+    known: set[str] = set()
+    ledger = _read_ledger(data_dir)
+    jobs = ledger.get("jobs", {})
+    if not isinstance(jobs, dict):
+        return known
+    for job_id, job in jobs.items():
+        if not isinstance(job, dict) or job.get("state") != "committed":
+            continue
+        manifest = _read_rollback_manifest(data_dir, job_id)
+        if not manifest:
+            continue
+        for entry in manifest.get("created_files", []):
+            if entry.get("kind") == "attachment":
+                sha = entry.get("sha256_after")
+                if sha:
+                    known.add(sha)
+    return known
+
+
+def _group_source_fingerprint(member_fingerprints: list[str]) -> str:
+    """Delegate to :func:`tools.ingest.fingerprint.group_source_fingerprint`."""
+    return group_source_fingerprint(member_fingerprints)
+
+
+def _photo_record_is_unresolved(record: dict[str, Any]) -> bool:
+    """True when a photo record has an unresolved capture-time conflict."""
+    for conflict in record.get("conflicts", []):
+        if conflict.get("code") in _PHOTO_CAPTURE_CONFLICT_CODES:
+            return True
+    return False
+
+
+def _build_photo_proposals(  # noqa: C901
+    records: list[dict[str, Any]],
+    data_dir: Path,
+    used_seqs: dict[str, int],
+    proposals: list[dict[str, Any]],
+    all_create_files: list[str],
+    source_record_fingerprints: list[str],
+    proposal_fingerprints: list[str],
+    all_warnings: list[dict[str, Any]],
+    all_conflicts: list[dict[str, Any]],
+) -> int:
+    """Aggregate photo records into per-day proposals (additive M7).
+
+    Resolved photos (a trustworthy EXIF capture date, no capture-time conflict)
+    are grouped by calendar date into a single multi-attachment proposal per
+    day. Unresolved photos (missing/ambiguous capture time) become individual
+    ``pending`` proposals whose conflict blocks the run.
+
+    Mutates the passed-in accumulators (``proposals``, ``all_create_files``,
+    ``source_record_fingerprints``, ``proposal_fingerprints``, ``all_warnings``,
+    ``all_conflicts``) and returns the total attachment count.
+    """
+    total_attachments = 0
+
+    resolved_groups: dict[str, list[dict[str, Any]]] = {}
+    unresolved: list[dict[str, Any]] = []
+
+    for record in records:
+        # Every record contributes its source-record fingerprint to the
+        # plan-level source fingerprint (scan authority), independent of how
+        # records are later grouped into proposals.
+        source_record_fingerprints.append(record["source_record_fingerprint"])
+        if _photo_record_is_unresolved(record):
+            unresolved.append(record)
+        else:
+            date = record.get("journal", {}).get("date", "")
+            resolved_groups.setdefault(date, []).append(record)
+
+    def _member_sort_key(rec: dict[str, Any]) -> str:
+        facts = rec.get("source_facts") or {}
+        return str(facts.get("source_rel_path") or rec.get("source_record_id", ""))
+
+    def _emit(members: list[dict[str, Any]], date: str, title: str, content: str) -> None:
+        nonlocal total_attachments
+        members_sorted = sorted(members, key=_member_sort_key)
+
+        # --- Attachments (concatenated, deterministic order) ---
+        att_fingerprints: list[str] = []
+        att_outputs: list[dict[str, Any]] = []
+        for member in members_sorted:
+            for att in member.get("attachments", []):
+                att_fp = compute_attachment_fingerprint(
+                    attachment_id=att["attachment_id"],
+                    source_sha256=att["source_sha256"],
+                    target_rel_path=att["target_rel_path"],
+                    media_type=att["media_type"],
+                    size_bytes=att["size_bytes"],
+                    copy_mode=att["copy_mode"],
+                )
+                att_fingerprints.append(att_fp)
+                att_out: dict[str, Any] = {
+                    "attachment_id": att["attachment_id"],
+                    "source_ref": att["source_ref"],
+                    "source_sha256": att["source_sha256"],
+                    "target_rel_path": att["target_rel_path"],
+                    "media_type": att["media_type"],
+                    "size_bytes": att["size_bytes"],
+                    "copy_mode": att["copy_mode"],
+                }
+                if "source_rel_path" in att:
+                    att_out["source_rel_path"] = att["source_rel_path"]
+                att_outputs.append(att_out)
+                total_attachments += 1
+
+        # --- Journal target path ---
+        seq = _next_seq_for_date(date, data_dir, used_seqs)
+        target_rel_path = _journal_target_rel_path(date, seq)
+
+        # --- Fingerprints ---
+        member_fps = [m["source_record_fingerprint"] for m in members_sorted]
+        group_fp = _group_source_fingerprint(member_fps)
+        tags = ["imported", "photo"]
+        proposal_fp = compute_proposal_fingerprint(
+            source_record_fingerprint=group_fp,
+            target_rel_path=target_rel_path,
+            title=title,
+            date=date,
+            topic="life",
+            tags=tags,
+            content=content,
+            attachment_fingerprints=att_fingerprints,
+        )
+        proposal_id = f"prop_{proposal_fp.removeprefix('sha256:')[:20]}"
+        primary_id = members_sorted[0]["source_record_id"]
+
+        # --- Conflicts: target-path conflicts + member conflicts ---
+        prop_conflicts: list[dict[str, Any]] = []
+        if (data_dir / target_rel_path).exists():
+            prop_conflicts.append(
+                {
+                    "type": "existing_path",
+                    "target_rel_path": target_rel_path,
+                    "message": f"Target path already exists: {target_rel_path}",
+                    "code": "PHOTO_TARGET_PATH_CONFLICT",
+                    "severity": "conflict",
+                    "runnable": False,
+                }
+            )
+        for att_out in att_outputs:
+            if (data_dir / att_out["target_rel_path"]).exists():
+                prop_conflicts.append(
+                    {
+                        "type": "existing_path",
+                        "target_rel_path": att_out["target_rel_path"],
+                        "message": f"Target path already exists: {att_out['target_rel_path']}",
+                        "code": "PHOTO_TARGET_PATH_CONFLICT",
+                        "severity": "conflict",
+                        "runnable": False,
+                    }
+                )
+        for member in members_sorted:
+            for conflict in member.get("conflicts", []):
+                prop_conflicts.append(dict(conflict))
+
+        # --- Warnings: per-member ---
+        member_warnings: list[dict[str, Any]] = []
+        for member in members_sorted:
+            for warning in member.get("warnings", []):
+                member_warnings.append(dict(warning))
+
+        # --- Immutable source facts (provenance) ---
+        source_facts = [member["source_facts"] for member in members_sorted]
+
+        proposals.append(
+            {
+                "proposal_id": proposal_id,
+                "source_record_id": primary_id,
+                "source_record_fingerprint": group_fp,
+                "source_record_fingerprints": member_fps,
+                "proposal_fingerprint": proposal_fp,
+                "journal": {
+                    "target_rel_path": target_rel_path,
+                    "title": title,
+                    "date": date,
+                    "topic": "life",
+                    "tags": tags,
+                    "content": content,
+                },
+                "attachments": att_outputs,
+                "source_facts": source_facts,
+                "state": "pending",
+                "conflicts": prop_conflicts,
+                "warnings": member_warnings,
+            }
+        )
+
+        # --- Accumulators ---
+        proposal_fingerprints.append(proposal_fp)
+        all_create_files.append(target_rel_path)
+        for att_out in att_outputs:
+            all_create_files.append(att_out["target_rel_path"])
+        for conflict in prop_conflicts:
+            all_conflicts.append(conflict)
+        for warning in member_warnings:
+            all_warnings.append(warning)
+
+    # --- Resolved day groups (deterministic date order) ---
+    for date in sorted(resolved_groups):
+        members = resolved_groups[date]
+        count = len(members)
+        if count == 1:
+            journal = members[0].get("journal", {})
+            title = journal.get("title", f"Photo import: {date}")
+            content = journal.get("content", "")
+        else:
+            title = f"Photo import: {date} · {count} photos"
+            content = (
+                f"Imported {count} photos captured on {date}. "
+                "Review and edit this entry before confirming."
+            )
+        _emit(members, date, title, content)
+
+    # --- Unresolved individual proposals (deterministic rel-path order) ---
+    for record in sorted(unresolved, key=_member_sort_key):
+        journal = record.get("journal", {})
+        date = journal.get("date", "1970-01-01")
+        title = journal.get("title", "Photo import: missing capture time")
+        content = journal.get("content", "")
+        _emit([record], date, title, content)
+
+    return total_attachments
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +393,9 @@ def _cmd_plan(args: argparse.Namespace) -> None:
                 )
             )
             sys.exit(1)
-        scan_result = scan_photo_directory(input_path)
+        scan_result = scan_photo_directory(
+            input_path, known_shas=_collect_known_attachment_shas(data_dir)
+        )
         adapter_id = scan_result["adapter_id"]
         adapter_version = scan_result["adapter_version"]
         input_label = scan_result["input_label"]
@@ -174,7 +430,26 @@ def _cmd_plan(args: argparse.Namespace) -> None:
     proposal_fingerprints: list[str] = []
     total_attachments = 0
 
+    is_photo = source_adapter == "media.photo_timeline"
+    if is_photo:
+        total_attachments = _build_photo_proposals(
+            records,
+            data_dir,
+            used_seqs,
+            proposals,
+            all_create_files,
+            source_record_fingerprints,
+            proposal_fingerprints,
+            all_warnings,
+            all_conflicts,
+        )
+
     for record in records:
+        if is_photo:
+            # Photo records are aggregated into per-day proposals by
+            # ``_build_photo_proposals`` above; the generic 1:1 loop below only
+            # handles fixture sources (whose golden snapshot must not change).
+            continue
         src_record_id: str = record["source_record_id"]
         src_record_fp: str = record["source_record_fingerprint"]
         source_record_fingerprints.append(src_record_fp)
@@ -374,13 +649,25 @@ def _cmd_plan(args: argparse.Namespace) -> None:
 
 
 def _cmd_run(args: argparse.Namespace) -> None:
-    """Implement ``import run`` (PRD §8)."""
-    result = execute_run(
-        plan_path=args.plan,
-        confirm_id=args.confirm,
-        data_dir=get_user_data_dir(),
-        source_root=args.source_root,
-    )
+    """Implement ``import run`` (PRD §8).
+
+    Two paths share this command: the legacy ``--plan/--confirm`` path
+    (fixtures, unchanged) and the additive batch path ``--import-id`` for a
+    parent review job.
+    """
+    if getattr(args, "import_id", None):
+        result = review_module.run_batch(
+            parent_id=args.import_id,
+            data_dir=get_user_data_dir(),
+            source_root=args.source_root,
+        )
+    else:
+        result = execute_run(
+            plan_path=args.plan,
+            confirm_id=args.confirm,
+            data_dir=get_user_data_dir(),
+            source_root=args.source_root,
+        )
 
     if result["success"]:
         _print_json(success_envelope("import.run", result["data"]))
@@ -404,8 +691,13 @@ def _cmd_run(args: argparse.Namespace) -> None:
 
 
 def _cmd_status(args: argparse.Namespace) -> None:
-    """Implement ``import status`` (PRD §10)."""
-    result = query_status(
+    """Implement ``import status`` (PRD §10).
+
+    Additive: a parent review job returns proposal states / queue counts /
+    active child / recovery; legacy and child-batch jobs keep the original
+    status shape (``query_review_status`` delegates to ``query_status``).
+    """
+    result = review_module.query_review_status(
         import_id=args.import_id,
         data_dir=get_user_data_dir(),
     )
@@ -432,8 +724,13 @@ def _cmd_status(args: argparse.Namespace) -> None:
 
 
 def _cmd_rollback(args: argparse.Namespace) -> None:
-    """Implement ``import rollback`` (PRD §10)."""
-    result = execute_rollback(
+    """Implement ``import rollback`` (PRD §10).
+
+    Additive: a parent review job cannot be rolled back as a whole
+    (``IMPORT_ROLLBACK_PARENT_NOT_ALLOWED``); child batch / legacy jobs reuse
+    the checksum-guarded rollback.
+    """
+    result = review_module.execute_review_rollback(
         import_id=args.import_id,
         data_dir=get_user_data_dir(),
     )
@@ -476,6 +773,83 @@ def _cmd_not_implemented(subcommand: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Review queue commands (additive, M7)
+# ---------------------------------------------------------------------------
+
+
+def _emit(command: str, result: dict[str, Any]) -> None:
+    """Print a review-module result dict as the standard import envelope."""
+    if result["success"]:
+        _print_json(success_envelope(command, result["data"]))
+    else:
+        err = result["error"]
+        _print_json(
+            error_envelope(
+                command,
+                err["code"],
+                err["message"],
+                err.get("details", {}),
+                retryable=err.get("retryable", False),
+            )
+        )
+        sys.exit(1)
+
+
+def _cmd_confirm(args: argparse.Namespace) -> None:
+    """``import confirm``: persist a review plan + record parent review job."""
+    result = review_module.confirm_review(
+        plan_path=args.plan,
+        data_dir=get_user_data_dir(),
+        source_root=args.source_root,
+        parent_id_override=args.import_id,
+    )
+    _emit("import.confirm", result)
+
+
+def _cmd_validate(args: argparse.Namespace) -> None:
+    """``import validate``: canonical readable dir + root identity fingerprint."""
+    result = review_module.validate_source_root(args.source_root)
+    _emit("import.validate", result)
+
+
+def _cmd_rebind(args: argparse.Namespace) -> None:
+    """``import rebind``: re-validate a locator's root identity for a parent."""
+    result = review_module.rebind_source_root(
+        parent_id=args.import_id,
+        source_root=args.source_root,
+        data_dir=get_user_data_dir(),
+    )
+    _emit("import.rebind", result)
+
+
+def _cmd_preview(args: argparse.Namespace) -> None:
+    """``import preview``: read-only attachment byte/metadata streaming."""
+    result = review_module.preview_attachment(
+        parent_id=args.import_id,
+        attachment_id=args.attachment,
+        data_dir=get_user_data_dir(),
+        source_root=args.source_root,
+        output=args.output,
+        metadata_output=args.metadata_output,
+    )
+    if not result["success"]:
+        _emit("import.preview", result)
+        return
+    data = result["data"]
+    # preview_attachment already honoured --metadata-output; here we only emit
+    # the bytes: raw to stdout for `--output -`, else to the requested path with
+    # a JSON acknowledgement envelope on stdout.
+    out = args.output
+    if out in (None, "", "-"):
+        sys.stdout.buffer.write(data["bytes"])
+    else:
+        Path(out).write_bytes(data["bytes"])
+        _print_json(
+            success_envelope("import.preview", {k: v for k, v in data.items() if k != "bytes"})
+        )
+
+
+# ---------------------------------------------------------------------------
 # CLI parsing
 # ---------------------------------------------------------------------------
 
@@ -507,8 +881,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # --- run ---
     run_p = sub.add_parser("run", help="Execute a confirmed import plan.")
-    run_p.add_argument("--plan", required=True, help="Path to plan JSON.")
-    run_p.add_argument("--confirm", required=False, default=None, help="import_id to confirm.")
+    run_p.add_argument("--plan", required=False, default=None, help="Path to plan JSON (legacy path).")
+    run_p.add_argument(
+        "--import-id",
+        required=False,
+        default=None,
+        help="Parent review job id (additive batch path).",
+    )
+    run_p.add_argument("--confirm", required=False, default=None, help="import_id to confirm (legacy path).")
     run_p.add_argument(
         "--source-root",
         required=False,
@@ -526,6 +906,39 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     rb_p = sub.add_parser("rollback", help="Rollback an import job.")
     rb_p.add_argument("--import-id", required=True, help="Import job id.")
     rb_p.add_argument("--json", action="store_true")
+
+    # --- confirm (additive) ---
+    confirm_p = sub.add_parser("confirm", help="Persist a photo review plan (review queue).")
+    confirm_p.add_argument("--plan", required=True, help="Path to review plan JSON.")
+    confirm_p.add_argument("--source-root", required=False, default=None, help="Source root directory.")
+    confirm_p.add_argument(
+        "--import-id", required=False, default=None, help="Override parent review job id."
+    )
+    confirm_p.add_argument("--json", action="store_true")
+
+    # --- validate (additive) ---
+    validate_p = sub.add_parser("validate", help="Validate a source root and return its identity.")
+    validate_p.add_argument("--source-root", required=True, help="Source root directory.")
+    validate_p.add_argument("--json", action="store_true")
+
+    # --- rebind (additive) ---
+    rebind_p = sub.add_parser("rebind", help="Re-validate a locator's root identity for a parent.")
+    rebind_p.add_argument("--import-id", required=True, help="Parent review job id.")
+    rebind_p.add_argument("--source-root", required=True, help="Source root directory to rebind.")
+    rebind_p.add_argument("--json", action="store_true")
+
+    # --- preview (additive) ---
+    preview_p = sub.add_parser("preview", help="Read-only preview of an attachment (review queue).")
+    preview_p.add_argument("--import-id", required=True, help="Parent review job id.")
+    preview_p.add_argument("--attachment", required=True, help="Attachment id to preview.")
+    preview_p.add_argument("--source-root", required=False, default=None, help="Source root directory.")
+    preview_p.add_argument(
+        "--output", required=False, default=None, help="- for stdout raw bytes, or an output path."
+    )
+    preview_p.add_argument(
+        "--metadata-output", required=False, default=None, help="Path to write preview metadata JSON."
+    )
+    preview_p.add_argument("--json", action="store_true")
 
     return parser.parse_args(argv)
 
@@ -555,6 +968,14 @@ def main() -> None:
         _cmd_status(args)
     elif args.subcommand == "rollback":
         _cmd_rollback(args)
+    elif args.subcommand == "confirm":
+        _cmd_confirm(args)
+    elif args.subcommand == "validate":
+        _cmd_validate(args)
+    elif args.subcommand == "rebind":
+        _cmd_rebind(args)
+    elif args.subcommand == "preview":
+        _cmd_preview(args)
     elif args.subcommand in _NOT_IMPLEMENTED:
         _cmd_not_implemented(args.subcommand)
     else:

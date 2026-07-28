@@ -909,9 +909,19 @@ def _validate_plan_integrity(
                 retryable=False,
             )
 
-        source_record_fingerprints.append(source_record_fp)
         if _resolve_confined_file_path(data_dir, journal_rel) is None:
             unsafe_paths.append(journal_rel)
+
+        # Aggregated photo proposals carry the full member source-record
+        # fingerprint list so the plan-level source fingerprint can be
+        # recomputed over every scanned record. Legacy/fixture proposals omit
+        # the list and contribute their singular fingerprint, preserving the
+        # original 1:1 reconciliation behaviour exactly.
+        member_fps = proposal.get("source_record_fingerprints")
+        if isinstance(member_fps, list) and member_fps:
+            source_record_fingerprints.extend(member_fps)
+        else:
+            source_record_fingerprints.append(source_record_fp)
 
         attachment_fingerprints: list[str] = []
         for att_index, attachment in enumerate(attachments):

@@ -1,7 +1,13 @@
 """media.photo_timeline source adapter.
 
-Scans a directory for JPEG photos, extracts EXIF metadata via Pillow,
-and returns normalized import records compatible with the import plan pipeline.
+Scans a directory tree for JPEG photos (read-only, recursive), extracts EXIF
+metadata via Pillow, and returns normalized import records compatible with the
+import plan pipeline.
+
+Source facts are immutable: content SHA-256, size, source relative path, capture
+time value/source/timezone authority, GPS, camera make/model, orientation and
+provenance. User edits may change journal title/date/topic/tags/content and
+proposal/attachment selection, never the source facts.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ from tools.ingest.adapters._exif_common import (
     normalize_orientation,
     parse_capture_time,
 )
+from tools.ingest.adapters._scan import iter_source_files
 from tools.ingest.fingerprint import (
     compute_source_record_fingerprint,
 )
@@ -26,15 +33,28 @@ from tools.ingest.fingerprint import (
 # Constants
 # ---------------------------------------------------------------------------
 
-_SUPPORTED_EXTENSIONS = frozenset({".jpg", ".jpeg"})
+# Supported photo formats (Tranche B additive)
+_JPEG_EXTENSIONS = frozenset({".jpg", ".jpeg"})
+# Explicitly-unsupported formats that must NOT be silently skipped.
+_HEIC_EXTENSIONS = frozenset({".heic", ".heif"})
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def scan_photo_directory(input_dir: Path) -> dict[str, Any]:
-    """Scan a photo directory and return normalised import records.
+def scan_photo_directory(
+    input_dir: Path,
+    *,
+    known_shas: set[str] | None = None,
+) -> dict[str, Any]:
+    """Scan a photo directory tree and return normalised import records.
+
+    Read-only recursive scan. Skips symlink/junction/reparse entries, root
+    escape and directory cycles. Deduplicates by exact content SHA-256 (same
+    name with different content is preserved; identical content is kept once).
+    Files whose content SHA already appears in *known_shas* (confirmed/imported
+    attachment SHAs from the import ledger authority) are skipped as duplicates.
 
     Returns a dict with::
 
@@ -48,26 +68,36 @@ def scan_photo_directory(input_dir: Path) -> dict[str, Any]:
     """
     warnings: list[dict[str, Any]] = []
     records: list[dict[str, Any]] = []
+    known = known_shas or set()
+    seen_shas: set[str] = set()
 
-    # Sort files deterministically by name for stable ordering
-    files = sorted(
-        [f for f in input_dir.iterdir() if f.is_file()],
-        key=lambda f: f.name.lower(),
-    )
-
-    for file_path in files:
+    for file_path, rel_path in iter_source_files(input_dir):
         ext = file_path.suffix.lower()
-        if ext not in _SUPPORTED_EXTENSIONS:
+        if ext in _HEIC_EXTENSIONS:
+            # Unsupported format: warn explicitly, mark preview unavailable,
+            # never silently skip.
+            warnings.append(
+                _warning(
+                    "PHOTO_UNSUPPORTED_FORMAT",
+                    f"Unsupported photo format (preview unavailable): {rel_path}",
+                    runnable=False,
+                    extra={"format": ext, "preview_available": False},
+                )
+            )
+            continue
+        if ext not in _JPEG_EXTENSIONS:
             warnings.append(
                 _warning(
                     "PHOTO_UNSUPPORTED_FILE_SKIPPED",
-                    f"Unsupported file type skipped: {file_path.name}",
+                    f"Unsupported file type skipped: {rel_path}",
                 )
             )
             continue
 
-        record_result = _process_jpeg(file_path)
-        records.append(record_result["record"])
+        record_result = _process_jpeg(file_path, rel_path, seen_shas, known, warnings)
+        record = record_result["record"]
+        if record is not None:
+            records.append(record)
         warnings.extend(record_result.get("warnings", []))
 
     return {
@@ -84,8 +114,14 @@ def scan_photo_directory(input_dir: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _process_jpeg(file_path: Path) -> dict[str, Any]:
-    """Process a single JPEG file and return a record dict."""
+def _process_jpeg(
+    file_path: Path,
+    rel_path: str,
+    seen_shas: set[str],
+    known_shas: set[str],
+    out_warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Process a single JPEG file and return a record dict (or None if skipped)."""
     from PIL import Image
 
     warnings: list[dict[str, Any]] = []
@@ -96,11 +132,29 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
     try:
         file_bytes = file_path.read_bytes()
     except OSError as exc:
-        return _unreadable_record(file_path, exc)
+        out_warnings.append(
+            _warning(
+                "PHOTO_EXIF_UNREADABLE",
+                f"Cannot read source file {rel_path}: {exc}",
+            )
+        )
+        return {"record": None, "warnings": []}
 
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
     content_hash = f"sha256:{content_sha256}"
     content_hash_prefix = content_sha256[:12]
+
+    # --- Exact content dedup (within scan and vs known imported SHAs) ---
+    if content_hash in seen_shas or content_hash in known_shas:
+        out_warnings.append(
+            _warning(
+                "PHOTO_DUPLICATE_SKIPPED",
+                f"Duplicate photo content skipped: {rel_path}",
+                extra={"content_sha256": content_hash},
+            )
+        )
+        return {"record": None, "warnings": []}
+    seen_shas.add(content_hash)
 
     # --- Open with Pillow and extract EXIF ---
     camera_make = ""
@@ -108,6 +162,8 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
     orientation: int | None = None
     gps: dict | None = None
     capture_time_iso: str | None = None
+    capture_source_tag: str | None = None
+    timezone_authority: str | None = None
     exif_readable = False
 
     try:
@@ -147,6 +203,14 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
                     if dt_digitized:
                         piexif_data["DateTimeDigitized"] = dt_digitized
 
+                    # OffsetTimeOriginal (0x9011) / OffsetTimeDigitized (0x9012)
+                    off_original = exif_ifd.get(0x9011)
+                    if off_original:
+                        piexif_data["OffsetTimeOriginal"] = off_original
+                    off_digitized = exif_ifd.get(0x9012)
+                    if off_digitized:
+                        piexif_data["OffsetTimeDigitized"] = off_digitized
+
                     # DateTime (tag 306 in main IFD, but sometimes also in ExifIFD)
                     if "DateTime" not in piexif_data:
                         dt_generic = exif_data.get(306)
@@ -171,8 +235,13 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
                 if gps_info and gps_info.get(2):
                     gps = canonicalize_gps(gps_info)
 
-                # Parse capture time
-                capture_time_iso, _source_tag, time_conflicts = parse_capture_time(piexif_data)
+                # Parse capture time (with timezone authority)
+                (
+                    capture_time_iso,
+                    capture_source_tag,
+                    time_conflicts,
+                    timezone_authority,
+                ) = parse_capture_time(piexif_data)
                 conflicts.extend(time_conflicts)
 
     except Exception as exc:
@@ -180,7 +249,7 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
         warnings.append(
             _warning(
                 "PHOTO_EXIF_UNREADABLE",
-                f"Cannot read EXIF from {file_path.name}: {exc}",
+                f"Cannot read EXIF from {rel_path}: {exc}",
             )
         )
 
@@ -199,13 +268,13 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
 
     # --- GPS warning ---
     if exif_readable and gps is None:
-        all_warnings.append(_warning("PHOTO_GPS_MISSING", f"No GPS data found in {file_path.name}"))
+        all_warnings.append(_warning("PHOTO_GPS_MISSING", f"No GPS data found in {rel_path}"))
 
     if exif_readable and (not camera_make or not camera_model):
         all_warnings.append(
             _warning(
                 "PHOTO_CAMERA_MISSING",
-                f"Camera make/model metadata incomplete in {file_path.name}",
+                f"Camera make/model metadata incomplete in {rel_path}",
             )
         )
 
@@ -228,6 +297,12 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
     )
 
     # --- Build journal ---
+    # Capture-time authority is the EXIF date (offset/naive) — never the
+    # filesystem mtime. When no capture time was recovered we use an explicit
+    # sentinel date so the planner can still allocate a target path; the
+    # unresolved/pending semantics are carried by the PHOTO_CAPTURE_TIME_*
+    # conflict (which blocks the run) and the review-queue proposal state,
+    # not by the placeholder string.
     if capture_time_iso:
         date = capture_time_iso[:10]
         title = f"Photo import: {date}"
@@ -235,7 +310,6 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
             f"Imported photo captured on {date}. " f"Review and edit this entry before confirming."
         )
     else:
-        # Placeholder date for photos without capture time
         date = "1970-01-01"
         title = "Photo import: missing capture time"
         content = (
@@ -257,11 +331,31 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
         "attachment_id": f"att_{content_hash_prefix}",
         "source_ref": src_ref,
         "source_sha256": content_hash,
-        "source_rel_path": file_path.name,
+        "source_rel_path": rel_path,
         "target_rel_path": f"attachments/{year}/{month}/import_{content_hash_prefix}.jpg",
         "media_type": "image/jpeg",
         "size_bytes": len(file_bytes),
         "copy_mode": "copy",
+    }
+
+    # --- Immutable source facts (provenance) ---
+    source_facts: dict[str, Any] = {
+        "adapter_id": ADAPTER_ID,
+        "adapter_version": ADAPTER_VERSION,
+        "content_sha256": content_hash,
+        "size_bytes": len(file_bytes),
+        "source_rel_path": rel_path,
+        "media_type": "image/jpeg",
+        "capture_time": {
+            "value": capture_time_iso,
+            "source_tag": capture_source_tag,
+            "timezone_authority": timezone_authority,
+        },
+        "gps": gps,
+        "camera_make": camera_make,
+        "camera_model": camera_model,
+        "orientation": orientation,
+        "metadata_hash": metadata_hash,
     }
 
     # --- Build record ---
@@ -269,10 +363,11 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
         "source_record_id": src_record_id,
         "source_record_fingerprint": source_record_fp,
         "source_ref": src_ref,
+        "source_facts": source_facts,
         "journal": {
             "title": title,
             "date": date,
-            "topic": "imported",
+            "topic": "life",
             "tags": ["imported", "photo"],
             "content": content,
         },
@@ -289,58 +384,23 @@ def _process_jpeg(file_path: Path) -> dict[str, Any]:
     }
 
 
-def _unreadable_record(file_path: Path, exc: OSError) -> dict[str, Any]:
-    """Build a blocked record when the source file bytes cannot be read."""
-    identity = hashlib.sha256(file_path.name.encode("utf-8")).hexdigest()
-    content_hash = f"sha256:{hashlib.sha256(b'').hexdigest()}"
-    metadata_hash = compute_metadata_hash(
-        capture_time=None,
-        gps=None,
-        camera_make="",
-        camera_model="",
-        orientation=None,
-    )
-    source_record_fp = compute_source_record_fingerprint(
-        adapter_id=ADAPTER_ID,
-        adapter_version=ADAPTER_VERSION,
-        normalized_identity=f"unreadable:{identity}",
-        content_hash=content_hash,
-        metadata_hash=metadata_hash,
-    )
-    record: dict[str, Any] = {
-        "source_record_id": f"photo_unreadable_{identity[:12]}",
-        "source_record_fingerprint": source_record_fp,
-        "source_ref": f"source://media.photo_timeline/unreadable/{identity[:12]}",
-        "journal": {
-            "title": "Photo import: unreadable source",
-            "date": "1970-01-01",
-            "topic": "imported",
-            "tags": ["imported", "photo"],
-            "content": (
-                "Imported photo source could not be read. "
-                "Review the source file before confirming."
-            ),
-        },
-        "attachments": [],
-        "warnings": [],
-        "conflicts": [
-            _conflict(
-                "PHOTO_SOURCE_UNREADABLE",
-                f"Cannot read source file {file_path.name}: {exc}",
-            )
-        ],
-    }
-    return {"record": record, "warnings": []}
-
-
-def _warning(code: str, message: str) -> dict[str, Any]:
+def _warning(
+    code: str,
+    message: str,
+    *,
+    runnable: bool = True,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build a structured photo warning."""
-    return {
+    entry: dict[str, Any] = {
         "code": code,
         "severity": "warning",
-        "runnable": True,
+        "runnable": runnable,
         "message": message,
     }
+    if extra:
+        entry.update(extra)
+    return entry
 
 
 def _conflict(code: str, message: str) -> dict[str, Any]:

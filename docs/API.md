@@ -2036,6 +2036,169 @@ Tranche A 将以下内容纳入兼容性承诺：
 都属于破坏性变更，必须升级对应 schema 并补 contract tests。兼容扩展可以继续
 使用现有 schema，但不得让旧消费者误判 import state 或 durable write boundary。
 
+### Review queue & batch import（additive，M7 历史照片冷启动）
+
+本节是 **additive** 扩展：它新增一个可恢复照片审阅队列、分批导入、批次回滚和
+源不可变性能力，全部复用现有 import ledger / rollback manifest / fingerprint
+权威。`import plan` / `import run --plan … --confirm …` / `import status` /
+`import rollback` 的既有 Tranche A/B 行为保持不变；下列命令与字段均为新增，旧
+消费者忽略未知字段即可。`media.photo_timeline` 的 source facts 不可变：adapter /
+provenance、content SHA-256、size、source 相对路径、capture time value/source/
+timezone authority、GPS、source relation 与 attachment relation 都是 source facts；
+用户只能编辑 journal `title` / `date` / `topic` / `tags` / `content` 与 proposal /
+attachment selection，用户编辑是最高事实但不能改写 source facts。
+
+#### Proposal lifecycle
+
+`media.photo_timeline` proposal 增加 additive 状态字段 `state`，取值：
+`pending`（plan 阶段）、`confirmed`（`import confirm` 持久化后）、`skipped`
+（该 proposal 所有 attachment 被取消选择，不创建空 journal）、`stale`
+（批次准备时 source 内容/大小已变或源文件被删除，从本批排除）、`batching`
+（已进入某个 active child batch）、`imported`（child batch committed）。
+成功 rollback 一个 child batch 后，其 parent proposal 恢复为 `confirmed`。
+
+`media.photo_timeline` 现支持 JPEG/`.jpg`/`.jpeg`；`.heic` / `.heif` 明确
+unsupported：发出 `PHOTO_UNSUPPORTED_FORMAT` warning 且标记 preview unavailable，
+不静默跳过。adapter 递归只读扫描源目录，跳过 symlink / junction / reparse
+point、root escape 与目录循环。精确 content SHA-256 去重：同名不同内容保留为
+独立记录；扫描时读取同一 import ledger / job 权威中已 `confirmed` / `imported`
+的 attachment SHA，避免重复候选。
+
+日期规则：可信且带 offset 的 EXIF 用其本地 calendar date；无 offset 的 EXIF
+按相机本地日期，不猜时区；多日期来源冲突或完全缺失进入 unresolved（`pending`）
+bucket 等用户定 date；绝不以文件 mtime 冒充 capture time。可信日聚合为一个
+editable proposal（多附件）；`PHOTO_CAPTURE_TIME_MISSING` /
+`PHOTO_CAPTURE_TIME_AMBIGUOUS` 的记录成为待处理 proposal（不自动归入某天）。
+Planning 阶段不复制任何正式附件字节。
+
+#### `import confirm`
+
+```bash
+life-index import confirm --plan <review-plan.json> [--source-root <dir>] [--import-id <parent_id>] --json
+```
+
+把完整 review plan 原子持久化到固定路径
+`.life-index/import-jobs/<parent_id>/review-plan.json`，并在同一 ledger 记录一个
+parent review job（additive `kind: "review"`）。写入采用 temp 文件 + fsync +
+atomic replace；并发安全由 per-parent single-writer lock 保证（复用 repo 既有
+`FileLock`）。`confirm` 必须重新计算 / 校验 immutable fingerprints 与 selected
+attachment ids；tamper（指纹/selected id 不匹配）返回 `IMPORT_PLAN_INVALID` 并
+拒绝持久化。返回 `data.schema_version = "import_review.v1"`，含 `parent_id`、
+`source_root_identity`、各 proposal `state`、derived queue counts（`confirmed` /
+`skipped` / `pending` / `stale` 计数）。
+
+固定路径：
+
+```text
+.life-index/import-jobs/<parent_id>/review-plan.json
+.life-index/import-jobs/<parent_id>/review.lock   (per-parent single-writer lock)
+```
+
+#### `import validate` / `import rebind`
+
+```bash
+life-index import validate --source-root <dir> --json
+life-index import rebind --import-id <parent_id> --source-root <dir> --json
+```
+
+Directory path v1 不假装浏览器能 handle：定位是 explicit path + CLI
+validate/rebind。`validate` 返回 canonical readable dir 与 root identity
+fingerprint（基于目录规范化路径与稳定属性的确定性 SHA-256）。parent 只存 root
+identity，不把绝对路径放进公开 plan/review-plan。restart 后可用 `import-id`
+恢复队列；但 `confirm` / `run` / `preview` 必须用当前 rebound locator（`rebind`
+或 `--source-root`）重新验证同一 root identity，不匹配返回
+`IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH`。
+
+#### `import preview`（read-only）
+
+```bash
+life-index import preview --import-id <parent_id> --attachment <attachment_id> [--source-root <dir>] [--output -|<path>] [--metadata-output <path>] --json
+```
+
+只读：输入 parent / proposal / attachment + rebound source root，只读取已持久化
+`review-plan.json` 引用的文件，复用既有 confinement / reparse checks；先校验
+expected SHA-256 与 size，再输出可供 backend 流式传输的 bytes / metadata；绝不
+修改源 hash / mtime。`unsupported` / `stale` / `missing` / invalid root /
+unreferenced attachment 返回结构化 unavailable / error（`IMPORT_PREVIEW_UNAVAILABLE`
+等）。`--output -` 时 stdout 为 raw bytes，metadata 经 `--metadata-output` 落盘。
+
+#### Batch `import run`（single active child）
+
+```bash
+life-index import run --import-id <parent_id> [--source-root <dir>] --json
+```
+
+（与既有 `--plan/--confirm` 路径并存；带 `--import-id` 且该 id 是 parent review
+job 时进入 batch 路径。）parent 同一时刻只允许一个 active child batch。batch run
+在 per-parent lock 内：先做幂等 reconciliation，再记录 `active_child_id` /
+selected proposal ids / transition intent（durable），并把 selected `confirmed`
+proposal 转为 `batching`；之后创建 child batch job。
+
+- 并发 / 重复 run（已有未结算 active child）返回 `IMPORT_BATCH_ALREADY_ACTIVE`。
+- child 是同一 ledger / manifest / fingerprint 权威下的普通 batch job
+  （`kind: "batch"`，`parent_review_job_id` 指回 parent）。
+- 既有 fixture `--plan/--confirm` plan/run 行为保持不变。
+
+每次 parent status / new run / child rollback projection 都先在 parent lock 内做
+幂等 reconciliation：
+
+- 无 child 或无 durable evidence（无 ledger 条目 / 无 committed manifest）→ 清
+  active_child_id 并把相关 proposal 恢复 `confirmed`；
+- child `committed` → 投影 parent proposal 为 `imported`，清 active_child_id；
+- child partial / failed 且有 created evidence → 用既有 checksum-guarded rollback
+  补偿；补偿全成功才恢复 `confirmed`，否则保持 `batching` + `recovery_required`；
+- child `rolled_back` → 恢复 `confirmed`；
+- 未知证据 fail closed（保持 `batching` + `recovery_required`）。该 reconcile 覆盖
+  crash-after-batching-before-child、child-before-manifest、commit-before-projection、
+  重复 reconciliation 四个窗口。
+
+stale 默认确定：batch 准备阶段对 selected proposal 重新哈希 source，changed /
+deleted 的 proposal 标 `stale` 并从本批排除，其余继续；全 stale / 无 runnable 则
+不创建 child，返回结构化 `IMPORT_NO_RUNNABLE_PROPOSALS`。实际复制时再次关闭
+TOCTOU：source 以只读流式复制到 create-only staging，同时计算 SHA-256 / size；
+匹配后才 atomic 发布 final attachment；journal frontmatter 在发布前不得引用
+staging；不匹配触发 child failure + manifest compensation。源 hash / mtime 保持
+不变。
+
+child batch journal 必须符合 canonical journal schema（`schema_version`、合法
+`topic`——photo 默认 `life`，不扩展 canonical topic 集合、`field_sources`、
+provenance、frontmatter `attachments` 为 SSOT），只发布 selected attachments，尽
+量复用现有 canonical helpers / authority。失败可返回明确 `recovery_required`，但
+不得留下模糊半成品。
+
+#### `import status`（additive）
+
+对 parent review job，`status` 额外返回各 proposal `state`、derived queue counts、
+`active_child_id`、`recovery_required`、`source_root_identity`。既有 job（fixture /
+child batch）的 status 字段不变。
+
+#### `import rollback`（additive）
+
+`import rollback --import-id <parent_id>` 明确返回
+`IMPORT_ROLLBACK_PARENT_NOT_ALLOWED`：parent review job 不可整体回滚，应回滚其
+child batch job。child batch job 的 rollback 复用既有 checksum-guarded rollback；
+成功后 parent reconciliation 把对应 proposal 恢复 `confirmed`，rescan 仍识别
+`confirmed` / `imported`，被 rollback 恢复的 `confirmed` 不重复。
+
+#### Review/batch additive 错误码
+
+| code | 说明 |
+|---|---|
+| `IMPORT_ROLLBACK_PARENT_NOT_ALLOWED` | 对 parent review job 调用 rollback 被拒绝 |
+| `IMPORT_BATCH_ALREADY_ACTIVE` | parent 已有未结算 active child batch |
+| `IMPORT_NO_RUNNABLE_PROPOSALS` | 本批无 runnable proposal（全 stale / 全 skipped） |
+| `IMPORT_SOURCE_ROOT_UNREADABLE` | source root 不可读或非目录 |
+| `IMPORT_SOURCE_ROOT_IDENTITY_MISMATCH` | 当前 locator 的 root identity 与 parent 记录不符 |
+| `IMPORT_REVIEW_PLAN_MISSING` | 缺少持久化 review-plan.json |
+| `IMPORT_PREVIEW_UNAVAILABLE` | preview 目标 unavailable（unsupported / stale / missing / unreferenced） |
+| `IMPORT_RECOVERY_REQUIRED` | parent 处于需要人工/补偿恢复的 `batching` 状态 |
+
+#### Review/batch additive schema versions
+
+新增子对象 schema（additive，不改动既有 `import_*` 字符串）：
+`import_review.v1`（confirm）、`import_review_plan.v1`（持久化 review-plan.json）、
+`import_preview.v1`（preview metadata）。消费者必须忽略未知字段。
+
 ---
 
 ## search_journals

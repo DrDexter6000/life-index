@@ -181,14 +181,24 @@ def compute_metadata_hash(
 # ---------------------------------------------------------------------------
 
 
-def parse_capture_time(exif_data: dict) -> tuple[str | None, str | None, list[dict]]:
+def parse_capture_time(
+    exif_data: dict,
+) -> tuple[str | None, str | None, list[dict], str | None]:
     """Extract capture time from EXIF with precedence.
 
     Precedence: DateTimeOriginal (36867) > CreateDate (36868) > DateTime (306).
 
-    Returns ``(iso_time, source_tag, conflicts)`` where *iso_time* is the
-    selected time in ISO-8601 format, *source_tag* is the EXIF tag name, and
-    *conflicts* is a list of conflict dicts (empty when unambiguous).
+    Returns ``(iso_time, source_tag, conflicts, timezone_authority)`` where
+    *iso_time* is the selected time in ISO-8601 format, *source_tag* is the
+    EXIF tag name, *conflicts* is a list of conflict dicts (empty when
+    unambiguous), and *timezone_authority* is one of:
+
+    - ``"exif_offset"`` — a trustworthy EXIF UTC offset (OffsetTimeOriginal /
+      OffsetTimeDigitized / OffsetTime) accompanied the chosen date; the local
+      calendar date is authoritative and is used verbatim (never converted).
+    - ``"exif_naive"`` — a capture date exists but carries no offset; it is
+      treated as the camera's local date and the timezone is never guessed.
+    - ``None`` — no capture date was recovered.
     """
     # EXIF tag IDs (piexif uses human-readable keys)
     date_original = exif_data.get("DateTimeOriginal")
@@ -224,23 +234,27 @@ def parse_capture_time(exif_data: dict) -> tuple[str | None, str | None, list[di
             None,
             None,
             [{"code": "PHOTO_CAPTURE_TIME_MISSING", "message": "No EXIF capture time found"}],
+            None,
         )
+
+    chosen_tag: str
+    chosen_iso: str
+    conflicts: list[dict]
 
     # Precedence: DateTimeOriginal > CreateDate > DateTime
     if len(candidates) == 1:
-        return candidates[0][1], candidates[0][0], []
-
-    # Check for ambiguous dates (different date parts)
-    primary = candidates[0]
-    primary_date = primary[1][:10]  # YYYY-MM-DD
-
-    for other in candidates[1:]:
-        other_date = other[1][:10]
-        if other_date != primary_date:
-            return (
-                primary[1],
-                primary[0],
-                [
+        chosen_tag = candidates[0][0]
+        chosen_iso = candidates[0][1]
+        conflicts = []
+    else:
+        # Check for ambiguous dates (different date parts)
+        primary = candidates[0]
+        primary_date = primary[1][:10]  # YYYY-MM-DD
+        ambiguous = False
+        for other in candidates[1:]:
+            other_date = other[1][:10]
+            if other_date != primary_date:
+                conflicts = [
                     {
                         "code": "PHOTO_CAPTURE_TIME_AMBIGUOUS",
                         "message": (
@@ -249,11 +263,77 @@ def parse_capture_time(exif_data: dict) -> tuple[str | None, str | None, list[di
                             f"{other[0]}={other[2]}"
                         ),
                     }
-                ],
-            )
+                ]
+                chosen_tag = primary[0]
+                chosen_iso = primary[1]
+                ambiguous = True
+                break
+        if not ambiguous:
+            # Same date, different times — use the primary (highest precedence)
+            chosen_tag = primary[0]
+            chosen_iso = primary[1]
+            conflicts = []
 
-    # Same date, different times — use the primary (highest precedence)
-    return primary[1], primary[0], []
+    # Resolve timezone authority. An offset accompanying the chosen tag makes
+    # the date authoritative as-is; a date without offset is camera-local naive.
+    offset = _read_exif_offset(exif_data, chosen_tag)
+    authority = "exif_offset" if offset is not None else "exif_naive"
+    return chosen_iso, chosen_tag, conflicts, authority
+
+
+def _read_exif_offset(exif_data: dict, chosen_tag: str) -> str | None:
+    """Return a normalised EXIF UTC offset string for the chosen date tag.
+
+    Looks up OffsetTimeOriginal / OffsetTimeDigitized / OffsetTime in priority
+    order matching the chosen tag, then falls back to any present offset.
+    Returns the offset string (e.g. ``"+05:00"``) or ``None`` when absent or
+    malformed. The offset is never applied to convert the calendar date.
+    """
+    preferred = {
+        "DateTimeOriginal": "OffsetTimeOriginal",
+        "CreateDate": "OffsetTimeDigitized",
+        "DateTime": "OffsetTime",
+    }
+    keys = [preferred.get(chosen_tag)] + [
+        "OffsetTimeOriginal",
+        "OffsetTimeDigitized",
+        "OffsetTime",
+    ]
+    seen: set[str] = set()
+    for key in keys:
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        raw = exif_data.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, bytes):
+            raw = raw.decode("ascii", errors="replace")
+        normalised = _normalise_exif_offset(str(raw).strip())
+        if normalised is not None:
+            return normalised
+    return None
+
+
+def _normalise_exif_offset(raw: str) -> str | None:
+    """Normalise an EXIF offset string (``+05:00`` / ``+0500`` / ``+05``)."""
+    if not raw:
+        return None
+    sign = ""
+    rest = raw
+    if rest[0] in "+-":
+        sign = rest[0]
+        rest = rest[1:]
+    digits = rest.replace(":", "")
+    if not digits.isdigit() or len(digits) > 4:
+        return None
+    if len(digits) <= 2:
+        hours = digits.zfill(2)
+        minutes = "00"
+    else:
+        hours = digits[:2]
+        minutes = digits[2:4]
+    return f"{sign}{hours}:{minutes}"
 
 
 def _exif_date_to_iso(raw: str) -> str | None:

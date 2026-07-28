@@ -25,6 +25,26 @@ def sha256_hash(data: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def group_source_fingerprint(member_fingerprints: list[str]) -> str:
+    """Effective ``source_record_fingerprint`` for an aggregated photo proposal.
+
+    A size-1 group passes the single member fingerprint through unchanged, so
+    single-photo proposals keep identical fingerprints to the legacy 1:1 path.
+    A multi-photo group uses a stable combined digest of its members. This is
+    the immutable aggregation key — it depends only on which source records a
+    proposal spans, never on user-editable journal fields.
+    """
+    if len(member_fingerprints) == 1:
+        return member_fingerprints[0]
+    return sha256_hash(
+        "life-index.photo-group.v1\0" + ",".join(sorted(member_fingerprints))
+    )
+
+
+# Backwards-compatible private alias used by older callers.
+_group_source_fingerprint = group_source_fingerprint
+
+
 def compute_source_record_fingerprint(
     adapter_id: str,
     adapter_version: str,
