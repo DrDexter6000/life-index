@@ -24,7 +24,9 @@ import datetime
 import hashlib
 import json
 import os
+import posixpath
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -792,9 +794,17 @@ def _reconcile_review_authority_locked(
     ledger_fp = job.get("plan_fingerprint")
     if persisted_fp is not None and ledger_fp and persisted_fp != ledger_fp:
         # Unexplained mismatch: plan and ledger disagree with nothing to explain
-        # it. Fail closed rather than silently picking an authority.
+        # it. Fail closed rather than silently picking an authority. Once
+        # already fail-closed for this same mismatch, repeated status is a no-op
+        # (convergence) and must not rewrite unchanged state.
+        already_closed = (
+            job.get("recovery_required") is True
+            and job.get("authority_status") == AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
+        )
         job["recovery_required"] = True
         job["authority_status"] = AUTHORITY_STATUS_PLAN_LEDGER_MISMATCH
+        if already_closed:
+            return False
         job["updated_at"] = _now_iso()
         return True
 
@@ -815,11 +825,19 @@ def _reconcile_review_authority_locked(
 
 
 def reconcile_review_authority(data_dir: Path, parent_id: str) -> None:
-    """Locking entry point: reconcile a parent's plan/ledger authority."""
+    """Locking entry point: reconcile a parent's plan/ledger authority + child.
+
+    Both the plan/ledger authority and the active child are reconciled under
+    the single per-parent lock, so ``status`` (which calls this) surfaces a
+    converged, executable recovery state just like ``run``/``rollback``. The
+    ledger is written only when something actually changed (convergence).
+    """
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
         ledger = _read_ledger(data_dir)
-        if _reconcile_review_authority_locked(ledger, parent_id, data_dir):
+        changed = _reconcile_review_authority_locked(ledger, parent_id, data_dir)
+        changed = _reconcile_parent(ledger, parent_id, data_dir) or changed
+        if changed:
             _write_ledger(data_dir, ledger)
 
 
@@ -1432,60 +1450,293 @@ def _detect_stale(
     return runnable, stale_ids
 
 
-def _toctou_copy(
-    source_abs: Path, target_abs: Path, expected_sha: str, expected_size: int
-) -> tuple[bool, str]:
-    """Read-only stream -> create-only staging -> atomic publish.
+# Bounded chunk size for streaming attachment/journal bytes into staging. The
+# copy never loads a whole file into memory: bytes flow read->hash->write in
+# fixed-size chunks, so even a very large source is published incrementally.
+_STREAM_CHUNK_SIZE = 64 * 1024
 
-    Returns ``(ok, actual_sha_or_reason)``. Never writes to the source; the
-    final attachment is published atomically only when the streamed SHA/size
-    match the review plan.
+
+def _drain_source_to_staging(
+    src_fp: Any,
+    dst_fp: Any,
+    expected_sha: str,
+    expected_size: int,
+    chunk_size: int = _STREAM_CHUNK_SIZE,
+) -> tuple[bool, str]:
+    """Stream ``src_fp`` into ``dst_fp`` in bounded chunks while hashing.
+
+    Hashes and counts bytes as they flow, then flushes + fsyncs the staging
+    file. Returns ``(ok, actual_sha_or_reason)``. A source whose streamed
+    content/size diverges from the expected values (mutation, truncation, or
+    deletion during the copy) yields ``(False, reason)`` so the caller publishes
+    nothing. Never writes to the source.
     """
+    hasher = hashlib.sha256()
+    written = 0
     try:
-        data = source_abs.read_bytes()
+        while True:
+            chunk = src_fp.read(chunk_size)
+            if not chunk:
+                break
+            hasher.update(chunk)
+            written += len(chunk)
+            dst_fp.write(chunk)
+        dst_fp.flush()
+        try:
+            os.fsync(dst_fp.fileno())
+        except OSError:
+            pass
     except OSError as exc:
         return False, f"unreadable:{exc}"
-    actual_sha = "sha256:" + hashlib.sha256(data).hexdigest()
+    actual_sha = "sha256:" + hasher.hexdigest()
     if actual_sha != expected_sha:
         return False, "sha_mismatch"
-    if len(data) != expected_size:
+    if written != expected_size:
         return False, "size_mismatch"
-    target_abs.parent.mkdir(parents=True, exist_ok=True)
-    if target_abs.exists():
-        return False, "target_exists"
-    staging = target_abs.with_name(
-        target_abs.name + ".staging-" + actual_sha.removeprefix("sha256:")[:8]
-    )
-    staging.write_bytes(data)
-    try:
-        os.replace(staging, target_abs)  # atomic publish
-    finally:
-        if staging.exists():
-            try:
-                staging.unlink()
-            except OSError:
-                pass
     return True, actual_sha
 
 
-def _reconcile_parent(ledger: dict[str, Any], parent_id: str, data_dir: Path) -> None:
+def _stream_to_staging(
+    source_abs: Path,
+    staging_abs: Path,
+    expected_sha: str,
+    expected_size: int,
+    chunk_size: int = _STREAM_CHUNK_SIZE,
+) -> tuple[bool, str]:
+    """Open source + staging and stream bounded chunks into ``staging_abs``."""
+    try:
+        with open(source_abs, "rb") as src, open(staging_abs, "wb") as dst:
+            return _drain_source_to_staging(
+                src, dst, expected_sha, expected_size, chunk_size
+            )
+    except OSError as exc:
+        return False, f"unreadable:{exc}"
+
+
+def _file_identity(path: Path) -> tuple[int, int]:
+    st = path.stat()
+    return st.st_dev, st.st_ino
+
+
+def _publish_create_only(staging_abs: Path, target_abs: Path) -> None:
+    """Atomically publish a staged file via a create-only hard link.
+
+    The hard link fails (``FileExistsError``) if the final path already exists,
+    so a transaction never overwrites an existing target. The staged bytes and
+    the final path share one inode on the same filesystem; the caller unlinks
+    the staging name afterwards. Any other ``OSError`` is raised so the caller
+    can compensate and fail closed rather than fall back to a clobbering
+    rename/replace. Works on POSIX and Windows.
+    """
+    target_abs.parent.mkdir(parents=True, exist_ok=True)
+    staged_identity = _file_identity(staging_abs)
+    os.link(staging_abs, target_abs)
+    if _file_identity(target_abs) != staged_identity:
+        # Another writer raced the publication; do not trust the link.
+        raise OSError(f"publication identity changed: {target_abs}")
+
+
+def _unique_staging(target_abs: Path) -> Path:
+    """Allocate a unique same-filesystem staging path beside ``target_abs``."""
+    fd, staging_str = tempfile.mkstemp(
+        dir=str(target_abs.parent),
+        prefix=f".{target_abs.name}.staging-",
+        suffix=".tmp",
+    )
+    os.close(fd)
+    return Path(staging_str)
+
+
+def _stream_copy(
+    source_abs: Path,
+    target_abs: Path,
+    expected_sha: str,
+    expected_size: int,
+    chunk_size: int = _STREAM_CHUNK_SIZE,
+) -> tuple[bool, str]:
+    """Read-only stream -> unique same-filesystem staging -> create-only publish.
+
+    Returns ``(ok, actual_sha_or_reason)``. Never writes to the source; the
+    final attachment is published (create-only) only when the streamed SHA/size
+    match the review plan. Staging is removed on every path (success, mismatch,
+    collision, and publish failure), so a mutated/deleted/colliding source
+    leaves no final artifact and no staging leftover. Source hash and mtime
+    stay unchanged.
+    """
+    target_abs.parent.mkdir(parents=True, exist_ok=True)
+    staging_abs = _unique_staging(target_abs)
+    try:
+        ok, info = _stream_to_staging(
+            source_abs, staging_abs, expected_sha, expected_size, chunk_size
+        )
+        if not ok:
+            return False, info
+        try:
+            _publish_create_only(staging_abs, target_abs)
+        except FileExistsError:
+            return False, "target_exists"
+        except OSError as exc:
+            return False, f"publish_failed:{exc}"
+        return True, info
+    finally:
+        if staging_abs.exists():
+            try:
+                staging_abs.unlink()
+            except OSError:
+                pass
+
+
+def _publish_text_create_only(target_abs: Path, text: str) -> tuple[bool, str]:
+    """Stage UTF-8 text + fsync, then create-only publish; never overwrite.
+
+    Used for canonical journal publication: the journal bytes are staged on the
+    same filesystem, fsynced, then hard-linked into place only when the target
+    does not already exist. Staging is removed on every path.
+    """
+    target_abs.parent.mkdir(parents=True, exist_ok=True)
+    staging_abs = _unique_staging(target_abs)
+    try:
+        with open(staging_abs, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                pass
+        try:
+            _publish_create_only(staging_abs, target_abs)
+        except FileExistsError:
+            return False, "target_exists"
+        except OSError as exc:
+            return False, f"publish_failed:{exc}"
+        return True, ""
+    finally:
+        if staging_abs.exists():
+            try:
+                staging_abs.unlink()
+            except OSError:
+                pass
+
+
+def _journal_relative_path(journal_rel: str, att_rel: str) -> str:
+    """Attachment path relative to the journal file (POSIX, OS-independent).
+
+    Both inputs are data-dir-relative POSIX paths. For the canonical layout a
+    journal at ``Journals/YYYY/MM/...`` references an attachment at
+    ``attachments/YYYY/MM/...`` as ``../../../attachments/...``.
+    """
+    return posixpath.relpath(att_rel, start=posixpath.dirname(journal_rel))
+
+
+def _canonical_attachment_entry(
+    att: dict[str, Any], journal_rel: str
+) -> dict[str, Any]:
+    """Build the canonical stored attachment object for journal frontmatter.
+
+    Matches ``tools/write_journal/attachments.process_attachments`` exactly:
+    ``{filename, rel_path, description, original_name, auto_detected,
+    content_type, size}`` where ``rel_path`` is journal-relative. Source SHA /
+    provenance live only in the import plan / child manifest, never in journal
+    frontmatter. The source is never sent through content auto-detection.
+    """
+    att_rel = att.get("target_rel_path", "")
+    return {
+        "filename": posixpath.basename(att_rel),
+        "rel_path": _journal_relative_path(journal_rel, att_rel),
+        "description": "",
+        "original_name": posixpath.basename(
+            att.get("source_rel_path", "") or att_rel
+        ),
+        "auto_detected": False,
+        "content_type": att.get("media_type", ""),
+        "size": att.get("size_bytes"),
+    }
+
+
+def _validate_committed_manifest(
+    data_dir: Path,
+    child_id: str,
+    parent_id: str,
+    manifest: dict[str, Any] | None,
+) -> tuple[bool, str]:
+    """Validate a committed rollback manifest before trusting it as the commit fact.
+
+    Confines every created-file path under ``data_dir`` and verifies each
+    artifact against its recorded hash/size, and checks schema / state /
+    import-id / parent linkage. Returns ``(valid, reason)``. A child ledger
+    that claims committed but has a missing, invalid, non-committed,
+    wrong-parent, or wrong-import manifest fails closed here; it is never used
+    to project imported.
+    """
+    from tools.ingest.runner import _file_sha256, _resolve_confined_file_path
+
+    if not isinstance(manifest, dict):
+        return False, "manifest_missing"
+    if manifest.get("schema_version") != ROLLBACK_MANIFEST_SCHEMA_VERSION:
+        return False, "schema_mismatch"
+    if manifest.get("state") != "committed":
+        return False, "manifest_not_committed"
+    if manifest.get("import_id") != child_id:
+        return False, "wrong_import_id"
+    if manifest.get("parent_review_job_id") != parent_id:
+        return False, "wrong_parent"
+    created = manifest.get("created_files")
+    if not isinstance(created, list):
+        return False, "no_created_files"
+    for entry in created:
+        if not isinstance(entry, dict) or not entry.get("created_by_import", False):
+            continue
+        rel = entry.get("rel_path")
+        confined = _resolve_confined_file_path(data_dir, rel)
+        if confined is None:
+            return False, f"unconfined:{rel}"
+        if not confined.exists():
+            return False, f"missing:{rel}"
+        if entry.get("sha256_after") != "sha256:" + _file_sha256(confined):
+            return False, f"hash_mismatch:{rel}"
+        expected_size = entry.get("size_bytes")
+        if expected_size is not None and confined.stat().st_size != expected_size:
+            return False, f"size_mismatch:{rel}"
+    return True, ""
+
+
+def _reconcile_parent(
+    ledger: dict[str, Any], parent_id: str, data_dir: Path
+) -> bool:
     """Idempotently reconcile a parent's active child across crash windows.
 
-    Covers: crash-after-batching-before-child, child-before-manifest,
-    commit-before-projection, and repeated reconciliation. Mutates the parent
-    job in *ledger* in place (caller persists).
+    Returns True iff the parent projection changed; callers persist only then,
+    so repeated status/run/rollback converge without rewriting unchanged state.
+    The caller holds the per-parent lock.
+
+    Crash windows handled:
+
+    - No child job and no durable created evidence -> restore the exact child
+      ``proposal_ids`` to confirmed and clear the active child.
+    - A valid committed rollback manifest is the durable commit fact: if the
+      child ledger projection was interrupted, reconcile the child to committed
+      and project its proposals to imported.
+    - A child ledger that claims committed but has a missing/invalid/
+      non-committed/wrong-parent/wrong-import manifest fails closed
+      (``recovery_required``); it never projects imported.
+    - running / partially_committed / failed with created evidence ->
+      checksum-guarded compensation; restore confirmed only on complete
+      compensation, else retain batching + ``recovery_required``.
+    - running with no evidence is ambiguous (possible live writer) ->
+      ``recovery_required``, retain the active child.
     """
     from tools.ingest.runner import _read_rollback_manifest, execute_rollback
 
     jobs = ledger.get("jobs", {})
     job = jobs.get(parent_id)
-    if not isinstance(job, dict):
-        return
+    if not isinstance(job, dict) or job.get("kind") != "review":
+        return False
     child_id = job.get("active_child_id")
     if not child_id:
-        return
-    proposal_states = dict(job.get("proposal_states", {}) or {})
+        # Already settled (no active child): a pure no-op for convergence.
+        return False
 
+    proposal_states = dict(job.get("proposal_states", {}) or {})
     child_job = jobs.get(child_id)
     child_manifest = _read_rollback_manifest(data_dir, child_id)
     child_state = child_job.get("state") if isinstance(child_job, dict) else None
@@ -1498,8 +1749,13 @@ def _reconcile_parent(ledger: dict[str, Any], parent_id: str, data_dir: Path) ->
         or job.get("selected_proposal_ids")
         or []
     )
+    has_evidence = bool(
+        isinstance(child_manifest, dict)
+        and isinstance(child_manifest.get("created_files"), list)
+        and child_manifest["created_files"]
+    )
 
-    def _restore_confirmed() -> None:
+    def restore_confirmed() -> None:
         # Any selected proposal this batch touched (batching or already
         # imported) goes back to confirmed so the user can re-run after a
         # rollback or a crashed/interrupted child.
@@ -1507,55 +1763,80 @@ def _reconcile_parent(ledger: dict[str, Any], parent_id: str, data_dir: Path) ->
             if proposal_states.get(pid) in (STATE_BATCHING, STATE_IMPORTED):
                 proposal_states[pid] = STATE_CONFIRMED
 
-    # Window 1: batch transition recorded but no child evidence at all.
-    if not child_job and not child_manifest:
-        job["active_child_id"] = None
-        _restore_confirmed()
-        job["proposal_states"] = proposal_states
-        job["recovery_required"] = False
-        return
-
-    # Window 3: child committed -> project imported, clear active child.
-    if child_state == "committed":
+    def project_imported() -> None:
         for pid in selected:
             proposal_states[pid] = STATE_IMPORTED
-        job["active_child_id"] = None
-        job["proposal_states"] = proposal_states
-        job["recovery_required"] = False
-        return
 
-    # Child rolled back -> restore confirmed.
+    def apply(*, active_child_id: str | None, recovery_required: bool) -> bool:
+        changed = False
+        if job.get("proposal_states") != proposal_states:
+            job["proposal_states"] = proposal_states
+            changed = True
+        if job.get("active_child_id") != active_child_id:
+            job["active_child_id"] = active_child_id
+            changed = True
+        if bool(job.get("recovery_required", False)) != recovery_required:
+            job["recovery_required"] = recovery_required
+            changed = True
+        if changed:
+            job["updated_at"] = _now_iso()
+        return changed
+
+    # 1. A valid committed manifest is the durable commit fact. This covers a
+    #    child whose ledger projection was interrupted (manifest committed, but
+    #    the child/parent ledger writes did not complete): trust the manifest,
+    #    reconcile the child to committed, and project imported. A child that
+    #    claims committed but has a missing/invalid/non-committed/wrong-linkage
+    #    manifest fails closed here and never projects imported.
+    if (
+        isinstance(child_manifest, dict) and child_manifest.get("state") == "committed"
+    ) or child_state == "committed":
+        valid, _reason = _validate_committed_manifest(
+            data_dir, child_id, parent_id, child_manifest
+        )
+        if valid:
+            if isinstance(child_job, dict) and child_state != "committed":
+                child_job["state"] = "committed"
+                child_job["updated_at"] = _now_iso()
+            project_imported()
+            return apply(active_child_id=None, recovery_required=False)
+        return apply(active_child_id=child_id, recovery_required=True)
+
+    # 2. Child rolled back -> restore confirmed.
     if child_state == "rolled_back":
-        _restore_confirmed()
-        job["active_child_id"] = None
-        job["proposal_states"] = proposal_states
-        job["recovery_required"] = False
-        return
+        restore_confirmed()
+        return apply(active_child_id=None, recovery_required=False)
 
-    has_created_evidence = bool(child_manifest and child_manifest.get("created_files"))
+    # 3. Our write-failure states, or a crashed running child that left created
+    #    evidence -> checksum-guarded compensation of only this child's files.
+    #    Restore confirmed only on complete compensation; a prior compensation
+    #    that already failed (manifest rolled back_failed) stays fail-closed
+    #    without re-attempting.
+    if child_state in ("partially_committed", "failed") or (
+        child_state == "running" and has_evidence
+    ):
+        if has_evidence:
+            manifest_state = (
+                child_manifest.get("state") if isinstance(child_manifest, dict) else None
+            )
+            if manifest_state == "rollback_failed":
+                return apply(active_child_id=child_id, recovery_required=True)
+            comp = execute_rollback(import_id=child_id, data_dir=data_dir)
+            if comp["success"]:
+                restore_confirmed()
+                return apply(active_child_id=None, recovery_required=False)
+            return apply(active_child_id=child_id, recovery_required=True)
+        restore_confirmed()
+        return apply(active_child_id=None, recovery_required=False)
 
-    # Child partial/failed WITH created evidence -> compensate, then restore.
-    if child_state in ("partially_committed", "failed") and has_created_evidence:
-        comp = execute_rollback(import_id=child_id, data_dir=data_dir)
-        if comp["success"]:
-            _restore_confirmed()
-            job["active_child_id"] = None
-            job["recovery_required"] = False
-        else:
-            job["recovery_required"] = True
-        job["proposal_states"] = proposal_states
-        return
-
-    # Child still running (possible live writer) -> fail closed.
+    # 4. running with no evidence is ambiguous (possible live writer): fail
+    #    closed and retain the active child rather than auto-clearing.
     if child_state == "running":
-        job["recovery_required"] = True
-        return
+        return apply(active_child_id=child_id, recovery_required=True)
 
-    # Unknown / failed-without-evidence -> safe to clear and restore.
-    _restore_confirmed()
-    job["active_child_id"] = None
-    job["proposal_states"] = proposal_states
-    job["recovery_required"] = False
+    # 5. No child job / unknown settled state -> restore confirmed + clear.
+    restore_confirmed()
+    return apply(active_child_id=None, recovery_required=False)
 
 
 def _execute_child_batch(  # noqa: C901
@@ -1618,9 +1899,13 @@ def _execute_child_batch(  # noqa: C901
             journal_abs = _resolve_confined_file_path(data_dir, journal_rel)
             if journal_abs is None:
                 raise RuntimeError(f"Unsafe journal target: {journal_rel}")
-            journal_abs.parent.mkdir(parents=True, exist_ok=True)
 
-            # Publish attachments first (TOCTOU); journal references FINAL paths.
+            # Publish attachments first via bounded streaming + create-only
+            # publish; the journal references FINAL canonical attachment
+            # objects. A mutated/deleted/colliding source raises and triggers
+            # manifest-guarded compensation so no half-product survives. The
+            # copy-time SHA/size verification is the second TOCTOU gate
+            # (confirm-time precheck is ``_detect_stale``).
             published: list[dict[str, Any]] = []
             for att in proposal.get("attachments", []) or []:
                 att_rel = att["target_rel_path"]
@@ -1630,11 +1915,11 @@ def _execute_child_batch(  # noqa: C901
                 src_abs = _resolve_confined_source_path(root, att.get("source_rel_path", ""))
                 if src_abs is None or not src_abs.exists():
                     raise RuntimeError(f"Attachment source missing: {att.get('source_rel_path')}")
-                ok_copy, info = _toctou_copy(
+                ok_copy, info = _stream_copy(
                     src_abs, att_abs, att["source_sha256"], att["size_bytes"]
                 )
                 if not ok_copy:
-                    raise RuntimeError(f"TOCTOU copy failed for {att_rel}: {info}")
+                    raise RuntimeError(f"stream copy failed for {att_rel}: {info}")
                 created_files.append(
                     {
                         "kind": "attachment",
@@ -1645,16 +1930,11 @@ def _execute_child_batch(  # noqa: C901
                     }
                 )
                 _write_manifest(rollback_abs, manifest)
-                published.append(
-                    {
-                        "rel_path": att_rel,
-                        "sha256": att["source_sha256"],
-                        "size": att["size_bytes"],
-                        "media_type": att.get("media_type", ""),
-                    }
-                )
+                published.append(_canonical_attachment_entry(att, journal_rel))
 
-            # Canonical journal (schema_version, valid topic=life, attachments SSOT).
+            # Canonical journal: staged bytes -> create-only publish (never
+            # overwrite an existing target). Attachments are the SSOT using the
+            # canonical stored schema; no source SHA/provenance in frontmatter.
             journal_data = {
                 "schema_version": SCHEMA_VERSION,
                 "title": journal.get("title", ""),
@@ -1664,7 +1944,10 @@ def _execute_child_batch(  # noqa: C901
                 "attachments": published,
                 "content": journal.get("content", ""),
             }
-            journal_abs.write_text(format_journal_content(journal_data), encoding="utf-8")
+            journal_text = format_journal_content(journal_data)
+            ok_j, j_info = _publish_text_create_only(journal_abs, journal_text)
+            if not ok_j:
+                raise RuntimeError(f"journal publish failed for {journal_rel}: {j_info}")
             created_files.append(
                 {
                     "kind": "journal",
@@ -1857,7 +2140,12 @@ def run_batch(  # noqa: C901
         # 8. Create + execute the child batch job.
         result = _execute_child_batch(child_id, parent_id, runnable, data_dir, root, ledger)
 
-        # 9. Reconcile to project child outcome onto parent proposals.
+        # 9. Reconcile to project the child outcome onto the parent. On a
+        #    mid-batch write failure this performs checksum-guarded compensation
+        #    of only the files this child created: full compensation restores
+        #    the touched proposals to confirmed (a clean, retryable failure with
+        #    no half-product); a compensation that cannot safely remove an
+        #    artifact leaves recovery_required and fails closed.
         ledger = _read_ledger(data_dir)
         _reconcile_parent(ledger, parent_id, data_dir)
         _write_ledger(data_dir, ledger)
@@ -1868,5 +2156,34 @@ def run_batch(  # noqa: C901
                 (_get_job(ledger, parent_id) or {}).get("proposal_states", {}) or {}
             )
             return _ok(data)
-        return result
+
+        parent_after = _get_job(ledger, parent_id) or {}
+        if parent_after.get("recovery_required"):
+            return _err(
+                IMPORT_RECOVERY_REQUIRED,
+                "Batch failed and compensation could not fully remove its "
+                "artifacts; resolve the recovery state before retrying.",
+                {
+                    "import_id": parent_id,
+                    "child_id": child_id,
+                    "original_error": result["error"],
+                },
+                retryable=False,
+            )
+        # Compensation succeeded: no half-product remains and the touched
+        # proposals are back to confirmed — surface an explicit retryable
+        # failure rather than an ambiguous partial success.
+        return _err(
+            "IMPORT_WRITE_FAILURE",
+            "Batch failed mid-write and was fully compensated; re-run to retry.",
+            {
+                "import_id": parent_id,
+                "child_id": child_id,
+                "queue_counts": _queue_counts(
+                    parent_after.get("proposal_states", {}) or {}
+                ),
+                "original_error": result["error"],
+            },
+            retryable=True,
+        )
 

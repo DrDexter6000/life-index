@@ -1,0 +1,950 @@
+#!/usr/bin/env python3
+"""Package-2 contract tests: streaming attachment transaction + crash reconciliation.
+
+These are the **focused synthetic behavioral tests** for M7 package 2: the
+bounded streaming + create-only publication of canonical journals and
+attachments, manifest-guarded compensation, crash-window reconciliation, and
+exact rollback — exercised through the public CLI surface (subprocess) and, for
+fault-injection windows, the public in-process entry points under a per-test
+``LIFE_INDEX_DATA_DIR``.
+
+Package 2 scope:
+- TOCTOU-safe copy (confirm-time precheck + copy-time streaming verification);
+- create-only atomic publication (never overwrites), staging removed on every path;
+- canonical journal transaction (current schema/version/topic + stored attachment
+  authority; no source SHA/provenance in journal frontmatter; only selected
+  attachments publish; fully-deselected proposal creates nothing);
+- transaction/compensation (manifest-guarded; full -> retryable failure with no
+  half-product; failed -> retain evidence + recovery_required; never mutates source);
+- restart/crash reconciliation under per-parent lock (no-child, running-evidence,
+  manifest-committed-before-ledger, committed-ledger-with-invalid/missing manifest,
+  repeated status/run/rollback convergence);
+- batch semantics (stale excluded while unaffected confirmed import; two
+  independent batches from one parent independently + exactly rollbackable).
+
+No real user data, network, AI/OCR/face/video/RAW, runtime/cloud, or new durable
+authority. Synthetic source directories only.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+import tools.ingest.review as review
+from tests.contract.test_import_review_package1_contract import _make_jpeg_rich
+
+
+# ---------------------------------------------------------------------------
+# CLI invocation helpers (subprocess)
+# ---------------------------------------------------------------------------
+
+
+def _run_import(data_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["LIFE_INDEX_DATA_DIR"] = str(data_dir)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return subprocess.run(
+        [sys.executable, "-m", "tools", "import", *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+    )
+
+
+def _payload(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise AssertionError(
+            f"Expected JSON on stdout.\nstdout[:500]: {result.stdout[:500]}\n"
+            f"stderr[:500]: {result.stderr[:500]}"
+        ) from None
+
+
+def _ok(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    return _payload(result)
+
+
+def _err(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    assert result.returncode != 0, f"expected non-zero exit, stdout: {result.stdout}"
+    return _payload(result)
+
+
+# ---------------------------------------------------------------------------
+# Synthetic photo + plan helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_jpeg(
+    path: Path,
+    *,
+    color: tuple[int, int, int] = (10, 20, 30),
+    date_original: str | None = "2024:06:15 10:30:00",
+) -> Path:
+    """A small synthetic JPEG with a naive EXIF capture date (resolves to confirmed)."""
+    from PIL import Image
+
+    img = Image.new("RGB", (8, 8), color)
+    exif = Image.Exif()
+    if date_original is not None:
+        exif[36867] = date_original
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, format="JPEG", exif=exif.tobytes() if date_original else None)
+    return path
+
+
+def _photo_plan(data_dir: Path, input_dir: Path) -> dict[str, Any]:
+    return _ok(
+        _run_import(
+            data_dir, "plan", "--source", "media.photo_timeline",
+            "--input", str(input_dir), "--json",
+        )
+    )["data"]
+
+
+def _plan_file(tmp_path: Path, plan_data: dict[str, Any], name: str = "plan.json") -> Path:
+    p = tmp_path / name
+    p.write_text(json.dumps(plan_data), encoding="utf-8")
+    return p
+
+
+def _confirm(data_dir: Path, plan_data: dict[str, Any], src: Path, tmp_path: Path) -> dict[str, Any]:
+    return _ok(_run_import(
+        data_dir, "confirm", "--plan",
+        str(_plan_file(tmp_path, plan_data, name=f"review_{plan_data['import_id']}.json")),
+        "--source-root", str(src), "--json",
+    ))["data"]
+
+
+def _status(data_dir: Path, import_id: str) -> dict[str, Any]:
+    return _ok(_run_import(data_dir, "status", "--import-id", import_id, "--json"))["data"]
+
+
+def _run_batch(data_dir: Path, parent_id: str, src: Path) -> subprocess.CompletedProcess[str]:
+    return _run_import(
+        data_dir, "run", "--import-id", parent_id, "--source-root", str(src), "--json"
+    )
+
+
+def _ledger(data_dir: Path) -> dict[str, Any]:
+    return json.loads(
+        (data_dir / ".life-index" / "import-jobs" / "ledger.json").read_text("utf-8")
+    )
+
+
+def _save_ledger(data_dir: Path, ledger: dict[str, Any]) -> None:
+    (data_dir / ".life-index" / "import-jobs" / "ledger.json").write_text(
+        json.dumps(ledger, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _manifest(data_dir: Path, child_id: str) -> dict[str, Any]:
+    return json.loads(
+        (data_dir / ".life-index" / "import-jobs" / child_id / "rollback-manifest.json")
+        .read_text("utf-8")
+    )
+
+
+def _no_staging_leftovers(data_dir: Path) -> None:
+    assert list(data_dir.rglob("*staging*")) == [], "staging leftovers present"
+
+
+# ===================================================================
+# Selection: partial / all / deselected; unselected never published
+# ===================================================================
+
+
+def test_run_batch_partial_selection_publishes_only_selected(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    # two photos same day -> one multi-attachment proposal
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6))
+    plan = _photo_plan(data_dir, src)
+    prop = plan["proposals"][0]
+    assert len(prop["attachments"]) == 2
+    kept = prop["attachments"][0]
+    dropped = prop["attachments"][1]
+    # partial selection: keep only the first attachment
+    prop["attachments"] = [kept]
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    assert _run_batch(data_dir, parent_id, src).returncode == 0
+
+    published_kept = data_dir / kept["target_rel_path"]
+    dropped_target = data_dir / dropped["target_rel_path"]
+    assert published_kept.exists()
+    assert not dropped_target.exists()  # unselected attachment never published
+
+    # the journal references exactly the one selected attachment
+    from tools.lib.frontmatter import parse_frontmatter
+
+    journal = data_dir / prop["journal"]["target_rel_path"]
+    fm, _ = parse_frontmatter(journal.read_text("utf-8"))
+    assert len(fm["attachments"]) == 1
+    assert fm["attachments"][0]["filename"] == kept["target_rel_path"].split("/")[-1]
+    _no_staging_leftovers(data_dir)
+
+
+def test_run_batch_deselected_proposal_never_published(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "keep.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "drop.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    kept_prop = next(p for p in plan["proposals"] if p["journal"]["date"] == "2024-06-15")
+    dropped_prop = next(p for p in plan["proposals"] if p["journal"]["date"] == "2024-07-01")
+    # fully deselect the second-day proposal
+    dropped_prop["attachments"] = []
+    parent_id = plan["import_id"]
+    res = _confirm(data_dir, plan, src, tmp_path)
+    assert res["queue_counts"]["skipped"] == 1
+    assert res["queue_counts"]["confirmed"] == 1
+
+    assert _run_batch(data_dir, parent_id, src).returncode == 0
+
+    # only the selected proposal produced a journal + attachment
+    assert (data_dir / kept_prop["journal"]["target_rel_path"]).exists()
+    assert (data_dir / kept_prop["attachments"][0]["target_rel_path"]).exists()
+    # the deselected proposal created neither journal nor attachment
+    assert not (data_dir / dropped_prop["journal"]["target_rel_path"]).exists()
+    _no_staging_leftovers(data_dir)
+
+
+# ===================================================================
+# Stale detection: source deleted / changed after confirm (precheck gate)
+# ===================================================================
+
+
+def test_run_batch_stale_excluded_unaffected_confirmed_imports(tmp_path: Path) -> None:
+    """A stale proposal is excluded while an unaffected confirmed proposal imports."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "ok.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "gone.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    ok_prop = next(p for p in plan["proposals"] if p["journal"]["date"] == "2024-06-15")
+    stale_prop = next(p for p in plan["proposals"] if p["journal"]["date"] == "2024-07-01")
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # delete one source after confirm -> that proposal is stale at run time, but
+    # the unaffected confirmed proposal is still runnable and imports.
+    (src / "gone.jpg").unlink()
+
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    assert run["state"] == "committed"
+    parent = _ledger(data_dir)["jobs"][parent_id]
+    assert parent["proposal_states"][stale_prop["proposal_id"]] == "stale"
+    assert parent["proposal_states"][ok_prop["proposal_id"]] == "imported"
+    # the unaffected proposal published its journal + attachment; the stale one did not
+    assert (data_dir / ok_prop["journal"]["target_rel_path"]).exists()
+    assert not (data_dir / stale_prop["journal"]["target_rel_path"]).exists()
+
+
+def test_run_batch_source_changed_after_confirm_is_stale(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # mutate content after confirm -> stale (copy-time precheck rejects)
+    (src / "shot.jpg").write_bytes(b"changed after confirm")
+
+    res = _err(_run_batch(data_dir, parent_id, src))
+    assert res["error"]["code"] == "IMPORT_NO_RUNNABLE_PROPOSALS"
+    pid = plan["proposals"][0]["proposal_id"]
+    assert _ledger(data_dir)["jobs"][parent_id]["proposal_states"][pid] == "stale"
+
+
+# ===================================================================
+# Copy-time gate: mutation during the streaming copy is rejected + compensated
+# ===================================================================
+
+
+class _MutatingReader:
+    """Wraps an open source fp; appends extra bytes once so the streamed hash diverges."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._mutated = False
+
+    def read(self, n: int) -> bytes:
+        chunk = self._inner.read(n)
+        if chunk and not self._mutated:
+            chunk = chunk + b"\xcc\xdd\xee\xff"  # diverge hash + size from expected
+            self._mutated = True
+        return chunk
+
+
+def test_run_batch_mutation_during_stream_copy_compensates(
+    isolated_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    att = plan["proposals"][0]["attachments"][0]
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, "p.json")),
+        data_dir=data_dir, source_root=str(src),
+    )
+
+    source_file = src / "shot.jpg"
+    before_bytes = source_file.read_bytes()
+    before_mtime = source_file.stat().st_mtime_ns
+
+    # Inject a mutation mid-stream: the streamed content diverges from the
+    # confirmed hash -> the copy-time gate fires, nothing is published.
+    real_drain = review._drain_source_to_staging
+
+    def mutating_drain(src_fp: Any, dst_fp: Any, expected_sha: str, expected_size: int,
+                       chunk_size: int = review._STREAM_CHUNK_SIZE) -> tuple[bool, str]:
+        return real_drain(_MutatingReader(src_fp), dst_fp, expected_sha, expected_size, chunk_size)
+
+    monkeypatch.setattr(review, "_drain_source_to_staging", mutating_drain)
+
+    res = review.run_batch(parent_id, data_dir, source_root=str(src))
+    assert not res["success"]
+    assert res["error"]["code"] == "IMPORT_WRITE_FAILURE"
+    assert res["error"]["retryable"] is True  # fully compensated -> retryable
+
+    # no final attachment, no journal, proposals restored to confirmed
+    assert not (data_dir / att["target_rel_path"]).exists()
+    assert not (data_dir / plan["proposals"][0]["journal"]["target_rel_path"]).exists()
+    parent = _ledger(data_dir)["jobs"][parent_id]
+    assert parent["proposal_states"][pid] == "confirmed"
+    assert parent["active_child_id"] is None
+    # source was never mutated by the import (the mutation was in the read stream only)
+    assert source_file.read_bytes() == before_bytes
+    assert source_file.stat().st_mtime_ns == before_mtime
+    _no_staging_leftovers(data_dir)
+
+
+# ===================================================================
+# Create-only collision: existing target is never overwritten
+# ===================================================================
+
+
+def test_run_batch_create_only_collision_fails_and_compensates(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    att = plan["proposals"][0]["attachments"][0]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    source_file = src / "shot.jpg"
+    before_bytes = source_file.read_bytes()
+    before_mtime = source_file.stat().st_mtime_ns
+
+    # pre-create the canonical attachment target -> publish must collide (create-only)
+    target = data_dir / att["target_rel_path"]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    collision_bytes = b"PRE-EXISTING COLLISION FILE"
+    target.write_bytes(collision_bytes)
+
+    res = _err(_run_batch(data_dir, parent_id, src))
+    assert res["error"]["code"] == "IMPORT_WRITE_FAILURE"
+    assert res["error"]["retryable"] is True
+
+    # the existing target was never overwritten
+    assert target.read_bytes() == collision_bytes
+    # no journal was produced, proposals restored to confirmed
+    assert not (data_dir / plan["proposals"][0]["journal"]["target_rel_path"]).exists()
+    parent = _ledger(data_dir)["jobs"][parent_id]
+    assert parent["proposal_states"][pid] == "confirmed"
+    assert parent["active_child_id"] is None
+    # source untouched
+    assert source_file.read_bytes() == before_bytes
+    assert source_file.stat().st_mtime_ns == before_mtime
+    _no_staging_leftovers(data_dir)
+
+
+# ===================================================================
+# Mid-batch write failure: full compensation removes the half-product
+# ===================================================================
+
+
+def test_run_batch_mid_write_failure_fully_compensates(
+    isolated_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pids = [p["proposal_id"] for p in plan["proposals"]]
+    # proposal 0 publishes fully first; proposal 1 then fails mid-write.
+    prop0 = plan["proposals"][0]
+    prop0_att = prop0["attachments"][0]
+    prop0_journal = prop0["journal"]["target_rel_path"]
+    prop1_att_name = plan["proposals"][1]["attachments"][0]["target_rel_path"].split("/")[-1]
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, "p.json")),
+        data_dir=data_dir, source_root=str(src),
+    )
+
+    real_copy = review._stream_copy
+
+    def failing_copy(source_abs: Path, target_abs: Path, expected_sha: str,
+                     expected_size: int, chunk_size: int = review._STREAM_CHUNK_SIZE) -> tuple[bool, str]:
+        if target_abs.name == prop1_att_name:
+            return False, "simulated_write_failure"
+        return real_copy(source_abs, target_abs, expected_sha, expected_size, chunk_size)
+
+    monkeypatch.setattr(review, "_stream_copy", failing_copy)
+
+    res = review.run_batch(parent_id, data_dir, source_root=str(src))
+    assert not res["success"]
+    assert res["error"]["code"] == "IMPORT_WRITE_FAILURE"
+    assert res["error"]["retryable"] is True  # full compensation succeeded
+
+    # NO half-product: proposal 0's published attachment + journal were removed
+    assert not (data_dir / prop0_att["target_rel_path"]).exists()
+    assert not (data_dir / prop0_journal).exists()
+    # both proposals restored to confirmed (re-runnable), no active child
+    parent = _ledger(data_dir)["jobs"][parent_id]
+    for pid in pids:
+        assert parent["proposal_states"][pid] == "confirmed"
+    assert parent["active_child_id"] is None
+    assert parent["recovery_required"] is False
+    _no_staging_leftovers(data_dir)
+
+
+def test_run_batch_compensation_failure_requires_recovery(
+    isolated_data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_dir = isolated_data_dir
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    prop0_att_abs = data_dir / plan["proposals"][0]["attachments"][0]["target_rel_path"]
+    prop1_att_name = plan["proposals"][1]["attachments"][0]["target_rel_path"].split("/")[-1]
+    review.confirm_review(
+        plan_path=str(_plan_file(tmp_path, plan, "p.json")),
+        data_dir=data_dir, source_root=str(src),
+    )
+
+    real_copy = review._stream_copy
+    corrupted = {"done": False}
+
+    def corrupt_then_fail(source_abs: Path, target_abs: Path, expected_sha: str,
+                          expected_size: int, chunk_size: int = review._STREAM_CHUNK_SIZE) -> tuple[bool, str]:
+        # when proposal 1's attachment is about to publish, corrupt the already-
+        # published proposal 0 attachment so the upcoming compensation cannot
+        # match its recorded checksum -> compensation fails -> recovery_required.
+        if target_abs.name == prop1_att_name and not corrupted["done"]:
+            prop0_att_abs.write_bytes(b"CORRUPTED EVIDENCE")
+            corrupted["done"] = True
+            return False, "simulated_write_failure"
+        return real_copy(source_abs, target_abs, expected_sha, expected_size, chunk_size)
+
+    monkeypatch.setattr(review, "_stream_copy", corrupt_then_fail)
+
+    res = review.run_batch(parent_id, data_dir, source_root=str(src))
+    assert not res["success"]
+    assert res["error"]["code"] == "IMPORT_RECOVERY_REQUIRED"
+    assert res["error"]["retryable"] is False  # fail closed
+
+    # recovery_required surfaced, active child retained, evidence retained
+    parent = _ledger(data_dir)["jobs"][parent_id]
+    assert parent["recovery_required"] is True
+    assert parent["active_child_id"] is not None
+    assert prop0_att_abs.exists()  # corrupted artifact retained as evidence
+
+    # convergence: a second status stays fail-closed (no further mutation)
+    snap1 = json.dumps(_ledger(data_dir)["jobs"][parent_id], sort_keys=True)
+    _status(data_dir, parent_id)
+    snap2 = json.dumps(_ledger(data_dir)["jobs"][parent_id], sort_keys=True)
+    assert snap1 == snap2
+    assert _ledger(data_dir)["jobs"][parent_id]["recovery_required"] is True
+
+
+# ===================================================================
+# Crash-window reconciliation (under the per-parent lock)
+# ===================================================================
+
+
+def test_crash_window_no_child_restores_confirmed(tmp_path: Path) -> None:
+    """active_child_id set but child job + evidence absent -> restore confirmed + clear."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # seed the real crash window between the durable batching transition
+    # (active_child_id + selected_proposal_ids set, proposals batching) and the
+    # child batch job creation: the child job is missing, no manifest.
+    ledger = _ledger(data_dir)
+    ledger["jobs"][parent_id]["active_child_id"] = f"{parent_id}#batch-vanished"
+    ledger["jobs"][parent_id]["selected_proposal_ids"] = [pid]
+    ledger["jobs"][parent_id]["proposal_states"][pid] = "batching"
+    _save_ledger(data_dir, ledger)
+
+    status = _status(data_dir, parent_id)
+    assert status["proposal_states"][pid] == "confirmed"
+    assert status["active_child_id"] is None
+    assert status["recovery_required"] is False
+
+
+def test_crash_window_running_with_evidence_compensates(tmp_path: Path) -> None:
+    """A running child that left created evidence -> checksum-guarded compensation."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # seed a running child with a created-file manifest pointing at a real file
+    child_id = f"{parent_id}#batch-running"
+    att_rel = "attachments/2024/06/import_deadbeefdead.jpg"
+    payload = b"published-then-crashed attachment"
+    att_abs = data_dir / att_rel
+    att_abs.parent.mkdir(parents=True, exist_ok=True)
+    att_abs.write_bytes(payload)
+    sha = "sha256:" + hashlib.sha256(payload).hexdigest()
+    manifest = {
+        "schema_version": "import_rollback_manifest.v1",
+        "import_id": child_id,
+        "parent_review_job_id": parent_id,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "state": "running",
+        "created_files": [
+            {"kind": "attachment", "rel_path": att_rel, "sha256_after": sha,
+             "size_bytes": len(payload), "created_by_import": True}
+        ],
+        "preexisting_files": [],
+        "errors": [],
+    }
+    mpath = data_dir / ".life-index" / "import-jobs" / child_id / "rollback-manifest.json"
+    mpath.parent.mkdir(parents=True, exist_ok=True)
+    mpath.write_text(json.dumps(manifest), encoding="utf-8")
+
+    ledger = _ledger(data_dir)
+    ledger["jobs"][child_id] = {
+        "kind": "batch", "parent_review_job_id": parent_id, "state": "running",
+        "rollback_manifest_rel_path": f".life-index/import-jobs/{child_id}/rollback-manifest.json",
+        "proposal_ids": [pid], "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    ledger["jobs"][parent_id]["active_child_id"] = child_id
+    ledger["jobs"][parent_id]["proposal_states"][pid] = "batching"
+    _save_ledger(data_dir, ledger)
+
+    status = _status(data_dir, parent_id)
+    # compensation removed the published artifact and restored confirmed
+    assert not att_abs.exists()
+    assert status["proposal_states"][pid] == "confirmed"
+    assert status["active_child_id"] is None
+    assert status["recovery_required"] is False
+
+
+def test_crash_window_manifest_committed_before_ledger_projects_imported(tmp_path: Path) -> None:
+    """A committed manifest whose ledger projection was interrupted -> project imported."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # run a real batch to a fully committed state (manifest + ledger + artifacts)
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child_id = run["import_id"]
+    assert _status(data_dir, parent_id)["proposal_states"][pid] == "imported"
+
+    # rewind ONLY the ledger projection as if it crashed between manifest commit
+    # and the child/parent ledger writes: manifest stays committed, child running,
+    # parent still batching with the active child set.
+    ledger = _ledger(data_dir)
+    ledger["jobs"][child_id]["state"] = "running"
+    ledger["jobs"][parent_id]["active_child_id"] = child_id
+    ledger["jobs"][parent_id]["proposal_states"][pid] = "batching"
+    _save_ledger(data_dir, ledger)
+
+    # reconcile trusts the durable committed manifest -> re-projects imported
+    status = _status(data_dir, parent_id)
+    assert status["proposal_states"][pid] == "imported"
+    assert status["active_child_id"] is None
+    assert status["recovery_required"] is False
+    assert _ledger(data_dir)["jobs"][child_id]["state"] == "committed"
+
+
+def test_crash_window_committed_ledger_missing_manifest_fails_closed(tmp_path: Path) -> None:
+    """child ledger committed + active, but manifest missing -> fail closed."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    child_id = f"{parent_id}#batch-claimed"
+    ledger = _ledger(data_dir)
+    ledger["jobs"][child_id] = {
+        "kind": "batch", "parent_review_job_id": parent_id, "state": "committed",
+        "rollback_manifest_rel_path": f".life-index/import-jobs/{child_id}/rollback-manifest.json",
+        "proposal_ids": [pid], "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    ledger["jobs"][parent_id]["active_child_id"] = child_id
+    ledger["jobs"][parent_id]["proposal_states"][pid] = "batching"
+    _save_ledger(data_dir, ledger)
+    # NOTE: deliberately no manifest on disk for child_id.
+
+    status = _status(data_dir, parent_id)
+    assert status["recovery_required"] is True
+    assert status["active_child_id"] == child_id  # retained, fail closed
+    assert status["proposal_states"][pid] == "batching"  # NOT projected imported
+
+
+def test_crash_window_committed_ledger_invalid_manifest_fails_closed(tmp_path: Path) -> None:
+    """child ledger committed + manifest present but artifact hash mismatches -> fail closed."""
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # build a committed manifest whose recorded hash does NOT match the artifact
+    child_id = f"{parent_id}#batch-invalid"
+    att_rel = "attachments/2024/06/import_deadbeefdead.jpg"
+    att_abs = data_dir / att_rel
+    att_abs.parent.mkdir(parents=True, exist_ok=True)
+    att_abs.write_bytes(b"actual content")
+    manifest = {
+        "schema_version": "import_rollback_manifest.v1",
+        "import_id": child_id, "parent_review_job_id": parent_id,
+        "created_at": "2026-01-01T00:00:00+00:00", "state": "committed",
+        "created_files": [
+            {"kind": "attachment", "rel_path": att_rel,
+             "sha256_after": "sha256:" + "0" * 64,  # wrong hash
+             "size_bytes": len(b"actual content"), "created_by_import": True}
+        ],
+        "preexisting_files": [], "errors": [],
+    }
+    mpath = data_dir / ".life-index" / "import-jobs" / child_id / "rollback-manifest.json"
+    mpath.parent.mkdir(parents=True, exist_ok=True)
+    mpath.write_text(json.dumps(manifest), encoding="utf-8")
+
+    ledger = _ledger(data_dir)
+    ledger["jobs"][child_id] = {
+        "kind": "batch", "parent_review_job_id": parent_id, "state": "committed",
+        "rollback_manifest_rel_path": f".life-index/import-jobs/{child_id}/rollback-manifest.json",
+        "proposal_ids": [pid], "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    ledger["jobs"][parent_id]["active_child_id"] = child_id
+    ledger["jobs"][parent_id]["proposal_states"][pid] = "batching"
+    _save_ledger(data_dir, ledger)
+
+    status = _status(data_dir, parent_id)
+    assert status["recovery_required"] is True
+    assert status["proposal_states"][pid] == "batching"  # never projected imported
+
+
+# ===================================================================
+# Convergence: repeated status / run / rollback are no-ops once settled
+# ===================================================================
+
+
+def test_repeated_status_run_rollback_converges(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pid = plan["proposals"][0]["proposal_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child_id = run["import_id"]
+
+    # status is stable across repeated calls (convergence, no further mutation)
+    s1 = _status(data_dir, parent_id)
+    snap1 = json.dumps(_ledger(data_dir)["jobs"][parent_id], sort_keys=True)
+    s2 = _status(data_dir, parent_id)
+    snap2 = json.dumps(_ledger(data_dir)["jobs"][parent_id], sort_keys=True)
+    assert s1 == s2
+    assert snap1 == snap2
+    assert s1["proposal_states"][pid] == "imported"
+
+    # a re-run is a no-op (nothing confirmed left to run)
+    rerun = _err(_run_batch(data_dir, parent_id, src))
+    assert rerun["error"]["code"] == "IMPORT_NO_RUNNABLE_PROPOSALS"
+
+    # rollback is idempotent: first rolls back, second is a no-op
+    rb1 = _ok(_run_import(data_dir, "rollback", "--import-id", child_id, "--json"))["data"]
+    assert rb1["state"] == "rolled_back"
+    rb2 = _ok(_run_import(data_dir, "rollback", "--import-id", child_id, "--json"))["data"]
+    assert rb2["state"] == "rolled_back"
+    assert rb2["deleted_count"] == 0  # second rollback deleted nothing
+
+    # proposal restored to confirmed exactly once
+    assert _status(data_dir, parent_id)["proposal_states"][pid] == "confirmed"
+
+
+# ===================================================================
+# Two independent batches from one parent: independently + exactly rollbackable
+# ===================================================================
+
+
+def test_two_independent_batches_exact_rollback(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    pids = sorted(p["proposal_id"] for p in plan["proposals"])
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # child 1: import both proposals
+    run1 = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child1 = run1["import_id"]
+    assert sorted(_ledger(data_dir)["jobs"][child1]["proposal_ids"]) == pids
+
+    # rollback child 1 -> both restored to confirmed, both artifacts removed
+    rb1 = _ok(_run_import(data_dir, "rollback", "--import-id", child1, "--json"))["data"]
+    assert rb1["deleted_count"] >= 2
+    assert _manifest(data_dir, child1)["state"] == "rolled_back"
+    child1_manifest_after_rollback = _manifest(data_dir, child1)
+    for prop in plan["proposals"]:
+        assert not (data_dir / prop["journal"]["target_rel_path"]).exists()
+    states = _status(data_dir, parent_id)["proposal_states"]
+    assert all(states[p] == "confirmed" for p in pids)
+
+    # child 2: re-import both proposals (independent batch, monotonic id)
+    run2 = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child2 = run2["import_id"]
+    assert child2 != child1
+    assert int(child2.rsplit("#batch-", 1)[1]) > int(child1.rsplit("#batch-", 1)[1])
+
+    # rolling back child 2 restores exactly child 2's membership and does NOT
+    # touch child 1's already-rolled-back manifest.
+    _ok(_run_import(data_dir, "rollback", "--import-id", child2, "--json"))
+    states = _status(data_dir, parent_id)["proposal_states"]
+    assert all(states[p] == "confirmed" for p in pids)
+    # child 1 manifest is untouched by child 2's rollback (byte-identical)
+    assert _manifest(data_dir, child1) == child1_manifest_after_rollback
+    for prop in plan["proposals"]:
+        assert not (data_dir / prop["journal"]["target_rel_path"]).exists()
+
+
+# ===================================================================
+# Source immutability + canonical journal parsing + manifest evidence
+# ===================================================================
+
+
+def test_source_hash_and_mtime_unchanged_after_run_and_after_failure(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6), date_original="2024:07:01 09:00:00")
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    snaps = {name: ((src / name).read_bytes(), (src / name).stat().st_mtime_ns)
+             for name in ("a.jpg", "b.jpg")}
+
+    # successful run: sources untouched
+    assert _run_batch(data_dir, parent_id, src).returncode == 0
+    for name, (b, m) in snaps.items():
+        assert (src / name).read_bytes() == b
+        assert (src / name).stat().st_mtime_ns == m
+
+    # roll back, then force a create-only collision failure: sources still untouched
+    child = _ledger(data_dir)["jobs"][parent_id]["active_child_id"]
+    # (active_child is already None after a committed run; find the last child)
+    last_child = [j for j, v in _ledger(data_dir)["jobs"].items()
+                  if v.get("parent_review_job_id") == parent_id and v.get("state") == "committed"][0]
+    _ok(_run_import(data_dir, "rollback", "--import-id", last_child, "--json"))
+
+    # pre-create the first proposal's attachment target to force a collision
+    collision = data_dir / plan["proposals"][0]["attachments"][0]["target_rel_path"]
+    collision.parent.mkdir(parents=True, exist_ok=True)
+    collision.write_bytes(b"COLLISION")
+    _err(_run_batch(data_dir, parent_id, src))
+    for name, (b, m) in snaps.items():
+        assert (src / name).read_bytes() == b
+        assert (src / name).stat().st_mtime_ns == m
+
+
+def test_imported_journal_parses_canonical_frontmatter_multi_attachment(tmp_path: Path) -> None:
+    import posixpath
+
+    from tools.lib.frontmatter import parse_frontmatter
+
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    # multi-photo proposal: two photos same day -> one journal with 2 attachments
+    _make_jpeg(src / "a.jpg", color=(1, 2, 3))
+    _make_jpeg(src / "b.jpg", color=(4, 5, 6))
+    plan = _photo_plan(data_dir, src)
+    assert len(plan["proposals"]) == 1
+    prop = plan["proposals"][0]
+    assert len(prop["attachments"]) == 2
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    assert _run_batch(data_dir, parent_id, src).returncode == 0
+
+    journal_path = data_dir / prop["journal"]["target_rel_path"]
+    fm, body = parse_frontmatter(journal_path.read_text("utf-8"))
+    assert fm["schema_version"] == 3
+    assert fm["topic"] == ["life"]
+    attachments = fm["attachments"]
+    assert isinstance(attachments, list) and len(attachments) == 2
+    journal_rel = prop["journal"]["target_rel_path"]
+    published_bytes = {}
+    for att_entry, att in zip(attachments, prop["attachments"]):
+        # canonical 7-key stored attachment schema; no source SHA/provenance
+        assert set(att_entry.keys()) == {
+            "filename", "rel_path", "description", "original_name",
+            "auto_detected", "content_type", "size",
+        }
+        assert att_entry["filename"] == posixpath.basename(att["target_rel_path"])
+        expected_rel = posixpath.relpath(
+            att["target_rel_path"], start=posixpath.dirname(journal_rel)
+        )
+        assert att_entry["rel_path"] == expected_rel
+        assert att_entry["rel_path"].startswith("../../../attachments/")
+        assert att_entry["original_name"] == posixpath.basename(att["source_rel_path"])
+        assert att_entry["auto_detected"] is False
+        assert att_entry["content_type"] == att["media_type"]
+        assert att_entry["size"] == att["size_bytes"]
+        # the attachment resolves through the journal-relative rel_path and opens
+        resolved = (journal_path.parent / att_entry["rel_path"]).resolve()
+        published = (data_dir / att["target_rel_path"]).resolve()
+        assert resolved == published
+        published_bytes[att["attachment_id"]] = resolved.read_bytes()
+    # no source SHA anywhere in the journal frontmatter text
+    assert "source_sha256" not in journal_path.read_text("utf-8")
+    # both distinct attachments published with their real source bytes
+    assert len(set(published_bytes.values())) == 2
+
+
+def test_manifest_records_hashes_and_sizes(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    run = _ok(_run_batch(data_dir, parent_id, src))["data"]
+    child_id = run["import_id"]
+
+    manifest = _manifest(data_dir, child_id)
+    assert manifest["state"] == "committed"
+    for entry in manifest["created_files"]:
+        if not entry.get("created_by_import"):
+            continue
+        published = data_dir / entry["rel_path"]
+        assert published.exists()
+        assert entry["sha256_after"] == "sha256:" + hashlib.sha256(published.read_bytes()).hexdigest()
+        assert entry["size_bytes"] == published.stat().st_size
+
+
+def test_no_staging_leftovers_success_and_failure(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    _make_jpeg(src / "shot.jpg", color=(1, 2, 3))
+    plan = _photo_plan(data_dir, src)
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+
+    # success: no staging leftovers
+    assert _run_batch(data_dir, parent_id, src).returncode == 0
+    _no_staging_leftovers(data_dir)
+
+    # roll back to make the proposal runnable again, then force a collision failure
+    last_child = [j for j, v in _ledger(data_dir)["jobs"].items()
+                  if v.get("parent_review_job_id") == parent_id and v.get("state") == "committed"][0]
+    _ok(_run_import(data_dir, "rollback", "--import-id", last_child, "--json"))
+    collision = data_dir / plan["proposals"][0]["attachments"][0]["target_rel_path"]
+    collision.parent.mkdir(parents=True, exist_ok=True)
+    collision.write_bytes(b"COLLISION")
+    _err(_run_batch(data_dir, parent_id, src))
+    _no_staging_leftovers(data_dir)
+
+
+# ===================================================================
+# Bounded streaming at scale: a larger synthetic file imports incrementally
+# ===================================================================
+
+
+def test_larger_synthetic_file_streams_and_publishes(tmp_path: Path) -> None:
+    data_dir = tmp_path / "Life-Index"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "photos"
+    # A JPEG larger than the streaming chunk window (64 KiB) so the bounded copy
+    # actually iterates, without relying on memory profiling.
+    from PIL import Image
+
+    big = src / "big.jpg"
+    big.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGB", (400, 400))
+    # fill with varied content so JPEG compression stays well above 64 KiB
+    img.putdata([(i % 256, (i * 3) % 256, (i * 7) % 256) for i in range(400 * 400)])
+    exif = Image.Exif()
+    exif[36867] = "2024:06:15 10:30:00"  # DateTimeOriginal -> resolves to confirmed
+    img.save(big, format="JPEG", quality=95, exif=exif.tobytes())
+    assert big.stat().st_size > review._STREAM_CHUNK_SIZE
+
+    plan = _photo_plan(data_dir, src)
+    assert plan["source"]["record_count"] == 1
+    parent_id = plan["import_id"]
+    _confirm(data_dir, plan, src, tmp_path)
+    assert _run_batch(data_dir, parent_id, src).returncode == 0
+
+    att = plan["proposals"][0]["attachments"][0]
+    published = data_dir / att["target_rel_path"]
+    assert published.exists()
+    assert published.stat().st_size == big.stat().st_size
+    assert published.read_bytes() == big.read_bytes()
+    _no_staging_leftovers(data_dir)

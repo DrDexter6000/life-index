@@ -751,6 +751,7 @@ def test_import_run_batch_source_unchanged_toctou(tmp_path: Path) -> None:
 
 
 def test_import_run_batch_canonical_journal(tmp_path: Path) -> None:
+    import posixpath
     from tools.lib.frontmatter import parse_frontmatter
 
     data_dir = tmp_path / "Life-Index"
@@ -770,12 +771,37 @@ def test_import_run_batch_canonical_journal(tmp_path: Path) -> None:
     attachments = fm["attachments"]
     assert isinstance(attachments, list) and len(attachments) == 1
     att_entry = attachments[0]
-    assert set(att_entry.keys()) == {"rel_path", "sha256", "size", "media_type"}
-    assert att_entry["rel_path"] == att["target_rel_path"]
-    assert att_entry["sha256"] == att["source_sha256"]
+    # canonical stored attachment schema (matches write_journal SSOT): filename,
+    # journal-relative rel_path, description, original_name, auto_detected,
+    # content_type, size. No source SHA/provenance leaks into journal frontmatter.
+    assert set(att_entry.keys()) == {
+        "filename",
+        "rel_path",
+        "description",
+        "original_name",
+        "auto_detected",
+        "content_type",
+        "size",
+    }
+    assert att_entry["filename"] == posixpath.basename(att["target_rel_path"])
+    # rel_path is journal-relative, not data-dir-relative
+    journal_rel = proposal["journal"]["target_rel_path"]
+    expected_rel = posixpath.relpath(
+        att["target_rel_path"], start=posixpath.dirname(journal_rel)
+    )
+    assert att_entry["rel_path"] == expected_rel
+    assert att_entry["rel_path"].startswith("../../../attachments/")
+    assert att_entry["original_name"] == posixpath.basename(att["source_rel_path"])
+    assert att_entry["auto_detected"] is False
+    assert att_entry["content_type"] == att["media_type"]
+    assert att_entry["description"] == ""
     assert att_entry["size"] == att["size_bytes"]
     published = data_dir / att["target_rel_path"]
     assert att_entry["size"] == published.stat().st_size
+    # the published attachment resolves through the journal-relative rel_path
+    resolved = (journal_path.parent / att_entry["rel_path"]).resolve()
+    assert resolved == published.resolve()
+    assert resolved.read_bytes() == (src / "shot.jpg").read_bytes()
 
 
 def test_import_run_batch_rollback_restores_confirmed(tmp_path: Path) -> None:
