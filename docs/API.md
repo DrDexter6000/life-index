@@ -2051,24 +2051,44 @@ attachment selection，用户编辑是最高事实但不能改写 source facts�
 #### Proposal lifecycle
 
 `media.photo_timeline` proposal 增加 additive 状态字段 `state`，取值：
-`pending`（plan 阶段）、`confirmed`（`import confirm` 持久化后）、`skipped`
-（该 proposal 所有 attachment 被取消选择，不创建空 journal）、`stale`
+`pending`（plan 阶段、或日期未解析）、`confirmed`（`import confirm` 持久化后）、
+`skipped`（该 proposal 所有 attachment 被取消选择，不创建空 journal）、`stale`
 （批次准备时 source 内容/大小已变或源文件被删除，从本批排除）、`batching`
 （已进入某个 active child batch）、`imported`（child batch committed）。
+`imported` / `batching` 是 frozen 状态：re-confirm 时其内容权威且不变、绝不降级；
+`pending` / `confirmed` / `skipped` 接受安全编辑（含 attachment selection）。
 成功 rollback 一个 child batch 后，其 parent proposal 恢复为 `confirmed`。
+
+每个 proposal 携带显式 `date_resolution`（日期权威，绝不来自文件 mtime）：
+
+- `exif_authoritative`：可信 EXIF 提供日期（带 offset 用其本地 calendar date，
+  无 offset 按相机本地日期，不猜时区；含 `authority` 来源）。proposal 的
+  `journal.date` 与 journal / attachment `target_rel_path` 在 plan 阶段已派生。
+- `user_confirmed`：用户在 `confirm` 时通过 `date_resolution.date` 显式给出
+  `YYYY-MM-DD`。这是最高权威——可解析一条不可变的 EXIF capture-time 冲突，
+  覆盖 EXIF 日期；`confirm` 校验日期合法性、派生 canonical journal target，然后
+  才允许 `confirmed`。
+- `unresolved`：缺日期或多日期冲突（`PHOTO_CAPTURE_TIME_MISSING` /
+  `PHOTO_CAPTURE_TIME_AMBIGUOUS`）。**无 1970-01-01 sentinel**：这种 proposal 的
+  `journal.date == ""`、`journal.target_rel_path == ""`、attachment
+  `target_rel_path == ""`，停留在显式 `pending` 区域且不可运行，直到用户给出
+  `user_confirmed` 解析；EXIF 冲突仍被如实记录。
 
 `media.photo_timeline` 现支持 JPEG/`.jpg`/`.jpeg`；`.heic` / `.heif` 明确
 unsupported：发出 `PHOTO_UNSUPPORTED_FORMAT` warning 且标记 preview unavailable，
 不静默跳过。adapter 递归只读扫描源目录，跳过 symlink / junction / reparse
-point、root escape 与目录循环。精确 content SHA-256 去重：同名不同内容保留为
-独立记录；扫描时读取同一 import ledger / job 权威中已 `confirmed` / `imported`
-的 attachment SHA，避免重复候选。
+point、root escape 与目录循环；按精确字节哈希。精确 content SHA-256 去重：同名
+不同内容保留为独立记录。rescan 的去重集合包含两类来源（read-only）：
 
-日期规则：可信且带 offset 的 EXIF 用其本地 calendar date；无 offset 的 EXIF
-按相机本地日期，不猜时区；多日期来源冲突或完全缺失进入 unresolved（`pending`）
-bucket 等用户定 date；绝不以文件 mtime 冒充 capture time。可信日聚合为一个
-editable proposal（多附件）；`PHOTO_CAPTURE_TIME_MISSING` /
-`PHOTO_CAPTURE_TIME_AMBIGUOUS` 的记录成为待处理 proposal（不自动归入某天）。
+1. 已 `committed` 的 child / legacy job 的 rollback manifest 中的 attachment
+   `sha256_after`；
+2. parent review job 中、authoritative state 为 `confirmed` / `batching` /
+   `imported` 的 proposal 的 attachment `source_sha256`。
+
+这使得「已排队但尚未导入」的照片在 rescan 时不被重复候选；被 rollback 恢复为
+`confirmed` 的 proposal 仍留在去重集合内（保持排除）。可信日聚合为一个 editable
+proposal（多附件）；缺日期/冲突的记录成为独立待处理 proposal（不自动归入某天）。
+attachment 列表即 selected set；全部取消选择 ⇒ `skipped`（无 runnable proposal）。
 Planning 阶段不复制任何正式附件字节。
 
 #### `import confirm`
@@ -2083,7 +2103,15 @@ parent review job（additive `kind: "review"`）。写入采用 temp 文件 + fs
 atomic replace；并发安全由 per-parent single-writer lock 保证（复用 repo 既有
 `FileLock`）。`confirm` 必须重新计算 / 校验 immutable fingerprints 与 selected
 attachment ids；tamper（指纹/selected id 不匹配）返回 `IMPORT_PLAN_INVALID` 并
-拒绝持久化。返回 `data.schema_version = "import_review.v1"`，含 `parent_id`、
+拒绝持久化。
+
+`confirm` 在 per-parent lock 内先做 plan/ledger authority reconciliation（见下），
+若有未结算 active child 则拒绝（`IMPORT_BATCH_ALREADY_ACTIVE`），随后合并 incoming
+plan 到既有 review 状态：`imported` / `batching` proposal 冻结（内容权威不变、
+state 以 ledger 权威为准、绝不降级），其余 proposal（re-）派生 `date_resolution` 与
+canonical target。durable `next_batch_sequence` 在 re-confirm 时保留不变。
+
+返回 `data.schema_version = "import_review.v1"`，含 `parent_id`、
 `source_root_identity`、各 proposal `state`、derived queue counts（`confirmed` /
 `skipped` / `pending` / `stale` 计数）。
 
@@ -2130,11 +2158,16 @@ life-index import run --import-id <parent_id> [--source-root <dir>] --json
 
 （与既有 `--plan/--confirm` 路径并存；带 `--import-id` 且该 id 是 parent review
 job 时进入 batch 路径。）parent 同一时刻只允许一个 active child batch。batch run
-在 per-parent lock 内：先做幂等 reconciliation，再记录 `active_child_id` /
-selected proposal ids / transition intent（durable），并把 selected `confirmed`
-proposal 转为 `batching`；之后创建 child batch job。
+在 per-parent lock 内：先做 plan/ledger authority reconciliation 与 prior active
+child 的幂等 reconciliation，再记录 `active_child_id` / selected proposal ids /
+transition intent（durable），并把 selected `confirmed` proposal 转为 `batching`；
+之后创建 child batch job。
 
 - 并发 / 重复 run（已有未结算 active child）返回 `IMPORT_BATCH_ALREADY_ACTIVE`。
+- child id 单调：parent 存 durable `next_batch_sequence`（下一个可用序号），
+  child id 形如 `<parent_id>#batch-<seq>`；每个 child job 记录其精确 `proposal_ids`
+  ——后续 rollback / reconciliation 从 child 自身成员投影，绝不复用 parent 的上一次
+  选择。
 - child 是同一 ledger / manifest / fingerprint 权威下的普通 batch job
   （`kind: "batch"`，`parent_review_job_id` 指回 parent）。
 - 既有 fixture `--plan/--confirm` plan/run 行为保持不变。

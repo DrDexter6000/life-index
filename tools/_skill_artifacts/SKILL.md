@@ -111,6 +111,19 @@ GUI/host agent 只消费 plan、请求 confirm、流式 preview、触发 batch r
 注意：`import run --plan … --confirm …`（fixture / 直连）行为不变；`--import-id` 才进入
 parent review job 的 batch 路径。crash/重启后用 `import-id` 恢复队列，但 confirm/run/preview
 必须用当前 `--source-root` 重新验证同一 root identity。
+**审阅队列日期权威 / 状态纪律（M7 package 1）**：
+- 日期只来自可信 EXIF（offset 用本地 calendar date、naive 按相机本地，不猜时区）或用户显式
+  `date_resolution`（`user_confirmed` 可解析不可变 EXIF 冲突）；**绝不**用文件 mtime，**无 1970-01-01
+  sentinel**。缺日期/冲突的 proposal `journal.date`/`target_rel_path` 为空、
+  `date_resolution.status=unresolved`，停在显式 `pending` 区，直到用户给出 `user_confirmed` date。
+- re-confirm 安全：`imported`/`batching` proposal 冻结（内容不变、state 以 ledger 权威为准、绝不降级）；
+  `pending`/`confirmed`/`skipped` 接受安全编辑（含 attachment selection）。有未结算 active child 时
+  confirm 被拒（`IMPORT_BATCH_ALREADY_ACTIVE`）。
+- child batch id 单调 `<parent_id>#batch-<seq>`（parent 存 durable `next_batch_sequence`），每个 child
+  记录精确 `proposal_ids`；rollback 从 child 自身成员投影，parent 不可整体回滚。
+- rescan 去重集合 = committed manifest 的 attachment SHA + authoritative state 为
+  `confirmed`/`batching`/`imported` 的 review proposal 的 attachment SHA（被 rollback 恢复为
+  `confirmed` 的仍排除）；同名不同字节视为不同记录。
 **安装 / 首次验证 / 故障恢复指针**：
 - 首次安装、upgrade、repair、fresh install 判断 → 读 `AGENT_ONBOARDING.md`，运行 `bootstrap --json`，按 `execution_policy` / `needs_human` / `safe_next_steps` 执行
 - `ModuleNotFoundError`、venv 损坏、`health` 异常、Windows 首次写入转义问题 → 先回到 `bootstrap --json` 输出，不自行扩写 repair 决策树

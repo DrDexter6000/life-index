@@ -24,6 +24,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,27 @@ _PHOTO_CAPTURE_CONFLICT_CODES = frozenset(
     {"PHOTO_CAPTURE_TIME_MISSING", "PHOTO_CAPTURE_TIME_AMBIGUOUS"}
 )
 
+# Proposal states that are durable / authoritative and must never be silently
+# downgraded by a re-confirm: an imported/batching proposal is mid-flight or
+# already committed, so a fresh confirm may only preserve it (and its frozen
+# contents), never overwrite it with an edited journal.
+FROZEN_STATES = frozenset({STATE_BATCHING, STATE_IMPORTED})
+
+# States whose attachment content SHAs the scan must treat as already claimed
+# (dedup authority): committed bytes plus any review proposal that is queued,
+# mid-flight, or already imported. Rolled-back proposals project back to
+# ``confirmed`` and therefore remain excluded.
+DEDUP_STATES = frozenset({STATE_CONFIRMED, STATE_BATCHING, STATE_IMPORTED})
+
+# ``date_resolution`` statuses (editable, proposal-level). The EXIF authority
+# never supplies a date via filesystem mtime; an unresolved capture-time
+# conflict can only be resolved by an explicit ``user_confirmed`` date.
+DATE_STATUS_EXIF = "exif_authoritative"
+DATE_STATUS_USER = "user_confirmed"
+DATE_STATUS_UNRESOLVED = "unresolved"
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
 
 # ---------------------------------------------------------------------------
 # Result helpers (mirror runner._ok / runner._err shape)
@@ -104,6 +126,75 @@ def _err(
 
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Canonical journal target allocation (shared with the planner)
+# ---------------------------------------------------------------------------
+
+_JOURNAL_SEQ_RE = re.compile(r"^life-index_(\d{4}-\d{2}-\d{2})_(\d+)\.md$")
+
+
+def next_seq_for_date(
+    date: str, data_dir: Path, used_seqs: dict[str, int]
+) -> int:
+    """Return the next available sequence number for *date*.
+
+    Considers existing journal files in *data_dir* and sequences already
+    allocated in the current pass (tracked via *used_seqs*).
+    """
+    year, month, _day = date.split("-")
+    journal_dir = data_dir / "Journals" / year / month
+
+    max_seq = 0
+    if journal_dir.exists():
+        for f in journal_dir.iterdir():
+            m = _JOURNAL_SEQ_RE.match(f.name)
+            if m:
+                max_seq = max(max_seq, int(m.group(2)))
+
+    if date in used_seqs:
+        max_seq = max(max_seq, used_seqs[date])
+
+    next_seq = max_seq + 1
+    used_seqs[date] = next_seq
+    return next_seq
+
+
+def journal_target_rel_path(date: str, seq: int) -> str:
+    """Canonical journal target path for a *date* + sequence."""
+    year, month, _day = date.split("-")
+    return f"Journals/{year}/{month}/life-index_{date}_{seq:03d}.md"
+
+
+def attachment_target_rel_path(date: str, content_sha256: str) -> str:
+    """Canonical attachment target path derived from a resolved date + content."""
+    year, month = date.split("-")[:2]
+    prefix = content_sha256.removeprefix("sha256:")[:12]
+    return f"attachments/{year}/{month}/import_{prefix}.jpg"
+
+
+# ---------------------------------------------------------------------------
+# Date-resolution helpers
+# ---------------------------------------------------------------------------
+
+
+def is_valid_calendar_date(value: Any) -> bool:
+    """True only for a strict ``YYYY-MM-DD`` string that is a real calendar date."""
+    if not isinstance(value, str) or not _DATE_RE.match(value):
+        return False
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _has_capture_conflict(proposal: dict[str, Any]) -> bool:
+    return any(
+        c.get("code") in _PHOTO_CAPTURE_CONFLICT_CODES
+        for c in proposal.get("conflicts", [])
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -358,17 +449,72 @@ def _validate_proposal_immutability(proposal: dict[str, Any]) -> str | None:
     return None
 
 
-def _derive_confirm_state(proposal: dict[str, Any]) -> str:
-    """Derive a proposal's state after confirm from selection + conflicts."""
+def _resolve_and_derive_proposal(
+    proposal: dict[str, Any], data_dir: Path, used_seqs: dict[str, int]
+) -> str:
+    """Resolve a proposal's date, derive canonical targets, and return its state.
+
+    Date authority (never filesystem mtime):
+
+    - An explicit ``date_resolution`` with ``status='user_confirmed'`` and a
+      valid ``YYYY-MM-DD`` is the highest authority — it resolves even an
+      immutable EXIF capture-time conflict and overrides an EXIF date.
+    - A proposal with no capture conflict is authoritative via its EXIF date
+      (offset = recorded local calendar date, no UTC conversion; naive =
+      camera-local; a malformed offset is not trusted but the date is still
+      used as naive).
+    - A proposal with a capture conflict and no valid ``user_confirmed``
+      resolution stays ``pending`` (the explicit unresolved area) with empty
+      date/target — it is never auto-dated and never runnable.
+
+    Selection: an empty attachments list is ``skipped`` (no empty journal).
+    """
     attachments = proposal.get("attachments", []) or []
     if not attachments:
+        proposal["state"] = STATE_SKIPPED
         return STATE_SKIPPED
-    has_capture_conflict = any(
-        c.get("code") in _PHOTO_CAPTURE_CONFLICT_CODES for c in proposal.get("conflicts", [])
-    )
-    if has_capture_conflict:
-        return STATE_PENDING
-    return STATE_CONFIRMED
+
+    has_conflict = _has_capture_conflict(proposal)
+    dr = proposal.get("date_resolution") or {}
+    status = dr.get("status")
+    dr_date = dr.get("date", "")
+    journal = proposal.setdefault("journal", {})
+
+    effective_date: str | None = None
+    if status == DATE_STATUS_USER and is_valid_calendar_date(dr_date):
+        effective_date = dr_date
+    elif not has_conflict:
+        jdate = journal.get("date", "")
+        if is_valid_calendar_date(jdate):
+            effective_date = jdate
+
+    if effective_date is not None:
+        journal["date"] = effective_date
+        if not journal.get("target_rel_path"):
+            seq = next_seq_for_date(effective_date, data_dir, used_seqs)
+            journal["target_rel_path"] = journal_target_rel_path(effective_date, seq)
+        for att in attachments:
+            if not att.get("target_rel_path"):
+                att["target_rel_path"] = attachment_target_rel_path(
+                    effective_date, att.get("source_sha256", "")
+                )
+        proposal["date_resolution"] = {
+            "status": DATE_STATUS_USER if status == DATE_STATUS_USER else DATE_STATUS_EXIF,
+            "date": effective_date,
+        }
+        proposal["state"] = STATE_CONFIRMED
+        return STATE_CONFIRMED
+
+    # Unresolved: keep date/target empty (non-runnable), record the conflict.
+    journal["date"] = ""
+    journal["target_rel_path"] = ""
+    for att in attachments:
+        # Attachments keep a content-derived identity; their target stays empty
+        # until the proposal is resolved.
+        att["target_rel_path"] = ""
+    proposal["date_resolution"] = {"status": DATE_STATUS_UNRESOLVED, "date": ""}
+    proposal["state"] = STATE_PENDING
+    return STATE_PENDING
 
 
 def _recompute_plan_fingerprints(plan: dict[str, Any]) -> dict[str, Any]:
@@ -425,13 +571,80 @@ def _recompute_plan_fingerprints(plan: dict[str, Any]) -> dict[str, Any]:
     return plan
 
 
+def _reconcile_review_authority_locked(
+    ledger: dict[str, Any], parent_id: str, data_dir: Path
+) -> bool:
+    """Restore a missing/lost parent projection from the persisted review plan.
+
+    Mutates *ledger* in place; returns True if it changed. The caller holds the
+    per-parent lock and persists. Covers the plan/ledger crash window: if the
+    ledger lost its parent review job but the review plan survived, rebuild the
+    projection from the plan's recorded proposal states. Never silently resets
+    durable states — a present ledger job is authoritative for its states.
+    """
+    jobs = ledger.setdefault("jobs", {})
+    job = jobs.get(parent_id)
+    plan = read_review_plan(data_dir, parent_id)
+
+    if not _is_review_job(job) and plan is not None:
+        proposal_states = {
+            p.get("proposal_id", ""): p.get("state", STATE_PENDING)
+            for p in plan.get("proposals", [])
+            if isinstance(p, dict)
+        }
+        jobs[parent_id] = {
+            "kind": "review",
+            "state": "confirmed",
+            "source_root_identity": plan.get("source_root_identity", ""),
+            "review_plan_rel_path": _review_plan_rel_path(parent_id),
+            "proposal_states": proposal_states,
+            "active_child_id": None,
+            "recovery_required": False,
+            "next_batch_sequence": 1,
+            "idempotency_key": plan.get("idempotency_key", ""),
+            "plan_fingerprint": plan.get("plan_fingerprint", ""),
+            "updated_at": _now_iso(),
+        }
+        return True
+
+    if _is_review_job(job):
+        states = job.get("proposal_states") or {}
+        if not states and plan is not None:
+            job["proposal_states"] = {
+                p.get("proposal_id", ""): p.get("state", STATE_PENDING)
+                for p in plan.get("proposals", [])
+                if isinstance(p, dict)
+            }
+            job["updated_at"] = _now_iso()
+            return True
+
+    return False
+
+
+def reconcile_review_authority(data_dir: Path, parent_id: str) -> None:
+    """Locking entry point: reconcile a parent's plan/ledger authority."""
+    lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
+    with lock:
+        ledger = _read_ledger(data_dir)
+        if _reconcile_review_authority_locked(ledger, parent_id, data_dir):
+            _write_ledger(data_dir, ledger)
+
+
 def confirm_review(  # noqa: C901
     plan_path: str,
     data_dir: Path,
     source_root: str | None = None,
     parent_id_override: str | None = None,
 ) -> dict[str, Any]:
-    """``import confirm``: persist a review plan and record a parent review job."""
+    """``import confirm``: persist a review plan and record a parent review job.
+
+    Under the per-parent lock this reconciles the plan/ledger authority, refuses
+    to mutate while an active child batch is unsettled, then merges the incoming
+    plan onto any existing review state: imported/batching proposals are frozen
+    (never downgraded, their contents authoritative and unchanged), while
+    pending/confirmed/skipped proposals accept safe edits and (re-)derive their
+    date resolution and canonical targets.
+    """
     plan_file = Path(plan_path)
     if not plan_file.exists():
         return _err(
@@ -493,27 +706,84 @@ def confirm_review(  # noqa: C901
             return validation
         source_root_identity = validation["data"]["source_root_identity"]
 
-    # --- Recompute editable-derived fingerprints, derive states ---
-    plan = _recompute_plan_fingerprints(plan)
-    proposal_states: dict[str, str] = {}
-    for proposal in proposals:
-        state = _derive_confirm_state(proposal)
-        proposal["state"] = state
-        proposal_states[proposal.get("proposal_id", "")] = state
-
-    plan["schema_version"] = REVIEW_PLAN_SCHEMA_VERSION
-    plan["parent_id"] = parent_id
-    plan["source_root_identity"] = source_root_identity
-    plan["confirmed_at"] = _now_iso()
-
-    counts = _queue_counts(proposal_states)
-
-    # --- Per-parent single-writer lock: persist + ledger update ---
+    # --- Per-parent single-writer lock: reconcile, merge, persist ---
     lock = FileLock(_review_lock_path(data_dir, parent_id), timeout=30.0)
     with lock:
-        _write_review_plan_atomic(data_dir, parent_id, plan)
         ledger = _read_ledger(data_dir)
+        _reconcile_review_authority_locked(ledger, parent_id, data_dir)
+        existing_job = _get_job(ledger, parent_id)
+
+        # Refuse to mutate the queue while a child batch is unsettled.
+        if existing_job and existing_job.get("active_child_id"):
+            _write_ledger(data_dir, ledger)  # persist any reconciliation above
+            return _err(
+                IMPORT_BATCH_ALREADY_ACTIVE,
+                "Cannot edit the review queue while a child batch is active.",
+                {
+                    "import_id": parent_id,
+                    "active_child_id": existing_job.get("active_child_id"),
+                },
+                retryable=False,
+            )
+
+        existing_states = (existing_job or {}).get("proposal_states", {}) or {}
+        existing_plan = read_review_plan(data_dir, parent_id)
+        existing_by_id: dict[str, dict[str, Any]] = {}
+        if isinstance(existing_plan, dict):
+            for p in existing_plan.get("proposals", []):
+                if isinstance(p, dict) and p.get("proposal_id"):
+                    existing_by_id[p["proposal_id"]] = p
+
+        # --- Merge: freeze imported/batching; re-derive the rest ---
+        merged: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        used_seqs: dict[str, int] = {}
+        for proposal in proposals:
+            pid = proposal.get("proposal_id", "")
+            seen_ids.add(pid)
+            if existing_states.get(pid) in FROZEN_STATES and pid in existing_by_id:
+                # Frozen: authoritative existing contents preserved unchanged.
+                # The ledger's proposal_states is the authoritative state and may
+                # be ahead of the persisted plan's per-proposal ``state`` field
+                # (e.g. imported after a run), so it wins — frozen proposals never
+                # downgrade and their contents are never overwritten by the
+                # incoming plan.
+                frozen = dict(existing_by_id[pid])
+                frozen["state"] = existing_states[pid]
+                merged.append(frozen)
+            else:
+                _resolve_and_derive_proposal(proposal, data_dir, used_seqs)
+                merged.append(proposal)
+
+        # Keep frozen proposals that the incoming plan no longer lists (still
+        # committed to the queue truth).
+        for pid, p in existing_by_id.items():
+            if pid not in seen_ids and existing_states.get(pid) in FROZEN_STATES:
+                frozen = dict(p)
+                frozen["state"] = existing_states[pid]
+                merged.append(frozen)
+
+        plan["proposals"] = merged
+        plan = _recompute_plan_fingerprints(plan)
+
+        proposal_states: dict[str, str] = {}
+        for p in merged:
+            proposal_states[p.get("proposal_id", "")] = p.get("state", STATE_PENDING)
+
+        plan["schema_version"] = REVIEW_PLAN_SCHEMA_VERSION
+        plan["parent_id"] = parent_id
+        # Prefer a freshly supplied identity, else preserve the recorded one.
+        if not source_root_identity:
+            source_root_identity = (existing_job or {}).get("source_root_identity", "")
+        plan["source_root_identity"] = source_root_identity
+        plan["confirmed_at"] = _now_iso()
+
+        counts = _queue_counts(proposal_states)
+
+        _write_review_plan_atomic(data_dir, parent_id, plan)
+
         jobs = ledger.setdefault("jobs", {})
+        next_batch_sequence = (existing_job or {}).get("next_batch_sequence", 1)
         jobs[parent_id] = {
             "kind": "review",
             "state": "confirmed",
@@ -522,6 +792,7 @@ def confirm_review(  # noqa: C901
             "proposal_states": proposal_states,
             "active_child_id": None,
             "recovery_required": False,
+            "next_batch_sequence": next_batch_sequence,
             "idempotency_key": plan.get("idempotency_key", ""),
             "plan_fingerprint": plan.get("plan_fingerprint", ""),
             "updated_at": _now_iso(),
@@ -542,7 +813,7 @@ def confirm_review(  # noqa: C901
                     "state": p.get("state", STATE_PENDING),
                     "attachment_count": len(p.get("attachments", []) or []),
                 }
-                for p in proposals
+                for p in merged
             ],
         }
     )
@@ -570,6 +841,9 @@ def _queue_counts(proposal_states: dict[str, str]) -> dict[str, int]:
 
 def query_review_status(import_id: str, data_dir: Path) -> dict[str, Any]:
     """``import status`` for a parent review job (additive), else delegate."""
+    # Reconcile the plan/ledger authority first so a crashed ledger can be
+    # restored from the persisted review plan (never a silent reset).
+    reconcile_review_authority(data_dir, import_id)
     ledger = _read_ledger(data_dir)
     job = _get_job(ledger, import_id)
     if not _is_review_job(job):
@@ -618,27 +892,32 @@ def execute_review_rollback(import_id: str, data_dir: Path) -> dict[str, Any]:
         )
     from tools.ingest.runner import execute_rollback
 
+    # The rolled-back job is a child batch; capture its exact membership so the
+    # parent projection is driven by what THIS child batch touched, never by the
+    # parent's last selection.
+    child_proposal_ids = (
+        job.get("proposal_ids") if isinstance(job, dict) else None
+    ) or []
+    parent_id = job.get("parent_review_job_id") if isinstance(job, dict) else None
+
     result = execute_rollback(import_id=import_id, data_dir=data_dir)
 
     # If this was a child batch job that just rolled back, re-project its parent
     # review job so proposals move out of imported/batching back to confirmed.
-    # (The committed-run path already cleared ``active_child_id``, so we cannot
-    # rely on ``_reconcile_parent`` here — restore the selected proposals
-    # directly from the parent's recorded selection.)
-    if result["success"]:
-        parent_id = job.get("parent_review_job_id") if isinstance(job, dict) else None
-        if parent_id:
-            ledger = _read_ledger(data_dir)
-            parent = _get_job(ledger, parent_id)
-            if _is_review_job(parent):
-                proposal_states = dict(parent.get("proposal_states", {}) or {})
-                for pid in parent.get("selected_proposal_ids", []) or []:
-                    if proposal_states.get(pid) in (STATE_BATCHING, STATE_IMPORTED):
-                        proposal_states[pid] = STATE_CONFIRMED
-                parent["proposal_states"] = proposal_states
-                parent["recovery_required"] = False
-                parent["updated_at"] = _now_iso()
-                _write_ledger(data_dir, ledger)
+    # This is what makes "rollback restores confirmed" observable via status.
+    if result["success"] and parent_id:
+        ledger = _read_ledger(data_dir)
+        parent = _get_job(ledger, parent_id)
+        if _is_review_job(parent):
+            proposal_states = dict(parent.get("proposal_states", {}) or {})
+            for pid in child_proposal_ids:
+                if proposal_states.get(pid) in (STATE_BATCHING, STATE_IMPORTED):
+                    proposal_states[pid] = STATE_CONFIRMED
+            parent["proposal_states"] = proposal_states
+            parent["active_child_id"] = None
+            parent["recovery_required"] = False
+            parent["updated_at"] = _now_iso()
+            _write_ledger(data_dir, ledger)
 
     return result
 
@@ -814,12 +1093,9 @@ def preview_attachment(  # noqa: C901
 # ---------------------------------------------------------------------------
 
 
-def _new_child_id(parent_id: str, selected_proposal_ids: list[str]) -> str:
-    """Deterministic child batch id for a given parent + selection."""
-    digest = hashlib.sha256(
-        ("\0".join(sorted(selected_proposal_ids))).encode("utf-8")
-    ).hexdigest()[:10]
-    return f"{parent_id}#batch-{digest}"
+def _child_id_for_seq(parent_id: str, seq: int) -> str:
+    """Monotonic child batch id for a parent + durable sequence number."""
+    return f"{parent_id}#batch-{seq}"
 
 
 def _detect_stale(
@@ -910,7 +1186,19 @@ def _reconcile_parent(ledger: dict[str, Any], parent_id: str, data_dir: Path) ->
     if not child_id:
         return
     proposal_states = dict(job.get("proposal_states", {}) or {})
-    selected = job.get("selected_proposal_ids", []) or []
+
+    child_job = jobs.get(child_id)
+    child_manifest = _read_rollback_manifest(data_dir, child_id)
+    child_state = child_job.get("state") if isinstance(child_job, dict) else None
+
+    # The exact membership this child batch touched lives on the child job
+    # (``proposal_ids``); only fall back to the parent's recorded selection for
+    # legacy/seeded children that predate the mapping.
+    selected = (
+        (child_job.get("proposal_ids") if isinstance(child_job, dict) else None)
+        or job.get("selected_proposal_ids")
+        or []
+    )
 
     def _restore_confirmed() -> None:
         # Any selected proposal this batch touched (batching or already
@@ -919,10 +1207,6 @@ def _reconcile_parent(ledger: dict[str, Any], parent_id: str, data_dir: Path) ->
         for pid in selected:
             if proposal_states.get(pid) in (STATE_BATCHING, STATE_IMPORTED):
                 proposal_states[pid] = STATE_CONFIRMED
-
-    child_job = jobs.get(child_id)
-    child_manifest = _read_rollback_manifest(data_dir, child_id)
-    child_state = child_job.get("state") if isinstance(child_job, dict) else None
 
     # Window 1: batch transition recorded but no child evidence at all.
     if not child_job and not child_manifest:
@@ -998,12 +1282,16 @@ def _execute_child_batch(  # noqa: C901
 
     now = _now_iso()
     rollback_rel = f".life-index/import-jobs/{child_id}/rollback-manifest.json"
+    proposal_ids = [p.get("proposal_id", "") for p in proposals]
     jobs = ledger.setdefault("jobs", {})
     jobs[child_id] = {
         "kind": "batch",
         "parent_review_job_id": parent_id,
         "state": "running",
         "rollback_manifest_rel_path": rollback_rel,
+        # Exact batch membership so later rollback/reconciliation projects from
+        # what THIS child touched, never the parent's last selection.
+        "proposal_ids": proposal_ids,
         "updated_at": now,
     }
     _write_ledger(data_dir, ledger)
@@ -1169,7 +1457,9 @@ def run_batch(  # noqa: C901
                 retryable=False,
             )
 
-        # 1. Reconcile any prior active child (crash recovery).
+        # 1. Reconcile review authority (recover ledger from plan) and any
+        #    prior active child (crash recovery).
+        _reconcile_review_authority_locked(ledger, parent_id, data_dir)
         _reconcile_parent(ledger, parent_id, data_dir)
         _write_ledger(data_dir, ledger)
         job = _get_job(ledger, parent_id)
@@ -1230,13 +1520,21 @@ def run_batch(  # noqa: C901
                 retryable=False,
             )
 
-        # 7. Deterministic child id + durable batching transition.
-        child_id = _new_child_id(parent_id, [p.get("proposal_id", "") for p in runnable])
+        # 7. Monotonic child id (durable next_batch_sequence) + durable
+        #    batching transition. The child job records the exact proposal_ids
+        #    of THIS batch so later rollback/reconciliation projects from the
+        #    child's own membership, never the parent's last selection.
+        #    ``next_batch_sequence`` holds the NEXT available sequence, so it is
+        #    always strictly greater than any child seq already assigned.
+        seq = int(job.get("next_batch_sequence", 1))
+        child_id = _child_id_for_seq(parent_id, seq)
+        proposal_ids = [p.get("proposal_id", "") for p in runnable]
         job = _get_job(ledger, parent_id)
         for proposal in runnable:
             proposal_states[proposal.get("proposal_id", "")] = STATE_BATCHING
+        job["next_batch_sequence"] = seq + 1
         job["active_child_id"] = child_id
-        job["selected_proposal_ids"] = [p.get("proposal_id", "") for p in runnable]
+        job["selected_proposal_ids"] = proposal_ids
         job["proposal_states"] = proposal_states
         job["recovery_required"] = False
         _write_ledger(data_dir, ledger)

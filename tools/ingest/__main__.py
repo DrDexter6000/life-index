@@ -106,29 +106,53 @@ _PHOTO_CAPTURE_CONFLICT_CODES = frozenset(
 
 
 def _collect_known_attachment_shas(data_dir: Path) -> set[str]:
-    """Return attachment content SHAs already imported by committed jobs.
+    """Return attachment content SHAs already claimed by the import authority.
 
-    Read-only scan of the import ledger authority: for every job in a
-    ``committed`` state, read its rollback manifest and collect the
-    ``sha256_after`` of attachment entries. Photo attachments are byte-copied,
-    so the stored hash equals the original source content SHA — these are the
-    SHAs the adapter must dedup against at plan time so already-imported photos
-    are never re-proposed.
+    Read-only scan of the import ledger authority. Two sources:
+
+    - Committed child/legacy jobs: the attachment ``sha256_after`` from each
+      rollback manifest. Photo attachments are byte-copied, so the stored hash
+      equals the original source content SHA.
+    - Parent review jobs: the ``source_sha256`` of attachments in proposals
+      whose authoritative state is confirmed/batching/imported
+      (``DEDUP_STATES``). This keeps a queued-but-not-yet-imported photo from
+      being re-proposed on rescan, and keeps a rolled-back-to-confirmed photo
+      excluded. Rolled-back proposals project to ``confirmed``, so they remain
+      in the dedup set. Same name with different bytes stays distinct.
     """
     known: set[str] = set()
     ledger = _read_ledger(data_dir)
     jobs = ledger.get("jobs", {})
     if not isinstance(jobs, dict):
         return known
+    review_parents: list[str] = []
     for job_id, job in jobs.items():
-        if not isinstance(job, dict) or job.get("state") != "committed":
+        if not isinstance(job, dict):
             continue
-        manifest = _read_rollback_manifest(data_dir, job_id)
-        if not manifest:
+        if job.get("state") == "committed":
+            manifest = _read_rollback_manifest(data_dir, job_id)
+            if manifest:
+                for entry in manifest.get("created_files", []):
+                    if entry.get("kind") == "attachment":
+                        sha = entry.get("sha256_after")
+                        if sha:
+                            known.add(sha)
+        elif job.get("kind") == "review":
+            review_parents.append(job_id)
+
+    dedup_states = review_module.DEDUP_STATES
+    for parent_id in review_parents:
+        proposal_states = (jobs.get(parent_id) or {}).get("proposal_states", {}) or {}
+        plan = review_module.read_review_plan(data_dir, parent_id)
+        if not plan:
             continue
-        for entry in manifest.get("created_files", []):
-            if entry.get("kind") == "attachment":
-                sha = entry.get("sha256_after")
+        for proposal in plan.get("proposals", []) or []:
+            if not isinstance(proposal, dict):
+                continue
+            if proposal_states.get(proposal.get("proposal_id", "")) not in dedup_states:
+                continue
+            for att in proposal.get("attachments", []) or []:
+                sha = att.get("source_sha256")
                 if sha:
                     known.add(sha)
     return known
@@ -189,7 +213,13 @@ def _build_photo_proposals(  # noqa: C901
         facts = rec.get("source_facts") or {}
         return str(facts.get("source_rel_path") or rec.get("source_record_id", ""))
 
-    def _emit(members: list[dict[str, Any]], date: str, title: str, content: str) -> None:
+    def _emit(
+        members: list[dict[str, Any]],
+        date: str,
+        title: str,
+        content: str,
+        date_resolution: dict[str, Any] | None = None,
+    ) -> None:
         nonlocal total_attachments
         members_sorted = sorted(members, key=_member_sort_key)
 
@@ -222,8 +252,14 @@ def _build_photo_proposals(  # noqa: C901
                 total_attachments += 1
 
         # --- Journal target path ---
-        seq = _next_seq_for_date(date, data_dir, used_seqs)
-        target_rel_path = _journal_target_rel_path(date, seq)
+        # An empty date (unresolved capture time) defers target allocation: no
+        # sequence is consumed and the target stays empty until the user
+        # resolves the date during review.
+        if date:
+            seq = _next_seq_for_date(date, data_dir, used_seqs)
+            target_rel_path = _journal_target_rel_path(date, seq)
+        else:
+            target_rel_path = ""
 
         # --- Fingerprints ---
         member_fps = [m["source_record_fingerprint"] for m in members_sorted]
@@ -244,7 +280,7 @@ def _build_photo_proposals(  # noqa: C901
 
         # --- Conflicts: target-path conflicts + member conflicts ---
         prop_conflicts: list[dict[str, Any]] = []
-        if (data_dir / target_rel_path).exists():
+        if target_rel_path and (data_dir / target_rel_path).exists():
             prop_conflicts.append(
                 {
                     "type": "existing_path",
@@ -256,7 +292,7 @@ def _build_photo_proposals(  # noqa: C901
                 }
             )
         for att_out in att_outputs:
-            if (data_dir / att_out["target_rel_path"]).exists():
+            if att_out.get("target_rel_path") and (data_dir / att_out["target_rel_path"]).exists():
                 prop_conflicts.append(
                     {
                         "type": "existing_path",
@@ -287,6 +323,7 @@ def _build_photo_proposals(  # noqa: C901
                 "source_record_fingerprint": group_fp,
                 "source_record_fingerprints": member_fps,
                 "proposal_fingerprint": proposal_fp,
+                "date_resolution": date_resolution or {"status": "unresolved", "date": ""},
                 "journal": {
                     "target_rel_path": target_rel_path,
                     "title": title,
@@ -305,9 +342,11 @@ def _build_photo_proposals(  # noqa: C901
 
         # --- Accumulators ---
         proposal_fingerprints.append(proposal_fp)
-        all_create_files.append(target_rel_path)
+        if target_rel_path:
+            all_create_files.append(target_rel_path)
         for att_out in att_outputs:
-            all_create_files.append(att_out["target_rel_path"])
+            if att_out.get("target_rel_path"):
+                all_create_files.append(att_out["target_rel_path"])
         for conflict in prop_conflicts:
             all_conflicts.append(conflict)
         for warning in member_warnings:
@@ -327,15 +366,20 @@ def _build_photo_proposals(  # noqa: C901
                 f"Imported {count} photos captured on {date}. "
                 "Review and edit this entry before confirming."
             )
-        _emit(members, date, title, content)
+        date_resolution = members[0].get("date_resolution") or {
+            "status": "exif_authoritative",
+            "date": date,
+        }
+        _emit(members, date, title, content, date_resolution)
 
     # --- Unresolved individual proposals (deterministic rel-path order) ---
     for record in sorted(unresolved, key=_member_sort_key):
         journal = record.get("journal", {})
-        date = journal.get("date", "1970-01-01")
+        date = journal.get("date", "")
         title = journal.get("title", "Photo import: missing capture time")
         content = journal.get("content", "")
-        _emit([record], date, title, content)
+        date_resolution = record.get("date_resolution") or {"status": "unresolved", "date": ""}
+        _emit([record], date, title, content, date_resolution)
 
     return total_attachments
 

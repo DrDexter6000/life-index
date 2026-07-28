@@ -37,6 +37,12 @@ from tools.ingest.fingerprint import (
 _JPEG_EXTENSIONS = frozenset({".jpg", ".jpeg"})
 # Explicitly-unsupported formats that must NOT be silently skipped.
 _HEIC_EXTENSIONS = frozenset({".heic", ".heif"})
+# Conflict codes that mark a photo's capture time as unresolved. Such records
+# carry an empty date/target and an explicit ``date_resolution`` so the review
+# queue keeps them pending until the user supplies a date.
+_CAPTURE_CONFLICT_CODES = frozenset(
+    {"PHOTO_CAPTURE_TIME_MISSING", "PHOTO_CAPTURE_TIME_AMBIGUOUS"}
+)
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -297,42 +303,55 @@ def _process_jpeg(
     )
 
     # --- Build journal ---
-    # Capture-time authority is the EXIF date (offset/naive) — never the
-    # filesystem mtime. When no capture time was recovered we use an explicit
-    # sentinel date so the planner can still allocate a target path; the
-    # unresolved/pending semantics are carried by the PHOTO_CAPTURE_TIME_*
-    # conflict (which blocks the run) and the review-queue proposal state,
-    # not by the placeholder string.
-    if capture_time_iso:
-        date = capture_time_iso[:10]
-        title = f"Photo import: {date}"
-        content = (
-            f"Imported photo captured on {date}. " f"Review and edit this entry before confirming."
-        )
-    else:
-        date = "1970-01-01"
+    # Capture-time authority is the EXIF date (offset = recorded local calendar
+    # date, no UTC conversion; naive = camera-local) — never the filesystem
+    # mtime. A record with a capture-time conflict (missing/ambiguous) is
+    # UNRESOLVED: its date and target path stay empty and it carries an explicit
+    # ``date_resolution`` so the review queue keeps it in the pending area until
+    # the user supplies an explicit resolution. There is no 1970-01-01 sentinel.
+    has_capture_conflict = any(
+        conflict.get("code") in _CAPTURE_CONFLICT_CODES for conflict in conflicts
+    )
+    if has_capture_conflict:
+        date = ""
         title = "Photo import: missing capture time"
         content = (
             "Imported photo with unknown capture time. "
             "Review and edit this entry before confirming."
         )
+        date_resolution: dict[str, Any] = {"status": "unresolved", "date": ""}
+    else:
+        # No capture conflict => a trustworthy EXIF date was recovered; the
+        # ``or ""`` keeps mypy happy (it cannot see the conflict/date invariant).
+        date = (capture_time_iso or "")[:10]
+        title = f"Photo import: {date}"
+        content = (
+            f"Imported photo captured on {date}. " f"Review and edit this entry before confirming."
+        )
+        date_resolution = {
+            "status": "exif_authoritative",
+            "date": date,
+            "authority": timezone_authority or "exif_naive",
+        }
 
     # --- Build source references ---
     src_record_id = f"photo_{content_hash_prefix}"
     src_ref = f"source://media.photo_timeline/{content_hash_prefix}"
 
     # --- Build attachment ---
-    if capture_time_iso:
-        year, month, _day = capture_time_iso[:10].split("-")
+    if date:
+        year, month, _day = date.split("-")
+        att_target = f"attachments/{year}/{month}/import_{content_hash_prefix}.jpg"
     else:
-        year, month = "1970", "01"
+        # Unresolved: target deferred until the user resolves the date.
+        att_target = ""
 
     attachment = {
         "attachment_id": f"att_{content_hash_prefix}",
         "source_ref": src_ref,
         "source_sha256": content_hash,
         "source_rel_path": rel_path,
-        "target_rel_path": f"attachments/{year}/{month}/import_{content_hash_prefix}.jpg",
+        "target_rel_path": att_target,
         "media_type": "image/jpeg",
         "size_bytes": len(file_bytes),
         "copy_mode": "copy",
@@ -371,6 +390,7 @@ def _process_jpeg(
             "tags": ["imported", "photo"],
             "content": content,
         },
+        "date_resolution": date_resolution,
         "attachments": [attachment],
         "warnings": [_normalize_warning(warning) for warning in all_warnings],
         "conflicts": [_normalize_conflict(conflict) for conflict in conflicts],
